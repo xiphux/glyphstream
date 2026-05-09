@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import type {
 		ChatMessage,
@@ -41,6 +42,7 @@
 	let inFlightText = $state('');
 	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
+	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
 
 	async function sendStreaming(text: string) {
 		busy = true;
@@ -195,16 +197,15 @@
 							</div>
 						</details>
 					{/if}
-					<div class="mt-1 whitespace-pre-wrap break-words">
-						{inFlightText}
-						{#if !inFlightText && !inFlightReasoning}
-							<span class="inline-flex gap-1 align-middle">
-								<span class="animate-pulse">·</span>
-								<span class="animate-pulse [animation-delay:120ms]">·</span>
-								<span class="animate-pulse [animation-delay:240ms]">·</span>
-							</span>
-						{/if}
-					</div>
+					{#if inFlightText}
+						<div class="gs-prose mt-1">{@html inFlightHtml}</div>
+					{:else if !inFlightReasoning}
+						<div class="mt-1 inline-flex gap-1 align-middle">
+							<span class="animate-pulse">·</span>
+							<span class="animate-pulse [animation-delay:120ms]">·</span>
+							<span class="animate-pulse [animation-delay:240ms]">·</span>
+						</div>
+					{/if}
 				</article>
 			{/if}
 		</div>
