@@ -15,7 +15,11 @@ interface CacheEntry {
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ locals }) => {
+	if (!locals.user) {
+		throw error(401, 'Authentication required');
+	}
+
 	let endpoints;
 	try {
 		endpoints = listEndpoints();

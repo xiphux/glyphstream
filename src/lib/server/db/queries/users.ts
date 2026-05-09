@@ -1,0 +1,54 @@
+import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
+import { getDb } from '../client';
+import { users } from '../schema';
+
+export interface UpsertUserInput {
+	githubUserId: number;
+	githubUsername: string;
+	email: string | null;
+	displayName: string | null;
+}
+
+/**
+ * Upsert a user row keyed on github_user_id. Updates username/email/display
+ * on every login (those fields can change upstream) and bumps last_login_at.
+ * Returns the user's internal id.
+ */
+export function upsertUserByGithub(input: UpsertUserInput): string {
+	const db = getDb();
+	const now = Date.now();
+
+	const existing = db
+		.select({ id: users.id })
+		.from(users)
+		.where(eq(users.githubUserId, input.githubUserId))
+		.get();
+
+	if (existing) {
+		db.update(users)
+			.set({
+				githubUsername: input.githubUsername,
+				email: input.email,
+				displayName: input.displayName,
+				lastLoginAt: now
+			})
+			.where(eq(users.id, existing.id))
+			.run();
+		return existing.id;
+	}
+
+	const id = randomUUID();
+	db.insert(users)
+		.values({
+			id,
+			githubUserId: input.githubUserId,
+			githubUsername: input.githubUsername,
+			email: input.email,
+			displayName: input.displayName,
+			createdAt: now,
+			lastLoginAt: now
+		})
+		.run();
+	return id;
+}
