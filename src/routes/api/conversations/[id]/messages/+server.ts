@@ -4,14 +4,24 @@ import {
 	setConversationTitle
 } from '$lib/server/db/queries/conversations';
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { chatCompletionSync, UpstreamError } from '$lib/server/endpoints/client';
+import {
+	chatCompletionSync,
+	UpstreamError,
+	type ChatCompletionRequest
+} from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
-import type { ChatMessage, MessagePart, SendMessageRequest, SendMessageResponse } from '$lib/types/api';
+import { startStreamingRelay } from '$lib/server/streaming/relay';
+import type {
+	ChatMessage,
+	MessagePart,
+	SendMessageRequest,
+	SendMessageResponse
+} from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 const TITLE_PREVIEW_MAX = 60;
 
-export const POST: RequestHandler = async ({ locals, params, request }) => {
+export const POST: RequestHandler = async ({ locals, params, request, url }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 
 	let body: SendMessageRequest;
@@ -38,9 +48,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		);
 	}
 
-	// Persist the user message under the current active leaf BEFORE calling
-	// upstream. This way if the upstream fails we still have the user's input
-	// recorded and the conversation tip moves forward consistently.
+	// Persist user message + auto-title BEFORE upstream call so even if the
+	// upstream fails the user's input is preserved on the active branch.
 	const userParts: MessagePart[] = [{ type: 'text', text }];
 	const userMessage = appendMessage({
 		conversationId: params.id,
@@ -48,35 +57,57 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		role: 'user',
 		parts: userParts
 	});
-
-	// Auto-title from the first user message if the conversation is unnamed.
 	if (!meta.title) {
-		const preview = text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
+		const preview =
+			text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
 		setConversationTitle(params.id, preview);
 	}
 
-	// Build the request from the active branch (now including the new user msg).
-	// walkActiveBranch reflects the just-updated active_leaf, so this is the
-	// full prompt history root → leaf.
+	// Build the upstream request from the active branch (now incl. new user msg).
 	const branch = walkActiveBranch(params.id);
-	const upstreamMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+	const upstreamMessages: ChatCompletionRequest['messages'] = [];
 	if (meta.systemPrompt) {
 		upstreamMessages.push({ role: 'system', content: meta.systemPrompt });
 	}
 	for (const m of branch) {
-		if (m.role === 'tool') continue; // not used in v1
+		if (m.role === 'tool') continue;
 		upstreamMessages.push({
 			role: m.role as 'system' | 'user' | 'assistant',
 			content: partsToText(m.parts)
 		});
 	}
 
+	const requestBody: ChatCompletionRequest = {
+		model: parsed.upstreamId,
+		messages: upstreamMessages
+	};
+
+	const wantsStream = url.searchParams.get('stream') === '1';
+
+	if (wantsStream) {
+		const stream = await startStreamingRelay({
+			conversationId: params.id,
+			endpoint,
+			providerQuirk: endpoint.providerQuirk,
+			requestBody,
+			userMessage: userMessage as ChatMessage,
+			storedModelId: meta.modelId
+		});
+		return new Response(stream, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache, no-store, no-transform',
+				Connection: 'keep-alive',
+				// Defeat reverse-proxy buffering (Nginx/Caddy/CloudFront).
+				'X-Accel-Buffering': 'no'
+			}
+		});
+	}
+
+	// JSON / sync path (Phase 5 behavior preserved).
 	let upstream;
 	try {
-		upstream = await chatCompletionSync(endpoint, {
-			model: parsed.upstreamId,
-			messages: upstreamMessages
-		});
+		upstream = await chatCompletionSync(endpoint, requestBody);
 	} catch (e) {
 		if (e instanceof UpstreamError) {
 			const status = mapUpstreamStatus(e.status);
@@ -109,14 +140,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	return json(response);
 };
 
-/** Flatten text parts of a message for the upstream `content` string. */
 function partsToText(parts: MessagePart[]): string {
 	return parts
 		.map((p) => {
 			if (p.type === 'text') return p.text;
-			if (p.type === 'reasoning') return ''; // reasoning isn't fed back into context (yet)
-			// image/video parts are placeholder for v1; multimodal upstreams
-			// land in phase 8/9 where we'll structure content differently.
+			if (p.type === 'reasoning') return '';
 			return '';
 		})
 		.join('');

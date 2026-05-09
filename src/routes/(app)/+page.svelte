@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
-	import type {
-		CreateConversationRequest,
-		SendMessageRequest,
-		SendMessageResponse
-	} from '$lib/types/api';
+	import type { CreateConversationRequest } from '$lib/types/api';
 
 	let { data } = $props();
 
@@ -40,22 +36,11 @@
 				conversation: { id: string };
 			};
 
-			// Send the first message — wait for the assistant reply, then navigate.
-			// Sending in-flight (rather than after navigation) keeps the page state
-			// simple: by the time we land on /chat/[id], history already contains
-			// the round-trip.
-			const sendBody: SendMessageRequest = { text };
-			const sendRes = await fetch(`/api/conversations/${conversation.id}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(sendBody)
-			});
-			if (!sendRes.ok) {
-				const err = await safeReadError(sendRes);
-				throw new Error(`Conversation created but first message failed: ${err}`);
-			}
-			(await sendRes.json()) as SendMessageResponse;
-
+			// Hand the first message off to the chat page so the streaming
+			// response renders inside the right route lifecycle. Stash in
+			// sessionStorage (per-conversation key) and navigate.
+			const key = `glyphstream:pendingFirstMessage:${conversation.id}`;
+			window.sessionStorage.setItem(key, text);
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);

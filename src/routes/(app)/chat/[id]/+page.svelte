@@ -1,21 +1,25 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { invalidate } from '$app/navigation';
-	import type { ChatMessage, MessagePart, SendMessageResponse } from '$lib/types/api';
+	import { invalidateAll } from '$app/navigation';
+	import { readSSE } from '$lib/sse-client';
+	import type {
+		ChatMessage,
+		MessagePart,
+		StreamEvent
+	} from '$lib/types/api';
 
 	let { data } = $props();
 
-	// Init empty + assign via $effect so navigation invalidation resyncs
-	// these without the "captures only initial value" warning. Reads of
-	// data.* live entirely inside $effect.
 	let messages = $state<ChatMessage[]>([]);
 	let title = $state<string | null>(null);
 	let modelId = $state('');
+	let convId = $state('');
 
 	$effect(() => {
 		messages = data.conversation.messages;
 		title = data.conversation.title;
 		modelId = data.conversation.modelId;
+		convId = data.conversation.id;
 	});
 
 	let composerText = $state('');
@@ -23,35 +27,83 @@
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
 
-	async function send(e: Event) {
-		e.preventDefault();
-		const text = composerText.trim();
-		if (!text || busy) return;
+	// In-flight assistant render state. While streaming we show a transient
+	// "assistant" bubble that isn't yet a row in the messages array; on `done`
+	// we splice the canonical persisted ChatMessage into messages.
+	let inFlightText = $state('');
+	let inFlightReasoning = $state('');
+	let inFlightOpen = $state(false);
+
+	async function sendStreaming(text: string) {
 		busy = true;
 		errorMsg = null;
+		inFlightText = '';
+		inFlightReasoning = '';
+		inFlightOpen = true;
 
 		try {
-			const res = await fetch(`/api/conversations/${data.conversation.id}/messages`, {
+			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					Accept: 'text/event-stream'
+				},
 				body: JSON.stringify({ text })
 			});
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
 				throw new Error(j.message ?? `HTTP ${res.status}`);
 			}
-			const body = (await res.json()) as SendMessageResponse;
-			messages = [...messages, body.userMessage, body.assistantMessage];
-			composerText = '';
-			await tick();
-			scrollToBottom();
-			// Keep the sidebar's conversation list (title + ordering) fresh.
-			void invalidate('app:conversations');
+			if (!res.body) throw new Error('Server returned no body');
+
+			for await (const rec of readSSE(res.body)) {
+				let event: StreamEvent;
+				try {
+					event = JSON.parse(rec.data) as StreamEvent;
+				} catch {
+					continue;
+				}
+				switch (event.type) {
+					case 'start':
+						messages = [...messages, event.userMessage];
+						await tick();
+						scrollToBottom();
+						break;
+					case 'text':
+						inFlightText += event.chunk;
+						scrollToBottom();
+						break;
+					case 'reasoning':
+						inFlightReasoning += event.chunk;
+						scrollToBottom();
+						break;
+					case 'done':
+						messages = [...messages, event.assistantMessage];
+						inFlightOpen = false;
+						inFlightText = '';
+						inFlightReasoning = '';
+						break;
+					case 'error':
+						errorMsg = event.message;
+						inFlightOpen = false;
+						break;
+				}
+			}
+			void invalidateAll();
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
+			inFlightOpen = false;
 		} finally {
 			busy = false;
 		}
+	}
+
+	async function send(e: Event) {
+		e.preventDefault();
+		const text = composerText.trim();
+		if (!text || busy) return;
+		composerText = '';
+		await sendStreaming(text);
 	}
 
 	function scrollToBottom() {
@@ -61,10 +113,24 @@
 	}
 
 	$effect(() => {
-		// Initial scroll to bottom on load and whenever new messages append.
-		// Reading messages.length keeps this reactive.
 		void messages.length;
+		void inFlightText;
 		void tick().then(scrollToBottom);
+	});
+
+	// First-message handoff from /(app)/+page.svelte: when the new-chat page
+	// creates a conversation, it stashes the first message in sessionStorage
+	// and navigates here so the response can stream in this page's lifecycle.
+	let bootstrapped = $state(false);
+	$effect(() => {
+		if (bootstrapped || typeof window === 'undefined' || busy) return;
+		const key = `glyphstream:pendingFirstMessage:${convId}`;
+		const pending = window.sessionStorage.getItem(key);
+		if (pending) {
+			window.sessionStorage.removeItem(key);
+			bootstrapped = true;
+			void sendStreaming(pending);
+		}
 	});
 
 	function partsToText(parts: MessagePart[]): string {
@@ -91,19 +157,40 @@
 							: 'bg-amber-50 dark:bg-amber-950/40'}"
 				>
 					<div class="text-[11px] uppercase tracking-wide opacity-60">{m.role}</div>
+					{#if m.reasoningText}
+						<details class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
+							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
+							<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+								{m.reasoningText}
+							</div>
+						</details>
+					{/if}
 					<div class="mt-1 whitespace-pre-wrap break-words">
 						{partsToText(m.parts)}
 					</div>
 				</article>
 			{/each}
 
-			{#if busy}
+			{#if inFlightOpen}
 				<article class="rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
 					<div class="text-[11px] uppercase tracking-wide opacity-60">assistant</div>
-					<div class="mt-1 inline-flex gap-1">
-						<span class="animate-pulse">·</span>
-						<span class="animate-pulse [animation-delay:120ms]">·</span>
-						<span class="animate-pulse [animation-delay:240ms]">·</span>
+					{#if inFlightReasoning}
+						<details open class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
+							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
+							<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+								{inFlightReasoning}
+							</div>
+						</details>
+					{/if}
+					<div class="mt-1 whitespace-pre-wrap break-words">
+						{inFlightText}
+						{#if !inFlightText && !inFlightReasoning}
+							<span class="inline-flex gap-1 align-middle">
+								<span class="animate-pulse">·</span>
+								<span class="animate-pulse [animation-delay:120ms]">·</span>
+								<span class="animate-pulse [animation-delay:240ms]">·</span>
+							</span>
+						{/if}
 					</div>
 				</article>
 			{/if}

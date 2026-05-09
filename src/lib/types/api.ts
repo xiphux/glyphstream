@@ -83,8 +83,48 @@ export interface SendMessageRequest {
 	text: string;
 }
 
-/** POST /api/conversations/:id/messages response. */
+/** POST /api/conversations/:id/messages response (sync mode). */
 export interface SendMessageResponse {
 	userMessage: ChatMessage;
 	assistantMessage: ChatMessage;
 }
+
+// --- streaming event protocol (server → client SSE) ----------------------
+//
+// Server normalizes upstream SSE per provider quirk and emits these events.
+// Client consumes and renders without needing to know about provider quirks.
+
+export interface StreamTextEvent {
+	type: 'text';
+	chunk: string;
+}
+
+export interface StreamReasoningEvent {
+	type: 'reasoning';
+	chunk: string;
+}
+
+/** Sent once at the start so client knows the user/assistant ids ahead of streaming. */
+export interface StreamStartEvent {
+	type: 'start';
+	userMessage: ChatMessage;
+	assistantMessageId: string;
+}
+
+/** Sent at the end with the canonical persisted message (replaces in-flight render). */
+export interface StreamDoneEvent {
+	type: 'done';
+	assistantMessage: ChatMessage;
+}
+
+export interface StreamErrorEvent {
+	type: 'error';
+	message: string;
+}
+
+export type StreamEvent =
+	| StreamStartEvent
+	| StreamTextEvent
+	| StreamReasoningEvent
+	| StreamDoneEvent
+	| StreamErrorEvent;

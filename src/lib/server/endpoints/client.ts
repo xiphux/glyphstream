@@ -99,8 +99,58 @@ export interface ChatCompletionResponse {
 }
 
 /**
- * POST /v1/chat/completions against `endpoint`. Non-streaming only — used by
- * Phase 5; the streaming variant lands in Phase 6 and lives alongside this.
+ * Open a streaming POST /v1/chat/completions against `endpoint`. Returns
+ * the upstream Response so the caller can `.body.tee()` for fan-out into
+ * client + recorder branches.
+ *
+ * No timeout signal — streaming responses legitimately stay open longer
+ * than the per-request timeout. Idle/stall protection happens upstream.
+ */
+export async function chatCompletionStream(
+	endpoint: LoadedEndpoint,
+	body: ChatCompletionRequest
+): Promise<Response> {
+	const url = `${endpoint.baseUrl}/chat/completions`;
+	let res: Response;
+	try {
+		res = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Accept: 'text/event-stream',
+				...authHeaders(endpoint)
+			},
+			body: JSON.stringify({ ...body, stream: true })
+		});
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(
+			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
+			null,
+			null
+		);
+	}
+	if (!res.ok) {
+		const bodyText = await safeReadBody(res);
+		throw new UpstreamError(
+			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions (stream)`,
+			res.status,
+			bodyText
+		);
+	}
+	if (!res.body) {
+		throw new UpstreamError(
+			`Endpoint "${endpoint.id}" returned 200 but no response body`,
+			200,
+			null
+		);
+	}
+	return res;
+}
+
+/**
+ * POST /v1/chat/completions against `endpoint`. Non-streaming only — used
+ * for the JSON-mode response path (no `?stream=1`).
  */
 export async function chatCompletionSync(
 	endpoint: LoadedEndpoint,
