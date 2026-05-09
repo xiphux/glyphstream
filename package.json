@@ -31,7 +31,8 @@
 	"dependencies": {
 		"better-sqlite3": "latest",
 		"bits-ui": "latest",
-		"drizzle-orm": "latest"
+		"drizzle-orm": "latest",
+		"smol-toml": "latest"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
