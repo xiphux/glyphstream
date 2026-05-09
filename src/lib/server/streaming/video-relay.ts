@@ -25,6 +25,7 @@ import {
 	type VideoJob
 } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
+import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
 import type {
 	ChatMessage,
@@ -34,6 +35,8 @@ import type {
 	StreamProgressEvent,
 	StreamStartEvent
 } from '$lib/types/api';
+
+const DEBUG = logLevel() === 'debug';
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_WAIT_MS = 20 * 60_000; // 20 minutes — generous; rate-limited by upstream timeouts anyway
@@ -73,9 +76,12 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					model: parseUpstreamId(params.storedModelId),
 					prompt: params.prompt
 				};
+				if (DEBUG) console.debug(`[video-relay] POST /videos to ${params.endpoint.id}`, req);
 				job = await videoCreate(params.endpoint, req);
+				if (DEBUG) console.debug(`[video-relay] created job`, job);
 			} catch (e) {
 				const msg = errorMsg(e);
+				console.error(`[video-relay] videoCreate failed:`, msg);
 				safeWrite({ type: 'error', message: `Could not start video job: ${msg}` } satisfies StreamErrorEvent);
 				try { controller.close(); } catch { /* already closed */ }
 				return;
@@ -97,6 +103,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				await sleep(POLL_INTERVAL_MS);
 				try {
 					job = await videoStatus(params.endpoint, job.id);
+					if (DEBUG) console.debug(`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`);
 				} catch (e) {
 					// Transient upstream blip — keep polling unless we've burned the budget.
 					console.warn(`[video-relay] poll error for job ${job.id}:`, e);

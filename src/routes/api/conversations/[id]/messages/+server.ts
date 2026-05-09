@@ -12,10 +12,13 @@ import {
 	type ChatCompletionRequest
 } from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
+import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { persistGeneratedImage } from '$lib/server/media/persister';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
+
+const DEBUG = logLevel() === 'debug';
 import type {
 	ChatMessage,
 	MessagePart,
@@ -66,6 +69,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		const preview =
 			text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
 		setConversationTitle(params.id, preview);
+	}
+
+	if (DEBUG) {
+		console.debug(
+			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}`
+		);
 	}
 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
