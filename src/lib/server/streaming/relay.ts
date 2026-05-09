@@ -29,8 +29,11 @@ import {
 	type ChatCompletionRequest
 } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
+import { logLevel } from '../env';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
+
+const DEBUG = logLevel() === 'debug';
 
 export interface RelayParams {
 	conversationId: string;
@@ -79,6 +82,7 @@ async function recordAndPersist(
 	let tokensOut: number | null = null;
 
 	for await (const record of parseSSEStream(upstream)) {
+		if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
 		const result = norm.process(record);
 		applyDeltas(result.deltas);
 		if (result.finishReason) finishReason = result.finishReason;
