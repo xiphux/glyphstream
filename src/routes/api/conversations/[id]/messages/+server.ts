@@ -15,6 +15,7 @@ import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { persistGeneratedImage } from '$lib/server/media/persister';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
+import { startVideoRelay } from '$lib/server/streaming/video-relay';
 import type {
 	ChatMessage,
 	MessagePart,
@@ -110,7 +111,22 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 
 	if (meta.modelKind === 'video') {
-		throw error(501, 'Video generation not yet wired (see Phase 9)');
+		const stream = startVideoRelay({
+			conversationId: params.id,
+			userId: locals.user.id,
+			endpoint,
+			storedModelId: meta.modelId,
+			prompt: text,
+			userMessage: userMessage as ChatMessage
+		});
+		return new Response(stream, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache, no-store, no-transform',
+				Connection: 'keep-alive',
+				'X-Accel-Buffering': 'no'
+			}
+		});
 	}
 
 	// Build the upstream request from the active branch (now incl. new user msg).

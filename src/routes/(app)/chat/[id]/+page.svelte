@@ -47,6 +47,7 @@
 	let inFlightText = $state('');
 	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
+	let inFlightProgress = $state<number | null>(null);
 	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
@@ -79,10 +80,12 @@
 		errorMsg = null;
 		inFlightText = '';
 		inFlightReasoning = '';
+		inFlightProgress = null;
 		inFlightOpen = true;
 
 		// Image-kind conversations use the sync JSON path — there's nothing
-		// to stream (one-shot generate). Chat-kind streams via SSE.
+		// to stream (one-shot generate). Chat and video both stream via SSE
+		// (chat for tokens, video for poll-based progress events).
 		if (modelKind === 'image') {
 			await sendImageGeneration(text);
 			return;
@@ -124,15 +127,20 @@
 						inFlightReasoning += event.chunk;
 						scrollToBottom();
 						break;
+					case 'progress':
+						inFlightProgress = event.percent;
+						break;
 					case 'done':
 						messages = [...messages, event.assistantMessage];
 						inFlightOpen = false;
 						inFlightText = '';
 						inFlightReasoning = '';
+						inFlightProgress = null;
 						break;
 					case 'error':
 						errorMsg = event.message;
 						inFlightOpen = false;
+						inFlightProgress = null;
 						break;
 				}
 			}
@@ -305,6 +313,9 @@
 								<span class="animate-pulse [animation-delay:120ms]">·</span>
 								<span class="animate-pulse [animation-delay:240ms]">·</span>
 							</span>
+							{#if inFlightProgress !== null}
+								<span class="font-mono text-xs tabular-nums">{inFlightProgress.toFixed(0)}%</span>
+							{/if}
 							{#if elapsedSeconds >= 0.3}
 								<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
 							{/if}

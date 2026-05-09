@@ -45,6 +45,39 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 	return id;
 }
 
+interface PersistVideoInput {
+	userId: string;
+	endpoint: LoadedEndpoint;
+	sourceModel: string;
+	prompt: string;
+	bytes: Buffer;
+	contentType: string;
+}
+
+/** Persist already-fetched video bytes (fetched directly from upstream by the caller). */
+export async function persistGeneratedVideo(input: PersistVideoInput): Promise<string> {
+	const store = getMediaStore();
+	const ref = await store.put({
+		bytes: input.bytes,
+		contentType: input.contentType || 'video/mp4',
+		kind: 'video'
+	});
+	const { id } = insertMedia({
+		userId: input.userId,
+		storagePath: ref.storagePath,
+		contentType: ref.contentType,
+		byteSize: ref.byteSize,
+		kind: 'video',
+		sourceEndpointId: input.endpoint.id,
+		sourceModel: input.sourceModel,
+		promptExcerpt:
+			input.prompt.length > PROMPT_EXCERPT_MAX
+				? input.prompt.slice(0, PROMPT_EXCERPT_MAX - 1) + '…'
+				: input.prompt
+	});
+	return id;
+}
+
 async function resolveBytes(
 	endpoint: LoadedEndpoint,
 	urlOrB64: { url?: string; b64_json?: string }

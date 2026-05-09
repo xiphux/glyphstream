@@ -1,0 +1,188 @@
+/**
+ * Async video generation relay. Sora-shape:
+ *   1. POST /v1/videos -> { id, status: "queued" }
+ *   2. Poll GET /v1/videos/{id} until status === "completed" | "failed"
+ *   3. GET /v1/videos/{id}/content -> mp4 bytes -> persist via MediaStore
+ *
+ * The polling loop runs server-side; we surface progress to the client over
+ * SSE so the in-flight bubble can show "Generating video · 47% · 32.5s"
+ * instead of just a ticking timer.
+ *
+ * Like chat streaming, this runs the recorder branch independently of the
+ * client connection: a client disconnect mid-poll doesn't abort the job,
+ * so the assistant message still lands on the active branch.
+ */
+
+import { Buffer } from 'node:buffer';
+import { linkMessageMedia } from '../db/queries/media';
+import { appendMessage } from '../db/queries/messages';
+import {
+	UpstreamError,
+	videoCreate,
+	videoFetchContent,
+	videoStatus,
+	type VideoCreateRequest,
+	type VideoJob
+} from '../endpoints/client';
+import type { LoadedEndpoint } from '../endpoints/config';
+import { persistGeneratedVideo } from '../media/persister';
+import type {
+	ChatMessage,
+	StreamDoneEvent,
+	StreamErrorEvent,
+	StreamEvent,
+	StreamProgressEvent,
+	StreamStartEvent
+} from '$lib/types/api';
+
+const POLL_INTERVAL_MS = 1500;
+const MAX_WAIT_MS = 20 * 60_000; // 20 minutes — generous; rate-limited by upstream timeouts anyway
+
+export interface VideoRelayParams {
+	conversationId: string;
+	userId: string;
+	endpoint: LoadedEndpoint;
+	storedModelId: string;
+	prompt: string;
+	userMessage: ChatMessage;
+}
+
+export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
+	const enc = new TextEncoder();
+
+	return new ReadableStream({
+		async start(controller) {
+			const safeWrite = (event: StreamEvent) => {
+				try {
+					controller.enqueue(enc.encode(formatSSE(event)));
+				} catch {
+					// client gone; the recorder side keeps running below
+				}
+			};
+
+			const startEv: StreamStartEvent = {
+				type: 'start',
+				userMessage: params.userMessage,
+				assistantMessageId: ''
+			};
+			safeWrite(startEv);
+
+			let job: VideoJob;
+			try {
+				const req: VideoCreateRequest = {
+					model: parseUpstreamId(params.storedModelId),
+					prompt: params.prompt
+				};
+				job = await videoCreate(params.endpoint, req);
+			} catch (e) {
+				const msg = errorMsg(e);
+				safeWrite({ type: 'error', message: `Could not start video job: ${msg}` } satisfies StreamErrorEvent);
+				try { controller.close(); } catch { /* already closed */ }
+				return;
+			}
+
+			// Initial state
+			emitProgress(safeWrite, job);
+
+			const startedAt = Date.now();
+			while (job.status !== 'completed' && job.status !== 'failed') {
+				if (Date.now() - startedAt > MAX_WAIT_MS) {
+					safeWrite({
+						type: 'error',
+						message: `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`
+					} satisfies StreamErrorEvent);
+					try { controller.close(); } catch { /* already closed */ }
+					return;
+				}
+				await sleep(POLL_INTERVAL_MS);
+				try {
+					job = await videoStatus(params.endpoint, job.id);
+				} catch (e) {
+					// Transient upstream blip — keep polling unless we've burned the budget.
+					console.warn(`[video-relay] poll error for job ${job.id}:`, e);
+					continue;
+				}
+				emitProgress(safeWrite, job);
+			}
+
+			if (job.status === 'failed') {
+				const msg = job.error?.message ?? 'Video generation failed';
+				safeWrite({ type: 'error', message: msg } satisfies StreamErrorEvent);
+				try { controller.close(); } catch { /* already closed */ }
+				return;
+			}
+
+			// status === 'completed' — fetch + persist
+			let bytes: Buffer;
+			let contentType: string;
+			try {
+				const fetched = await videoFetchContent(params.endpoint, job.id);
+				bytes = fetched.bytes;
+				contentType = fetched.contentType;
+			} catch (e) {
+				const msg = errorMsg(e);
+				safeWrite({ type: 'error', message: `Could not fetch video content: ${msg}` } satisfies StreamErrorEvent);
+				try { controller.close(); } catch { /* already closed */ }
+				return;
+			}
+
+			let assistantMessage: ChatMessage;
+			try {
+				const mediaId = await persistGeneratedVideo({
+					userId: params.userId,
+					endpoint: params.endpoint,
+					sourceModel: params.storedModelId,
+					prompt: params.prompt,
+					bytes,
+					contentType
+				});
+				assistantMessage = appendMessage({
+					conversationId: params.conversationId,
+					parentMessageId: params.userMessage.id,
+					role: 'assistant',
+					parts: [{ type: 'video', mediaId }],
+					modelUsed: params.storedModelId,
+					rawResponseJson: JSON.stringify(job)
+				});
+				linkMessageMedia(assistantMessage.id, mediaId);
+			} catch (e) {
+				const msg = errorMsg(e);
+				safeWrite({ type: 'error', message: `Could not persist video: ${msg}` } satisfies StreamErrorEvent);
+				try { controller.close(); } catch { /* already closed */ }
+				return;
+			}
+
+			safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
+			try { controller.close(); } catch { /* already closed */ }
+		}
+	});
+}
+
+function emitProgress(write: (e: StreamEvent) => void, job: VideoJob): void {
+	const ev: StreamProgressEvent = {
+		type: 'progress',
+		percent: typeof job.progress === 'number' ? job.progress : null,
+		status: job.status
+	};
+	write(ev);
+}
+
+function parseUpstreamId(storedModelId: string): string {
+	// stored is "{endpoint}::{upstream}"; we want just upstream
+	const idx = storedModelId.indexOf('::');
+	return idx === -1 ? storedModelId : storedModelId.slice(idx + 2);
+}
+
+function errorMsg(e: unknown): string {
+	if (e instanceof UpstreamError) return e.message;
+	if (e instanceof Error) return e.message;
+	return String(e);
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
+function formatSSE(event: StreamEvent): string {
+	return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}

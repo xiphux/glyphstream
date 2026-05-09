@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import type { LoadedEndpoint } from './config';
 import type { UpstreamModel } from '$lib/types/api';
 
@@ -207,6 +208,131 @@ export async function imageGeneration(
 		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON: ${cause}`, 200, null);
 	}
 	return parsed as ImageGenerationResponse;
+}
+
+// --- video generation (Sora-shaped async) -------------------------------
+
+export interface VideoCreateRequest {
+	model: string;
+	prompt: string;
+	size?: string;
+	seconds?: number;
+}
+
+export type VideoStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
+
+export interface VideoJob {
+	id: string;
+	object?: 'video';
+	model?: string;
+	status: VideoStatus;
+	progress: number | null;
+	seconds: number | null;
+	size: string | null;
+	created_at?: number;
+	completed_at?: number | null;
+	error: { message?: string; type?: string; code?: string } | null;
+}
+
+/** POST /v1/videos. Multipart per the bridge's contract. Returns the queued job. */
+export async function videoCreate(
+	endpoint: LoadedEndpoint,
+	body: VideoCreateRequest
+): Promise<VideoJob> {
+	const url = `${endpoint.baseUrl}/videos`;
+	const form = new FormData();
+	form.append('model', body.model);
+	form.append('prompt', body.prompt);
+	if (body.size) form.append('size', body.size);
+	if (body.seconds !== undefined) form.append('seconds', String(body.seconds));
+
+	let res: Response;
+	try {
+		res = await fetch(url, {
+			method: 'POST',
+			headers: { ...authHeaders(endpoint) }, // do NOT set Content-Type — fetch handles multipart
+			body: form,
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+		});
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(
+			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
+			null,
+			null
+		);
+	}
+	if (!res.ok) {
+		const bodyText = await safeReadBody(res);
+		throw new UpstreamError(
+			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos`,
+			res.status,
+			bodyText
+		);
+	}
+	return (await res.json()) as VideoJob;
+}
+
+/** GET /v1/videos/{id} for polling. */
+export async function videoStatus(
+	endpoint: LoadedEndpoint,
+	videoId: string
+): Promise<VideoJob> {
+	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}`;
+	let res: Response;
+	try {
+		res = await fetch(url, {
+			method: 'GET',
+			headers: authHeaders(endpoint),
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+		});
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(
+			`Network error polling endpoint "${endpoint.id}" at ${url}: ${cause}`,
+			null,
+			null
+		);
+	}
+	if (!res.ok) {
+		const bodyText = await safeReadBody(res);
+		throw new UpstreamError(
+			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos/${videoId}`,
+			res.status,
+			bodyText
+		);
+	}
+	return (await res.json()) as VideoJob;
+}
+
+/** GET /v1/videos/{id}/content — raw mp4 bytes. Only valid once status === "completed". */
+export async function videoFetchContent(
+	endpoint: LoadedEndpoint,
+	videoId: string
+): Promise<{ bytes: Buffer; contentType: string }> {
+	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}/content`;
+	let res: Response;
+	try {
+		res = await fetch(url, {
+			method: 'GET',
+			headers: authHeaders(endpoint),
+			// No timeout — large videos legitimately take a while to download.
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000 * 5)
+		});
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(
+			`Network error fetching video content at ${url}: ${cause}`,
+			null,
+			null
+		);
+	}
+	if (!res.ok) {
+		throw new UpstreamError(`Fetching video content returned HTTP ${res.status}`, res.status, null);
+	}
+	const arrayBuf = await res.arrayBuffer();
+	const contentType = res.headers.get('content-type') ?? 'video/mp4';
+	return { bytes: Buffer.from(arrayBuf), contentType };
 }
 
 /**

@@ -133,6 +133,13 @@ export interface StreamReasoningEvent {
 	chunk: string;
 }
 
+/** Long-running operations (video) emit progress updates. percent is 0–100 if known. */
+export interface StreamProgressEvent {
+	type: 'progress';
+	percent: number | null;
+	status?: string;
+}
+
 /** Sent once at the start so client knows the user/assistant ids ahead of streaming. */
 export interface StreamStartEvent {
 	type: 'start';
@@ -155,5 +162,6 @@ export type StreamEvent =
 	| StreamStartEvent
 	| StreamTextEvent
 	| StreamReasoningEvent
+	| StreamProgressEvent
 	| StreamDoneEvent
 	| StreamErrorEvent;

@@ -11,15 +11,26 @@
 			modelId =
 				data.models.find((m) => m.kind === 'chat')?.id ??
 				data.models.find((m) => m.kind === 'image')?.id ??
+				data.models.find((m) => m.kind === 'video')?.id ??
 				'';
 		}
 	});
 
 	const pickedKind = $derived(data.models.find((m) => m.id === modelId)?.kind ?? 'chat');
 	const composerPlaceholder = $derived(
-		pickedKind === 'image' ? 'Describe an image to generate…' : 'Ask anything…'
+		pickedKind === 'image'
+			? 'Describe an image to generate…'
+			: pickedKind === 'video'
+				? 'Describe a video to generate…'
+				: 'Ask anything…'
 	);
-	const submitLabel = $derived(pickedKind === 'image' ? 'Generate image' : 'Start chat');
+	const submitLabel = $derived(
+		pickedKind === 'image'
+			? 'Generate image'
+			: pickedKind === 'video'
+				? 'Generate video'
+				: 'Start chat'
+	);
 	let text = $state('');
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
@@ -92,7 +103,7 @@
 			<ModelPicker
 				models={data.models}
 				bind:value={modelId}
-				filterKinds={['chat', 'image']}
+				filterKinds={['chat', 'image', 'video']}
 				disabled={busy}
 			/>
 			{#if data.models.length === 0}
