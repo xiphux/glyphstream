@@ -10,6 +10,22 @@
 	}
 	let { models, filterKinds, value = $bindable(''), onChange, disabled = false }: Props = $props();
 
+	// Visual marker per kind. Chat is the default; we don't decorate it so
+	// the picker stays quiet for the common case. Same convention as the
+	// Open WebUI pipe used 📹 for video.
+	function kindEmoji(kind: ModelKind): string {
+		switch (kind) {
+			case 'image':
+				return ' 📷';
+			case 'video':
+				return ' 📹';
+			case 'embedding':
+				return ' 🔢';
+			default:
+				return '';
+		}
+	}
+
 	const visible = $derived.by(() => {
 		if (!filterKinds) return models;
 		const set = new Set(filterKinds);
@@ -37,11 +53,14 @@
 			return {
 				endpointId,
 				items: items
-					.map((m) => ({
-						entry: m,
-						label:
-							showOwner && m.ownedBy ? `${m.ownedBy} · ${m.displayName}` : m.displayName
-					}))
+					.map((m) => {
+						const base =
+							showOwner && m.ownedBy ? `${m.ownedBy} · ${m.displayName}` : m.displayName;
+						return {
+							entry: m,
+							label: `${base}${kindEmoji(m.kind)}`
+						};
+					})
 					.sort((a, b) => a.label.localeCompare(b.label))
 			};
 		});
@@ -59,7 +78,7 @@
 		<optgroup label={g.endpointId}>
 			{#each g.items as item (item.entry.id)}
 				<option value={item.entry.id}>
-					{item.label}{item.entry.kindKnown ? '' : ' ·'}
+					{item.label}
 				</option>
 			{/each}
 		</optgroup>
