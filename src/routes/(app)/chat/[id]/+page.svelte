@@ -49,6 +49,31 @@
 	let inFlightOpen = $state(false);
 	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
 
+	// Tick a timer while the in-flight bubble is open so the user gets a
+	// progress signal for slow operations (image generation, video gen) and
+	// also for chat round-trips that stall before the first token.
+	let elapsedSeconds = $state(0);
+	$effect(() => {
+		if (!inFlightOpen) {
+			elapsedSeconds = 0;
+			return;
+		}
+		const startedAt = Date.now();
+		elapsedSeconds = 0;
+		const interval = setInterval(() => {
+			elapsedSeconds = (Date.now() - startedAt) / 1000;
+		}, 100);
+		return () => clearInterval(interval);
+	});
+
+	const inFlightLabel = $derived(
+		modelKind === 'image'
+			? 'Generating image'
+			: modelKind === 'video'
+				? 'Generating video'
+				: 'Thinking'
+	);
+
 	async function sendStreaming(text: string) {
 		busy = true;
 		errorMsg = null;
@@ -273,10 +298,16 @@
 					{#if inFlightText}
 						<div class="gs-prose mt-1">{@html inFlightHtml}</div>
 					{:else if !inFlightReasoning}
-						<div class="mt-1 inline-flex gap-1 align-middle">
-							<span class="animate-pulse">·</span>
-							<span class="animate-pulse [animation-delay:120ms]">·</span>
-							<span class="animate-pulse [animation-delay:240ms]">·</span>
+						<div class="mt-1 flex items-center gap-2 text-neutral-500">
+							<span>{inFlightLabel}</span>
+							<span class="inline-flex gap-1">
+								<span class="animate-pulse">·</span>
+								<span class="animate-pulse [animation-delay:120ms]">·</span>
+								<span class="animate-pulse [animation-delay:240ms]">·</span>
+							</span>
+							{#if elapsedSeconds >= 0.3}
+								<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
+							{/if}
 						</div>
 					{/if}
 				</article>
