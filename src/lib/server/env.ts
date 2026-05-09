@@ -1,6 +1,12 @@
 // Use SvelteKit's $env/dynamic/private so .env is loaded in dev + values are
 // read at runtime in production. drizzle.config.ts and other CLI tooling
 // use process.env directly because they run outside SvelteKit's context.
+//
+// Rule of thumb for any new server module that needs an env var:
+//   - Inside SvelteKit (anything under src/) -> import { env } from
+//     '$env/dynamic/private'; using process.env will silently miss .env
+//     values in pnpm dev because Vite doesn't populate process.env.
+//   - In CLI scripts (drizzle.config.ts etc.) -> process.env is fine.
 
 import { env } from '$env/dynamic/private';
 
