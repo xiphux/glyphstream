@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { env } from '$env/dynamic/private';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 
@@ -102,7 +103,10 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	let apiKey: string | null = null;
 	if (raw.api_key_env !== undefined) {
 		const envName = requireString(raw.api_key_env, 'api_key_env', at);
-		const envValue = process.env[envName];
+		// Read via SvelteKit's $env/dynamic/private so .env values picked up
+		// in dev (Vite doesn't populate process.env from .env). In production
+		// adapter-node both `env` and process.env reflect the host env.
+		const envValue = env[envName];
 		if (!envValue) {
 			throw new ConfigError(
 				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`
