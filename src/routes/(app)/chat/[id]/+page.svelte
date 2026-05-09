@@ -48,6 +48,7 @@
 	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
+	let inFlightStatus = $state<string | null>(null);
 	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
@@ -81,6 +82,7 @@
 		inFlightText = '';
 		inFlightReasoning = '';
 		inFlightProgress = null;
+		inFlightStatus = null;
 		inFlightOpen = true;
 
 		// Image-kind conversations use the sync JSON path — there's nothing
@@ -129,6 +131,7 @@
 						break;
 					case 'progress':
 						inFlightProgress = event.percent;
+						inFlightStatus = event.status ?? null;
 						break;
 					case 'done':
 						messages = [...messages, event.assistantMessage];
@@ -136,11 +139,13 @@
 						inFlightText = '';
 						inFlightReasoning = '';
 						inFlightProgress = null;
+						inFlightStatus = null;
 						break;
 					case 'error':
 						errorMsg = event.message;
 						inFlightOpen = false;
 						inFlightProgress = null;
+						inFlightStatus = null;
 						break;
 				}
 			}
@@ -313,6 +318,11 @@
 								<span class="animate-pulse [animation-delay:120ms]">·</span>
 								<span class="animate-pulse [animation-delay:240ms]">·</span>
 							</span>
+							{#if inFlightStatus && inFlightStatus !== 'in_progress'}
+								<span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
+									{inFlightStatus}
+								</span>
+							{/if}
 							{#if inFlightProgress !== null}
 								<span class="font-mono text-xs tabular-nums">{inFlightProgress.toFixed(0)}%</span>
 							{/if}
