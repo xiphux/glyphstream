@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import type { ConversationDetail, ConversationSummary } from '$lib/types/api';
+import type { ConversationDetail, ConversationSummary, ModelKind } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations } from '../schema';
 import { walkActiveBranch } from './messages';
@@ -9,6 +9,7 @@ interface CreateInput {
 	userId: string;
 	endpointId: string;
 	modelId: string;
+	modelKind: ModelKind | null;
 	customModelId?: string | null;
 	systemPrompt?: string | null;
 	title?: string | null;
@@ -24,6 +25,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			userId: input.userId,
 			endpointId: input.endpointId,
 			modelId: input.modelId,
+			modelKind: input.modelKind,
 			customModelId: input.customModelId ?? null,
 			systemPrompt: input.systemPrompt ?? null,
 			title: input.title ?? null,
@@ -37,6 +39,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		id,
 		title: input.title ?? null,
 		modelId: input.modelId,
+		modelKind: input.modelKind,
 		endpointId: input.endpointId,
 		customModelId: input.customModelId ?? null,
 		systemPrompt: input.systemPrompt ?? null,
@@ -80,6 +83,7 @@ export function getConversationDetail(
 		id: row.id,
 		title: row.title,
 		modelId: row.modelId,
+		modelKind: row.modelKind,
 		endpointId: row.endpointId,
 		customModelId: row.customModelId,
 		systemPrompt: row.systemPrompt,
@@ -98,6 +102,7 @@ export function getConversationMeta(
 	id: string;
 	endpointId: string;
 	modelId: string;
+	modelKind: ModelKind | null;
 	systemPrompt: string | null;
 	title: string | null;
 	activeLeafMessageId: string | null;
@@ -108,6 +113,7 @@ export function getConversationMeta(
 			id: conversations.id,
 			endpointId: conversations.endpointId,
 			modelId: conversations.modelId,
+			modelKind: conversations.modelKind,
 			systemPrompt: conversations.systemPrompt,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId

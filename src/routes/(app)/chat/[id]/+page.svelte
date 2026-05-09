@@ -6,6 +6,8 @@
 	import type {
 		ChatMessage,
 		MessagePart,
+		ModelKind,
+		SendMessageResponse,
 		StreamEvent
 	} from '$lib/types/api';
 
@@ -23,12 +25,15 @@
 	let modelId = $state(data.conversation.modelId);
 	// svelte-ignore state_referenced_locally
 	let convId = $state(data.conversation.id);
+	// svelte-ignore state_referenced_locally
+	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
 
 	$effect(() => {
 		messages = data.conversation.messages;
 		title = data.conversation.title;
 		modelId = data.conversation.modelId;
 		convId = data.conversation.id;
+		modelKind = data.conversation.modelKind;
 	});
 
 	let composerText = $state('');
@@ -50,6 +55,13 @@
 		inFlightText = '';
 		inFlightReasoning = '';
 		inFlightOpen = true;
+
+		// Image-kind conversations use the sync JSON path — there's nothing
+		// to stream (one-shot generate). Chat-kind streams via SSE.
+		if (modelKind === 'image') {
+			await sendImageGeneration(text);
+			return;
+		}
 
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
@@ -108,6 +120,29 @@
 		}
 	}
 
+	async function sendImageGeneration(text: string) {
+		try {
+			const res = await fetch(`/api/conversations/${convId}/messages`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ text })
+			});
+			if (!res.ok) {
+				const j = await res.json().catch(() => ({}));
+				throw new Error(j.message ?? `HTTP ${res.status}`);
+			}
+			const body = (await res.json()) as SendMessageResponse;
+			messages = [...messages, body.userMessage, body.assistantMessage];
+			inFlightOpen = false;
+			void invalidateAll();
+		} catch (e) {
+			errorMsg = e instanceof Error ? e.message : String(e);
+			inFlightOpen = false;
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function send(e: Event) {
 		e.preventDefault();
 		const text = composerText.trim();
@@ -146,6 +181,15 @@
 	function partsToText(parts: MessagePart[]): string {
 		return parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
 	}
+
+	function hasMedia(parts: MessagePart[]): boolean {
+		return parts.some((p) => p.type === 'image' || p.type === 'video');
+	}
+
+	function partKey(p: MessagePart): string {
+		if (p.type === 'image' || p.type === 'video') return p.mediaId;
+		return p.type + ':' + ('text' in p ? p.text.slice(0, 8) : '');
+	}
 </script>
 
 <div class="flex h-full flex-col">
@@ -178,6 +222,33 @@
 					{#if m.role === 'assistant' && m.contentHtml}
 						<!-- HTML is server-rendered (markdown-it w/ html=false + shiki); safe to {@html}. -->
 						<div class="gs-prose mt-1">{@html m.contentHtml}</div>
+					{:else if hasMedia(m.parts)}
+						<div class="mt-2 flex flex-wrap gap-2">
+							{#each m.parts as p (partKey(p))}
+								{#if p.type === 'image'}
+									<a
+										href="/api/media/{p.mediaId}/content"
+										target="_blank"
+										rel="noopener noreferrer"
+										class="block overflow-hidden rounded-lg"
+									>
+										<img
+											src="/api/media/{p.mediaId}/content"
+											alt={p.alt ?? 'Generated image'}
+											loading="lazy"
+											class="max-h-96 max-w-full rounded-lg"
+										/>
+									</a>
+								{:else if p.type === 'video'}
+									<!-- svelte-ignore a11y_media_has_caption -->
+									<video
+										src="/api/media/{p.mediaId}/content"
+										controls
+										class="max-h-96 max-w-full rounded-lg"
+									></video>
+								{/if}
+							{/each}
+						</div>
 					{:else}
 						<div class="mt-1 whitespace-pre-wrap break-words">
 							{partsToText(m.parts)}
@@ -224,7 +295,7 @@
 				<textarea
 					bind:value={composerText}
 					rows="2"
-					placeholder="Send a message…"
+					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Send a message…'}
 					disabled={busy}
 					onkeydown={(e) => {
 						if (e.key === 'Enter' && !e.shiftKey) {

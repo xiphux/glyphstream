@@ -4,8 +4,10 @@ import {
 	listConversations
 } from '$lib/server/db/queries/conversations';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
-import type { CreateConversationRequest } from '$lib/types/api';
+import type { CreateConversationRequest, ModelKind } from '$lib/types/api';
 import type { RequestHandler } from './$types';
+
+const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
 
 export const GET: RequestHandler = ({ locals }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
@@ -34,10 +36,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		throw error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
 	}
 
+	let modelKind: ModelKind | null = null;
+	if (body.modelKind !== undefined) {
+		if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
+			throw error(400, `Invalid modelKind "${body.modelKind}"`);
+		}
+		modelKind = body.modelKind;
+	}
+
 	const conv = createConversation({
 		userId: locals.user.id,
 		endpointId: parsed.endpointId,
 		modelId,
+		modelKind,
 		systemPrompt: body.systemPrompt?.trim() || null,
 		customModelId: body.customModelId ?? null,
 		title: body.title?.trim() || null

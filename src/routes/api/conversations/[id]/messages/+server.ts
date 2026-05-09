@@ -3,14 +3,17 @@ import {
 	getConversationMeta,
 	setConversationTitle
 } from '$lib/server/db/queries/conversations';
+import { linkMessageMedia } from '$lib/server/db/queries/media';
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import {
 	chatCompletionSync,
+	imageGeneration,
 	UpstreamError,
 	type ChatCompletionRequest
 } from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import { renderMarkdown } from '$lib/server/markdown/render';
+import { persistGeneratedImage } from '$lib/server/media/persister';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import type {
 	ChatMessage,
@@ -62,6 +65,52 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		const preview =
 			text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
 		setConversationTitle(params.id, preview);
+	}
+
+	// --- image-kind models: prompt → image; no streaming, no chat history -----
+	if (meta.modelKind === 'image') {
+		try {
+			const upstream = await imageGeneration(endpoint, {
+				model: parsed.upstreamId,
+				prompt: text,
+				n: 1,
+				response_format: 'url'
+			});
+			const result = upstream.data?.[0];
+			if (!result || (!result.url && !result.b64_json)) {
+				throw error(502, 'Upstream returned no image data');
+			}
+			const mediaId = await persistGeneratedImage({
+				userId: locals.user.id,
+				endpoint,
+				sourceModel: meta.modelId,
+				prompt: text,
+				urlOrB64: { url: result.url, b64_json: result.b64_json }
+			});
+			const assistantMessage = appendMessage({
+				conversationId: params.id,
+				parentMessageId: userMessage.id,
+				role: 'assistant',
+				parts: [{ type: 'image', mediaId }],
+				modelUsed: meta.modelId,
+				rawResponseJson: JSON.stringify(upstream)
+			});
+			linkMessageMedia(assistantMessage.id, mediaId);
+			const response: SendMessageResponse = {
+				userMessage: userMessage as ChatMessage,
+				assistantMessage: assistantMessage as ChatMessage
+			};
+			return json(response);
+		} catch (e) {
+			if (e instanceof UpstreamError) {
+				throw error(mapUpstreamStatus(e.status), `Upstream error: ${e.message}`);
+			}
+			throw e;
+		}
+	}
+
+	if (meta.modelKind === 'video') {
+		throw error(501, 'Video generation not yet wired (see Phase 9)');
 	}
 
 	// Build the upstream request from the active branch (now incl. new user msg).

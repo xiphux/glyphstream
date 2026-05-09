@@ -8,9 +8,18 @@
 	let modelId = $state('');
 	$effect(() => {
 		if (!modelId) {
-			modelId = data.models.find((m) => m.kind === 'chat')?.id ?? '';
+			modelId =
+				data.models.find((m) => m.kind === 'chat')?.id ??
+				data.models.find((m) => m.kind === 'image')?.id ??
+				'';
 		}
 	});
+
+	const pickedKind = $derived(data.models.find((m) => m.id === modelId)?.kind ?? 'chat');
+	const composerPlaceholder = $derived(
+		pickedKind === 'image' ? 'Describe an image to generate…' : 'Ask anything…'
+	);
+	const submitLabel = $derived(pickedKind === 'image' ? 'Generate image' : 'Start chat');
 	let text = $state('');
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
@@ -21,8 +30,13 @@
 		busy = true;
 		errorMsg = null;
 		try {
-			// Create the conversation
-			const createBody: CreateConversationRequest = { modelId };
+			// Look up the kind from the model list so the server can dispatch
+			// chat / image / video paths without re-querying upstream.
+			const picked = data.models.find((m) => m.id === modelId);
+			const createBody: CreateConversationRequest = {
+				modelId,
+				modelKind: picked?.kind
+			};
 			const createRes = await fetch('/api/conversations', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -75,7 +89,12 @@
 			<label class="mb-1 block text-xs font-medium text-neutral-700 dark:text-neutral-300" for="model">
 				Model
 			</label>
-			<ModelPicker models={data.models} bind:value={modelId} filterKinds={['chat']} disabled={busy} />
+			<ModelPicker
+				models={data.models}
+				bind:value={modelId}
+				filterKinds={['chat', 'image']}
+				disabled={busy}
+			/>
 			{#if data.models.length === 0}
 				<p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
 					No models available — check <code>config.toml</code> and your endpoints.
@@ -92,7 +111,7 @@
 				bind:value={text}
 				rows="4"
 				disabled={busy}
-				placeholder="Ask anything…"
+				placeholder={composerPlaceholder}
 				class="w-full resize-none rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
 			></textarea>
 		</div>
@@ -111,7 +130,7 @@
 				disabled={!modelId || !text.trim() || busy}
 				class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
 			>
-				{busy ? 'Sending…' : 'Start chat'}
+				{busy ? 'Sending…' : submitLabel}
 			</button>
 		</div>
 	</form>

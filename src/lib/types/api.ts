@@ -65,6 +65,7 @@ export interface ConversationSummary {
 }
 
 export interface ConversationDetail extends ConversationSummary {
+	modelKind: ModelKind | null;
 	systemPrompt: string | null;
 	endpointId: string;
 	customModelId: string | null;
@@ -75,6 +76,8 @@ export interface ConversationDetail extends ConversationSummary {
 /** POST /api/conversations request body. */
 export interface CreateConversationRequest {
 	modelId: string;
+	/** Snapshot of the model's kind at create time. Defaults to 'chat' if omitted. */
+	modelKind?: ModelKind;
 	systemPrompt?: string;
 	customModelId?: string;
 	title?: string;

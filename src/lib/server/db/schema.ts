@@ -40,6 +40,12 @@ export const conversations = sqliteTable(
 		title: text('title'),
 		endpointId: text('endpoint_id').notNull(),
 		modelId: text('model_id').notNull(),
+		// Snapshot of the model's `kind` at conversation-create time.
+		// Lets the message-send dispatcher pick chat vs image vs video paths
+		// without re-fetching upstream /v1/models on every send.
+		modelKind: text('model_kind', {
+			enum: ['chat', 'embedding', 'image', 'video']
+		}),
 		customModelId: text('custom_model_id').references(() => customModels.id, {
 			onDelete: 'set null'
 		}),
