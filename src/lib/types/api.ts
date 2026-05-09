@@ -28,3 +28,63 @@ export interface UpstreamModel {
 	display_name?: string;
 	kind?: ModelKind | null;
 }
+
+// --- messages -----------------------------------------------------------
+// Structured content parts. v1 only emits `text`; image/video/reasoning are
+// reserved for phases 6/8/9. Additive shape: future tool_call etc. just adds
+// a new variant without breaking persisted rows.
+
+export type MessagePart =
+	| { type: 'text'; text: string }
+	| { type: 'image'; mediaId: string; alt?: string }
+	| { type: 'video'; mediaId: string }
+	| { type: 'reasoning'; text: string };
+
+export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+
+export interface ChatMessage {
+	id: string;
+	role: MessageRole;
+	parts: MessagePart[];
+	reasoningText: string | null;
+	finishReason: string | null;
+	modelUsed: string | null;
+	tokensIn: number | null;
+	tokensOut: number | null;
+	createdAt: number;
+}
+
+export interface ConversationSummary {
+	id: string;
+	title: string | null;
+	modelId: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+	systemPrompt: string | null;
+	endpointId: string;
+	customModelId: string | null;
+	activeLeafMessageId: string | null;
+	messages: ChatMessage[];
+}
+
+/** POST /api/conversations request body. */
+export interface CreateConversationRequest {
+	modelId: string;
+	systemPrompt?: string;
+	customModelId?: string;
+	title?: string;
+}
+
+/** POST /api/conversations/:id/messages request body (v1: text-only). */
+export interface SendMessageRequest {
+	text: string;
+}
+
+/** POST /api/conversations/:id/messages response. */
+export interface SendMessageResponse {
+	userMessage: ChatMessage;
+	assistantMessage: ChatMessage;
+}
