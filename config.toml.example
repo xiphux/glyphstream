@@ -1,0 +1,43 @@
+# GlyphStream — endpoint configuration
+#
+# Each [[endpoints]] block defines an OpenAI-compatible HTTP upstream the app
+# can route requests to. Models from every endpoint are aggregated into one
+# unified picker, with model IDs internally namespaced as
+# "{endpoint_id}::{upstream_model_id}".
+#
+# Secrets convention: any field whose name ends in `_env` is the *name* of an
+# env var to read at startup, never the literal secret. Keeps this file safe
+# to commit to a private repo.
+
+# Example: an openai-api-bridge instance running on the NAS — gives us
+# ComfyUI image/video, Venice, plus any openai-compat passthrough providers
+# the bridge fronts (e.g. local llama-server) under one endpoint.
+# [[endpoints]]
+# id = "nas-bridge"
+# display_name = "NAS Bridge"
+# base_url = "http://192.168.1.10:8080/v1"
+# api_key_env = "NAS_BRIDGE_KEY"
+# request_timeout_seconds = 600
+
+# Example: a local llama-server speaking openai compat directly (no bridge
+# in front). Useful when you have a chat-only backend with no images/videos
+# and don't want a bridge instance just to combine endpoints.
+# [[endpoints]]
+# id = "llama-main"
+# display_name = "Llama (main)"
+# base_url = "http://192.168.1.20:8080/v1"
+# # api_key_env omitted -> no Authorization header sent
+
+# Example: a hosted openai-compatible provider.
+# [[endpoints]]
+# id = "groq"
+# display_name = "Groq"
+# base_url = "https://api.groq.com/openai/v1"
+# api_key_env = "GROQ_API_KEY"
+# request_timeout_seconds = 120
+
+# Optional: tell GlyphStream which provider quirk to apply to streaming
+# responses from this endpoint. If omitted, GlyphStream auto-detects from
+# upstream model id substrings; default is `passthrough`.
+# Valid values: passthrough | deepseek-r1 | openai-o-series | openrouter
+# provider_quirk = "deepseek-r1"
