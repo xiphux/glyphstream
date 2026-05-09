@@ -74,11 +74,13 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 
 export function normalizeUpstreamModel(endpointId: string, m: UpstreamModel): ModelEntry {
 	const detected = detectKind(m);
+	const owner = typeof m.owned_by === 'string' && m.owned_by.length > 0 ? m.owned_by : null;
 	return {
 		id: formatModelId(endpointId, m.id),
 		endpointId,
 		upstreamId: m.id,
 		displayName: m.display_name && m.display_name.length > 0 ? m.display_name : m.id,
+		ownedBy: owner,
 		kind: detected ?? 'chat',
 		kindKnown: detected !== null
 	};

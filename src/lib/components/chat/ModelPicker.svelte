@@ -16,6 +16,14 @@
 		return models.filter((m) => set.has(m.kind));
 	});
 
+	/**
+	 * Group models by endpointId. When an endpoint exposes models from
+	 * multiple distinct `ownedBy` values (the typical bridge case where one
+	 * endpoint fronts ComfyUI + Venice + llama-server), prefix each option
+	 * label with the owner so otherwise-identical model names stay
+	 * distinguishable. When there's only one owner inside an endpoint we
+	 * skip the prefix to keep the UI tidy.
+	 */
 	const groups = $derived.by(() => {
 		const by = new Map<string, ModelEntry[]>();
 		for (const m of visible) {
@@ -23,10 +31,20 @@
 			if (list) list.push(m);
 			else by.set(m.endpointId, [m]);
 		}
-		return [...by.entries()].map(([endpointId, items]) => ({
-			endpointId,
-			items: items.sort((a, b) => a.displayName.localeCompare(b.displayName))
-		}));
+		return [...by.entries()].map(([endpointId, items]) => {
+			const distinctOwners = new Set(items.map((m) => m.ownedBy).filter((o): o is string => !!o));
+			const showOwner = distinctOwners.size > 1;
+			return {
+				endpointId,
+				items: items
+					.map((m) => ({
+						entry: m,
+						label:
+							showOwner && m.ownedBy ? `${m.ownedBy} · ${m.displayName}` : m.displayName
+					}))
+					.sort((a, b) => a.label.localeCompare(b.label))
+			};
+		});
 	});
 </script>
 
@@ -39,9 +57,9 @@
 	<option value="" disabled>Choose a model…</option>
 	{#each groups as g (g.endpointId)}
 		<optgroup label={g.endpointId}>
-			{#each g.items as m (m.id)}
-				<option value={m.id}>
-					{m.displayName}{m.kindKnown ? '' : ' ·'}
+			{#each g.items as item (item.entry.id)}
+				<option value={item.entry.id}>
+					{item.label}{item.entry.kindKnown ? '' : ' ·'}
 				</option>
 			{/each}
 		</optgroup>

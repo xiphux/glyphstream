@@ -207,7 +207,9 @@
 					class="rounded-2xl px-4 py-3 text-sm {m.role === 'user'
 						? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
 						: m.role === 'assistant'
-							? 'bg-neutral-100 dark:bg-neutral-800'
+							? hasMedia(m.parts)
+								? 'w-fit max-w-full bg-neutral-100 dark:bg-neutral-800'
+								: 'bg-neutral-100 dark:bg-neutral-800'
 							: 'bg-amber-50 dark:bg-amber-950/40'}"
 				>
 					<div class="text-[11px] uppercase tracking-wide opacity-60">{m.role}</div>

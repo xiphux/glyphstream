@@ -13,6 +13,14 @@ export interface ModelEntry {
 	upstreamId: string;
 	/** Best display name we have — falls back to upstream id if upstream didn't set display_name */
 	displayName: string;
+	/**
+	 * Underlying provider/owner from upstream's `owned_by` field. For an
+	 * aggregating endpoint like the bridge this distinguishes
+	 * comfyui/venice/etc. within a single endpoint; for direct vendors it
+	 * just identifies the vendor (openai/anthropic/etc.). Null when upstream
+	 * didn't set it.
+	 */
+	ownedBy: string | null;
 	/** Modality, when known. Defaults to 'chat' (the safest fallback) when upstream didn't set it. */
 	kind: ModelKind;
 	/** True when upstream actually told us the kind, false when we fell back to default */
