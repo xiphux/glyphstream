@@ -18,3 +18,98 @@ body {
 		@apply bg-neutral-950 text-neutral-100;
 	}
 }
+
+/* --- markdown prose ------------------------------------------------------ */
+/* Tailwind v4 doesn't bundle @tailwindcss/typography by default; this is a
+   focused mini-prose to style the rendered assistant HTML. Keep it lean. */
+
+.gs-prose {
+	@apply text-sm leading-relaxed;
+}
+.gs-prose > * + * {
+	@apply mt-3;
+}
+.gs-prose p {
+	@apply whitespace-normal;
+}
+.gs-prose strong {
+	@apply font-semibold;
+}
+.gs-prose em {
+	@apply italic;
+}
+.gs-prose h1 {
+	@apply mt-4 text-xl font-semibold;
+}
+.gs-prose h2 {
+	@apply mt-4 text-lg font-semibold;
+}
+.gs-prose h3 {
+	@apply mt-3 text-base font-semibold;
+}
+.gs-prose h4,
+.gs-prose h5,
+.gs-prose h6 {
+	@apply mt-3 text-sm font-semibold;
+}
+.gs-prose ul {
+	@apply ml-5 list-disc space-y-1;
+}
+.gs-prose ol {
+	@apply ml-5 list-decimal space-y-1;
+}
+.gs-prose li > ul,
+.gs-prose li > ol {
+	@apply mt-1;
+}
+.gs-prose blockquote {
+	@apply border-l-2 border-neutral-300 pl-3 text-neutral-600 italic dark:border-neutral-600 dark:text-neutral-400;
+}
+.gs-prose hr {
+	@apply my-3 border-neutral-300 dark:border-neutral-700;
+}
+.gs-prose a.gs-link {
+	@apply underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-700 dark:hover:decoration-neutral-200;
+}
+.gs-prose table {
+	@apply w-full border-collapse text-left;
+}
+.gs-prose th,
+.gs-prose td {
+	@apply border border-neutral-300 px-2 py-1 dark:border-neutral-700;
+}
+.gs-prose th {
+	@apply bg-neutral-100 font-semibold dark:bg-neutral-800;
+}
+
+/* Inline code (not inside a shiki <pre>). Shiki blocks are styled by shiki
+   itself via inline CSS variables. */
+.gs-prose :not(pre) > code {
+	@apply rounded bg-neutral-200 px-1 py-0.5 font-mono text-[0.85em] text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200;
+}
+
+/* Shiki dual-theme: emit CSS vars for both themes, swap based on scheme. */
+.gs-prose pre.shiki {
+	@apply my-3 overflow-x-auto rounded-md p-3 text-xs leading-relaxed;
+}
+.gs-prose pre.shiki,
+.gs-prose pre.shiki span {
+	color: var(--shiki-light);
+	background-color: var(--shiki-light-bg);
+}
+@media (prefers-color-scheme: dark) {
+	.gs-prose pre.shiki,
+	.gs-prose pre.shiki span {
+		color: var(--shiki-dark);
+		background-color: var(--shiki-dark-bg);
+	}
+}
+
+/* Fallback (unhighlighted) code blocks: when the language isn't loaded by
+   shiki, markdown-it emits a default <pre><code class="language-X">. */
+.gs-prose pre:not(.shiki) {
+	@apply my-3 overflow-x-auto rounded-md bg-neutral-100 p-3 text-xs leading-relaxed dark:bg-neutral-800;
+}
+.gs-prose pre:not(.shiki) > code {
+	@apply font-mono;
+}

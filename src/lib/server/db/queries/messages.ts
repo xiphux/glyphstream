@@ -9,6 +9,7 @@ interface AppendInput {
 	parentMessageId: string | null;
 	role: MessageRole;
 	parts: MessagePart[];
+	contentHtml?: string | null;
 	reasoningText?: string | null;
 	finishReason?: string | null;
 	modelUsed?: string | null;
@@ -38,6 +39,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				parentMessageId: input.parentMessageId,
 				role: input.role,
 				contentJson: JSON.stringify(input.parts),
+				contentHtml: input.contentHtml ?? null,
 				reasoningText: input.reasoningText ?? null,
 				finishReason: input.finishReason ?? null,
 				modelUsed: input.modelUsed ?? null,
@@ -58,6 +60,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 		id,
 		role: input.role,
 		parts: input.parts,
+		contentHtml: input.contentHtml ?? null,
 		reasoningText: input.reasoningText ?? null,
 		finishReason: input.finishReason ?? null,
 		modelUsed: input.modelUsed ?? null,
@@ -147,6 +150,7 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		id: row.id,
 		role: row.role,
 		parts,
+		contentHtml: row.contentHtml,
 		reasoningText: row.reasoningText,
 		finishReason: row.finishReason,
 		modelUsed: row.modelUsed,

@@ -30,6 +30,7 @@ import {
 } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
+import { renderMarkdown } from '../markdown/render';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
 
@@ -95,11 +96,13 @@ async function recordAndPersist(
 	applyDeltas(norm.flush().deltas);
 
 	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
+	const contentHtml = await renderMarkdown(textBuf);
 	const assistantMessage = appendMessage({
 		conversationId: params.conversationId,
 		parentMessageId: params.userMessage.id,
 		role: 'assistant',
 		parts,
+		contentHtml,
 		reasoningText: reasoningBuf || null,
 		finishReason,
 		modelUsed: params.storedModelId,

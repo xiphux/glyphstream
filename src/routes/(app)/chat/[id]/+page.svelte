@@ -10,10 +10,18 @@
 
 	let { data } = $props();
 
-	let messages = $state<ChatMessage[]>([]);
-	let title = $state<string | null>(null);
-	let modelId = $state('');
-	let convId = $state('');
+	// Read data eagerly so SSR includes messages on first paint; $effect
+	// below re-syncs on subsequent navigation invalidation. The warning
+	// about capturing the initial value is intentional here — that IS the
+	// behavior we want.
+	// svelte-ignore state_referenced_locally
+	let messages = $state<ChatMessage[]>(data.conversation.messages);
+	// svelte-ignore state_referenced_locally
+	let title = $state<string | null>(data.conversation.title);
+	// svelte-ignore state_referenced_locally
+	let modelId = $state(data.conversation.modelId);
+	// svelte-ignore state_referenced_locally
+	let convId = $state(data.conversation.id);
 
 	$effect(() => {
 		messages = data.conversation.messages;
@@ -165,9 +173,14 @@
 							</div>
 						</details>
 					{/if}
-					<div class="mt-1 whitespace-pre-wrap break-words">
-						{partsToText(m.parts)}
-					</div>
+					{#if m.role === 'assistant' && m.contentHtml}
+						<!-- HTML is server-rendered (markdown-it w/ html=false + shiki); safe to {@html}. -->
+						<div class="gs-prose mt-1">{@html m.contentHtml}</div>
+					{:else}
+						<div class="mt-1 whitespace-pre-wrap break-words">
+							{partsToText(m.parts)}
+						</div>
+					{/if}
 				</article>
 			{/each}
 

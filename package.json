@@ -17,12 +17,22 @@
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio"
 	},
+	"dependencies": {
+		"arctic": "latest",
+		"better-sqlite3": "latest",
+		"bits-ui": "latest",
+		"drizzle-orm": "latest",
+		"markdown-it": "latest",
+		"shiki": "latest",
+		"smol-toml": "latest"
+	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "latest",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@tailwindcss/vite": "latest",
 		"@types/better-sqlite3": "latest",
+		"@types/markdown-it": "latest",
 		"@types/node": "latest",
 		"drizzle-kit": "latest",
 		"svelte": "^5.55.2",
@@ -30,13 +40,6 @@
 		"tailwindcss": "latest",
 		"typescript": "^6.0.2",
 		"vite": "^8.0.7"
-	},
-	"dependencies": {
-		"arctic": "latest",
-		"better-sqlite3": "latest",
-		"bits-ui": "latest",
-		"drizzle-orm": "latest",
-		"smol-toml": "latest"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [

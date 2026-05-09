@@ -46,6 +46,8 @@ export interface ChatMessage {
 	id: string;
 	role: MessageRole;
 	parts: MessagePart[];
+	/** Server-rendered markdown HTML (assistant messages only). Null = render `parts` as plain text. */
+	contentHtml: string | null;
 	reasoningText: string | null;
 	finishReason: string | null;
 	modelUsed: string | null;

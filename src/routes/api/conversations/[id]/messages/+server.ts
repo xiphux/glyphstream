@@ -10,6 +10,7 @@ import {
 	type ChatCompletionRequest
 } from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
+import { renderMarkdown } from '$lib/server/markdown/render';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import type {
 	ChatMessage,
@@ -120,12 +121,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const finishReason = upstream.choices?.[0]?.finish_reason ?? null;
 	const tokensIn = upstream.usage?.prompt_tokens ?? null;
 	const tokensOut = upstream.usage?.completion_tokens ?? null;
+	const contentHtml = await renderMarkdown(assistantText);
 
 	const assistantMessage = appendMessage({
 		conversationId: params.id,
 		parentMessageId: userMessage.id,
 		role: 'assistant',
 		parts: [{ type: 'text', text: assistantText }],
+		contentHtml,
 		finishReason,
 		modelUsed: meta.modelId,
 		tokensIn,
