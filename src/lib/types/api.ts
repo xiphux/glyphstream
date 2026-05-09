@@ -19,14 +19,30 @@ export interface ModelEntry {
 	kindKnown: boolean;
 }
 
-/** Standard OpenAI /v1/models row, plus the bridge's optional extensions. */
+/**
+ * Standard OpenAI /v1/models row, plus optional extensions from various
+ * vendors. We attempt to detect kind from any of these conventions; see
+ * src/lib/server/endpoints/models.ts.
+ */
 export interface UpstreamModel {
 	id: string;
 	object?: 'model';
 	created?: number;
 	owned_by?: string;
+	/** openai-api-bridge convention */
 	display_name?: string;
+	/** openai-api-bridge convention */
 	kind?: ModelKind | null;
+	/** Together.ai convention: "chat" | "embedding" | "image" | "moderation" */
+	type?: string;
+	/** OpenRouter convention */
+	architecture?: {
+		modality?: string;
+		input_modalities?: string[];
+		output_modalities?: string[];
+	};
+	/** Fireworks-ish convention */
+	capabilities?: string[];
 }
 
 // --- messages -----------------------------------------------------------

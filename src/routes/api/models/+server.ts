@@ -1,11 +1,10 @@
 import { json, error } from '@sveltejs/kit';
-import { listEndpoints, formatModelId } from '$lib/server/endpoints/registry';
+import { listEndpoints } from '$lib/server/endpoints/registry';
 import { listUpstreamModels, UpstreamError } from '$lib/server/endpoints/client';
 import { ConfigError } from '$lib/server/endpoints/config';
-import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
+import { normalizeUpstreamModel } from '$lib/server/endpoints/models';
+import type { ModelEntry } from '$lib/types/api';
 import type { RequestHandler } from './$types';
-
-const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
 
 interface CacheEntry {
 	models: ModelEntry[];
@@ -40,7 +39,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 			try {
 				const upstream = await listUpstreamModels(endpoint);
-				const models = upstream.map((m) => normalizeModel(endpoint.id, m));
+				const models = upstream.map((m) => normalizeUpstreamModel(endpoint.id, m));
 				cache.set(endpoint.id, { models, expiresAt: now + CACHE_TTL_MS });
 				return { endpointId: endpoint.id, models, error: null };
 			} catch (e) {
@@ -67,16 +66,3 @@ export const GET: RequestHandler = async ({ locals }) => {
 	});
 };
 
-function normalizeModel(endpointId: string, m: UpstreamModel): ModelEntry {
-	const upstreamId = m.id;
-	const kindRaw = m.kind;
-	const kindKnown = typeof kindRaw === 'string' && (VALID_KINDS as readonly string[]).includes(kindRaw);
-	return {
-		id: formatModelId(endpointId, upstreamId),
-		endpointId,
-		upstreamId,
-		displayName: m.display_name && m.display_name.length > 0 ? m.display_name : upstreamId,
-		kind: kindKnown ? (kindRaw as ModelKind) : 'chat',
-		kindKnown
-	};
-}
