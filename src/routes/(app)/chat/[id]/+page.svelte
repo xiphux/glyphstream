@@ -323,17 +323,21 @@
 		inFlightStatus = null;
 
 		// For send / edit: render an optimistic user bubble. For retry:
-		// the user message already exists, so skip — just open the
-		// in-flight assistant bubble.
+		// the user message already exists, so skip — but DO trim the
+		// retry target (and any descendants on the active branch) out of
+		// the visible list so the in-flight bubble visually takes the
+		// retried message's slot. Otherwise the user briefly sees the
+		// old response above the streaming new one ("assistant replied
+		// twice" effect) until invalidateAll runs after 'done'.
 		const isRetry = !!options.retryFromMessageId;
-		const optimisticId: string | null = isRetry
-			? null
-			: (() => {
-					const opt = buildOptimisticUserMessage(text, attachedMediaIds);
-					messages = [...messages, opt];
-					return opt.id;
-				})();
-		if (optimisticId) {
+		let optimisticId: string | null = null;
+		if (isRetry) {
+			const retryIdx = messages.findIndex((m) => m.id === options.retryFromMessageId);
+			if (retryIdx >= 0) messages = messages.slice(0, retryIdx);
+		} else {
+			const opt = buildOptimisticUserMessage(text, attachedMediaIds);
+			messages = [...messages, opt];
+			optimisticId = opt.id;
 			await tick();
 			scrollToBottom();
 		}
