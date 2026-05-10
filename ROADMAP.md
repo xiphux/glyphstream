@@ -6,6 +6,31 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
+- **Image attachments / multimodal input.** Three related capabilities,
+  one feature:
+  - Vision chat (send an image to a vision-capable text model alongside the
+    prompt) — wrap user content as OpenAI's structured `content` array with
+    `image_url` parts.
+  - Image-to-image (`/v1/images/edits`) — multipart POST with the input
+    image; bridge routes to ComfyUI workflows that have `image_inputs` in
+    their meta.json.
+  - Image-to-video (`/v1/videos` with `input_reference`) — same pattern,
+    multipart POST with the reference image.
+
+  Architecture: pre-upload pattern. New `POST /api/uploads` accepts a file,
+  stores via the existing MediaStore, returns a `media_id`. The composer
+  carries `attachedMediaIds: string[]`; on send, the message POST forwards
+  the ids. The dispatcher branches on modelKind to compose the right
+  upstream shape (content-array for chat / edits multipart / videos
+  multipart). User-message rows get `image` parts referencing the
+  uploaded media — same `message_media` ref-counting already in place.
+
+  UI surface: file picker, drag-drop into composer, paste-from-clipboard,
+  thumbnail preview with remove affordance, per-file upload progress.
+
+  Estimate: ~1.5 focused days. Big enough to deserve its own chunk;
+  unlocks I2V (one of the bridge's main value props) and vision chat.
+
 - **Conversation import from Open WebUI.** User has existing chat history in
   OWUI to bring over. Format study + an importer that creates conversations,
   messages, and downloads referenced media into the local `MediaStore`.
