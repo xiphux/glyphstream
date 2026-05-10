@@ -24,8 +24,17 @@ permissions:
   packages: write
 
 jobs:
+  # Run the full CI suite (type-check + unit + e2e) before we publish
+  # anything. Reuses ci.yml via workflow_call so the test definition
+  # lives in exactly one place. The tests appear as sub-jobs of this
+  # workflow run in the GitHub UI; if any fail, build + release skip.
+  tests:
+    name: Tests
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build + push
+    needs: tests
     runs-on: ubuntu-latest
     outputs:
       image-name: ${{ steps.meta.outputs.tags }}
@@ -73,10 +82,10 @@ jobs:
           cache-to: type=gha,mode=max
 
   release:
-    # Only on a vX.Y.Z tag push, and only after build succeeded.
+    # Only on a vX.Y.Z tag push, and only after tests + build succeeded.
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [tests, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,15 +1,25 @@
-# GlyphStream CI — runs unit + e2e tests on every push and PR.
+# GlyphStream CI — runs unit + e2e tests.
 #
-# Triggers on every branch push and every PR. Skipped on tag pushes
-# (the docker.yml workflow handles tags and runs its own pre-build
-# test gate via `needs:`).
+# Triggers:
+#   - Direct on push to any branch except `main` and tags. Feature-
+#     branch pushes get fast feedback without a Docker build piggy-
+#     backing.
+#   - Direct on every PR. Drives the PR checks UI.
+#   - Indirect via `workflow_call` from docker.yml on `main` pushes
+#     and `v*.*.*` tags, so the docker build/publish + GitHub release
+#     are explicitly gated on tests passing.
+#
+# This split avoids running tests twice on `main` pushes (which would
+# happen if both this workflow's `push` trigger AND docker.yml's
+# trigger fired on the same commit).
 name: CI
 
 on:
   push:
-    branches: ['**']
+    branches-ignore: [main]
     tags-ignore: ['**']
   pull_request:
+  workflow_call:
 
 # Only run one CI per branch at a time — cancel any in-flight runs
 # when a new commit lands so we're not paying for stale results.
