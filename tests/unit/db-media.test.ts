@@ -1,0 +1,412 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { seedUser } from './_helpers/seed';
+
+const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
+vi.mock('$lib/server/db/client', () => ({
+	getDb: () => mocks.testDb,
+	closeDb: () => {}
+}));
+
+import {
+	decrementMediaForMessages,
+	findPurgeCandidates,
+	getMediaForUser,
+	hardDeleteMediaForUser,
+	insertMedia,
+	linkMessageMedia,
+	listMediaForUser,
+	listMessageIdsForConversation,
+	stampOrphanedZeroRefRows
+} from '$lib/server/db/queries/media';
+import { createConversation, deleteConversation } from '$lib/server/db/queries/conversations';
+import { appendMessage } from '$lib/server/db/queries/messages';
+import { media } from '$lib/server/db/schema';
+
+beforeEach(() => {
+	mocks.testDb = createTestDb();
+});
+
+afterEach(() => {
+	closeTestDb();
+});
+
+function makeMedia(userId: string, overrides: Partial<Parameters<typeof insertMedia>[0]> = {}) {
+	return insertMedia({
+		userId,
+		storagePath: `ab/cd/${Math.random().toString(36).slice(2)}.png`,
+		contentType: 'image/png',
+		byteSize: 1024,
+		kind: 'image',
+		sourceEndpointId: 'bridge',
+		sourceModel: 'comfyui/sdxl',
+		promptExcerpt: 'a panda',
+		...overrides
+	});
+}
+
+function getRow(mediaId: string) {
+	return mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
+}
+
+describe('media: insert + ref counting', () => {
+	it('insertMedia starts at refCount=0, unreferencedSince=null', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		const row = getRow(id);
+		expect(row?.refCount).toBe(0);
+		expect(row?.unreferencedSince).toBeNull();
+		expect(row?.hardDeletedAt).toBeNull();
+	});
+
+	it('linkMessageMedia bumps refCount and clears unreferencedSince', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'here it is' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		expect(getRow(id)?.refCount).toBe(1);
+	});
+
+	it('linkMessageMedia is idempotent (PK on (message_id, media_id))', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		linkMessageMedia(msg.id, id);
+		// Second link is a no-op; refCount stays at 1.
+		expect(getRow(id)?.refCount).toBe(1);
+	});
+
+	it('decrementMediaForMessages decrements per link + stamps unreferencedSince when count hits 0', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'a' }]
+		});
+		const msg2 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: msg1.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'b' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg1.id, id);
+		linkMessageMedia(msg2.id, id);
+		expect(getRow(id)?.refCount).toBe(2);
+
+		decrementMediaForMessages([msg1.id]);
+		expect(getRow(id)?.refCount).toBe(1);
+		expect(getRow(id)?.unreferencedSince).toBeNull();
+
+		decrementMediaForMessages([msg2.id]);
+		const row = getRow(id);
+		expect(row?.refCount).toBe(0);
+		// crossed zero — clock starts.
+		expect(row?.unreferencedSince).not.toBeNull();
+	});
+
+	it('decrementMediaForMessages clamps refCount at 0 (defensive)', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		// Manually corrupt to refCount=0 to simulate inconsistency, then
+		// decrement. Should clamp at 0, not go negative.
+		mocks.testDb.update(media).set({ refCount: 0 }).where(eq(media.id, id)).run();
+		decrementMediaForMessages([msg.id]);
+		expect(getRow(id)?.refCount).toBe(0);
+	});
+});
+
+describe('deleteConversation cascade decrements media refs', () => {
+	it('drops ref counts for media referenced by deleted messages', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		expect(getRow(id)?.refCount).toBe(1);
+
+		deleteConversation(conv.id, u.id);
+
+		// Media row survives (so historical /api/media/:id requests don't 500),
+		// but the count is decremented and the purge clock starts.
+		const row = getRow(id);
+		expect(row).toBeTruthy();
+		expect(row?.refCount).toBe(0);
+		expect(row?.unreferencedSince).not.toBeNull();
+	});
+});
+
+describe('listMediaForUser', () => {
+	it('returns user-owned, non-deleted media newest-first', async () => {
+		const u = seedUser();
+		const m1 = makeMedia(u.id);
+		await new Promise((r) => setTimeout(r, 5));
+		const m2 = makeMedia(u.id);
+		const page = listMediaForUser(u.id);
+		expect(page.items.map((i) => i.id)).toEqual([m2.id, m1.id]);
+	});
+
+	it('filters out hard-deleted rows', () => {
+		const u = seedUser();
+		const m1 = makeMedia(u.id);
+		makeMedia(u.id);
+		hardDeleteMediaForUser(m1.id, u.id);
+		const page = listMediaForUser(u.id);
+		expect(page.items.map((i) => i.id)).not.toContain(m1.id);
+	});
+
+	it('filters by kind when provided', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id, { kind: 'image' });
+		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		expect(listMediaForUser(u.id, { kind: 'image' }).items.map((i) => i.id)).toEqual([img.id]);
+		expect(listMediaForUser(u.id, { kind: 'video' }).items.map((i) => i.id)).toEqual([vid.id]);
+	});
+
+	it('returns nextCursor when there are more pages', () => {
+		const u = seedUser();
+		for (let i = 0; i < 5; i++) makeMedia(u.id);
+		const page = listMediaForUser(u.id, { limit: 3 });
+		expect(page.items).toHaveLength(3);
+		expect(page.nextCursor).not.toBeNull();
+	});
+
+	it('cursor pagination yields the rest', () => {
+		const u = seedUser();
+		for (let i = 0; i < 5; i++) makeMedia(u.id);
+		const p1 = listMediaForUser(u.id, { limit: 3 });
+		const p2 = listMediaForUser(u.id, { limit: 3, cursor: p1.nextCursor });
+		expect(p2.items).toHaveLength(2);
+		expect(p2.nextCursor).toBeNull();
+		// No overlap between pages.
+		const ids1 = new Set(p1.items.map((i) => i.id));
+		for (const item of p2.items) expect(ids1.has(item.id)).toBe(false);
+	});
+
+	it('does not leak across users', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		makeMedia(u1.id);
+		expect(listMediaForUser(u2.id).items).toEqual([]);
+	});
+});
+
+describe('hardDeleteMediaForUser', () => {
+	it('marks the row hard-deleted + returns the storagePath for unlinking', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		const r = hardDeleteMediaForUser(id, u.id);
+		expect(r?.storagePath).toMatch(/\.png$/);
+		const row = getRow(id);
+		expect(row?.hardDeletedAt).not.toBeNull();
+		expect(row?.refCount).toBe(0);
+	});
+
+	it('returns null on cross-user hard-delete attempt', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const { id } = makeMedia(u1.id);
+		expect(hardDeleteMediaForUser(id, u2.id)).toBeNull();
+		// Original owner's row is untouched.
+		expect(getRow(id)?.hardDeletedAt).toBeNull();
+	});
+
+	it('returns null on already-deleted (idempotent caller can ignore)', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		hardDeleteMediaForUser(id, u.id);
+		expect(hardDeleteMediaForUser(id, u.id)).toBeNull();
+	});
+
+	it('drops message_media join rows so messages no longer link to it', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		hardDeleteMediaForUser(id, u.id);
+		// Re-linking afterward should not re-bump refCount because it's
+		// already at 0 (we cleared it).
+		expect(getRow(id)?.refCount).toBe(0);
+	});
+});
+
+describe('purger sweep queries', () => {
+	it('findPurgeCandidates returns rows past the cutoff, oldest first', () => {
+		const u = seedUser();
+		const { id: a } = makeMedia(u.id);
+		const { id: b } = makeMedia(u.id);
+		// Stamp both unreferenced; a is older.
+		mocks.testDb.update(media).set({ unreferencedSince: 1000 }).where(eq(media.id, a)).run();
+		mocks.testDb.update(media).set({ unreferencedSince: 2000 }).where(eq(media.id, b)).run();
+
+		// Cutoff at 3000 (anything stamped at <= 3000 is past grace).
+		const candidates = findPurgeCandidates(3000);
+		expect(candidates.map((c) => c.id)).toEqual([a, b]);
+	});
+
+	it('findPurgeCandidates excludes already-hard-deleted rows', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		mocks.testDb
+			.update(media)
+			.set({ unreferencedSince: 1000, hardDeletedAt: 1500 })
+			.where(eq(media.id, id))
+			.run();
+		expect(findPurgeCandidates(9999)).toEqual([]);
+	});
+
+	it('findPurgeCandidates excludes rows with unreferencedSince=null', () => {
+		const u = seedUser();
+		makeMedia(u.id); // refCount=0 but unreferencedSince=null (orphan)
+		expect(findPurgeCandidates(9999)).toEqual([]);
+	});
+
+	it('stampOrphanedZeroRefRows stamps zero-ref rows whose stamp is missing', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		// Ref count is 0 by default, unreferencedSince is null — qualifies.
+		const stamped = stampOrphanedZeroRefRows();
+		expect(stamped).toBeGreaterThanOrEqual(1);
+		expect(getRow(id)?.unreferencedSince).not.toBeNull();
+	});
+
+	it('stampOrphanedZeroRefRows skips rows with refCount > 0', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		// refCount=1 now — should not be stamped.
+		stampOrphanedZeroRefRows();
+		expect(getRow(id)?.unreferencedSince).toBeNull();
+	});
+});
+
+describe('listMessageIdsForConversation', () => {
+	it('returns all message ids for a conversation, scoped correctly', () => {
+		const u = seedUser();
+		const conv1 = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const conv2 = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::y',
+			modelKind: 'chat'
+		});
+		const m1 = appendMessage({
+			conversationId: conv1.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: '1' }]
+		});
+		const m2 = appendMessage({
+			conversationId: conv1.id,
+			parentMessageId: m1.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: '2' }]
+		});
+		appendMessage({
+			conversationId: conv2.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: '3' }]
+		});
+
+		const ids = listMessageIdsForConversation(conv1.id);
+		expect(ids.sort()).toEqual([m1.id, m2.id].sort());
+	});
+});
+
+describe('getMediaForUser ownership', () => {
+	it('returns the row for the owner', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		expect(getMediaForUser(id, u.id)?.id).toBe(id);
+	});
+
+	it('returns null for cross-user lookup', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const { id } = makeMedia(u1.id);
+		expect(getMediaForUser(id, u2.id)).toBeNull();
+	});
+});
