@@ -65,7 +65,12 @@ FROM node:24-alpine AS runtime
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
 # reach the Node process cleanly, which means the media purger interval
 # can leave a half-finished sweep on shutdown.
-RUN apk add --no-cache tini
+#
+# sqlite3 CLI is included for operational queries — finding a user id
+# before running the OWUI importer, eyeballing media row counts, etc.
+# ~2MB additional, worth it for "I can poke at the DB without exec'ing
+# into a separate container."
+RUN apk add --no-cache tini sqlite
 
 WORKDIR /app
 

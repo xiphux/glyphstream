@@ -8,6 +8,9 @@
 #                    Migrate to a different host by copying this dir.
 #   ./config.toml    Endpoint registry. Mounted read-only since the
 #                    container shouldn't be editing it.
+#   ./imports        Drop OWUI export files here for one-shot imports
+#                    via `docker compose exec` — see README. Read-only
+#                    because the script only reads from it.
 
 services:
   glyphstream:
@@ -25,6 +28,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./config.toml:/app/config.toml:ro
+      - ./imports:/app/imports:ro
     env_file:
       - .env
     environment:
