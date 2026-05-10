@@ -6,6 +6,31 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
+- **Per-turn model picker (not just at conversation start).** Conversations
+  are currently pinned to a single model from creation; switching requires
+  starting a new chat. Two motivations:
+  - *Pivot mid-conversation.* Start with a fast / cheap model for setup
+    questions, switch to a stronger one for the hard part — without
+    losing the context you've built.
+  - *Continue imported OWUI chats.* The importer uses a synthetic
+    `endpoint_id = 'imported-owui'` because OWUI's model names don't map
+    to GlyphStream's configured endpoints, so right now those
+    conversations are read-only (sending fails with "endpoint not
+    configured"). Picking a real model would unlock them in one click.
+
+  Implementation: surface the existing ModelPicker inline in the chat-id
+  composer, defaulted to the conversation's current model. On each send,
+  if the user changed the selection, update `conversations.endpoint_id`
+  / `model_id` / `model_kind` and proceed. The materialized system
+  prompt and parameters stay — switching *model* doesn't change
+  *persona*. Per-turn `model_used` is already on assistant rows (the
+  history-level "which model produced this turn"), so the conversation-
+  level field is just the current default.
+
+  Modality switches (chat ↔ image ↔ video) work for free since the
+  composer's UI affordances — placeholder text, auto-attach behavior,
+  attachment allowance — already derive from `modelKind` reactively.
+
 - **Tool/function-call rendering UX.** Render tool invocations + results
   inline in messages, like Claude Code / Cursor do. Prerequisite for the
   next item.
