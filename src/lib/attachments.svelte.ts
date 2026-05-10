@@ -40,7 +40,9 @@ export class AttachmentStore {
 	/** Reset the store to empty, revoking any blob URLs. */
 	clear(): void {
 		for (const it of this.items) {
-			URL.revokeObjectURL(it.objectUrl);
+			if (it.objectUrl.startsWith('blob:')) {
+				URL.revokeObjectURL(it.objectUrl);
+			}
 		}
 		this.items = [];
 	}
@@ -70,6 +72,29 @@ export class AttachmentStore {
 	async addFiles(files: FileList | File[]): Promise<void> {
 		const arr = Array.from(files);
 		await Promise.all(arr.map((f) => this.addOne(f)));
+	}
+
+	/**
+	 * Attach a media row that already exists on the server — used for the
+	 * auto-attach-last-generated-image flow on I2I follow-ups. Skips the
+	 * upload entirely; the thumbnail is served straight from
+	 * /api/media/{id}/content.
+	 */
+	attachExisting(
+		mediaId: string,
+		opts: { contentType?: string; byteSize?: number } = {}
+	): void {
+		this.items = [
+			...this.items,
+			{
+				clientId: crypto.randomUUID(),
+				mediaId,
+				objectUrl: `/api/media/${mediaId}/content`,
+				contentType: opts.contentType ?? 'image/*',
+				byteSize: opts.byteSize ?? 0,
+				status: 'ready'
+			}
+		];
 	}
 
 	private async addOne(file: File): Promise<void> {
@@ -118,7 +143,12 @@ export class AttachmentStore {
 
 	remove(clientId: string): void {
 		const it = this.items.find((i) => i.clientId === clientId);
-		if (it) URL.revokeObjectURL(it.objectUrl);
+		// Only blob URLs need revoking; server-side URLs (auto-attached
+		// existing media) are no-ops for revokeObjectURL but better to
+		// guard than to call needlessly.
+		if (it && it.objectUrl.startsWith('blob:')) {
+			URL.revokeObjectURL(it.objectUrl);
+		}
 		this.items = this.items.filter((i) => i.clientId !== clientId);
 	}
 }

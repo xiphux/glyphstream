@@ -59,6 +59,45 @@
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
 	onDestroy(() => attachments.destroy());
 
+	// Auto-attach last generated image for I2I follow-ups: when the
+	// conversation's most recent assistant turn produced an image, pre-
+	// populate the composer with that image as a starting attachment so
+	// "make her shirt blue" / "remove the background" turns Just Work
+	// without re-uploading. The user can dismiss with the same X they'd
+	// use on any attachment.
+	//
+	// `autoAttachedFor` records which assistant id we've already
+	// auto-attached for, so dismissing the auto-attach sticks for that
+	// turn (we don't keep re-adding it on every reactive re-run).
+	let autoAttachedFor = $state<string | null>(null);
+
+	// Reset composer state when navigating between conversations — without
+	// this the previous chat's attachments (and its auto-attach memory)
+	// would carry into the new one.
+	$effect(() => {
+		void data.conversation.id;
+		attachments.clear();
+		autoAttachedFor = null;
+	});
+
+	$effect(() => {
+		if (modelKind !== 'image') return;
+		// Only auto-attach when the composer is empty — a manual pick
+		// always takes precedence.
+		if (attachments.items.length > 0) return;
+		// Walk from the leaf back to find the most recent assistant
+		// message that has an image part.
+		const lastAssistant = [...messages]
+			.reverse()
+			.find((m) => m.role === 'assistant' && m.parts.some((p) => p.type === 'image'));
+		if (!lastAssistant) return;
+		if (lastAssistant.id === autoAttachedFor) return;
+		const imagePart = lastAssistant.parts.find((p) => p.type === 'image');
+		if (!imagePart || imagePart.type !== 'image') return;
+		attachments.attachExisting(imagePart.mediaId);
+		autoAttachedFor = lastAssistant.id;
+	});
+
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
 	// message. Same flag also gates the streaming auto-scroll so we don't
