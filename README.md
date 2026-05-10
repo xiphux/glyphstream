@@ -7,11 +7,9 @@ GlyphStream sits in front of N OpenAI-compatible upstream endpoints
 ComfyUI/Venice, anything that speaks `/v1/chat/completions`) and aggregates
 them into a single chat UI with one model picker.
 
-Designed to replace Open WebUI for users who want:
-
-- **Lightweight and fast.** Virtualized message lists, server-rendered+cached
-  markdown, fine-grained reactivity, lean dependency tree, single-process
-  deployment.
+- **Lightweight and fast.** Server-rendered + cached markdown,
+  fine-grained reactivity (Svelte 5 runes), lean dependency tree, ~200 KB
+  gzip client bundle, single-process deployment.
 - **Multi-backend without per-frontend coupling.** Develops against the
   OpenAI spec, not against any specific upstream.
 - **Image and video** rendering inline (when an upstream supports them via
@@ -29,7 +27,7 @@ Designed to replace Open WebUI for users who want:
 
 ## Status
 
-v0.0.1 — scaffold ready. See `ROADMAP.md` for what's coming.
+v0.1.0-pre — feature-complete for v1. See `ROADMAP.md` for what's planned next.
 
 ## Stack
 
