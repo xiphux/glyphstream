@@ -2,24 +2,28 @@
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
+	import { DropdownMenu } from 'bits-ui';
 	import {
+		Archive,
 		Images,
 		LogOut,
 		Menu,
+		MoreVertical,
 		PanelLeftClose,
 		PanelLeftOpen,
 		Plus,
 		SlidersHorizontal,
-		X
+		Trash2
 	} from 'lucide-svelte';
 
 	let { data, children } = $props();
 
 	const galleryActive = $derived(page.url.pathname.startsWith('/gallery'));
+	const archivedActive = $derived(page.url.pathname.startsWith('/archived'));
 	const settingsActive = $derived(page.url.pathname.startsWith('/settings'));
 	const currentPath = $derived(page.url.pathname);
 
-	let deletingId = $state<string | null>(null);
+	let busyId = $state<string | null>(null);
 
 	// Mobile drawer state. The aside is `hidden ... sm:flex` on wide
 	// viewports as before; on narrow viewports it slides in from the left
@@ -47,23 +51,43 @@
 		drawerOpen = false;
 	});
 
-	async function deleteConversation(id: string, ev: Event) {
-		// The delete button lives inside the conversation's link, so without
-		// preventDefault the click would also navigate into the chat we're
-		// about to delete.
-		ev.preventDefault();
-		ev.stopPropagation();
-		if (deletingId) return;
+	async function archiveConversation(id: string) {
+		if (busyId) return;
+		busyId = id;
+		try {
+			const res = await fetch(`/api/conversations/${id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ archived: true })
+			});
+			if (!res.ok && res.status !== 404) {
+				throw new Error(`Server returned ${res.status}`);
+			}
+			// If the archived conversation is the one currently open, leave the
+			// user on /archived so the action's outcome is visible — otherwise
+			// they'd just see the same chat with the conversation missing from
+			// the sidebar, which feels broken.
+			if (page.url.pathname === `/chat/${id}`) {
+				await goto('/archived', { invalidateAll: true });
+			} else {
+				await invalidateAll();
+			}
+		} catch (e) {
+			alert(`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			busyId = null;
+		}
+	}
+
+	async function deleteConversation(id: string) {
+		if (busyId) return;
 		if (!confirm('Delete this conversation? This cannot be undone.')) return;
-		deletingId = id;
+		busyId = id;
 		try {
 			const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`Server returned ${res.status}`);
 			}
-			// If the deleted conversation is the one currently displayed, send
-			// the user home so they're not left looking at a 404 next render.
-			// invalidateAll refreshes the layout's conversations list either way.
 			if (page.url.pathname === `/chat/${id}`) {
 				await goto('/', { invalidateAll: true });
 			} else {
@@ -72,7 +96,7 @@
 		} catch (e) {
 			alert(`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
-			deletingId = null;
+			busyId = null;
 		}
 	}
 </script>
@@ -156,6 +180,18 @@
 				<SlidersHorizontal size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
+			<a
+				href="/archived"
+				title={collapsed ? 'Archived' : ''}
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {archivedActive
+					? 'bg-neutral-200 dark:bg-neutral-800'
+					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
+			>
+				<Archive size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}<span>Archived</span>{/if}
+			</a>
 		</div>
 
 		<!--
@@ -186,16 +222,38 @@
 							>
 								{c.title ?? 'Untitled'}
 							</a>
-							<button
-								type="button"
-								onclick={(ev) => deleteConversation(c.id, ev)}
-								disabled={deletingId === c.id}
-								title="Delete conversation"
-								aria-label="Delete conversation {c.title ?? 'Untitled'}"
-								class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-neutral-500 opacity-100 transition hover:bg-neutral-300 hover:text-red-700 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-red-400"
-							>
-								<X size={14} strokeWidth={2.25} />
-							</button>
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger
+									disabled={busyId === c.id}
+									title="Conversation options"
+									aria-label="Options for conversation {c.title ?? 'Untitled'}"
+									class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-neutral-500 transition hover:bg-neutral-300 hover:text-neutral-700 focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200 data-[state=open]:opacity-100"
+								>
+									<MoreVertical size={14} strokeWidth={2.25} />
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Portal>
+									<DropdownMenu.Content
+										sideOffset={4}
+										align="end"
+										class="z-50 min-w-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+									>
+										<DropdownMenu.Item
+											onSelect={() => archiveConversation(c.id)}
+											class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+										>
+											<Archive size={14} strokeWidth={2.25} />
+											<span>Archive</span>
+										</DropdownMenu.Item>
+										<DropdownMenu.Item
+											onSelect={() => deleteConversation(c.id)}
+											class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
+										>
+											<Trash2 size={14} strokeWidth={2.25} />
+											<span>Delete</span>
+										</DropdownMenu.Item>
+									</DropdownMenu.Content>
+								</DropdownMenu.Portal>
+							</DropdownMenu.Root>
 						</li>
 					{/each}
 				</ul>

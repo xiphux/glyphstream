@@ -9,11 +9,14 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
+	archiveConversation,
 	createConversation,
 	deleteConversation,
 	getConversationDetail,
 	getConversationMeta,
-	listConversations
+	listArchivedConversations,
+	listConversations,
+	unarchiveConversation
 } from '$lib/server/db/queries/conversations';
 import {
 	appendMessage,
@@ -151,6 +154,106 @@ describe('conversations CRUD', () => {
 		});
 		const meta = getConversationMeta(conv.id, u.id);
 		expect(meta?.parameters).toEqual({ temperature: 0.5 });
+	});
+});
+
+describe('archiving', () => {
+	it('archive removes from active list, surfaces in archived list', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			title: 'A'
+		});
+		expect(listConversations(u.id)).toHaveLength(1);
+		expect(listArchivedConversations(u.id)).toHaveLength(0);
+
+		expect(archiveConversation(conv.id, u.id)).toBe(true);
+		expect(listConversations(u.id)).toHaveLength(0);
+		expect(listArchivedConversations(u.id).map((c) => c.id)).toEqual([conv.id]);
+	});
+
+	it('unarchive restores to active list', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		archiveConversation(conv.id, u.id);
+		expect(unarchiveConversation(conv.id, u.id)).toBe(true);
+		expect(listConversations(u.id).map((c) => c.id)).toEqual([conv.id]);
+		expect(listArchivedConversations(u.id)).toHaveLength(0);
+	});
+
+	it('archive preserves updatedAt so archived list sorts by last activity', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const before = listConversations(u.id)[0];
+		archiveConversation(conv.id, u.id);
+		const after = listArchivedConversations(u.id)[0];
+		expect(after.updatedAt).toBe(before.updatedAt);
+	});
+
+	it('archive refuses cross-user, archived stays archived for owner', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const conv = createConversation({
+			userId: u1.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		expect(archiveConversation(conv.id, u2.id)).toBe(false);
+		expect(listConversations(u1.id)).toHaveLength(1);
+	});
+
+	it('unarchive refuses cross-user', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const conv = createConversation({
+			userId: u1.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		archiveConversation(conv.id, u1.id);
+		expect(unarchiveConversation(conv.id, u2.id)).toBe(false);
+		expect(listArchivedConversations(u1.id)).toHaveLength(1);
+	});
+
+	it('listArchivedConversations is scoped to userId', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const conv = createConversation({
+			userId: u1.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		archiveConversation(conv.id, u1.id);
+		expect(listArchivedConversations(u1.id)).toHaveLength(1);
+		expect(listArchivedConversations(u2.id)).toHaveLength(0);
+	});
+
+	it('archived conversations are still navigable via getConversationDetail', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		archiveConversation(conv.id, u.id);
+		expect(getConversationDetail(conv.id, u.id)).not.toBeNull();
 	});
 });
 

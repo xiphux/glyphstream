@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type {
 	ConversationDetail,
 	ConversationSummary,
@@ -73,6 +73,48 @@ export function listConversations(userId: string): ConversationSummary[] {
 		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
 		.orderBy(desc(conversations.updatedAt))
 		.all();
+}
+
+export function listArchivedConversations(userId: string): ConversationSummary[] {
+	const db = getDb();
+	return db
+		.select({
+			id: conversations.id,
+			title: conversations.title,
+			modelId: conversations.modelId,
+			createdAt: conversations.createdAt,
+			updatedAt: conversations.updatedAt
+		})
+		.from(conversations)
+		.where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
+		.orderBy(desc(conversations.updatedAt))
+		.all();
+}
+
+/**
+ * Archive / unarchive flip the `archived_at` timestamp without touching
+ * `updated_at` — archiving isn't a content change, and we want archived
+ * conversations to keep sorting by their actual last-activity time so
+ * "find that old Python chat I archived" works the way the user expects.
+ */
+export function archiveConversation(id: string, userId: string): boolean {
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({ archivedAt: Date.now() })
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+	return res.changes > 0;
+}
+
+export function unarchiveConversation(id: string, userId: string): boolean {
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({ archivedAt: null })
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+	return res.changes > 0;
 }
 
 /** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */

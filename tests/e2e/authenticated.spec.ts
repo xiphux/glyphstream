@@ -25,7 +25,19 @@ test.describe('authenticated app shell', () => {
 		await expect(page.getByRole('link', { name: /^New chat$/ })).toBeVisible();
 		await expect(page.getByRole('link', { name: /^Gallery$/ })).toBeVisible();
 		await expect(page.getByRole('link', { name: /^Custom models$/ })).toBeVisible();
+		await expect(page.getByRole('link', { name: /^Archived$/ })).toBeVisible();
 		await expect(page.getByText('Recents')).toBeVisible();
+	});
+
+	test('archived page renders empty state', async ({ page, isMobile }) => {
+		await page.goto('/');
+		if (isMobile) {
+			await page.getByRole('button', { name: 'Open menu' }).click();
+		}
+		await page.getByRole('link', { name: /^Archived$/ }).click();
+		await expect(page).toHaveURL(/\/archived$/);
+		await expect(page.getByRole('heading', { name: /archived conversations/i })).toBeVisible();
+		await expect(page.getByText(/no archived conversations/i)).toBeVisible();
 	});
 
 	test('gallery page renders empty state + filter pills', async ({ page }) => {
