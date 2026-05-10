@@ -157,7 +157,7 @@
 		// to stream (one-shot generate). Chat and video both stream via SSE
 		// (chat for tokens, video for poll-based progress events).
 		if (modelKind === 'image') {
-			await sendImageGeneration(text);
+			await sendImageGeneration(text, attachedMediaIds);
 			return;
 		}
 
@@ -243,14 +243,14 @@
 		}
 	}
 
-	async function sendImageGeneration(text: string) {
+	async function sendImageGeneration(text: string, attachedMediaIds: string[] = []) {
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text }),
+				body: JSON.stringify({ text, attachedMediaIds }),
 				signal: abort.signal
 			});
 			if (!res.ok) {

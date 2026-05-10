@@ -305,6 +305,127 @@ export async function imageGeneration(
 	return parsed as ImageGenerationResponse;
 }
 
+// --- image edit (I2I) ---------------------------------------------------
+
+export interface ImageEditInputFile {
+	bytes: Buffer;
+	contentType: string;
+}
+
+export interface ImageEditRequest {
+	model: string;
+	prompt: string;
+	/**
+	 * Input image(s). OpenAI's spec is single-image, but multipart allows
+	 * repeated field names — the bridge accepts an array for ComfyUI
+	 * workflows that declare multiple `image_inputs`. Pass [single] for the
+	 * standard OpenAI path.
+	 */
+	images: ImageEditInputFile[];
+	mask?: ImageEditInputFile;
+	n?: number;
+	size?: string;
+	response_format?: 'url' | 'b64_json';
+}
+
+/**
+ * POST /v1/images/edits as multipart/form-data. Same response shape as
+ * imageGeneration — caller persists the returned url/b64 via the media
+ * persister.
+ */
+export async function imageEdit(
+	endpoint: LoadedEndpoint,
+	body: ImageEditRequest,
+	signal?: AbortSignal
+): Promise<ImageGenerationResponse> {
+	const url = `${endpoint.baseUrl}/images/edits`;
+	const fd = new FormData();
+	fd.append('model', body.model);
+	fd.append('prompt', body.prompt);
+	// Buffer is a Uint8Array<ArrayBufferLike> at the type level, but DOM
+	// Blob's BlobPart wants the narrower ArrayBuffer-backed Uint8Array.
+	// Slicing into a fresh ArrayBuffer satisfies the typecheck and copies
+	// the bytes exactly once.
+	for (const img of body.images) {
+		fd.append('image', toBlob(img.bytes, img.contentType), filenameFor(img.contentType));
+	}
+	if (body.mask) {
+		fd.append(
+			'mask',
+			toBlob(body.mask.bytes, body.mask.contentType),
+			filenameFor(body.mask.contentType)
+		);
+	}
+	if (body.n !== undefined) fd.append('n', String(body.n));
+	if (body.size) fd.append('size', body.size);
+	if (body.response_format) fd.append('response_format', body.response_format);
+
+	const composedSignal = composeSignals(
+		AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+		signal
+	);
+	let res: Response;
+	try {
+		// Don't set Content-Type — fetch fills it in with the right
+		// multipart/form-data boundary when body is a FormData.
+		res = await fetch(url, {
+			method: 'POST',
+			headers: authHeaders(endpoint),
+			body: fd,
+			signal: composedSignal
+		});
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(
+			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
+			null,
+			null
+		);
+	}
+	if (!res.ok) {
+		const bodyText = await safeReadBody(res);
+		throw new UpstreamError(
+			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/edits`,
+			res.status,
+			bodyText
+		);
+	}
+	let parsed: unknown;
+	try {
+		parsed = await res.json();
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON: ${cause}`, 200, null);
+	}
+	return parsed as ImageGenerationResponse;
+}
+
+function filenameFor(contentType: string): string {
+	switch (contentType.toLowerCase()) {
+		case 'image/png':
+			return 'image.png';
+		case 'image/jpeg':
+		case 'image/jpg':
+			return 'image.jpg';
+		case 'image/webp':
+			return 'image.webp';
+		case 'image/gif':
+			return 'image.gif';
+		case 'image/avif':
+			return 'image.avif';
+		default:
+			return 'image';
+	}
+}
+
+function toBlob(buffer: Buffer, contentType: string): Blob {
+	const ab = buffer.buffer.slice(
+		buffer.byteOffset,
+		buffer.byteOffset + buffer.byteLength
+	) as ArrayBuffer;
+	return new Blob([ab], { type: contentType });
+}
+
 // --- video generation (Sora-shaped async) -------------------------------
 
 export interface VideoCreateRequest {

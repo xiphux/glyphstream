@@ -8,15 +8,17 @@ import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages
 import {
 	chatCompletionSync,
 	formatUpstreamError,
+	imageEdit,
 	imageGeneration,
 	UpstreamError,
 	type ChatCompletionContentPart,
-	type ChatCompletionRequest
+	type ChatCompletionRequest,
+	type ImageEditInputFile
 } from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
-import { mediaIdToDataUrl } from '$lib/server/media/data-url';
+import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
 import { persistGeneratedImage } from '$lib/server/media/persister';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
@@ -113,16 +115,41 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
 	if (meta.modelKind === 'image') {
 		try {
-			const upstream = await imageGeneration(
-				endpoint,
-				{
-					model: parsed.upstreamId,
-					prompt: text,
-					n: 1,
-					response_format: 'url'
-				},
-				inFlight.controller.signal
-			);
+			// I2I: route to /v1/images/edits when any image is attached;
+			// otherwise t2i via /v1/images/generations. Multiple attachments
+			// go through as repeated `image` fields — the bridge's ComfyUI
+			// workflows that declare multiple `image_inputs` consume them in
+			// order; OpenAI's spec only honors the first.
+			let upstream;
+			if (attachedMediaIds.length > 0) {
+				const images: ImageEditInputFile[] = [];
+				for (const mid of attachedMediaIds) {
+					const loaded = await loadMediaBytes(mid, locals.user.id);
+					images.push({ bytes: loaded.bytes, contentType: loaded.contentType });
+				}
+				upstream = await imageEdit(
+					endpoint,
+					{
+						model: parsed.upstreamId,
+						prompt: text,
+						images,
+						n: 1,
+						response_format: 'url'
+					},
+					inFlight.controller.signal
+				);
+			} else {
+				upstream = await imageGeneration(
+					endpoint,
+					{
+						model: parsed.upstreamId,
+						prompt: text,
+						n: 1,
+						response_format: 'url'
+					},
+					inFlight.controller.signal
+				);
+			}
 			const result = upstream.data?.[0];
 			if (!result || (!result.url && !result.b64_json)) {
 				throw error(502, 'Upstream returned no image data');
