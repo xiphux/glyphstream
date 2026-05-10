@@ -138,9 +138,15 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
+									<!--
+										#t=0.1 is a Media Fragment URI: tells the browser to seek
+										to 0.1s on load so it renders that frame as an inline poster.
+										Avoids needing a server-side ffmpeg poster pipeline. The 0.1
+										(vs 0) sidesteps encoders that begin with a black/blue frame.
+									-->
 									<!-- svelte-ignore a11y_media_has_caption -->
 									<video
-										src="/api/media/{m.id}/content"
+										src="/api/media/{m.id}/content#t=0.1"
 										preload="metadata"
 										muted
 										playsinline
