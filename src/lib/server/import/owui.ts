@@ -26,6 +26,7 @@ import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { conversations, messages } from '../db/schema';
 import type * as schema from '../db/schema';
+import { renderMarkdown } from '../markdown/render';
 import type { MessagePart, ModelKind } from '$lib/types/api';
 
 export type ImportDb = BetterSQLite3Database<typeof schema>;
@@ -83,12 +84,12 @@ interface OwuiTreeMessage {
  * SvelteKit runtime, the CLI script, and unit tests without pulling in
  * `$env/dynamic/private` from the runtime env module.
  */
-export function importOwuiExport(
+export async function importOwuiExport(
 	rawJson: unknown,
 	userId: string,
 	db: ImportDb,
 	opts: ImportOptions = {}
-): ImportResult {
+): Promise<ImportResult> {
 	if (!Array.isArray(rawJson)) {
 		throw new Error('Export root must be an array of conversations');
 	}
@@ -103,7 +104,7 @@ export function importOwuiExport(
 	for (const entry of rawJson as OwuiExportEntry[]) {
 		const id = entry?.id ?? '<unknown>';
 		try {
-			const outcome = importOne(entry, userId, db, opts);
+			const outcome = await importOne(entry, userId, db, opts);
 			if (outcome === 'skipped-no-history') {
 				result.skipped.push({ id, reason: 'no chat.history.messages tree' });
 				continue;
@@ -133,12 +134,12 @@ type ImportOutcome =
 	| 'skipped-no-history'
 	| 'skipped-empty';
 
-function importOne(
+async function importOne(
 	entry: OwuiExportEntry,
 	userId: string,
 	db: ImportDb,
 	opts: ImportOptions
-): ImportOutcome {
+): Promise<ImportOutcome> {
 	const history = entry?.chat?.history;
 	const owuiMessages = history?.messages;
 	if (!owuiMessages || typeof owuiMessages !== 'object') {
@@ -208,6 +209,24 @@ function importOne(
 		return archivedAt ? 'imported-archived' : 'imported-active';
 	}
 
+	// Pre-render assistant content to HTML before opening the transaction —
+	// renderMarkdown is async (shiki lazy-loads its highlighter), and
+	// better-sqlite3 transactions don't support awaiting inside the
+	// transaction callback. The first render warms shiki; subsequent
+	// renders share the cached singleton highlighter and are fast.
+	const htmlByOwuiId = new Map<string, string | null>();
+	for (const { owuiId, msg } of ordered) {
+		if (msg.role !== 'assistant' || typeof msg.content !== 'string') continue;
+		try {
+			const html = await renderMarkdown(stripOwuiFileUrls(msg.content));
+			htmlByOwuiId.set(owuiId, html);
+		} catch {
+			// A render failure shouldn't abort the whole conversation; fall
+			// back to plain-text rendering by leaving content_html null.
+			htmlByOwuiId.set(owuiId, null);
+		}
+	}
+
 	db.transaction((tx) => {
 		tx.insert(conversations)
 			.values({
@@ -242,7 +261,7 @@ function importOne(
 							: null,
 					role,
 					contentJson: JSON.stringify(parts),
-					contentHtml: null,
+					contentHtml: htmlByOwuiId.get(owuiId) ?? null,
 					reasoningText: null,
 					finishReason: null,
 					modelUsed: msg.model ?? null,

@@ -123,7 +123,7 @@ try {
 }
 
 console.log(`Importing ${parsed.file}${parsed.dryRun ? ' (dry run)' : ''}…`);
-const result = importOwuiExport(json, parsed.userId, db, { dryRun: parsed.dryRun });
+const result = await importOwuiExport(json, parsed.userId, db, { dryRun: parsed.dryRun });
 
 console.log('');
 console.log(`Imported:  ${result.imported}`);

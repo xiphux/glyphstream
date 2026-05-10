@@ -122,9 +122,9 @@ function makeImageChat() {
 }
 
 describe('importOwuiExport', () => {
-	it('imports a text chat with branch walked in tree order', () => {
+	it('imports a text chat with branch walked in tree order', async () => {
 		const u = seedUser();
-		const result = importOwuiExport([makeTextChat()], u.id, mocks.testDb);
+		const result = await importOwuiExport([makeTextChat()], u.id, mocks.testDb);
 
 		expect(result.imported).toBe(1);
 		expect(result.archived).toBe(0);
@@ -156,25 +156,25 @@ describe('importOwuiExport', () => {
 		expect(detail?.activeLeafMessageId).toBe(detail?.messages[3].id);
 	});
 
-	it('uses the synthetic imported endpoint id', () => {
+	it('uses the synthetic imported endpoint id', async () => {
 		const u = seedUser();
-		importOwuiExport([makeTextChat()], u.id, mocks.testDb);
+		await importOwuiExport([makeTextChat()], u.id, mocks.testDb);
 		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
 		expect(detail?.endpointId).toBe(IMPORTED_ENDPOINT_ID);
 		expect(detail?.modelId).toBe('chatgpt');
 		expect(detail?.modelKind).toBe('chat');
 	});
 
-	it('detects image kind from model name substring', () => {
+	it('detects image kind from model name substring', async () => {
 		const u = seedUser();
-		importOwuiExport([makeImageChat()], u.id, mocks.testDb);
+		await importOwuiExport([makeImageChat()], u.id, mocks.testDb);
 		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
 		expect(detail?.modelKind).toBe('image');
 	});
 
-	it('rewrites OWUI file-URL image markdown to a placeholder', () => {
+	it('rewrites OWUI file-URL image markdown to a placeholder', async () => {
 		const u = seedUser();
-		importOwuiExport([makeImageChat()], u.id, mocks.testDb);
+		await importOwuiExport([makeImageChat()], u.id, mocks.testDb);
 		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
 		const assistant = detail?.messages.find((m) => m.role === 'assistant');
 		expect(assistant?.parts[0]).toEqual({
@@ -183,9 +183,21 @@ describe('importOwuiExport', () => {
 		});
 	});
 
-	it('OWUI archived flag → archivedAt = updatedAt', () => {
+	it('renders assistant markdown to contentHtml so the UI shows formatted output', async () => {
 		const u = seedUser();
-		importOwuiExport(
+		await importOwuiExport([makeTextChat()], u.id, mocks.testDb);
+		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
+		const userMsg = detail?.messages.find((m) => m.role === 'user');
+		const assistantMsg = detail?.messages.find((m) => m.role === 'assistant');
+		// User messages stay as plain text (consistent with normal chats).
+		expect(userMsg?.contentHtml).toBeNull();
+		// Assistant messages get HTML so the chat shows formatted markdown.
+		expect(assistantMsg?.contentHtml).toContain('<p>');
+	});
+
+	it('OWUI archived flag → archivedAt = updatedAt', async () => {
+		const u = seedUser();
+		await importOwuiExport(
 			[makeTextChat({ id: 'arch-1', archived: true })],
 			u.id,
 			mocks.testDb
@@ -196,23 +208,23 @@ describe('importOwuiExport', () => {
 		expect(archived[0].title).toBe('Sample chat');
 	});
 
-	it('imports many conversations from one export', () => {
+	it('imports many conversations from one export', async () => {
 		const u = seedUser();
 		const exports = [
 			makeTextChat({ id: 'a' }),
 			makeTextChat({ id: 'b' }),
 			makeTextChat({ id: 'c', archived: true })
 		];
-		const result = importOwuiExport(exports, u.id, mocks.testDb);
+		const result = await importOwuiExport(exports, u.id, mocks.testDb);
 		expect(result.imported).toBe(3);
 		expect(result.archived).toBe(1);
 		expect(listConversations(u.id)).toHaveLength(2);
 		expect(listArchivedConversations(u.id)).toHaveLength(1);
 	});
 
-	it('skips entries without chat.history.messages', () => {
+	it('skips entries without chat.history.messages', async () => {
 		const u = seedUser();
-		const result = importOwuiExport(
+		const result = await importOwuiExport(
 			[{ id: 'broken', chat: {} }, makeTextChat()],
 			u.id,
 			mocks.testDb
@@ -222,27 +234,27 @@ describe('importOwuiExport', () => {
 		expect(result.skipped[0].id).toBe('broken');
 	});
 
-	it('throws when the root is not an array', () => {
+	it('throws when the root is not an array', async () => {
 		const u = seedUser();
-		expect(() => importOwuiExport({ not: 'an array' }, u.id, mocks.testDb)).toThrow(
-			/must be an array/i
-		);
+		await expect(
+			importOwuiExport({ not: 'an array' }, u.id, mocks.testDb)
+		).rejects.toThrow(/must be an array/i);
 	});
 
-	it('dryRun does not write to the DB', () => {
+	it('dryRun does not write to the DB', async () => {
 		const u = seedUser();
-		const result = importOwuiExport([makeTextChat()], u.id, mocks.testDb, {
+		const result = await importOwuiExport([makeTextChat()], u.id, mocks.testDb, {
 			dryRun: true
 		});
 		expect(result.imported).toBe(1);
 		expect(listConversations(u.id)).toHaveLength(0);
 	});
 
-	it('imports without crashing when activeLeaf is missing', () => {
+	it('imports without crashing when activeLeaf is missing', async () => {
 		const u = seedUser();
 		const entry = makeTextChat();
 		delete (entry.chat.history as { currentId?: string }).currentId;
-		const result = importOwuiExport([entry], u.id, mocks.testDb);
+		const result = await importOwuiExport([entry], u.id, mocks.testDb);
 		expect(result.imported).toBe(1);
 		// Should still set activeLeaf to the last inserted message so the
 		// chat isn't a "headless" conversation that breaks getConversationDetail.
@@ -250,9 +262,9 @@ describe('importOwuiExport', () => {
 		expect(detail?.activeLeafMessageId).not.toBeNull();
 	});
 
-	it('preserves modelUsed on assistant messages', () => {
+	it('preserves modelUsed on assistant messages', async () => {
 		const u = seedUser();
-		importOwuiExport([makeTextChat()], u.id, mocks.testDb);
+		await importOwuiExport([makeTextChat()], u.id, mocks.testDb);
 		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
 		const assistantA = detail?.messages.find((m) => m.role === 'assistant');
 		expect(assistantA?.modelUsed).toBe('chatgpt');
@@ -270,18 +282,18 @@ const REAL_EXPORTS = ['text-chat.json', 'image-chat.json', 'chat-export.json'];
 const haveRealExports = REAL_EXPORTS.every((f) => existsSync(f));
 
 describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
-	it('imports text-chat.json without errors', () => {
+	it('imports text-chat.json without errors', async () => {
 		const u = seedUser();
 		const json = JSON.parse(readFileSync('text-chat.json', 'utf8'));
-		const result = importOwuiExport(json, u.id, mocks.testDb);
+		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		expect(result.imported).toBe(1);
 	});
 
-	it('imports image-chat.json — image kind detected, file URLs stripped', () => {
+	it('imports image-chat.json — image kind detected, file URLs stripped', async () => {
 		const u = seedUser();
 		const json = JSON.parse(readFileSync('image-chat.json', 'utf8'));
-		const result = importOwuiExport(json, u.id, mocks.testDb);
+		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		expect(result.imported).toBe(1);
 		const conv = listConversations(u.id)[0];
@@ -293,10 +305,10 @@ describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 		expect(text).not.toContain('/api/v1/files/');
 	});
 
-	it('imports chat-export.json full export with no errors', () => {
+	it('imports chat-export.json full export with no errors', async () => {
 		const u = seedUser();
 		const json = JSON.parse(readFileSync('chat-export.json', 'utf8'));
-		const result = importOwuiExport(json, u.id, mocks.testDb);
+		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		// Just sanity: should import some non-trivial number.
 		expect(result.imported).toBeGreaterThan(0);
