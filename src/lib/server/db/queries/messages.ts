@@ -118,6 +118,7 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 		const siblings = byParent.get(current.parentMessageId ?? null) ?? [current];
 		const siblingIds = siblings.map((s) => s.id);
 		const msg = rowToChatMessage(current);
+		msg.parentMessageId = current.parentMessageId;
 		msg.siblingCount = siblings.length;
 		msg.siblingPosition = siblingIds.indexOf(current.id) + 1;
 		msg.siblingIds = siblingIds;

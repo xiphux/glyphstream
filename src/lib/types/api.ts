@@ -78,10 +78,9 @@ export interface ChatMessage {
 	tokensIn: number | null;
 	tokensOut: number | null;
 	createdAt: number;
-	/** Parent in the message tree. Optional — populated only by lookups
-	 * that need it (retry validation, branch nav). The walkActiveBranch
-	 * path doesn't bother filling it because the array order already
-	 * encodes parent → child. */
+	/** Parent in the message tree. Populated by `walkActiveBranch` and
+	 * `getMessage`. Used by Edit (sibling parent for the new message)
+	 * and Retry (parent user message of the assistant being retried). */
 	parentMessageId?: string | null;
 	/**
 	 * Branching metadata — populated only when this message is on the active

@@ -642,36 +642,73 @@
 	}
 
 	/**
-	 * Edit-in-place state. When non-null, the composer is editing this
-	 * user message — sending will create a sibling under the same parent
-	 * (preserving the original as a branch) rather than continuing the
-	 * active chain.
+	 * Inline-edit state. When non-null, the message bubble for
+	 * `editingMessageId` re-renders as an in-place editor instead of a
+	 * static bubble. The bottom composer hides during edit so it's
+	 * unambiguous which message you're editing. Save creates a new
+	 * sibling under `editingParentId`; cancel discards.
+	 *
+	 * Edit state is kept separate from the composer's state so a
+	 * partially-typed draft in the composer isn't clobbered by entering
+	 * edit mode.
 	 */
 	let editingMessageId = $state<string | null>(null);
 	let editingParentId = $state<string | null>(null);
+	let editText = $state('');
+	const editAttachments = new AttachmentStore();
+	let editComposerEl = $state<HTMLTextAreaElement | null>(null);
+	let editFileInputEl = $state<HTMLInputElement | null>(null);
+	onDestroy(() => editAttachments.destroy());
+
+	$effect(() => {
+		const el = editComposerEl;
+		void editText;
+		if (!el) return;
+		el.style.height = 'auto';
+		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
+		el.style.height = `${next}px`;
+		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+	});
 
 	function beginEdit(m: ChatMessage) {
 		if (busy) return;
-		// Pre-populate the composer with the message's text + image refs.
-		const text = partsToText(m.parts);
-		composerText = text;
-		attachments.clear();
+		editText = partsToText(m.parts);
+		editAttachments.clear();
 		for (const p of m.parts) {
 			if (p.type === 'image') {
-				attachments.attachExisting(p.mediaId);
+				editAttachments.attachExisting(p.mediaId);
 			}
 		}
 		editingMessageId = m.id;
 		editingParentId = m.parentMessageId ?? null;
-		// Focus the textarea so the user can start typing immediately.
-		void tick().then(() => composerEl?.focus());
+		void tick().then(() => editComposerEl?.focus());
 	}
 
 	function cancelEdit() {
 		editingMessageId = null;
 		editingParentId = null;
-		composerText = '';
-		attachments.clear();
+		editText = '';
+		editAttachments.clear();
+	}
+
+	async function saveEdit() {
+		const text = editText.trim();
+		if ((!text && editAttachments.items.length === 0) || busy) return;
+		if (editAttachments.isBusy) return;
+		const attachedMediaIds = editAttachments.readyMediaIds();
+		const parentId = editingParentId;
+		// Snapshot then reset state — sendStreaming does its own UI work
+		// (in-flight bubble, optimistic placeholder swap on 'start') that
+		// we don't want to compete with the dismissed editor.
+		editingMessageId = null;
+		editingParentId = null;
+		editText = '';
+		editAttachments.clear();
+		await sendStreaming(
+			text,
+			attachedMediaIds,
+			parentId ? { parentMessageId: parentId } : {}
+		);
 	}
 
 	/**
@@ -744,6 +781,123 @@
 					On mobile it stays visible since there's no hover.
 				-->
 				<div class="group">
+				{#if m.id === editingMessageId}
+					<!--
+						Inline editor: replaces the static bubble with an
+						editable surface in the same position so it's
+						unambiguous WHICH message is being edited. Save creates
+						a sibling under the original's parent (preserving the
+						original as a branch); Cancel discards.
+					-->
+					<article
+						class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-white p-3 shadow-sm dark:border-amber-800 dark:bg-neutral-900"
+					>
+						<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
+							Editing
+						</div>
+						{#if editAttachments.items.length > 0}
+							<div class="mb-2 flex flex-wrap gap-2 border-b border-neutral-200 pb-2 dark:border-neutral-800">
+								{#each editAttachments.items as a (a.clientId)}
+									<div
+										class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
+										title={a.error ?? a.contentType}
+									>
+										<img
+											src={a.objectUrl}
+											alt=""
+											class="h-full w-full object-cover {a.status === 'uploading'
+												? 'opacity-60'
+												: a.status === 'error'
+													? 'opacity-40'
+													: ''}"
+										/>
+										{#if a.status === 'uploading'}
+											<div
+												class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
+											>
+												<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+											</div>
+										{:else if a.status === 'error'}
+											<div
+												class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
+											>
+												<AlertCircle size={20} strokeWidth={2} />
+											</div>
+										{/if}
+										<button
+											type="button"
+											onclick={() => editAttachments.remove(a.clientId)}
+											aria-label="Remove attachment"
+											title="Remove"
+											class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
+										>
+											<X size={12} strokeWidth={2.5} />
+										</button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						<textarea
+							bind:this={editComposerEl}
+							bind:value={editText}
+							rows="1"
+							onkeydown={(e) => {
+								if (e.key === 'Enter' && !e.shiftKey) {
+									e.preventDefault();
+									void saveEdit();
+								} else if (e.key === 'Escape') {
+									e.preventDefault();
+									cancelEdit();
+								}
+							}}
+							class="block w-full resize-none border-0 bg-transparent px-1 py-1 text-sm focus:outline-none"
+						></textarea>
+						<div class="mt-2 flex items-center gap-2">
+							{#if allowAttachments}
+								<input
+									bind:this={editFileInputEl}
+									type="file"
+									accept="image/*"
+									multiple
+									class="hidden"
+									onchange={(e) => {
+										const t = e.currentTarget;
+										if (t.files && t.files.length > 0) {
+											void editAttachments.addFiles(t.files);
+										}
+										t.value = '';
+									}}
+								/>
+								<button
+									type="button"
+									onclick={() => editFileInputEl?.click()}
+									aria-label="Attach image"
+									title="Attach image"
+									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+								>
+									<Plus size={18} strokeWidth={2.25} />
+								</button>
+							{/if}
+							<div class="flex-1"></div>
+							<button
+								type="button"
+								onclick={cancelEdit}
+								class="rounded-md px-3 py-1.5 text-xs text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								onclick={() => saveEdit()}
+								disabled={(!editText.trim() && editAttachments.items.length === 0) ||
+									editAttachments.isBusy}
+								class="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+							>
+								Save
+							</button>
+						</div>
+					</article>
+				{:else}
 				<article
 					class="rounded-2xl px-4 py-3 text-sm {m.role === 'user'
 						? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
@@ -800,7 +954,8 @@
 						{/if}
 					{/if}
 				</article>
-				{#if m.role === 'user' || m.role === 'assistant'}
+				{/if}
+				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId}
 					{@const showEdit = m.role === 'user'}
 					{@const showRetry = m.role === 'assistant'}
 					{@const showCopy = hasCopyableText(m)}
@@ -956,6 +1111,12 @@
 				<ArrowDown size={16} strokeWidth={2.25} />
 			</button>
 		</div>
+		{#if editingMessageId}
+			<!-- Composer hidden while editing: the edit happens inline on
+				 the message bubble itself, with its own Save/Cancel
+				 controls. Re-shown when the user dismisses the inline
+				 editor. -->
+		{:else}
 		<form
 			onsubmit={send}
 			ondragenter={onDragEnter}
@@ -964,20 +1125,6 @@
 			ondrop={onDrop}
 			class="relative mx-auto max-w-3xl"
 		>
-			{#if editingMessageId}
-				<div
-					class="mb-2 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
-				>
-					<span>Editing message — sending creates a new branch.</span>
-					<button
-						type="button"
-						onclick={cancelEdit}
-						class="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
-					>
-						Cancel
-					</button>
-				</div>
-			{/if}
 			{#if errorMsg}
 				<div
 					class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
@@ -1111,5 +1258,6 @@
 				</div>
 			{/if}
 		</form>
+		{/if}
 	</div>
 </div>
