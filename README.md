@@ -25,10 +25,6 @@ them into a single chat UI with one model picker.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
-## Status
-
-v0.1.0-pre — feature-complete for v1. See `ROADMAP.md` for what's planned next.
-
 ## Stack
 
 SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite, dialect-portable) · Lucia v3 + arctic for OAuth · bits-ui for headless primitives · pnpm.
@@ -55,144 +51,45 @@ Two files, by concern:
 
 See `config.toml.example` and `.env.example` for the full surface.
 
-## Architecture
+## Deployment
 
-See the design plan referenced during development. In brief:
-
-```
-GitHub OAuth → SvelteKit /api/auth/github → session cookie
-                          │
-                          ▼
-              SvelteKit (Node, single process)
-                          │
-   ┌──────────────────────┼──────────────────────┐
-   │                      │                      │
-   ▼                      ▼                      ▼
-SQLite (chats,       MediaStore (disk)    Endpoint registry
- messages,                                       │
- media refs,                       ┌─────────────┼─────────────┐
- custom models)                    ▼             ▼             ▼
-                            openai-api-bridge  llama-server   Groq
-```
-
-## Deployment (Docker)
-
-Multi-stage Alpine build. Final image is ~140 MB; everything's
-self-contained except the SQLite DB and generated media (kept on a
-bind-mount so they survive `up/down`) and `config.toml` (mounted
-read-only so the container can't modify it).
+Multi-stage Alpine Docker image, ~200 MB final size. Bind-mount `data/` for
+persistence and mount `config.toml` read-only:
 
 ```bash
-# 1. Set up the host directory
 mkdir -p /srv/glyphstream/data
 cd /srv/glyphstream
 cp /path/to/repo/.env.example .env       # then edit
 cp /path/to/repo/config.toml.example config.toml  # then edit
 cp /path/to/repo/docker-compose.yml .
-
-# 2. Bring up
 docker compose up -d --build
-
-# 3. Verify
 curl http://localhost:3000/api/health
-docker compose logs -f glyphstream
 ```
 
-`docker compose up` runs `pnpm build` inside the builder stage and
-applies any pending Drizzle migrations on first DB open. Subsequent
-restarts are zero-downtime as long as you only changed env vars or
-`config.toml` (no rebuild needed for those — just `docker compose
-restart`).
+Drizzle migrations apply automatically on first DB open. Subsequent
+config or env changes only need `docker compose restart` — no rebuild.
 
-### Public exposure (TLS + HTTP/2)
+## Public exposure (TLS + HTTP/2)
 
-adapter-node speaks HTTP/1.1 only — Node's built-in `http` module
-doesn't do HTTP/2. Put a reverse proxy in front for TLS termination
-+ HTTP/2 (and HTTP/3 if you want it). Set `PUBLIC_BASE_URL` in
-`.env` to the public origin so OAuth redirect URIs match.
+adapter-node speaks HTTP/1.1 only. Put a reverse proxy in front for
+TLS + HTTP/2 (and HTTP/3 if you want it). Set `PUBLIC_BASE_URL` in `.env`
+to the public origin so the OAuth redirect URI matches.
 
-Pretty much any pass-through reverse proxy works — pre-compression
-(see below) is handled inside Node, so the proxy just forwards the
-`Accept-Encoding` header and the compressed response unchanged.
-Tested with:
+Any pass-through reverse proxy works — pre-compression is handled inside
+Node, so as long as the proxy forwards `Accept-Encoding` (which all do
+by default) the brotli/gzip variants reach the client unchanged. Tested
+with:
 
 - **Synology DSM Reverse Proxy** (Login Portal → Advanced → Reverse
   Proxy). Source: `https://glyphstream.{your}.synology.me:443` →
-  Destination: `localhost:3000` (or the container's IP). Tick
-  "Enable HTTP/2" on the rule. Synology handles the cert via
-  built-in Let's Encrypt for `*.synology.me`.
-- **Caddy** — 4-line config: `glyphstream.example.com { encode br
-  gzip; reverse_proxy 127.0.0.1:3000 }`. Auto-TLS, HTTP/2 + HTTP/3
-  on by default.
-- **Nginx** — `proxy_pass http://127.0.0.1:3000;` plus `listen 443
-  ssl http2;` on the server block. Don't enable `gzip on` for
-  proxied responses or you'll double-compress.
+  Destination: `localhost:3000`. Tick "Enable HTTP/2". Synology
+  manages the cert via Let's Encrypt for `*.synology.me`.
+- **Caddy** — `glyphstream.example.com { reverse_proxy 127.0.0.1:3000 }`.
+  Auto-TLS, HTTP/2 + HTTP/3 on by default.
+- **Nginx** — `proxy_pass http://127.0.0.1:3000;` + `listen 443 ssl http2;`.
+  Don't enable `gzip on` for proxied responses or you'll double-compress.
 - **Cloudflare Tunnel** — works as a transparent passthrough.
-
-### Pre-compression
-
-`svelte.config.js` enables `precompress: true` on adapter-node, so
-every static asset gets a `.br` + `.gz` variant generated at build
-time. adapter-node's static server (sirv) serves the right one
-based on `Accept-Encoding`. Brotli typically gets us 65-75% off
-text assets — the largest JS chunk drops from 95 KB → 26 KB. No
-per-request CPU spent compressing.
-
-### Bundle analysis
-
-```bash
-pnpm analyze    # builds with rollup-plugin-visualizer enabled
-open bundle-stats.html
-```
-
-Generates a treemap of the client bundle with gzip + brotli sizes.
-Useful for spotting regressions when adding deps; current baseline
-is ~250 KB gzip total (without shiki, which stays server-side).
-
-## CI / CD
-
-GitHub Actions workflows live in `.github/workflows/`:
-
-- **`ci.yml`** — runs on every push and PR. Type-check, unit tests
-  (Vitest), and end-to-end tests (Playwright with cached browsers).
-- **`docker.yml`** — runs on `main` pushes and `v*.*.*` tag pushes.
-  Builds multi-arch (`linux/amd64` + `linux/arm64`) images, pushes to
-  GitHub Container Registry, and creates a GitHub Release with
-  auto-generated changelog on tag pushes.
-
-### Image tag scheme
-
-| Trigger | Tags applied |
-|---|---|
-| Push to `main` | `main`, `sha-<7chars>` |
-| Push tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` |
-
-Pull the rolling-main build for testing:
-
-```bash
-docker pull ghcr.io/<owner>/glyphstream:main
-```
-
-Pin to a release for production:
-
-```bash
-docker pull ghcr.io/<owner>/glyphstream:1.2.3
-# or
-docker pull ghcr.io/<owner>/glyphstream:latest
-```
-
-### Cutting a release
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The `docker.yml` workflow takes it from there: builds the multi-arch
-image, tags it `0.1.0` / `0.1` / `0` / `latest` on GHCR, and creates
-a GitHub Release with auto-generated notes (PRs since the previous
-tag, categorized via `.github/release.yml`).
 
 ## License
 
-MIT
+MIT — see `LICENSE`.
