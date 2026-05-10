@@ -433,6 +433,12 @@ export interface VideoCreateRequest {
 	prompt: string;
 	size?: string;
 	seconds?: number;
+	/**
+	 * Optional reference image for I2V workflows. Sent as the
+	 * `input_reference` multipart field — the bridge routes it to a
+	 * ComfyUI workflow that has `image_inputs` declared.
+	 */
+	inputReference?: { bytes: Buffer; contentType: string };
 }
 
 export type VideoStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
@@ -462,6 +468,13 @@ export async function videoCreate(
 	form.append('prompt', body.prompt);
 	if (body.size) form.append('size', body.size);
 	if (body.seconds !== undefined) form.append('seconds', String(body.seconds));
+	if (body.inputReference) {
+		form.append(
+			'input_reference',
+			toBlob(body.inputReference.bytes, body.inputReference.contentType),
+			filenameFor(body.inputReference.contentType)
+		);
+	}
 
 	let res: Response;
 	try {

@@ -51,6 +51,12 @@ export interface VideoRelayParams {
 	storedModelId: string;
 	prompt: string;
 	userMessage: ChatMessage;
+	/**
+	 * Optional I2V reference image — bytes loaded server-side from an
+	 * attached media row. The relay forwards them as the `input_reference`
+	 * multipart field on POST /v1/videos.
+	 */
+	inputReference?: { bytes: Buffer; contentType: string };
 	abortSignal?: AbortSignal;
 }
 
@@ -80,7 +86,17 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					model: parseUpstreamId(params.storedModelId),
 					prompt: params.prompt
 				};
-				if (DEBUG) console.debug(`[video-relay] POST /videos to ${params.endpoint.id}`, req);
+				if (params.inputReference) {
+					req.inputReference = params.inputReference;
+				}
+				if (DEBUG) {
+					const refSummary = params.inputReference
+						? `, input_reference=${params.inputReference.contentType}:${params.inputReference.bytes.byteLength}B`
+						: '';
+					console.debug(
+						`[video-relay] POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`
+					);
+				}
 				job = await videoCreate(params.endpoint, req, params.abortSignal);
 				if (DEBUG) console.debug(`[video-relay] created job`, job);
 				setVideoJobId(params.conversationId, job.id);

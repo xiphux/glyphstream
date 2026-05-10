@@ -1,3 +1,4 @@
+import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
 import {
 	getConversationMeta,
@@ -204,6 +205,20 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 
 	if (meta.modelKind === 'video') {
+		// I2V: pre-load the first attached image's bytes so the relay can
+		// forward them as `input_reference`. Only one ref is honored — the
+		// OpenAI /v1/videos spec is single-reference, and bridge ComfyUI
+		// I2V workflows declare a single `image_inputs` entry.
+		let inputReference: { bytes: Buffer; contentType: string } | undefined;
+		if (attachedMediaIds.length > 0) {
+			const loaded = await loadMediaBytes(attachedMediaIds[0], locals.user.id);
+			inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
+			if (DEBUG) {
+				console.debug(
+					`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${text.slice(0, 60)}"`
+				);
+			}
+		}
 		const stream = startVideoRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
@@ -211,6 +226,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			storedModelId: meta.modelId,
 			prompt: text,
 			userMessage: userMessage as ChatMessage,
+			inputReference,
 			abortSignal: inFlight.controller.signal
 		});
 		return new Response(wrapStreamCleanup(stream, () => clearInFlight(params.id, inFlight)), {
