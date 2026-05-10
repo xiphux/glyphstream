@@ -3,17 +3,19 @@ import {
 	getConversationMeta,
 	setConversationTitle
 } from '$lib/server/db/queries/conversations';
-import { linkMessageMedia } from '$lib/server/db/queries/media';
+import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import {
 	chatCompletionSync,
 	imageGeneration,
 	UpstreamError,
+	type ChatCompletionContentPart,
 	type ChatCompletionRequest
 } from '$lib/server/endpoints/client';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
+import { mediaIdToDataUrl } from '$lib/server/media/data-url';
 import { persistGeneratedImage } from '$lib/server/media/persister';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
@@ -39,8 +41,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	} catch {
 		throw error(400, 'Request body must be JSON');
 	}
-	const text = body.text?.trim();
-	if (!text) throw error(400, "'text' is required and must be non-empty");
+	const text = body.text?.trim() ?? '';
+	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
+		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
+		: [];
+	if (!text && attachedMediaIds.length === 0) {
+		throw error(400, "'text' or 'attachedMediaIds' is required");
+	}
 
 	const meta = getConversationMeta(params.id, locals.user.id);
 	if (!meta) throw error(404, 'Conversation not found');
@@ -57,16 +64,35 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		);
 	}
 
+	// Validate every attached media id belongs to this user and isn't
+	// hard-deleted before we persist anything — so a tampered request can't
+	// land an unowned-media reference on a real conversation row.
+	for (const mid of attachedMediaIds) {
+		const m = getMediaForUser(mid, locals.user.id);
+		if (!m || m.hardDeletedAt !== null) {
+			throw error(400, `Attached media "${mid}" not found`);
+		}
+	}
+
 	// Persist user message + auto-title BEFORE upstream call so even if the
 	// upstream fails the user's input is preserved on the active branch.
-	const userParts: MessagePart[] = [{ type: 'text', text }];
+	// Image parts come after the text part so the UI renders text-then-images
+	// (matches the natural reading order of "<words>; here are the pictures").
+	const userParts: MessagePart[] = [];
+	if (text) userParts.push({ type: 'text', text });
+	for (const mid of attachedMediaIds) {
+		userParts.push({ type: 'image', mediaId: mid });
+	}
 	const userMessage = appendMessage({
 		conversationId: params.id,
 		parentMessageId: meta.activeLeafMessageId,
 		role: 'user',
 		parts: userParts
 	});
-	if (!meta.title) {
+	for (const mid of attachedMediaIds) {
+		linkMessageMedia(userMessage.id, mid);
+	}
+	if (!meta.title && text) {
 		const preview =
 			text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
 		setConversationTitle(params.id, preview);
@@ -157,6 +183,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 
 	// Build the upstream request from the active branch (now incl. new user msg).
+	// Messages with no image parts forward as plain-string content (best
+	// compat with non-vision upstreams). Messages WITH image parts forward
+	// as the OpenAI vision-spec structured content array — text parts plus
+	// data-url image_url parts. We inline image bytes as data URLs because
+	// the upstream's ability to fetch one of our /api/media/:id/content
+	// URLs depends on the deployment's reverse-proxy / network topology
+	// and we don't want to assume it's reachable.
 	const branch = walkActiveBranch(params.id);
 	const upstreamMessages: ChatCompletionRequest['messages'] = [];
 	if (meta.systemPrompt) {
@@ -164,10 +197,24 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 	for (const m of branch) {
 		if (m.role === 'tool') continue;
-		upstreamMessages.push({
-			role: m.role as 'system' | 'user' | 'assistant',
-			content: partsToText(m.parts)
-		});
+		const hasImages = m.parts.some((p) => p.type === 'image');
+		if (hasImages) {
+			const content: ChatCompletionContentPart[] = [];
+			for (const p of m.parts) {
+				if (p.type === 'text' && p.text) {
+					content.push({ type: 'text', text: p.text });
+				} else if (p.type === 'image') {
+					const url = await mediaIdToDataUrl(p.mediaId, locals.user.id);
+					content.push({ type: 'image_url', image_url: { url } });
+				}
+			}
+			upstreamMessages.push({ role: m.role as 'system' | 'user' | 'assistant', content });
+		} else {
+			upstreamMessages.push({
+				role: m.role as 'system' | 'user' | 'assistant',
+				content: partsToText(m.parts)
+			});
+		}
 	}
 
 	const requestBody: ChatCompletionRequest = {

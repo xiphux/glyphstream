@@ -92,12 +92,21 @@ async function safeReadBody(res: Response): Promise<string | null> {
 	}
 }
 
+/**
+ * OpenAI vision-spec content parts. When a user message has image
+ * attachments we send `content` as a structured array; plain-text-only
+ * messages stay as a bare string for max compat with non-vision upstreams.
+ */
+export type ChatCompletionContentPart =
+	| { type: 'text'; text: string }
+	| { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } };
+
 /** Chat completion request shape we forward upstream. */
 export interface ChatCompletionRequest {
 	model: string;
 	messages: Array<{
 		role: 'system' | 'user' | 'assistant' | 'tool';
-		content: string;
+		content: string | ChatCompletionContentPart[];
 	}>;
 	stream?: boolean;
 	temperature?: number;

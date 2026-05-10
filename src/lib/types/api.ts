@@ -151,9 +151,18 @@ export interface CreateCustomModelRequest {
 
 export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;
 
-/** POST /api/conversations/:id/messages request body (v1: text-only). */
+/**
+ * POST /api/conversations/:id/messages request body.
+ *
+ * `text` may be empty when `attachedMediaIds` is non-empty (e.g. "describe
+ * this image" with the image alone, or an I2I edit where the prompt is
+ * implicit). At least one of the two must be present; the server returns
+ * 400 if both are missing.
+ */
 export interface SendMessageRequest {
 	text: string;
+	/** Media ids previously created by POST /api/uploads, attached to this user message. */
+	attachedMediaIds?: string[];
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */

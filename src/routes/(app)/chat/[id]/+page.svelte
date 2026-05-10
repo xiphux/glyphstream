@@ -144,7 +144,7 @@
 				: 'Thinking'
 	);
 
-	async function sendStreaming(text: string) {
+	async function sendStreaming(text: string, attachedMediaIds: string[] = []) {
 		busy = true;
 		errorMsg = null;
 		inFlightText = '';
@@ -170,7 +170,7 @@
 					'Content-Type': 'application/json',
 					Accept: 'text/event-stream'
 				},
-				body: JSON.stringify({ text }),
+				body: JSON.stringify({ text, attachedMediaIds }),
 				signal: abort.signal
 			});
 			if (!res.ok) {
@@ -300,14 +300,10 @@
 		const text = composerText.trim();
 		if ((!text && attachments.items.length === 0) || busy) return;
 		if (attachments.isBusy) return;
-		// Snapshot the ids before clearing so the streaming send can forward
-		// them in Phase 3 (dispatcher work). For Phase 2 the server ignores
-		// the field; the variable still gets used so the wiring is in place.
-		const _attachedMediaIds = attachments.readyMediaIds();
-		void _attachedMediaIds;
+		const attachedMediaIds = attachments.readyMediaIds();
 		composerText = '';
 		attachments.clear();
-		await sendStreaming(text);
+		await sendStreaming(text, attachedMediaIds);
 	}
 
 	/**
@@ -363,19 +359,20 @@
 			window.sessionStorage.removeItem(key);
 			bootstrapped = true;
 			let pendingText = pending;
+			let pendingMediaIds: string[] = [];
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
 					pendingText = String((parsed as { text: unknown }).text ?? '');
-					// attachedMediaIds will be wired into sendStreaming in
-					// Phase 3 (dispatcher). For now we just pull them through
-					// the bootstrap so the value isn't lost in transit.
-					void (parsed as { attachedMediaIds?: unknown }).attachedMediaIds;
+					const ids = (parsed as { attachedMediaIds?: unknown }).attachedMediaIds;
+					if (Array.isArray(ids)) {
+						pendingMediaIds = ids.filter((s): s is string => typeof s === 'string');
+					}
 				}
 			} catch {
 				// Old format — pending was already plain text.
 			}
-			void sendStreaming(pendingText);
+			void sendStreaming(pendingText, pendingMediaIds);
 		}
 	});
 
@@ -474,37 +471,39 @@
 					{#if m.role === 'assistant' && m.contentHtml}
 						<!-- HTML is server-rendered (markdown-it w/ html=false + shiki); safe to {@html}. -->
 						<div class="gs-prose mt-1">{@html m.contentHtml}</div>
-					{:else if hasMedia(m.parts)}
-						<div class="mt-2 space-y-2">
-							{#each m.parts as p (partKey(p))}
-								{#if p.type === 'image'}
-									<a
-										href="/api/media/{p.mediaId}/content"
-										target="_blank"
-										rel="noopener noreferrer"
-										class="block overflow-hidden rounded-lg"
-									>
-										<img
-											src="/api/media/{p.mediaId}/content"
-											alt={p.alt ?? 'Generated image'}
-											loading="lazy"
-											class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
-										/>
-									</a>
-								{:else if p.type === 'video'}
-									<!-- svelte-ignore a11y_media_has_caption -->
-									<video
-										src="/api/media/{p.mediaId}/content"
-										controls
-										class="block h-auto w-full max-h-[80vh] rounded-lg"
-									></video>
-								{/if}
-							{/each}
-						</div>
 					{:else}
-						<div class="mt-1 whitespace-pre-wrap break-words">
-							{partsToText(m.parts)}
-						</div>
+						{@const text = partsToText(m.parts)}
+						{#if text}
+							<div class="mt-1 whitespace-pre-wrap break-words">{text}</div>
+						{/if}
+						{#if hasMedia(m.parts)}
+							<div class="mt-2 space-y-2">
+								{#each m.parts as p (partKey(p))}
+									{#if p.type === 'image'}
+										<a
+											href="/api/media/{p.mediaId}/content"
+											target="_blank"
+											rel="noopener noreferrer"
+											class="block overflow-hidden rounded-lg"
+										>
+											<img
+												src="/api/media/{p.mediaId}/content"
+												alt={p.alt ?? 'Image'}
+												loading="lazy"
+												class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
+											/>
+										</a>
+									{:else if p.type === 'video'}
+										<!-- svelte-ignore a11y_media_has_caption -->
+										<video
+											src="/api/media/{p.mediaId}/content"
+											controls
+											class="block h-auto w-full max-h-[80vh] rounded-lg"
+										></video>
+									{/if}
+								{/each}
+							</div>
+						{/if}
 					{/if}
 				</article>
 				{#if hasCopyableText(m)}
