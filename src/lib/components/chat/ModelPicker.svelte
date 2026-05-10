@@ -263,7 +263,9 @@
 		<Popover.Content
 			sideOffset={6}
 			align="end"
-			class="z-50 flex max-h-[60vh] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+			avoidCollisions
+			collisionPadding={12}
+			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900 max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
 			<!-- Search row. Auto-focuses on open via Popover's focus-trap. -->
 			<div class="flex items-center gap-2 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
