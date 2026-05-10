@@ -29,3 +29,8 @@ data/
 
 # Bundle analyzer output
 bundle-stats.html
+
+# E2E test data + Playwright outputs
+tests/.e2e-data/
+playwright-report/
+test-results/

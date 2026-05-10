@@ -19,7 +19,8 @@
 		"db:studio": "drizzle-kit studio",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"test:ui": "vitest --ui"
+		"test:ui": "vitest --ui",
+		"test:e2e": "playwright test"
 	},
 	"dependencies": {
 		"arctic": "latest",
@@ -30,6 +31,7 @@
 		"smol-toml": "latest"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.59.1",
 		"@sveltejs/adapter-node": "latest",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
