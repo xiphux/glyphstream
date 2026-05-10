@@ -153,7 +153,19 @@
 	/** Currently selected item (or undefined if value isn't in `items`). */
 	const selected = $derived(items.find((i) => i.value === value));
 
-	const triggerLabel = $derived(selected?.label ?? 'Choose a model…');
+	/**
+	 * Trigger label for the collapsed view. Strips any `owner/` prefix
+	 * (very common with HuggingFace-shaped ids like `meta-llama/Llama-3-70b`)
+	 * since the username eats space we'd rather give to the actual model
+	 * name. The full owner/model is still shown in the open dropdown row.
+	 * Custom presets get their full user-given name preserved.
+	 */
+	const triggerLabel = $derived.by(() => {
+		if (!selected) return 'Choose a model…';
+		if (selected.isCustom) return selected.label;
+		const slash = selected.label.lastIndexOf('/');
+		return slash >= 0 ? selected.label.slice(slash + 1) : selected.label;
+	});
 
 	// On open, jump highlight to the currently-selected row (or the first one
 	// if nothing matches). On filter change, snap highlight back to the top
