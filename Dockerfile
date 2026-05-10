@@ -47,47 +47,16 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
+# Install ONLY production deps. Because lucide-svelte and bits-ui are
+# devDependencies (their components are fully bundled into the build
+# output by Vite), this also avoids the chain of transitive peer-deps
+# they would have pulled in (typescript via runed→kit, vite/rolldown
+# via kit, lightningcss via tailwind, etc). The result is a much
+# leaner /app/node_modules without needing a manual trim list.
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable pnpm \
  && pnpm install --frozen-lockfile --prod --ignore-scripts \
  && pnpm rebuild better-sqlite3
-
-# adapter-node bundles non-externalized deps into /app/build at build
-# time. Looking at the build output's actual external imports, only
-# these need to remain in node_modules at runtime:
-#
-#   @sveltejs/kit, svelte, arctic, better-sqlite3, drizzle-orm,
-#   markdown-it, shiki, smol-toml, style-to-object, @standard-schema/spec
-#
-# Everything else (lucide-svelte's 7240 icon files at 42MB, bits-ui at
-# 5MB + its floating-ui/runed/etc. deps, the entire vite/rolldown/
-# typescript chain pulled in as peer deps) is build-time only or got
-# inlined into the bundle. Removing them drops the runtime image from
-# ~350MB to under 200MB.
-RUN find /app/node_modules/.pnpm -mindepth 1 -maxdepth 1 -type d \
-    \( -name 'typescript@*' \
-       -o -name 'vite@*' \
-       -o -name 'rolldown@*' \
-       -o -name '@rolldown+*' \
-       -o -name 'esbuild@*' \
-       -o -name '@esbuild+*' \
-       -o -name 'lightningcss@*' \
-       -o -name 'lightningcss-*' \
-       -o -name 'jiti@*' \
-       -o -name 'terser@*' \
-       -o -name 'tsx@*' \
-       -o -name '@types+*' \
-       -o -name 'lucide-svelte@*' \
-       -o -name 'bits-ui@*' \
-       -o -name '@internationalized+*' \
-       -o -name '@floating-ui+*' \
-       -o -name 'runed@*' \
-       -o -name 'svelte-toolbelt@*' \
-       -o -name 'tabbable@*' \
-       -o -name '@swc+*' \
-       -o -name '@vite-pwa+*' \
-       -o -name 'workbox-*' \
-    \) -exec rm -rf {} +
 
 
 # --- runtime ----------------------------------------------------------

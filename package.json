@@ -21,9 +21,7 @@
 	"dependencies": {
 		"arctic": "latest",
 		"better-sqlite3": "latest",
-		"bits-ui": "latest",
 		"drizzle-orm": "latest",
-		"lucide-svelte": "^1.0.1",
 		"markdown-it": "latest",
 		"shiki": "latest",
 		"smol-toml": "latest"
@@ -37,7 +35,9 @@
 		"@types/markdown-it": "latest",
 		"@types/node": "latest",
 		"@vite-pwa/sveltekit": "^1.1.0",
+		"bits-ui": "latest",
 		"drizzle-kit": "latest",
+		"lucide-svelte": "^1.0.1",
 		"rollup-plugin-visualizer": "^7.0.1",
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",
