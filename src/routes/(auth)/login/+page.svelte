@@ -34,7 +34,7 @@
 		</div>
 
 		<p class="mt-4 text-center text-xs text-neutral-500">
-			Self-hosted. Closed registration. Configure <code>ALLOWED_GITHUB_USER_IDS</code>.
+			Self-hosted. Closed registration.
 		</p>
 	</div>
 </div>
