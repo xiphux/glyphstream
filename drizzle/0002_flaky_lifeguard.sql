@@ -1,0 +1,1 @@
+ALTER TABLE `conversations` ADD `parameters_json` text;

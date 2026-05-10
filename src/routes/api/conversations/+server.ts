@@ -3,8 +3,13 @@ import {
 	createConversation,
 	listConversations
 } from '$lib/server/db/queries/conversations';
+import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
-import type { CreateConversationRequest, ModelKind } from '$lib/types/api';
+import type {
+	CreateConversationRequest,
+	CustomModelParameters,
+	ModelKind
+} from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
@@ -24,33 +29,73 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		throw error(400, 'Request body must be JSON');
 	}
 
-	const modelId = body.modelId?.trim();
-	if (!modelId) throw error(400, "'modelId' is required");
+	// Resolve custom model first if supplied — its base endpoint/model wins
+	// over any modelId in the body. Snapshot the system prompt + parameters
+	// onto the conversation so future edits to the preset don't retroactively
+	// change in-flight chats.
+	let resolvedEndpointId: string;
+	let resolvedModelId: string;
+	let resolvedModelKind: ModelKind | null = null;
+	let resolvedSystemPrompt: string | null = null;
+	let resolvedParameters: CustomModelParameters | null = null;
+	let resolvedCustomModelId: string | null = null;
 
-	const parsed = parseModelId(modelId);
-	if (!parsed) {
-		throw error(400, `Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`);
-	}
-	const endpoint = getEndpoint(parsed.endpointId);
-	if (!endpoint) {
-		throw error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
-	}
-
-	let modelKind: ModelKind | null = null;
-	if (body.modelKind !== undefined) {
-		if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
-			throw error(400, `Invalid modelKind "${body.modelKind}"`);
+	if (body.customModelId) {
+		const cm = getCustomModelForUser(body.customModelId, locals.user.id);
+		if (!cm) throw error(400, `Unknown custom model "${body.customModelId}"`);
+		if (!getEndpoint(cm.baseEndpointId)) {
+			throw error(
+				400,
+				`Custom model references unknown endpoint "${cm.baseEndpointId}" — has it been removed from config.toml?`
+			);
 		}
-		modelKind = body.modelKind;
+		resolvedEndpointId = cm.baseEndpointId;
+		resolvedModelId = `${cm.baseEndpointId}::${cm.baseModelId}`;
+		resolvedSystemPrompt = cm.systemPrompt;
+		resolvedParameters = cm.parameters;
+		resolvedCustomModelId = cm.id;
+		// Caller still tells us the kind so the dispatcher knows which path
+		// to take; the picker has it on hand and forwarding it saves a
+		// re-fetch of upstream /v1/models on the server.
+		if (body.modelKind !== undefined) {
+			if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
+				throw error(400, `Invalid modelKind "${body.modelKind}"`);
+			}
+			resolvedModelKind = body.modelKind;
+		}
+	} else {
+		const modelId = body.modelId?.trim();
+		if (!modelId) throw error(400, "'modelId' or 'customModelId' is required");
+
+		const parsed = parseModelId(modelId);
+		if (!parsed) {
+			throw error(
+				400,
+				`Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`
+			);
+		}
+		if (!getEndpoint(parsed.endpointId)) {
+			throw error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
+		}
+		resolvedEndpointId = parsed.endpointId;
+		resolvedModelId = modelId;
+		resolvedSystemPrompt = body.systemPrompt?.trim() || null;
+		if (body.modelKind !== undefined) {
+			if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
+				throw error(400, `Invalid modelKind "${body.modelKind}"`);
+			}
+			resolvedModelKind = body.modelKind;
+		}
 	}
 
 	const conv = createConversation({
 		userId: locals.user.id,
-		endpointId: parsed.endpointId,
-		modelId,
-		modelKind,
-		systemPrompt: body.systemPrompt?.trim() || null,
-		customModelId: body.customModelId ?? null,
+		endpointId: resolvedEndpointId,
+		modelId: resolvedModelId,
+		modelKind: resolvedModelKind,
+		systemPrompt: resolvedSystemPrompt,
+		parameters: resolvedParameters,
+		customModelId: resolvedCustomModelId,
 		title: body.title?.trim() || null
 	});
 	return json({ conversation: conv }, { status: 201 });

@@ -5,6 +5,9 @@
 
 	let { data } = $props();
 
+	// Selection value mirrors what ModelPicker emits:
+	//   - "endpointId::upstreamId"  → base model
+	//   - "custom::{customModelId}" → saved preset
 	let modelId = $state('');
 	$effect(() => {
 		if (!modelId) {
@@ -16,7 +19,18 @@
 		}
 	});
 
-	const pickedKind = $derived(data.models.find((m) => m.id === modelId)?.kind ?? 'chat');
+	// Resolve the selection back to its underlying base ModelEntry so we
+	// can keep the kind-aware placeholder/label behavior working for presets.
+	const resolvedBase = $derived.by(() => {
+		if (modelId.startsWith('custom::')) {
+			const cmId = modelId.slice('custom::'.length);
+			const cm = data.customModels.find((m) => m.id === cmId);
+			if (!cm) return undefined;
+			return data.models.find((m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`);
+		}
+		return data.models.find((m) => m.id === modelId);
+	});
+	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');
 	const composerPlaceholder = $derived(
 		pickedKind === 'image'
 			? 'Describe an image to generate…'
@@ -41,13 +55,18 @@
 		busy = true;
 		errorMsg = null;
 		try {
-			// Look up the kind from the model list so the server can dispatch
-			// chat / image / video paths without re-querying upstream.
-			const picked = data.models.find((m) => m.id === modelId);
-			const createBody: CreateConversationRequest = {
-				modelId,
-				modelKind: picked?.kind
-			};
+			// Build the create request based on what the picker selected. For
+			// presets we send `customModelId` and let the server resolve the
+			// base model + system prompt + parameters from the stored row.
+			const createBody: CreateConversationRequest = modelId.startsWith('custom::')
+				? {
+						customModelId: modelId.slice('custom::'.length),
+						modelKind: resolvedBase?.kind
+					}
+				: {
+						modelId,
+						modelKind: resolvedBase?.kind
+					};
 			const createRes = await fetch('/api/conversations', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -102,6 +121,7 @@
 			</label>
 			<ModelPicker
 				models={data.models}
+				customModels={data.customModels}
 				bind:value={modelId}
 				filterKinds={['chat', 'image', 'video']}
 				disabled={busy}

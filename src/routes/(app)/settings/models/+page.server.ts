@@ -1,4 +1,3 @@
-import { error } from '@sveltejs/kit';
 import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
 import { listEndpoints } from '$lib/server/endpoints/registry';
 import { listUpstreamModels } from '$lib/server/endpoints/client';
@@ -6,13 +5,20 @@ import { ConfigError } from '$lib/server/endpoints/config';
 import { normalizeUpstreamModel } from '$lib/server/endpoints/models';
 import type { PageServerLoad } from './$types';
 
+/**
+ * SSR the available base models alongside the user's current custom models
+ * so the form's picker has options on first paint without a follow-up
+ * /api/models round trip.
+ */
 export const load: PageServerLoad = async ({ locals }) => {
+	const customModels = listCustomModelsForUser(locals.user!.id);
+
 	let endpoints;
 	try {
 		endpoints = listEndpoints();
 	} catch (e) {
 		if (e instanceof ConfigError) {
-			throw error(500, `Endpoint configuration is invalid: ${e.message}`);
+			return { customModels, models: [], modelsError: e.message };
 		}
 		throw e;
 	}
@@ -27,8 +33,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 			}
 		})
 	);
-	return {
-		models: results.flat(),
-		customModels: listCustomModelsForUser(locals.user!.id)
-	};
+	return { customModels, models: results.flat(), modelsError: null };
 };

@@ -50,6 +50,12 @@ export const conversations = sqliteTable(
 			onDelete: 'set null'
 		}),
 		systemPrompt: text('system_prompt'),
+		// Sampling/generation params snapshotted from the custom model at
+		// conversation-create time (or null when the user picked a base model
+		// directly). Serialized as JSON so the v1 chat-only set
+		// (temperature/top_p/max_tokens) can grow to per-modality params later
+		// without another migration.
+		parametersJson: text('parameters_json'),
 		// Forward FK to messages.id; nullable until first message exists.
 		// SQLite resolves the cyclic FK fine because both sides are nullable
 		// at the right moments (active_leaf is null at conversation creation;

@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import type { ConversationDetail, ConversationSummary, ModelKind } from '$lib/types/api';
+import type {
+	ConversationDetail,
+	ConversationSummary,
+	CustomModelParameters,
+	ModelKind
+} from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations } from '../schema';
 import { walkActiveBranch } from './messages';
@@ -13,6 +18,7 @@ interface CreateInput {
 	modelKind: ModelKind | null;
 	customModelId?: string | null;
 	systemPrompt?: string | null;
+	parameters?: CustomModelParameters | null;
 	title?: string | null;
 }
 
@@ -29,6 +35,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			modelKind: input.modelKind,
 			customModelId: input.customModelId ?? null,
 			systemPrompt: input.systemPrompt ?? null,
+			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			title: input.title ?? null,
 			activeLeafMessageId: null,
 			createdAt: now,
@@ -44,6 +51,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		endpointId: input.endpointId,
 		customModelId: input.customModelId ?? null,
 		systemPrompt: input.systemPrompt ?? null,
+		parameters: input.parameters ?? null,
 		activeLeafMessageId: null,
 		createdAt: now,
 		updatedAt: now,
@@ -88,11 +96,21 @@ export function getConversationDetail(
 		endpointId: row.endpointId,
 		customModelId: row.customModelId,
 		systemPrompt: row.systemPrompt,
+		parameters: parseParameters(row.parametersJson),
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		messages: walkActiveBranch(id)
 	};
+}
+
+function parseParameters(json: string | null): CustomModelParameters | null {
+	if (!json) return null;
+	try {
+		return JSON.parse(json) as CustomModelParameters;
+	} catch {
+		return null;
+	}
 }
 
 /** Light fetch (no messages walk) — used when we just need to verify ownership and look up endpoint/model. */
@@ -105,6 +123,7 @@ export function getConversationMeta(
 	modelId: string;
 	modelKind: ModelKind | null;
 	systemPrompt: string | null;
+	parameters: CustomModelParameters | null;
 	title: string | null;
 	activeLeafMessageId: string | null;
 } | null {
@@ -116,13 +135,24 @@ export function getConversationMeta(
 			modelId: conversations.modelId,
 			modelKind: conversations.modelKind,
 			systemPrompt: conversations.systemPrompt,
+			parametersJson: conversations.parametersJson,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.get();
-	return row ?? null;
+	if (!row) return null;
+	return {
+		id: row.id,
+		endpointId: row.endpointId,
+		modelId: row.modelId,
+		modelKind: row.modelKind,
+		systemPrompt: row.systemPrompt,
+		parameters: parseParameters(row.parametersJson),
+		title: row.title,
+		activeLeafMessageId: row.activeLeafMessageId
+	};
 }
 
 /** Set conversation.title — used to auto-set from first message if empty. */

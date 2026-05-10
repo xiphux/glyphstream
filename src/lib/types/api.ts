@@ -91,21 +91,65 @@ export interface ConversationSummary {
 export interface ConversationDetail extends ConversationSummary {
 	modelKind: ModelKind | null;
 	systemPrompt: string | null;
+	parameters: CustomModelParameters | null;
 	endpointId: string;
 	customModelId: string | null;
 	activeLeafMessageId: string | null;
 	messages: ChatMessage[];
 }
 
-/** POST /api/conversations request body. */
+/** POST /api/conversations request body.
+ *
+ * Either `modelId` (base upstream model) or `customModelId` (saved preset)
+ * must be supplied. When `customModelId` is set, the server resolves the
+ * base model + system prompt + parameters from the custom model row at
+ * creation time and ignores most other fields.
+ */
 export interface CreateConversationRequest {
-	modelId: string;
+	modelId?: string;
 	/** Snapshot of the model's kind at create time. Defaults to 'chat' if omitted. */
 	modelKind?: ModelKind;
 	systemPrompt?: string;
 	customModelId?: string;
 	title?: string;
 }
+
+// --- custom models -----------------------------------------------------
+
+/**
+ * Sampling/generation parameters carried with chat custom-models. v1
+ * supports the universally-meaningful chat triplet; image/video-specific
+ * params (size, seconds, quality) can be added later without breaking
+ * existing rows since this is stored as freeform JSON.
+ */
+export interface CustomModelParameters {
+	temperature?: number;
+	top_p?: number;
+	max_tokens?: number;
+}
+
+export interface CustomModel {
+	id: string;
+	name: string;
+	description: string | null;
+	baseEndpointId: string;
+	baseModelId: string;
+	systemPrompt: string | null;
+	parameters: CustomModelParameters | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface CreateCustomModelRequest {
+	name: string;
+	description?: string;
+	baseEndpointId: string;
+	baseModelId: string;
+	systemPrompt?: string;
+	parameters?: CustomModelParameters;
+}
+
+export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;
 
 /** POST /api/conversations/:id/messages request body (v1: text-only). */
 export interface SendMessageRequest {

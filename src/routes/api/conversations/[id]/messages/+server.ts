@@ -174,6 +174,19 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		model: parsed.upstreamId,
 		messages: upstreamMessages
 	};
+	// Materialized custom-model params, if any. Forward only the fields the
+	// chat-completions API understands; image/video paths ignore these.
+	if (meta.parameters) {
+		if (meta.parameters.temperature !== undefined) {
+			requestBody.temperature = meta.parameters.temperature;
+		}
+		if (meta.parameters.top_p !== undefined) {
+			requestBody.top_p = meta.parameters.top_p;
+		}
+		if (meta.parameters.max_tokens !== undefined) {
+			requestBody.max_tokens = meta.parameters.max_tokens;
+		}
+	}
 
 	const wantsStream = url.searchParams.get('stream') === '1';
 

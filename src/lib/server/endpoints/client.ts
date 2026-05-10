@@ -101,6 +101,7 @@ export interface ChatCompletionRequest {
 	}>;
 	stream?: boolean;
 	temperature?: number;
+	top_p?: number;
 	max_tokens?: number;
 }
 

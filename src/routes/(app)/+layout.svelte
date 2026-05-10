@@ -5,6 +5,7 @@
 	let { data, children } = $props();
 
 	const galleryActive = $derived(page.url.pathname.startsWith('/gallery'));
+	const settingsActive = $derived(page.url.pathname.startsWith('/settings'));
 
 	let deletingId = $state<string | null>(null);
 
@@ -62,6 +63,14 @@
 					: 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}"
 			>
 				Gallery
+			</a>
+			<a
+				href="/settings/models"
+				class="block rounded-md px-3 py-2 text-sm transition {settingsActive
+					? 'bg-neutral-200 dark:bg-neutral-800'
+					: 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}"
+			>
+				Custom models
 			</a>
 		</div>
 

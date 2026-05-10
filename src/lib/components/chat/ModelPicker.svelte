@@ -1,14 +1,28 @@
 <script lang="ts">
-	import type { ModelEntry, ModelKind } from '$lib/types/api';
+	import type { CustomModel, ModelEntry, ModelKind } from '$lib/types/api';
 
 	interface Props {
 		models: ModelEntry[];
+		/**
+		 * Optional saved presets. Rendered as a "Your presets" optgroup at the
+		 * top so the user can pick a preset and a base model from the same
+		 * dropdown. Each preset's selected value is `custom::{customModelId}`
+		 * so the consumer can branch on the prefix.
+		 */
+		customModels?: CustomModel[];
 		filterKinds?: readonly ModelKind[];
 		value?: string;
 		onChange?: (id: string) => void;
 		disabled?: boolean;
 	}
-	let { models, filterKinds, value = $bindable(''), onChange, disabled = false }: Props = $props();
+	let {
+		models,
+		customModels = [],
+		filterKinds,
+		value = $bindable(''),
+		onChange,
+		disabled = false
+	}: Props = $props();
 
 	// Visual marker per kind. Chat is the default; we don't decorate it so
 	// the picker stays quiet for the common case. Same convention as the
@@ -30,6 +44,27 @@
 		if (!filterKinds) return models;
 		const set = new Set(filterKinds);
 		return models.filter((m) => set.has(m.kind));
+	});
+
+	/**
+	 * Filter custom models against the same kind filter, by looking up the
+	 * preset's base model in `models` and using its kind. Presets whose base
+	 * model isn't in the visible set (wrong kind, or endpoint removed from
+	 * config) are hidden so the user can't pick something that won't dispatch.
+	 */
+	const visibleCustom = $derived.by(() => {
+		if (customModels.length === 0) return [];
+		const baseById = new Map(models.map((m) => [m.id, m] as const));
+		return customModels
+			.map((cm) => ({
+				cm,
+				base: baseById.get(`${cm.baseEndpointId}::${cm.baseModelId}`)
+			}))
+			.filter(({ base }) => {
+				if (!base) return false;
+				if (!filterKinds) return true;
+				return (filterKinds as readonly ModelKind[]).includes(base.kind);
+			});
 	});
 
 	/**
@@ -74,6 +109,15 @@
 	class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
 >
 	<option value="" disabled>Choose a model…</option>
+	{#if visibleCustom.length > 0}
+		<optgroup label="Your presets">
+			{#each visibleCustom as { cm, base } (cm.id)}
+				<option value="custom::{cm.id}">
+					⚙ {cm.name}{base ? ` · ${base.displayName}${kindEmoji(base.kind)}` : ''}
+				</option>
+			{/each}
+		</optgroup>
+	{/if}
 	{#each groups as g (g.endpointId)}
 		<optgroup label={g.endpointId}>
 			{#each g.items as item (item.entry.id)}
