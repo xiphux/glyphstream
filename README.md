@@ -25,6 +25,12 @@ them into a single chat UI with one model picker.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
+> **Need image / video generation?** [openai-api-bridge][bridge] is a
+> companion project that fronts ComfyUI workflows and Venice image
+> generation behind an OpenAI-compatible HTTP API — point GlyphStream
+> at it and the models show up in the picker alongside your chat
+> backends.
+
 ## Stack
 
 SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite, dialect-portable) · Lucia v3 + arctic for OAuth · bits-ui for headless primitives · pnpm.
