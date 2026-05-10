@@ -1,15 +1,15 @@
 /**
  * CLI driver for importing an Open WebUI export into GlyphStream.
  *
- * Usage:
- *   node --experimental-strip-types scripts/import-owui.ts <export.json> --user-id <uuid>
+ * Local dev:
+ *   pnpm import:owui <export.json> --user-id <uuid>
  *
- * In the production Docker image, the script ships pre-compiled to JS:
+ * Inside a running Docker container (once the deploy scaffolding lands):
  *   docker compose exec glyphstream node /app/scripts/import-owui.js \
  *     /imports/owui-export.json --user-id <uuid>
  *
- * The user id must already exist in the users table (i.e. the user has
- * logged in at least once via GitHub OAuth). Set DB_PATH in the
+ * The user id must already exist in the users table — the user has to
+ * have logged in via GitHub OAuth at least once. Set DB_PATH in the
  * environment to point at the SQLite file (defaults to
  * `./data/glyphstream.db` to match the SvelteKit runtime default).
  *

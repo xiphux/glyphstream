@@ -21,7 +21,8 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:ui": "vitest --ui",
-		"test:e2e": "playwright test"
+		"test:e2e": "playwright test",
+		"import:owui": "tsx scripts/import-owui.ts"
 	},
 	"dependencies": {
 		"arctic": "latest",
@@ -50,6 +51,7 @@
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",
 		"tailwindcss": "latest",
+		"tsx": "^4.21.0",
 		"typescript": "^6.0.2",
 		"vite": "^8.0.7",
 		"vitest": "^4.1.5",
