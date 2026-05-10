@@ -1,0 +1,108 @@
+# GlyphStream CI — runs unit + e2e tests on every push and PR.
+#
+# Triggers on every branch push and every PR. Skipped on tag pushes
+# (the docker.yml workflow handles tags and runs its own pre-build
+# test gate via `needs:`).
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags-ignore: ['**']
+  pull_request:
+
+# Only run one CI per branch at a time — cancel any in-flight runs
+# when a new commit lands so we're not paying for stale results.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit + type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # --ignore-scripts: pnpm 10 blocks unapproved native-module
+      # builds in CI even when pnpm.onlyBuiltDependencies lists them.
+      # Rebuild explicitly afterward — that's the documented bypass.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build native modules
+        run: pnpm rebuild better-sqlite3 esbuild
+
+      - name: Type-check
+        run: pnpm check
+
+      - name: Unit tests
+        run: pnpm test
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build native modules
+        run: pnpm rebuild better-sqlite3 esbuild
+
+      # Cache Playwright browser binaries across runs. Keyed on the
+      # version string from the installed @playwright/test so the
+      # cache invalidates when the package bumps; rehydrates for free
+      # otherwise.
+      - name: Resolve Playwright version
+        id: pw
+        run: |
+          version=$(node -p "require('./node_modules/@playwright/test/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      # On a cache hit, browser binaries are present but the apt-get
+      # system deps might not be — install just those.
+      - name: Install Playwright system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+
+      # On failure, attach the Playwright HTML report + traces so the
+      # PR author can debug without re-running locally.
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14

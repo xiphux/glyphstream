@@ -151,6 +151,50 @@ Generates a treemap of the client bundle with gzip + brotli sizes.
 Useful for spotting regressions when adding deps; current baseline
 is ~250 KB gzip total (without shiki, which stays server-side).
 
+## CI / CD
+
+GitHub Actions workflows live in `.github/workflows/`:
+
+- **`ci.yml`** — runs on every push and PR. Type-check, unit tests
+  (Vitest), and end-to-end tests (Playwright with cached browsers).
+- **`docker.yml`** — runs on `main` pushes and `v*.*.*` tag pushes.
+  Builds multi-arch (`linux/amd64` + `linux/arm64`) images, pushes to
+  GitHub Container Registry, and creates a GitHub Release with
+  auto-generated changelog on tag pushes.
+
+### Image tag scheme
+
+| Trigger | Tags applied |
+|---|---|
+| Push to `main` | `main`, `sha-<7chars>` |
+| Push tag `v1.2.3` | `1.2.3`, `1.2`, `1`, `latest` |
+
+Pull the rolling-main build for testing:
+
+```bash
+docker pull ghcr.io/<owner>/glyphstream:main
+```
+
+Pin to a release for production:
+
+```bash
+docker pull ghcr.io/<owner>/glyphstream:1.2.3
+# or
+docker pull ghcr.io/<owner>/glyphstream:latest
+```
+
+### Cutting a release
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The `docker.yml` workflow takes it from there: builds the multi-arch
+image, tags it `0.1.0` / `0.1` / `0` / `latest` on GHCR, and creates
+a GitHub Release with auto-generated notes (PRs since the previous
+tag, categorized via `.github/release.yml`).
+
 ## License
 
 MIT

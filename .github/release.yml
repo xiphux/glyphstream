@@ -1,0 +1,30 @@
+# Categorization for GitHub's auto-generated release notes.
+#
+# When the docker.yml workflow creates a release on a vX.Y.Z tag,
+# GitHub builds the changelog from PRs merged since the previous tag
+# and groups them under these headings based on PR labels.
+#
+# Anything not matching a specific category falls into "Other Changes".
+# The catch-all '*' must be last.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+      - dependencies # dependabot bumps are noise in user-facing notes
+  categories:
+    - title: 🚨 Breaking changes
+      labels: [breaking-change, breaking]
+    - title: ✨ New features
+      labels: [feature, enhancement]
+    - title: 🐛 Bug fixes
+      labels: [bug, fix]
+    - title: 📝 Documentation
+      labels: [docs, documentation]
+    - title: ♻️ Refactoring + internals
+      labels: [refactor, chore, internal]
+    - title: 🧪 Tests
+      labels: [test, tests]
+    - title: 🔧 CI / build
+      labels: [ci, build]
+    - title: Other changes
+      labels: ['*']
