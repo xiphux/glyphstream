@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { ArrowUp, Square } from 'lucide-svelte';
+	import { firstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import type {
@@ -12,6 +14,13 @@
 	} from '$lib/types/api';
 
 	let { data } = $props();
+
+	// Friendly bubble labels: the user's first name + the model's friendly
+	// name (server resolves custom-model name when applicable).
+	const userLabel = $derived(
+		firstName(data.user.displayName, data.user.githubUsername)
+	);
+	const assistantLabel = $derived(data.assistantLabel);
 
 	// Read data eagerly so SSR includes messages on first paint; $effect
 	// below re-syncs on subsequent navigation invalidation. The warning
@@ -293,10 +302,10 @@
 </script>
 
 <div class="flex h-full flex-col">
-	<header class="flex items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+	<header class="flex items-center justify-between px-4 py-3">
 		<div class="min-w-0 flex-1">
 			<h1 class="truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
-			<p class="truncate text-xs text-neutral-500">{modelId}</p>
+			<p class="truncate text-xs text-neutral-500">{assistantLabel}</p>
 		</div>
 	</header>
 
@@ -310,7 +319,9 @@
 							? 'bg-neutral-100 dark:bg-neutral-800'
 							: 'bg-amber-50 dark:bg-amber-950/40'}"
 				>
-					<div class="text-[11px] uppercase tracking-wide opacity-60">{m.role}</div>
+					<div class="text-[11px] font-medium tracking-wide opacity-60">
+						{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
+					</div>
 					{#if m.reasoningText}
 						<details class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
 							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
@@ -359,7 +370,7 @@
 
 			{#if inFlightOpen}
 				<article class="rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
-					<div class="text-[11px] uppercase tracking-wide opacity-60">assistant</div>
+					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
 					{#if inFlightReasoning}
 						<details open class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
 							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
@@ -396,7 +407,10 @@
 		</div>
 	</div>
 
-	<footer class="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+	<!-- Floating composer. Sits above the scrollable message area without
+		 a separator border — reads as part of the chat surface. The form
+		 itself is the rounded box; no surrounding footer chrome. -->
+	<div class="px-4 pb-4">
 		<form onsubmit={send} class="mx-auto max-w-3xl">
 			{#if errorMsg}
 				<div
@@ -405,12 +419,12 @@
 					{errorMsg}
 				</div>
 			{/if}
-			<div class="flex items-end gap-2">
+			<div class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500">
 				<textarea
 					bind:this={composerEl}
 					bind:value={composerText}
 					rows="1"
-					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Send a message…'}
+					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…'}
 					disabled={busy}
 					onkeydown={(e) => {
 						if (e.key === 'Enter' && !e.shiftKey) {
@@ -418,30 +432,32 @@
 							void send(e);
 						}
 					}}
-					class="min-h-[42px] flex-1 resize-none overflow-hidden rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 				></textarea>
-				{#if busy && activeAbort}
-					<button
-						type="button"
-						onclick={stop}
-						aria-label="Stop generation"
-						class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-					>
-						<svg viewBox="0 0 16 16" class="h-3 w-3" aria-hidden="true" fill="currentColor">
-							<rect x="3" y="3" width="10" height="10" rx="1.5" />
-						</svg>
-						Stop
-					</button>
-				{:else}
-					<button
-						type="submit"
-						disabled={!composerText.trim() || busy}
-						class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-					>
-						Send
-					</button>
-				{/if}
+				<div class="flex items-center justify-end gap-2 px-1 pt-1">
+					{#if busy && activeAbort}
+						<button
+							type="button"
+							onclick={stop}
+							aria-label="Stop generation"
+							title="Stop"
+							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+						>
+							<Square size={14} strokeWidth={2.5} fill="currentColor" />
+						</button>
+					{:else}
+						<button
+							type="submit"
+							disabled={!composerText.trim() || busy}
+							aria-label="Send message"
+							title="Send"
+							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+						>
+							<ArrowUp size={16} strokeWidth={2.5} />
+						</button>
+					{/if}
+				</div>
 			</div>
 		</form>
-	</footer>
+	</div>
 </div>

@@ -146,7 +146,7 @@
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
-	<header class="flex shrink-0 items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+	<header class="flex shrink-0 items-center justify-between px-4 py-3">
 		<div>
 			<h1 class="text-lg font-semibold tracking-tight">Custom models</h1>
 			<p class="text-xs text-neutral-500">

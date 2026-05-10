@@ -14,6 +14,12 @@
 		value?: string;
 		onChange?: (id: string) => void;
 		disabled?: boolean;
+		/**
+		 * "Inline" variant — renders as a borderless, compact dropdown that
+		 * blends into a parent composer box (used by the new-chat page and
+		 * the chat-page composer). Default is the bordered form-input variant.
+		 */
+		inline?: boolean;
 	}
 	let {
 		models,
@@ -21,7 +27,8 @@
 		filterKinds,
 		value = $bindable(''),
 		onChange,
-		disabled = false
+		disabled = false,
+		inline = false
 	}: Props = $props();
 
 	// Visual marker per kind. Chat is the default; we don't decorate it so
@@ -106,7 +113,9 @@
 	bind:value
 	{disabled}
 	onchange={() => onChange?.(value)}
-	class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+	class={inline
+		? 'cursor-pointer truncate rounded-md border-0 bg-transparent px-2 py-1 text-xs text-neutral-600 transition hover:bg-neutral-100 focus:outline-none disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800'
+		: 'w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm transition focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900'}
 >
 	<option value="" disabled>Choose a model…</option>
 	{#if visibleCustom.length > 0}

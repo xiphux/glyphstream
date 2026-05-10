@@ -1,20 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <!--
-    GlyphStream placeholder icon. A monogram "GS" rendered in white on a
-    dark slate square with rounded corners. Square base with a generous
-    safe area so iOS / Android maskable variants both crop without
-    clipping the glyphs. Replace with branded artwork before shipping.
+    GlyphStream mark. A custom abstract glyph: a vertical spine with a
+    semicircular bow opening to the right, then a smaller stream-line
+    trailing below. Reads as a character from an unknown writing system —
+    the upper bow is the "letter" half (Glyph), the trailing line is the
+    "stream" half. Bold strokes with rounded caps so it scales cleanly
+    from favicon to home-screen icon to splash screen.
   -->
   <rect width="512" height="512" rx="96" fill="#0f172a" />
-  <text
-    x="256"
-    y="256"
-    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
-    font-size="220"
-    font-weight="800"
-    fill="#f8fafc"
-    text-anchor="middle"
-    dominant-baseline="central"
-    letter-spacing="-12"
-  >GS</text>
+  <g
+    stroke="#f8fafc"
+    stroke-width="44"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  >
+    <!-- vertical spine -->
+    <line x1="170" y1="120" x2="170" y2="392" />
+    <!-- upper bow (the "glyph" head) -->
+    <path d="M 170 160 C 320 160, 360 296, 220 296" />
+    <!-- trailing stream line, offset right -->
+    <line x1="240" y1="364" x2="356" y2="364" />
+  </g>
 </svg>

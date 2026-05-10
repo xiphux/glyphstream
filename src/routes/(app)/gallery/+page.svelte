@@ -87,7 +87,7 @@
 <svelte:window onkeydown={onLightboxKey} />
 
 <div class="flex h-full flex-col overflow-hidden">
-	<header class="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
 		<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
 		<div class="flex gap-1 text-xs">
 			{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}

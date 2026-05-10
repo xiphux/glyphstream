@@ -1,9 +1,22 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { ArrowUp } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import type { CreateConversationRequest } from '$lib/types/api';
+	import { firstName, timeOfDayGreeting } from '$lib/greeting';
 
 	let { data } = $props();
+
+	// Greeting is computed client-side so it reflects the user's local
+	// wall clock (SSR would use the server's timezone). Recomputed in an
+	// $effect on mount; falls back to a neutral greeting before hydration.
+	let greeting = $state('Hello');
+	$effect(() => {
+		greeting = timeOfDayGreeting(new Date());
+	});
+	const userFirstName = $derived(
+		firstName(data.user.displayName, data.user.githubUsername)
+	);
 
 	// Selection value mirrors what ModelPicker emits:
 	//   - "endpointId::upstreamId"  → base model
@@ -36,18 +49,25 @@
 			? 'Describe an image to generate…'
 			: pickedKind === 'video'
 				? 'Describe a video to generate…'
-				: 'Ask anything…'
+				: 'How can I help you today?'
 	);
-	const submitLabel = $derived(
-		pickedKind === 'image'
-			? 'Generate image'
-			: pickedKind === 'video'
-				? 'Generate video'
-				: 'Start chat'
-	);
+
 	let text = $state('');
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
+
+	// Auto-resize composer (same pattern as the chat-page composer).
+	let composerEl = $state<HTMLTextAreaElement | null>(null);
+	const COMPOSER_MAX_HEIGHT_PX = 240;
+	$effect(() => {
+		const el = composerEl;
+		void text;
+		if (!el) return;
+		el.style.height = 'auto';
+		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
+		el.style.height = `${next}px`;
+		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+	});
 
 	async function startChat(e: Event) {
 		e.preventDefault();
@@ -103,66 +123,70 @@
 	}
 </script>
 
-<div class="flex h-full items-center justify-center px-6 py-12">
-	<form
-		onsubmit={startChat}
-		class="w-full max-w-xl space-y-4 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
-	>
-		<div>
-			<h1 class="text-xl font-semibold tracking-tight">Start a new chat</h1>
-			<p class="mt-1 text-sm text-neutral-500">
-				Pick a model and type the first message. Your conversation history will appear in the sidebar.
-			</p>
-		</div>
+<div class="flex h-full flex-col items-center justify-center px-4 py-8">
+	<div class="w-full max-w-2xl">
+		<h1 class="mb-8 text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+			<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
+		</h1>
 
-		<div>
-			<label class="mb-1 block text-xs font-medium text-neutral-700 dark:text-neutral-300" for="model">
-				Model
-			</label>
-			<ModelPicker
-				models={data.models}
-				customModels={data.customModels}
-				bind:value={modelId}
-				filterKinds={['chat', 'image', 'video']}
-				disabled={busy}
-			/>
-			{#if data.models.length === 0}
-				<p class="mt-1 text-xs text-amber-700 dark:text-amber-300">
-					No models available — check <code>config.toml</code> and your endpoints.
-				</p>
-			{/if}
-		</div>
-
-		<div>
-			<label class="mb-1 block text-xs font-medium text-neutral-700 dark:text-neutral-300" for="text">
-				First message
-			</label>
+		<form
+			onsubmit={startChat}
+			class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500"
+		>
 			<textarea
-				id="text"
+				bind:this={composerEl}
 				bind:value={text}
-				rows="4"
+				rows="2"
 				disabled={busy}
 				placeholder={composerPlaceholder}
-				class="w-full resize-none rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+				onkeydown={(e) => {
+					if (e.key === 'Enter' && !e.shiftKey) {
+						e.preventDefault();
+						void startChat(e);
+					}
+				}}
+				class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 			></textarea>
-		</div>
+
+			<div class="flex items-center justify-between gap-2 px-1 pt-1">
+				<!--
+					Inline model selector: rendered as a borderless dropdown so
+					it reads as a soft control inside the box rather than a
+					separate field. Native <select> keeps keyboard nav + mobile
+					native picker for free.
+				-->
+				<ModelPicker
+					models={data.models}
+					customModels={data.customModels}
+					bind:value={modelId}
+					filterKinds={['chat', 'image', 'video']}
+					disabled={busy}
+					inline
+				/>
+				<button
+					type="submit"
+					disabled={!modelId || !text.trim() || busy}
+					aria-label="Send message"
+					title="Send"
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+				>
+					<ArrowUp size={16} strokeWidth={2.5} />
+				</button>
+			</div>
+		</form>
+
+		{#if data.models.length === 0}
+			<p class="mt-3 text-center text-xs text-amber-700 dark:text-amber-300">
+				No models available — check <code>config.toml</code> and your endpoints.
+			</p>
+		{/if}
 
 		{#if errorMsg}
 			<div
-				class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+				class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
 			>
 				{errorMsg}
 			</div>
 		{/if}
-
-		<div class="flex justify-end">
-			<button
-				type="submit"
-				disabled={!modelId || !text.trim() || busy}
-				class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-			>
-				{busy ? 'Sending…' : submitLabel}
-			</button>
-		</div>
-	</form>
+	</div>
 </div>
