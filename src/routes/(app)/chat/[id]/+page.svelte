@@ -41,6 +41,23 @@
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
 
+	// Auto-resize textarea: grow with content up to a sensible max so
+	// long-form composition gets the room it needs without pushing the
+	// message list off-screen on small phones.
+	let composerEl = $state<HTMLTextAreaElement | null>(null);
+	const COMPOSER_MAX_HEIGHT_PX = 240;
+	$effect(() => {
+		const el = composerEl;
+		void composerText; // re-run on every keystroke
+		if (!el) return;
+		// Reset to "auto" first so scrollHeight reflects the content's
+		// natural height instead of a previously-set larger value.
+		el.style.height = 'auto';
+		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
+		el.style.height = `${next}px`;
+		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+	});
+
 	// AbortController for the in-flight fetch. Stop button click triggers
 	// .abort() AND fires a POST to /api/conversations/:id/cancel so the
 	// server tears down upstream too (otherwise the bridge keeps generating).
@@ -390,8 +407,9 @@
 			{/if}
 			<div class="flex items-end gap-2">
 				<textarea
+					bind:this={composerEl}
 					bind:value={composerText}
-					rows="2"
+					rows="1"
 					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Send a message…'}
 					disabled={busy}
 					onkeydown={(e) => {
@@ -400,7 +418,7 @@
 							void send(e);
 						}
 					}}
-					class="flex-1 resize-none rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+					class="min-h-[42px] flex-1 resize-none overflow-hidden rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
 				></textarea>
 				{#if busy && activeAbort}
 					<button

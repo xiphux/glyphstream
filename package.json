@@ -34,12 +34,14 @@
 		"@types/better-sqlite3": "latest",
 		"@types/markdown-it": "latest",
 		"@types/node": "latest",
+		"@vite-pwa/sveltekit": "^1.1.0",
 		"drizzle-kit": "latest",
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",
 		"tailwindcss": "latest",
 		"typescript": "^6.0.2",
-		"vite": "^8.0.7"
+		"vite": "^8.0.7",
+		"workbox-window": "^7.4.1"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [

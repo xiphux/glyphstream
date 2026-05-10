@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#0f172a" />
+  <text
+    x="16"
+    y="16"
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+    font-size="14"
+    font-weight="800"
+    fill="#f8fafc"
+    text-anchor="middle"
+    dominant-baseline="central"
+    letter-spacing="-1"
+  >GS</text>
+</svg>

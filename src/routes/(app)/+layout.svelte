@@ -6,8 +6,22 @@
 
 	const galleryActive = $derived(page.url.pathname.startsWith('/gallery'));
 	const settingsActive = $derived(page.url.pathname.startsWith('/settings'));
+	const currentPath = $derived(page.url.pathname);
 
 	let deletingId = $state<string | null>(null);
+
+	// Mobile drawer state. The aside is `hidden ... sm:flex` on wide
+	// viewports as before; on narrow viewports it slides in from the left
+	// when this flag is true. Auto-closes on navigation so picking a
+	// conversation doesn't leave the drawer covering the chat.
+	let drawerOpen = $state(false);
+
+	$effect(() => {
+		// Re-runs whenever the URL changes; collapse the mobile drawer.
+		// (Reading currentPath here is what makes the effect track it.)
+		void currentPath;
+		drawerOpen = false;
+	});
 
 	async function deleteConversation(id: string, ev: Event) {
 		// The delete button lives inside the conversation's link, so without
@@ -39,10 +53,25 @@
 	}
 </script>
 
-<div class="flex h-screen overflow-hidden">
-	<!-- Sidebar -->
+<div class="flex h-[100dvh] overflow-hidden">
+	<!-- Mobile drawer backdrop. Pointer-events stay off when closed so it
+		 doesn't intercept taps; the transition lets the fade animate. -->
+	<button
+		type="button"
+		aria-label="Close menu"
+		onclick={() => (drawerOpen = false)}
+		class="fixed inset-0 z-30 bg-black/40 transition-opacity sm:hidden {drawerOpen
+			? 'pointer-events-auto opacity-100'
+			: 'pointer-events-none opacity-0'}"
+	></button>
+
+	<!-- Sidebar.
+		 Mobile: fixed slide-in drawer toggled by drawerOpen.
+		 Desktop (sm+): in-flow fixed-width column. -->
 	<aside
-		class="hidden w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 sm:flex dark:border-neutral-800 dark:bg-neutral-900"
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 transition-transform duration-200 sm:static sm:translate-x-0 dark:border-neutral-800 dark:bg-neutral-900 {drawerOpen
+			? 'translate-x-0'
+			: '-translate-x-full sm:translate-x-0'}"
 	>
 		<div class="flex items-center justify-between border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
 			<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
@@ -96,7 +125,7 @@
 								disabled={deletingId === c.id}
 								title="Delete conversation"
 								aria-label="Delete conversation {c.title ?? 'Untitled'}"
-								class="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-xs text-neutral-500 opacity-0 transition group-hover:opacity-100 hover:bg-neutral-300 hover:text-red-700 disabled:opacity-50 dark:hover:bg-neutral-700 dark:hover:text-red-400"
+								class="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-xs text-neutral-500 opacity-100 transition hover:bg-neutral-300 hover:text-red-700 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-red-400"
 							>
 								{deletingId === c.id ? '…' : '×'}
 							</button>
@@ -116,8 +145,26 @@
 		</div>
 	</aside>
 
-	<!-- Main pane -->
-	<main class="flex flex-1 flex-col overflow-hidden">
-		{@render children()}
+	<!-- Main pane. Mobile gets a top bar with the hamburger; desktop hides
+		 it because the sidebar is always visible there. The render wrapper
+		 takes the remaining height (flex-1 min-h-0) so child pages whose
+		 outer container is `h-full` don't overflow past the top bar. -->
+	<main class="flex min-w-0 flex-1 flex-col overflow-hidden">
+		<div class="flex shrink-0 items-center gap-2 border-b border-neutral-200 px-3 py-2 sm:hidden dark:border-neutral-800">
+			<button
+				type="button"
+				onclick={() => (drawerOpen = true)}
+				aria-label="Open menu"
+				class="rounded-md p-1.5 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+			>
+				<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+					<path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
+				</svg>
+			</button>
+			<span class="text-sm font-semibold tracking-tight">GlyphStream</span>
+		</div>
+		<div class="min-h-0 flex-1">
+			{@render children()}
+		</div>
 	</main>
 </div>
