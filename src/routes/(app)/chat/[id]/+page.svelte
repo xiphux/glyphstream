@@ -144,6 +144,40 @@
 				: 'Thinking'
 	);
 
+	/**
+	 * Build a placeholder user message rendered optimistically so the
+	 * bubble appears the moment the user hits Send, before the upstream
+	 * call (which can take seconds for chat, minutes for image/video)
+	 * has had a chance to come back. The canonical persisted message
+	 * replaces it on the SSE 'start' event (chat/video) or in the JSON
+	 * response handler (image).
+	 *
+	 * The temp id is prefixed `optimistic-` so any code that compares
+	 * by id (replacement, removal, error recovery) can recognize it.
+	 */
+	function buildOptimisticUserMessage(
+		text: string,
+		attachedMediaIds: string[]
+	): ChatMessage {
+		const parts: MessagePart[] = [];
+		if (text) parts.push({ type: 'text', text });
+		for (const mediaId of attachedMediaIds) {
+			parts.push({ type: 'image', mediaId });
+		}
+		return {
+			id: `optimistic-${crypto.randomUUID()}`,
+			role: 'user',
+			parts,
+			contentHtml: null,
+			reasoningText: null,
+			finishReason: null,
+			modelUsed: null,
+			tokensIn: null,
+			tokensOut: null,
+			createdAt: Date.now()
+		};
+	}
+
 	async function sendStreaming(text: string, attachedMediaIds: string[] = []) {
 		busy = true;
 		errorMsg = null;
@@ -151,13 +185,22 @@
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
+
+		// Optimistic user message FIRST, then the in-flight assistant
+		// bubble. Without this the assistant bubble flashed in before
+		// the user's own message bubble had any chance to appear —
+		// awkward "AI talking to itself" reading order.
+		const optimistic = buildOptimisticUserMessage(text, attachedMediaIds);
+		messages = [...messages, optimistic];
+		await tick();
+		scrollToBottom();
 		inFlightOpen = true;
 
 		// Image-kind conversations use the sync JSON path — there's nothing
 		// to stream (one-shot generate). Chat and video both stream via SSE
 		// (chat for tokens, video for poll-based progress events).
 		if (modelKind === 'image') {
-			await sendImageGeneration(text, attachedMediaIds);
+			await sendImageGeneration(text, attachedMediaIds, optimistic.id);
 			return;
 		}
 
@@ -188,11 +231,15 @@
 				}
 				switch (event.type) {
 					case 'start':
-						messages = [...messages, event.userMessage];
+						// Replace the optimistic placeholder we showed at send
+						// time with the canonical persisted user message
+						// (server-assigned id + timestamp). Falls through to
+						// append when no optimistic was tracked, e.g. older
+						// callers or path edge cases.
+						messages = messages.some((m) => m.id === optimistic.id)
+							? messages.map((m) => (m.id === optimistic.id ? event.userMessage : m))
+							: [...messages, event.userMessage];
 						await tick();
-						// 'start' = the user just sent something — always pin to
-						// the bottom so they see their own message land,
-						// regardless of where they were scrolled before.
 						scrollToBottom();
 						break;
 					case 'text':
@@ -243,7 +290,11 @@
 		}
 	}
 
-	async function sendImageGeneration(text: string, attachedMediaIds: string[] = []) {
+	async function sendImageGeneration(
+		text: string,
+		attachedMediaIds: string[] = [],
+		optimisticId: string | null = null
+	) {
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
@@ -258,7 +309,11 @@
 				throw new Error(j.message ?? `HTTP ${res.status}`);
 			}
 			const body = (await res.json()) as SendMessageResponse;
-			messages = [...messages, body.userMessage, body.assistantMessage];
+			// Drop the optimistic placeholder, then append both canonical
+			// rows in their persisted order.
+			messages = (
+				optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages
+			).concat([body.userMessage, body.assistantMessage]);
 			inFlightOpen = false;
 			void invalidateAll();
 		} catch (e) {
