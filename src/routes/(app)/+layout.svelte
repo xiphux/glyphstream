@@ -2,6 +2,8 @@
 	import { page } from '$app/state';
 
 	let { data, children } = $props();
+
+	const galleryActive = $derived(page.url.pathname.startsWith('/gallery'));
 </script>
 
 <div class="flex h-screen overflow-hidden">
@@ -17,6 +19,17 @@
 				title="Start a new chat"
 			>
 				+ New
+			</a>
+		</div>
+
+		<div class="border-b border-neutral-200 px-2 py-2 dark:border-neutral-800">
+			<a
+				href="/gallery"
+				class="block rounded-md px-3 py-2 text-sm transition {galleryActive
+					? 'bg-neutral-200 dark:bg-neutral-800'
+					: 'hover:bg-neutral-100 dark:hover:bg-neutral-800'}"
+			>
+				Gallery
 			</a>
 		</div>
 

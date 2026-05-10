@@ -1,5 +1,11 @@
 import type { Handle } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
+import { startMediaPurger } from '$lib/server/media/purger';
+
+// Start the media purge sweeper at module load — runs once per Node process.
+// Using top-level rather than the first-request handler so the sweep clock
+// starts even if no user has hit the server yet (e.g. on a fresh redeploy).
+startMediaPurger();
 
 /**
  * Populate event.locals.user on every request from the session cookie.

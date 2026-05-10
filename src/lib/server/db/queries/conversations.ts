@@ -4,6 +4,7 @@ import type { ConversationDetail, ConversationSummary, ModelKind } from '$lib/ty
 import { getDb } from '../client';
 import { conversations } from '../schema';
 import { walkActiveBranch } from './messages';
+import { decrementMediaForMessages, listMessageIdsForConversation } from './media';
 
 interface CreateInput {
 	userId: string;
@@ -133,11 +134,28 @@ export function setConversationTitle(id: string, title: string): void {
 		.run();
 }
 
+/**
+ * Delete a conversation and decrement ref counts for any media referenced
+ * by its messages. The schema's FK cascade (conversations → messages →
+ * message_media) drops the join rows but bypasses Drizzle, so without an
+ * explicit decrement step `media.ref_count` would stay inflated forever
+ * and the purger would never collect the underlying files.
+ */
 export function deleteConversation(id: string, userId: string): boolean {
 	const db = getDb();
-	const r = db
-		.delete(conversations)
-		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
-		.run();
-	return r.changes > 0;
+	return db.transaction((tx) => {
+		// Ownership check first so we don't decrement on someone else's media.
+		const owned = tx
+			.select({ id: conversations.id })
+			.from(conversations)
+			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+			.get();
+		if (!owned) return false;
+
+		const messageIds = listMessageIdsForConversation(id);
+		decrementMediaForMessages(messageIds);
+
+		tx.delete(conversations).where(eq(conversations.id, id)).run();
+		return true;
+	});
 }
