@@ -26,8 +26,15 @@ export const handle: Handle = async ({ event, resolve }) => {
  * (and production logs) show the actual stack instead of just a 500
  * status with a generic message body. Default SvelteKit behavior
  * swallows errors silently which makes CI debugging painful.
+ *
+ * Gate on status >= 500 — handleError fires for every error including
+ * routine 404s (stale Open WebUI socket.io reconnects, bot scanners,
+ * old service workers hitting moved paths). Those are client problems,
+ * not server problems; logging them is noise that drowns out the
+ * actual 5xx events worth attention.
  */
 export const handleError: HandleServerError = ({ error, event, status }) => {
+	if (status < 500) return undefined;
 	const stack = error instanceof Error ? error.stack ?? error.message : String(error);
 	console.error(
 		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`
