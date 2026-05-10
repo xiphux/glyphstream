@@ -8,10 +8,12 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 		SvelteKitPWA({
-			// Dev mode is opt-in to keep `pnpm dev` snappy and avoid SW
-			// surprises while iterating. Test the SW with `pnpm preview` or
-			// production builds.
-			devOptions: { enabled: false },
+			// Enable in dev so /manifest.webmanifest resolves and the icon
+			// renders the same as in prod. The actual SW registration is
+			// still gated by `import.meta.env.PROD` in src/routes/+layout.svelte,
+			// so the SW only runs in production builds — only the manifest
+			// + assets-served-from-the-plugin path is exercised in dev.
+			devOptions: { enabled: true },
 			// autoUpdate: SW silently checks for new builds and swaps in on
 			// next visit. The plan's "PWA cache poisoning on deploy" gotcha
 			// is solved by this — users always end up on the latest shell.

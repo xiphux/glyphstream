@@ -125,9 +125,30 @@
 
 <div class="flex h-full flex-col items-center justify-center px-4 py-8">
 	<div class="w-full max-w-2xl">
-		<h1 class="mb-8 text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-			<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
-		</h1>
+		<!--
+			Greeting block: glyph mark above, then "Good evening, Chris" line.
+			Mark is inlined (not <img>) so its strokes use currentColor and
+			adapt to dark mode without serving a second asset.
+		-->
+		<div class="mb-6 flex flex-col items-center gap-3">
+			<svg
+				viewBox="0 0 32 32"
+				class="h-12 w-12 text-neutral-700 sm:h-14 sm:w-14 dark:text-neutral-300"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
+				<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
+				<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
+			</svg>
+			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+				<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
+			</h1>
+		</div>
 
 		<form
 			onsubmit={startChat}
