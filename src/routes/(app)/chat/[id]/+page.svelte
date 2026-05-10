@@ -9,7 +9,9 @@
 		ChevronLeft,
 		ChevronRight,
 		Copy,
+		Pencil,
 		Plus,
+		RotateCcw,
 		Square,
 		X
 	} from 'lucide-svelte';
@@ -300,7 +302,19 @@
 		};
 	}
 
-	async function sendStreaming(text: string, attachedMediaIds: string[] = []) {
+	interface SendOptions {
+		/** Edit flow — make the new user message a sibling of this parent. */
+		parentMessageId?: string;
+		/** Retry flow — skip the new user message entirely; regenerate
+		 * a sibling assistant of this id. */
+		retryFromMessageId?: string;
+	}
+
+	async function sendStreaming(
+		text: string,
+		attachedMediaIds: string[] = [],
+		options: SendOptions = {}
+	) {
 		busy = true;
 		errorMsg = null;
 		inFlightText = '';
@@ -308,34 +322,48 @@
 		inFlightProgress = null;
 		inFlightStatus = null;
 
-		// Optimistic user message FIRST, then the in-flight assistant
-		// bubble. Without this the assistant bubble flashed in before
-		// the user's own message bubble had any chance to appear —
-		// awkward "AI talking to itself" reading order.
-		const optimistic = buildOptimisticUserMessage(text, attachedMediaIds);
-		messages = [...messages, optimistic];
-		await tick();
-		scrollToBottom();
+		// For send / edit: render an optimistic user bubble. For retry:
+		// the user message already exists, so skip — just open the
+		// in-flight assistant bubble.
+		const isRetry = !!options.retryFromMessageId;
+		const optimisticId: string | null = isRetry
+			? null
+			: (() => {
+					const opt = buildOptimisticUserMessage(text, attachedMediaIds);
+					messages = [...messages, opt];
+					return opt.id;
+				})();
+		if (optimisticId) {
+			await tick();
+			scrollToBottom();
+		}
 		inFlightOpen = true;
 
 		// Image-kind conversations use the sync JSON path — there's nothing
 		// to stream (one-shot generate). Chat and video both stream via SSE
 		// (chat for tokens, video for poll-based progress events).
 		if (modelKind === 'image') {
-			await sendImageGeneration(text, attachedMediaIds, optimistic.id);
+			await sendImageGeneration(text, attachedMediaIds, optimisticId, options);
 			return;
 		}
 
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
+			const requestBody = isRetry
+				? { regenerateFromMessageId: options.retryFromMessageId }
+				: {
+						text,
+						attachedMediaIds,
+						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
+					};
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
 					Accept: 'text/event-stream'
 				},
-				body: JSON.stringify({ text, attachedMediaIds }),
+				body: JSON.stringify(requestBody),
 				signal: abort.signal
 			});
 			if (!res.ok) {
@@ -353,16 +381,17 @@
 				}
 				switch (event.type) {
 					case 'start':
-						// Replace the optimistic placeholder we showed at send
-						// time with the canonical persisted user message
-						// (server-assigned id + timestamp). Falls through to
-						// append when no optimistic was tracked, e.g. older
-						// callers or path edge cases.
-						messages = messages.some((m) => m.id === optimistic.id)
-							? messages.map((m) => (m.id === optimistic.id ? event.userMessage : m))
-							: [...messages, event.userMessage];
-						await tick();
-						scrollToBottom();
+						// Send / edit: replace the optimistic placeholder with
+						// the canonical persisted user message. Retry: the
+						// canonical user message already exists in the array
+						// (it predates this turn) so we just no-op here.
+						if (optimisticId) {
+							messages = messages.some((m) => m.id === optimisticId)
+								? messages.map((m) => (m.id === optimisticId ? event.userMessage : m))
+								: [...messages, event.userMessage];
+							await tick();
+							scrollToBottom();
+						}
 						break;
 					case 'text':
 						inFlightText += event.chunk;
@@ -415,15 +444,24 @@
 	async function sendImageGeneration(
 		text: string,
 		attachedMediaIds: string[] = [],
-		optimisticId: string | null = null
+		optimisticId: string | null = null,
+		options: SendOptions = {}
 	) {
 		const abort = new AbortController();
 		activeAbort = abort;
+		const isRetry = !!options.retryFromMessageId;
 		try {
+			const requestBody = isRetry
+				? { regenerateFromMessageId: options.retryFromMessageId }
+				: {
+						text,
+						attachedMediaIds,
+						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
+					};
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text, attachedMediaIds }),
+				body: JSON.stringify(requestBody),
 				signal: abort.signal
 			});
 			if (!res.ok) {
@@ -431,11 +469,16 @@
 				throw new Error(j.message ?? `HTTP ${res.status}`);
 			}
 			const body = (await res.json()) as SendMessageResponse;
-			// Drop the optimistic placeholder, then append both canonical
-			// rows in their persisted order.
-			messages = (
-				optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages
-			).concat([body.userMessage, body.assistantMessage]);
+			// Send / edit: drop optimistic, then append both canonical rows.
+			// Retry: only append the new assistant — the user message
+			// already exists in the array.
+			if (isRetry) {
+				messages = [...messages, body.assistantMessage];
+			} else {
+				messages = (
+					optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages
+				).concat([body.userMessage, body.assistantMessage]);
+			}
 			inFlightOpen = false;
 			void invalidateAll();
 		} catch (e) {
@@ -478,9 +521,18 @@
 		if ((!text && attachments.items.length === 0) || busy) return;
 		if (attachments.isBusy) return;
 		const attachedMediaIds = attachments.readyMediaIds();
+		// Editing: send the new message as a sibling under the same parent
+		// as the original. The original stays in the DB as an alt branch.
+		const editParent = editingParentId;
 		composerText = '';
 		attachments.clear();
-		await sendStreaming(text, attachedMediaIds);
+		editingMessageId = null;
+		editingParentId = null;
+		await sendStreaming(
+			text,
+			attachedMediaIds,
+			editParent ? { parentMessageId: editParent } : {}
+		);
 	}
 
 	/**
@@ -587,6 +639,50 @@
 	 * something copyable. Skip for media-only messages with no text. */
 	function hasCopyableText(m: ChatMessage): boolean {
 		return partsToText(m.parts).trim().length > 0;
+	}
+
+	/**
+	 * Edit-in-place state. When non-null, the composer is editing this
+	 * user message — sending will create a sibling under the same parent
+	 * (preserving the original as a branch) rather than continuing the
+	 * active chain.
+	 */
+	let editingMessageId = $state<string | null>(null);
+	let editingParentId = $state<string | null>(null);
+
+	function beginEdit(m: ChatMessage) {
+		if (busy) return;
+		// Pre-populate the composer with the message's text + image refs.
+		const text = partsToText(m.parts);
+		composerText = text;
+		attachments.clear();
+		for (const p of m.parts) {
+			if (p.type === 'image') {
+				attachments.attachExisting(p.mediaId);
+			}
+		}
+		editingMessageId = m.id;
+		editingParentId = m.parentMessageId ?? null;
+		// Focus the textarea so the user can start typing immediately.
+		void tick().then(() => composerEl?.focus());
+	}
+
+	function cancelEdit() {
+		editingMessageId = null;
+		editingParentId = null;
+		composerText = '';
+		attachments.clear();
+	}
+
+	/**
+	 * Retry an assistant turn — server creates a new assistant sibling
+	 * under the same parent user message and re-dispatches. Reuses the
+	 * normal streaming pipeline; the retry-specific bits (skip optimistic,
+	 * forward `regenerateFromMessageId`) are handled in sendStreaming.
+	 */
+	async function retryAssistant(m: ChatMessage) {
+		if (busy) return;
+		await sendStreaming('', [], { retryFromMessageId: m.id });
 	}
 
 	/** Switch the active branch to a sibling of the given message. Used by
@@ -704,7 +800,9 @@
 						{/if}
 					{/if}
 				</article>
-				{#if hasCopyableText(m) || (m.siblingCount ?? 1) > 1}
+				{#if m.role === 'user' || m.role === 'assistant'}
+					{@const showEdit = m.role === 'user'}
+					{@const showRetry = m.role === 'assistant'}
 					{@const showCopy = hasCopyableText(m)}
 					{@const siblingCount = m.siblingCount ?? 1}
 					{@const hasSiblings = siblingCount > 1}
@@ -755,6 +853,30 @@
 								{:else}
 									<Copy size={14} strokeWidth={2.25} />
 								{/if}
+							</button>
+						{/if}
+						{#if showEdit}
+							<button
+								type="button"
+								onclick={() => beginEdit(m)}
+								disabled={busy}
+								aria-label="Edit message"
+								title="Edit"
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+							>
+								<Pencil size={14} strokeWidth={2.25} />
+							</button>
+						{/if}
+						{#if showRetry}
+							<button
+								type="button"
+								onclick={() => retryAssistant(m)}
+								disabled={busy}
+								aria-label="Retry"
+								title="Retry"
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+							>
+								<RotateCcw size={14} strokeWidth={2.25} />
 							</button>
 						{/if}
 					</div>
@@ -842,6 +964,20 @@
 			ondrop={onDrop}
 			class="relative mx-auto max-w-3xl"
 		>
+			{#if editingMessageId}
+				<div
+					class="mb-2 flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+				>
+					<span>Editing message — sending creates a new branch.</span>
+					<button
+						type="button"
+						onclick={cancelEdit}
+						class="rounded px-2 py-0.5 text-xs underline-offset-2 hover:underline"
+					>
+						Cancel
+					</button>
+				</div>
+			{/if}
 			{#if errorMsg}
 				<div
 					class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
