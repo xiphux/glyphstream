@@ -98,14 +98,125 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 		.all();
 	const byId = new Map(rows.map((r) => [r.id, r]));
 
+	// Group by parent_message_id so we can compute sibling counts /
+	// positions for messages on the active branch in O(N) instead of
+	// O(N) per active-branch entry.
+	const byParent = new Map<string | null, typeof rows>();
+	for (const r of rows) {
+		const key = r.parentMessageId ?? null;
+		const list = byParent.get(key);
+		if (list) list.push(r);
+		else byParent.set(key, [r]);
+	}
+	for (const list of byParent.values()) {
+		list.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+	}
+
 	const ordered: ChatMessage[] = [];
 	let current = byId.get(conv.activeLeaf);
 	while (current) {
-		ordered.push(rowToChatMessage(current));
+		const siblings = byParent.get(current.parentMessageId ?? null) ?? [current];
+		const siblingIds = siblings.map((s) => s.id);
+		const msg = rowToChatMessage(current);
+		msg.siblingCount = siblings.length;
+		msg.siblingPosition = siblingIds.indexOf(current.id) + 1;
+		msg.siblingIds = siblingIds;
+		ordered.push(msg);
 		if (!current.parentMessageId) break;
 		current = byId.get(current.parentMessageId);
 	}
 	return ordered.reverse();
+}
+
+/**
+ * Switch the conversation's active branch to the one containing
+ * `messageId`. Walks down from the message to its deepest descendant
+ * (greatest created_at, breaking ties lexically by id) and points
+ * active_leaf at that descendant. If `messageId` is itself a leaf,
+ * active_leaf is set directly to it.
+ *
+ * Returns the new active_leaf id, or null if `messageId` doesn't belong
+ * to `conversationId`.
+ */
+export function selectBranch(
+	conversationId: string,
+	messageId: string
+): { newActiveLeaf: string } | null {
+	const db = getDb();
+	const target = db
+		.select({ id: messages.id })
+		.from(messages)
+		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+		.get();
+	if (!target) return null;
+
+	const rows = db
+		.select({
+			id: messages.id,
+			parentId: messages.parentMessageId,
+			createdAt: messages.createdAt
+		})
+		.from(messages)
+		.where(eq(messages.conversationId, conversationId))
+		.all();
+
+	const childrenByParent = new Map<string, typeof rows>();
+	for (const r of rows) {
+		if (!r.parentId) continue;
+		const list = childrenByParent.get(r.parentId);
+		if (list) list.push(r);
+		else childrenByParent.set(r.parentId, [r]);
+	}
+
+	// Walk down picking the most recent child at each step.
+	let cursor = messageId;
+	while (true) {
+		const children = childrenByParent.get(cursor);
+		if (!children || children.length === 0) break;
+		children.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
+		cursor = children[0].id;
+	}
+
+	const now = Date.now();
+	db.update(conversations)
+		.set({ activeLeafMessageId: cursor, updatedAt: now })
+		.where(eq(conversations.id, conversationId))
+		.run();
+	return { newActiveLeaf: cursor };
+}
+
+/** Fetch a single message scoped to a conversation. Used by retry — the
+ * server needs to look up the assistant message being retried + its
+ * parent user message. Includes parentMessageId on the returned object
+ * (the walk path doesn't, since order encodes parent→child there). */
+export function getMessage(
+	conversationId: string,
+	messageId: string
+): ChatMessage | null {
+	const db = getDb();
+	const row = db
+		.select()
+		.from(messages)
+		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+		.get();
+	if (!row) return null;
+	const msg = rowToChatMessage(row);
+	msg.parentMessageId = row.parentMessageId;
+	return msg;
+}
+
+/** Direct active_leaf override — used by retry to point at the parent user
+ * message before re-dispatching, so walkActiveBranch builds the upstream
+ * request from the right history. */
+export function setActiveLeafMessageId(
+	conversationId: string,
+	messageId: string
+): void {
+	const db = getDb();
+	db.update(conversations)
+		.set({ activeLeafMessageId: messageId, updatedAt: Date.now() })
+		.where(eq(conversations.id, conversationId))
+		.run();
 }
 
 /**

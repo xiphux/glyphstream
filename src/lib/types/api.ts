@@ -78,6 +78,24 @@ export interface ChatMessage {
 	tokensIn: number | null;
 	tokensOut: number | null;
 	createdAt: number;
+	/** Parent in the message tree. Optional — populated only by lookups
+	 * that need it (retry validation, branch nav). The walkActiveBranch
+	 * path doesn't bother filling it because the array order already
+	 * encodes parent → child. */
+	parentMessageId?: string | null;
+	/**
+	 * Branching metadata — populated only when this message is on the active
+	 * branch returned by walkActiveBranch. Lets the renderer show a
+	 * `‹ N/M ›` indicator + the IDs to navigate to when the user clicks.
+	 *
+	 * When `siblingCount` is 1 (just this message under its parent), nothing
+	 * is rendered. When > 1, the indicator appears with this message's
+	 * 1-indexed `siblingPosition` (chronological by created_at) and
+	 * `siblingIds` ordered the same way (this message included).
+	 */
+	siblingCount?: number;
+	siblingPosition?: number;
+	siblingIds?: string[];
 }
 
 export interface ConversationSummary {
@@ -163,6 +181,20 @@ export interface SendMessageRequest {
 	text: string;
 	/** Media ids previously created by POST /api/uploads, attached to this user message. */
 	attachedMediaIds?: string[];
+	/**
+	 * Override the default "child of active_leaf" parent for the new
+	 * user message. Used by the Edit flow — passing the original user
+	 * message's parent makes the new message a sibling of the original.
+	 * The original + its descendants stay in the DB as an alt branch.
+	 */
+	parentMessageId?: string;
+	/**
+	 * "Retry" — when set, the server generates a new assistant response
+	 * as a sibling of this assistant message (parented to the same user
+	 * message that prompted it). `text` and `attachedMediaIds` are
+	 * ignored when this is set.
+	 */
+	regenerateFromMessageId?: string;
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */

@@ -5,7 +5,12 @@ import {
 	setConversationTitle
 } from '$lib/server/db/queries/conversations';
 import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
+import {
+	appendMessage,
+	getMessage,
+	setActiveLeafMessageId,
+	walkActiveBranch
+} from '$lib/server/db/queries/messages';
 import {
 	chatCompletionSync,
 	formatUpstreamError,
@@ -45,11 +50,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	} catch {
 		throw error(400, 'Request body must be JSON');
 	}
+	const isRetry = typeof body.regenerateFromMessageId === 'string' && body.regenerateFromMessageId;
 	const text = body.text?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];
-	if (!text && attachedMediaIds.length === 0) {
+	if (!isRetry && !text && attachedMediaIds.length === 0) {
 		throw error(400, "'text' or 'attachedMediaIds' is required");
 	}
 
@@ -68,45 +74,99 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		);
 	}
 
-	// Validate every attached media id belongs to this user and isn't
-	// hard-deleted before we persist anything — so a tampered request can't
-	// land an unowned-media reference on a real conversation row.
-	for (const mid of attachedMediaIds) {
-		const m = getMediaForUser(mid, locals.user.id);
-		if (!m || m.hardDeletedAt !== null) {
-			throw error(400, `Attached media "${mid}" not found`);
+	// `userMessage` is the anchor that the assistant message hangs off of.
+	// For a regular send it's a freshly-persisted row; for a retry it's
+	// the existing user message that prompted the assistant turn we're
+	// regenerating. Either way the dispatcher uses it as the parent for
+	// the new assistant message.
+	let userMessage;
+	if (isRetry) {
+		const target = getMessage(params.id, body.regenerateFromMessageId!);
+		if (!target) throw error(404, `Message "${body.regenerateFromMessageId}" not found`);
+		if (target.role !== 'assistant') {
+			throw error(400, 'regenerateFromMessageId must reference an assistant message');
 		}
-	}
+		if (!target.parentMessageId) {
+			throw error(400, 'Cannot retry a root message');
+		}
+		const parentUser = getMessage(params.id, target.parentMessageId);
+		if (!parentUser || parentUser.role !== 'user') {
+			throw error(400, 'Retry target has no user-message parent');
+		}
+		// Re-anchor the active branch at the parent user message — walks
+		// from here build the upstream request from history-up-to-the-
+		// retry-point, and the new assistant becomes a sibling of the one
+		// being retried (both children of `parentUser`).
+		setActiveLeafMessageId(params.id, parentUser.id);
+		userMessage = parentUser;
+	} else {
+		// Validate every attached media id belongs to this user and isn't
+		// hard-deleted before we persist anything — so a tampered request
+		// can't land an unowned-media reference on a real conversation row.
+		for (const mid of attachedMediaIds) {
+			const m = getMediaForUser(mid, locals.user.id);
+			if (!m || m.hardDeletedAt !== null) {
+				throw error(400, `Attached media "${mid}" not found`);
+			}
+		}
 
-	// Persist user message + auto-title BEFORE upstream call so even if the
-	// upstream fails the user's input is preserved on the active branch.
-	// Image parts come after the text part so the UI renders text-then-images
-	// (matches the natural reading order of "<words>; here are the pictures").
-	const userParts: MessagePart[] = [];
-	if (text) userParts.push({ type: 'text', text });
-	for (const mid of attachedMediaIds) {
-		userParts.push({ type: 'image', mediaId: mid });
-	}
-	const userMessage = appendMessage({
-		conversationId: params.id,
-		parentMessageId: meta.activeLeafMessageId,
-		role: 'user',
-		parts: userParts
-	});
-	for (const mid of attachedMediaIds) {
-		linkMessageMedia(userMessage.id, mid);
-	}
-	if (!meta.title && text) {
-		const preview =
-			text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
-		setConversationTitle(params.id, preview);
+		// Default parent is the conversation's active_leaf; an explicit
+		// `parentMessageId` (Edit flow) makes the new message a sibling of
+		// the one being edited rather than a continuation of the current
+		// branch. Validation: parent must belong to this conversation.
+		let parentForMessage: string | null = meta.activeLeafMessageId ?? null;
+		if (typeof body.parentMessageId === 'string' && body.parentMessageId) {
+			const candidate = getMessage(params.id, body.parentMessageId);
+			if (!candidate) {
+				throw error(400, `parentMessageId "${body.parentMessageId}" not found`);
+			}
+			parentForMessage = candidate.id;
+		}
+
+		// Persist user message + auto-title BEFORE upstream call so even if
+		// the upstream fails the user's input is preserved on the active
+		// branch. Image parts come after the text part so the UI renders
+		// text-then-images (the natural reading order of "<words>; here
+		// are the pictures").
+		const userParts: MessagePart[] = [];
+		if (text) userParts.push({ type: 'text', text });
+		for (const mid of attachedMediaIds) {
+			userParts.push({ type: 'image', mediaId: mid });
+		}
+		userMessage = appendMessage({
+			conversationId: params.id,
+			parentMessageId: parentForMessage,
+			role: 'user',
+			parts: userParts
+		});
+		for (const mid of attachedMediaIds) {
+			linkMessageMedia(userMessage.id, mid);
+		}
+		if (!meta.title && text) {
+			const preview =
+				text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
+			setConversationTitle(params.id, preview);
+		}
 	}
 
 	if (DEBUG) {
 		console.debug(
-			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}`
+			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}${isRetry ? ' retry=1' : ''}`
 		);
 	}
+
+	// Derive the prompt + image refs from the canonical user message
+	// rather than the request body — keeps retry working without special-
+	// casing every dispatcher branch (the parent user message has both
+	// the original prompt and the original attached image refs in its
+	// parts).
+	const promptText = userMessage.parts
+		.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+		.map((p) => p.text)
+		.join('');
+	const dispatchMediaIds = userMessage.parts
+		.filter((p): p is { type: 'image'; mediaId: string } => p.type === 'image')
+		.map((p) => p.mediaId);
 
 	// Register this generation so POST /api/conversations/:id/cancel can
 	// reach the upstream call and abort it. We pass the signal down through
@@ -122,9 +182,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// workflows that declare multiple `image_inputs` consume them in
 			// order; OpenAI's spec only honors the first.
 			let upstream;
-			if (attachedMediaIds.length > 0) {
+			if (dispatchMediaIds.length > 0) {
 				const images: ImageEditInputFile[] = [];
-				for (const mid of attachedMediaIds) {
+				for (const mid of dispatchMediaIds) {
 					const loaded = await loadMediaBytes(mid, locals.user.id);
 					images.push({ bytes: loaded.bytes, contentType: loaded.contentType });
 				}
@@ -133,14 +193,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 						.map((i) => `${i.contentType}:${i.bytes.byteLength}B`)
 						.join(', ');
 					console.debug(
-						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${text.slice(0, 60)}"`
+						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${promptText.slice(0, 60)}"`
 					);
 				}
 				upstream = await imageEdit(
 					endpoint,
 					{
 						model: parsed.upstreamId,
-						prompt: text,
+						prompt: promptText,
 						images,
 						n: 1,
 						response_format: 'url'
@@ -150,14 +210,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			} else {
 				if (DEBUG) {
 					console.debug(
-						`[messages] t2i generate → /images/generations: prompt="${text.slice(0, 60)}"`
+						`[messages] t2i generate → /images/generations: prompt="${promptText.slice(0, 60)}"`
 					);
 				}
 				upstream = await imageGeneration(
 					endpoint,
 					{
 						model: parsed.upstreamId,
-						prompt: text,
+						prompt: promptText,
 						n: 1,
 						response_format: 'url'
 					},
@@ -172,7 +232,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				userId: locals.user.id,
 				endpoint,
 				sourceModel: meta.modelId,
-				prompt: text,
+				prompt: promptText,
 				urlOrB64: { url: result.url, b64_json: result.b64_json }
 			});
 			const assistantMessage = appendMessage({
@@ -210,12 +270,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// OpenAI /v1/videos spec is single-reference, and bridge ComfyUI
 		// I2V workflows declare a single `image_inputs` entry.
 		let inputReference: { bytes: Buffer; contentType: string } | undefined;
-		if (attachedMediaIds.length > 0) {
-			const loaded = await loadMediaBytes(attachedMediaIds[0], locals.user.id);
+		if (dispatchMediaIds.length > 0) {
+			const loaded = await loadMediaBytes(dispatchMediaIds[0], locals.user.id);
 			inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
 			if (DEBUG) {
 				console.debug(
-					`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${text.slice(0, 60)}"`
+					`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${promptText.slice(0, 60)}"`
 				);
 			}
 		}
@@ -224,7 +284,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userId: locals.user.id,
 			endpoint,
 			storedModelId: meta.modelId,
-			prompt: text,
+			prompt: promptText,
 			userMessage: userMessage as ChatMessage,
 			inputReference,
 			abortSignal: inFlight.controller.signal

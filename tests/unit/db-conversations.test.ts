@@ -20,6 +20,9 @@ import {
 } from '$lib/server/db/queries/conversations';
 import {
 	appendMessage,
+	getMessage,
+	selectBranch,
+	setActiveLeafMessageId,
 	truncateAtMessage,
 	walkActiveBranch
 } from '$lib/server/db/queries/messages';
@@ -346,5 +349,121 @@ describe('messages: append + active-branch walk', () => {
 			parts: [{ type: 'text', text: 'x' }]
 		});
 		expect(truncateAtMessage(conv.id, otherMsg.id)).toBeNull();
+	});
+});
+
+describe('branching: siblings + selectBranch', () => {
+	function makeConv(userId: string) {
+		return createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+	}
+
+	function append(
+		convId: string,
+		parentId: string | null,
+		role: 'user' | 'assistant',
+		text: string
+	) {
+		return appendMessage({
+			conversationId: convId,
+			parentMessageId: parentId,
+			role,
+			parts: [{ type: 'text', text }]
+		});
+	}
+
+	it('walkActiveBranch fills siblingCount=1 / position=1 on a linear chain', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const m1 = append(conv.id, null, 'user', 'a');
+		const m2 = append(conv.id, m1.id, 'assistant', 'b');
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.siblingCount)).toEqual([1, 1]);
+		expect(branch.map((m) => m.siblingPosition)).toEqual([1, 1]);
+		expect(branch.map((m) => m.siblingIds)).toEqual([[m1.id], [m2.id]]);
+	});
+
+	it('walkActiveBranch reports siblings when an alt user message exists', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const root = append(conv.id, null, 'user', 'first prompt');
+		const aiA = append(conv.id, root.id, 'assistant', 'A');
+		// Edit-shape: a sibling assistant message under the same root.
+		await new Promise((r) => setTimeout(r, 5));
+		const aiB = append(conv.id, root.id, 'assistant', 'B');
+		// active_leaf is currently aiB (last appended). Expect aiB to know
+		// it has 2 siblings, position 2.
+		const branch = walkActiveBranch(conv.id);
+		const tail = branch[branch.length - 1];
+		expect(tail.id).toBe(aiB.id);
+		expect(tail.siblingCount).toBe(2);
+		expect(tail.siblingPosition).toBe(2);
+		expect(tail.siblingIds).toEqual([aiA.id, aiB.id]);
+	});
+
+	it('selectBranch points active_leaf at the deepest descendant of the picked sibling', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const root = append(conv.id, null, 'user', 'q');
+		const aiA = append(conv.id, root.id, 'assistant', 'A');
+		const followA = append(conv.id, aiA.id, 'user', 'follow');
+		await new Promise((r) => setTimeout(r, 5));
+		append(conv.id, root.id, 'assistant', 'B'); // sibling branch — appended last so it's the current active leaf
+
+		// Active leaf is currently aiB. Switch to aiA's branch.
+		const r = selectBranch(conv.id, aiA.id);
+		// Deepest descendant of aiA is followA.
+		expect(r?.newActiveLeaf).toBe(followA.id);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.id)).toEqual([root.id, aiA.id, followA.id]);
+	});
+
+	it('selectBranch on a leaf sibling sets active_leaf to that sibling directly', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const root = append(conv.id, null, 'user', 'q');
+		const aiA = append(conv.id, root.id, 'assistant', 'A');
+		await new Promise((r) => setTimeout(r, 5));
+		const aiB = append(conv.id, root.id, 'assistant', 'B');
+
+		// Currently active_leaf is aiB; switch to aiA (a leaf with no
+		// descendants).
+		expect(selectBranch(conv.id, aiA.id)?.newActiveLeaf).toBe(aiA.id);
+		expect(aiB.id).not.toBe(aiA.id);
+	});
+
+	it('selectBranch refuses cross-conversation message ids', () => {
+		const u = seedUser();
+		const a = makeConv(u.id);
+		const b = makeConv(u.id);
+		const m = append(a.id, null, 'user', 'x');
+		expect(selectBranch(b.id, m.id)).toBeNull();
+	});
+
+	it('getMessage returns parentMessageId so retry can resolve the parent user msg', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const userMsg = append(conv.id, null, 'user', 'q');
+		const aiMsg = append(conv.id, userMsg.id, 'assistant', 'a');
+		const looked = getMessage(conv.id, aiMsg.id);
+		expect(looked?.parentMessageId).toBe(userMsg.id);
+		expect(looked?.role).toBe('assistant');
+	});
+
+	it('setActiveLeafMessageId is the direct override retry uses', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const userMsg = append(conv.id, null, 'user', 'q');
+		const aiMsg = append(conv.id, userMsg.id, 'assistant', 'a');
+		// active_leaf is aiMsg after the second append. Roll back to userMsg.
+		setActiveLeafMessageId(conv.id, userMsg.id);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.id)).toEqual([userMsg.id]);
+		// aiMsg row still exists in DB, just not in active branch.
+		expect(getMessage(conv.id, aiMsg.id)).not.toBeNull();
 	});
 });
