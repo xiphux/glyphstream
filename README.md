@@ -55,7 +55,74 @@ Two files, by concern:
 - **`.env`** — auth secrets, GitHub OAuth credentials, the allowlist, file
   paths. Never committed.
 
-See `config.toml.example` and `.env.example` for the full surface.
+See `config.toml.example` and `.env.example` for the full surface. The
+[GitHub authentication](#github-authentication) section below walks
+through the three OAuth-related env vars in detail.
+
+## GitHub authentication
+
+GlyphStream signs users in via GitHub OAuth with a **numeric-user-id
+allowlist** — no public registration, no password store, only specific
+accounts can log in. Three pieces to set up:
+
+### 1. Create a GitHub OAuth App
+
+Go to [github.com/settings/developers](https://github.com/settings/developers)
+→ **New OAuth App**. Fill in:
+
+| Field | Value |
+|---|---|
+| **Application name** | Anything you like (e.g. `GlyphStream`) |
+| **Homepage URL** | Your public origin — same value you'll set for `EXTERNAL_BASE_URL`. Examples: `http://localhost:5173` for local dev, `https://glyphstream.example.com` for prod |
+| **Authorization callback URL** | The homepage URL + `/api/auth/github/callback`. E.g. `http://localhost:5173/api/auth/github/callback` or `https://glyphstream.example.com/api/auth/github/callback` |
+
+After creation, click **Generate a new client secret** and capture both:
+
+- **Client ID** → `GITHUB_OAUTH_CLIENT_ID` in `.env`
+- **Client secret** → `GITHUB_OAUTH_CLIENT_SECRET` in `.env`
+
+### 2. Find your numeric GitHub user ID
+
+The allowlist matches on **numeric ID, not username**. Usernames can be
+deleted and re-registered by someone else; numeric IDs are immutable
+and tied to the original account. Fetch yours from GitHub's public API:
+
+```bash
+curl -s https://api.github.com/users/<your-login> | grep '"id":'
+#   "id": 1234567,
+```
+
+(Or open `https://api.github.com/users/<your-login>` in a browser if you
+don't have curl/grep handy.)
+
+Add it to `.env` as a comma-separated list (one or more allowed users):
+
+```
+ALLOWED_GITHUB_USER_IDS=1234567
+```
+
+### 3. Wire EXTERNAL_BASE_URL to the same origin
+
+GlyphStream constructs the OAuth callback URL it sends to GitHub as
+`${EXTERNAL_BASE_URL}/api/auth/github/callback`. This has to match the
+**Authorization callback URL** registered in the GitHub app exactly —
+scheme (`http` vs `https`), host, port (when non-default), no trailing
+slash. A mismatch surfaces as GitHub's `"redirect_uri is not associated
+with this application"` error after the user clicks Sign In.
+
+```
+# Local dev
+EXTERNAL_BASE_URL=http://localhost:5173
+
+# Production behind a reverse proxy
+EXTERNAL_BASE_URL=https://glyphstream.example.com
+```
+
+> **Why `EXTERNAL_` instead of `PUBLIC_`?** SvelteKit reserves the
+> `PUBLIC_` prefix for env vars exposed to browser code. A
+> `PUBLIC_BASE_URL` would silently fail to read server-side and
+> default to `localhost`, which then mismatches the OAuth callback in
+> production. The `EXTERNAL_` prefix dodges that footgun.
 
 ## Deployment
 
