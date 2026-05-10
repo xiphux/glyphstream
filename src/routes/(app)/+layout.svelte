@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
 		Images,
 		LogOut,
 		Menu,
+		PanelLeftClose,
+		PanelLeftOpen,
 		Plus,
 		SlidersHorizontal,
 		X
@@ -23,6 +26,19 @@
 	// when this flag is true. Auto-closes on navigation so picking a
 	// conversation doesn't leave the drawer covering the chat.
 	let drawerOpen = $state(false);
+
+	// Desktop collapse state. Only affects the sm+ static sidebar; the
+	// mobile drawer always opens to the full width when toggled.
+	// Persisted in localStorage so the user's preference survives reloads;
+	// during SSR there's no localStorage so we default to expanded and
+	// accept a brief width animation if the user had collapsed it.
+	const COLLAPSE_KEY = 'glyphstream:sidebarCollapsed';
+	let collapsed = $state(
+		browser ? localStorage.getItem(COLLAPSE_KEY) === '1' : false
+	);
+	$effect(() => {
+		if (browser) localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+	});
 
 	$effect(() => {
 		// Re-runs whenever the URL changes; collapse the mobile drawer.
@@ -74,50 +90,84 @@
 	></button>
 
 	<!-- Sidebar.
-		 Mobile: fixed slide-in drawer toggled by drawerOpen.
-		 Desktop (sm+): in-flow fixed-width column.
-		 Lines kept to a minimum: only one divider above the user-info footer.
-		 Sections are visually separated by spacing + small uppercase
-		 subheaders, à la Claude / Linear sidebars. -->
+		 Mobile: fixed slide-in drawer toggled by drawerOpen — always w-64
+		 when shown so chat titles remain readable.
+		 Desktop (sm+): in-flow column whose width toggles via `collapsed`
+		 between w-64 (full) and w-14 (icons only). The conversation list
+		 + recents header hide entirely when collapsed; nav items show
+		 just their lucide icons with `title` tooltips. -->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-neutral-50 transition-transform duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-neutral-50 transition-[transform,width] duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
 			? 'translate-x-0'
-			: '-translate-x-full sm:translate-x-0'}"
+			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'}"
 	>
-		<div class="flex items-center justify-between px-4 pt-4 pb-2">
-			<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
+		<!-- Header row: title (when expanded) + collapse toggle (sm+ only). -->
+		<div class="flex items-center {collapsed ? 'justify-center' : 'justify-between'} px-3 pt-4 pb-2 sm:pl-4">
+			{#if !collapsed}
+				<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
+			{/if}
+			<button
+				type="button"
+				onclick={() => (collapsed = !collapsed)}
+				aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+				class="hidden h-7 w-7 items-center justify-center rounded text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-700 sm:flex dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			>
+				{#if collapsed}
+					<PanelLeftOpen size={16} strokeWidth={2.25} />
+				{:else}
+					<PanelLeftClose size={16} strokeWidth={2.25} />
+				{/if}
+			</button>
 		</div>
 
 		<div class="px-2">
 			<a
 				href="/"
-				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800"
-				title="Start a new chat"
+				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800 {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
+				title={collapsed ? 'New chat' : 'Start a new chat'}
 			>
-				<Plus size={16} strokeWidth={2.25} />
-				New chat
+				<Plus size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}<span>New chat</span>{/if}
 			</a>
 			<a
 				href="/gallery"
+				title={collapsed ? 'Gallery' : ''}
 				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition {galleryActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
+					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
 			>
-				<Images size={16} strokeWidth={2.25} />
-				Gallery
+				<Images size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}<span>Gallery</span>{/if}
 			</a>
 			<a
 				href="/settings/models"
+				title={collapsed ? 'Custom models' : ''}
 				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition {settingsActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
+					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
 			>
-				<SlidersHorizontal size={16} strokeWidth={2.25} />
-				Custom models
+				<SlidersHorizontal size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
 		</div>
 
-		<nav class="mt-5 flex-1 overflow-y-auto px-2">
+		<!--
+			Conversation list. Hidden when collapsed (desktop); on mobile
+			the drawer is always at w-64 so this always shows in the drawer.
+			A spacer div fills the flex when the list is hidden so the
+			footer stays pinned to the bottom.
+		-->
+		{#if collapsed}
+			<div class="hidden flex-1 sm:block"></div>
+		{/if}
+		<nav class="mt-5 flex-1 overflow-y-auto px-2 {collapsed ? 'sm:hidden' : ''}">
 			<h2 class="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
 				Recents
 			</h2>
@@ -153,8 +203,14 @@
 		</nav>
 
 		<div class="mt-2 border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
-			<form method="POST" action="/api/auth/logout" class="flex items-center justify-between gap-2">
-				<span class="truncate">{data.user.displayName ?? data.user.githubUsername}</span>
+			<form
+				method="POST"
+				action="/api/auth/logout"
+				class="flex items-center gap-2 {collapsed ? 'sm:justify-center' : 'justify-between'}"
+			>
+				{#if !collapsed}
+					<span class="truncate">{data.user.displayName ?? data.user.githubUsername}</span>
+				{/if}
 				<button
 					type="submit"
 					title="Sign out"
