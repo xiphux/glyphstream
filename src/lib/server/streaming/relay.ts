@@ -43,12 +43,18 @@ export interface RelayParams {
 	requestBody: ChatCompletionRequest;
 	userMessage: ChatMessage;
 	storedModelId: string;
+	/** Aborts the upstream fetch when the user clicks Stop. */
+	abortSignal?: AbortSignal;
 }
 
 export async function startStreamingRelay(params: RelayParams): Promise<ReadableStream<Uint8Array>> {
 	let upstreamResponse: Response;
 	try {
-		upstreamResponse = await chatCompletionStream(params.endpoint, params.requestBody);
+		upstreamResponse = await chatCompletionStream(
+			params.endpoint,
+			params.requestBody,
+			params.abortSignal
+		);
 	} catch (e) {
 		const message = e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
 		// Upstream couldn't even start — return a one-shot error stream.
@@ -81,17 +87,29 @@ async function recordAndPersist(
 	let finishReason: string | null = null;
 	let tokensIn: number | null = null;
 	let tokensOut: number | null = null;
+	let stopped = false;
 
-	for await (const record of parseSSEStream(upstream)) {
-		if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
-		const result = norm.process(record);
-		applyDeltas(result.deltas);
-		if (result.finishReason) finishReason = result.finishReason;
-		if (result.usage) {
-			if (result.usage.promptTokens !== undefined) tokensIn = result.usage.promptTokens;
-			if (result.usage.completionTokens !== undefined) tokensOut = result.usage.completionTokens;
+	try {
+		for await (const record of parseSSEStream(upstream)) {
+			if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
+			const result = norm.process(record);
+			applyDeltas(result.deltas);
+			if (result.finishReason) finishReason = result.finishReason;
+			if (result.usage) {
+				if (result.usage.promptTokens !== undefined) tokensIn = result.usage.promptTokens;
+				if (result.usage.completionTokens !== undefined) tokensOut = result.usage.completionTokens;
+			}
+			if (result.done) break;
 		}
-		if (result.done) break;
+	} catch (e) {
+		// User clicked Stop -> the upstream fetch was aborted -> the body
+		// stream we're reading errors. Treat it as "stop here" and persist
+		// whatever text we accumulated so the user keeps what they read.
+		if (isAbortError(e) || params.abortSignal?.aborted) {
+			stopped = true;
+		} else {
+			throw e;
+		}
 	}
 	applyDeltas(norm.flush().deltas);
 
@@ -104,7 +122,7 @@ async function recordAndPersist(
 		parts,
 		contentHtml,
 		reasoningText: reasoningBuf || null,
-		finishReason,
+		finishReason: stopped ? 'cancelled' : finishReason,
 		modelUsed: params.storedModelId,
 		tokensIn,
 		tokensOut
@@ -168,9 +186,16 @@ function buildClientStream(
 					else safeWrite({ type: 'reasoning', chunk: d.text });
 				}
 			} catch (e) {
-				const msg = e instanceof Error ? e.message : String(e);
-				const ev: StreamErrorEvent = { type: 'error', message: `Upstream stream failed: ${msg}` };
-				safeWrite(ev);
+				// User clicked Stop -> upstream aborted -> parseSSE throws.
+				// That's not a user-facing error; the recorder will commit
+				// the partial text and we'll surface it via `done` below.
+				if (!(isAbortError(e) || params.abortSignal?.aborted)) {
+					const msg = e instanceof Error ? e.message : String(e);
+					safeWrite({
+						type: 'error',
+						message: `Upstream stream failed: ${msg}`
+					} satisfies StreamErrorEvent);
+				}
 			}
 
 			// Wait for recorder to finish so we can hand the canonical persisted
@@ -210,4 +235,12 @@ function errorOnlyStream(message: string, userMessage: ChatMessage): ReadableStr
 function formatSSE(event: StreamEvent): string {
 	// Use the SSE `event:` field so the client can dispatch by type cheaply.
 	return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function isAbortError(e: unknown): boolean {
+	if (e instanceof DOMException && e.name === 'AbortError') return true;
+	if (e instanceof Error && (e.name === 'AbortError' || /aborted/i.test(e.message))) {
+		return true;
+	}
+	return false;
 }

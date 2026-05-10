@@ -18,12 +18,14 @@ import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
 import {
 	UpstreamError,
+	videoCancel,
 	videoCreate,
 	videoFetchContent,
 	videoStatus,
 	type VideoCreateRequest,
 	type VideoJob
 } from '../endpoints/client';
+import { setVideoJobId } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
@@ -48,6 +50,7 @@ export interface VideoRelayParams {
 	storedModelId: string;
 	prompt: string;
 	userMessage: ChatMessage;
+	abortSignal?: AbortSignal;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
@@ -77,8 +80,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					prompt: params.prompt
 				};
 				if (DEBUG) console.debug(`[video-relay] POST /videos to ${params.endpoint.id}`, req);
-				job = await videoCreate(params.endpoint, req);
+				job = await videoCreate(params.endpoint, req, params.abortSignal);
 				if (DEBUG) console.debug(`[video-relay] created job`, job);
+				setVideoJobId(params.conversationId, job.id);
 			} catch (e) {
 				const msg = errorMsg(e);
 				console.error(`[video-relay] videoCreate failed:`, msg);
@@ -92,6 +96,16 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 
 			const startedAt = Date.now();
 			while (job.status !== 'completed' && job.status !== 'failed') {
+				// User clicked Stop — release the bridge slot via DELETE and
+				// emit a cancellation error to the client. We don't persist
+				// an assistant message for cancelled video jobs.
+				if (params.abortSignal?.aborted) {
+					if (DEBUG) console.debug(`[video-relay] cancellation observed for job ${job.id}`);
+					await videoCancel(params.endpoint, job.id);
+					safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					try { controller.close(); } catch { /* already closed */ }
+					return;
+				}
 				if (Date.now() - startedAt > MAX_WAIT_MS) {
 					safeWrite({
 						type: 'error',

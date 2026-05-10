@@ -41,6 +41,11 @@
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
 
+	// AbortController for the in-flight fetch. Stop button click triggers
+	// .abort() AND fires a POST to /api/conversations/:id/cancel so the
+	// server tears down upstream too (otherwise the bridge keeps generating).
+	let activeAbort = $state<AbortController | null>(null);
+
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
@@ -93,6 +98,8 @@
 			return;
 		}
 
+		const abort = new AbortController();
+		activeAbort = abort;
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
@@ -100,7 +107,8 @@
 					'Content-Type': 'application/json',
 					Accept: 'text/event-stream'
 				},
-				body: JSON.stringify({ text })
+				body: JSON.stringify({ text }),
+				signal: abort.signal
 			});
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
@@ -151,19 +159,30 @@
 			}
 			void invalidateAll();
 		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : String(e);
+			// AbortError from clicking Stop is expected — don't surface as
+			// a user-facing error. The server-side recorder will have committed
+			// whatever partial text it had; invalidateAll picks that up.
+			if (isAbortError(e)) {
+				void invalidateAll();
+			} else {
+				errorMsg = e instanceof Error ? e.message : String(e);
+			}
 			inFlightOpen = false;
 		} finally {
 			busy = false;
+			activeAbort = null;
 		}
 	}
 
 	async function sendImageGeneration(text: string) {
+		const abort = new AbortController();
+		activeAbort = abort;
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text })
+				body: JSON.stringify({ text }),
+				signal: abort.signal
 			});
 			if (!res.ok) {
 				const j = await res.json().catch(() => ({}));
@@ -174,11 +193,37 @@
 			inFlightOpen = false;
 			void invalidateAll();
 		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : String(e);
+			if (isAbortError(e)) {
+				void invalidateAll();
+			} else {
+				errorMsg = e instanceof Error ? e.message : String(e);
+			}
 			inFlightOpen = false;
 		} finally {
 			busy = false;
+			activeAbort = null;
 		}
+	}
+
+	async function stop() {
+		const abort = activeAbort;
+		if (!abort) return;
+		// Tell the server to tear down upstream first (so the bridge stops
+		// generating instead of running to completion). Then abort the local
+		// fetch so we stop receiving the in-flight events.
+		try {
+			await fetch(`/api/conversations/${convId}/cancel`, { method: 'POST' });
+		} catch {
+			// Best-effort — even if the cancel POST fails, aborting locally
+			// still gives the user the "stopped" UX.
+		}
+		abort.abort();
+	}
+
+	function isAbortError(e: unknown): boolean {
+		if (e instanceof DOMException && e.name === 'AbortError') return true;
+		if (e instanceof Error && e.name === 'AbortError') return true;
+		return false;
 	}
 
 	async function send(e: Event) {
@@ -357,13 +402,27 @@
 					}}
 					class="flex-1 resize-none rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
 				></textarea>
-				<button
-					type="submit"
-					disabled={!composerText.trim() || busy}
-					class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-				>
-					Send
-				</button>
+				{#if busy && activeAbort}
+					<button
+						type="button"
+						onclick={stop}
+						aria-label="Stop generation"
+						class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+					>
+						<svg viewBox="0 0 16 16" class="h-3 w-3" aria-hidden="true" fill="currentColor">
+							<rect x="3" y="3" width="10" height="10" rx="1.5" />
+						</svg>
+						Stop
+					</button>
+				{:else}
+					<button
+						type="submit"
+						disabled={!composerText.trim() || busy}
+						class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+					>
+						Send
+					</button>
+				{/if}
 			</div>
 		</form>
 	</footer>

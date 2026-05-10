@@ -12,6 +12,27 @@ export class UpstreamError extends Error {
 	}
 }
 
+/**
+ * Compose multiple AbortSignals into one. The result aborts when any input
+ * aborts. AbortSignal.any() is widely available in Node 20+ but a fallback
+ * keeps us safe on older runtimes.
+ */
+function composeSignals(...signals: (AbortSignal | undefined)[]): AbortSignal {
+	const present = signals.filter((s): s is AbortSignal => s !== undefined);
+	if (present.length === 0) return new AbortController().signal;
+	if (present.length === 1) return present[0];
+	if (typeof AbortSignal.any === 'function') return AbortSignal.any(present);
+	const controller = new AbortController();
+	for (const s of present) {
+		if (s.aborted) {
+			controller.abort(s.reason);
+			return controller.signal;
+		}
+		s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
+	}
+	return controller.signal;
+}
+
 function authHeaders(endpoint: LoadedEndpoint): Record<string, string> {
 	return endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {};
 }
@@ -104,12 +125,14 @@ export interface ChatCompletionResponse {
  * the upstream Response so the caller can `.body.tee()` for fan-out into
  * client + recorder branches.
  *
- * No timeout signal — streaming responses legitimately stay open longer
- * than the per-request timeout. Idle/stall protection happens upstream.
+ * No fetch-level timeout — streaming responses legitimately stay open
+ * longer than the per-request timeout. Use `signal` to abort externally
+ * (e.g. when the user clicks Stop).
  */
 export async function chatCompletionStream(
 	endpoint: LoadedEndpoint,
-	body: ChatCompletionRequest
+	body: ChatCompletionRequest,
+	signal?: AbortSignal
 ): Promise<Response> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
 	let res: Response;
@@ -121,7 +144,8 @@ export async function chatCompletionStream(
 				Accept: 'text/event-stream',
 				...authHeaders(endpoint)
 			},
-			body: JSON.stringify({ ...body, stream: true })
+			body: JSON.stringify({ ...body, stream: true }),
+			signal
 		});
 	} catch (e) {
 		const cause = e instanceof Error ? e.message : String(e);
@@ -170,10 +194,15 @@ export interface ImageGenerationResponse {
 
 export async function imageGeneration(
 	endpoint: LoadedEndpoint,
-	body: ImageGenerationRequest
+	body: ImageGenerationRequest,
+	signal?: AbortSignal
 ): Promise<ImageGenerationResponse> {
 	const url = `${endpoint.baseUrl}/images/generations`;
 	let res: Response;
+	const composedSignal = composeSignals(
+		AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+		signal
+	);
 	try {
 		res = await fetch(url, {
 			method: 'POST',
@@ -182,7 +211,7 @@ export async function imageGeneration(
 				...authHeaders(endpoint)
 			},
 			body: JSON.stringify(body),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: composedSignal
 		});
 	} catch (e) {
 		const cause = e instanceof Error ? e.message : String(e);
@@ -237,7 +266,8 @@ export interface VideoJob {
 /** POST /v1/videos. Multipart per the bridge's contract. Returns the queued job. */
 export async function videoCreate(
 	endpoint: LoadedEndpoint,
-	body: VideoCreateRequest
+	body: VideoCreateRequest,
+	signal?: AbortSignal
 ): Promise<VideoJob> {
 	const url = `${endpoint.baseUrl}/videos`;
 	const form = new FormData();
@@ -252,7 +282,10 @@ export async function videoCreate(
 			method: 'POST',
 			headers: { ...authHeaders(endpoint) }, // do NOT set Content-Type — fetch handles multipart
 			body: form,
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: composeSignals(
+				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+				signal
+			)
 		});
 	} catch (e) {
 		const cause = e instanceof Error ? e.message : String(e);
@@ -271,6 +304,27 @@ export async function videoCreate(
 		);
 	}
 	return (await res.json()) as VideoJob;
+}
+
+/**
+ * DELETE /v1/videos/{id} — bridge-side cancellation. Releases the bridge's
+ * runner slot. Best-effort: swallows errors (the worst case is the bridge
+ * keeps running the job; the caller's local state is already terminal).
+ */
+export async function videoCancel(
+	endpoint: LoadedEndpoint,
+	videoId: string
+): Promise<void> {
+	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}`;
+	try {
+		await fetch(url, {
+			method: 'DELETE',
+			headers: authHeaders(endpoint),
+			signal: AbortSignal.timeout(10_000)
+		});
+	} catch (e) {
+		console.warn(`[videoCancel] best-effort DELETE for ${videoId} failed:`, e);
+	}
 }
 
 /** GET /v1/videos/{id} for polling. */

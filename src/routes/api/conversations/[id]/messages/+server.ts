@@ -15,6 +15,7 @@ import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { persistGeneratedImage } from '$lib/server/media/persister';
+import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
 
@@ -77,15 +78,24 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		);
 	}
 
+	// Register this generation so POST /api/conversations/:id/cancel can
+	// reach the upstream call and abort it. We pass the signal down through
+	// every code path that talks to upstream.
+	const inFlight = registerInFlight(params.id, endpoint);
+
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
 	if (meta.modelKind === 'image') {
 		try {
-			const upstream = await imageGeneration(endpoint, {
-				model: parsed.upstreamId,
-				prompt: text,
-				n: 1,
-				response_format: 'url'
-			});
+			const upstream = await imageGeneration(
+				endpoint,
+				{
+					model: parsed.upstreamId,
+					prompt: text,
+					n: 1,
+					response_format: 'url'
+				},
+				inFlight.controller.signal
+			);
 			const result = upstream.data?.[0];
 			if (!result || (!result.url && !result.b64_json)) {
 				throw error(502, 'Upstream returned no image data');
@@ -112,10 +122,17 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			};
 			return json(response);
 		} catch (e) {
+			if (inFlight.controller.signal.aborted) {
+				// User clicked Stop. Don't persist a noisy "failed" assistant
+				// message — the user message stays, they can resend.
+				throw error(499, 'Cancelled');
+			}
 			if (e instanceof UpstreamError) {
 				throw error(mapUpstreamStatus(e.status), `Upstream error: ${e.message}`);
 			}
 			throw e;
+		} finally {
+			clearInFlight(params.id, inFlight);
 		}
 	}
 
@@ -126,9 +143,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			endpoint,
 			storedModelId: meta.modelId,
 			prompt: text,
-			userMessage: userMessage as ChatMessage
+			userMessage: userMessage as ChatMessage,
+			abortSignal: inFlight.controller.signal
 		});
-		return new Response(stream, {
+		return new Response(wrapStreamCleanup(stream, () => clearInFlight(params.id, inFlight)), {
 			headers: {
 				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache, no-store, no-transform',
@@ -166,9 +184,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			providerQuirk: endpoint.providerQuirk,
 			requestBody,
 			userMessage: userMessage as ChatMessage,
-			storedModelId: meta.modelId
+			storedModelId: meta.modelId,
+			abortSignal: inFlight.controller.signal
 		});
-		return new Response(stream, {
+		return new Response(wrapStreamCleanup(stream, () => clearInFlight(params.id, inFlight)), {
 			headers: {
 				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache, no-store, no-transform',
@@ -184,12 +203,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	try {
 		upstream = await chatCompletionSync(endpoint, requestBody);
 	} catch (e) {
+		clearInFlight(params.id, inFlight);
 		if (e instanceof UpstreamError) {
 			const status = mapUpstreamStatus(e.status);
 			throw error(status, `Upstream error: ${e.message}`);
 		}
 		throw e;
 	}
+	clearInFlight(params.id, inFlight);
 
 	const assistantText = upstream.choices?.[0]?.message?.content ?? '';
 	const finishReason = upstream.choices?.[0]?.finish_reason ?? null;
@@ -216,6 +237,49 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	};
 	return json(response);
 };
+
+/**
+ * Wrap a ReadableStream so `cleanup` runs once the stream finishes (whether
+ * via normal close, error, or the consumer cancelling). Used to clear the
+ * in-flight registry slot when an SSE response ends.
+ */
+function wrapStreamCleanup(
+	source: ReadableStream<Uint8Array>,
+	cleanup: () => void
+): ReadableStream<Uint8Array> {
+	let done = false;
+	const fire = () => {
+		if (!done) {
+			done = true;
+			try {
+				cleanup();
+			} catch (e) {
+				console.warn('[messages] cleanup callback failed:', e);
+			}
+		}
+	};
+	const reader = source.getReader();
+	return new ReadableStream<Uint8Array>({
+		async pull(controller) {
+			try {
+				const { value, done: closed } = await reader.read();
+				if (closed) {
+					fire();
+					controller.close();
+					return;
+				}
+				if (value !== undefined) controller.enqueue(value);
+			} catch (e) {
+				fire();
+				controller.error(e);
+			}
+		},
+		cancel(reason) {
+			fire();
+			return reader.cancel(reason);
+		}
+	});
+}
 
 function partsToText(parts: MessagePart[]): string {
 	return parts
