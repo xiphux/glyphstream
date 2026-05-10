@@ -36,6 +36,16 @@ export const IMPORTED_ENDPOINT_ID = 'imported-owui';
 /** Strips OWUI's internal file-API URLs from markdown image references. */
 const OWUI_FILE_URL_RE = /!\[([^\]]*)\]\(\/api\/v1\/files\/[^)]+\)/g;
 
+/**
+ * OWUI wraps assistant reasoning/thinking output in a collapsible
+ * `<details type="reasoning">` block at the start of the message. The
+ * inner content is HTML-entity-encoded and prefixed with markdown
+ * blockquote markers (`> ...` rendered as `&gt; ...`).
+ */
+const OWUI_REASONING_RE =
+	/<details\s+type="reasoning"[^>]*>([\s\S]*?)<\/details>/i;
+const OWUI_SUMMARY_RE = /<summary[^>]*>[\s\S]*?<\/summary>/i;
+
 export interface ImportOptions {
 	/** Don't write to the DB; just count what would be imported. */
 	dryRun?: boolean;
@@ -209,22 +219,30 @@ async function importOne(
 		return archivedAt ? 'imported-archived' : 'imported-active';
 	}
 
-	// Pre-render assistant content to HTML before opening the transaction —
-	// renderMarkdown is async (shiki lazy-loads its highlighter), and
-	// better-sqlite3 transactions don't support awaiting inside the
-	// transaction callback. The first render warms shiki; subsequent
-	// renders share the cached singleton highlighter and are fast.
-	const htmlByOwuiId = new Map<string, string | null>();
+	// Pre-process assistant messages: split off OWUI's reasoning <details>
+	// block, then markdown-render what's left. Both happen before the
+	// transaction opens because renderMarkdown is async (shiki lazy-loads)
+	// and better-sqlite3 transactions don't allow awaiting inside the
+	// callback. The first render warms shiki; subsequent ones share the
+	// cached singleton highlighter and are fast.
+	interface PreparedAssistant {
+		reasoning: string | null;
+		content: string;
+		contentHtml: string | null;
+	}
+	const preparedByOwuiId = new Map<string, PreparedAssistant>();
 	for (const { owuiId, msg } of ordered) {
 		if (msg.role !== 'assistant' || typeof msg.content !== 'string') continue;
+		const stripped = stripOwuiFileUrls(msg.content);
+		const { reasoning, content } = extractReasoning(stripped);
+		let contentHtml: string | null = null;
 		try {
-			const html = await renderMarkdown(stripOwuiFileUrls(msg.content));
-			htmlByOwuiId.set(owuiId, html);
+			contentHtml = await renderMarkdown(content);
 		} catch {
-			// A render failure shouldn't abort the whole conversation; fall
-			// back to plain-text rendering by leaving content_html null.
-			htmlByOwuiId.set(owuiId, null);
+			// Per-message render failures shouldn't abort the whole
+			// conversation; fall back to plain text by leaving null.
 		}
+		preparedByOwuiId.set(owuiId, { reasoning, content, contentHtml });
 	}
 
 	db.transaction((tx) => {
@@ -249,8 +267,22 @@ async function importOne(
 		for (const { owuiId, msg } of ordered) {
 			const newId = idMap.get(owuiId)!;
 			const role = normalizeRole(msg.role);
-			const content = stripOwuiFileUrls(msg.content ?? '');
-			const parts: MessagePart[] = [{ type: 'text', text: content }];
+
+			let parts: MessagePart[];
+			let contentHtml: string | null = null;
+			let reasoningText: string | null = null;
+			const prep = preparedByOwuiId.get(owuiId);
+			if (role === 'assistant' && prep) {
+				parts = [];
+				if (prep.reasoning) parts.push({ type: 'reasoning', text: prep.reasoning });
+				parts.push({ type: 'text', text: prep.content });
+				contentHtml = prep.contentHtml;
+				reasoningText = prep.reasoning;
+			} else {
+				const text = stripOwuiFileUrls(msg.content ?? '');
+				parts = [{ type: 'text', text }];
+			}
+
 			tx.insert(messages)
 				.values({
 					id: newId,
@@ -261,8 +293,8 @@ async function importOne(
 							: null,
 					role,
 					contentJson: JSON.stringify(parts),
-					contentHtml: htmlByOwuiId.get(owuiId) ?? null,
-					reasoningText: null,
+					contentHtml,
+					reasoningText,
 					finishReason: null,
 					modelUsed: msg.model ?? null,
 					tokensIn: null,
@@ -328,5 +360,58 @@ export function stripOwuiFileUrls(markdown: string): string {
 		const label = alt && String(alt).trim().length > 0 ? `: ${alt}` : '';
 		return `_[image unavailable${label}]_`;
 	});
+}
+
+/**
+ * Splits an OWUI assistant message into its reasoning preamble and the
+ * remaining "real" answer. Both pieces are returned in their natural
+ * markdown form — the reasoning has been entity-decoded and had its
+ * blockquote prefix stripped, the answer has had the `<details>` block
+ * removed entirely.
+ *
+ * Returns `{ reasoning: null, content: rawContent }` when no reasoning
+ * block is present, so the caller can use a single code path for chats
+ * with and without thinking output.
+ */
+export function extractReasoning(rawContent: string): {
+	reasoning: string | null;
+	content: string;
+} {
+	const m = rawContent.match(OWUI_REASONING_RE);
+	if (!m) return { reasoning: null, content: rawContent };
+
+	const content = rawContent.replace(OWUI_REASONING_RE, '').trim();
+
+	let inner = m[1].replace(OWUI_SUMMARY_RE, '').trim();
+	inner = decodeHtmlEntities(inner);
+	// OWUI prefixes each line with markdown blockquote (`> `). Strip it so
+	// the reasoning text reads naturally — the UI's reasoning component
+	// styles it on its own.
+	inner = inner
+		.split('\n')
+		.map((line) => line.replace(/^\s*>\s?/, ''))
+		.join('\n')
+		.trim();
+
+	return { reasoning: inner.length > 0 ? inner : null, content };
+}
+
+/**
+ * Minimal HTML entity decoder for the entities OWUI actually emits inside
+ * `<details>` blocks (`&gt;`, `&quot;`, `&#x27;`, etc.). Order matters —
+ * `&amp;` decodes last so we don't double-decode `&amp;gt;` to `>`.
+ */
+function decodeHtmlEntities(s: string): string {
+	return s
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'")
+		.replace(/&nbsp;/g, ' ')
+		.replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(Number(dec)))
+		.replace(/&#x([0-9a-f]+);/gi, (_m, hex) =>
+			String.fromCodePoint(Number.parseInt(hex, 16))
+		)
+		.replace(/&amp;/g, '&');
 }
 

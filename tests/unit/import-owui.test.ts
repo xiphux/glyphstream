@@ -10,6 +10,7 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
+	extractReasoning,
 	importOwuiExport,
 	stripOwuiFileUrls,
 	IMPORTED_ENDPOINT_ID
@@ -84,6 +85,44 @@ function makeTextChat(overrides: { id?: string; archived?: boolean } = {}) {
 		created_at: 1700000000,
 		updated_at: 1700000040,
 		archived: overrides.archived ?? false
+	};
+}
+
+function makeReasoningChat() {
+	// Mirrors the real OWUI export shape: reasoning wrapped in a <details>
+	// block with an HTML-encoded blockquoted body, followed by the actual
+	// answer.
+	return {
+		id: 'reason-1',
+		title: 'MoE vs dense',
+		chat: {
+			title: 'MoE vs dense',
+			models: ['deepseek-v4-pro'],
+			history: {
+				currentId: 'ai-r',
+				messages: {
+					'user-r': {
+						id: 'user-r',
+						parentId: null,
+						role: 'user',
+						content: 'Why use dense over MoE?',
+						timestamp: 1700002000
+					},
+					'ai-r': {
+						id: 'ai-r',
+						parentId: 'user-r',
+						role: 'assistant',
+						content:
+							'<details type="reasoning" done="true" duration="4">\n<summary>Thought for 4 seconds</summary>\n&gt; The user is asking about MoE vs dense.\n&gt;\n&gt; I&#x27;ll cover memory, training, &amp; inference.\n</details>\nDense models still thrive because of memory bandwidth limits and training simplicity.',
+						timestamp: 1700002010,
+						model: 'deepseek-v4-pro'
+					}
+				}
+			}
+		},
+		created_at: 1700002000,
+		updated_at: 1700002010,
+		archived: false
 	};
 }
 
@@ -315,6 +354,84 @@ describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 		console.log(
 			`[real-export] imported=${result.imported}, archived=${result.archived}, skipped=${result.skipped.length}`
 		);
+	});
+});
+
+describe('extractReasoning', () => {
+	it('returns null reasoning when no <details> block is present', () => {
+		expect(extractReasoning('Just an answer.')).toEqual({
+			reasoning: null,
+			content: 'Just an answer.'
+		});
+	});
+
+	it('extracts reasoning, decodes entities, strips blockquote prefix', () => {
+		const raw =
+			'<details type="reasoning" done="true" duration="4">\n<summary>Thought for 4s</summary>\n&gt; First line.\n&gt; Second line with &quot;quotes&quot;.\n</details>\nThe answer.';
+		const r = extractReasoning(raw);
+		expect(r.reasoning).toBe('First line.\nSecond line with "quotes".');
+		expect(r.content).toBe('The answer.');
+	});
+
+	it('drops the <summary> element so it does not leak into reasoning', () => {
+		const raw =
+			'<details type="reasoning" done="true">\n<summary>Thought for 7s</summary>\n&gt; The reason\n</details>\nFinal.';
+		const r = extractReasoning(raw);
+		expect(r.reasoning).toBe('The reason');
+		expect(r.reasoning).not.toContain('Thought for 7s');
+	});
+
+	it('decodes numeric and hex character references', () => {
+		const raw =
+			'<details type="reasoning"><summary>x</summary>\n&gt; quoted &#39; and &#x27;\n</details>\nA.';
+		expect(extractReasoning(raw).reasoning).toBe("quoted ' and '");
+	});
+
+	it('returns empty reasoning as null (no spurious empty parts)', () => {
+		const raw =
+			'<details type="reasoning"><summary>x</summary></details>\nAnswer.';
+		expect(extractReasoning(raw)).toEqual({
+			reasoning: null,
+			content: 'Answer.'
+		});
+	});
+
+	it('preserves answer formatting after the details block', () => {
+		const raw =
+			'<details type="reasoning"><summary>x</summary>\n&gt; r\n</details>\n# Heading\n\nBody.';
+		const r = extractReasoning(raw);
+		expect(r.content).toBe('# Heading\n\nBody.');
+	});
+});
+
+describe('importOwuiExport with reasoning', () => {
+	it('splits reasoning into a separate part + populates reasoningText', async () => {
+		const u = seedUser();
+		await importOwuiExport([makeReasoningChat()], u.id, mocks.testDb);
+		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
+		const assistant = detail?.messages.find((m) => m.role === 'assistant');
+		expect(assistant?.parts).toEqual([
+			{ type: 'reasoning', text: 'The user is asking about MoE vs dense.\n\nI\'ll cover memory, training, & inference.' },
+			{
+				type: 'text',
+				text: 'Dense models still thrive because of memory bandwidth limits and training simplicity.'
+			}
+		]);
+		expect(assistant?.reasoningText).toBe(
+			'The user is asking about MoE vs dense.\n\nI\'ll cover memory, training, & inference.'
+		);
+	});
+
+	it('contentHtml renders only the answer, not the reasoning', async () => {
+		const u = seedUser();
+		await importOwuiExport([makeReasoningChat()], u.id, mocks.testDb);
+		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
+		const assistant = detail?.messages.find((m) => m.role === 'assistant');
+		// Should contain the answer text, not the reasoning preamble.
+		expect(assistant?.contentHtml).toContain('Dense models');
+		expect(assistant?.contentHtml).not.toContain('MoE vs dense');
+		// And no leftover <details> tag.
+		expect(assistant?.contentHtml).not.toContain('<details');
 	});
 });
 
