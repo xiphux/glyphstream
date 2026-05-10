@@ -10,7 +10,10 @@ import type { PageServerLoad } from './$types';
  * so the form's picker has options on first paint without a follow-up
  * /api/models round trip.
  */
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, parent }) => {
+	// Wait for the (app) layout's auth check before deref'ing locals.user.
+	// See /(app)/+page.server.ts for why.
+	await parent();
 	const customModels = listCustomModelsForUser(locals.user!.id);
 
 	let endpoints;
