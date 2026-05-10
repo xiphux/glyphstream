@@ -106,28 +106,30 @@ restarts are zero-downtime as long as you only changed env vars or
 `config.toml` (no rebuild needed for those — just `docker compose
 restart`).
 
-### Public exposure (TLS, HTTP/2 + HTTP/3)
+### Public exposure (TLS + HTTP/2)
 
 adapter-node speaks HTTP/1.1 only — Node's built-in `http` module
 doesn't do HTTP/2. Put a reverse proxy in front for TLS termination
 + HTTP/2 (and HTTP/3 if you want it). Set `PUBLIC_BASE_URL` in
 `.env` to the public origin so OAuth redirect URIs match.
 
-Caddy is the easiest — auto-TLS via Let's Encrypt, HTTP/2 + HTTP/3
-on by default, `encode` directive picks up the precompressed `.br`
-+ `.gz` variants automatically:
+Pretty much any pass-through reverse proxy works — pre-compression
+(see below) is handled inside Node, so the proxy just forwards the
+`Accept-Encoding` header and the compressed response unchanged.
+Tested with:
 
-```caddy
-glyphstream.example.com {
-    encode br gzip
-    reverse_proxy 127.0.0.1:3000
-}
-```
-
-Nginx works too; just enable HTTP/2 on the listener and set
-`gzip_static on; brotli_static on;` (the latter requires
-`ngx_brotli`) so it serves our pre-compressed files instead of
-re-compressing on each request.
+- **Synology DSM Reverse Proxy** (Login Portal → Advanced → Reverse
+  Proxy). Source: `https://glyphstream.{your}.synology.me:443` →
+  Destination: `localhost:3000` (or the container's IP). Tick
+  "Enable HTTP/2" on the rule. Synology handles the cert via
+  built-in Let's Encrypt for `*.synology.me`.
+- **Caddy** — 4-line config: `glyphstream.example.com { encode br
+  gzip; reverse_proxy 127.0.0.1:3000 }`. Auto-TLS, HTTP/2 + HTTP/3
+  on by default.
+- **Nginx** — `proxy_pass http://127.0.0.1:3000;` plus `listen 443
+  ssl http2;` on the server block. Don't enable `gzip on` for
+  proxied responses or you'll double-compress.
+- **Cloudflare Tunnel** — works as a transparent passthrough.
 
 ### Pre-compression
 
