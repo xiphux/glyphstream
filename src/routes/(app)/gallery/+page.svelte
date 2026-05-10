@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { Download, Trash2, X } from 'lucide-svelte';
 	import type { MediaListItem, MediaListResult } from '$lib/server/db/queries/media';
 
 	let { data } = $props<{ data: { initial: MediaListResult; kind: 'image' | 'video' | null } }>();
@@ -217,29 +218,34 @@
 				<span class="font-medium">{m.sourceModel ?? 'Unknown model'}</span>
 				<span class="opacity-70">{fmtDate(m.createdAt)} · {fmtBytes(m.byteSize)} · {m.contentType}</span>
 			</div>
-			<div class="flex gap-2">
+			<div class="flex gap-1.5">
 				<a
 					href="/api/media/{m.id}/content"
 					download
-					class="rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs transition hover:bg-neutral-700"
+					title="Download"
+					aria-label="Download"
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
 				>
-					Download
+					<Download size={14} strokeWidth={2.25} />
 				</a>
 				<button
 					type="button"
 					onclick={() => deleteOne(m.id)}
 					disabled={deletingId === m.id}
-					class="rounded-md border border-red-700 bg-red-700 px-3 py-1.5 text-xs text-white transition hover:bg-red-800 disabled:opacity-50"
+					title={deletingId === m.id ? 'Deleting…' : 'Delete'}
+					aria-label="Delete"
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-red-700 bg-red-700 text-white transition hover:bg-red-800 disabled:opacity-50"
 				>
-					{deletingId === m.id ? 'Deleting…' : 'Delete'}
+					<Trash2 size={14} strokeWidth={2.25} />
 				</button>
 				<button
 					type="button"
 					onclick={() => (lightbox = null)}
+					title="Close"
 					aria-label="Close"
-					class="rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs transition hover:bg-neutral-700"
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
 				>
-					Close
+					<X size={14} strokeWidth={2.25} />
 				</button>
 			</div>
 		</div>
