@@ -126,25 +126,29 @@
 <div class="flex h-full flex-col items-center justify-center px-4 py-8">
 	<div class="w-full max-w-2xl">
 		<!--
-			Greeting block: glyph mark above, then "Good evening, Chris" line.
-			Mark is inlined (not <img>) so its strokes use currentColor and
-			adapt to dark mode without serving a second asset.
+			Greeting block: glyph mark inside a soft circular badge, then
+			"Good evening, Chris" line. The badge wrapper grounds the mark
+			against the page bg the same way the composer below does, with
+			a subtle ring + slightly raised bg shade. Mark is inlined (not
+			<img>) so its strokes use currentColor and adapt to dark mode.
 		-->
-		<div class="mb-6 flex flex-col items-center gap-3">
-			<svg
-				viewBox="0 0 32 32"
-				class="h-12 w-12 text-neutral-700 sm:h-14 sm:w-14 dark:text-neutral-300"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
-				<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
-				<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
-			</svg>
+		<div class="mb-6 flex flex-col items-center gap-4">
+			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 ring-1 ring-neutral-200 dark:bg-neutral-800/70 dark:ring-neutral-700/70">
+				<svg
+					viewBox="0 0 32 32"
+					class="h-8 w-8 text-neutral-700 dark:text-neutral-200"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
+					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
+					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
+				</svg>
+			</div>
 			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
 				<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
 			</h1>
@@ -169,12 +173,15 @@
 				class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 			></textarea>
 
-			<div class="flex items-center justify-between gap-2 px-1 pt-1">
+			<div class="flex items-center justify-end gap-2 px-1 pt-1">
 				<!--
 					Inline model selector: rendered as a borderless dropdown so
 					it reads as a soft control inside the box rather than a
 					separate field. Native <select> keeps keyboard nav + mobile
-					native picker for free.
+					native picker for free. justify-end groups it next to the
+					send button rather than scattering them across the row;
+					the empty space on the left is reserved for future
+					attachment controls.
 				-->
 				<ModelPicker
 					models={data.models}

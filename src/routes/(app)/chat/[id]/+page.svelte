@@ -309,7 +309,17 @@
 		</div>
 	</header>
 
-	<div bind:this={scrollContainer} class="flex-1 overflow-y-auto px-4 py-4">
+	<!--
+		Bottom mask-fade so message content dissolves into the page bg
+		just before reaching the composer, instead of meeting it with a
+		hard rectangular edge. ~32px fade is enough to soften the seam
+		without cutting off readable content. Pure CSS mask-image — no JS,
+		works the same on every browser that supports CSS Masking L1.
+	-->
+	<div
+		bind:this={scrollContainer}
+		class="flex-1 overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
+	>
 		<div class="mx-auto max-w-3xl space-y-4">
 			{#each messages as m (m.id)}
 				<article
