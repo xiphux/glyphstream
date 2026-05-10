@@ -1,7 +1,18 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Plus, Square, X } from 'lucide-svelte';
+	import {
+		AlertCircle,
+		ArrowDown,
+		ArrowUp,
+		Check,
+		ChevronLeft,
+		ChevronRight,
+		Copy,
+		Plus,
+		Square,
+		X
+	} from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
@@ -578,6 +589,27 @@
 		return partsToText(m.parts).trim().length > 0;
 	}
 
+	/** Switch the active branch to a sibling of the given message. Used by
+	 * the `‹ N/M ›` arrows. Refetches the conversation on success so the
+	 * page renders the new branch. */
+	async function selectSibling(targetMessageId: string) {
+		if (busy) return;
+		errorMsg = null;
+		try {
+			const res = await fetch(
+				`/api/conversations/${convId}/messages/${targetMessageId}/select`,
+				{ method: 'POST' }
+			);
+			if (!res.ok) {
+				const j = await res.json().catch(() => ({}));
+				throw new Error(j.message ?? `HTTP ${res.status}`);
+			}
+			await invalidateAll();
+		} catch (e) {
+			errorMsg = `Couldn't switch branch: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
+
 	function hasMedia(parts: MessagePart[]): boolean {
 		return parts.some((p) => p.type === 'image' || p.type === 'video');
 	}
@@ -672,27 +704,59 @@
 						{/if}
 					{/if}
 				</article>
-				{#if hasCopyableText(m)}
+				{#if hasCopyableText(m) || (m.siblingCount ?? 1) > 1}
+					{@const showCopy = hasCopyableText(m)}
+					{@const siblingCount = m.siblingCount ?? 1}
+					{@const hasSiblings = siblingCount > 1}
 					{@const justCopied = recentlyCopiedId === m.id}
 					<div
-						class="mt-1 flex opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 {m.role ===
+						class="mt-1 flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 {m.role ===
 						'user'
 							? 'justify-end'
 							: 'justify-start'}"
 					>
-						<button
-							type="button"
-							onclick={() => copyMessage(m)}
-							aria-label={justCopied ? 'Copied' : 'Copy message'}
-							title={justCopied ? 'Copied' : 'Copy'}
-							class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-						>
-							{#if justCopied}
-								<Check size={14} strokeWidth={2.25} class="text-emerald-600 dark:text-emerald-400" />
-							{:else}
-								<Copy size={14} strokeWidth={2.25} />
-							{/if}
-						</button>
+						{#if hasSiblings}
+							{@const pos = m.siblingPosition ?? 1}
+							{@const ids = m.siblingIds ?? [m.id]}
+							<button
+								type="button"
+								onclick={() => selectSibling(ids[pos - 2])}
+								disabled={pos === 1 || busy}
+								aria-label="Previous sibling"
+								title="Previous"
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+							>
+								<ChevronLeft size={14} strokeWidth={2.25} />
+							</button>
+							<span class="text-xs tabular-nums text-neutral-500">
+								{pos} / {siblingCount}
+							</span>
+							<button
+								type="button"
+								onclick={() => selectSibling(ids[pos])}
+								disabled={pos === siblingCount || busy}
+								aria-label="Next sibling"
+								title="Next"
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+							>
+								<ChevronRight size={14} strokeWidth={2.25} />
+							</button>
+						{/if}
+						{#if showCopy}
+							<button
+								type="button"
+								onclick={() => copyMessage(m)}
+								aria-label={justCopied ? 'Copied' : 'Copy message'}
+								title={justCopied ? 'Copied' : 'Copy'}
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+							>
+								{#if justCopied}
+									<Check size={14} strokeWidth={2.25} class="text-emerald-600 dark:text-emerald-400" />
+								{:else}
+									<Copy size={14} strokeWidth={2.25} />
+								{/if}
+							</button>
+						{/if}
 					</div>
 				{/if}
 				</div>
