@@ -7,6 +7,7 @@ import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media'
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import {
 	chatCompletionSync,
+	formatUpstreamError,
 	imageGeneration,
 	UpstreamError,
 	type ChatCompletionContentPart,
@@ -154,7 +155,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				throw error(499, 'Cancelled');
 			}
 			if (e instanceof UpstreamError) {
-				throw error(mapUpstreamStatus(e.status), `Upstream error: ${e.message}`);
+				throw error(mapUpstreamStatus(e.status), `Upstream error: ${formatUpstreamError(e)}`);
 			}
 			throw e;
 		} finally {
@@ -266,7 +267,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		clearInFlight(params.id, inFlight);
 		if (e instanceof UpstreamError) {
 			const status = mapUpstreamStatus(e.status);
-			throw error(status, `Upstream error: ${e.message}`);
+			throw error(status, `Upstream error: ${formatUpstreamError(e)}`);
 		}
 		throw e;
 	}

@@ -17,6 +17,7 @@ import { Buffer } from 'node:buffer';
 import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
 import {
+	formatUpstreamError,
 	UpstreamError,
 	videoCancel,
 	videoCreate,
@@ -195,7 +196,7 @@ function parseUpstreamId(storedModelId: string): string {
 }
 
 function errorMsg(e: unknown): string {
-	if (e instanceof UpstreamError) return e.message;
+	if (e instanceof UpstreamError) return formatUpstreamError(e);
 	if (e instanceof Error) return e.message;
 	return String(e);
 }

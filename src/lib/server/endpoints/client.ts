@@ -93,6 +93,62 @@ async function safeReadBody(res: Response): Promise<string | null> {
 }
 
 /**
+ * Pull a user-readable message out of an upstream error body. Handles
+ * the OpenAI error shape ({error: {message}}), the simpler {error: "…"}
+ * form, and falls back to a truncated raw body. Returns null when the
+ * body is empty or unparseable to anything useful.
+ *
+ * llama.cpp, vLLM, OpenAI, and the bridge all emit {error:{message,…}};
+ * a few homegrown servers stuff the message at the top level. The fall-
+ * through path covers vendor proxies that emit plain HTML or text.
+ */
+export function extractUpstreamErrorMessage(body: string | null): string | null {
+	if (!body) return null;
+	try {
+		const parsed = JSON.parse(body) as unknown;
+		if (parsed && typeof parsed === 'object') {
+			const err = (parsed as { error?: unknown }).error;
+			// Once we recognize one of the known error fields, we commit to it
+			// and return null for empty messages rather than falling through to
+			// the raw-body fallback — the upstream signaled "this field is the
+			// error" and we trust that, even if it's empty.
+			if (typeof err === 'string') {
+				const v = err.trim();
+				return v.length > 0 ? v : null;
+			}
+			if (err && typeof err === 'object') {
+				const msg = (err as { message?: unknown }).message;
+				if (typeof msg === 'string') {
+					const v = msg.trim();
+					return v.length > 0 ? v : null;
+				}
+			}
+			const topMsg = (parsed as { message?: unknown }).message;
+			if (typeof topMsg === 'string') {
+				const v = topMsg.trim();
+				return v.length > 0 ? v : null;
+			}
+		}
+	} catch {
+		// Not JSON — fall through to plain-text handling.
+	}
+	const trimmed = body.trim();
+	if (!trimmed) return null;
+	return trimmed.length > 400 ? trimmed.slice(0, 400) + '…' : trimmed;
+}
+
+/**
+ * Format an UpstreamError for user-facing display. Pairs the templated
+ * "Endpoint X returned HTTP …" prefix with the upstream's own error
+ * message (extracted from the response body) so the user sees both
+ * "where it broke" and "what the upstream said about why."
+ */
+export function formatUpstreamError(e: UpstreamError): string {
+	const detail = extractUpstreamErrorMessage(e.body);
+	return detail ? `${e.message}: ${detail}` : e.message;
+}
+
+/**
  * OpenAI vision-spec content parts. When a user message has image
  * attachments we send `content` as a structured array; plain-text-only
  * messages stay as a bare string for max compat with non-vision upstreams.

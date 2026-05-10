@@ -25,6 +25,7 @@ import type {
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import {
 	chatCompletionStream,
+	formatUpstreamError,
 	UpstreamError,
 	type ChatCompletionRequest
 } from '../endpoints/client';
@@ -56,7 +57,12 @@ export async function startStreamingRelay(params: RelayParams): Promise<Readable
 			params.abortSignal
 		);
 	} catch (e) {
-		const message = e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
+		const message =
+			e instanceof UpstreamError
+				? formatUpstreamError(e)
+				: e instanceof Error
+					? e.message
+					: String(e);
 		// Upstream couldn't even start — return a one-shot error stream.
 		return errorOnlyStream(message, params.userMessage);
 	}
