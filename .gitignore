@@ -24,6 +24,9 @@ vite.config.ts.timestamp-*
 
 # Local config + state
 config.toml
+# Whitelist test fixtures — they live under tests/ and are required for
+# CI runs. Without this exception, the rule above silently blocks them.
+!tests/**/config.toml
 data/
 
 

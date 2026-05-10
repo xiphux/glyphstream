@@ -1,0 +1,5 @@
+# Empty endpoints list — the e2e suite tests UI behavior that doesn't
+# require a working upstream model server. The picker just shows
+# "no models available" gracefully, which is itself useful UI behavior
+# to keep regression-tested.
+endpoints = []

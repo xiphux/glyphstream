@@ -9,28 +9,11 @@ import { test, expect } from '@playwright/test';
 
 test.describe('authenticated app shell', () => {
 	test('new-chat home renders the greeting + composer', async ({ page }) => {
-		const response = await page.goto('/');
-		// Diagnostic: this test has been intermittently failing in CI with
-		// <h1>500</h1> despite the server-side handleError hook not logging
-		// any actual 500. Dump enough state on failure to identify whether
-		// the response itself was 500 (server-side) or the page hydrated to
-		// an error UI (client-side).
-		try {
-			// Greeting is "{Greeting}, {firstName}". firstName is "E2E"
-			// (split of displayName "E2E Tester").
-			await expect(page.getByRole('heading', { level: 1 })).toContainText('E2E');
-			await expect(page.locator('textarea')).toBeVisible();
-		} catch (e) {
-			const status = response?.status();
-			const url = page.url();
-			const html = await page.content();
-			console.log(`\n=== DIAGNOSTIC: home page test failure ===`);
-			console.log(`Initial response status: ${status}`);
-			console.log(`Final URL: ${url}`);
-			console.log(`HTML (first 3000 chars):\n${html.slice(0, 3000)}`);
-			console.log(`=== END DIAGNOSTIC ===\n`);
-			throw e;
-		}
+		await page.goto('/');
+		// Greeting is "{Greeting}, {firstName}". firstName is "E2E"
+		// (split of displayName "E2E Tester").
+		await expect(page.getByRole('heading', { level: 1 })).toContainText('E2E');
+		await expect(page.locator('textarea')).toBeVisible();
 	});
 
 	test('sidebar shows nav items + recents subheader', async ({ page, isMobile }) => {
