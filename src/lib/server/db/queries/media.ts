@@ -12,12 +12,21 @@ export interface MediaInsertInput {
 	sourceEndpointId: string | null;
 	sourceModel: string | null;
 	promptExcerpt: string | null;
+	/**
+	 * Defaults to 'generated' (produced by an upstream model). Use 'uploaded'
+	 * for user-supplied chat attachments — those get `unreferenced_since` set
+	 * immediately so the purger can sweep up files that the user picked but
+	 * never actually sent.
+	 */
+	origin?: 'generated' | 'uploaded';
 }
 
 /** Insert a fresh media row (ref_count = 0; caller links it via linkMessageMedia). */
 export function insertMedia(input: MediaInsertInput): { id: string } {
 	const db = getDb();
 	const id = randomUUID();
+	const now = Date.now();
+	const origin = input.origin ?? 'generated';
 	db.insert(media)
 		.values({
 			id,
@@ -26,12 +35,17 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			contentType: input.contentType,
 			byteSize: input.byteSize,
 			kind: input.kind,
+			origin,
 			sourceEndpointId: input.sourceEndpointId,
 			sourceModel: input.sourceModel,
 			promptExcerpt: input.promptExcerpt,
-			createdAt: Date.now(),
+			createdAt: now,
 			refCount: 0,
-			unreferencedSince: null,
+			// Uploads start in the "candidate for purge" state — if the user
+			// picks a file but never sends the message, the existing purger
+			// will sweep it after the grace period. linkMessageMedia clears
+			// this back to null when the file actually gets attached.
+			unreferencedSince: origin === 'uploaded' ? now : null,
 			hardDeletedAt: null
 		})
 		.run();
@@ -135,6 +149,9 @@ export function listMediaForUser(
 	const conditions = [
 		eq(media.userId, userId),
 		isNull(media.hardDeletedAt),
+		// Gallery is "what the AI made" — exclude user-supplied attachments
+		// even though they live in the same table for ref-counting reasons.
+		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : undefined,
 		cursorWhere
 	].filter(Boolean) as Parameters<typeof and>[number][];

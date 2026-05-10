@@ -134,6 +134,13 @@ export const media = sqliteTable(
 		contentType: text('content_type').notNull(),
 		byteSize: integer('byte_size').notNull(),
 		kind: text('kind', { enum: ['image', 'video'] }).notNull(),
+		// Where this asset came from. 'generated' = produced by an upstream
+		// model; 'uploaded' = sent by the user as a chat attachment. Same
+		// storage + ref-counting; the gallery filters on this so user
+		// uploads don't get attributed to a generation model.
+		origin: text('origin', { enum: ['generated', 'uploaded'] })
+			.notNull()
+			.default('generated'),
 		sourceEndpointId: text('source_endpoint_id'),
 		sourceModel: text('source_model'),
 		promptExcerpt: text('prompt_excerpt'),

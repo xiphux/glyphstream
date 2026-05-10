@@ -60,6 +60,47 @@ describe('media: insert + ref counting', () => {
 		expect(row?.hardDeletedAt).toBeNull();
 	});
 
+	it('insertMedia defaults to origin=generated', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		expect(getRow(id)?.origin).toBe('generated');
+	});
+
+	it('uploaded origin starts purge-candidate (unreferencedSince=now)', () => {
+		const u = seedUser();
+		const before = Date.now();
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
+		const after = Date.now();
+		const row = getRow(id);
+		expect(row?.origin).toBe('uploaded');
+		// Stamped on insert so an abandoned upload gets swept after grace.
+		expect(row?.unreferencedSince).toBeGreaterThanOrEqual(before);
+		expect(row?.unreferencedSince).toBeLessThanOrEqual(after);
+	});
+
+	it('linking an uploaded media to a message clears the purge stamp', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'look at this' }]
+		});
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
+		// Stamped at upload time.
+		expect(getRow(id)?.unreferencedSince).not.toBeNull();
+		linkMessageMedia(msg.id, id);
+		// Stamp cleared once the upload is actually attached to a message.
+		expect(getRow(id)?.refCount).toBe(1);
+		expect(getRow(id)?.unreferencedSince).toBeNull();
+	});
+
 	it('linkMessageMedia bumps refCount and clears unreferencedSince', () => {
 		const u = seedUser();
 		const conv = createConversation({
@@ -242,6 +283,14 @@ describe('listMediaForUser', () => {
 		const u2 = seedUser();
 		makeMedia(u1.id);
 		expect(listMediaForUser(u2.id).items).toEqual([]);
+	});
+
+	it('hides uploaded media — gallery is "what the AI made"', () => {
+		const u = seedUser();
+		makeMedia(u.id, { origin: 'generated' });
+		makeMedia(u.id, { origin: 'uploaded' });
+		const list = listMediaForUser(u.id);
+		expect(list.items).toHaveLength(1);
 	});
 });
 

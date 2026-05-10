@@ -1,0 +1,1 @@
+ALTER TABLE `media` ADD `origin` text DEFAULT 'generated' NOT NULL;
