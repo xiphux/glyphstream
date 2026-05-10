@@ -97,7 +97,7 @@
 		 + recents header hide entirely when collapsed; nav items show
 		 just their lucide icons with `title` tooltips. -->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col bg-neutral-50 transition-[transform,width] duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden bg-neutral-50 transition-[transform,width] duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'}"
 	>
@@ -124,7 +124,7 @@
 		<div class="px-2">
 			<a
 				href="/"
-				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800 {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800 {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 				title={collapsed ? 'New chat' : 'Start a new chat'}
@@ -135,7 +135,7 @@
 			<a
 				href="/gallery"
 				title={collapsed ? 'Gallery' : ''}
-				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition {galleryActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {galleryActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
@@ -147,7 +147,7 @@
 			<a
 				href="/settings/models"
 				title={collapsed ? 'Custom models' : ''}
-				class="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition {settingsActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {settingsActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
