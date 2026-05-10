@@ -12,6 +12,7 @@
  * the comment on insertMedia for origin='uploaded'.
  */
 
+import { untrack } from 'svelte';
 import type { ModelKind } from '$lib/types/api';
 
 export interface AttachedItem {
@@ -37,9 +38,18 @@ interface UploadResponse {
 export class AttachmentStore {
 	items = $state<AttachedItem[]>([]);
 
-	/** Reset the store to empty, revoking any blob URLs. */
+	/**
+	 * Reset the store to empty, revoking any blob URLs.
+	 *
+	 * The blob-URL revoke loop reads `this.items` once. We untrack that
+	 * read so callers invoking clear() from within an `$effect` don't
+	 * inadvertently pick up `items` as a reactive dependency — that
+	 * combined with another effect writing `items` (e.g. auto-attach)
+	 * would create a clear → write → clear → write infinite loop.
+	 */
 	clear(): void {
-		for (const it of this.items) {
+		const snapshot = untrack(() => this.items);
+		for (const it of snapshot) {
 			if (it.objectUrl.startsWith('blob:')) {
 				URL.revokeObjectURL(it.objectUrl);
 			}
