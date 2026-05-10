@@ -77,6 +77,50 @@ SQLite (chats,       MediaStore (disk)    Endpoint registry
                             openai-api-bridge  llama-server   Groq
 ```
 
+## Deployment (Docker)
+
+Multi-stage Alpine build. Final image is ~140 MB; everything's
+self-contained except the SQLite DB and generated media (kept on a
+bind-mount so they survive `up/down`) and `config.toml` (mounted
+read-only so the container can't modify it).
+
+```bash
+# 1. Set up the host directory
+mkdir -p /srv/glyphstream/data
+cd /srv/glyphstream
+cp /path/to/repo/.env.example .env       # then edit
+cp /path/to/repo/config.toml.example config.toml  # then edit
+cp /path/to/repo/docker-compose.yml .
+
+# 2. Bring up
+docker compose up -d --build
+
+# 3. Verify
+curl http://localhost:3000/api/health
+docker compose logs -f glyphstream
+```
+
+`docker compose up` runs `pnpm build` inside the builder stage and
+applies any pending Drizzle migrations on first DB open. Subsequent
+restarts are zero-downtime as long as you only changed env vars or
+`config.toml` (no rebuild needed for those — just `docker compose
+restart`).
+
+For HTTPS / public exposure, put the container behind a reverse proxy
+that handles TLS (Caddy / Traefik / Nginx). Set `PUBLIC_BASE_URL` in
+`.env` to the public origin so OAuth redirect URIs match.
+
+### Bundle analysis
+
+```bash
+pnpm analyze    # builds with rollup-plugin-visualizer enabled
+open bundle-stats.html
+```
+
+Generates a treemap of the client bundle with gzip + brotli sizes.
+Useful for spotting regressions when adding deps; current baseline
+is ~250 KB gzip total (without shiki, which stays server-side).
+
 ## License
 
 MIT

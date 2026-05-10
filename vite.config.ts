@@ -1,7 +1,14 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
-import { defineConfig } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
+
+// Enable bundle analysis with `ANALYZE=1 pnpm build`. Generates a
+// gzip + brotli treemap at bundle-stats.html in the project root —
+// useful for spotting unexpected client-side dependencies (most often:
+// shiki accidentally pulled into the browser bundle).
+const analyze = process.env.ANALYZE === '1';
 
 export default defineConfig({
 	plugins: [
@@ -53,6 +60,14 @@ export default defineConfig({
 					}
 				]
 			}
-		})
-	]
+		}),
+		analyze &&
+			(visualizer({
+				filename: 'bundle-stats.html',
+				template: 'treemap',
+				gzipSize: true,
+				brotliSize: true,
+				open: false
+			}) as PluginOption)
+	].filter(Boolean) as PluginOption[]
 });
