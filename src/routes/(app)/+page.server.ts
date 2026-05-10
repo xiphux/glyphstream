@@ -14,6 +14,16 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	// has a chance to win, returning a 500 instead of a 302.
 	await parent();
 
+	// At this point the layout's auth check has either populated
+	// locals.user or redirected. If it's still null here, something is
+	// wrong with the auth/parent flow — fail loud with a clear message
+	// instead of letting a non-null-assertion TypeError surface as an
+	// opaque 500 deep in the call stack.
+	if (!locals.user) {
+		console.error('[/+page.server.ts] locals.user is null after parent(); auth flow misconfigured');
+		throw error(500, 'Authentication flow misconfigured');
+	}
+
 	let endpoints;
 	try {
 		endpoints = listEndpoints();
@@ -36,6 +46,6 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	);
 	return {
 		models: results.flat(),
-		customModels: listCustomModelsForUser(locals.user!.id)
+		customModels: listCustomModelsForUser(locals.user.id)
 	};
 };

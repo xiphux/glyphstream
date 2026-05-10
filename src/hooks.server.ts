@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
 import { startMediaPurger } from '$lib/server/media/purger';
 
@@ -19,4 +19,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
 	return resolve(event);
+};
+
+/**
+ * Log unhandled server errors to stderr so Playwright's webServer log
+ * (and production logs) show the actual stack instead of just a 500
+ * status with a generic message body. Default SvelteKit behavior
+ * swallows errors silently which makes CI debugging painful.
+ */
+export const handleError: HandleServerError = ({ error, event, status }) => {
+	const stack = error instanceof Error ? error.stack ?? error.message : String(error);
+	console.error(
+		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`
+	);
+	return undefined;
 };
