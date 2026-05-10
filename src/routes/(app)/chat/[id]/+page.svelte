@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { ArrowUp, Square } from 'lucide-svelte';
+	import { ArrowUp, Check, Copy, Square } from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
@@ -291,6 +291,38 @@
 		return parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
 	}
 
+	// Copy-to-clipboard. Tracks the most recently copied message id so the
+	// trigger icon can briefly swap to a check mark as feedback. We use a
+	// single id slot rather than a per-message map because only one copy
+	// confirmation is on screen at a time.
+	let recentlyCopiedId = $state<string | null>(null);
+	let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+	async function copyMessage(m: ChatMessage) {
+		const text = partsToText(m.parts);
+		if (!text) return;
+		try {
+			await navigator.clipboard.writeText(text);
+			recentlyCopiedId = m.id;
+			if (copyTimer) clearTimeout(copyTimer);
+			copyTimer = setTimeout(() => {
+				if (recentlyCopiedId === m.id) recentlyCopiedId = null;
+				copyTimer = null;
+			}, 1500);
+		} catch (e) {
+			// clipboard.writeText can reject in non-secure contexts (HTTP) or
+			// when the document isn't focused. Surface to console; the user
+			// will see no feedback and can try again.
+			console.warn('Copy to clipboard failed:', e);
+		}
+	}
+
+	/** Whether to show the action bar for a message — only when there's
+	 * something copyable. Skip for media-only messages with no text. */
+	function hasCopyableText(m: ChatMessage): boolean {
+		return partsToText(m.parts).trim().length > 0;
+	}
+
 	function hasMedia(parts: MessagePart[]): boolean {
 		return parts.some((p) => p.type === 'image' || p.type === 'video');
 	}
@@ -322,6 +354,13 @@
 	>
 		<div class="mx-auto max-w-3xl space-y-4">
 			{#each messages as m (m.id)}
+				<!--
+					Message + action-bar group. The actions row sits directly
+					below the bubble, aligned to the same side (right for user
+					messages, left for assistant), and reveals on hover at sm+.
+					On mobile it stays visible since there's no hover.
+				-->
+				<div class="group">
 				<article
 					class="rounded-2xl px-4 py-3 text-sm {m.role === 'user'
 						? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
@@ -376,6 +415,30 @@
 						</div>
 					{/if}
 				</article>
+				{#if hasCopyableText(m)}
+					{@const justCopied = recentlyCopiedId === m.id}
+					<div
+						class="mt-1 flex opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 {m.role ===
+						'user'
+							? 'justify-end'
+							: 'justify-start'}"
+					>
+						<button
+							type="button"
+							onclick={() => copyMessage(m)}
+							aria-label={justCopied ? 'Copied' : 'Copy message'}
+							title={justCopied ? 'Copied' : 'Copy'}
+							class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+						>
+							{#if justCopied}
+								<Check size={14} strokeWidth={2.25} class="text-emerald-600 dark:text-emerald-400" />
+							{:else}
+								<Copy size={14} strokeWidth={2.25} />
+							{/if}
+						</button>
+					</div>
+				{/if}
+				</div>
 			{/each}
 
 			{#if inFlightOpen}

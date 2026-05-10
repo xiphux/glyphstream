@@ -42,6 +42,24 @@ expected priority, not time-bound.
   branch-switch affordance, and changing the edit handler to create a new
   sibling instead of orphaning the old one. No data migration needed.
 
+- **Message actions (full bar).** v1 ships with copy-to-clipboard only
+  on each bubble; the action-bar shell is in place so the rest is
+  pure plug-in work:
+  - **Edit** (user messages): re-presents the message in the composer;
+    on send, creates a sibling under the same parent and updates
+    `active_leaf_message_id`. Tied to the branching-UI item above.
+  - **Regenerate** (assistant messages): rolls back `active_leaf` to
+    the preceding user message and re-dispatches. Different code paths
+    per modality — chat re-streams, image/video re-call generation
+    with the same prompt + params.
+  - **Retry-on-error**: same as regenerate but only shown when the
+    previous turn failed (network error, upstream 5xx, timeout).
+  - **Branch nav**: `‹ 2/3 ›` indicator on messages with siblings, with
+    affordance to switch active branch. Reuses the schema's tree shape.
+  - **Thumbs up/down feedback**: requires a feedback collection
+    surface — DB table + later UI for review/export. Lower priority
+    until there's a workflow that actually consumes the feedback.
+
 - **Tool/function-call rendering UX.** Render tool invocations + results
   inline in messages, like Claude Code / Cursor do. Prerequisite for the
   next item.
