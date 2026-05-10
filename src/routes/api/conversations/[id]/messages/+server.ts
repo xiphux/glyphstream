@@ -127,6 +127,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 					const loaded = await loadMediaBytes(mid, locals.user.id);
 					images.push({ bytes: loaded.bytes, contentType: loaded.contentType });
 				}
+				if (DEBUG) {
+					const summary = images
+						.map((i) => `${i.contentType}:${i.bytes.byteLength}B`)
+						.join(', ');
+					console.debug(
+						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${text.slice(0, 60)}"`
+					);
+				}
 				upstream = await imageEdit(
 					endpoint,
 					{
@@ -139,6 +147,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 					inFlight.controller.signal
 				);
 			} else {
+				if (DEBUG) {
+					console.debug(
+						`[messages] t2i generate → /images/generations: prompt="${text.slice(0, 60)}"`
+					);
+				}
 				upstream = await imageGeneration(
 					endpoint,
 					{
