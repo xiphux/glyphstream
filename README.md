@@ -123,7 +123,7 @@ For local dev (no Docker): `pnpm import:owui <export.json> --user-id <uuid>`.
 ## Public exposure (TLS + HTTP/2)
 
 adapter-node speaks HTTP/1.1 only. Put a reverse proxy in front for
-TLS + HTTP/2 (and HTTP/3 if you want it). Set `PUBLIC_BASE_URL` in `.env`
+TLS + HTTP/2 (and HTTP/3 if you want it). Set `EXTERNAL_BASE_URL` in `.env`
 to the public origin so the OAuth redirect URI matches.
 
 Any pass-through reverse proxy works — pre-compression is handled inside

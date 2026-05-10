@@ -58,7 +58,7 @@ export default defineConfig({
 			GITHUB_OAUTH_CLIENT_ID: 'e2e-stub',
 			GITHUB_OAUTH_CLIENT_SECRET: 'e2e-stub',
 			ALLOWED_GITHUB_USER_IDS: '99999',
-			PUBLIC_BASE_URL: 'http://localhost:3000',
+			EXTERNAL_BASE_URL: 'http://localhost:3000',
 			CONFIG_PATH: './tests/e2e/fixtures/config.toml',
 			LOG_LEVEL: 'warn'
 		}
