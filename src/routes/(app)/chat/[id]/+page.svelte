@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { ArrowDown, ArrowUp, Check, Copy, Square } from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
@@ -317,10 +317,17 @@
 	// Auto-scroll on new content, but only if the user is already near the
 	// bottom. If they've scrolled up to read history, leave them alone — the
 	// floating button gives them an explicit way to rejoin the latest.
+	//
+	// `untrack(isNearBottom)` is load-bearing here: without it, the effect
+	// would also re-run every time the user's scroll position crossed the
+	// 100px threshold (because reading `isNearBottom` would track it),
+	// causing a snap-to-bottom mid-scroll the moment the observer flipped
+	// the flag true. We only want this effect to fire on actual content
+	// changes — messages added or new tokens streaming in.
 	$effect(() => {
 		void messages.length;
 		void inFlightText;
-		if (!isNearBottom) return;
+		if (!untrack(() => isNearBottom)) return;
 		void tick().then(() => scrollToBottom());
 	});
 
