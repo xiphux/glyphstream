@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { ArrowUp } from 'lucide-svelte';
+	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { firstName, timeOfDayGreeting } from '$lib/greeting';
 
@@ -56,6 +58,14 @@
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 
+	// Attachments are picked here and travel into the chat-id page via
+	// sessionStorage along with the first-message text — the chat-id page
+	// then forwards them to the message-send call.
+	const attachments = new AttachmentStore();
+	let fileInputEl = $state<HTMLInputElement | null>(null);
+	const allowAttachments = $derived(attachmentsAllowedFor(pickedKind));
+	onDestroy(() => attachments.destroy());
+
 	// Auto-resize composer (same pattern as the chat-page composer).
 	let composerEl = $state<HTMLTextAreaElement | null>(null);
 	const COMPOSER_MAX_HEIGHT_PX = 240;
@@ -71,7 +81,9 @@
 
 	async function startChat(e: Event) {
 		e.preventDefault();
-		if (!modelId || !text.trim() || busy) return;
+		if (!modelId || busy) return;
+		if (!text.trim() && attachments.items.length === 0) return;
+		if (attachments.isBusy) return;
 		busy = true;
 		errorMsg = null;
 		try {
@@ -102,9 +114,15 @@
 
 			// Hand the first message off to the chat page so the streaming
 			// response renders inside the right route lifecycle. Stash in
-			// sessionStorage (per-conversation key) and navigate.
+			// sessionStorage (per-conversation key) and navigate. Payload is
+			// JSON-encoded so we can carry attached media ids alongside the
+			// text — the chat page forwards them on the send call.
 			const key = `glyphstream:pendingFirstMessage:${conversation.id}`;
-			window.sessionStorage.setItem(key, text);
+			window.sessionStorage.setItem(
+				key,
+				JSON.stringify({ text, attachedMediaIds: attachments.readyMediaIds() })
+			);
+			attachments.clear();
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
@@ -158,6 +176,48 @@
 			onsubmit={startChat}
 			class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500"
 		>
+			{#if attachments.items.length > 0}
+				<div class="flex flex-wrap gap-2 border-b border-neutral-200 px-1 pb-2 dark:border-neutral-800">
+					{#each attachments.items as a (a.clientId)}
+						<div
+							class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
+							title={a.error ?? a.contentType}
+						>
+							<img
+								src={a.objectUrl}
+								alt=""
+								class="h-full w-full object-cover {a.status === 'uploading'
+									? 'opacity-60'
+									: a.status === 'error'
+										? 'opacity-40'
+										: ''}"
+							/>
+							{#if a.status === 'uploading'}
+								<div
+									class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
+								>
+									<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+								</div>
+							{:else if a.status === 'error'}
+								<div
+									class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
+								>
+									<AlertCircle size={20} strokeWidth={2} />
+								</div>
+							{/if}
+							<button
+								type="button"
+								onclick={() => attachments.remove(a.clientId)}
+								aria-label="Remove attachment"
+								title="Remove"
+								class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
+							>
+								<X size={12} strokeWidth={2.5} />
+							</button>
+						</div>
+					{/each}
+				</div>
+			{/if}
 			<textarea
 				bind:this={composerEl}
 				bind:value={text}
@@ -173,15 +233,38 @@
 				class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 			></textarea>
 
-			<div class="flex items-center justify-end gap-2 px-1 pt-1">
+			<div class="flex items-center gap-2 px-1 pt-1">
+				{#if allowAttachments}
+					<input
+						bind:this={fileInputEl}
+						type="file"
+						accept="image/*"
+						multiple
+						class="hidden"
+						onchange={(e) => {
+							const t = e.currentTarget;
+							if (t.files && t.files.length > 0) {
+								void attachments.addFiles(t.files);
+							}
+							t.value = '';
+						}}
+					/>
+					<button
+						type="button"
+						onclick={() => fileInputEl?.click()}
+						disabled={busy}
+						aria-label="Attach image"
+						title="Attach image"
+						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+					>
+						<Plus size={18} strokeWidth={2.25} />
+					</button>
+				{/if}
+				<div class="flex-1"></div>
 				<!--
 					Inline model selector: rendered as a borderless dropdown so
-					it reads as a soft control inside the box rather than a
-					separate field. Native <select> keeps keyboard nav + mobile
-					native picker for free. justify-end groups it next to the
-					send button rather than scattering them across the row;
-					the empty space on the left is reserved for future
-					attachment controls.
+					it reads as a soft control inside the box. Native keyboard nav
+					+ mobile picker for free.
 				-->
 				<ModelPicker
 					models={data.models}
@@ -193,7 +276,10 @@
 				/>
 				<button
 					type="submit"
-					disabled={!modelId || !text.trim() || busy}
+					disabled={!modelId ||
+						(!text.trim() && attachments.items.length === 0) ||
+						busy ||
+						attachments.isBusy}
 					aria-label="Send message"
 					title="Send"
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"

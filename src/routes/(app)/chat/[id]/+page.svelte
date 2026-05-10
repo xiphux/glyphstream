@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { tick, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { ArrowDown, ArrowUp, Check, Copy, Square } from 'lucide-svelte';
+	import { AlertCircle, ArrowDown, ArrowUp, Check, Copy, Plus, Square, X } from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
+	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import type {
 		ChatMessage,
 		MessagePart,
@@ -49,6 +50,14 @@
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
+
+	// Per-page attachment store. The store eagerly POSTs to /api/uploads
+	// as files are picked, so by send-time `readyMediaIds()` is just a
+	// state read. See $lib/attachments.svelte.ts.
+	const attachments = new AttachmentStore();
+	let fileInputEl = $state<HTMLInputElement | null>(null);
+	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
+	onDestroy(() => attachments.destroy());
 
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
@@ -289,8 +298,15 @@
 	async function send(e: Event) {
 		e.preventDefault();
 		const text = composerText.trim();
-		if (!text || busy) return;
+		if ((!text && attachments.items.length === 0) || busy) return;
+		if (attachments.isBusy) return;
+		// Snapshot the ids before clearing so the streaming send can forward
+		// them in Phase 3 (dispatcher work). For Phase 2 the server ignores
+		// the field; the variable still gets used so the wiring is in place.
+		const _attachedMediaIds = attachments.readyMediaIds();
+		void _attachedMediaIds;
 		composerText = '';
+		attachments.clear();
 		await sendStreaming(text);
 	}
 
@@ -334,6 +350,10 @@
 	// First-message handoff from /(app)/+page.svelte: when the new-chat page
 	// creates a conversation, it stashes the first message in sessionStorage
 	// and navigates here so the response can stream in this page's lifecycle.
+	// Payload is JSON-encoded {text, attachedMediaIds[]} so attachments
+	// picked on the new-chat page travel into the first send. The bare-string
+	// branch keeps backwards compat with any in-flight tabs from before the
+	// JSON shape — safe to delete a release or two from now.
 	let bootstrapped = $state(false);
 	$effect(() => {
 		if (bootstrapped || typeof window === 'undefined' || busy) return;
@@ -342,7 +362,20 @@
 		if (pending) {
 			window.sessionStorage.removeItem(key);
 			bootstrapped = true;
-			void sendStreaming(pending);
+			let pendingText = pending;
+			try {
+				const parsed = JSON.parse(pending) as unknown;
+				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
+					pendingText = String((parsed as { text: unknown }).text ?? '');
+					// attachedMediaIds will be wired into sendStreaming in
+					// Phase 3 (dispatcher). For now we just pull them through
+					// the bootstrap so the value isn't lost in transit.
+					void (parsed as { attachedMediaIds?: unknown }).attachedMediaIds;
+				}
+			} catch {
+				// Old format — pending was already plain text.
+			}
+			void sendStreaming(pendingText);
 		}
 	});
 
@@ -581,6 +614,48 @@
 				</div>
 			{/if}
 			<div class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500">
+				{#if attachments.items.length > 0}
+					<div class="flex flex-wrap gap-2 border-b border-neutral-200 px-1 pb-2 dark:border-neutral-800">
+						{#each attachments.items as a (a.clientId)}
+							<div
+								class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
+								title={a.error ?? a.contentType}
+							>
+								<img
+									src={a.objectUrl}
+									alt=""
+									class="h-full w-full object-cover {a.status === 'uploading'
+										? 'opacity-60'
+										: a.status === 'error'
+											? 'opacity-40'
+											: ''}"
+								/>
+								{#if a.status === 'uploading'}
+									<div
+										class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
+									>
+										<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+									</div>
+								{:else if a.status === 'error'}
+									<div
+										class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
+									>
+										<AlertCircle size={20} strokeWidth={2} />
+									</div>
+								{/if}
+								<button
+									type="button"
+									onclick={() => attachments.remove(a.clientId)}
+									aria-label="Remove attachment"
+									title="Remove"
+									class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
+								>
+									<X size={12} strokeWidth={2.5} />
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
 				<textarea
 					bind:this={composerEl}
 					bind:value={composerText}
@@ -595,7 +670,35 @@
 					}}
 					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 				></textarea>
-				<div class="flex items-center justify-end gap-2 px-1 pt-1">
+				<div class="flex items-center gap-2 px-1 pt-1">
+					{#if allowAttachments}
+						<input
+							bind:this={fileInputEl}
+							type="file"
+							accept="image/*"
+							multiple
+							class="hidden"
+							onchange={(e) => {
+								const t = e.currentTarget;
+								if (t.files && t.files.length > 0) {
+									void attachments.addFiles(t.files);
+								}
+								// Clear so re-picking the same file fires onchange again.
+								t.value = '';
+							}}
+						/>
+						<button
+							type="button"
+							onclick={() => fileInputEl?.click()}
+							disabled={busy}
+							aria-label="Attach image"
+							title="Attach image"
+							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+						>
+							<Plus size={18} strokeWidth={2.25} />
+						</button>
+					{/if}
+					<div class="flex-1"></div>
 					{#if busy && activeAbort}
 						<button
 							type="button"
@@ -609,7 +712,9 @@
 					{:else}
 						<button
 							type="submit"
-							disabled={!composerText.trim() || busy}
+							disabled={(!composerText.trim() && attachments.items.length === 0) ||
+								busy ||
+								attachments.isBusy}
 							aria-label="Send message"
 							title="Send"
 							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
