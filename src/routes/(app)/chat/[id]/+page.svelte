@@ -98,6 +98,78 @@
 		autoAttachedFor = lastAssistant.id;
 	});
 
+	// --- drag-drop + paste-from-clipboard ---------------------------------
+	//
+	// Both desktop niceties; mobile users use the file picker (touch
+	// devices generally can't drag from OS shells, and paste UX is rare).
+	// Both feed into the same `attachments.addFiles()` pipeline as the
+	// file picker, so they get the same upload/progress/error UX for
+	// free.
+	let isDraggingOver = $state(false);
+	// Drag-enter/leave fires recursively as the cursor moves over child
+	// elements within the drop zone. The counter pattern handles this
+	// without needing relatedTarget detection (which is fragile across
+	// browsers with shadow DOM / iframes).
+	let dragDepth = 0;
+
+	function dragHasFiles(e: DragEvent): boolean {
+		return Array.from(e.dataTransfer?.types ?? []).includes('Files');
+	}
+
+	function onDragEnter(e: DragEvent) {
+		if (!allowAttachments || !dragHasFiles(e)) return;
+		e.preventDefault();
+		dragDepth++;
+		isDraggingOver = true;
+	}
+
+	function onDragOver(e: DragEvent) {
+		if (!allowAttachments || !dragHasFiles(e)) return;
+		// preventDefault on dragover is what enables drop. Without it, the
+		// browser interprets the drag as "not droppable" and the drop
+		// event never fires.
+		e.preventDefault();
+	}
+
+	function onDragLeave(e: DragEvent) {
+		if (!allowAttachments || !dragHasFiles(e)) return;
+		dragDepth = Math.max(0, dragDepth - 1);
+		if (dragDepth === 0) isDraggingOver = false;
+	}
+
+	function onDrop(e: DragEvent) {
+		if (!allowAttachments) return;
+		e.preventDefault();
+		dragDepth = 0;
+		isDraggingOver = false;
+		const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+			f.type.startsWith('image/')
+		);
+		if (files.length > 0) {
+			void attachments.addFiles(files);
+		}
+	}
+
+	function onPaste(e: ClipboardEvent) {
+		if (!allowAttachments) return;
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const files: File[] = [];
+		for (const item of items) {
+			if (item.kind === 'file' && item.type.startsWith('image/')) {
+				const f = item.getAsFile();
+				if (f) files.push(f);
+			}
+		}
+		if (files.length > 0) {
+			// Only swallow the paste when we actually consumed an image.
+			// Plain-text pastes fall through to the textarea's default
+			// behavior so typing-flow isn't disrupted.
+			e.preventDefault();
+			void attachments.addFiles(files);
+		}
+	}
+
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
 	// message. Same flag also gates the streaming auto-scroll so we don't
@@ -698,7 +770,14 @@
 				<ArrowDown size={16} strokeWidth={2.25} />
 			</button>
 		</div>
-		<form onsubmit={send} class="mx-auto max-w-3xl">
+		<form
+			onsubmit={send}
+			ondragenter={onDragEnter}
+			ondragover={onDragOver}
+			ondragleave={onDragLeave}
+			ondrop={onDrop}
+			class="relative mx-auto max-w-3xl"
+		>
 			{#if errorMsg}
 				<div
 					class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
@@ -761,6 +840,7 @@
 							void send(e);
 						}
 					}}
+					onpaste={onPaste}
 					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
 				></textarea>
 				<div class="flex items-center gap-2 px-1 pt-1">
@@ -817,6 +897,19 @@
 					{/if}
 				</div>
 			</div>
+			{#if isDraggingOver}
+				<!--
+					Drop-zone overlay — covers the form rectangle while a file
+					drag is active. pointer-events-none so the underlying drop
+					event still fires on the form.
+				-->
+				<div
+					aria-hidden="true"
+					class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-neutral-700 backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85 dark:text-neutral-200"
+				>
+					Drop image to attach
+				</div>
+			{/if}
 		</form>
 	</div>
 </div>
