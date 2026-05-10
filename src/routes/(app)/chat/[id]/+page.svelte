@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { ArrowUp, Check, Copy, Square } from 'lucide-svelte';
+	import { ArrowDown, ArrowUp, Check, Copy, Square } from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
@@ -49,6 +49,34 @@
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
+
+	// Scroll-to-bottom affordance: shows a floating button just above the
+	// composer when the user has scrolled meaningfully away from the latest
+	// message. Same flag also gates the streaming auto-scroll so we don't
+	// yank the user back down while they're reading older messages.
+	//
+	// Implemented with an IntersectionObserver watching a 1px sentinel
+	// element pinned to the bottom of the message list. The 100px
+	// rootMargin on the bottom edge gives us the "near bottom" tolerance
+	// — the observer fires "intersecting" when the sentinel is within
+	// 100px of the visible viewport. Way cheaper than recomputing scroll
+	// math on every onscroll event, and the browser typically runs the
+	// observation off the main thread.
+	let isNearBottom = $state(true);
+	let bottomSentinel = $state<HTMLElement | null>(null);
+	$effect(() => {
+		const sentinel = bottomSentinel;
+		const root = scrollContainer;
+		if (!sentinel || !root) return;
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				isNearBottom = entry.isIntersecting;
+			},
+			{ root, rootMargin: '0px 0px 100px 0px', threshold: 0 }
+		);
+		observer.observe(sentinel);
+		return () => observer.disconnect();
+	});
 
 	// Auto-resize textarea: grow with content up to a sensible max so
 	// long-form composition gets the room it needs without pushing the
@@ -153,15 +181,21 @@
 					case 'start':
 						messages = [...messages, event.userMessage];
 						await tick();
+						// 'start' = the user just sent something — always pin to
+						// the bottom so they see their own message land,
+						// regardless of where they were scrolled before.
 						scrollToBottom();
 						break;
 					case 'text':
 						inFlightText += event.chunk;
-						scrollToBottom();
+						// Streaming auto-scrolls only follow the user if they're
+						// already at/near the bottom. Lets them scroll up to read
+						// history mid-stream without getting yanked back.
+						if (isNearBottom) scrollToBottom();
 						break;
 					case 'reasoning':
 						inFlightReasoning += event.chunk;
-						scrollToBottom();
+						if (isNearBottom) scrollToBottom();
 						break;
 					case 'progress':
 						inFlightProgress = event.percent;
@@ -260,16 +294,34 @@
 		await sendStreaming(text);
 	}
 
-	function scrollToBottom() {
-		if (scrollContainer) {
-			scrollContainer.scrollTop = scrollContainer.scrollHeight;
+	/**
+	 * Scroll the message viewport to the latest content.
+	 *
+	 * `smooth: true` for user-triggered scrolls (the floating button); the
+	 * gentle animation gives them feedback that something happened.
+	 *
+	 * `smooth: false` (default) for the streaming auto-scroll path — instant
+	 * scrolling keeps up with arriving tokens without lagging behind. A
+	 * smooth scroll during streaming would visibly chase the bottom edge.
+	 */
+	function scrollToBottom(opts?: { smooth?: boolean }) {
+		const el = scrollContainer;
+		if (!el) return;
+		if (opts?.smooth) {
+			el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+		} else {
+			el.scrollTop = el.scrollHeight;
 		}
 	}
 
+	// Auto-scroll on new content, but only if the user is already near the
+	// bottom. If they've scrolled up to read history, leave them alone — the
+	// floating button gives them an explicit way to rejoin the latest.
 	$effect(() => {
 		void messages.length;
 		void inFlightText;
-		void tick().then(scrollToBottom);
+		if (!isNearBottom) return;
+		void tick().then(() => scrollToBottom());
 	});
 
 	// First-message handoff from /(app)/+page.svelte: when the new-chat page
@@ -477,13 +529,42 @@
 					{/if}
 				</article>
 			{/if}
+			<!--
+				Bottom sentinel for IntersectionObserver. Pinned to the very
+				end of the message list so the observer can tell when the
+				user is scrolled within ~100px of it (see effect above).
+				1px tall + aria-hidden so it's invisible / inaudible to AT.
+			-->
+			<div bind:this={bottomSentinel} aria-hidden="true" class="h-px"></div>
 		</div>
 	</div>
 
 	<!-- Floating composer. Sits above the scrollable message area without
 		 a separator border — reads as part of the chat surface. The form
 		 itself is the rounded box; no surrounding footer chrome. -->
-	<div class="px-4 pb-4">
+	<div class="relative px-4 pb-4">
+		<!--
+			Scroll-to-bottom affordance. Anchored to the composer wrapper so
+			it sits a fixed distance above the composer regardless of how tall
+			the textarea has grown. Aria-hidden when not visible so screen
+			readers don't announce it; opacity transition for a soft fade.
+		-->
+		<div
+			class="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full transition-opacity {isNearBottom
+				? 'opacity-0'
+				: 'opacity-100'}"
+		>
+			<button
+				type="button"
+				onclick={() => scrollToBottom({ smooth: true })}
+				aria-label="Scroll to latest message"
+				aria-hidden={isNearBottom}
+				tabindex={isNearBottom ? -1 : 0}
+				class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+			>
+				<ArrowDown size={16} strokeWidth={2.25} />
+			</button>
+		</div>
 		<form onsubmit={send} class="mx-auto max-w-3xl">
 			{#if errorMsg}
 				<div
