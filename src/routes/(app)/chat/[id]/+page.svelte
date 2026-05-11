@@ -889,7 +889,7 @@
 									cancelEdit();
 								}
 							}}
-							class="block w-full resize-none border-0 bg-transparent px-1 py-1 text-sm focus:outline-none"
+							class="block w-full resize-none border-0 bg-transparent px-1 py-1 text-base focus:outline-none sm:text-sm"
 						></textarea>
 						<div class="mt-2 flex items-center gap-2">
 							{#if allowAttachments}
@@ -1227,7 +1227,7 @@
 						}
 					}}
 					onpaste={onPaste}
-					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-sm focus:outline-none disabled:opacity-50"
+					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 				></textarea>
 				<div class="flex items-center gap-2 px-1 pt-1">
 					{#if allowAttachments}

@@ -256,7 +256,7 @@
 							maxlength={200}
 							placeholder="e.g. Coding Assistant"
 							disabled={busy}
-							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 						/>
 					</div>
 
@@ -269,7 +269,7 @@
 							bind:value={description}
 							placeholder="What's this preset for?"
 							disabled={busy}
-							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 						/>
 					</div>
 
@@ -292,7 +292,7 @@
 							rows="6"
 							disabled={busy}
 							placeholder="Always respond in concise bullet points…"
-							class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-xs shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-xs dark:border-neutral-700 dark:bg-neutral-900"
 						></textarea>
 					</div>
 

@@ -294,7 +294,7 @@
 					autocorrect="off"
 					spellcheck="false"
 					onkeydown={onSearchKeydown}
-					class="flex-1 border-0 bg-transparent text-sm focus:outline-none"
+					class="flex-1 border-0 bg-transparent text-base focus:outline-none sm:text-sm"
 				/>
 			</div>
 
