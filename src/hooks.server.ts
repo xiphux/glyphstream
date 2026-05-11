@@ -7,6 +7,20 @@ import { startMediaPurger } from '$lib/server/media/purger';
 // starts even if no user has hit the server yet (e.g. on a fresh redeploy).
 startMediaPurger();
 
+// Paths that must always revalidate against the server. Browsers
+// special-case sw.js for SW updates, but reverse proxies and CDNs don't —
+// without an explicit no-cache header an intermediary could serve a stale
+// service worker (or manifest) and mask new versions from clients long
+// after a deploy. Explicit `no-cache` lets the bytes still be cached and
+// served on 304s after ETag revalidation, but forces the revalidation.
+//
+// Note: SvelteKit's adapter-node already correctly tags `/_app/immutable/*`
+// with `cache-control: public, max-age=31536000, immutable` (1 year),
+// since those filenames are content-hashed. We only need to override for
+// the small set of non-hashed root-level assets that change between
+// deploys but live at stable URLs.
+const ALWAYS_REVALIDATE_PATHS = new Set(['/sw.js', '/manifest.webmanifest']);
+
 /**
  * Populate event.locals.user on every request from the session cookie.
  * Routes/layouts decide whether to require it; this hook just *reads*.
@@ -18,7 +32,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const token = readSessionCookie(event.cookies);
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
-	return resolve(event);
+	const response = await resolve(event);
+	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
+		response.headers.set('cache-control', 'no-cache');
+	}
+	return response;
 };
 
 /**
