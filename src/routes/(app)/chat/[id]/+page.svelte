@@ -779,7 +779,11 @@
 
 	/** Switch the active branch to a sibling of the given message. Used by
 	 * the `‹ N/M ›` arrows. Refetches the conversation on success so the
-	 * page renders the new branch. */
+	 * page renders the new branch, then scrolls the newly-visible sibling
+	 * into view — otherwise a shorter new branch's natural scroll-height
+	 * clamping leaves the user at the bottom (often far below where they
+	 * were when they clicked the arrow), or a longer one strands them
+	 * mid-content with no clear orientation. */
 	async function selectSibling(targetMessageId: string) {
 		if (busy) return;
 		errorMsg = null;
@@ -793,6 +797,13 @@
 				throw new Error(j.message ?? `HTTP ${res.status}`);
 			}
 			await invalidateAll();
+			// Wait one microtask for the messages-sync $effect to apply the
+			// new data and the DOM to reflect it, then scroll the sibling
+			// into the middle of the viewport.
+			await tick();
+			document
+				.getElementById(`msg-${targetMessageId}`)
+				?.scrollIntoView({ block: 'center', behavior: 'auto' });
 		} catch (e) {
 			errorMsg = `Couldn't switch branch: ${e instanceof Error ? e.message : String(e)}`;
 		}
@@ -858,7 +869,7 @@
 					messages, left for assistant), and reveals on hover at sm+.
 					On mobile it stays visible since there's no hover.
 				-->
-				<div class="group">
+				<div id="msg-{m.id}" class="group">
 				{#if m.id === editingMessageId}
 					<!--
 						Inline editor: replaces the static bubble with an
