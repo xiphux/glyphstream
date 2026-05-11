@@ -8,6 +8,7 @@
  */
 
 import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
+import type { LoadedEndpoint } from './config';
 import { formatModelId } from './registry';
 
 const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
@@ -72,16 +73,28 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 	return null;
 }
 
-export function normalizeUpstreamModel(endpointId: string, m: UpstreamModel): ModelEntry {
+export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamModel): ModelEntry {
 	const detected = detectKind(m);
 	const owner = typeof m.owned_by === 'string' && m.owned_by.length > 0 ? m.owned_by : null;
+
+	// When the endpoint opts into owned_by grouping AND the model actually
+	// reports an owner, bucket by that. Otherwise (default mode, or
+	// owned_by mode with no owner field) fall back to the endpoint's own
+	// display name — which is also a UX upgrade over the previous code,
+	// which used the raw endpoint id as the group label.
+	const useOwner = endpoint.groupBy === 'owned_by' && owner !== null;
+	const group = useOwner ? owner : endpoint.displayName;
+	const groupKey = useOwner ? owner : endpoint.id;
+
 	return {
-		id: formatModelId(endpointId, m.id),
-		endpointId,
+		id: formatModelId(endpoint.id, m.id),
+		endpointId: endpoint.id,
 		upstreamId: m.id,
 		displayName: m.display_name && m.display_name.length > 0 ? m.display_name : m.id,
 		ownedBy: owner,
 		kind: detected ?? 'chat',
-		kindKnown: detected !== null
+		kindKnown: detected !== null,
+		group,
+		groupKey
 	};
 }

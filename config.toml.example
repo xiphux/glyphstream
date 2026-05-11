@@ -18,6 +18,12 @@
 # base_url = "http://192.168.1.10:8080/v1"
 # api_key_env = "NAS_BRIDGE_KEY"
 # request_timeout_seconds = 600
+# # An aggregating proxy like the bridge usually exposes many real providers
+# # (openrouter, venice, imagerouter, comfyui...) under one endpoint. Setting
+# # group_by="owned_by" buckets the model picker by the upstream's `owned_by`
+# # field instead of bundling everything under one "NAS Bridge" group. Models
+# # that don't report owned_by fall back to the endpoint's display_name.
+# group_by = "owned_by"
 
 # Example: a local llama-server speaking openai compat directly (no bridge
 # in front). Useful when you have a chat-only backend with no images/videos
@@ -41,3 +47,12 @@
 # upstream model id substrings; default is `passthrough`.
 # Valid values: passthrough | deepseek-r1 | openai-o-series | openrouter
 # provider_quirk = "deepseek-r1"
+
+# Optional: how the model picker labels the group an endpoint's models
+# appear under.
+# - "endpoint" (default): one group per [[endpoints]] block, labeled with
+#   `display_name`. Right for direct upstreams (Groq, llama-server, OpenAI).
+# - "owned_by": bucket each model by its `owned_by` field. Useful for
+#   aggregating proxies (openai-api-bridge) that fan out into many real
+#   providers. Models without `owned_by` fall back to the endpoint's group.
+# group_by = "owned_by"

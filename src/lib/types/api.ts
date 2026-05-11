@@ -25,6 +25,21 @@ export interface ModelEntry {
 	kind: ModelKind;
 	/** True when upstream actually told us the kind, false when we fell back to default */
 	kindKnown: boolean;
+	/**
+	 * Human-readable label for the group this model should appear under in
+	 * the picker. Defaults to the endpoint's displayName; if the endpoint
+	 * sets `group_by = "owned_by"` in config.toml the upstream's `owned_by`
+	 * is used instead (so e.g. an aggregating bridge fans out into its
+	 * underlying provider buckets — openrouter / venice / comfyui).
+	 * Falls back to endpoint.displayName when groupBy='owned_by' but the
+	 * model lacks an owned_by value.
+	 */
+	group: string;
+	/**
+	 * Stable identifier for the group. Used for grouping/dedup in the
+	 * picker; falls back to endpointId when owned_by is missing.
+	 */
+	groupKey: string;
 }
 
 /**

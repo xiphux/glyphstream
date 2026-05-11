@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { detectKind, normalizeUpstreamModel } from '$lib/server/endpoints/models';
+import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+
+function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
+	return {
+		id: 'bridge',
+		displayName: 'Bridge',
+		baseUrl: 'http://localhost/v1',
+		apiKey: null,
+		requestTimeoutSeconds: 120,
+		providerQuirk: 'passthrough',
+		groupBy: 'endpoint',
+		...overrides
+	};
+}
 
 describe('detectKind', () => {
 	describe('explicit fields (preferred)', () => {
@@ -77,7 +91,7 @@ describe('detectKind', () => {
 
 describe('normalizeUpstreamModel', () => {
 	it('builds a ModelEntry with prefixed id + kindKnown=true when detected', () => {
-		const e = normalizeUpstreamModel('bridge', { id: 'gpt-4o', kind: 'chat' });
+		const e = normalizeUpstreamModel(ep(), { id: 'gpt-4o', kind: 'chat' });
 		expect(e.id).toBe('bridge::gpt-4o');
 		expect(e.endpointId).toBe('bridge');
 		expect(e.upstreamId).toBe('gpt-4o');
@@ -86,22 +100,54 @@ describe('normalizeUpstreamModel', () => {
 	});
 
 	it('falls back to chat with kindKnown=false when no signal', () => {
-		const e = normalizeUpstreamModel('bridge', { id: 'random-thing' });
+		const e = normalizeUpstreamModel(ep(), { id: 'random-thing' });
 		expect(e.kind).toBe('chat');
 		expect(e.kindKnown).toBe(false);
 	});
 
 	it('uses display_name if set, otherwise the upstream id', () => {
 		expect(
-			normalizeUpstreamModel('bridge', { id: 'gpt-4o', display_name: 'GPT-4o' }).displayName
+			normalizeUpstreamModel(ep(), { id: 'gpt-4o', display_name: 'GPT-4o' }).displayName
 		).toBe('GPT-4o');
-		expect(normalizeUpstreamModel('bridge', { id: 'gpt-4o' }).displayName).toBe('gpt-4o');
+		expect(normalizeUpstreamModel(ep(), { id: 'gpt-4o' }).displayName).toBe('gpt-4o');
 	});
 
 	it('extracts owned_by when set, null when missing', () => {
 		expect(
-			normalizeUpstreamModel('bridge', { id: 'x', owned_by: 'comfyui' }).ownedBy
+			normalizeUpstreamModel(ep(), { id: 'x', owned_by: 'comfyui' }).ownedBy
 		).toBe('comfyui');
-		expect(normalizeUpstreamModel('bridge', { id: 'x' }).ownedBy).toBeNull();
+		expect(normalizeUpstreamModel(ep(), { id: 'x' }).ownedBy).toBeNull();
+	});
+
+	describe('group / groupKey', () => {
+		it('defaults to endpoint.displayName / endpoint.id when groupBy="endpoint"', () => {
+			const e = normalizeUpstreamModel(ep(), { id: 'x', owned_by: 'openrouter' });
+			expect(e.group).toBe('Bridge');
+			expect(e.groupKey).toBe('bridge');
+		});
+
+		it('uses owned_by for both group and groupKey when groupBy="owned_by"', () => {
+			const e = normalizeUpstreamModel(
+				ep({ groupBy: 'owned_by' }),
+				{ id: 'x', owned_by: 'openrouter' }
+			);
+			expect(e.group).toBe('openrouter');
+			expect(e.groupKey).toBe('openrouter');
+		});
+
+		it('falls back to endpoint.displayName when groupBy="owned_by" but model has no owned_by', () => {
+			const e = normalizeUpstreamModel(ep({ groupBy: 'owned_by' }), { id: 'x' });
+			expect(e.group).toBe('Bridge');
+			expect(e.groupKey).toBe('bridge');
+		});
+
+		it('falls back to endpoint.displayName when groupBy="owned_by" and owned_by is empty', () => {
+			const e = normalizeUpstreamModel(
+				ep({ groupBy: 'owned_by' }),
+				{ id: 'x', owned_by: '' }
+			);
+			expect(e.group).toBe('Bridge');
+			expect(e.groupKey).toBe('bridge');
+		});
 	});
 });

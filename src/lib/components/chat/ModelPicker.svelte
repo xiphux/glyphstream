@@ -99,17 +99,20 @@
 			});
 		}
 
-		// Base models, grouped by endpoint. Within an endpoint, prefix the
-		// owner only when there are multiple distinct owners (matches the
-		// pre-popover picker's behavior so labels stay tidy).
-		const byEndpoint = new Map<string, ModelEntry[]>();
+		// Base models, grouped by m.groupKey (server-side policy: usually the
+		// endpoint id, but when an endpoint sets group_by="owned_by" in
+		// config.toml each underlying provider becomes its own group).
+		// Within a group, show owner sublabels only when there are multiple
+		// distinct owners — keeps labels tidy and avoids redundant "·
+		// openrouter" tags inside an "OpenRouter" group.
+		const byGroup = new Map<string, ModelEntry[]>();
 		for (const m of visible) {
-			const list = byEndpoint.get(m.endpointId);
+			const list = byGroup.get(m.groupKey);
 			if (list) list.push(m);
-			else byEndpoint.set(m.endpointId, [m]);
+			else byGroup.set(m.groupKey, [m]);
 		}
 
-		for (const [endpointId, group] of byEndpoint) {
+		for (const [, group] of byGroup) {
 			const distinctOwners = new Set(
 				group.map((m) => m.ownedBy).filter((o): o is string => !!o)
 			);
@@ -124,10 +127,10 @@
 					sublabel: showOwner && m.ownedBy ? m.ownedBy : '',
 					kind: m.kind,
 					isCustom: false,
-					groupKey: endpointId,
-					groupLabel: endpointId,
+					groupKey: m.groupKey,
+					groupLabel: m.group,
 					searchText:
-						`${m.displayName} ${m.ownedBy ?? ''} ${m.upstreamId} ${endpointId}`.toLowerCase()
+						`${m.displayName} ${m.ownedBy ?? ''} ${m.upstreamId} ${m.endpointId} ${m.group}`.toLowerCase()
 				});
 			}
 		}

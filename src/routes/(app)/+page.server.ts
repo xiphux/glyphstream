@@ -28,7 +28,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		endpoints.map(async (endpoint) => {
 			try {
 				const upstream = await listUpstreamModels(endpoint);
-				return upstream.map((m) => normalizeUpstreamModel(endpoint.id, m));
+				return upstream.map((m) => normalizeUpstreamModel(endpoint, m));
 			} catch {
 				return [];
 			}

@@ -13,6 +13,21 @@ const VALID_QUIRKS: readonly ProviderQuirk[] = [
 	'openrouter'
 ];
 
+/**
+ * How the model picker labels the group an endpoint's models appear under.
+ *
+ * - `endpoint` (default): one group per [[endpoints]] block, labeled with
+ *   `display_name`. Right for direct upstreams (Groq, llama-server, OpenAI).
+ * - `owned_by`: read each model's `owned_by` field and bucket by that —
+ *   useful for aggregating proxies (e.g. openai-api-bridge) where one
+ *   endpoint exposes models from many real providers and you'd rather see
+ *   "OpenRouter / Venice / ImageRouter / ComfyUI" than one giant "Bridge"
+ *   group. Models without `owned_by` fall back to the endpoint's group.
+ */
+export type ProviderGrouping = 'endpoint' | 'owned_by';
+
+const VALID_GROUPINGS: readonly ProviderGrouping[] = ['endpoint', 'owned_by'];
+
 /** As declared in config.toml — keys snake_case, before env-var resolution. */
 interface RawEndpoint {
 	id?: unknown;
@@ -21,6 +36,7 @@ interface RawEndpoint {
 	api_key_env?: unknown;
 	request_timeout_seconds?: unknown;
 	provider_quirk?: unknown;
+	group_by?: unknown;
 }
 
 /** After validation + env-var resolution. */
@@ -31,6 +47,7 @@ export interface LoadedEndpoint {
 	apiKey: string | null;
 	requestTimeoutSeconds: number;
 	providerQuirk: ProviderQuirk;
+	groupBy: ProviderGrouping;
 }
 
 export class ConfigError extends Error {}
@@ -131,7 +148,18 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		providerQuirk = q as ProviderQuirk;
 	}
 
-	return { id, displayName, baseUrl, apiKey, requestTimeoutSeconds, providerQuirk };
+	let groupBy: ProviderGrouping = 'endpoint';
+	if (raw.group_by !== undefined) {
+		const g = requireString(raw.group_by, 'group_by', at);
+		if (!(VALID_GROUPINGS as readonly string[]).includes(g)) {
+			throw new ConfigError(
+				`${at}: group_by "${g}" must be one of ${VALID_GROUPINGS.join(', ')}`
+			);
+		}
+		groupBy = g as ProviderGrouping;
+	}
+
+	return { id, displayName, baseUrl, apiKey, requestTimeoutSeconds, providerQuirk, groupBy };
 }
 
 function requireString(v: unknown, field: string, at: string): string {

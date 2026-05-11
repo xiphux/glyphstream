@@ -39,7 +39,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 			try {
 				const upstream = await listUpstreamModels(endpoint);
-				const models = upstream.map((m) => normalizeUpstreamModel(endpoint.id, m));
+				const models = upstream.map((m) => normalizeUpstreamModel(endpoint, m));
 				cache.set(endpoint.id, { models, expiresAt: now + CACHE_TTL_MS });
 				return { endpointId: endpoint.id, models, error: null };
 			} catch (e) {

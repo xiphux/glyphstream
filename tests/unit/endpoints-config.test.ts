@@ -151,6 +151,35 @@ provider_quirk = "made-up"
 		expect(() => loadEndpoints(path)).toThrow(/provider_quirk/);
 	});
 
+	it('defaults group_by to "endpoint"', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadEndpoints(path)[0].groupBy).toBe('endpoint');
+	});
+
+	it('accepts group_by = "owned_by"', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+group_by = "owned_by"
+		`);
+		expect(loadEndpoints(path)[0].groupBy).toBe('owned_by');
+	});
+
+	it('rejects unknown group_by values', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+group_by = "by-model-name"
+		`);
+		expect(() => loadEndpoints(path)).toThrow(/group_by/);
+	});
+
 	it('rejects non-positive request_timeout_seconds', () => {
 		const path = writeConfig(`
 [[endpoints]]
