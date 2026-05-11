@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
+import { decrementMediaForMessages } from './media';
 
 interface AppendInput {
 	conversationId: string;
@@ -229,6 +230,111 @@ export function setActiveLeafMessageId(
  *
  * Returns null if `messageId` doesn't belong to `conversationId`.
  */
+/**
+ * Delete an alternate-branch sibling and its entire subtree of descendants.
+ * Intended for the UI's "delete this branch" affordance — when the user has
+ * created multiple branches via edit (or retry) and wants to discard one.
+ *
+ * Returns `null` if the message doesn't belong to the conversation, or
+ * `{ refusedReason: 'no-siblings' }` if the message has no siblings (deleting
+ * it would just truncate the conversation, which is a different operation
+ * intentionally NOT exposed through this endpoint).
+ *
+ * On success, returns the deleted message ids and the new active_leaf.
+ * The active_leaf is reassigned to a sibling's deepest descendant *before*
+ * the delete fires, so the FK's ON DELETE SET NULL doesn't accidentally
+ * orphan the conversation. Media refs for the deleted set are decremented
+ * before the delete too, because message_media's ON DELETE CASCADE would
+ * otherwise drop the join rows out from under our ref-counting.
+ */
+export function deleteBranch(
+	conversationId: string,
+	messageId: string
+):
+	| { deletedIds: string[]; newActiveLeaf: string }
+	| { refusedReason: 'no-siblings' }
+	| null {
+	const db = getDb();
+	return db.transaction((tx) => {
+		// One-shot fetch of every row in the conversation: cheap (conversation
+		// scoped) and lets us do parent/child lookups in memory without
+		// chained queries.
+		const all = tx
+			.select({
+				id: messages.id,
+				parentId: messages.parentMessageId,
+				createdAt: messages.createdAt
+			})
+			.from(messages)
+			.where(eq(messages.conversationId, conversationId))
+			.all();
+
+		const target = all.find((r) => r.id === messageId);
+		if (!target) return null;
+
+		// Sibling check: messages sharing the same parent_message_id (including
+		// null for a root sibling). Refuse if there's no replacement — UI
+		// already gates this but defense-in-depth.
+		const siblings = all.filter((r) => r.parentId === target.parentId && r.id !== messageId);
+		if (siblings.length === 0) {
+			return { refusedReason: 'no-siblings' as const };
+		}
+
+		// Collect the subtree rooted at messageId (inclusive) via BFS.
+		const childrenByParent = new Map<string, typeof all>();
+		for (const r of all) {
+			if (!r.parentId) continue;
+			const list = childrenByParent.get(r.parentId);
+			if (list) list.push(r);
+			else childrenByParent.set(r.parentId, [r]);
+		}
+		const toDelete = new Set<string>([messageId]);
+		const queue = [messageId];
+		while (queue.length > 0) {
+			const cur = queue.shift()!;
+			const kids = childrenByParent.get(cur);
+			if (!kids) continue;
+			for (const k of kids) {
+				if (!toDelete.has(k.id)) {
+					toDelete.add(k.id);
+					queue.push(k.id);
+				}
+			}
+		}
+
+		// Pick the replacement sibling and walk down to its deepest descendant
+		// (greatest created_at, ties broken lexically) — that becomes the new
+		// active_leaf. Same shape as selectBranch's walk.
+		const replacement = siblings[0];
+		let cursor = replacement.id;
+		while (true) {
+			const kids = childrenByParent.get(cursor);
+			if (!kids || kids.length === 0) break;
+			const sorted = [...kids].sort(
+				(a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)
+			);
+			cursor = sorted[0].id;
+		}
+
+		// Order matters: active_leaf reassign → media ref decrement →
+		// message delete. See JSDoc above for why.
+		const now = Date.now();
+		tx.update(conversations)
+			.set({ activeLeafMessageId: cursor, updatedAt: now })
+			.where(eq(conversations.id, conversationId))
+			.run();
+
+		const deletedIds = [...toDelete];
+		decrementMediaForMessages(deletedIds);
+
+		tx.delete(messages)
+			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, deletedIds)))
+			.run();
+
+		return { deletedIds, newActiveLeaf: cursor };
+	});
+}
+
 export function truncateAtMessage(
 	conversationId: string,
 	messageId: string

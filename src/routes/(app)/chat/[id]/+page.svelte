@@ -13,6 +13,7 @@
 		Plus,
 		RotateCcw,
 		Square,
+		Trash2,
 		X
 	} from 'lucide-svelte';
 	import { firstName } from '$lib/greeting';
@@ -782,6 +783,29 @@
 		}
 	}
 
+	/** Delete the branch rooted at this message — only meaningful when the
+	 * message has siblings. Confirms first because the operation is
+	 * irreversible (subtree messages + any uniquely-referenced generated
+	 * media get hard-deleted via the ref-counted purger path). */
+	async function deleteBranch(m: ChatMessage) {
+		if (busy) return;
+		if (!confirm('Delete this branch and all messages on it? This cannot be undone.')) return;
+		errorMsg = null;
+		try {
+			const res = await fetch(
+				`/api/conversations/${convId}/messages/${m.id}/branch`,
+				{ method: 'DELETE' }
+			);
+			if (!res.ok && res.status !== 404) {
+				const j = await res.json().catch(() => ({}));
+				throw new Error(j.message ?? `HTTP ${res.status}`);
+			}
+			await invalidateAll();
+		} catch (e) {
+			errorMsg = `Couldn't delete branch: ${e instanceof Error ? e.message : String(e)}`;
+		}
+	}
+
 	function hasMedia(parts: MessagePart[]): boolean {
 		return parts.some((p) => p.type === 'image' || p.type === 'video');
 	}
@@ -1032,6 +1056,20 @@
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
 							>
 								<ChevronRight size={14} strokeWidth={2.25} />
+							</button>
+							<!-- Trash this branch. Only meaningful (and only shown) when
+								 siblings exist — deleting an only-branch would just be
+								 truncating the conversation, a different operation that
+								 isn't exposed here. Server defensively re-checks. -->
+							<button
+								type="button"
+								onclick={() => deleteBranch(m)}
+								disabled={busy}
+								aria-label="Delete this branch"
+								title="Delete branch"
+								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-red-950/40 dark:hover:text-red-300"
+							>
+								<Trash2 size={14} strokeWidth={2.25} />
 							</button>
 						{/if}
 						{#if showCopy}

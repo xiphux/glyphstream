@@ -21,12 +21,16 @@ import {
 } from '$lib/server/db/queries/conversations';
 import {
 	appendMessage,
+	deleteBranch,
 	getMessage,
 	selectBranch,
 	setActiveLeafMessageId,
 	truncateAtMessage,
 	walkActiveBranch
 } from '$lib/server/db/queries/messages';
+import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
+import { media } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -554,5 +558,182 @@ describe('branching: siblings + selectBranch', () => {
 		expect(branch.map((m) => m.id)).toEqual([userMsg.id]);
 		// aiMsg row still exists in DB, just not in active branch.
 		expect(getMessage(conv.id, aiMsg.id)).not.toBeNull();
+	});
+});
+
+describe('deleteBranch', () => {
+	/**
+	 * Build a tree with two sibling user messages (edit branches), each with
+	 * an assistant child. Returns ids so individual tests can drive deletions.
+	 *
+	 *           root user (U0)
+	 *           ├── assistant (A0)
+	 *           ?
+	 *           edit: two sibling users branching off the same parent (null)
+	 *
+	 * For simplicity we just create two root siblings with assistant children
+	 * under each — same shape as "user edits the root message twice."
+	 */
+	function buildTwoBranches() {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const u1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'branch A' }]
+		});
+		const a1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: u1.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'A reply' }]
+		});
+		const u2 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'branch B' }]
+		});
+		const a2 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: u2.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'B reply' }]
+		});
+		return { user: u, conv, u1, a1, u2, a2 };
+	}
+
+	it('deletes the subtree rooted at the target sibling', () => {
+		const { conv, u1, a1, u2 } = buildTwoBranches();
+		const result = deleteBranch(conv.id, u1.id);
+		expect(result).not.toBeNull();
+		expect(result && 'deletedIds' in result).toBe(true);
+		if (result && 'deletedIds' in result) {
+			// Both u1 (the target) and a1 (its child) should be gone.
+			expect(new Set(result.deletedIds)).toEqual(new Set([u1.id, a1.id]));
+		}
+		// The remaining branch (u2 / a2) survives.
+		expect(getMessage(conv.id, u2.id)).not.toBeNull();
+		// The deleted messages are actually gone.
+		expect(getMessage(conv.id, u1.id)).toBeNull();
+		expect(getMessage(conv.id, a1.id)).toBeNull();
+	});
+
+	it('reassigns active_leaf to the surviving sibling`s deepest descendant', () => {
+		const { user, conv, u1, u2, a2 } = buildTwoBranches();
+		// Force active_leaf onto branch A (the one we're about to delete).
+		setActiveLeafMessageId(conv.id, u1.id);
+		const result = deleteBranch(conv.id, u1.id);
+		expect(result && 'newActiveLeaf' in result).toBe(true);
+
+		// After deletion, active_leaf points at a2 (the deepest descendant of
+		// the surviving sibling u2). Without this reassignment the FK's
+		// ON DELETE SET NULL would have orphaned the conversation.
+		const meta = getConversationMeta(conv.id, user.id);
+		expect(meta?.activeLeafMessageId).toBe(a2.id);
+		// And the walk from active_leaf naturally builds the surviving branch.
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.id)).toEqual([u2.id, a2.id]);
+	});
+
+	it('decrements media ref_count for messages on the deleted branch', () => {
+		const { user, conv, u1, a1, a2 } = buildTwoBranches();
+		// Generated image referenced by BOTH branches' assistants (e.g. same
+		// hash returned by the bridge across runs). Ref count starts at 2.
+		const { id: mediaId } = insertMedia({
+			userId: user.id,
+			storagePath: 'ab/cd/test.png',
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::x',
+			promptExcerpt: null
+		});
+		linkMessageMedia(a1.id, mediaId);
+		linkMessageMedia(a2.id, mediaId);
+		const before = mocks.testDb
+			.select({ refCount: media.refCount })
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(before?.refCount).toBe(2);
+
+		deleteBranch(conv.id, u1.id);
+
+		// Now ref_count is 1 (a2 still references it).
+		const after = mocks.testDb
+			.select({
+				refCount: media.refCount,
+				unreferencedSince: media.unreferencedSince
+			})
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(after?.refCount).toBe(1);
+		// Still referenced, so unreferencedSince stays null.
+		expect(after?.unreferencedSince).toBeNull();
+	});
+
+	it('stamps media unreferencedSince when ref_count hits zero after delete', () => {
+		const { user, conv, u1, a1 } = buildTwoBranches();
+		// Media referenced ONLY by the to-be-deleted branch.
+		const { id: mediaId } = insertMedia({
+			userId: user.id,
+			storagePath: 'ab/cd/orphan.png',
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::x',
+			promptExcerpt: null
+		});
+		linkMessageMedia(a1.id, mediaId);
+		expect(
+			mocks.testDb.select({ r: media.refCount }).from(media).where(eq(media.id, mediaId)).get()?.r
+		).toBe(1);
+
+		deleteBranch(conv.id, u1.id);
+
+		// Ref count hit zero → purger gets a green light via unreferencedSince.
+		const after = mocks.testDb
+			.select({ refCount: media.refCount, unreferencedSince: media.unreferencedSince })
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(after?.refCount).toBe(0);
+		expect(after?.unreferencedSince).not.toBeNull();
+	});
+
+	it('refuses to delete a branch that has no siblings', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const root = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'only message' }]
+		});
+		const result = deleteBranch(conv.id, root.id);
+		expect(result).toEqual({ refusedReason: 'no-siblings' });
+		// Message is still there.
+		expect(getMessage(conv.id, root.id)).not.toBeNull();
+	});
+
+	it('returns null when the message does not belong to the conversation', () => {
+		const { conv } = buildTwoBranches();
+		const result = deleteBranch(conv.id, 'not-a-real-message-id');
+		expect(result).toBeNull();
 	});
 });
