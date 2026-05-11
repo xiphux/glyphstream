@@ -52,7 +52,15 @@ export default defineConfig({
 				// Precache the built shell. APIs and media stay on network so
 				// they're never served stale and SSE streams aren't intercepted.
 				globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
-				navigateFallbackDenylist: [/^\/api\//],
+				// adapter-node serves pages via SSR, not as a static shell, so
+				// there's no precached HTML to fall back navigations to.
+				// @vite-pwa/sveltekit otherwise auto-sets this to "/" (its
+				// `if (!("navigateFallback" in options.workbox))` check is
+				// presence-based, so the explicit `undefined` short-circuits
+				// it). Without this opt-out, Workbox throws
+				// `non-precached-url :: [{"url":"/"}]` when handling the
+				// navigation route at runtime.
+				navigateFallback: undefined,
 				runtimeCaching: [
 					{
 						urlPattern: /^\/api\//,
