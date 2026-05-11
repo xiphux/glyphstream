@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
+	import { untrack } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
@@ -45,6 +46,14 @@
 	// conversation doesn't leave the drawer covering the chat.
 	let drawerOpen = $state(false);
 
+	// Which conversation's overflow menu is currently open (if any). Used
+	// to suppress the drawer's auto-close behavior while a menu is open —
+	// otherwise opening the overflow on mobile leaves the menu floating
+	// in space while the drawer slides away behind it. Only one menu can
+	// be open at a time (opening a new one closes the previous through
+	// the onOpenChange callback flipping this slot).
+	let openOverflowFor = $state<string | null>(null);
+
 	// Desktop collapse state. Only affects the sm+ static sidebar; the
 	// mobile drawer always opens to the full width when toggled.
 	// Persisted in localStorage so the user's preference survives reloads;
@@ -62,6 +71,10 @@
 		// Re-runs whenever the URL changes; collapse the mobile drawer.
 		// (Reading currentPath here is what makes the effect track it.)
 		void currentPath;
+		// untrack the read so this effect's dep set stays as just
+		// (currentPath). Otherwise dismissing the overflow menu would
+		// itself trigger the close — we only want URL changes to do that.
+		if (untrack(() => openOverflowFor) !== null) return;
 		drawerOpen = false;
 	});
 
@@ -243,7 +256,10 @@
 							>
 								{c.title ?? 'Untitled'}
 							</a>
-							<DropdownMenu.Root>
+							<DropdownMenu.Root
+								open={openOverflowFor === c.id}
+								onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
+							>
 								<DropdownMenu.Trigger
 									disabled={busyId === c.id}
 									title="Conversation options"
