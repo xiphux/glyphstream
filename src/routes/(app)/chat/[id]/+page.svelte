@@ -331,6 +331,12 @@
 	interface SendOptions {
 		/** Edit flow — make the new user message a sibling of this parent. */
 		parentMessageId?: string;
+		/** Edit flow — id of the message being replaced. Used to trim the
+		 * old branch's continuation out of the visible list at optimistic-
+		 * insert time, so the new in-flight bubble doesn't briefly stream
+		 * BELOW the previous branch's stale tail. Symmetric counterpart
+		 * to retry's `retryFromMessageId` slice. */
+		editedMessageId?: string;
 		/** Retry flow — skip the new user message entirely; regenerate
 		 * a sibling assistant of this id. */
 		retryFromMessageId?: string;
@@ -361,6 +367,15 @@
 			const retryIdx = messages.findIndex((m) => m.id === options.retryFromMessageId);
 			if (retryIdx >= 0) messages = messages.slice(0, retryIdx);
 		} else {
+			// Edit case: trim everything from the edited message onward so
+			// the new optimistic bubble visually replaces it. Without this
+			// the old branch's [B, C, D, E] would still be rendered above
+			// the in-flight bubble, making it look like a new message at
+			// the end of the conversation instead of a sibling replacing B.
+			if (options.editedMessageId) {
+				const editIdx = messages.findIndex((m) => m.id === options.editedMessageId);
+				if (editIdx >= 0) messages = messages.slice(0, editIdx);
+			}
 			const opt = buildOptimisticUserMessage(text, attachedMediaIds);
 			messages = [...messages, opt];
 			optimisticId = opt.id;
@@ -737,6 +752,7 @@
 		if (editAttachments.isBusy) return;
 		const attachedMediaIds = editAttachments.readyMediaIds();
 		const parentId = editingParentId;
+		const editedId = editingMessageId;
 		// Snapshot then reset state — sendStreaming does its own UI work
 		// (in-flight bubble, optimistic placeholder swap on 'start') that
 		// we don't want to compete with the dismissed editor.
@@ -744,11 +760,10 @@
 		editingParentId = null;
 		editText = '';
 		editAttachments.clear();
-		await sendStreaming(
-			text,
-			attachedMediaIds,
-			parentId ? { parentMessageId: parentId } : {}
-		);
+		await sendStreaming(text, attachedMediaIds, {
+			...(parentId ? { parentMessageId: parentId } : {}),
+			...(editedId ? { editedMessageId: editedId } : {})
+		});
 	}
 
 	/**
