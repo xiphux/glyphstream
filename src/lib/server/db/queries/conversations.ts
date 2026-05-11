@@ -117,6 +117,39 @@ export function unarchiveConversation(id: string, userId: string): boolean {
 	return res.changes > 0;
 }
 
+/**
+ * Update the model/endpoint/kind a conversation will use for its next turn.
+ *
+ * Touches ONLY routing fields. `system_prompt`, `parameters_json`, and
+ * `custom_model_id` are intentionally preserved — switching *model* doesn't
+ * change *persona*. If the conversation was created from a custom preset,
+ * its persona stays even after you pivot to a different base model.
+ *
+ * Also bumps `updated_at` so the sidebar's newest-first ordering reflects
+ * that the user just interacted with the conversation.
+ *
+ * Returns `true` on success, `false` if no row matched (wrong id or
+ * ownership mismatch).
+ */
+export function updateConversationModel(
+	id: string,
+	userId: string,
+	patch: { endpointId: string; modelId: string; modelKind: ModelKind | null }
+): boolean {
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({
+			endpointId: patch.endpointId,
+			modelId: patch.modelId,
+			modelKind: patch.modelKind,
+			updatedAt: Date.now()
+		})
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+	return res.changes > 0;
+}
+
 /** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */
 export function getConversationDetail(
 	id: string,

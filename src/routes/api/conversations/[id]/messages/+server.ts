@@ -2,7 +2,8 @@ import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
 import {
 	getConversationMeta,
-	setConversationTitle
+	setConversationTitle,
+	updateConversationModel
 } from '$lib/server/db/queries/conversations';
 import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import {
@@ -62,17 +63,52 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const meta = getConversationMeta(params.id, locals.user.id);
 	if (!meta) throw error(404, 'Conversation not found');
 
-	const parsed = parseModelId(meta.modelId);
-	if (!parsed) {
-		throw error(500, `Stored model id "${meta.modelId}" is malformed`);
+	// Per-turn model override: when the client supplies a `modelId` that
+	// differs from what the conversation row currently stores, validate it
+	// and rewrite the row's routing fields BEFORE we resolve the endpoint
+	// for dispatch. Crucially, this runs prior to the endpoint check
+	// below — so for an imported OWUI chat (whose stored `endpoint_id`
+	// doesn't resolve to a real endpoint) the user picking any real model
+	// here unblocks the send without a separate "fix this chat" flow.
+	// `system_prompt`, `parameters_json`, and `custom_model_id` stay put.
+	if (typeof body.modelId === 'string' && body.modelId && body.modelId !== meta.modelId) {
+		const newParsed = parseModelId(body.modelId);
+		if (!newParsed) {
+			throw error(400, `modelId "${body.modelId}" is malformed`);
+		}
+		const newEndpoint = getEndpoint(newParsed.endpointId);
+		if (!newEndpoint) {
+			throw error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
+		}
+		const VALID_KINDS = ['chat', 'embedding', 'image', 'video'] as const;
+		const newKind =
+			body.modelKind && (VALID_KINDS as readonly string[]).includes(body.modelKind)
+				? body.modelKind
+				: meta.modelKind;
+		updateConversationModel(params.id, locals.user.id, {
+			endpointId: newParsed.endpointId,
+			modelId: body.modelId,
+			modelKind: newKind
+		});
+		meta.endpointId = newParsed.endpointId;
+		meta.modelId = body.modelId;
+		meta.modelKind = newKind;
 	}
-	const endpoint = getEndpoint(parsed.endpointId);
-	if (!endpoint) {
+
+	// At this point either (a) the body carried a valid override and we
+	// rewrote meta above, or (b) the conversation's stored model resolves
+	// natively. Otherwise the conversation has an unresolvable model
+	// (imported OWUI chat with no override picked yet, or the configured
+	// endpoint was removed from config.toml) — return a 400 with an
+	// actionable message rather than a 500 so the UI can surface it.
+	const parsed = parseModelId(meta.modelId);
+	if (!parsed || !getEndpoint(parsed.endpointId)) {
 		throw error(
-			502,
-			`Endpoint "${parsed.endpointId}" referenced by this conversation is not configured`
+			400,
+			'This conversation has no valid model. Pick one from the model picker before sending.'
 		);
 	}
+	const endpoint = getEndpoint(parsed.endpointId)!;
 
 	// `userMessage` is the anchor that the assistant message hangs off of.
 	// For a regular send it's a freshly-persisted row; for a retry it's

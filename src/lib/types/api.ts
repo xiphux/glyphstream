@@ -209,6 +209,20 @@ export interface SendMessageRequest {
 	 * ignored when this is set.
 	 */
 	regenerateFromMessageId?: string;
+	/**
+	 * Per-turn model override. When supplied and different from the
+	 * conversation's stored model, the server updates
+	 * `conversations.endpoint_id` / `model_id` / `model_kind` before
+	 * dispatching this turn — so subsequent turns continue with the new
+	 * model unless overridden again. The conversation's system prompt /
+	 * parameters / custom-model link are NOT touched: switching *model*
+	 * doesn't change *persona*. Use case: pivot to a stronger model mid-
+	 * conversation, or pick a real model for an imported OWUI chat
+	 * (which lands with a synthetic endpoint id).
+	 */
+	modelId?: string;
+	/** Modality of the override model. Required when `modelId` is set. */
+	modelKind?: ModelKind;
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */

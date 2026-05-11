@@ -19,6 +19,7 @@
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import type {
 		ChatMessage,
 		MessagePart,
@@ -59,6 +60,24 @@
 		modelKind = data.conversation.modelKind;
 	});
 
+	// Per-turn picker re-binds modelId; whenever the user picks a different
+	// model, derive the new modelKind from data.models so the composer's
+	// modality-driven affordances (placeholder, attachment allowance) update.
+	// If the new model doesn't permit attachments, drop any in-flight ones —
+	// otherwise the user could ship an upload that the new model rejects.
+	// untrack the actions so this effect's dep set stays as just (modelId).
+	$effect(() => {
+		void modelId;
+		const next = data.models.find((m) => m.id === modelId);
+		if (!next) return;
+		untrack(() => {
+			modelKind = next.kind;
+			if (!attachmentsAllowedFor(next.kind) && attachments.items.length > 0) {
+				attachments.clear();
+			}
+		});
+	});
+
 	let composerText = $state('');
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
@@ -70,6 +89,12 @@
 	const attachments = new AttachmentStore();
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
+	// Imported OWUI conversations land with a stored modelId like "gpt-4o"
+	// (no endpoint:: prefix), which the picker shows as "Choose a model…".
+	// Without this gate the user could type+submit and the server would 500
+	// on `parseModelId(...) === null`. Gating the submit means the picker
+	// is the obvious next step.
+	const hasValidModel = $derived(data.models.some((m) => m.id === modelId));
 	onDestroy(() => attachments.destroy());
 
 	// Auto-attach last generated image for I2I follow-ups: when the
@@ -354,11 +379,17 @@
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
+			// Always include modelId / modelKind — server cheaply no-ops when
+			// they match the conversation's stored values, so this stays
+			// simple (no client-side dirty tracking) and the server is the
+			// single source of truth on "did the user switch?".
 			const requestBody = isRetry
-				? { regenerateFromMessageId: options.retryFromMessageId }
+				? { regenerateFromMessageId: options.retryFromMessageId, modelId, modelKind }
 				: {
 						text,
 						attachedMediaIds,
+						modelId,
+						modelKind,
 						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
 					};
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
@@ -455,11 +486,15 @@
 		activeAbort = abort;
 		const isRetry = !!options.retryFromMessageId;
 		try {
+			// Same all-paths shape as the streaming dispatch above — see
+			// that branch for why we always send modelId/modelKind.
 			const requestBody = isRetry
-				? { regenerateFromMessageId: options.retryFromMessageId }
+				? { regenerateFromMessageId: options.retryFromMessageId, modelId, modelKind }
 				: {
 						text,
 						attachedMediaIds,
+						modelId,
+						modelKind,
 						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
 					};
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
@@ -1223,6 +1258,23 @@
 						</button>
 					{/if}
 					<div class="flex-1"></div>
+					<!--
+						Per-turn model picker: defaulted to the conversation's
+						current model so the no-change case is invisible. Picking
+						a different model rewrites the conversation's stored
+						endpoint/model on the next send (see
+						/api/conversations/:id/messages — `modelId` in the body).
+						Custom presets are intentionally NOT shown here because
+						they bundle persona, and switching persona mid-thread is
+						a different feature.
+					-->
+					<ModelPicker
+						models={data.models}
+						bind:value={modelId}
+						filterKinds={['chat', 'image', 'video']}
+						disabled={busy}
+						inline
+					/>
 					{#if busy && activeAbort}
 						<button
 							type="button"
@@ -1238,9 +1290,10 @@
 							type="submit"
 							disabled={(!composerText.trim() && attachments.items.length === 0) ||
 								busy ||
-								attachments.isBusy}
+								attachments.isBusy ||
+								!hasValidModel}
 							aria-label="Send message"
-							title="Send"
+							title={!hasValidModel ? 'Pick a model to send' : 'Send'}
 							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
 						>
 							<ArrowUp size={16} strokeWidth={2.5} />
