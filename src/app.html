@@ -16,6 +16,13 @@
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
+		<!-- Browser tab favicon. Without this, browsers fall back to /favicon.ico
+			 (which we don't ship) and end up showing whatever they previously
+			 cached for the domain — including a stale icon left over from an
+			 app that used to live at the same origin. apple-touch-icon below
+			 is a separate mechanism (iOS home-screen install icon), not a
+			 substitute for this. -->
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="apple-touch-icon" href="/icon.svg" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		%sveltekit.head%
