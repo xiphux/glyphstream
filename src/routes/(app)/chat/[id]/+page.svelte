@@ -809,9 +809,9 @@
 	-->
 	<div
 		bind:this={scrollContainer}
-		class="flex-1 overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
+		class="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
 	>
-		<div class="mx-auto max-w-3xl space-y-4">
+		<div class="mx-auto min-w-0 max-w-3xl space-y-4">
 			{#each messages as m (m.id)}
 				<!--
 					Message + action-bar group. The actions row sits directly
@@ -938,7 +938,7 @@
 					</article>
 				{:else}
 				<article
-					class="rounded-2xl px-4 py-3 text-sm {m.role === 'user'
+					class="min-w-0 rounded-2xl px-4 py-3 text-sm {m.role === 'user'
 						? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
 						: m.role === 'assistant'
 							? 'bg-neutral-100 dark:bg-neutral-800'
@@ -1079,7 +1079,7 @@
 			{/each}
 
 			{#if inFlightOpen}
-				<article class="rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
+				<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
 					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
 					{#if inFlightReasoning}
 						<details open class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">

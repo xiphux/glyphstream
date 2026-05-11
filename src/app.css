@@ -24,7 +24,15 @@ body {
    focused mini-prose to style the rendered assistant HTML. Keep it lean. */
 
 .gs-prose {
-	@apply text-sm leading-relaxed;
+	/* overflow-wrap: break-word lets long unwrappable atoms (URLs, inline
+	   `code`, hash-y identifiers) wrap when they'd otherwise extend the
+	   prose container past its parent's max-width. Without it, the
+	   container's min-content (= longest unbreakable atom) can exceed
+	   the parent's max-w-3xl, triggering page-level horizontal scroll
+	   on mobile. Normal whitespace-aware wrapping still applies first;
+	   break-word only kicks in when a single token would otherwise
+	   overflow. */
+	@apply text-sm leading-relaxed break-words;
 }
 .gs-prose > * + * {
 	@apply mt-3;
