@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
 	import {
 		Archive,
@@ -18,10 +18,24 @@
 
 	let { data, children } = $props();
 
-	const galleryActive = $derived(page.url.pathname.startsWith('/gallery'));
-	const archivedActive = $derived(page.url.pathname.startsWith('/archived'));
-	const settingsActive = $derived(page.url.pathname.startsWith('/settings'));
+	// Sidebar link highlight combines "currently here" with "navigating
+	// there." The pending state matters on mobile especially, where
+	// there's no hover affordance — tap, then several hundred ms of
+	// "nothing happened" until the new route's data finishes loading.
+	// Showing the destination link as if it were already active gives
+	// continuous feedback that bridges from `:active` (which only lasts
+	// while a finger is on the link) through to page-swap.
+	const pendingPath = $derived(navigating.to?.url.pathname ?? null);
 	const currentPath = $derived(page.url.pathname);
+	function activeOrPending(prefix: string): boolean {
+		return currentPath.startsWith(prefix) || (pendingPath?.startsWith(prefix) ?? false);
+	}
+	const galleryActive = $derived(activeOrPending('/gallery'));
+	const archivedActive = $derived(activeOrPending('/archived'));
+	const settingsActive = $derived(activeOrPending('/settings'));
+	// "New chat" lives at /. Plain string equality (not startsWith) since
+	// every path starts with '/' — would otherwise match every nav.
+	const newChatPending = $derived(pendingPath === '/');
 
 	let busyId = $state<string | null>(null);
 
@@ -152,7 +166,9 @@
 		<div class="px-2">
 			<a
 				href="/"
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800 {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {newChatPending
+					? 'bg-neutral-200 dark:bg-neutral-800'
+					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 				title={collapsed ? 'New chat' : 'Start a new chat'}
@@ -163,7 +179,7 @@
 			<a
 				href="/gallery"
 				title={collapsed ? 'Gallery' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {galleryActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {galleryActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
@@ -175,7 +191,7 @@
 			<a
 				href="/settings/models"
 				title={collapsed ? 'Custom models' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {settingsActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {settingsActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
@@ -187,7 +203,7 @@
 			<a
 				href="/archived"
 				title={collapsed ? 'Archived' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition {archivedActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {archivedActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
@@ -216,11 +232,12 @@
 			{:else}
 				<ul class="space-y-0.5">
 					{#each data.conversations as c (c.id)}
-						{@const active = page.url.pathname === `/chat/${c.id}`}
+						{@const href = `/chat/${c.id}`}
+						{@const active = currentPath === href || pendingPath === href}
 						<li class="group relative">
 							<a
-								href="/chat/{c.id}"
-								class="block truncate rounded-md py-2 pl-3 pr-8 text-sm transition {active
+								{href}
+								class="block truncate rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
 									? 'bg-neutral-200 dark:bg-neutral-800'
 									: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
 							>
