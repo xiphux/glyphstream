@@ -279,7 +279,7 @@
 			sideOffset={6}
 			align="end"
 			avoidCollisions
-			collisionPadding={12}
+			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
 			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900 max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
 			<!-- Search row. Auto-focuses on open via Popover's focus-trap. -->
