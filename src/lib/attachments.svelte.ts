@@ -35,14 +35,30 @@ import type { ModelKind } from '$lib/types/api';
 //     to JPEG at <input type="file"> picker time anyway, so this is rare.
 
 const RESIZE_SKIP_BELOW_BYTES = 500 * 1024;
+const RESIZE_TARGET_BYTES = 300 * 1024;
 const RESIZE_SKIP_TYPES = new Set([
 	'image/gif',
 	'image/svg+xml',
 	'image/heic',
 	'image/heif'
 ]);
-const RESIZE_MAX_DIMENSION = 1568;
-const RESIZE_JPEG_QUALITY = 0.85;
+
+/**
+ * Progressively-more-aggressive (dimension, quality) attempts.
+ * Stop at the first one whose output is under RESIZE_TARGET_BYTES;
+ * if none make it, keep the smallest output. Trying multiple passes
+ * matters because a 1500px JPEG re-encoded at quality 0.85 yields
+ * almost no size reduction — the only way down is lower quality and/or
+ * smaller dimensions, but we want to spend that budget gradually so
+ * images that DON'T need aggressive compression don't get it.
+ */
+const RESIZE_ATTEMPTS: ReadonlyArray<{ maxDim: number; quality: number }> = [
+	{ maxDim: 1568, quality: 0.85 },
+	{ maxDim: 1568, quality: 0.7 },
+	{ maxDim: 1024, quality: 0.8 },
+	{ maxDim: 1024, quality: 0.65 },
+	{ maxDim: 768, quality: 0.65 }
+];
 
 /** Best-effort image resize. Returns the original file if resize is
  * skipped or fails — never throws, since "upload as-is" is a strictly
@@ -61,38 +77,49 @@ async function maybeResize(file: File): Promise<File> {
 			i.src = objectUrl!;
 		});
 
-		const scale = Math.min(1, RESIZE_MAX_DIMENSION / Math.max(img.width, img.height));
-		const w = Math.max(1, Math.round(img.width * scale));
-		const h = Math.max(1, Math.round(img.height * scale));
+		let best: Blob | null = null;
+		for (const { maxDim, quality } of RESIZE_ATTEMPTS) {
+			const blob = await encodeJpeg(img, maxDim, quality);
+			if (!blob) continue;
+			if (!best || blob.size < best.size) best = blob;
+			if (blob.size <= RESIZE_TARGET_BYTES) break;
+		}
 
-		const canvas = document.createElement('canvas');
-		canvas.width = w;
-		canvas.height = h;
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return file;
-		// White background — JPEG has no alpha channel, so transparent
-		// source pixels would otherwise become black. White is the
-		// neutral choice for images destined for vision models.
-		ctx.fillStyle = '#fff';
-		ctx.fillRect(0, 0, w, h);
-		ctx.drawImage(img, 0, 0, w, h);
-
-		const blob = await new Promise<Blob | null>((resolve) =>
-			canvas.toBlob(resolve, 'image/jpeg', RESIZE_JPEG_QUALITY)
-		);
-		if (!blob) return file;
-		// If for some reason the "resized" blob is larger than the
-		// source (unlikely but possible for already-compressed inputs),
-		// keep the smaller original.
-		if (blob.size >= file.size) return file;
+		// Nothing produced a result, or even the smallest attempt was
+		// larger than the source (unlikely but possible). Keep original.
+		if (!best || best.size >= file.size) return file;
 
 		const baseName = file.name.replace(/\.[^.]+$/, '') || 'upload';
-		return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+		return new File([best], `${baseName}.jpg`, { type: 'image/jpeg' });
 	} catch {
 		return file;
 	} finally {
 		if (objectUrl) URL.revokeObjectURL(objectUrl);
 	}
+}
+
+/** Single encode pass: scale to maxDim on the longest side (no upscale),
+ * draw onto a white-filled canvas (JPEG has no alpha), encode as JPEG.
+ * Returns null on any failure so the caller can move on to the next attempt. */
+async function encodeJpeg(
+	img: HTMLImageElement,
+	maxDim: number,
+	quality: number
+): Promise<Blob | null> {
+	const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+	const w = Math.max(1, Math.round(img.width * scale));
+	const h = Math.max(1, Math.round(img.height * scale));
+	const canvas = document.createElement('canvas');
+	canvas.width = w;
+	canvas.height = h;
+	const ctx = canvas.getContext('2d');
+	if (!ctx) return null;
+	ctx.fillStyle = '#fff';
+	ctx.fillRect(0, 0, w, h);
+	ctx.drawImage(img, 0, 0, w, h);
+	return await new Promise<Blob | null>((resolve) =>
+		canvas.toBlob(resolve, 'image/jpeg', quality)
+	);
 }
 
 export interface AttachedItem {
