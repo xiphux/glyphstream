@@ -125,8 +125,12 @@
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'}"
 	>
-		<!-- Header row: title (when expanded) + collapse toggle (sm+ only). -->
-		<div class="flex items-center {collapsed ? 'justify-center' : 'justify-between'} px-3 pt-4 pb-2 sm:pl-4">
+		<!-- Header row: title (when expanded) + collapse toggle (sm+ only).
+			 pt uses max(env(safe-area-inset-top), default) so the title sits
+			 below the iOS status bar in PWA standalone mode (viewport-fit=cover
+			 + black-translucent status bar). Falls through to the default 1rem
+			 on desktop / Android / mobile Safari where the inset is 0. -->
+		<div class="flex items-center {collapsed ? 'justify-center' : 'justify-between'} px-3 pb-2 pt-[max(1rem,env(safe-area-inset-top))] sm:pl-4 sm:pt-4">
 			{#if !collapsed}
 				<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
 			{/if}
@@ -286,7 +290,12 @@
 		 takes the remaining height (flex-1 min-h-0) so child pages whose
 		 outer container is `h-full` don't overflow past the top bar. -->
 	<main class="flex min-w-0 flex-1 flex-col overflow-hidden">
-		<div class="flex shrink-0 items-center gap-2 px-3 py-2 sm:hidden">
+		<!-- Mobile top bar with the hamburger toggle. pt uses
+			 max(env(safe-area-inset-top), default) so the iOS status bar in
+			 PWA standalone doesn't overlap the tap target. sm:hidden so this
+			 entire row only renders on mobile — desktop has the static
+			 sidebar always visible. -->
+		<div class="flex shrink-0 items-center gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden">
 			<button
 				type="button"
 				onclick={() => (drawerOpen = true)}
