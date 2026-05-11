@@ -16,11 +16,16 @@ import {
 	hardDeleteMediaForUser,
 	insertMedia,
 	linkMessageMedia,
+	listConversationsForMedia,
 	listMediaForUser,
 	listMessageIdsForConversation,
 	stampOrphanedZeroRefRows
 } from '$lib/server/db/queries/media';
-import { createConversation, deleteConversation } from '$lib/server/db/queries/conversations';
+import {
+	archiveConversation,
+	createConversation,
+	deleteConversation
+} from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { media } from '$lib/server/db/schema';
 
@@ -457,5 +462,100 @@ describe('getMediaForUser ownership', () => {
 		const u2 = seedUser();
 		const { id } = makeMedia(u1.id);
 		expect(getMediaForUser(id, u2.id)).toBeNull();
+	});
+});
+
+describe('listConversationsForMedia', () => {
+	function makeConv(userId: string, kind: 'chat' | 'image' = 'image') {
+		return createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: kind
+		});
+	}
+
+	function makeMsg(conversationId: string, role: 'user' | 'assistant' = 'assistant') {
+		return appendMessage({
+			conversationId,
+			parentMessageId: null,
+			role,
+			parts: [{ type: 'text', text: 'placeholder' }]
+		});
+	}
+
+	it('returns [] for media that no message references', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		expect(listConversationsForMedia(id, u.id)).toEqual([]);
+	});
+
+	it('returns [] for a foreign user even when refs exist', () => {
+		const owner = seedUser();
+		const intruder = seedUser();
+		const conv = makeConv(owner.id);
+		const msg = makeMsg(conv.id);
+		const { id: mediaId } = makeMedia(owner.id);
+		linkMessageMedia(msg.id, mediaId);
+
+		expect(listConversationsForMedia(mediaId, intruder.id)).toEqual([]);
+	});
+
+	it('returns the single conversation that references this media', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const { id: mediaId } = makeMedia(u.id);
+		linkMessageMedia(msg.id, mediaId);
+
+		const result = listConversationsForMedia(mediaId, u.id);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ id: conv.id, archivedAt: null });
+	});
+
+	it('dedupes when multiple messages in the same conversation reference the media', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg1 = makeMsg(conv.id);
+		const msg2 = makeMsg(conv.id);
+		const { id: mediaId } = makeMedia(u.id);
+		linkMessageMedia(msg1.id, mediaId);
+		linkMessageMedia(msg2.id, mediaId);
+
+		// DISTINCT collapses the two messages → one conversation row.
+		const result = listConversationsForMedia(mediaId, u.id);
+		expect(result).toHaveLength(1);
+		expect(result[0].id).toBe(conv.id);
+	});
+
+	it('returns multiple conversations newest first', async () => {
+		const u = seedUser();
+		const convA = makeConv(u.id);
+		// Sleep 2ms so the second conv has a strictly later updated_at;
+		// without this the two timestamps could collide and the
+		// newest-first ordering becomes nondeterministic in the test.
+		await new Promise((r) => setTimeout(r, 2));
+		const convB = makeConv(u.id);
+		const msgA = makeMsg(convA.id);
+		const msgB = makeMsg(convB.id);
+		const { id: mediaId } = makeMedia(u.id);
+		linkMessageMedia(msgA.id, mediaId);
+		linkMessageMedia(msgB.id, mediaId);
+
+		const result = listConversationsForMedia(mediaId, u.id);
+		expect(result.map((c) => c.id)).toEqual([convB.id, convA.id]);
+	});
+
+	it('includes archived conversations with archivedAt populated', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const { id: mediaId } = makeMedia(u.id);
+		linkMessageMedia(msg.id, mediaId);
+		archiveConversation(conv.id, u.id);
+
+		const result = listConversationsForMedia(mediaId, u.id);
+		expect(result).toHaveLength(1);
+		expect(result[0].archivedAt).not.toBeNull();
 	});
 });

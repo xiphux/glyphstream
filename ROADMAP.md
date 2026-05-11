@@ -105,13 +105,6 @@ expected priority, not time-bound.
   future utility tasks (follow-up suggestions, retrieval query
   extraction, etc.), not just titles.
 
-- **Gallery → conversations using this media.** Right now deleting a media
-  item from the gallery leaves any referencing conversation as a "dead"
-  prompt with no result. The media-detail view should list the conversations
-  that reference this media (the `message_media` join table already carries
-  the data), with click-through to each — so the user can clean up the
-  orphan conversation rather than leave it lingering.
-
 ## Mid-term (v2)
 
 - **Virtualized message list.** Long conversations eventually overwhelm the

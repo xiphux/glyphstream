@@ -2,7 +2,11 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Download, Trash2, X } from 'lucide-svelte';
-	import type { MediaListItem, MediaListResult } from '$lib/server/db/queries/media';
+	import type {
+		MediaConversationRef,
+		MediaListItem,
+		MediaListResult
+	} from '$lib/server/db/queries/media';
 
 	let { data } = $props<{ data: { initial: MediaListResult; kind: 'image' | 'video' | null } }>();
 
@@ -17,6 +21,46 @@
 	let error = $state<string | null>(null);
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
+
+	// Conversation refs for the currently-open lightbox item.
+	// `null` means "we haven't fetched yet (loading)"; `[]` means "fetched,
+	// genuinely none" — distinguishing these matters because the empty case
+	// is the actual signal we want users to see ("you can clean up the
+	// orphan media without breaking any chats").
+	let lightboxConversations = $state<MediaConversationRef[] | null>(null);
+	let conversationsError = $state<string | null>(null);
+
+	// Refetch whenever a different lightbox item opens. Tracking by id
+	// (not the whole object) avoids duplicate fetches when the list
+	// re-renders and produces a new MediaListItem reference for the same row.
+	$effect(() => {
+		const id = lightbox?.id;
+		if (!id) {
+			lightboxConversations = null;
+			conversationsError = null;
+			return;
+		}
+		lightboxConversations = null;
+		conversationsError = null;
+		// Capture id so a stale response from a previous open can't clobber
+		// the current state if the user opens lightbox A, closes, then opens
+		// B before A's request resolves.
+		const requested = id;
+		fetch(`/api/media/${id}/conversations`)
+			.then((r) => {
+				if (!r.ok) throw new Error(`Server returned ${r.status}`);
+				return r.json() as Promise<{ conversations: MediaConversationRef[] }>;
+			})
+			.then((body) => {
+				if (lightbox?.id === requested) lightboxConversations = body.conversations;
+			})
+			.catch((e) => {
+				if (lightbox?.id === requested) {
+					conversationsError = e instanceof Error ? e.message : 'Failed to load conversations';
+					lightboxConversations = [];
+				}
+			});
+	});
 
 	const kindFilter = $derived(data.kind);
 
@@ -271,5 +315,38 @@
 				{m.promptExcerpt}
 			</p>
 		{/if}
+		<div class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-xs text-neutral-300">
+			{#if lightboxConversations === null}
+				<p class="text-center opacity-60">Loading conversations…</p>
+			{:else if conversationsError}
+				<p class="text-center text-red-300">{conversationsError}</p>
+			{:else if lightboxConversations.length === 0}
+				<p class="text-center opacity-60">
+					Not used in any conversation — safe to delete.
+				</p>
+			{:else}
+				<div class="text-center opacity-60">
+					Used in {lightboxConversations.length}
+					{lightboxConversations.length === 1 ? 'conversation' : 'conversations'}:
+				</div>
+				<ul class="mx-auto mt-1 flex max-h-32 flex-col gap-0.5 overflow-y-auto">
+					{#each lightboxConversations as c (c.id)}
+						<li>
+							<a
+								href="/chat/{c.id}"
+								class="block truncate rounded px-2 py-1 text-center text-neutral-200 hover:bg-neutral-800"
+							>
+								{c.title ?? 'Untitled'}
+								{#if c.archivedAt !== null}
+									<span class="ml-1 text-[10px] uppercase tracking-wide opacity-60">
+										archived
+									</span>
+								{/if}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 	</div>
 {/if}

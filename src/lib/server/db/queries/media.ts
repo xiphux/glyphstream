@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { getDb } from '../client';
-import { media, messageMedia, messages } from '../schema';
+import { conversations, media, messageMedia, messages } from '../schema';
 
 export interface MediaInsertInput {
 	userId: string;
@@ -179,6 +179,47 @@ export function listMediaForUser(
 	const last = items[items.length - 1];
 	const nextCursor = hasMore && last ? `${last.createdAt}:${last.id}` : null;
 	return { items, nextCursor };
+}
+
+// --- Reverse lookup: which conversations reference this media -------------
+
+export interface MediaConversationRef {
+	id: string;
+	title: string | null;
+	updatedAt: number;
+	archivedAt: number | null;
+}
+
+/**
+ * Conversations that reference `mediaId`, deduped (a single media can be
+ * linked to multiple messages within one conversation — e.g. across retry
+ * siblings — and we only want the conversation listed once).
+ *
+ * Filtered by `conversations.user_id = userId` for ownership: even if a
+ * caller passes a media id they don't own, the join clause naturally
+ * excludes other users' conversations. Returns `[]` for a non-existent
+ * or foreign media id, indistinguishable from the legitimate "this media
+ * isn't used anywhere" case — which is the right shape for the gallery
+ * lightbox: 0-result is the cleanup signal we want to surface.
+ */
+export function listConversationsForMedia(
+	mediaId: string,
+	userId: string
+): MediaConversationRef[] {
+	const db = getDb();
+	return db
+		.selectDistinct({
+			id: conversations.id,
+			title: conversations.title,
+			updatedAt: conversations.updatedAt,
+			archivedAt: conversations.archivedAt
+		})
+		.from(messageMedia)
+		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
+		.innerJoin(conversations, eq(conversations.id, messages.conversationId))
+		.where(and(eq(messageMedia.mediaId, mediaId), eq(conversations.userId, userId)))
+		.orderBy(desc(conversations.updatedAt))
+		.all();
 }
 
 // --- Manual hard-delete (gallery "delete this") --------------------------
