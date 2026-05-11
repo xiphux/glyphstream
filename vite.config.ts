@@ -21,10 +21,14 @@ export default defineConfig({
 			// so the SW only runs in production builds — only the manifest
 			// + assets-served-from-the-plugin path is exercised in dev.
 			devOptions: { enabled: true },
-			// autoUpdate: SW silently checks for new builds and swaps in on
-			// next visit. The plan's "PWA cache poisoning on deploy" gotcha
-			// is solved by this — users always end up on the latest shell.
-			registerType: 'autoUpdate',
+			// 'prompt': new SW downloads in the background and waits to
+			// activate until the user opts in via the UpdateBanner that
+			// renders from +layout.svelte's onNeedRefresh callback.
+			// 'autoUpdate' would silently swap the SW on next nav, which
+			// can yank an in-flight stream or message-edit out from under
+			// the user with no warning. User-driven update means the
+			// refresh happens at a moment of their choosing.
+			registerType: 'prompt',
 			// We register the SW manually from src/routes/+layout.svelte via
 			// the virtual:pwa-register module. 'false' here keeps the plugin
 			// from also trying to inject a registration script (which needs
