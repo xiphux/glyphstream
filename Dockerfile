@@ -76,7 +76,12 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    # SvelteKit adapter-node's request body cap defaults to 512KB —
+    # way too low for image uploads. 25 MiB matches /api/uploads' own
+    # cap with headroom for multipart-form overhead. User can override
+    # via .env or compose environment if they want.
+    BODY_SIZE_LIMIT=26214400
 
 # Just the built app + production node_modules. No compilers, no source.
 COPY --from=builder /app/build ./build

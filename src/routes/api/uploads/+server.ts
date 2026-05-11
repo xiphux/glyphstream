@@ -33,7 +33,21 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let form: FormData;
 	try {
 		form = await request.formData();
-	} catch {
+	} catch (e) {
+		// SvelteKit's adapter-node aborts the body stream when its
+		// BODY_SIZE_LIMIT (default 512 KB!) is exceeded, then `formData()`
+		// fails to parse the truncated body. Surface that as a 413 with
+		// an actionable message rather than a misleading 400 about
+		// content type. The Dockerfile sets BODY_SIZE_LIMIT=25M by
+		// default, but a custom deployment with the upstream default
+		// would otherwise hit this for any non-trivial photo.
+		const msg = e instanceof Error ? e.message : String(e);
+		if (/body.*too.*large|413|exceeded/i.test(msg)) {
+			throw error(
+				413,
+				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.'
+			);
+		}
 		throw error(400, 'Body must be multipart/form-data');
 	}
 
