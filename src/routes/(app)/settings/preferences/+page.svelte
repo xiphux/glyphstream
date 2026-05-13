@@ -92,9 +92,7 @@
 				</div>
 
 				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-name">
-						Name <span class="font-normal text-neutral-500">(optional)</span>
-					</label>
+					<label class="text-xs font-medium" for="pref-name">Name</label>
 					<input
 						id="pref-name"
 						bind:value={name}
@@ -104,15 +102,10 @@
 						placeholder="Your name or nickname"
 						class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					/>
-					<p class="text-xs text-neutral-500">
-						How the assistant should refer to you.
-					</p>
 				</div>
 
 				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-about">
-						About you <span class="font-normal text-neutral-500">(optional)</span>
-					</label>
+					<label class="text-xs font-medium" for="pref-about">About you</label>
 					<textarea
 						id="pref-about"
 						bind:value={aboutYou}
@@ -122,17 +115,10 @@
 						placeholder="Background, interests, or other standing context to keep in mind"
 						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					></textarea>
-					<p class="text-xs text-neutral-500">
-						Standing context — occupation, interests, what you're typically
-						working on.
-					</p>
 				</div>
 
 				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-custom">
-						Custom instructions
-						<span class="font-normal text-neutral-500">(optional)</span>
-					</label>
+					<label class="text-xs font-medium" for="pref-custom">Custom instructions</label>
 					<textarea
 						id="pref-custom"
 						bind:value={customInstructions}
@@ -142,10 +128,6 @@
 						placeholder="Response style, tone, or formatting preferences"
 						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					></textarea>
-					<p class="text-xs text-neutral-500">
-						Tone, response style, formatting preferences — anything else you'd
-						write in a system prompt.
-					</p>
 				</div>
 			</section>
 
