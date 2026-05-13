@@ -13,6 +13,7 @@
 		PanelLeftClose,
 		PanelLeftOpen,
 		Plus,
+		Settings,
 		SlidersHorizontal,
 		Trash2
 	} from 'lucide-svelte';
@@ -33,7 +34,12 @@
 	}
 	const galleryActive = $derived(activeOrPending('/gallery'));
 	const archivedActive = $derived(activeOrPending('/archived'));
-	const settingsActive = $derived(activeOrPending('/settings'));
+	// Two settings sub-pages: `customModelsActive` and `preferencesActive`
+	// are specific so the sidebar highlights exactly one at a time when
+	// the user is on either. A single `/settings`-prefix matcher would
+	// light both entries up regardless of which page is shown.
+	const customModelsActive = $derived(activeOrPending('/settings/models'));
+	const preferencesActive = $derived(activeOrPending('/settings/preferences'));
 	// "New chat" lives at /. Plain string equality (not startsWith) since
 	// every path starts with '/' — would otherwise match every nav.
 	const newChatPending = $derived(pendingPath === '/');
@@ -204,7 +210,7 @@
 			<a
 				href="/settings/models"
 				title={collapsed ? 'Custom models' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {settingsActive
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {customModelsActive
 					? 'bg-neutral-200 dark:bg-neutral-800'
 					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
 					? 'sm:justify-center sm:px-0'
@@ -212,6 +218,18 @@
 			>
 				<SlidersHorizontal size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>Custom models</span>{/if}
+			</a>
+			<a
+				href="/settings/preferences"
+				title={collapsed ? 'Preferences' : ''}
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {preferencesActive
+					? 'bg-neutral-200 dark:bg-neutral-800'
+					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
+			>
+				<Settings size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}<span>Preferences</span>{/if}
 			</a>
 			<a
 				href="/archived"

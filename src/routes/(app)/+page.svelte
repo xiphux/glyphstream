@@ -4,6 +4,7 @@
 	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { composerEnterHandler } from '$lib/composer-keys';
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { firstName, timeOfDayGreeting } from '$lib/greeting';
 
@@ -284,12 +285,10 @@
 				rows="2"
 				disabled={busy}
 				placeholder={composerPlaceholder}
-				onkeydown={(e) => {
-					if (e.key === 'Enter' && !e.shiftKey) {
-						e.preventDefault();
-						void startChat(e);
-					}
-				}}
+				onkeydown={composerEnterHandler(
+					data.prefs?.enterBehavior ?? 'send',
+					(e) => void startChat(e)
+				)}
 				onpaste={onPaste}
 				class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 			></textarea>

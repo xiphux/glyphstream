@@ -9,7 +9,12 @@ export const users = sqliteTable('users', {
 	email: text('email'),
 	displayName: text('display_name'),
 	createdAt: integer('created_at').notNull(),
-	lastLoginAt: integer('last_login_at')
+	lastLoginAt: integer('last_login_at'),
+	// User-level preferences serialized as JSON. Null when the user has
+	// never touched preferences (the parser fills in defaults). Schemaless
+	// so adding new preferences isn't migration-gated; the parsing layer
+	// validates each field defensively with fallbacks.
+	preferencesJson: text('preferences_json')
 });
 
 export const sessions = sqliteTable('sessions', {

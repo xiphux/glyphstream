@@ -112,6 +112,29 @@ export interface ChatMessage {
 	siblingIds?: string[];
 }
 
+// --- user preferences --------------------------------------------------
+//
+// User-level settings that apply globally unless overridden by a more
+// specific scope (a custom-model preset's system_prompt overrides the
+// user-level default at conversation creation, for example).
+//
+// JSON-encoded in users.preferences_json so adding a new preference is a
+// type-level change only — no DB migration. The parser in
+// server/db/queries/user-preferences.ts validates each field defensively
+// and fills in defaults for absent/invalid values.
+
+/** How the message composer treats the Enter key. */
+export type EnterBehavior = 'send' | 'newline';
+
+export interface UserPreferences {
+	/** Applied as the system prompt for new conversations when no custom-
+	 * model preset is selected. Empty string = no system prompt. */
+	systemPrompt: string;
+	/** "send": Enter sends, Shift+Enter inserts a newline (default).
+	 *  "newline": Enter inserts a newline, Cmd/Ctrl+Enter sends. */
+	enterBehavior: EnterBehavior;
+}
+
 export interface ConversationSummary {
 	id: string;
 	title: string | null;

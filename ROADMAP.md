@@ -17,12 +17,9 @@ expected priority, not time-bound.
   in config. Avoids OWUI's manual "enable web search" toggle by letting the
   model decide when it needs to search.
 
-- **User preferences + notifications / sounds.** No user-prefs surface
-  exists in v1 — adding one unblocks several small QOL items (this one,
-  personalization, enter-key behavior). Storage: a `user_preferences`
-  table keyed on `user_id` with a JSON `prefs` column — small surface,
-  fast to evolve without migrations. UI: a settings/preferences page
-  alongside `settings/models`. First features filling it:
+- **Notifications + completion sounds in preferences.** The
+  user-preferences surface exists; fill it with QOL features that need
+  per-user toggles:
   - Toast on assistant message complete (foreground feedback)
   - Browser Notification API for backgrounded tab — especially valuable
     for multi-minute video generations
@@ -33,29 +30,26 @@ expected priority, not time-bound.
   The PWA / service worker setup already in place means notifications can
   fire even with the app installed-but-closed on the iPhone homescreen.
 
-- **Personalization (name, tone, about-me).** User-level system-prompt
-  content that composes with per-conversation / per-custom-model prompts.
-  Two flavors in the wild:
-  - *Raw system prompt* (OWUI). User writes whatever; maximum power,
-    weak discoverability — most users won't write a good one.
-  - *Structured fields* (ChatGPT). Name, occupation, traits, response
-    style → combined server-side into a system prompt at request time.
-    Lower barrier to filling in, narrower expressiveness.
+- **Structured personalization fields.** The user-level system prompt
+  preference is shipped (free-form text). Structured fields (ChatGPT
+  style) are the unfilled side of the hybrid: Name, occupation, traits,
+  response style → combined server-side into the prepended system
+  prompt at conversation-create time. Lower barrier to filling in,
+  better defaults for new users than a blank textarea. Composition rule
+  with the existing free-form prompt: structured fields render first,
+  free-form text appended below. Distinct from custom models, which
+  are per-preset, not per-user.
 
-  Hybrid is best — structured fields for the common cases plus a free-form
-  "anything else?" field for the long tail. Composition rule: user-level
-  prompt prepends to (custom-model preset prompt or conversation default
-  prompt) so per-conversation intent wins over standing context. Distinct
-  from custom models, which are per-preset, not per-user. Lives in the
-  prefs surface above.
-
-- **Enter key behavior preference.** Two valid conventions: Enter-sends
-  + Shift+Enter-newline (Slack / Discord DMs), or Enter-newline +
-  Cmd/Ctrl+Enter-sends (Discord channels, IDEs, multiline editors). Pure
-  preference — defensible either way; Enter-sends is faster for normal
-  chat, Enter-newline is friendlier for code-heavy multiline messages.
-  Adds a single boolean to user prefs. Default: Enter-sends, since it's
-  the dominant chat-app convention.
+- **Per-conversation "private mode" toggle.** A conversation-row
+  boolean (and a UI toggle when starting a chat) that opts out of all
+  user-level personal-data injection — system prompt, future memories,
+  future personalization fields. Use case: "throwaway question I don't
+  want flavored by my standing context," similar in spirit to ChatGPT's
+  Temporary Chats (though narrower — Temporary Chats also drop history,
+  which we deliberately keep). Open design question: one unified toggle
+  ("don't use any of my personal data here") vs. per-feature toggles
+  ("disable system prompt only, keep memories"). Pick once we have
+  memories implemented and can see which split feels right.
 
 - **Auto-generated conversation titles via a task model.** Standard UX is
   a side-call to a model after the first exchange asking it to summarize

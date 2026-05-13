@@ -20,6 +20,7 @@
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { composerEnterHandler } from '$lib/composer-keys';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import type {
 		ChatMessage,
@@ -931,13 +932,15 @@
 							bind:value={editText}
 							rows="1"
 							onkeydown={(e) => {
-								if (e.key === 'Enter' && !e.shiftKey) {
-									e.preventDefault();
-									void saveEdit();
-								} else if (e.key === 'Escape') {
+								if (e.key === 'Escape') {
 									e.preventDefault();
 									cancelEdit();
+									return;
 								}
+								composerEnterHandler(
+									data.prefs?.enterBehavior ?? 'send',
+									() => void saveEdit()
+								)(e);
 							}}
 							class="block w-full resize-none border-0 bg-transparent px-1 py-1 text-base focus:outline-none sm:text-sm"
 						></textarea>
@@ -1284,12 +1287,10 @@
 					rows="1"
 					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…'}
 					disabled={busy}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && !e.shiftKey) {
-							e.preventDefault();
-							void send(e);
-						}
-					}}
+					onkeydown={composerEnterHandler(
+						data.prefs?.enterBehavior ?? 'send',
+						(e) => void send(e)
+					)}
 					onpaste={onPaste}
 					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 				></textarea>
