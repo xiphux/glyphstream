@@ -157,3 +157,21 @@ expected priority, not time-bound.
 - **Model favoriting / pinning** in the picker.
 
 - **Regenerate response** as a separate action from edit.
+
+- **Themes (prebuilt color schemes).** App follows
+  `prefers-color-scheme` for light/dark today, with no explicit user
+  toggle. Themes would add 3-5 named schemes selectable from
+  Preferences — default, warm, cool, high-contrast as candidates.
+  Each scheme applies a CSS custom-property palette at the document
+  root; shiki already uses this pattern for dual-theme code blocks,
+  so the precedent exists. Storage: a `theme` field on
+  UserPreferences. Open design question: do themes pair with
+  light/dark (each scheme has both variants, switched by
+  `prefers-color-scheme`) or own the full palette (each scheme is
+  one fixed look)? Former is more flexible, latter is simpler with
+  ~2x the named options. Real prerequisite is migrating from
+  hardcoded Tailwind `neutral-*` utilities to CSS-variable-backed
+  semantic tokens (`bg-surface`, `text-primary`, etc.) — once that's
+  in place the theme switch itself is a single root-level class
+  change. High-contrast is the most practical case beyond aesthetics
+  (accessibility for low-vision users).
