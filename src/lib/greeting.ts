@@ -26,3 +26,22 @@ export function firstName(displayName: string | null, fallback: string): string 
 	const [first] = displayName.trim().split(/\s+/);
 	return first || fallback;
 }
+
+/**
+ * Preferred first name with the user's explicit Preferences > Name field
+ * winning over any GitHub-derived name. The Preferences name is exactly
+ * "how I want to be referred to," so it's the right input for greeting
+ * lines and the user label on message bubbles. Falls through to the
+ * GitHub-name extraction when the preference is empty or whitespace-only.
+ *
+ * Use this in any user-facing surface that addresses the user by name.
+ */
+export function preferredFirstName(
+	preferenceName: string | null | undefined,
+	displayName: string | null,
+	fallback: string
+): string {
+	const fromPref = preferenceName?.trim();
+	if (fromPref) return fromPref;
+	return firstName(displayName, fallback);
+}

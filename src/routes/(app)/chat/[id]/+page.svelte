@@ -16,7 +16,7 @@
 		Trash2,
 		X
 	} from 'lucide-svelte';
-	import { firstName } from '$lib/greeting';
+	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
@@ -32,10 +32,15 @@
 
 	let { data } = $props();
 
-	// Friendly bubble labels: the user's first name + the model's friendly
-	// name (server resolves custom-model name when applicable).
+	// Friendly bubble labels: the user's preferred name (Preferences ▸ Name
+	// if set, else GitHub display name's first token, else login) +
+	// the model's friendly name (server resolves custom-model name).
 	const userLabel = $derived(
-		firstName(data.user.displayName, data.user.githubUsername)
+		preferredFirstName(
+			data.prefs?.name,
+			data.user.displayName,
+			data.user.githubUsername
+		)
 	);
 	const assistantLabel = $derived(data.assistantLabel);
 

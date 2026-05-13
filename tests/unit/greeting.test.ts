@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { firstName, timeOfDayGreeting } from '$lib/greeting';
+import { firstName, preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 
 describe('firstName', () => {
 	it('takes the first whitespace-separated token of displayName', () => {
@@ -22,6 +22,40 @@ describe('firstName', () => {
 
 	it('handles multiple whitespace between names', () => {
 		expect(firstName('Mary  Jane Watson', 'mj')).toBe('Mary');
+	});
+});
+
+describe('preferredFirstName', () => {
+	it('prefers the explicit preference name over GitHub-derived values', () => {
+		// User picked "Chris" in Preferences ▸ Name — that wins even when
+		// the GitHub display name says something else.
+		expect(preferredFirstName('Chris', 'Christopher Han', 'xiphux')).toBe('Chris');
+	});
+
+	it('uses the preference name verbatim (no first-name extraction)', () => {
+		// Whatever the user typed is their choice — "Mr. Smith" stays
+		// "Mr. Smith," not "Mr.". Preference name = exactly the address
+		// the user wants used, not a "name field to be parsed."
+		expect(preferredFirstName('Mr. Smith', 'Bob Jones', 'bob')).toBe('Mr. Smith');
+	});
+
+	it('falls through to firstName(displayName, fallback) when preference is empty', () => {
+		expect(preferredFirstName('', 'Christopher Han', 'xiphux')).toBe('Christopher');
+		expect(preferredFirstName(null, 'Christopher Han', 'xiphux')).toBe('Christopher');
+		expect(preferredFirstName(undefined, 'Christopher Han', 'xiphux')).toBe('Christopher');
+	});
+
+	it('treats whitespace-only preference as empty', () => {
+		expect(preferredFirstName('   ', 'Christopher Han', 'xiphux')).toBe('Christopher');
+	});
+
+	it('falls through all the way to the fallback when nothing is set', () => {
+		expect(preferredFirstName('', null, 'xiphux')).toBe('xiphux');
+		expect(preferredFirstName(null, null, 'xiphux')).toBe('xiphux');
+	});
+
+	it('trims surrounding whitespace from the preference but keeps internal spacing', () => {
+		expect(preferredFirstName('  Chris H  ', 'Christopher Han', 'xiphux')).toBe('Chris H');
 	});
 });
 

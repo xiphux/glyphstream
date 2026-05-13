@@ -6,7 +6,7 @@
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { composerEnterHandler } from '$lib/composer-keys';
 	import type { CreateConversationRequest } from '$lib/types/api';
-	import { firstName, timeOfDayGreeting } from '$lib/greeting';
+	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 
 	let { data } = $props();
 
@@ -18,7 +18,11 @@
 		greeting = timeOfDayGreeting(new Date());
 	});
 	const userFirstName = $derived(
-		firstName(data.user.displayName, data.user.githubUsername)
+		preferredFirstName(
+			data.prefs?.name,
+			data.user.displayName,
+			data.user.githubUsername
+		)
 	);
 
 	// Selection value mirrors what ModelPicker emits:
