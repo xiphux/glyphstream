@@ -228,9 +228,11 @@
 					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
 				</svg>
 			</div>
-			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-				<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
-			</h1>
+			{#if data.prefs?.showGreeting ?? true}
+				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+					<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
+				</h1>
+			{/if}
 		</div>
 
 		<form

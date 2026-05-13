@@ -51,6 +51,9 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 		}
 		patch.enterBehavior = body.enterBehavior as EnterBehavior;
 	}
+	if (typeof body.showGreeting === 'boolean') {
+		patch.showGreeting = body.showGreeting;
+	}
 
 	const next = setUserPreferences(locals.user.id, patch);
 	return json(next);

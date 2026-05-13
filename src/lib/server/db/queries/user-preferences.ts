@@ -18,7 +18,8 @@ const DEFAULTS: UserPreferences = {
 	name: '',
 	aboutYou: '',
 	customInstructions: '',
-	enterBehavior: 'send'
+	enterBehavior: 'send',
+	showGreeting: true
 };
 
 /** Pure: parse a raw JSON string into a UserPreferences object, filling in
@@ -43,7 +44,9 @@ export function parseUserPreferences(raw: string | null): UserPreferences {
 		enterBehavior:
 			obj.enterBehavior === 'newline' || obj.enterBehavior === 'send'
 				? obj.enterBehavior
-				: DEFAULTS.enterBehavior
+				: DEFAULTS.enterBehavior,
+		showGreeting:
+			typeof obj.showGreeting === 'boolean' ? obj.showGreeting : DEFAULTS.showGreeting
 	};
 }
 
@@ -91,7 +94,9 @@ export function setUserPreferences(
 			enterBehavior:
 				patch.enterBehavior === 'newline' || patch.enterBehavior === 'send'
 					? patch.enterBehavior
-					: current.enterBehavior
+					: current.enterBehavior,
+			showGreeting:
+				typeof patch.showGreeting === 'boolean' ? patch.showGreeting : current.showGreeting
 		};
 		tx.update(users)
 			.set({ preferencesJson: JSON.stringify(next) })

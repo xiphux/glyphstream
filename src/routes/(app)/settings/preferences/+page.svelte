@@ -15,6 +15,8 @@
 	let customInstructions = $state(data.prefs.customInstructions);
 	// svelte-ignore state_referenced_locally
 	let enterBehavior = $state<EnterBehavior>(data.prefs.enterBehavior);
+	// svelte-ignore state_referenced_locally
+	let showGreeting = $state(data.prefs.showGreeting);
 
 	// svelte-ignore state_referenced_locally
 	let saved = $state<UserPreferences>({ ...data.prefs });
@@ -26,7 +28,8 @@
 		name !== saved.name ||
 			aboutYou !== saved.aboutYou ||
 			customInstructions !== saved.customInstructions ||
-			enterBehavior !== saved.enterBehavior
+			enterBehavior !== saved.enterBehavior ||
+			showGreeting !== saved.showGreeting
 	);
 
 	async function save() {
@@ -38,7 +41,13 @@
 			const res = await fetch('/api/user/preferences', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ name, aboutYou, customInstructions, enterBehavior })
+				body: JSON.stringify({
+					name,
+					aboutYou,
+					customInstructions,
+					enterBehavior,
+					showGreeting
+				})
 			});
 			if (!res.ok) {
 				const body = await res.json().catch(() => ({}));
@@ -50,6 +59,7 @@
 			aboutYou = next.aboutYou;
 			customInstructions = next.customInstructions;
 			enterBehavior = next.enterBehavior;
+			showGreeting = next.showGreeting;
 			justSaved = true;
 			setTimeout(() => (justSaved = false), 2000);
 		} catch (e) {
@@ -64,6 +74,7 @@
 		aboutYou = saved.aboutYou;
 		customInstructions = saved.customInstructions;
 		enterBehavior = saved.enterBehavior;
+		showGreeting = saved.showGreeting;
 		error = null;
 	}
 </script>
@@ -176,6 +187,26 @@
 						</span>
 					</label>
 				</div>
+			</section>
+
+			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+
+			<section class="flex flex-col gap-2">
+				<h2 class="text-sm font-semibold">New chat page</h2>
+				<label class="flex cursor-pointer items-start gap-2 text-sm">
+					<input
+						type="checkbox"
+						bind:checked={showGreeting}
+						disabled={busy}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">Show greeting</span>
+						<span class="text-neutral-500">
+							— "Good morning, Chris" header above the message composer.
+						</span>
+					</span>
+				</label>
 			</section>
 
 			{#if error}

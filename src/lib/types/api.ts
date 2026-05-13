@@ -149,6 +149,10 @@ export interface UserPreferences {
 	/** "send": Enter sends, Shift+Enter inserts a newline (default).
 	 *  "newline": Enter inserts a newline, Cmd/Ctrl+Enter sends. */
 	enterBehavior: EnterBehavior;
+	/** Whether to display the "Good morning, {name}" greeting on the
+	 * new-chat page. Default true; minority of users may prefer the
+	 * cleaner header without familial address. */
+	showGreeting: boolean;
 }
 
 export interface ConversationSummary {

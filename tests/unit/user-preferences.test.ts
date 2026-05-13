@@ -29,7 +29,8 @@ const EMPTY_PREFS = {
 	name: '',
 	aboutYou: '',
 	customInstructions: '',
-	enterBehavior: 'send' as const
+	enterBehavior: 'send' as const,
+	showGreeting: true
 };
 
 describe('parseUserPreferences', () => {
@@ -87,7 +88,8 @@ describe('parseUserPreferences', () => {
 			name: 'Chris',
 			aboutYou: 'engineer',
 			customInstructions: 'be brief',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
+			showGreeting: true
 		});
 	});
 });
@@ -114,7 +116,8 @@ describe('getUserPreferences', () => {
 			name: 'Chris',
 			aboutYou: 'software engineer',
 			customInstructions: 'be concise',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
+			showGreeting: true
 		});
 	});
 });
@@ -133,7 +136,8 @@ describe('setUserPreferences', () => {
 			name: 'C',
 			aboutYou: 'engineer',
 			customInstructions: '',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
+			showGreeting: true
 		});
 	});
 
@@ -154,12 +158,13 @@ describe('setUserPreferences', () => {
 			.where(eq(users.id, u.id))
 			.get();
 		const parsed = JSON.parse(row?.preferencesJson ?? '{}');
-		// Exactly the four known fields, no extras leaking through.
+		// Exactly the five known fields, no extras leaking through.
 		expect(Object.keys(parsed).sort()).toEqual([
 			'aboutYou',
 			'customInstructions',
 			'enterBehavior',
-			'name'
+			'name',
+			'showGreeting'
 		]);
 	});
 
@@ -170,8 +175,17 @@ describe('setUserPreferences', () => {
 			name: 'Chris',
 			aboutYou: '',
 			customInstructions: '',
-			enterBehavior: 'send'
+			enterBehavior: 'send',
+			showGreeting: true
 		});
+	});
+
+	it('persists showGreeting toggles', () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { showGreeting: false });
+		expect(getUserPreferences(u.id)?.showGreeting).toBe(false);
+		setUserPreferences(u.id, { showGreeting: true });
+		expect(getUserPreferences(u.id)?.showGreeting).toBe(true);
 	});
 });
 
