@@ -6,12 +6,33 @@
  * us friendly even if a GitHub display name isn't set.
  */
 
+// Per-slot variation lists. Morning / afternoon / evening get 2-3
+// variations to add a bit of warmth without being twee; late-night and
+// early-morning slots stay as singletons because "Burning the midnight
+// oil" and "Still up" are the iconic ones — diluting them with 3
+// variations each would soften the punchline.
+//
+// Variations are picked via dateHash() below — same date → same
+// greeting, so refreshing the page doesn't churn. Different day → roll
+// the dice again.
+const MORNING = ['Good morning', 'Top of the morning', 'Morning'];
+const AFTERNOON = ['Good afternoon', 'Afternoon', "Hope your day's going well"];
+const EVENING = ['Good evening', 'Evening', 'Hope your day went well'];
+
+/** Stable per-day hash: same number for any Date in the same calendar
+ * day, regardless of time-of-day. Lets the variation picker key off
+ * "today" without jittering on every page refresh. */
+function dayHash(now: Date): number {
+	return now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate();
+}
+
 export function timeOfDayGreeting(now: Date): string {
 	const h = now.getHours();
 	if (h < 5) return 'Still up';
-	if (h < 12) return 'Good morning';
-	if (h < 17) return 'Good afternoon';
-	if (h < 22) return 'Good evening';
+	const seed = dayHash(now);
+	if (h < 12) return MORNING[seed % MORNING.length];
+	if (h < 17) return AFTERNOON[seed % AFTERNOON.length];
+	if (h < 22) return EVENING[seed % EVENING.length];
 	return 'Burning the midnight oil';
 }
 

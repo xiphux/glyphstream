@@ -65,28 +65,58 @@ describe('timeOfDayGreeting', () => {
 		return timeOfDayGreeting(d);
 	}
 
-	it('returns "Still up" before 5am', () => {
+	// Variation slots — picked deterministically from per-day hash. Tests
+	// assert slot-membership rather than exact strings so the variation
+	// mechanism itself is what's covered, not just one (date, hour) point.
+	const MORNING_VARIATIONS = ['Good morning', 'Top of the morning', 'Morning'];
+	const AFTERNOON_VARIATIONS = [
+		'Good afternoon',
+		'Afternoon',
+		"Hope your day's going well"
+	];
+	const EVENING_VARIATIONS = ['Good evening', 'Evening', 'Hope your day went well'];
+
+	it('returns "Still up" before 5am (singleton — no variations)', () => {
 		expect(at(0)).toBe('Still up');
 		expect(at(4)).toBe('Still up');
 	});
 
-	it('returns "Good morning" 5am-noon', () => {
-		expect(at(5)).toBe('Good morning');
-		expect(at(11)).toBe('Good morning');
+	it('returns a morning variation 5am-noon', () => {
+		expect(MORNING_VARIATIONS).toContain(at(5));
+		expect(MORNING_VARIATIONS).toContain(at(11));
 	});
 
-	it('returns "Good afternoon" noon-5pm', () => {
-		expect(at(12)).toBe('Good afternoon');
-		expect(at(16)).toBe('Good afternoon');
+	it('returns an afternoon variation noon-5pm', () => {
+		expect(AFTERNOON_VARIATIONS).toContain(at(12));
+		expect(AFTERNOON_VARIATIONS).toContain(at(16));
 	});
 
-	it('returns "Good evening" 5pm-10pm', () => {
-		expect(at(17)).toBe('Good evening');
-		expect(at(21)).toBe('Good evening');
+	it('returns an evening variation 5pm-10pm', () => {
+		expect(EVENING_VARIATIONS).toContain(at(17));
+		expect(EVENING_VARIATIONS).toContain(at(21));
 	});
 
-	it('returns "Burning the midnight oil" after 10pm', () => {
+	it('returns "Burning the midnight oil" after 10pm (singleton — no variations)', () => {
 		expect(at(22)).toBe('Burning the midnight oil');
 		expect(at(23)).toBe('Burning the midnight oil');
+	});
+
+	it('is stable within a calendar day — same day, different hours in slot → same greeting', () => {
+		// At 6am and 11am on the same day, the morning variation must
+		// match — refreshing the page in the morning shouldn't churn.
+		const morningEarly = timeOfDayGreeting(new Date(2026, 4, 12, 6, 0));
+		const morningLate = timeOfDayGreeting(new Date(2026, 4, 12, 11, 0));
+		expect(morningEarly).toBe(morningLate);
+	});
+
+	it('can vary across days within the same slot', () => {
+		// Sweep a year of morning visits at 8am. Variation indices are
+		// dayHash % 3, so we should see all 3 morning variations.
+		const seen = new Set<string>();
+		for (let day = 1; day <= 31; day++) {
+			seen.add(timeOfDayGreeting(new Date(2026, 0, day, 8, 0)));
+		}
+		// All three morning variations must appear across a month.
+		for (const v of MORNING_VARIATIONS) expect(seen.has(v)).toBe(true);
 	});
 });
