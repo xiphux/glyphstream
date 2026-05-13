@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
@@ -10,7 +11,20 @@ import { visualizer } from 'rollup-plugin-visualizer';
 // shiki accidentally pulled into the browser bundle).
 const analyze = process.env.ANALYZE === '1';
 
+// Read package.json's version at build time and bake it into the bundle
+// as `__APP_VERSION__`. Lets a small "v0.3.6" indicator render in the
+// sidebar so a user (or future debugging-us) can confirm at a glance
+// which build is loaded — useful after pulling an update or testing
+// the service-worker refresh flow. Build-time injection means no
+// runtime fs read, no API roundtrip, no bundle bloat.
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8')) as {
+	version: string;
+};
+
 export default defineConfig({
+	define: {
+		__APP_VERSION__: JSON.stringify(pkg.version)
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit(),

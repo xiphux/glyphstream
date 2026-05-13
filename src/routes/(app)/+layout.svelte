@@ -166,7 +166,17 @@
 			 on desktop / Android / mobile Safari where the inset is 0. -->
 		<div class="flex items-center {collapsed ? 'justify-center' : 'justify-between'} px-3 pb-2 pt-[max(1rem,env(safe-area-inset-top))] sm:pl-4 sm:pt-4">
 			{#if !collapsed}
-				<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
+				<!-- Title + version pair. items-baseline so the smaller
+					 version aligns to GlyphStream's baseline rather than
+					 floating above it. Version stays muted and small —
+					 "you have to be looking for it" affordance for confirming
+					 a service-worker refresh or which build is loaded. -->
+				<div class="flex items-baseline gap-1.5">
+					<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
+					<span class="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-600">
+						v{__APP_VERSION__}
+					</span>
+				</div>
 			{/if}
 			<button
 				type="button"

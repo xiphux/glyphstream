@@ -11,6 +11,11 @@ declare global {
 		// interface PageState {}
 		// interface Platform {}
 	}
+
+	// Build-time-injected constant from vite.config.ts. The value is the
+	// `version` field of package.json at build time; lets the sidebar
+	// surface a small version indicator without a runtime fs read.
+	const __APP_VERSION__: string;
 }
 
 export {};
