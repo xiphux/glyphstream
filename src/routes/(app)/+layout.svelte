@@ -6,6 +6,7 @@
 	import { DropdownMenu } from 'bits-ui';
 	import {
 		Archive,
+		ChevronDown,
 		Images,
 		LogOut,
 		Menu,
@@ -15,7 +16,8 @@
 		Plus,
 		Settings,
 		SlidersHorizontal,
-		Trash2
+		Trash2,
+		User as UserIcon
 	} from 'lucide-svelte';
 
 	let { data, children } = $props();
@@ -34,12 +36,11 @@
 	}
 	const galleryActive = $derived(activeOrPending('/gallery'));
 	const archivedActive = $derived(activeOrPending('/archived'));
-	// Two settings sub-pages: `customModelsActive` and `preferencesActive`
-	// are specific so the sidebar highlights exactly one at a time when
-	// the user is on either. A single `/settings`-prefix matcher would
-	// light both entries up regardless of which page is shown.
+	// Custom Models is the only `/settings/*` route surfaced in the
+	// sidebar — Preferences lives in the user-identity menu at the
+	// bottom instead, so the top-level entries stay focused on
+	// "navigation destinations I visit often."
 	const customModelsActive = $derived(activeOrPending('/settings/models'));
-	const preferencesActive = $derived(activeOrPending('/settings/preferences'));
 	// "New chat" lives at /. Plain string equality (not startsWith) since
 	// every path starts with '/' — would otherwise match every nav.
 	const newChatPending = $derived(pendingPath === '/');
@@ -220,18 +221,6 @@
 				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
 			<a
-				href="/settings/preferences"
-				title={collapsed ? 'Preferences' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {preferencesActive
-					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
-					? 'sm:justify-center sm:px-0'
-					: ''}"
-			>
-				<Settings size={16} strokeWidth={2.25} class="shrink-0" />
-				{#if !collapsed}<span>Preferences</span>{/if}
-			</a>
-			<a
 				href="/archived"
 				title={collapsed ? 'Archived' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {archivedActive
@@ -315,24 +304,65 @@
 			{/if}
 		</nav>
 
+		<!--
+			Account menu: clicking the user's name opens a dropdown with
+			account-scoped actions (Preferences, Logout). The bottom-of-
+			sidebar identity area is the conventional home for account
+			settings — matches ChatGPT / Claude.ai / Slack patterns — and
+			leaves the top-level sidebar entries free for navigation
+			destinations the user visits regularly. When collapsed on
+			desktop, the trigger shrinks to a single User icon.
+		-->
 		<div class="mt-2 border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
-			<form
-				method="POST"
-				action="/api/auth/logout"
-				class="flex items-center gap-2 {collapsed ? 'sm:justify-center' : 'justify-between'}"
-			>
-				{#if !collapsed}
-					<span class="truncate">{data.user.displayName ?? data.user.githubUsername}</span>
-				{/if}
-				<button
-					type="submit"
-					title="Sign out"
-					aria-label="Sign out"
-					class="flex h-6 w-6 items-center justify-center rounded transition hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger
+					class="flex w-full items-center gap-2 rounded transition hover:bg-neutral-200 hover:text-neutral-700 focus-visible:ring-1 focus-visible:ring-neutral-400 focus-visible:outline-none disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 {collapsed
+						? 'sm:justify-center'
+						: 'justify-between px-1'} py-1"
+					aria-label="Account menu"
+					title={data.user.displayName ?? data.user.githubUsername}
 				>
-					<LogOut size={14} strokeWidth={2.25} />
-				</button>
-			</form>
+					{#if !collapsed}
+						<span class="truncate">{data.user.displayName ?? data.user.githubUsername}</span>
+						<ChevronDown size={12} strokeWidth={2.25} class="shrink-0 opacity-60" />
+					{:else}
+						<UserIcon size={14} strokeWidth={2.25} />
+					{/if}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Portal>
+					<DropdownMenu.Content
+						sideOffset={6}
+						align="start"
+						side="top"
+						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+					>
+						<DropdownMenu.Item
+							onSelect={() => goto('/settings/preferences')}
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+						>
+							<Settings size={14} strokeWidth={2.25} />
+							<span>Preferences</span>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							onSelect={() => {
+								// Form-submit semantics for logout: POST to the
+								// session-clearing endpoint and follow its redirect.
+								// Building a hidden form lets us reuse the existing
+								// /api/auth/logout handler unchanged.
+								const f = document.createElement('form');
+								f.method = 'POST';
+								f.action = '/api/auth/logout';
+								document.body.appendChild(f);
+								f.submit();
+							}}
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+						>
+							<LogOut size={14} strokeWidth={2.25} />
+							<span>Sign out</span>
+						</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Portal>
+			</DropdownMenu.Root>
 		</div>
 	</aside>
 
