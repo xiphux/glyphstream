@@ -40,8 +40,10 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	// only ever sees known-good values. (The query itself is also
 	// defensive, but defense-in-depth is cheap here.)
 	const patch: Partial<UserPreferences> = {};
-	if (typeof body.systemPrompt === 'string') {
-		patch.systemPrompt = body.systemPrompt;
+	if (typeof body.name === 'string') patch.name = body.name;
+	if (typeof body.aboutYou === 'string') patch.aboutYou = body.aboutYou;
+	if (typeof body.customInstructions === 'string') {
+		patch.customInstructions = body.customInstructions;
 	}
 	if (body.enterBehavior !== undefined) {
 		if (body.enterBehavior !== 'send' && body.enterBehavior !== 'newline') {

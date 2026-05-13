@@ -127,9 +127,25 @@ export interface ChatMessage {
 export type EnterBehavior = 'send' | 'newline';
 
 export interface UserPreferences {
-	/** Applied as the system prompt for new conversations when no custom-
-	 * model preset is selected. Empty string = no system prompt. */
-	systemPrompt: string;
+	/**
+	 * The three personalization fields below are combined server-side
+	 * (via composePersonaSystemPrompt in user-preferences.ts) into a
+	 * single system prompt at conversation-create time. Splitting them
+	 * gives users discoverable structure — "Name" prompts you to enter
+	 * one, "About you" prompts you to think about standing context,
+	 * "Custom instructions" prompts you to think about tone/style —
+	 * rather than handing them a blank textarea with no scaffolding.
+	 * All three are optional; empty fields are omitted from the
+	 * composed prompt entirely (no "Name: (blank)" leaks).
+	 */
+	/** How the user wants the assistant to refer to them. */
+	name: string;
+	/** Standing context about the user — occupation, interests, what
+	 * they're typically working on. Free-form. */
+	aboutYou: string;
+	/** Additional instructions for the assistant — tone, response
+	 * style, formatting preferences. Free-form. */
+	customInstructions: string;
 	/** "send": Enter sends, Shift+Enter inserts a newline (default).
 	 *  "newline": Enter inserts a newline, Cmd/Ctrl+Enter sends. */
 	enterBehavior: EnterBehavior;

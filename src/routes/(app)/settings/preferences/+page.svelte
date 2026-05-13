@@ -4,18 +4,18 @@
 
 	let { data } = $props<{ data: { prefs: UserPreferences } }>();
 
-	// Form-state mirrors the loaded prefs but lives independently so the
-	// user can type freely without us round-tripping every keystroke to
-	// the server. PATCH only fires on Save. We deliberately snapshot
-	// data.prefs once at mount rather than tracking it reactively —
-	// the form is the source of truth between mount and Save.
+	// Form state. Snapshot data.prefs once at mount — the form is the
+	// source of truth between mount and Save, so we don't want each
+	// data prop update to clobber in-progress edits.
 	// svelte-ignore state_referenced_locally
-	let systemPrompt = $state(data.prefs.systemPrompt);
+	let name = $state(data.prefs.name);
+	// svelte-ignore state_referenced_locally
+	let aboutYou = $state(data.prefs.aboutYou);
+	// svelte-ignore state_referenced_locally
+	let customInstructions = $state(data.prefs.customInstructions);
 	// svelte-ignore state_referenced_locally
 	let enterBehavior = $state<EnterBehavior>(data.prefs.enterBehavior);
 
-	// Track the last-saved values so we can show a clean "no changes"
-	// state and disable Save when the form matches what's on the server.
 	// svelte-ignore state_referenced_locally
 	let saved = $state<UserPreferences>({ ...data.prefs });
 	let busy = $state(false);
@@ -23,7 +23,10 @@
 	let justSaved = $state(false);
 
 	const dirty = $derived(
-		systemPrompt !== saved.systemPrompt || enterBehavior !== saved.enterBehavior
+		name !== saved.name ||
+			aboutYou !== saved.aboutYou ||
+			customInstructions !== saved.customInstructions ||
+			enterBehavior !== saved.enterBehavior
 	);
 
 	async function save() {
@@ -35,7 +38,7 @@
 			const res = await fetch('/api/user/preferences', {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ systemPrompt, enterBehavior })
+				body: JSON.stringify({ name, aboutYou, customInstructions, enterBehavior })
 			});
 			if (!res.ok) {
 				const body = await res.json().catch(() => ({}));
@@ -43,10 +46,11 @@
 			}
 			const next = (await res.json()) as UserPreferences;
 			saved = { ...next };
-			systemPrompt = next.systemPrompt;
+			name = next.name;
+			aboutYou = next.aboutYou;
+			customInstructions = next.customInstructions;
 			enterBehavior = next.enterBehavior;
 			justSaved = true;
-			// Hide the "Saved" badge after a moment.
 			setTimeout(() => (justSaved = false), 2000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -56,7 +60,9 @@
 	}
 
 	function revert() {
-		systemPrompt = saved.systemPrompt;
+		name = saved.name;
+		aboutYou = saved.aboutYou;
+		customInstructions = saved.customInstructions;
 		enterBehavior = saved.enterBehavior;
 		error = null;
 	}
@@ -75,30 +81,83 @@
 			}}
 			class="mx-auto flex max-w-2xl flex-col gap-6 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
 		>
-			<div class="flex flex-col gap-2">
-				<label class="text-sm font-medium" for="system-prompt">
-					Default system prompt
-				</label>
-				<p class="text-xs text-neutral-500">
-					Applied as the system prompt for new conversations that aren't using a
-					custom-model preset. Empty = no system prompt. Doesn't change existing
-					conversations — only new ones.
-				</p>
-				<textarea
-					id="system-prompt"
-					bind:value={systemPrompt}
-					rows="6"
-					disabled={busy}
-					placeholder="Always respond concisely. Use bullet points when listing things."
-					class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-xs dark:border-neutral-700 dark:bg-neutral-900"
-				></textarea>
-			</div>
+			<section class="flex flex-col gap-3">
+				<div>
+					<h2 class="text-sm font-semibold">Personalization</h2>
+					<p class="mt-0.5 text-xs text-neutral-500">
+						Composed into a system prompt for new conversations (when not using a
+						custom-model preset). Doesn't change existing chats — only future ones.
+						Empty fields are omitted entirely.
+					</p>
+				</div>
 
-			<div class="flex flex-col gap-2">
-				<span class="text-sm font-medium">Enter key behavior</span>
-				<p class="text-xs text-neutral-500">
-					How the message composer treats the Enter key.
-				</p>
+				<div class="flex flex-col gap-1.5">
+					<label class="text-xs font-medium" for="pref-name">
+						Name <span class="font-normal text-neutral-500">(optional)</span>
+					</label>
+					<input
+						id="pref-name"
+						bind:value={name}
+						type="text"
+						maxlength={100}
+						disabled={busy}
+						placeholder="Chris"
+						class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+					/>
+					<p class="text-xs text-neutral-500">
+						How the assistant should refer to you.
+					</p>
+				</div>
+
+				<div class="flex flex-col gap-1.5">
+					<label class="text-xs font-medium" for="pref-about">
+						About you <span class="font-normal text-neutral-500">(optional)</span>
+					</label>
+					<textarea
+						id="pref-about"
+						bind:value={aboutYou}
+						rows="3"
+						maxlength={2000}
+						disabled={busy}
+						placeholder="I'm a software engineer working on web apps. Comfortable with TypeScript and SQL."
+						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+					></textarea>
+					<p class="text-xs text-neutral-500">
+						Standing context — occupation, interests, what you're typically
+						working on.
+					</p>
+				</div>
+
+				<div class="flex flex-col gap-1.5">
+					<label class="text-xs font-medium" for="pref-custom">
+						Custom instructions
+						<span class="font-normal text-neutral-500">(optional)</span>
+					</label>
+					<textarea
+						id="pref-custom"
+						bind:value={customInstructions}
+						rows="6"
+						maxlength={4000}
+						disabled={busy}
+						placeholder="Be concise. Use code examples in TypeScript by default. Avoid filler phrases like 'Great question!'."
+						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+					></textarea>
+					<p class="text-xs text-neutral-500">
+						Tone, response style, formatting preferences — anything else you'd
+						write in a system prompt.
+					</p>
+				</div>
+			</section>
+
+			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+
+			<section class="flex flex-col gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">Composer</h2>
+					<p class="mt-0.5 text-xs text-neutral-500">
+						How the message composer treats the Enter key.
+					</p>
+				</div>
 				<div class="flex flex-col gap-2 text-sm">
 					<label class="flex cursor-pointer items-start gap-2">
 						<input
@@ -135,7 +194,7 @@
 						</span>
 					</label>
 				</div>
-			</div>
+			</section>
 
 			{#if error}
 				<div

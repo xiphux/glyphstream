@@ -15,7 +15,9 @@ import { getDb } from '../client';
 import { users } from '../schema';
 
 const DEFAULTS: UserPreferences = {
-	systemPrompt: '',
+	name: '',
+	aboutYou: '',
+	customInstructions: '',
 	enterBehavior: 'send'
 };
 
@@ -32,7 +34,12 @@ export function parseUserPreferences(raw: string | null): UserPreferences {
 	if (typeof parsed !== 'object' || parsed === null) return { ...DEFAULTS };
 	const obj = parsed as Record<string, unknown>;
 	return {
-		systemPrompt: typeof obj.systemPrompt === 'string' ? obj.systemPrompt : DEFAULTS.systemPrompt,
+		name: typeof obj.name === 'string' ? obj.name : DEFAULTS.name,
+		aboutYou: typeof obj.aboutYou === 'string' ? obj.aboutYou : DEFAULTS.aboutYou,
+		customInstructions:
+			typeof obj.customInstructions === 'string'
+				? obj.customInstructions
+				: DEFAULTS.customInstructions,
 		enterBehavior:
 			obj.enterBehavior === 'newline' || obj.enterBehavior === 'send'
 				? obj.enterBehavior
@@ -75,8 +82,12 @@ export function setUserPreferences(
 			.get();
 		const current = parseUserPreferences(row?.preferencesJson ?? null);
 		const next: UserPreferences = {
-			systemPrompt:
-				typeof patch.systemPrompt === 'string' ? patch.systemPrompt : current.systemPrompt,
+			name: typeof patch.name === 'string' ? patch.name : current.name,
+			aboutYou: typeof patch.aboutYou === 'string' ? patch.aboutYou : current.aboutYou,
+			customInstructions:
+				typeof patch.customInstructions === 'string'
+					? patch.customInstructions
+					: current.customInstructions,
 			enterBehavior:
 				patch.enterBehavior === 'newline' || patch.enterBehavior === 'send'
 					? patch.enterBehavior
@@ -88,4 +99,33 @@ export function setUserPreferences(
 			.run();
 		return next;
 	});
+}
+
+/**
+ * Compose the three personalization fields into a single system prompt
+ * for the model. Each non-empty field becomes its own labeled section;
+ * empty fields are omitted (no "Name: (blank)" leaks). Returns null when
+ * all three are empty — the caller (conversation-create handler) treats
+ * null as "no system prompt for this conversation."
+ *
+ * The labels are intentionally plain English rather than YAML/JSON keys:
+ * we're authoring instructions for the model to read, and natural-
+ * language section headers prime it better than a structured envelope
+ * that the model has to parse.
+ */
+export function composePersonaSystemPrompt(prefs: UserPreferences): string | null {
+	const parts: string[] = [];
+	const name = prefs.name.trim();
+	const about = prefs.aboutYou.trim();
+	const custom = prefs.customInstructions.trim();
+	if (name) {
+		parts.push(`The user's name is ${name}. Refer to them by this name when natural.`);
+	}
+	if (about) {
+		parts.push(`About the user:\n${about}`);
+	}
+	if (custom) {
+		parts.push(`Additional instructions:\n${custom}`);
+	}
+	return parts.length === 0 ? null : parts.join('\n\n');
 }

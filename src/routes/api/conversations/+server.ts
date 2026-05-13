@@ -4,7 +4,10 @@ import {
 	listConversations
 } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
-import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
+import {
+	composePersonaSystemPrompt,
+	getUserPreferences
+} from '$lib/server/db/queries/user-preferences';
 import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
 import type {
 	CreateConversationRequest,
@@ -80,8 +83,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		resolvedEndpointId = parsed.endpointId;
 		resolvedModelId = modelId;
-		// System prompt resolution order: explicit body value > user-level
-		// default preference > null. The custom-model branch above always
+		// System prompt resolution order: explicit body value > composed
+		// persona (from the user's name / aboutYou / customInstructions
+		// preference fields) > null. The custom-model branch above always
 		// snapshots from the preset, so this only matters when starting a
 		// fresh chat against a base model directly.
 		const explicit = body.systemPrompt?.trim();
@@ -89,8 +93,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			resolvedSystemPrompt = explicit;
 		} else {
 			const prefs = getUserPreferences(locals.user.id);
-			const def = prefs?.systemPrompt.trim();
-			resolvedSystemPrompt = def ? def : null;
+			resolvedSystemPrompt = prefs ? composePersonaSystemPrompt(prefs) : null;
 		}
 		if (body.modelKind !== undefined) {
 			if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
