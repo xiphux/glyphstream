@@ -101,7 +101,7 @@
 						type="text"
 						maxlength={100}
 						disabled={busy}
-						placeholder="Chris"
+						placeholder="Your name or nickname"
 						class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					/>
 					<p class="text-xs text-neutral-500">
@@ -119,7 +119,7 @@
 						rows="3"
 						maxlength={2000}
 						disabled={busy}
-						placeholder="I'm a software engineer working on web apps. Comfortable with TypeScript and SQL."
+						placeholder="Background, interests, or other standing context to keep in mind"
 						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					></textarea>
 					<p class="text-xs text-neutral-500">
@@ -139,7 +139,7 @@
 						rows="6"
 						maxlength={4000}
 						disabled={busy}
-						placeholder="Be concise. Use code examples in TypeScript by default. Avoid filler phrases like 'Great question!'."
+						placeholder="Response style, tone, or formatting preferences"
 						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
 					></textarea>
 					<p class="text-xs text-neutral-500">
