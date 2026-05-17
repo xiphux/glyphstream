@@ -4,6 +4,8 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
+	import Toaster from '$lib/components/Toaster.svelte';
+	import { toast } from '$lib/toast.svelte';
 	import {
 		Archive,
 		ChevronDown,
@@ -88,6 +90,9 @@
 	async function archiveConversation(id: string) {
 		if (busyId) return;
 		busyId = id;
+		// Capture before any navigation so the Undo handler can decide
+		// whether to bring the user back to where they were.
+		const wasViewingChat = page.url.pathname === `/chat/${id}`;
 		try {
 			const res = await fetch(`/api/conversations/${id}`, {
 				method: 'PATCH',
@@ -97,17 +102,50 @@
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`Server returned ${res.status}`);
 			}
-			// If the archived conversation is the one currently open, leave the
-			// user on /archived so the action's outcome is visible — otherwise
-			// they'd just see the same chat with the conversation missing from
-			// the sidebar, which feels broken.
-			if (page.url.pathname === `/chat/${id}`) {
-				await goto('/archived', { invalidateAll: true });
+			// Archive is "I'm done with this thread" in the same spirit
+			// as delete — the user is signaling they want it out of
+			// their immediate view. Mirror delete's behavior and send
+			// them to the new-chat surface rather than pulling them
+			// deeper into the archive. The toast below confirms the
+			// action and offers Undo so a misclick is one tap to
+			// recover instead of a trip through /archived.
+			if (wasViewingChat) {
+				await goto('/', { invalidateAll: true });
 			} else {
 				await invalidateAll();
 			}
+			toast.success('Conversation archived', {
+				action: {
+					label: 'Undo',
+					handler: async () => {
+						try {
+							const undoRes = await fetch(`/api/conversations/${id}`, {
+								method: 'PATCH',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify({ archived: false })
+							});
+							if (!undoRes.ok && undoRes.status !== 404) {
+								throw new Error(`Server returned ${undoRes.status}`);
+							}
+							await invalidateAll();
+							// Land the user back on the chat they were
+							// viewing when they archived. If they were on
+							// some other surface, leave them where they are.
+							if (wasViewingChat) {
+								await goto(`/chat/${id}`);
+							}
+						} catch (e) {
+							toast.error(
+								`Couldn't undo: ${e instanceof Error ? e.message : String(e)}`
+							);
+						}
+					}
+				}
+			});
 		} catch (e) {
-			alert(`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`);
+			toast.error(
+				`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`
+			);
 		} finally {
 			busyId = null;
 		}
@@ -128,7 +166,9 @@
 				await invalidateAll();
 			}
 		} catch (e) {
-			alert(`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`);
+			toast.error(
+				`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`
+			);
 		} finally {
 			busyId = null;
 		}
@@ -430,3 +470,11 @@
 		</div>
 	</main>
 </div>
+
+<!--
+	Singleton toast surface for the authenticated app. Sits outside the
+	flex root so its `fixed` positioning isn't accidentally clipped or
+	constrained by any ancestor's overflow/transform. The component
+	renders nothing when no toast is active.
+-->
+<Toaster />

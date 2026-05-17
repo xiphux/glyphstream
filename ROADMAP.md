@@ -156,6 +156,17 @@ expected priority, not time-bound.
 
 - **Model favoriting / pinning** in the picker.
 
+- **Animation polish pass.** Motion design is intentionally minimal
+  today — the mobile drawer slides and that's about it. Toasts,
+  dropdowns, message arrivals, and most state changes pop in
+  instantly. A coordinated pass to add tasteful transitions
+  (toast enter/exit, message-arrival fade, model-picker open,
+  branch-switch crossfade, etc.) would noticeably lift perceived
+  polish. Worth doing as one coherent pass rather than per-feature
+  so timing curves and easing stay consistent across the app —
+  otherwise each addition risks looking out of place against the
+  no-animation baseline of everything else.
+
 - **Regenerate response** as a separate action from edit.
 
 - **Themes (prebuilt color schemes).** App follows
