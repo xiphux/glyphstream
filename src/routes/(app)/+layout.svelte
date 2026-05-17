@@ -136,15 +136,30 @@
 </script>
 
 <div class="flex h-[100dvh] overflow-hidden">
-	<!-- Mobile drawer backdrop. Pointer-events stay off when closed so it
-		 doesn't intercept taps; the transition lets the fade animate. -->
+	<!-- Mobile drawer backdrop. Pointer-events stay off when the drawer
+		 is closed *or* when a conversation overflow menu is open. The
+		 second case defends against an iOS Safari quirk: tapping the
+		 overflow trigger inside the translated aside opens the menu via
+		 a portal'd popover, and the browser-synthesized click that
+		 follows the touch can end up dispatched to the z-30 backdrop
+		 instead of staying on the trigger — closing the drawer the
+		 moment the menu opens. Going inert until the menu closes
+		 sidesteps that race entirely. The click handler carries the
+		 same guard as belt-and-suspenders in case the class update is
+		 batched after the synthesized click dispatches in the same
+		 frame. -->
 	<button
 		type="button"
 		aria-label="Close menu"
-		onclick={() => (drawerOpen = false)}
+		onclick={() => {
+			if (openOverflowFor !== null) return;
+			drawerOpen = false;
+		}}
 		class="fixed inset-0 z-30 bg-black/40 transition-opacity sm:hidden {drawerOpen
-			? 'pointer-events-auto opacity-100'
-			: 'pointer-events-none opacity-0'}"
+			? 'opacity-100'
+			: 'opacity-0'} {drawerOpen && openOverflowFor === null
+			? 'pointer-events-auto'
+			: 'pointer-events-none'}"
 	></button>
 
 	<!-- Sidebar.
@@ -154,10 +169,23 @@
 		 between w-64 (full) and w-14 (icons only). The conversation list
 		 + recents header hide entirely when collapsed; nav items show
 		 just their lucide icons with `title` tooltips. -->
+	<!--
+		`busyId !== null` makes the entire sidebar inert while an
+		archive/delete is in flight. The dropdown menu's Content lives
+		in a portal'd subtree (document.body), so the action the user
+		just initiated remains responsive — but any sidebar nav link or
+		conversation entry that an iOS-synthesized stray click might
+		land on after the menu closes is blocked from firing. This
+		closes the same hole that left a partly-completed archive
+		bouncing the user to /archived as if they'd tapped the
+		Archived sidebar link.
+	-->
 	<aside
 		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden bg-neutral-50 transition-[transform,width] duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
 			? 'translate-x-0'
-			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'}"
+			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {busyId !== null
+			? 'pointer-events-none'
+			: ''}"
 	>
 		<!-- Header row: title (when expanded) + collapse toggle (sm+ only).
 			 pt uses max(env(safe-area-inset-top), default) so the title sits
