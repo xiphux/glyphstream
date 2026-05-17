@@ -11,7 +11,12 @@ export interface MediaInsertInput {
 	kind: 'image' | 'video';
 	sourceEndpointId: string | null;
 	sourceModel: string | null;
+	/** Truncated preview (~500 chars) for space-constrained surfaces. */
 	promptExcerpt: string | null;
+	/** Full original prompt for "regenerate from gallery" flows. May
+	 *  share a value with `promptExcerpt` on legacy rows backfilled by
+	 *  the 0005 migration. Null for uploads (no prompt). */
+	promptFull?: string | null;
 	/**
 	 * Defaults to 'generated' (produced by an upstream model). Use 'uploaded'
 	 * for user-supplied chat attachments — those get `unreferenced_since` set
@@ -39,6 +44,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			sourceEndpointId: input.sourceEndpointId,
 			sourceModel: input.sourceModel,
 			promptExcerpt: input.promptExcerpt,
+			promptFull: input.promptFull ?? null,
 			createdAt: now,
 			refCount: 0,
 			// Uploads start in the "candidate for purge" state — if the user
@@ -123,6 +129,7 @@ export function getMediaListItemForUser(
 			sourceEndpointId: media.sourceEndpointId,
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
+			promptFull: media.promptFull,
 			createdAt: media.createdAt
 		})
 		.from(media)
@@ -146,7 +153,12 @@ export interface MediaListItem {
 	byteSize: number;
 	sourceEndpointId: string | null;
 	sourceModel: string | null;
+	/** Truncated preview for caption-strip / thumbnail surfaces. */
 	promptExcerpt: string | null;
+	/** Full prompt for "Regenerate with this prompt" / inspect flows.
+	 *  May equal `promptExcerpt` for legacy rows; equals the original
+	 *  untruncated prompt for anything generated post-migration. */
+	promptFull: string | null;
 	createdAt: number;
 }
 
@@ -202,6 +214,7 @@ export function listMediaForUser(
 			sourceEndpointId: media.sourceEndpointId,
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
+			promptFull: media.promptFull,
 			createdAt: media.createdAt
 		})
 		.from(media)

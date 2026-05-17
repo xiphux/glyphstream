@@ -148,7 +148,17 @@ export const media = sqliteTable(
 			.default('generated'),
 		sourceEndpointId: text('source_endpoint_id'),
 		sourceModel: text('source_model'),
+		// promptExcerpt: a truncated (500 char) preview, used everywhere the
+		// surrounding UI is space-constrained — gallery thumbnails, lightbox
+		// caption strip. promptFull: the original untruncated prompt, used
+		// when the user wants to act on the prompt as input (e.g. the
+		// gallery's upcoming "Regenerate with this prompt" affordance, which
+		// would silently corrupt long prompts if we only had the excerpt).
+		// Older rows backfilled `prompt_full` from `prompt_excerpt`, so they
+		// may share the same truncated value — only rows created after the
+		// 2026-05-17 migration have a meaningful split.
 		promptExcerpt: text('prompt_excerpt'),
+		promptFull: text('prompt_full'),
 		createdAt: integer('created_at').notNull(),
 		refCount: integer('ref_count').notNull().default(0),
 		// Set when ref_count drops to 0; used to compute grace-period expiry.

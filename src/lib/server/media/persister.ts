@@ -17,6 +17,21 @@ import { getMediaStore } from './disk-store';
 
 const PROMPT_EXCERPT_MAX = 500;
 
+/** Build the {full, excerpt} pair for a generated-media prompt. Excerpt is
+ *  capped for space-constrained UI surfaces (gallery thumbs, lightbox
+ *  caption); full is untruncated for "Regenerate with this prompt" flows
+ *  where silently dropping the tail of a long prompt would corrupt the
+ *  generation. Both go on the media row. */
+function promptFields(prompt: string): { promptFull: string; promptExcerpt: string } {
+	return {
+		promptFull: prompt,
+		promptExcerpt:
+			prompt.length > PROMPT_EXCERPT_MAX
+				? prompt.slice(0, PROMPT_EXCERPT_MAX - 1) + '…'
+				: prompt
+	};
+}
+
 interface PersistImageInput {
 	userId: string;
 	endpoint: LoadedEndpoint;
@@ -37,10 +52,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		kind: 'image',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
-		promptExcerpt:
-			input.prompt.length > PROMPT_EXCERPT_MAX
-				? input.prompt.slice(0, PROMPT_EXCERPT_MAX - 1) + '…'
-				: input.prompt
+		...promptFields(input.prompt)
 	});
 	return id;
 }
@@ -70,10 +82,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		kind: 'video',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
-		promptExcerpt:
-			input.prompt.length > PROMPT_EXCERPT_MAX
-				? input.prompt.slice(0, PROMPT_EXCERPT_MAX - 1) + '…'
-				: input.prompt
+		...promptFields(input.prompt)
 	});
 	return id;
 }
