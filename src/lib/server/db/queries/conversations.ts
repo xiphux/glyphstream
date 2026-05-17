@@ -9,7 +9,11 @@ import type {
 import { getDb } from '../client';
 import { conversations } from '../schema';
 import { walkActiveBranch } from './messages';
-import { decrementMediaForMessages, listMessageIdsForConversation } from './media';
+import {
+	decrementMediaForMessages,
+	hardDeleteOrphanGeneratedMediaInConversation,
+	listMessageIdsForConversation
+} from './media';
 
 interface CreateInput {
 	userId: string;
@@ -243,10 +247,28 @@ export function setConversationTitle(id: string, title: string): void {
  * Delete a conversation and decrement ref counts for any media referenced
  * by its messages. The schema's FK cascade (conversations → messages →
  * message_media) drops the join rows but bypasses Drizzle, so without an
- * explicit decrement step `media.ref_count` would stay inflated forever
- * and the purger would never collect the underlying files.
+ * explicit decrement step `media.ref_count` would stay inflated and the
+ * purger (or, for generated media, the explicit delete path) wouldn't
+ * know to collect them.
+ *
+ * When `deleteMedia` is true, also hard-deletes generated media that
+ * would orphan as a result — i.e. media whose only references are in
+ * this conversation. Uploaded media is unaffected regardless (it
+ * follows the purger's own auto-sweep schedule under the library
+ * model). Returns the list of disk paths the caller should unlink
+ * *after* the DB transaction commits; unlinking inside the txn would
+ * mean a rolled-back transaction could leave files deleted from disk
+ * but still referenced from the DB.
+ *
+ * Caller is responsible for actually unlinking the returned paths via
+ * the MediaStore — see the DELETE handler in
+ * src/routes/api/conversations/[id]/+server.ts.
  */
-export function deleteConversation(id: string, userId: string): boolean {
+export function deleteConversation(
+	id: string,
+	userId: string,
+	opts: { deleteMedia?: boolean } = {}
+): { ok: boolean; toUnlink: Array<{ id: string; storagePath: string }> } {
 	const db = getDb();
 	return db.transaction((tx) => {
 		// Ownership check first so we don't decrement on someone else's media.
@@ -255,12 +277,20 @@ export function deleteConversation(id: string, userId: string): boolean {
 			.from(conversations)
 			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 			.get();
-		if (!owned) return false;
+		if (!owned) return { ok: false, toUnlink: [] };
+
+		// Order matters: identify-and-mark orphan media FIRST (while
+		// ref_counts still reflect the pre-decrement state — the orphan
+		// detection compares ref_count to local link count), then decrement,
+		// then cascade-delete the conversation.
+		const toUnlink = opts.deleteMedia
+			? hardDeleteOrphanGeneratedMediaInConversation(id, userId)
+			: [];
 
 		const messageIds = listMessageIdsForConversation(id);
 		decrementMediaForMessages(messageIds);
 
 		tx.delete(conversations).where(eq(conversations.id, id)).run();
-		return true;
+		return { ok: true, toUnlink };
 	});
 }

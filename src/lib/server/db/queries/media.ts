@@ -310,6 +310,170 @@ export function hardDeleteMediaForUser(
 	});
 }
 
+// --- Per-conversation orphan analysis (drives the delete-conversation UI) ---
+
+export interface ConversationOrphanCounts {
+	images: number;
+	videos: number;
+}
+
+/**
+ * Count generated media that would become orphaned if this conversation
+ * were deleted — i.e. media whose only references are inside this
+ * conversation. Used by the delete-conversation confirm dialog to show
+ * the user how many gallery items they could optionally purge along
+ * with the conversation.
+ *
+ * Accuracy: respects the case where the same media is referenced from
+ * *multiple* messages within this conversation (e.g. across edit
+ * siblings via the auto-attach-last-generated flow). For each candidate
+ * media we compute the local link count and compare to `ref_count`; if
+ * they match, all references are in this conversation and the media
+ * would orphan.
+ *
+ * Scope: only counts `origin='generated'` media. Uploaded media is
+ * always transient under the library model — the purger handles it
+ * on its own schedule, so it's not part of the user's decision.
+ */
+export function countOrphanMediaInConversation(
+	conversationId: string,
+	userId: string
+): ConversationOrphanCounts {
+	const db = getDb();
+	const rows = db
+		.select({
+			mediaId: messageMedia.mediaId,
+			kind: media.kind,
+			refCount: media.refCount,
+			origin: media.origin,
+			hardDeletedAt: media.hardDeletedAt
+		})
+		.from(messageMedia)
+		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
+		.innerJoin(media, eq(media.id, messageMedia.mediaId))
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				eq(media.userId, userId)
+			)
+		)
+		.all();
+
+	// Group by mediaId. Same media can appear multiple times if linked
+	// from multiple messages within the conversation.
+	const localCount = new Map<string, number>();
+	const meta = new Map<
+		string,
+		{ kind: 'image' | 'video'; refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
+	>();
+	for (const r of rows) {
+		localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
+		if (!meta.has(r.mediaId)) {
+			meta.set(r.mediaId, {
+				kind: r.kind,
+				refCount: r.refCount,
+				origin: r.origin,
+				hardDeletedAt: r.hardDeletedAt
+			});
+		}
+	}
+
+	let images = 0;
+	let videos = 0;
+	for (const [mediaId, count] of localCount) {
+		const m = meta.get(mediaId)!;
+		if (m.hardDeletedAt !== null) continue;
+		if (m.origin !== 'generated') continue;
+		// If local count equals total ref_count, all references are in
+		// this conversation — deleting it would drop the row to zero.
+		if (m.refCount !== count) continue;
+		if (m.kind === 'image') images++;
+		else videos++;
+	}
+	return { images, videos };
+}
+
+/**
+ * Identify generated media that would orphan as a result of deleting
+ * this conversation, and immediately mark them hard-deleted. Returns
+ * the storage paths so the caller can unlink the files from disk
+ * outside the DB transaction.
+ *
+ * Must be called BEFORE `decrementMediaForMessages` so the `refCount`
+ * comparison reflects the pre-decrement state. After this returns,
+ * the regular decrement path takes over for the remaining (still-
+ * referenced) media.
+ *
+ * Scope: generated media only — uploaded media follows the purger's
+ * own auto-sweep path and is not affected by user-driven "also
+ * delete media" on conversation delete.
+ */
+export function hardDeleteOrphanGeneratedMediaInConversation(
+	conversationId: string,
+	userId: string
+): Array<{ id: string; storagePath: string }> {
+	const counts = countOrphanMediaInConversation(conversationId, userId);
+	if (counts.images === 0 && counts.videos === 0) return [];
+
+	const db = getDb();
+	return db.transaction((tx) => {
+		// Re-walk the same join inside the txn so we can grab storage_path
+		// and mark each row hard-deleted atomically. The count query above
+		// just told us *whether* there are orphans worth bothering with —
+		// this query enumerates them.
+		const rows = tx
+			.select({
+				mediaId: messageMedia.mediaId,
+				storagePath: media.storagePath,
+				refCount: media.refCount,
+				origin: media.origin,
+				hardDeletedAt: media.hardDeletedAt
+			})
+			.from(messageMedia)
+			.innerJoin(messages, eq(messages.id, messageMedia.messageId))
+			.innerJoin(media, eq(media.id, messageMedia.mediaId))
+			.where(
+				and(
+					eq(messages.conversationId, conversationId),
+					eq(media.userId, userId)
+				)
+			)
+			.all();
+
+		const localCount = new Map<string, number>();
+		const meta = new Map<
+			string,
+			{ storagePath: string; refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
+		>();
+		for (const r of rows) {
+			localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
+			if (!meta.has(r.mediaId)) {
+				meta.set(r.mediaId, {
+					storagePath: r.storagePath,
+					refCount: r.refCount,
+					origin: r.origin,
+					hardDeletedAt: r.hardDeletedAt
+				});
+			}
+		}
+
+		const now = Date.now();
+		const toUnlink: Array<{ id: string; storagePath: string }> = [];
+		for (const [mediaId, count] of localCount) {
+			const m = meta.get(mediaId)!;
+			if (m.hardDeletedAt !== null) continue;
+			if (m.origin !== 'generated') continue;
+			if (m.refCount !== count) continue;
+			tx.update(media)
+				.set({ hardDeletedAt: now })
+				.where(eq(media.id, mediaId))
+				.run();
+			toUnlink.push({ id: mediaId, storagePath: m.storagePath });
+		}
+		return toUnlink;
+	});
+}
+
 // --- Cascade-delete cleanup ----------------------------------------------
 
 /**
