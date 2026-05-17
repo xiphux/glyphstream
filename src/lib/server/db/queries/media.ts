@@ -101,6 +101,42 @@ export function getMediaForUser(
 	return row ?? null;
 }
 
+/**
+ * Fetch a single media row in the MediaListItem shape (the same fields
+ * the gallery's list query returns). Used by the chat-side lightbox to
+ * populate model + prompt metadata that isn't in the message's
+ * `content_json` — message parts only carry the media id. Returns null
+ * when the row doesn't exist, is hard-deleted, or belongs to a
+ * different user.
+ */
+export function getMediaListItemForUser(
+	mediaId: string,
+	userId: string
+): MediaListItem | null {
+	const db = getDb();
+	const row = db
+		.select({
+			id: media.id,
+			kind: media.kind,
+			contentType: media.contentType,
+			byteSize: media.byteSize,
+			sourceEndpointId: media.sourceEndpointId,
+			sourceModel: media.sourceModel,
+			promptExcerpt: media.promptExcerpt,
+			createdAt: media.createdAt
+		})
+		.from(media)
+		.where(
+			and(
+				eq(media.id, mediaId),
+				eq(media.userId, userId),
+				isNull(media.hardDeletedAt)
+			)
+		)
+		.get();
+	return row ?? null;
+}
+
 // --- Gallery listing -----------------------------------------------------
 
 export interface MediaListItem {

@@ -22,6 +22,9 @@
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { composerEnterHandler } from '$lib/composer-keys';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
+	import { toast } from '$lib/toast.svelte';
+	import type { MediaListItem } from '$lib/server/db/queries/media';
 	import type {
 		ChatMessage,
 		MessagePart,
@@ -142,6 +145,41 @@
 		attachments.attachExisting(imagePart.mediaId);
 		autoAttachedFor = lastAssistant.id;
 	});
+
+	// --- inline image lightbox --------------------------------------------
+	//
+	// Tapping a generated image used to open it in a new tab (target=_blank
+	// on the wrapping anchor). That works on desktop but breaks in PWA
+	// standalone mode where there's no tab strip to return through — users
+	// got stranded on a bare image page with only a back-swipe gesture
+	// home. Reusing the gallery's MediaLightbox keeps the tap inside the
+	// app and brings model/prompt/download affordances along for free.
+	//
+	// MessagePart only carries `mediaId`; model + prompt + size live on
+	// the media row. One fetch per tap (~100-200ms) populates the metadata.
+	// The fetch races are guarded by the id-comparison pattern: a stale
+	// response from a previous tap can't clobber the current state.
+	let lightbox = $state<MediaListItem | null>(null);
+	let openingLightboxFor = $state<string | null>(null);
+
+	async function openImageInLightbox(mediaId: string) {
+		if (openingLightboxFor === mediaId) return;
+		openingLightboxFor = mediaId;
+		try {
+			const res = await fetch(`/api/media/${mediaId}`);
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			const m = (await res.json()) as MediaListItem;
+			if (openingLightboxFor === mediaId) lightbox = m;
+		} catch (e) {
+			if (openingLightboxFor === mediaId) {
+				toast.error(
+					`Couldn't load image details: ${e instanceof Error ? e.message : String(e)}`
+				);
+			}
+		} finally {
+			if (openingLightboxFor === mediaId) openingLightboxFor = null;
+		}
+	}
 
 	// --- drag-drop + paste-from-clipboard ---------------------------------
 	//
@@ -1025,11 +1063,13 @@
 							<div class="mt-2 space-y-2">
 								{#each m.parts as p (partKey(p))}
 									{#if p.type === 'image'}
-										<a
-											href="/api/media/{p.mediaId}/content"
-											target="_blank"
-											rel="noopener noreferrer"
-											class="block overflow-hidden rounded-lg"
+										{@const mediaId = p.mediaId}
+										<button
+											type="button"
+											onclick={() => openImageInLightbox(mediaId)}
+											aria-label="Open image"
+											class="block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
+											disabled={openingLightboxFor === mediaId}
 										>
 											<img
 												src="/api/media/{p.mediaId}/content"
@@ -1037,7 +1077,7 @@
 												loading="lazy"
 												class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
 											/>
-										</a>
+										</button>
 									{:else if p.type === 'video'}
 										<!-- svelte-ignore a11y_media_has_caption -->
 										<video
@@ -1388,3 +1428,13 @@
 		{/if}
 	</div>
 </div>
+
+<!--
+	In-conversation media lightbox. State + fetch live in this page so
+	the chat owns the open/close lifecycle; the component is purely
+	presentational. We deliberately don't pass `onDelete` or
+	`conversationsUsingThis` — destructive media deletion belongs in
+	the gallery surface, and listing "conversations referencing this"
+	would just be a circular link back to where the user already is.
+-->
+<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} />

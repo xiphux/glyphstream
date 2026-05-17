@@ -1,7 +1,23 @@
-import { error } from '@sveltejs/kit';
-import { hardDeleteMediaForUser } from '$lib/server/db/queries/media';
+import { error, json } from '@sveltejs/kit';
+import {
+	getMediaListItemForUser,
+	hardDeleteMediaForUser
+} from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
+
+/**
+ * Metadata fetch for a single media row, in the same MediaListItem shape
+ * the gallery uses. Drives the chat-side lightbox: message parts only
+ * carry `mediaId`, so the source model + prompt excerpt + size etc. need
+ * a one-shot fetch when the user taps an image. Ownership-checked.
+ */
+export const GET: RequestHandler = async ({ locals, params }) => {
+	if (!locals.user) throw error(401, 'Authentication required');
+	const m = getMediaListItemForUser(params.id, locals.user.id);
+	if (!m) throw error(404, 'Media not found');
+	return json(m);
+};
 
 /**
  * Manual hard-delete from the gallery. Marks the row hard-deleted
