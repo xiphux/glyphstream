@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Download, Trash2, X } from 'lucide-svelte';
+	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import type {
 		MediaConversationRef,
 		MediaListItem,
@@ -114,22 +114,12 @@
 		}
 	}
 
-	function fmtBytes(n: number): string {
-		if (n < 1024) return `${n} B`;
-		if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-		return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-	}
-
-	function fmtDate(ms: number): string {
-		return new Date(ms).toLocaleString();
-	}
-
-	function onLightboxKey(e: KeyboardEvent) {
-		if (e.key === 'Escape') lightbox = null;
-	}
+	// Formatting helpers + Escape handling now live inside MediaLightbox —
+	// see src/lib/components/MediaLightbox.svelte. The lightbox state is
+	// still owned here so the conversations-fetch $effect above (and the
+	// deleteOne handler that needs to close the lightbox on success) can
+	// observe + mutate it directly.
 </script>
-
-<svelte:window onkeydown={onLightboxKey} />
 
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
@@ -244,109 +234,11 @@
 	</div>
 </div>
 
-{#if lightbox}
-	{@const m = lightbox}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
-	<div
-		role="dialog"
-		aria-modal="true"
-		aria-label="Media preview"
-		tabindex="-1"
-		class="fixed inset-0 z-50 flex flex-col bg-black/90 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) lightbox = null;
-		}}
-	>
-		<div class="flex shrink-0 items-center justify-between gap-3 pb-3 text-sm text-neutral-200">
-			<div class="flex flex-col text-xs">
-				<span class="font-medium">{m.sourceModel ?? 'Unknown model'}</span>
-				<span class="opacity-70">{fmtDate(m.createdAt)} · {fmtBytes(m.byteSize)} · {m.contentType}</span>
-			</div>
-			<div class="flex gap-1.5">
-				<a
-					href="/api/media/{m.id}/content"
-					download
-					title="Download"
-					aria-label="Download"
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
-				>
-					<Download size={14} strokeWidth={2.25} />
-				</a>
-				<button
-					type="button"
-					onclick={() => deleteOne(m.id)}
-					disabled={deletingId === m.id}
-					title={deletingId === m.id ? 'Deleting…' : 'Delete'}
-					aria-label="Delete"
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-red-700 bg-red-700 text-white transition hover:bg-red-800 disabled:opacity-50"
-				>
-					<Trash2 size={14} strokeWidth={2.25} />
-				</button>
-				<button
-					type="button"
-					onclick={() => (lightbox = null)}
-					title="Close"
-					aria-label="Close"
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
-				>
-					<X size={14} strokeWidth={2.25} />
-				</button>
-			</div>
-		</div>
-		<div class="flex flex-1 items-center justify-center overflow-hidden">
-			{#if m.kind === 'image'}
-				<img
-					src="/api/media/{m.id}/content"
-					alt={m.promptExcerpt ?? 'Generated image'}
-					class="max-h-full max-w-full rounded-lg object-contain"
-				/>
-			{:else}
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video
-					src="/api/media/{m.id}/content"
-					controls
-					autoplay
-					class="max-h-full max-w-full rounded-lg"
-				></video>
-			{/if}
-		</div>
-		{#if m.promptExcerpt}
-			<p class="mx-auto mt-3 max-w-3xl shrink-0 text-center text-xs text-neutral-300 line-clamp-3">
-				{m.promptExcerpt}
-			</p>
-		{/if}
-		<div class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-xs text-neutral-300">
-			{#if lightboxConversations === null}
-				<p class="text-center opacity-60">Loading conversations…</p>
-			{:else if conversationsError}
-				<p class="text-center text-red-300">{conversationsError}</p>
-			{:else if lightboxConversations.length === 0}
-				<p class="text-center opacity-60">
-					Not used in any conversation — safe to delete.
-				</p>
-			{:else}
-				<div class="text-center opacity-60">
-					Used in {lightboxConversations.length}
-					{lightboxConversations.length === 1 ? 'conversation' : 'conversations'}:
-				</div>
-				<ul class="mx-auto mt-1 flex max-h-32 flex-col gap-0.5 overflow-y-auto">
-					{#each lightboxConversations as c (c.id)}
-						<li>
-							<a
-								href="/chat/{c.id}"
-								class="block truncate rounded px-2 py-1 text-center text-neutral-200 hover:bg-neutral-800"
-							>
-								{c.title ?? 'Untitled'}
-								{#if c.archivedAt !== null}
-									<span class="ml-1 text-[10px] uppercase tracking-wide opacity-60">
-										archived
-									</span>
-								{/if}
-							</a>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
-	</div>
-{/if}
+<MediaLightbox
+	media={lightbox}
+	onClose={() => (lightbox = null)}
+	onDelete={deleteOne}
+	{deletingId}
+	conversationsUsingThis={lightboxConversations}
+	{conversationsError}
+/>
