@@ -14,11 +14,6 @@ function readString(name: string, fallback: string): string {
 	return env[name] ?? fallback;
 }
 
-function readInt(name: string, fallback: number): number {
-	const v = env[name];
-	return v ? Number.parseInt(v, 10) : fallback;
-}
-
 function requireString(name: string): string {
 	const v = env[name];
 	if (!v || v.length === 0) {
@@ -37,13 +32,12 @@ export function mediaDir(): string {
 	return readString('MEDIA_DIR', './data/media');
 }
 
-export function mediaGracePeriodDays(): number {
-	return readInt('MEDIA_GRACE_PERIOD_DAYS', 7);
-}
-
-export function mediaPurgeIntervalSeconds(): number {
-	return readInt('MEDIA_PURGE_INTERVAL_SECONDS', 3600);
-}
+// MEDIA_GRACE_PERIOD_DAYS / MEDIA_PURGE_INTERVAL_SECONDS were removed when
+// the purger's scope narrowed to abandoned uploads only — see the header
+// of src/lib/server/media/purger.ts. Generated media is preserved
+// indefinitely now, so the configurability of the sweep timings stopped
+// having any meaningful policy decision behind it. The cadence is
+// hardcoded in the purger module.
 
 export function configPath(): string {
 	return readString('CONFIG_PATH', './config.toml');

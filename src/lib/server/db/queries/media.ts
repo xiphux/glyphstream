@@ -363,7 +363,16 @@ export interface PurgeCandidate {
 	storagePath: string;
 }
 
-/** Media rows whose grace period has elapsed and that still have bytes on disk. */
+/**
+ * Uploaded-and-abandoned media rows whose grace period has elapsed.
+ *
+ * Scope note: generated media (origin='generated') is never returned by
+ * this query. Under the library model it persists indefinitely once
+ * produced — only explicit user actions (gallery delete, conversation-
+ * delete "also delete media" checkbox, branch-delete) hard-delete it.
+ * The purger's sole remaining job is reaping uploads the user picked
+ * but never sent.
+ */
 export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCandidate[] {
 	const db = getDb();
 	return db
@@ -373,7 +382,8 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 			and(
 				isNull(media.hardDeletedAt),
 				isNotNull(media.unreferencedSince),
-				lte(media.unreferencedSince, olderThanMs)
+				lte(media.unreferencedSince, olderThanMs),
+				eq(media.origin, 'uploaded')
 			)
 		)
 		.orderBy(asc(media.unreferencedSince))
@@ -391,10 +401,14 @@ export function markHardDeleted(mediaId: string): void {
 }
 
 /**
- * Defensive sweep: any zero-ref-count rows that lack `unreferenced_since`
- * (e.g. because a server crash happened between insertMedia and
- * linkMessageMedia) get stamped now so the next purge cycle can collect
- * them. Idempotent.
+ * Defensive sweep: zero-ref-count uploaded rows that lack
+ * `unreferenced_since` (e.g. because a server crash happened between
+ * insertMedia and linkMessageMedia) get stamped now so the next purge
+ * cycle can collect them. Scoped to origin='uploaded' so any zero-ref
+ * *generated* rows that get into this state (which shouldn't happen
+ * under normal operation, but could from a future edge case or a
+ * partial migration) stay parked rather than getting reaped against
+ * the library-model contract. Idempotent.
  */
 export function stampOrphanedZeroRefRows(): number {
 	const db = getDb();
@@ -405,7 +419,8 @@ export function stampOrphanedZeroRefRows(): number {
 			and(
 				isNull(media.hardDeletedAt),
 				isNull(media.unreferencedSince),
-				eq(media.refCount, 0)
+				eq(media.refCount, 0),
+				eq(media.origin, 'uploaded')
 			)
 		)
 		.run();
