@@ -350,10 +350,16 @@ describe('hardDeleteMediaForUser', () => {
 });
 
 describe('purger sweep queries', () => {
-	it('findPurgeCandidates returns rows past the cutoff, oldest first', () => {
+	// Library-model scope: the purger only sweeps `origin='uploaded'`.
+	// Generated media persists indefinitely and is removed only by
+	// explicit user actions (gallery delete, conversation-delete
+	// checkbox, branch-delete). Tests below seed `origin: 'uploaded'`
+	// explicitly to exercise the actual sweep path.
+
+	it('findPurgeCandidates returns uploaded rows past the cutoff, oldest first', () => {
 		const u = seedUser();
-		const { id: a } = makeMedia(u.id);
-		const { id: b } = makeMedia(u.id);
+		const { id: a } = makeMedia(u.id, { origin: 'uploaded' });
+		const { id: b } = makeMedia(u.id, { origin: 'uploaded' });
 		// Stamp both unreferenced; a is older.
 		mocks.testDb.update(media).set({ unreferencedSince: 1000 }).where(eq(media.id, a)).run();
 		mocks.testDb.update(media).set({ unreferencedSince: 2000 }).where(eq(media.id, b)).run();
@@ -363,9 +369,17 @@ describe('purger sweep queries', () => {
 		expect(candidates.map((c) => c.id)).toEqual([a, b]);
 	});
 
+	it('findPurgeCandidates excludes generated rows even when otherwise eligible', () => {
+		const u = seedUser();
+		// Same shape as the upload candidate test, but origin='generated'.
+		const { id } = makeMedia(u.id); // defaults to generated
+		mocks.testDb.update(media).set({ unreferencedSince: 1000 }).where(eq(media.id, id)).run();
+		expect(findPurgeCandidates(9999)).toEqual([]);
+	});
+
 	it('findPurgeCandidates excludes already-hard-deleted rows', () => {
 		const u = seedUser();
-		const { id } = makeMedia(u.id);
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		mocks.testDb
 			.update(media)
 			.set({ unreferencedSince: 1000, hardDeletedAt: 1500 })
@@ -376,17 +390,33 @@ describe('purger sweep queries', () => {
 
 	it('findPurgeCandidates excludes rows with unreferencedSince=null', () => {
 		const u = seedUser();
-		makeMedia(u.id); // refCount=0 but unreferencedSince=null (orphan)
+		makeMedia(u.id, { origin: 'uploaded' }); // refCount=0 but unreferencedSince=null
 		expect(findPurgeCandidates(9999)).toEqual([]);
 	});
 
-	it('stampOrphanedZeroRefRows stamps zero-ref rows whose stamp is missing', () => {
+	it('stampOrphanedZeroRefRows stamps zero-ref uploaded rows whose stamp is missing', () => {
 		const u = seedUser();
-		const { id } = makeMedia(u.id);
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		// Ref count is 0 by default, unreferencedSince is null — qualifies.
+		// But wait — insertMedia stamps `unreferenced_since = now` on uploads
+		// at insert time, so this row is already stamped. Re-clear it to
+		// exercise the crash-recovery path the stamp query is meant for.
+		mocks.testDb.update(media).set({ unreferencedSince: null }).where(eq(media.id, id)).run();
+
 		const stamped = stampOrphanedZeroRefRows();
 		expect(stamped).toBeGreaterThanOrEqual(1);
 		expect(getRow(id)?.unreferencedSince).not.toBeNull();
+	});
+
+	it('stampOrphanedZeroRefRows skips generated rows even when zero-ref', () => {
+		const u = seedUser();
+		// Generated media that's zero-ref + unstamped (e.g. crash between
+		// insertMedia and linkMessageMedia) should NOT be stamped under the
+		// library model — the row persists indefinitely, gallery delete is
+		// the only way to remove it.
+		const { id } = makeMedia(u.id); // defaults to generated
+		stampOrphanedZeroRefRows();
+		expect(getRow(id)?.unreferencedSince).toBeNull();
 	});
 
 	it('stampOrphanedZeroRefRows skips rows with refCount > 0', () => {
@@ -403,7 +433,7 @@ describe('purger sweep queries', () => {
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'x' }]
 		});
-		const { id } = makeMedia(u.id);
+		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		linkMessageMedia(msg.id, id);
 		// refCount=1 now — should not be stamped.
 		stampOrphanedZeroRefRows();

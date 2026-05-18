@@ -11,7 +11,7 @@ import { conversations } from '../schema';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
-	hardDeleteOrphanGeneratedMediaInConversation,
+	hardDeleteOrphanGeneratedMediaForMessages,
 	listMessageIdsForConversation
 } from './media';
 
@@ -283,11 +283,10 @@ export function deleteConversation(
 		// ref_counts still reflect the pre-decrement state — the orphan
 		// detection compares ref_count to local link count), then decrement,
 		// then cascade-delete the conversation.
-		const toUnlink = opts.deleteMedia
-			? hardDeleteOrphanGeneratedMediaInConversation(id, userId)
-			: [];
-
 		const messageIds = listMessageIdsForConversation(id);
+		const toUnlink = opts.deleteMedia
+			? hardDeleteOrphanGeneratedMediaForMessages(messageIds, userId)
+			: [];
 		decrementMediaForMessages(messageIds);
 
 		tx.delete(conversations).where(eq(conversations.id, id)).run();

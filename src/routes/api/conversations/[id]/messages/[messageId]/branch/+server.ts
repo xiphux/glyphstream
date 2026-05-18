@@ -11,25 +11,48 @@
  * the calling user.
  *
  * The DB query (`deleteBranch`) handles the order-sensitive bookkeeping:
- * reassign active_leaf to a sibling's deepest descendant first, decrement
- * media refs for the deletion set, then delete the messages.
+ * reassign active_leaf to a sibling's deepest descendant, hard-delete
+ * generated media that exists only inside the deleted subtree, decrement
+ * media refs for the remaining (still-referenced) media, then delete the
+ * messages. This endpoint is responsible for unlinking the orphan-media
+ * bytes from disk after the DB transaction commits — that step has to
+ * happen outside the txn (file unlinks aren't transactional, so doing
+ * them inside would mean a rolled-back transaction could leave files
+ * deleted from disk but still referenced from the DB).
  */
 
 import { error } from '@sveltejs/kit';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { deleteBranch } from '$lib/server/db/queries/messages';
+import { getMediaStore } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
-export const DELETE: RequestHandler = ({ locals, params }) => {
+export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 
 	const meta = getConversationMeta(params.id, locals.user.id);
 	if (!meta) throw error(404, 'Conversation not found');
 
-	const result = deleteBranch(params.id, params.messageId);
+	const result = deleteBranch(params.id, params.messageId, locals.user.id);
 	if (!result) throw error(404, 'Message not found in this conversation');
 	if ('refusedReason' in result) {
 		throw error(400, 'Cannot delete a branch that has no siblings');
+	}
+
+	if (result.toUnlink.length > 0) {
+		const store = getMediaStore();
+		await Promise.all(
+			result.toUnlink.map(async (m) => {
+				try {
+					await store.delete(m.storagePath);
+				} catch (e) {
+					console.warn(
+						`[branch.delete] failed to unlink media ${m.id} at ${m.storagePath}:`,
+						e
+					);
+				}
+			})
+		);
 	}
 
 	return new Response(null, { status: 204 });

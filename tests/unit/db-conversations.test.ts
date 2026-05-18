@@ -133,7 +133,7 @@ describe('conversations CRUD', () => {
 			role: 'user',
 			parts: [{ type: 'text', text: 'hi' }]
 		});
-		expect(deleteConversation(conv.id, u.id)).toBe(true);
+		expect(deleteConversation(conv.id, u.id).ok).toBe(true);
 		expect(getConversationDetail(conv.id, u.id)).toBeNull();
 	});
 
@@ -146,7 +146,7 @@ describe('conversations CRUD', () => {
 			modelId: 'bridge::x',
 			modelKind: 'chat'
 		});
-		expect(deleteConversation(conv.id, u2.id)).toBe(false);
+		expect(deleteConversation(conv.id, u2.id).ok).toBe(false);
 		// And the conversation should still exist for the real owner.
 		expect(getConversationDetail(conv.id, u1.id)).not.toBeNull();
 	});
@@ -610,8 +610,8 @@ describe('deleteBranch', () => {
 	}
 
 	it('deletes the subtree rooted at the target sibling', () => {
-		const { conv, u1, a1, u2 } = buildTwoBranches();
-		const result = deleteBranch(conv.id, u1.id);
+		const { user, conv, u1, a1, u2 } = buildTwoBranches();
+		const result = deleteBranch(conv.id, u1.id, user.id);
 		expect(result).not.toBeNull();
 		expect(result && 'deletedIds' in result).toBe(true);
 		if (result && 'deletedIds' in result) {
@@ -629,7 +629,7 @@ describe('deleteBranch', () => {
 		const { user, conv, u1, u2, a2 } = buildTwoBranches();
 		// Force active_leaf onto branch A (the one we're about to delete).
 		setActiveLeafMessageId(conv.id, u1.id);
-		const result = deleteBranch(conv.id, u1.id);
+		const result = deleteBranch(conv.id, u1.id, user.id);
 		expect(result && 'newActiveLeaf' in result).toBe(true);
 
 		// After deletion, active_leaf points at a2 (the deepest descendant of
@@ -642,10 +642,12 @@ describe('deleteBranch', () => {
 		expect(branch.map((m) => m.id)).toEqual([u2.id, a2.id]);
 	});
 
-	it('decrements media ref_count for messages on the deleted branch', () => {
+	it('leaves shared media alone (decrement only, no hard-delete) when deleting a branch', () => {
 		const { user, conv, u1, a1, a2 } = buildTwoBranches();
 		// Generated image referenced by BOTH branches' assistants (e.g. same
 		// hash returned by the bridge across runs). Ref count starts at 2.
+		// Deleting branch A should drop ref_count to 1 but leave the media
+		// in the gallery — branch B still uses it.
 		const { id: mediaId } = insertMedia({
 			userId: user.id,
 			storagePath: 'ab/cd/test.png',
@@ -665,25 +667,31 @@ describe('deleteBranch', () => {
 			.get();
 		expect(before?.refCount).toBe(2);
 
-		deleteBranch(conv.id, u1.id);
+		const result = deleteBranch(conv.id, u1.id, user.id);
 
-		// Now ref_count is 1 (a2 still references it).
+		// Shared media isn't in toUnlink — branch B still references it.
+		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([]);
+
+		// Ref count drops to 1, unreferencedSince stays null, and the
+		// row is NOT hard-deleted.
 		const after = mocks.testDb
 			.select({
 				refCount: media.refCount,
-				unreferencedSince: media.unreferencedSince
+				unreferencedSince: media.unreferencedSince,
+				hardDeletedAt: media.hardDeletedAt
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
 			.get();
 		expect(after?.refCount).toBe(1);
-		// Still referenced, so unreferencedSince stays null.
 		expect(after?.unreferencedSince).toBeNull();
+		expect(after?.hardDeletedAt).toBeNull();
 	});
 
-	it('stamps media unreferencedSince when ref_count hits zero after delete', () => {
+	it('hard-deletes generated media that exists only on the deleted branch', () => {
 		const { user, conv, u1, a1 } = buildTwoBranches();
-		// Media referenced ONLY by the to-be-deleted branch.
+		// Media referenced ONLY by the to-be-deleted branch — branch-delete
+		// treats this as "the rejected variant's image" and reaps it.
 		const { id: mediaId } = insertMedia({
 			userId: user.id,
 			storagePath: 'ab/cd/orphan.png',
@@ -695,20 +703,71 @@ describe('deleteBranch', () => {
 			promptExcerpt: null
 		});
 		linkMessageMedia(a1.id, mediaId);
-		expect(
-			mocks.testDb.select({ r: media.refCount }).from(media).where(eq(media.id, mediaId)).get()?.r
-		).toBe(1);
 
-		deleteBranch(conv.id, u1.id);
+		const result = deleteBranch(conv.id, u1.id, user.id);
 
-		// Ref count hit zero → purger gets a green light via unreferencedSince.
+		// Caller gets the storage path back so it can unlink the file
+		// from disk post-commit.
+		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([
+			{ id: mediaId, storagePath: 'ab/cd/orphan.png' }
+		]);
+
+		// hardDeletedAt is stamped inside the transaction so the row is
+		// invisible to the gallery immediately, even before the disk
+		// unlink fires.
 		const after = mocks.testDb
-			.select({ refCount: media.refCount, unreferencedSince: media.unreferencedSince })
+			.select({
+				refCount: media.refCount,
+				hardDeletedAt: media.hardDeletedAt
+			})
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(after?.hardDeletedAt).not.toBeNull();
+		expect(after?.refCount).toBe(0);
+	});
+
+	it('does NOT hard-delete uploaded media even when it would orphan', () => {
+		const { user, conv, u1, a1 } = buildTwoBranches();
+		// Uploaded media (origin='uploaded') follows the purger's auto-sweep
+		// path under the library model — it isn't subject to branch-delete's
+		// "always purge rejected variants" rule. Useful guarantee: a user
+		// attaches a photo to a draft, branches off, then deletes the
+		// branch — the source photo (if it was just a file upload) doesn't
+		// get nuked along with the rejected output.
+		const { id: mediaId } = insertMedia({
+			userId: user.id,
+			storagePath: 'ab/cd/upload.png',
+			contentType: 'image/png',
+			byteSize: 2048,
+			kind: 'image',
+			sourceEndpointId: null,
+			sourceModel: null,
+			promptExcerpt: null,
+			origin: 'uploaded'
+		});
+		linkMessageMedia(a1.id, mediaId);
+
+		const result = deleteBranch(conv.id, u1.id, user.id);
+
+		// Uploaded media isn't in toUnlink.
+		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([]);
+
+		// Not hard-deleted. ref_count drops to 0 and unreferencedSince
+		// gets stamped via the normal decrement path; the purger will
+		// pick it up on its next sweep.
+		const after = mocks.testDb
+			.select({
+				refCount: media.refCount,
+				unreferencedSince: media.unreferencedSince,
+				hardDeletedAt: media.hardDeletedAt
+			})
 			.from(media)
 			.where(eq(media.id, mediaId))
 			.get();
 		expect(after?.refCount).toBe(0);
 		expect(after?.unreferencedSince).not.toBeNull();
+		expect(after?.hardDeletedAt).toBeNull();
 	});
 
 	it('refuses to delete a branch that has no siblings', () => {
@@ -725,15 +784,15 @@ describe('deleteBranch', () => {
 			role: 'user',
 			parts: [{ type: 'text', text: 'only message' }]
 		});
-		const result = deleteBranch(conv.id, root.id);
+		const result = deleteBranch(conv.id, root.id, u.id);
 		expect(result).toEqual({ refusedReason: 'no-siblings' });
 		// Message is still there.
 		expect(getMessage(conv.id, root.id)).not.toBeNull();
 	});
 
 	it('returns null when the message does not belong to the conversation', () => {
-		const { conv } = buildTwoBranches();
-		const result = deleteBranch(conv.id, 'not-a-real-message-id');
+		const { user, conv } = buildTwoBranches();
+		const result = deleteBranch(conv.id, 'not-a-real-message-id', user.id);
 		expect(result).toBeNull();
 	});
 });

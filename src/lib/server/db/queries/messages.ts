@@ -3,7 +3,10 @@ import { eq, and, inArray } from 'drizzle-orm';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
-import { decrementMediaForMessages } from './media';
+import {
+	decrementMediaForMessages,
+	hardDeleteOrphanGeneratedMediaForMessages
+} from './media';
 
 interface AppendInput {
 	conversationId: string;
@@ -249,9 +252,17 @@ export function setActiveLeafMessageId(
  */
 export function deleteBranch(
 	conversationId: string,
-	messageId: string
+	messageId: string,
+	userId: string
 ):
-	| { deletedIds: string[]; newActiveLeaf: string }
+	| {
+			deletedIds: string[];
+			newActiveLeaf: string;
+			/** Generated media whose only references were in the deleted
+			 *  subtree. Caller unlinks the files post-commit; the rows
+			 *  are already `hardDeletedAt`-stamped in the DB. */
+			toUnlink: Array<{ id: string; storagePath: string }>;
+	  }
 	| { refusedReason: 'no-siblings' }
 	| null {
 	const db = getDb();
@@ -316,8 +327,24 @@ export function deleteBranch(
 			cursor = sorted[0].id;
 		}
 
-		// Order matters: active_leaf reassign → media ref decrement →
-		// message delete. See JSDoc above for why.
+		// Order matters:
+		//   1. active_leaf reassign (so the FK's ON DELETE SET NULL
+		//      doesn't orphan the conversation when its leaf gets dropped)
+		//   2. orphan-media hard-delete (must run BEFORE decrement; it
+		//      compares each media's ref_count to its local link count
+		//      inside the deletion set, and that comparison is only
+		//      meaningful pre-decrement)
+		//   3. ref-count decrement for the remaining (still-referenced)
+		//      media — these stay in the DB but have one fewer link
+		//   4. message delete (cascades to message_media via ON DELETE
+		//      CASCADE, which is why we did the bookkeeping above)
+		//
+		// Step 2 is the new piece — branch-delete is "I rejected this
+		// variant" so any media that exists ONLY on this branch should
+		// go with it. Shared media (auto-attach into a follow-up
+		// conversation, or the same image used across multiple branches
+		// before this one) stays put because its ref_count is greater
+		// than its local-to-this-deletion count.
 		const now = Date.now();
 		tx.update(conversations)
 			.set({ activeLeafMessageId: cursor, updatedAt: now })
@@ -325,13 +352,14 @@ export function deleteBranch(
 			.run();
 
 		const deletedIds = [...toDelete];
+		const toUnlink = hardDeleteOrphanGeneratedMediaForMessages(deletedIds, userId);
 		decrementMediaForMessages(deletedIds);
 
 		tx.delete(messages)
 			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, deletedIds)))
 			.run();
 
-		return { deletedIds, newActiveLeaf: cursor };
+		return { deletedIds, newActiveLeaf: cursor, toUnlink };
 	});
 }
 

@@ -395,32 +395,35 @@ export function countOrphanMediaInConversation(
 
 /**
  * Identify generated media that would orphan as a result of deleting
- * this conversation, and immediately mark them hard-deleted. Returns
- * the storage paths so the caller can unlink the files from disk
- * outside the DB transaction.
+ * the given set of messages, and immediately mark them hard-deleted.
+ * Returns the storage paths so the caller can unlink the files from
+ * disk outside the DB transaction.
+ *
+ * Callers:
+ *   - `deleteConversation` (with the full set of message ids for the
+ *     conversation, gated by the user's "Also delete media" checkbox).
+ *   - `deleteBranch` (with the BFS-collected subtree being removed —
+ *     no user gate; branch-delete is always "I rejected this variant"
+ *     so its uniquely-attached media should always go).
  *
  * Must be called BEFORE `decrementMediaForMessages` so the `refCount`
  * comparison reflects the pre-decrement state. After this returns,
  * the regular decrement path takes over for the remaining (still-
- * referenced) media.
+ * referenced) media — that's the only path through which non-orphan
+ * rows get their ref_count adjusted.
  *
  * Scope: generated media only — uploaded media follows the purger's
  * own auto-sweep path and is not affected by user-driven "also
- * delete media" on conversation delete.
+ * delete media" on conversation delete or by branch-delete.
  */
-export function hardDeleteOrphanGeneratedMediaInConversation(
-	conversationId: string,
+export function hardDeleteOrphanGeneratedMediaForMessages(
+	messageIds: string[],
 	userId: string
 ): Array<{ id: string; storagePath: string }> {
-	const counts = countOrphanMediaInConversation(conversationId, userId);
-	if (counts.images === 0 && counts.videos === 0) return [];
+	if (messageIds.length === 0) return [];
 
 	const db = getDb();
 	return db.transaction((tx) => {
-		// Re-walk the same join inside the txn so we can grab storage_path
-		// and mark each row hard-deleted atomically. The count query above
-		// just told us *whether* there are orphans worth bothering with —
-		// this query enumerates them.
 		const rows = tx
 			.select({
 				mediaId: messageMedia.mediaId,
@@ -430,16 +433,19 @@ export function hardDeleteOrphanGeneratedMediaInConversation(
 				hardDeletedAt: media.hardDeletedAt
 			})
 			.from(messageMedia)
-			.innerJoin(messages, eq(messages.id, messageMedia.messageId))
 			.innerJoin(media, eq(media.id, messageMedia.mediaId))
 			.where(
 				and(
-					eq(messages.conversationId, conversationId),
+					inArray(messageMedia.messageId, messageIds),
 					eq(media.userId, userId)
 				)
 			)
 			.all();
 
+		// Group by mediaId so we know how many of *this row's* references
+		// live inside the deletion set. Same media can be linked from
+		// multiple messages in the set (e.g. across edit siblings via the
+		// auto-attach-last-generated flow) — those count as one orphan.
 		const localCount = new Map<string, number>();
 		const meta = new Map<
 			string,
@@ -463,6 +469,8 @@ export function hardDeleteOrphanGeneratedMediaInConversation(
 			const m = meta.get(mediaId)!;
 			if (m.hardDeletedAt !== null) continue;
 			if (m.origin !== 'generated') continue;
+			// If every reference is inside the deletion set, ref_count
+			// would drop to zero — that's an orphan, mark + collect.
 			if (m.refCount !== count) continue;
 			tx.update(media)
 				.set({ hardDeletedAt: now })

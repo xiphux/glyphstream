@@ -22,8 +22,10 @@ vi.mock('$lib/server/db/client', () => ({
 
 vi.mock('$lib/server/env', () => ({
 	mediaDir: () => mocks.mediaDir,
-	mediaGracePeriodDays: () => mocks.graceMs / 86_400_000,
-	mediaPurgeIntervalSeconds: () => 3600,
+	// Note: the purger no longer reads grace/interval from env (commit
+	// "Narrow purger to abandoned uploads only" hardcoded both). Kept
+	// `graceMs` on `mocks` only because earlier tests reference it for
+	// their own cutoff math, not because the purger consumes it.
 	dbPath: () => ':memory:',
 	logLevel: () => 'info',
 	configPath: () => '/tmp/nope.toml',
@@ -68,7 +70,7 @@ describe('runPurgeSweep', () => {
 		expect(r.hardDeleted).toBe(0);
 	});
 
-	it('stamps zero-ref orphans (no unreferencedSince yet)', async () => {
+	it('stamps zero-ref uploaded orphans (no unreferencedSince yet)', async () => {
 		const u = seedUser();
 		const { id } = insertMedia({
 			userId: u.id,
@@ -78,15 +80,20 @@ describe('runPurgeSweep', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
+			origin: 'uploaded'
 		});
+		// insertMedia already stamps uploads at insert time; clear so we
+		// exercise the crash-recovery stamp path the sweep is meant for.
+		mocks.testDb.update(media).set({ unreferencedSince: null }).where(eq(media.id, id)).run();
+
 		const r = await runPurgeSweep();
 		expect(r.stamped).toBeGreaterThanOrEqual(1);
 		const row = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
 		expect(row?.unreferencedSince).not.toBeNull();
 	});
 
-	it('hard-deletes file + row when unreferencedSince is past the grace window', async () => {
+	it('hard-deletes file + row when an uploaded orphan is past the grace window', async () => {
 		const u = seedUser();
 		const storagePath = 'aa/bb/old.png';
 		const abs = writeMediaFile(storagePath);
@@ -98,10 +105,11 @@ describe('runPurgeSweep', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
+			origin: 'uploaded'
 		});
-		// Stamp it as long-unreferenced (way past the 7d default).
-		const longAgo = Date.now() - 30 * 86_400_000;
+		// Hardcoded grace is 30min; stamp way past that.
+		const longAgo = Date.now() - 24 * 60 * 60 * 1000;
 		mocks.testDb.update(media).set({ unreferencedSince: longAgo }).where(eq(media.id, id)).run();
 		expect(existsSync(abs)).toBe(true);
 
@@ -124,9 +132,10 @@ describe('runPurgeSweep', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
+			origin: 'uploaded'
 		});
-		// Stamp as unreferenced 1 minute ago — grace is 7 days so this stays.
+		// Stamp as unreferenced 1 minute ago — grace is 30min, so this stays.
 		mocks.testDb
 			.update(media)
 			.set({ unreferencedSince: Date.now() - 60_000 })
@@ -151,7 +160,8 @@ describe('runPurgeSweep', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
+			origin: 'uploaded'
 		});
 		mocks.testDb
 			.update(media)
@@ -161,5 +171,34 @@ describe('runPurgeSweep', () => {
 		const r = await runPurgeSweep();
 		// Should still mark hard-deleted; missing file is fine (logged, not thrown).
 		expect(r.hardDeleted).toBeGreaterThanOrEqual(1);
+	});
+
+	it('does not touch generated media even when otherwise eligible', async () => {
+		const u = seedUser();
+		const storagePath = 'aa/bb/generated-orphan.png';
+		const abs = writeMediaFile(storagePath);
+		const { id } = insertMedia({
+			userId: u.id,
+			storagePath,
+			contentType: 'image/png',
+			byteSize: 10,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::x',
+			promptExcerpt: 'a panda'
+			// origin defaults to 'generated'
+		});
+		// Even way past grace, generated media is library-preserved.
+		mocks.testDb
+			.update(media)
+			.set({ unreferencedSince: 1 })
+			.where(eq(media.id, id))
+			.run();
+
+		const r = await runPurgeSweep();
+		expect(r.hardDeleted).toBe(0);
+		expect(existsSync(abs)).toBe(true);
+		const row = mocks.testDb.select().from(media).where(eq(media.id, id)).get();
+		expect(row?.hardDeletedAt).toBeNull();
 	});
 });
