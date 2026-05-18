@@ -347,12 +347,22 @@
 	// toast) instead of like a real failure. Reset at the top of each send.
 	let wasHiddenDuringFetch = $state(false);
 
-	// Visibility-change listener: tracks suspensions during in-flight sends,
-	// and re-invalidates on return so any work that completed in the
-	// background (the most common case for image/video generation, where
-	// the server keeps generating even after the client's fetch dies)
-	// shows up immediately rather than only after the user navigates
-	// away and back to force a refetch.
+	// Parallel flag for connectivity transitions during a fetch — the
+	// foreground equivalent of the suspension case. iPhone hopping
+	// between wifi and cellular (or vice versa), losing signal briefly
+	// in a dead zone, an AP changing, an airplane-mode toggle, etc. all
+	// kill in-flight TCP connections and surface the same generic
+	// "Load failed" TypeError. browser `offline`/`online` events fire
+	// around these transitions (iOS Safari included) — we use them
+	// the same way visibilitychange handles suspension.
+	let wasOfflineDuringFetch = $state(false);
+
+	// Visibility-change + connectivity listeners: tracks interruptions
+	// during in-flight sends, and re-invalidates on return so any work
+	// that completed in the background (the most common case for
+	// image/video generation, where the server keeps generating even
+	// after the client's fetch dies) shows up immediately rather than
+	// only after the user navigates away and back to force a refetch.
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		function onVisibilityChange() {
@@ -368,8 +378,20 @@
 				void invalidateAll();
 			}
 		}
+		function onOffline() {
+			if (busy) wasOfflineDuringFetch = true;
+		}
+		function onOnline() {
+			if (wasOfflineDuringFetch) void invalidateAll();
+		}
 		document.addEventListener('visibilitychange', onVisibilityChange);
-		return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+		window.addEventListener('offline', onOffline);
+		window.addEventListener('online', onOnline);
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+			window.removeEventListener('offline', onOffline);
+			window.removeEventListener('online', onOnline);
+		};
 	});
 
 	// In-flight assistant render state. While streaming we show a transient
@@ -463,6 +485,7 @@
 		busy = true;
 		errorMsg = null;
 		wasHiddenDuringFetch = false;
+		wasOfflineDuringFetch = false;
 		inFlightText = '';
 		inFlightReasoning = '';
 		inFlightProgress = null;
@@ -595,13 +618,17 @@
 			// a user-facing error. The server-side recorder will have committed
 			// whatever partial text it had; invalidateAll picks that up.
 			//
-			// `wasHiddenDuringFetch` is the iOS-suspension case: the fetch
-			// died because the OS ripped network access out from under us,
-			// not because anything's wrong server-side. Re-sync the
-			// conversation; the generation may already be complete (most
-			// common) or still running (server keeps going regardless of
-			// the client's TCP state) — either way, no user-facing error.
-			if (isAbortError(e) || wasHiddenDuringFetch) {
+			// `wasHiddenDuringFetch` / `wasOfflineDuringFetch` are the
+			// "client connection died, server still has the generation"
+			// cases: iOS suspension and network handoff (wifi↔cellular,
+			// dead zone, airplane-mode toggle) respectively. Either way
+			// the fetch error is a connectivity artifact, not a real
+			// server-side failure, so we re-sync against the conversation
+			// instead of surfacing a misleading toast. The actual
+			// generation is whatever the server made of it — completed,
+			// still running, or genuinely errored on its end — and the
+			// invalidate picks up whichever.
+			if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
 				void invalidateAll();
 			} else {
 				errorMsg = e instanceof Error ? e.message : String(e);
@@ -659,11 +686,13 @@
 			void invalidateAll();
 		} catch (e) {
 			// Same shape as sendStreaming's catch — see its comment for
-			// why iOS-suspension errors get reconciled rather than
-			// surfaced. Image generation in particular benefits because
-			// the 20-60s round trip is exactly the window where users
-			// switch apps / lock their phones and lose the fetch.
-			if (isAbortError(e) || wasHiddenDuringFetch) {
+			// why suspension / connectivity-transition errors get
+			// reconciled rather than surfaced. Image generation in
+			// particular benefits because the 20-60s round trip is
+			// exactly the window where users switch apps, lock their
+			// phones, or step into / out of wifi range and lose the
+			// fetch.
+			if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
 				void invalidateAll();
 			} else {
 				errorMsg = e instanceof Error ? e.message : String(e);
