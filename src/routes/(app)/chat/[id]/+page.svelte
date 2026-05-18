@@ -337,6 +337,41 @@
 	// server tears down upstream too (otherwise the bridge keeps generating).
 	let activeAbort = $state<AbortController | null>(null);
 
+	// Tracks whether the page got backgrounded while a fetch was in flight.
+	// iOS aggressively suspends PWAs and Safari tabs after a few seconds in
+	// the background, which kills the in-flight network request and surfaces
+	// as a generic "Load failed" TypeError on the catch side — indistinguishable
+	// from a real network failure. We flip this flag in a visibilitychange
+	// listener so the catch blocks below can recognize the suspension case
+	// and treat it like an abort (silent invalidate, no misleading error
+	// toast) instead of like a real failure. Reset at the top of each send.
+	let wasHiddenDuringFetch = $state(false);
+
+	// Visibility-change listener: tracks suspensions during in-flight sends,
+	// and re-invalidates on return so any work that completed in the
+	// background (the most common case for image/video generation, where
+	// the server keeps generating even after the client's fetch dies)
+	// shows up immediately rather than only after the user navigates
+	// away and back to force a refetch.
+	$effect(() => {
+		if (typeof document === 'undefined') return;
+		function onVisibilityChange() {
+			if (document.visibilityState === 'hidden' && busy) {
+				wasHiddenDuringFetch = true;
+			} else if (
+				document.visibilityState === 'visible' &&
+				wasHiddenDuringFetch
+			) {
+				// Reconcile against server state — if the generation
+				// completed while we were backgrounded, the new assistant
+				// message will arrive via the load function.
+				void invalidateAll();
+			}
+		}
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+	});
+
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
@@ -427,6 +462,7 @@
 	) {
 		busy = true;
 		errorMsg = null;
+		wasHiddenDuringFetch = false;
 		inFlightText = '';
 		inFlightReasoning = '';
 		inFlightProgress = null;
@@ -558,7 +594,14 @@
 			// AbortError from clicking Stop is expected — don't surface as
 			// a user-facing error. The server-side recorder will have committed
 			// whatever partial text it had; invalidateAll picks that up.
-			if (isAbortError(e)) {
+			//
+			// `wasHiddenDuringFetch` is the iOS-suspension case: the fetch
+			// died because the OS ripped network access out from under us,
+			// not because anything's wrong server-side. Re-sync the
+			// conversation; the generation may already be complete (most
+			// common) or still running (server keeps going regardless of
+			// the client's TCP state) — either way, no user-facing error.
+			if (isAbortError(e) || wasHiddenDuringFetch) {
 				void invalidateAll();
 			} else {
 				errorMsg = e instanceof Error ? e.message : String(e);
@@ -615,7 +658,12 @@
 			inFlightOpen = false;
 			void invalidateAll();
 		} catch (e) {
-			if (isAbortError(e)) {
+			// Same shape as sendStreaming's catch — see its comment for
+			// why iOS-suspension errors get reconciled rather than
+			// surfaced. Image generation in particular benefits because
+			// the 20-60s round trip is exactly the window where users
+			// switch apps / lock their phones and lose the fetch.
+			if (isAbortError(e) || wasHiddenDuringFetch) {
 				void invalidateAll();
 			} else {
 				errorMsg = e instanceof Error ? e.message : String(e);
