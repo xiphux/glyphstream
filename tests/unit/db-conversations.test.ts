@@ -23,6 +23,7 @@ import {
 	appendMessage,
 	deleteBranch,
 	getMessage,
+	resolveParentForUserMessage,
 	selectBranch,
 	setActiveLeafMessageId,
 	truncateAtMessage,
@@ -1181,5 +1182,195 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			.get();
 		expect(row?.hardDeletedAt).toBeNull();
 		expect(row?.refCount).toBe(1);
+	});
+});
+
+describe('resolveParentForUserMessage', () => {
+	// Shape under test: pure function that maps the route-level inputs
+	// (conversation context + optional client-provided routing fields)
+	// to "what should the new user message's parent_message_id be?".
+	// Three logical cases (edit / explicit parent / continue leaf) and
+	// a couple of validation failure modes, all driven by table-ish
+	// individual `it()` blocks for readability.
+
+	function setupConvWithBranch(userId: string) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat'
+		});
+		const root = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'first' }]
+		});
+		const reply = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: root.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'ok' }]
+		});
+		const followUp = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: reply.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'second' }]
+		});
+		setActiveLeafMessageId(conv.id, followUp.id);
+		return { conv, root, reply, followUp };
+	}
+
+	it('editedMessageId pointing at the conversation root returns parentMessageId=null', () => {
+		// This is the bug-fix regression test: editing the conversation's
+		// first user message should produce a fresh root sibling, NOT
+		// an append onto the current leaf. Pre-fix the route handler
+		// dropped null parents on the wire and the server fell back to
+		// activeLeaf — silently breaking branching for root edits.
+		const u = seedUser();
+		const { conv, root } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: 'should-be-ignored-because-editedMessageId-wins',
+			editedMessageId: root.id
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: null });
+	});
+
+	it('editedMessageId pointing at a non-root message returns that message`s parent', () => {
+		// Standard edit-of-mid-conversation case: editing the followUp
+		// user message should make the new sibling share the followUp's
+		// parent (the assistant reply).
+		const u = seedUser();
+		const { conv, reply, followUp } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: followUp.id,
+			editedMessageId: followUp.id
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: reply.id });
+	});
+
+	it('editedMessageId not found returns a discriminated failure', () => {
+		const u = seedUser();
+		const { conv } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: null,
+			editedMessageId: 'no-such-message'
+		});
+		expect(result).toEqual({
+			ok: false,
+			reason: 'edited-message-not-found',
+			id: 'no-such-message'
+		});
+	});
+
+	it('editedMessageId from a different conversation is treated as not-found', () => {
+		// Cross-conversation safety: the helper`s getMessage lookup is
+		// scoped to (conversationId, messageId) so a request can`t
+		// branch off a sibling that lives in someone else`s
+		// conversation. We don`t test cross-USER scoping here because
+		// the route handler does that authentication-level guard before
+		// reaching this helper; this is the scoping-within-the-DB layer.
+		const u = seedUser();
+		const a = setupConvWithBranch(u.id);
+		const b = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: b.conv.id,
+			activeLeafMessageId: b.followUp.id,
+			editedMessageId: a.root.id
+		});
+		expect(result.ok).toBe(false);
+	});
+
+	it('parentMessageId is used when editedMessageId is absent', () => {
+		const u = seedUser();
+		const { conv, reply } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: null,
+			parentMessageId: reply.id
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: reply.id });
+	});
+
+	it('parentMessageId not found returns a discriminated failure', () => {
+		const u = seedUser();
+		const { conv } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: null,
+			parentMessageId: 'no-such-message'
+		});
+		expect(result).toEqual({
+			ok: false,
+			reason: 'parent-message-not-found',
+			id: 'no-such-message'
+		});
+	});
+
+	it('editedMessageId wins over parentMessageId when both are present', () => {
+		// Defensive ordering: if a future caller sends both fields,
+		// editedMessageId takes precedence (it carries more semantic
+		// intent — "this is an edit"). The result should match what
+		// you`d get from editedMessageId alone, even when
+		// parentMessageId points somewhere different.
+		const u = seedUser();
+		const { conv, root, reply } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: null,
+			editedMessageId: root.id,
+			parentMessageId: reply.id // would resolve to reply.id if used
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: null });
+	});
+
+	it('falls through to activeLeafMessageId when neither field is provided', () => {
+		const u = seedUser();
+		const { conv, followUp } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: followUp.id
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: followUp.id });
+	});
+
+	it('falls through to null when neither field is provided and the leaf is null (new conversation)', () => {
+		// Brand-new conversation with no messages yet. The leaf is null,
+		// and the resolved parent should also be null — the first user
+		// message becomes the conversation root.
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat'
+		});
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: null
+		});
+		expect(result).toEqual({ ok: true, parentMessageId: null });
+	});
+
+	it('treats empty-string editedMessageId / parentMessageId as absent', () => {
+		// JSON null / undefined / missing key all serialize to "no
+		// field" on the wire and we don`t want to throw 400 for that;
+		// but an over-eager client could plausibly send "" — we should
+		// also treat that as absent rather than throwing
+		// "editedMessageId `` not found".
+		const u = seedUser();
+		const { conv, followUp } = setupConvWithBranch(u.id);
+		const result = resolveParentForUserMessage({
+			conversationId: conv.id,
+			activeLeafMessageId: followUp.id,
+			editedMessageId: '',
+			parentMessageId: ''
+		});
+		// Falls through to activeLeafMessageId.
+		expect(result).toEqual({ ok: true, parentMessageId: followUp.id });
 	});
 });

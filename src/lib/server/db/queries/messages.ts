@@ -210,6 +210,66 @@ export function getMessage(
 	return msg;
 }
 
+/**
+ * Resolve the parent for a newly-appended user message, given the
+ * conversation's current active leaf and the optional client-provided
+ * routing fields. Three cases the route handler needs to differentiate:
+ *
+ *   1. `editedMessageId` provided → the new message is a sibling of
+ *      the edited one. Look up the edited message, copy its
+ *      `parent_message_id` onto the new sibling. Critically handles
+ *      the root-edit case where that parent is itself null (the new
+ *      sibling becomes a fresh root, not a continuation of the
+ *      current branch).
+ *   2. `parentMessageId` provided (no `editedMessageId`) → caller has
+ *      already resolved the parent and wants it used as-is. Validated
+ *      to belong to this conversation.
+ *   3. Neither → default "continue the current branch" append: parent
+ *      is the active leaf.
+ *
+ * Empty-string variants of either field are treated as absent, matching
+ * the route handler's pre-existing truthiness guard.
+ *
+ * Returns a discriminated result so the caller (the HTTP route) can map
+ * misses to the appropriate 400. We deliberately don't throw SvelteKit's
+ * `error()` from here — keeps this helper pure-ish and unit-testable
+ * without the route-handler harness.
+ */
+export type ResolveParentResult =
+	| { ok: true; parentMessageId: string | null }
+	| { ok: false; reason: 'edited-message-not-found' | 'parent-message-not-found'; id: string };
+
+export function resolveParentForUserMessage(input: {
+	conversationId: string;
+	activeLeafMessageId: string | null;
+	editedMessageId?: string;
+	parentMessageId?: string;
+}): ResolveParentResult {
+	if (typeof input.editedMessageId === 'string' && input.editedMessageId) {
+		const edited = getMessage(input.conversationId, input.editedMessageId);
+		if (!edited) {
+			return {
+				ok: false,
+				reason: 'edited-message-not-found',
+				id: input.editedMessageId
+			};
+		}
+		return { ok: true, parentMessageId: edited.parentMessageId ?? null };
+	}
+	if (typeof input.parentMessageId === 'string' && input.parentMessageId) {
+		const candidate = getMessage(input.conversationId, input.parentMessageId);
+		if (!candidate) {
+			return {
+				ok: false,
+				reason: 'parent-message-not-found',
+				id: input.parentMessageId
+			};
+		}
+		return { ok: true, parentMessageId: candidate.id };
+	}
+	return { ok: true, parentMessageId: input.activeLeafMessageId };
+}
+
 /** Direct active_leaf override — used by retry to point at the parent user
  * message before re-dispatching, so walkActiveBranch builds the upstream
  * request from the right history. */

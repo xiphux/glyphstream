@@ -9,6 +9,7 @@ import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media'
 import {
 	appendMessage,
 	getMessage,
+	resolveParentForUserMessage,
 	setActiveLeafMessageId,
 	walkActiveBranch
 } from '$lib/server/db/queries/messages';
@@ -146,47 +147,27 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			}
 		}
 
-		// Default parent is the conversation's active_leaf — a normal
-		// "continue the current branch" append. Two overrides:
-		//
-		//   - `editedMessageId` (preferred Edit flow): server looks up
-		//     the edited message and uses its `parent_message_id` as
-		//     the new message's parent. This is the *only* path that
-		//     correctly handles root edits — the edited message's
-		//     parent may itself be null, in which case the new sibling
-		//     is a fresh root rather than a continuation of the
-		//     active leaf. The client used to compute the parent and
-		//     send `parentMessageId` directly, but null parents got
-		//     dropped on the wire (omitted-vs-explicit-null
-		//     ambiguity), causing root edits to silently append
-		//     instead of branch.
-		//   - `parentMessageId` (legacy / direct): caller has already
-		//     resolved the parent and wants it used as-is. Kept for
-		//     backwards compatibility and for any future flow that
-		//     needs to branch off an explicit parent without
-		//     reference to a specific message being "edited."
-		//
-		// Validation: whichever id the caller provides must belong
-		// to this conversation.
-		let parentForMessage: string | null = meta.activeLeafMessageId ?? null;
-		if (typeof body.editedMessageId === 'string' && body.editedMessageId) {
-			const edited = getMessage(params.id, body.editedMessageId);
-			if (!edited) {
-				throw error(400, `editedMessageId "${body.editedMessageId}" not found`);
-			}
-			// ChatMessage.parentMessageId is `string | null | undefined` in
-			// the shared type because the walk path doesn't populate it.
-			// `getMessage` always sets it, so undefined would be a bug in
-			// that helper rather than something we have to model here —
-			// normalize to `null` defensively.
-			parentForMessage = edited.parentMessageId ?? null;
-		} else if (typeof body.parentMessageId === 'string' && body.parentMessageId) {
-			const candidate = getMessage(params.id, body.parentMessageId);
-			if (!candidate) {
-				throw error(400, `parentMessageId "${body.parentMessageId}" not found`);
-			}
-			parentForMessage = candidate.id;
+		// Resolve the parent for the new user message. See
+		// `resolveParentForUserMessage` for the three cases (edit /
+		// explicit parent / active-leaf append). The helper returns a
+		// discriminated result so we can map misses to the right 400
+		// without coupling the helper itself to SvelteKit's error
+		// machinery — that separation is what makes it cleanly unit-
+		// testable.
+		const resolved = resolveParentForUserMessage({
+			conversationId: params.id,
+			activeLeafMessageId: meta.activeLeafMessageId ?? null,
+			editedMessageId: body.editedMessageId,
+			parentMessageId: body.parentMessageId
+		});
+		if (!resolved.ok) {
+			const field =
+				resolved.reason === 'edited-message-not-found'
+					? 'editedMessageId'
+					: 'parentMessageId';
+			throw error(400, `${field} "${resolved.id}" not found`);
 		}
+		const parentForMessage = resolved.parentMessageId;
 
 		// Persist user message + auto-title BEFORE upstream call so even if
 		// the upstream fails the user's input is preserved on the active
