@@ -794,9 +794,9 @@
 		const text = editText.trim();
 		if ((!text && editAttachments.items.length === 0) || busy) return;
 		if (editAttachments.isBusy) return;
-		const attachedMediaIds = editAttachments.readyMediaIds();
-		const parentId = editingParentId;
 		const editedId = editingMessageId;
+		if (!editedId) return;
+		const attachedMediaIds = editAttachments.readyMediaIds();
 		// Snapshot then reset state — sendStreaming does its own UI work
 		// (in-flight bubble, optimistic placeholder swap on 'start') that
 		// we don't want to compete with the dismissed editor.
@@ -804,10 +804,13 @@
 		editingParentId = null;
 		editText = '';
 		editAttachments.clear();
-		await sendStreaming(text, attachedMediaIds, {
-			...(parentId ? { parentMessageId: parentId } : {}),
-			...(editedId ? { editedMessageId: editedId } : {})
-		});
+		// Send only `editedMessageId`. The server looks up the edited
+		// message and copies its parent_message_id onto the new sibling
+		// — including the null case (edit of the conversation's root
+		// message), which the older parent-resolved-on-the-client
+		// approach silently dropped on the wire and caused those root
+		// edits to append-instead-of-branch.
+		await sendStreaming(text, attachedMediaIds, { editedMessageId: editedId });
 	}
 
 	/**

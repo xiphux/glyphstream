@@ -240,11 +240,24 @@ export interface SendMessageRequest {
 	attachedMediaIds?: string[];
 	/**
 	 * Override the default "child of active_leaf" parent for the new
-	 * user message. Used by the Edit flow — passing the original user
-	 * message's parent makes the new message a sibling of the original.
-	 * The original + its descendants stay in the DB as an alt branch.
+	 * user message. Used historically by the Edit flow — passing the
+	 * original user message's parent made the new message a sibling
+	 * of the original. Still accepted as a fallback for callers that
+	 * already construct it; the cleaner contract is `editedMessageId`
+	 * below, which lets the server derive the parent (and correctly
+	 * handles the root-edit case where the parent is itself null).
 	 */
 	parentMessageId?: string;
+	/**
+	 * "Edit" — when set, the new user message becomes a sibling of
+	 * the message with this id (i.e. its parent_message_id is copied
+	 * from the edited message). Critically handles root edits: the
+	 * edited message's parent_message_id may be null, in which case
+	 * the new sibling is a fresh root rather than a continuation of
+	 * the current branch. Takes precedence over `parentMessageId`
+	 * when both are sent.
+	 */
+	editedMessageId?: string;
 	/**
 	 * "Retry" — when set, the server generates a new assistant response
 	 * as a sibling of this assistant message (parented to the same user
