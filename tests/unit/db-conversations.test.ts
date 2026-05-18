@@ -28,7 +28,11 @@ import {
 	truncateAtMessage,
 	walkActiveBranch
 } from '$lib/server/db/queries/messages';
-import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
+import {
+	countOrphanMediaInConversation,
+	insertMedia,
+	linkMessageMedia
+} from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -794,5 +798,388 @@ describe('deleteBranch', () => {
 		const { user, conv } = buildTwoBranches();
 		const result = deleteBranch(conv.id, 'not-a-real-message-id', user.id);
 		expect(result).toBeNull();
+	});
+});
+
+describe('countOrphanMediaInConversation', () => {
+	// Helpers to keep each test short — most need the same conversation
+	// + assistant message shape with media linked.
+	function setupConvWithAssistant(userId: string, modelKind: 'image' | 'video' = 'image') {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: `bridge::${modelKind}`,
+			modelKind
+		});
+		const userMsg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'make something' }]
+		});
+		const assistantMsg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: userMsg.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'sure' }]
+		});
+		return { conv, userMsg, assistantMsg };
+	}
+
+	function makeGenerated(userId: string, kind: 'image' | 'video' = 'image') {
+		return insertMedia({
+			userId,
+			storagePath: `xx/${Math.random().toString(36).slice(2)}.bin`,
+			contentType: kind === 'image' ? 'image/png' : 'video/mp4',
+			byteSize: 1024,
+			kind,
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::sdxl',
+			promptExcerpt: 'something'
+		});
+	}
+
+	it('returns zero counts for a conversation with no media', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat'
+		});
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 0,
+			videos: 0
+		});
+	});
+
+	it('counts a unique image whose only reference is in this conversation', () => {
+		const u = seedUser();
+		const { conv, assistantMsg } = setupConvWithAssistant(u.id);
+		const { id: mediaId } = makeGenerated(u.id, 'image');
+		linkMessageMedia(assistantMsg.id, mediaId);
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 1,
+			videos: 0
+		});
+	});
+
+	it('counts images and videos separately under their respective keys', () => {
+		const u = seedUser();
+		const { conv, assistantMsg } = setupConvWithAssistant(u.id);
+		const img1 = makeGenerated(u.id, 'image');
+		const img2 = makeGenerated(u.id, 'image');
+		const vid = makeGenerated(u.id, 'video');
+		linkMessageMedia(assistantMsg.id, img1.id);
+		linkMessageMedia(assistantMsg.id, img2.id);
+		linkMessageMedia(assistantMsg.id, vid.id);
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 2,
+			videos: 1
+		});
+	});
+
+	it('excludes media also referenced by a different conversation (would not orphan)', () => {
+		// Shared media: ref_count = 2, with one ref in conv A and one in
+		// conv B. Deleting conv A would drop ref_count to 1, not zero —
+		// so it doesn't orphan, and should NOT show up in the count.
+		const u = seedUser();
+		const a = setupConvWithAssistant(u.id);
+		const b = setupConvWithAssistant(u.id);
+		const { id: shared } = makeGenerated(u.id, 'image');
+		linkMessageMedia(a.assistantMsg.id, shared);
+		linkMessageMedia(b.assistantMsg.id, shared);
+		expect(countOrphanMediaInConversation(a.conv.id, u.id)).toEqual({
+			images: 0,
+			videos: 0
+		});
+	});
+
+	it('counts media linked from multiple messages within one conversation as a single orphan', () => {
+		// Same media linked from two different messages in the same
+		// conversation (e.g. across edit siblings via auto-attach). The
+		// row appears twice in the join but `localCount == ref_count`
+		// is the right comparison — both refs go away together when
+		// the conversation is deleted, so it's one orphan.
+		const u = seedUser();
+		const { conv, userMsg, assistantMsg } = setupConvWithAssistant(u.id);
+		const editedAssistant = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: userMsg.id, // sibling of the original assistantMsg
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'second variant' }]
+		});
+		const { id: mediaId } = makeGenerated(u.id, 'image');
+		linkMessageMedia(assistantMsg.id, mediaId);
+		linkMessageMedia(editedAssistant.id, mediaId);
+		// ref_count = 2 (both message_media rows). Both refs are inside
+		// the conversation, so the orphan count is 1.
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 1,
+			videos: 0
+		});
+	});
+
+	it('excludes uploaded media regardless of orphan status', () => {
+		// Uploads aren't part of the gallery so the dialog never asks
+		// the user whether to purge them; the purger handles them on
+		// its own schedule.
+		const u = seedUser();
+		const { conv, assistantMsg } = setupConvWithAssistant(u.id);
+		const { id: uploaded } = insertMedia({
+			userId: u.id,
+			storagePath: 'up/up.png',
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: null,
+			sourceModel: null,
+			promptExcerpt: null,
+			origin: 'uploaded'
+		});
+		linkMessageMedia(assistantMsg.id, uploaded);
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 0,
+			videos: 0
+		});
+	});
+
+	it('excludes already hard-deleted media', () => {
+		// Already gone from the gallery — shouldn't double-count toward
+		// "and N more will be deleted."
+		const u = seedUser();
+		const { conv, assistantMsg } = setupConvWithAssistant(u.id);
+		const { id: mediaId } = makeGenerated(u.id, 'image');
+		linkMessageMedia(assistantMsg.id, mediaId);
+		mocks.testDb
+			.update(media)
+			.set({ hardDeletedAt: Date.now() })
+			.where(eq(media.id, mediaId))
+			.run();
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
+			images: 0,
+			videos: 0
+		});
+	});
+});
+
+describe('deleteConversation with the deleteMedia flag', () => {
+	function makeGenerated(userId: string, storagePath: string) {
+		return insertMedia({
+			userId,
+			storagePath,
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::sdxl',
+			promptExcerpt: 'something'
+		});
+	}
+
+	it('returns empty toUnlink when the conversation has no media', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::chat',
+			modelKind: 'chat'
+		});
+		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
+		expect(result.ok).toBe(true);
+		expect(result.toUnlink).toEqual([]);
+	});
+
+	it('without the flag: leaves orphan media as a soft orphan (no hard-delete, no toUnlink)', () => {
+		// Default behavior — media stays in the gallery under the
+		// library model. ref_count drops to 0 but `hardDeletedAt`
+		// stays null.
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'made it' }]
+		});
+		const { id: mediaId } = makeGenerated(u.id, 'aa/bb/preserved.png');
+		linkMessageMedia(msg.id, mediaId);
+
+		const result = deleteConversation(conv.id, u.id);
+		expect(result.ok).toBe(true);
+		expect(result.toUnlink).toEqual([]);
+
+		const row = mocks.testDb
+			.select()
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.refCount).toBe(0);
+	});
+
+	it('with the flag: hard-deletes unique generated media and returns its storage path', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'made it' }]
+		});
+		const { id: mediaId } = makeGenerated(u.id, 'aa/bb/orphan.png');
+		linkMessageMedia(msg.id, mediaId);
+
+		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
+		expect(result.ok).toBe(true);
+		expect(result.toUnlink).toEqual([
+			{ id: mediaId, storagePath: 'aa/bb/orphan.png' }
+		]);
+
+		const row = mocks.testDb
+			.select()
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(row?.hardDeletedAt).not.toBeNull();
+	});
+
+	it('with the flag: preserves shared media used by another conversation', () => {
+		// Media referenced by two conversations. Deleting the first
+		// with deleteMedia=true should NOT touch the media — the
+		// second conversation still references it, so ref_count drops
+		// to 1 (not 0) and no hard-delete fires.
+		const u = seedUser();
+		const convA = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msgA = appendMessage({
+			conversationId: convA.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'a' }]
+		});
+		const convB = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msgB = appendMessage({
+			conversationId: convB.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'b' }]
+		});
+		const { id: shared } = makeGenerated(u.id, 'aa/bb/shared.png');
+		linkMessageMedia(msgA.id, shared);
+		linkMessageMedia(msgB.id, shared);
+
+		const result = deleteConversation(convA.id, u.id, { deleteMedia: true });
+		expect(result.ok).toBe(true);
+		expect(result.toUnlink).toEqual([]); // shared, not orphaned
+
+		const row = mocks.testDb
+			.select()
+			.from(media)
+			.where(eq(media.id, shared))
+			.get();
+		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.refCount).toBe(1);
+	});
+
+	it('with the flag: does not hard-delete uploaded media even when it would orphan', () => {
+		// Uploads aren't part of the user's gallery decision — they
+		// follow the auto-purger's own sweep schedule. Even with the
+		// flag set, uploaded media linked to the conversation gets
+		// only its ref_count decremented (which triggers the
+		// existing `unreferencedSince` stamp via the decrement path).
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'with upload attached' }]
+		});
+		const { id: uploaded } = insertMedia({
+			userId: u.id,
+			storagePath: 'up/me.png',
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: null,
+			sourceModel: null,
+			promptExcerpt: null,
+			origin: 'uploaded'
+		});
+		linkMessageMedia(msg.id, uploaded);
+
+		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
+		expect(result.ok).toBe(true);
+		expect(result.toUnlink).toEqual([]);
+
+		const row = mocks.testDb
+			.select()
+			.from(media)
+			.where(eq(media.id, uploaded))
+			.get();
+		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.refCount).toBe(0);
+		expect(row?.unreferencedSince).not.toBeNull();
+	});
+
+	it('returns ok=false with empty toUnlink for a cross-user delete attempt', () => {
+		// Belt-and-suspenders ownership check — the API also
+		// enforces this via locals.user, but the DB-level guard
+		// should hold independently.
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const conv = createConversation({
+			userId: u1.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::image',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'something' }]
+		});
+		const { id: mediaId } = makeGenerated(u1.id, 'aa/bb/cross.png');
+		linkMessageMedia(msg.id, mediaId);
+
+		const result = deleteConversation(conv.id, u2.id, { deleteMedia: true });
+		expect(result.ok).toBe(false);
+		expect(result.toUnlink).toEqual([]);
+
+		// Conversation and media both still intact for the real owner.
+		expect(getConversationDetail(conv.id, u1.id)).not.toBeNull();
+		const row = mocks.testDb
+			.select()
+			.from(media)
+			.where(eq(media.id, mediaId))
+			.get();
+		expect(row?.hardDeletedAt).toBeNull();
+		expect(row?.refCount).toBe(1);
 	});
 });
