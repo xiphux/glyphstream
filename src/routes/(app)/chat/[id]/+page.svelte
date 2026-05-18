@@ -114,10 +114,17 @@
 	// without re-uploading. The user can dismiss with the same X they'd
 	// use on any attachment.
 	//
-	// `autoAttachedFor` records which assistant id we've already
-	// auto-attached for, so dismissing the auto-attach sticks for that
-	// turn (we don't keep re-adding it on every reactive re-run).
-	let autoAttachedFor = $state<string | null>(null);
+	// `autoAttached` records both the assistant turn we auto-attached
+	// *for* and the media we attached, so when the leaf assistant
+	// changes (new turn arrives, branch switched via the sibling
+	// arrows, or a previous user message gets edited and a new branch
+	// streams in) we can find and remove the now-stale auto-attached
+	// item before evaluating whether to attach the new branch's image.
+	// Without tracking the mediaId here, a branch switch would leave
+	// the old branch's image in the composer indefinitely (the
+	// existing `attachments.items.length > 0` guard would bail before
+	// the auto-attach effect ever got a chance to swap).
+	let autoAttached = $state<{ assistantId: string; mediaId: string } | null>(null);
 
 	// Reset composer state when navigating between conversations — without
 	// this the previous chat's attachments (and its auto-attach memory)
@@ -125,25 +132,52 @@
 	$effect(() => {
 		void data.conversation.id;
 		attachments.clear();
-		autoAttachedFor = null;
+		autoAttached = null;
 	});
 
 	$effect(() => {
 		if (modelKind !== 'image') return;
-		// Only auto-attach when the composer is empty — a manual pick
-		// always takes precedence.
-		if (attachments.items.length > 0) return;
 		// Walk from the leaf back to find the most recent assistant
-		// message that has an image part.
+		// message that has an image part. This `messages` read is the
+		// only thing we want this effect to track — `attachments`
+		// reads/writes inside the `untrack` below are intentionally
+		// outside the dep graph (otherwise auto-removing the stale
+		// auto-attachment would re-trigger this effect and we'd
+		// thrash).
 		const lastAssistant = [...messages]
 			.reverse()
 			.find((m) => m.role === 'assistant' && m.parts.some((p) => p.type === 'image'));
-		if (!lastAssistant) return;
-		if (lastAssistant.id === autoAttachedFor) return;
-		const imagePart = lastAssistant.parts.find((p) => p.type === 'image');
-		if (!imagePart || imagePart.type !== 'image') return;
-		attachments.attachExisting(imagePart.mediaId);
-		autoAttachedFor = lastAssistant.id;
+		const imagePart = lastAssistant?.parts.find((p) => p.type === 'image');
+		const candidateMediaId =
+			imagePart?.type === 'image' ? imagePart.mediaId : null;
+
+		untrack(() => {
+			// Branch switched / new turn arrived — the previous
+			// auto-attached item is now pointing at a different
+			// branch's output. Pull it from the composer before
+			// deciding what (if anything) to attach next. User-picked
+			// attachments stay untouched: we only ever remove items
+			// whose mediaId matches what *we* added.
+			if (autoAttached && autoAttached.assistantId !== lastAssistant?.id) {
+				const stale = attachments.items.find(
+					(i) => i.mediaId === autoAttached!.mediaId
+				);
+				if (stale) attachments.remove(stale.clientId);
+				autoAttached = null;
+			}
+
+			// Don't auto-attach if the user has picked something, or if
+			// there's no candidate to attach, or if we've already
+			// auto-attached this exact turn (e.g. a re-render that
+			// doesn't actually change the leaf — dismissing the
+			// auto-attach should stick).
+			if (attachments.items.length > 0) return;
+			if (!lastAssistant || !candidateMediaId) return;
+			if (autoAttached?.assistantId === lastAssistant.id) return;
+
+			attachments.attachExisting(candidateMediaId);
+			autoAttached = { assistantId: lastAssistant.id, mediaId: candidateMediaId };
+		});
 	});
 
 	// --- inline image lightbox --------------------------------------------
