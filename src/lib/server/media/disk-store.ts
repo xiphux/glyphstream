@@ -12,6 +12,7 @@ import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaDir } from '../env';
+import { thumbStoragePath } from './thumbnail';
 import type {
 	MediaOpenResult,
 	MediaPutInput,
@@ -99,6 +100,19 @@ export class DiskMediaStore implements MediaStore {
 			// missing is fine; anything else we ignore (best-effort)
 			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
 				console.warn(`[disk-store] delete(${storagePath}) failed:`, e);
+			}
+		}
+		// Also remove the lazy-generated thumbnail sibling, if there is
+		// one. We don't track presence — just try to unlink and shrug
+		// off ENOENT (most media won't have a thumb yet; uploaded media
+		// never does). Without this, every hard-deleted image would
+		// leak its `.thumb.jpg` to disk indefinitely.
+		const thumbAbs = resolve(root(), thumbStoragePath(storagePath));
+		try {
+			await unlink(thumbAbs);
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+				console.warn(`[disk-store] delete thumb of ${storagePath} failed:`, e);
 			}
 		}
 	}

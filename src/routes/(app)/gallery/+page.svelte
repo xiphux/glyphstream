@@ -166,8 +166,17 @@
 						>
 							<div class="relative aspect-square w-full overflow-hidden">
 								{#if m.kind === 'image'}
+									<!--
+										Grid tiles use the /thumbnail variant, not /content.
+										See src/lib/server/media/thumbnail.ts — server-side
+										sharp resize to 512px JPEG q=75, lazy-generated and
+										disk-cached on first request. Roughly 20x bandwidth
+										reduction per tile vs. full-resolution originals.
+										Lightbox + chat-side rendering still pull /content
+										for full quality.
+									-->
 									<img
-										src="/api/media/{m.id}/content"
+										src="/api/media/{m.id}/thumbnail"
 										alt={m.promptExcerpt ?? 'Generated image'}
 										loading="lazy"
 										class="h-full w-full object-cover"
