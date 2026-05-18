@@ -1,9 +1,14 @@
 <script lang="ts">
-	import { Download, Trash2, X } from 'lucide-svelte';
+	import { goto } from '$app/navigation';
+	import { Download, ImagePlus, RotateCcw, Trash2, X } from 'lucide-svelte';
 	import type {
 		MediaConversationRef,
 		MediaListItem
 	} from '$lib/server/db/queries/media';
+	import {
+		GALLERY_LAUNCH_KEY,
+		type GalleryLaunchIntent
+	} from '$lib/gallery-launch';
 
 	interface Props {
 		/** The media being shown; null means the lightbox is closed (renders nothing). */
@@ -58,12 +63,64 @@
 		if (!media) return;
 		onClose();
 	}
+
+	function sourceModelIdFor(m: MediaListItem): string | null {
+		// Compose the internal `endpointId::upstreamId` form the model
+		// picker uses. If either piece is missing (legacy uploads, or
+		// generations from before the source-model fields were captured)
+		// return null and let the new-chat page pick its own default.
+		if (!m.sourceEndpointId || !m.sourceModel) return null;
+		return `${m.sourceEndpointId}::${m.sourceModel}`;
+	}
+
+	function stashIntent(intent: GalleryLaunchIntent): void {
+		try {
+			window.sessionStorage.setItem(GALLERY_LAUNCH_KEY, JSON.stringify(intent));
+		} catch {
+			// sessionStorage can throw (private mode, quota, disabled).
+			// We don't have a great fallback — proceed with navigation
+			// and let the user re-pick on the new-chat page.
+		}
+	}
+
+	async function regenerateWithPrompt(m: MediaListItem) {
+		// promptFull is the primary source; falls back to promptExcerpt
+		// for legacy rows whose source conversation was already gone
+		// when the 0006 recovery migration ran. Skip silently if there
+		// is genuinely no prompt — the button shouldn't render in that
+		// case but defense-in-depth.
+		const prompt = m.promptFull ?? m.promptExcerpt;
+		if (!prompt) return;
+		stashIntent({
+			kind: 'regenerate',
+			prompt,
+			sourceModelId: sourceModelIdFor(m)
+		});
+		onClose();
+		await goto('/');
+	}
+
+	async function useAsStartingImage(m: MediaListItem) {
+		// Videos aren't valid "starting" inputs in v1 — the existing
+		// attachments pipeline is image-only. The button is hidden for
+		// videos but defense-in-depth.
+		if (m.kind !== 'image') return;
+		stashIntent({
+			kind: 'starting-image',
+			mediaId: m.id,
+			sourceModelId: sourceModelIdFor(m)
+		});
+		onClose();
+		await goto('/');
+	}
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 {#if media}
 	{@const m = media}
+	{@const hasPrompt = (m.promptFull ?? m.promptExcerpt) !== null}
+	{@const canUseAsStarting = m.kind === 'image'}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
 		role="dialog"
@@ -138,6 +195,42 @@
 			<p class="mx-auto mt-3 max-w-3xl shrink-0 text-center text-xs text-neutral-300 line-clamp-3">
 				{m.promptExcerpt}
 			</p>
+		{/if}
+		{#if hasPrompt || canUseAsStarting}
+			<!--
+				Gallery-launch actions: "Regenerate with this prompt" and
+				"Use as starting image" send the user to / pre-loaded with
+				the relevant intent (see the LAUNCH_KEY pattern at the top
+				of this file). Sit just below the prompt strip so they
+				read as actions *on* the prompt and image, not generic
+				toolbar buttons — placement matters when the dialog is
+				dense. Hidden when there's nothing meaningful to launch
+				with (no prompt and not an image).
+			-->
+			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
+				{#if hasPrompt}
+					<button
+						type="button"
+						onclick={() => regenerateWithPrompt(m)}
+						title="Start a new conversation pre-filled with this prompt"
+						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+					>
+						<RotateCcw size={13} strokeWidth={2.25} />
+						Regenerate with this prompt
+					</button>
+				{/if}
+				{#if canUseAsStarting}
+					<button
+						type="button"
+						onclick={() => useAsStartingImage(m)}
+						title="Start a new conversation with this image attached"
+						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+					>
+						<ImagePlus size={13} strokeWidth={2.25} />
+						Use as starting image
+					</button>
+				{/if}
+			</div>
 		{/if}
 		{#if conversationsUsingThis !== undefined}
 			<div class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-xs text-neutral-300">

@@ -1,10 +1,14 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { composerEnterHandler } from '$lib/composer-keys';
+	import {
+		GALLERY_LAUNCH_KEY,
+		type GalleryLaunchIntent
+	} from '$lib/gallery-launch';
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 
@@ -70,6 +74,46 @@
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(pickedKind));
 	onDestroy(() => attachments.destroy());
+
+	// Pick up any pending gallery-launch intent stashed by MediaLightbox.
+	// Consume-and-clear: the key is removed on first read so a back-
+	// navigation or accidental remount can't re-trigger. SSR-safe
+	// (sessionStorage doesn't exist on the server); the effect won't
+	// pull anything until hydration runs.
+	//
+	// Reads of `data.models` happen inside `untrack` so a model-list
+	// refresh doesn't re-run this effect — the intent is consumed once
+	// at mount and that's it.
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const raw = window.sessionStorage.getItem(GALLERY_LAUNCH_KEY);
+		if (!raw) return;
+		window.sessionStorage.removeItem(GALLERY_LAUNCH_KEY);
+
+		let intent: GalleryLaunchIntent;
+		try {
+			intent = JSON.parse(raw) as GalleryLaunchIntent;
+		} catch {
+			return;
+		}
+
+		untrack(() => {
+			// Suggested model wins if it's actually available right now.
+			// If the user removed the originating endpoint from config
+			// since the media was generated, the lookup fails and we
+			// fall through to the default-modelId effect's choice.
+			if (intent.sourceModelId) {
+				const found = data.models.find((m) => m.id === intent.sourceModelId);
+				if (found) modelId = found.id;
+			}
+
+			if (intent.kind === 'regenerate') {
+				text = intent.prompt;
+			} else if (intent.kind === 'starting-image') {
+				attachments.attachExisting(intent.mediaId);
+			}
+		});
+	});
 
 	// Auto-resize composer (same pattern as the chat-page composer).
 	let composerEl = $state<HTMLTextAreaElement | null>(null);
