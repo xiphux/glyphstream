@@ -74,6 +74,63 @@ expected priority, not time-bound.
   future utility tasks (follow-up suggestions, retrieval query
   extraction, etc.), not just titles.
 
+- **Server-side in-flight indicator persistence.** The chat page's
+  "Generating…" bubble is currently tied to the local fetch promise's
+  lifetime, which iOS suspension and network handoffs can kill even
+  though the server keeps generating happily. The data side of that
+  case is already handled — `visibilitychange` + `offline`/`online`
+  listeners reconcile against server state on recovery — but the
+  *visual* indicator dies with the fetch and doesn't come back until
+  the assistant message arrives. Fix: expose the in-flight registry's
+  per-conversation state through the conversation load function so the
+  bubble is hydrated from server-reported truth on every page mount.
+  Connection drops then become non-events for the indicator; it
+  persists across suspensions because it doesn't depend on the local
+  fetch staying alive. Probably ~60 lines across the load function,
+  conversation-detail response shape, and chat-page render gating.
+
+- **Bulk gallery management.** As the library accumulates over months
+  of use, single-item delete becomes tedious. Worth adding multi-select
+  + bulk-delete (and maybe bulk-archive into a hidden tier) once the
+  pain is real — the library model commits the architecture to "users
+  curate the gallery themselves," so the curation tools need to scale
+  with library size. Selection state lives in the gallery page; the
+  bulk-delete API can compose `hardDeleteMediaForUser` over the
+  selection.
+
+- **Gallery favorite / pin tier.** A second-level distinction beyond
+  "in the gallery vs. hard-deleted" — media flagged as favorite is
+  protected from any future bulk-cleanup affordances (e.g. an
+  "archive media older than N months" sweep we might add later).
+  Storage is a single boolean column on the media row plus a UI
+  affordance in the lightbox (star icon next to download). Pairs
+  naturally with bulk-management since the workflow is "select many,
+  star the ones I care about, bulk-delete the rest."
+
+- **Preference toggle: default to deleting media when deleting
+  conversations.** Power users who generate hundreds of images per
+  session and reflexively want them all gone afterward should be able
+  to flip the conversation-delete dialog's checkbox default. Single
+  boolean on `UserPreferences`; one-line read in the layout's
+  `deleteConversation` flow when seeding the modal's initial
+  `deleteMediaToo` value. Trivially shippable any time the demand
+  shows up.
+
+- **Playwright e2e suite.** `@playwright/test` is in devDependencies
+  but no actual suite has been stood up. Several recent bug classes
+  live entirely in browser-event territory and have been flagged as
+  manual-test territory because unit-testing them would mostly test
+  mocks rather than real behavior: gallery-launch `sessionStorage`
+  handoff, composer auto-resize after a programmatic text-set, iOS
+  suspension recovery (`visibilitychange`), network-handoff recovery
+  (`online`/`offline`), the autoattach state machine on branch
+  switches. A small Playwright suite — spinning up the dev server,
+  walking through representative flows — covers exactly this gap.
+  Worth scoping at a few high-value flows first (login + send a
+  message, generate an image + regenerate from gallery, edit a root
+  message and verify it branches, archive with Undo) rather than
+  attempting exhaustive UI coverage.
+
 ## Mid-term (v2)
 
 - **Virtualized message list.** Long conversations eventually overwhelm the
