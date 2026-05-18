@@ -152,11 +152,24 @@ export const media = sqliteTable(
 		// surrounding UI is space-constrained — gallery thumbnails, lightbox
 		// caption strip. promptFull: the original untruncated prompt, used
 		// when the user wants to act on the prompt as input (e.g. the
-		// gallery's upcoming "Regenerate with this prompt" affordance, which
-		// would silently corrupt long prompts if we only had the excerpt).
-		// Older rows backfilled `prompt_full` from `prompt_excerpt`, so they
-		// may share the same truncated value — only rows created after the
-		// 2026-05-17 migration have a meaningful split.
+		// gallery's "Regenerate with this prompt" affordance, which would
+		// silently corrupt long prompts if we only had the excerpt).
+		// Population over migrations:
+		//   - 0005 adds `prompt_full` and backfills it from `prompt_excerpt`
+		//     (so legacy rows aren't NULL, but their stored "full" is
+		//     actually truncated).
+		//   - 0006 rehydrates from the user-message text part of the
+		//     conversation that generated each media — recovering the real
+		//     untruncated prompt for any legacy row whose source
+		//     conversation still exists. Rows whose conversation was
+		//     deleted before the library model shipped keep the 0005
+		//     excerpt fallback.
+		//   - Post-0005, the persister stores the real untruncated prompt
+		//     directly when generating new media.
+		// Net effect: rows generated after 0005 ship have a clean
+		// `promptFull` always; legacy rows have one if-and-only-if their
+		// conversation hasn't been deleted; the rest are stuck with the
+		// excerpt as the best record we have.
 		promptExcerpt: text('prompt_excerpt'),
 		promptFull: text('prompt_full'),
 		createdAt: integer('created_at').notNull(),
