@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
@@ -109,6 +109,14 @@
 
 			if (intent.kind === 'regenerate') {
 				text = intent.prompt;
+				// The auto-resize effect *will* re-fire on the `text`
+				// change, but in the same on-mount effect batch as
+				// this pickup — at which point Svelte hasn't yet
+				// flushed `bind:value` to the DOM, so scrollHeight
+				// reads the still-empty textarea. `tick()` resolves
+				// after the pending DOM commit, so a manual resize
+				// call there sees the actual content height.
+				void tick().then(() => autoResizeComposer());
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
 			}
@@ -116,16 +124,26 @@
 	});
 
 	// Auto-resize composer (same pattern as the chat-page composer).
+	// Factored into a function so external triggers can request a
+	// resize after manipulating `text` outside of normal user typing —
+	// e.g. the gallery-launch pickup effect, which sets `text` and
+	// then has to call this explicitly via `tick()` because Svelte
+	// batches the in-effect state change with the DOM flush of the
+	// `bind:value` update, so scrollHeight here would otherwise still
+	// reflect the empty pre-paste state.
 	let composerEl = $state<HTMLTextAreaElement | null>(null);
 	const COMPOSER_MAX_HEIGHT_PX = 240;
-	$effect(() => {
+	function autoResizeComposer() {
 		const el = composerEl;
-		void text;
 		if (!el) return;
 		el.style.height = 'auto';
 		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
 		el.style.height = `${next}px`;
 		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+	}
+	$effect(() => {
+		void text;
+		autoResizeComposer();
 	});
 
 	async function startChat(e: Event) {

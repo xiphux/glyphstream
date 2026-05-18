@@ -1436,5 +1436,13 @@
 	`conversationsUsingThis` — destructive media deletion belongs in
 	the gallery surface, and listing "conversations referencing this"
 	would just be a circular link back to where the user already is.
+	`inConversation` switches the gallery-launch button labels to
+	wording that makes it explicit they start a *new* chat, since the
+	user is currently inside one and "Regenerate" otherwise reads
+	ambiguously.
 -->
-<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} />
+<MediaLightbox
+	media={lightbox}
+	onClose={() => (lightbox = null)}
+	inConversation
+/>

@@ -33,6 +33,17 @@
 		 */
 		conversationsUsingThis?: MediaConversationRef[] | null;
 		conversationsError?: string | null;
+		/**
+		 * Set to true when the lightbox is mounted inside a conversation
+		 * (i.e. the chat-page caller). Adjusts the gallery-launch button
+		 * labels to make it explicit that they start a *new* conversation
+		 * rather than continuing the one the user is already in — without
+		 * this, "Regenerate with this prompt" reads ambiguously, like it
+		 * might re-run the generation inside the current chat. From the
+		 * gallery surface there's no current conversation to confuse with,
+		 * so the default (false) keeps the concise wording.
+		 */
+		inConversation?: boolean;
 	}
 
 	let {
@@ -41,7 +52,8 @@
 		onDelete,
 		deletingId = null,
 		conversationsUsingThis = undefined,
-		conversationsError = null
+		conversationsError = null,
+		inConversation = false
 	}: Props = $props();
 
 	function fmtBytes(n: number): string {
@@ -216,7 +228,7 @@
 						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
 					>
 						<RotateCcw size={13} strokeWidth={2.25} />
-						Regenerate with this prompt
+						{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
 					</button>
 				{/if}
 				{#if canUseAsStarting}
@@ -227,7 +239,7 @@
 						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
 					>
 						<ImagePlus size={13} strokeWidth={2.25} />
-						Use as starting image
+						{inConversation ? 'Edit in a new chat' : 'Use as starting image'}
 					</button>
 				{/if}
 			</div>
