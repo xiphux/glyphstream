@@ -20,6 +20,7 @@
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
@@ -463,19 +464,16 @@
 		};
 	}
 
-	interface SendOptions {
-		/** Edit flow — make the new user message a sibling of this parent. */
-		parentMessageId?: string;
-		/** Edit flow — id of the message being replaced. Used to trim the
-		 * old branch's continuation out of the visible list at optimistic-
-		 * insert time, so the new in-flight bubble doesn't briefly stream
-		 * BELOW the previous branch's stale tail. Symmetric counterpart
-		 * to retry's `retryFromMessageId` slice. */
-		editedMessageId?: string;
-		/** Retry flow — skip the new user message entirely; regenerate
-		 * a sibling assistant of this id. */
-		retryFromMessageId?: string;
-	}
+	// SendOptions used to live inline here; extracted to
+	// `$lib/chat-send-body` so the wire body construction can be
+	// unit-tested in isolation. The chat-page uses the same shape
+	// for one additional client-only purpose: `editedMessageId`
+	// also drives the optimistic-insert trim below (slicing the old
+	// branch's continuation out of the visible list so the new
+	// in-flight bubble doesn't briefly stream beneath stale tail
+	// messages — symmetric counterpart to retry's `retryFromMessageId`
+	// slice). That client-side use is unchanged; only the wire-body
+	// construction moved.
 
 	async function sendStreaming(
 		text: string,
@@ -532,19 +530,16 @@
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
-			// Always include modelId / modelKind — server cheaply no-ops when
-			// they match the conversation's stored values, so this stays
-			// simple (no client-side dirty tracking) and the server is the
-			// single source of truth on "did the user switch?".
-			const requestBody = isRetry
-				? { regenerateFromMessageId: options.retryFromMessageId, modelId, modelKind }
-				: {
-						text,
-						attachedMediaIds,
-						modelId,
-						modelKind,
-						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
-					};
+			// Wire body construction lives in `buildSendRequestBody` —
+			// see that module for the three modes (retry, edit, plain
+			// send) and why the field-spread shape matters.
+			const requestBody = buildSendRequestBody({
+				text,
+				attachedMediaIds,
+				modelId,
+				modelKind,
+				options
+			});
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
 				headers: {
@@ -650,17 +645,16 @@
 		activeAbort = abort;
 		const isRetry = !!options.retryFromMessageId;
 		try {
-			// Same all-paths shape as the streaming dispatch above — see
-			// that branch for why we always send modelId/modelKind.
-			const requestBody = isRetry
-				? { regenerateFromMessageId: options.retryFromMessageId, modelId, modelKind }
-				: {
-						text,
-						attachedMediaIds,
-						modelId,
-						modelKind,
-						...(options.parentMessageId ? { parentMessageId: options.parentMessageId } : {})
-					};
+			// Same wire-body builder as sendStreaming — image generation
+			// goes through the sync JSON path (one-shot generate, no
+			// SSE) but the body shape is identical.
+			const requestBody = buildSendRequestBody({
+				text,
+				attachedMediaIds,
+				modelId,
+				modelKind,
+				options
+			});
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
