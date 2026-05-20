@@ -56,3 +56,17 @@
 #   aggregating proxies (openai-api-bridge) that fan out into many real
 #   providers. Models without `owned_by` fall back to the endpoint's group.
 # group_by = "owned_by"
+
+# Optional: Web Push notifications for assistant-message completions.
+# Generate the keypair once with:  npx web-push generate-vapid-keys
+# Put the public key here (plaintext, no secret), the private key in the
+# env var named below (never in this file), and a contact mailto: URL
+# that push services may use if our pushes misbehave.
+#
+# Omit the entire [notifications] block to soft-disable push features —
+# the app still boots and toasts still work; only Web Push goes quiet.
+#
+# [notifications]
+# vapid_public = "BPI...your-base64url-public-key..."
+# vapid_private_env = "VAPID_PRIVATE_KEY"
+# vapid_subject = "mailto:admin@example.com"

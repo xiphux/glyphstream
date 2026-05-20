@@ -106,6 +106,59 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 }
 
 /**
+ * Read the `[notifications]` block from config.toml, if present. Returns
+ * null when the section is absent — push features then soft-disable
+ * (subscribe endpoint returns 503, notifyConversationComplete short-
+ * circuits). This keeps a clone with no VAPID setup bootable; the UI
+ * surfaces a hint instead of crashing at boot.
+ *
+ * - `vapid_public`: base64url-encoded public key. Plaintext (no secret).
+ * - `vapid_private_env`: name of the env var holding the private key.
+ *   Follows the `*_env` convention — the secret is never in config.toml.
+ * - `vapid_subject`: a `mailto:` URL the Web Push spec requires for the
+ *   VAPID JWT's `sub` claim. Push services may contact this address if
+ *   our pushes misbehave.
+ */
+export interface LoadedNotificationsConfig {
+	vapidPublic: string;
+	vapidPrivate: string;
+	vapidSubject: string;
+}
+
+export function loadNotificationsConfig(
+	path = configPath()
+): LoadedNotificationsConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.notifications;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(
+			`'[notifications]' in ${absolutePath} must be a TOML table`
+		);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[notifications] in ${absolutePath}`;
+
+	const vapidPublic = requireString(block.vapid_public, 'vapid_public', at);
+	const vapidSubject = requireString(block.vapid_subject, 'vapid_subject', at);
+	if (!/^mailto:.+@.+$/.test(vapidSubject) && !/^https?:\/\//.test(vapidSubject)) {
+		throw new ConfigError(
+			`${at}: vapid_subject "${vapidSubject}" must be a mailto: or http(s):// URL`
+		);
+	}
+
+	const envName = requireString(block.vapid_private_env, 'vapid_private_env', at);
+	const envValue = env[envName];
+	if (!envValue) {
+		throw new ConfigError(
+			`${at}: vapid_private_env="${envName}" but env var ${envName} is unset or empty`
+		);
+	}
+
+	return { vapidPublic, vapidPrivate: envValue, vapidSubject };
+}
+
+/**
  * Read the top-level `task_model` setting from config.toml, if present.
  * Returns the raw "endpoint_id::upstream_model_id" string when set, or
  * null when the field is absent. Validates only the field's *type and

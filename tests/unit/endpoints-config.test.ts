@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ConfigError, loadEndpoints } from '$lib/server/endpoints/config';
+import { ConfigError, loadEndpoints, loadNotificationsConfig } from '$lib/server/endpoints/config';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
 // without touching the real process env.
@@ -188,5 +188,88 @@ base_url = "http://x"
 request_timeout_seconds = 0
 		`);
 		expect(() => loadEndpoints(path)).toThrow();
+	});
+});
+
+describe('loadNotificationsConfig', () => {
+	it('returns null when [notifications] is absent', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadNotificationsConfig(path)).toBeNull();
+	});
+
+	it('parses a valid [notifications] block with env-resolved private key', () => {
+		envStub.values.VAPID_PRIVATE_KEY = 'super-secret-private';
+		const path = writeConfig(`
+[notifications]
+vapid_public = "BPI-public-key"
+vapid_private_env = "VAPID_PRIVATE_KEY"
+vapid_subject = "mailto:admin@example.com"
+		`);
+		expect(loadNotificationsConfig(path)).toEqual({
+			vapidPublic: 'BPI-public-key',
+			vapidPrivate: 'super-secret-private',
+			vapidSubject: 'mailto:admin@example.com'
+		});
+	});
+
+	it('accepts an https:// subject in place of mailto:', () => {
+		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		const path = writeConfig(`
+[notifications]
+vapid_public = "x"
+vapid_private_env = "VAPID_PRIVATE_KEY"
+vapid_subject = "https://example.com/contact"
+		`);
+		expect(loadNotificationsConfig(path)?.vapidSubject).toBe('https://example.com/contact');
+	});
+
+	it('throws when the referenced env var is unset', () => {
+		const path = writeConfig(`
+[notifications]
+vapid_public = "x"
+vapid_private_env = "MISSING_KEY"
+vapid_subject = "mailto:a@b.co"
+		`);
+		expect(() => loadNotificationsConfig(path)).toThrow(/MISSING_KEY/);
+	});
+
+	it('rejects a non-table [notifications] entry', () => {
+		const path = writeConfig(`notifications = "nope"`);
+		expect(() => loadNotificationsConfig(path)).toThrow(ConfigError);
+	});
+
+	it('rejects vapid_subject without mailto: or http(s)://', () => {
+		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		const path = writeConfig(`
+[notifications]
+vapid_public = "x"
+vapid_private_env = "VAPID_PRIVATE_KEY"
+vapid_subject = "just-some-string"
+		`);
+		expect(() => loadNotificationsConfig(path)).toThrow(/vapid_subject/);
+	});
+
+	it('rejects when vapid_private_env is missing', () => {
+		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		const path = writeConfig(`
+[notifications]
+vapid_public = "x"
+vapid_subject = "mailto:a@b.co"
+		`);
+		expect(() => loadNotificationsConfig(path)).toThrow(/vapid_private_env/);
+	});
+
+	it('rejects when vapid_public is missing', () => {
+		envStub.values.VAPID_PRIVATE_KEY = 'p';
+		const path = writeConfig(`
+[notifications]
+vapid_private_env = "VAPID_PRIVATE_KEY"
+vapid_subject = "mailto:a@b.co"
+		`);
+		expect(() => loadNotificationsConfig(path)).toThrow(/vapid_public/);
 	});
 });
