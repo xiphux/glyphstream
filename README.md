@@ -124,6 +124,41 @@ EXTERNAL_BASE_URL=https://glyphstream.example.com
 > default to `localhost`, which then mismatches the OAuth callback in
 > production. The `EXTERNAL_` prefix dodges that footgun.
 
+## Auto-titling (optional)
+
+By default, conversation titles in the sidebar are the first ~50
+characters of the user's opening message. To get model-generated
+titles instead, set the top-level `task_model` field in `config.toml`
+to a model already exposed by one of your `[[endpoints]]`:
+
+```toml
+task_model = "groq::llama-3.1-8b-instant"
+```
+
+The format is `endpoint_id::upstream_model_id` — the same namespaced
+shape the model picker uses. After the first user+assistant exchange
+in a new chat, GlyphStream calls this model once to produce a short
+title and streams it on the same SSE channel as the assistant
+response. Image and video chats run the title task in parallel with
+asset generation, prompted from the user message alone.
+
+Pick a **small, fast** model — title delivery has a 5-second SSE
+budget so the title lands while the user is still watching the
+message finish. Slower task models keep running in the background;
+the title appears on the next sidebar refetch.
+
+Misconfiguration (typo'd endpoint id, removed endpoint, upstream
+failure) is non-fatal: titling silently reverts to the first-N-chars
+preview and the rest of the response is unaffected. Users can also
+rename any conversation manually via the sidebar **Rename** action —
+manual renames win even if they race a running title task.
+
+> **TOML scoping gotcha:** `task_model` is a top-level scalar, so
+> place the assignment above any `[notifications]` (or other
+> `[table]`) header in `config.toml`. TOML scopes every key-value pair
+> after a table header into that table, so `task_model =` written
+> below `[notifications]` would silently become a notifications field.
+
 ## Push notifications (optional)
 
 GlyphStream can fire OS-level push notifications when an assistant

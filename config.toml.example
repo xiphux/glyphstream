@@ -57,6 +57,29 @@
 #   providers. Models without `owned_by` fall back to the endpoint's group.
 # group_by = "owned_by"
 
+# Optional: a "task model" used for utility chores like auto-generating
+# conversation titles. After the first user+assistant exchange in a new
+# chat, GlyphStream calls this model once to produce a short title that
+# replaces the default first-N-chars-of-prompt sidebar preview.
+#
+# Format: "endpoint_id::upstream_model_id" — the same namespaced shape
+# the model picker uses. Both halves must resolve against an endpoint
+# defined above. Pick a small fast model: title delivery has a 5s SSE
+# budget so the title arrives while the user is still watching the
+# message finish; slower task models keep running and the title shows
+# up on the next sidebar refetch.
+#
+# Unset / typo'd / removed-endpoint is non-fatal — titling silently
+# reverts to the first-N-chars fallback. Users can also rename any
+# conversation by hand via the sidebar Rename action.
+#
+# Keep this assignment ABOVE the [notifications] block below — TOML
+# scopes any key-value pair after a [table] header into that table, so
+# putting `task_model =` after `[notifications]` would make it a
+# notifications field instead of top-level.
+#
+# task_model = "groq::llama-3.1-8b-instant"
+
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys
 # Put the public key here (plaintext, no secret), the private key in the
