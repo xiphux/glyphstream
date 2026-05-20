@@ -1,6 +1,15 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Check } from 'lucide-svelte';
 	import type { EnterBehavior, UserPreferences } from '$lib/types/api';
+	import {
+		getPermissionState,
+		isIosBeforeInstall,
+		isPushSupported,
+		loadPushConfig,
+		subscribe as subscribeToPush,
+		unsubscribe as unsubscribeFromPush
+	} from '$lib/push-subscribe';
 
 	let { data } = $props<{ data: { prefs: UserPreferences } }>();
 
@@ -76,6 +85,141 @@
 		enterBehavior = saved.enterBehavior;
 		showGreeting = saved.showGreeting;
 		error = null;
+	}
+
+	// --- Notifications --------------------------------------------------
+	// Auto-saved on toggle (separate from the form's Save button) because
+	// the master switch has side effects — permission prompts and push
+	// subscription writes — that can't be unwound by clicking Revert.
+
+	// svelte-ignore state_referenced_locally
+	let notificationsEnabled = $state(data.prefs.notificationsEnabled);
+	// svelte-ignore state_referenced_locally
+	let notificationsShowContent = $state(data.prefs.notificationsShowContent);
+	// svelte-ignore state_referenced_locally
+	let notificationsForegroundToast = $state(data.prefs.notificationsForegroundToast);
+
+	let pushSupported = $state(false);
+	let iosBeforeInstall = $state(false);
+	let permissionState = $state<NotificationPermission>('default');
+	let vapidPublicKey = $state<string | null>(null);
+	let serverConfigured = $state<boolean | null>(null); // null = loading
+	let notifBusy = $state(false);
+	let notifError = $state<string | null>(null);
+
+	const masterDisabled = $derived(
+		notifBusy ||
+			!pushSupported ||
+			iosBeforeInstall ||
+			permissionState === 'denied' ||
+			serverConfigured === false
+	);
+
+	const masterDisabledReason = $derived(
+		!pushSupported
+			? 'This browser does not support Web Push.'
+			: iosBeforeInstall
+				? 'Install GlyphStream to your Home Screen first — iOS only delivers push to installed PWAs.'
+				: permissionState === 'denied'
+					? 'Notifications are blocked in browser settings. Enable them in your browser to turn this on.'
+					: serverConfigured === false
+						? 'Push notifications are not configured on this server.'
+						: null
+	);
+
+	onMount(async () => {
+		pushSupported = isPushSupported();
+		iosBeforeInstall = isIosBeforeInstall();
+		permissionState = getPermissionState();
+		if (pushSupported) {
+			const cfg = await loadPushConfig();
+			serverConfigured = cfg?.enabled ?? false;
+			vapidPublicKey = cfg?.vapidPublicKey ?? null;
+		} else {
+			serverConfigured = false;
+		}
+	});
+
+	async function patchPrefs(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {
+		const res = await fetch('/api/user/preferences', {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(patch)
+		});
+		if (!res.ok) return null;
+		return (await res.json()) as UserPreferences;
+	}
+
+	async function toggleMaster(next: boolean) {
+		if (notifBusy) return;
+		notifBusy = true;
+		notifError = null;
+		try {
+			if (next) {
+				if (!vapidPublicKey) {
+					notifError = 'Server configuration missing — try reloading.';
+					return;
+				}
+				const result = await subscribeToPush(vapidPublicKey);
+				if (!result.ok) {
+					notifError =
+						result.reason === 'permission_denied'
+							? 'Permission denied.'
+							: result.reason === 'unsupported'
+								? 'This browser does not support push notifications.'
+								: result.reason === 'no_registration'
+									? 'Service worker not active yet. Reload and try again.'
+									: 'Could not register the subscription with the server.';
+					permissionState = getPermissionState();
+					return;
+				}
+				const saved = await patchPrefs({ notificationsEnabled: true });
+				if (!saved) {
+					notifError = 'Subscription saved on this device but server update failed.';
+					return;
+				}
+				notificationsEnabled = true;
+				permissionState = getPermissionState();
+			} else {
+				await unsubscribeFromPush();
+				const saved = await patchPrefs({ notificationsEnabled: false });
+				if (!saved) {
+					notifError = 'Could not save your preference; try again.';
+					return;
+				}
+				notificationsEnabled = false;
+			}
+		} catch (e) {
+			notifError = e instanceof Error ? e.message : String(e);
+		} finally {
+			notifBusy = false;
+		}
+	}
+
+	async function toggleShowContent(next: boolean) {
+		if (notifBusy) return;
+		notifBusy = true;
+		notifError = null;
+		try {
+			const saved = await patchPrefs({ notificationsShowContent: next });
+			if (saved) notificationsShowContent = saved.notificationsShowContent;
+			else notifError = 'Could not save your preference; try again.';
+		} finally {
+			notifBusy = false;
+		}
+	}
+
+	async function toggleForegroundToast(next: boolean) {
+		if (notifBusy) return;
+		notifBusy = true;
+		notifError = null;
+		try {
+			const saved = await patchPrefs({ notificationsForegroundToast: next });
+			if (saved) notificationsForegroundToast = saved.notificationsForegroundToast;
+			else notifError = 'Could not save your preference; try again.';
+		} finally {
+			notifBusy = false;
+		}
 	}
 </script>
 
@@ -207,6 +351,98 @@
 						</span>
 					</span>
 				</label>
+			</section>
+
+			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+
+			<section class="flex flex-col gap-3">
+				<div>
+					<h2 class="text-sm font-semibold">Notifications</h2>
+					<p class="mt-0.5 text-xs text-neutral-500">
+						Ping you when an assistant message finishes — toast when you're in
+						the app on a different page, OS notification when you've switched
+						apps or locked your phone. On iOS this needs the PWA installed to
+						the Home Screen first.
+					</p>
+				</div>
+
+				<label class="flex cursor-pointer items-start gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={notificationsEnabled}
+						onchange={(e) => toggleMaster(e.currentTarget.checked)}
+						disabled={masterDisabled}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">Enable notifications</span>
+						<span class="text-neutral-500">
+							— receive push notifications on this device when a message
+							completes.
+						</span>
+					</span>
+				</label>
+
+				{#if masterDisabledReason}
+					<div
+						class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+					>
+						{masterDisabledReason}
+					</div>
+				{:else if pushSupported}
+					<div class="text-xs text-neutral-500">
+						Permission: <span class="font-mono">{permissionState}</span>
+					</div>
+				{/if}
+
+				<label
+					class="flex cursor-pointer items-start gap-2 text-sm"
+					class:opacity-50={!notificationsEnabled}
+				>
+					<input
+						type="checkbox"
+						checked={notificationsShowContent}
+						onchange={(e) => toggleShowContent(e.currentTarget.checked)}
+						disabled={!notificationsEnabled || notifBusy}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">Show message preview</span>
+						<span class="text-neutral-500">
+							— include a snippet of the assistant's reply in the notification
+							body. Turn off if your threads are private to the device.
+						</span>
+					</span>
+				</label>
+
+				<label
+					class="flex cursor-pointer items-start gap-2 text-sm"
+					class:opacity-50={!notificationsEnabled}
+				>
+					<input
+						type="checkbox"
+						checked={notificationsForegroundToast}
+						onchange={(e) => toggleForegroundToast(e.currentTarget.checked)}
+						disabled={!notificationsEnabled || notifBusy}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">In-app toast for other threads</span>
+						<span class="text-neutral-500">
+							— pop a toast when a thread completes while you're on a different
+							page. Turn off to only get OS-level notifications when the app is
+							backgrounded.
+						</span>
+					</span>
+				</label>
+
+				{#if notifError}
+					<div
+						class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+					>
+						{notifError}
+					</div>
+				{/if}
 			</section>
 
 			{#if error}

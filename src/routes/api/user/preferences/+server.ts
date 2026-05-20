@@ -54,6 +54,15 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	if (typeof body.showGreeting === 'boolean') {
 		patch.showGreeting = body.showGreeting;
 	}
+	if (typeof body.notificationsEnabled === 'boolean') {
+		patch.notificationsEnabled = body.notificationsEnabled;
+	}
+	if (typeof body.notificationsShowContent === 'boolean') {
+		patch.notificationsShowContent = body.notificationsShowContent;
+	}
+	if (typeof body.notificationsForegroundToast === 'boolean') {
+		patch.notificationsForegroundToast = body.notificationsForegroundToast;
+	}
 
 	const next = setUserPreferences(locals.user.id, patch);
 	return json(next);
