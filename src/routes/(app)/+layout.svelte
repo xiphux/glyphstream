@@ -15,12 +15,14 @@
 		MoreVertical,
 		PanelLeftClose,
 		PanelLeftOpen,
+		Pencil,
 		Plus,
 		Settings,
 		SlidersHorizontal,
 		Trash2,
 		User as UserIcon
 	} from 'lucide-svelte';
+	import { tick } from 'svelte';
 
 	let { data, children } = $props();
 
@@ -240,6 +242,76 @@
 		if (!pendingDelete) return;
 		cancelDeleteConversation();
 	}
+
+	// Inline rename state. `renamingId` is the conversation id currently
+	// being edited; `renameDraft` is the working input value. We avoid
+	// optimistic-update gymnastics (mutating the load prop) — Enter
+	// fires the PATCH, closes the input, and invalidateAll() pulls the
+	// fresh title in. Esc / blur-without-change bail out silently.
+	let renamingId = $state<string | null>(null);
+	let renameDraft = $state('');
+	let renameInputEl = $state<HTMLInputElement | null>(null);
+	let renameOriginal = $state('');
+
+	async function startRename(id: string, currentTitle: string | null) {
+		renamingId = id;
+		renameOriginal = currentTitle ?? '';
+		renameDraft = currentTitle ?? '';
+		await tick();
+		renameInputEl?.focus();
+		renameInputEl?.select();
+	}
+
+	function cancelRename() {
+		renamingId = null;
+		renameDraft = '';
+		renameOriginal = '';
+	}
+
+	async function commitRename() {
+		if (!renamingId) return;
+		const id = renamingId;
+		const next = renameDraft.trim();
+		// No-op exits: empty input (treat as cancel) and unchanged value.
+		if (next.length === 0 || next === renameOriginal.trim()) {
+			cancelRename();
+			return;
+		}
+		// Optimistic-ish: close the input immediately so the UI feels
+		// responsive even before the PATCH round-trip resolves. The text
+		// shown in the sidebar reverts to the stale title until
+		// invalidateAll() lands the new one — sub-300ms in practice.
+		renamingId = null;
+		renameDraft = '';
+		renameOriginal = '';
+		try {
+			const res = await fetch(`/api/conversations/${id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ title: next })
+			});
+			if (!res.ok) {
+				const j = await res.json().catch(() => ({}));
+				const msg = (j && typeof j.message === 'string' && j.message) || `HTTP ${res.status}`;
+				throw new Error(msg);
+			}
+			await invalidateAll();
+		} catch (e) {
+			toast.error(
+				`Couldn't rename conversation: ${e instanceof Error ? e.message : String(e)}`
+			);
+		}
+	}
+
+	function onRenameKey(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			void commitRename();
+		} else if (e.key === 'Escape') {
+			e.preventDefault();
+			cancelRename();
+		}
+	}
 </script>
 
 <div class="flex h-[100dvh] overflow-hidden">
@@ -399,50 +471,78 @@
 					{#each data.conversations as c (c.id)}
 						{@const href = `/chat/${c.id}`}
 						{@const active = currentPath === href || pendingPath === href}
+						{@const isRenaming = renamingId === c.id}
 						<li class="group relative">
-							<a
-								{href}
-								class="block truncate rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
-									? 'bg-neutral-200 dark:bg-neutral-800'
-									: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
-							>
-								{c.title ?? 'Untitled'}
-							</a>
-							<DropdownMenu.Root
-								open={openOverflowFor === c.id}
-								onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
-							>
-								<DropdownMenu.Trigger
-									disabled={busyId === c.id}
-									title="Conversation options"
-									aria-label="Options for conversation {c.title ?? 'Untitled'}"
-									class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-neutral-500 transition hover:bg-neutral-300 hover:text-neutral-700 focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200 data-[state=open]:opacity-100"
+							{#if isRenaming}
+								<!--
+									Inline-edit affordance. We swap the anchor for
+									an input bound to renameDraft; Enter commits,
+									Esc cancels, blur-without-change cancels.
+									Same padding/typography as the anchor so the
+									row doesn't reflow when entering edit mode.
+								-->
+								<input
+									type="text"
+									bind:this={renameInputEl}
+									bind:value={renameDraft}
+									onkeydown={onRenameKey}
+									onblur={commitRename}
+									maxlength={200}
+									aria-label="Rename conversation"
+									class="block w-full rounded-md border border-neutral-300 bg-white py-2 pl-3 pr-3 text-sm focus:border-neutral-500 focus:outline-none dark:border-neutral-600 dark:bg-neutral-800 dark:focus:border-neutral-400"
+								/>
+							{:else}
+								<a
+									{href}
+									class="block truncate rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
+										? 'bg-neutral-200 dark:bg-neutral-800'
+										: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
 								>
-									<MoreVertical size={14} strokeWidth={2.25} />
-								</DropdownMenu.Trigger>
-								<DropdownMenu.Portal>
-									<DropdownMenu.Content
-										sideOffset={4}
-										align="end"
-										class="z-50 min-w-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+									{c.title ?? 'Untitled'}
+								</a>
+								<DropdownMenu.Root
+									open={openOverflowFor === c.id}
+									onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
+								>
+									<DropdownMenu.Trigger
+										disabled={busyId === c.id}
+										title="Conversation options"
+										aria-label="Options for conversation {c.title ?? 'Untitled'}"
+										class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-neutral-500 transition hover:bg-neutral-300 hover:text-neutral-700 focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200 data-[state=open]:opacity-100"
 									>
-										<DropdownMenu.Item
-											onSelect={() => archiveConversation(c.id)}
-											class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+										<MoreVertical size={14} strokeWidth={2.25} />
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Portal>
+										<DropdownMenu.Content
+											sideOffset={4}
+											align="end"
+											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
 										>
-											<Archive size={14} strokeWidth={2.25} />
-											<span>Archive</span>
-										</DropdownMenu.Item>
-										<DropdownMenu.Item
-											onSelect={() => deleteConversation(c.id)}
-											class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
-										>
-											<Trash2 size={14} strokeWidth={2.25} />
-											<span>Delete</span>
-										</DropdownMenu.Item>
-									</DropdownMenu.Content>
-								</DropdownMenu.Portal>
-							</DropdownMenu.Root>
+											<DropdownMenu.Item
+												onSelect={() => startRename(c.id, c.title)}
+												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+											>
+												<Pencil size={14} strokeWidth={2.25} />
+												<span>Rename</span>
+											</DropdownMenu.Item>
+											<DropdownMenu.Item
+												onSelect={() => archiveConversation(c.id)}
+												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+											>
+												<Archive size={14} strokeWidth={2.25} />
+												<span>Archive</span>
+											</DropdownMenu.Item>
+											<DropdownMenu.Item
+												onSelect={() => deleteConversation(c.id)}
+												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
+											>
+												<Trash2 size={14} strokeWidth={2.25} />
+												<span>Delete</span>
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Portal>
+								</DropdownMenu.Root>
+							{/if}
 						</li>
 					{/each}
 				</ul>

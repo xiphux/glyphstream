@@ -3,6 +3,8 @@ import {
 	archiveConversation,
 	deleteConversation,
 	getConversationDetail,
+	renameConversation,
+	RenameValidationError,
 	unarchiveConversation
 } from '$lib/server/db/queries/conversations';
 import { getMediaStore } from '$lib/server/media/disk-store';
@@ -15,16 +17,54 @@ export const GET: RequestHandler = ({ locals, params }) => {
 	return json({ conversation: conv });
 };
 
+/**
+ * Accepts one of two mutations per request:
+ *   - `{ archived: boolean }` — archive/unarchive (original behavior)
+ *   - `{ title: string }` — rename (sets title_source='user', locking
+ *      the title against future AI overwrite)
+ *
+ * Discriminated body: exactly one of the two fields must be present.
+ * Combining them in one request is rejected to keep the semantics
+ * single-purpose — a client that wants to do both should send two
+ * requests.
+ */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
-	const body = (await request.json().catch(() => null)) as { archived?: unknown } | null;
-	if (!body || typeof body.archived !== 'boolean') {
-		throw error(400, 'Body must be { archived: boolean }');
+	const body = (await request.json().catch(() => null)) as
+		| { archived?: unknown; title?: unknown }
+		| null;
+	if (!body) throw error(400, 'Body must be JSON');
+
+	const hasArchived = body.archived !== undefined;
+	const hasTitle = body.title !== undefined;
+	if (hasArchived === hasTitle) {
+		throw error(400, 'Body must be exactly one of { archived: boolean } or { title: string }');
 	}
-	const ok = body.archived
-		? archiveConversation(params.id, locals.user.id)
-		: unarchiveConversation(params.id, locals.user.id);
-	if (!ok) throw error(404, 'Conversation not found');
+
+	if (hasArchived) {
+		if (typeof body.archived !== 'boolean') {
+			throw error(400, 'archived must be a boolean');
+		}
+		const ok = body.archived
+			? archiveConversation(params.id, locals.user.id)
+			: unarchiveConversation(params.id, locals.user.id);
+		if (!ok) throw error(404, 'Conversation not found');
+		return new Response(null, { status: 204 });
+	}
+
+	// Rename path
+	if (typeof body.title !== 'string') {
+		throw error(400, 'title must be a string');
+	}
+	try {
+		const ok = renameConversation(params.id, locals.user.id, body.title);
+		if (!ok) throw error(404, 'Conversation not found');
+	} catch (e) {
+		if (e instanceof RenameValidationError) {
+			throw error(400, e.message);
+		}
+		throw e;
+	}
 	return new Response(null, { status: 204 });
 };
 

@@ -591,6 +591,13 @@
 						inFlightProgress = event.percent;
 						inFlightStatus = event.status ?? null;
 						break;
+					case 'title':
+						// Task-model auto-title arrived ahead of `done`. Update
+						// the chat-page header immediately; the sidebar
+						// refreshes via the invalidateAll() that runs after
+						// `done` below.
+						title = event.title;
+						break;
 					case 'done':
 						messages = [...messages, event.assistantMessage];
 						inFlightOpen = false;
@@ -675,6 +682,13 @@
 				messages = (
 					optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages
 				).concat([body.userMessage, body.assistantMessage]);
+			}
+			// Image branch is non-streaming, so the task-model title (if
+			// any) piggybacks on the response body rather than an SSE
+			// frame. Same effect as the streaming 'title' case: update
+			// the local header now; invalidateAll below refreshes sidebar.
+			if (body.title) {
+				title = body.title;
 			}
 			inFlightOpen = false;
 			void invalidateAll();

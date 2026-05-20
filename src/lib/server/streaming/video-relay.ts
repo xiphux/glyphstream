@@ -30,19 +30,22 @@ import { setVideoJobId } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
+import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import type {
 	ChatMessage,
 	StreamDoneEvent,
 	StreamErrorEvent,
 	StreamEvent,
 	StreamProgressEvent,
-	StreamStartEvent
+	StreamStartEvent,
+	StreamTitleEvent
 } from '$lib/types/api';
 
 const DEBUG = logLevel() === 'debug';
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_WAIT_MS = 20 * 60_000; // 20 minutes — generous; rate-limited by upstream timeouts anyway
+const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 export interface VideoRelayParams {
 	conversationId: string;
@@ -79,6 +82,13 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				assistantMessageId: ''
 			};
 			safeWrite(startEv);
+
+			// Kick off title generation in parallel with the video job. Video
+			// generation typically takes 30s+; the user prompt is the
+			// conversation topic for image/video modalities, so title gen
+			// doesn't have to wait for the asset itself. By the time the
+			// video lands, the title is almost always ready.
+			const titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
 
 			let job: VideoJob;
 			try {
@@ -188,6 +198,11 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				safeWrite({ type: 'error', message: `Could not persist video: ${msg}` } satisfies StreamErrorEvent);
 				try { controller.close(); } catch { /* already closed */ }
 				return;
+			}
+
+			const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
+			if (title) {
+				safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 			}
 
 			safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);

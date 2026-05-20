@@ -52,8 +52,7 @@ export interface LoadedEndpoint {
 
 export class ConfigError extends Error {}
 
-/** Read + parse + validate config.toml. Throws ConfigError on any problem. */
-export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
+function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
 	const absolutePath = resolve(path);
 	let raw: string;
 	try {
@@ -75,7 +74,14 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 		throw new ConfigError(`Top-level of ${absolutePath} must be a TOML table`);
 	}
 
-	const endpointsRaw = (parsed as { endpoints?: unknown }).endpoints;
+	return { parsed: parsed as Record<string, unknown>, absolutePath };
+}
+
+/** Read + parse + validate config.toml. Throws ConfigError on any problem. */
+export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
+	const { parsed, absolutePath } = readAndParse(path);
+
+	const endpointsRaw = parsed.endpoints;
 	if (endpointsRaw === undefined) {
 		// Empty config is allowed — no endpoints yet, /api/models returns []
 		return [];
@@ -97,6 +103,33 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 		endpoints.push(ep);
 	}
 	return endpoints;
+}
+
+/**
+ * Read the top-level `task_model` setting from config.toml, if present.
+ * Returns the raw "endpoint_id::upstream_model_id" string when set, or
+ * null when the field is absent. Validates only the field's *type and
+ * shape* (must be a non-empty string of the form `id::id`); it does NOT
+ * verify the referenced endpoint actually exists in the registry —
+ * that resolution happens at use-time in the task-model resolver so a
+ * typo in `task_model` doesn't crash app boot.
+ */
+export function loadTaskModel(path = configPath()): string | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.task_model;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'string' || raw.length === 0) {
+		throw new ConfigError(
+			`'task_model' in ${absolutePath} must be a non-empty string of the form "endpoint_id::model_id"`
+		);
+	}
+	const sepIdx = raw.indexOf('::');
+	if (sepIdx <= 0 || sepIdx === raw.length - 2) {
+		throw new ConfigError(
+			`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`
+		);
+	}
+	return raw;
 }
 
 function validateEndpoint(raw: RawEndpoint, index: number, path: string): LoadedEndpoint {

@@ -51,29 +51,6 @@ expected priority, not time-bound.
   ("disable system prompt only, keep memories"). Pick once we have
   memories implemented and can see which split feels right.
 
-- **Auto-generated conversation titles via a task model.** Standard UX is
-  a side-call to a model after the first exchange asking it to summarize
-  the conversation in a few words. Two flavors exist in the wild:
-  - *Same model as the conversation* (ChatGPT, Claude.ai). Zero config
-    but doesn't work for image / video / embedding conversations (no text
-    generation), wastes premium tokens on a trivial task, and is slow if
-    the chat model is a big reasoning model.
-  - *Dedicated "task model" in config* (Open WebUI). One global
-    small/cheap/fast model for utility tasks; always works regardless of
-    the active conversation's modality.
-
-  Task-model approach fits GlyphStream — most multimodal conversations
-  here can't title themselves. Config: top-level `task_model =
-  "endpoint_id::model_id"` in `config.toml`, matching the internal model
-  ID format. Fire fire-and-forget after the first user+assistant exchange
-  completes (for image/video, after the first generated asset arrives —
-  the prompt itself is the input). Update `conversations.title`; surface
-  to frontend via the existing SSE channel or a small refetch. Fallback
-  when `task_model` is unset: first ~40 chars of the first user message.
-  Worth treating the `task_model` config slot as the home for *all*
-  future utility tasks (follow-up suggestions, retrieval query
-  extraction, etc.), not just titles.
-
 - **Server-side in-flight indicator persistence.** The chat page's
   "Generating…" bubble is currently tied to the local fetch promise's
   lifetime, which iOS suspension and network handoffs can kill even

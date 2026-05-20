@@ -20,7 +20,8 @@ import type {
 	StreamEvent,
 	StreamReasoningEvent,
 	StreamStartEvent,
-	StreamTextEvent
+	StreamTextEvent,
+	StreamTitleEvent
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import {
@@ -32,8 +33,11 @@ import {
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
 import { renderMarkdown } from '../markdown/render';
+import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
+
+const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
 
@@ -46,6 +50,18 @@ export interface RelayParams {
 	storedModelId: string;
 	/** Aborts the upstream fetch when the user clicks Stop. */
 	abortSignal?: AbortSignal;
+}
+
+interface RecorderResult {
+	message: ChatMessage;
+	/**
+	 * Resolves to the AI-generated title when the task model produced
+	 * one *and* the conditional UPDATE (`title_source = 'fallback'`)
+	 * matched. Resolves to null if title gen was skipped (no task
+	 * model configured, source already 'ai'/'user', upstream failure,
+	 * empty/garbage response, or pre-existing rename racing us).
+	 */
+	titlePromise: Promise<string | null>;
 }
 
 export async function startStreamingRelay(params: RelayParams): Promise<ReadableStream<Uint8Array>> {
@@ -86,7 +102,7 @@ export async function startStreamingRelay(params: RelayParams): Promise<Readable
 async function recordAndPersist(
 	upstream: ReadableStream<Uint8Array>,
 	params: RelayParams
-): Promise<ChatMessage> {
+): Promise<RecorderResult> {
 	const norm = createNormalizer(params.providerQuirk);
 	let textBuf = '';
 	let reasoningBuf = '';
@@ -133,7 +149,16 @@ async function recordAndPersist(
 		tokensIn,
 		tokensOut
 	});
-	return assistantMessage;
+
+	// Title task: fire only on the conversation's first exchange. The
+	// title_source column starts at 'fallback' (default + first-message
+	// preview); once the AI title lands it flips to 'ai', or 'user' on
+	// rename. Both terminal states gate this branch off so subsequent
+	// messages don't re-run the task. Errors swallowed inside the
+	// generator — the returned promise resolves to null on any failure.
+	const titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
+
+	return { message: assistantMessage, titlePromise };
 
 	function applyDeltas(deltas: NormalizedDelta[]) {
 		for (const d of deltas) {
@@ -146,7 +171,7 @@ async function recordAndPersist(
 function buildClientStream(
 	upstream: ReadableStream<Uint8Array>,
 	params: RelayParams,
-	recorderPromise: Promise<ChatMessage>
+	recorderPromise: Promise<RecorderResult>
 ): ReadableStream<Uint8Array> {
 	const enc = new TextEncoder();
 
@@ -207,7 +232,21 @@ function buildClientStream(
 			// Wait for recorder to finish so we can hand the canonical persisted
 			// message to the client. If the recorder fails, surface it.
 			try {
-				const assistantMessage = await recorderPromise;
+				const { message: assistantMessage, titlePromise } = await recorderPromise;
+
+				// Race the title task against a bounded budget so a slow task
+				// model never blocks the `done` event indefinitely. If the
+				// title arrives in time, emit it on the same SSE stream the
+				// client is already consuming — invalidateAll() after `done`
+				// then sees the persisted title on its refetch. If it
+				// doesn't, the title still persists in the background and
+				// surfaces on the next sidebar refetch.
+				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
+				if (title) {
+					const titleEv: StreamTitleEvent = { type: 'title', title };
+					safeWrite(titleEv);
+				}
+
 				const done: StreamDoneEvent = { type: 'done', assistantMessage };
 				safeWrite(done);
 			} catch (e) {

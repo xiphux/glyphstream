@@ -43,6 +43,15 @@ export const conversations = sqliteTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		title: text('title'),
+		// Where the current title came from. Drives the title-gen state
+		// machine: 'fallback' (default) is the first-N-chars preview set
+		// at message-create time; 'ai' is set by the task model and is
+		// allowed to overwrite a 'fallback'; 'user' means the user
+		// manually renamed and locks against AI overwrite. The conditional
+		// UPDATE in setConversationTitleIfFallback enforces the precedence.
+		titleSource: text('title_source', { enum: ['fallback', 'ai', 'user'] })
+			.notNull()
+			.default('fallback'),
 		endpointId: text('endpoint_id').notNull(),
 		modelId: text('model_id').notNull(),
 		// Snapshot of the model's `kind` at conversation-create time.

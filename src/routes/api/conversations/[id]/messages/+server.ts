@@ -31,6 +31,9 @@ import { persistGeneratedImage } from '$lib/server/media/persister';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
+import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
+
+const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
 import type {
@@ -221,6 +224,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
 	if (meta.modelKind === 'image') {
+		// Kick off title gen in parallel with image generation — for image
+		// modality the user prompt IS the topic, so the title task doesn't
+		// have to wait for the asset to land. By the time `imageGeneration`
+		// returns (typically multiple seconds), the title is usually ready.
+		const titlePromise = startTitleTaskIfFirstExchange(params.id);
+
 		try {
 			// I2I: route to /v1/images/edits when any image is attached;
 			// otherwise t2i via /v1/images/generations. Multiple attachments
@@ -290,9 +299,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				rawResponseJson: JSON.stringify(upstream)
 			});
 			linkMessageMedia(assistantMessage.id, mediaId);
+			// Race the title task against a bounded budget so a slow task
+			// model never delays the image response. Title gen has been
+			// running since before imageGeneration started, so the typical
+			// case is "title already resolved by now."
+			const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
 			const response: SendMessageResponse = {
 				userMessage: userMessage as ChatMessage,
-				assistantMessage: assistantMessage as ChatMessage
+				assistantMessage: assistantMessage as ChatMessage,
+				...(title ? { title } : {})
 			};
 			return json(response);
 		} catch (e) {
@@ -454,9 +469,20 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		rawResponseJson: JSON.stringify(upstream)
 	});
 
+	// Title task: same shape as the image branch — fire now (after both
+	// user + assistant messages are persisted) and race the bounded
+	// delivery budget before returning JSON. Non-streaming chat callers
+	// (clients that don't pass `?stream=1`) get the title inline; the
+	// generator's conditional UPDATE handles "already AI/user-titled."
+	const syncTitle = await raceTitle(
+		startTitleTaskIfFirstExchange(params.id),
+		TITLE_DELIVERY_BUDGET_MS
+	);
+
 	const response: SendMessageResponse = {
 		userMessage: userMessage as ChatMessage,
-		assistantMessage: assistantMessage as ChatMessage
+		assistantMessage: assistantMessage as ChatMessage,
+		...(syncTitle ? { title: syncTitle } : {})
 	};
 	return json(response);
 };

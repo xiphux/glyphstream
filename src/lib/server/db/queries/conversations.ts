@@ -1,19 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type {
 	ConversationDetail,
 	ConversationSummary,
 	CustomModelParameters,
+	MessagePart,
 	ModelKind
 } from '$lib/types/api';
 import { getDb } from '../client';
-import { conversations } from '../schema';
+import { conversations, messages } from '../schema';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
 	hardDeleteOrphanGeneratedMediaForMessages,
 	listMessageIdsForConversation
 } from './media';
+
+export type TitleSource = 'fallback' | 'ai' | 'user';
 
 interface CreateInput {
 	userId: string;
@@ -234,13 +237,178 @@ export function getConversationMeta(
 	};
 }
 
-/** Set conversation.title — used to auto-set from first message if empty. */
-export function setConversationTitle(id: string, title: string): void {
+/**
+ * Set conversation.title and update the `titleSource` provenance marker.
+ * The source defaults to 'fallback' to preserve the original callsite
+ * behavior (auto-set first-N-chars preview at message-create time).
+ *
+ * Callers that have just learned the *origin* of the title should pass the
+ * appropriate source so the title-gen state machine reads correctly:
+ *   - 'fallback' (default): truncated user text preview
+ *   - 'ai': set by the task model
+ *   - 'user': manual rename
+ *
+ * Prefer the more specific helpers (`setConversationTitleIfFallback`,
+ * `renameConversation`) when you need precedence semantics or ownership
+ * scoping; this raw setter is intentionally unconditional and unscoped.
+ */
+export function setConversationTitle(
+	id: string,
+	title: string,
+	opts: { source?: TitleSource } = {}
+): void {
 	const db = getDb();
 	db.update(conversations)
-		.set({ title, updatedAt: Date.now() })
+		.set({ title, titleSource: opts.source ?? 'fallback', updatedAt: Date.now() })
 		.where(eq(conversations.id, id))
 		.run();
+}
+
+/**
+ * Lightweight read of just the title_source field — used to gate
+ * AI title generation so we only fire on the *first* exchange in a
+ * conversation. After the AI title lands the source becomes 'ai';
+ * after a user rename it becomes 'user'; either of those means
+ * "don't run title gen again." Returns null when the conversation
+ * doesn't exist.
+ */
+export function getConversationTitleSource(id: string): TitleSource | null {
+	const db = getDb();
+	const row = db
+		.select({ titleSource: conversations.titleSource })
+		.from(conversations)
+		.where(eq(conversations.id, id))
+		.get();
+	return row ? row.titleSource : null;
+}
+
+/**
+ * Conditional UPDATE that only writes the AI-generated title when the
+ * conversation still has a `'fallback'` source. The atomic
+ * `WHERE title_source = 'fallback'` clause is the race-free guard against
+ * overwriting a user-set title — if the user renamed between when the
+ * task model started and finished, the conditional UPDATE matches 0
+ * rows and the AI title is silently discarded.
+ *
+ * SQLite is single-writer, so this is genuinely atomic without locking.
+ * Returns true when the row was updated, false otherwise (already AI,
+ * already user-set, or conversation not found).
+ */
+export function setConversationTitleIfFallback(id: string, aiTitle: string): boolean {
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({ title: aiTitle, titleSource: 'ai', updatedAt: Date.now() })
+		.where(and(eq(conversations.id, id), eq(conversations.titleSource, 'fallback')))
+		.run();
+	return res.changes > 0;
+}
+
+/**
+ * User-initiated rename. Scoped by `userId` (ownership check) and validates
+ * the trimmed title is 1-200 chars. Sets `titleSource = 'user'`, which
+ * locks the title against any future AI overwrite via
+ * setConversationTitleIfFallback. Returns false on ownership mismatch
+ * (404) or no-op (already same title); validation errors throw so the
+ * caller can surface them as 400.
+ */
+export class RenameValidationError extends Error {}
+
+export function renameConversation(id: string, userId: string, newTitle: string): boolean {
+	const trimmed = newTitle.trim();
+	if (trimmed.length === 0) {
+		throw new RenameValidationError('Title cannot be empty');
+	}
+	if (trimmed.length > 200) {
+		throw new RenameValidationError('Title cannot exceed 200 characters');
+	}
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({ title: trimmed, titleSource: 'user', updatedAt: Date.now() })
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+	return res.changes > 0;
+}
+
+/**
+ * Read the first user message and first assistant response for a
+ * conversation, used as input to the title generator. The "first
+ * exchange" is identified structurally: the root user message (the one
+ * with parent_message_id NULL) and any direct child of it that has role
+ * 'assistant'. Title gen runs exactly once per conversation (gated by
+ * title_source != 'fallback' check upstream), so we don't worry about
+ * branching here — at title-gen time there is exactly one path.
+ *
+ * Returns null if the conversation has no messages yet (shouldn't happen
+ * at call time, but defensive). `assistantParts` is null when only the
+ * user message exists (multimodal in-flight: the asset hasn't landed).
+ */
+export interface FirstExchange {
+	userText: string;
+	userMediaKinds: ('image' | 'video')[];
+	assistantText: string | null;
+	assistantHasMedia: boolean;
+}
+
+export function getConversationFirstExchange(id: string): FirstExchange | null {
+	const db = getDb();
+	const rootUser = db
+		.select()
+		.from(messages)
+		.where(
+			and(
+				eq(messages.conversationId, id),
+				isNull(messages.parentMessageId),
+				eq(messages.role, 'user')
+			)
+		)
+		.orderBy(asc(messages.createdAt))
+		.get();
+	if (!rootUser) return null;
+
+	const firstAssistant = db
+		.select()
+		.from(messages)
+		.where(
+			and(
+				eq(messages.conversationId, id),
+				eq(messages.parentMessageId, rootUser.id),
+				eq(messages.role, 'assistant')
+			)
+		)
+		.orderBy(asc(messages.createdAt))
+		.get();
+
+	const userParts = parsePartsOrEmpty(rootUser.contentJson);
+	const userText = userParts
+		.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+		.map((p) => p.text)
+		.join('');
+	const userMediaKinds = userParts
+		.map((p) => p.type)
+		.filter((t): t is 'image' | 'video' => t === 'image' || t === 'video');
+
+	let assistantText: string | null = null;
+	let assistantHasMedia = false;
+	if (firstAssistant) {
+		const aParts = parsePartsOrEmpty(firstAssistant.contentJson);
+		assistantText = aParts
+			.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+			.map((p) => p.text)
+			.join('');
+		assistantHasMedia = aParts.some((p) => p.type === 'image' || p.type === 'video');
+	}
+
+	return { userText, userMediaKinds, assistantText, assistantHasMedia };
+}
+
+function parsePartsOrEmpty(json: string): MessagePart[] {
+	try {
+		return JSON.parse(json) as MessagePart[];
+	} catch {
+		return [];
+	}
 }
 
 /**
