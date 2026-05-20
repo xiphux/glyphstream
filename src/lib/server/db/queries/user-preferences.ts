@@ -19,7 +19,10 @@ const DEFAULTS: UserPreferences = {
 	aboutYou: '',
 	customInstructions: '',
 	enterBehavior: 'send',
-	showGreeting: true
+	showGreeting: true,
+	notificationsEnabled: false,
+	notificationsShowContent: false,
+	notificationsForegroundToast: true
 };
 
 /** Pure: parse a raw JSON string into a UserPreferences object, filling in
@@ -46,7 +49,19 @@ export function parseUserPreferences(raw: string | null): UserPreferences {
 				? obj.enterBehavior
 				: DEFAULTS.enterBehavior,
 		showGreeting:
-			typeof obj.showGreeting === 'boolean' ? obj.showGreeting : DEFAULTS.showGreeting
+			typeof obj.showGreeting === 'boolean' ? obj.showGreeting : DEFAULTS.showGreeting,
+		notificationsEnabled:
+			typeof obj.notificationsEnabled === 'boolean'
+				? obj.notificationsEnabled
+				: DEFAULTS.notificationsEnabled,
+		notificationsShowContent:
+			typeof obj.notificationsShowContent === 'boolean'
+				? obj.notificationsShowContent
+				: DEFAULTS.notificationsShowContent,
+		notificationsForegroundToast:
+			typeof obj.notificationsForegroundToast === 'boolean'
+				? obj.notificationsForegroundToast
+				: DEFAULTS.notificationsForegroundToast
 	};
 }
 
@@ -96,7 +111,19 @@ export function setUserPreferences(
 					? patch.enterBehavior
 					: current.enterBehavior,
 			showGreeting:
-				typeof patch.showGreeting === 'boolean' ? patch.showGreeting : current.showGreeting
+				typeof patch.showGreeting === 'boolean' ? patch.showGreeting : current.showGreeting,
+			notificationsEnabled:
+				typeof patch.notificationsEnabled === 'boolean'
+					? patch.notificationsEnabled
+					: current.notificationsEnabled,
+			notificationsShowContent:
+				typeof patch.notificationsShowContent === 'boolean'
+					? patch.notificationsShowContent
+					: current.notificationsShowContent,
+			notificationsForegroundToast:
+				typeof patch.notificationsForegroundToast === 'boolean'
+					? patch.notificationsForegroundToast
+					: current.notificationsForegroundToast
 		};
 		tx.update(users)
 			.set({ preferencesJson: JSON.stringify(next) })

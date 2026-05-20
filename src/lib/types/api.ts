@@ -153,6 +153,31 @@ export interface UserPreferences {
 	 * new-chat page. Default true; minority of users may prefer the
 	 * cleaner header without familial address. */
 	showGreeting: boolean;
+	/**
+	 * Master switch for browser/OS push notifications when an assistant
+	 * message completes. Default false — push requires an explicit
+	 * opt-in (permission prompt + subscription stored server-side). The
+	 * service worker arbitrates per push: silent when the user is on
+	 * the same thread, otherwise toast (if foreground) or OS notification
+	 * (if backgrounded). On iOS, the underlying Web Push API is only
+	 * available after the PWA is installed to the Home Screen.
+	 */
+	notificationsEnabled: boolean;
+	/**
+	 * Whether OS notifications may include a content preview of the
+	 * assistant message. Default false — privacy-conservative so the
+	 * preview text never traverses the push service for users who
+	 * haven't opted in. Server side, the preview is omitted from the
+	 * payload entirely when this is false (not just hidden in the SW).
+	 */
+	notificationsShowContent: boolean;
+	/**
+	 * Whether the in-app toast fires when a thread completes while the
+	 * user is on a different thread/page (tab still visible). Default
+	 * true; some users may prefer silent foreground behavior and OS
+	 * notifications only for backgrounded states.
+	 */
+	notificationsForegroundToast: boolean;
 }
 
 export interface ConversationSummary {

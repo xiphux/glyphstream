@@ -30,7 +30,10 @@ const EMPTY_PREFS = {
 	aboutYou: '',
 	customInstructions: '',
 	enterBehavior: 'send' as const,
-	showGreeting: true
+	showGreeting: true,
+	notificationsEnabled: false,
+	notificationsShowContent: false,
+	notificationsForegroundToast: true
 };
 
 describe('parseUserPreferences', () => {
@@ -85,11 +88,41 @@ describe('parseUserPreferences', () => {
 			futurePref: 'whatever'
 		});
 		expect(parseUserPreferences(blob)).toEqual({
+			...EMPTY_PREFS,
 			name: 'Chris',
 			aboutYou: 'engineer',
 			customInstructions: 'be brief',
-			enterBehavior: 'newline',
-			showGreeting: true
+			enterBehavior: 'newline'
+		});
+	});
+
+	it('parses notification preference fields with type coercion', () => {
+		expect(
+			parseUserPreferences(
+				JSON.stringify({
+					notificationsEnabled: true,
+					notificationsShowContent: true,
+					notificationsForegroundToast: false
+				})
+			)
+		).toMatchObject({
+			notificationsEnabled: true,
+			notificationsShowContent: true,
+			notificationsForegroundToast: false
+		});
+		// Non-boolean values fall back to defaults.
+		expect(
+			parseUserPreferences(
+				JSON.stringify({
+					notificationsEnabled: 'yes',
+					notificationsShowContent: 1,
+					notificationsForegroundToast: null
+				})
+			)
+		).toMatchObject({
+			notificationsEnabled: false,
+			notificationsShowContent: false,
+			notificationsForegroundToast: true
 		});
 	});
 });
@@ -113,11 +146,11 @@ describe('getUserPreferences', () => {
 			enterBehavior: 'newline'
 		});
 		expect(getUserPreferences(u.id)).toEqual({
+			...EMPTY_PREFS,
 			name: 'Chris',
 			aboutYou: 'software engineer',
 			customInstructions: 'be concise',
-			enterBehavior: 'newline',
-			showGreeting: true
+			enterBehavior: 'newline'
 		});
 	});
 });
@@ -133,11 +166,10 @@ describe('setUserPreferences', () => {
 		// Update only the name — other fields preserved.
 		setUserPreferences(u.id, { name: 'C' });
 		expect(getUserPreferences(u.id)).toEqual({
+			...EMPTY_PREFS,
 			name: 'C',
 			aboutYou: 'engineer',
-			customInstructions: '',
-			enterBehavior: 'newline',
-			showGreeting: true
+			enterBehavior: 'newline'
 		});
 	});
 
@@ -158,12 +190,15 @@ describe('setUserPreferences', () => {
 			.where(eq(users.id, u.id))
 			.get();
 		const parsed = JSON.parse(row?.preferencesJson ?? '{}');
-		// Exactly the five known fields, no extras leaking through.
+		// Exactly the known fields, no extras leaking through.
 		expect(Object.keys(parsed).sort()).toEqual([
 			'aboutYou',
 			'customInstructions',
 			'enterBehavior',
 			'name',
+			'notificationsEnabled',
+			'notificationsForegroundToast',
+			'notificationsShowContent',
 			'showGreeting'
 		]);
 	});
@@ -172,11 +207,29 @@ describe('setUserPreferences', () => {
 		const u = seedUser();
 		const next = setUserPreferences(u.id, { name: 'Chris' });
 		expect(next).toEqual({
-			name: 'Chris',
-			aboutYou: '',
-			customInstructions: '',
-			enterBehavior: 'send',
-			showGreeting: true
+			...EMPTY_PREFS,
+			name: 'Chris'
+		});
+	});
+
+	it('persists notification preference toggles', () => {
+		const u = seedUser();
+		setUserPreferences(u.id, {
+			notificationsEnabled: true,
+			notificationsShowContent: true,
+			notificationsForegroundToast: false
+		});
+		expect(getUserPreferences(u.id)).toMatchObject({
+			notificationsEnabled: true,
+			notificationsShowContent: true,
+			notificationsForegroundToast: false
+		});
+		// Partial update leaves other notification fields alone.
+		setUserPreferences(u.id, { notificationsShowContent: false });
+		expect(getUserPreferences(u.id)).toMatchObject({
+			notificationsEnabled: true,
+			notificationsShowContent: false,
+			notificationsForegroundToast: false
 		});
 	});
 
