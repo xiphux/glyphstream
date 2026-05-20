@@ -19,7 +19,7 @@ startMediaPurger();
 // since those filenames are content-hashed. We only need to override for
 // the small set of non-hashed root-level assets that change between
 // deploys but live at stable URLs.
-const ALWAYS_REVALIDATE_PATHS = new Set(['/sw.js', '/manifest.webmanifest']);
+const ALWAYS_REVALIDATE_PATHS = new Set(['/service-worker.js', '/manifest.webmanifest']);
 
 /**
  * Populate event.locals.user on every request from the session cookie.

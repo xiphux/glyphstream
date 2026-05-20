@@ -29,12 +29,21 @@ export default defineConfig({
 		tailwindcss(),
 		sveltekit(),
 		SvelteKitPWA({
+			// 'injectManifest' lets us own the SW code (src/service-worker.ts)
+			// rather than letting Workbox auto-generate it. Required for the
+			// push + notificationclick handlers — generateSW can't take
+			// custom event listeners. We still get workbox-precaching for
+			// the static shell; the plugin injects __WB_MANIFEST into our
+			// SW source at build time.
+			strategies: 'injectManifest',
+			srcDir: 'src',
+			filename: 'service-worker.ts',
 			// Enable in dev so /manifest.webmanifest resolves and the icon
 			// renders the same as in prod. The actual SW registration is
 			// still gated by `import.meta.env.PROD` in src/routes/+layout.svelte,
 			// so the SW only runs in production builds — only the manifest
 			// + assets-served-from-the-plugin path is exercised in dev.
-			devOptions: { enabled: true },
+			devOptions: { enabled: true, type: 'module' },
 			// 'prompt': new SW downloads in the background and waits to
 			// activate until the user opts in via the UpdateBanner that
 			// renders from +layout.svelte's onNeedRefresh callback.
@@ -66,25 +75,12 @@ export default defineConfig({
 					}
 				]
 			},
-			workbox: {
-				// Precache the built shell. APIs and media stay on network so
-				// they're never served stale and SSE streams aren't intercepted.
-				globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
-				// adapter-node serves pages via SSR, not as a static shell, so
-				// there's no precached HTML to fall back navigations to.
-				// @vite-pwa/sveltekit otherwise auto-sets this to "/" (its
-				// `if (!("navigateFallback" in options.workbox))` check is
-				// presence-based, so the explicit `undefined` short-circuits
-				// it). Without this opt-out, Workbox throws
-				// `non-precached-url :: [{"url":"/"}]` when handling the
-				// navigation route at runtime.
-				navigateFallback: undefined,
-				runtimeCaching: [
-					{
-						urlPattern: /^\/api\//,
-						handler: 'NetworkOnly'
-					}
-				]
+			injectManifest: {
+				// Precache the built shell. We only register precache routes
+				// inside the SW, so /api/* and SSE streams pass through to
+				// the network unintercepted — no need for the generateSW-only
+				// runtimeCaching/navigateFallback opt-outs.
+				globPatterns: ['client/**/*.{js,css,html,ico,svg,woff2}']
 			}
 		}),
 		analyze &&
