@@ -124,6 +124,54 @@ EXTERNAL_BASE_URL=https://glyphstream.example.com
 > default to `localhost`, which then mismatches the OAuth callback in
 > production. The `EXTERNAL_` prefix dodges that footgun.
 
+## Push notifications (optional)
+
+GlyphStream can fire OS-level push notifications when an assistant
+message finishes — useful for multi-minute video generations, or just
+walking away from a long answer. The feature is **off by default**;
+without VAPID keys configured, the master switch in **Settings →
+Preferences → Notifications** stays inert and the rest of the app is
+unaffected. To enable:
+
+### 1. Generate a VAPID keypair
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+The public key is fine to commit; the private key is a secret.
+
+### 2. Add a `[notifications]` block to `config.toml`
+
+```toml
+[notifications]
+vapid_public = "BPI...your-public-key..."
+vapid_private_env = "VAPID_PRIVATE_KEY"
+vapid_subject = "mailto:admin@example.com"
+```
+
+The `vapid_private_env` field is the **name** of the env var holding
+the private key, following the same `*_env` convention as endpoint API
+keys — the secret never lives in `config.toml`.
+
+### 3. Set the private key in `.env`
+
+```
+VAPID_PRIVATE_KEY=your-private-key-here
+```
+
+Restart the server. Users can now opt in via **Settings → Preferences
+→ Notifications**.
+
+> **iPhone / iPad users:** iOS Safari only delivers push to PWAs
+> installed to the Home Screen. Open GlyphStream in Safari → share
+> sheet → **Add to Home Screen**, then launch the app from the icon
+> (not the Safari tab) before enabling notifications. The settings UI
+> detects this and shows a hint when the install step is missing.
+
+See `docs/notifications.md` for the full feature: privacy model,
+multi-device behavior, troubleshooting, and developer reference.
+
 ## Deployment
 
 Multi-stage Alpine Docker image, ~200 MB final size. Bind-mount `data/` for
