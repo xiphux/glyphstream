@@ -15,6 +15,7 @@
 import type {
 	ChatMessage,
 	MessagePart,
+	ModelKind,
 	StreamDoneEvent,
 	StreamErrorEvent,
 	StreamEvent,
@@ -33,6 +34,8 @@ import {
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
 import { renderMarkdown } from '../markdown/render';
+import { notifyConversationComplete } from '../push/notify';
+import type { NotifyModality } from '$lib/types/push';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
@@ -50,8 +53,26 @@ const TITLE_DELIVERY_BUDGET_MS = 20_000;
 
 const DEBUG = logLevel() === 'debug';
 
+/** Map the conversation's snapshotted model kind onto the notify
+ *  payload's modality, defaulting null to 'chat'. Kept local because
+ *  the type-narrowing is shallow and only one caller needs it. */
+function relayModalityFor(kind: ModelKind | null): NotifyModality {
+	if (kind === 'image' || kind === 'video' || kind === 'embedding') return kind;
+	return 'chat';
+}
+
 export interface RelayParams {
 	conversationId: string;
+	/** Owner of the conversation, for routing push notifications. */
+	userId: string;
+	/** Conversation title at request time, used as the notification
+	 *  title. May be a fallback "first-N-chars" preview; the AI title
+	 *  may land later but won't reshape an already-sent notification. */
+	conversationTitle: string | null;
+	/** Snapshotted on the conversation row; threaded through so the
+	 *  notify payload's `modality` field reflects what was actually
+	 *  generated (chat vs. image vs. video). */
+	modelKind: ModelKind | null;
 	endpoint: LoadedEndpoint;
 	providerQuirk: ProviderQuirk;
 	requestBody: ChatCompletionRequest;
@@ -158,6 +179,22 @@ async function recordAndPersist(
 		tokensIn,
 		tokensOut
 	});
+
+	// Fire push notifications when the stream finished cleanly. A user
+	// clicking Stop is the loudest possible signal they're paying
+	// attention — notifying them about a generation they just killed
+	// would feel broken. Fire-and-forget: push failure must not block
+	// the recorder or the SSE `done` event the client is waiting on.
+	if (!stopped && finishReason !== 'cancelled') {
+		void notifyConversationComplete({
+			userId: params.userId,
+			conversationId: params.conversationId,
+			assistantMessageId: assistantMessage.id,
+			conversationTitle: params.conversationTitle ?? 'New conversation',
+			previewText: textBuf,
+			modality: relayModalityFor(params.modelKind)
+		}).catch((e) => console.warn('[stream/relay] notify failed:', e));
+	}
 
 	// Title task: fire only on the conversation's first exchange. The
 	// title_source column starts at 'fallback' (default + first-message

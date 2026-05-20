@@ -30,6 +30,7 @@ import { setVideoJobId } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
+import { notifyConversationComplete } from '../push/notify';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import type {
 	ChatMessage,
@@ -55,6 +56,9 @@ const TITLE_DELIVERY_BUDGET_MS = 5_000;
 export interface VideoRelayParams {
 	conversationId: string;
 	userId: string;
+	/** Conversation title at request time, used as the notification
+	 *  title. May be a fallback "first-N-chars" preview. */
+	conversationTitle: string | null;
 	endpoint: LoadedEndpoint;
 	storedModelId: string;
 	prompt: string;
@@ -204,6 +208,19 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				try { controller.close(); } catch { /* already closed */ }
 				return;
 			}
+
+			// Multi-minute video runs are the canonical case for OS
+			// notifications — the user has almost certainly switched
+			// apps by the time this resolves. Fire-and-forget per the
+			// chat relay's pattern.
+			void notifyConversationComplete({
+				userId: params.userId,
+				conversationId: params.conversationId,
+				assistantMessageId: assistantMessage.id,
+				conversationTitle: params.conversationTitle ?? 'New conversation',
+				previewText: '',
+				modality: 'video'
+			}).catch((e) => console.warn('[video-relay] notify failed:', e));
 
 			// Same ordering as the chat relay: emit `done` first so the
 			// client's in-flight UI clears, then race the title task in

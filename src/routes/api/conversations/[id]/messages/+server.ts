@@ -28,6 +28,7 @@ import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
 import { persistGeneratedImage } from '$lib/server/media/persister';
+import { notifyConversationComplete } from '$lib/server/push/notify';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
@@ -299,6 +300,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				rawResponseJson: JSON.stringify(upstream)
 			});
 			linkMessageMedia(assistantMessage.id, mediaId);
+			void notifyConversationComplete({
+				userId: locals.user.id,
+				conversationId: params.id,
+				assistantMessageId: assistantMessage.id,
+				conversationTitle: meta.title ?? 'New conversation',
+				previewText: '',
+				modality: 'image'
+			}).catch((e) => console.warn('[messages] image notify failed:', e));
 			// Race the title task against a bounded budget so a slow task
 			// model never delays the image response. Title gen has been
 			// running since before imageGeneration started, so the typical
@@ -343,6 +352,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		const stream = startVideoRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
+			conversationTitle: meta.title,
 			endpoint,
 			storedModelId: meta.modelId,
 			prompt: promptText,
@@ -418,6 +428,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	if (wantsStream) {
 		const stream = await startStreamingRelay({
 			conversationId: params.id,
+			userId: locals.user.id,
+			conversationTitle: meta.title,
+			modelKind: meta.modelKind,
 			endpoint,
 			providerQuirk: endpoint.providerQuirk,
 			requestBody,
