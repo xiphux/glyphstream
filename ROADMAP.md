@@ -17,18 +17,17 @@ expected priority, not time-bound.
   in config. Avoids OWUI's manual "enable web search" toggle by letting the
   model decide when it needs to search.
 
-- **Notifications + completion sounds in preferences.** The
-  user-preferences surface exists; fill it with QOL features that need
-  per-user toggles:
-  - Toast on assistant message complete (foreground feedback)
-  - Browser Notification API for backgrounded tab — especially valuable
-    for multi-minute video generations
-  - Optional completion sound, with volume + per-modality config (e.g.
-    "only sound for video, since they take longest")
-  - Silent when tab is focused; fire only when user has navigated away
-
-  The PWA / service worker setup already in place means notifications can
-  fire even with the app installed-but-closed on the iPhone homescreen.
+- **Completion sounds + per-modality notification config.** Notifications
+  themselves shipped — Web Push for backgrounded tab/OS notification, an
+  in-app toast for "different thread, app still open," and silent on the
+  thread you're watching (see `docs/notifications.md`). The remaining
+  follow-ups all need per-user / per-modality toggles:
+  - Optional completion sound, with volume control.
+  - Per-modality config (e.g. "only sound for video, since they take
+    longest"). The notify payload already carries `modality`; the SW just
+    needs a per-modality routing pass on the client side.
+  - A "your devices" UI surfacing the `push_subscriptions.user_agent`
+    column with per-device revoke.
 
 - **Structured personalization fields.** The user-level system prompt
   preference is shipped (free-form text). Structured fields (ChatGPT
