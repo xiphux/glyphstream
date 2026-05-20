@@ -37,7 +37,16 @@ import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-ru
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
 
-const TITLE_DELIVERY_BUDGET_MS = 5000;
+// Generous budget because the SSE channel stays open *in the background*
+// after `done` has already settled the in-flight UI on the client. The
+// budget caps how long we'll hold the connection waiting for a slow task
+// model; under it the title arrives in-band via a `title` event, over it
+// the title still lands in the DB (the task runs to completion) but the
+// client only sees it on the next sidebar refetch / navigation.
+// Sized to comfortably cover a beefy task model — e.g., 26B-class
+// llama.cpp models can spend ~5s on prompt eval alone for a "user +
+// assistant" title prompt before generating a single token.
+const TITLE_DELIVERY_BUDGET_MS = 20_000;
 
 const DEBUG = logLevel() === 'debug';
 
@@ -234,21 +243,26 @@ function buildClientStream(
 			try {
 				const { message: assistantMessage, titlePromise } = await recorderPromise;
 
-				// Race the title task against a bounded budget so a slow task
-				// model never blocks the `done` event indefinitely. If the
-				// title arrives in time, emit it on the same SSE stream the
-				// client is already consuming — invalidateAll() after `done`
-				// then sees the persisted title on its refetch. If it
-				// doesn't, the title still persists in the background and
-				// surfaces on the next sidebar refetch.
-				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
-				if (title) {
-					const titleEv: StreamTitleEvent = { type: 'title', title };
-					safeWrite(titleEv);
-				}
-
+				// Emit `done` immediately — the response has truly finished
+				// streaming and the client's "in-flight" indicator should
+				// release now, NOT after we finish waiting on the title
+				// task. Holding `done` for the title race would extend the
+				// "still generating" UI state by however long the task
+				// model takes, which feels broken to the user.
 				const done: StreamDoneEvent = { type: 'done', assistantMessage };
 				safeWrite(done);
+
+				// Then race the title task in the background. The SSE stream
+				// stays open until either the title arrives or the budget
+				// expires; the client's for-await loop keeps reading and
+				// only fires `invalidateAll()` once the stream closes. That
+				// timing is load-bearing: it ensures the load function
+				// reads the *post-title-persist* DB state, so the sidebar
+				// catches the AI title even though we already sent `done`.
+				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
+				if (title) {
+					safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
+				}
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : String(e);
 				const ev: StreamErrorEvent = { type: 'error', message: `Persistence failed: ${msg}` };

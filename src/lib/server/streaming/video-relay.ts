@@ -45,7 +45,12 @@ const DEBUG = logLevel() === 'debug';
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_WAIT_MS = 20 * 60_000; // 20 minutes — generous; rate-limited by upstream timeouts anyway
-const TITLE_DELIVERY_BUDGET_MS = 5000;
+// Shorter than the chat-stream budget because the video title task
+// starts when the *video job is created*, not when it finishes — so it's
+// already had the full 30s+ of video generation to run by the time we
+// hit the race. Under almost any task model this means the title is
+// already resolved when we get here.
+const TITLE_DELIVERY_BUDGET_MS = 5_000;
 
 export interface VideoRelayParams {
 	conversationId: string;
@@ -200,12 +205,19 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				return;
 			}
 
+			// Same ordering as the chat relay: emit `done` first so the
+			// client's in-flight UI clears, then race the title task in
+			// the background of the still-open SSE. `invalidateAll()` on
+			// the client fires after the stream closes (when the title
+			// arrives or the budget expires), so it reads the
+			// post-title-persist DB state.
+			safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
+
 			const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
 			if (title) {
 				safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 			}
 
-			safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
 			try { controller.close(); } catch { /* already closed */ }
 		}
 	});
