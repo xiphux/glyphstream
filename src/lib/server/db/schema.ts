@@ -25,6 +25,33 @@ export const sessions = sqliteTable('sessions', {
 	expiresAt: integer('expires_at').notNull()
 });
 
+// Web Push subscriptions. One row per (user, browser-endpoint) pair: users
+// may have several devices (laptop + phone + tablet), each producing its own
+// endpoint URL from the push service. The endpoint is UNIQUE — resubscribing
+// from the same device produces the same endpoint, so we upsert on it and
+// reassign user_id if the device's account has changed. p256dh + auth are
+// the per-endpoint encryption material the Web Push spec requires; the
+// server uses them to encrypt payloads to the push service.
+export const pushSubscriptions = sqliteTable(
+	'push_subscriptions',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		endpoint: text('endpoint').notNull().unique(),
+		p256dh: text('p256dh').notNull(),
+		auth: text('auth').notNull(),
+		// User-agent string at subscribe time, kept purely for a future
+		// "your devices" UI ("Chrome on macOS — last seen 2 days ago").
+		// Never used to gate behavior — endpoint is the identity.
+		userAgent: text('user_agent'),
+		createdAt: integer('created_at').notNull(),
+		lastSeenAt: integer('last_seen_at').notNull()
+	},
+	(t) => [index('idx_push_subscriptions_user_id').on(t.userId)]
+);
+
 // --- conversations + messages (TREE-SHAPED) ------------------------------
 //
 // Conversations point to their current branch tip via active_leaf_message_id.
