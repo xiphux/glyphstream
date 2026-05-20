@@ -15,6 +15,7 @@
  * service itself).
  */
 
+import type { NotifyModality, NotifyPushPayload } from '$lib/types/push';
 import {
 	deletePushSubscriptionsByEndpoints,
 	listPushSubscriptionsForUser
@@ -25,7 +26,7 @@ import { sendPushNotification, type WebPushSubscription } from './web-push';
 const MAX_TITLE_CHARS = 60;
 const MAX_PREVIEW_CHARS = 140;
 
-export type NotifyModality = 'chat' | 'image' | 'video' | 'embedding';
+export type { NotifyModality, NotifyPushPayload };
 
 export interface NotifyConversationCompleteInput {
 	userId: string;
@@ -37,21 +38,6 @@ export interface NotifyConversationCompleteInput {
 	 *  modalities (image/video) — the preview will be empty either way. */
 	previewText: string;
 	modality: NotifyModality;
-}
-
-export interface NotifyPushPayload {
-	type: 'message_complete';
-	conversationId: string;
-	assistantMessageId: string;
-	conversationTitle: string;
-	modality: NotifyModality;
-	/** Present iff notificationsShowContent is true. Omitted entirely
-	 *  (not even an empty string) when the user opted out. */
-	preview?: string;
-	/** Whether the SW should postMessage to visible clients for an
-	 *  in-app toast. False -> silent foreground + OS notification only
-	 *  for backgrounded states. */
-	foregroundToast: boolean;
 }
 
 /**

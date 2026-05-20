@@ -26,7 +26,7 @@
 
 import { precacheAndRoute } from 'workbox-precaching';
 import { pickAction, type ArbiterClient, type ArbiterPayload } from '$lib/sw/arbiter';
-import type { NotifyPushPayload } from '$lib/server/push/notify';
+import type { NotifyPushPayload } from '$lib/types/push';
 
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.

@@ -1,8 +1,11 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import favicon from '$lib/assets/favicon.svg';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
+	import { toast } from '$lib/toast.svelte';
+	import type { SwClientMessage } from '$lib/types/push';
 
 	let { children } = $props();
 
@@ -35,6 +38,30 @@
 			// updateSW(true) activates the waiting SW and reloads. We pin
 			// it to a state slot so the banner's click handler can call it.
 			triggerUpdate = () => updateSW(true);
+		}
+
+		// SW -> client messages: the push handler posts these when a
+		// thread completes for a user on a different page (toast) or
+		// when an OS notification is clicked (navigate). The SW only
+		// posts when the action is *meant* for this client; we don't
+		// need to re-arbitrate here. Registered unconditionally because
+		// in dev there's still a `serviceWorker` object available, even
+		// when the SW itself isn't registered — the listener just stays
+		// quiet.
+		if ('serviceWorker' in navigator) {
+			navigator.serviceWorker.addEventListener('message', (ev) => {
+				const data = ev.data as SwClientMessage | undefined;
+				if (!data) return;
+				if (data.kind === 'message_complete_toast') {
+					const { conversationId, conversationTitle } = data.payload;
+					toast.info(conversationTitle, {
+						action: { label: 'Open', handler: () => goto(`/chat/${conversationId}`) },
+						duration: 6000
+					});
+				} else if (data.kind === 'navigate_to_conversation') {
+					void goto(`/chat/${data.conversationId}`);
+				}
+			});
 		}
 	});
 
