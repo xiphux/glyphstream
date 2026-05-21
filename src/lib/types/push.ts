@@ -31,4 +31,25 @@ export interface NotifyPushPayload {
 /** Messages the SW posts to controlled clients. */
 export type SwClientMessage =
 	| { kind: 'message_complete_toast'; payload: NotifyPushPayload }
-	| { kind: 'navigate_to_conversation'; conversationId: string };
+	| { kind: 'navigate_to_conversation'; conversationId: string }
+	/** Sent while arbitrating a push. Carries a MessagePort (in the
+	 *  event's `ports`) the client replies on with an
+	 *  ActiveConversationReport. */
+	| { kind: 'query_active_conversation' };
+
+/**
+ * A window's authoritative self-report of which conversation it is
+ * showing and whether it is visible. The SW asks for this (via
+ * `query_active_conversation`) instead of reading WindowClient.url +
+ * visibilityState itself: WindowClient.url does not reliably track
+ * SvelteKit client-side (pushState) navigation, so a window that has
+ * SPA-navigated to /chat/{id} can still report its original load URL.
+ * The page itself always knows its real route.
+ */
+export interface ActiveConversationReport {
+	/** The conversation id the window is viewing, or null when it's on a
+	 *  non-conversation page (new-chat, settings, gallery, …). */
+	conversationId: string | null;
+	/** document.visibilityState === 'visible' at reply time. */
+	visible: boolean;
+}

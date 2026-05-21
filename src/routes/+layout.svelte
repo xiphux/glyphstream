@@ -2,10 +2,11 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import { toast } from '$lib/toast.svelte';
-	import type { SwClientMessage } from '$lib/types/push';
+	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 
 	let { children } = $props();
 
@@ -52,6 +53,18 @@
 			navigator.serviceWorker.addEventListener('message', (ev) => {
 				const data = ev.data as SwClientMessage | undefined;
 				if (!data) return;
+				if (data.kind === 'query_active_conversation') {
+					// The SW is arbitrating a push and needs to know —
+					// authoritatively, from the page itself — which
+					// conversation this window is on and whether it's
+					// visible. WindowClient.url can't be trusted for SPA
+					// routes, so we answer over the port the SW handed us.
+					ev.ports[0]?.postMessage({
+						conversationId: page.params.id ?? null,
+						visible: document.visibilityState === 'visible'
+					} satisfies ActiveConversationReport);
+					return;
+				}
 				if (data.kind === 'message_complete_toast') {
 					const { conversationId, conversationTitle } = data.payload;
 					toast.info(conversationTitle, {

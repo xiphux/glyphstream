@@ -25,8 +25,8 @@
  */
 
 import { precacheAndRoute } from 'workbox-precaching';
-import { pickAction, type ArbiterClient, type ArbiterPayload } from '$lib/sw/arbiter';
-import type { NotifyPushPayload } from '$lib/types/push';
+import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
+import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
 
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.
@@ -63,23 +63,33 @@ async function handlePush(event: PushEvent): Promise<void> {
 		type: 'window',
 		includeUncontrolled: true
 	});
-	const arbiterClients: ArbiterClient[] = clientsList.map((c) => ({
-		url: c.url,
-		visibilityState: c.visibilityState
-	}));
+
+	// Ask each window to self-report its route + visibility. WindowClient.url
+	// doesn't reliably reflect SvelteKit client-side (pushState) navigation,
+	// so the SW can't trust its own view of which conversation a window is
+	// on — the window itself is the authority. A window that doesn't answer
+	// in time (suspended / closed) is treated as absent.
+	const probed = await Promise.all(
+		clientsList.map(async (client) => ({ client, report: await queryClient(client) }))
+	);
+	const reports: ActiveConversationReport[] = [];
+	for (const p of probed) {
+		if (p.report) reports.push(p.report);
+	}
+
 	const arbiterPayload: ArbiterPayload = {
 		conversationId: payload.conversationId,
 		foregroundToast: payload.foregroundToast
 	};
 
-	const action = pickAction(arbiterClients, arbiterPayload);
+	const action = pickAction(reports, arbiterPayload);
 
 	if (action === 'silent') return;
 
 	if (action === 'toast') {
-		for (let i = 0; i < clientsList.length; i++) {
-			if (clientsList[i].visibilityState === 'visible') {
-				clientsList[i].postMessage({ kind: 'message_complete_toast', payload });
+		for (const p of probed) {
+			if (p.report?.visible) {
+				p.client.postMessage({ kind: 'message_complete_toast', payload });
 			}
 		}
 		return;
@@ -94,6 +104,44 @@ async function handlePush(event: PushEvent): Promise<void> {
 		badge: '/icon.svg',
 		renotify: true
 	} as NotificationOptions);
+}
+
+/**
+ * Ask one window which conversation it's showing and whether it's
+ * visible. Uses a MessageChannel so the reply correlates without a
+ * shared message bus. Resolves to null if the window doesn't answer
+ * within the timeout — a suspended or unresponsive window can't be
+ * "actively viewing" anything, so the arbiter treats null as absent.
+ */
+function queryClient(
+	client: Client,
+	timeoutMs = 500
+): Promise<ActiveConversationReport | null> {
+	return new Promise((resolve) => {
+		const channel = new MessageChannel();
+		let settled = false;
+		const finish = (result: ActiveConversationReport | null) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			channel.port1.onmessage = null;
+			resolve(result);
+		};
+		const timer = setTimeout(() => finish(null), timeoutMs);
+		channel.port1.onmessage = (ev: MessageEvent) => {
+			const data = ev.data as Partial<ActiveConversationReport> | undefined;
+			finish(
+				data && typeof data.visible === 'boolean'
+					? { conversationId: data.conversationId ?? null, visible: data.visible }
+					: null
+			);
+		};
+		try {
+			client.postMessage({ kind: 'query_active_conversation' }, [channel.port2]);
+		} catch {
+			finish(null);
+		}
+	});
 }
 
 self.addEventListener('notificationclick', (event: NotificationEvent) => {
