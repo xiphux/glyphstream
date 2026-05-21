@@ -430,6 +430,33 @@
 				: 'Thinking'
 	);
 
+	// Abandon the in-flight turn when navigating to a different
+	// conversation. This component instance is reused across
+	// /chat/[id] -> /chat/[id] navigations (same route), so a send
+	// fired in conversation A keeps its fetch + closure alive after the
+	// user switches to conversation B. Without this reset B inherits A's
+	// open "Thinking…/Generating…" bubble, and A's completion handler
+	// would graft A's messages onto B's list. Aborting the fetch is
+	// safe: the server keeps generating regardless of the client
+	// connection (see streaming/relay.ts) and fires its push
+	// notification when done, so the work isn't lost — the user just
+	// gets notified instead of watching it.
+	let previousConvId: string | undefined;
+	$effect(() => {
+		const id = data.conversation.id;
+		if (id === previousConvId) return;
+		previousConvId = id;
+		activeAbort?.abort();
+		activeAbort = null;
+		busy = false;
+		inFlightOpen = false;
+		inFlightText = '';
+		inFlightReasoning = '';
+		inFlightProgress = null;
+		inFlightStatus = null;
+		errorMsg = null;
+	});
+
 	/**
 	 * Build a placeholder user message rendered optimistically so the
 	 * bubble appears the moment the user hits Send, before the upstream
@@ -480,6 +507,12 @@
 		attachedMediaIds: string[] = [],
 		options: SendOptions = {}
 	) {
+		// The conversation this turn belongs to. The chat-page component
+		// is reused across conversation navigations, so by the time an
+		// await below resolves the user may be looking at a different
+		// conversation — every post-await mutation of shared render state
+		// is guarded against `convId` having moved on.
+		const turnConvId = convId;
 		busy = true;
 		errorMsg = null;
 		wasHiddenDuringFetch = false;
@@ -556,6 +589,10 @@
 			if (!res.body) throw new Error('Server returned no body');
 
 			for await (const rec of readSSE(res.body)) {
+				// Abandoned mid-stream by a conversation switch — stop
+				// touching shared render state; it belongs to a
+				// different conversation now.
+				if (convId !== turnConvId) break;
 				let event: StreamEvent;
 				try {
 					event = JSON.parse(rec.data) as StreamEvent;
@@ -614,7 +651,7 @@
 						break;
 				}
 			}
-			void invalidateAll();
+			if (convId === turnConvId) void invalidateAll();
 		} catch (e) {
 			// AbortError from clicking Stop is expected — don't surface as
 			// a user-facing error. The server-side recorder will have committed
@@ -630,15 +667,25 @@
 			// generation is whatever the server made of it — completed,
 			// still running, or genuinely errored on its end — and the
 			// invalidate picks up whichever.
-			if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
-				void invalidateAll();
-			} else {
-				errorMsg = e instanceof Error ? e.message : String(e);
+			//
+			// All of this is render state for `turnConvId`'s thread —
+			// skip it entirely if the user has since navigated away
+			// (the abandon-on-navigation $effect already cleaned up).
+			if (convId === turnConvId) {
+				if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
+					void invalidateAll();
+				} else {
+					errorMsg = e instanceof Error ? e.message : String(e);
+				}
+				inFlightOpen = false;
 			}
-			inFlightOpen = false;
 		} finally {
-			busy = false;
-			activeAbort = null;
+			// Only the turn that still owns the controller clears it — a
+			// conversation switch (or a newer turn) may have replaced it.
+			if (activeAbort === abort) {
+				busy = false;
+				activeAbort = null;
+			}
 		}
 	}
 
@@ -648,6 +695,10 @@
 		optimisticId: string | null = null,
 		options: SendOptions = {}
 	) {
+		// See sendStreaming — the component is reused across conversation
+		// navigations, so the result of this (20-60s) request must not be
+		// grafted onto whatever conversation is on screen when it lands.
+		const turnConvId = convId;
 		const abort = new AbortController();
 		activeAbort = abort;
 		const isRetry = !!options.retryFromMessageId;
@@ -673,6 +724,11 @@
 				throw new Error(j.message ?? `HTTP ${res.status}`);
 			}
 			const body = (await res.json()) as SendMessageResponse;
+			// Abandoned by a conversation switch while the request was in
+			// flight. The server still persisted the result — it'll show
+			// on this thread's next load — so just drop it here rather
+			// than splicing it into whatever conversation is on screen.
+			if (convId !== turnConvId) return;
 			// Send / edit: drop optimistic, then append both canonical rows.
 			// Retry: only append the new assistant — the user message
 			// already exists in the array.
@@ -700,15 +756,22 @@
 			// exactly the window where users switch apps, lock their
 			// phones, or step into / out of wifi range and lose the
 			// fetch.
-			if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
-				void invalidateAll();
-			} else {
-				errorMsg = e instanceof Error ? e.message : String(e);
+			// Skip if the user navigated away mid-request — the abandon-
+			// on-navigation $effect already reset this thread's state.
+			if (convId === turnConvId) {
+				if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
+					void invalidateAll();
+				} else {
+					errorMsg = e instanceof Error ? e.message : String(e);
+				}
+				inFlightOpen = false;
 			}
-			inFlightOpen = false;
 		} finally {
-			busy = false;
-			activeAbort = null;
+			// Only the turn that still owns the controller clears it.
+			if (activeAbort === abort) {
+				busy = false;
+				activeAbort = null;
+			}
 		}
 	}
 
@@ -886,6 +949,27 @@
 		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
 		el.style.height = `${next}px`;
 		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+	});
+
+	// Drop the composer draft and any open inline-edit session when
+	// navigating to a different conversation. Like the in-flight turn
+	// state, these are component-local and the /chat/[id] component is
+	// reused across conversation switches, so without this a half-typed
+	// draft reappears in the next conversation — and worse, a stale
+	// `editingMessageId` (whose target message doesn't exist in the new
+	// conversation) hides the composer with no inline editor to replace
+	// it, leaving no way to type. Guarded on a real id change so a
+	// same-conversation invalidateAll() can't wipe a draft mid-compose.
+	let composerResetConvId: string | undefined;
+	$effect(() => {
+		const id = data.conversation.id;
+		if (id === composerResetConvId) return;
+		composerResetConvId = id;
+		composerText = '';
+		editingMessageId = null;
+		editingParentId = null;
+		editText = '';
+		editAttachments.clear();
 	});
 
 	function beginEdit(m: ChatMessage) {
