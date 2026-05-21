@@ -128,11 +128,17 @@ EXTERNAL_BASE_URL=https://glyphstream.example.com
 
 By default, conversation titles in the sidebar are the first ~50
 characters of the user's opening message. To get model-generated
-titles instead, set the top-level `task_model` field in `config.toml`
-to a model already exposed by one of your `[[endpoints]]`:
+titles instead, add a top-level `task_model` field **at the very top
+of `config.toml`, above the first `[[endpoints]]` block**, naming a
+model that one of those endpoints exposes:
 
 ```toml
+# top of config.toml — before any [[endpoints]] or [table] header
 task_model = "groq::llama-3.1-8b-instant"
+
+[[endpoints]]
+id = "groq"
+# ...
 ```
 
 The format is `endpoint_id::upstream_model_id` — the same namespaced
@@ -153,11 +159,15 @@ preview and the rest of the response is unaffected. Users can also
 rename any conversation manually via the sidebar **Rename** action —
 manual renames win even if they race a running title task.
 
-> **TOML scoping gotcha:** `task_model` is a top-level scalar, so
-> place the assignment above any `[notifications]` (or other
-> `[table]`) header in `config.toml`. TOML scopes every key-value pair
-> after a table header into that table, so `task_model =` written
-> below `[notifications]` would silently become a notifications field.
+> **TOML scoping gotcha:** `task_model` is a top-level scalar, and TOML
+> binds every bare key to the *most recently opened* table header —
+> there is no syntax to return to the root table once a header appears.
+> So `task_model` must sit above **every** `[[endpoints]]` and
+> `[table]` header in the file. Placed below an `[[endpoints]]` block
+> it is parsed as a field of that endpoint, where endpoint validation
+> ignores it as an unknown key and title generation reads a top-level
+> `task_model` that isn't there — so titling silently stays in
+> fallback mode with no error at boot.
 
 ## Push notifications (optional)
 

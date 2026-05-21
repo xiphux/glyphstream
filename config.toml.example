@@ -9,6 +9,28 @@
 # env var to read at startup, never the literal secret. Keeps this file safe
 # to commit to a private repo.
 
+# ── Optional top-level setting: task_model ───────────────────────────
+# Auto-generates conversation titles. After the first user+assistant
+# exchange in a new chat, GlyphStream calls this model once to produce a
+# short title, replacing the default first-N-chars-of-prompt preview.
+#
+# Format: "endpoint_id::upstream_model_id" — the same namespaced shape
+# the model picker uses. The endpoint it names is one defined further
+# down this file; forward references are fine (the id is resolved at
+# request time, not parse time). Pick a small, fast model: title
+# delivery has a 5s SSE budget so it lands while the user is still
+# watching the message finish. Slower models still run — the title just
+# appears on the next sidebar refetch. Unset / typo'd / removed-endpoint
+# is non-fatal: titling silently falls back to the first-N-chars preview.
+#
+# MUST stay here, at the very top of the file, ABOVE every [[endpoints]]
+# and [table] header. TOML binds each bare key to the most recent table
+# header — a `task_model =` line written below an [[endpoints]] block is
+# parsed as a field OF that endpoint (then silently ignored), not as a
+# top-level setting, and titling never turns on.
+#
+# task_model = "groq::llama-3.1-8b-instant"
+
 # Example: an openai-api-bridge instance running on the NAS — gives us
 # ComfyUI image/video, Venice, plus any openai-compat passthrough providers
 # the bridge fronts (e.g. local llama-server) under one endpoint.
@@ -56,29 +78,6 @@
 #   aggregating proxies (openai-api-bridge) that fan out into many real
 #   providers. Models without `owned_by` fall back to the endpoint's group.
 # group_by = "owned_by"
-
-# Optional: a "task model" used for utility chores like auto-generating
-# conversation titles. After the first user+assistant exchange in a new
-# chat, GlyphStream calls this model once to produce a short title that
-# replaces the default first-N-chars-of-prompt sidebar preview.
-#
-# Format: "endpoint_id::upstream_model_id" — the same namespaced shape
-# the model picker uses. Both halves must resolve against an endpoint
-# defined above. Pick a small fast model: title delivery has a 5s SSE
-# budget so the title arrives while the user is still watching the
-# message finish; slower task models keep running and the title shows
-# up on the next sidebar refetch.
-#
-# Unset / typo'd / removed-endpoint is non-fatal — titling silently
-# reverts to the first-N-chars fallback. Users can also rename any
-# conversation by hand via the sidebar Rename action.
-#
-# Keep this assignment ABOVE the [notifications] block below — TOML
-# scopes any key-value pair after a [table] header into that table, so
-# putting `task_model =` after `[notifications]` would make it a
-# notifications field instead of top-level.
-#
-# task_model = "groq::llama-3.1-8b-instant"
 
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys
