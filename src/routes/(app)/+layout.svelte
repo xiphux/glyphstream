@@ -6,6 +6,7 @@
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '$lib/components/Toaster.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
 		Archive,
 		ChevronDown,
@@ -494,11 +495,21 @@
 							{:else}
 								<a
 									{href}
-									class="block truncate rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
+									class="flex items-center gap-1.5 rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
 										? 'bg-neutral-200 dark:bg-neutral-800'
 										: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
 								>
-									{c.title ?? 'Untitled'}
+									{#if isTitlePending(c.id)}
+										<!-- Subtle spinner while the background auto-title
+											 task is still generating this conversation's
+											 title (see $lib/title-pending). -->
+										<span
+											class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent dark:border-neutral-500 dark:border-t-transparent"
+											aria-hidden="true"
+											title="Generating title…"
+										></span>
+									{/if}
+									<span class="min-w-0 truncate">{c.title ?? 'Untitled'}</span>
 								</a>
 								<DropdownMenu.Root
 									open={openOverflowFor === c.id}

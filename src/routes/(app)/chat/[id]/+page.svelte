@@ -25,6 +25,7 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { MediaListItem } from '$lib/server/db/queries/media';
 	import type {
 		ChatMessage,
@@ -589,6 +590,9 @@
 		// conversation — every post-await mutation of shared render state
 		// is guarded against `convId` having moved on.
 		const turnConvId = convId;
+		// First exchange ⇒ the server runs the auto-title task once the
+		// response lands; drives the sidebar's title spinner below.
+		const isFirstExchange = messages.length === 0;
 		busy = true;
 		errorMsg = null;
 		wasHiddenDuringFetch = false;
@@ -728,6 +732,10 @@
 						// so `busy` releases here rather than in `finally`
 						// (which only runs once the stream actually closes).
 						busy = false;
+						// The response is done; the auto-title task now runs
+						// in the background (the stream is held open for it).
+						// Flag the sidebar to show a spinner by the title.
+						if (isFirstExchange) markTitlePending(turnConvId);
 						break;
 					case 'error':
 						errorMsg = event.message;
@@ -766,6 +774,10 @@
 				inFlightOpen = false;
 			}
 		} finally {
+			// The stream has closed — the title task (if any) has delivered
+			// or timed out. Drop the sidebar spinner. Gated on isFirstExchange
+			// so a fast follow-up turn can't clear a spinner it didn't set.
+			if (isFirstExchange) clearTitlePending(turnConvId);
 			// Only the turn that still owns the controller clears it — a
 			// conversation switch (or a newer turn) may have replaced it.
 			if (activeAbort === abort) {
