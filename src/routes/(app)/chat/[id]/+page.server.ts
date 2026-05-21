@@ -6,12 +6,20 @@ import { ConfigError } from '$lib/server/endpoints/config';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import { normalizeUpstreamModel } from '$lib/server/endpoints/models';
 import { listEndpoints } from '$lib/server/endpoints/registry';
+import { getInFlight } from '$lib/server/streaming/in-flight';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 	const conversation = getConversationDetail(params.id, locals.user.id);
 	if (!conversation) throw error(404, 'Conversation not found');
+
+	// Whether a generation is running for this conversation right now,
+	// per the server's in-flight registry — the source of truth the
+	// chat page uses to restore the "Generating…" indicator after an
+	// iOS suspension killed the client's fetch. Unix ms start time, or
+	// null when nothing is in flight.
+	const inFlightSince = getInFlight(params.id)?.startedAt ?? null;
 
 	// Friendly label for the assistant in message bubbles. Custom models
 	// win because the user named them; otherwise we strip the verbose
@@ -33,7 +41,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		endpoints = listEndpoints();
 	} catch (e) {
 		if (e instanceof ConfigError) {
-			return { conversation, assistantLabel, models: [] };
+			return { conversation, assistantLabel, models: [], inFlightSince };
 		}
 		throw e;
 	}
@@ -48,5 +56,5 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		})
 	);
 
-	return { conversation, assistantLabel, models: modelResults.flat() };
+	return { conversation, assistantLabel, models: modelResults.flat(), inFlightSince };
 };

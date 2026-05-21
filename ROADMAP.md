@@ -50,21 +50,6 @@ expected priority, not time-bound.
   ("disable system prompt only, keep memories"). Pick once we have
   memories implemented and can see which split feels right.
 
-- **Server-side in-flight indicator persistence.** The chat page's
-  "Generating…" bubble is currently tied to the local fetch promise's
-  lifetime, which iOS suspension and network handoffs can kill even
-  though the server keeps generating happily. The data side of that
-  case is already handled — `visibilitychange` + `offline`/`online`
-  listeners reconcile against server state on recovery — but the
-  *visual* indicator dies with the fetch and doesn't come back until
-  the assistant message arrives. Fix: expose the in-flight registry's
-  per-conversation state through the conversation load function so the
-  bubble is hydrated from server-reported truth on every page mount.
-  Connection drops then become non-events for the indicator; it
-  persists across suspensions because it doesn't depend on the local
-  fetch staying alive. Probably ~60 lines across the load function,
-  conversation-detail response shape, and chat-page render gating.
-
 - **Bulk gallery management.** As the library accumulates over months
   of use, single-item delete becomes tedious. Worth adding multi-select
   + bulk-delete (and maybe bulk-archive into a hidden tier) once the

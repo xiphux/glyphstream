@@ -8,13 +8,18 @@ import {
 	unarchiveConversation
 } from '$lib/server/db/queries/conversations';
 import { getMediaStore } from '$lib/server/media/disk-store';
+import { getInFlight } from '$lib/server/streaming/in-flight';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 	const conv = getConversationDetail(params.id, locals.user.id);
 	if (!conv) throw error(404, 'Conversation not found');
-	return json({ conversation: conv });
+	// `inFlightSince` lets the chat page's recovery poll detect — without
+	// the heavyweight page reload — when a generation it's tracking has
+	// finished. DB-only otherwise, so it's cheap to poll.
+	const inFlightSince = getInFlight(params.id)?.startedAt ?? null;
+	return json({ conversation: conv, inFlightSince });
 };
 
 /**

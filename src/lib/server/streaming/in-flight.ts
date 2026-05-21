@@ -18,6 +18,11 @@ import type { LoadedEndpoint } from '../endpoints/config';
 export interface InFlightEntry {
 	controller: AbortController;
 	endpoint: LoadedEndpoint;
+	/** Unix ms when the generation was registered. Surfaced to the client
+	 *  (via the conversation load function) so a "Generating…" indicator
+	 *  recovered after an iOS suspension can show a truthful elapsed timer
+	 *  instead of restarting from zero. */
+	startedAt: number;
 	/** For video kind: bridge-side job id, set as soon as videoCreate returns. */
 	videoJobId?: string;
 }
@@ -35,7 +40,11 @@ export function registerInFlight(
 ): InFlightEntry {
 	const prior = inFlight.get(conversationId);
 	if (prior) prior.controller.abort();
-	const entry: InFlightEntry = { controller: new AbortController(), endpoint };
+	const entry: InFlightEntry = {
+		controller: new AbortController(),
+		endpoint,
+		startedAt: Date.now()
+	};
 	inFlight.set(conversationId, entry);
 	return entry;
 }

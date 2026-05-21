@@ -62,6 +62,11 @@
 	let convId = $state(data.conversation.id);
 	// svelte-ignore state_referenced_locally
 	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
+	// Server's in-flight registry start time for this conversation (unix
+	// ms), or null. Mirrored from the load function so the "Generating…"
+	// indicator can survive an iOS suspension that killed the client fetch.
+	// svelte-ignore state_referenced_locally
+	let serverInFlightSince = $state<number | null>(data.inFlightSince);
 
 	$effect(() => {
 		messages = data.conversation.messages;
@@ -69,6 +74,7 @@
 		modelId = data.conversation.modelId;
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
+		serverInFlightSince = data.inFlightSince;
 	});
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
@@ -405,17 +411,44 @@
 	let inFlightStatus = $state<string | null>(null);
 	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
 
+	// Server-reported truth: a generation is running for this conversation
+	// but this client isn't the one driving it — its fetch died (iOS
+	// suspended the PWA, the network dropped). `serverInFlightSince` is
+	// mirrored from the load function; `recoveredInFlight` means "show the
+	// bubble hydrated from the registry, not from a live local fetch."
+	//
+	// The leaf check matters: the registry entry lingers a little past the
+	// message itself (the SSE stream stays open through the background
+	// title task), so `serverInFlightSince` can still be set for a
+	// generation that already produced its assistant turn. If `messages`
+	// already ends in an assistant message, there's nothing to recover.
+	const recoveredInFlight = $derived(
+		serverInFlightSince !== null &&
+			!inFlightOpen &&
+			messages[messages.length - 1]?.role !== 'assistant'
+	);
+	// The in-flight bubble shows for either a live local turn or a
+	// recovered one.
+	const showInFlight = $derived(inFlightOpen || recoveredInFlight);
+	// A generation is in progress, whether or not this client is driving
+	// it — gates composer input + message actions the same as a live turn.
+	const generating = $derived(busy || recoveredInFlight);
+
 	// Tick a timer while the in-flight bubble is open so the user gets a
 	// progress signal for slow operations (image generation, video gen) and
 	// also for chat round-trips that stall before the first token.
 	let elapsedSeconds = $state(0);
 	$effect(() => {
-		if (!inFlightOpen) {
+		if (!showInFlight) {
 			elapsedSeconds = 0;
 			return;
 		}
-		const startedAt = Date.now();
-		elapsedSeconds = 0;
+		// A recovered bubble counts from the server-reported start time so
+		// the timer stays honest after a suspension; a live local turn
+		// counts from now (when this send began).
+		const startedAt =
+			recoveredInFlight && serverInFlightSince !== null ? serverInFlightSince : Date.now();
+		elapsedSeconds = (Date.now() - startedAt) / 1000;
 		const interval = setInterval(() => {
 			elapsedSeconds = (Date.now() - startedAt) / 1000;
 		}, 100);
@@ -455,6 +488,49 @@
 		inFlightProgress = null;
 		inFlightStatus = null;
 		errorMsg = null;
+	});
+
+	// While a generation runs server-side that this client isn't driving
+	// (a recovered bubble — the local fetch died to an iOS suspension or
+	// dropped connection), poll the lightweight conversation endpoint so
+	// the "Generating…" bubble resolves the moment the generation finishes
+	// — even if the user just stays in the app. invalidateAll() is too
+	// heavy to poll (it re-fetches every endpoint's model list); the GET
+	// endpoint is DB-only.
+	$effect(() => {
+		if (!recoveredInFlight) return;
+		const id = convId;
+		let stopped = false;
+		const interval = setInterval(async () => {
+			try {
+				const res = await fetch(`/api/conversations/${id}`);
+				if (stopped || !res.ok) return;
+				const body = (await res.json()) as {
+					conversation: { messages: Array<{ role: string }> };
+					inFlightSince: number | null;
+				};
+				// Done when the assistant turn has landed (the timely
+				// signal — beats the registry, which lingers through the
+				// title task) or the registry cleared with no message
+				// (a cancelled generation).
+				const msgs = body.conversation.messages;
+				const finished =
+					msgs[msgs.length - 1]?.role === 'assistant' || body.inFlightSince === null;
+				if (finished && !stopped) {
+					stopped = true;
+					clearInterval(interval);
+					// One full reload to pull in the finished message, the
+					// AI title, and the now-cleared in-flight state.
+					await invalidateAll();
+				}
+			} catch {
+				// Transient — the next tick retries.
+			}
+		}, 4000);
+		return () => {
+			stopped = true;
+			clearInterval(interval);
+		};
 	});
 
 	/**
@@ -777,7 +853,10 @@
 
 	async function stop() {
 		const abort = activeAbort;
-		if (!abort) return;
+		// A recovered bubble has no local fetch to abort, but the server
+		// generation is still registered — /cancel reaches it by
+		// conversation id all the same.
+		if (!abort && !recoveredInFlight) return;
 		// Tell the server to tear down upstream first (so the bridge stops
 		// generating instead of running to completion). Then abort the local
 		// fetch so we stop receiving the in-flight events.
@@ -787,7 +866,14 @@
 			// Best-effort — even if the cancel POST fails, aborting locally
 			// still gives the user the "stopped" UX.
 		}
-		abort.abort();
+		if (abort) {
+			abort.abort();
+		} else {
+			// Recovered case: nothing local to abort. Re-sync so the
+			// cancelled state lands; the recovery poll backstops this if
+			// the server hasn't finished tearing down yet.
+			void invalidateAll();
+		}
 	}
 
 	function isAbortError(e: unknown): boolean {
@@ -799,7 +885,7 @@
 	async function send(e: Event) {
 		e.preventDefault();
 		const text = composerText.trim();
-		if ((!text && attachments.items.length === 0) || busy) return;
+		if ((!text && attachments.items.length === 0) || generating) return;
 		if (attachments.isBusy) return;
 		const attachedMediaIds = attachments.readyMediaIds();
 		// Editing: send the new message as a sibling under the same parent
@@ -973,7 +1059,7 @@
 	});
 
 	function beginEdit(m: ChatMessage) {
-		if (busy) return;
+		if (generating) return;
 		editText = partsToText(m.parts);
 		editAttachments.clear();
 		for (const p of m.parts) {
@@ -995,7 +1081,7 @@
 
 	async function saveEdit() {
 		const text = editText.trim();
-		if ((!text && editAttachments.items.length === 0) || busy) return;
+		if ((!text && editAttachments.items.length === 0) || generating) return;
 		if (editAttachments.isBusy) return;
 		const editedId = editingMessageId;
 		if (!editedId) return;
@@ -1023,7 +1109,7 @@
 	 * forward `regenerateFromMessageId`) are handled in sendStreaming.
 	 */
 	async function retryAssistant(m: ChatMessage) {
-		if (busy) return;
+		if (generating) return;
 		await sendStreaming('', [], { retryFromMessageId: m.id });
 	}
 
@@ -1035,7 +1121,7 @@
 	 * were when they clicked the arrow), or a longer one strands them
 	 * mid-content with no clear orientation. */
 	async function selectSibling(targetMessageId: string) {
-		if (busy) return;
+		if (generating) return;
 		errorMsg = null;
 		try {
 			const res = await fetch(
@@ -1064,7 +1150,7 @@
 	 * irreversible (subtree messages + any uniquely-referenced generated
 	 * media get hard-deleted via the ref-counted purger path). */
 	async function deleteBranch(m: ChatMessage) {
-		if (busy) return;
+		if (generating) return;
 		if (!confirm('Delete this branch and all messages on it? This cannot be undone.')) return;
 		errorMsg = null;
 		try {
@@ -1317,7 +1403,7 @@
 							<button
 								type="button"
 								onclick={() => selectSibling(ids[pos - 2])}
-								disabled={pos === 1 || busy}
+								disabled={pos === 1 || generating}
 								aria-label="Previous sibling"
 								title="Previous"
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1330,7 +1416,7 @@
 							<button
 								type="button"
 								onclick={() => selectSibling(ids[pos])}
-								disabled={pos === siblingCount || busy}
+								disabled={pos === siblingCount || generating}
 								aria-label="Next sibling"
 								title="Next"
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1344,7 +1430,7 @@
 							<button
 								type="button"
 								onclick={() => deleteBranch(m)}
-								disabled={busy}
+								disabled={generating}
 								aria-label="Delete this branch"
 								title="Delete branch"
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-red-950/40 dark:hover:text-red-300"
@@ -1371,7 +1457,7 @@
 							<button
 								type="button"
 								onclick={() => beginEdit(m)}
-								disabled={busy}
+								disabled={generating}
 								aria-label="Edit message"
 								title="Edit"
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1383,7 +1469,7 @@
 							<button
 								type="button"
 								onclick={() => retryAssistant(m)}
-								disabled={busy}
+								disabled={generating}
 								aria-label="Retry"
 								title="Retry"
 								class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1396,7 +1482,7 @@
 				</div>
 			{/each}
 
-			{#if inFlightOpen}
+			{#if showInFlight}
 				<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
 					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
 					{#if inFlightReasoning}
@@ -1537,7 +1623,7 @@
 					bind:value={composerText}
 					rows="1"
 					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…'}
-					disabled={busy}
+					disabled={generating}
 					onkeydown={composerEnterHandler(
 						data.prefs?.enterBehavior ?? 'send',
 						(e) => void send(e)
@@ -1565,7 +1651,7 @@
 						<button
 							type="button"
 							onclick={() => fileInputEl?.click()}
-							disabled={busy}
+							disabled={generating}
 							aria-label="Attach image"
 							title="Attach image"
 							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
@@ -1588,10 +1674,10 @@
 						models={data.models}
 						bind:value={modelId}
 						filterKinds={['chat', 'image', 'video']}
-						disabled={busy}
+						disabled={generating}
 						inline
 					/>
-					{#if busy && activeAbort}
+					{#if (busy && activeAbort) || recoveredInFlight}
 						<button
 							type="button"
 							onclick={stop}
@@ -1605,7 +1691,7 @@
 						<button
 							type="submit"
 							disabled={(!composerText.trim() && attachments.items.length === 0) ||
-								busy ||
+								generating ||
 								attachments.isBusy ||
 								!hasValidModel}
 							aria-label="Send message"
