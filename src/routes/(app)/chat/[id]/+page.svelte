@@ -640,6 +640,13 @@
 			return;
 		}
 
+		// First message of a conversation ⇒ the server auto-titles it once
+		// the response lands. Flag the sidebar spinner now, at submit time,
+		// so the title slot reads as "a title is coming" instead of sitting
+		// on "Untitled" and then snapping to a title. `clearTitlePending`
+		// in the `finally` removes it once the title task has run.
+		if (isFirstExchange) markTitlePending(turnConvId);
+
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
@@ -732,10 +739,6 @@
 						// so `busy` releases here rather than in `finally`
 						// (which only runs once the stream actually closes).
 						busy = false;
-						// The response is done; the auto-title task now runs
-						// in the background (the stream is held open for it).
-						// Flag the sidebar to show a spinner by the title.
-						if (isFirstExchange) markTitlePending(turnConvId);
 						break;
 					case 'error':
 						errorMsg = event.message;
