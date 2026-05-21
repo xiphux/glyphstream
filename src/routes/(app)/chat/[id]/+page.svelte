@@ -718,6 +718,16 @@
 						inFlightReasoning = '';
 						inFlightProgress = null;
 						inFlightStatus = null;
+						// Release the composer now — `done` means the response
+						// is complete. The relay deliberately keeps the SSE
+						// stream open past this point so the background
+						// auto-title task can still deliver a `title` event
+						// (first exchange only); the for-await loop keeps
+						// reading for it. But the user must not be blocked from
+						// sending a follow-up while a cosmetic title generates,
+						// so `busy` releases here rather than in `finally`
+						// (which only runs once the stream actually closes).
+						busy = false;
 						break;
 					case 'error':
 						errorMsg = event.message;
