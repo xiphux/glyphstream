@@ -13,7 +13,8 @@
  */
 
 import { ConfigError, loadTaskModel, type LoadedEndpoint } from '../endpoints/config';
-import { getEndpoint, parseModelId } from '../endpoints/registry';
+import { getEndpoint } from '../endpoints/registry';
+import { parseModelId } from '../endpoints/model-id';
 
 export interface ResolvedTaskModel {
 	endpoint: LoadedEndpoint;

@@ -9,7 +9,7 @@
 
 import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
 import type { LoadedEndpoint } from './config';
-import { formatModelId } from './registry';
+import { formatModelId } from './model-id';
 
 const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
 

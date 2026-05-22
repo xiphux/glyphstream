@@ -23,7 +23,8 @@ import {
 	type ChatCompletionRequest,
 	type ImageEditInputFile
 } from '$lib/server/endpoints/client';
-import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
+import { getEndpoint } from '$lib/server/endpoints/registry';
+import { parseModelId } from '$lib/server/endpoints/model-id';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';

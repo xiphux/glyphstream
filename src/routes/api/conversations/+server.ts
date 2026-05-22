@@ -8,7 +8,8 @@ import {
 	composePersonaSystemPrompt,
 	getUserPreferences
 } from '$lib/server/db/queries/user-preferences';
-import { getEndpoint, parseModelId } from '$lib/server/endpoints/registry';
+import { getEndpoint } from '$lib/server/endpoints/registry';
+import { parseModelId } from '$lib/server/endpoints/model-id';
 import type {
 	CreateConversationRequest,
 	CustomModelParameters,

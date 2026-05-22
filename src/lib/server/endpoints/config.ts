@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { env } from '$env/dynamic/private';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
+import { parseModelId } from './model-id';
 
 export type ProviderQuirk = 'passthrough' | 'deepseek-r1' | 'openai-o-series' | 'openrouter';
 
@@ -176,8 +177,7 @@ export function loadTaskModel(path = configPath()): string | null {
 			`'task_model' in ${absolutePath} must be a non-empty string of the form "endpoint_id::model_id"`
 		);
 	}
-	const sepIdx = raw.indexOf('::');
-	if (sepIdx <= 0 || sepIdx === raw.length - 2) {
+	if (parseModelId(raw) === null) {
 		throw new ConfigError(
 			`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`
 		);

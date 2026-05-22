@@ -26,6 +26,7 @@ import {
 } from '../endpoints/client';
 import { setVideoJobId } from './in-flight';
 import { errorMessage, isAbortError, sseWriter } from './sse-transport';
+import { parseModelId } from '../endpoints/model-id';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
@@ -93,7 +94,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			let job: VideoJob;
 			try {
 				const req: VideoCreateRequest = {
-					model: parseUpstreamId(params.storedModelId),
+					model: parseModelId(params.storedModelId)?.upstreamId ?? params.storedModelId,
 					prompt: params.prompt
 				};
 				if (params.inputReference) {
@@ -246,12 +247,6 @@ function emitProgress(write: (e: StreamEvent) => void, job: VideoJob): void {
 		status: job.status
 	};
 	write(ev);
-}
-
-function parseUpstreamId(storedModelId: string): string {
-	// stored is "{endpoint}::{upstream}"; we want just upstream
-	const idx = storedModelId.indexOf('::');
-	return idx === -1 ? storedModelId : storedModelId.slice(idx + 2);
 }
 
 function sleep(ms: number): Promise<void> {
