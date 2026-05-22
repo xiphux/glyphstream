@@ -22,6 +22,7 @@
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
+	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -1248,48 +1249,7 @@
 						<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
 							Editing
 						</div>
-						{#if editAttachments.items.length > 0}
-							<div class="mb-2 flex flex-wrap gap-2 border-b border-neutral-200 pb-2 dark:border-neutral-800">
-								{#each editAttachments.items as a (a.clientId)}
-									<div
-										class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
-										title={a.error ?? a.contentType}
-									>
-										<img
-											src={a.objectUrl}
-											alt=""
-											class="h-full w-full object-cover {a.status === 'uploading'
-												? 'opacity-60'
-												: a.status === 'error'
-													? 'opacity-40'
-													: ''}"
-										/>
-										{#if a.status === 'uploading'}
-											<div
-												class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
-											>
-												<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-											</div>
-										{:else if a.status === 'error'}
-											<div
-												class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
-											>
-												<AlertCircle size={20} strokeWidth={2} />
-											</div>
-										{/if}
-										<button
-											type="button"
-											onclick={() => editAttachments.remove(a.clientId)}
-											aria-label="Remove attachment"
-											title="Remove"
-											class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
-										>
-											<X size={12} strokeWidth={2.5} />
-										</button>
-									</div>
-								{/each}
-							</div>
-						{/if}
+						<AttachmentThumbnails attachments={editAttachments} class="mb-2" />
 						<textarea
 							bind:this={editComposerEl}
 							bind:value={editText}
@@ -1604,48 +1564,7 @@
 				</div>
 			{/if}
 			<div class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500">
-				{#if attachments.items.length > 0}
-					<div class="flex flex-wrap gap-2 border-b border-neutral-200 px-1 pb-2 dark:border-neutral-800">
-						{#each attachments.items as a (a.clientId)}
-							<div
-								class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
-								title={a.error ?? a.contentType}
-							>
-								<img
-									src={a.objectUrl}
-									alt=""
-									class="h-full w-full object-cover {a.status === 'uploading'
-										? 'opacity-60'
-										: a.status === 'error'
-											? 'opacity-40'
-											: ''}"
-								/>
-								{#if a.status === 'uploading'}
-									<div
-										class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
-									>
-										<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
-									</div>
-								{:else if a.status === 'error'}
-									<div
-										class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
-									>
-										<AlertCircle size={20} strokeWidth={2} />
-									</div>
-								{/if}
-								<button
-									type="button"
-									onclick={() => attachments.remove(a.clientId)}
-									aria-label="Remove attachment"
-									title="Remove"
-									class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
-								>
-									<X size={12} strokeWidth={2.5} />
-								</button>
-							</div>
-						{/each}
-					</div>
-				{/if}
+				<AttachmentThumbnails {attachments} class="px-1" />
 				<textarea
 					bind:this={composerEl}
 					bind:value={composerText}
