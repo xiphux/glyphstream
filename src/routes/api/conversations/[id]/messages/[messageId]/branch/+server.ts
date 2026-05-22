@@ -24,7 +24,7 @@
 import { error } from '@sveltejs/kit';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { deleteBranch } from '$lib/server/db/queries/messages';
-import { getMediaStore } from '$lib/server/media/disk-store';
+import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
@@ -39,21 +39,9 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 		throw error(400, 'Cannot delete a branch that has no siblings');
 	}
 
-	if (result.toUnlink.length > 0) {
-		const store = getMediaStore();
-		await Promise.all(
-			result.toUnlink.map(async (m) => {
-				try {
-					await store.delete(m.storagePath);
-				} catch (e) {
-					console.warn(
-						`[branch.delete] failed to unlink media ${m.id} at ${m.storagePath}:`,
-						e
-					);
-				}
-			})
-		);
-	}
+	// Unlink orphaned media bytes after the txn commits (see the file
+	// header and unlinkMediaFiles for the ordering rationale).
+	await unlinkMediaFiles(result.toUnlink, 'branch.delete');
 
 	return new Response(null, { status: 204 });
 };

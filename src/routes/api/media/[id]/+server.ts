@@ -3,7 +3,7 @@ import {
 	getMediaListItemForUser,
 	hardDeleteMediaForUser
 } from '$lib/server/db/queries/media';
-import { getMediaStore } from '$lib/server/media/disk-store';
+import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
 /**
@@ -30,6 +30,11 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 	const result = hardDeleteMediaForUser(params.id, locals.user.id);
 	if (!result) throw error(404, 'Media not found');
-	await getMediaStore().delete(result.storagePath);
+	// Unlink the bytes after the row is gone. unlinkMediaFiles swallows a
+	// failed unlink so a leaked file can't turn this delete into a 500.
+	await unlinkMediaFiles(
+		[{ id: params.id, storagePath: result.storagePath }],
+		'media.delete'
+	);
 	return new Response(null, { status: 204 });
 };

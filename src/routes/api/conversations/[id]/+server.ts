@@ -7,7 +7,7 @@ import {
 	RenameValidationError,
 	unarchiveConversation
 } from '$lib/server/db/queries/conversations';
-import { getMediaStore } from '$lib/server/media/disk-store';
+import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getInFlight } from '$lib/server/streaming/in-flight';
 import type { RequestHandler } from './$types';
 
@@ -85,27 +85,10 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	});
 	if (!ok) throw error(404, 'Conversation not found');
 
-	// File unlinks happen *after* the DB transaction commits. If we did
-	// them inside the txn, a later rollback would leave files deleted
-	// from disk but still referenced from the DB. Per-row try/catch so
-	// one bad unlink doesn't strand the rest — leaked files on disk
-	// without DB rows are invisible to the app and can be reconciled
-	// later if it ever becomes a real cost.
-	if (toUnlink.length > 0) {
-		const store = getMediaStore();
-		await Promise.all(
-			toUnlink.map(async (m) => {
-				try {
-					await store.delete(m.storagePath);
-				} catch (e) {
-					console.warn(
-						`[conversations.delete] failed to unlink media ${m.id} at ${m.storagePath}:`,
-						e
-					);
-				}
-			})
-		);
-	}
+	// File unlinks happen *after* the DB transaction commits — doing them
+	// inside the txn would let a rollback strand files deleted from disk
+	// but still referenced from the DB. See unlinkMediaFiles.
+	await unlinkMediaFiles(toUnlink, 'conversations.delete');
 
 	return new Response(null, { status: 204 });
 };

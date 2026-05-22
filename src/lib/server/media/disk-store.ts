@@ -123,3 +123,37 @@ export function getMediaStore(): DiskMediaStore {
 	if (!cached) cached = new DiskMediaStore();
 	return cached;
 }
+
+/**
+ * Best-effort disk unlink for a batch of media files whose DB rows have
+ * already been removed/hard-deleted. Run this *after* the DB transaction
+ * that orphaned them commits — file unlinks aren't transactional, so
+ * doing them inside a txn would let a rollback strand files deleted from
+ * disk but still referenced from the DB.
+ *
+ * Per-file failures are swallowed with a warning: a leaked file with no
+ * DB row is invisible to the app and reconcilable later, whereas throwing
+ * here would turn an otherwise-successful delete into a 500. `logTag`
+ * identifies the calling endpoint in the warning line. Centralizing this
+ * keeps "is a failed unlink fatal?" a single decision shared by every
+ * delete endpoint.
+ */
+export async function unlinkMediaFiles(
+	files: ReadonlyArray<{ id: string; storagePath: string }>,
+	logTag: string
+): Promise<void> {
+	if (files.length === 0) return;
+	const store = getMediaStore();
+	await Promise.all(
+		files.map(async (m) => {
+			try {
+				await store.delete(m.storagePath);
+			} catch (e) {
+				console.warn(
+					`[${logTag}] failed to unlink media ${m.id} at ${m.storagePath}:`,
+					e
+				);
+			}
+		})
+	);
+}
