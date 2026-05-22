@@ -18,19 +18,13 @@ import type {
 	ModelKind,
 	StreamDoneEvent,
 	StreamErrorEvent,
-	StreamEvent,
 	StreamReasoningEvent,
 	StreamStartEvent,
 	StreamTextEvent,
 	StreamTitleEvent
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
-import {
-	chatCompletionStream,
-	formatUpstreamError,
-	UpstreamError,
-	type ChatCompletionRequest
-} from '../endpoints/client';
+import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
 import { renderMarkdown } from '../markdown/render';
@@ -39,6 +33,7 @@ import type { NotifyModality } from '$lib/types/push';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
+import { errorMessage, isAbortError, sseWriter } from './sse-transport';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client. The
@@ -103,14 +98,8 @@ export async function startStreamingRelay(params: RelayParams): Promise<Readable
 			params.abortSignal
 		);
 	} catch (e) {
-		const message =
-			e instanceof UpstreamError
-				? formatUpstreamError(e)
-				: e instanceof Error
-					? e.message
-					: String(e);
 		// Upstream couldn't even start — return a one-shot error stream.
-		return errorOnlyStream(message, params.userMessage);
+		return errorOnlyStream(errorMessage(e), params.userMessage);
 	}
 
 	if (!upstreamResponse.body) {
@@ -219,17 +208,9 @@ function buildClientStream(
 	params: RelayParams,
 	recorderPromise: Promise<RecorderResult>
 ): ReadableStream<Uint8Array> {
-	const enc = new TextEncoder();
-
 	return new ReadableStream({
 		async start(controller) {
-			const safeWrite = (event: StreamEvent) => {
-				try {
-					controller.enqueue(enc.encode(formatSSE(event)));
-				} catch {
-					// Client disconnected mid-write — recorder branch is unaffected.
-				}
-			};
+			const { write: safeWrite, close: safeClose } = sseWriter(controller);
 
 			// Tell the client about the user message id immediately so it can
 			// reconcile its optimistic render before the assistant text starts.
@@ -267,10 +248,9 @@ function buildClientStream(
 				// That's not a user-facing error; the recorder will commit
 				// the partial text and we'll surface it via `done` below.
 				if (!(isAbortError(e) || params.abortSignal?.aborted)) {
-					const msg = e instanceof Error ? e.message : String(e);
 					safeWrite({
 						type: 'error',
-						message: `Upstream stream failed: ${msg}`
+						message: `Upstream stream failed: ${errorMessage(e)}`
 					} satisfies StreamErrorEvent);
 				}
 			}
@@ -301,42 +281,25 @@ function buildClientStream(
 					safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 				}
 			} catch (e) {
-				const msg = e instanceof Error ? e.message : String(e);
-				const ev: StreamErrorEvent = { type: 'error', message: `Persistence failed: ${msg}` };
+				const ev: StreamErrorEvent = {
+					type: 'error',
+					message: `Persistence failed: ${errorMessage(e)}`
+				};
 				safeWrite(ev);
 			}
 
-			try {
-				controller.close();
-			} catch {
-				// already closed; ignore
-			}
+			safeClose();
 		}
 	});
 }
 
 function errorOnlyStream(message: string, userMessage: ChatMessage): ReadableStream<Uint8Array> {
-	const enc = new TextEncoder();
 	return new ReadableStream({
 		start(controller) {
-			const start: StreamStartEvent = { type: 'start', userMessage, assistantMessageId: '' };
-			controller.enqueue(enc.encode(formatSSE(start)));
-			const err: StreamErrorEvent = { type: 'error', message };
-			controller.enqueue(enc.encode(formatSSE(err)));
-			controller.close();
+			const sse = sseWriter(controller);
+			sse.write({ type: 'start', userMessage, assistantMessageId: '' });
+			sse.write({ type: 'error', message });
+			sse.close();
 		}
 	});
-}
-
-function formatSSE(event: StreamEvent): string {
-	// Use the SSE `event:` field so the client can dispatch by type cheaply.
-	return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-}
-
-function isAbortError(e: unknown): boolean {
-	if (e instanceof DOMException && e.name === 'AbortError') return true;
-	if (e instanceof Error && (e.name === 'AbortError' || /aborted/i.test(e.message))) {
-		return true;
-	}
-	return false;
 }

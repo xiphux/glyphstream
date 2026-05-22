@@ -17,8 +17,6 @@ import { Buffer } from 'node:buffer';
 import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
 import {
-	formatUpstreamError,
-	UpstreamError,
 	videoCancel,
 	videoCreate,
 	videoFetchContent,
@@ -27,6 +25,7 @@ import {
 	type VideoJob
 } from '../endpoints/client';
 import { setVideoJobId } from './in-flight';
+import { errorMessage, isAbortError, sseWriter } from './sse-transport';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
@@ -73,17 +72,9 @@ export interface VideoRelayParams {
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
-	const enc = new TextEncoder();
-
 	return new ReadableStream({
 		async start(controller) {
-			const safeWrite = (event: StreamEvent) => {
-				try {
-					controller.enqueue(enc.encode(formatSSE(event)));
-				} catch {
-					// client gone; the recorder side keeps running below
-				}
-			};
+			const { write: safeWrite, close: safeClose } = sseWriter(controller);
 
 			const startEv: StreamStartEvent = {
 				type: 'start',
@@ -120,10 +111,18 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				if (DEBUG) console.debug(`[video-relay] created job`, job);
 				setVideoJobId(params.conversationId, job.id);
 			} catch (e) {
-				const msg = errorMsg(e);
+				// A Stop click mid-create aborts the upstream fetch — treat
+				// it as a cancellation (matching the in-loop abort path
+				// below), not an error to surface.
+				if (isAbortError(e) || params.abortSignal?.aborted) {
+					safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+					safeClose();
+					return;
+				}
+				const msg = errorMessage(e);
 				console.error(`[video-relay] videoCreate failed:`, msg);
 				safeWrite({ type: 'error', message: `Could not start video job: ${msg}` } satisfies StreamErrorEvent);
-				try { controller.close(); } catch { /* already closed */ }
+				safeClose();
 				return;
 			}
 
@@ -139,7 +138,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					if (DEBUG) console.debug(`[video-relay] cancellation observed for job ${job.id}`);
 					await videoCancel(params.endpoint, job.id);
 					safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
-					try { controller.close(); } catch { /* already closed */ }
+					safeClose();
 					return;
 				}
 				if (Date.now() - startedAt > MAX_WAIT_MS) {
@@ -147,7 +146,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						type: 'error',
 						message: `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`
 					} satisfies StreamErrorEvent);
-					try { controller.close(); } catch { /* already closed */ }
+					safeClose();
 					return;
 				}
 				await sleep(POLL_INTERVAL_MS);
@@ -165,7 +164,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			if (job.status === 'failed') {
 				const msg = job.error?.message ?? 'Video generation failed';
 				safeWrite({ type: 'error', message: msg } satisfies StreamErrorEvent);
-				try { controller.close(); } catch { /* already closed */ }
+				safeClose();
 				return;
 			}
 
@@ -177,9 +176,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				bytes = fetched.bytes;
 				contentType = fetched.contentType;
 			} catch (e) {
-				const msg = errorMsg(e);
+				const msg = errorMessage(e);
 				safeWrite({ type: 'error', message: `Could not fetch video content: ${msg}` } satisfies StreamErrorEvent);
-				try { controller.close(); } catch { /* already closed */ }
+				safeClose();
 				return;
 			}
 
@@ -203,9 +202,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				});
 				linkMessageMedia(assistantMessage.id, mediaId);
 			} catch (e) {
-				const msg = errorMsg(e);
+				const msg = errorMessage(e);
 				safeWrite({ type: 'error', message: `Could not persist video: ${msg}` } satisfies StreamErrorEvent);
-				try { controller.close(); } catch { /* already closed */ }
+				safeClose();
 				return;
 			}
 
@@ -235,7 +234,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 			}
 
-			try { controller.close(); } catch { /* already closed */ }
+			safeClose();
 		}
 	});
 }
@@ -255,16 +254,6 @@ function parseUpstreamId(storedModelId: string): string {
 	return idx === -1 ? storedModelId : storedModelId.slice(idx + 2);
 }
 
-function errorMsg(e: unknown): string {
-	if (e instanceof UpstreamError) return formatUpstreamError(e);
-	if (e instanceof Error) return e.message;
-	return String(e);
-}
-
 function sleep(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
-}
-
-function formatSSE(event: StreamEvent): string {
-	return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }
