@@ -40,40 +40,22 @@ function authHeaders(endpoint: LoadedEndpoint): Record<string, string> {
 /** GET /v1/models against an endpoint. */
 export async function listUpstreamModels(endpoint: LoadedEndpoint): Promise<UpstreamModel[]> {
 	const url = `${endpoint.baseUrl}/models`;
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
 			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /models`);
 
-	if (!res.ok) {
-		const body = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /models`,
-			res.status,
-			body
-		);
-	}
-
-	let parsed: unknown;
-	try {
-		parsed = await res.json();
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON /models: ${cause}`, 200, null);
-	}
-
-	const data = (parsed as { data?: unknown }).data;
+	const parsed = await parseJson<{ data?: unknown }>(
+		res,
+		`Endpoint "${endpoint.id}" returned non-JSON /models`
+	);
+	const data = parsed.data;
 	if (!Array.isArray(data)) {
 		throw new UpstreamError(
 			`Endpoint "${endpoint.id}" returned malformed /models (missing data[] array)`,
@@ -89,6 +71,51 @@ async function safeReadBody(res: Response): Promise<string | null> {
 		return await res.text();
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * Run a fetch, converting a network-level failure (DNS, connection
+ * refused, abort, …) into an UpstreamError. `networkErrorPrefix` is the
+ * human prefix — the thrown message appends ": <cause>". Every request
+ * function below routes through this so the network-error shape can't
+ * drift between them.
+ */
+async function doFetch(
+	url: string,
+	init: RequestInit,
+	networkErrorPrefix: string
+): Promise<Response> {
+	try {
+		return await fetch(url, init);
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(`${networkErrorPrefix}: ${cause}`, null, null);
+	}
+}
+
+/**
+ * Throw an UpstreamError when `res` is not ok. Always captures the
+ * upstream's response body so formatUpstreamError can surface the
+ * upstream's own error text — the video/media fetchers previously
+ * passed null here and silently dropped that detail.
+ */
+async function ensureOk(res: Response, httpErrorMessage: string): Promise<void> {
+	if (res.ok) return;
+	const body = await safeReadBody(res);
+	throw new UpstreamError(httpErrorMessage, res.status, body);
+}
+
+/**
+ * Parse a JSON response body, converting a non-JSON body into an
+ * UpstreamError tagged with HTTP 200 (the request itself succeeded).
+ */
+async function parseJson<T>(res: Response, nonJsonMessage: string): Promise<T> {
+	try {
+		return (await res.json()) as T;
+	} catch (e) {
+		const cause = e instanceof Error ? e.message : String(e);
+		throw new UpstreamError(`${nonJsonMessage}: ${cause}`, 200, null);
 	}
 }
 
@@ -201,9 +228,9 @@ export async function chatCompletionStream(
 	signal?: AbortSignal
 ): Promise<Response> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -212,23 +239,13 @@ export async function chatCompletionStream(
 			},
 			body: JSON.stringify({ ...body, stream: true }),
 			signal
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions (stream)`,
-			res.status,
-			bodyText
-		);
-	}
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(
+		res,
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions (stream)`
+	);
 	if (!res.body) {
 		throw new UpstreamError(
 			`Endpoint "${endpoint.id}" returned 200 but no response body`,
@@ -264,45 +281,27 @@ export async function imageGeneration(
 	signal?: AbortSignal
 ): Promise<ImageGenerationResponse> {
 	const url = `${endpoint.baseUrl}/images/generations`;
-	let res: Response;
-	const composedSignal = composeSignals(
-		AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-		signal
-	);
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				...authHeaders(endpoint)
 			},
 			body: JSON.stringify(body),
-			signal: composedSignal
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/generations`,
-			res.status,
-			bodyText
-		);
-	}
-	let parsed: unknown;
-	try {
-		parsed = await res.json();
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON: ${cause}`, 200, null);
-	}
-	return parsed as ImageGenerationResponse;
+			signal: composeSignals(
+				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+				signal
+			)
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(
+		res,
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/generations`
+	);
+	return parseJson<ImageGenerationResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }
 
 // --- image edit (I2I) ---------------------------------------------------
@@ -360,44 +359,23 @@ export async function imageEdit(
 	if (body.size) fd.append('size', body.size);
 	if (body.response_format) fd.append('response_format', body.response_format);
 
-	const composedSignal = composeSignals(
-		AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-		signal
-	);
-	let res: Response;
-	try {
-		// Don't set Content-Type — fetch fills it in with the right
-		// multipart/form-data boundary when body is a FormData.
-		res = await fetch(url, {
+	// Don't set Content-Type — fetch fills it in with the right
+	// multipart/form-data boundary when body is a FormData.
+	const res = await doFetch(
+		url,
+		{
 			method: 'POST',
 			headers: authHeaders(endpoint),
 			body: fd,
-			signal: composedSignal
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/edits`,
-			res.status,
-			bodyText
-		);
-	}
-	let parsed: unknown;
-	try {
-		parsed = await res.json();
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON: ${cause}`, 200, null);
-	}
-	return parsed as ImageGenerationResponse;
+			signal: composeSignals(
+				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+				signal
+			)
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/edits`);
+	return parseJson<ImageGenerationResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }
 
 function filenameFor(contentType: string): string {
@@ -476,9 +454,9 @@ export async function videoCreate(
 		);
 	}
 
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'POST',
 			headers: { ...authHeaders(endpoint) }, // do NOT set Content-Type — fetch handles multipart
 			body: form,
@@ -486,24 +464,11 @@ export async function videoCreate(
 				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 				signal
 			)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos`,
-			res.status,
-			bodyText
-		);
-	}
-	return (await res.json()) as VideoJob;
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos`);
+	return parseJson<VideoJob>(res, `Endpoint "${endpoint.id}" returned non-JSON from /videos`);
 }
 
 /**
@@ -533,30 +498,23 @@ export async function videoStatus(
 	videoId: string
 ): Promise<VideoJob> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}`;
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
 			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error polling endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos/${videoId}`,
-			res.status,
-			bodyText
-		);
-	}
-	return (await res.json()) as VideoJob;
+		},
+		`Network error polling endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(
+		res,
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos/${videoId}`
+	);
+	return parseJson<VideoJob>(
+		res,
+		`Endpoint "${endpoint.id}" returned non-JSON from /videos/${videoId}`
+	);
 }
 
 /** GET /v1/videos/{id}/content — raw mp4 bytes. Only valid once status === "completed". */
@@ -565,25 +523,17 @@ export async function videoFetchContent(
 	videoId: string
 ): Promise<{ bytes: Buffer; contentType: string }> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}/content`;
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
-			// No timeout — large videos legitimately take a while to download.
+			// Extended timeout — large videos legitimately take a while to download.
 			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000 * 5)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error fetching video content at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		throw new UpstreamError(`Fetching video content returned HTTP ${res.status}`, res.status, null);
-	}
+		},
+		`Network error fetching video content at ${url}`
+	);
+	await ensureOk(res, `Fetching video content returned HTTP ${res.status}`);
 	const arrayBuf = await res.arrayBuffer();
 	const contentType = res.headers.get('content-type') ?? 'video/mp4';
 	return { bytes: Buffer.from(arrayBuf), contentType };
@@ -599,28 +549,16 @@ export async function fetchUpstreamBytes(
 	endpoint: LoadedEndpoint,
 	urlString: string
 ): Promise<{ bytes: Buffer; contentType: string }> {
-	let res: Response;
-	try {
-		res = await fetch(urlString, {
+	const res = await doFetch(
+		urlString,
+		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
 			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error fetching media from ${urlString}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		throw new UpstreamError(
-			`Fetching media from ${urlString} returned HTTP ${res.status}`,
-			res.status,
-			null
-		);
-	}
+		},
+		`Network error fetching media from ${urlString}`
+	);
+	await ensureOk(res, `Fetching media from ${urlString} returned HTTP ${res.status}`);
 	const arrayBuf = await res.arrayBuffer();
 	const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
 	return { bytes: Buffer.from(arrayBuf), contentType };
@@ -635,9 +573,9 @@ export async function chatCompletionSync(
 	body: ChatCompletionRequest
 ): Promise<ChatCompletionResponse> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
-	let res: Response;
-	try {
-		res = await fetch(url, {
+	const res = await doFetch(
+		url,
+		{
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -645,29 +583,12 @@ export async function chatCompletionSync(
 			},
 			body: JSON.stringify({ ...body, stream: false }),
 			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
-		});
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(
-			`Network error contacting endpoint "${endpoint.id}" at ${url}: ${cause}`,
-			null,
-			null
-		);
-	}
-	if (!res.ok) {
-		const bodyText = await safeReadBody(res);
-		throw new UpstreamError(
-			`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions`,
-			res.status,
-			bodyText
-		);
-	}
-	let parsed: unknown;
-	try {
-		parsed = await res.json();
-	} catch (e) {
-		const cause = e instanceof Error ? e.message : String(e);
-		throw new UpstreamError(`Endpoint "${endpoint.id}" returned non-JSON: ${cause}`, 200, null);
-	}
-	return parsed as ChatCompletionResponse;
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+	);
+	await ensureOk(
+		res,
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions`
+	);
+	return parseJson<ChatCompletionResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }
