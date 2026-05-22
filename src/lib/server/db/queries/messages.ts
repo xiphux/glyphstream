@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { eq, and, inArray } from 'drizzle-orm';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
+import { parseMessageParts } from './json-columns';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
 import {
@@ -134,6 +135,49 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 }
 
 /**
+ * Index a flat list of conversation message rows by parent id, so
+ * parent→children lookups are O(1). Rows with no parent (conversation
+ * roots) are skipped — the map is keyed by a non-null parent id.
+ */
+function buildChildrenByParent<T extends { id: string; parentId: string | null }>(
+	rows: readonly T[]
+): Map<string, T[]> {
+	const byParent = new Map<string, T[]>();
+	for (const r of rows) {
+		if (!r.parentId) continue;
+		const list = byParent.get(r.parentId);
+		if (list) list.push(r);
+		else byParent.set(r.parentId, [r]);
+	}
+	return byParent;
+}
+
+/**
+ * Walk down from `startId` to the deepest descendant, choosing the most
+ * recently created child at each step (ties broken lexically by id,
+ * descending). Returns `startId` itself when it has no children.
+ *
+ * The tie-break is a contract, not an implementation detail: selectBranch
+ * and deleteBranch must pick the *same* leaf for the same tree, or branch
+ * selection after a delete becomes inconsistent.
+ */
+function deepestDescendant(
+	startId: string,
+	childrenByParent: ReadonlyMap<string, ReadonlyArray<{ id: string; createdAt: number }>>
+): string {
+	let cursor = startId;
+	for (;;) {
+		const children = childrenByParent.get(cursor);
+		if (!children || children.length === 0) break;
+		const sorted = [...children].sort(
+			(a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)
+		);
+		cursor = sorted[0].id;
+	}
+	return cursor;
+}
+
+/**
  * Switch the conversation's active branch to the one containing
  * `messageId`. Walks down from the message to its deepest descendant
  * (greatest created_at, breaking ties lexically by id) and points
@@ -165,22 +209,7 @@ export function selectBranch(
 		.where(eq(messages.conversationId, conversationId))
 		.all();
 
-	const childrenByParent = new Map<string, typeof rows>();
-	for (const r of rows) {
-		if (!r.parentId) continue;
-		const list = childrenByParent.get(r.parentId);
-		if (list) list.push(r);
-		else childrenByParent.set(r.parentId, [r]);
-	}
-
-	// Walk down picking the most recent child at each step.
-	let cursor = messageId;
-	while (true) {
-		const children = childrenByParent.get(cursor);
-		if (!children || children.length === 0) break;
-		children.sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
-		cursor = children[0].id;
-	}
+	const cursor = deepestDescendant(messageId, buildChildrenByParent(rows));
 
 	const now = Date.now();
 	db.update(conversations)
@@ -352,13 +381,7 @@ export function deleteBranch(
 		}
 
 		// Collect the subtree rooted at messageId (inclusive) via BFS.
-		const childrenByParent = new Map<string, typeof all>();
-		for (const r of all) {
-			if (!r.parentId) continue;
-			const list = childrenByParent.get(r.parentId);
-			if (list) list.push(r);
-			else childrenByParent.set(r.parentId, [r]);
-		}
+		const childrenByParent = buildChildrenByParent(all);
 		const toDelete = new Set<string>([messageId]);
 		const queue = [messageId];
 		while (queue.length > 0) {
@@ -373,19 +396,10 @@ export function deleteBranch(
 			}
 		}
 
-		// Pick the replacement sibling and walk down to its deepest descendant
-		// (greatest created_at, ties broken lexically) — that becomes the new
-		// active_leaf. Same shape as selectBranch's walk.
+		// Pick the replacement sibling and walk down to its deepest
+		// descendant — that becomes the new active_leaf.
 		const replacement = siblings[0];
-		let cursor = replacement.id;
-		while (true) {
-			const kids = childrenByParent.get(cursor);
-			if (!kids || kids.length === 0) break;
-			const sorted = [...kids].sort(
-				(a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)
-			);
-			cursor = sorted[0].id;
-		}
+		const cursor = deepestDescendant(replacement.id, childrenByParent);
 
 		// Order matters:
 		//   1. active_leaf reassign (so the FK's ON DELETE SET NULL
@@ -445,17 +459,10 @@ export function truncateAtMessage(
 }
 
 function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
-	let parts: MessagePart[];
-	try {
-		parts = JSON.parse(row.contentJson) as MessagePart[];
-		if (!Array.isArray(parts)) parts = [];
-	} catch {
-		parts = [];
-	}
 	return {
 		id: row.id,
 		role: row.role,
-		parts,
+		parts: parseMessageParts(row.contentJson),
 		contentHtml: row.contentHtml,
 		reasoningText: row.reasoningText,
 		finishReason: row.finishReason,

@@ -3,6 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { CustomModel, CustomModelParameters } from '$lib/types/api';
 import { getDb } from '../client';
 import { customModels } from '../schema';
+import { parseModelParameters } from './json-columns';
 
 interface CreateInput {
 	userId: string;
@@ -24,14 +25,6 @@ interface UpdateInput {
 }
 
 function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
-	let parameters: CustomModelParameters | null = null;
-	if (row.parametersJson) {
-		try {
-			parameters = JSON.parse(row.parametersJson) as CustomModelParameters;
-		} catch {
-			parameters = null;
-		}
-	}
 	return {
 		id: row.id,
 		name: row.name,
@@ -39,7 +32,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		baseEndpointId: row.baseEndpointId,
 		baseModelId: row.baseModelId,
 		systemPrompt: row.systemPrompt,
-		parameters,
+		parameters: parseModelParameters(row.parametersJson),
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt
 	};

@@ -4,11 +4,11 @@ import type {
 	ConversationDetail,
 	ConversationSummary,
 	CustomModelParameters,
-	MessagePart,
 	ModelKind
 } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
+import { parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
@@ -178,21 +178,12 @@ export function getConversationDetail(
 		endpointId: row.endpointId,
 		customModelId: row.customModelId,
 		systemPrompt: row.systemPrompt,
-		parameters: parseParameters(row.parametersJson),
+		parameters: parseModelParameters(row.parametersJson),
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		messages: walkActiveBranch(id)
 	};
-}
-
-function parseParameters(json: string | null): CustomModelParameters | null {
-	if (!json) return null;
-	try {
-		return JSON.parse(json) as CustomModelParameters;
-	} catch {
-		return null;
-	}
 }
 
 /** Light fetch (no messages walk) — used when we just need to verify ownership and look up endpoint/model. */
@@ -231,7 +222,7 @@ export function getConversationMeta(
 		modelId: row.modelId,
 		modelKind: row.modelKind,
 		systemPrompt: row.systemPrompt,
-		parameters: parseParameters(row.parametersJson),
+		parameters: parseModelParameters(row.parametersJson),
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId
 	};
@@ -380,7 +371,7 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 		.orderBy(asc(messages.createdAt))
 		.get();
 
-	const userParts = parsePartsOrEmpty(rootUser.contentJson);
+	const userParts = parseMessageParts(rootUser.contentJson);
 	const userText = userParts
 		.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
 		.map((p) => p.text)
@@ -392,7 +383,7 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 	let assistantText: string | null = null;
 	let assistantHasMedia = false;
 	if (firstAssistant) {
-		const aParts = parsePartsOrEmpty(firstAssistant.contentJson);
+		const aParts = parseMessageParts(firstAssistant.contentJson);
 		assistantText = aParts
 			.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
 			.map((p) => p.text)
@@ -401,14 +392,6 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 	}
 
 	return { userText, userMediaKinds, assistantText, assistantHasMedia };
-}
-
-function parsePartsOrEmpty(json: string): MessagePart[] {
-	try {
-		return JSON.parse(json) as MessagePart[];
-	} catch {
-		return [];
-	}
 }
 
 /**
