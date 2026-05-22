@@ -92,6 +92,10 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   via `Accept-Encoding`. Re-compressing at the proxy double-compresses.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
+- **`schema.ts` must stay `$lib`-free.** It's loaded outside the Vite
+  build — by drizzle-kit, the `import-owui` esbuild bundle, and
+  Playwright's e2e `global-setup.ts` — none of which resolve the `$lib`
+  alias. Import shared code into it with a relative path.
 
 ## Roadmap
 
