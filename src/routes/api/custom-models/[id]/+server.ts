@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
@@ -20,12 +21,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
 
-	let body: UpdateCustomModelRequest;
-	try {
-		body = (await request.json()) as UpdateCustomModelRequest;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<UpdateCustomModelRequest>(request);
 
 	// Patch validation: only check fields actually present. Empty string
 	// fields are normalized to null (description, systemPrompt) so the user

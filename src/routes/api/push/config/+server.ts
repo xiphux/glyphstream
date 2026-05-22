@@ -9,7 +9,7 @@
  * config edit + restart — no rebuild required.
  */
 
-import { error, json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { getVapidPublicKey } from '$lib/server/push/web-push';
 import type { RequestHandler } from './$types';

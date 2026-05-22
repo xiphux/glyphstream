@@ -12,6 +12,7 @@
 
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	getUserPreferences,
 	setUserPreferences
@@ -29,12 +30,7 @@ export const GET: RequestHandler = ({ locals }) => {
 export const PATCH: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 
-	let body: Partial<UserPreferences>;
-	try {
-		body = (await request.json()) as Partial<UserPreferences>;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<Partial<UserPreferences>>(request);
 
 	// Build a narrowed patch object — explicitly validate each field rather
 	// than passing the unsanitized body to the query, so the query layer

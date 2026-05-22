@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	createConversation,
 	listConversations
@@ -27,12 +28,7 @@ export const GET: RequestHandler = ({ locals }) => {
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 
-	let body: CreateConversationRequest;
-	try {
-		body = (await request.json()) as CreateConversationRequest;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<CreateConversationRequest>(request);
 
 	// Resolve custom model first if supplied — its base endpoint/model wins
 	// over any modelId in the body. Snapshot the system prompt + parameters

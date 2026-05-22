@@ -1,6 +1,7 @@
 import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	getConversationMeta,
 	setConversationTitle,
@@ -53,12 +54,7 @@ const TITLE_PREVIEW_MAX = 60;
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);
 
-	let body: SendMessageRequest;
-	try {
-		body = (await request.json()) as SendMessageRequest;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<SendMessageRequest>(request);
 	const isRetry = typeof body.regenerateFromMessageId === 'string' && body.regenerateFromMessageId;
 	const text = body.text?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)

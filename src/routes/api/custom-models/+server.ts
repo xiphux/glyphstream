@@ -1,5 +1,6 @@
-import { error, json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	createCustomModel,
 	listCustomModelsForUser
@@ -16,12 +17,7 @@ export const GET: RequestHandler = ({ locals }) => {
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 
-	let body: CreateCustomModelRequest;
-	try {
-		body = (await request.json()) as CreateCustomModelRequest;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<CreateCustomModelRequest>(request);
 
 	const validated = validateCreateInput(body);
 	const model = createCustomModel({

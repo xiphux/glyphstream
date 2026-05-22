@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	archiveConversation,
 	deleteConversation,
@@ -36,10 +37,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
-	const body = (await request.json().catch(() => null)) as
-		| { archived?: unknown; title?: unknown }
-		| null;
-	if (!body) throw error(400, 'Body must be JSON');
+	const body = await parseJsonBody<{ archived?: unknown; title?: unknown }>(request);
 
 	const hasArchived = body.archived !== undefined;
 	const hasTitle = body.title !== undefined;

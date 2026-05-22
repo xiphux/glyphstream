@@ -1,4 +1,4 @@
-import { error, json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { listConversationsForMedia } from '$lib/server/db/queries/media';
 import type { RequestHandler } from './$types';

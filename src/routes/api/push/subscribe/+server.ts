@@ -13,6 +13,7 @@
 
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
+import { parseJsonBody } from '$lib/server/http';
 import {
 	deletePushSubscriptionByEndpoint,
 	upsertPushSubscription
@@ -43,12 +44,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		throw error(503, 'Push notifications are not configured on this server');
 	}
 
-	let body: SubscribeBody;
-	try {
-		body = (await request.json()) as SubscribeBody;
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<SubscribeBody>(request);
 
 	const endpoint = requireString(body.endpoint, 'endpoint');
 	const keys = body.keys ?? {};
@@ -69,12 +65,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 export const DELETE: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 
-	let body: { endpoint?: unknown };
-	try {
-		body = (await request.json()) as { endpoint?: unknown };
-	} catch {
-		throw error(400, 'Request body must be JSON');
-	}
+	const body = await parseJsonBody<{ endpoint?: unknown }>(request);
 	const endpoint = requireString(body.endpoint, 'endpoint');
 
 	const removed = deletePushSubscriptionByEndpoint(endpoint, locals.user.id);
