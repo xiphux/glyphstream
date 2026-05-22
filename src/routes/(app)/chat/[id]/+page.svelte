@@ -20,6 +20,7 @@
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -973,7 +974,7 @@
 	let bootstrapped = $state(false);
 	$effect(() => {
 		if (bootstrapped || typeof window === 'undefined' || busy) return;
-		const key = `glyphstream:pendingFirstMessage:${convId}`;
+		const key = pendingFirstMessageKey(convId);
 		const pending = window.sessionStorage.getItem(key);
 		if (pending) {
 			window.sessionStorage.removeItem(key);

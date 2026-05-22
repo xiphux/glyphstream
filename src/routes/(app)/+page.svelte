@@ -12,6 +12,7 @@
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 
 	let { data } = $props();
 
@@ -184,10 +185,12 @@
 			// sessionStorage (per-conversation key) and navigate. Payload is
 			// JSON-encoded so we can carry attached media ids alongside the
 			// text — the chat page forwards them on the send call.
-			const key = `glyphstream:pendingFirstMessage:${conversation.id}`;
 			window.sessionStorage.setItem(
-				key,
-				JSON.stringify({ text, attachedMediaIds: attachments.readyMediaIds() })
+				pendingFirstMessageKey(conversation.id),
+				JSON.stringify({
+					text,
+					attachedMediaIds: attachments.readyMediaIds()
+				} satisfies PendingFirstMessage)
 			);
 			attachments.clear();
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });

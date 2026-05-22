@@ -21,6 +21,7 @@ import {
 	listPushSubscriptionsForUser
 } from '../db/queries/push-subscriptions';
 import { getUserPreferences } from '../db/queries/user-preferences';
+import { truncateEllipsis } from '$lib/text';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
 
 const MAX_TITLE_CHARS = 60;
@@ -62,13 +63,11 @@ export function buildPreview(markdownSource: string, maxChars = MAX_PREVIEW_CHAR
 		.replace(/^\s*>\s*/gm, '')
 		.replace(/\s+/g, ' ')
 		.trim();
-	if (stripped.length <= maxChars) return stripped;
-	return stripped.slice(0, maxChars - 1).trimEnd() + '…';
+	return truncateEllipsis(stripped, maxChars);
 }
 
 function truncateTitle(title: string): string {
-	if (title.length <= MAX_TITLE_CHARS) return title;
-	return title.slice(0, MAX_TITLE_CHARS - 1).trimEnd() + '…';
+	return truncateEllipsis(title, MAX_TITLE_CHARS);
 }
 
 /**

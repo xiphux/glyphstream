@@ -14,6 +14,7 @@ import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
+import { truncateEllipsis } from '$lib/text';
 
 const PROMPT_EXCERPT_MAX = 500;
 
@@ -25,10 +26,7 @@ const PROMPT_EXCERPT_MAX = 500;
 function promptFields(prompt: string): { promptFull: string; promptExcerpt: string } {
 	return {
 		promptFull: prompt,
-		promptExcerpt:
-			prompt.length > PROMPT_EXCERPT_MAX
-				? prompt.slice(0, PROMPT_EXCERPT_MAX - 1) + '…'
-				: prompt
+		promptExcerpt: truncateEllipsis(prompt, PROMPT_EXCERPT_MAX)
 	};
 }
 

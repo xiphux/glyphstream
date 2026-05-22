@@ -29,6 +29,7 @@ import {
 	setConversationTitleIfFallback
 } from '../db/queries/conversations';
 import { getTaskModel, type ResolvedTaskModel } from './task-model';
+import { truncateEllipsis } from '$lib/text';
 
 const DEBUG = logLevel() === 'debug';
 
@@ -121,8 +122,8 @@ export function buildTitlePrompt(exchange: {
 
 	if (!userText && !assistantText) return null;
 
-	const userTruncated = truncate(userText, PROMPT_TRUNCATE_CHARS);
-	const assistantTruncated = truncate(assistantText, PROMPT_TRUNCATE_CHARS);
+	const userTruncated = truncateEllipsis(userText, PROMPT_TRUNCATE_CHARS);
+	const assistantTruncated = truncateEllipsis(assistantText, PROMPT_TRUNCATE_CHARS);
 
 	const useAssistant = assistantTruncated.length > 0;
 	const body = useAssistant
@@ -166,10 +167,7 @@ export function sanitizeTitle(raw: string): string {
 	// Trailing sentence-style punctuation looks wrong on a title.
 	s = s.replace(/[.!?;:,]+$/, '').trim();
 	// Hard cap so a runaway model can't write a 10kb "title."
-	if (s.length > MAX_TITLE_CHARS) {
-		s = s.slice(0, MAX_TITLE_CHARS - 1).trimEnd() + '…';
-	}
-	return s;
+	return truncateEllipsis(s, MAX_TITLE_CHARS);
 }
 
 async function callTaskModel(
@@ -187,9 +185,4 @@ async function callTaskModel(
 		temperature: 0.3
 	});
 	return resp.choices?.[0]?.message?.content ?? '';
-}
-
-function truncate(s: string, max: number): string {
-	if (s.length <= max) return s;
-	return s.slice(0, max - 1) + '…';
 }
