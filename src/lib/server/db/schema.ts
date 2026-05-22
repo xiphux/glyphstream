@@ -1,5 +1,9 @@
 import { sqliteTable, text, integer, index, primaryKey } from 'drizzle-orm/sqlite-core';
-import { MODEL_KINDS } from '$lib/types/api';
+// Relative import (not the $lib alias) on purpose: schema.ts is loaded
+// outside the Vite build — by drizzle-kit, by the import-owui esbuild
+// bundle, and by Playwright's e2e global-setup — none of which resolve
+// $lib. Keep this module alias-free so it stays loadable everywhere.
+import { MODEL_KINDS } from '../../types/api';
 
 // --- users + sessions ----------------------------------------------------
 
