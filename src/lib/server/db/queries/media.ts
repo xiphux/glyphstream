@@ -330,8 +330,12 @@ export interface ConversationOrphanCounts {
  * flow); those collapse to one orphan. Shared by the delete-conversation
  * pre-flight count and the actual orphan hard-delete so the two cannot
  * disagree on what "orphan" means.
+ *
+ * Exported (despite being an internal of this module) so its orphan rule
+ * can be unit-tested directly rather than only through the DB-backed
+ * count/delete paths.
  */
-function collectOrphanGeneratedMediaIds(
+export function collectOrphanGeneratedMediaIds(
 	rows: ReadonlyArray<{
 		mediaId: string;
 		refCount: number;

@@ -139,7 +139,7 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
  * parent→children lookups are O(1). Rows with no parent (conversation
  * roots) are skipped — the map is keyed by a non-null parent id.
  */
-function buildChildrenByParent<T extends { id: string; parentId: string | null }>(
+export function buildChildrenByParent<T extends { id: string; parentId: string | null }>(
 	rows: readonly T[]
 ): Map<string, T[]> {
 	const byParent = new Map<string, T[]>();
@@ -160,8 +160,10 @@ function buildChildrenByParent<T extends { id: string; parentId: string | null }
  * The tie-break is a contract, not an implementation detail: selectBranch
  * and deleteBranch must pick the *same* leaf for the same tree, or branch
  * selection after a delete becomes inconsistent.
+ *
+ * Exported for direct unit testing of the tie-break contract.
  */
-function deepestDescendant(
+export function deepestDescendant(
 	startId: string,
 	childrenByParent: ReadonlyMap<string, ReadonlyArray<{ id: string; createdAt: number }>>
 ): string {
