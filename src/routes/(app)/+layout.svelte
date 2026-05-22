@@ -6,6 +6,7 @@
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
@@ -599,3 +600,10 @@
 	are identical.
 -->
 <DeleteConversationDialog bind:targetId={deleteTargetId} onconfirm={performDelete} />
+
+<!--
+	Host for the app-wide confirm dialog (confirmDialog.ask()). Like the
+	Toaster it's a singleton surface rendered once here; gallery /
+	custom-model / branch deletes drive it instead of window.confirm().
+-->
+<ConfirmDialog />

@@ -21,6 +21,7 @@
 	import { readSSE } from '$lib/sse-client';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
+	import { confirmDialog } from '$lib/confirm.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -1175,7 +1176,11 @@
 	 * media get hard-deleted via the ref-counted purger path). */
 	async function deleteBranch(m: ChatMessage) {
 		if (generating) return;
-		if (!confirm('Delete this branch and all messages on it? This cannot be undone.')) return;
+		const ok = await confirmDialog.ask({
+			title: 'Delete this branch?',
+			message: 'This deletes the branch and every message on it. It cannot be undone.'
+		});
+		if (!ok) return;
 		errorMsg = null;
 		try {
 			const res = await fetch(

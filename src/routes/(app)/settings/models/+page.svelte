@@ -2,6 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { confirmDialog } from '$lib/confirm.svelte';
 	import type {
 		CreateCustomModelRequest,
 		CustomModel,
@@ -119,7 +120,11 @@
 
 	async function deleteOne(m: CustomModel) {
 		if (deletingId) return;
-		if (!confirm(`Delete preset "${m.name}"? Existing chats won't be affected.`)) return;
+		const ok = await confirmDialog.ask({
+			title: `Delete preset "${m.name}"?`,
+			message: "Existing chats won't be affected."
+		});
+		if (!ok) return;
 		deletingId = m.id;
 		try {
 			const res = await fetch(`/api/custom-models/${m.id}`, { method: 'DELETE' });

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
+	import { confirmDialog } from '$lib/confirm.svelte';
 	import type {
 		MediaConversationRef,
 		MediaListItem,
@@ -100,7 +101,11 @@
 
 	async function deleteOne(id: string) {
 		if (deletingId) return;
-		if (!confirm('Delete this media? This cannot be undone.')) return;
+		const ok = await confirmDialog.ask({
+			title: 'Delete this media?',
+			message: 'This action cannot be undone.'
+		});
+		if (!ok) return;
 		deletingId = id;
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
