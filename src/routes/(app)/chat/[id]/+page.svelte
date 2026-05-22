@@ -324,6 +324,31 @@
 		if (el) autoResizeTextarea(el);
 	});
 
+	// Land focus in the follow-up composer whenever the conversation
+	// becomes ready for input — on entering a conversation (including
+	// switching straight from another one), and the moment an in-flight
+	// generation finishes. Sending a follow-up is the dominant next
+	// action, but nothing otherwise puts focus here: the new-chat page
+	// navigates in with focus left behind, and a finished stream leaves
+	// focus nowhere, so the user has to click/tab into the box before
+	// they can type.
+	//
+	// The textarea is `disabled` while `generating`, and a disabled
+	// element can't take focus — a focus attempt mid-generation is a
+	// no-op. `generating` is in this effect's dep set, so it re-runs
+	// once generation clears and lands the focus then.
+	//
+	// Skipped on touch devices: focusing a textarea there springs the
+	// on-screen keyboard open unprompted, eating half the viewport.
+	$effect(() => {
+		void data.conversation.id; // re-focus when switching conversations
+		if (generating) return;
+		const el = composerEl;
+		if (!el) return;
+		if (window.matchMedia?.('(pointer: coarse)').matches) return;
+		el.focus();
+	});
+
 	// AbortController for the in-flight fetch. Stop button click triggers
 	// .abort() AND fires a POST to /api/conversations/:id/cancel so the
 	// server tears down upstream too (otherwise the bridge keeps generating).

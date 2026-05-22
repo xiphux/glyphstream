@@ -144,6 +144,18 @@
 		autoResizeComposer();
 	});
 
+	// Autofocus the composer on load — typing a prompt to start a new
+	// conversation is the entire purpose of this page, so the cursor
+	// belongs in the box without a click or tab. Runs once on mount
+	// (composerEl flips null→element a single time).
+	//
+	// Skipped on touch devices, where an unprompted focus springs the
+	// on-screen keyboard open over the greeting.
+	$effect(() => {
+		if (window.matchMedia?.('(pointer: coarse)').matches) return;
+		composerEl?.focus();
+	});
+
 	async function startChat(e: Event) {
 		e.preventDefault();
 		if (!modelId || busy) return;
