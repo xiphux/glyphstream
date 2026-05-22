@@ -1,4 +1,5 @@
 import { sqliteTable, text, integer, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import { MODEL_KINDS } from '$lib/types/api';
 
 // --- users + sessions ----------------------------------------------------
 
@@ -84,9 +85,7 @@ export const conversations = sqliteTable(
 		// Snapshot of the model's `kind` at conversation-create time.
 		// Lets the message-send dispatcher pick chat vs image vs video paths
 		// without re-fetching upstream /v1/models on every send.
-		modelKind: text('model_kind', {
-			enum: ['chat', 'embedding', 'image', 'video']
-		}),
+		modelKind: text('model_kind', { enum: MODEL_KINDS }),
 		customModelId: text('custom_model_id').references(() => customModels.id, {
 			onDelete: 'set null'
 		}),

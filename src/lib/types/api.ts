@@ -1,7 +1,22 @@
 /** Shared types between server endpoints and client code. */
 
-/** Non-standard extensions agreed with openai-api-bridge; other upstreams may also set them. */
-export type ModelKind = 'chat' | 'embedding' | 'image' | 'video';
+/**
+ * The model modalities GlyphStream understands. MODEL_KINDS is the single
+ * source of truth — ModelKind is derived from it and isModelKind is the
+ * runtime guard for untrusted input (request bodies, upstream /v1/models
+ * responses, config).
+ *
+ * (Non-standard extensions agreed with openai-api-bridge; other upstreams
+ * may also set them.)
+ */
+export const MODEL_KINDS = ['chat', 'embedding', 'image', 'video'] as const;
+
+export type ModelKind = (typeof MODEL_KINDS)[number];
+
+/** Runtime guard: true when `v` is one of the known model kinds. */
+export function isModelKind(v: unknown): v is ModelKind {
+	return typeof v === 'string' && (MODEL_KINDS as readonly string[]).includes(v);
+}
 
 /** A model as returned by `GET /api/models` (one row per upstream model, prefixed). */
 export interface ModelEntry {

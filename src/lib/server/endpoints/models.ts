@@ -7,11 +7,10 @@
  * `kindKnown: false` so the UI can show an "unknown kind" hint if it cares.
  */
 
+import { isModelKind } from '$lib/types/api';
 import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
 import type { LoadedEndpoint } from './config';
 import { formatModelId } from './model-id';
-
-const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
 
 /**
  * Try multiple conventions to determine a model's kind. Returns null when
@@ -23,7 +22,7 @@ const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'
  */
 export function detectKind(m: UpstreamModel): ModelKind | null {
 	// 1. openai-api-bridge convention: explicit `kind` field
-	if (typeof m.kind === 'string' && (VALID_KINDS as readonly string[]).includes(m.kind)) {
+	if (isModelKind(m.kind)) {
 		return m.kind;
 	}
 

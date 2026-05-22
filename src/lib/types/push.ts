@@ -11,7 +11,14 @@
  * can import without pulling in server-only modules (web-push, drizzle).
  */
 
-export type NotifyModality = 'chat' | 'image' | 'video' | 'embedding';
+import type { ModelKind } from './api';
+
+/**
+ * The notify pipeline carries the same modality set as the rest of the
+ * app — aliased (not redeclared) so a new ModelKind can't be silently
+ * forgotten here.
+ */
+export type NotifyModality = ModelKind;
 
 export interface NotifyPushPayload {
 	type: 'message_complete';

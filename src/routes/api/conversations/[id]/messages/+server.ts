@@ -38,6 +38,7 @@ import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/titl
 const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
+import { isModelKind } from '$lib/types/api';
 import type {
 	ChatMessage,
 	MessagePart,
@@ -86,11 +87,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (!newEndpoint) {
 			throw error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
 		}
-		const VALID_KINDS = ['chat', 'embedding', 'image', 'video'] as const;
-		const newKind =
-			body.modelKind && (VALID_KINDS as readonly string[]).includes(body.modelKind)
-				? body.modelKind
-				: meta.modelKind;
+		const newKind = isModelKind(body.modelKind) ? body.modelKind : meta.modelKind;
 		updateConversationModel(params.id, locals.user.id, {
 			endpointId: newParsed.endpointId,
 			modelId: body.modelId,

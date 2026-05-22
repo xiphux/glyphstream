@@ -10,14 +10,13 @@ import {
 } from '$lib/server/db/queries/user-preferences';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
+import { isModelKind } from '$lib/types/api';
 import type {
 	CreateConversationRequest,
 	CustomModelParameters,
 	ModelKind
 } from '$lib/types/api';
 import type { RequestHandler } from './$types';
-
-const VALID_KINDS: readonly ModelKind[] = ['chat', 'embedding', 'image', 'video'];
 
 export const GET: RequestHandler = ({ locals }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
@@ -45,6 +44,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedParameters: CustomModelParameters | null = null;
 	let resolvedCustomModelId: string | null = null;
 
+	// modelKind is optional and validated identically whether a custom
+	// model or a base model id was supplied — the caller forwards it so
+	// the send dispatcher knows the chat/image/video path without
+	// re-fetching upstream /v1/models. Resolve it once here.
+	if (body.modelKind !== undefined) {
+		if (!isModelKind(body.modelKind)) {
+			throw error(400, `Invalid modelKind "${body.modelKind}"`);
+		}
+		resolvedModelKind = body.modelKind;
+	}
+
 	if (body.customModelId) {
 		const cm = getCustomModelForUser(body.customModelId, locals.user.id);
 		if (!cm) throw error(400, `Unknown custom model "${body.customModelId}"`);
@@ -59,15 +69,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedSystemPrompt = cm.systemPrompt;
 		resolvedParameters = cm.parameters;
 		resolvedCustomModelId = cm.id;
-		// Caller still tells us the kind so the dispatcher knows which path
-		// to take; the picker has it on hand and forwarding it saves a
-		// re-fetch of upstream /v1/models on the server.
-		if (body.modelKind !== undefined) {
-			if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
-				throw error(400, `Invalid modelKind "${body.modelKind}"`);
-			}
-			resolvedModelKind = body.modelKind;
-		}
 	} else {
 		const modelId = body.modelId?.trim();
 		if (!modelId) throw error(400, "'modelId' or 'customModelId' is required");
@@ -95,12 +96,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		} else {
 			const prefs = getUserPreferences(locals.user.id);
 			resolvedSystemPrompt = prefs ? composePersonaSystemPrompt(prefs) : null;
-		}
-		if (body.modelKind !== undefined) {
-			if (!(VALID_KINDS as readonly string[]).includes(body.modelKind)) {
-				throw error(400, `Invalid modelKind "${body.modelKind}"`);
-			}
-			resolvedModelKind = body.modelKind;
 		}
 	}
 
