@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	createCustomModel,
 	listCustomModelsForUser
@@ -8,12 +9,12 @@ import type { CreateCustomModelRequest } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	return json({ customModels: listCustomModelsForUser(locals.user.id) });
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let body: CreateCustomModelRequest;
 	try {

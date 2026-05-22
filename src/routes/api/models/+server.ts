@@ -1,4 +1,5 @@
 import { json, error } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { listEndpoints } from '$lib/server/endpoints/registry';
 import { listUpstreamModels, UpstreamError } from '$lib/server/endpoints/client';
 import { ConfigError } from '$lib/server/endpoints/config';
@@ -15,9 +16,7 @@ const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
 
 export const GET: RequestHandler = async ({ locals }) => {
-	if (!locals.user) {
-		throw error(401, 'Authentication required');
-	}
+	requireUser(locals);
 
 	let endpoints;
 	try {

@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	getMediaListItemForUser,
 	hardDeleteMediaForUser
@@ -13,7 +14,7 @@ import type { RequestHandler } from './$types';
  * a one-shot fetch when the user taps an image. Ownership-checked.
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const m = getMediaListItemForUser(params.id, locals.user.id);
 	if (!m) throw error(404, 'Media not found');
 	return json(m);
@@ -27,7 +28,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
  * gone or already hard-deleted.
  */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const result = hardDeleteMediaForUser(params.id, locals.user.id);
 	if (!result) throw error(404, 'Media not found');
 	// Unlink the bytes after the row is gone. unlinkMediaFiles swallows a

@@ -11,6 +11,7 @@
  */
 
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	getUserPreferences,
 	setUserPreferences
@@ -19,14 +20,14 @@ import type { EnterBehavior, UserPreferences } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const prefs = getUserPreferences(locals.user.id);
 	if (!prefs) throw error(404, 'User not found');
 	return json(prefs);
 };
 
 export const PATCH: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let body: Partial<UserPreferences>;
 	try {

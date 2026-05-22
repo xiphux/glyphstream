@@ -1,5 +1,6 @@
 import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	getConversationMeta,
 	setConversationTitle,
@@ -50,7 +51,7 @@ import type { RequestHandler } from './$types';
 const TITLE_PREVIEW_MAX = 60;
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let body: SendMessageRequest;
 	try {

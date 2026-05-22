@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { countOrphanMediaInConversation } from '$lib/server/db/queries/media';
 import type { RequestHandler } from './$types';
 
@@ -18,7 +19,7 @@ import type { RequestHandler } from './$types';
  * of the user's decision.
  */
 export const GET: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const counts = countOrphanMediaInConversation(params.id, locals.user.id);
 	return json(counts);
 };

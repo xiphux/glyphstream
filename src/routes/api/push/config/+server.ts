@@ -10,13 +10,14 @@
  */
 
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { getVapidPublicKey } from '$lib/server/push/web-push';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
 	// Auth-gated: the public key isn't a secret per se, but there's no
 	// reason to expose any internal config to anonymous callers.
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const vapidPublicKey = getVapidPublicKey();
 	return json({
 		enabled: vapidPublicKey !== null,

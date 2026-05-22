@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { truncateAtMessage } from '$lib/server/db/queries/messages';
 import type { RequestHandler } from './$types';
@@ -11,7 +12,7 @@ import type { RequestHandler } from './$types';
  * Client is expected to follow up with a fresh POST /messages to continue.
  */
 export const DELETE: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	const meta = getConversationMeta(params.id, locals.user.id);
 	if (!meta) throw error(404, 'Conversation not found');

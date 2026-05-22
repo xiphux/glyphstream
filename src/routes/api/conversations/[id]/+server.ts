@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	archiveConversation,
 	deleteConversation,
@@ -12,7 +13,7 @@ import { getInFlight } from '$lib/server/streaming/in-flight';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const conv = getConversationDetail(params.id, locals.user.id);
 	if (!conv) throw error(404, 'Conversation not found');
 	// `inFlightSince` lets the chat page's recovery poll detect — without
@@ -34,7 +35,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
  * requests.
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const body = (await request.json().catch(() => null)) as
 		| { archived?: unknown; title?: unknown }
 		| null;
@@ -74,7 +75,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params, url }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	// Query-string flag so the client can express "also purge media that
 	// would orphan." DELETE-with-body is awkward to thread through
 	// SvelteKit's fetch boundaries, so we use a flag here. Default false

@@ -20,6 +20,7 @@
 
 import { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { insertMedia } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
@@ -28,7 +29,7 @@ const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const ALLOWED_PREFIXES = ['image/'] as const;
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let form: FormData;
 	try {

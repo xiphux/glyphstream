@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
@@ -10,7 +11,7 @@ import type { RequestHandler } from './$types';
  * locals.user.id, or we 404 (don't leak existence).
  */
 export const GET: RequestHandler = async ({ locals, params, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
 	if (!row || row.hardDeletedAt !== null) throw error(404, 'Media not found');

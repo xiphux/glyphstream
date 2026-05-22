@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
@@ -10,14 +11,14 @@ import type { UpdateCustomModelRequest } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const m = getCustomModelForUser(params.id, locals.user.id);
 	if (!m) throw error(404, 'Custom model not found');
 	return json({ customModel: m });
 };
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let body: UpdateCustomModelRequest;
 	try {
@@ -65,7 +66,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const ok = deleteCustomModel(params.id, locals.user.id);
 	if (!ok) throw error(404, 'Custom model not found');
 	return new Response(null, { status: 204 });

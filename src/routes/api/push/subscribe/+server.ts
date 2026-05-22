@@ -12,6 +12,7 @@
  */
 
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import {
 	deletePushSubscriptionByEndpoint,
 	upsertPushSubscription
@@ -33,7 +34,7 @@ function requireString(v: unknown, field: string): string {
 }
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	// Soft 503 when the operator hasn't configured VAPID keys: the
 	// subscription would be unusable since we couldn't sign push payloads
 	// to it. Better to refuse the subscription than to silently store a
@@ -66,7 +67,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, request }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	let body: { endpoint?: unknown };
 	try {

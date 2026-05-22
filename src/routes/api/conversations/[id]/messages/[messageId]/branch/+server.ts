@@ -22,13 +22,14 @@
  */
 
 import { error } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { deleteBranch } from '$lib/server/db/queries/messages';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	const meta = getConversationMeta(params.id, locals.user.id);
 	if (!meta) throw error(404, 'Conversation not found');

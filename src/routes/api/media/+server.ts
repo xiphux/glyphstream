@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { listMediaForUser } from '$lib/server/db/queries/media';
 import type { RequestHandler } from './$types';
 
@@ -11,7 +12,7 @@ import type { RequestHandler } from './$types';
  *   ?limit=N            max items in this page (default 60, max 200)
  */
 export const GET: RequestHandler = ({ locals, url }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;

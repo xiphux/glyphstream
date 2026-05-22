@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
@@ -22,7 +23,7 @@ import type { RequestHandler } from './$types';
  * isn't worth the dependency / complexity lift.
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
 	if (!row || row.hardDeletedAt !== null) throw error(404, 'Media not found');

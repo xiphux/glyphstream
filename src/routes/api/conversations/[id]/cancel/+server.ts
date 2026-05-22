@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { videoCancel } from '$lib/server/endpoints/client';
 import { getInFlight } from '$lib/server/streaming/in-flight';
@@ -16,7 +17,7 @@ import type { RequestHandler } from './$types';
  * runner releases its slot instead of running the workflow to completion.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 
 	// Verify ownership of the conversation before letting anyone cancel it.
 	const meta = getConversationMeta(params.id, locals.user.id);

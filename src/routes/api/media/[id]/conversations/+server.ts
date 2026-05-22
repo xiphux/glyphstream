@@ -1,4 +1,5 @@
 import { error, json } from '@sveltejs/kit';
+import { requireUser } from '$lib/server/auth/guard';
 import { listConversationsForMedia } from '$lib/server/db/queries/media';
 import type { RequestHandler } from './$types';
 
@@ -14,7 +15,7 @@ import type { RequestHandler } from './$types';
  * can render a uniform "0 conversations" message.
  */
 export const GET: RequestHandler = ({ locals, params }) => {
-	if (!locals.user) throw error(401, 'Authentication required');
+	requireUser(locals);
 	const conversations = listConversationsForMedia(params.id, locals.user.id);
 	return json({ conversations });
 };
