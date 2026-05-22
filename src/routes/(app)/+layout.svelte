@@ -8,6 +8,7 @@
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { setArchived, deleteConversation } from '$lib/conversation-actions';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
 		Archive,
@@ -99,14 +100,7 @@
 		// whether to bring the user back to where they were.
 		const wasViewingChat = page.url.pathname === `/chat/${id}`;
 		try {
-			const res = await fetch(`/api/conversations/${id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ archived: true })
-			});
-			if (!res.ok && res.status !== 404) {
-				throw new Error(`Server returned ${res.status}`);
-			}
+			await setArchived(id, true);
 			// Archive is "I'm done with this thread" in the same spirit
 			// as delete — the user is signaling they want it out of
 			// their immediate view. Mirror delete's behavior and send
@@ -124,14 +118,7 @@
 					label: 'Undo',
 					handler: async () => {
 						try {
-							const undoRes = await fetch(`/api/conversations/${id}`, {
-								method: 'PATCH',
-								headers: { 'Content-Type': 'application/json' },
-								body: JSON.stringify({ archived: false })
-							});
-							if (!undoRes.ok && undoRes.status !== 404) {
-								throw new Error(`Server returned ${undoRes.status}`);
-							}
+							await setArchived(id, false);
 							await invalidateAll();
 							// Land the user back on the chat they were
 							// viewing when they archived. If they were on
@@ -178,13 +165,7 @@
 		if (busyId) return;
 		busyId = id;
 		try {
-			const url = deleteMedia
-				? `/api/conversations/${id}?deleteMedia=true`
-				: `/api/conversations/${id}`;
-			const res = await fetch(url, { method: 'DELETE' });
-			if (!res.ok && res.status !== 404) {
-				throw new Error(`Server returned ${res.status}`);
-			}
+			await deleteConversation(id, deleteMedia);
 			if (page.url.pathname === `/chat/${id}`) {
 				await goto('/', { invalidateAll: true });
 			} else {

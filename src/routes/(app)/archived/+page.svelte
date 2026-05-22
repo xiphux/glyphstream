@@ -5,6 +5,7 @@
 	import type { ConversationSummary } from '$lib/types/api';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { setArchived, deleteConversation } from '$lib/conversation-actions';
 
 	let { data } = $props<{ data: { archivedConversations: ConversationSummary[] } }>();
 
@@ -26,17 +27,10 @@
 		if (busyId) return;
 		busyId = id;
 		try {
-			const res = await fetch(`/api/conversations/${id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ archived: false })
-			});
-			if (!res.ok && res.status !== 404) {
-				throw new Error(`Server returned ${res.status}`);
-			}
+			await setArchived(id, false);
 			await invalidateAll();
 		} catch (e) {
-			alert(`Couldn't unarchive: ${e instanceof Error ? e.message : String(e)}`);
+			toast.error(`Couldn't unarchive: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			busyId = null;
 		}
@@ -56,13 +50,7 @@
 		if (busyId) return;
 		busyId = id;
 		try {
-			const url = deleteMedia
-				? `/api/conversations/${id}?deleteMedia=true`
-				: `/api/conversations/${id}`;
-			const res = await fetch(url, { method: 'DELETE' });
-			if (!res.ok && res.status !== 404) {
-				throw new Error(`Server returned ${res.status}`);
-			}
+			await deleteConversation(id, deleteMedia);
 			await invalidateAll();
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
