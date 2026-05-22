@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 import type {
 	ConversationDetail,
 	ConversationSummary,
@@ -310,8 +311,10 @@ export function renameConversation(id: string, userId: string, newTitle: string)
 	if (trimmed.length === 0) {
 		throw new RenameValidationError('Title cannot be empty');
 	}
-	if (trimmed.length > 200) {
-		throw new RenameValidationError('Title cannot exceed 200 characters');
+	if (trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
+		throw new RenameValidationError(
+			`Title cannot exceed ${MAX_CONVERSATION_TITLE_LENGTH} characters`
+		);
 	}
 	const db = getDb();
 	const res = db

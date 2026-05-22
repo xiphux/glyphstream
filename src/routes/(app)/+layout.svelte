@@ -11,6 +11,7 @@
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
 	import { isTitlePending } from '$lib/title-pending.svelte';
+	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 	import {
 		Archive,
 		ChevronDown,
@@ -423,7 +424,7 @@
 									bind:value={renameDraft}
 									onkeydown={onRenameKey}
 									onblur={commitRename}
-									maxlength={200}
+									maxlength={MAX_CONVERSATION_TITLE_LENGTH}
 									aria-label="Rename conversation"
 									class="block w-full rounded-md border border-neutral-300 bg-white py-2 pl-3 pr-3 text-sm focus:border-neutral-500 focus:outline-none dark:border-neutral-600 dark:bg-neutral-800 dark:focus:border-neutral-400"
 								/>

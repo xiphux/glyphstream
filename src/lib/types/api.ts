@@ -18,6 +18,13 @@ export function isModelKind(v: unknown): v is ModelKind {
 	return typeof v === 'string' && (MODEL_KINDS as readonly string[]).includes(v);
 }
 
+/**
+ * Hard cap on a user-set conversation title. Enforced on the client as
+ * the rename input's `maxlength` and on the server in renameConversation
+ * — single-sourced here so the two halves can't drift apart.
+ */
+export const MAX_CONVERSATION_TITLE_LENGTH = 200;
+
 /** A model as returned by `GET /api/models` (one row per upstream model, prefixed). */
 export interface ModelEntry {
 	/** Internal id: `{endpoint_id}::{upstream_model_id}` */
