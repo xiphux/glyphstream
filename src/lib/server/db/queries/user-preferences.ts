@@ -25,6 +25,46 @@ const DEFAULTS: UserPreferences = {
 	notificationsForegroundToast: true
 };
 
+/**
+ * Coerce a loosely-typed input object into a complete UserPreferences,
+ * validating each field and falling back per-field to `fallback`. The
+ * single home for the field list — shared by parseUserPreferences
+ * (fallback = DEFAULTS, input = raw parsed JSON) and setUserPreferences
+ * (fallback = current prefs, input = the patch). Adding a preference is
+ * one edit here instead of two parallel ones.
+ */
+function coerceUserPreferences(
+	input: Partial<Record<keyof UserPreferences, unknown>>,
+	fallback: UserPreferences
+): UserPreferences {
+	return {
+		name: typeof input.name === 'string' ? input.name : fallback.name,
+		aboutYou: typeof input.aboutYou === 'string' ? input.aboutYou : fallback.aboutYou,
+		customInstructions:
+			typeof input.customInstructions === 'string'
+				? input.customInstructions
+				: fallback.customInstructions,
+		enterBehavior:
+			input.enterBehavior === 'newline' || input.enterBehavior === 'send'
+				? input.enterBehavior
+				: fallback.enterBehavior,
+		showGreeting:
+			typeof input.showGreeting === 'boolean' ? input.showGreeting : fallback.showGreeting,
+		notificationsEnabled:
+			typeof input.notificationsEnabled === 'boolean'
+				? input.notificationsEnabled
+				: fallback.notificationsEnabled,
+		notificationsShowContent:
+			typeof input.notificationsShowContent === 'boolean'
+				? input.notificationsShowContent
+				: fallback.notificationsShowContent,
+		notificationsForegroundToast:
+			typeof input.notificationsForegroundToast === 'boolean'
+				? input.notificationsForegroundToast
+				: fallback.notificationsForegroundToast
+	};
+}
+
 /** Pure: parse a raw JSON string into a UserPreferences object, filling in
  * defaults for absent / invalid / malformed fields. Never throws. */
 export function parseUserPreferences(raw: string | null): UserPreferences {
@@ -36,33 +76,7 @@ export function parseUserPreferences(raw: string | null): UserPreferences {
 		return { ...DEFAULTS };
 	}
 	if (typeof parsed !== 'object' || parsed === null) return { ...DEFAULTS };
-	const obj = parsed as Record<string, unknown>;
-	return {
-		name: typeof obj.name === 'string' ? obj.name : DEFAULTS.name,
-		aboutYou: typeof obj.aboutYou === 'string' ? obj.aboutYou : DEFAULTS.aboutYou,
-		customInstructions:
-			typeof obj.customInstructions === 'string'
-				? obj.customInstructions
-				: DEFAULTS.customInstructions,
-		enterBehavior:
-			obj.enterBehavior === 'newline' || obj.enterBehavior === 'send'
-				? obj.enterBehavior
-				: DEFAULTS.enterBehavior,
-		showGreeting:
-			typeof obj.showGreeting === 'boolean' ? obj.showGreeting : DEFAULTS.showGreeting,
-		notificationsEnabled:
-			typeof obj.notificationsEnabled === 'boolean'
-				? obj.notificationsEnabled
-				: DEFAULTS.notificationsEnabled,
-		notificationsShowContent:
-			typeof obj.notificationsShowContent === 'boolean'
-				? obj.notificationsShowContent
-				: DEFAULTS.notificationsShowContent,
-		notificationsForegroundToast:
-			typeof obj.notificationsForegroundToast === 'boolean'
-				? obj.notificationsForegroundToast
-				: DEFAULTS.notificationsForegroundToast
-	};
+	return coerceUserPreferences(parsed as Record<string, unknown>, DEFAULTS);
 }
 
 /** Read the user's preferences from the DB, returning defaults if the row
@@ -99,32 +113,7 @@ export function setUserPreferences(
 			.where(eq(users.id, userId))
 			.get();
 		const current = parseUserPreferences(row?.preferencesJson ?? null);
-		const next: UserPreferences = {
-			name: typeof patch.name === 'string' ? patch.name : current.name,
-			aboutYou: typeof patch.aboutYou === 'string' ? patch.aboutYou : current.aboutYou,
-			customInstructions:
-				typeof patch.customInstructions === 'string'
-					? patch.customInstructions
-					: current.customInstructions,
-			enterBehavior:
-				patch.enterBehavior === 'newline' || patch.enterBehavior === 'send'
-					? patch.enterBehavior
-					: current.enterBehavior,
-			showGreeting:
-				typeof patch.showGreeting === 'boolean' ? patch.showGreeting : current.showGreeting,
-			notificationsEnabled:
-				typeof patch.notificationsEnabled === 'boolean'
-					? patch.notificationsEnabled
-					: current.notificationsEnabled,
-			notificationsShowContent:
-				typeof patch.notificationsShowContent === 'boolean'
-					? patch.notificationsShowContent
-					: current.notificationsShowContent,
-			notificationsForegroundToast:
-				typeof patch.notificationsForegroundToast === 'boolean'
-					? patch.notificationsForegroundToast
-					: current.notificationsForegroundToast
-		};
+		const next = coerceUserPreferences(patch, current);
 		tx.update(users)
 			.set({ preferencesJson: JSON.stringify(next) })
 			.where(eq(users.id, userId))

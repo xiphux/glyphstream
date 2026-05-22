@@ -318,18 +318,59 @@ export interface ConversationOrphanCounts {
 }
 
 /**
+ * Given message↔media join rows (already scoped to one user), return the
+ * set of media ids that would orphan if those rows' messages were
+ * deleted: every reference to the media lives inside the row set, it's
+ * generated (not uploaded), and it isn't already hard-deleted.
+ *
+ * The orphan rule — count how many of a media's references appear in the
+ * row set and compare to its total `ref_count`; equal means deleting the
+ * set drops ref_count to zero. The same media can appear on multiple
+ * rows (linked from several messages via the auto-attach-last-generated
+ * flow); those collapse to one orphan. Shared by the delete-conversation
+ * pre-flight count and the actual orphan hard-delete so the two cannot
+ * disagree on what "orphan" means.
+ */
+function collectOrphanGeneratedMediaIds(
+	rows: ReadonlyArray<{
+		mediaId: string;
+		refCount: number;
+		origin: 'generated' | 'uploaded';
+		hardDeletedAt: number | null;
+	}>
+): Set<string> {
+	const localCount = new Map<string, number>();
+	const meta = new Map<
+		string,
+		{ refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
+	>();
+	for (const r of rows) {
+		localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
+		if (!meta.has(r.mediaId)) {
+			meta.set(r.mediaId, {
+				refCount: r.refCount,
+				origin: r.origin,
+				hardDeletedAt: r.hardDeletedAt
+			});
+		}
+	}
+	const orphans = new Set<string>();
+	for (const [mediaId, count] of localCount) {
+		const m = meta.get(mediaId)!;
+		if (m.hardDeletedAt !== null) continue;
+		if (m.origin !== 'generated') continue;
+		if (m.refCount !== count) continue;
+		orphans.add(mediaId);
+	}
+	return orphans;
+}
+
+/**
  * Count generated media that would become orphaned if this conversation
  * were deleted — i.e. media whose only references are inside this
  * conversation. Used by the delete-conversation confirm dialog to show
  * the user how many gallery items they could optionally purge along
  * with the conversation.
- *
- * Accuracy: respects the case where the same media is referenced from
- * *multiple* messages within this conversation (e.g. across edit
- * siblings via the auto-attach-last-generated flow). For each candidate
- * media we compute the local link count and compare to `ref_count`; if
- * they match, all references are in this conversation and the media
- * would orphan.
  *
  * Scope: only counts `origin='generated'` media. Uploaded media is
  * always transient under the library model — the purger handles it
@@ -351,43 +392,20 @@ export function countOrphanMediaInConversation(
 		.from(messageMedia)
 		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
 		.innerJoin(media, eq(media.id, messageMedia.mediaId))
-		.where(
-			and(
-				eq(messages.conversationId, conversationId),
-				eq(media.userId, userId)
-			)
-		)
+		.where(and(eq(messages.conversationId, conversationId), eq(media.userId, userId)))
 		.all();
 
-	// Group by mediaId. Same media can appear multiple times if linked
-	// from multiple messages within the conversation.
-	const localCount = new Map<string, number>();
-	const meta = new Map<
-		string,
-		{ kind: 'image' | 'video'; refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
-	>();
-	for (const r of rows) {
-		localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
-		if (!meta.has(r.mediaId)) {
-			meta.set(r.mediaId, {
-				kind: r.kind,
-				refCount: r.refCount,
-				origin: r.origin,
-				hardDeletedAt: r.hardDeletedAt
-			});
-		}
-	}
+	const orphans = collectOrphanGeneratedMediaIds(rows);
 
+	// First-seen kind per media, to split the orphan set into image/video.
+	const kindOf = new Map<string, 'image' | 'video'>();
+	for (const r of rows) {
+		if (!kindOf.has(r.mediaId)) kindOf.set(r.mediaId, r.kind);
+	}
 	let images = 0;
 	let videos = 0;
-	for (const [mediaId, count] of localCount) {
-		const m = meta.get(mediaId)!;
-		if (m.hardDeletedAt !== null) continue;
-		if (m.origin !== 'generated') continue;
-		// If local count equals total ref_count, all references are in
-		// this conversation — deleting it would drop the row to zero.
-		if (m.refCount !== count) continue;
-		if (m.kind === 'image') images++;
+	for (const mediaId of orphans) {
+		if (kindOf.get(mediaId) === 'image') images++;
 		else videos++;
 	}
 	return { images, videos };
@@ -434,49 +452,21 @@ export function hardDeleteOrphanGeneratedMediaForMessages(
 			})
 			.from(messageMedia)
 			.innerJoin(media, eq(media.id, messageMedia.mediaId))
-			.where(
-				and(
-					inArray(messageMedia.messageId, messageIds),
-					eq(media.userId, userId)
-				)
-			)
+			.where(and(inArray(messageMedia.messageId, messageIds), eq(media.userId, userId)))
 			.all();
 
-		// Group by mediaId so we know how many of *this row's* references
-		// live inside the deletion set. Same media can be linked from
-		// multiple messages in the set (e.g. across edit siblings via the
-		// auto-attach-last-generated flow) — those count as one orphan.
-		const localCount = new Map<string, number>();
-		const meta = new Map<
-			string,
-			{ storagePath: string; refCount: number; origin: 'generated' | 'uploaded'; hardDeletedAt: number | null }
-		>();
-		for (const r of rows) {
-			localCount.set(r.mediaId, (localCount.get(r.mediaId) ?? 0) + 1);
-			if (!meta.has(r.mediaId)) {
-				meta.set(r.mediaId, {
-					storagePath: r.storagePath,
-					refCount: r.refCount,
-					origin: r.origin,
-					hardDeletedAt: r.hardDeletedAt
-				});
-			}
-		}
+		const orphans = collectOrphanGeneratedMediaIds(rows);
 
+		// First-seen storage path per media, for the unlink list.
+		const pathOf = new Map<string, string>();
+		for (const r of rows) {
+			if (!pathOf.has(r.mediaId)) pathOf.set(r.mediaId, r.storagePath);
+		}
 		const now = Date.now();
 		const toUnlink: Array<{ id: string; storagePath: string }> = [];
-		for (const [mediaId, count] of localCount) {
-			const m = meta.get(mediaId)!;
-			if (m.hardDeletedAt !== null) continue;
-			if (m.origin !== 'generated') continue;
-			// If every reference is inside the deletion set, ref_count
-			// would drop to zero — that's an orphan, mark + collect.
-			if (m.refCount !== count) continue;
-			tx.update(media)
-				.set({ hardDeletedAt: now })
-				.where(eq(media.id, mediaId))
-				.run();
-			toUnlink.push({ id: mediaId, storagePath: m.storagePath });
+		for (const mediaId of orphans) {
+			tx.update(media).set({ hardDeletedAt: now }).where(eq(media.id, mediaId)).run();
+			toUnlink.push({ id: mediaId, storagePath: pathOf.get(mediaId)! });
 		}
 		return toUnlink;
 	});
