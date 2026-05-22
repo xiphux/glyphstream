@@ -6,6 +6,7 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { composerEnterHandler } from '$lib/composer-keys';
+	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
 	import {
 		GALLERY_LAUNCH_KEY,
 		type GalleryLaunchIntent
@@ -135,14 +136,8 @@
 	// `bind:value` update, so scrollHeight here would otherwise still
 	// reflect the empty pre-paste state.
 	let composerEl = $state<HTMLTextAreaElement | null>(null);
-	const COMPOSER_MAX_HEIGHT_PX = 240;
 	function autoResizeComposer() {
-		const el = composerEl;
-		if (!el) return;
-		el.style.height = 'auto';
-		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
-		el.style.height = `${next}px`;
-		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+		if (composerEl) autoResizeTextarea(composerEl);
 	}
 	$effect(() => {
 		void text;
@@ -206,10 +201,6 @@
 	let isDraggingOver = $state(false);
 	let dragDepth = 0;
 
-	function dragHasFiles(e: DragEvent): boolean {
-		return Array.from(e.dataTransfer?.types ?? []).includes('Files');
-	}
-
 	function onDragEnter(e: DragEvent) {
 		if (!allowAttachments || !dragHasFiles(e)) return;
 		e.preventDefault();
@@ -233,9 +224,7 @@
 		e.preventDefault();
 		dragDepth = 0;
 		isDraggingOver = false;
-		const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-			f.type.startsWith('image/')
-		);
+		const files = extractImageFiles(e.dataTransfer);
 		if (files.length > 0) {
 			void attachments.addFiles(files);
 		}
@@ -243,15 +232,7 @@
 
 	function onPaste(e: ClipboardEvent) {
 		if (!allowAttachments) return;
-		const items = e.clipboardData?.items;
-		if (!items) return;
-		const files: File[] = [];
-		for (const item of items) {
-			if (item.kind === 'file' && item.type.startsWith('image/')) {
-				const f = item.getAsFile();
-				if (f) files.push(f);
-			}
-		}
+		const files = extractImageFiles(e.clipboardData);
 		if (files.length > 0) {
 			e.preventDefault();
 			void attachments.addFiles(files);

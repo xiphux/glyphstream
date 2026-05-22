@@ -26,6 +26,7 @@
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
+	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -241,10 +242,6 @@
 	// browsers with shadow DOM / iframes).
 	let dragDepth = 0;
 
-	function dragHasFiles(e: DragEvent): boolean {
-		return Array.from(e.dataTransfer?.types ?? []).includes('Files');
-	}
-
 	function onDragEnter(e: DragEvent) {
 		if (!allowAttachments || !dragHasFiles(e)) return;
 		e.preventDefault();
@@ -271,9 +268,7 @@
 		e.preventDefault();
 		dragDepth = 0;
 		isDraggingOver = false;
-		const files = Array.from(e.dataTransfer?.files ?? []).filter((f) =>
-			f.type.startsWith('image/')
-		);
+		const files = extractImageFiles(e.dataTransfer);
 		if (files.length > 0) {
 			void attachments.addFiles(files);
 		}
@@ -281,19 +276,11 @@
 
 	function onPaste(e: ClipboardEvent) {
 		if (!allowAttachments) return;
-		const items = e.clipboardData?.items;
-		if (!items) return;
-		const files: File[] = [];
-		for (const item of items) {
-			if (item.kind === 'file' && item.type.startsWith('image/')) {
-				const f = item.getAsFile();
-				if (f) files.push(f);
-			}
-		}
+		// Only swallow the paste when we actually consumed an image —
+		// plain-text pastes fall through to the textarea's default
+		// behavior so typing-flow isn't disrupted.
+		const files = extractImageFiles(e.clipboardData);
 		if (files.length > 0) {
-			// Only swallow the paste when we actually consumed an image.
-			// Plain-text pastes fall through to the textarea's default
-			// behavior so typing-flow isn't disrupted.
 			e.preventDefault();
 			void attachments.addFiles(files);
 		}
@@ -331,17 +318,10 @@
 	// long-form composition gets the room it needs without pushing the
 	// message list off-screen on small phones.
 	let composerEl = $state<HTMLTextAreaElement | null>(null);
-	const COMPOSER_MAX_HEIGHT_PX = 240;
 	$effect(() => {
 		const el = composerEl;
 		void composerText; // re-run on every keystroke
-		if (!el) return;
-		// Reset to "auto" first so scrollHeight reflects the content's
-		// natural height instead of a previously-set larger value.
-		el.style.height = 'auto';
-		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
-		el.style.height = `${next}px`;
-		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+		if (el) autoResizeTextarea(el);
 	});
 
 	// AbortController for the in-flight fetch. Stop button click triggers
@@ -1057,11 +1037,7 @@
 	$effect(() => {
 		const el = editComposerEl;
 		void editText;
-		if (!el) return;
-		el.style.height = 'auto';
-		const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT_PX);
-		el.style.height = `${next}px`;
-		el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
+		if (el) autoResizeTextarea(el);
 	});
 
 	// Drop the composer draft and any open inline-edit session when
