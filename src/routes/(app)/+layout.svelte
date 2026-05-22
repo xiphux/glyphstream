@@ -5,6 +5,7 @@
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '$lib/components/Toaster.svelte';
+	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
@@ -154,70 +155,29 @@
 		}
 	}
 
-	// Delete flow:
-	//   1. User clicks Delete in the conversation overflow menu.
-	//   2. `deleteConversation(id)` fetches the orphan-media count for
-	//      that conversation. The roundtrip is small and lets the modal
-	//      show informative copy ("Also delete 3 images and 1 video")
-	//      instead of either lying about scope or asking a vague yes/no.
-	//   3. Modal opens with `pendingDelete` populated.
-	//   4. User clicks Cancel → state clears. User clicks Delete →
-	//      `confirmDeleteConversation()` issues the actual DELETE with
-	//      the `deleteMedia` flag derived from the checkbox.
-	//
-	// The intermediate fetch means a slow connection produces a brief
-	// "nothing happened" gap between menu-click and modal-open. In
-	// practice this is sub-100ms; if it ever becomes perceptible we'll
-	// open the modal immediately with a loading shimmer and fill in
-	// counts when the fetch returns. Not worth the state complexity
-	// today.
-	let pendingDelete = $state<{
-		id: string;
-		counts: { images: number; videos: number };
-	} | null>(null);
-	let deleteMediaToo = $state(false);
+	// Delete flow: the conversation overflow menu's Delete item opens
+	// the shared <DeleteConversationDialog> (rendered at the bottom of
+	// this file). That component fetches the orphan-media counts,
+	// renders the confirm modal — with the "also delete N images"
+	// checkbox when there is media — and on confirm calls performDelete
+	// below with the user's checkbox answer. The dialog only *asks*;
+	// performDelete owns the actual DELETE because the post-delete
+	// navigation here (bounce off /chat/:id) differs from the
+	// archived list's.
+	let deleteTargetId = $state<string | null>(null);
 
-	function formatMediaCounts(counts: { images: number; videos: number }): string {
-		const parts: string[] = [];
-		if (counts.images > 0) {
-			parts.push(`${counts.images} ${counts.images === 1 ? 'image' : 'images'}`);
-		}
-		if (counts.videos > 0) {
-			parts.push(`${counts.videos} ${counts.videos === 1 ? 'video' : 'videos'}`);
-		}
-		return parts.join(' and ');
-	}
-
-	async function deleteConversation(id: string) {
+	function requestDelete(id: string) {
+		// The sidebar is already pointer-events-none while busyId is
+		// set; this guard is belt-and-suspenders against a stray click.
 		if (busyId) return;
-		if (pendingDelete) return;
-		// Reset the checkbox each time the dialog opens — a fresh
-		// decision per conversation, not a sticky preference.
-		deleteMediaToo = false;
-		try {
-			const res = await fetch(`/api/conversations/${id}/orphan-media`);
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			const counts = (await res.json()) as { images: number; videos: number };
-			pendingDelete = { id, counts };
-		} catch (e) {
-			toast.error(
-				`Couldn't open delete dialog: ${e instanceof Error ? e.message : String(e)}`
-			);
-		}
+		deleteTargetId = id;
 	}
 
-	function cancelDeleteConversation() {
-		pendingDelete = null;
-	}
-
-	async function confirmDeleteConversation() {
-		if (!pendingDelete || busyId) return;
-		const id = pendingDelete.id;
-		const alsoDeleteMedia = deleteMediaToo;
-		pendingDelete = null;
+	async function performDelete(id: string, deleteMedia: boolean) {
+		if (busyId) return;
 		busyId = id;
 		try {
-			const url = alsoDeleteMedia
+			const url = deleteMedia
 				? `/api/conversations/${id}?deleteMedia=true`
 				: `/api/conversations/${id}`;
 			const res = await fetch(url, { method: 'DELETE' });
@@ -236,12 +196,6 @@
 		} finally {
 			busyId = null;
 		}
-	}
-
-	function onDeleteDialogKey(e: KeyboardEvent) {
-		if (e.key !== 'Escape') return;
-		if (!pendingDelete) return;
-		cancelDeleteConversation();
 	}
 
 	// Inline rename state. `renamingId` is the conversation id currently
@@ -544,7 +498,7 @@
 												<span>Archive</span>
 											</DropdownMenu.Item>
 											<DropdownMenu.Item
-												onSelect={() => deleteConversation(c.id)}
+												onSelect={() => requestDelete(c.id)}
 												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
 											>
 												<Trash2 size={14} strokeWidth={2.25} />
@@ -657,79 +611,11 @@
 -->
 <Toaster />
 
-<svelte:window onkeydown={onDeleteDialogKey} />
-
 <!--
-	Delete-conversation confirm dialog. Replaces the bare `confirm()`
-	we used to show — the modal can render the orphan-media checkbox
-	(with kind-aware count) when there's media to ask about, or stay
-	minimal for text-only chats where there's nothing extra to decide.
-
-	Default unchecked = library-model behavior: deleting the
-	conversation by itself doesn't touch gallery items, mirroring how
-	deleting an email in most clients doesn't touch a separate photo
-	library. Checking opts the user into the "tight coupling" outcome
-	for this delete only.
-
-	role=alertdialog rather than role=dialog because the action is
-	destructive — alertdialog signals to assistive tech that the
-	dialog needs explicit user input before dismissal (no auto-close
-	on focus loss). Backdrop click cancels; Escape cancels.
+	Shared delete-confirm dialog for the sidebar conversation list. It
+	asks the question (and offers the orphan-media checkbox); the
+	actual DELETE + post-delete navigation is performDelete() above.
+	The same component backs the /archived list so both delete paths
+	are identical.
 -->
-{#if pendingDelete}
-	{@const p = pendingDelete}
-	{@const hasMedia = p.counts.images > 0 || p.counts.videos > 0}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
-	<div
-		role="alertdialog"
-		aria-modal="true"
-		aria-labelledby="delete-conv-title"
-		tabindex="-1"
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) cancelDeleteConversation();
-		}}
-	>
-		<div
-			class="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
-		>
-			<h2 id="delete-conv-title" class="text-base font-semibold">
-				Delete this conversation?
-			</h2>
-			<p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-				This action cannot be undone.
-			</p>
-			{#if hasMedia}
-				<label
-					class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-700 dark:bg-neutral-800/40"
-				>
-					<input
-						type="checkbox"
-						bind:checked={deleteMediaToo}
-						class="mt-0.5"
-					/>
-					<span>
-						Also delete <span class="font-medium">{formatMediaCounts(p.counts)}</span>
-						from gallery.
-					</span>
-				</label>
-			{/if}
-			<div class="mt-5 flex items-center justify-end gap-2">
-				<button
-					type="button"
-					onclick={cancelDeleteConversation}
-					class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
-				>
-					Cancel
-				</button>
-				<button
-					type="button"
-					onclick={confirmDeleteConversation}
-					class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-				>
-					Delete
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+<DeleteConversationDialog bind:targetId={deleteTargetId} onconfirm={performDelete} />

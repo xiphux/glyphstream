@@ -3,10 +3,13 @@
 	import { DropdownMenu } from 'bits-ui';
 	import { ArchiveRestore, MoreVertical, Trash2 } from 'lucide-svelte';
 	import type { ConversationSummary } from '$lib/types/api';
+	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
+	import { toast } from '$lib/toast.svelte';
 
 	let { data } = $props<{ data: { archivedConversations: ConversationSummary[] } }>();
 
 	let busyId = $state<string | null>(null);
+	let deleteTargetId = $state<string | null>(null);
 
 	function formatDate(ms: number): string {
 		const d = new Date(ms);
@@ -39,18 +42,30 @@
 		}
 	}
 
-	async function deleteConversation(id: string) {
+	// Delete uses the shared <DeleteConversationDialog> (rendered at the
+	// bottom of the markup) so the archived list behaves exactly like
+	// the sidebar: a real confirm modal with the orphan-media checkbox,
+	// not a bare window.confirm() with no media option. requestDelete
+	// opens it; performDelete runs once the user confirms.
+	function requestDelete(id: string) {
 		if (busyId) return;
-		if (!confirm('Delete this conversation? This cannot be undone.')) return;
+		deleteTargetId = id;
+	}
+
+	async function performDelete(id: string, deleteMedia: boolean) {
+		if (busyId) return;
 		busyId = id;
 		try {
-			const res = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+			const url = deleteMedia
+				? `/api/conversations/${id}?deleteMedia=true`
+				: `/api/conversations/${id}`;
+			const res = await fetch(url, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`Server returned ${res.status}`);
 			}
 			await invalidateAll();
 		} catch (e) {
-			alert(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
+			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			busyId = null;
 		}
@@ -109,7 +124,7 @@
 										<span>Unarchive</span>
 									</DropdownMenu.Item>
 									<DropdownMenu.Item
-										onSelect={() => deleteConversation(c.id)}
+										onSelect={() => requestDelete(c.id)}
 										class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
 									>
 										<Trash2 size={14} strokeWidth={2.25} />
@@ -124,3 +139,9 @@
 		{/if}
 	</div>
 </div>
+
+<!--
+	Shared delete-confirm dialog — the same modal the sidebar uses, so
+	deleting an archived thread offers the orphan-media checkbox too.
+-->
+<DeleteConversationDialog bind:targetId={deleteTargetId} onconfirm={performDelete} />
