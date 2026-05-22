@@ -1,10 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { generateState } from 'arctic';
-import { getGithubClient } from '$lib/server/auth/github';
+import { getGithubClient, STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/server/auth/github';
 import type { RequestHandler } from './$types';
-
-const STATE_COOKIE = 'glyphstream_oauth_state';
-const STATE_TTL_SECONDS = 600;
 
 export const GET: RequestHandler = ({ cookies }) => {
 	const state = generateState();

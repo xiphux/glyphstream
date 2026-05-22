@@ -1,11 +1,9 @@
 import { redirect } from '@sveltejs/kit';
-import { OAuth2RequestError, fetchGithubProfile } from '$lib/server/auth/github';
+import { OAuth2RequestError, STATE_COOKIE, fetchGithubProfile } from '$lib/server/auth/github';
 import { isAllowed } from '$lib/server/auth/allowlist';
 import { upsertUserByGithub } from '$lib/server/db/queries/users';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
 import type { RequestHandler } from './$types';
-
-const STATE_COOKIE = 'glyphstream_oauth_state';
 
 function loginError(reason: string): never {
 	throw redirect(302, `/login?error=${encodeURIComponent(reason)}`);

@@ -5,6 +5,19 @@ export const GITHUB_OAUTH_CALLBACK_PATH = '/api/auth/github/callback';
 const GITHUB_USER_API = 'https://api.github.com/user';
 const GITHUB_USER_EMAILS_API = 'https://api.github.com/user/emails';
 
+/**
+ * Name of the cookie carrying the OAuth `state` value between the login
+ * redirect and the callback. The login route writes it; the callback
+ * reads it back to defend against CSRF — the two MUST agree, so the name
+ * lives here and is imported by both rather than being two string
+ * literals that a typo could silently desync.
+ */
+export const STATE_COOKIE = 'glyphstream_oauth_state';
+
+/** How long the user has to complete the GitHub round-trip before the
+ *  OAuth state cookie expires. */
+export const STATE_TTL_SECONDS = 600;
+
 let cached: GitHub | null = null;
 
 export function getGithubClient(): GitHub {
