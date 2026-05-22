@@ -11,6 +11,7 @@
 	} from '$lib/gallery-launch';
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 
 	let { data } = $props();
 
@@ -172,8 +173,7 @@
 				body: JSON.stringify(createBody)
 			});
 			if (!createRes.ok) {
-				const err = await safeReadError(createRes);
-				throw new Error(err);
+				throw new Error(await errorMessageFromResponse(createRes));
 			}
 			const { conversation } = (await createRes.json()) as {
 				conversation: { id: string };
@@ -195,15 +195,6 @@
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
 			busy = false;
-		}
-	}
-
-	async function safeReadError(res: Response): Promise<string> {
-		try {
-			const j = await res.json();
-			return j.message ?? `HTTP ${res.status}`;
-		} catch {
-			return `HTTP ${res.status}`;
 		}
 	}
 

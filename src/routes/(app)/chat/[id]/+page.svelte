@@ -19,6 +19,7 @@
 	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -670,8 +671,7 @@
 				signal: abort.signal
 			});
 			if (!res.ok) {
-				const j = await res.json().catch(() => ({}));
-				throw new Error(j.message ?? `HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			if (!res.body) throw new Error('Server returned no body');
 
@@ -821,8 +821,7 @@
 				signal: abort.signal
 			});
 			if (!res.ok) {
-				const j = await res.json().catch(() => ({}));
-				throw new Error(j.message ?? `HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			const body = (await res.json()) as SendMessageResponse;
 			// Abandoned by a conversation switch while the request was in
@@ -1154,8 +1153,7 @@
 				{ method: 'POST' }
 			);
 			if (!res.ok) {
-				const j = await res.json().catch(() => ({}));
-				throw new Error(j.message ?? `HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidateAll();
 			// Wait one microtask for the messages-sync $effect to apply the
@@ -1184,8 +1182,7 @@
 				{ method: 'DELETE' }
 			);
 			if (!res.ok && res.status !== 404) {
-				const j = await res.json().catch(() => ({}));
-				throw new Error(j.message ?? `HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidateAll();
 		} catch (e) {

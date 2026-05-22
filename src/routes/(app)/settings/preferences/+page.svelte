@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { Check } from 'lucide-svelte';
 	import type { EnterBehavior, UserPreferences } from '$lib/types/api';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import {
 		getPermissionState,
 		isIosBeforeInstall,
@@ -59,8 +60,7 @@
 				})
 			});
 			if (!res.ok) {
-				const body = await res.json().catch(() => ({}));
-				throw new Error((body as { message?: string }).message ?? `HTTP ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			const next = (await res.json()) as UserPreferences;
 			saved = { ...next };

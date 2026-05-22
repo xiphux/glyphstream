@@ -7,6 +7,7 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
 		Archive,
@@ -246,9 +247,7 @@
 				body: JSON.stringify({ title: next })
 			});
 			if (!res.ok) {
-				const j = await res.json().catch(() => ({}));
-				const msg = (j && typeof j.message === 'string' && j.message) || `HTTP ${res.status}`;
-				throw new Error(msg);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidateAll();
 		} catch (e) {

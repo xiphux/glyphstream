@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import type {
 		CreateCustomModelRequest,
 		CustomModel,
@@ -105,8 +106,7 @@
 				body: JSON.stringify(body)
 			});
 			if (!res.ok) {
-				const j = await safeJson(res);
-				throw new Error(j?.message ?? `Server returned ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			resetForm();
 			await invalidateAll();
@@ -124,8 +124,7 @@
 		try {
 			const res = await fetch(`/api/custom-models/${m.id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) {
-				const j = await safeJson(res);
-				throw new Error(j?.message ?? `Server returned ${res.status}`);
+				throw new Error(await errorMessageFromResponse(res));
 			}
 			if (editingId === m.id) resetForm();
 			await invalidateAll();
@@ -136,13 +135,6 @@
 		}
 	}
 
-	async function safeJson(res: Response): Promise<{ message?: string } | null> {
-		try {
-			return await res.json();
-		} catch {
-			return null;
-		}
-	}
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
