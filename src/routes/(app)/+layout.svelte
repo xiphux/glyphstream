@@ -440,6 +440,12 @@
 			Collapsed sidebar shows the same entries as icon-only buttons
 			with the model name in a hover title so the "quick-access" value
 			survives.
+
+			The inner <ul> is capped at 30vh + its own overflow-y-auto so a
+			power user with dozens of favorites can't push Recents to zero
+			height or shove the account menu below the viewport. Cap is
+			vh-based so it scales with the user's window — tall screens
+			give favorites more room, short ones constrain them harder.
 		-->
 		{#if favoriteEntries.length > 0}
 			<nav class="mt-2 px-2" aria-label="Favorite models">
@@ -448,7 +454,7 @@
 						Favorites
 					</h2>
 				{/if}
-				<ul class="space-y-0.5">
+				<ul class="max-h-[30vh] space-y-0.5 overflow-y-auto">
 					{#each favoriteEntries as fav (fav.value)}
 						<li>
 							<a
