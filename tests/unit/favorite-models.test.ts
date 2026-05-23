@@ -25,7 +25,7 @@ vi.mock('$lib/toast.svelte', () => ({
 	}
 }));
 
-import { toggleFavoriteModel } from '$lib/favorite-models';
+import { reorder, reorderFavoriteModels, toggleFavoriteModel } from '$lib/favorite-models';
 
 /** Capture the parsed body of the most recent fetch call. */
 function capturedFavorites(): string[] {
@@ -119,5 +119,61 @@ describe('toggleFavoriteModel — failure paths', () => {
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/network down/);
 		expect(mocks.invalidateAll).not.toHaveBeenCalled();
+	});
+});
+
+describe('reorderFavoriteModels', () => {
+	it('PATCHes the supplied array verbatim and invalidates on success', async () => {
+		await reorderFavoriteModels(['c', 'a', 'b']);
+		expect(capturedFavorites()).toEqual(['c', 'a', 'b']);
+		expect(mocks.invalidateAll).toHaveBeenCalledOnce();
+	});
+});
+
+describe('reorder', () => {
+	it('moves an item up by one (drop before)', () => {
+		expect(reorder(['a', 'b', 'c', 'd'], 'c', 'b', 'before')).toEqual(['a', 'c', 'b', 'd']);
+	});
+
+	it('moves an item down by one (drop after)', () => {
+		expect(reorder(['a', 'b', 'c', 'd'], 'b', 'c', 'after')).toEqual(['a', 'c', 'b', 'd']);
+	});
+
+	it('moves an item to the head', () => {
+		expect(reorder(['a', 'b', 'c', 'd'], 'd', 'a', 'before')).toEqual(['d', 'a', 'b', 'c']);
+	});
+
+	it('moves an item to the tail', () => {
+		expect(reorder(['a', 'b', 'c', 'd'], 'a', 'd', 'after')).toEqual(['b', 'c', 'd', 'a']);
+	});
+
+	it('returns the list unchanged when dropping an item onto itself', () => {
+		expect(reorder(['a', 'b', 'c'], 'b', 'b', 'before')).toEqual(['a', 'b', 'c']);
+		expect(reorder(['a', 'b', 'c'], 'b', 'b', 'after')).toEqual(['a', 'b', 'c']);
+	});
+
+	it('returns the list unchanged when the dragged id is not present', () => {
+		expect(reorder(['a', 'b', 'c'], 'zzz', 'b', 'before')).toEqual(['a', 'b', 'c']);
+	});
+
+	it('returns the list unchanged when the target id is not present', () => {
+		expect(reorder(['a', 'b', 'c'], 'a', 'zzz', 'after')).toEqual(['a', 'b', 'c']);
+	});
+
+	it('drop-after on the immediately preceding item is a no-op (same final order)', () => {
+		// dragging 'c' and dropping it "after b" produces the original [a,b,c,d]
+		expect(reorder(['a', 'b', 'c', 'd'], 'c', 'b', 'after')).toEqual(['a', 'b', 'c', 'd']);
+	});
+
+	it('drop-before on the immediately following item is a no-op (same final order)', () => {
+		// dragging 'b' and dropping it "before c" produces the original [a,b,c,d]
+		expect(reorder(['a', 'b', 'c', 'd'], 'b', 'c', 'before')).toEqual(['a', 'b', 'c', 'd']);
+	});
+
+	it('returns a new array (does not mutate input)', () => {
+		const input = ['a', 'b', 'c'];
+		const out = reorder(input, 'a', 'c', 'after');
+		expect(out).not.toBe(input);
+		expect(input).toEqual(['a', 'b', 'c']);
 	});
 });

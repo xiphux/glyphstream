@@ -1,6 +1,7 @@
 /**
- * Toggle a model in the user's favorites list. Used by the model picker's
- * star button and any future "favorite this" affordance.
+ * Helpers that mutate the user's favorites list. The shared write path is
+ * `setFavoriteModels` — both the picker's star button (toggle) and the
+ * sidebar drag-and-drop (reorder) eventually call it with the new array.
  *
  * Treated as a fire-and-invalidate operation: we send the new list, then
  * trigger `invalidateAll()` so the layout reloads `data.prefs` and every
@@ -19,15 +20,7 @@ import { invalidateAll } from '$app/navigation';
 import { errorMessageFromResponse } from '$lib/fetch-error';
 import { toast } from '$lib/toast.svelte';
 
-export async function toggleFavoriteModel(
-	currentFavorites: readonly string[],
-	modelValue: string
-): Promise<void> {
-	const isFavorited = currentFavorites.includes(modelValue);
-	const next = isFavorited
-		? currentFavorites.filter((v) => v !== modelValue)
-		: [...currentFavorites, modelValue];
-
+async function setFavoriteModels(next: readonly string[]): Promise<void> {
 	try {
 		const res = await fetch('/api/user/preferences', {
 			method: 'PATCH',
@@ -44,4 +37,39 @@ export async function toggleFavoriteModel(
 			`Couldn't update favorites: ${e instanceof Error ? e.message : String(e)}`
 		);
 	}
+}
+
+export async function toggleFavoriteModel(
+	currentFavorites: readonly string[],
+	modelValue: string
+): Promise<void> {
+	const isFavorited = currentFavorites.includes(modelValue);
+	const next = isFavorited
+		? currentFavorites.filter((v) => v !== modelValue)
+		: [...currentFavorites, modelValue];
+	await setFavoriteModels(next);
+}
+
+export async function reorderFavoriteModels(newOrder: readonly string[]): Promise<void> {
+	await setFavoriteModels(newOrder);
+}
+
+/**
+ * Pure reorder math for drag-and-drop. Moves `dragged` so that it lands
+ * immediately before or after `target` in `current`. Returns the input
+ * unchanged when the move is a no-op or when either id isn't present —
+ * keeps the drop handler tolerant of stale state without a try/catch.
+ */
+export function reorder(
+	current: readonly string[],
+	dragged: string,
+	target: string,
+	position: 'before' | 'after'
+): string[] {
+	if (dragged === target) return [...current];
+	if (!current.includes(dragged) || !current.includes(target)) return [...current];
+	const without = current.filter((v) => v !== dragged);
+	const targetIdx = without.indexOf(target);
+	const insertAt = position === 'before' ? targetIdx : targetIdx + 1;
+	return [...without.slice(0, insertAt), dragged, ...without.slice(insertAt)];
 }
