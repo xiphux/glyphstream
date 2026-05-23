@@ -40,6 +40,14 @@ const SYSTEM_PROMPT =
 	'Generate a 3-7 word title that captures the topic of this conversation. ' +
 	'Output only the title — no quotes, no trailing punctuation, no preamble.';
 
+// Restated after the content. Without a trailing reminder, weaker task models
+// see a transcript ending in a truncated Assistant turn and continue it
+// (e.g. write more of the user's story) instead of titling it. Having the
+// last tokens before generation say "title only" pulls them back on task.
+const TRAILER_INSTRUCTION =
+	'Write a 3-7 word title summarizing the topic of the conversation above. ' +
+	'Output the title only — no quotes, no trailing punctuation, no preamble.';
+
 export interface GenerateTitleResult {
 	title: string;
 	persisted: boolean;
@@ -126,9 +134,13 @@ export function buildTitlePrompt(exchange: {
 	const assistantTruncated = truncateEllipsis(assistantText, PROMPT_TRUNCATE_CHARS);
 
 	const useAssistant = assistantTruncated.length > 0;
-	const body = useAssistant
+	const inner = useAssistant
 		? `User: ${userTruncated}\n\nAssistant: ${assistantTruncated}`
 		: userTruncated;
+
+	// Wrap in <conversation> tags so the model reads the body as data to
+	// summarize, not as a live transcript to continue.
+	const body = `<conversation>\n${inner}\n</conversation>\n\n${TRAILER_INSTRUCTION}`;
 
 	return [
 		{ role: 'system', content: SYSTEM_PROMPT },

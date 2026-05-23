@@ -25,7 +25,7 @@ describe('buildTitlePrompt', () => {
 			assistantHasMedia: false
 		});
 		expect(msgs).not.toBeNull();
-		expect(msgs![1].content).toBe('a cat in a hat');
+		expect(msgs![1].content).toContain('a cat in a hat');
 		expect(msgs![1].content).not.toContain('Assistant:');
 	});
 
@@ -39,7 +39,27 @@ describe('buildTitlePrompt', () => {
 			assistantHasMedia: true
 		});
 		expect(msgs!.length).toBe(2);
-		expect(msgs![1].content).toBe('sunset over mountains');
+		expect(msgs![1].content).toContain('sunset over mountains');
+		expect(msgs![1].content).not.toContain('Assistant:');
+	});
+
+	it('wraps the body in <conversation> tags with a trailing title instruction', () => {
+		// Regression: weaker task models were continuing the assistant turn
+		// instead of titling it (cliffhanger-completion). The wrapper marks
+		// the body as data and the trailer pulls generation back on task.
+		const msgs = buildTitlePrompt({
+			userText: 'Write a story about a wizard named Alex',
+			userMediaKinds: [],
+			assistantText: 'In the misty hills of Eldoria, Alex pulled out his staff and',
+			assistantHasMedia: false
+		});
+		const body = msgs![1].content;
+		expect(body).toContain('<conversation>');
+		expect(body).toContain('</conversation>');
+		// Trailing instruction must come after the closing tag, so the last
+		// tokens before generation are "output a title."
+		const closeIdx = body.indexOf('</conversation>');
+		expect(body.indexOf('title', closeIdx)).toBeGreaterThan(closeIdx);
 	});
 
 	it('truncates very long user text', () => {
@@ -50,9 +70,13 @@ describe('buildTitlePrompt', () => {
 			assistantText: null,
 			assistantHasMedia: false
 		});
-		// 500-char cap with ellipsis = at most 500 chars in the prompt
-		expect(msgs![1].content.length).toBeLessThanOrEqual(500);
-		expect(msgs![1].content.endsWith('…')).toBe(true);
+		// 500-char cap applies to the user-text portion (the wrapper + trailer
+		// add fixed overhead). Verify the run of x's is bounded, not the full
+		// prompt.
+		const xRun = msgs![1].content.match(/x+…?/);
+		expect(xRun).not.toBeNull();
+		expect(xRun![0].length).toBeLessThanOrEqual(500);
+		expect(xRun![0].endsWith('…')).toBe(true);
 	});
 
 	it('returns null when nothing usable exists', () => {
