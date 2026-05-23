@@ -192,6 +192,15 @@ export interface ChatCompletionRequest {
 		content: string | ChatCompletionContentPart[];
 	}>;
 	stream?: boolean;
+	/**
+	 * Opt in to a final SSE chunk containing the request's usage block
+	 * (prompt/completion token counts). Required by the OpenAI spec for
+	 * streaming responses — without this, usage is omitted from streams
+	 * even though it's always present on non-streaming responses.
+	 * Backends that don't recognize the field will ignore it per the
+	 * spec, and our recorder tolerates a missing usage block.
+	 */
+	stream_options?: { include_usage?: boolean };
 	temperature?: number;
 	top_p?: number;
 	max_tokens?: number;

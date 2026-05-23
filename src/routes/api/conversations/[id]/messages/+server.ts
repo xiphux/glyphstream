@@ -421,6 +421,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const wantsStream = url.searchParams.get('stream') === '1';
 
 	if (wantsStream) {
+		// Streaming responses omit `usage` unless the caller asks for it.
+		// We always want it — it's how the UI surfaces conversation size.
+		requestBody.stream_options = { include_usage: true };
 		const stream = await startStreamingRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
