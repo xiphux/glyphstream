@@ -8,7 +8,8 @@
 # Multi-arch (linux/amd64 + linux/arm64) so the same image works on x86
 # hosts and Synology / Raspberry Pi-class ARM boxes. Uses GitHub's native
 # ARM runners (`ubuntu-22.04-arm`) per architecture rather than QEMU
-# emulation — Node 24 + QEMU has known instability that crashes mid-build.
+# emulation — modern Node + QEMU has known instability that crashes
+# mid-build.
 # Each arch builds a digest-only image, then a merge job stitches them
 # into a single multi-arch manifest with the canonical tags. Tags appear
 # atomically: consumers never see a half-published `latest`.
