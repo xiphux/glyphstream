@@ -141,20 +141,28 @@
 		return 0;
 	});
 
-	// First assistant message after `fromIndex` whose prompt-token count
-	// is known. For a user message at `fromIndex`, that's the response
-	// turn whose request carried this user message — its prompt_tokens
-	// equals "the full conversation we sent up at this point". Returns
-	// null when no such response exists yet (e.g. an in-flight or
-	// cancelled turn) or when the backend didn't report usage.
-	function nextAssistantPromptTokens(msgs: ChatMessage[], fromIndex: number): number | null {
-		for (let j = fromIndex + 1; j < msgs.length; j++) {
-			if (msgs[j].role === 'assistant' && msgs[j].tokensIn != null) {
-				return msgs[j].tokensIn ?? null;
+	// Per-user-message "tokens we sent up to and including this turn":
+	// the prompt_tokens of the next assistant message whose backend
+	// reported usage. Computed once per `messages` change with a single
+	// right-to-left sweep rather than once per row at render time —
+	// the previous per-row lookup made the message list render O(N²).
+	// Null when no downstream assistant reported usage (in-flight or
+	// cancelled turn, or backend doesn't return usage).
+	const userSentTokens = $derived.by(() => {
+		const out = new Array<number | null>(messages.length);
+		let next: number | null = null;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const m = messages[i];
+			if (m.role === 'assistant') {
+				if (m.tokensIn != null) next = m.tokensIn;
+			} else if (m.role === 'user') {
+				out[i] = next;
+			} else {
+				out[i] = null;
 			}
 		}
-		return null;
-	}
+		return out;
+	});
 
 	onDestroy(() => attachments.destroy());
 
@@ -457,7 +465,25 @@
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
 	let inFlightStatus = $state<string | null>(null);
-	const inFlightHtml = $derived(renderLiveMarkdown(inFlightText));
+
+	// rAF-coalesced markdown render. The upstream emits many small text
+	// deltas (often one or two characters at a time); re-rendering the
+	// full accumulated markdown on every delta becomes O(N²) over the
+	// course of a long reply and contends with paint. Coalescing into
+	// one render per animation frame caps the work at ~60 renders/sec
+	// no matter how fast tokens stream in, and the user can't perceive
+	// the difference (the bottleneck for "smoothness" is paint, not
+	// markdown granularity).
+	let inFlightHtml = $state('');
+	let inFlightHtmlFrame = 0;
+	$effect(() => {
+		void inFlightText;
+		if (inFlightHtmlFrame !== 0) return; // a frame is already pending; it'll read latest
+		inFlightHtmlFrame = requestAnimationFrame(() => {
+			inFlightHtmlFrame = 0;
+			inFlightHtml = renderLiveMarkdown(inFlightText);
+		});
+	});
 
 	// Server-reported truth: a generation is running for this conversation
 	// but this client isn't the one driving it — its fetch died (iOS
@@ -1438,7 +1464,7 @@
 					{@const showEdit = m.role === 'user'}
 					{@const showRetry = m.role === 'assistant'}
 					{@const showCopy = hasCopyableText(m)}
-					{@const userSent = m.role === 'user' ? nextAssistantPromptTokens(messages, i) : null}
+					{@const userSent = m.role === 'user' ? userSentTokens[i] : null}
 					{@const assistantOut = m.role === 'assistant' ? (m.tokensOut ?? 0) : 0}
 					{@const showTokens =
 						(m.role === 'assistant' && assistantOut > 0) ||

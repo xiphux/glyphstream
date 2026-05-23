@@ -313,9 +313,20 @@
 	});
 
 	// Index lookup for rendering: the highlight applies to the flat
-	// filteredItems list, so we map (groupedItem) → its index in that list.
+	// filteredItems list, so each rendered row needs to know its index.
+	// Using `filteredItems.indexOf` per row would make the picker render
+	// O(N²) over the model count; the Map keeps it O(N). Each row's
+	// PickerItem is unique by identity (the Favorites clones above ensure
+	// that), so identity-keyed lookup works.
+	const indexByItem = $derived.by(() => {
+		const map = new Map<PickerItem, number>();
+		for (let i = 0; i < filteredItems.length; i++) {
+			map.set(filteredItems[i], i);
+		}
+		return map;
+	});
 	function indexOf(item: PickerItem): number {
-		return filteredItems.indexOf(item);
+		return indexByItem.get(item) ?? -1;
 	}
 </script>
 
