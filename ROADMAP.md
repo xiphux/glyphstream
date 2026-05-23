@@ -29,16 +29,6 @@ expected priority, not time-bound.
   - A "your devices" UI surfacing the `push_subscriptions.user_agent`
     column with per-device revoke.
 
-- **Structured personalization fields.** The user-level system prompt
-  preference is shipped (free-form text). Structured fields (ChatGPT
-  style) are the unfilled side of the hybrid: Name, occupation, traits,
-  response style → combined server-side into the prepended system
-  prompt at conversation-create time. Lower barrier to filling in,
-  better defaults for new users than a blank textarea. Composition rule
-  with the existing free-form prompt: structured fields render first,
-  free-form text appended below. Distinct from custom models, which
-  are per-preset, not per-user.
-
 - **Per-conversation "private mode" toggle.** A conversation-row
   boolean (and a UI toggle when starting a chat) that opts out of all
   user-level personal-data injection — system prompt, future memories,
