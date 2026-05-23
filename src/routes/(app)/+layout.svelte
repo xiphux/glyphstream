@@ -15,6 +15,7 @@
 	import {
 		Archive,
 		ChevronDown,
+		Image as ImageIcon,
 		Images,
 		LogOut,
 		Menu,
@@ -25,9 +26,12 @@
 		Plus,
 		Settings,
 		SlidersHorizontal,
+		Sparkles,
 		Trash2,
-		User as UserIcon
+		User as UserIcon,
+		Video as VideoIcon
 	} from 'lucide-svelte';
+	import type { ModelKind } from '$lib/types/api';
 	import { tick } from 'svelte';
 
 	let { data, children } = $props();
@@ -54,6 +58,44 @@
 	// "New chat" lives at /. Plain string equality (not startsWith) since
 	// every path starts with '/' — would otherwise match every nav.
 	const newChatPending = $derived(pendingPath === '/');
+
+	/**
+	 * Resolved entries for the sidebar's "Favorites" section. Each id in
+	 * `data.prefs.favoriteModels` is looked up against the layout-loaded
+	 * `data.models` (base models) + `data.customModels` (presets) and
+	 * mapped to a label for display. Ids that don't resolve — a deleted
+	 * preset, a removed endpoint — are dropped silently rather than
+	 * rendered as broken rows. Insertion order is preserved.
+	 *
+	 * Label rules mirror the picker's `triggerLabel`: custom presets show
+	 * their user-given name verbatim; base models drop any `owner/` prefix
+	 * so e.g. `meta-llama/Llama-3-70b` becomes `Llama-3-70b`. The full
+	 * detail is still reachable via hover (`title=` on the anchor).
+	 */
+	const favoriteEntries = $derived.by(() => {
+		const favs = data.prefs?.favoriteModels ?? [];
+		if (favs.length === 0) return [];
+		const customById = new Map(data.customModels.map((cm) => [cm.id, cm] as const));
+		const baseById = new Map(data.models.map((m) => [m.id, m] as const));
+		const out: { value: string; label: string; kind: ModelKind }[] = [];
+		for (const id of favs) {
+			if (id.startsWith('custom::')) {
+				const cm = customById.get(id.slice('custom::'.length));
+				if (!cm) continue;
+				// A preset's kind tracks its underlying base model — the
+				// preset itself is just persona + parameters layered on top.
+				const base = baseById.get(`${cm.baseEndpointId}::${cm.baseModelId}`);
+				out.push({ value: id, label: cm.name, kind: base?.kind ?? 'chat' });
+				continue;
+			}
+			const base = baseById.get(id);
+			if (!base) continue;
+			const slash = base.displayName.lastIndexOf('/');
+			const label = slash >= 0 ? base.displayName.slice(slash + 1) : base.displayName;
+			out.push({ value: id, label, kind: base.kind });
+		}
+		return out;
+	});
 
 	let busyId = $state<string | null>(null);
 
@@ -387,6 +429,58 @@
 				{#if !collapsed}<span>Archived</span>{/if}
 			</a>
 		</div>
+
+		<!--
+			Favorites: user-pinned models. Sits between the static nav links
+			and the Recents list. Clicking an entry lands on the new-chat
+			surface with that model preselected via `?model=…` (the home
+			page's default-picker effect honors the param). Hidden entirely
+			when the user hasn't favorited anything — the header is silent
+			rather than dangling above an empty list.
+			Collapsed sidebar shows the same entries as icon-only buttons
+			with the model name in a hover title so the "quick-access" value
+			survives.
+		-->
+		{#if favoriteEntries.length > 0}
+			<nav class="mt-2 px-2" aria-label="Favorite models">
+				{#if !collapsed}
+					<h2 class="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+						Favorites
+					</h2>
+				{/if}
+				<ul class="space-y-0.5">
+					{#each favoriteEntries as fav (fav.value)}
+						<li>
+							<a
+								href="/?model={encodeURIComponent(fav.value)}"
+								title={fav.label}
+								class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 active:bg-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700 {collapsed
+									? 'sm:justify-center sm:px-0'
+									: ''}"
+							>
+								<!--
+									Icon picked by modality so the collapsed sidebar
+									still conveys "this is the image model" vs "this
+									is the chat model" without the label. Mirrors the
+									kind glyph on the right side of picker rows;
+									using lucide here (rather than the picker's
+									emoji) keeps visual parity with the other
+									sidebar nav links, which are all lucide icons.
+								-->
+								{#if fav.kind === 'image'}
+									<ImageIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+								{:else if fav.kind === 'video'}
+									<VideoIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+								{:else}
+									<Sparkles size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+								{/if}
+								{#if !collapsed}<span class="min-w-0 truncate">{fav.label}</span>{/if}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</nav>
+		{/if}
 
 		<!--
 			Conversation list. Hidden when collapsed (desktop); on mobile

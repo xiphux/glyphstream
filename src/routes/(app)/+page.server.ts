@@ -1,41 +1,11 @@
-import { error } from '@sveltejs/kit';
-import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
-import { listEndpoints } from '$lib/server/endpoints/registry';
-import { listUpstreamModels } from '$lib/server/endpoints/client';
-import { ConfigError } from '$lib/server/endpoints/config';
-import { normalizeUpstreamModel } from '$lib/server/endpoints/models';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, parent }) => {
-	// Wait for the (app) layout's auth check to either populate
-	// locals.user or throw a redirect to /login. Without this, the page
-	// load runs in parallel with the layout's load — and our `locals.user!`
-	// non-null assertion below would TypeError-out before the redirect
-	// has a chance to win, returning a 500 instead of a 302.
+export const load: PageServerLoad = async ({ parent }) => {
+	// The (app) layout loads `models` + `customModels` (for the sidebar's
+	// favorites resolution); this page just inherits them so its picker
+	// renders with the same data without re-running the upstream fetch
+	// loop. Auth + locals.user!.id deref happens in the layout — `await
+	// parent()` ensures any redirect/error there wins before we'd touch it.
 	await parent();
-
-	let endpoints;
-	try {
-		endpoints = listEndpoints();
-	} catch (e) {
-		if (e instanceof ConfigError) {
-			throw error(500, `Endpoint configuration is invalid: ${e.message}`);
-		}
-		throw e;
-	}
-
-	const results = await Promise.all(
-		endpoints.map(async (endpoint) => {
-			try {
-				const upstream = await listUpstreamModels(endpoint);
-				return upstream.map((m) => normalizeUpstreamModel(endpoint, m));
-			} catch {
-				return [];
-			}
-		})
-	);
-	return {
-		models: results.flat(),
-		customModels: listCustomModelsForUser(locals.user!.id)
-	};
+	return {};
 };

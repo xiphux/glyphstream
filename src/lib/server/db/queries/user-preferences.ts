@@ -22,8 +22,29 @@ const DEFAULTS: UserPreferences = {
 	showGreeting: true,
 	notificationsEnabled: false,
 	notificationsShowContent: false,
-	notificationsForegroundToast: true
+	notificationsForegroundToast: true,
+	favoriteModels: []
 };
+
+/**
+ * Coerce a candidate favoriteModels value to a clean string[]. Accepts only
+ * an array whose entries are all strings — a mixed array indicates a bug
+ * upstream rather than recoverable noise, and silently filtering bad
+ * elements would hide it. De-dupes while preserving first-occurrence order
+ * (insertion order is the user-visible ordering in sidebar + picker).
+ */
+function coerceFavoriteModels(input: unknown, fallback: string[]): string[] {
+	if (!Array.isArray(input)) return fallback;
+	if (!input.every((v) => typeof v === 'string')) return fallback;
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const v of input as string[]) {
+		if (seen.has(v)) continue;
+		seen.add(v);
+		out.push(v);
+	}
+	return out;
+}
 
 /**
  * Coerce a loosely-typed input object into a complete UserPreferences,
@@ -61,7 +82,11 @@ function coerceUserPreferences(
 		notificationsForegroundToast:
 			typeof input.notificationsForegroundToast === 'boolean'
 				? input.notificationsForegroundToast
-				: fallback.notificationsForegroundToast
+				: fallback.notificationsForegroundToast,
+		favoriteModels:
+			input.favoriteModels === undefined
+				? fallback.favoriteModels
+				: coerceFavoriteModels(input.favoriteModels, fallback.favoriteModels)
 	};
 }
 

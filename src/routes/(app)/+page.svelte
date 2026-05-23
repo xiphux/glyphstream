@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
@@ -14,6 +15,7 @@
 	import type { CreateConversationRequest } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 
 	let { data } = $props();
@@ -37,6 +39,27 @@
 	//   - "endpointId::upstreamId"  → base model
 	//   - "custom::{customModelId}" → saved preset
 	let modelId = $state('');
+
+	// Apply `?model=` from the URL whenever it changes. Sidebar favorites
+	// link to `/?model=…`, and SvelteKit SPA-navigates between favorites
+	// without remounting — so this needs to re-run on every URL change,
+	// not just initial mount. The customModels/models lookup is untracked
+	// so the effect's only dep is the URL value itself; otherwise a
+	// `data.customModels` refresh would re-clobber a manually-picked
+	// selection by re-applying whatever the URL param still said.
+	$effect(() => {
+		const urlModel = page.url.searchParams.get('model');
+		if (!urlModel) return;
+		untrack(() => {
+			const isKnown = urlModel.startsWith('custom::')
+				? data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))
+				: data.models.some((m) => m.id === urlModel);
+			if (isKnown) modelId = urlModel;
+		});
+	});
+
+	// Fallback default — fires when nothing else (URL param, gallery-launch
+	// pickup) has set a model yet.
 	$effect(() => {
 		if (!modelId) {
 			modelId =
@@ -348,6 +371,9 @@
 					filterKinds={['chat', 'image', 'video']}
 					disabled={busy}
 					inline
+					favoritedIds={data.prefs?.favoriteModels ?? []}
+					onToggleFavorite={(id) =>
+						void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
 				/>
 				<button
 					type="submit"

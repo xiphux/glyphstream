@@ -200,6 +200,16 @@ export interface UserPreferences {
 	 * notifications only for backgrounded states.
 	 */
 	notificationsForegroundToast: boolean;
+	/**
+	 * Models pinned by the user. Stored in insertion order (most-recently
+	 * starred goes to the end) and rendered both in the sidebar and as a
+	 * "Favorites" section at the top of the model picker. Strings are
+	 * picker-shape ids: `"<endpointId>::<upstreamId>"` for base models or
+	 * `"custom::<customModelId>"` for saved presets. Unknown ids (a deleted
+	 * preset, a removed endpoint) are silently filtered at render time —
+	 * cheaper than gardening the stored list on every config edit.
+	 */
+	favoriteModels: string[];
 }
 
 export interface ConversationSummary {

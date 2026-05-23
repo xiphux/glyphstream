@@ -60,6 +60,15 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	if (typeof body.notificationsForegroundToast === 'boolean') {
 		patch.notificationsForegroundToast = body.notificationsForegroundToast;
 	}
+	if (body.favoriteModels !== undefined) {
+		if (
+			!Array.isArray(body.favoriteModels) ||
+			!body.favoriteModels.every((v): v is string => typeof v === 'string')
+		) {
+			throw error(400, 'favoriteModels must be a string[]');
+		}
+		patch.favoriteModels = body.favoriteModels;
+	}
 
 	const next = setUserPreferences(locals.user.id, patch);
 	return json(next);

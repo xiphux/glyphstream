@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronDown, Search } from 'lucide-svelte';
+	import { Check, ChevronDown, Search, Star } from 'lucide-svelte';
 	import type { CustomModel, ModelEntry, ModelKind } from '$lib/types/api';
 
 	interface Props {
@@ -21,6 +21,24 @@
 		 * composer box. Default is a full-width form-input shaped trigger.
 		 */
 		inline?: boolean;
+		/**
+		 * Picker-shape model ids the user has favorited. When non-empty, a
+		 * "Favorites" group appears at the top of the unfiltered view; any
+		 * id that doesn't resolve to a visible picker item is silently
+		 * skipped (deleted preset, removed endpoint). Favorited models also
+		 * still appear in their native group below — same item in two
+		 * places, like a starred file in both "Starred" and its folder.
+		 */
+		favoritedIds?: readonly string[];
+		/**
+		 * Toggle handler for the star button on each row. When provided,
+		 * each row renders a star icon (filled when favorited). When
+		 * omitted, no star is rendered — the picker degrades to its
+		 * pre-favorites behavior. The handler receives the row's picker
+		 * value (`endpointId::upstreamId` or `custom::id`); the parent
+		 * is responsible for persisting + invalidating data.
+		 */
+		onToggleFavorite?: (id: string) => void;
 	}
 
 	let {
@@ -30,7 +48,9 @@
 		value = $bindable(''),
 		onChange,
 		disabled = false,
-		inline = false
+		inline = false,
+		favoritedIds = [],
+		onToggleFavorite
 	}: Props = $props();
 
 	function kindEmoji(kind: ModelKind): string {
@@ -71,8 +91,10 @@
 
 	/**
 	 * Build the flat item list, in display order:
-	 *   1. Custom presets (filtered to ones whose base model is visible).
-	 *   2. Base models grouped by endpointId, sorted alphabetically per group.
+	 *   1. Favorites (looked up against the other groups; same row appears
+	 *      twice — once here, once in its native group below).
+	 *   2. Custom presets (filtered to ones whose base model is visible).
+	 *   3. Base models grouped by endpointId, sorted alphabetically per group.
 	 * Each item carries enough context (group label, sublabel, search haystack)
 	 * to render in either grouped or flat mode without re-deriving.
 	 */
@@ -80,14 +102,17 @@
 		const baseById = new Map(models.map((m) => [m.id, m] as const));
 		const out: PickerItem[] = [];
 
-		// Custom presets first.
+		// Custom presets — built into a separate Map so we can also serve
+		// the Favorites lookup (custom and base models share an id namespace
+		// in `favoritedIds`).
+		const presets: PickerItem[] = [];
 		for (const cm of customModels) {
 			const base = baseById.get(`${cm.baseEndpointId}::${cm.baseModelId}`);
 			if (!base) continue;
 			if (filterKinds && !(filterKinds as readonly ModelKind[]).includes(base.kind)) {
 				continue;
 			}
-			out.push({
+			presets.push({
 				value: `custom::${cm.id}`,
 				label: cm.name,
 				sublabel: base.displayName,
@@ -112,6 +137,7 @@
 			else byGroup.set(m.groupKey, [m]);
 		}
 
+		const baseItems: PickerItem[] = [];
 		for (const [, group] of byGroup) {
 			const distinctOwners = new Set(
 				group.map((m) => m.ownedBy).filter((o): o is string => !!o)
@@ -121,7 +147,7 @@
 				a.displayName.localeCompare(b.displayName)
 			);
 			for (const m of sortedGroup) {
-				out.push({
+				baseItems.push({
 					value: m.id,
 					label: m.displayName,
 					sublabel: showOwner && m.ownedBy ? m.ownedBy : '',
@@ -135,8 +161,35 @@
 			}
 		}
 
+		// Favorites group: look up each favorited id against the items we
+		// already built, drop unknowns, and stamp them as belonging to the
+		// "Favorites" pseudo-group. The PickerItem objects are clones so
+		// each rendered row has a unique reference — important because
+		// `indexOf` below uses identity, and a shared object would make
+		// the highlight in the Favorites row also highlight the duplicate
+		// row in the native group below.
+		if (favoritedIds.length > 0) {
+			const lookup = new Map<string, PickerItem>();
+			for (const p of presets) lookup.set(p.value, p);
+			for (const b of baseItems) lookup.set(b.value, b);
+			for (const id of favoritedIds) {
+				const item = lookup.get(id);
+				if (!item) continue;
+				out.push({
+					...item,
+					groupKey: '__favorites',
+					groupLabel: 'Favorites'
+				});
+			}
+		}
+
+		out.push(...presets);
+		out.push(...baseItems);
 		return out;
 	});
+
+	// Set form of favoritedIds for O(1) per-row lookup in the render loop.
+	const favoritedSet = $derived(new Set(favoritedIds));
 
 	let open = $state(false);
 	let search = $state('');
@@ -148,9 +201,16 @@
 		const q = search.trim().toLowerCase();
 		if (!q) return items;
 		// Tokenize on whitespace so multi-word queries like "openai gpt"
-		// match anywhere in the haystack regardless of order.
+		// match anywhere in the haystack regardless of order. The favorites
+		// group is hidden when searching — every favorited row also exists
+		// in its native group, and duplicating matches in the flat-search
+		// view confuses more than it helps.
 		const tokens = q.split(/\s+/);
-		return items.filter((item) => tokens.every((t) => item.searchText.includes(t)));
+		return items.filter(
+			(item) =>
+				item.groupKey !== '__favorites' &&
+				tokens.every((t) => item.searchText.includes(t))
+		);
 	});
 
 	/** Currently selected item (or undefined if value isn't in `items`). */
@@ -313,39 +373,73 @@
 							{g.label}
 						</div>
 					{/if}
-					{#each g.items as item (item.value)}
+					{#each g.items as item, i (`${g.key}:${item.value}:${i}`)}
 						{@const idx = indexOf(item)}
 						{@const isHighlighted = idx === highlightedIndex}
 						{@const isSelected = item.value === value}
-						<button
-							type="button"
-							role="option"
-							aria-selected={isSelected}
-							data-picker-index={idx}
-							onclick={() => selectItem(item)}
-							onmouseenter={() => (highlightedIndex = idx)}
-							class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition {isHighlighted
+						{@const isFavorited = favoritedSet.has(item.value)}
+						<div
+							class="group/row flex w-full items-center gap-2 px-3 py-1.5 text-sm transition {isHighlighted
 								? 'bg-neutral-100 dark:bg-neutral-800'
 								: ''}"
+							onmouseenter={() => (highlightedIndex = idx)}
+							role="presentation"
 						>
-							<span class="flex-1 truncate">
-								{#if item.isCustom}
-									<span class="mr-1 opacity-60">⚙</span>
+							<button
+								type="button"
+								role="option"
+								aria-selected={isSelected}
+								data-picker-index={idx}
+								onclick={() => selectItem(item)}
+								class="flex min-w-0 flex-1 items-center gap-2 text-left"
+							>
+								<span class="min-w-0 flex-1 truncate">
+									{#if item.isCustom}
+										<span class="mr-1 opacity-60">⚙</span>
+									{/if}
+									{item.label}
+									{#if item.sublabel}
+										<span class="ml-1 text-xs text-neutral-500">· {item.sublabel}</span>
+									{/if}
+								</span>
+								{#if item.kind !== 'chat' && item.kind !== 'embedding'}
+									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
+								{:else if item.kind === 'embedding'}
+									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
 								{/if}
-								{item.label}
-								{#if item.sublabel}
-									<span class="ml-1 text-xs text-neutral-500">· {item.sublabel}</span>
+								{#if isSelected}
+									<Check size={14} strokeWidth={2.5} class="shrink-0 opacity-80" />
 								{/if}
-							</span>
-							{#if item.kind !== 'chat' && item.kind !== 'embedding'}
-								<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
-							{:else if item.kind === 'embedding'}
-								<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
+							</button>
+							{#if onToggleFavorite}
+								<!--
+									The star sits outside the select button so a click
+									toggles favorite without also picking the model. It
+									stays visible on hover or when already favorited;
+									otherwise it fades to keep unfilled rows quiet —
+									the picker is busy enough without a column of grey
+									stars in every row.
+								-->
+								<button
+									type="button"
+									onclick={(e) => {
+										e.stopPropagation();
+										onToggleFavorite?.(item.value);
+									}}
+									aria-label={isFavorited ? 'Unfavorite model' : 'Favorite model'}
+									title={isFavorited ? 'Unfavorite' : 'Favorite'}
+									class="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-neutral-200 hover:text-amber-500 focus:opacity-100 focus-visible:opacity-100 dark:hover:bg-neutral-700 {isFavorited
+										? 'text-amber-500 opacity-100'
+										: 'opacity-0 group-hover/row:opacity-100'}"
+								>
+									<Star
+										size={14}
+										strokeWidth={2.25}
+										fill={isFavorited ? 'currentColor' : 'none'}
+									/>
+								</button>
 							{/if}
-							{#if isSelected}
-								<Check size={14} strokeWidth={2.5} class="shrink-0 opacity-80" />
-							{/if}
-						</button>
+						</div>
 					{/each}
 				{/each}
 			</div>

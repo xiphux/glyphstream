@@ -33,7 +33,8 @@ const EMPTY_PREFS = {
 	showGreeting: true,
 	notificationsEnabled: false,
 	notificationsShowContent: false,
-	notificationsForegroundToast: true
+	notificationsForegroundToast: true,
+	favoriteModels: [] as string[]
 };
 
 describe('parseUserPreferences', () => {
@@ -94,6 +95,42 @@ describe('parseUserPreferences', () => {
 			customInstructions: 'be brief',
 			enterBehavior: 'newline'
 		});
+	});
+
+	it('parses favoriteModels as a string array', () => {
+		expect(
+			parseUserPreferences(
+				JSON.stringify({ favoriteModels: ['openai::gpt-4', 'custom::abc'] })
+			)
+		).toMatchObject({ favoriteModels: ['openai::gpt-4', 'custom::abc'] });
+	});
+
+	it('falls back to the default for a malformed favoriteModels (mixed types)', () => {
+		// A mixed array indicates an upstream bug rather than recoverable
+		// noise — silently filtering bad elements would hide it. Fall back
+		// to the default empty array.
+		expect(
+			parseUserPreferences(
+				JSON.stringify({ favoriteModels: ['openai::gpt-4', 42, null] })
+			)
+		).toMatchObject({ favoriteModels: [] });
+	});
+
+	it('falls back to the default for a non-array favoriteModels', () => {
+		expect(
+			parseUserPreferences(JSON.stringify({ favoriteModels: 'not-an-array' }))
+		).toMatchObject({ favoriteModels: [] });
+		expect(
+			parseUserPreferences(JSON.stringify({ favoriteModels: null }))
+		).toMatchObject({ favoriteModels: [] });
+	});
+
+	it('de-dupes favoriteModels while preserving first-occurrence order', () => {
+		expect(
+			parseUserPreferences(
+				JSON.stringify({ favoriteModels: ['a', 'b', 'a', 'c', 'b'] })
+			)
+		).toMatchObject({ favoriteModels: ['a', 'b', 'c'] });
 	});
 
 	it('parses notification preference fields with type coercion', () => {
@@ -195,6 +232,7 @@ describe('setUserPreferences', () => {
 			'aboutYou',
 			'customInstructions',
 			'enterBehavior',
+			'favoriteModels',
 			'name',
 			'notificationsEnabled',
 			'notificationsForegroundToast',
@@ -231,6 +269,17 @@ describe('setUserPreferences', () => {
 			notificationsShowContent: false,
 			notificationsForegroundToast: false
 		});
+	});
+
+	it('persists favoriteModels and accepts an empty array as a valid clear', () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { favoriteModels: ['openai::gpt-4', 'custom::abc'] });
+		expect(getUserPreferences(u.id)?.favoriteModels).toEqual([
+			'openai::gpt-4',
+			'custom::abc'
+		]);
+		setUserPreferences(u.id, { favoriteModels: [] });
+		expect(getUserPreferences(u.id)?.favoriteModels).toEqual([]);
 	});
 
 	it('persists showGreeting toggles', () => {

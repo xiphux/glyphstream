@@ -22,6 +22,7 @@
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
@@ -1754,6 +1755,9 @@
 						filterKinds={['chat', 'image', 'video']}
 						disabled={generating}
 						inline
+						favoritedIds={data.prefs?.favoriteModels ?? []}
+						onToggleFavorite={(id) =>
+							void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
 					/>
 					{#if (busy && activeAbort) || recoveredInFlight}
 						<button
