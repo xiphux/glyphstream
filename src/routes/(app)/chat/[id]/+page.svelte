@@ -791,7 +791,16 @@
 			if (isFirstExchange) clearTitlePending(turnConvId);
 			// Only the turn that still owns the controller clears it — a
 			// conversation switch (or a newer turn) may have replaced it.
+			// The in-flight transients live here (not in the 'done' / 'error'
+			// cases) so a stream that closes without either event — or a
+			// success/catch path that early-returned on a convId mismatch —
+			// still leaves the bubble closed.
 			if (activeAbort === abort) {
+				inFlightOpen = false;
+				inFlightText = '';
+				inFlightReasoning = '';
+				inFlightProgress = null;
+				inFlightStatus = null;
 				busy = false;
 				activeAbort = null;
 			}
@@ -875,8 +884,12 @@
 				inFlightOpen = false;
 			}
 		} finally {
-			// Only the turn that still owns the controller clears it.
+			// Only the turn that still owns the controller clears it. The
+			// in-flight bubble close lives here (not in the success / catch
+			// branches above) so a path that early-returned on a convId
+			// mismatch — or a thrown body parse — still resets the bubble.
 			if (activeAbort === abort) {
+				inFlightOpen = false;
 				busy = false;
 				activeAbort = null;
 			}
