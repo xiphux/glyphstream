@@ -43,7 +43,7 @@ function endpoint(id: string, overrides: Partial<LoadedEndpoint> = {}): LoadedEn
 		displayName: id,
 		apiKey: null,
 		groupBy: 'endpoint',
-		providerQuirk: 'auto',
+		providerQuirk: 'passthrough',
 		requestTimeoutSeconds: 30,
 		...overrides
 	} as LoadedEndpoint;
