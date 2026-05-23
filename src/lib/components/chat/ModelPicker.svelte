@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronDown, Search, Star } from 'lucide-svelte';
+	import { Check, ChevronDown, Search, Star } from '@lucide/svelte';
 	import type { CustomModel, ModelEntry, ModelKind } from '$lib/types/api';
 
 	interface Props {

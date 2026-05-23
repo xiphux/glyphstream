@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { Check } from 'lucide-svelte';
+	import { Check } from '@lucide/svelte';
 	import type { EnterBehavior, UserPreferences } from '$lib/types/api';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import {

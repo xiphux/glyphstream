@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Download, ImagePlus, RotateCcw, Trash2, X } from 'lucide-svelte';
+	import { Download, ImagePlus, RotateCcw, Trash2, X } from '@lucide/svelte';
 	import type {
 		MediaConversationRef,
 		MediaListItem

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { DropdownMenu } from 'bits-ui';
-	import { ArchiveRestore, MoreVertical, Trash2 } from 'lucide-svelte';
+	import { ArchiveRestore, MoreVertical, Trash2 } from '@lucide/svelte';
 	import type { ConversationSummary } from '$lib/types/api';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { AlertCircle, Check, Info, X } from 'lucide-svelte';
+	import { AlertCircle, Check, Info, X } from '@lucide/svelte';
 	import { toast } from '$lib/toast.svelte';
 
 	// Per-kind affordances. Keeping these in const maps rather than

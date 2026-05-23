@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { RefreshCw, X } from 'lucide-svelte';
+	import { RefreshCw, X } from '@lucide/svelte';
 
 	interface Props {
 		onRefresh: () => void;

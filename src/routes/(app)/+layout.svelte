@@ -31,7 +31,7 @@
 		Trash2,
 		User as UserIcon,
 		Video as VideoIcon
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import type { ModelKind } from '$lib/types/api';
 	import { tick } from 'svelte';
 

@@ -17,7 +17,7 @@
 		Square,
 		Trash2,
 		X
-	} from 'lucide-svelte';
+	} from '@lucide/svelte';
 	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';

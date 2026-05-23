@@ -2,7 +2,7 @@
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { AlertCircle, ArrowUp, Plus, X } from 'lucide-svelte';
+	import { AlertCircle, ArrowUp, Plus, X } from '@lucide/svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';

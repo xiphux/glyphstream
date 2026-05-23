@@ -10,7 +10,7 @@
 	editor wants mb-2).
 -->
 <script lang="ts">
-	import { AlertCircle, X } from 'lucide-svelte';
+	import { AlertCircle, X } from '@lucide/svelte';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
 
 	let {
