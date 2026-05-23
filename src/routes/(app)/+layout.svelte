@@ -7,6 +7,7 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
@@ -72,6 +73,46 @@
 	 * so e.g. `meta-llama/Llama-3-70b` becomes `Llama-3-70b`. The full
 	 * detail is still reachable via hover (`title=` on the anchor).
 	 */
+	// Scroll-element handles for the two scrollable sidebar regions. Held
+	// so the auto-scroll effects below can imperatively jump them after a
+	// list-changing event the user just initiated — adding a favorite, or
+	// creating a new conversation — so the new entry is in view rather
+	// than hidden below an unscrolled scrollport.
+	let favScrollEl = $state<HTMLElement | null>(null);
+	let recentsScrollEl = $state<HTMLElement | null>(null);
+
+	// Auto-scroll the favorites pane to the bottom whenever the favorites
+	// list grows. New favorites land at the end (insertion order is the
+	// stored order), so bottom = latest. Tracked via a length cursor
+	// rather than the array reference so unrelated re-renders don't
+	// re-trigger the scroll. `untrack`ed on initial mount-pass: on first
+	// render the count goes from `undefined` to its real value, which
+	// we don't want to read as "the user just added one." `smooth`
+	// behavior is fine even on long lists — the browser caps the
+	// animation duration.
+	let prevFavCount: number | null = null;
+	$effect(() => {
+		const count = data.prefs?.favoriteModels.length ?? 0;
+		if (prevFavCount !== null && count > prevFavCount && favScrollEl) {
+			favScrollEl.scrollTo({ top: favScrollEl.scrollHeight, behavior: 'smooth' });
+		}
+		prevFavCount = count;
+	});
+
+	// Mirror for recents: new conversations land at the TOP of the list
+	// (the listConversations query orders by updatedAt desc). If the
+	// user creates a new conversation while scrolled down in a long
+	// recents list, scroll back to the top so the new entry — the
+	// thing they just made — is visible.
+	let prevConvCount: number | null = null;
+	$effect(() => {
+		const count = data.conversations.length;
+		if (prevConvCount !== null && count > prevConvCount && recentsScrollEl) {
+			recentsScrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+		}
+		prevConvCount = count;
+	});
+
 	const favoriteEntries = $derived.by(() => {
 		const favs = data.prefs?.favoriteModels ?? [];
 		if (favs.length === 0) return [];
@@ -448,43 +489,48 @@
 			give favorites more room, short ones constrain them harder.
 		-->
 		{#if favoriteEntries.length > 0}
-			<nav class="mt-2 px-2" aria-label="Favorite models">
+			<nav class="mt-2" aria-label="Favorite models">
 				{#if !collapsed}
-					<h2 class="px-3 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+					<h2 class="px-5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
 						Favorites
 					</h2>
 				{/if}
-				<ul class="max-h-[30vh] space-y-0.5 overflow-y-auto">
-					{#each favoriteEntries as fav (fav.value)}
-						<li>
-							<a
-								href="/?model={encodeURIComponent(fav.value)}"
-								title={fav.label}
-								class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 active:bg-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700 {collapsed
-									? 'sm:justify-center sm:px-0'
-									: ''}"
-							>
-								<!--
-									Icon picked by modality so the collapsed sidebar
-									still conveys "this is the image model" vs "this
-									is the chat model" without the label. Mirrors the
-									kind glyph on the right side of picker rows;
-									using lucide here (rather than the picker's
-									emoji) keeps visual parity with the other
-									sidebar nav links, which are all lucide icons.
-								-->
-								{#if fav.kind === 'image'}
-									<ImageIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
-								{:else if fav.kind === 'video'}
-									<VideoIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
-								{:else}
-									<Sparkles size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
-								{/if}
-								{#if !collapsed}<span class="min-w-0 truncate">{fav.label}</span>{/if}
-							</a>
-						</li>
-					{/each}
-				</ul>
+				<ScrollPane
+					class="max-h-[30vh] px-2"
+					bind:scrollEl={favScrollEl}
+				>
+					<ul class="space-y-0.5">
+						{#each favoriteEntries as fav (fav.value)}
+							<li>
+								<a
+									href="/?model={encodeURIComponent(fav.value)}"
+									title={fav.label}
+									class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 active:bg-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700 {collapsed
+										? 'sm:justify-center sm:px-0'
+										: ''}"
+								>
+									<!--
+										Icon picked by modality so the collapsed sidebar
+										still conveys "this is the image model" vs "this
+										is the chat model" without the label. Mirrors the
+										kind glyph on the right side of picker rows;
+										using lucide here (rather than the picker's
+										emoji) keeps visual parity with the other
+										sidebar nav links, which are all lucide icons.
+									-->
+									{#if fav.kind === 'image'}
+										<ImageIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+									{:else if fav.kind === 'video'}
+										<VideoIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+									{:else}
+										<Sparkles size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+									{/if}
+									{#if !collapsed}<span class="min-w-0 truncate">{fav.label}</span>{/if}
+								</a>
+							</li>
+						{/each}
+					</ul>
+				</ScrollPane>
 			</nav>
 		{/if}
 
@@ -497,14 +543,18 @@
 		{#if collapsed}
 			<div class="hidden flex-1 sm:block"></div>
 		{/if}
-		<nav class="mt-5 flex-1 overflow-y-auto px-2 {collapsed ? 'sm:hidden' : ''}">
-			<h2 class="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+		<nav class="mt-5 flex min-h-0 flex-1 flex-col {collapsed ? 'sm:hidden' : ''}">
+			<h2 class="px-5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
 				Recents
 			</h2>
 			{#if data.conversations.length === 0}
-				<p class="px-3 py-2 text-xs text-neutral-500">No conversations yet.</p>
+				<p class="px-5 py-2 text-xs text-neutral-500">No conversations yet.</p>
 			{:else}
-				<ul class="space-y-0.5">
+				<ScrollPane
+					class="min-h-0 flex-1 px-2"
+					bind:scrollEl={recentsScrollEl}
+				>
+					<ul class="space-y-0.5">
 					{#each data.conversations as c (c.id)}
 						{@const href = `/chat/${c.id}`}
 						{@const active = currentPath === href || pendingPath === href}
@@ -592,7 +642,8 @@
 							{/if}
 						</li>
 					{/each}
-				</ul>
+					</ul>
+				</ScrollPane>
 			{/if}
 		</nav>
 
