@@ -172,8 +172,6 @@ expected priority, not time-bound.
   while offline; resends when connectivity returns. Low priority — chat
   apps generally don't need this.
 
-- **Model favoriting / pinning** in the picker.
-
 - **Animation polish pass.** Motion design is intentionally minimal
   today — the mobile drawer slides and that's about it. Toasts,
   dropdowns, message arrivals, and most state changes pop in
