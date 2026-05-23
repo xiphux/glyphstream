@@ -28,7 +28,11 @@ WORKDIR /app
 # needs svelte.config.js, which we haven't copied yet, and pnpm 10
 # blocks unapproved native-module builds in non-interactive contexts).
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable pnpm \
+# node:alpine stopped bundling corepack as of Node 26, so install pnpm
+# directly. Read the version from package.json's `packageManager` field
+# (the same field corepack consults) so the Dockerfile stays in sync
+# with the rest of the toolchain without a second pin to maintain.
+RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
  && pnpm install --frozen-lockfile --ignore-scripts
 
 COPY . .
@@ -47,14 +51,14 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
-# Install ONLY production deps. Because lucide-svelte and bits-ui are
+# Install ONLY production deps. Because @lucide/svelte and bits-ui are
 # devDependencies (their components are fully bundled into the build
 # output by Vite), this also avoids the chain of transitive peer-deps
 # they would have pulled in (typescript via runed→kit, vite/rolldown
 # via kit, lightningcss via tailwind, etc). The result is a much
 # leaner /app/node_modules without needing a manual trim list.
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable pnpm \
+RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
  && pnpm install --frozen-lockfile --prod --ignore-scripts \
  && pnpm rebuild better-sqlite3
 
