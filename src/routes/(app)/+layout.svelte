@@ -334,11 +334,15 @@
 
 	$effect(() => {
 		// Re-runs whenever the URL changes; collapse the mobile drawer.
-		// (Reading currentPath here is what makes the effect track it.)
+		// Both pathname and search are tracked: sidebar favorites navigate
+		// via `/?model=...` which only changes the search string when the
+		// user is already on `/`, so pathname alone would leave the drawer
+		// open after tapping a favorite on mobile.
 		void currentPath;
-		// untrack the read so this effect's dep set stays as just
-		// (currentPath). Otherwise dismissing the overflow menu would
-		// itself trigger the close — we only want URL changes to do that.
+		void page.url.search;
+		// untrack the read so this effect's dep set stays as just the URL.
+		// Otherwise dismissing the overflow menu would itself trigger the
+		// close — we only want URL changes to do that.
 		if (untrack(() => openOverflowFor) !== null) return;
 		drawerOpen = false;
 	});
