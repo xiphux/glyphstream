@@ -175,6 +175,27 @@ expected priority, not time-bound.
 
 - **Regenerate response** as a separate action from edit.
 
+- **Context compaction.** Pattern from Claude Code and other coding CLIs:
+  summarize the conversation so far into a shorter representation, then
+  continue with that summary as the new history. Mostly relevant for
+  local LLMs — cloud providers ship 100k–1M tokens out of the box, but a
+  llama.cpp run is often pinned at 8k–32k and a long chat eventually
+  overflows. The manual workaround already works ("ask for a summary,
+  paste into a new chat"), so this is about ergonomics, not a missing
+  capability. Implementation sketch: a "Compact conversation" action on
+  the chat header that runs the summarization through the conversation's
+  *own* main model, not the task model — the task model may be sized for
+  short prompts (title generation) and either not fit the full history
+  or be a smaller/weaker model that loses fidelity on details the main
+  model has been tracking. Output branches off the active leaf with the
+  summary as the new root user message; the tree-shaped schema preserves
+  the pre-compaction history automatically (no destructive migration),
+  so the user can switch back via the sibling-nav arrows if they want
+  the original thread. Open question: user-triggered only, or also
+  auto-fired when per-model context-token estimate crosses a threshold
+  (the token-usage surfacing from `0adaf0d` is the prereq for the
+  latter).
+
 - **Themes (prebuilt color schemes).** App follows
   `prefers-color-scheme` for light/dark today, with no explicit user
   toggle. Themes would add 3-5 named schemes selectable from
