@@ -59,15 +59,35 @@
 	});
 
 	// Fallback default — fires when nothing else (URL param, gallery-launch
-	// pickup) has set a model yet.
+	// pickup) has set a model yet. Prefers the user's top favorite (the
+	// first favorited model still resolvable to one of the kinds this
+	// composer supports); falls back to "first chat-then-image-then-video
+	// from the model list" if no favorite qualifies.
 	$effect(() => {
-		if (!modelId) {
-			modelId =
-				data.models.find((m) => m.kind === 'chat')?.id ??
-				data.models.find((m) => m.kind === 'image')?.id ??
-				data.models.find((m) => m.kind === 'video')?.id ??
-				'';
+		if (modelId) return;
+		const favs = data.prefs?.favoriteModels ?? [];
+		for (const fav of favs) {
+			let baseKind: string | undefined;
+			if (fav.startsWith('custom::')) {
+				const cmId = fav.slice('custom::'.length);
+				const cm = data.customModels.find((m) => m.id === cmId);
+				if (!cm) continue;
+				baseKind = data.models.find(
+					(m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`
+				)?.kind;
+			} else {
+				baseKind = data.models.find((m) => m.id === fav)?.kind;
+			}
+			if (baseKind === 'chat' || baseKind === 'image' || baseKind === 'video') {
+				modelId = fav;
+				return;
+			}
 		}
+		modelId =
+			data.models.find((m) => m.kind === 'chat')?.id ??
+			data.models.find((m) => m.kind === 'image')?.id ??
+			data.models.find((m) => m.kind === 'video')?.id ??
+			'';
 	});
 
 	// Resolve the selection back to its underlying base ModelEntry so we
