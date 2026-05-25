@@ -353,9 +353,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			prompt: promptText,
 			userMessage: userMessage as ChatMessage,
 			inputReference,
-			abortSignal: inFlight.controller.signal
+			abortSignal: inFlight.controller.signal,
+			// Clear the registry slot when the relay's work is done — not
+			// when the response stream cancels. An iOS suspension drops
+			// the client SSE connection minutes before the polling loop
+			// finishes, and the chat page's recovery indicator depends on
+			// the slot staying populated until the generation truly ends.
+			onComplete: () => clearInFlight(params.id, inFlight)
 		});
-		return new Response(wrapStreamCleanup(stream, () => clearInFlight(params.id, inFlight)), {
+		return new Response(stream, {
 			headers: {
 				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache, no-store, no-transform',
@@ -434,9 +440,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			requestBody,
 			userMessage: userMessage as ChatMessage,
 			storedModelId: meta.modelId,
-			abortSignal: inFlight.controller.signal
+			abortSignal: inFlight.controller.signal,
+			// Clear the registry slot from the recorder's lifecycle, not
+			// from the client SSE's. The recorder is teed off the upstream
+			// body and runs to completion even if the browser disconnects
+			// — that's the "survive flaky connections" promise, and it's
+			// what keeps the recovery indicator honest after iOS suspends
+			// the PWA.
+			onComplete: () => clearInFlight(params.id, inFlight)
 		});
-		return new Response(wrapStreamCleanup(stream, () => clearInFlight(params.id, inFlight)), {
+		return new Response(stream, {
 			headers: {
 				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache, no-store, no-transform',
@@ -497,49 +510,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	};
 	return json(response);
 };
-
-/**
- * Wrap a ReadableStream so `cleanup` runs once the stream finishes (whether
- * via normal close, error, or the consumer cancelling). Used to clear the
- * in-flight registry slot when an SSE response ends.
- */
-function wrapStreamCleanup(
-	source: ReadableStream<Uint8Array>,
-	cleanup: () => void
-): ReadableStream<Uint8Array> {
-	let done = false;
-	const fire = () => {
-		if (!done) {
-			done = true;
-			try {
-				cleanup();
-			} catch (e) {
-				console.warn('[messages] cleanup callback failed:', e);
-			}
-		}
-	};
-	const reader = source.getReader();
-	return new ReadableStream<Uint8Array>({
-		async pull(controller) {
-			try {
-				const { value, done: closed } = await reader.read();
-				if (closed) {
-					fire();
-					controller.close();
-					return;
-				}
-				if (value !== undefined) controller.enqueue(value);
-			} catch (e) {
-				fire();
-				controller.error(e);
-			}
-		},
-		cancel(reason) {
-			fire();
-			return reader.cancel(reason);
-		}
-	});
-}
 
 function partsToText(parts: MessagePart[]): string {
 	return parts

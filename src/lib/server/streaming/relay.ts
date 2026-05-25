@@ -75,6 +75,16 @@ export interface RelayParams {
 	storedModelId: string;
 	/** Aborts the upstream fetch when the user clicks Stop. */
 	abortSignal?: AbortSignal;
+	/**
+	 * Fires when the recorder branch has truly finished (message persisted
+	 * or upstream failed) — the route uses it to clear the in-flight
+	 * registry slot. Decoupled from the client SSE lifetime on purpose:
+	 * an iOS suspension cancels the response stream but the recorder
+	 * keeps running, and we want the registry to reflect "is a generation
+	 * still happening server-side?" so the chat page's recovery indicator
+	 * can hydrate when the user comes back.
+	 */
+	onComplete: () => void;
 }
 
 interface RecorderResult {
@@ -99,10 +109,13 @@ export async function startStreamingRelay(params: RelayParams): Promise<Readable
 		);
 	} catch (e) {
 		// Upstream couldn't even start — return a one-shot error stream.
+		// No recorder will fire onComplete for us, so release the slot here.
+		params.onComplete();
 		return errorOnlyStream(errorMessage(e), params.userMessage);
 	}
 
 	if (!upstreamResponse.body) {
+		params.onComplete();
 		return errorOnlyStream('Upstream returned no body', params.userMessage);
 	}
 
@@ -131,69 +144,79 @@ async function recordAndPersist(
 	let stopped = false;
 
 	try {
-		for await (const record of parseSSEStream(upstream)) {
-			if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
-			const result = norm.process(record);
-			applyDeltas(result.deltas);
-			if (result.finishReason) finishReason = result.finishReason;
-			if (result.usage) {
-				if (result.usage.promptTokens !== undefined) tokensIn = result.usage.promptTokens;
-				if (result.usage.completionTokens !== undefined) tokensOut = result.usage.completionTokens;
+		try {
+			for await (const record of parseSSEStream(upstream)) {
+				if (DEBUG) console.debug(`[stream/upstream] ${params.endpoint.id}:`, record.data);
+				const result = norm.process(record);
+				applyDeltas(result.deltas);
+				if (result.finishReason) finishReason = result.finishReason;
+				if (result.usage) {
+					if (result.usage.promptTokens !== undefined) tokensIn = result.usage.promptTokens;
+					if (result.usage.completionTokens !== undefined)
+						tokensOut = result.usage.completionTokens;
+				}
+				if (result.done) break;
 			}
-			if (result.done) break;
+		} catch (e) {
+			// User clicked Stop -> the upstream fetch was aborted -> the body
+			// stream we're reading errors. Treat it as "stop here" and persist
+			// whatever text we accumulated so the user keeps what they read.
+			if (isAbortError(e) || params.abortSignal?.aborted) {
+				stopped = true;
+			} else {
+				throw e;
+			}
 		}
-	} catch (e) {
-		// User clicked Stop -> the upstream fetch was aborted -> the body
-		// stream we're reading errors. Treat it as "stop here" and persist
-		// whatever text we accumulated so the user keeps what they read.
-		if (isAbortError(e) || params.abortSignal?.aborted) {
-			stopped = true;
-		} else {
-			throw e;
-		}
-	}
-	applyDeltas(norm.flush().deltas);
+		applyDeltas(norm.flush().deltas);
 
-	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
-	const contentHtml = await renderMarkdown(textBuf);
-	const assistantMessage = appendMessage({
-		conversationId: params.conversationId,
-		parentMessageId: params.userMessage.id,
-		role: 'assistant',
-		parts,
-		contentHtml,
-		reasoningText: reasoningBuf || null,
-		finishReason: stopped ? 'cancelled' : finishReason,
-		modelUsed: params.storedModelId,
-		tokensIn,
-		tokensOut
-	});
-
-	// Fire push notifications when the stream finished cleanly. A user
-	// clicking Stop is the loudest possible signal they're paying
-	// attention — notifying them about a generation they just killed
-	// would feel broken. Fire-and-forget: push failure must not block
-	// the recorder or the SSE `done` event the client is waiting on.
-	if (!stopped && finishReason !== 'cancelled') {
-		void notifyConversationComplete({
-			userId: params.userId,
+		const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
+		const contentHtml = await renderMarkdown(textBuf);
+		const assistantMessage = appendMessage({
 			conversationId: params.conversationId,
-			assistantMessageId: assistantMessage.id,
-			conversationTitle: params.conversationTitle ?? 'New conversation',
-			previewText: textBuf,
-			modality: relayModalityFor(params.modelKind)
-		}).catch((e) => console.warn('[stream/relay] notify failed:', e));
+			parentMessageId: params.userMessage.id,
+			role: 'assistant',
+			parts,
+			contentHtml,
+			reasoningText: reasoningBuf || null,
+			finishReason: stopped ? 'cancelled' : finishReason,
+			modelUsed: params.storedModelId,
+			tokensIn,
+			tokensOut
+		});
+
+		// Fire push notifications when the stream finished cleanly. A user
+		// clicking Stop is the loudest possible signal they're paying
+		// attention — notifying them about a generation they just killed
+		// would feel broken. Fire-and-forget: push failure must not block
+		// the recorder or the SSE `done` event the client is waiting on.
+		if (!stopped && finishReason !== 'cancelled') {
+			void notifyConversationComplete({
+				userId: params.userId,
+				conversationId: params.conversationId,
+				assistantMessageId: assistantMessage.id,
+				conversationTitle: params.conversationTitle ?? 'New conversation',
+				previewText: textBuf,
+				modality: relayModalityFor(params.modelKind)
+			}).catch((e) => console.warn('[stream/relay] notify failed:', e));
+		}
+
+		// Title task: fire only on the conversation's first exchange. The
+		// title_source column starts at 'fallback' (default + first-message
+		// preview); once the AI title lands it flips to 'ai', or 'user' on
+		// rename. Both terminal states gate this branch off so subsequent
+		// messages don't re-run the task. Errors swallowed inside the
+		// generator — the returned promise resolves to null on any failure.
+		const titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
+
+		return { message: assistantMessage, titlePromise };
+	} finally {
+		// Recorder has stopped touching state for this generation — release
+		// the in-flight slot now even though the SSE stream stays open
+		// through the background title task. The recovery indicator gates
+		// on "last message is assistant" anyway, so clearing here doesn't
+		// flicker the bubble for a still-watching client.
+		params.onComplete();
 	}
-
-	// Title task: fire only on the conversation's first exchange. The
-	// title_source column starts at 'fallback' (default + first-message
-	// preview); once the AI title lands it flips to 'ai', or 'user' on
-	// rename. Both terminal states gate this branch off so subsequent
-	// messages don't re-run the task. Errors swallowed inside the
-	// generator — the returned promise resolves to null on any failure.
-	const titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
-
-	return { message: assistantMessage, titlePromise };
 
 	function applyDeltas(deltas: NormalizedDelta[]) {
 		for (const d of deltas) {
