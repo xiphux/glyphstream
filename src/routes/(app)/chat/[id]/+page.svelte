@@ -700,10 +700,18 @@
 			const opt = buildOptimisticUserMessage(text, attachedMediaIds);
 			messages = [...messages, opt];
 			optimisticId = opt.id;
+		}
+		// Flip the in-flight bubble on BEFORE the tick+scroll so the
+		// "Thinking…/Generating…" row is in the DOM when we measure.
+		// Otherwise scrollToBottom lands with the optimistic user message
+		// at the viewport bottom and the in-flight bubble renders one row
+		// below it, off-screen — the user has to scroll manually to see
+		// that anything is happening.
+		inFlightOpen = true;
+		if (!isRetry) {
 			await tick();
 			scrollToBottom();
 		}
-		inFlightOpen = true;
 
 		// Image-kind conversations use the sync JSON path — there's nothing
 		// to stream (one-shot generate). Chat and video both stream via SSE
