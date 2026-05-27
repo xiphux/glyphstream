@@ -27,6 +27,19 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+	import {
+		appendText as inFlightAppendText,
+		buildToolResultsMap,
+		computeMergeFlags,
+		filterVisibleMessages,
+		inFlightToBlocks,
+		messageToBlocks,
+		pushToolCall as inFlightPushToolCall,
+		updateToolCallArgs as inFlightUpdateToolCallArgs,
+		updateToolCallResult as inFlightUpdateToolCallResult,
+		type InFlightSegment,
+		type RenderBlock
+	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -94,112 +107,8 @@
 	// result as one visual unit instead of two separate bubbles. This
 	// is the "folded into assistant bubble" UX the user picked over
 	// "separate sequential bubbles."
-	const visibleMessages = $derived(messages.filter((m) => m.role !== 'tool'));
-	const toolResultsByCallId = $derived.by(() => {
-		const m = new Map<string, { result: string; isError: boolean }>();
-		for (const msg of messages) {
-			if (msg.role !== 'tool') continue;
-			for (const p of msg.parts) {
-				if (p.type === 'tool_result') {
-					m.set(p.toolCallId, { result: p.result, isError: p.isError === true });
-				}
-			}
-		}
-		return m;
-	});
-
-	// Unified render representation: the persisted and in-flight render
-	// paths both translate their state into RenderBlock[] and feed it
-	// through the same `renderBlocks` snippet down in the markup. This
-	// is what stops new content types (tool_call yesterday, web_search
-	// or memory or MCP tomorrow) from having to be added twice — once
-	// for the persisted bubble, once for the live in-flight bubble.
-	type RenderBlock =
-		| { type: 'reasoning'; text: string }
-		// Pre-rendered markdown HTML — server-side shiki for persisted,
-		// client-side markdown-it for in-flight (per CLAUDE.md, shiki
-		// stays server-only because of bundle size). Same render path.
-		| { type: 'html'; html: string }
-		// Plain text fallback when no html is available (user messages,
-		// just-arrived in-flight text whose rAF render hasn't fired yet).
-		| { type: 'plain-text'; text: string }
-		| {
-				type: 'tool_call';
-				toolCallId: string;
-				toolName: string;
-				arguments: string;
-				result?: string;
-				isError?: boolean;
-				status: 'executing' | 'done' | 'error';
-		  }
-		| { type: 'image'; mediaId: string; alt?: string }
-		| { type: 'video'; mediaId: string };
-
-	function messageToBlocks(m: ChatMessage): RenderBlock[] {
-		const blocks: RenderBlock[] = [];
-		if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText });
-		// The whole assistant message's text is rendered to one
-		// `contentHtml` server-side. Treat it as a single html block at
-		// the natural position of the first text part — keeps shiki's
-		// formatting (code blocks, etc.) intact.
-		let usedContentHtml = false;
-		for (const p of m.parts) {
-			if (p.type === 'text') {
-				if (!p.text) continue;
-				if (!usedContentHtml && m.role === 'assistant' && m.contentHtml) {
-					blocks.push({ type: 'html', html: m.contentHtml });
-					usedContentHtml = true;
-				} else {
-					blocks.push({ type: 'plain-text', text: p.text });
-				}
-			} else if (p.type === 'tool_call') {
-				const status = toolResultsByCallId.get(p.toolCallId);
-				blocks.push({
-					type: 'tool_call',
-					toolCallId: p.toolCallId,
-					toolName: p.toolName,
-					arguments: p.arguments,
-					result: status?.result,
-					isError: status?.isError,
-					status: status ? (status.isError ? 'error' : 'done') : 'executing'
-				});
-			} else if (p.type === 'image') {
-				blocks.push({ type: 'image', mediaId: p.mediaId, alt: p.alt });
-			} else if (p.type === 'video') {
-				blocks.push({ type: 'video', mediaId: p.mediaId });
-			}
-			// reasoning parts (legacy/future): folded into the
-			// reasoning block at the top of the message
-			// tool_result parts (on role:'tool' messages): folded into
-			// matching tool_call blocks via toolResultsByCallId
-		}
-		return blocks;
-	}
-
-	const inFlightBlocks = $derived.by(() => {
-		const blocks: RenderBlock[] = [];
-		if (inFlightReasoning) blocks.push({ type: 'reasoning', text: inFlightReasoning });
-		for (const seg of inFlightSegments) {
-			if (seg.kind === 'text') {
-				if (seg.html) {
-					blocks.push({ type: 'html', html: seg.html });
-				} else if (seg.text) {
-					blocks.push({ type: 'plain-text', text: seg.text });
-				}
-			} else {
-				blocks.push({
-					type: 'tool_call',
-					toolCallId: seg.toolCallId,
-					toolName: seg.toolName,
-					arguments: seg.arguments,
-					result: seg.result,
-					isError: seg.isError,
-					status: seg.status
-				});
-			}
-		}
-		return blocks;
-	});
+	const visibleMessages = $derived(filterVisibleMessages(messages));
+	const toolResultsByCallId = $derived(buildToolResultsMap(messages));
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
 	// model, derive the new modelKind from data.models so the composer's
@@ -575,28 +484,10 @@
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
-	// In-flight content is a single ordered list of "segments" interleaved
-	// in arrival order. A segment is either a text run or a tool_call.
-	// When a tool_call_start event arrives, we push a tool_call segment;
-	// the NEXT text event opens a fresh text segment after it. This is
-	// what makes the multi-tool-per-turn case render correctly — e.g. a
-	// model that does text₀ → tool_a → text₁ → tool_b → text₂ produces
-	// 5 segments in chronological order, and the body renderer just
-	// walks them. The persisted view already supports this naturally
-	// (each iteration's row carries its text + tool_calls in `parts`;
-	// bubble-merge stacks adjacent rows). Segments unify the in-flight
-	// view with the same shape.
-	type InFlightTextSegment = { kind: 'text'; text: string; html: string };
-	type InFlightToolCallSegment = {
-		kind: 'tool_call';
-		toolCallId: string;
-		toolName: string;
-		arguments: string;
-		status: 'executing' | 'done' | 'error';
-		result?: string;
-		isError?: boolean;
-	};
-	type InFlightSegment = InFlightTextSegment | InFlightToolCallSegment;
+	// In-flight content is a single ordered list of segments — text and
+	// tool_call interleaved in arrival order. The mutation helpers + the
+	// segments-to-blocks conversion are pure functions in $lib/chat-render
+	// so they can be vitest-tested independently of the Svelte component.
 	let inFlightSegments = $state<InFlightSegment[]>([]);
 	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
@@ -606,61 +497,20 @@
 	function resetInFlightSegments() {
 		inFlightSegments = [];
 	}
-
 	function appendInFlightText(chunk: string) {
-		const last = inFlightSegments[inFlightSegments.length - 1];
-		if (last && last.kind === 'text') {
-			last.text += chunk;
-			// Re-assign to trigger reactivity; rAF effect picks up the change.
-			inFlightSegments = [...inFlightSegments];
-		} else {
-			inFlightSegments = [
-				...inFlightSegments,
-				{ kind: 'text', text: chunk, html: '' }
-			];
-		}
+		inFlightSegments = inFlightAppendText(inFlightSegments, chunk);
 	}
-
 	function pushInFlightToolCall(toolCallId: string, toolName: string) {
-		inFlightSegments = [
-			...inFlightSegments,
-			{
-				kind: 'tool_call',
-				toolCallId,
-				toolName,
-				arguments: '',
-				status: 'executing'
-			}
-		];
+		inFlightSegments = inFlightPushToolCall(inFlightSegments, toolCallId, toolName);
 	}
-
 	function updateInFlightToolCallArgs(toolCallId: string, argsDelta: string) {
-		const idx = inFlightSegments.findIndex(
-			(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
-		);
-		if (idx < 0) return;
-		const seg = inFlightSegments[idx];
-		if (seg.kind !== 'tool_call') return;
-		seg.arguments += argsDelta;
-		inFlightSegments = [...inFlightSegments];
+		inFlightSegments = inFlightUpdateToolCallArgs(inFlightSegments, toolCallId, argsDelta);
+	}
+	function updateInFlightToolCallResult(toolCallId: string, result: string, isError: boolean) {
+		inFlightSegments = inFlightUpdateToolCallResult(inFlightSegments, toolCallId, result, isError);
 	}
 
-	function updateInFlightToolCallResult(
-		toolCallId: string,
-		result: string,
-		isError: boolean
-	) {
-		const idx = inFlightSegments.findIndex(
-			(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
-		);
-		if (idx < 0) return;
-		const seg = inFlightSegments[idx];
-		if (seg.kind !== 'tool_call') return;
-		seg.status = isError ? 'error' : 'done';
-		seg.result = result;
-		seg.isError = isError;
-		inFlightSegments = [...inFlightSegments];
-	}
+	const inFlightBlocks = $derived(inFlightToBlocks(inFlightSegments, inFlightReasoning));
 
 	// rAF-coalesced per-segment markdown render. Each text segment grows
 	// independently; we render each segment's HTML on the next frame
@@ -1662,18 +1512,9 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-				{@const mergeWithPrev =
-					m.role === 'assistant' &&
-					i > 0 &&
-					visibleMessages[i - 1].role === 'assistant' &&
-					visibleMessages[i - 1].id !== editingMessageId &&
-					m.id !== editingMessageId}
-				{@const mergeWithNext =
-					m.role === 'assistant' &&
-					i < visibleMessages.length - 1 &&
-					visibleMessages[i + 1].role === 'assistant' &&
-					visibleMessages[i + 1].id !== editingMessageId &&
-					m.id !== editingMessageId}
+				{@const merge = computeMergeFlags(visibleMessages, i, editingMessageId)}
+				{@const mergeWithPrev = merge.mergeWithPrev}
+				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
 					Use the class array form (not class:!mt-0 directive) so
 					Tailwind's important modifier survives Svelte parsing AND
@@ -1778,7 +1619,7 @@
 							{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
 						</div>
 					{/if}
-					{@render renderBlocks(messageToBlocks(m))}
+					{@render renderBlocks(messageToBlocks(m, toolResultsByCallId))}
 				</article>
 				{/if}
 				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
