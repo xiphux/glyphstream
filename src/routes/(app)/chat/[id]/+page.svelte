@@ -914,24 +914,32 @@
 						title = event.title;
 						break;
 					case 'done':
-						// Optimistic append only when this was a single-iteration
-						// turn (no tool calls). For multi-iteration turns the
-						// `done` event carries just the FINAL assistant message;
-						// the intermediate assistant + tool rows live only in
-						// the DB and come back via the invalidateAll() at the
-						// bottom of this for-await loop. Appending the final
-						// here would render it BEFORE the intermediates, and
-						// the user would see the older bubble pop in above
-						// once the invalidate lands.
+						// Single-iteration turn: optimistically append the final
+						// assistant message and clear in-flight — snappy because
+						// `done`'s message is the only new server-side row.
+						//
+						// Multi-iteration turn (sawToolCalls): `done` carries
+						// only the FINAL iteration's row; the intermediate
+						// assistant + role:'tool' rows live in the DB and come
+						// back via invalidateAll() once the stream closes.
+						// Keep the in-flight bubble visible — its content (the
+						// streamed reasoning + tool block + final text) is
+						// closer to the canonical render than a blank gap
+						// would be. The for-await's tail awaits invalidateAll
+						// and clears in-flight only after the canonical rows
+						// have landed.
 						if (!sawToolCalls) {
 							messages = [...messages, event.assistantMessage];
+							inFlightOpen = false;
+							inFlightText = '';
+							inFlightReasoning = '';
+							inFlightProgress = null;
+							inFlightStatus = null;
+							resetInFlightToolCalls();
+						} else {
+							inFlightProgress = null;
+							inFlightStatus = null;
 						}
-						inFlightOpen = false;
-						inFlightText = '';
-						inFlightReasoning = '';
-						inFlightProgress = null;
-						inFlightStatus = null;
-						resetInFlightToolCalls();
 						// Release the composer now — `done` means the response
 						// is complete. The relay deliberately keeps the SSE
 						// stream open past this point so the background
@@ -952,7 +960,22 @@
 						break;
 				}
 			}
-			if (convId === turnConvId) void invalidateAll();
+			if (convId === turnConvId) {
+				// Await the reload so the in-flight bubble (still visible for
+				// multi-iteration tool turns — see the `done` handler) only
+				// clears once the canonical message rows are in `messages`.
+				// Without this, the user stares at a blank gap for as long
+				// as the load functions take (model-list fetch, etc.).
+				await invalidateAll();
+				if (sawToolCalls) {
+					inFlightOpen = false;
+					inFlightText = '';
+					inFlightReasoning = '';
+					inFlightProgress = null;
+					inFlightStatus = null;
+					resetInFlightToolCalls();
+				}
+			}
 		} catch (e) {
 			// AbortError from clicking Stop is expected — don't surface as
 			// a user-facing error. The server-side recorder will have committed
@@ -1455,8 +1478,28 @@
 					below the bubble, aligned to the same side (right for user
 					messages, left for assistant), and reveals on hover at sm+.
 					On mobile it stays visible since there's no hover.
+
+					mergeWithPrev/mergeWithNext: consecutive assistant messages
+					from a multi-iteration tool-using turn (iter 0 has tool_call
+					parts, iter 1+ has the follow-up text) are persisted as
+					separate rows but should render as ONE bubble — that's the
+					"folded into assistant bubble" UX the user picked. We do it
+					by collapsing the gap + sharing corners + suppressing the
+					duplicate role label / interstitial action bar.
 				-->
-				<div id="msg-{m.id}" class="group">
+				{@const mergeWithPrev =
+					m.role === 'assistant' &&
+					i > 0 &&
+					visibleMessages[i - 1].role === 'assistant' &&
+					visibleMessages[i - 1].id !== editingMessageId &&
+					m.id !== editingMessageId}
+				{@const mergeWithNext =
+					m.role === 'assistant' &&
+					i < visibleMessages.length - 1 &&
+					visibleMessages[i + 1].role === 'assistant' &&
+					visibleMessages[i + 1].id !== editingMessageId &&
+					m.id !== editingMessageId}
+				<div id="msg-{m.id}" class="group" class:!mt-0={mergeWithPrev}>
 				{#if m.id === editingMessageId}
 					<!--
 						Inline editor: replaces the static bubble with an
@@ -1536,15 +1579,22 @@
 					</article>
 				{:else}
 				<article
-					class="min-w-0 rounded-2xl px-4 py-3 text-sm {m.role === 'user'
-						? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-						: m.role === 'assistant'
-							? 'bg-neutral-100 dark:bg-neutral-800'
-							: 'bg-amber-50 dark:bg-amber-950/40'}"
+					class={[
+						'min-w-0 px-4 text-sm',
+						m.role === 'user'
+							? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+							: m.role === 'assistant'
+								? 'bg-neutral-100 dark:bg-neutral-800'
+								: 'bg-amber-50 dark:bg-amber-950/40',
+						mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
+						mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3'
+					]}
 				>
-					<div class="text-[11px] font-medium tracking-wide opacity-60">
-						{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
-					</div>
+					{#if !mergeWithPrev}
+						<div class="text-[11px] font-medium tracking-wide opacity-60">
+							{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
+						</div>
+					{/if}
 					{#if m.reasoningText}
 						<details class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
 							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
@@ -1615,7 +1665,7 @@
 					{/if}
 				</article>
 				{/if}
-				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId}
+				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
 					{@const showEdit = m.role === 'user'}
 					{@const showRetry = m.role === 'assistant'}
 					{@const showCopy = hasCopyableText(m)}
