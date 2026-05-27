@@ -17,7 +17,11 @@ import type { ChatMessage, MessagePart } from './types/api';
 // a new union variant and both render paths get them for free.
 
 export type RenderBlock =
-	| { type: 'reasoning'; text: string }
+	/** `open` means the `<details>` element should render expanded —
+	 *  in-flight reasoning starts expanded (so the user watches the
+	 *  model think); persisted reasoning starts collapsed (the user
+	 *  already saw it while it streamed; now it's metadata). */
+	| { type: 'reasoning'; text: string; open: boolean }
 	/** Pre-rendered markdown HTML — server-side shiki for persisted
 	 *  assistant rows, client-side markdown-it for live streaming.
 	 *  Both pass through markdown-it with html=false so {@html} is safe. */
@@ -155,7 +159,7 @@ export function messageToBlocks(
 	toolResults: Map<string, { result: string; isError: boolean }>
 ): RenderBlock[] {
 	const blocks: RenderBlock[] = [];
-	if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText });
+	if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText, open: false });
 
 	// Use the server-rendered contentHtml at the position of the FIRST
 	// text part. This preserves shiki's code-block formatting which we
@@ -217,7 +221,7 @@ export function inFlightToBlocks(
 	reasoning: string
 ): RenderBlock[] {
 	const blocks: RenderBlock[] = [];
-	if (reasoning) blocks.push({ type: 'reasoning', text: reasoning });
+	if (reasoning) blocks.push({ type: 'reasoning', text: reasoning, open: true });
 	for (const seg of segments) {
 		if (seg.kind === 'text') {
 			if (seg.html) blocks.push({ type: 'html', html: seg.html });

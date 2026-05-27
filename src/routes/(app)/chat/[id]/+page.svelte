@@ -1426,6 +1426,7 @@
 	{#each blocks as block, i (blockKey(block, i))}
 		{#if block.type === 'reasoning'}
 			<details
+				open={block.open}
 				class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900"
 			>
 				<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
@@ -1524,13 +1525,20 @@
 				{@const mergeWithPrev = merge.mergeWithPrev}
 				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
-					Tailwind v4's important modifier is `mt-0!` (suffix), not
-					`!mt-0` (the v3 syntax) — getting that wrong silently does
-					nothing and the space-y-4 gap stays visible between what
-					should be one continuous bubble. Class array form so both
-					Svelte and Tailwind's scanner see the literal class.
+					Bubble-merge gap close. Tailwind v4's `space-y-4` sets
+					`margin-block-end: 1rem` on EVERY child (not the v3 pattern
+					of margin-top on subsequent siblings) — so the gap is the
+					BOTTOM margin of the upper item, not the top of the lower.
+					We override mb on mergeWithNext (closes the gap from above)
+					and mt on mergeWithPrev (defensive — would matter if the
+					parent ever switched back to a top-margin spacing scheme).
+					Tailwind v4 important syntax is the `!` SUFFIX (`mb-0!`),
+					not the v3 prefix (`!mb-0`).
 				-->
-				<div id="msg-{m.id}" class={['group', mergeWithPrev && 'mt-0!']}>
+				<div
+					id="msg-{m.id}"
+					class={['group', mergeWithPrev && 'mt-0!', mergeWithNext && 'mb-0!']}
+				>
 				{#if m.id === editingMessageId}
 					<!--
 						Inline editor: replaces the static bubble with an

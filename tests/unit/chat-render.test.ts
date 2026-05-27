@@ -65,9 +65,17 @@ describe('messageToBlocks', () => {
 			NO_TOOL_RESULTS
 		);
 		expect(blocks).toEqual([
-			{ type: 'reasoning', text: 'thinking...' },
+			{ type: 'reasoning', text: 'thinking...', open: false },
 			{ type: 'html', html: '<p>hi</p>' }
 		]);
+	});
+
+	it('persisted reasoning is collapsed by default (open=false)', () => {
+		const blocks = messageToBlocks(
+			msg('assistant', [{ type: 'text', text: 'hi' }], { reasoningText: 'thoughts' }),
+			NO_TOOL_RESULTS
+		);
+		expect(blocks[0]).toEqual({ type: 'reasoning', text: 'thoughts', open: false });
 	});
 
 	it('skips empty text parts (assistant that emitted only tool_calls)', () => {
@@ -224,8 +232,13 @@ describe('messageToBlocks', () => {
 describe('inFlightToBlocks', () => {
 	it('returns just a reasoning block when only reasoning is present', () => {
 		expect(inFlightToBlocks([], 'thinking...')).toEqual([
-			{ type: 'reasoning', text: 'thinking...' }
+			{ type: 'reasoning', text: 'thinking...', open: true }
 		]);
+	});
+
+	it('in-flight reasoning is expanded by default (open=true) — the user is watching the model think', () => {
+		const blocks = inFlightToBlocks([], 'thoughts');
+		expect(blocks[0]).toMatchObject({ type: 'reasoning', open: true });
 	});
 
 	it('returns empty blocks when nothing has streamed yet', () => {
@@ -297,7 +310,7 @@ describe('inFlightToBlocks', () => {
 	it('puts reasoning before all segments', () => {
 		const segs: InFlightSegment[] = [{ kind: 'text', text: 'after', html: '<p>after</p>' }];
 		const blocks = inFlightToBlocks(segs, 'first thoughts');
-		expect(blocks[0]).toEqual({ type: 'reasoning', text: 'first thoughts' });
+		expect(blocks[0]).toEqual({ type: 'reasoning', text: 'first thoughts', open: true });
 		expect(blocks[1]).toEqual({ type: 'html', html: '<p>after</p>' });
 	});
 
