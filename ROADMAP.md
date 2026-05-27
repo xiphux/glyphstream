@@ -6,16 +6,14 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
-- **Tool/function-call rendering UX.** Render tool invocations + results
-  inline in messages, like Claude Code / Cursor do. Prerequisite for the
-  next item.
-
 - **Web search via SearxNG as auto-tool.** Register a `web_search` function
-  tool with chat requests for tool-capable models; tool loop runs in the
-  frontend (model emits `tool_call` → frontend executes against SearxNG →
-  returns result → model continues). Per-model `supports_tools` flag needed
-  in config. Avoids OWUI's manual "enable web search" toggle by letting the
-  model decide when it needs to search.
+  tool against the existing tool-call infrastructure. The tool loop, the
+  per-endpoint/per-model `supports_tools` capability resolution, the
+  request-shape plumbing, and the UI rendering all landed with the
+  `get_current_time` proof-of-concept tool — adding web search is a new
+  file in `src/lib/server/tools/` plus a SearxNG client. Avoids OWUI's
+  manual "enable web search" toggle by letting the model decide when it
+  needs to search.
 
 - **Completion sounds + per-modality notification config.** Notifications
   themselves shipped — Web Push for backgrounded tab/OS notification, an
@@ -117,8 +115,9 @@ expected priority, not time-bound.
 - **MCP server support.** Model Context Protocol gives clients a
   plug-and-play way to add tool servers — Gmail, Calendar, filesystem,
   GitHub, Linear — without GlyphStream having to build each integration.
-  Depends on tool/function-call rendering UX (near-term) since MCP tools
-  surface as standard tool calls. Architectural challenges:
+  MCP tools surface as standard tool calls and slot directly into the
+  existing tool registry (`src/lib/server/tools/`). Architectural
+  challenges remaining:
   - *Transport.* MCP currently runs over stdio or SSE. Stdio doesn't
     translate to a web frontend; SSE works (the `mcp-remote` pattern).
     GlyphStream's Node process spawns / connects to MCP servers and
@@ -138,8 +137,8 @@ expected priority, not time-bound.
 
 - **Memory system.** Tools for the model to read/write per-user memories —
   standing facts, preferences, ongoing context that should persist across
-  conversations. Depends on tool/function-call rendering (near-term) since
-  memory access is tool-call-shaped. New `memories` table per `user_id`;
+  conversations. Slots into the existing tool registry — memory access
+  is tool-call-shaped. New `memories` table per `user_id`;
   tools: `recall_memory(query)` for retrieval, `save_memory(text)` /
   `forget_memory(id)` for writes. Open question whether retrieval is
   keyword + recency or embedding-based — embeddings are more powerful but
