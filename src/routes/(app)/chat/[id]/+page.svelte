@@ -108,6 +108,99 @@
 		return m;
 	});
 
+	// Unified render representation: the persisted and in-flight render
+	// paths both translate their state into RenderBlock[] and feed it
+	// through the same `renderBlocks` snippet down in the markup. This
+	// is what stops new content types (tool_call yesterday, web_search
+	// or memory or MCP tomorrow) from having to be added twice — once
+	// for the persisted bubble, once for the live in-flight bubble.
+	type RenderBlock =
+		| { type: 'reasoning'; text: string }
+		// Pre-rendered markdown HTML — server-side shiki for persisted,
+		// client-side markdown-it for in-flight (per CLAUDE.md, shiki
+		// stays server-only because of bundle size). Same render path.
+		| { type: 'html'; html: string }
+		// Plain text fallback when no html is available (user messages,
+		// just-arrived in-flight text whose rAF render hasn't fired yet).
+		| { type: 'plain-text'; text: string }
+		| {
+				type: 'tool_call';
+				toolCallId: string;
+				toolName: string;
+				arguments: string;
+				result?: string;
+				isError?: boolean;
+				status: 'executing' | 'done' | 'error';
+		  }
+		| { type: 'image'; mediaId: string; alt?: string }
+		| { type: 'video'; mediaId: string };
+
+	function messageToBlocks(m: ChatMessage): RenderBlock[] {
+		const blocks: RenderBlock[] = [];
+		if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText });
+		// The whole assistant message's text is rendered to one
+		// `contentHtml` server-side. Treat it as a single html block at
+		// the natural position of the first text part — keeps shiki's
+		// formatting (code blocks, etc.) intact.
+		let usedContentHtml = false;
+		for (const p of m.parts) {
+			if (p.type === 'text') {
+				if (!p.text) continue;
+				if (!usedContentHtml && m.role === 'assistant' && m.contentHtml) {
+					blocks.push({ type: 'html', html: m.contentHtml });
+					usedContentHtml = true;
+				} else {
+					blocks.push({ type: 'plain-text', text: p.text });
+				}
+			} else if (p.type === 'tool_call') {
+				const status = toolResultsByCallId.get(p.toolCallId);
+				blocks.push({
+					type: 'tool_call',
+					toolCallId: p.toolCallId,
+					toolName: p.toolName,
+					arguments: p.arguments,
+					result: status?.result,
+					isError: status?.isError,
+					status: status ? (status.isError ? 'error' : 'done') : 'executing'
+				});
+			} else if (p.type === 'image') {
+				blocks.push({ type: 'image', mediaId: p.mediaId, alt: p.alt });
+			} else if (p.type === 'video') {
+				blocks.push({ type: 'video', mediaId: p.mediaId });
+			}
+			// reasoning parts (legacy/future): folded into the
+			// reasoning block at the top of the message
+			// tool_result parts (on role:'tool' messages): folded into
+			// matching tool_call blocks via toolResultsByCallId
+		}
+		return blocks;
+	}
+
+	const inFlightBlocks = $derived.by(() => {
+		const blocks: RenderBlock[] = [];
+		if (inFlightReasoning) blocks.push({ type: 'reasoning', text: inFlightReasoning });
+		for (const seg of inFlightSegments) {
+			if (seg.kind === 'text') {
+				if (seg.html) {
+					blocks.push({ type: 'html', html: seg.html });
+				} else if (seg.text) {
+					blocks.push({ type: 'plain-text', text: seg.text });
+				}
+			} else {
+				blocks.push({
+					type: 'tool_call',
+					toolCallId: seg.toolCallId,
+					toolName: seg.toolName,
+					arguments: seg.arguments,
+					result: seg.result,
+					isError: seg.isError,
+					status: seg.status
+				});
+			}
+		}
+		return blocks;
+	});
+
 	// Per-turn picker re-binds modelId; whenever the user picks a different
 	// model, derive the new modelKind from data.models so the composer's
 	// modality-driven affordances (placeholder, attachment allowance) update.
@@ -482,65 +575,111 @@
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
-	// Pre-tool / post-tool text split: when a turn uses tools, the model's
-	// prose typically arrives in two pieces — one BEFORE the tool_call
-	// (e.g. "Let me check the time…") and one AFTER the tool_result lands
-	// (e.g. "It's 2:42 PM in Tokyo."). Streaming them into a single buffer
-	// renders the post-tool text WHERE the pre-tool text would naturally
-	// go, i.e. above the tool block — visually wrong. The split lets the
-	// in-flight bubble render reasoning → preTool text → tool blocks →
-	// postTool text in the same chronological order the events arrive.
-	// Single-iteration turns (no tool_call_* events) only ever write the
-	// pre-tool buffer, so behavior is unchanged for the common case.
-	let inFlightText = $state('');
-	let inFlightPostToolText = $state('');
-	let inFlightReasoning = $state('');
-	let inFlightOpen = $state(false);
-	let inFlightProgress = $state<number | null>(null);
-	let inFlightStatus = $state<string | null>(null);
-
-	// In-flight tool-call display state, keyed by the upstream's toolCallId.
-	// Each entry fills in progressively as SSE events arrive:
-	//   tool_call_start     → entry created with toolName + empty args
-	//   tool_call_args_delta → args accumulates
-	//   tool_call_executing → status flips to 'executing'
-	//   tool_call_result    → result + status flips to 'done' / 'error'
-	// On `done` the state clears (the persisted assistant + role:'tool' rows
-	// land in `messages` and the UI renders them via the folded
-	// ToolCallBlock instead).
-	type InFlightToolCall = {
+	// In-flight content is a single ordered list of "segments" interleaved
+	// in arrival order. A segment is either a text run or a tool_call.
+	// When a tool_call_start event arrives, we push a tool_call segment;
+	// the NEXT text event opens a fresh text segment after it. This is
+	// what makes the multi-tool-per-turn case render correctly — e.g. a
+	// model that does text₀ → tool_a → text₁ → tool_b → text₂ produces
+	// 5 segments in chronological order, and the body renderer just
+	// walks them. The persisted view already supports this naturally
+	// (each iteration's row carries its text + tool_calls in `parts`;
+	// bubble-merge stacks adjacent rows). Segments unify the in-flight
+	// view with the same shape.
+	type InFlightTextSegment = { kind: 'text'; text: string; html: string };
+	type InFlightToolCallSegment = {
+		kind: 'tool_call';
+		toolCallId: string;
 		toolName: string;
 		arguments: string;
 		status: 'executing' | 'done' | 'error';
 		result?: string;
 		isError?: boolean;
 	};
-	let inFlightToolCalls = $state<Map<string, InFlightToolCall>>(new Map());
-	function resetInFlightToolCalls() {
-		inFlightToolCalls = new Map();
+	type InFlightSegment = InFlightTextSegment | InFlightToolCallSegment;
+	let inFlightSegments = $state<InFlightSegment[]>([]);
+	let inFlightReasoning = $state('');
+	let inFlightOpen = $state(false);
+	let inFlightProgress = $state<number | null>(null);
+	let inFlightStatus = $state<string | null>(null);
+
+	function resetInFlightSegments() {
+		inFlightSegments = [];
 	}
 
-	// rAF-coalesced markdown render. The upstream emits many small text
-	// deltas (often one or two characters at a time); re-rendering the
-	// full accumulated markdown on every delta becomes O(N²) over the
-	// course of a long reply and contends with paint. Coalescing into
-	// one render per animation frame caps the work at ~60 renders/sec
-	// no matter how fast tokens stream in, and the user can't perceive
-	// the difference (the bottleneck for "smoothness" is paint, not
-	// markdown granularity).
-	let inFlightHtml = $state('');
-	let inFlightPostToolHtml = $state('');
+	function appendInFlightText(chunk: string) {
+		const last = inFlightSegments[inFlightSegments.length - 1];
+		if (last && last.kind === 'text') {
+			last.text += chunk;
+			// Re-assign to trigger reactivity; rAF effect picks up the change.
+			inFlightSegments = [...inFlightSegments];
+		} else {
+			inFlightSegments = [
+				...inFlightSegments,
+				{ kind: 'text', text: chunk, html: '' }
+			];
+		}
+	}
+
+	function pushInFlightToolCall(toolCallId: string, toolName: string) {
+		inFlightSegments = [
+			...inFlightSegments,
+			{
+				kind: 'tool_call',
+				toolCallId,
+				toolName,
+				arguments: '',
+				status: 'executing'
+			}
+		];
+	}
+
+	function updateInFlightToolCallArgs(toolCallId: string, argsDelta: string) {
+		const idx = inFlightSegments.findIndex(
+			(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
+		);
+		if (idx < 0) return;
+		const seg = inFlightSegments[idx];
+		if (seg.kind !== 'tool_call') return;
+		seg.arguments += argsDelta;
+		inFlightSegments = [...inFlightSegments];
+	}
+
+	function updateInFlightToolCallResult(
+		toolCallId: string,
+		result: string,
+		isError: boolean
+	) {
+		const idx = inFlightSegments.findIndex(
+			(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
+		);
+		if (idx < 0) return;
+		const seg = inFlightSegments[idx];
+		if (seg.kind !== 'tool_call') return;
+		seg.status = isError ? 'error' : 'done';
+		seg.result = result;
+		seg.isError = isError;
+		inFlightSegments = [...inFlightSegments];
+	}
+
+	// rAF-coalesced per-segment markdown render. Each text segment grows
+	// independently; we render each segment's HTML on the next frame
+	// rather than on every chunk to cap markdown-it cost at ~60Hz no
+	// matter how fast the upstream streams tokens.
 	let inFlightHtmlFrame = 0;
 	$effect(() => {
-		// Read both so this effect re-runs when either changes — one rAF
-		// covers re-rendering both buffers' HTML in the same frame.
-		void inFlightText;
-		void inFlightPostToolText;
-		if (inFlightHtmlFrame !== 0) return; // a frame is already pending; it'll read latest
+		// Touch every text segment's text so the effect re-runs whenever
+		// any of them grows.
+		for (const s of inFlightSegments) {
+			if (s.kind === 'text') void s.text;
+		}
+		if (inFlightHtmlFrame !== 0) return;
 		inFlightHtmlFrame = requestAnimationFrame(() => {
 			inFlightHtmlFrame = 0;
-			inFlightHtml = renderLiveMarkdown(inFlightText);
-			inFlightPostToolHtml = renderLiveMarkdown(inFlightPostToolText);
+			for (const s of inFlightSegments) {
+				if (s.kind === 'text') s.html = renderLiveMarkdown(s.text);
+			}
+			inFlightSegments = [...inFlightSegments];
 		});
 	});
 
@@ -616,12 +755,10 @@
 		activeAbort = null;
 		busy = false;
 		inFlightOpen = false;
-		inFlightText = '';
-		inFlightPostToolText = '';
+		resetInFlightSegments();
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
-		resetInFlightToolCalls();
 		errorMsg = null;
 	});
 
@@ -731,12 +868,10 @@
 		errorMsg = null;
 		wasHiddenDuringFetch = false;
 		wasOfflineDuringFetch = false;
-		inFlightText = '';
-		inFlightPostToolText = '';
+		resetInFlightSegments();
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
-		resetInFlightToolCalls();
 
 		// For send / edit: render an optimistic user bubble. For retry:
 		// the user message already exists, so skip — but DO trim the
@@ -854,81 +989,40 @@
 						}
 						break;
 					case 'text':
-						// Route to the post-tool buffer once any tool_call has
-						// arrived this turn — preserves chronological ordering
-						// in the in-flight bubble (preTool text → tool blocks
-						// → postTool text). Single-iteration turns only write
-						// to inFlightText.
-						if (sawToolCalls) {
-							inFlightPostToolText += event.chunk;
-						} else {
-							inFlightText += event.chunk;
-						}
-						// Streaming auto-scrolls only follow the user if they're
-						// already at/near the bottom. Lets them scroll up to read
-						// history mid-stream without getting yanked back.
+						// Append to the last text segment, or open a new one
+						// after a tool_call. The segments array drives the
+						// in-flight bubble's render directly — order matches
+						// arrival order, so multi-tool turns (text₀ → tool_a
+						// → text₁ → tool_b → text₂) render in the same shape
+						// as the persisted view does post-reload.
+						appendInFlightText(event.chunk);
 						if (isNearBottom) scrollToBottom();
 						break;
 					case 'reasoning':
 						inFlightReasoning += event.chunk;
 						if (isNearBottom) scrollToBottom();
 						break;
-					case 'tool_call_start': {
-						// New entry starts in 'executing' state — by the time
-						// the model decides to call a tool it's effectively
+					case 'tool_call_start':
+						// New tool_call segment in 'executing' state — by the
+						// time the model decides to call a tool it's effectively
 						// committed. The server flips to a real 'executing'
 						// event once it actually starts running the tool, but
 						// for v1 the args-streaming phase is fast enough that
-						// the distinction isn't visible to the user.
+						// the distinction isn't visible.
 						sawToolCalls = true;
-						const m = new Map(inFlightToolCalls);
-						m.set(event.toolCallId, {
-							toolName: event.toolName,
-							arguments: '',
-							status: 'executing'
-						});
-						inFlightToolCalls = m;
+						pushInFlightToolCall(event.toolCallId, event.toolName);
 						if (isNearBottom) scrollToBottom();
 						break;
-					}
-					case 'tool_call_args_delta': {
-						const existing = inFlightToolCalls.get(event.toolCallId);
-						if (existing) {
-							const m = new Map(inFlightToolCalls);
-							m.set(event.toolCallId, {
-								...existing,
-								arguments: existing.arguments + event.argumentsDelta
-							});
-							inFlightToolCalls = m;
-						}
+					case 'tool_call_args_delta':
+						updateInFlightToolCallArgs(event.toolCallId, event.argumentsDelta);
 						break;
-					}
-					case 'tool_call_executing': {
-						// Server actually started the tool. UI distinction is
-						// minor today, but keeping the case explicit so a
-						// future "tool is running…" affordance can hook here.
-						const existing = inFlightToolCalls.get(event.toolCallId);
-						if (existing) {
-							const m = new Map(inFlightToolCalls);
-							m.set(event.toolCallId, { ...existing, status: 'executing' });
-							inFlightToolCalls = m;
-						}
+					case 'tool_call_executing':
+						// Already 'executing' from start — explicit case kept
+						// so future "tool is running…" affordances can hook here.
 						break;
-					}
-					case 'tool_call_result': {
-						const existing = inFlightToolCalls.get(event.toolCallId);
-						if (existing) {
-							const m = new Map(inFlightToolCalls);
-							m.set(event.toolCallId, {
-								...existing,
-								status: event.isError ? 'error' : 'done',
-								result: event.result,
-								isError: event.isError
-							});
-							inFlightToolCalls = m;
-						}
+					case 'tool_call_result':
+						updateInFlightToolCallResult(event.toolCallId, event.result, event.isError);
 						break;
-					}
 					case 'progress':
 						inFlightProgress = event.percent;
 						inFlightStatus = event.status ?? null;
@@ -958,12 +1052,10 @@
 						if (!sawToolCalls) {
 							messages = [...messages, event.assistantMessage];
 							inFlightOpen = false;
-							inFlightText = '';
-							inFlightPostToolText = '';
+							resetInFlightSegments();
 							inFlightReasoning = '';
 							inFlightProgress = null;
 							inFlightStatus = null;
-							resetInFlightToolCalls();
 						} else {
 							inFlightProgress = null;
 							inFlightStatus = null;
@@ -984,7 +1076,7 @@
 						inFlightOpen = false;
 						inFlightProgress = null;
 						inFlightStatus = null;
-						resetInFlightToolCalls();
+						resetInFlightSegments();
 						break;
 				}
 			}
@@ -997,12 +1089,10 @@
 				await invalidateAll();
 				if (sawToolCalls) {
 					inFlightOpen = false;
-					inFlightText = '';
-					inFlightPostToolText = '';
+					resetInFlightSegments();
 					inFlightReasoning = '';
 					inFlightProgress = null;
 					inFlightStatus = null;
-					resetInFlightToolCalls();
 				}
 			}
 		} catch (e) {
@@ -1045,12 +1135,10 @@
 			// still leaves the bubble closed.
 			if (activeAbort === abort) {
 				inFlightOpen = false;
-				inFlightText = '';
-				inFlightPostToolText = '';
+				resetInFlightSegments();
 				inFlightReasoning = '';
 				inFlightProgress = null;
 				inFlightStatus = null;
-				resetInFlightToolCalls();
 				busy = false;
 				activeAbort = null;
 			}
@@ -1229,7 +1317,7 @@
 	// changes — messages added or new tokens streaming in.
 	$effect(() => {
 		void messages.length;
-		void inFlightText;
+		void inFlightSegments;
 		if (!untrack(() => isNearBottom)) return;
 		void tick().then(() => scrollToBottom());
 	});
@@ -1461,16 +1549,73 @@
 		}
 	}
 
-	function hasMedia(parts: MessagePart[]): boolean {
-		return parts.some((p) => p.type === 'image' || p.type === 'video');
-	}
-
-	function partKey(p: MessagePart): string {
-		if (p.type === 'image' || p.type === 'video') return p.mediaId;
-		if (p.type === 'tool_call' || p.type === 'tool_result') return p.type + ':' + p.toolCallId;
-		return p.type + ':' + ('text' in p ? p.text.slice(0, 8) : '');
+	function blockKey(b: RenderBlock, i: number): string {
+		if (b.type === 'tool_call') return 'tool_call:' + b.toolCallId;
+		if (b.type === 'image' || b.type === 'video') return b.type + ':' + b.mediaId;
+		return b.type + ':' + i;
 	}
 </script>
+
+<!--
+	Shared body renderer for chat bubbles. Both the persisted message
+	render below AND the in-flight bubble at the bottom of the message
+	list call this snippet — keeps the structural rendering (reasoning,
+	text, tool calls, media) in ONE place so we stop fighting
+	formatting drift between the live-streaming view and the canonical
+	post-reload view. Add a new content type once here, get it in both.
+-->
+{#snippet renderBlocks(blocks: RenderBlock[])}
+	{#each blocks as block, i (blockKey(block, i))}
+		{#if block.type === 'reasoning'}
+			<details
+				class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+			>
+				<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
+				<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+					{block.text}
+				</div>
+			</details>
+		{:else if block.type === 'html'}
+			<!-- HTML is either server-rendered (shiki, persisted assistant)
+			     or client-rendered via renderLiveMarkdown (in-flight).
+			     Both pass through markdown-it with html=false; safe to {@html}. -->
+			<div class="gs-prose mt-1">{@html block.html}</div>
+		{:else if block.type === 'plain-text'}
+			<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>
+		{:else if block.type === 'tool_call'}
+			<ToolCallBlock
+				toolName={block.toolName}
+				argumentsJson={block.arguments}
+				result={block.result}
+				isError={block.isError}
+				status={block.status}
+			/>
+		{:else if block.type === 'image'}
+			{@const mediaId = block.mediaId}
+			<button
+				type="button"
+				onclick={() => openImageInLightbox(mediaId)}
+				aria-label="Open image"
+				class="mt-2 block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
+				disabled={openingLightboxFor === mediaId}
+			>
+				<img
+					src="/api/media/{block.mediaId}/content"
+					alt={block.alt ?? 'Image'}
+					loading="lazy"
+					class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
+				/>
+			</button>
+		{:else if block.type === 'video'}
+			<!-- svelte-ignore a11y_media_has_caption -->
+			<video
+				src="/api/media/{block.mediaId}/content"
+				controls
+				class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"
+			></video>
+		{/if}
+	{/each}
+{/snippet}
 
 <div class="flex h-full flex-col">
 	<header class="flex items-center justify-between gap-3 px-4 py-3">
@@ -1633,74 +1778,7 @@
 							{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
 						</div>
 					{/if}
-					{#if m.reasoningText}
-						<details class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
-							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
-							<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
-								{m.reasoningText}
-							</div>
-						</details>
-					{/if}
-					{#if m.role === 'assistant' && m.contentHtml}
-						<!-- HTML is server-rendered (markdown-it w/ html=false + shiki); safe to {@html}. -->
-						<div class="gs-prose mt-1">{@html m.contentHtml}</div>
-					{:else}
-						{@const text = partsToText(m.parts)}
-						{#if text}
-							<div class="mt-1 whitespace-pre-wrap break-words">{text}</div>
-						{/if}
-						{#if hasMedia(m.parts)}
-							<div class="mt-2 space-y-2">
-								{#each m.parts as p (partKey(p))}
-									{#if p.type === 'image'}
-										{@const mediaId = p.mediaId}
-										<button
-											type="button"
-											onclick={() => openImageInLightbox(mediaId)}
-											aria-label="Open image"
-											class="block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
-											disabled={openingLightboxFor === mediaId}
-										>
-											<img
-												src="/api/media/{p.mediaId}/content"
-												alt={p.alt ?? 'Image'}
-												loading="lazy"
-												class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
-											/>
-										</button>
-									{:else if p.type === 'video'}
-										<!-- svelte-ignore a11y_media_has_caption -->
-										<video
-											src="/api/media/{p.mediaId}/content"
-											controls
-											class="block h-auto w-full max-h-[80vh] rounded-lg"
-										></video>
-									{/if}
-								{/each}
-							</div>
-						{/if}
-					{/if}
-					<!--
-						Tool-call parts: render each as an inline collapsible block.
-						Folded into the assistant bubble — the matching role:'tool'
-						messages were filtered out of `visibleMessages` and their
-						results live in `toolResultsByCallId`. Status is derived:
-						no matching result = still executing; result.isError = error.
-					-->
-					{#if m.role === 'assistant'}
-						{#each m.parts as p (partKey(p))}
-							{#if p.type === 'tool_call'}
-								{@const matched = toolResultsByCallId.get(p.toolCallId)}
-								<ToolCallBlock
-									toolName={p.toolName}
-									argumentsJson={p.arguments}
-									result={matched?.result}
-									isError={matched?.isError}
-									status={matched ? (matched.isError ? 'error' : 'done') : 'executing'}
-								/>
-							{/if}
-						{/each}
-					{/if}
+					{@render renderBlocks(messageToBlocks(m))}
 				</article>
 				{/if}
 				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
@@ -1874,17 +1952,11 @@
 			{#if showInFlight}
 				<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
 					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
-					{#if inFlightReasoning}
-						<details open class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900">
-							<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
-							<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
-								{inFlightReasoning}
-							</div>
-						</details>
-					{/if}
-					{#if inFlightText}
-						<div class="gs-prose mt-1">{@html inFlightHtml}</div>
-					{:else if !inFlightReasoning && inFlightToolCalls.size === 0}
+					{@render renderBlocks(inFlightBlocks)}
+					{#if inFlightBlocks.length === 0}
+						<!-- Pre-first-token placeholder: thinking dots + optional
+						     progress/elapsed indicators. Once any text or
+						     tool_call segment lands, renderBlocks takes over. -->
 						<div class="mt-1 flex items-center gap-2 text-neutral-500">
 							<span>{inFlightLabel}</span>
 							<span class="inline-flex gap-1">
@@ -1904,29 +1976,6 @@
 								<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
 							{/if}
 						</div>
-					{/if}
-					<!--
-						In-flight tool-call blocks: same component as the persisted
-						render, fed from the SSE-driven inFlightToolCalls map.
-						Entries appear when tool_call_start fires, fill in across
-						args_delta + executing + result events, then clear on `done`
-						(the persisted assistant+tool rows take over the rendering).
-						Render order: reasoning → preTool text → tool blocks →
-						postTool text. The postTool text comes from text events
-						that arrived AFTER the first tool_call_start (PR8 fix —
-						preserves chronological order in the live view).
-					-->
-					{#each Array.from(inFlightToolCalls) as [callId, tc] (callId)}
-						<ToolCallBlock
-							toolName={tc.toolName}
-							argumentsJson={tc.arguments}
-							result={tc.result}
-							isError={tc.isError}
-							status={tc.status}
-						/>
-					{/each}
-					{#if inFlightPostToolText}
-						<div class="gs-prose mt-2">{@html inFlightPostToolHtml}</div>
 					{/if}
 				</article>
 			{/if}
