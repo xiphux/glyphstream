@@ -70,4 +70,23 @@ describe('tool registry', () => {
 	it('openaiToolDefinitions is empty when no tools are registered', () => {
 		expect(openaiToolDefinitions()).toEqual([]);
 	});
+
+	it('openaiToolDefinitions filters out tools whose isAvailable returns false', () => {
+		const a = mkTool('always-on');
+		const b: Tool = { ...mkTool('gated'), isAvailable: () => false };
+		const c: Tool = { ...mkTool('explicitly-on'), isAvailable: () => true };
+		register(a);
+		register(b);
+		register(c);
+		const defs = openaiToolDefinitions();
+		expect(defs.map((d) => d.function.name)).toEqual(['always-on', 'explicitly-on']);
+	});
+
+	it('list() returns gated tools too — only openaiToolDefinitions filters', () => {
+		const gated: Tool = { ...mkTool('gated'), isAvailable: () => false };
+		register(gated);
+		expect(list()).toEqual([gated]);
+		expect(get('gated')).toBe(gated);
+		expect(openaiToolDefinitions()).toEqual([]);
+	});
 });

@@ -34,11 +34,17 @@ export function list(): Tool[] {
 }
 
 /** OpenAI tools[] array shape — what we splice into the upstream request
- *  body when the endpoint supports tools. Returns an empty array when no
- *  tools are registered (callers should treat that as "omit tools from
- *  the request entirely" rather than send `tools: []`). */
+ *  body when the endpoint supports tools. Tools whose `isAvailable()`
+ *  returns false are filtered out, so the model never sees a tool whose
+ *  backing config (SearxNG URL, MCP connection, ...) isn't present in
+ *  this deployment. Tools that omit `isAvailable` default to always-on.
+ *  Returns an empty array when nothing remains (callers should treat
+ *  that as "omit tools from the request entirely" rather than send
+ *  `tools: []`). */
 export function openaiToolDefinitions(): OpenAIToolDefinition[] {
-	return list().map((t) => t.definition);
+	return list()
+		.filter((t) => t.isAvailable?.() ?? true)
+		.map((t) => t.definition);
 }
 
 /** Test-only: wipe the registry. Production code never calls this. */

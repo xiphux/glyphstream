@@ -58,5 +58,14 @@ export interface ToolMetadata {
 export interface Tool {
 	definition: OpenAIToolDefinition;
 	metadata?: ToolMetadata;
+	/**
+	 * Optional availability predicate. When omitted, the tool is always
+	 * advertised. When present and returns false, the tool is filtered out
+	 * of `openaiToolDefinitions()` so the model never sees it as callable
+	 * (used by tools whose backing config — SearxNG instance URL, MCP
+	 * server connection, etc. — may not be present in every deployment).
+	 * Called once per request that consults the registry; cheap.
+	 */
+	isAvailable?(): boolean;
 	execute(args: unknown, ctx: ToolContext): Promise<ToolExecution> | ToolExecution;
 }
