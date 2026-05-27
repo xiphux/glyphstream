@@ -753,8 +753,21 @@
 		// pops in above it once invalidate lands.
 		let sawToolCalls = false;
 		if (isRetry) {
+			// Trim the retry target AND everything in its multi-iteration
+			// tool chain — walk back from the target through preceding
+			// assistant/tool rows until the user message that started the
+			// turn. Server-side retry re-anchors at that user message
+			// (same logic, see api/conversations/[id]/messages/+server.ts).
+			// Without this walk-back the user sees stale iter-0 bubbles
+			// (assistant + tool) hanging above the in-flight regeneration.
 			const retryIdx = messages.findIndex((m) => m.id === options.retryFromMessageId);
-			if (retryIdx >= 0) messages = messages.slice(0, retryIdx);
+			if (retryIdx >= 0) {
+				let cutIdx = retryIdx;
+				while (cutIdx > 0 && messages[cutIdx - 1].role !== 'user') {
+					cutIdx--;
+				}
+				messages = messages.slice(0, cutIdx);
+			}
 		} else {
 			// Edit case: trim everything from the edited message onward so
 			// the new optimistic bubble visually replaces it. Without this

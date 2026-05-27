@@ -242,6 +242,40 @@ export function getMessage(
 }
 
 /**
+ * Walk up from `startMessageId` through parent links until we find the
+ * first `role: 'user'` ancestor. Returns null if the chain doesn't
+ * include one (which means the message is a root or descendant of a
+ * non-user root — both shouldn't happen with our schema invariants).
+ *
+ * Powers retry: in a multi-iteration tool turn the chain is
+ *   user → assistant_0 → tool_0 → assistant_1 → ...
+ * and a retry click on any assistant in that chain needs to find the
+ * single user message that started the turn so the new (regenerated)
+ * assistant attaches as a sibling of assistant_0. The pre-PR2 retry
+ * code assumed the assistant's immediate parent was the user message —
+ * true for single-iteration turns, false here.
+ *
+ * Caps at 100 hops as a safety bound against ill-formed cycles
+ * (shouldn't exist, but a runaway walk would loop forever).
+ */
+export function findUserMessageAncestor(
+	conversationId: string,
+	startMessageId: string
+): ChatMessage | null {
+	const seen = new Set<string>();
+	let cursor = getMessage(conversationId, startMessageId);
+	for (let hops = 0; hops < 100; hops++) {
+		if (!cursor) return null;
+		if (cursor.role === 'user') return cursor;
+		if (!cursor.parentMessageId) return null;
+		if (seen.has(cursor.parentMessageId)) return null; // cycle guard
+		seen.add(cursor.parentMessageId);
+		cursor = getMessage(conversationId, cursor.parentMessageId);
+	}
+	return null;
+}
+
+/**
  * Resolve the parent for a newly-appended user message, given the
  * conversation's current active leaf and the optional client-provided
  * routing fields. Three cases the route handler needs to differentiate:

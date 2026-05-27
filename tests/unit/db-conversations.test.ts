@@ -22,6 +22,7 @@ import {
 import {
 	appendMessage,
 	deleteBranch,
+	findUserMessageAncestor,
 	getMessage,
 	resolveParentForUserMessage,
 	selectBranch,
@@ -1372,5 +1373,100 @@ describe('resolveParentForUserMessage', () => {
 		});
 		// Falls through to activeLeafMessageId.
 		expect(result).toEqual({ ok: true, parentMessageId: followUp.id });
+	});
+});
+
+describe('findUserMessageAncestor', () => {
+	// Powers the multi-iteration retry path: a user clicking retry on
+	// the final assistant of a tool turn (whose immediate parent is a
+	// `tool` message, not a user message) needs the new regeneration
+	// to anchor at the user message that started the whole turn.
+
+	function seedConv(userId: string) {
+		return createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+	}
+
+	function append(
+		conversationId: string,
+		parentMessageId: string | null,
+		role: 'system' | 'user' | 'assistant' | 'tool'
+	) {
+		return appendMessage({
+			conversationId,
+			parentMessageId,
+			role,
+			parts: role === 'tool' ? [] : [{ type: 'text', text: role }],
+			contentHtml: null,
+			reasoningText: null,
+			finishReason: null,
+			modelUsed: null,
+			tokensIn: null,
+			tokensOut: null
+		});
+	}
+
+	it('returns the immediate parent when retry target is a direct child of a user message', () => {
+		// Single-iteration case: user → assistant. Retry on the
+		// assistant finds the user one hop up.
+		const u = seedUser();
+		const c = seedConv(u.id);
+		const userMsg = append(c.id, null, 'user');
+		const asst = append(c.id, userMsg.id, 'assistant');
+		const ancestor = findUserMessageAncestor(c.id, asst.id);
+		expect(ancestor?.id).toBe(userMsg.id);
+	});
+
+	it('walks up through assistant + tool messages to find the user (multi-iteration tool turn)', () => {
+		// user → asst_0 (tool_call) → tool_0 → asst_1 (final text).
+		// Retry on asst_1 must skip past tool_0 and asst_0 to find user.
+		const u = seedUser();
+		const c = seedConv(u.id);
+		const userMsg = append(c.id, null, 'user');
+		const asst0 = append(c.id, userMsg.id, 'assistant');
+		const tool0 = append(c.id, asst0.id, 'tool');
+		const asst1 = append(c.id, tool0.id, 'assistant');
+		expect(findUserMessageAncestor(c.id, asst1.id)?.id).toBe(userMsg.id);
+		// Retry on the MIDDLE assistant of the chain finds the same user.
+		expect(findUserMessageAncestor(c.id, asst0.id)?.id).toBe(userMsg.id);
+	});
+
+	it('walks across multi-iteration tool turns with several tool round-trips', () => {
+		// user → asst_0 → tool_0 → asst_1 → tool_1 → asst_2.
+		const u = seedUser();
+		const c = seedConv(u.id);
+		const userMsg = append(c.id, null, 'user');
+		const asst0 = append(c.id, userMsg.id, 'assistant');
+		const tool0 = append(c.id, asst0.id, 'tool');
+		const asst1 = append(c.id, tool0.id, 'assistant');
+		const tool1 = append(c.id, asst1.id, 'tool');
+		const asst2 = append(c.id, tool1.id, 'assistant');
+		expect(findUserMessageAncestor(c.id, asst2.id)?.id).toBe(userMsg.id);
+	});
+
+	it('returns the user message itself when the start id is already a user message', () => {
+		const u = seedUser();
+		const c = seedConv(u.id);
+		const userMsg = append(c.id, null, 'user');
+		expect(findUserMessageAncestor(c.id, userMsg.id)?.id).toBe(userMsg.id);
+	});
+
+	it('returns null when the chain has no user message (root assistant)', () => {
+		// Shouldn't happen in practice but defensive — root is an
+		// assistant somehow, no user ancestor exists.
+		const u = seedUser();
+		const c = seedConv(u.id);
+		const rootAsst = append(c.id, null, 'assistant');
+		expect(findUserMessageAncestor(c.id, rootAsst.id)).toBeNull();
+	});
+
+	it('returns null when the start message does not exist', () => {
+		const u = seedUser();
+		const c = seedConv(u.id);
+		expect(findUserMessageAncestor(c.id, 'nonexistent-id')).toBeNull();
 	});
 });

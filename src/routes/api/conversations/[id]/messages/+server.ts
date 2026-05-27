@@ -10,6 +10,7 @@ import {
 import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import {
 	appendMessage,
+	findUserMessageAncestor,
 	getMessage,
 	resolveParentForUserMessage,
 	setActiveLeafMessageId,
@@ -127,16 +128,24 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (!target.parentMessageId) {
 			throw error(400, 'Cannot retry a root message');
 		}
-		const parentUser = getMessage(params.id, target.parentMessageId);
-		if (!parentUser || parentUser.role !== 'user') {
-			throw error(400, 'Retry target has no user-message parent');
+		// Multi-iteration tool turns produce a chain like
+		//   user → assistant_0 (tool_call) → tool_0 → assistant_1 (final).
+		// Retry on assistant_1 walks UP past assistant/tool ancestors to
+		// find the user message that started the turn — that's where the
+		// new (regenerated) assistant attaches as a sibling of
+		// assistant_0. Retry semantics is "do the whole turn over," not
+		// "just regenerate the final text"; without the walk, a retry on
+		// the last assistant of a multi-iteration turn errored with "no
+		// user-message parent" because the immediate parent was a tool.
+		userMessage = findUserMessageAncestor(params.id, target.id) ?? undefined;
+		if (!userMessage) {
+			throw error(400, 'Retry target has no user-message ancestor');
 		}
-		// Re-anchor the active branch at the parent user message — walks
-		// from here build the upstream request from history-up-to-the-
-		// retry-point, and the new assistant becomes a sibling of the one
-		// being retried (both children of `parentUser`).
-		setActiveLeafMessageId(params.id, parentUser.id);
-		userMessage = parentUser;
+		// Re-anchor the active branch at the user message — walks from
+		// here build the upstream request from history-up-to-the-retry-
+		// point. The new assistant turn (and any of its tool messages)
+		// becomes a sibling subtree of the chain being retried.
+		setActiveLeafMessageId(params.id, userMessage.id);
 	} else {
 		// Validate every attached media id belongs to this user and isn't
 		// hard-deleted before we persist anything — so a tampered request
