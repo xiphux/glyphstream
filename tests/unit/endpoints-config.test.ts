@@ -180,6 +180,35 @@ group_by = "by-model-name"
 		expect(() => loadEndpoints(path)).toThrow(/group_by/);
 	});
 
+	it('defaults supports_tools to false', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadEndpoints(path)[0].supportsTools).toBe(false);
+	});
+
+	it('parses supports_tools = true', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+supports_tools = true
+		`);
+		expect(loadEndpoints(path)[0].supportsTools).toBe(true);
+	});
+
+	it('rejects non-boolean supports_tools', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+supports_tools = "yes"
+		`);
+		expect(() => loadEndpoints(path)).toThrow(/supports_tools/);
+	});
+
 	it('rejects non-positive request_timeout_seconds', () => {
 		const path = writeConfig(`
 [[endpoints]]

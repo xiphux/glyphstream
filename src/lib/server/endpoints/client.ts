@@ -184,12 +184,31 @@ export type ChatCompletionContentPart =
 	| { type: 'text'; text: string }
 	| { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } };
 
+/**
+ * Outgoing tool-call entry on an assistant message — OpenAI's
+ * `assistant.tool_calls[]` shape. `arguments` is the raw JSON string the
+ * model emitted; we forward it as-is rather than re-parsing, so the
+ * upstream sees byte-identical content to what it generated.
+ */
+export interface ChatCompletionRequestToolCall {
+	id: string;
+	type: 'function';
+	function: { name: string; arguments: string };
+}
+
 /** Chat completion request shape we forward upstream. */
 export interface ChatCompletionRequest {
 	model: string;
 	messages: Array<{
 		role: 'system' | 'user' | 'assistant' | 'tool';
-		content: string | ChatCompletionContentPart[];
+		/** OpenAI permits null content on assistant messages that carry
+		 *  `tool_calls` (the model spoke only via tools, no prose). */
+		content: string | ChatCompletionContentPart[] | null;
+		/** Present only on assistant messages that emitted tool invocations. */
+		tool_calls?: ChatCompletionRequestToolCall[];
+		/** Required on `role: 'tool'` messages — pairs the result back to
+		 *  the `tool_calls[].id` from the preceding assistant message. */
+		tool_call_id?: string;
 	}>;
 	stream?: boolean;
 	/**
@@ -204,6 +223,18 @@ export interface ChatCompletionRequest {
 	temperature?: number;
 	top_p?: number;
 	max_tokens?: number;
+	/** Native OpenAI tool-calling. Omit (don't send `[]`) for endpoints
+	 *  that don't support tools — some upstreams reject the empty array. */
+	tools?: Array<{
+		type: 'function';
+		function: { name: string; description: string; parameters: Record<string, unknown> };
+	}>;
+	/** Spec values: 'auto' | 'required' | 'none' | { type:'function', function:{name} } */
+	tool_choice?:
+		| 'auto'
+		| 'required'
+		| 'none'
+		| { type: 'function'; function: { name: string } };
 }
 
 /** Just enough of the OpenAI response shape for v1 to extract the assistant text + usage. */

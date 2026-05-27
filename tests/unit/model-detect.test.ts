@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { detectKind, normalizeUpstreamModel } from '$lib/server/endpoints/models';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 
+// (supportsTools fallback tests appended at the bottom)
+
 function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 	return {
 		id: 'bridge',
@@ -11,6 +13,7 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		requestTimeoutSeconds: 120,
 		providerQuirk: 'passthrough',
 		groupBy: 'endpoint',
+		supportsTools: false,
 		...overrides
 	};
 }
@@ -148,6 +151,40 @@ describe('normalizeUpstreamModel', () => {
 			);
 			expect(e.group).toBe('Bridge');
 			expect(e.groupKey).toBe('bridge');
+		});
+	});
+
+	describe('supportsTools resolution', () => {
+		// Order: per-model upstream signal > endpoint config > false.
+		it('defaults to false when neither layer says yes', () => {
+			expect(normalizeUpstreamModel(ep(), { id: 'x' }).supportsTools).toBe(false);
+		});
+
+		it('uses endpoint.supportsTools when upstream omits the field', () => {
+			expect(normalizeUpstreamModel(ep({ supportsTools: true }), { id: 'x' }).supportsTools).toBe(true);
+		});
+
+		it('prefers the per-model upstream signal over the endpoint config', () => {
+			// Endpoint says yes globally, but this specific model says no.
+			expect(
+				normalizeUpstreamModel(ep({ supportsTools: true }), { id: 'x', supports_tools: false })
+					.supportsTools
+			).toBe(false);
+			// Endpoint says no, but this model says yes.
+			expect(
+				normalizeUpstreamModel(ep({ supportsTools: false }), { id: 'x', supports_tools: true })
+					.supportsTools
+			).toBe(true);
+		});
+
+		it('treats non-boolean supports_tools as missing (falls back to endpoint)', () => {
+			// Defensive: a misbehaving upstream might send null / undefined.
+			expect(
+				normalizeUpstreamModel(ep({ supportsTools: true }), {
+					id: 'x',
+					supports_tools: null
+				}).supportsTools
+			).toBe(true);
 		});
 	});
 });

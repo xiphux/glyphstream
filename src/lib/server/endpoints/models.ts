@@ -85,6 +85,13 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	const group = useOwner ? owner : endpoint.displayName;
 	const groupKey = useOwner ? owner : endpoint.id;
 
+	// Tool-calling capability: prefer the per-model upstream signal (an
+	// aggregating bridge sets this per backend model); fall back to the
+	// endpoint's config flag; default to false. The model can explicitly
+	// say `false` to opt out of an otherwise tool-enabled endpoint.
+	const supportsTools =
+		typeof m.supports_tools === 'boolean' ? m.supports_tools : endpoint.supportsTools;
+
 	return {
 		id: formatModelId(endpoint.id, m.id),
 		endpointId: endpoint.id,
@@ -94,6 +101,7 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		kind: detected ?? 'chat',
 		kindKnown: detected !== null,
 		group,
-		groupKey
+		groupKey,
+		supportsTools
 	};
 }

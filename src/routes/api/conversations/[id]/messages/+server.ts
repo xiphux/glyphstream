@@ -21,12 +21,14 @@ import {
 	imageEdit,
 	imageGeneration,
 	UpstreamError,
-	type ChatCompletionContentPart,
 	type ChatCompletionRequest,
 	type ImageEditInputFile
 } from '$lib/server/endpoints/client';
 import { getEndpoint } from '$lib/server/endpoints/registry';
+import { listAllModels } from '$lib/server/endpoints/list-models';
+import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
+import { openaiToolDefinitions } from '$lib/server/tools';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -378,38 +380,35 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// data-url image_url parts. We inline image bytes as data URLs because
 	// the upstream's ability to fetch one of our /api/media/:id/content
 	// URLs depends on the deployment's reverse-proxy / network topology
-	// and we don't want to assume it's reachable.
+	// and we don't want to assume it's reachable. tool_call / tool_result
+	// parts serialize to OpenAI's tool-calling shape.
 	const branch = walkActiveBranch(params.id);
-	const upstreamMessages: ChatCompletionRequest['messages'] = [];
-	if (meta.systemPrompt) {
-		upstreamMessages.push({ role: 'system', content: meta.systemPrompt });
-	}
-	for (const m of branch) {
-		if (m.role === 'tool') continue;
-		const hasImages = m.parts.some((p) => p.type === 'image');
-		if (hasImages) {
-			const content: ChatCompletionContentPart[] = [];
-			for (const p of m.parts) {
-				if (p.type === 'text' && p.text) {
-					content.push({ type: 'text', text: p.text });
-				} else if (p.type === 'image') {
-					const url = await mediaIdToDataUrl(p.mediaId, locals.user.id);
-					content.push({ type: 'image_url', image_url: { url } });
-				}
-			}
-			upstreamMessages.push({ role: m.role as 'system' | 'user' | 'assistant', content });
-		} else {
-			upstreamMessages.push({
-				role: m.role as 'system' | 'user' | 'assistant',
-				content: partsToText(m.parts)
-			});
-		}
-	}
+	const upstreamMessages = await serializeBranchForUpstream(
+		branch,
+		(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
+		meta.systemPrompt
+	);
 
 	const requestBody: ChatCompletionRequest = {
 		model: parsed.upstreamId,
 		messages: upstreamMessages
 	};
+
+	// Splice in native tool-calling when the resolved model supports it.
+	// Resolution prefers the per-model upstream signal (ModelEntry.supportsTools,
+	// populated by normalizeUpstreamModel) and falls back to the endpoint
+	// config — both layers already collapsed by the time we read the
+	// ModelEntry below.
+	const allModels = await listAllModels();
+	const modelEntry = allModels.find(
+		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId
+	);
+	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
+	const toolDefs = supportsTools ? openaiToolDefinitions() : [];
+	if (toolDefs.length > 0) {
+		requestBody.tools = toolDefs;
+		requestBody.tool_choice = 'auto';
+	}
 	// Materialized custom-model params, if any. Forward only the fields the
 	// chat-completions API understands; image/video paths ignore these.
 	if (meta.parameters) {
@@ -510,16 +509,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	};
 	return json(response);
 };
-
-function partsToText(parts: MessagePart[]): string {
-	return parts
-		.map((p) => {
-			if (p.type === 'text') return p.text;
-			if (p.type === 'reasoning') return '';
-			return '';
-		})
-		.join('');
-}
 
 function mapUpstreamStatus(status: number | null): 502 | 504 | 400 {
 	if (status === null) return 502;

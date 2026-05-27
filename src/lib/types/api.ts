@@ -62,6 +62,20 @@ export interface ModelEntry {
 	 * picker; falls back to endpointId when owned_by is missing.
 	 */
 	groupKey: string;
+	/**
+	 * Whether this model accepts native OpenAI tool-calling (the
+	 * `tools` array + `tool_choice` in the request, `delta.tool_calls`
+	 * in streaming responses, `role: 'tool'` for results).
+	 *
+	 * Resolution order (in `normalizeUpstreamModel`):
+	 *   upstream.supports_tools  →  endpoint.supportsTools  →  false
+	 *
+	 * The OpenAI spec's `/v1/models` row doesn't carry this signal, so
+	 * we use an additive extension (an aggregating bridge like
+	 * openai-api-bridge populates it per backend model) with the
+	 * per-endpoint config flag as a fallback for vendors that don't.
+	 */
+	supportsTools: boolean;
 }
 
 /**
@@ -88,6 +102,15 @@ export interface UpstreamModel {
 	};
 	/** Fireworks-ish convention */
 	capabilities?: string[];
+	/**
+	 * Additive extension (openai-api-bridge convention): whether this
+	 * model accepts native OpenAI tool-calling. Resolved against the
+	 * endpoint-level `supports_tools` fallback in
+	 * `normalizeUpstreamModel`. Vendors that don't set the field
+	 * (the OpenAI spec doesn't require it) fall through to the
+	 * endpoint config.
+	 */
+	supports_tools?: boolean | null;
 }
 
 // --- messages -----------------------------------------------------------

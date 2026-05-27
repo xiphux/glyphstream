@@ -38,6 +38,7 @@ interface RawEndpoint {
 	request_timeout_seconds?: unknown;
 	provider_quirk?: unknown;
 	group_by?: unknown;
+	supports_tools?: unknown;
 }
 
 /** After validation + env-var resolution. */
@@ -49,6 +50,16 @@ export interface LoadedEndpoint {
 	requestTimeoutSeconds: number;
 	providerQuirk: ProviderQuirk;
 	groupBy: ProviderGrouping;
+	/**
+	 * Endpoint-level fallback for native tool-calling support. The
+	 * OpenAI spec's `/v1/models` row doesn't carry capability flags,
+	 * so for vendors that don't surface a per-model signal (raw OpenAI,
+	 * Anthropic, etc.) we let operators flip this for the whole
+	 * endpoint. The actual decision at request time prefers the
+	 * upstream-reported per-model signal when present
+	 * (`ModelEntry.supportsTools` resolves both layers).
+	 */
+	supportsTools: boolean;
 }
 
 export class ConfigError extends Error {}
@@ -245,12 +256,31 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		groupBy = g as ProviderGrouping;
 	}
 
-	return { id, displayName, baseUrl, apiKey, requestTimeoutSeconds, providerQuirk, groupBy };
+	const supportsTools =
+		raw.supports_tools === undefined ? false : requireBoolean(raw.supports_tools, 'supports_tools', at);
+
+	return {
+		id,
+		displayName,
+		baseUrl,
+		apiKey,
+		requestTimeoutSeconds,
+		providerQuirk,
+		groupBy,
+		supportsTools
+	};
 }
 
 function requireString(v: unknown, field: string, at: string): string {
 	if (typeof v !== 'string' || v.length === 0) {
 		throw new ConfigError(`${at}: required field '${field}' must be a non-empty string`);
+	}
+	return v;
+}
+
+function requireBoolean(v: unknown, field: string, at: string): boolean {
+	if (typeof v !== 'boolean') {
+		throw new ConfigError(`${at}: '${field}' must be a boolean (true/false)`);
 	}
 	return v;
 }
