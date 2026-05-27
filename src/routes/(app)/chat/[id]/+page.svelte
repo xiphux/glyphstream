@@ -516,6 +516,15 @@
 	// independently; we render each segment's HTML on the next frame
 	// rather than on every chunk to cap markdown-it cost at ~60Hz no
 	// matter how fast the upstream streams tokens.
+	//
+	// Critically the callback does NOT reassign `inFlightSegments` — Svelte
+	// 5's $state proxy wraps each array element, so mutating `s.html` in
+	// place triggers reactivity for every reader that touched that field
+	// (notably `inFlightBlocks`). Reassigning the array would re-trigger
+	// this very effect (which reads `inFlightSegments` to iterate), causing
+	// a self-perpetuating rAF loop at 60Hz that fires the auto-scroll
+	// effect each frame — which yanked the scroll position back to the
+	// bottom whenever the user tried to scroll up, even when idle.
 	let inFlightHtmlFrame = 0;
 	$effect(() => {
 		// Touch every text segment's text so the effect re-runs whenever
@@ -529,7 +538,6 @@
 			for (const s of inFlightSegments) {
 				if (s.kind === 'text') s.html = renderLiveMarkdown(s.text);
 			}
-			inFlightSegments = [...inFlightSegments];
 		});
 	});
 
@@ -1516,14 +1524,13 @@
 				{@const mergeWithPrev = merge.mergeWithPrev}
 				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
-					Use the class array form (not class:!mt-0 directive) so
-					Tailwind's important modifier survives Svelte parsing AND
-					so the static analyzer picks the class up. The class:
-					directive trips over the `!` in `!mt-0` and the override
-					never lands, leaving space-y-4's 1rem gap visible between
-					what should be one continuous bubble.
+					Tailwind v4's important modifier is `mt-0!` (suffix), not
+					`!mt-0` (the v3 syntax) — getting that wrong silently does
+					nothing and the space-y-4 gap stays visible between what
+					should be one continuous bubble. Class array form so both
+					Svelte and Tailwind's scanner see the literal class.
 				-->
-				<div id="msg-{m.id}" class={['group', mergeWithPrev && '!mt-0']}>
+				<div id="msg-{m.id}" class={['group', mergeWithPrev && 'mt-0!']}>
 				{#if m.id === editingMessageId}
 					<!--
 						Inline editor: replaces the static bubble with an
