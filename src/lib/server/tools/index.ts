@@ -10,6 +10,7 @@
  */
 
 import './clock';
+import './fetch-url';
 
 export { get, list, openaiToolDefinitions, register } from './registry';
 export type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution, ToolMetadata } from './types';

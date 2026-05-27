@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import type { LoadedEndpoint } from './config';
 import type { UpstreamModel } from '$lib/types/api';
+import { composeSignals } from '../util/abort';
 
 export class UpstreamError extends Error {
 	constructor(
@@ -10,27 +11,6 @@ export class UpstreamError extends Error {
 	) {
 		super(message);
 	}
-}
-
-/**
- * Compose multiple AbortSignals into one. The result aborts when any input
- * aborts. AbortSignal.any() is widely available in Node 20+ but a fallback
- * keeps us safe on older runtimes.
- */
-function composeSignals(...signals: (AbortSignal | undefined)[]): AbortSignal {
-	const present = signals.filter((s): s is AbortSignal => s !== undefined);
-	if (present.length === 0) return new AbortController().signal;
-	if (present.length === 1) return present[0];
-	if (typeof AbortSignal.any === 'function') return AbortSignal.any(present);
-	const controller = new AbortController();
-	for (const s of present) {
-		if (s.aborted) {
-			controller.abort(s.reason);
-			return controller.signal;
-		}
-		s.addEventListener('abort', () => controller.abort(s.reason), { once: true });
-	}
-	return controller.signal;
 }
 
 function authHeaders(endpoint: LoadedEndpoint): Record<string, string> {
