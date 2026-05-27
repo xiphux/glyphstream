@@ -91,15 +91,23 @@ export interface UpstreamModel {
 }
 
 // --- messages -----------------------------------------------------------
-// Structured content parts. v1 only emits `text`; image/video/reasoning are
-// reserved for phases 6/8/9. Additive shape: future tool_call etc. just adds
-// a new variant without breaking persisted rows.
+// Structured content parts. Additive shape: new variants slot in without
+// breaking persisted rows since content_json is a freeform JSON column.
+//
+// `tool_call` parts live on `role: 'assistant'` rows (the model emitted
+// one or more tool invocations); `tool_result` parts live on
+// `role: 'tool'` rows (one per call, parented to the assistant message
+// that emitted them). Display status is *derived* — look up the
+// tool_result for a given toolCallId on the active branch — not stored,
+// so the persisted shape can't drift from reality.
 
 export type MessagePart =
 	| { type: 'text'; text: string }
 	| { type: 'image'; mediaId: string; alt?: string }
 	| { type: 'video'; mediaId: string }
-	| { type: 'reasoning'; text: string };
+	| { type: 'reasoning'; text: string }
+	| { type: 'tool_call'; toolCallId: string; toolName: string; arguments: string }
+	| { type: 'tool_result'; toolCallId: string; result: string; isError?: boolean };
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
