@@ -685,8 +685,8 @@
 								ondragend={handleFavDragEnd}
 								class="rounded-md border-y-2 border-transparent transition {isDragging
 									? 'opacity-40'
-									: ''} {isDropBefore ? '!border-t-sky-500' : ''} {isDropAfter
-									? '!border-b-sky-500'
+									: ''} {isDropBefore ? 'border-t-sky-500!' : ''} {isDropAfter
+									? 'border-b-sky-500!'
 									: ''}"
 							>
 								<a

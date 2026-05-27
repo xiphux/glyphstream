@@ -67,7 +67,15 @@ export interface InFlightToolCallSegment {
 	isError?: boolean;
 }
 
-export type InFlightSegment = InFlightTextSegment | InFlightToolCallSegment;
+export interface InFlightReasoningSegment {
+	kind: 'reasoning';
+	text: string;
+}
+
+export type InFlightSegment =
+	| InFlightTextSegment
+	| InFlightToolCallSegment
+	| InFlightReasoningSegment;
 
 // --- in-flight segment transformations ---------------------------------
 //
@@ -90,6 +98,26 @@ export function appendText(segments: InFlightSegment[], chunk: string): InFlight
 		];
 	}
 	return [...segments, { kind: 'text', text: chunk, html: '' }];
+}
+
+/** Append a reasoning chunk. Same grow-or-open pattern as appendText —
+ *  consecutive reasoning chunks coalesce into one segment, but if a
+ *  text or tool_call lands in between (the model interleaved), a new
+ *  reasoning segment opens for the next batch. This is what lets the
+ *  in-flight bubble render reasoning at its chronological position
+ *  rather than always at the top. */
+export function appendReasoning(
+	segments: InFlightSegment[],
+	chunk: string
+): InFlightSegment[] {
+	if (segments.length === 0) {
+		return [{ kind: 'reasoning', text: chunk }];
+	}
+	const last = segments[segments.length - 1];
+	if (last.kind === 'reasoning') {
+		return [...segments.slice(0, -1), { kind: 'reasoning', text: last.text + chunk }];
+	}
+	return [...segments, { kind: 'reasoning', text: chunk }];
 }
 
 /** Push a new tool_call segment in 'executing' state. Subsequent
@@ -214,28 +242,36 @@ function partToBlock(
 	}
 }
 
-/** Convert in-flight streaming state into RenderBlock[]. Reasoning
- *  always renders first; segments render in arrival order. */
-export function inFlightToBlocks(
-	segments: InFlightSegment[],
-	reasoning: string
-): RenderBlock[] {
+/** Convert in-flight streaming state into RenderBlock[]. Segments
+ *  render in arrival order — reasoning, text, and tool_calls all
+ *  interleave at whatever position they streamed in at. This is what
+ *  matches the user's mental model: "things should appear in the
+ *  order they happened, not get reordered after the fact." */
+export function inFlightToBlocks(segments: InFlightSegment[]): RenderBlock[] {
 	const blocks: RenderBlock[] = [];
-	if (reasoning) blocks.push({ type: 'reasoning', text: reasoning, open: true });
 	for (const seg of segments) {
-		if (seg.kind === 'text') {
-			if (seg.html) blocks.push({ type: 'html', html: seg.html });
-			else if (seg.text) blocks.push({ type: 'plain-text', text: seg.text });
-		} else {
-			blocks.push({
-				type: 'tool_call',
-				toolCallId: seg.toolCallId,
-				toolName: seg.toolName,
-				arguments: seg.arguments,
-				result: seg.result,
-				isError: seg.isError,
-				status: seg.status
-			});
+		switch (seg.kind) {
+			case 'reasoning':
+				// open: true for live reasoning — the user is actively
+				// watching the model think. The persisted side (after
+				// invalidate) shows the same content collapsed.
+				blocks.push({ type: 'reasoning', text: seg.text, open: true });
+				break;
+			case 'text':
+				if (seg.html) blocks.push({ type: 'html', html: seg.html });
+				else if (seg.text) blocks.push({ type: 'plain-text', text: seg.text });
+				break;
+			case 'tool_call':
+				blocks.push({
+					type: 'tool_call',
+					toolCallId: seg.toolCallId,
+					toolName: seg.toolName,
+					arguments: seg.arguments,
+					result: seg.result,
+					isError: seg.isError,
+					status: seg.status
+				});
+				break;
 		}
 	}
 	return blocks;

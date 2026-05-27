@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	appendReasoning,
 	appendText,
 	buildToolResultsMap,
 	computeMergeFlags,
@@ -230,34 +231,35 @@ describe('messageToBlocks', () => {
 // --- inFlightToBlocks: live streaming state → render blocks -------------
 
 describe('inFlightToBlocks', () => {
-	it('returns just a reasoning block when only reasoning is present', () => {
-		expect(inFlightToBlocks([], 'thinking...')).toEqual([
+	it('returns just a reasoning block when only a reasoning segment is present', () => {
+		const segs: InFlightSegment[] = [{ kind: 'reasoning', text: 'thinking...' }];
+		expect(inFlightToBlocks(segs)).toEqual([
 			{ type: 'reasoning', text: 'thinking...', open: true }
 		]);
 	});
 
 	it('in-flight reasoning is expanded by default (open=true) — the user is watching the model think', () => {
-		const blocks = inFlightToBlocks([], 'thoughts');
-		expect(blocks[0]).toMatchObject({ type: 'reasoning', open: true });
+		const segs: InFlightSegment[] = [{ kind: 'reasoning', text: 'thoughts' }];
+		expect(inFlightToBlocks(segs)[0]).toMatchObject({ type: 'reasoning', open: true });
 	});
 
 	it('returns empty blocks when nothing has streamed yet', () => {
-		expect(inFlightToBlocks([], '')).toEqual([]);
+		expect(inFlightToBlocks([])).toEqual([]);
 	});
 
 	it('renders a text segment as html when its html is populated', () => {
 		const segs: InFlightSegment[] = [{ kind: 'text', text: 'hello', html: '<p>hello</p>' }];
-		expect(inFlightToBlocks(segs, '')).toEqual([{ type: 'html', html: '<p>hello</p>' }]);
+		expect(inFlightToBlocks(segs)).toEqual([{ type: 'html', html: '<p>hello</p>' }]);
 	});
 
 	it('falls back to plain-text when html is not yet rendered', () => {
 		const segs: InFlightSegment[] = [{ kind: 'text', text: 'hello', html: '' }];
-		expect(inFlightToBlocks(segs, '')).toEqual([{ type: 'plain-text', text: 'hello' }]);
+		expect(inFlightToBlocks(segs)).toEqual([{ type: 'plain-text', text: 'hello' }]);
 	});
 
 	it('skips empty text segments entirely', () => {
 		const segs: InFlightSegment[] = [{ kind: 'text', text: '', html: '' }];
-		expect(inFlightToBlocks(segs, '')).toEqual([]);
+		expect(inFlightToBlocks(segs)).toEqual([]);
 	});
 
 	it('renders a tool_call segment as a tool_call block with its status', () => {
@@ -270,7 +272,7 @@ describe('inFlightToBlocks', () => {
 				status: 'executing'
 			}
 		];
-		expect(inFlightToBlocks(segs, '')).toEqual([
+		expect(inFlightToBlocks(segs)).toEqual([
 			{
 				type: 'tool_call',
 				toolCallId: 'c1',
@@ -295,7 +297,7 @@ describe('inFlightToBlocks', () => {
 			{ kind: 'tool_call', toolCallId: 'b', toolName: 'y', arguments: '{}', status: 'done' },
 			{ kind: 'text', text: 't2', html: '<p>t2</p>' }
 		];
-		const blocks = inFlightToBlocks(segs, '');
+		const blocks = inFlightToBlocks(segs);
 		expect(blocks.map((b) => b.type)).toEqual([
 			'html',
 			'tool_call',
@@ -307,11 +309,35 @@ describe('inFlightToBlocks', () => {
 		expect((blocks[3] as Extract<RenderBlock, { type: 'tool_call' }>).toolCallId).toBe('b');
 	});
 
-	it('puts reasoning before all segments', () => {
-		const segs: InFlightSegment[] = [{ kind: 'text', text: 'after', html: '<p>after</p>' }];
-		const blocks = inFlightToBlocks(segs, 'first thoughts');
-		expect(blocks[0]).toEqual({ type: 'reasoning', text: 'first thoughts', open: true });
-		expect(blocks[1]).toEqual({ type: 'html', html: '<p>after</p>' });
+	it('renders reasoning at its chronological position, not always at the top', () => {
+		// Regression guard: the old code put reasoning ABOVE everything
+		// regardless of arrival order, so a model that did
+		// text → reasoning → text would render reasoning above all the
+		// text. Users complained that history got "reordered after the
+		// fact." Now reasoning slots in where it actually streamed.
+		const segs: InFlightSegment[] = [
+			{ kind: 'text', text: 'pre', html: '<p>pre</p>' },
+			{ kind: 'reasoning', text: 'mid-thought' },
+			{ kind: 'text', text: 'post', html: '<p>post</p>' }
+		];
+		const blocks = inFlightToBlocks(segs);
+		expect(blocks.map((b) => b.type)).toEqual(['html', 'reasoning', 'html']);
+	});
+
+	it('interleaves reasoning across iterations (the multi-iteration tool case)', () => {
+		// Iter 0: reasoning → tool_call. Iter 1: reasoning → text.
+		const segs: InFlightSegment[] = [
+			{ kind: 'reasoning', text: 'should i call the tool?' },
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' },
+			{ kind: 'reasoning', text: 'great, now phrase it' },
+			{ kind: 'text', text: 'the answer is 42', html: '<p>the answer is 42</p>' }
+		];
+		expect(inFlightToBlocks(segs).map((b) => b.type)).toEqual([
+			'reasoning',
+			'tool_call',
+			'reasoning',
+			'html'
+		]);
 	});
 
 	it('propagates tool_call result and isError when done', () => {
@@ -326,7 +352,7 @@ describe('inFlightToBlocks', () => {
 				isError: true
 			}
 		];
-		const blocks = inFlightToBlocks(segs, '');
+		const blocks = inFlightToBlocks(segs);
 		expect(blocks[0]).toMatchObject({
 			type: 'tool_call',
 			status: 'error',
@@ -371,6 +397,45 @@ describe('appendText', () => {
 		expect(next).not.toBe(initial);
 		const first = initial[0];
 		expect(first.kind === 'text' && first.text).toBe('a');
+	});
+});
+
+describe('appendReasoning', () => {
+	it('opens a first reasoning segment when the list is empty', () => {
+		expect(appendReasoning([], 'thinking')).toEqual([
+			{ kind: 'reasoning', text: 'thinking' }
+		]);
+	});
+
+	it('grows the trailing reasoning segment', () => {
+		const initial: InFlightSegment[] = [{ kind: 'reasoning', text: 'first' }];
+		expect(appendReasoning(initial, ' more')).toEqual([
+			{ kind: 'reasoning', text: 'first more' }
+		]);
+	});
+
+	it('opens a fresh reasoning segment after a text segment (interleaved)', () => {
+		const initial: InFlightSegment[] = [{ kind: 'text', text: 'hi', html: '' }];
+		const next = appendReasoning(initial, 'second thoughts');
+		expect(next).toHaveLength(2);
+		expect(next[1]).toEqual({ kind: 'reasoning', text: 'second thoughts' });
+	});
+
+	it('opens a fresh reasoning segment after a tool_call segment', () => {
+		const initial: InFlightSegment[] = [
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' }
+		];
+		const next = appendReasoning(initial, 'now what');
+		expect(next).toHaveLength(2);
+		expect(next[1]).toEqual({ kind: 'reasoning', text: 'now what' });
+	});
+
+	it('returns a new array (does not mutate input)', () => {
+		const initial: InFlightSegment[] = [{ kind: 'reasoning', text: 'a' }];
+		const next = appendReasoning(initial, 'b');
+		expect(next).not.toBe(initial);
+		const first = initial[0];
+		expect(first.kind === 'reasoning' && first.text).toBe('a');
 	});
 });
 

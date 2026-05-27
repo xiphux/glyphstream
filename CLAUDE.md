@@ -96,6 +96,17 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   build — by drizzle-kit, the `import-owui` esbuild bundle, and
   Playwright's e2e `global-setup.ts` — none of which resolve the `$lib`
   alias. Import shared code into it with a relative path.
+- **Tailwind v4, not v3.** Two of v4's syntax changes silently produce
+  no CSS instead of erroring, and we've stepped on both:
+  - Important modifier moved from prefix to **suffix**: `mt-0!` is
+    correct, `!mt-0` (v3) silently emits nothing.
+  - `space-y-*` now sets `margin-block-end` on *every* child (v3 set
+    `margin-top` on subsequent siblings via `* + *`). Closing a gap
+    between two specific siblings means overriding `mb-0!` on the
+    upper child, not `mt-0!` on the lower one.
+  When something visual doesn't apply, check the generated CSS in
+  the inline `<style data-sveltekit>` to confirm Tailwind picked the
+  class up — silent no-op is the failure mode here.
 
 ## Roadmap
 

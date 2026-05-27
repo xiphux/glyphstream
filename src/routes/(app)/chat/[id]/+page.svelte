@@ -28,6 +28,7 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import {
+		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
 		buildToolResultsMap,
 		computeMergeFlags,
@@ -484,12 +485,12 @@
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
-	// In-flight content is a single ordered list of segments — text and
-	// tool_call interleaved in arrival order. The mutation helpers + the
-	// segments-to-blocks conversion are pure functions in $lib/chat-render
-	// so they can be vitest-tested independently of the Svelte component.
+	// In-flight content is a single ordered list of segments — reasoning,
+	// text, and tool_call interleaved in arrival order. The mutation
+	// helpers + the segments-to-blocks conversion are pure functions in
+	// $lib/chat-render so they can be vitest-tested independently of the
+	// Svelte component.
 	let inFlightSegments = $state<InFlightSegment[]>([]);
-	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
 	let inFlightStatus = $state<string | null>(null);
@@ -499,6 +500,9 @@
 	}
 	function appendInFlightText(chunk: string) {
 		inFlightSegments = inFlightAppendText(inFlightSegments, chunk);
+	}
+	function appendInFlightReasoning(chunk: string) {
+		inFlightSegments = inFlightAppendReasoning(inFlightSegments, chunk);
 	}
 	function pushInFlightToolCall(toolCallId: string, toolName: string) {
 		inFlightSegments = inFlightPushToolCall(inFlightSegments, toolCallId, toolName);
@@ -510,7 +514,7 @@
 		inFlightSegments = inFlightUpdateToolCallResult(inFlightSegments, toolCallId, result, isError);
 	}
 
-	const inFlightBlocks = $derived(inFlightToBlocks(inFlightSegments, inFlightReasoning));
+	const inFlightBlocks = $derived(inFlightToBlocks(inFlightSegments));
 
 	// rAF-coalesced per-segment markdown render. Each text segment grows
 	// independently; we render each segment's HTML on the next frame
@@ -614,7 +618,6 @@
 		busy = false;
 		inFlightOpen = false;
 		resetInFlightSegments();
-		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
 		errorMsg = null;
@@ -727,7 +730,6 @@
 		wasHiddenDuringFetch = false;
 		wasOfflineDuringFetch = false;
 		resetInFlightSegments();
-		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
 
@@ -857,7 +859,11 @@
 						if (isNearBottom) scrollToBottom();
 						break;
 					case 'reasoning':
-						inFlightReasoning += event.chunk;
+						// Append to the trailing reasoning segment, or open a
+						// new one after text/tool_call. Lets the in-flight
+						// bubble render reasoning at its chronological
+						// position rather than always at the top.
+						appendInFlightReasoning(event.chunk);
 						if (isNearBottom) scrollToBottom();
 						break;
 					case 'tool_call_start':
@@ -911,8 +917,7 @@
 							messages = [...messages, event.assistantMessage];
 							inFlightOpen = false;
 							resetInFlightSegments();
-							inFlightReasoning = '';
-							inFlightProgress = null;
+												inFlightProgress = null;
 							inFlightStatus = null;
 						} else {
 							inFlightProgress = null;
@@ -948,8 +953,7 @@
 				if (sawToolCalls) {
 					inFlightOpen = false;
 					resetInFlightSegments();
-					inFlightReasoning = '';
-					inFlightProgress = null;
+								inFlightProgress = null;
 					inFlightStatus = null;
 				}
 			}
@@ -994,8 +998,7 @@
 			if (activeAbort === abort) {
 				inFlightOpen = false;
 				resetInFlightSegments();
-				inFlightReasoning = '';
-				inFlightProgress = null;
+						inFlightProgress = null;
 				inFlightStatus = null;
 				busy = false;
 				activeAbort = null;

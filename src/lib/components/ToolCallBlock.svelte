@@ -68,17 +68,24 @@
 		<span class="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tool</span>
 		<span class="font-mono text-xs text-neutral-700 dark:text-neutral-300">{toolName}</span>
 		<span class="flex-1"></span>
-		<span class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide {badgeColorClass}">
-			{#if status === 'executing'}
-				<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>
-				running
-			{:else if status === 'error'}
-				error
-			{:else}
-				done
-			{/if}
-			{#if badgeSuffix}<span class="opacity-70 normal-case">{@render badgeSuffix()}</span>{/if}
-		</span>
+		<!--
+			Status badge only shows for non-default states. A completed call
+			renders no badge — the disclosure triangle on the summary line
+			communicates the call exists; users assume done unless told
+			otherwise. Errors and in-progress stay visible because they're
+			the cases the user actually wants to notice at a glance.
+		-->
+		{#if status !== 'done'}
+			<span class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide {badgeColorClass}">
+				{#if status === 'executing'}
+					<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>
+					running
+				{:else}
+					error
+				{/if}
+				{#if badgeSuffix}<span class="opacity-70 normal-case">{@render badgeSuffix()}</span>{/if}
+			</span>
+		{/if}
 	</summary>
 	<div class="space-y-2 border-t border-neutral-200 p-2 dark:border-neutral-800">
 		{#if prettyArgs}
