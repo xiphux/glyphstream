@@ -68,8 +68,9 @@
 		<span class="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tool</span>
 		<span class="font-mono text-xs text-neutral-700 dark:text-neutral-300">{toolName}</span>
 		<span class="flex-1"></span>
-		<span class="text-[10px] font-medium uppercase tracking-wide {badgeColorClass}">
+		<span class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide {badgeColorClass}">
 			{#if status === 'executing'}
+				<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>
 				running
 			{:else if status === 'error'}
 				error
