@@ -26,6 +26,7 @@
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
+	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -84,6 +85,27 @@
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
+	});
+
+	// Fold tool-result messages out of the visible list and expose them
+	// via a side-map keyed by tool_call_id. The matching assistant
+	// message renders each of its tool_call parts as a ToolCallBlock
+	// inline (looking up the result here), so the user sees the call +
+	// result as one visual unit instead of two separate bubbles. This
+	// is the "folded into assistant bubble" UX the user picked over
+	// "separate sequential bubbles."
+	const visibleMessages = $derived(messages.filter((m) => m.role !== 'tool'));
+	const toolResultsByCallId = $derived.by(() => {
+		const m = new Map<string, { result: string; isError: boolean }>();
+		for (const msg of messages) {
+			if (msg.role !== 'tool') continue;
+			for (const p of msg.parts) {
+				if (p.type === 'tool_result') {
+					m.set(p.toolCallId, { result: p.result, isError: p.isError === true });
+				}
+			}
+		}
+		return m;
 	});
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
@@ -1370,6 +1392,7 @@
 
 	function partKey(p: MessagePart): string {
 		if (p.type === 'image' || p.type === 'video') return p.mediaId;
+		if (p.type === 'tool_call' || p.type === 'tool_result') return p.type + ':' + p.toolCallId;
 		return p.type + ':' + ('text' in p ? p.text.slice(0, 8) : '');
 	}
 </script>
@@ -1404,7 +1427,7 @@
 		class="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
 	>
 		<div class="mx-auto min-w-0 max-w-3xl space-y-4">
-			{#each messages as m, i (m.id)}
+			{#each visibleMessages as m, i (m.id)}
 				<!--
 					Message + action-bar group. The actions row sits directly
 					below the bubble, aligned to the same side (right for user
@@ -1546,6 +1569,27 @@
 								{/each}
 							</div>
 						{/if}
+					{/if}
+					<!--
+						Tool-call parts: render each as an inline collapsible block.
+						Folded into the assistant bubble — the matching role:'tool'
+						messages were filtered out of `visibleMessages` and their
+						results live in `toolResultsByCallId`. Status is derived:
+						no matching result = still executing; result.isError = error.
+					-->
+					{#if m.role === 'assistant'}
+						{#each m.parts as p (partKey(p))}
+							{#if p.type === 'tool_call'}
+								{@const matched = toolResultsByCallId.get(p.toolCallId)}
+								<ToolCallBlock
+									toolName={p.toolName}
+									argumentsJson={p.arguments}
+									result={matched?.result}
+									isError={matched?.isError}
+									status={matched ? (matched.isError ? 'error' : 'done') : 'executing'}
+								/>
+							{/if}
+						{/each}
 					{/if}
 				</article>
 				{/if}
@@ -1730,7 +1774,7 @@
 					{/if}
 					{#if inFlightText}
 						<div class="gs-prose mt-1">{@html inFlightHtml}</div>
-					{:else if !inFlightReasoning}
+					{:else if !inFlightReasoning && inFlightToolCalls.size === 0}
 						<div class="mt-1 flex items-center gap-2 text-neutral-500">
 							<span>{inFlightLabel}</span>
 							<span class="inline-flex gap-1">
@@ -1751,6 +1795,22 @@
 							{/if}
 						</div>
 					{/if}
+					<!--
+						In-flight tool-call blocks: same component as the persisted
+						render, fed from the SSE-driven inFlightToolCalls map.
+						Entries appear when tool_call_start fires, fill in across
+						args_delta + executing + result events, then clear on `done`
+						(the persisted assistant+tool rows take over the rendering).
+					-->
+					{#each Array.from(inFlightToolCalls) as [callId, tc] (callId)}
+						<ToolCallBlock
+							toolName={tc.toolName}
+							argumentsJson={tc.arguments}
+							result={tc.result}
+							isError={tc.isError}
+							status={tc.status}
+						/>
+					{/each}
 				</article>
 			{/if}
 			<!--
