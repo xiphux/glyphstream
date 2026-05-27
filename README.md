@@ -173,9 +173,16 @@ manual renames win even if they race a running title task.
 
 GlyphStream supports native OpenAI tool calling — the model decides
 when to invoke a registered tool, GlyphStream runs it server-side, and
-the result is folded back into the conversation. One built-in tool
-ships today (`get_current_time`); the architecture is unbounded and
-adding more is a single file under `src/lib/server/tools/`.
+the result is folded back into the conversation. Three built-in tools
+ship today:
+
+- `get_current_time` — clock with optional IANA timezone.
+- `fetch_url` — read a single web page or text resource by URL.
+- `web_search` — query a [SearxNG](https://docs.searxng.org/) instance
+  (requires a `[search]` config block; see [Web search](#web-search)).
+
+The architecture is unbounded — adding more is a single file under
+`src/lib/server/tools/`.
 
 ### Enable per endpoint
 
@@ -239,6 +246,62 @@ base_url = "http://192.168.1.20:8080/v1"
 supports_tools = true
 ```
 
+### Web search
+
+The `web_search` tool is backed by [SearxNG](https://docs.searxng.org/),
+a self-hosted meta-search engine. The model decides when a query needs
+current information (events past its training cutoff, recent docs,
+specific URLs to read) and calls it on its own — no per-conversation
+"enable search" toggle.
+
+The tool is **hidden from the model entirely** when SearxNG isn't
+configured, so omitting the `[search]` block soft-disables the feature
+without breaking anything else. The paired `fetch_url` tool is
+**always available** — useful when you want the model to read a
+specific link, with or without search.
+
+**1.** Run a SearxNG instance. The official Docker image is the easy
+path:
+
+```bash
+docker run -d --name searxng -p 8888:8080 searxng/searxng
+```
+
+**2.** Enable the JSON output format in SearxNG's `settings.yml` (the
+default config only enables HTML):
+
+```yaml
+search:
+  formats:
+    - html
+    - json
+```
+
+Restart the container after editing.
+
+**3.** Add a `[search]` block to your `config.toml`:
+
+```toml
+[search]
+url = "http://192.168.1.10:8888"
+# api_key_env = "SEARXNG_API_KEY"   # optional; most instances need no auth
+# timeout_seconds = 10              # optional; default 10
+```
+
+That's it — `web_search` is now in every tool-capable endpoint's
+advertised toolset. The capability-named `[search]` section reserves
+the namespace for future backend swaps (Brave, Tavily, Kagi) without
+breaking existing configs.
+
+**`fetch_url` safety note:** to mitigate the model hallucinating an
+internal URL (or following a redirect into one), `fetch_url` blocks
+hostnames that resolve to private, loopback, link-local, CGNAT,
+benchmark, multicast, or cloud-metadata addresses (10.x, 172.16-31.x,
+192.168.x, 127.x, 169.254.x, IPv6 ULA/link-local, etc.). It also caps
+response bodies at 256 KB and extracted text at ~20 KB. Operators who
+want to point the model at LAN services aren't supported today; open
+an issue if you have a real use case.
+
 ### Adding more tools
 
 Each tool is a TypeScript module under `src/lib/server/tools/` that
@@ -247,7 +310,9 @@ registered via `register(...)` at module load. The
 [`get_current_time` implementation](src/lib/server/tools/clock.ts) is
 the smallest end-to-end example; copy its shape, add an import line
 in `src/lib/server/tools/index.ts`, and the new tool is live for
-every endpoint with `supports_tools = true`.
+every endpoint with `supports_tools = true`. Tools backed by optional
+config (like `web_search` is by `[search]`) can implement
+`isAvailable()` to hide themselves when their backend isn't present.
 
 ## Push notifications (optional)
 

@@ -6,15 +6,6 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
-- **Web search via SearxNG as auto-tool.** Register a `web_search` function
-  tool against the existing tool-call infrastructure. The tool loop, the
-  per-endpoint/per-model `supports_tools` capability resolution, the
-  request-shape plumbing, and the UI rendering all landed with the
-  `get_current_time` proof-of-concept tool — adding web search is a new
-  file in `src/lib/server/tools/` plus a SearxNG client. Avoids OWUI's
-  manual "enable web search" toggle by letting the model decide when it
-  needs to search.
-
 - **Completion sounds + per-modality notification config.** Notifications
   themselves shipped — Web Push for backgrounded tab/OS notification, an
   in-app toast for "different thread, app still open," and silent on the
