@@ -79,6 +79,19 @@
 #   providers. Models without `owned_by` fall back to the endpoint's group.
 # group_by = "owned_by"
 
+# Optional: enable native OpenAI tool calling for this endpoint. When true,
+# GlyphStream forwards the registered `tools` array on chat requests and
+# runs the model's tool_calls server-side, looping until the model returns
+# a final text response. See the README's "Tool calling" section for the
+# full setup (model requirements, llama-server --jinja flag).
+# Defaults to false — endpoints stay tool-disabled until opted in.
+#
+# When the upstream advertises tool support per model (the openai-api-bridge
+# does this for OpenRouter via the `supported_parameters` field), that
+# per-model signal wins and this flag is the fallback for models that don't
+# self-report.
+# supports_tools = true
+
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys
 # Put the public key here (plaintext, no secret), the private key in the

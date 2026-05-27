@@ -169,6 +169,81 @@ manual renames win even if they race a running title task.
 > `task_model` that isn't there — so titling silently stays in
 > fallback mode with no error at boot.
 
+## Tool calling (optional)
+
+GlyphStream supports native OpenAI tool calling — the model decides
+when to invoke a registered tool, GlyphStream runs it server-side, and
+the result is folded back into the conversation. One built-in tool
+ships today (`get_current_time`); the architecture is unbounded and
+adding more is a single file under `src/lib/server/tools/`.
+
+### Enable per endpoint
+
+The OpenAI `/v1/models` shape doesn't tell clients which models accept
+tools, so capability is configured per endpoint with an optional
+`supports_tools = true` on the `[[endpoints]]` block:
+
+```toml
+[[endpoints]]
+id = "openai"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+supports_tools = true   # all GPT-4+ chat models accept tools
+```
+
+The flag is **endpoint-scoped** as a fallback. If the upstream
+advertises tool support per model (the openai-api-bridge does this
+for the OpenRouter backend, reading the `supported_parameters` field
+from OpenRouter's catalog), GlyphStream prefers that per-model signal
+and the endpoint flag is a default for models that don't self-report.
+Defaults to `false` for safety — endpoints stay tool-disabled until
+you opt them in.
+
+### Model requirements
+
+Tool calling **only works with models trained for it**. Even with the
+config flag set, a model that wasn't fine-tuned for tool use will
+either ignore the `tools` array or emit malformed `tool_calls`. As of
+this writing, known-good local options include:
+
+- Llama 3.1, 3.2, 3.3 Instruct (8B+)
+- Qwen 2.5, 3 Instruct (7B+)
+- Gemma 3 (12B+)
+- Hermes-3
+- Most Mistral instruct fine-tunes
+
+Smaller / older models (Llama 2, anything ≤3B) typically flail.
+
+### llama.cpp setup
+
+`llama-server` supports OpenAI-shape tool calling but you have to launch
+it with `--jinja` so it uses the model's actual chat template. Without
+the flag, the `tools` array is silently dropped — the model never even
+sees it. Example:
+
+```bash
+llama-server --model qwen2.5-7b-instruct.gguf --jinja --host 0.0.0.0 --port 8080
+```
+
+Then in `config.toml`:
+
+```toml
+[[endpoints]]
+id = "llama"
+base_url = "http://192.168.1.20:8080/v1"
+supports_tools = true
+```
+
+### Adding more tools
+
+Each tool is a TypeScript module under `src/lib/server/tools/` that
+exports an OpenAI tool definition + an `execute(args, ctx)` function,
+registered via `register(...)` at module load. The
+[`get_current_time` implementation](src/lib/server/tools/clock.ts) is
+the smallest end-to-end example; copy its shape, add an import line
+in `src/lib/server/tools/index.ts`, and the new tool is live for
+every endpoint with `supports_tools = true`.
+
 ## Push notifications (optional)
 
 GlyphStream can fire OS-level push notifications when an assistant
