@@ -216,13 +216,18 @@ Smaller / older models (Llama 2, anything ≤3B) typically flail.
 
 ### llama.cpp setup
 
-`llama-server` supports OpenAI-shape tool calling but you have to launch
-it with `--jinja` so it uses the model's actual chat template. Without
-the flag, the `tools` array is silently dropped — the model never even
-sees it. Example:
+`llama-server` supports OpenAI-shape tool calling out of the box. The
+model's chat template (loaded via Jinja) is what surfaces tools to the
+model, and Jinja templating is **on by default** in current
+`llama-server` builds — you only need to act if you've explicitly
+turned it off. If you've set `--no-jinja`, the `tools` array gets
+silently dropped before the model ever sees it; drop the flag and
+tools work.
+
+Example launch:
 
 ```bash
-llama-server --model qwen2.5-7b-instruct.gguf --jinja --host 0.0.0.0 --port 8080
+llama-server --model qwen2.5-7b-instruct.gguf --host 0.0.0.0 --port 8080
 ```
 
 Then in `config.toml`:
