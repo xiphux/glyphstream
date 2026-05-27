@@ -466,6 +466,27 @@
 	let inFlightProgress = $state<number | null>(null);
 	let inFlightStatus = $state<string | null>(null);
 
+	// In-flight tool-call display state, keyed by the upstream's toolCallId.
+	// Each entry fills in progressively as SSE events arrive:
+	//   tool_call_start     → entry created with toolName + empty args
+	//   tool_call_args_delta → args accumulates
+	//   tool_call_executing → status flips to 'executing'
+	//   tool_call_result    → result + status flips to 'done' / 'error'
+	// On `done` the state clears (the persisted assistant + role:'tool' rows
+	// land in `messages` and the UI renders them via the folded
+	// ToolCallBlock instead).
+	type InFlightToolCall = {
+		toolName: string;
+		arguments: string;
+		status: 'executing' | 'done' | 'error';
+		result?: string;
+		isError?: boolean;
+	};
+	let inFlightToolCalls = $state<Map<string, InFlightToolCall>>(new Map());
+	function resetInFlightToolCalls() {
+		inFlightToolCalls = new Map();
+	}
+
 	// rAF-coalesced markdown render. The upstream emits many small text
 	// deltas (often one or two characters at a time); re-rendering the
 	// full accumulated markdown on every delta becomes O(N²) over the
@@ -561,6 +582,7 @@
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
+		resetInFlightToolCalls();
 		errorMsg = null;
 	});
 
@@ -674,6 +696,7 @@
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
+		resetInFlightToolCalls();
 
 		// For send / edit: render an optimistic user bubble. For retry:
 		// the user message already exists, so skip — but DO trim the
@@ -791,6 +814,61 @@
 						inFlightReasoning += event.chunk;
 						if (isNearBottom) scrollToBottom();
 						break;
+					case 'tool_call_start': {
+						// New entry starts in 'executing' state — by the time
+						// the model decides to call a tool it's effectively
+						// committed. The server flips to a real 'executing'
+						// event once it actually starts running the tool, but
+						// for v1 the args-streaming phase is fast enough that
+						// the distinction isn't visible to the user.
+						const m = new Map(inFlightToolCalls);
+						m.set(event.toolCallId, {
+							toolName: event.toolName,
+							arguments: '',
+							status: 'executing'
+						});
+						inFlightToolCalls = m;
+						if (isNearBottom) scrollToBottom();
+						break;
+					}
+					case 'tool_call_args_delta': {
+						const existing = inFlightToolCalls.get(event.toolCallId);
+						if (existing) {
+							const m = new Map(inFlightToolCalls);
+							m.set(event.toolCallId, {
+								...existing,
+								arguments: existing.arguments + event.argumentsDelta
+							});
+							inFlightToolCalls = m;
+						}
+						break;
+					}
+					case 'tool_call_executing': {
+						// Server actually started the tool. UI distinction is
+						// minor today, but keeping the case explicit so a
+						// future "tool is running…" affordance can hook here.
+						const existing = inFlightToolCalls.get(event.toolCallId);
+						if (existing) {
+							const m = new Map(inFlightToolCalls);
+							m.set(event.toolCallId, { ...existing, status: 'executing' });
+							inFlightToolCalls = m;
+						}
+						break;
+					}
+					case 'tool_call_result': {
+						const existing = inFlightToolCalls.get(event.toolCallId);
+						if (existing) {
+							const m = new Map(inFlightToolCalls);
+							m.set(event.toolCallId, {
+								...existing,
+								status: event.isError ? 'error' : 'done',
+								result: event.result,
+								isError: event.isError
+							});
+							inFlightToolCalls = m;
+						}
+						break;
+					}
 					case 'progress':
 						inFlightProgress = event.percent;
 						inFlightStatus = event.status ?? null;
@@ -809,6 +887,7 @@
 						inFlightReasoning = '';
 						inFlightProgress = null;
 						inFlightStatus = null;
+						resetInFlightToolCalls();
 						// Release the composer now — `done` means the response
 						// is complete. The relay deliberately keeps the SSE
 						// stream open past this point so the background
@@ -825,6 +904,7 @@
 						inFlightOpen = false;
 						inFlightProgress = null;
 						inFlightStatus = null;
+						resetInFlightToolCalls();
 						break;
 				}
 			}
@@ -873,6 +953,7 @@
 				inFlightReasoning = '';
 				inFlightProgress = null;
 				inFlightStatus = null;
+				resetInFlightToolCalls();
 				busy = false;
 				activeAbort = null;
 			}
