@@ -729,6 +729,16 @@
 		// twice" effect) until invalidateAll runs after 'done'.
 		const isRetry = !!options.retryFromMessageId;
 		let optimisticId: string | null = null;
+		// Tracks whether ANY tool_call SSE event arrived during this turn.
+		// When true, we know the server's multi-iteration loop ran and the
+		// `done` event's single `assistantMessage` is just the LAST
+		// iteration's row — there are intermediate assistant + tool rows
+		// in the DB that `done` doesn't carry. Skip the optimistic append
+		// in that case and rely on invalidateAll to populate the full
+		// sequence in the right order. Without this, the user briefly sees
+		// only the final answer, then the intermediate "tool-call" bubble
+		// pops in above it once invalidate lands.
+		let sawToolCalls = false;
 		if (isRetry) {
 			const retryIdx = messages.findIndex((m) => m.id === options.retryFromMessageId);
 			if (retryIdx >= 0) messages = messages.slice(0, retryIdx);
@@ -843,6 +853,7 @@
 						// event once it actually starts running the tool, but
 						// for v1 the args-streaming phase is fast enough that
 						// the distinction isn't visible to the user.
+						sawToolCalls = true;
 						const m = new Map(inFlightToolCalls);
 						m.set(event.toolCallId, {
 							toolName: event.toolName,
@@ -903,7 +914,18 @@
 						title = event.title;
 						break;
 					case 'done':
-						messages = [...messages, event.assistantMessage];
+						// Optimistic append only when this was a single-iteration
+						// turn (no tool calls). For multi-iteration turns the
+						// `done` event carries just the FINAL assistant message;
+						// the intermediate assistant + tool rows live only in
+						// the DB and come back via the invalidateAll() at the
+						// bottom of this for-await loop. Appending the final
+						// here would render it BEFORE the intermediates, and
+						// the user would see the older bubble pop in above
+						// once the invalidate lands.
+						if (!sawToolCalls) {
+							messages = [...messages, event.assistantMessage];
+						}
 						inFlightOpen = false;
 						inFlightText = '';
 						inFlightReasoning = '';
