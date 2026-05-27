@@ -434,6 +434,46 @@ export interface StreamErrorEvent {
 	message: string;
 }
 
+// --- tool-call streaming events -----------------------------------------
+//
+// Server emits these inline between text/reasoning events as the upstream
+// streams its tool invocations. The client builds an in-flight tool-call
+// map keyed by toolCallId so each call's UI block fills in
+// progressively: start → args streaming → executing (we're running the
+// tool) → result (the tool returned).
+
+/** First sighting of a given tool_call from the upstream stream. */
+export interface StreamToolCallStartEvent {
+	type: 'tool_call_start';
+	toolCallId: string;
+	toolName: string;
+}
+
+/** Incremental chunk of the tool_call's `arguments` JSON. Multiple
+ *  events arrive per call; concatenate into the final args string. */
+export interface StreamToolCallArgsDeltaEvent {
+	type: 'tool_call_args_delta';
+	toolCallId: string;
+	argumentsDelta: string;
+}
+
+/** The server has started running this tool's `execute()`. UI flips the
+ *  block from "args streaming" to "executing" (typically with a spinner). */
+export interface StreamToolCallExecutingEvent {
+	type: 'tool_call_executing';
+	toolCallId: string;
+}
+
+/** The tool finished. UI shows the result (or error). The persisted
+ *  `role: 'tool'` row carries the same content; this event is just the
+ *  push-notification version for the in-flight UI. */
+export interface StreamToolCallResultEvent {
+	type: 'tool_call_result';
+	toolCallId: string;
+	result: string;
+	isError: boolean;
+}
+
 export type StreamEvent =
 	| StreamStartEvent
 	| StreamTextEvent
@@ -441,4 +481,8 @@ export type StreamEvent =
 	| StreamProgressEvent
 	| StreamTitleEvent
 	| StreamDoneEvent
-	| StreamErrorEvent;
+	| StreamErrorEvent
+	| StreamToolCallStartEvent
+	| StreamToolCallArgsDeltaEvent
+	| StreamToolCallExecutingEvent
+	| StreamToolCallResultEvent;

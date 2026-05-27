@@ -21,7 +21,9 @@ import type {
 	StreamReasoningEvent,
 	StreamStartEvent,
 	StreamTextEvent,
-	StreamTitleEvent
+	StreamTitleEvent,
+	StreamToolCallArgsDeltaEvent,
+	StreamToolCallStartEvent
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
@@ -33,7 +35,8 @@ import type { NotifyModality } from '$lib/types/push';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
-import { errorMessage, isAbortError, sseWriter } from './sse-transport';
+import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
+import { executeToolCalls } from './tool-execution';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client. The
@@ -143,6 +146,14 @@ async function recordAndPersist(
 	let tokensOut: number | null = null;
 	let stopped = false;
 
+	// Tool-call accumulator. Keyed by upstream's stream `index` so parallel
+	// calls don't cross-contaminate. Insertion order matches index order
+	// because the first chunk for index N arrives before index N+1.
+	const toolCallAccum = new Map<
+		number,
+		{ id: string; name: string; args: string }
+	>();
+
 	try {
 		try {
 			for await (const record of parseSSEStream(upstream)) {
@@ -169,7 +180,19 @@ async function recordAndPersist(
 		}
 		applyDeltas(norm.flush().deltas);
 
+		// Assemble persisted parts: text first (if any), then tool_calls in
+		// insertion order (= upstream's index order). An assistant message
+		// that emitted ONLY tool_calls has an empty-text part; the UI
+		// renders that as nothing visible, which is fine.
 		const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
+		for (const tc of toolCallAccum.values()) {
+			parts.push({
+				type: 'tool_call',
+				toolCallId: tc.id,
+				toolName: tc.name,
+				arguments: tc.args
+			});
+		}
 		const contentHtml = await renderMarkdown(textBuf);
 		const assistantMessage = appendMessage({
 			conversationId: params.conversationId,
@@ -222,6 +245,16 @@ async function recordAndPersist(
 		for (const d of deltas) {
 			if (d.type === 'text') textBuf += d.text;
 			else if (d.type === 'reasoning') reasoningBuf += d.text;
+			else if (d.type === 'tool_call_start') {
+				toolCallAccum.set(d.index, {
+					id: d.toolCallId,
+					name: d.toolName,
+					args: ''
+				});
+			} else if (d.type === 'tool_call_args_delta') {
+				const entry = toolCallAccum.get(d.index);
+				if (entry) entry.args += d.argumentsDelta;
+			}
 		}
 	}
 }
@@ -252,21 +285,12 @@ function buildClientStream(
 				for await (const record of parseSSEStream(upstream)) {
 					const result = norm.process(record);
 					for (const d of result.deltas) {
-						if (d.type === 'text') {
-							const ev: StreamTextEvent = { type: 'text', chunk: d.text };
-							safeWrite(ev);
-						} else if (d.type === 'reasoning') {
-							const ev: StreamReasoningEvent = { type: 'reasoning', chunk: d.text };
-							safeWrite(ev);
-						}
-						// tool_call_start / tool_call_args_delta — silently dropped
-						// in this slice. PR4 wires the client-facing SSE events.
+						forwardDelta(d, safeWrite);
 					}
 					if (result.done) break;
 				}
 				for (const d of norm.flush().deltas) {
-					if (d.type === 'text') safeWrite({ type: 'text', chunk: d.text });
-					else if (d.type === 'reasoning') safeWrite({ type: 'reasoning', chunk: d.text });
+					forwardDelta(d, safeWrite);
 				}
 			} catch (e) {
 				// User clicked Stop -> upstream aborted -> parseSSE throws.
@@ -284,6 +308,27 @@ function buildClientStream(
 			// message to the client. If the recorder fails, surface it.
 			try {
 				const { message: assistantMessage, titlePromise } = await recorderPromise;
+
+				// If the model finished with tool_calls, run each tool now,
+				// persist a `role: 'tool'` child per result, and emit the
+				// executing/result SSE events so the in-flight UI updates
+				// in real time. We do this BEFORE `done` so the client
+				// sees the full sequence: tool_call_start → args_delta →
+				// executing → result → done. PR5 will loop this back into
+				// another upstream call so the model can react to the
+				// results; for now the turn ends after results land.
+				if (
+					assistantMessage.finishReason === 'tool_calls' &&
+					assistantMessage.parts.some((p) => p.type === 'tool_call')
+				) {
+					await executeToolCalls({
+						assistantMessage,
+						conversationId: params.conversationId,
+						userId: params.userId,
+						signal: params.abortSignal,
+						emit: safeWrite
+					});
+				}
 
 				// Emit `done` immediately — the response has truly finished
 				// streaming and the client's "in-flight" indicator should
@@ -316,6 +361,44 @@ function buildClientStream(
 			safeClose();
 		}
 	});
+}
+
+/**
+ * Translate one normalized delta into the corresponding client-facing
+ * SSE event. Centralized so both the upstream-streaming loop and the
+ * end-of-stream flush use exactly the same mapping.
+ */
+function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
+	switch (d.type) {
+		case 'text': {
+			const ev: StreamTextEvent = { type: 'text', chunk: d.text };
+			write(ev);
+			return;
+		}
+		case 'reasoning': {
+			const ev: StreamReasoningEvent = { type: 'reasoning', chunk: d.text };
+			write(ev);
+			return;
+		}
+		case 'tool_call_start': {
+			const ev: StreamToolCallStartEvent = {
+				type: 'tool_call_start',
+				toolCallId: d.toolCallId,
+				toolName: d.toolName
+			};
+			write(ev);
+			return;
+		}
+		case 'tool_call_args_delta': {
+			const ev: StreamToolCallArgsDeltaEvent = {
+				type: 'tool_call_args_delta',
+				toolCallId: d.toolCallId,
+				argumentsDelta: d.argumentsDelta
+			};
+			write(ev);
+			return;
+		}
+	}
 }
 
 function errorOnlyStream(message: string, userMessage: ChatMessage): ReadableStream<Uint8Array> {
