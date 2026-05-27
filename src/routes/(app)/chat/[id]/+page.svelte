@@ -482,7 +482,18 @@
 	// In-flight assistant render state. While streaming we show a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
 	// we splice the canonical persisted ChatMessage into messages.
+	// Pre-tool / post-tool text split: when a turn uses tools, the model's
+	// prose typically arrives in two pieces — one BEFORE the tool_call
+	// (e.g. "Let me check the time…") and one AFTER the tool_result lands
+	// (e.g. "It's 2:42 PM in Tokyo."). Streaming them into a single buffer
+	// renders the post-tool text WHERE the pre-tool text would naturally
+	// go, i.e. above the tool block — visually wrong. The split lets the
+	// in-flight bubble render reasoning → preTool text → tool blocks →
+	// postTool text in the same chronological order the events arrive.
+	// Single-iteration turns (no tool_call_* events) only ever write the
+	// pre-tool buffer, so behavior is unchanged for the common case.
 	let inFlightText = $state('');
+	let inFlightPostToolText = $state('');
 	let inFlightReasoning = $state('');
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
@@ -518,13 +529,18 @@
 	// the difference (the bottleneck for "smoothness" is paint, not
 	// markdown granularity).
 	let inFlightHtml = $state('');
+	let inFlightPostToolHtml = $state('');
 	let inFlightHtmlFrame = 0;
 	$effect(() => {
+		// Read both so this effect re-runs when either changes — one rAF
+		// covers re-rendering both buffers' HTML in the same frame.
 		void inFlightText;
+		void inFlightPostToolText;
 		if (inFlightHtmlFrame !== 0) return; // a frame is already pending; it'll read latest
 		inFlightHtmlFrame = requestAnimationFrame(() => {
 			inFlightHtmlFrame = 0;
 			inFlightHtml = renderLiveMarkdown(inFlightText);
+			inFlightPostToolHtml = renderLiveMarkdown(inFlightPostToolText);
 		});
 	});
 
@@ -601,6 +617,7 @@
 		busy = false;
 		inFlightOpen = false;
 		inFlightText = '';
+		inFlightPostToolText = '';
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
@@ -715,6 +732,7 @@
 		wasHiddenDuringFetch = false;
 		wasOfflineDuringFetch = false;
 		inFlightText = '';
+		inFlightPostToolText = '';
 		inFlightReasoning = '';
 		inFlightProgress = null;
 		inFlightStatus = null;
@@ -836,7 +854,16 @@
 						}
 						break;
 					case 'text':
-						inFlightText += event.chunk;
+						// Route to the post-tool buffer once any tool_call has
+						// arrived this turn — preserves chronological ordering
+						// in the in-flight bubble (preTool text → tool blocks
+						// → postTool text). Single-iteration turns only write
+						// to inFlightText.
+						if (sawToolCalls) {
+							inFlightPostToolText += event.chunk;
+						} else {
+							inFlightText += event.chunk;
+						}
 						// Streaming auto-scrolls only follow the user if they're
 						// already at/near the bottom. Lets them scroll up to read
 						// history mid-stream without getting yanked back.
@@ -932,6 +959,7 @@
 							messages = [...messages, event.assistantMessage];
 							inFlightOpen = false;
 							inFlightText = '';
+							inFlightPostToolText = '';
 							inFlightReasoning = '';
 							inFlightProgress = null;
 							inFlightStatus = null;
@@ -970,6 +998,7 @@
 				if (sawToolCalls) {
 					inFlightOpen = false;
 					inFlightText = '';
+					inFlightPostToolText = '';
 					inFlightReasoning = '';
 					inFlightProgress = null;
 					inFlightStatus = null;
@@ -1017,6 +1046,7 @@
 			if (activeAbort === abort) {
 				inFlightOpen = false;
 				inFlightText = '';
+				inFlightPostToolText = '';
 				inFlightReasoning = '';
 				inFlightProgress = null;
 				inFlightStatus = null;
@@ -1499,7 +1529,15 @@
 					visibleMessages[i + 1].role === 'assistant' &&
 					visibleMessages[i + 1].id !== editingMessageId &&
 					m.id !== editingMessageId}
-				<div id="msg-{m.id}" class="group" class:!mt-0={mergeWithPrev}>
+				<!--
+					Use the class array form (not class:!mt-0 directive) so
+					Tailwind's important modifier survives Svelte parsing AND
+					so the static analyzer picks the class up. The class:
+					directive trips over the `!` in `!mt-0` and the override
+					never lands, leaving space-y-4's 1rem gap visible between
+					what should be one continuous bubble.
+				-->
+				<div id="msg-{m.id}" class={['group', mergeWithPrev && '!mt-0']}>
 				{#if m.id === editingMessageId}
 					<!--
 						Inline editor: replaces the static bubble with an
@@ -1873,6 +1911,10 @@
 						Entries appear when tool_call_start fires, fill in across
 						args_delta + executing + result events, then clear on `done`
 						(the persisted assistant+tool rows take over the rendering).
+						Render order: reasoning → preTool text → tool blocks →
+						postTool text. The postTool text comes from text events
+						that arrived AFTER the first tool_call_start (PR8 fix —
+						preserves chronological order in the live view).
 					-->
 					{#each Array.from(inFlightToolCalls) as [callId, tc] (callId)}
 						<ToolCallBlock
@@ -1883,6 +1925,9 @@
 							status={tc.status}
 						/>
 					{/each}
+					{#if inFlightPostToolText}
+						<div class="gs-prose mt-2">{@html inFlightPostToolHtml}</div>
+					{/if}
 				</article>
 			{/if}
 			<!--
