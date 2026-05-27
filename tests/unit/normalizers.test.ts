@@ -160,3 +160,267 @@ describe('deepseek-r1 normalizer', () => {
 		expect(r.deltas).toEqual([{ type: 'reasoning', text: 'started reasoning' }]);
 	});
 });
+
+// --- tool_call delta handling -------------------------------------------
+//
+// Verifies the OpenAI streaming shape: first chunk for an index carries
+// id + function.name (+ optionally some arguments); subsequent chunks
+// carry more arguments keyed by index only. Shared across the three
+// quirks that route tool_calls through parseToolCallsDelta — exercised
+// against all three to pin the contract.
+
+type ToolCallChunk = {
+	index: number;
+	id?: string;
+	type?: 'function';
+	function?: { name?: string; arguments?: string };
+};
+
+function toolChunk(toolCalls: ToolCallChunk[], opts: { finish_reason?: string } = {}): string {
+	return JSON.stringify({
+		choices: [
+			{
+				delta: { tool_calls: toolCalls },
+				finish_reason: opts.finish_reason ?? null
+			}
+		]
+	});
+}
+
+describe('passthrough normalizer · tool_calls', () => {
+	it('emits tool_call_start the first time an index appears', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_abc',
+						type: 'function',
+						function: { name: 'get_current_time', arguments: '' }
+					}
+				])
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_abc', toolName: 'get_current_time', index: 0 }
+		]);
+	});
+
+	it('emits start + args delta in the same chunk when args ride along with id', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_abc',
+						type: 'function',
+						function: { name: 'get_current_time', arguments: '{"timezone":' }
+					}
+				])
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_abc', toolName: 'get_current_time', index: 0 },
+			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: '{"timezone":' }
+		]);
+	});
+
+	it('accumulates arguments across chunks keyed by index', () => {
+		const n = createNormalizer('passthrough');
+		// Chunk 1: id + name + initial args
+		n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_abc',
+						type: 'function',
+						function: { name: 'get_current_time', arguments: '{"' }
+					}
+				])
+			)
+		);
+		// Chunk 2: more args, no id/name
+		const r2 = n.process(
+			rec(toolChunk([{ index: 0, function: { arguments: 'timezone":"UTC' } }]))
+		);
+		expect(r2.deltas).toEqual([
+			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: 'timezone":"UTC' }
+		]);
+		// Chunk 3: closing
+		const r3 = n.process(rec(toolChunk([{ index: 0, function: { arguments: '"}' } }])));
+		expect(r3.deltas).toEqual([
+			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: '"}' }
+		]);
+	});
+
+	it('handles parallel tool calls with different indexes', () => {
+		const n = createNormalizer('passthrough');
+		// Both starts in one chunk.
+		const r = n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_one',
+						type: 'function',
+						function: { name: 'get_current_time', arguments: '' }
+					},
+					{
+						index: 1,
+						id: 'call_two',
+						type: 'function',
+						function: { name: 'get_current_time', arguments: '' }
+					}
+				])
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'tool_call_start', toolCallId: 'call_one', toolName: 'get_current_time', index: 0 },
+			{ type: 'tool_call_start', toolCallId: 'call_two', toolName: 'get_current_time', index: 1 }
+		]);
+		// Args for call_two arrive while call_one is mid-stream — must
+		// route to the right id by index.
+		const r2 = n.process(
+			rec(
+				toolChunk([
+					{ index: 0, function: { arguments: 'A' } },
+					{ index: 1, function: { arguments: 'B' } }
+				])
+			)
+		);
+		expect(r2.deltas).toEqual([
+			{ type: 'tool_call_args_delta', toolCallId: 'call_one', index: 0, argumentsDelta: 'A' },
+			{ type: 'tool_call_args_delta', toolCallId: 'call_two', index: 1, argumentsDelta: 'B' }
+		]);
+	});
+
+	it('drops args-only chunks for an index that has not been started (defensive)', () => {
+		const n = createNormalizer('passthrough');
+		// Spec-violating: args without a prior id+name. Should be dropped, not throw.
+		const r = n.process(rec(toolChunk([{ index: 0, function: { arguments: 'orphan' } }])));
+		expect(r.deltas).toEqual([]);
+	});
+
+	it('drops empty argument deltas', () => {
+		const n = createNormalizer('passthrough');
+		n.process(
+			rec(
+				toolChunk([
+					{
+						index: 0,
+						id: 'call_x',
+						type: 'function',
+						function: { name: 't', arguments: '' }
+					}
+				])
+			)
+		);
+		// Second chunk with arguments: "" — should not emit a delta event.
+		const r = n.process(rec(toolChunk([{ index: 0, function: { arguments: '' } }])));
+		expect(r.deltas).toEqual([]);
+	});
+
+	it('interleaves text and tool_call deltas from a single chunk', () => {
+		// OpenAI permits both content and tool_calls in the same delta.
+		const n = createNormalizer('passthrough');
+		const r = n.process(
+			rec(
+				JSON.stringify({
+					choices: [
+						{
+							delta: {
+								content: 'let me check ',
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_q',
+										type: 'function',
+										function: { name: 'get_current_time' }
+									}
+								]
+							},
+							finish_reason: null
+						}
+					]
+				})
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'text', text: 'let me check ' },
+			{ type: 'tool_call_start', toolCallId: 'call_q', toolName: 'get_current_time', index: 0 }
+		]);
+	});
+
+	it('surfaces finish_reason=tool_calls', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(rec(toolChunk([], { finish_reason: 'tool_calls' })));
+		expect(r.finishReason).toBe('tool_calls');
+	});
+});
+
+describe('openai-o-series normalizer · tool_calls', () => {
+	it('emits tool_call deltas alongside the existing reasoning/text handling', () => {
+		const n = createNormalizer('openai-o-series');
+		const r = n.process(
+			rec(
+				JSON.stringify({
+					choices: [
+						{
+							delta: {
+								reasoning_content: 'thinking...',
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_o',
+										type: 'function',
+										function: { name: 'get_current_time' }
+									}
+								]
+							},
+							finish_reason: null
+						}
+					]
+				})
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'reasoning', text: 'thinking...' },
+			{ type: 'tool_call_start', toolCallId: 'call_o', toolName: 'get_current_time', index: 0 }
+		]);
+	});
+});
+
+describe('openrouter normalizer · tool_calls', () => {
+	it('emits tool_call deltas alongside the existing reasoning/text handling', () => {
+		const n = createNormalizer('openrouter');
+		const r = n.process(
+			rec(
+				JSON.stringify({
+					choices: [
+						{
+							delta: {
+								reasoning: 'thinking...',
+								tool_calls: [
+									{
+										index: 0,
+										id: 'call_r',
+										type: 'function',
+										function: { name: 'get_current_time' }
+									}
+								]
+							},
+							finish_reason: null
+						}
+					]
+				})
+			)
+		);
+		expect(r.deltas).toEqual([
+			{ type: 'reasoning', text: 'thinking...' },
+			{ type: 'tool_call_start', toolCallId: 'call_r', toolName: 'get_current_time', index: 0 }
+		]);
+	});
+});

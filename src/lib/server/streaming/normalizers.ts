@@ -11,7 +11,22 @@
 import type { ProviderQuirk } from '../endpoints/config';
 import type { SSERecord } from './sse-parser';
 
-export type NormalizedDelta = { type: 'text'; text: string } | { type: 'reasoning'; text: string };
+export type NormalizedDelta =
+	| { type: 'text'; text: string }
+	| { type: 'reasoning'; text: string }
+	/** First time we've seen a given tool_call (keyed by upstream's
+	 *  `index`). The recorder uses this to seed a tool_call part; the
+	 *  client uses it to insert a "calling X" entry in the in-flight UI. */
+	| { type: 'tool_call_start'; toolCallId: string; toolName: string; index: number }
+	/** Subsequent chunk carrying more of the argument JSON for an
+	 *  already-started tool_call. OpenAI streams arguments incrementally;
+	 *  callers accumulate the deltas keyed by `toolCallId`. */
+	| {
+			type: 'tool_call_args_delta';
+			toolCallId: string;
+			index: number;
+			argumentsDelta: string;
+	  };
 
 export interface NormalizedResult {
 	deltas: NormalizedDelta[];
@@ -29,6 +44,16 @@ export interface StreamNormalizer {
 
 const EMPTY: NormalizedResult = { deltas: [] };
 
+/** Per-index tool-call entry on a streamed `delta`. OpenAI sends `id` +
+ *  `function.name` once (on the first chunk for that index) and then
+ *  streams `function.arguments` in subsequent chunks keyed by `index`. */
+interface OpenAIToolCallDelta {
+	index: number;
+	id?: string;
+	type?: 'function';
+	function?: { name?: string; arguments?: string };
+}
+
 /** Standard OpenAI delta chunk. Common fields used by all backends. */
 interface OpenAIChunk {
 	choices?: Array<{
@@ -36,6 +61,7 @@ interface OpenAIChunk {
 			content?: string | null;
 			reasoning_content?: string | null;
 			reasoning?: string | null;
+			tool_calls?: OpenAIToolCallDelta[];
 		};
 		finish_reason?: string | null;
 	}>;
@@ -43,6 +69,57 @@ interface OpenAIChunk {
 		prompt_tokens?: number;
 		completion_tokens?: number;
 	};
+}
+
+/**
+ * Translate OpenAI's streamed `delta.tool_calls[]` into our normalized
+ * tool-call deltas. The first chunk for a given `index` brings `id` +
+ * `function.name`; we emit a `tool_call_start` once and remember the id
+ * by index. Subsequent chunks for the same index carry more
+ * `function.arguments`; we emit one `tool_call_args_delta` per chunk and
+ * the recorder concatenates them.
+ *
+ * `seenById` is the per-normalizer-instance state map (passed by ref so
+ * callers can hold it on their class). Resilient defaults: an
+ * args-before-start chunk (spec-violating upstream) is dropped rather
+ * than throwing. An empty/whitespace arguments delta is also dropped to
+ * avoid spamming the stream with empty events.
+ */
+function parseToolCallsDelta(
+	calls: OpenAIToolCallDelta[] | undefined,
+	seenById: Map<number, string>
+): NormalizedDelta[] {
+	if (!calls || calls.length === 0) return [];
+	const out: NormalizedDelta[] = [];
+	for (const tc of calls) {
+		if (typeof tc.index !== 'number') continue;
+
+		// First chunk for this index — record id + emit start.
+		if (typeof tc.id === 'string' && tc.id.length > 0 && !seenById.has(tc.index)) {
+			seenById.set(tc.index, tc.id);
+			out.push({
+				type: 'tool_call_start',
+				toolCallId: tc.id,
+				toolName: tc.function?.name ?? '',
+				index: tc.index
+			});
+		}
+
+		// Args delta — must come AFTER we've recorded the id.
+		const argsDelta = tc.function?.arguments;
+		if (typeof argsDelta === 'string' && argsDelta.length > 0) {
+			const id = seenById.get(tc.index);
+			if (id) {
+				out.push({
+					type: 'tool_call_args_delta',
+					toolCallId: id,
+					index: tc.index,
+					argumentsDelta: argsDelta
+				});
+			}
+		}
+	}
+	return out;
 }
 
 function parseChunk(record: SSERecord): OpenAIChunk | null {
@@ -67,15 +144,18 @@ function commonExtras(chunk: OpenAIChunk): Pick<NormalizedResult, 'finishReason'
 	return out;
 }
 
-// --- passthrough: just delta.content as text ----------------------------
+// --- passthrough: just delta.content as text + tool_calls ---------------
 
 class PassthroughNormalizer implements StreamNormalizer {
+	private toolCallIdByIndex = new Map<number, string>();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
 		if (!chunk) return EMPTY;
-		const content = chunk.choices?.[0]?.delta?.content;
-		const deltas: NormalizedDelta[] = content ? [{ type: 'text', text: content }] : [];
+		const delta = chunk.choices?.[0]?.delta;
+		const deltas: NormalizedDelta[] = [];
+		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
+		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {
@@ -83,9 +163,10 @@ class PassthroughNormalizer implements StreamNormalizer {
 	}
 }
 
-// --- openai-o-series: delta.reasoning_content + delta.content -----------
+// --- openai-o-series: delta.reasoning_content + delta.content + tool_calls
 
 class OSeriesNormalizer implements StreamNormalizer {
+	private toolCallIdByIndex = new Map<number, string>();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
@@ -94,6 +175,7 @@ class OSeriesNormalizer implements StreamNormalizer {
 		const deltas: NormalizedDelta[] = [];
 		if (delta?.reasoning_content) deltas.push({ type: 'reasoning', text: delta.reasoning_content });
 		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
+		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {
@@ -101,9 +183,10 @@ class OSeriesNormalizer implements StreamNormalizer {
 	}
 }
 
-// --- openrouter: delta.reasoning + delta.content ------------------------
+// --- openrouter: delta.reasoning + delta.content + tool_calls -----------
 
 class OpenRouterNormalizer implements StreamNormalizer {
+	private toolCallIdByIndex = new Map<number, string>();
 	process(record: SSERecord): NormalizedResult {
 		if (record.data === '[DONE]') return { deltas: [], done: true };
 		const chunk = parseChunk(record);
@@ -112,6 +195,7 @@ class OpenRouterNormalizer implements StreamNormalizer {
 		const deltas: NormalizedDelta[] = [];
 		if (delta?.reasoning) deltas.push({ type: 'reasoning', text: delta.reasoning });
 		if (delta?.content) deltas.push({ type: 'text', text: delta.content });
+		deltas.push(...parseToolCallsDelta(delta?.tool_calls, this.toolCallIdByIndex));
 		return { deltas, ...commonExtras(chunk) };
 	}
 	flush(): NormalizedResult {

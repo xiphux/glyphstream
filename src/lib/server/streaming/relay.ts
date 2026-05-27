@@ -255,16 +255,18 @@ function buildClientStream(
 						if (d.type === 'text') {
 							const ev: StreamTextEvent = { type: 'text', chunk: d.text };
 							safeWrite(ev);
-						} else {
+						} else if (d.type === 'reasoning') {
 							const ev: StreamReasoningEvent = { type: 'reasoning', chunk: d.text };
 							safeWrite(ev);
 						}
+						// tool_call_start / tool_call_args_delta — silently dropped
+						// in this slice. PR4 wires the client-facing SSE events.
 					}
 					if (result.done) break;
 				}
 				for (const d of norm.flush().deltas) {
 					if (d.type === 'text') safeWrite({ type: 'text', chunk: d.text });
-					else safeWrite({ type: 'reasoning', chunk: d.text });
+					else if (d.type === 'reasoning') safeWrite({ type: 'reasoning', chunk: d.text });
 				}
 			} catch (e) {
 				// User clicked Stop -> upstream aborted -> parseSSE throws.
