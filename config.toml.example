@@ -92,6 +92,27 @@
 # self-report.
 # supports_tools = true
 
+# Optional: web search via SearxNG. Backs the `web_search` tool, which
+# the assistant calls on its own when a query needs current information.
+# When this block is absent, `web_search` is hidden from the model
+# entirely — the rest of the app boots normally. `fetch_url` (the paired
+# tool that reads a single URL) is always available and does NOT depend
+# on this block, so users can paste links for the model to read even
+# without a search backend.
+#
+# Requires a SearxNG instance with the JSON output format enabled. In
+# SearxNG's settings.yml: `search.formats: [html, json]`. See the
+# README's "Web search" section for setup details.
+#
+# Capability-named so the section survives a future swap to a different
+# search backend (Brave, Tavily, Kagi) — only the implementation
+# changes; the [search] block stays.
+#
+# [search]
+# url = "http://192.168.1.10:8888"
+# api_key_env = "SEARXNG_API_KEY"   # optional; many SearxNG instances need no auth
+# timeout_seconds = 10              # optional; default 10
+
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys
 # Put the public key here (plaintext, no secret), the private key in the

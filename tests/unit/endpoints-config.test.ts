@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ConfigError, loadEndpoints, loadNotificationsConfig } from '$lib/server/endpoints/config';
+import {
+	ConfigError,
+	loadEndpoints,
+	loadNotificationsConfig,
+	loadSearchConfig
+} from '$lib/server/endpoints/config';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
 // without touching the real process env.
@@ -300,5 +305,94 @@ vapid_private_env = "VAPID_PRIVATE_KEY"
 vapid_subject = "mailto:a@b.co"
 		`);
 		expect(() => loadNotificationsConfig(path)).toThrow(/vapid_public/);
+	});
+});
+
+describe('loadSearchConfig', () => {
+	it('returns null when [search] is absent', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadSearchConfig(path)).toBeNull();
+	});
+
+	it('parses a minimal [search] block', () => {
+		const path = writeConfig(`
+[search]
+url = "http://192.168.1.10:8888"
+		`);
+		expect(loadSearchConfig(path)).toEqual({
+			url: 'http://192.168.1.10:8888',
+			apiKey: null,
+			timeoutSeconds: 10
+		});
+	});
+
+	it('strips trailing slashes from url', () => {
+		const path = writeConfig(`
+[search]
+url = "http://searx.example.com///"
+		`);
+		expect(loadSearchConfig(path)?.url).toBe('http://searx.example.com');
+	});
+
+	it('resolves api_key_env into apiKey', () => {
+		envStub.values.SEARXNG_KEY = 'token-abc';
+		const path = writeConfig(`
+[search]
+url = "https://searx.example.com"
+api_key_env = "SEARXNG_KEY"
+		`);
+		expect(loadSearchConfig(path)?.apiKey).toBe('token-abc');
+	});
+
+	it('throws when api_key_env names an unset variable', () => {
+		const path = writeConfig(`
+[search]
+url = "https://searx.example.com"
+api_key_env = "MISSING_SEARX_KEY"
+		`);
+		expect(() => loadSearchConfig(path)).toThrow(/MISSING_SEARX_KEY/);
+	});
+
+	it('uses timeout_seconds when supplied', () => {
+		const path = writeConfig(`
+[search]
+url = "https://searx.example.com"
+timeout_seconds = 30
+		`);
+		expect(loadSearchConfig(path)?.timeoutSeconds).toBe(30);
+	});
+
+	it('rejects timeout_seconds below 1', () => {
+		const path = writeConfig(`
+[search]
+url = "https://searx.example.com"
+timeout_seconds = 0
+		`);
+		expect(() => loadSearchConfig(path)).toThrow(/timeout_seconds/);
+	});
+
+	it('rejects a url without http(s)://', () => {
+		const path = writeConfig(`
+[search]
+url = "searx.example.com"
+		`);
+		expect(() => loadSearchConfig(path)).toThrow(/url must start with/);
+	});
+
+	it('rejects a missing url', () => {
+		const path = writeConfig(`
+[search]
+api_key_env = "X"
+		`);
+		expect(() => loadSearchConfig(path)).toThrow(/url/);
+	});
+
+	it('rejects a non-table [search] entry', () => {
+		const path = writeConfig(`search = "nope"`);
+		expect(() => loadSearchConfig(path)).toThrow(ConfigError);
 	});
 });

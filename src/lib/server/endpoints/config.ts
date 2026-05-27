@@ -196,6 +196,63 @@ export function loadTaskModel(path = configPath()): string | null {
 	return raw;
 }
 
+/**
+ * Read the top-level `[search]` block from config.toml, if present.
+ * Backs the `web_search` tool. Returns null when the section is absent,
+ * which the tool reads via `isAvailable()` to hide itself from the
+ * model.
+ *
+ * - `url`: SearxNG base URL. Trailing slashes are stripped so callers
+ *   can `new URL('/search', cfg.url)` regardless of how it was written.
+ * - `api_key_env`: optional. Name of an env var holding the auth header
+ *   value. Follows the `*_env` secrets convention.
+ * - `timeout_seconds`: optional, defaults to 10.
+ *
+ * Section is named for the capability, not the implementation — a
+ * future swap to Brave / Tavily / Kagi can land without breaking
+ * existing configs.
+ */
+export interface LoadedSearchConfig {
+	url: string;
+	apiKey: string | null;
+	timeoutSeconds: number;
+}
+
+export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.search;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[search]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[search] in ${absolutePath}`;
+
+	const url = requireString(block.url, 'url', at).replace(/\/+$/, '');
+	if (!/^https?:\/\//.test(url)) {
+		throw new ConfigError(`${at}: url must start with http:// or https://`);
+	}
+
+	let apiKey: string | null = null;
+	if (block.api_key_env !== undefined) {
+		const envName = requireString(block.api_key_env, 'api_key_env', at);
+		const envValue = env[envName];
+		if (!envValue) {
+			throw new ConfigError(
+				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`
+			);
+		}
+		apiKey = envValue;
+	}
+
+	const timeoutSeconds =
+		block.timeout_seconds === undefined
+			? 10
+			: requireNumber(block.timeout_seconds, 'timeout_seconds', at, { min: 1 });
+
+	return { url, apiKey, timeoutSeconds };
+}
+
 function validateEndpoint(raw: RawEndpoint, index: number, path: string): LoadedEndpoint {
 	const at = `[[endpoints]] #${index} in ${path}`;
 
