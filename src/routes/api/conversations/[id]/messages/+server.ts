@@ -429,6 +429,22 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// Streaming responses omit `usage` unless the caller asks for it.
 		// We always want it — it's how the UI surfaces conversation size.
 		requestBody.stream_options = { include_usage: true };
+
+		// Closure the relay uses between tool-loop iterations to derive
+		// the next upstream body. The conversation's active leaf has
+		// advanced to the latest tool result, so re-walking the branch
+		// picks up the assistant's tool_calls + the tool messages
+		// without us having to track that state in the relay.
+		const rebuildRequestBody = async (): Promise<ChatCompletionRequest> => {
+			const nextBranch = walkActiveBranch(params.id);
+			const nextMessages = await serializeBranchForUpstream(
+				nextBranch,
+				(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
+				meta.systemPrompt
+			);
+			return { ...requestBody, messages: nextMessages };
+		};
+
 		const stream = await startStreamingRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
@@ -440,13 +456,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			storedModelId: meta.modelId,
 			abortSignal: inFlight.controller.signal,
-			// Clear the registry slot from the recorder's lifecycle, not
-			// from the client SSE's. The recorder is teed off the upstream
-			// body and runs to completion even if the browser disconnects
-			// — that's the "survive flaky connections" promise, and it's
-			// what keeps the recovery indicator honest after iOS suspends
-			// the PWA.
-			onComplete: () => clearInFlight(params.id, inFlight)
+			// Clear the registry slot once the whole turn settles (all
+			// loop iterations + tool executions done), not per recorder.
+			// The recorder branches survive client disconnect, so the
+			// recovery indicator stays accurate after an iOS PWA suspend.
+			onComplete: () => clearInFlight(params.id, inFlight),
+			// Only enable the multi-iteration loop for endpoints whose
+			// models actually support tools. Endpoints without tools
+			// won't emit tool_calls anyway, but skipping the closure
+			// makes the single-iteration path explicit.
+			...(toolDefs.length > 0 ? { rebuildRequestBody } : {})
 		});
 		return new Response(stream, {
 			headers: {
