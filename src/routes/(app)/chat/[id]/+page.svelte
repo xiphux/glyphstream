@@ -27,7 +27,7 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
-	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+	import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
 	import {
 		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
@@ -39,8 +39,7 @@
 		pushToolCall as inFlightPushToolCall,
 		updateToolCallArgs as inFlightUpdateToolCallArgs,
 		updateToolCallResult as inFlightUpdateToolCallResult,
-		type InFlightSegment,
-		type RenderBlock
+		type InFlightSegment
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
@@ -1446,75 +1445,7 @@
 			errorMsg = `Couldn't delete branch: ${e instanceof Error ? e.message : String(e)}`;
 		}
 	}
-
-	function blockKey(b: RenderBlock, i: number): string {
-		if (b.type === 'tool_call') return 'tool_call:' + b.toolCallId;
-		if (b.type === 'image' || b.type === 'video') return b.type + ':' + b.mediaId;
-		return b.type + ':' + i;
-	}
 </script>
-
-<!--
-	Shared body renderer for chat bubbles. Both the persisted message
-	render below AND the in-flight bubble at the bottom of the message
-	list call this snippet — keeps the structural rendering (reasoning,
-	text, tool calls, media) in ONE place so we stop fighting
-	formatting drift between the live-streaming view and the canonical
-	post-reload view. Add a new content type once here, get it in both.
--->
-{#snippet renderBlocks(blocks: RenderBlock[])}
-	{#each blocks as block, i (blockKey(block, i))}
-		{#if block.type === 'reasoning'}
-			<details
-				open={block.open}
-				class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900"
-			>
-				<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
-				<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
-					{block.text}
-				</div>
-			</details>
-		{:else if block.type === 'html'}
-			<!-- HTML is either server-rendered (shiki, persisted assistant)
-			     or client-rendered via renderLiveMarkdown (in-flight).
-			     Both pass through markdown-it with html=false; safe to {@html}. -->
-			<div class="gs-prose mt-1">{@html block.html}</div>
-		{:else if block.type === 'plain-text'}
-			<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>
-		{:else if block.type === 'tool_call'}
-			<ToolCallBlock
-				toolName={block.toolName}
-				argumentsJson={block.arguments}
-				result={block.result}
-				isError={block.isError}
-				status={block.status}
-			/>
-		{:else if block.type === 'image'}
-			{@const mediaId = block.mediaId}
-			<button
-				type="button"
-				onclick={() => openImageInLightbox(mediaId)}
-				aria-label="Open image"
-				class="mt-2 block w-full overflow-hidden rounded-lg p-0 text-left transition disabled:opacity-60"
-				disabled={openingLightboxFor === mediaId}
-			>
-				<img
-					src="/api/media/{block.mediaId}/content"
-					alt={block.alt ?? 'Image'}
-					loading="lazy"
-					class="block h-auto w-full max-h-[80vh] rounded-lg object-contain"
-				/>
-			</button>
-		{:else if block.type === 'video'}
-			<!-- svelte-ignore a11y_media_has_caption -->
-			<video
-				src="/api/media/{block.mediaId}/content"
-				controls
-				class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"
-			></video>
-		{/if}
-	{/each}
-{/snippet}
 
 <div class="flex h-full flex-col">
 	<header class="flex items-center justify-between gap-3 px-4 py-3">
@@ -1674,7 +1605,11 @@
 							{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
 						</div>
 					{/if}
-					{@render renderBlocks(messageToBlocks(m, toolResultsByCallId))}
+					<RenderBlocks
+						blocks={messageToBlocks(m, toolResultsByCallId)}
+						onImageClick={openImageInLightbox}
+						{openingLightboxFor}
+					/>
 				</article>
 				{/if}
 				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
@@ -1848,7 +1783,11 @@
 			{#if showInFlight}
 				<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
 					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
-					{@render renderBlocks(inFlightBlocks)}
+					<RenderBlocks
+						blocks={inFlightBlocks}
+						onImageClick={openImageInLightbox}
+						{openingLightboxFor}
+					/>
 					{#if inFlightBlocks.length === 0}
 						<!-- Pre-first-token placeholder: thinking dots + optional
 						     progress/elapsed indicators. Once any text or
