@@ -27,6 +27,7 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
+	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
 	import {
 		appendReasoning as inFlightAppendReasoning,
@@ -1448,22 +1449,7 @@
 </script>
 
 <div class="flex h-full flex-col">
-	<header class="flex items-center justify-between gap-3 px-4 py-3">
-		<div class="min-w-0 flex-1">
-			<h1 class="truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
-			<div class="flex min-w-0 items-center gap-2 text-xs text-neutral-500">
-				<span class="truncate">{assistantLabel}</span>
-				{#if contextTokenCount > 0}
-					<span
-						class="flex-shrink-0 tabular-nums"
-						title="Approximate context size after the last response"
-					>
-						· {tokenFmt.format(contextTokenCount)} tokens
-					</span>
-				{/if}
-			</div>
-		</div>
-	</header>
+	<ChatHeader {title} {assistantLabel} {contextTokenCount} />
 
 	<!--
 		Bottom mask-fade so message content dissolves into the page bg
