@@ -27,6 +27,7 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
 	import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
 	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
 	import {
@@ -36,7 +37,6 @@
 		computeMergeFlags,
 		filterVisibleMessages,
 		inFlightToBlocks,
-		messageToBlocks,
 		pushToolCall as inFlightPushToolCall,
 		updateToolCallArgs as inFlightUpdateToolCallArgs,
 		updateToolCallResult as inFlightUpdateToolCallResult,
@@ -1574,29 +1574,16 @@
 						</div>
 					</article>
 				{:else}
-				<article
-					class={[
-						'min-w-0 px-4 text-sm',
-						m.role === 'user'
-							? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
-							: m.role === 'assistant'
-								? 'bg-neutral-100 dark:bg-neutral-800'
-								: 'bg-amber-50 dark:bg-amber-950/40',
-						mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
-						mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3'
-					]}
-				>
-					{#if !mergeWithPrev}
-						<div class="text-[11px] font-medium tracking-wide opacity-60">
-							{m.role === 'user' ? userLabel : m.role === 'assistant' ? assistantLabel : m.role}
-						</div>
-					{/if}
-					<RenderBlocks
-						blocks={messageToBlocks(m, toolResultsByCallId)}
-						onImageClick={openImageInLightbox}
-						{openingLightboxFor}
-					/>
-				</article>
+				<MessageBubble
+					message={m}
+					{toolResultsByCallId}
+					{userLabel}
+					{assistantLabel}
+					{mergeWithPrev}
+					{mergeWithNext}
+					onImageClick={openImageInLightbox}
+					{openingLightboxFor}
+				/>
 				{/if}
 				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
 					{@const showEdit = m.role === 'user'}
