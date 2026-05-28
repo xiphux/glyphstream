@@ -293,12 +293,21 @@ advertised toolset. The capability-named `[search]` section reserves
 the namespace for future backend swaps (Brave, Tavily, Kagi) without
 breaking existing configs.
 
+**`fetch_url` extraction:** HTML pages are extracted with Mozilla's
+[Readability](https://github.com/mozilla/readability) (the same
+algorithm Firefox Reader View uses), which strips site chrome,
+navigation, sidebars, comments, and ads down to just the article body
+plus its title — typically 5-10x smaller than the raw page, and much
+friendlier to the model's context. Pages Readability can't identify as
+articles (search-result pages, directory indexes) fall through to a
+coarser regex stripper. Raw response bodies are capped at 2 MB; the
+final extracted text is capped at ~20 KB.
+
 **`fetch_url` safety note:** to mitigate the model hallucinating an
 internal URL (or following a redirect into one), `fetch_url` blocks
 hostnames that resolve to private, loopback, link-local, CGNAT,
 benchmark, multicast, or cloud-metadata addresses (10.x, 172.16-31.x,
-192.168.x, 127.x, 169.254.x, IPv6 ULA/link-local, etc.). It also caps
-response bodies at 256 KB and extracted text at ~20 KB. Operators who
+192.168.x, 127.x, 169.254.x, IPv6 ULA/link-local, etc.). Operators who
 want to point the model at LAN services aren't supported today; open
 an issue if you have a real use case.
 

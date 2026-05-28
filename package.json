@@ -25,9 +25,11 @@
 		"import:owui": "tsx scripts/import-owui.ts"
 	},
 	"dependencies": {
+		"@mozilla/readability": "^0.6.0",
 		"arctic": "latest",
 		"better-sqlite3": "latest",
 		"drizzle-orm": "latest",
+		"linkedom": "^0.18.12",
 		"markdown-it": "latest",
 		"sharp": "^0.34.5",
 		"shiki": "latest",

@@ -203,16 +203,81 @@ describe('fetch_url HTML extraction', () => {
 		expect(JSON.parse(r.content).error).toMatch(/image\/png/);
 	});
 
-	it('caps the response body at 256 KB', async () => {
+	it('caps the response body at 2 MB', async () => {
 		publicResolves();
-		// 300 KB of data
-		const big = new Uint8Array(300 * 1024).fill(65);
+		// 3 MB of data — exceeds the 2 MB cap
+		const big = new Uint8Array(3 * 1024 * 1024).fill(65);
 		globalThis.fetch = vi.fn(async () =>
 			new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } })
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/exceeded/i);
+	});
+
+	it('uses Readability to extract article text + title, dropping site chrome', async () => {
+		publicResolves();
+		// Article-shaped HTML so Readability identifies it (needs enough text
+		// content to clear its internal threshold; 200+ chars of body prose).
+		const articleHtml = `<!doctype html>
+<html><head>
+  <title>Best Bread of 2026</title>
+  <meta charset="utf-8">
+</head><body>
+  <nav><a href="/">Home</a><a href="/about">About</a><a href="/contact">Contact</a></nav>
+  <header><div>Site banner ad goes here</div></header>
+  <aside><div>Sidebar widgets and unrelated links</div></aside>
+  <article>
+    <h1>Best Bread of 2026</h1>
+    <p>Sourdough has continued its decade-long ascent through 2026, with bakers
+       around the world refining hydration techniques and embracing longer
+       fermentation windows than ever before. The renewed interest in heritage
+       grains has pushed millers to source rye, einkorn, and emmer in
+       quantities not seen since the early twentieth century.</p>
+    <p>The standout bread of the year is a hundred-percent stoneground rye
+       loaf from a small bakery in Copenhagen, distinguished by its deep
+       molasses crust and almost custardy crumb. Judges noted the balance
+       between sour and sweet, and the long finish that lingered after every
+       bite. Worth the trip if you ever find yourself in the city.</p>
+  </article>
+  <footer><div>Comments, related posts, ad tracker scripts</div></footer>
+  <script>analytics.fire()</script>
+</body></html>`;
+		globalThis.fetch = vi.fn(async () =>
+			new Response(articleHtml, {
+				status: 200,
+				headers: { 'content-type': 'text/html; charset=utf-8' }
+			})
+		) as any;
+
+		const r = await fetchUrlTool.execute({ url: 'http://blog.example/best-bread' }, ctx());
+		expect(r.isError).toBeUndefined();
+		const parsed = JSON.parse(r.content);
+		expect(parsed.content).toContain('Best Bread of 2026');
+		expect(parsed.content).toContain('Sourdough has continued');
+		expect(parsed.content).toContain('Copenhagen');
+		// Site chrome that Readability should have stripped:
+		expect(parsed.content).not.toContain('Site banner');
+		expect(parsed.content).not.toContain('Sidebar widgets');
+		expect(parsed.content).not.toContain('Comments, related posts');
+		expect(parsed.content).not.toContain('analytics.fire');
+	});
+
+	it('falls back to regex extraction when Readability finds no article', async () => {
+		publicResolves();
+		// Short, non-article HTML — Readability will return null or trivial
+		// content; we should still get something usable from the regex path.
+		globalThis.fetch = vi.fn(async () =>
+			new Response(
+				'<html><body><h1>Hello &amp; World</h1><p>Short page.</p></body></html>',
+				{ status: 200, headers: { 'content-type': 'text/html' } }
+			)
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
+		expect(r.isError).toBeUndefined();
+		const parsed = JSON.parse(r.content);
+		expect(parsed.content).toContain('Hello & World');
+		expect(parsed.content).toContain('Short page.');
 	});
 
 	it('truncates extracted text to 20 KB and flags truncated', async () => {

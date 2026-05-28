@@ -20,12 +20,20 @@
  */
 
 import dns from 'node:dns';
+import { Readability } from '@mozilla/readability';
+import { parseHTML } from 'linkedom';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
 
 const TIMEOUT_MS = 10_000;
-const MAX_BODY_BYTES = 256 * 1024;
+// 2 MB body cap. Modern article pages routinely ship 500 KB-1.5 MB of raw
+// HTML once you count inline JS, base64 fonts, ad-tech, and comment widgets,
+// so a tighter cap forces frequent false-negative fetches before Readability
+// even gets a chance to strip them down to the article body. The extracted
+// text is still capped at MAX_CONTENT_CHARS below, so the model context can
+// never balloon — this cap only protects server memory.
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_CONTENT_CHARS = 20_000;
 const MAX_REDIRECTS = 3;
 
@@ -144,7 +152,7 @@ async function processResponse(res: Response, finalUrl: string): Promise<FetchRe
 
 	let content: string;
 	if (mime === 'text/html' || mime === 'application/xhtml+xml') {
-		content = extractTextFromHtml(raw);
+		content = extractArticleText(raw);
 	} else if (mime === 'application/json') {
 		try {
 			content = JSON.stringify(JSON.parse(raw), null, 2);
@@ -213,6 +221,44 @@ function concat(arrs: Uint8Array[]): Uint8Array {
 		off += a.byteLength;
 	}
 	return out;
+}
+
+/**
+ * Extract readable article text from an HTML document.
+ *
+ * Tries Mozilla's Readability algorithm first (the same one Firefox Reader
+ * View uses) — on article-shaped pages it discards site chrome, comments,
+ * navigation, related-post strips, etc. and returns just the article body
+ * plus its title, typically 5-10x smaller than the raw page. Result is then
+ * truncation-capped upstream so context never balloons.
+ *
+ * Readability returns null on pages it can't identify as an article
+ * (search-result pages, directory indexes, very short stubs, error pages).
+ * In that case we fall through to the regex stripper, which produces a
+ * coarser but always-usable plain-text view.
+ */
+export function extractArticleText(html: string): string {
+	try {
+		const { document } = parseHTML(html);
+		const article = new Readability(document as never).parse();
+		const text = article?.textContent?.trim();
+		if (text && text.length >= 200) {
+			const title = article?.title?.trim();
+			const body = normalizeWhitespace(text);
+			return title ? `${title}\n\n${body}` : body;
+		}
+	} catch {
+		// Malformed HTML, parser quirk, or DOM API mismatch — fall through.
+	}
+	return extractTextFromHtml(html);
+}
+
+function normalizeWhitespace(s: string): string {
+	return s
+		.replace(/[ \t]+/g, ' ')
+		.replace(/ ?\n ?/g, '\n')
+		.replace(/\n{3,}/g, '\n\n')
+		.trim();
 }
 
 export function extractTextFromHtml(html: string): string {
