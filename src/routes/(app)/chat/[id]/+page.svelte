@@ -12,6 +12,7 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
 	import MessageActions from '$lib/components/chat/MessageActions.svelte';
 	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
@@ -1289,15 +1290,7 @@
 	let editingParentId = $state<string | null>(null);
 	let editText = $state('');
 	const editAttachments = new AttachmentStore();
-	let editComposerEl = $state<HTMLTextAreaElement | null>(null);
-	let editFileInputEl = $state<HTMLInputElement | null>(null);
 	onDestroy(() => editAttachments.destroy());
-
-	$effect(() => {
-		const el = editComposerEl;
-		void editText;
-		if (el) autoResizeTextarea(el);
-	});
 
 	// Drop the composer draft and any open inline-edit session when
 	// navigating to a different conversation. Like the in-flight turn
@@ -1331,7 +1324,6 @@
 		}
 		editingMessageId = m.id;
 		editingParentId = m.parentMessageId ?? null;
-		void tick().then(() => editComposerEl?.focus());
 	}
 
 	function cancelEdit() {
@@ -1489,75 +1481,14 @@
 						a sibling under the original's parent (preserving the
 						original as a branch); Cancel discards.
 					-->
-					<article
-						class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-white p-3 shadow-sm dark:border-amber-800 dark:bg-neutral-900"
-					>
-						<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
-							Editing
-						</div>
-						<AttachmentThumbnails attachments={editAttachments} class="mb-2" />
-						<textarea
-							bind:this={editComposerEl}
-							bind:value={editText}
-							rows="1"
-							onkeydown={(e) => {
-								if (e.key === 'Escape') {
-									e.preventDefault();
-									cancelEdit();
-									return;
-								}
-								composerEnterHandler(
-									data.prefs?.enterBehavior ?? 'send',
-									() => void saveEdit()
-								)(e);
-							}}
-							class="block w-full resize-none border-0 bg-transparent px-1 py-1 text-base focus:outline-none sm:text-sm"
-						></textarea>
-						<div class="mt-2 flex items-center gap-2">
-							{#if allowAttachments}
-								<input
-									bind:this={editFileInputEl}
-									type="file"
-									accept="image/*"
-									multiple
-									class="hidden"
-									onchange={(e) => {
-										const t = e.currentTarget;
-										if (t.files && t.files.length > 0) {
-											void editAttachments.addFiles(t.files);
-										}
-										t.value = '';
-									}}
-								/>
-								<button
-									type="button"
-									onclick={() => editFileInputEl?.click()}
-									aria-label="Attach image"
-									title="Attach image"
-									class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-								>
-									<Plus size={18} strokeWidth={2.25} />
-								</button>
-							{/if}
-							<div class="flex-1"></div>
-							<button
-								type="button"
-								onclick={cancelEdit}
-								class="rounded-md px-3 py-1.5 text-xs text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								onclick={() => saveEdit()}
-								disabled={(!editText.trim() && editAttachments.items.length === 0) ||
-									editAttachments.isBusy}
-								class="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-							>
-								Save
-							</button>
-						</div>
-					</article>
+					<EditMessageForm
+						bind:editText
+						attachments={editAttachments}
+						{allowAttachments}
+						enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+						onSave={() => void saveEdit()}
+						onCancel={cancelEdit}
+					/>
 				{:else}
 				<MessageBubble
 					message={m}
