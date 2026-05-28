@@ -16,6 +16,7 @@ import {
 	getConversationMeta,
 	listArchivedConversations,
 	listConversations,
+	setDisabledFeatures,
 	unarchiveConversation,
 	updateConversationModel
 } from '$lib/server/db/queries/conversations';
@@ -168,6 +169,86 @@ describe('conversations CRUD', () => {
 		});
 		const meta = getConversationMeta(conv.id, u.id);
 		expect(meta?.parameters).toEqual({ temperature: 0.5 });
+	});
+});
+
+describe('per-conversation feature opt-outs', () => {
+	it('defaults to empty disabledFeatures on a new conversation', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		expect(conv.disabledFeatures).toEqual([]);
+		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual([]);
+		expect(getConversationDetail(conv.id, u.id)?.disabledFeatures).toEqual([]);
+	});
+
+	it('persists initial disabledFeatures supplied at create time', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			disabledFeatures: ['web']
+		});
+		expect(conv.disabledFeatures).toEqual(['web']);
+		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual(['web']);
+	});
+
+	it('setDisabledFeatures persists across reads', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		expect(setDisabledFeatures(conv.id, u.id, ['web'])).toBe(true);
+		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual(['web']);
+	});
+
+	it('setDisabledFeatures with [] clears the column (round-trips to empty)', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			disabledFeatures: ['web']
+		});
+		expect(setDisabledFeatures(conv.id, u.id, [])).toBe(true);
+		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual([]);
+	});
+
+	it('setDisabledFeatures refuses cross-user updates', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const conv = createConversation({
+			userId: u1.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		expect(setDisabledFeatures(conv.id, u2.id, ['web'])).toBe(false);
+		expect(getConversationMeta(conv.id, u1.id)?.disabledFeatures).toEqual([]);
+	});
+
+	it('setDisabledFeatures does not bump updatedAt (privacy toggle is not a content change)', async () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat'
+		});
+		const beforeTs = getConversationDetail(conv.id, u.id)!.updatedAt;
+		await new Promise((r) => setTimeout(r, 3));
+		setDisabledFeatures(conv.id, u.id, ['web']);
+		expect(getConversationDetail(conv.id, u.id)!.updatedAt).toBe(beforeTs);
 	});
 });
 

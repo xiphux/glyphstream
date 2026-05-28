@@ -111,7 +111,12 @@ export const conversations = sqliteTable(
 		}),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
-		archivedAt: integer('archived_at')
+		archivedAt: integer('archived_at'),
+		// Per-conversation opt-outs (see FEATURE_CATEGORIES in $lib/types/api).
+		// JSON-serialized array of category keys, e.g. `["web"]`. Null/empty
+		// means all features ON. Stored as a JSON array (not a column per
+		// feature) so adding categories doesn't require a migration each time.
+		disabledFeaturesJson: text('disabled_features')
 	},
 	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)]
 );

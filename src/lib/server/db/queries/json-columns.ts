@@ -6,7 +6,8 @@
  * re-inlined at each row-mapping site.
  */
 
-import type { CustomModelParameters, MessagePart } from '$lib/types/api';
+import { isFeatureCategory } from '$lib/types/api';
+import type { CustomModelParameters, FeatureCategory, MessagePart } from '$lib/types/api';
 
 /**
  * Parse a message row's `content_json` column into MessagePart[]. Falls
@@ -33,4 +34,25 @@ export function parseModelParameters(raw: string | null): CustomModelParameters 
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Parse a `disabled_features` column into FeatureCategory[]. Always
+ * returns an array (never null) so callers don't have to branch — null
+ * column / invalid JSON / non-array payload / unknown category strings
+ * all normalize to an empty list (i.e. "all features on"). Unknown
+ * strings are dropped silently rather than throwing: a stale category
+ * left over after a code change should turn into "feature on" rather
+ * than break the conversation.
+ */
+export function parseDisabledFeatures(raw: string | null): FeatureCategory[] {
+	if (!raw) return [];
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	if (!Array.isArray(parsed)) return [];
+	return parsed.filter(isFeatureCategory);
 }

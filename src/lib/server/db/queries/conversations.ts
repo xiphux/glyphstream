@@ -5,11 +5,16 @@ import type {
 	ConversationDetail,
 	ConversationSummary,
 	CustomModelParameters,
+	FeatureCategory,
 	ModelKind
 } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
-import { parseMessageParts, parseModelParameters } from './json-columns';
+import {
+	parseDisabledFeatures,
+	parseMessageParts,
+	parseModelParameters
+} from './json-columns';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
@@ -28,12 +33,14 @@ interface CreateInput {
 	systemPrompt?: string | null;
 	parameters?: CustomModelParameters | null;
 	title?: string | null;
+	disabledFeatures?: FeatureCategory[] | null;
 }
 
 export function createConversation(input: CreateInput): ConversationDetail {
 	const db = getDb();
 	const id = randomUUID();
 	const now = Date.now();
+	const disabledFeatures = input.disabledFeatures ?? [];
 	db.insert(conversations)
 		.values({
 			id,
@@ -48,7 +55,8 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			activeLeafMessageId: null,
 			createdAt: now,
 			updatedAt: now,
-			archivedAt: null
+			archivedAt: null,
+			disabledFeaturesJson: disabledFeatures.length ? JSON.stringify(disabledFeatures) : null
 		})
 		.run();
 	return {
@@ -63,7 +71,8 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		activeLeafMessageId: null,
 		createdAt: now,
 		updatedAt: now,
-		messages: []
+		messages: [],
+		disabledFeatures
 	};
 }
 
@@ -183,7 +192,8 @@ export function getConversationDetail(
 		activeLeafMessageId: row.activeLeafMessageId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
-		messages: walkActiveBranch(id)
+		messages: walkActiveBranch(id),
+		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson)
 	};
 }
 
@@ -200,6 +210,7 @@ export function getConversationMeta(
 	parameters: CustomModelParameters | null;
 	title: string | null;
 	activeLeafMessageId: string | null;
+	disabledFeatures: FeatureCategory[];
 } | null {
 	const db = getDb();
 	const row = db
@@ -211,7 +222,8 @@ export function getConversationMeta(
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			title: conversations.title,
-			activeLeafMessageId: conversations.activeLeafMessageId
+			activeLeafMessageId: conversations.activeLeafMessageId,
+			disabledFeaturesJson: conversations.disabledFeaturesJson
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -225,8 +237,32 @@ export function getConversationMeta(
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		title: row.title,
-		activeLeafMessageId: row.activeLeafMessageId
+		activeLeafMessageId: row.activeLeafMessageId,
+		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson)
 	};
+}
+
+/**
+ * Replace the per-conversation feature opt-out list. Empty array → null in
+ * the DB (canonical "all features on" state, matches absence). Scoped by
+ * `userId` for ownership; returns true on success, false if no row matched
+ * (404 / wrong owner). Doesn't bump `updated_at` — flipping a privacy
+ * toggle isn't a content change and shouldn't reshuffle the sidebar.
+ */
+export function setDisabledFeatures(
+	id: string,
+	userId: string,
+	features: FeatureCategory[]
+): boolean {
+	const db = getDb();
+	const res = db
+		.update(conversations)
+		.set({
+			disabledFeaturesJson: features.length ? JSON.stringify(features) : null
+		})
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.run();
+	return res.changes > 0;
 }
 
 /**

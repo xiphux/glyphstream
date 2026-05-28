@@ -291,6 +291,12 @@ export interface ConversationDetail extends ConversationSummary {
 	customModelId: string | null;
 	activeLeafMessageId: string | null;
 	messages: ChatMessage[];
+	/**
+	 * Per-conversation opt-outs (see FEATURE_CATEGORIES). Always normalized
+	 * to an array (never null) so consumers don't have to branch — an empty
+	 * array means "all features on".
+	 */
+	disabledFeatures: FeatureCategory[];
 }
 
 /** POST /api/conversations request body.
