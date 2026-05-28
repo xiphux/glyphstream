@@ -413,7 +413,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId
 	);
 	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
-	const toolDefs = supportsTools ? openaiToolDefinitions() : [];
+	// Per-conversation opt-outs filter out whole tool categories (e.g. 'web'
+	// closes both web_search and fetch_url so the model can't compose around
+	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category.
+	const toolDefs = supportsTools
+		? openaiToolDefinitions({ excludeCategories: meta.disabledFeatures })
+		: [];
 	if (toolDefs.length > 0) {
 		requestBody.tools = toolDefs;
 		requestBody.tool_choice = 'auto';

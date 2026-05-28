@@ -18,6 +18,10 @@ import type {
 	CustomModelParameters,
 	ModelKind
 } from '$lib/types/api';
+import {
+	FeatureCategoryValidationError,
+	validateDisabledFeatures
+} from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
@@ -96,6 +100,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 	}
 
+	let disabledFeatures;
+	try {
+		disabledFeatures = validateDisabledFeatures(body.disabledFeatures);
+	} catch (e) {
+		if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
+		throw e;
+	}
+
 	const conv = createConversation({
 		userId: locals.user.id,
 		endpointId: resolvedEndpointId,
@@ -104,7 +116,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		systemPrompt: resolvedSystemPrompt,
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
-		title: body.title?.trim() || null
+		title: body.title?.trim() || null,
+		disabledFeatures
 	});
 	return json({ conversation: conv }, { status: 201 });
 };

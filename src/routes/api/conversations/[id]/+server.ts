@@ -7,10 +7,15 @@ import {
 	getConversationDetail,
 	renameConversation,
 	RenameValidationError,
+	setDisabledFeatures,
 	unarchiveConversation
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getInFlight } from '$lib/server/streaming/in-flight';
+import {
+	FeatureCategoryValidationError,
+	validateDisabledFeatures
+} from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
@@ -25,24 +30,35 @@ export const GET: RequestHandler = ({ locals, params }) => {
 };
 
 /**
- * Accepts one of two mutations per request:
- *   - `{ archived: boolean }` — archive/unarchive (original behavior)
+ * Accepts one of three mutations per request:
+ *   - `{ archived: boolean }` — archive/unarchive
  *   - `{ title: string }` — rename (sets title_source='user', locking
  *      the title against future AI overwrite)
+ *   - `{ disabledFeatures: string[] }` — per-conversation feature opt-outs
+ *      (see FEATURE_CATEGORIES in $lib/types/api)
  *
- * Discriminated body: exactly one of the two fields must be present.
+ * Discriminated body: exactly one of the three fields must be present.
  * Combining them in one request is rejected to keep the semantics
- * single-purpose — a client that wants to do both should send two
- * requests.
+ * single-purpose — a client that wants to do multiple should send
+ * multiple requests.
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
-	const body = await parseJsonBody<{ archived?: unknown; title?: unknown }>(request);
+	const body = await parseJsonBody<{
+		archived?: unknown;
+		title?: unknown;
+		disabledFeatures?: unknown;
+	}>(request);
 
 	const hasArchived = body.archived !== undefined;
 	const hasTitle = body.title !== undefined;
-	if (hasArchived === hasTitle) {
-		throw error(400, 'Body must be exactly one of { archived: boolean } or { title: string }');
+	const hasDisabledFeatures = body.disabledFeatures !== undefined;
+	const presentCount = [hasArchived, hasTitle, hasDisabledFeatures].filter(Boolean).length;
+	if (presentCount !== 1) {
+		throw error(
+			400,
+			'Body must be exactly one of { archived: boolean }, { title: string }, or { disabledFeatures: string[] }'
+		);
 	}
 
 	if (hasArchived) {
@@ -52,6 +68,19 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		const ok = body.archived
 			? archiveConversation(params.id, locals.user.id)
 			: unarchiveConversation(params.id, locals.user.id);
+		if (!ok) throw error(404, 'Conversation not found');
+		return new Response(null, { status: 204 });
+	}
+
+	if (hasDisabledFeatures) {
+		let features;
+		try {
+			features = validateDisabledFeatures(body.disabledFeatures);
+		} catch (e) {
+			if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
+			throw e;
+		}
+		const ok = setDisabledFeatures(params.id, locals.user.id, features);
 		if (!ok) throw error(404, 'Conversation not found');
 		return new Response(null, { status: 204 });
 	}
@@ -71,6 +100,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	return new Response(null, { status: 204 });
 };
+
 
 export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	requireUser(locals);
