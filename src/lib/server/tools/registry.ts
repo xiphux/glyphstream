@@ -34,16 +34,24 @@ export function list(): Tool[] {
 }
 
 /** OpenAI tools[] array shape — what we splice into the upstream request
- *  body when the endpoint supports tools. Tools whose `isAvailable()`
- *  returns false are filtered out, so the model never sees a tool whose
- *  backing config (SearxNG URL, MCP connection, ...) isn't present in
- *  this deployment. Tools that omit `isAvailable` default to always-on.
- *  Returns an empty array when nothing remains (callers should treat
- *  that as "omit tools from the request entirely" rather than send
- *  `tools: []`). */
-export function openaiToolDefinitions(): OpenAIToolDefinition[] {
+ *  body when the endpoint supports tools. Two filter layers are applied:
+ *
+ *  - `isAvailable()` drops tools whose backing config (SearxNG URL, MCP
+ *    connection, ...) isn't present in this deployment.
+ *  - `excludeCategories` drops tools whose `metadata.category` is in the
+ *    list — the per-conversation opt-out path. See FEATURE_CATEGORIES
+ *    in `$lib/types/api`.
+ *
+ *  Tools that omit either signal default to always-on. Returns an empty
+ *  array when nothing remains (callers should treat that as "omit tools
+ *  from the request entirely" rather than send `tools: []`). */
+export function openaiToolDefinitions(opts?: {
+	excludeCategories?: readonly string[];
+}): OpenAIToolDefinition[] {
+	const exclude = opts?.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
 	return list()
 		.filter((t) => t.isAvailable?.() ?? true)
+		.filter((t) => !exclude || !t.metadata?.category || !exclude.has(t.metadata.category))
 		.map((t) => t.definition);
 }
 

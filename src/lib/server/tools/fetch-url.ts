@@ -57,7 +57,7 @@ export const fetchUrlTool: Tool = {
 			}
 		}
 	},
-	metadata: { displayLabel: 'Fetch URL', icon: 'link' },
+	metadata: { displayLabel: 'Fetch URL', icon: 'link', category: 'web' },
 	async execute(args, ctx): Promise<ToolExecution> {
 		const url = parseUrlArg(args);
 		if (!url) {

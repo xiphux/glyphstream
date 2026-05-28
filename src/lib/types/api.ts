@@ -25,6 +25,38 @@ export function isModelKind(v: unknown): v is ModelKind {
  */
 export const MAX_CONVERSATION_TITLE_LENGTH = 200;
 
+/**
+ * Feature-category keys for per-conversation opt-out. Tools declare a
+ * `category` in their metadata; conversations carry a `disabledFeatures`
+ * list; the chat handler filters out any tool whose category appears in
+ * that list before advertising tools to the model.
+ *
+ * Why category-level instead of per-tool? Privacy-sensitive opt-outs are
+ * security boundaries, not UX groupings. Hiding `web_search` while
+ * leaving `fetch_url` reachable is a false sense of security — the model
+ * can trivially compose around it (e.g. `fetch_url`-ing a search-engine
+ * URL directly). Both tools that touch the public web share the `web`
+ * category so a single toggle seals the egress path.
+ */
+export const FEATURE_CATEGORIES = ['web'] as const;
+export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
+
+export const FEATURE_CATEGORY_LABELS: Record<
+	FeatureCategory,
+	{ label: string; description: string }
+> = {
+	web: {
+		label: 'Web access',
+		description:
+			'Lets the assistant search the web and fetch pages. Turn off to keep this conversation from making outbound web requests.'
+	}
+};
+
+/** Runtime guard for use at request boundaries (validating PATCH bodies, etc.). */
+export function isFeatureCategory(v: unknown): v is FeatureCategory {
+	return typeof v === 'string' && (FEATURE_CATEGORIES as readonly string[]).includes(v);
+}
+
 /** A model as returned by `GET /api/models` (one row per upstream model, prefixed). */
 export interface ModelEntry {
 	/** Internal id: `{endpoint_id}::{upstream_model_id}` */
@@ -275,6 +307,12 @@ export interface CreateConversationRequest {
 	systemPrompt?: string;
 	customModelId?: string;
 	title?: string;
+	/**
+	 * Initial per-conversation opt-outs (see FEATURE_CATEGORIES). Omit or
+	 * pass an empty array for the default "all features on" experience.
+	 * Unknown category strings are rejected with 400.
+	 */
+	disabledFeatures?: FeatureCategory[];
 }
 
 // --- custom models -----------------------------------------------------

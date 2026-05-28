@@ -89,4 +89,57 @@ describe('tool registry', () => {
 		expect(get('gated')).toBe(gated);
 		expect(openaiToolDefinitions()).toEqual([]);
 	});
+
+	it('excludeCategories drops tools whose metadata.category matches', () => {
+		const uncategorized = mkTool('clock');
+		const web1: Tool = { ...mkTool('search'), metadata: { category: 'web' } };
+		const web2: Tool = { ...mkTool('fetch'), metadata: { category: 'web' } };
+		register(uncategorized);
+		register(web1);
+		register(web2);
+		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map(
+			(d) => d.function.name
+		);
+		expect(names).toEqual(['clock']);
+	});
+
+	it('excludeCategories: [] behaves the same as no option (back-compat)', () => {
+		const a = mkTool('a');
+		const b: Tool = { ...mkTool('b'), metadata: { category: 'web' } };
+		register(a);
+		register(b);
+		expect(openaiToolDefinitions({ excludeCategories: [] })).toEqual(openaiToolDefinitions());
+	});
+
+	it('excludeCategories leaves tools without a category alone', () => {
+		const a = mkTool('a');
+		register(a);
+		expect(openaiToolDefinitions({ excludeCategories: ['web', 'memory'] })).toEqual([
+			a.definition
+		]);
+	});
+
+	it('isAvailable + excludeCategories filters compose', () => {
+		const ok: Tool = { ...mkTool('ok'), metadata: { category: 'web' } };
+		const gatedAvail: Tool = {
+			...mkTool('gated-avail'),
+			metadata: { category: 'web' },
+			isAvailable: () => false
+		};
+		// 'memory' is a stand-in for a future category that isn't 'web' —
+		// the filter should treat it as distinct regardless of whether it's
+		// in FEATURE_CATEGORIES yet.
+		const otherCat: Tool = {
+			...mkTool('other'),
+			metadata: { category: 'memory' as never }
+		};
+		register(ok);
+		register(gatedAvail);
+		register(otherCat);
+		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map(
+			(d) => d.function.name
+		);
+		// 'ok' excluded by category, 'gated-avail' excluded by both, 'other' survives.
+		expect(names).toEqual(['other']);
+	});
 });

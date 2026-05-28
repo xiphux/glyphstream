@@ -49,10 +49,18 @@ export interface ToolExecution {
  * future hook for showing "Clock" alongside `get_current_time` if the
  * raw function name proves too cryptic for some tools — v1 renders the
  * raw name only.
+ *
+ * `category` groups tools for per-conversation opt-out (see
+ * FEATURE_CATEGORIES in `$lib/types/api`). Tools sharing a category are
+ * gated together by a single switch — e.g. `web_search` and `fetch_url`
+ * both declare 'web' so disabling "Web access" closes the entire egress
+ * path, not just one tool. Tools that omit a category are always on
+ * (clock).
  */
 export interface ToolMetadata {
 	displayLabel?: string;
 	icon?: string;
+	category?: import('$lib/types/api').FeatureCategory;
 }
 
 export interface Tool {

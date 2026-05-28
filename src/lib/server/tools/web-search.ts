@@ -60,7 +60,7 @@ export const webSearchTool: Tool = {
 			}
 		}
 	},
-	metadata: { displayLabel: 'Web search', icon: 'search' },
+	metadata: { displayLabel: 'Web search', icon: 'search', category: 'web' },
 	isAvailable: () => getConfig() !== null,
 	async execute(args, ctx): Promise<ToolExecution> {
 		const cfg = getConfig();
