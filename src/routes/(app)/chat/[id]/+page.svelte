@@ -4,7 +4,6 @@
 	import { Popover } from 'bits-ui';
 	import {
 		AlertCircle,
-		ArrowDown,
 		ArrowUp,
 		Check,
 		ChevronLeft,
@@ -29,6 +28,7 @@
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
+	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
 	import {
 		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
@@ -1814,28 +1814,10 @@
 		 a separator border — reads as part of the chat surface. The form
 		 itself is the rounded box; no surrounding footer chrome. -->
 	<div class="relative px-4 pb-4">
-		<!--
-			Scroll-to-bottom affordance. Anchored to the composer wrapper so
-			it sits a fixed distance above the composer regardless of how tall
-			the textarea has grown. Aria-hidden when not visible so screen
-			readers don't announce it; opacity transition for a soft fade.
-		-->
-		<div
-			class="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full transition-opacity {isNearBottom
-				? 'opacity-0'
-				: 'opacity-100'}"
-		>
-			<button
-				type="button"
-				onclick={() => scrollToBottom({ smooth: true })}
-				aria-label="Scroll to latest message"
-				aria-hidden={isNearBottom}
-				tabindex={isNearBottom ? -1 : 0}
-				class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-700 shadow-md transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
-			>
-				<ArrowDown size={16} strokeWidth={2.25} />
-			</button>
-		</div>
+		<ScrollToBottomButton
+			visible={!isNearBottom}
+			onClick={() => scrollToBottom({ smooth: true })}
+		/>
 		{#if editingMessageId}
 			<!-- Composer hidden while editing: the edit happens inline on
 				 the message bubble itself, with its own Save/Cancel
