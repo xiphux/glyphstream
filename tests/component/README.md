@@ -95,3 +95,10 @@ vi.mock('$app/state', () => ({
 
 Doing it once and exporting from a helper here is fine when more than
 one test needs the same stub.
+
+**`$state` mutations need `await tick()` before assertions**. Svelte 5
+batches reactive updates, so directly mutating a `$state` field (e.g.
+`confirmDialog.ask({...})` setting `pending`) doesn't synchronously
+update the DOM. Tests that mutate state outside a user-event need to
+`await tick()` from `'svelte'` before asserting against the rendered
+output. `user.click()` and friends handle their own flushing.
