@@ -25,6 +25,7 @@ src/lib/components/   # Svelte components
 src/routes/           # SvelteKit routes (pages + API)
 drizzle/              # generated migration SQL
 tests/unit/           # vitest (pure-logic + DB-backed via in-memory SQLite)
+tests/component/      # vitest + @testing-library/svelte + happy-dom — see its README
 tests/e2e/            # playwright (production-build webServer)
 ```
 
@@ -64,6 +65,11 @@ tests/e2e/            # playwright (production-build webServer)
   them into the SSR build at compile time. Only packages that run
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
   `arctic`, `better-sqlite3`, `smol-toml`) belong in `dependencies`.
+- Component tests live under `tests/component/` and require a per-file
+  `/* @vitest-environment happy-dom */` header — pure-logic unit tests
+  default to `node`. See `tests/component/README.md` for the bits-ui
+  Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
+  silently missing portaled content.
 
 ## Common commands
 
