@@ -18,16 +18,26 @@ expected priority, not time-bound.
   - A "your devices" UI surfacing the `push_subscriptions.user_agent`
     column with per-device revoke.
 
-- **Per-conversation "private mode" toggle.** A conversation-row
-  boolean (and a UI toggle when starting a chat) that opts out of all
-  user-level personal-data injection — system prompt, future memories,
-  future personalization fields. Use case: "throwaway question I don't
-  want flavored by my standing context," similar in spirit to ChatGPT's
-  Temporary Chats (though narrower — Temporary Chats also drop history,
-  which we deliberately keep). Open design question: one unified toggle
-  ("don't use any of my personal data here") vs. per-feature toggles
-  ("disable system prompt only, keep memories"). Pick once we have
-  memories implemented and can see which split feels right.
+- **Additional per-conversation opt-out categories.** The composer's
+  feature-toggle popover already ships with the **Web access** category
+  (gating `web_search` + `fetch_url` together; see README's
+  "Per-conversation feature toggles" section). The infrastructure —
+  `disabled_features` column, category-aware tool registry, popover UI
+  — generalizes to any future category by adding entries to
+  `FEATURE_CATEGORIES` + per-tool `metadata.category` declarations.
+  Concrete categories worth adding once their feature lands:
+  - **Personalization** (system prompt / name / persona injection)
+    — paired with the memory feature below.
+  - **Memory writes** — once a `save_memory` tool exists, give users
+    a switch that lets a conversation be read-only against memory.
+  - **Per-MCP-server categories** — when MCP support lands, each
+    connected server could expose its own category so a user can
+    "use this server's tools" or "don't" at the conversation level.
+  The "one unified toggle vs per-feature toggles" open question was
+  answered by the user explicitly: per-feature, grouped by capability,
+  with the priority that a switch must actually seal the threat it
+  claims to (which is why web_search and fetch_url share one category
+  instead of getting individual switches).
 
 - **Bulk gallery management.** As the library accumulates over months
   of use, single-item delete becomes tedious. Worth adding multi-select

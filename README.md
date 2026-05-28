@@ -311,6 +311,29 @@ benchmark, multicast, or cloud-metadata addresses (10.x, 172.16-31.x,
 want to point the model at LAN services aren't supported today; open
 an issue if you have a real use case.
 
+### Per-conversation feature toggles
+
+The composer surfaces a small popover (the sliders icon next to the
+attach button) with one switch per opt-out *category*. Today there's a
+single switch — **Web access** — that disables both `web_search` and
+`fetch_url` together for the conversation it's flipped on. Future
+opt-outs (personalization context, memory writes) will slot in as
+additional switches in the same popover.
+
+Why category-level rather than one switch per tool: an opt-out
+motivated by privacy is a security boundary, not a UX grouping. Hiding
+`web_search` while leaving `fetch_url` reachable would be a false
+sense of security — the model can trivially compose around partial
+gating by `fetch_url`-ing a search-engine URL directly. The two
+web-touching tools share a `web` category so the single switch closes
+the whole egress path.
+
+Defaults are **all features on** for every new conversation — never
+sticky across sessions, since a one-time off-flip carrying forward
+silently would undermine the privacy intent. Toggles flipped in an
+existing chat apply forward from the next message; history already on
+the page is unaffected.
+
 ### Adding more tools
 
 Each tool is a TypeScript module under `src/lib/server/tools/` that
@@ -322,6 +345,9 @@ in `src/lib/server/tools/index.ts`, and the new tool is live for
 every endpoint with `supports_tools = true`. Tools backed by optional
 config (like `web_search` is by `[search]`) can implement
 `isAvailable()` to hide themselves when their backend isn't present.
+Tools that should be reachable from the per-conversation opt-out
+panel declare a `category` in their `metadata` (see
+`FEATURE_CATEGORIES` in `$lib/types/api`).
 
 ## Push notifications (optional)
 
