@@ -32,19 +32,6 @@ export default defineConfig({
 		// Run each test file in its own process so DB tests with global
 		// connection state don't cross-contaminate. Cheap because the
 		// suite is small.
-		isolate: true,
-		// Tolerate unhandled errors thrown OUTSIDE the test flow. The one
-		// source today is bits-ui's dismissible-layer (Popover/Dialog/
-		// Switch): it attaches a document pointerdown handler whose callback
-		// is debounced 500ms. bits-ui DOES clear it on unmount, but under CI
-		// timing a pending timer can fire just after the happy-dom env is
-		// torn down, when the global `Element` no longer exists — throwing
-		// "Element is not defined" deep inside bits-ui and failing the run
-		// even though every assertion passed. It's a 3rd-party env-teardown
-		// ordering artifact, not a fault in our code. This does NOT affect
-		// test assertions — a real bug still fails its expect(); it only
-		// stops a stray post-teardown async throw from failing CI.
-		// (vitest exposes this as a root-only option, not per-project.)
-		dangerouslyIgnoreUnhandledErrors: true
+		isolate: true
 	}
 });

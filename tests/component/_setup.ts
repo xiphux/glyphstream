@@ -11,7 +11,51 @@
  * Safe to load for non-DOM tests — only adds matchers + a console.warn
  * filter; doesn't run any DOM-dependent code at import time.
  */
+import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+
+/**
+ * Cancel any setTimeout still pending when a component test ends.
+ *
+ * bits-ui's dismissible-layer (Popover / Switch) attaches a document
+ * pointerdown handler whose callback is debounced 500ms. Under CI timing
+ * a pending timer can fire just after vitest tears the happy-dom env
+ * down — at which point the global `Element` no longer exists, so
+ * bits-ui's `e.target instanceof Element` throws
+ * "ReferenceError: Element is not defined", crashing the run even though
+ * every assertion passed. (vitest's dangerouslyIgnoreUnhandledErrors
+ * doesn't help — it covers unhandled rejections, not uncaught exceptions
+ * thrown from a timer callback.)
+ *
+ * We wrap setTimeout/clearTimeout to track live timers and cancel any
+ * leftover in afterEach, so no real timer survives a test into teardown.
+ * vitest clears its own per-test timers via clearTimeout (which we
+ * untrack), so what remains is genuine leaks — safe to cancel.
+ *
+ * Scoped to the DOM env (`window` defined) so the node-env unit suite —
+ * which relies on real timers (AbortSignal.timeout, ordering delays) —
+ * is untouched. Remove when bits-ui stops leaking the timer past unmount.
+ */
+if (typeof window !== 'undefined') {
+	type TimerId = ReturnType<typeof globalThis.setTimeout>;
+	const pending = new Set<TimerId>();
+	const realSetTimeout = globalThis.setTimeout;
+	const realClearTimeout = globalThis.clearTimeout;
+	globalThis.setTimeout = ((...args: Parameters<typeof globalThis.setTimeout>) => {
+		const id = realSetTimeout(...args);
+		pending.add(id);
+		return id;
+	}) as typeof setTimeout;
+	globalThis.clearTimeout = ((...args: Parameters<typeof globalThis.clearTimeout>) => {
+		const id = args[0];
+		if (id !== undefined) pending.delete(id as TimerId);
+		return realClearTimeout(...args);
+	}) as typeof clearTimeout;
+	afterEach(() => {
+		for (const id of pending) realClearTimeout(id);
+		pending.clear();
+	});
+}
 
 /**
  * Filter out Svelte 5's `derived_inert` warnings, which fire spuriously
