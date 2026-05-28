@@ -26,6 +26,7 @@
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
+	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import {
 		appendReasoning as inFlightAppendReasoning,
@@ -52,6 +53,7 @@
 	import type { MediaListItem } from '$lib/server/db/queries/media';
 	import type {
 		ChatMessage,
+		FeatureCategory,
 		MessagePart,
 		ModelKind,
 		SendMessageResponse,
@@ -82,6 +84,28 @@
 	let title = $state<string | null>(data.conversation.title);
 	// svelte-ignore state_referenced_locally
 	let modelId = $state(data.conversation.modelId);
+	// svelte-ignore state_referenced_locally
+	let disabledFeatures = $state<FeatureCategory[]>([...data.conversation.disabledFeatures]);
+
+	async function persistDisabledFeatures(next: FeatureCategory[]) {
+		// Optimistic update — the toggle should feel instant. On error we
+		// revert + toast, so the visible state matches what the server has.
+		const previous = disabledFeatures;
+		disabledFeatures = next;
+		try {
+			const res = await fetch(`/api/conversations/${data.conversation.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ disabledFeatures: next })
+			});
+			if (!res.ok) {
+				throw new Error(await errorMessageFromResponse(res));
+			}
+		} catch (e) {
+			disabledFeatures = previous;
+			toast.error(e instanceof Error ? e.message : String(e));
+		}
+	}
 	// svelte-ignore state_referenced_locally
 	let convId = $state(data.conversation.id);
 	// svelte-ignore state_referenced_locally
@@ -1951,6 +1975,11 @@
 							<Plus size={18} strokeWidth={2.25} />
 						</button>
 					{/if}
+					<FeatureTogglesMenu
+						{disabledFeatures}
+						disabled={generating}
+						onChange={(next) => void persistDisabledFeatures(next)}
+					/>
 					<div class="flex-1"></div>
 					<!--
 						Per-turn model picker: defaulted to the conversation's

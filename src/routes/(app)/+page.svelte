@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { AlertCircle, ArrowUp, Plus, X } from '@lucide/svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { composerEnterHandler } from '$lib/composer-keys';
@@ -12,7 +13,7 @@
 		GALLERY_LAUNCH_KEY,
 		type GalleryLaunchIntent
 	} from '$lib/gallery-launch';
-	import type { CreateConversationRequest } from '$lib/types/api';
+	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
@@ -39,6 +40,13 @@
 	//   - "endpointId::upstreamId"  → base model
 	//   - "custom::{customModelId}" → saved preset
 	let modelId = $state('');
+
+	// Per-conversation feature opt-outs (see FEATURE_CATEGORIES). Transient
+	// per page load — never persisted client-side, never restored across
+	// visits. Defaulting to "all features on" every new chat is the privacy
+	// posture we want: one accidental off-flip shouldn't quietly become
+	// sticky across future sessions.
+	let disabledFeatures = $state<FeatureCategory[]>([]);
 
 	// Apply `?model=` from the URL whenever it changes. Sidebar favorites
 	// link to `/?model=…`, and SvelteKit SPA-navigates between favorites
@@ -219,6 +227,9 @@
 						modelId,
 						modelKind: resolvedBase?.kind
 					};
+			if (disabledFeatures.length > 0) {
+				createBody.disabledFeatures = [...disabledFeatures];
+			}
 			const createRes = await fetch('/api/conversations', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -378,6 +389,11 @@
 						<Plus size={18} strokeWidth={2.25} />
 					</button>
 				{/if}
+				<FeatureTogglesMenu
+					{disabledFeatures}
+					disabled={busy}
+					onChange={(next) => (disabledFeatures = next)}
+				/>
 				<div class="flex-1"></div>
 				<!--
 					Inline model selector: rendered as a borderless dropdown so
