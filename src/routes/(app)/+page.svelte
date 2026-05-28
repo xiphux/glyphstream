@@ -1,14 +1,12 @@
 <script lang="ts">
-	import { onDestroy, tick, untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { AlertCircle, ArrowUp, Plus, X } from '@lucide/svelte';
+	import { ArrowUp } from '@lucide/svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
-	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
+	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
-	import { composerEnterHandler } from '$lib/composer-keys';
-	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
 	import {
 		GALLERY_LAUNCH_KEY,
 		type GalleryLaunchIntent
@@ -126,7 +124,7 @@
 	// sessionStorage along with the first-message text — the chat-id page
 	// then forwards them to the message-send call.
 	const attachments = new AttachmentStore();
-	let fileInputEl = $state<HTMLInputElement | null>(null);
+	let coreRef = $state<{ focus: () => void } | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(pickedKind));
 	onDestroy(() => attachments.destroy());
 
@@ -163,52 +161,29 @@
 			}
 
 			if (intent.kind === 'regenerate') {
+				// ComposerCore's own auto-resize $effect reacts to the bound
+				// `text` change and runs post-DOM-flush, so it sizes to the
+				// prompt without a manual tick()+resize dance here.
 				text = intent.prompt;
-				// The auto-resize effect *will* re-fire on the `text`
-				// change, but in the same on-mount effect batch as
-				// this pickup — at which point Svelte hasn't yet
-				// flushed `bind:value` to the DOM, so scrollHeight
-				// reads the still-empty textarea. `tick()` resolves
-				// after the pending DOM commit, so a manual resize
-				// call there sees the actual content height.
-				void tick().then(() => autoResizeComposer());
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
 			}
 		});
 	});
 
-	// Auto-resize composer (same pattern as the chat-page composer).
-	// Factored into a function so external triggers can request a
-	// resize after manipulating `text` outside of normal user typing —
-	// e.g. the gallery-launch pickup effect, which sets `text` and
-	// then has to call this explicitly via `tick()` because Svelte
-	// batches the in-effect state change with the DOM flush of the
-	// `bind:value` update, so scrollHeight here would otherwise still
-	// reflect the empty pre-paste state.
-	let composerEl = $state<HTMLTextAreaElement | null>(null);
-	function autoResizeComposer() {
-		if (composerEl) autoResizeTextarea(composerEl);
-	}
-	$effect(() => {
-		void text;
-		autoResizeComposer();
-	});
-
 	// Autofocus the composer on load — typing a prompt to start a new
 	// conversation is the entire purpose of this page, so the cursor
 	// belongs in the box without a click or tab. Runs once on mount
-	// (composerEl flips null→element a single time).
+	// (coreRef flips null→component a single time).
 	//
 	// Skipped on touch devices, where an unprompted focus springs the
 	// on-screen keyboard open over the greeting.
 	$effect(() => {
 		if (window.matchMedia?.('(pointer: coarse)').matches) return;
-		composerEl?.focus();
+		coreRef?.focus();
 	});
 
-	async function startChat(e: Event) {
-		e.preventDefault();
+	async function startChat() {
 		if (!modelId || busy) return;
 		if (!text.trim() && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
@@ -262,48 +237,6 @@
 			busy = false;
 		}
 	}
-
-	// Drag-drop + paste, same pattern as the chat-id composer.
-	let isDraggingOver = $state(false);
-	let dragDepth = 0;
-
-	function onDragEnter(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		e.preventDefault();
-		dragDepth++;
-		isDraggingOver = true;
-	}
-
-	function onDragOver(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		e.preventDefault();
-	}
-
-	function onDragLeave(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		dragDepth = Math.max(0, dragDepth - 1);
-		if (dragDepth === 0) isDraggingOver = false;
-	}
-
-	function onDrop(e: DragEvent) {
-		if (!allowAttachments) return;
-		e.preventDefault();
-		dragDepth = 0;
-		isDraggingOver = false;
-		const files = extractImageFiles(e.dataTransfer);
-		if (files.length > 0) {
-			void attachments.addFiles(files);
-		}
-	}
-
-	function onPaste(e: ClipboardEvent) {
-		if (!allowAttachments) return;
-		const files = extractImageFiles(e.clipboardData);
-		if (files.length > 0) {
-			e.preventDefault();
-			void attachments.addFiles(files);
-		}
-	}
 </script>
 
 <div class="flex h-full flex-col items-center justify-center px-4 py-8">
@@ -339,56 +272,18 @@
 			{/if}
 		</div>
 
-		<form
-			onsubmit={startChat}
-			ondragenter={onDragEnter}
-			ondragover={onDragOver}
-			ondragleave={onDragLeave}
-			ondrop={onDrop}
-			class="relative rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500"
+		<ComposerCore
+			bind:this={coreRef}
+			bind:text
+			{attachments}
+			{allowAttachments}
+			disabled={busy}
+			placeholder={composerPlaceholder}
+			rows={2}
+			enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+			onSubmit={startChat}
 		>
-			<AttachmentThumbnails {attachments} class="px-1" />
-			<textarea
-				bind:this={composerEl}
-				bind:value={text}
-				rows="2"
-				disabled={busy}
-				placeholder={composerPlaceholder}
-				onkeydown={composerEnterHandler(
-					data.prefs?.enterBehavior ?? 'send',
-					(e) => void startChat(e)
-				)}
-				onpaste={onPaste}
-				class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
-			></textarea>
-
-			<div class="flex items-center gap-2 px-1 pt-1">
-				{#if allowAttachments}
-					<input
-						bind:this={fileInputEl}
-						type="file"
-						accept="image/*"
-						multiple
-						class="hidden"
-						onchange={(e) => {
-							const t = e.currentTarget;
-							if (t.files && t.files.length > 0) {
-								void attachments.addFiles(t.files);
-							}
-							t.value = '';
-						}}
-					/>
-					<button
-						type="button"
-						onclick={() => fileInputEl?.click()}
-						disabled={busy}
-						aria-label="Attach image"
-						title="Attach image"
-						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-					>
-						<Plus size={18} strokeWidth={2.25} />
-					</button>
-				{/if}
+			{#snippet controls()}
 				<FeatureTogglesMenu
 					{disabledFeatures}
 					disabled={busy}
@@ -397,8 +292,9 @@
 				<div class="flex-1"></div>
 				<!--
 					Inline model selector: rendered as a borderless dropdown so
-					it reads as a soft control inside the box. Native keyboard nav
-					+ mobile picker for free.
+					it reads as a soft control inside the box. Presets ARE shown
+					here (unlike the per-turn chat picker) since starting a new
+					chat from a saved persona is a primary entry point.
 				-->
 				<ModelPicker
 					models={data.models}
@@ -423,16 +319,8 @@
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />
 				</button>
-			</div>
-			{#if isDraggingOver}
-				<div
-					aria-hidden="true"
-					class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-neutral-700 backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85 dark:text-neutral-200"
-				>
-					Drop image to attach
-				</div>
-			{/if}
-		</form>
+			{/snippet}
+		</ComposerCore>
 
 		{#if data.models.length === 0}
 			<p class="mt-3 text-center text-xs text-amber-700 dark:text-amber-300">
