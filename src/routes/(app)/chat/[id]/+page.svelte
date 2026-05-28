@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { ArrowUp, Plus, Square } from '@lucide/svelte';
 	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
 	import { readSSE } from '$lib/sse-client';
@@ -9,8 +8,7 @@
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
-	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
-	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
+	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
@@ -31,9 +29,6 @@
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
-	import { composerEnterHandler } from '$lib/composer-keys';
-	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
-	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
@@ -149,7 +144,6 @@
 	// as files are picked, so by send-time `readyMediaIds()` is just a
 	// state read. See $lib/attachments.svelte.ts.
 	const attachments = new AttachmentStore();
-	let fileInputEl = $state<HTMLInputElement | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
 	// Imported OWUI conversations land with a stored modelId like "gpt-4o"
 	// (no endpoint:: prefix), which the picker shows as "Choose a model…".
@@ -316,57 +310,6 @@
 	// Both feed into the same `attachments.addFiles()` pipeline as the
 	// file picker, so they get the same upload/progress/error UX for
 	// free.
-	let isDraggingOver = $state(false);
-	// Drag-enter/leave fires recursively as the cursor moves over child
-	// elements within the drop zone. The counter pattern handles this
-	// without needing relatedTarget detection (which is fragile across
-	// browsers with shadow DOM / iframes).
-	let dragDepth = 0;
-
-	function onDragEnter(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		e.preventDefault();
-		dragDepth++;
-		isDraggingOver = true;
-	}
-
-	function onDragOver(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		// preventDefault on dragover is what enables drop. Without it, the
-		// browser interprets the drag as "not droppable" and the drop
-		// event never fires.
-		e.preventDefault();
-	}
-
-	function onDragLeave(e: DragEvent) {
-		if (!allowAttachments || !dragHasFiles(e)) return;
-		dragDepth = Math.max(0, dragDepth - 1);
-		if (dragDepth === 0) isDraggingOver = false;
-	}
-
-	function onDrop(e: DragEvent) {
-		if (!allowAttachments) return;
-		e.preventDefault();
-		dragDepth = 0;
-		isDraggingOver = false;
-		const files = extractImageFiles(e.dataTransfer);
-		if (files.length > 0) {
-			void attachments.addFiles(files);
-		}
-	}
-
-	function onPaste(e: ClipboardEvent) {
-		if (!allowAttachments) return;
-		// Only swallow the paste when we actually consumed an image —
-		// plain-text pastes fall through to the textarea's default
-		// behavior so typing-flow isn't disrupted.
-		const files = extractImageFiles(e.clipboardData);
-		if (files.length > 0) {
-			e.preventDefault();
-			void attachments.addFiles(files);
-		}
-	}
-
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
 	// message. Same flag also gates the streaming auto-scroll so we don't
@@ -395,15 +338,10 @@
 		return () => observer.disconnect();
 	});
 
-	// Auto-resize textarea: grow with content up to a sensible max so
-	// long-form composition gets the room it needs without pushing the
-	// message list off-screen on small phones.
-	let composerEl = $state<HTMLTextAreaElement | null>(null);
-	$effect(() => {
-		const el = composerEl;
-		void composerText; // re-run on every keystroke
-		if (el) autoResizeTextarea(el);
-	});
+	// Reference to the ChatComposer instance so the focus effect below
+	// can land focus in its textarea. The composer owns the ref + the
+	// auto-resize; the page owns the *when* of focusing.
+	let composerRef = $state<{ focus: () => void } | null>(null);
 
 	// Land focus in the follow-up composer whenever the conversation
 	// becomes ready for input — on entering a conversation (including
@@ -424,10 +362,9 @@
 	$effect(() => {
 		void data.conversation.id; // re-focus when switching conversations
 		if (generating) return;
-		const el = composerEl;
-		if (!el) return;
+		if (!composerRef) return;
 		if (window.matchMedia?.('(pointer: coarse)').matches) return;
-		el.focus();
+		composerRef.focus();
 	});
 
 	// AbortController for the in-flight fetch. Stop button click triggers
@@ -1149,8 +1086,7 @@
 		return false;
 	}
 
-	async function send(e: Event) {
-		e.preventDefault();
+	async function send() {
 		const text = composerText.trim();
 		if ((!text && attachments.items.length === 0) || generating) return;
 		if (attachments.isBusy) return;
@@ -1554,130 +1490,26 @@
 				 controls. Re-shown when the user dismisses the inline
 				 editor. -->
 		{:else}
-		<form
-			onsubmit={send}
-			ondragenter={onDragEnter}
-			ondragover={onDragOver}
-			ondragleave={onDragLeave}
-			ondrop={onDrop}
-			class="relative mx-auto max-w-3xl"
-		>
-			{#if errorMsg}
-				<div
-					class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-				>
-					{errorMsg}
-				</div>
-			{/if}
-			<div class="rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500">
-				<AttachmentThumbnails {attachments} class="px-1" />
-				<textarea
-					bind:this={composerEl}
-					bind:value={composerText}
-					rows="1"
-					placeholder={modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…'}
-					disabled={generating}
-					onkeydown={composerEnterHandler(
-						data.prefs?.enterBehavior ?? 'send',
-						(e) => void send(e)
-					)}
-					onpaste={onPaste}
-					class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
-				></textarea>
-				<div class="flex items-center gap-2 px-1 pt-1">
-					{#if allowAttachments}
-						<input
-							bind:this={fileInputEl}
-							type="file"
-							accept="image/*"
-							multiple
-							class="hidden"
-							onchange={(e) => {
-								const t = e.currentTarget;
-								if (t.files && t.files.length > 0) {
-									void attachments.addFiles(t.files);
-								}
-								// Clear so re-picking the same file fires onchange again.
-								t.value = '';
-							}}
-						/>
-						<button
-							type="button"
-							onclick={() => fileInputEl?.click()}
-							disabled={generating}
-							aria-label="Attach image"
-							title="Attach image"
-							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-						>
-							<Plus size={18} strokeWidth={2.25} />
-						</button>
-					{/if}
-					<FeatureTogglesMenu
-						{disabledFeatures}
-						disabled={generating}
-						onChange={(next) => void persistDisabledFeatures(next)}
-					/>
-					<div class="flex-1"></div>
-					<!--
-						Per-turn model picker: defaulted to the conversation's
-						current model so the no-change case is invisible. Picking
-						a different model rewrites the conversation's stored
-						endpoint/model on the next send (see
-						/api/conversations/:id/messages — `modelId` in the body).
-						Custom presets are intentionally NOT shown here because
-						they bundle persona, and switching persona mid-thread is
-						a different feature.
-					-->
-					<ModelPicker
-						models={data.models}
-						bind:value={modelId}
-						filterKinds={['chat', 'image', 'video']}
-						disabled={generating}
-						inline
-						favoritedIds={data.prefs?.favoriteModels ?? []}
-						onToggleFavorite={(id) =>
-							void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
-					/>
-					{#if (busy && activeAbort) || recoveredInFlight}
-						<button
-							type="button"
-							onclick={stop}
-							aria-label="Stop generation"
-							title="Stop"
-							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-						>
-							<Square size={14} strokeWidth={2.5} fill="currentColor" />
-						</button>
-					{:else}
-						<button
-							type="submit"
-							disabled={(!composerText.trim() && attachments.items.length === 0) ||
-								generating ||
-								attachments.isBusy ||
-								!hasValidModel}
-							aria-label="Send message"
-							title={!hasValidModel ? 'Pick a model to send' : 'Send'}
-							class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-						>
-							<ArrowUp size={16} strokeWidth={2.5} />
-						</button>
-					{/if}
-				</div>
-			</div>
-			{#if isDraggingOver}
-				<!--
-					Drop-zone overlay — covers the form rectangle while a file
-					drag is active. pointer-events-none so the underlying drop
-					event still fires on the form.
-				-->
-				<div
-					aria-hidden="true"
-					class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-neutral-700 backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85 dark:text-neutral-200"
-				>
-					Drop image to attach
-				</div>
-			{/if}
-		</form>
+			<ChatComposer
+				bind:this={composerRef}
+				bind:composerText
+				bind:modelId
+				{errorMsg}
+				{attachments}
+				{modelKind}
+				{disabledFeatures}
+				models={data.models}
+				favoritedIds={data.prefs?.favoriteModels ?? []}
+				{allowAttachments}
+				{hasValidModel}
+				{generating}
+				canStop={(busy && activeAbort != null) || recoveredInFlight}
+				enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+				onSend={() => void send()}
+				onStop={stop}
+				onFeaturesChange={(next) => void persistDisabledFeatures(next)}
+				onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+			/>
 		{/if}
 	</div>
 </div>
