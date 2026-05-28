@@ -27,8 +27,8 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
 	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
-	import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
 	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
 	import {
 		appendReasoning as inFlightAppendReasoning,
@@ -1754,38 +1754,16 @@
 			{/each}
 
 			{#if showInFlight}
-				<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
-					<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
-					<RenderBlocks
-						blocks={inFlightBlocks}
-						onImageClick={openImageInLightbox}
-						{openingLightboxFor}
-					/>
-					{#if inFlightBlocks.length === 0}
-						<!-- Pre-first-token placeholder: thinking dots + optional
-						     progress/elapsed indicators. Once any text or
-						     tool_call segment lands, renderBlocks takes over. -->
-						<div class="mt-1 flex items-center gap-2 text-neutral-500">
-							<span>{inFlightLabel}</span>
-							<span class="inline-flex gap-1">
-								<span class="animate-pulse">·</span>
-								<span class="animate-pulse [animation-delay:120ms]">·</span>
-								<span class="animate-pulse [animation-delay:240ms]">·</span>
-							</span>
-							{#if inFlightStatus && inFlightStatus !== 'in_progress'}
-								<span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
-									{inFlightStatus}
-								</span>
-							{/if}
-							{#if inFlightProgress !== null}
-								<span class="font-mono text-xs tabular-nums">{inFlightProgress.toFixed(0)}%</span>
-							{/if}
-							{#if elapsedSeconds >= 0.3}
-								<span class="font-mono text-xs tabular-nums">{elapsedSeconds.toFixed(1)}s</span>
-							{/if}
-						</div>
-					{/if}
-				</article>
+				<InFlightBubble
+					blocks={inFlightBlocks}
+					{assistantLabel}
+					label={inFlightLabel}
+					status={inFlightStatus}
+					progress={inFlightProgress}
+					{elapsedSeconds}
+					onImageClick={openImageInLightbox}
+					{openingLightboxFor}
+				/>
 			{/if}
 			<!--
 				Bottom sentinel for IntersectionObserver. Pinned to the very
