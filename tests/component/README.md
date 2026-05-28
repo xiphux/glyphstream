@@ -71,6 +71,18 @@ needs a real browser engine, that's what the Playwright e2e suite
 (roadmap item) is for. Component tests live at the unit-isolation
 layer; e2e tests live at the integration layer.
 
+**`derived_inert` warnings are filtered**. `_setup.ts` swallows
+Svelte 5's `derived_inert` warnings, which fire dozens of times per
+test from bits-ui's Popover / Switch internals during teardown in
+happy-dom. The warning means "a `$derived` was read after its
+owning effect was destroyed" — harmless during teardown (nothing
+observable reads the stale value), but the noise drowns out
+warnings worth seeing. The filter is string-matched, narrow, and
+documented inline at the suppression site; *all other* warnings —
+including any `derived_inert` that fires in dev / browser from
+code we wrote — surface normally. Drop the filter when bits-ui or
+Svelte addresses the underlying source.
+
 **`$app/*` mocking**. SvelteKit's `$app/state`, `$app/navigation`, and
 friends aren't auto-stubbed. The first component test that imports a
 component depending on them will need something like:
