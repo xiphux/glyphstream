@@ -96,5 +96,13 @@ COPY --from=builder /app/package.json ./
 # `data/` (sqlite + media) is expected to be a bind mount or named
 # volume; the dir is created on first DB open if missing.
 EXPOSE 3000
+
+# Baked into the image so every consumer — compose, plain `docker run`,
+# orchestrators — inherits it without redefining a healthcheck of their
+# own. Hits /api/health on whatever PORT the app listens on (the slim
+# runtime has no curl/wget, so we use Node's built-in fetch).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "build/index.js"]
