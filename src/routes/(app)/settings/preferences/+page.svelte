@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
-	import type { EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
+	import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 	import {
 		getPermissionState,
 		isIosBeforeInstall,
@@ -59,6 +59,38 @@
 			theme = prev;
 			applyThemeToDom(prev);
 			themeError = "Couldn't save theme — reverted.";
+		}
+	}
+
+	// Light/dark/system — auto-saves, applies live (no reload). Resolves the
+	// data-scheme attribute the same way app.html's inline script does.
+	// svelte-ignore state_referenced_locally
+	let colorScheme = $state<ColorScheme>(data.prefs.colorScheme);
+	const SCHEMES: { id: ColorScheme; label: string }[] = [
+		{ id: 'system', label: 'System' },
+		{ id: 'light', label: 'Light' },
+		{ id: 'dark', label: 'Dark' }
+	];
+
+	function applySchemeToDom(s: ColorScheme) {
+		const dark =
+			s === 'dark' ||
+			(s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+		document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+		document.cookie = `gs-scheme=${s}; path=/; max-age=31536000; samesite=lax`;
+	}
+
+	async function selectScheme(next: ColorScheme) {
+		if (colorScheme === next) return;
+		const prev = colorScheme;
+		colorScheme = next;
+		applySchemeToDom(next);
+		themeError = null;
+		const ok = await patchPrefs({ colorScheme: next });
+		if (!ok) {
+			colorScheme = prev;
+			applySchemeToDom(prev);
+			themeError = "Couldn't save appearance — reverted.";
 		}
 	}
 
@@ -382,6 +414,21 @@
 						>
 							<span class="text-sm font-medium">{t.label}</span>
 							<span class="text-xs text-fg-muted">{t.description}</span>
+						</button>
+					{/each}
+				</div>
+				<div class="mt-1 flex items-center gap-2">
+					<span class="text-xs text-fg-muted">Mode:</span>
+					{#each SCHEMES as s (s.id)}
+						<button
+							type="button"
+							onclick={() => selectScheme(s.id)}
+							aria-pressed={colorScheme === s.id}
+							class="rounded-md border px-3 py-1 text-xs transition {colorScheme === s.id
+								? 'border-border-focus bg-surface-sunken'
+								: 'border-border hover:bg-surface-raised'}"
+						>
+							{s.label}
 						</button>
 					{/each}
 				</div>

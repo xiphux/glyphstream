@@ -9,6 +9,24 @@
 			content="width=device-width, initial-scale=1, viewport-fit=cover"
 		/>
 		<meta name="text-scale" content="scale" />
+		<!-- Resolve the color scheme before first paint (no FOUC). Reads the
+			 gs-scheme cookie (mirror of the user's pref): 'light'/'dark' force
+			 that scheme; anything else ('system'/absent) follows the OS. Dark
+			 mode keys off this data-scheme attribute — see app.css. -->
+		<script>
+			(function () {
+				try {
+					var m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
+					var pref = m ? m[1] : 'system';
+					var dark =
+						pref === 'dark' ||
+						(pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+					document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+				} catch (e) {
+					/* leave unset → CSS falls back to light */
+				}
+			})();
+		</script>
 		<!-- PWA: theme-color drives the iOS status bar tint when installed.
 			 Two media-scoped tags so light/dark cold-load correctly; values
 			 are the Signature surface colors (neutral-50 / neutral-950). -->

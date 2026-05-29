@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 
 /*
+ * Dark mode is attribute-driven, not media-driven: a `data-scheme="dark"`
+ * on <html> (resolved before first paint by the inline script in app.html,
+ * from the gs-scheme cookie or the OS preference) turns dark on. This lets
+ * users force light/dark independent of the system setting. Redefine
+ * Tailwind's `dark:` variant to match so `dark:` utilities track the same
+ * attribute as the hand-written token blocks below.
+ */
+@custom-variant dark (&:where([data-scheme='dark'], [data-scheme='dark'] *));
+
+/*
  * Semantic design tokens. Tailwind v4 `@theme` registers these and
  * generates utilities (`bg-surface`, `text-fg-muted`, `border-border`, …)
  * that resolve to the CSS vars below. Runtime theme/scheme swapping is done
@@ -45,27 +55,32 @@
 	--color-accent-fg: oklch(99% 0.012 242);
 }
 
-/* GlyphStream Signature dark — cool-tinted dark neutrals + sky accent. */
-@media (prefers-color-scheme: dark) {
-	:root {
-		--color-surface: oklch(15% 0.012 258);
-		--color-surface-raised: oklch(27% 0.014 258);
-		--color-surface-sunken: oklch(37% 0.014 258);
-		--color-surface-panel: oklch(21% 0.014 258);
-		--color-surface-inverse: oklch(97% 0.006 250);
+/* GlyphStream Signature dark — cool-tinted dark neutrals + sky accent.
+   Theme-independent scheme block: also flips color-scheme so native
+   controls (scrollbars, form widgets) match the forced dark. */
+[data-scheme='dark'] {
+	color-scheme: dark;
 
-		--color-fg: oklch(97% 0.006 250);
-		--color-fg-secondary: oklch(87% 0.009 254);
-		--color-fg-muted: oklch(71% 0.011 256);
-		--color-fg-subtle: oklch(44% 0.013 258);
-		--color-fg-inverse: oklch(21% 0.014 258);
+	--color-surface: oklch(15% 0.012 258);
+	--color-surface-raised: oklch(27% 0.014 258);
+	--color-surface-sunken: oklch(37% 0.014 258);
+	--color-surface-panel: oklch(21% 0.014 258);
+	--color-surface-inverse: oklch(97% 0.006 250);
 
-		--color-border: oklch(37% 0.014 258);
-		--color-border-strong: oklch(44% 0.014 258);
-		--color-border-focus: oklch(62% 0.14 242);
+	--color-fg: oklch(97% 0.006 250);
+	--color-fg-secondary: oklch(87% 0.009 254);
+	--color-fg-muted: oklch(71% 0.011 256);
+	--color-fg-subtle: oklch(44% 0.013 258);
+	--color-fg-inverse: oklch(21% 0.014 258);
 
-		--color-accent: oklch(70% 0.15 242);
-	}
+	--color-border: oklch(37% 0.014 258);
+	--color-border-strong: oklch(44% 0.014 258);
+	--color-border-focus: oklch(62% 0.14 242);
+
+	--color-accent: oklch(70% 0.15 242);
+}
+[data-scheme='light'] {
+	color-scheme: light;
 }
 
 :root {
@@ -140,23 +155,21 @@
 	--shadow-sm: 0 1px 2px oklch(0.4 0.04 60 / 0.08);
 	--shadow-lg: 0 10px 30px -8px oklch(0.4 0.05 55 / 0.16);
 }
-@media (prefers-color-scheme: dark) {
-	[data-theme='claude'] {
-		--color-surface: oklch(0.19 0.012 58);
-		--color-surface-raised: oklch(0.245 0.014 58);
-		--color-surface-sunken: oklch(0.305 0.015 58);
-		--color-surface-panel: oklch(0.215 0.013 58);
-		--color-surface-inverse: oklch(0.93 0.01 85);
-		--color-fg: oklch(0.93 0.01 84);
-		--color-fg-secondary: oklch(0.79 0.012 80);
-		--color-fg-muted: oklch(0.65 0.014 72);
-		--color-fg-subtle: oklch(0.5 0.014 64);
-		--color-fg-inverse: oklch(0.23 0.016 55);
-		--color-border: oklch(0.33 0.013 58);
-		--color-border-strong: oklch(0.41 0.014 58);
-		--color-border-focus: oklch(0.66 0.09 50);
-		--color-accent: oklch(0.7 0.12 48);
-	}
+[data-scheme='dark'][data-theme='claude'] {
+	--color-surface: oklch(0.19 0.012 58);
+	--color-surface-raised: oklch(0.245 0.014 58);
+	--color-surface-sunken: oklch(0.305 0.015 58);
+	--color-surface-panel: oklch(0.215 0.013 58);
+	--color-surface-inverse: oklch(0.93 0.01 85);
+	--color-fg: oklch(0.93 0.01 84);
+	--color-fg-secondary: oklch(0.79 0.012 80);
+	--color-fg-muted: oklch(0.65 0.014 72);
+	--color-fg-subtle: oklch(0.5 0.014 64);
+	--color-fg-inverse: oklch(0.23 0.016 55);
+	--color-border: oklch(0.33 0.013 58);
+	--color-border-strong: oklch(0.41 0.014 58);
+	--color-border-focus: oklch(0.66 0.09 50);
+	--color-accent: oklch(0.7 0.12 48);
 }
 
 /* === ChatGPT — cool grays, green accent, tight + flat (no glass) ===== */
@@ -187,23 +200,21 @@
 	--blur-surface: 0px;
 	--glass-bg: var(--color-surface-panel);
 }
-@media (prefers-color-scheme: dark) {
-	[data-theme='chatgpt'] {
-		--color-surface: oklch(0.18 0 0);
-		--color-surface-raised: oklch(0.24 0 0);
-		--color-surface-sunken: oklch(0.3 0 0);
-		--color-surface-panel: oklch(0.205 0 0);
-		--color-surface-inverse: oklch(0.95 0 0);
-		--color-fg: oklch(0.95 0 0);
-		--color-fg-secondary: oklch(0.8 0 0);
-		--color-fg-muted: oklch(0.64 0 0);
-		--color-fg-subtle: oklch(0.48 0 0);
-		--color-fg-inverse: oklch(0.2 0 0);
-		--color-border: oklch(0.32 0 0);
-		--color-border-strong: oklch(0.4 0 0);
-		--color-border-focus: oklch(0.66 0.12 165);
-		--color-accent: oklch(0.66 0.13 164);
-	}
+[data-scheme='dark'][data-theme='chatgpt'] {
+	--color-surface: oklch(0.18 0 0);
+	--color-surface-raised: oklch(0.24 0 0);
+	--color-surface-sunken: oklch(0.3 0 0);
+	--color-surface-panel: oklch(0.205 0 0);
+	--color-surface-inverse: oklch(0.95 0 0);
+	--color-fg: oklch(0.95 0 0);
+	--color-fg-secondary: oklch(0.8 0 0);
+	--color-fg-muted: oklch(0.64 0 0);
+	--color-fg-subtle: oklch(0.48 0 0);
+	--color-fg-inverse: oklch(0.2 0 0);
+	--color-border: oklch(0.32 0 0);
+	--color-border-strong: oklch(0.4 0 0);
+	--color-border-focus: oklch(0.66 0.12 165);
+	--color-accent: oklch(0.66 0.13 164);
 }
 
 /* Frosted surface. Flat (opaque panel, no blur) unless the active theme
@@ -332,12 +343,10 @@ body {
 	color: var(--shiki-light);
 	background-color: var(--shiki-light-bg);
 }
-@media (prefers-color-scheme: dark) {
-	.gs-prose pre.shiki,
-	.gs-prose pre.shiki span {
-		color: var(--shiki-dark);
-		background-color: var(--shiki-dark-bg);
-	}
+[data-scheme='dark'] .gs-prose pre.shiki,
+[data-scheme='dark'] .gs-prose pre.shiki span {
+	color: var(--shiki-dark);
+	background-color: var(--shiki-dark-bg);
 }
 
 /* Fallback (unhighlighted) code blocks: when the language isn't loaded by

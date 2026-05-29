@@ -213,8 +213,12 @@ export type EnterBehavior = 'send' | 'newline';
 
 /** Visual theme family. 'glyphstream' is the default Signature identity;
  *  'claude' / 'chatgpt' are alternate style personalities. Light vs dark
- *  within each follows prefers-color-scheme. */
+ *  within each follows the color scheme below. */
 export type ThemeName = 'glyphstream' | 'claude' | 'chatgpt';
+
+/** Light/dark override. 'system' follows prefers-color-scheme;
+ *  'light' / 'dark' force that scheme regardless of the OS. */
+export type ColorScheme = 'system' | 'light' | 'dark';
 
 export interface UserPreferences {
 	/**
@@ -247,6 +251,10 @@ export interface UserPreferences {
 	 *  non-httpOnly `gs-theme` cookie so the server can apply it before first
 	 *  paint (no flash); the DB pref stays the source of truth. */
 	theme: ThemeName;
+	/** Light/dark override. Default 'system'. Mirrored into a `gs-scheme`
+	 *  cookie that the app.html inline script reads to set data-scheme before
+	 *  first paint. */
+	colorScheme: ColorScheme;
 	/**
 	 * Master switch for browser/OS push notifications when an assistant
 	 * message completes. Default false — push requires an explicit

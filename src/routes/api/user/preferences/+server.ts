@@ -17,10 +17,11 @@ import {
 	getUserPreferences,
 	setUserPreferences
 } from '$lib/server/db/queries/user-preferences';
-import type { EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
+import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 const THEME_NAMES: readonly ThemeName[] = ['glyphstream', 'claude', 'chatgpt'];
+const COLOR_SCHEMES: readonly ColorScheme[] = ['system', 'light', 'dark'];
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
@@ -59,6 +60,12 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 		patch.theme = body.theme as ThemeName;
 	}
+	if (body.colorScheme !== undefined) {
+		if (!COLOR_SCHEMES.includes(body.colorScheme as ColorScheme)) {
+			throw error(400, `Invalid colorScheme "${body.colorScheme as string}"`);
+		}
+		patch.colorScheme = body.colorScheme as ColorScheme;
+	}
 	if (typeof body.notificationsEnabled === 'boolean') {
 		patch.notificationsEnabled = body.notificationsEnabled;
 	}
@@ -83,6 +90,12 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 	// apply it before first paint on the next load (no flash). The DB pref
 	// stays the source of truth; this is just a fast pre-render read.
 	cookies.set('gs-theme', next.theme, {
+		path: '/',
+		maxAge: 60 * 60 * 24 * 365,
+		httpOnly: false,
+		sameSite: 'lax'
+	});
+	cookies.set('gs-scheme', next.colorScheme, {
 		path: '/',
 		maxAge: 60 * 60 * 24 * 365,
 		httpOnly: false,

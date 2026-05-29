@@ -21,6 +21,7 @@ const DEFAULTS: UserPreferences = {
 	enterBehavior: 'send',
 	showGreeting: true,
 	theme: 'glyphstream',
+	colorScheme: 'system',
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
@@ -76,6 +77,12 @@ function coerceUserPreferences(
 			input.theme === 'glyphstream' || input.theme === 'claude' || input.theme === 'chatgpt'
 				? input.theme
 				: fallback.theme,
+		colorScheme:
+			input.colorScheme === 'system' ||
+			input.colorScheme === 'light' ||
+			input.colorScheme === 'dark'
+				? input.colorScheme
+				: fallback.colorScheme,
 		notificationsEnabled:
 			typeof input.notificationsEnabled === 'boolean'
 				? input.notificationsEnabled

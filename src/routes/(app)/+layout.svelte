@@ -53,6 +53,29 @@
 		document.cookie = `gs-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
 	});
 
+	// Color-scheme (light/dark/system). On load/nav, sync the gs-scheme
+	// cookie from the authoritative DB pref (heals a stale cross-device
+	// cookie). The matchMedia listener re-resolves data-scheme from the
+	// COOKIE (which the Preferences switcher updates instantly, without an
+	// invalidate) so both a forced light/dark and OS flips under 'system'
+	// behave correctly. app.html's inline script does the same resolution
+	// before first paint; this keeps it live afterward.
+	$effect(() => {
+		if (!browser) return;
+		const pref = data.prefs?.colorScheme ?? 'system';
+		document.cookie = `gs-scheme=${pref}; path=/; max-age=31536000; samesite=lax`;
+		const mql = window.matchMedia('(prefers-color-scheme: dark)');
+		const apply = () => {
+			const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
+			const p = m ? m[1] : 'system';
+			const dark = p === 'dark' || (p !== 'light' && mql.matches);
+			document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+		};
+		apply();
+		mql.addEventListener('change', apply);
+		return () => mql.removeEventListener('change', apply);
+	});
+
 	// Sidebar link highlight combines "currently here" with "navigating
 	// there." The pending state matters on mobile especially, where
 	// there's no hover affordance — tap, then several hundred ms of

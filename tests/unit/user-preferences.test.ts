@@ -32,6 +32,7 @@ const EMPTY_PREFS = {
 	enterBehavior: 'send' as const,
 	showGreeting: true,
 	theme: 'glyphstream' as const,
+	colorScheme: 'system' as const,
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
@@ -231,6 +232,7 @@ describe('setUserPreferences', () => {
 		// Exactly the known fields, no extras leaking through.
 		expect(Object.keys(parsed).sort()).toEqual([
 			'aboutYou',
+			'colorScheme',
 			'customInstructions',
 			'enterBehavior',
 			'favoriteModels',
