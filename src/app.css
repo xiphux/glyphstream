@@ -154,6 +154,9 @@
 	--radius-2xl: 1.5rem;
 	--shadow-sm: 0 1px 2px oklch(0.4 0.04 60 / 0.08);
 	--shadow-lg: 0 10px 30px -8px oklch(0.4 0.05 55 / 0.16);
+	/* Flat: liquid glass is Signature-only — Claude uses a solid warm panel. */
+	--blur-surface: 0px;
+	--glass-bg: var(--color-surface-panel);
 }
 [data-scheme='dark'][data-theme='claude'] {
 	--color-surface: oklch(0.19 0.012 58);
