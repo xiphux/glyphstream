@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
 	import type { EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import {
 		getPermissionState,
 		isIosBeforeInstall,
@@ -28,9 +27,9 @@
 	// svelte-ignore state_referenced_locally
 	let showGreeting = $state(data.prefs.showGreeting);
 
-	// Theme auto-saves on select (like notifications) — it has a live DOM
-	// side effect (the data-theme attribute + cookie) that the form's
-	// Save/Revert flow doesn't model, so it's kept out of `dirty`.
+	// Theme has a live DOM side effect (the data-theme attribute + cookie),
+	// so it applies immediately on select via selectTheme rather than the
+	// shared saveField path.
 	// svelte-ignore state_referenced_locally
 	let theme = $state<ThemeName>(data.prefs.theme);
 	let themeError = $state<string | null>(null);
@@ -63,63 +62,34 @@
 		}
 	}
 
+	// Last-persisted snapshot. Text fields compare against it on blur so a
+	// no-op blur doesn't fire a redundant PATCH.
 	// svelte-ignore state_referenced_locally
 	let saved = $state<UserPreferences>({ ...data.prefs });
-	let busy = $state(false);
-	let error = $state<string | null>(null);
-	let justSaved = $state(false);
+	let savedFlash = $state(false);
+	let saveError = $state<string | null>(null);
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-	const dirty = $derived(
-		name !== saved.name ||
-			aboutYou !== saved.aboutYou ||
-			customInstructions !== saved.customInstructions ||
-			enterBehavior !== saved.enterBehavior ||
-			showGreeting !== saved.showGreeting
-	);
-
-	async function save() {
-		if (busy || !dirty) return;
-		busy = true;
-		error = null;
-		justSaved = false;
-		try {
-			const res = await fetch('/api/user/preferences', {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					name,
-					aboutYou,
-					customInstructions,
-					enterBehavior,
-					showGreeting
-				})
-			});
-			if (!res.ok) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			const next = (await res.json()) as UserPreferences;
-			saved = { ...next };
-			name = next.name;
-			aboutYou = next.aboutYou;
-			customInstructions = next.customInstructions;
-			enterBehavior = next.enterBehavior;
-			showGreeting = next.showGreeting;
-			justSaved = true;
-			setTimeout(() => (justSaved = false), 2000);
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
-			busy = false;
+	// Single auto-save path for every preference: PATCH, refresh the
+	// snapshot, flash a quiet "Saved". (patchPrefs is declared below;
+	// function declarations hoist, so calling it here is fine.)
+	async function saveField(patch: Partial<UserPreferences>) {
+		saveError = null;
+		const next = await patchPrefs(patch);
+		if (!next) {
+			saveError = "Couldn't save — check your connection and try again.";
+			return;
 		}
+		saved = { ...next };
+		savedFlash = true;
+		clearTimeout(flashTimer);
+		flashTimer = setTimeout(() => (savedFlash = false), 1500);
 	}
 
-	function revert() {
-		name = saved.name;
-		aboutYou = saved.aboutYou;
-		customInstructions = saved.customInstructions;
-		enterBehavior = saved.enterBehavior;
-		showGreeting = saved.showGreeting;
-		error = null;
+	// Text fields save on blur (not per keystroke), and only when changed.
+	function saveTextField(field: 'name' | 'aboutYou' | 'customInstructions', value: string) {
+		if (value === saved[field]) return;
+		void saveField({ [field]: value });
 	}
 
 	// --- Notifications --------------------------------------------------
@@ -265,10 +235,7 @@
 
 	<div class="flex-1 overflow-y-auto px-4 py-4">
 		<form
-			onsubmit={(e) => {
-				e.preventDefault();
-				void save();
-			}}
+			onsubmit={(e) => e.preventDefault()}
 			class="mx-auto flex max-w-2xl flex-col gap-6 rounded-lg border border-border bg-surface-panel p-4"
 		>
 			<section class="flex flex-col gap-3">
@@ -288,7 +255,7 @@
 						bind:value={name}
 						type="text"
 						maxlength={100}
-						disabled={busy}
+						onblur={() => saveTextField('name', name)}
 						placeholder="Your name or nickname"
 						class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					/>
@@ -301,7 +268,7 @@
 						bind:value={aboutYou}
 						rows="3"
 						maxlength={2000}
-						disabled={busy}
+						onblur={() => saveTextField('aboutYou', aboutYou)}
 						placeholder="Background, interests, or other standing context to keep in mind"
 						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					></textarea>
@@ -314,7 +281,7 @@
 						bind:value={customInstructions}
 						rows="6"
 						maxlength={4000}
-						disabled={busy}
+						onblur={() => saveTextField('customInstructions', customInstructions)}
 						placeholder="Response style, tone, or formatting preferences"
 						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					></textarea>
@@ -337,8 +304,10 @@
 							name="enter-behavior"
 							value="send"
 							checked={enterBehavior === 'send'}
-							onchange={() => (enterBehavior = 'send')}
-							disabled={busy}
+							onchange={() => {
+								enterBehavior = 'send';
+								void saveField({ enterBehavior: 'send' });
+							}}
 							class="mt-0.5"
 						/>
 						<span>
@@ -354,8 +323,10 @@
 							name="enter-behavior"
 							value="newline"
 							checked={enterBehavior === 'newline'}
-							onchange={() => (enterBehavior = 'newline')}
-							disabled={busy}
+							onchange={() => {
+								enterBehavior = 'newline';
+								void saveField({ enterBehavior: 'newline' });
+							}}
 							class="mt-0.5"
 						/>
 						<span>
@@ -376,7 +347,7 @@
 					<input
 						type="checkbox"
 						bind:checked={showGreeting}
-						disabled={busy}
+						onchange={() => void saveField({ showGreeting })}
 						class="mt-0.5"
 					/>
 					<span>
@@ -511,38 +482,25 @@
 				{/if}
 			</section>
 
-			{#if error}
+			{#if saveError}
 				<div
 					class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
 				>
-					{error}
+					{saveError}
 				</div>
 			{/if}
 
-			<div class="flex items-center justify-end gap-2">
-				{#if justSaved}
-					<span class="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+			<!-- Auto-save: text fields persist on blur, toggles on change.
+				 This row just confirms a save landed. -->
+			<div class="flex h-5 items-center justify-end text-xs text-fg-muted">
+				{#if savedFlash}
+					<span class="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
 						<Check size={14} strokeWidth={2.5} />
 						Saved
 					</span>
+				{:else}
+					<span>Changes save automatically.</span>
 				{/if}
-				{#if dirty}
-					<button
-						type="button"
-						onclick={revert}
-						disabled={busy}
-						class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised disabled:opacity-50"
-					>
-						Revert
-					</button>
-				{/if}
-				<button
-					type="submit"
-					disabled={!dirty || busy}
-					class="rounded-md bg-surface-inverse px-4 py-2 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
-				>
-					{busy ? 'Saving…' : 'Save'}
-				</button>
 			</div>
 		</form>
 	</div>
