@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { onDestroy, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { invalidateAll } from '$app/navigation';
 	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
@@ -342,6 +343,24 @@
 	// can land focus in its textarea. The composer owns the ref + the
 	// auto-resize; the page owns the *when* of focusing.
 	let composerRef = $state<{ focus: () => void } | null>(null);
+
+	// Measured height of the floating composer overlay. The message list
+	// pads its bottom by this much (plus a gap) so the last message can
+	// scroll fully clear of the frosted composer that floats over it.
+	let composerHeight = $state(0);
+
+	// Message-arrival fade. `listMounted` gates the in:fade so only bubbles
+	// that mount AFTER the initial render animate — a fresh send, a streamed
+	// reply, or a branch switch — rather than the whole history re-fading on
+	// load. Opacity-only (no layout shift) so it can't perturb the pin-to-
+	// bottom / scroll math. Honors prefers-reduced-motion.
+	let listMounted = $state(false);
+	onMount(() => {
+		listMounted = true;
+	});
+	const reduceMotion =
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 	// Land focus in the follow-up composer whenever the conversation
 	// becomes ready for input — on entering a conversation (including
@@ -1361,21 +1380,24 @@
 	}
 </script>
 
-<div class="flex h-full flex-col">
+<div class="relative flex h-full flex-col">
 	<ChatHeader {title} {assistantLabel} {contextTokenCount} />
 
 	<!--
-		Bottom mask-fade so message content dissolves into the page bg
-		just before reaching the composer, instead of meeting it with a
-		hard rectangular edge. ~32px fade is enough to soften the seam
-		without cutting off readable content. Pure CSS mask-image — no JS,
-		works the same on every browser that supports CSS Masking L1.
+		Scroll area fills the full height *behind* the floating composer
+		(see below); the message list pads its own bottom by the composer's
+		measured height so the last message scrolls clear. No mask-fade —
+		content now slides under the frosted-glass composer, which is the
+		transition, rather than dissolving into the page bg.
 	-->
 	<div
 		bind:this={scrollContainer}
-		class="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 [mask-image:linear-gradient(to_bottom,black_calc(100%-32px),transparent)]"
+		class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4"
 	>
-		<div class="mx-auto min-w-0 max-w-3xl space-y-4">
+		<div
+			class="mx-auto min-w-0 max-w-3xl space-y-4"
+			style="padding-bottom: {composerHeight + 24}px"
+		>
 			{#each visibleMessages as m, i (m.id)}
 				<!--
 					Message + action-bar group. The actions row sits directly
@@ -1407,6 +1429,7 @@
 				-->
 				<div
 					id="msg-{m.id}"
+					in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
 					class={['group', mergeWithPrev && 'mt-0!', mergeWithNext && 'mb-0!']}
 				>
 				{#if m.id === editingMessageId}
@@ -1476,41 +1499,50 @@
 		</div>
 	</div>
 
-	<!-- Floating composer. Sits above the scrollable message area without
-		 a separator border — reads as part of the chat surface. The form
-		 itself is the rounded box; no surrounding footer chrome. -->
-	<div class="relative px-4 pb-4">
-		<ScrollToBottomButton
-			visible={!isNearBottom}
-			onClick={() => scrollToBottom({ smooth: true })}
-		/>
-		{#if editingMessageId}
-			<!-- Composer hidden while editing: the edit happens inline on
-				 the message bubble itself, with its own Save/Cancel
-				 controls. Re-shown when the user dismisses the inline
-				 editor. -->
-		{:else}
-			<ChatComposer
-				bind:this={composerRef}
-				bind:composerText
-				bind:modelId
-				{errorMsg}
-				{attachments}
-				{modelKind}
-				{disabledFeatures}
-				models={data.models}
-				favoritedIds={data.prefs?.favoriteModels ?? []}
-				{allowAttachments}
-				{hasValidModel}
-				{generating}
-				canStop={(busy && activeAbort != null) || recoveredInFlight}
-				enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-				onSend={() => void send()}
-				onStop={stop}
-				onFeaturesChange={(next) => void persistDisabledFeatures(next)}
-				onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+	<!--
+		Floating composer overlay. Absolutely positioned over the bottom of
+		the scroll area so messages scroll *behind* the frosted glass (the
+		Signature liquid-glass look). pointer-events-none lets wheel / clicks
+		in the side margins fall through to the messages; the centered
+		composer re-enables them. Its measured height pads the message list.
+	-->
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
+		<div
+			class="pointer-events-auto relative mx-auto max-w-3xl"
+			bind:clientHeight={composerHeight}
+		>
+			<ScrollToBottomButton
+				visible={!isNearBottom}
+				onClick={() => scrollToBottom({ smooth: true })}
 			/>
-		{/if}
+			{#if editingMessageId}
+				<!-- Composer hidden while editing: the edit happens inline on
+					 the message bubble itself, with its own Save/Cancel
+					 controls. Re-shown when the user dismisses the inline
+					 editor. -->
+			{:else}
+				<ChatComposer
+					bind:this={composerRef}
+					bind:composerText
+					bind:modelId
+					{errorMsg}
+					{attachments}
+					{modelKind}
+					{disabledFeatures}
+					models={data.models}
+					favoritedIds={data.prefs?.favoriteModels ?? []}
+					{allowAttachments}
+					{hasValidModel}
+					{generating}
+					canStop={(busy && activeAbort != null) || recoveredInFlight}
+					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+					onSend={() => void send()}
+					onStop={stop}
+					onFeaturesChange={(next) => void persistDisabledFeatures(next)}
+					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+				/>
+			{/if}
+		</div>
 	</div>
 </div>
 

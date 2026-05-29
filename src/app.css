@@ -59,6 +59,67 @@
 
 :root {
 	color-scheme: light dark;
+
+	/*
+	 * Signature "liquid glass" treatment. Applied only to designated
+	 * surfaces via the `surface-glass` utility (composer, popovers,
+	 * dialogs, drawer) — flat everywhere else. `--glass-bg` is a
+	 * translucent tint of the panel color so backdrop-blur frosts the
+	 * content scrolling behind it; `--blur-surface` is the blur radius.
+	 */
+	--blur-surface: 10px;
+	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 80%, transparent);
+
+	/* Motion tokens — the animation pass references these so timing stays
+	 * consistent across the app (and a theme can retune feel in one place). */
+	--motion-fast: 120ms;
+	--motion-base: 200ms;
+	--motion-slow: 320ms;
+	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
+	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+}
+
+/* Accessibility: drop translucency/blur and motion when the user asks for
+ * reduced transparency / motion. `surface-glass` then renders as a solid
+ * panel; token-driven transitions collapse to instant. */
+@media (prefers-reduced-transparency: reduce) {
+	:root {
+		--blur-surface: 0px;
+		--glass-bg: var(--color-surface-panel);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--motion-fast: 0ms;
+		--motion-base: 0ms;
+		--motion-slow: 0ms;
+	}
+}
+
+/* Frosted surface. Flat (opaque panel, no blur) unless the active theme
+ * turns on --blur-surface / a translucent --glass-bg. */
+@utility surface-glass {
+	background-color: var(--glass-bg);
+	backdrop-filter: blur(var(--blur-surface));
+	-webkit-backdrop-filter: blur(var(--blur-surface));
+}
+
+/* Overlay entrance. A subtle fade + drop-in for transient surfaces that
+ * mount on open (popovers, dropdowns, dialog cards, toast). Driven by
+ * --motion-fast, which prefers-reduced-motion collapses to 0ms — so the
+ * keyframe simply resolves instantly with no flash. */
+@keyframes gs-pop-in {
+	from {
+		opacity: 0;
+		transform: translateY(-4px) scale(0.985);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+.gs-pop {
+	animation: gs-pop-in var(--motion-fast) var(--ease-emphasized);
 }
 
 html,

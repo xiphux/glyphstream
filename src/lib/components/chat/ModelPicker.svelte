@@ -351,7 +351,7 @@
 			align="end"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border bg-surface-panel shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
+			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
 			<!-- Search row. Auto-focuses on open via Popover's focus-trap. -->
 			<div class="flex items-center gap-2 border-b border-border px-3 py-2">

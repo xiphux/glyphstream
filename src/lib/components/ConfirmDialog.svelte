@@ -32,7 +32,7 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-lg border border-border bg-surface-panel p-5 shadow-xl"
+			class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl"
 		>
 			<h2 id="confirm-dialog-title" class="text-base font-semibold">{p.title}</h2>
 			<p class="mt-2 text-sm text-fg-muted">{p.message}</p>

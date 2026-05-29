@@ -38,7 +38,7 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="fixed left-4 right-4 z-50 flex items-center gap-3 rounded-md border border-border bg-surface-panel px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
+		class="gs-pop fixed left-4 right-4 z-50 flex items-center gap-3 rounded-md border border-border surface-glass px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
 		style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 	>
 		<Icon size={16} strokeWidth={2.25} class="shrink-0 {kindIconClass[t.kind]}" />

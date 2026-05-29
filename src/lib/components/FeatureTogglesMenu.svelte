@@ -74,7 +74,7 @@
 			align="start"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-border bg-surface-panel p-3 shadow-lg"
+			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-border surface-glass gs-pop p-3 shadow-lg"
 		>
 			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
 				This conversation

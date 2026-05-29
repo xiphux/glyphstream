@@ -177,7 +177,7 @@
 			<Popover.Portal>
 				<Popover.Content
 					sideOffset={4}
-					class="z-50 max-w-[260px] rounded-md border border-border bg-surface-panel px-3 py-2 text-xs shadow-lg"
+					class="z-50 max-w-[260px] rounded-md border border-border surface-glass gs-pop px-3 py-2 text-xs shadow-lg"
 				>
 					{#if message.role === 'user'}
 						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">

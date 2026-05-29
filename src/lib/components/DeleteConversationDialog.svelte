@@ -134,7 +134,7 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-lg border border-border bg-surface-panel p-5 shadow-xl"
+			class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl"
 		>
 			<h2 id="delete-conv-title" class="text-base font-semibold">
 				Delete this conversation?

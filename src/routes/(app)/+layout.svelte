@@ -801,7 +801,7 @@
 										<DropdownMenu.Content
 											sideOffset={4}
 											align="end"
-											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface-panel py-1 shadow-lg"
+											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 										>
 											<DropdownMenu.Item
 												onSelect={() => startRename(c.id, c.title)}
@@ -865,7 +865,7 @@
 						sideOffset={6}
 						align="start"
 						side="top"
-						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-surface-panel py-1 shadow-lg"
+						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 					>
 						<DropdownMenu.Item
 							onSelect={() => goto('/settings/preferences')}

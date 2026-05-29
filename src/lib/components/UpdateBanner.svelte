@@ -23,7 +23,7 @@
 <div
 	role="status"
 	aria-live="polite"
-	class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-panel px-3 py-2 text-sm shadow-lg"
+	class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border surface-glass px-3 py-2 text-sm shadow-lg"
 	style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 >
 	<RefreshCw size={14} strokeWidth={2.25} class="shrink-0 opacity-70" />

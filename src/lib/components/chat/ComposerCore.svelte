@@ -126,7 +126,7 @@
 	ondragover={onDragOver}
 	ondragleave={onDragLeave}
 	ondrop={onDrop}
-	class="relative rounded-2xl border border-border-strong bg-surface-panel px-3 py-2 shadow-sm transition focus-within:border-border-focus"
+	class="surface-glass relative rounded-2xl border border-border-strong px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
 	<AttachmentThumbnails {attachments} class="px-1" />
 	<textarea
