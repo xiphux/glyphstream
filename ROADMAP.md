@@ -66,20 +66,22 @@ expected priority, not time-bound.
   `deleteMediaToo` value. Trivially shippable any time the demand
   shows up.
 
-- **Playwright e2e suite.** `@playwright/test` is in devDependencies
-  but no actual suite has been stood up. Several recent bug classes
-  live entirely in browser-event territory and have been flagged as
-  manual-test territory because unit-testing them would mostly test
-  mocks rather than real behavior: gallery-launch `sessionStorage`
-  handoff, composer auto-resize after a programmatic text-set, iOS
-  suspension recovery (`visibilitychange`), network-handoff recovery
-  (`online`/`offline`), the autoattach state machine on branch
-  switches. A small Playwright suite — spinning up the dev server,
-  walking through representative flows — covers exactly this gap.
-  Worth scoping at a few high-value flows first (login + send a
-  message, generate an image + regenerate from gallery, edit a root
-  message and verify it branches, archive with Undo) rather than
-  attempting exhaustive UI coverage.
+- **Playwright e2e suite — expand coverage.** The suite is stood up
+  (`tests/e2e/`): it boots a production build against a mock OpenAI-
+  compatible upstream (`fixtures/mock-upstream.mjs`, a second
+  webServer) and walks the four high-value flows on both desktop and
+  mobile — send a message, generate an image + regenerate from gallery
+  (which exercises the gallery-launch `sessionStorage` handoff), edit a
+  root message + verify it branches, and archive with Undo. Auth is
+  covered via cookie-injected storageState plus an unauthenticated-
+  redirect test. Still uncovered, and still manual-test territory
+  because they need browser-*event* simulation rather than new flows:
+  composer auto-resize after a programmatic text-set, iOS suspension
+  recovery (`visibilitychange`), network-handoff recovery
+  (`online`/`offline`), and the autoattach state machine on branch
+  switches. Add these as a second tranche on top of the existing
+  harness — emulate the visibility/connectivity events and assert the
+  resulting recovery/resize, rather than driving a happy-path flow.
 
 ## Mid-term (v2)
 
