@@ -164,16 +164,15 @@ expected priority, not time-bound.
   while offline; resends when connectivity returns. Low priority — chat
   apps generally don't need this.
 
-- **Animation polish pass.** Motion design is intentionally minimal
-  today — the mobile drawer slides and that's about it. Toasts,
-  dropdowns, message arrivals, and most state changes pop in
-  instantly. A coordinated pass to add tasteful transitions
-  (toast enter/exit, message-arrival fade, model-picker open,
-  branch-switch crossfade, etc.) would noticeably lift perceived
-  polish. Worth doing as one coherent pass rather than per-feature
-  so timing curves and easing stay consistent across the app —
-  otherwise each addition risks looking out of place against the
-  no-animation baseline of everything else.
+- **Animation polish pass — DONE** (Phase 2 of the theming work).
+  Token-driven motion (`--motion-*` / `--ease-*` in `app.css`): a subtle
+  pop-in (fade + drop) on the transient overlays (popovers, dropdowns,
+  dialog cards, toast), an opacity-only message-arrival fade, and the
+  streaming in-flight bubble fading in on stream start (the persisted row
+  suppresses its own re-fade so the swap is seamless). Everything
+  collapses to instant under `prefers-reduced-motion`. Not yet done:
+  branch-switch crossfade and list-reorder motion — left out as the
+  higher-risk bits near the scroll/streaming logic.
 
 - **Regenerate response** as a separate action from edit.
 
@@ -198,20 +197,21 @@ expected priority, not time-bound.
   (the token-usage surfacing from `0adaf0d` is the prereq for the
   latter).
 
-- **Themes (prebuilt color schemes).** App follows
-  `prefers-color-scheme` for light/dark today, with no explicit user
-  toggle. Themes would add 3-5 named schemes selectable from
-  Preferences — default, warm, cool, high-contrast as candidates.
-  Each scheme applies a CSS custom-property palette at the document
-  root; shiki already uses this pattern for dual-theme code blocks,
-  so the precedent exists. Storage: a `theme` field on
-  UserPreferences. Open design question: do themes pair with
-  light/dark (each scheme has both variants, switched by
-  `prefers-color-scheme`) or own the full palette (each scheme is
-  one fixed look)? Former is more flexible, latter is simpler with
-  ~2x the named options. Real prerequisite is migrating from
-  hardcoded Tailwind `neutral-*` utilities to CSS-variable-backed
-  semantic tokens (`bg-surface`, `text-primary`, etc.) — once that's
-  in place the theme switch itself is a single root-level class
-  change. High-contrast is the most practical case beyond aesthetics
-  (accessibility for low-vision users).
+- **Themes — DONE.** Three style *personalities* (not just palette
+  swaps): **GlyphStream** Signature (neutral + liquid glass), **Claude**
+  (warm paper, soft/large radii, clay accent), **ChatGPT** (cool grays,
+  tight radii, flat, green accent). Each ships light + dark following
+  `prefers-color-scheme`, selectable from Preferences. Built on the
+  semantic-token migration this item flagged as the prereq; per-theme
+  `[data-theme]` blocks override color + radius + shadow + glass.
+  Applied before first paint via a non-httpOnly `gs-theme` cookie +
+  `hooks.server.ts` `transformPageChunk` (no FOUC), reconciled against
+  the DB pref after hydration. Deferred follow-ups:
+  - **Explicit light/dark/system override** — today follows system only.
+    Adding it means converting the `@media (prefers-color-scheme)` token
+    blocks to an attribute-driven scheme (`data-scheme`) resolved by a
+    FOUC-safe inline script, plus a selector in Preferences.
+  - **Per-theme dynamic `theme-color`** for the installed-PWA status bar
+    (currently shows Signature's tint for all themes).
+  - **High-contrast / accessibility scheme** — the most practical
+    additional theme beyond aesthetics.

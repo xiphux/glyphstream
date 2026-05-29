@@ -116,3 +116,27 @@ test.describe('flow: generate image + regenerate from gallery', () => {
 		await expect(page.locator('textarea').first()).toHaveValue(prompt);
 	});
 });
+
+test.describe('flow: theme switcher', () => {
+	test('selecting a theme applies it live and survives a reload (no FOUC)', async ({ page }) => {
+		await page.goto('/settings/preferences');
+		const html = page.locator('html');
+		// Default theme carries no data-theme attribute.
+		await expect(html).not.toHaveAttribute('data-theme', /.+/);
+
+		// Pick Claude — the switcher flips the attribute live (no reload).
+		await page.getByRole('button', { name: /^Claude/ }).click();
+		await expect(html).toHaveAttribute('data-theme', 'claude');
+
+		// Reload: the gs-theme cookie → hooks transformPageChunk means the
+		// attribute is in the server-rendered HTML before any JS runs, so it
+		// persists with no flash of the default.
+		await page.reload();
+		await expect(html).toHaveAttribute('data-theme', 'claude');
+
+		// Switching back to the default clears the attribute again (and
+		// leaves the DB pref clean for other tests).
+		await page.getByRole('button', { name: /^GlyphStream/ }).click();
+		await expect(html).not.toHaveAttribute('data-theme', /.+/);
+	});
+});
