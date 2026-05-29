@@ -94,7 +94,14 @@
 	 * content scrolling behind it; `--blur-surface` is the blur radius.
 	 */
 	--blur-surface: 10px;
-	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 80%, transparent);
+	/* Opacity is high enough that surfaces stay readable even where
+	   backdrop-filter blur is weak or skipped (integrated GPUs, notably
+	   Intel on Windows) — the blur is a frosted enhancement on capable
+	   GPUs, not a readability crutch. Panels (dense text) are nearly
+	   opaque; the composer gets a softer, frostier tint (sparse input over
+	   the message list, where more see-through reads nicely). */
+	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 94%, transparent);
+	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 88%, transparent);
 
 	/* Motion tokens — the animation pass references these so timing stays
 	 * consistent across the app (and a theme can retune feel in one place). */
@@ -112,6 +119,7 @@
 	:root {
 		--blur-surface: 0px;
 		--glass-bg: var(--color-surface-panel);
+		--glass-bg-soft: var(--color-surface-panel);
 	}
 }
 @media (prefers-reduced-motion: reduce) {
@@ -157,6 +165,7 @@
 	/* Flat: liquid glass is Signature-only — Claude uses a solid warm panel. */
 	--blur-surface: 0px;
 	--glass-bg: var(--color-surface-panel);
+	--glass-bg-soft: var(--color-surface-panel);
 }
 [data-scheme='dark'][data-theme='claude'] {
 	--color-surface: oklch(0.19 0.012 58);
@@ -202,6 +211,7 @@
 	/* Flat: ChatGPT's personality is no frosted glass. */
 	--blur-surface: 0px;
 	--glass-bg: var(--color-surface-panel);
+	--glass-bg-soft: var(--color-surface-panel);
 }
 [data-scheme='dark'][data-theme='chatgpt'] {
 	--color-surface: oklch(0.18 0 0);
@@ -224,6 +234,14 @@
  * turns on --blur-surface / a translucent --glass-bg. */
 @utility surface-glass {
 	background-color: var(--glass-bg);
+	backdrop-filter: blur(var(--blur-surface));
+	-webkit-backdrop-filter: blur(var(--blur-surface));
+}
+
+/* Softer (more see-through) frost for the composer — same blur, lower
+   tint opacity than the panels. */
+@utility surface-glass-soft {
+	background-color: var(--glass-bg-soft);
 	backdrop-filter: blur(var(--blur-surface));
 	-webkit-backdrop-filter: blur(var(--blur-surface));
 }
