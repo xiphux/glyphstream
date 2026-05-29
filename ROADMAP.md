@@ -206,12 +206,13 @@ expected priority, not time-bound.
   `[data-theme]` blocks override color + radius + shadow + glass.
   Applied before first paint via a non-httpOnly `gs-theme` cookie +
   `hooks.server.ts` `transformPageChunk` (no FOUC), reconciled against
-  the DB pref after hydration. Deferred follow-ups:
-  - **Explicit light/dark/system override** — today follows system only.
-    Adding it means converting the `@media (prefers-color-scheme)` token
-    blocks to an attribute-driven scheme (`data-scheme`) resolved by a
-    FOUC-safe inline script, plus a selector in Preferences.
+  the DB pref after hydration. An explicit **light/dark/system override**
+  also shipped: the dark cascade is attribute-driven (`data-scheme`,
+  resolved before first paint by an inline script from the `gs-scheme`
+  cookie or the OS), with a System/Light/Dark selector in Preferences.
+  Deferred follow-ups:
   - **Per-theme dynamic `theme-color`** for the installed-PWA status bar
-    (currently shows Signature's tint for all themes).
+    (currently shows Signature's tint for all themes; doesn't follow a
+    forced light/dark either).
   - **High-contrast / accessibility scheme** — the most practical
     additional theme beyond aesthetics.
