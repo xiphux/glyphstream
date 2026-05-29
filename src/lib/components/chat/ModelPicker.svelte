@@ -419,7 +419,7 @@
 									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
 								{/if}
 								{#if isSelected}
-									<Check size={14} strokeWidth={2.5} class="shrink-0 opacity-80" />
+									<Check size={14} strokeWidth={2.5} class="shrink-0 text-accent" />
 								{/if}
 							</button>
 							{#if onToggleFavorite}

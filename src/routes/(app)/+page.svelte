@@ -252,7 +252,7 @@
 			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border">
 				<svg
 					viewBox="0 0 32 32"
-					class="h-8 w-8 text-fg-secondary"
+					class="h-8 w-8 text-accent"
 					fill="none"
 					stroke="currentColor"
 					stroke-width="2.5"

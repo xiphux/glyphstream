@@ -15,45 +15,56 @@
  * refactor — identical pixels in both light and dark.
  */
 @theme {
+	/* GlyphStream Signature palette. Cool-tinted neutrals (a faint blue,
+	   hue ~250-258) so the default reads distinct from ChatGPT's true gray
+	   and Claude's warm cream, paired with a sky-blue accent. Alternate
+	   themes override these under [data-theme]. */
+
 	/* Backgrounds */
-	--color-surface: oklch(98.5% 0 0); /* neutral-50  — app/page background */
-	--color-surface-raised: oklch(97% 0 0); /* neutral-100 — raised panels, assistant bubble */
-	--color-surface-sunken: oklch(92.2% 0 0); /* neutral-200 — hover/active fills */
-	--color-surface-panel: oklch(100% 0 0); /* white — cards, dialogs, menus, composer, inputs */
-	--color-surface-inverse: oklch(20.5% 0 0); /* neutral-900 — user bubble, primary button */
+	--color-surface: oklch(98.5% 0.006 250);
+	--color-surface-raised: oklch(97% 0.008 250);
+	--color-surface-sunken: oklch(92.5% 0.01 250);
+	--color-surface-panel: oklch(99.4% 0.004 250);
+	--color-surface-inverse: oklch(21% 0.015 258);
 
 	/* Foreground / text */
-	--color-fg: oklch(20.5% 0 0); /* neutral-900 */
-	--color-fg-secondary: oklch(37.1% 0 0); /* neutral-700 */
-	--color-fg-muted: oklch(55.6% 0 0); /* neutral-500 */
-	--color-fg-subtle: oklch(70.8% 0 0); /* neutral-400 */
-	--color-fg-inverse: oklch(100% 0 0); /* white — text on inverse/primary surfaces */
+	--color-fg: oklch(21% 0.012 258);
+	--color-fg-secondary: oklch(37.5% 0.012 258);
+	--color-fg-muted: oklch(55.6% 0.01 256);
+	--color-fg-subtle: oklch(70.8% 0.008 254);
+	--color-fg-inverse: oklch(99% 0.004 250);
 
 	/* Borders */
-	--color-border: oklch(92.2% 0 0); /* neutral-200 */
-	--color-border-strong: oklch(87% 0 0); /* neutral-300 — inputs, stronger dividers */
-	--color-border-focus: oklch(70.8% 0 0); /* neutral-400 — focus borders */
+	--color-border: oklch(92% 0.009 250);
+	--color-border-strong: oklch(87% 0.011 250);
+	--color-border-focus: oklch(64% 0.15 242);
+
+	/* Accent — sky blue. In @theme so bg-accent / text-accent / etc. are
+	   generated; the value is overridden per theme. */
+	--color-accent: oklch(62% 0.16 242);
+	--color-accent-fg: oklch(99% 0.012 242);
 }
 
-/* glyphstream dark (default theme under system dark) — the exact dark
-   neutrals the `dark:` variants used, so dark mode is unchanged. */
+/* GlyphStream Signature dark — cool-tinted dark neutrals + sky accent. */
 @media (prefers-color-scheme: dark) {
 	:root {
-		--color-surface: oklch(14.5% 0 0); /* neutral-950 */
-		--color-surface-raised: oklch(26.9% 0 0); /* neutral-800 */
-		--color-surface-sunken: oklch(37.1% 0 0); /* neutral-700 */
-		--color-surface-panel: oklch(20.5% 0 0); /* neutral-900 */
-		--color-surface-inverse: oklch(97% 0 0); /* neutral-100 */
+		--color-surface: oklch(15% 0.012 258);
+		--color-surface-raised: oklch(27% 0.014 258);
+		--color-surface-sunken: oklch(37% 0.014 258);
+		--color-surface-panel: oklch(21% 0.014 258);
+		--color-surface-inverse: oklch(97% 0.006 250);
 
-		--color-fg: oklch(97% 0 0); /* neutral-100 */
-		--color-fg-secondary: oklch(87% 0 0); /* neutral-300 */
-		--color-fg-muted: oklch(70.8% 0 0); /* neutral-400 */
-		--color-fg-subtle: oklch(43.9% 0 0); /* neutral-600 */
-		--color-fg-inverse: oklch(20.5% 0 0); /* neutral-900 */
+		--color-fg: oklch(97% 0.006 250);
+		--color-fg-secondary: oklch(87% 0.009 254);
+		--color-fg-muted: oklch(71% 0.011 256);
+		--color-fg-subtle: oklch(44% 0.013 258);
+		--color-fg-inverse: oklch(21% 0.014 258);
 
-		--color-border: oklch(37.1% 0 0); /* neutral-700 */
-		--color-border-strong: oklch(43.9% 0 0); /* neutral-600 */
-		--color-border-focus: oklch(55.6% 0 0); /* neutral-500 */
+		--color-border: oklch(37% 0.014 258);
+		--color-border-strong: oklch(44% 0.014 258);
+		--color-border-focus: oklch(62% 0.14 242);
+
+		--color-accent: oklch(70% 0.15 242);
 	}
 }
 
@@ -288,7 +299,12 @@ body {
 	@apply my-3 border-neutral-300 dark:border-neutral-700;
 }
 .gs-prose a.gs-link {
-	@apply underline decoration-neutral-400 underline-offset-2 hover:decoration-neutral-700 dark:hover:decoration-neutral-200;
+	color: var(--color-accent);
+	text-decoration-color: color-mix(in oklch, var(--color-accent) 45%, transparent);
+	@apply underline underline-offset-2;
+}
+.gs-prose a.gs-link:hover {
+	text-decoration-color: var(--color-accent);
 }
 .gs-prose table {
 	@apply w-full border-collapse text-left;
