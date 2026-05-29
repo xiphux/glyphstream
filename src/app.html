@@ -26,6 +26,37 @@
 					/* leave unset → CSS falls back to light */
 				}
 			})();
+			// Liquid glass needs a GPU that actually renders backdrop-filter
+			// blur; integrated GPUs (e.g. Intel on Windows) often don't, where
+			// the low-opacity frost just bleeds content through. @supports
+			// can't tell — it's syntax-only — so probe the real GPU via the
+			// WebGL renderer string and only opt INTO the glassy low-opacity
+			// (data-blur="rich") for GPUs known to frost well. Anything
+			// unknown/masked stays on the readable default. Cached in a cookie
+			// so the WebGL probe runs at most once.
+			(function () {
+				try {
+					var c = document.cookie.match(/(?:^|;\s*)gs-blur=([^;]+)/);
+					var blur = c ? c[1] : null;
+					if (!blur) {
+						var cv = document.createElement('canvas');
+						var gl = cv.getContext('webgl') || cv.getContext('experimental-webgl');
+						var rich = false;
+						if (gl) {
+							var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+							if (dbg) {
+								var r = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '').toLowerCase();
+								rich = /apple|nvidia|geforce|rtx|gtx|radeon rx|radeon pro/.test(r);
+							}
+						}
+						blur = rich ? 'rich' : 'plain';
+						document.cookie = 'gs-blur=' + blur + '; path=/; max-age=31536000; samesite=lax';
+					}
+					if (blur === 'rich') document.documentElement.dataset.blur = 'rich';
+				} catch (e) {
+					/* leave unset → readable default */
+				}
+			})();
 		</script>
 		<!-- PWA: theme-color drives the iOS status bar tint when installed.
 			 Cold-load default (Signature light); syncThemeColorMeta() updates

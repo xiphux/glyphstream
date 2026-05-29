@@ -94,14 +94,20 @@
 	 * content scrolling behind it; `--blur-surface` is the blur radius.
 	 */
 	--blur-surface: 10px;
-	/* Opacity is high enough that surfaces stay readable even where
-	   backdrop-filter blur is weak or skipped (integrated GPUs, notably
-	   Intel on Windows) — the blur is a frosted enhancement on capable
-	   GPUs, not a readability crutch. Panels (dense text) are nearly
-	   opaque; the composer gets a softer, frostier tint (sparse input over
-	   the message list, where more see-through reads nicely). */
-	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 90%, transparent);
-	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 82%, transparent);
+	/*
+	 * Glass opacity is split by GPU capability via `data-blur` (set by the
+	 * app.html probe from the WebGL renderer). The SAME opacity reads very
+	 * differently depending on whether the blur actually renders: with a
+	 * strong blur (Apple / discrete GPUs) a low opacity looks properly
+	 * frosted, but with the blur weak/absent (integrated GPUs, e.g. Intel
+	 * on Windows) that same low opacity just shows sharp content bleeding
+	 * through and becomes hard to read. So the DEFAULT here is the
+	 * readable, high-opacity path (legible on the tint alone); the
+	 * [data-blur='rich'] block below drops it for GPUs that frost properly.
+	 * Panels stay a touch more opaque than the composer (denser text).
+	 */
+	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 95%, transparent);
+	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 92%, transparent);
 
 	/* Motion tokens — the animation pass references these so timing stays
 	 * consistent across the app (and a theme can retune feel in one place). */
@@ -110,6 +116,14 @@
 	--motion-slow: 320ms;
 	--ease-standard: cubic-bezier(0.2, 0, 0, 1);
 	--ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+}
+
+/* Capable GPU (data-blur='rich'): the blur does the frosting, so drop the
+   opacity for a proper glassy look. Placed before the reduced-* and theme
+   blocks so those still win (force opaque / flat) where they apply. */
+[data-blur='rich'] {
+	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 84%, transparent);
+	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 82%, transparent);
 }
 
 /* Accessibility: drop translucency/blur and motion when the user asks for
