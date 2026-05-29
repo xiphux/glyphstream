@@ -490,16 +490,15 @@
 				</div>
 			{/if}
 
-			<!-- Auto-save: text fields persist on blur, toggles on change.
-				 This row just confirms a save landed. -->
-			<div class="flex h-5 items-center justify-end text-xs text-fg-muted">
+			<!-- Auto-save confirmation flash. Fixed height so the row doesn't
+				 jump when "Saved" appears/clears; no resting-state label since
+				 the absence of a Save button already implies auto-save. -->
+			<div class="flex h-5 items-center justify-end text-xs">
 				{#if savedFlash}
 					<span class="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
 						<Check size={14} strokeWidth={2.5} />
 						Saved
 					</span>
-				{:else}
-					<span>Changes save automatically.</span>
 				{/if}
 			</div>
 		</form>
