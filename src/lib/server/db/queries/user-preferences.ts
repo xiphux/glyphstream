@@ -20,6 +20,7 @@ const DEFAULTS: UserPreferences = {
 	customInstructions: '',
 	enterBehavior: 'send',
 	showGreeting: true,
+	theme: 'glyphstream',
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
@@ -71,6 +72,10 @@ function coerceUserPreferences(
 				: fallback.enterBehavior,
 		showGreeting:
 			typeof input.showGreeting === 'boolean' ? input.showGreeting : fallback.showGreeting,
+		theme:
+			input.theme === 'glyphstream' || input.theme === 'claude' || input.theme === 'chatgpt'
+				? input.theme
+				: fallback.theme,
 		notificationsEnabled:
 			typeof input.notificationsEnabled === 'boolean'
 				? input.notificationsEnabled

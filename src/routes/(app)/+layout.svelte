@@ -38,6 +38,21 @@
 
 	let { data, children } = $props();
 
+	// Keep <html data-theme> in sync with the authoritative theme pref.
+	// hooks.server.ts sets it from the gs-theme cookie before first paint
+	// (no flash); this re-affirms it from data.prefs (the DB source of
+	// truth) after hydration — correcting a stale cookie if the theme was
+	// changed on another device — and rewrites the cookie to match.
+	// 'glyphstream' is the default and carries no attribute.
+	$effect(() => {
+		if (!browser) return;
+		const theme = data.prefs?.theme ?? 'glyphstream';
+		const root = document.documentElement;
+		if (theme === 'glyphstream') delete root.dataset.theme;
+		else root.dataset.theme = theme;
+		document.cookie = `gs-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
+	});
+
 	// Sidebar link highlight combines "currently here" with "navigating
 	// there." The pending state matters on mobile especially, where
 	// there's no hover affordance — tap, then several hundred ms of

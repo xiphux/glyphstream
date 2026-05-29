@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
-	import type { EnterBehavior, UserPreferences } from '$lib/types/api';
+	import type { EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import {
 		getPermissionState,
@@ -27,6 +27,41 @@
 	let enterBehavior = $state<EnterBehavior>(data.prefs.enterBehavior);
 	// svelte-ignore state_referenced_locally
 	let showGreeting = $state(data.prefs.showGreeting);
+
+	// Theme auto-saves on select (like notifications) — it has a live DOM
+	// side effect (the data-theme attribute + cookie) that the form's
+	// Save/Revert flow doesn't model, so it's kept out of `dirty`.
+	// svelte-ignore state_referenced_locally
+	let theme = $state<ThemeName>(data.prefs.theme);
+	let themeError = $state<string | null>(null);
+	const THEMES: { id: ThemeName; label: string; description: string }[] = [
+		{ id: 'glyphstream', label: 'GlyphStream', description: 'Signature liquid glass' },
+		{ id: 'claude', label: 'Claude', description: 'Warm paper, soft edges' },
+		{ id: 'chatgpt', label: 'ChatGPT', description: 'Cool, compact, flat' }
+	];
+
+	function applyThemeToDom(t: ThemeName) {
+		const root = document.documentElement;
+		if (t === 'glyphstream') delete root.dataset.theme;
+		else root.dataset.theme = t;
+		document.cookie = `gs-theme=${t}; path=/; max-age=31536000; samesite=lax`;
+	}
+
+	async function selectTheme(next: ThemeName) {
+		if (theme === next) return;
+		const prev = theme;
+		// Apply instantly — the CSS-var cascade re-themes the whole app with
+		// no reload; existing transitions give a soft cross-fade for free.
+		theme = next;
+		applyThemeToDom(next);
+		themeError = null;
+		const saved = await patchPrefs({ theme: next });
+		if (!saved) {
+			theme = prev;
+			applyThemeToDom(prev);
+			themeError = "Couldn't save theme — reverted.";
+		}
+	}
 
 	// svelte-ignore state_referenced_locally
 	let saved = $state<UserPreferences>({ ...data.prefs });
@@ -351,6 +386,37 @@
 						</span>
 					</span>
 				</label>
+			</section>
+
+			<div class="border-t border-border"></div>
+
+			<section class="flex flex-col gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">Theme</h2>
+					<p class="mt-0.5 text-xs text-fg-muted">
+						Pick a visual style. Light vs dark within each follows your system
+						setting. Applies instantly.
+					</p>
+				</div>
+				<div class="grid grid-cols-3 gap-2">
+					{#each THEMES as t (t.id)}
+						<button
+							type="button"
+							onclick={() => selectTheme(t.id)}
+							aria-pressed={theme === t.id}
+							class="flex flex-col gap-1 rounded-lg border p-3 text-left transition {theme ===
+							t.id
+								? 'border-border-focus bg-surface-sunken'
+								: 'border-border hover:bg-surface-raised'}"
+						>
+							<span class="text-sm font-medium">{t.label}</span>
+							<span class="text-xs text-fg-muted">{t.description}</span>
+						</button>
+					{/each}
+				</div>
+				{#if themeError}
+					<p class="text-xs text-red-600 dark:text-red-400">{themeError}</p>
+				{/if}
 			</section>
 
 			<div class="border-t border-border"></div>

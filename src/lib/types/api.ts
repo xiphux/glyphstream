@@ -211,6 +211,11 @@ export interface ChatMessage {
 /** How the message composer treats the Enter key. */
 export type EnterBehavior = 'send' | 'newline';
 
+/** Visual theme family. 'glyphstream' is the default Signature identity;
+ *  'claude' / 'chatgpt' are alternate style personalities. Light vs dark
+ *  within each follows prefers-color-scheme. */
+export type ThemeName = 'glyphstream' | 'claude' | 'chatgpt';
+
 export interface UserPreferences {
 	/**
 	 * The three personalization fields below are combined server-side
@@ -238,6 +243,10 @@ export interface UserPreferences {
 	 * new-chat page. Default true; minority of users may prefer the
 	 * cleaner header without familial address. */
 	showGreeting: boolean;
+	/** Selected visual theme family. Default 'glyphstream'. Mirrored into a
+	 *  non-httpOnly `gs-theme` cookie so the server can apply it before first
+	 *  paint (no flash); the DB pref stays the source of truth. */
+	theme: ThemeName;
 	/**
 	 * Master switch for browser/OS push notifications when an assistant
 	 * message completes. Default false — push requires an explicit

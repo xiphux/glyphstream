@@ -17,8 +17,10 @@ import {
 	getUserPreferences,
 	setUserPreferences
 } from '$lib/server/db/queries/user-preferences';
-import type { EnterBehavior, UserPreferences } from '$lib/types/api';
+import type { EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 import type { RequestHandler } from './$types';
+
+const THEME_NAMES: readonly ThemeName[] = ['glyphstream', 'claude', 'chatgpt'];
 
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
@@ -27,7 +29,7 @@ export const GET: RequestHandler = ({ locals }) => {
 	return json(prefs);
 };
 
-export const PATCH: RequestHandler = async ({ locals, request }) => {
+export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 	requireUser(locals);
 
 	const body = await parseJsonBody<Partial<UserPreferences>>(request);
@@ -51,6 +53,12 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	if (typeof body.showGreeting === 'boolean') {
 		patch.showGreeting = body.showGreeting;
 	}
+	if (body.theme !== undefined) {
+		if (!THEME_NAMES.includes(body.theme as ThemeName)) {
+			throw error(400, `Invalid theme "${body.theme as string}"`);
+		}
+		patch.theme = body.theme as ThemeName;
+	}
 	if (typeof body.notificationsEnabled === 'boolean') {
 		patch.notificationsEnabled = body.notificationsEnabled;
 	}
@@ -71,5 +79,14 @@ export const PATCH: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const next = setUserPreferences(locals.user.id, patch);
+	// Mirror the theme into a non-httpOnly cookie so hooks.server.ts can
+	// apply it before first paint on the next load (no flash). The DB pref
+	// stays the source of truth; this is just a fast pre-render read.
+	cookies.set('gs-theme', next.theme, {
+		path: '/',
+		maxAge: 60 * 60 * 24 * 365,
+		httpOnly: false,
+		sameSite: 'lax'
+	});
 	return json(next);
 };

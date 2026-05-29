@@ -31,6 +31,7 @@ const EMPTY_PREFS = {
 	customInstructions: '',
 	enterBehavior: 'send' as const,
 	showGreeting: true,
+	theme: 'glyphstream' as const,
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
@@ -237,7 +238,8 @@ describe('setUserPreferences', () => {
 			'notificationsEnabled',
 			'notificationsForegroundToast',
 			'notificationsShowContent',
-			'showGreeting'
+			'showGreeting',
+			'theme'
 		]);
 	});
 

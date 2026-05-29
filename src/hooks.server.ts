@@ -32,7 +32,25 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const token = readSessionCookie(event.cookies);
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
-	const response = await resolve(event);
+
+	// Apply the saved theme to <html> before first paint so there's no
+	// flash of the default theme. The `gs-theme` cookie mirrors the DB pref
+	// (written by the prefs PATCH) and is readable here even pre-auth /
+	// cold, so the very first render is already themed. 'glyphstream' is the
+	// default and carries no attribute (it falls through to :root); only the
+	// alternates inject one.
+	const themeCookie = event.cookies.get('gs-theme');
+	const theme = themeCookie === 'claude' || themeCookie === 'chatgpt' ? themeCookie : null;
+
+	const response = await resolve(
+		event,
+		theme
+			? {
+					transformPageChunk: ({ html }) =>
+						html.replace('<html lang="en"', `<html lang="en" data-theme="${theme}"`)
+				}
+			: undefined
+	);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
 	}

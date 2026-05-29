@@ -9,8 +9,11 @@
 			content="width=device-width, initial-scale=1, viewport-fit=cover"
 		/>
 		<meta name="text-scale" content="scale" />
-		<!-- PWA: theme drives the iOS status bar tint when installed. -->
-		<meta name="theme-color" content="#0f172a" />
+		<!-- PWA: theme-color drives the iOS status bar tint when installed.
+			 Two media-scoped tags so light/dark cold-load correctly; values
+			 are the Signature surface colors (neutral-50 / neutral-950). -->
+		<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
 		<!-- iOS PWA-specific hints. apple-touch-icon is the home-screen icon
 			 because iOS still doesn't honor SVG icons in the web manifest. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
