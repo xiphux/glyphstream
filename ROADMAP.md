@@ -198,7 +198,7 @@ expected priority, not time-bound.
   latter).
 
 - **Themes — DONE.** Three style *personalities* (not just palette
-  swaps): **GlyphStream** Signature (neutral + liquid glass), **Claude**
+  swaps): **GlyphStream** Signature (neutral + frosted glass), **Claude**
   (warm paper, soft/large radii, clay accent), **ChatGPT** (cool grays,
   tight radii, flat, green accent). Each ships light + dark following
   `prefers-color-scheme`, selectable from Preferences. Built on the

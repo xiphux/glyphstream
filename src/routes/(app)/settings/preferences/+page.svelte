@@ -35,7 +35,7 @@
 	let theme = $state<ThemeName>(data.prefs.theme);
 	let themeError = $state<string | null>(null);
 	const THEMES: { id: ThemeName; label: string; description: string }[] = [
-		{ id: 'glyphstream', label: 'GlyphStream', description: 'Signature liquid glass' },
+		{ id: 'glyphstream', label: 'GlyphStream', description: 'Signature frosted glass' },
 		{ id: 'claude', label: 'Claude', description: 'Warm paper, soft edges' },
 		{ id: 'chatgpt', label: 'ChatGPT', description: 'Cool, compact, flat' }
 	];
