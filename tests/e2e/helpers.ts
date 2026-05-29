@@ -1,0 +1,110 @@
+import { resolve } from 'node:path';
+import Database from 'better-sqlite3';
+import { expect, type Page } from '@playwright/test';
+
+/**
+ * Shared actions for the flow specs. The pattern throughout: bootstrap a
+ * conversation by *actually using the app* (sending through the mock
+ * upstream) rather than seeding the DB directly — keeps the tests fully
+ * black-box and exercises the real create→navigate→stream round-trip that
+ * the flows depend on.
+ */
+
+/** The deterministic reply tests/e2e/fixtures/mock-upstream.mjs streams. */
+export const MOCK_REPLY = 'Hello from the mock upstream.';
+
+/** Path the webServer opens (playwright.config.ts DB_PATH), resolved from
+ *  the project root Playwright runs in. */
+const DB_PATH = resolve('./tests/.e2e-data/test.db');
+
+/**
+ * Reset the DB to its seeded baseline: clear all conversation + media data
+ * but keep the test user + session (so storageState stays valid). Called
+ * in a beforeEach so every test — empty-state shell tests and stateful
+ * flows alike — starts from a clean slate.
+ *
+ * Why this exists: there's ONE webServer (and one SQLite file) shared by
+ * both the desktop and mobile projects, and global-setup only wipes once.
+ * Without a per-test reset, a flow's conversation/media leaks into a later
+ * test (even across projects) and breaks "renders empty state" assertions
+ * or produces duplicate-title matches. A separate better-sqlite3
+ * connection writing between tests is safe here: workers=1, so no server
+ * request is in flight at reset time, and busy_timeout covers WAL
+ * contention. Deletes run children-first to satisfy FK constraints.
+ */
+export function resetData(): void {
+	const db = new Database(DB_PATH);
+	db.pragma('busy_timeout = 5000');
+	db.pragma('foreign_keys = ON');
+	try {
+		for (const table of ['message_media', 'messages', 'media', 'conversations', 'custom_models']) {
+			db.prepare(`DELETE FROM ${table}`).run();
+		}
+	} finally {
+		db.close();
+	}
+}
+
+/**
+ * Open the model picker and pick a model by visible name. Works for both
+ * the inline (composer) and full-width picker variants — the trigger's
+ * aria-label is "Select model" in both.
+ */
+export async function selectModel(page: Page, name: string | RegExp): Promise<void> {
+	await page.getByRole('button', { name: 'Select model' }).click();
+	await page.getByRole('option', { name }).click();
+}
+
+/** Mobile starts with the sidebar behind a hamburger; desktop is static.
+ *  No-op on desktop. */
+export async function openSidebar(page: Page, isMobile: boolean): Promise<void> {
+	if (isMobile) {
+		await page.getByRole('button', { name: 'Open menu' }).click();
+	}
+}
+
+/**
+ * Send `prompt` from the new-chat home page with the default (chat) model,
+ * wait for the navigation to /chat/[id] and the streamed reply to render.
+ * Returns the new conversation id.
+ */
+export async function sendChatFromHome(page: Page, prompt: string): Promise<string> {
+	await page.goto('/');
+	// Gate on hydration + the default-model effect: once the picker shows
+	// "Mock Chat" the page is interactive and a model is selected, so the
+	// Send button can enable.
+	await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
+	await page.locator('textarea').first().fill(prompt);
+	const send = page.getByRole('button', { name: 'Send message' });
+	await expect(send).toBeEnabled();
+	await send.click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.getByText(MOCK_REPLY)).toBeVisible();
+	// Wait for the turn to fully settle (composer flips Stop → Send). The
+	// relay emits `done` — which clears `generating` — only after its
+	// background recorder has persisted the assistant row, so this gates on
+	// the write completing. Without it, the next test's resetData() can
+	// delete the conversation while that recorder is still inserting,
+	// tripping a FK-constraint error server-side.
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+	return page.url().split('/chat/')[1];
+}
+
+/**
+ * Generate an image from the home page: switch to the image model, send
+ * `prompt`, wait for the navigation + the generated image to render.
+ * Returns the conversation id.
+ */
+export async function generateImageFromHome(page: Page, prompt: string): Promise<string> {
+	await page.goto('/');
+	await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
+	await selectModel(page, /Mock Image/);
+	await page.locator('textarea').first().fill(prompt);
+	const send = page.getByRole('button', { name: 'Send message' });
+	await expect(send).toBeEnabled();
+	await send.click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	// The generated asset renders as an <img> pointing at our media route.
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	return page.url().split('/chat/')[1];
+}

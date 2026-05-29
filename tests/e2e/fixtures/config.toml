@@ -1,5 +1,15 @@
-# Empty endpoints list — the e2e suite tests UI behavior that doesn't
-# require a working upstream model server. The picker just shows
-# "no models available" gracefully, which is itself useful UI behavior
-# to keep regression-tested.
-endpoints = []
+# e2e config — points one endpoint at the mock OpenAI-compatible upstream
+# (tests/e2e/fixtures/mock-upstream.mjs, booted as a second Playwright
+# webServer on port 3001). The mock advertises a chat model (mock-chat)
+# and an image model (mock-image) so the picker shows both kinds and the
+# send / image-generation flows have something to talk to.
+#
+# No api_key_env: the mock requires no auth. task_model is intentionally
+# unset so the title-generation task short-circuits (no extra upstream
+# calls to reason about in tests). provider_quirk defaults to passthrough,
+# which matches the mock's plain OpenAI SSE shape.
+[[endpoints]]
+id = "mock"
+display_name = "Mock"
+base_url = "http://localhost:3001/v1"
+supports_tools = false

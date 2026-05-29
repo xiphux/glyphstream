@@ -1,11 +1,18 @@
 import { test, expect } from '@playwright/test';
+import { resetData } from './helpers';
 
 /**
- * Smoke tests that verify the authenticated app surface renders without
- * needing a working upstream model server. The fixtures/config.toml ships
- * an empty endpoints list — model picker shows its empty state, but
- * routes/sidebar/forms still work and that's what we're testing.
+ * Smoke tests that verify the authenticated app surface renders. The
+ * fixtures/config.toml points at the mock upstream (a chat + image model),
+ * so the picker is populated; the empty-state assertions below rely on a
+ * clean DB, which the beforeEach reset guarantees regardless of what other
+ * specs (or the other project) created against the shared server.
  */
+
+// Empty-state tests (gallery, archived) need a pristine DB; the flow specs
+// create persistent conversations + media against the same webServer, so
+// reset to baseline before each test here too.
+test.beforeEach(() => resetData());
 
 test.describe('authenticated app shell', () => {
 	test('new-chat home renders the greeting + composer', async ({ page }) => {
@@ -109,11 +116,13 @@ test.describe('authenticated app shell', () => {
 		await expect(galleryLink).toBeInViewport();
 	});
 
-	test('app shows "no models available" when endpoints list is empty', async ({ page }) => {
+	test('model picker is populated from the configured endpoint', async ({ page }) => {
 		await page.goto('/');
-		// Our fixture config.toml has zero endpoints; the picker should
-		// show the explanatory note rather than crashing.
-		await expect(page.getByText(/no models available/i)).toBeVisible();
+		// The fixture config points at the mock upstream, which advertises a
+		// chat + image model. The "no models available" hint must be absent,
+		// and the picker should auto-select the first chat model (Mock Chat).
+		await expect(page.getByText(/no models available/i)).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
 	});
 });
 
