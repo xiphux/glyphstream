@@ -209,10 +209,8 @@ expected priority, not time-bound.
   the DB pref after hydration. An explicit **light/dark/system override**
   also shipped: the dark cascade is attribute-driven (`data-scheme`,
   resolved before first paint by an inline script from the `gs-scheme`
-  cookie or the OS), with a System/Light/Dark selector in Preferences.
-  Deferred follow-ups:
-  - **Per-theme dynamic `theme-color`** for the installed-PWA status bar
-    (currently shows Signature's tint for all themes; doesn't follow a
-    forced light/dark either).
-  - **High-contrast / accessibility scheme** — the most practical
-    additional theme beyond aesthetics.
+  cookie or the OS), with a System/Light/Dark selector in Preferences. The
+  PWA `theme-color` tracks the active theme + scheme as well. Only
+  remaining follow-up, deferred until the need arises: a **high-contrast /
+  accessibility scheme** — the most practical additional theme beyond
+  aesthetics.
