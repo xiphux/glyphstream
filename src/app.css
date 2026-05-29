@@ -100,8 +100,8 @@
 	   GPUs, not a readability crutch. Panels (dense text) are nearly
 	   opaque; the composer gets a softer, frostier tint (sparse input over
 	   the message list, where more see-through reads nicely). */
-	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 94%, transparent);
-	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 88%, transparent);
+	--glass-bg: color-mix(in oklch, var(--color-surface-panel) 90%, transparent);
+	--glass-bg-soft: color-mix(in oklch, var(--color-surface-panel) 82%, transparent);
 
 	/* Motion tokens — the animation pass references these so timing stays
 	 * consistent across the app (and a theme can retune feel in one place). */
