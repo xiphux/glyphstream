@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
 	import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
+	import { syncThemeColorMeta } from '$lib/theme-color';
 	import {
 		getPermissionState,
 		isIosBeforeInstall,
@@ -44,6 +45,7 @@
 		if (t === 'glyphstream') delete root.dataset.theme;
 		else root.dataset.theme = t;
 		document.cookie = `gs-theme=${t}; path=/; max-age=31536000; samesite=lax`;
+		syncThemeColorMeta();
 	}
 
 	async function selectTheme(next: ThemeName) {
@@ -78,6 +80,7 @@
 			(s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 		document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
 		document.cookie = `gs-scheme=${s}; path=/; max-age=31536000; samesite=lax`;
+		syncThemeColorMeta();
 	}
 
 	async function selectScheme(next: ColorScheme) {

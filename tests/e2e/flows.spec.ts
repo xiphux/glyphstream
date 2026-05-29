@@ -128,6 +128,15 @@ test.describe('flow: theme switcher', () => {
 		await page.getByRole('button', { name: /^Claude/ }).click();
 		await expect(html).toHaveAttribute('data-theme', 'claude');
 
+		// theme-color meta tracks the active surface (PWA status-bar tint).
+		await expect
+			.poll(async () => {
+				const meta = await page.locator('meta[name="theme-color"]').getAttribute('content');
+				const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+				return meta === bodyBg && !!bodyBg;
+			})
+			.toBe(true);
+
 		// Reload: the gs-theme cookie → hooks transformPageChunk means the
 		// attribute is in the server-rendered HTML before any JS runs, so it
 		// persists with no flash of the default.

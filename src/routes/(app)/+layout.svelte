@@ -11,6 +11,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
+	import { syncThemeColorMeta } from '$lib/theme-color';
 	import { reorder, reorderFavoriteModels } from '$lib/favorite-models';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
@@ -51,6 +52,7 @@
 		if (theme === 'glyphstream') delete root.dataset.theme;
 		else root.dataset.theme = theme;
 		document.cookie = `gs-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
+		syncThemeColorMeta();
 	});
 
 	// Color-scheme (light/dark/system). On load/nav, sync the gs-scheme
@@ -70,6 +72,7 @@
 			const p = m ? m[1] : 'system';
 			const dark = p === 'dark' || (p !== 'light' && mql.matches);
 			document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
+			syncThemeColorMeta();
 		};
 		apply();
 		mql.addEventListener('change', apply);
