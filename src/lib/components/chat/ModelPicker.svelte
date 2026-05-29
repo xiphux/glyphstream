@@ -334,8 +334,8 @@
 	<Popover.Trigger
 		{disabled}
 		class={inline
-			? 'group inline-flex max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-neutral-600 transition hover:bg-neutral-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-neutral-400 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800'
-			: 'group flex w-full items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm transition hover:border-neutral-300 focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600'}
+			? 'group inline-flex max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50'
+			: 'group flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm transition hover:border-border-strong focus:border-border-focus focus:outline-none disabled:opacity-50'}
 		aria-label="Select model"
 	>
 		<span class="truncate">{triggerLabel}</span>
@@ -351,10 +351,10 @@
 			align="end"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900 max-h-[min(60vh,var(--bits-popover-content-available-height))]"
+			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border bg-surface-panel shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
 			<!-- Search row. Auto-focuses on open via Popover's focus-trap. -->
-			<div class="flex items-center gap-2 border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
+			<div class="flex items-center gap-2 border-b border-border px-3 py-2">
 				<Search size={14} strokeWidth={2.25} class="opacity-50" />
 				<input
 					bind:this={searchInputEl}
@@ -371,7 +371,7 @@
 
 			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto py-1">
 				{#if filteredItems.length === 0}
-					<p class="px-3 py-3 text-xs text-neutral-500">
+					<p class="px-3 py-3 text-xs text-fg-muted">
 						{items.length === 0
 							? 'No models available.'
 							: `No matches for "${search.trim()}"`}
@@ -380,7 +380,7 @@
 
 				{#each groupedRender as g (g.key)}
 					{#if g.label}
-						<div class="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+						<div class="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
 							{g.label}
 						</div>
 					{/if}
@@ -391,7 +391,7 @@
 						{@const isFavorited = favoritedSet.has(item.value)}
 						<div
 							class="group/row flex w-full items-center gap-2 px-3 py-1.5 text-sm transition {isHighlighted
-								? 'bg-neutral-100 dark:bg-neutral-800'
+								? 'bg-surface-raised'
 								: ''}"
 							onmouseenter={() => (highlightedIndex = idx)}
 							role="presentation"
@@ -410,7 +410,7 @@
 									{/if}
 									{item.label}
 									{#if item.sublabel}
-										<span class="ml-1 text-xs text-neutral-500">· {item.sublabel}</span>
+										<span class="ml-1 text-xs text-fg-muted">· {item.sublabel}</span>
 									{/if}
 								</span>
 								{#if item.kind !== 'chat' && item.kind !== 'embedding'}
@@ -439,7 +439,7 @@
 									}}
 									aria-label={isFavorited ? 'Unfavorite model' : 'Favorite model'}
 									title={isFavorited ? 'Unfavorite' : 'Favorite'}
-									class="shrink-0 rounded p-1 text-neutral-400 transition hover:bg-neutral-200 hover:text-amber-500 focus:opacity-100 focus-visible:opacity-100 dark:hover:bg-neutral-700 {isFavorited
+									class="shrink-0 rounded p-1 text-fg-subtle transition hover:bg-surface-sunken hover:text-amber-500 focus:opacity-100 focus-visible:opacity-100 {isFavorited
 										? 'text-amber-500 opacity-100'
 										: 'opacity-0 group-hover/row:opacity-100'}"
 								>

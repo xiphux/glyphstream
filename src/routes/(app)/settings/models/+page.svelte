@@ -146,7 +146,7 @@
 	<header class="flex shrink-0 items-center justify-between px-4 py-3">
 		<div>
 			<h1 class="text-lg font-semibold tracking-tight">Custom models</h1>
-			<p class="text-xs text-neutral-500">
+			<p class="text-xs text-fg-muted">
 				Reusable presets — pick a base model, lock in a system prompt, optionally tune sampling.
 			</p>
 		</div>
@@ -156,11 +156,11 @@
 		<div class="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_1fr]">
 			<!-- List -->
 			<section>
-				<h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+				<h2 class="mb-3 text-xs font-semibold uppercase tracking-wide text-fg-muted">
 					Your presets ({data.customModels.length})
 				</h2>
 				{#if data.customModels.length === 0}
-					<p class="rounded-md border border-dashed border-neutral-300 px-3 py-4 text-sm text-neutral-500 dark:border-neutral-700">
+					<p class="rounded-md border border-dashed border-border-strong px-3 py-4 text-sm text-fg-muted">
 						None yet — create one on the right.
 					</p>
 				{:else}
@@ -169,8 +169,8 @@
 							{@const active = editingId === m.id}
 							<li
 								class="group rounded-lg border p-3 transition {active
-									? 'border-neutral-900 bg-neutral-50 dark:border-neutral-100 dark:bg-neutral-900'
-									: 'border-neutral-200 hover:border-neutral-400 dark:border-neutral-800 dark:hover:border-neutral-600'}"
+									? 'border-surface-inverse bg-surface'
+									: 'border-border hover:border-border-focus'}"
 							>
 								<div class="flex items-start justify-between gap-2">
 									<button
@@ -180,24 +180,24 @@
 									>
 										<div class="text-sm font-medium">{m.name}</div>
 										{#if m.description}
-											<div class="mt-0.5 text-xs text-neutral-500 line-clamp-2">{m.description}</div>
+											<div class="mt-0.5 text-xs text-fg-muted line-clamp-2">{m.description}</div>
 										{/if}
-										<div class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-neutral-500">
-											<span class="rounded bg-neutral-200 px-1.5 py-0.5 dark:bg-neutral-800">
+										<div class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-fg-muted">
+											<span class="rounded bg-surface-sunken px-1.5 py-0.5">
 												{m.baseEndpointId}::{m.baseModelId}
 											</span>
 											{#if m.parameters?.temperature !== undefined}
-												<span class="rounded bg-neutral-200 px-1.5 py-0.5 dark:bg-neutral-800">
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
 													temp {m.parameters.temperature}
 												</span>
 											{/if}
 											{#if m.parameters?.top_p !== undefined}
-												<span class="rounded bg-neutral-200 px-1.5 py-0.5 dark:bg-neutral-800">
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
 													top_p {m.parameters.top_p}
 												</span>
 											{/if}
 											{#if m.parameters?.max_tokens !== undefined}
-												<span class="rounded bg-neutral-200 px-1.5 py-0.5 dark:bg-neutral-800">
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
 													max {m.parameters.max_tokens}
 												</span>
 											{/if}
@@ -209,7 +209,7 @@
 										disabled={deletingId === m.id}
 										title="Delete preset"
 										aria-label="Delete preset {m.name}"
-										class="rounded p-1 text-xs text-neutral-500 opacity-0 transition group-hover:opacity-100 hover:bg-neutral-200 hover:text-red-700 disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-red-400"
+										class="rounded p-1 text-xs text-fg-muted opacity-0 transition group-hover:opacity-100 hover:bg-surface-sunken hover:text-red-700 disabled:opacity-50 dark:hover:text-red-400"
 									>
 										{deletingId === m.id ? '…' : '×'}
 									</button>
@@ -223,14 +223,14 @@
 			<!-- Form -->
 			<section>
 				<div class="mb-3 flex items-center justify-between">
-					<h2 class="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+					<h2 class="text-xs font-semibold uppercase tracking-wide text-fg-muted">
 						{editingId ? 'Edit preset' : 'New preset'}
 					</h2>
 					{#if editingId}
 						<button
 							type="button"
 							onclick={resetForm}
-							class="text-xs text-neutral-500 underline hover:text-neutral-700 dark:hover:text-neutral-300"
+							class="text-xs text-fg-muted underline hover:text-fg-secondary"
 						>
 							Clear (new)
 						</button>
@@ -243,7 +243,7 @@
 					</div>
 				{/if}
 
-				<form onsubmit={save} class="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+				<form onsubmit={save} class="space-y-3 rounded-lg border border-border bg-surface-panel p-4">
 					<div>
 						<label class="mb-1 block text-xs font-medium" for="name">Name</label>
 						<input
@@ -253,20 +253,20 @@
 							maxlength={200}
 							placeholder="e.g. Coding Assistant"
 							disabled={busy}
-							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 						/>
 					</div>
 
 					<div>
 						<label class="mb-1 block text-xs font-medium" for="description">
-							Description <span class="font-normal text-neutral-500">(optional)</span>
+							Description <span class="font-normal text-fg-muted">(optional)</span>
 						</label>
 						<input
 							id="description"
 							bind:value={description}
 							placeholder="What's this preset for?"
 							disabled={busy}
-							class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 						/>
 					</div>
 
@@ -281,7 +281,7 @@
 
 					<div>
 						<label class="mb-1 block text-xs font-medium" for="system-prompt">
-							System prompt <span class="font-normal text-neutral-500">(optional)</span>
+							System prompt <span class="font-normal text-fg-muted">(optional)</span>
 						</label>
 						<textarea
 							id="system-prompt"
@@ -289,17 +289,17 @@
 							rows="6"
 							disabled={busy}
 							placeholder="Always respond in concise bullet points…"
-							class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-xs dark:border-neutral-700 dark:bg-neutral-900"
+							class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 font-mono text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-xs"
 						></textarea>
 					</div>
 
-					<details class="rounded-md border border-neutral-200 px-3 py-2 dark:border-neutral-800">
-						<summary class="cursor-pointer text-xs font-medium text-neutral-700 dark:text-neutral-300">
+					<details class="rounded-md border border-border px-3 py-2">
+						<summary class="cursor-pointer text-xs font-medium text-fg-secondary">
 							Sampling parameters (optional)
 						</summary>
 						<div class="mt-3 grid grid-cols-3 gap-2">
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500" for="temp">
+								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="temp">
 									Temperature
 								</label>
 								<input
@@ -311,11 +311,11 @@
 									step="0.05"
 									placeholder="0.7"
 									disabled={busy}
-									class="w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+									class="w-full rounded-md border border-border bg-surface-panel px-2 py-1 text-xs shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
 								/>
 							</div>
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500" for="topp">
+								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="topp">
 									Top-p
 								</label>
 								<input
@@ -327,11 +327,11 @@
 									step="0.05"
 									placeholder="0.95"
 									disabled={busy}
-									class="w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+									class="w-full rounded-md border border-border bg-surface-panel px-2 py-1 text-xs shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
 								/>
 							</div>
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500" for="maxtok">
+								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="maxtok">
 									Max tokens
 								</label>
 								<input
@@ -342,7 +342,7 @@
 									step="1"
 									placeholder="2048"
 									disabled={busy}
-									class="w-full rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900"
+									class="w-full rounded-md border border-border bg-surface-panel px-2 py-1 text-xs shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
 								/>
 							</div>
 						</div>
@@ -360,7 +360,7 @@
 								type="button"
 								onclick={resetForm}
 								disabled={busy}
-								class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+								class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised disabled:opacity-50"
 							>
 								Cancel
 							</button>
@@ -368,7 +368,7 @@
 						<button
 							type="submit"
 							disabled={busy || !name.trim() || !baseModelComposite}
-							class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+							class="rounded-md bg-surface-inverse px-4 py-2 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 						>
 							{busy ? 'Saving…' : editingId ? 'Save changes' : 'Create preset'}
 						</button>

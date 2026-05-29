@@ -60,13 +60,13 @@
 
 <details
 	open={openByDefault}
-	class="mt-2 rounded-md border border-neutral-300 bg-white text-xs dark:border-neutral-700 dark:bg-neutral-900"
+	class="mt-2 rounded-md border border-border-strong bg-surface-panel text-xs"
 >
 	<summary
-		class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-neutral-500 select-none"
+		class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-fg-muted select-none"
 	>
 		<span class="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tool</span>
-		<span class="font-mono text-xs text-neutral-700 dark:text-neutral-300">{toolName}</span>
+		<span class="font-mono text-xs text-fg-secondary">{toolName}</span>
 		<span class="flex-1"></span>
 		<!--
 			Status badge only shows for non-default states. A completed call
@@ -87,13 +87,13 @@
 			</span>
 		{/if}
 	</summary>
-	<div class="space-y-2 border-t border-neutral-200 p-2 dark:border-neutral-800">
+	<div class="space-y-2 border-t border-border p-2">
 		{#if prettyArgs}
 			<div>
-				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-neutral-500">
+				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
 					Arguments
 				</div>
-				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-700 dark:text-neutral-300">{prettyArgs}</pre>
+				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyArgs}</pre>
 			</div>
 		{/if}
 		{#if result !== undefined}
@@ -102,10 +102,10 @@
 					? 'border-l-2 border-red-400 pl-2 dark:border-red-500'
 					: ''}"
 			>
-				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider {isError ? 'text-red-600 dark:text-red-400' : 'text-neutral-500'}">
+				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider {isError ? 'text-red-600 dark:text-red-400' : 'text-fg-muted'}">
 					{isError ? 'Error' : 'Result'}
 				</div>
-				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-700 dark:text-neutral-300">{prettyResult}</pre>
+				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyResult}</pre>
 			</div>
 		{/if}
 	</div>

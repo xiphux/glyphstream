@@ -126,7 +126,7 @@
 	ondragover={onDragOver}
 	ondragleave={onDragLeave}
 	ondrop={onDrop}
-	class="relative rounded-2xl border border-neutral-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-neutral-500"
+	class="relative rounded-2xl border border-border-strong bg-surface-panel px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
 	<AttachmentThumbnails {attachments} class="px-1" />
 	<textarea
@@ -160,7 +160,7 @@
 				{disabled}
 				aria-label="Attach image"
 				title="Attach image"
-				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 			>
 				<Plus size={18} strokeWidth={2.25} />
 			</button>
@@ -172,7 +172,7 @@
 			 pointer-events-none so the underlying drop event still fires. -->
 		<div
 			aria-hidden="true"
-			class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-neutral-700 backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85 dark:text-neutral-200"
+			class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-fg-secondary backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85"
 		>
 			Drop image to attach
 		</div>

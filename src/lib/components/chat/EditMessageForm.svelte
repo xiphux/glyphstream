@@ -56,7 +56,7 @@
 </script>
 
 <article
-	class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-white p-3 shadow-sm dark:border-amber-800 dark:bg-neutral-900"
+	class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-surface-panel p-3 shadow-sm dark:border-amber-800"
 >
 	<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
 		Editing
@@ -97,7 +97,7 @@
 				onclick={() => fileInputEl?.click()}
 				aria-label="Attach image"
 				title="Attach image"
-				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary"
 			>
 				<Plus size={18} strokeWidth={2.25} />
 			</button>
@@ -106,7 +106,7 @@
 		<button
 			type="button"
 			onclick={onCancel}
-			class="rounded-md px-3 py-1.5 text-xs text-neutral-600 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+			class="rounded-md px-3 py-1.5 text-xs text-fg-secondary transition hover:bg-surface-raised"
 		>
 			Cancel
 		</button>
@@ -114,7 +114,7 @@
 			type="button"
 			onclick={onSave}
 			disabled={!canSave}
-			class="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+			class="rounded-md bg-surface-inverse px-3 py-1.5 text-xs text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 		>
 			Save
 		</button>

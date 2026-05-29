@@ -23,7 +23,7 @@
 <div
 	role="status"
 	aria-live="polite"
-	class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+	class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-surface-panel px-3 py-2 text-sm shadow-lg"
 	style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 >
 	<RefreshCw size={14} strokeWidth={2.25} class="shrink-0 opacity-70" />
@@ -31,7 +31,7 @@
 	<button
 		type="button"
 		onclick={onRefresh}
-		class="ml-1 rounded-full bg-neutral-900 px-3 py-1 text-xs font-medium text-white transition hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+		class="ml-1 rounded-full bg-surface-inverse px-3 py-1 text-xs font-medium text-fg-inverse transition hover:opacity-90"
 	>
 		Refresh
 	</button>
@@ -40,7 +40,7 @@
 		onclick={onDismiss}
 		aria-label="Dismiss update notification"
 		title="Dismiss"
-		class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+		class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary"
 	>
 		<X size={14} strokeWidth={2.25} />
 	</button>

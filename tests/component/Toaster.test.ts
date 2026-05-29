@@ -60,7 +60,7 @@ describe('Toaster — rendering', () => {
 		const { container } = render(Toaster);
 		toast.info('fyi');
 		await tick();
-		expect(container.querySelector('.text-neutral-500, .text-neutral-400')).toBeInTheDocument();
+		expect(container.querySelector('.text-fg-muted')).toBeInTheDocument();
 	});
 
 	it('always renders a Dismiss button', async () => {

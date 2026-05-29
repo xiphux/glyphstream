@@ -67,14 +67,14 @@
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="shrink-0 px-4 py-3">
 		<h1 class="text-lg font-semibold tracking-tight">Archived conversations</h1>
-		<p class="text-xs text-neutral-500">
+		<p class="text-xs text-fg-muted">
 			Click to reopen, or use the menu to unarchive or delete.
 		</p>
 	</header>
 
 	<div class="flex-1 overflow-y-auto px-4 py-2">
 		{#if data.archivedConversations.length === 0}
-			<p class="px-2 py-12 text-center text-sm text-neutral-500">
+			<p class="px-2 py-12 text-center text-sm text-fg-muted">
 				No archived conversations.
 			</p>
 		{:else}
@@ -84,17 +84,17 @@
 						<button
 							type="button"
 							onclick={() => openConversation(c.id)}
-							class="flex w-full items-center justify-between gap-3 rounded-md py-2.5 pl-3 pr-10 text-left text-sm transition hover:bg-neutral-200/70 dark:hover:bg-neutral-800"
+							class="flex w-full items-center justify-between gap-3 rounded-md py-2.5 pl-3 pr-10 text-left text-sm transition hover:bg-surface-sunken/70"
 						>
 							<span class="min-w-0 flex-1 truncate">{c.title ?? 'Untitled'}</span>
-							<span class="shrink-0 text-xs text-neutral-500">{formatDate(c.updatedAt)}</span>
+							<span class="shrink-0 text-xs text-fg-muted">{formatDate(c.updatedAt)}</span>
 						</button>
 						<DropdownMenu.Root>
 							<DropdownMenu.Trigger
 								disabled={busyId === c.id}
 								title="Conversation options"
 								aria-label="Options for conversation {c.title ?? 'Untitled'}"
-								class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-neutral-500 opacity-0 transition hover:bg-neutral-300 hover:text-neutral-700 focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100 data-[state=open]:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+								class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted opacity-0 transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100 data-[state=open]:opacity-100"
 							>
 								<MoreVertical size={14} strokeWidth={2.25} />
 							</DropdownMenu.Trigger>
@@ -102,11 +102,11 @@
 								<DropdownMenu.Content
 									sideOffset={4}
 									align="end"
-									class="z-50 min-w-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+									class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface-panel py-1 shadow-lg"
 								>
 									<DropdownMenu.Item
 										onSelect={() => unarchive(c.id)}
-										class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+										class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 									>
 										<ArchiveRestore size={14} strokeWidth={2.25} />
 										<span>Unarchive</span>

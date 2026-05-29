@@ -56,14 +56,14 @@
 		{disabled}
 		aria-label="Feature toggles"
 		title={anyDisabled ? 'Feature toggles (some features off)' : 'Feature toggles'}
-		class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-30 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+		class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 	>
 		<Sliders size={18} strokeWidth={2.25} />
 		{#if anyDisabled}
 			<!-- Small dot in the corner so the closed-state user knows a
 			     toggle is off without having to open the popover. -->
 			<span
-				class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-white dark:ring-neutral-900"
+				class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-surface-panel"
 				aria-hidden="true"
 			></span>
 		{/if}
@@ -74,9 +74,9 @@
 			align="start"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-border bg-surface-panel p-3 shadow-lg"
 		>
-			<div class="text-xs font-medium uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
 				This conversation
 			</div>
 			{#each FEATURE_CATEGORIES as category (category)}
@@ -84,10 +84,10 @@
 				{@const enabled = isEnabled(category)}
 				<label class="flex cursor-pointer items-start gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
 					<div class="flex-1">
-						<div class="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+						<div class="text-sm font-medium text-fg">
 							{meta.label}
 						</div>
-						<div class="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+						<div class="mt-0.5 text-xs text-fg-muted">
 							{meta.description}
 						</div>
 					</div>
@@ -95,10 +95,10 @@
 						checked={enabled}
 						onCheckedChange={(checked) => toggle(category, checked)}
 						aria-label={meta.label}
-						class="relative mt-1 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-neutral-900 data-[state=unchecked]:bg-neutral-300 dark:data-[state=checked]:bg-neutral-100 dark:data-[state=unchecked]:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
+						class="relative mt-1 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
 					>
 						<Switch.Thumb
-							class="block h-4 w-4 translate-x-0.5 rounded-full bg-white shadow-sm transition data-[state=checked]:translate-x-[1.125rem] dark:bg-neutral-900 dark:data-[state=checked]:bg-neutral-900"
+							class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
 						/>
 					</Switch.Root>
 				</label>

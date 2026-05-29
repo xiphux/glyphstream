@@ -134,12 +134,12 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+			class="w-full max-w-md rounded-lg border border-border bg-surface-panel p-5 shadow-xl"
 		>
 			<h2 id="delete-conv-title" class="text-base font-semibold">
 				Delete this conversation?
 			</h2>
-			<p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+			<p class="mt-2 text-sm text-fg-muted">
 				This action cannot be undone.
 			</p>
 			{#if hasMedia}
@@ -151,7 +151,7 @@
 					outcome for this delete only.
 				-->
 				<label
-					class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-700 dark:bg-neutral-800/40"
+					class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-neutral-50 p-3 text-sm dark:bg-neutral-800/40"
 				>
 					<input type="checkbox" bind:checked={deleteMediaToo} class="mt-0.5" />
 					<span>
@@ -164,7 +164,7 @@
 				<button
 					type="button"
 					onclick={cancel}
-					class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+					class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised"
 				>
 					Cancel
 				</button>

@@ -83,7 +83,7 @@ describe('MessageBubble — bubble styling', () => {
 		});
 		const article = container.querySelector('article')!;
 		expect(article).toHaveClass('ml-auto');
-		expect(article).toHaveClass('bg-neutral-900');
+		expect(article).toHaveClass('bg-surface-inverse');
 	});
 
 	it('light-tints assistant bubbles', () => {
@@ -93,7 +93,7 @@ describe('MessageBubble — bubble styling', () => {
 				message: makeMessage('assistant', [{ type: 'text', text: 'x' }])
 			}
 		});
-		expect(container.querySelector('article')).toHaveClass('bg-neutral-100');
+		expect(container.querySelector('article')).toHaveClass('bg-surface-raised');
 	});
 
 	it('amber-tints tool bubbles', () => {

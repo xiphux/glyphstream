@@ -33,10 +33,10 @@
 	{#if block.type === 'reasoning'}
 		<details
 			open={block.open}
-			class="mt-1 rounded-md border border-neutral-300 bg-white p-2 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+			class="mt-1 rounded-md border border-border-strong bg-surface-panel p-2 text-xs"
 		>
-			<summary class="cursor-pointer text-neutral-500">Reasoning</summary>
-			<div class="mt-2 whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+			<summary class="cursor-pointer text-fg-muted">Reasoning</summary>
+			<div class="mt-2 whitespace-pre-wrap break-words text-fg-secondary">
 				{block.text}
 			</div>
 		</details>

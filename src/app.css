@@ -1,5 +1,62 @@
 @import 'tailwindcss';
 
+/*
+ * Semantic design tokens. Tailwind v4 `@theme` registers these and
+ * generates utilities (`bg-surface`, `text-fg-muted`, `border-border`, …)
+ * that resolve to the CSS vars below. Runtime theme/scheme swapping is done
+ * by OVERRIDING the variable under a selector — the utility class is static,
+ * only the variable's value changes. That's the same mechanism shiki already
+ * uses for code-block colors (see the `--shiki-*` swap further down).
+ *
+ * Today only the default (glyphstream) light + dark values exist; per-theme
+ * `[data-theme='claude' | 'chatgpt']` overrides land in a later phase. The
+ * default values equal Tailwind's stock `neutral` palette EXACTLY, so moving
+ * the components off hardcoded `neutral-*` onto these tokens is a pure
+ * refactor — identical pixels in both light and dark.
+ */
+@theme {
+	/* Backgrounds */
+	--color-surface: oklch(98.5% 0 0); /* neutral-50  — app/page background */
+	--color-surface-raised: oklch(97% 0 0); /* neutral-100 — raised panels, assistant bubble */
+	--color-surface-sunken: oklch(92.2% 0 0); /* neutral-200 — hover/active fills */
+	--color-surface-panel: oklch(100% 0 0); /* white — cards, dialogs, menus, composer, inputs */
+	--color-surface-inverse: oklch(20.5% 0 0); /* neutral-900 — user bubble, primary button */
+
+	/* Foreground / text */
+	--color-fg: oklch(20.5% 0 0); /* neutral-900 */
+	--color-fg-secondary: oklch(37.1% 0 0); /* neutral-700 */
+	--color-fg-muted: oklch(55.6% 0 0); /* neutral-500 */
+	--color-fg-subtle: oklch(70.8% 0 0); /* neutral-400 */
+	--color-fg-inverse: oklch(100% 0 0); /* white — text on inverse/primary surfaces */
+
+	/* Borders */
+	--color-border: oklch(92.2% 0 0); /* neutral-200 */
+	--color-border-strong: oklch(87% 0 0); /* neutral-300 — inputs, stronger dividers */
+	--color-border-focus: oklch(70.8% 0 0); /* neutral-400 — focus borders */
+}
+
+/* glyphstream dark (default theme under system dark) — the exact dark
+   neutrals the `dark:` variants used, so dark mode is unchanged. */
+@media (prefers-color-scheme: dark) {
+	:root {
+		--color-surface: oklch(14.5% 0 0); /* neutral-950 */
+		--color-surface-raised: oklch(26.9% 0 0); /* neutral-800 */
+		--color-surface-sunken: oklch(37.1% 0 0); /* neutral-700 */
+		--color-surface-panel: oklch(20.5% 0 0); /* neutral-900 */
+		--color-surface-inverse: oklch(97% 0 0); /* neutral-100 */
+
+		--color-fg: oklch(97% 0 0); /* neutral-100 */
+		--color-fg-secondary: oklch(87% 0 0); /* neutral-300 */
+		--color-fg-muted: oklch(70.8% 0 0); /* neutral-400 */
+		--color-fg-subtle: oklch(43.9% 0 0); /* neutral-600 */
+		--color-fg-inverse: oklch(20.5% 0 0); /* neutral-900 */
+
+		--color-border: oklch(37.1% 0 0); /* neutral-700 */
+		--color-border-strong: oklch(43.9% 0 0); /* neutral-600 */
+		--color-border-focus: oklch(55.6% 0 0); /* neutral-500 */
+	}
+}
+
 :root {
 	color-scheme: light dark;
 }
@@ -10,13 +67,7 @@ body {
 }
 
 body {
-	@apply bg-neutral-50 text-neutral-900 antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
-	body {
-		@apply bg-neutral-950 text-neutral-100;
-	}
+	@apply bg-surface text-fg antialiased;
 }
 
 /* --- markdown prose ------------------------------------------------------ */

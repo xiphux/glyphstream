@@ -49,9 +49,9 @@
 	class={[
 		'min-w-0 px-4 text-sm',
 		message.role === 'user'
-			? 'ml-auto max-w-[85%] bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900'
+			? 'ml-auto max-w-[85%] bg-surface-inverse text-fg-inverse'
 			: message.role === 'assistant'
-				? 'bg-neutral-100 dark:bg-neutral-800'
+				? 'bg-surface-raised'
 				: 'bg-amber-50 dark:bg-amber-950/40',
 		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
 		mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3'

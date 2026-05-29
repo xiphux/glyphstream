@@ -129,7 +129,7 @@
 					disabled={!canSend}
 					aria-label="Send message"
 					title={!hasValidModel ? 'Pick a model to send' : 'Send'}
-					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />
 				</button>

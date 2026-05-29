@@ -32,15 +32,15 @@
 		}}
 	>
 		<div
-			class="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+			class="w-full max-w-md rounded-lg border border-border bg-surface-panel p-5 shadow-xl"
 		>
 			<h2 id="confirm-dialog-title" class="text-base font-semibold">{p.title}</h2>
-			<p class="mt-2 text-sm text-neutral-600 dark:text-neutral-400">{p.message}</p>
+			<p class="mt-2 text-sm text-fg-muted">{p.message}</p>
 			<div class="mt-5 flex items-center justify-end gap-2">
 				<button
 					type="button"
 					onclick={() => confirmDialog.cancel()}
-					class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+					class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised"
 				>
 					Cancel
 				</button>

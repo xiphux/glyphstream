@@ -36,14 +36,14 @@
 	}: Props = $props();
 </script>
 
-<article class="min-w-0 rounded-2xl bg-neutral-100 px-4 py-3 text-sm dark:bg-neutral-800">
+<article class="min-w-0 rounded-2xl bg-surface-raised px-4 py-3 text-sm">
 	<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
 	<RenderBlocks {blocks} {onImageClick} {openingLightboxFor} />
 	{#if blocks.length === 0}
 		<!-- Pre-first-token placeholder: thinking dots + optional
 		     progress/elapsed indicators. Once any text or tool_call
 		     segment lands, RenderBlocks takes over. -->
-		<div class="mt-1 flex items-center gap-2 text-neutral-500">
+		<div class="mt-1 flex items-center gap-2 text-fg-muted">
 			<span>{label}</span>
 			<span class="inline-flex gap-1">
 				<span class="animate-pulse">·</span>
@@ -51,7 +51,7 @@
 				<span class="animate-pulse [animation-delay:240ms]">·</span>
 			</span>
 			{#if status && status !== 'in_progress'}
-				<span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
+				<span class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary">
 					{status}
 				</span>
 			{/if}

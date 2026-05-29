@@ -13,7 +13,7 @@
 
 	const kindIconClass = {
 		success: 'text-emerald-600 dark:text-emerald-400',
-		info: 'text-neutral-500 dark:text-neutral-400',
+		info: 'text-fg-muted',
 		error: 'text-red-600 dark:text-red-400'
 	} as const;
 </script>
@@ -38,7 +38,7 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="fixed left-4 right-4 z-50 flex items-center gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md dark:border-neutral-700 dark:bg-neutral-900"
+		class="fixed left-4 right-4 z-50 flex items-center gap-3 rounded-md border border-border bg-surface-panel px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
 		style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 	>
 		<Icon size={16} strokeWidth={2.25} class="shrink-0 {kindIconClass[t.kind]}" />
@@ -72,7 +72,7 @@
 			onclick={() => toast.dismiss()}
 			aria-label="Dismiss"
 			title="Dismiss"
-			class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 transition hover:bg-black/5 hover:text-neutral-700 dark:hover:bg-white/10 dark:hover:text-neutral-200"
+			class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-fg-muted transition hover:bg-black/5 hover:text-fg-secondary dark:hover:bg-white/10"
 		>
 			<X size={14} strokeWidth={2.25} />
 		</button>

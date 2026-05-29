@@ -136,8 +136,8 @@
 					type="button"
 					onclick={() => setKind(k as 'image' | 'video' | null)}
 					class="rounded-md border px-3 py-1.5 transition {active
-						? 'border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900'
-						: 'border-neutral-300 bg-white hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800'}"
+						? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+						: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
 				>
 					{label}
 				</button>
@@ -148,8 +148,8 @@
 	<div class="flex-1 overflow-y-auto px-4 py-4">
 		{#if items.length === 0}
 			<div class="flex h-full flex-col items-center justify-center text-center">
-				<p class="text-sm text-neutral-500">No media yet.</p>
-				<p class="mt-1 text-xs text-neutral-400">
+				<p class="text-sm text-fg-muted">No media yet.</p>
+				<p class="mt-1 text-xs text-fg-subtle">
 					Generated images and videos from your chats appear here.
 				</p>
 			</div>
@@ -162,7 +162,7 @@
 			-->
 			<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
 				{#each items as m (m.id)}
-					<li class="group relative overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100 transition hover:border-neutral-400 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-neutral-600">
+					<li class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus">
 						<button
 							type="button"
 							onclick={() => (lightbox = m)}
@@ -207,7 +207,7 @@
 								{/if}
 							</div>
 							{#if m.promptExcerpt}
-								<div class="px-2 py-1.5 text-left text-xs text-neutral-700 line-clamp-2 dark:text-neutral-300">
+								<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
 									{m.promptExcerpt}
 								</div>
 							{/if}
@@ -232,7 +232,7 @@
 						type="button"
 						onclick={loadMore}
 						disabled={loadingMore}
-						class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+						class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised disabled:opacity-50"
 					>
 						{loadingMore ? 'Loading…' : 'Load more'}
 					</button>

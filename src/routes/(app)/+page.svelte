@@ -249,10 +249,10 @@
 			<img>) so its strokes use currentColor and adapt to dark mode.
 		-->
 		<div class="mb-6 flex flex-col items-center gap-4">
-			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-100 ring-1 ring-neutral-200 dark:bg-neutral-800/70 dark:ring-neutral-700/70">
+			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border">
 				<svg
 					viewBox="0 0 32 32"
-					class="h-8 w-8 text-neutral-700 dark:text-neutral-200"
+					class="h-8 w-8 text-fg-secondary"
 					fill="none"
 					stroke="currentColor"
 					stroke-width="2.5"
@@ -267,7 +267,7 @@
 			</div>
 			{#if data.prefs?.showGreeting ?? true}
 				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-					<span class="text-neutral-900 dark:text-neutral-100">{greeting}, {userFirstName}</span>
+					<span class="text-fg">{greeting}, {userFirstName}</span>
 				</h1>
 			{/if}
 		</div>
@@ -315,7 +315,7 @@
 						attachments.isBusy}
 					aria-label="Send message"
 					title="Send"
-					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />
 				</button>

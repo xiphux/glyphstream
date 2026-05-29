@@ -78,12 +78,12 @@
 			disabled={pos === 1 || generating}
 			aria-label="Previous sibling"
 			title="Previous"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
 			class:order-first={isUser}
 		>
 			<ChevronLeft size={14} strokeWidth={2.25} />
 		</button>
-		<span class="text-xs tabular-nums text-neutral-500" class:order-first={isUser}>
+		<span class="text-xs tabular-nums text-fg-muted" class:order-first={isUser}>
 			{pos} / {siblingCount}
 		</span>
 		<button
@@ -92,7 +92,7 @@
 			disabled={pos === siblingCount || generating}
 			aria-label="Next sibling"
 			title="Next"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
 			class:order-first={isUser}
 		>
 			<ChevronRight size={14} strokeWidth={2.25} />
@@ -107,7 +107,7 @@
 			disabled={generating}
 			aria-label="Delete this branch"
 			title="Delete branch"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-red-950/40 dark:hover:text-red-300"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-red-950/40 dark:hover:text-red-300"
 			class:order-first={isUser}
 		>
 			<Trash2 size={14} strokeWidth={2.25} />
@@ -119,7 +119,7 @@
 			onclick={onCopy}
 			aria-label={recentlyCopied ? 'Copied' : 'Copy message'}
 			title={recentlyCopied ? 'Copied' : 'Copy'}
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary"
 		>
 			{#if recentlyCopied}
 				<Check size={14} strokeWidth={2.25} class="text-emerald-600 dark:text-emerald-400" />
@@ -135,7 +135,7 @@
 			disabled={generating}
 			aria-label="Edit message"
 			title="Edit"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
 		>
 			<Pencil size={14} strokeWidth={2.25} />
 		</button>
@@ -147,7 +147,7 @@
 			disabled={generating}
 			aria-label="Retry"
 			title="Retry"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
 		>
 			<RotateCcw size={14} strokeWidth={2.25} />
 		</button>
@@ -168,7 +168,7 @@
 			<Popover.Trigger
 				aria-label="Token usage for this message"
 				title="Token usage"
-				class="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-700 data-[state=open]:bg-neutral-200 data-[state=open]:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200 dark:data-[state=open]:bg-neutral-800 dark:data-[state=open]:text-neutral-200 {isUser
+				class="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary data-[state=open]:bg-surface-sunken data-[state=open]:text-fg-secondary {isUser
 					? '-order-1'
 					: ''}"
 			>
@@ -177,23 +177,23 @@
 			<Popover.Portal>
 				<Popover.Content
 					sideOffset={4}
-					class="z-50 max-w-[260px] rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+					class="z-50 max-w-[260px] rounded-md border border-border bg-surface-panel px-3 py-2 text-xs shadow-lg"
 				>
 					{#if message.role === 'user'}
 						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">
-							<dt class="text-neutral-500">Sent to model</dt>
-							<dd class="text-right font-medium text-neutral-900 dark:text-neutral-100">
+							<dt class="text-fg-muted">Sent to model</dt>
+							<dd class="text-right font-medium text-fg">
 								{tokenFmt.format(userSentTokens ?? 0)}
 							</dd>
 						</dl>
-						<p class="mt-2 text-[11px] leading-snug text-neutral-500">
+						<p class="mt-2 text-[11px] leading-snug text-fg-muted">
 							Full conversation passed to the model at this turn — includes the
 							system prompt and prior messages, not just this one.
 						</p>
 					{:else}
 						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">
-							<dt class="text-neutral-500">Generated</dt>
-							<dd class="text-right font-medium text-neutral-900 dark:text-neutral-100">
+							<dt class="text-fg-muted">Generated</dt>
+							<dd class="text-right font-medium text-fg">
 								{tokenFmt.format(assistantOut)}
 							</dd>
 						</dl>

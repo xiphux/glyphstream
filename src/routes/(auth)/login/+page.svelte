@@ -5,10 +5,10 @@
 <div class="flex min-h-screen items-center justify-center p-6">
 	<div class="w-full max-w-sm">
 		<div
-			class="rounded-2xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+			class="rounded-2xl border border-border bg-surface-panel p-8 shadow-sm"
 		>
 			<h1 class="text-2xl font-semibold tracking-tight">GlyphStream</h1>
-			<p class="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
+			<p class="mt-1 text-sm text-fg-muted">
 				Sign in to continue. Access is limited to allowlisted GitHub accounts.
 			</p>
 
@@ -22,7 +22,7 @@
 
 			<a
 				href="/api/auth/github/login"
-				class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+				class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-surface-inverse px-4 py-2.5 text-sm font-medium text-fg-inverse transition hover:opacity-90"
 			>
 				<svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true" fill="currentColor">
 					<path
@@ -33,7 +33,7 @@
 			</a>
 		</div>
 
-		<p class="mt-4 text-center text-xs text-neutral-500">
+		<p class="mt-4 text-center text-xs text-fg-muted">
 			Self-hosted. Closed registration.
 		</p>
 	</div>

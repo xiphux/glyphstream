@@ -234,12 +234,12 @@
 				e.preventDefault();
 				void save();
 			}}
-			class="mx-auto flex max-w-2xl flex-col gap-6 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+			class="mx-auto flex max-w-2xl flex-col gap-6 rounded-lg border border-border bg-surface-panel p-4"
 		>
 			<section class="flex flex-col gap-3">
 				<div>
 					<h2 class="text-sm font-semibold">Personalization</h2>
-					<p class="mt-0.5 text-xs text-neutral-500">
+					<p class="mt-0.5 text-xs text-fg-muted">
 						Composed into a system prompt for new conversations (when not using a
 						custom-model preset). Doesn't change existing chats — only future ones.
 						Empty fields are omitted entirely.
@@ -255,7 +255,7 @@
 						maxlength={100}
 						disabled={busy}
 						placeholder="Your name or nickname"
-						class="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+						class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					/>
 				</div>
 
@@ -268,7 +268,7 @@
 						maxlength={2000}
 						disabled={busy}
 						placeholder="Background, interests, or other standing context to keep in mind"
-						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					></textarea>
 				</div>
 
@@ -281,17 +281,17 @@
 						maxlength={4000}
 						disabled={busy}
 						placeholder="Response style, tone, or formatting preferences"
-						class="w-full resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 text-base shadow-sm focus:border-neutral-400 focus:outline-none disabled:opacity-50 sm:text-sm dark:border-neutral-700 dark:bg-neutral-900"
+						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					></textarea>
 				</div>
 			</section>
 
-			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+			<div class="border-t border-border"></div>
 
 			<section class="flex flex-col gap-2">
 				<div>
 					<h2 class="text-sm font-semibold">Composer</h2>
-					<p class="mt-0.5 text-xs text-neutral-500">
+					<p class="mt-0.5 text-xs text-fg-muted">
 						How the message composer treats the Enter key.
 					</p>
 				</div>
@@ -308,7 +308,7 @@
 						/>
 						<span>
 							<span class="font-medium">Enter sends</span>
-							<span class="text-neutral-500">
+							<span class="text-fg-muted">
 								— Shift+Enter inserts a newline. (Default.)
 							</span>
 						</span>
@@ -325,7 +325,7 @@
 						/>
 						<span>
 							<span class="font-medium">Enter inserts a newline</span>
-							<span class="text-neutral-500">
+							<span class="text-fg-muted">
 								— Cmd/Ctrl+Enter sends.
 							</span>
 						</span>
@@ -333,7 +333,7 @@
 				</div>
 			</section>
 
-			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+			<div class="border-t border-border"></div>
 
 			<section class="flex flex-col gap-2">
 				<h2 class="text-sm font-semibold">New chat page</h2>
@@ -346,19 +346,19 @@
 					/>
 					<span>
 						<span class="font-medium">Show greeting</span>
-						<span class="text-neutral-500">
+						<span class="text-fg-muted">
 							— "Good morning, Chris" header above the message composer.
 						</span>
 					</span>
 				</label>
 			</section>
 
-			<div class="border-t border-neutral-200 dark:border-neutral-800"></div>
+			<div class="border-t border-border"></div>
 
 			<section class="flex flex-col gap-3">
 				<div>
 					<h2 class="text-sm font-semibold">Notifications</h2>
-					<p class="mt-0.5 text-xs text-neutral-500">
+					<p class="mt-0.5 text-xs text-fg-muted">
 						Ping you when an assistant message finishes — toast when you're in
 						the app on a different page, OS notification when you've switched
 						apps or locked your phone. On iOS this needs the PWA installed to
@@ -376,7 +376,7 @@
 					/>
 					<span>
 						<span class="font-medium">Enable notifications</span>
-						<span class="text-neutral-500">
+						<span class="text-fg-muted">
 							— receive push notifications on this device when a message
 							completes.
 						</span>
@@ -390,7 +390,7 @@
 						{masterDisabledReason}
 					</div>
 				{:else if pushSupported}
-					<div class="text-xs text-neutral-500">
+					<div class="text-xs text-fg-muted">
 						Permission: <span class="font-mono">{permissionState}</span>
 					</div>
 				{/if}
@@ -408,7 +408,7 @@
 					/>
 					<span>
 						<span class="font-medium">Show message preview</span>
-						<span class="text-neutral-500">
+						<span class="text-fg-muted">
 							— include a snippet of the assistant's reply in the notification
 							body. Turn off if your threads are private to the device.
 						</span>
@@ -428,7 +428,7 @@
 					/>
 					<span>
 						<span class="font-medium">In-app toast for other threads</span>
-						<span class="text-neutral-500">
+						<span class="text-fg-muted">
 							— pop a toast when a thread completes while you're on a different
 							page. Turn off to only get OS-level notifications when the app is
 							backgrounded.
@@ -465,7 +465,7 @@
 						type="button"
 						onclick={revert}
 						disabled={busy}
-						class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+						class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised disabled:opacity-50"
 					>
 						Revert
 					</button>
@@ -473,7 +473,7 @@
 				<button
 					type="submit"
 					disabled={!dirty || busy}
-					class="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+					class="rounded-md bg-surface-inverse px-4 py-2 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 				>
 					{busy ? 'Saving…' : 'Save'}
 				</button>

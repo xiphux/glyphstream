@@ -549,7 +549,7 @@
 		Archived sidebar link.
 	-->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden bg-neutral-50 transition-[transform,width] duration-200 sm:static sm:translate-x-0 dark:bg-neutral-900 {drawerOpen
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface transition-[transform,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {busyId !== null
 			? 'pointer-events-none'
@@ -569,7 +569,7 @@
 					 a service-worker refresh or which build is loaded. -->
 				<div class="flex items-baseline gap-1.5">
 					<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
-					<span class="text-[10px] tabular-nums text-neutral-400 dark:text-neutral-600">
+					<span class="text-[10px] tabular-nums text-fg-subtle">
 						v{__APP_VERSION__}
 					</span>
 				</div>
@@ -579,7 +579,7 @@
 				onclick={() => (collapsed = !collapsed)}
 				aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 				title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-				class="hidden h-7 w-7 items-center justify-center rounded text-neutral-500 transition hover:bg-neutral-200/70 hover:text-neutral-700 sm:flex dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+				class="hidden h-7 w-7 items-center justify-center rounded text-fg-muted transition hover:bg-surface-sunken/70 hover:text-fg-secondary sm:flex"
 			>
 				{#if collapsed}
 					<PanelLeftOpen size={16} strokeWidth={2.25} />
@@ -592,9 +592,9 @@
 		<div class="px-2">
 			<a
 				href="/"
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {newChatPending
-					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {newChatPending
+					? 'bg-surface-sunken'
+					: 'hover:bg-surface-sunken/70'} {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 				title={collapsed ? 'New chat' : 'Start a new chat'}
@@ -605,9 +605,9 @@
 			<a
 				href="/gallery"
 				title={collapsed ? 'Gallery' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {galleryActive
-					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {galleryActive
+					? 'bg-surface-sunken'
+					: 'hover:bg-surface-sunken/70'} {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 			>
@@ -617,9 +617,9 @@
 			<a
 				href="/settings/models"
 				title={collapsed ? 'Custom models' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {customModelsActive
-					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {customModelsActive
+					? 'bg-surface-sunken'
+					: 'hover:bg-surface-sunken/70'} {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 			>
@@ -629,9 +629,9 @@
 			<a
 				href="/archived"
 				title={collapsed ? 'Archived' : ''}
-				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {archivedActive
-					? 'bg-neutral-200 dark:bg-neutral-800'
-					: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'} {collapsed
+				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {archivedActive
+					? 'bg-surface-sunken'
+					: 'hover:bg-surface-sunken/70'} {collapsed
 					? 'sm:justify-center sm:px-0'
 					: ''}"
 			>
@@ -660,7 +660,7 @@
 		{#if favoriteEntries.length > 0}
 			<nav class="mt-2" aria-label="Favorite models">
 				{#if !collapsed}
-					<h2 class="px-5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+					<h2 class="px-5 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wider text-fg-muted">
 						Favorites
 					</h2>
 				{/if}
@@ -693,7 +693,7 @@
 									draggable="false"
 									href="/?model={encodeURIComponent(fav.value)}"
 									title={fav.label}
-									class="flex cursor-grab items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-neutral-200/70 active:cursor-grabbing active:bg-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700 {collapsed
+									class="flex cursor-grab items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-surface-sunken/70 active:cursor-grabbing active:bg-surface-sunken {collapsed
 										? 'sm:justify-center sm:px-0'
 										: ''}"
 								>
@@ -732,11 +732,11 @@
 			<div class="hidden flex-1 sm:block"></div>
 		{/if}
 		<nav class="mt-5 flex min-h-0 flex-1 flex-col {collapsed ? 'sm:hidden' : ''}">
-			<h2 class="px-5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+			<h2 class="px-5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-fg-muted">
 				Recents
 			</h2>
 			{#if data.conversations.length === 0}
-				<p class="px-5 py-2 text-xs text-neutral-500">No conversations yet.</p>
+				<p class="px-5 py-2 text-xs text-fg-muted">No conversations yet.</p>
 			{:else}
 				<ScrollPane
 					class="min-h-0 flex-1 px-2"
@@ -764,21 +764,21 @@
 									onblur={commitRename}
 									maxlength={MAX_CONVERSATION_TITLE_LENGTH}
 									aria-label="Rename conversation"
-									class="block w-full rounded-md border border-neutral-300 bg-white py-2 pl-3 pr-3 text-sm focus:border-neutral-500 focus:outline-none dark:border-neutral-600 dark:bg-neutral-800 dark:focus:border-neutral-400"
+									class="block w-full rounded-md border border-border-strong bg-surface-panel py-2 pl-3 pr-3 text-sm focus:border-border-focus focus:outline-none"
 								/>
 							{:else}
 								<a
 									{href}
-									class="flex items-center gap-1.5 rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-neutral-300 dark:active:bg-neutral-700 {active
-										? 'bg-neutral-200 dark:bg-neutral-800'
-										: 'hover:bg-neutral-200/70 dark:hover:bg-neutral-800'}"
+									class="flex items-center gap-1.5 rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-surface-sunken {active
+										? 'bg-surface-sunken'
+										: 'hover:bg-surface-sunken/70'}"
 								>
 									{#if isTitlePending(c.id)}
 										<!-- Subtle spinner while the background auto-title
 											 task is still generating this conversation's
 											 title (see $lib/title-pending). -->
 										<span
-											class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-neutral-400 border-t-transparent dark:border-neutral-500 dark:border-t-transparent"
+											class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
 											aria-hidden="true"
 											title="Generating title…"
 										></span>
@@ -793,7 +793,7 @@
 										disabled={busyId === c.id}
 										title="Conversation options"
 										aria-label="Options for conversation {c.title ?? 'Untitled'}"
-										class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-neutral-500 transition hover:bg-neutral-300 hover:text-neutral-700 focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-neutral-700 dark:hover:text-neutral-200 data-[state=open]:opacity-100"
+										class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
 									>
 										<MoreVertical size={14} strokeWidth={2.25} />
 									</DropdownMenu.Trigger>
@@ -801,18 +801,18 @@
 										<DropdownMenu.Content
 											sideOffset={4}
 											align="end"
-											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border bg-surface-panel py-1 shadow-lg"
 										>
 											<DropdownMenu.Item
 												onSelect={() => startRename(c.id, c.title)}
-												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 											>
 												<Pencil size={14} strokeWidth={2.25} />
 												<span>Rename</span>
 											</DropdownMenu.Item>
 											<DropdownMenu.Item
 												onSelect={() => archiveConversation(c.id)}
-												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 											>
 												<Archive size={14} strokeWidth={2.25} />
 												<span>Archive</span>
@@ -844,10 +844,10 @@
 			destinations the user visits regularly. When collapsed on
 			desktop, the trigger shrinks to a single User icon.
 		-->
-		<div class="mt-2 border-t border-neutral-200 px-3 py-2 text-xs text-neutral-500 dark:border-neutral-800">
+		<div class="mt-2 border-t border-border px-3 py-2 text-xs text-fg-muted">
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger
-					class="flex w-full items-center gap-2 rounded transition hover:bg-neutral-200 hover:text-neutral-700 focus-visible:ring-1 focus-visible:ring-neutral-400 focus-visible:outline-none disabled:opacity-50 dark:hover:bg-neutral-800 dark:hover:text-neutral-300 {collapsed
+					class="flex w-full items-center gap-2 rounded transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-border-focus focus-visible:outline-none disabled:opacity-50 {collapsed
 						? 'sm:justify-center'
 						: 'justify-between px-1'} py-1"
 					aria-label="Account menu"
@@ -865,11 +865,11 @@
 						sideOffset={6}
 						align="start"
 						side="top"
-						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-border bg-surface-panel py-1 shadow-lg"
 					>
 						<DropdownMenu.Item
 							onSelect={() => goto('/settings/preferences')}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 						>
 							<Settings size={14} strokeWidth={2.25} />
 							<span>Preferences</span>
@@ -886,7 +886,7 @@
 								document.body.appendChild(f);
 								f.submit();
 							}}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-neutral-100 dark:data-[highlighted]:bg-neutral-800"
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 						>
 							<LogOut size={14} strokeWidth={2.25} />
 							<span>Sign out</span>
@@ -912,7 +912,7 @@
 				type="button"
 				onclick={() => (drawerOpen = true)}
 				aria-label="Open menu"
-				class="rounded-md p-1.5 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
+				class="rounded-md p-1.5 transition hover:bg-surface-raised"
 			>
 				<Menu size={20} strokeWidth={2.25} />
 			</button>

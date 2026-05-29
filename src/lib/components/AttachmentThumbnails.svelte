@@ -24,11 +24,11 @@
 
 {#if attachments.items.length > 0}
 	<div
-		class="flex flex-wrap gap-2 border-b border-neutral-200 pb-2 dark:border-neutral-800 {className}"
+		class="flex flex-wrap gap-2 border-b border-border pb-2 {className}"
 	>
 		{#each attachments.items as a (a.clientId)}
 			<div
-				class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800"
+				class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-surface-raised"
 				title={a.error ?? a.contentType}
 			>
 				<img
