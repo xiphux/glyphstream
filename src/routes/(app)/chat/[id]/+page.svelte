@@ -362,6 +362,13 @@
 		typeof window !== 'undefined' &&
 		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+	// The assistant message id that just finished streaming / generating.
+	// Its content was already on screen as the in-flight bubble, so when
+	// the persisted row mounts to replace it we suppress the arrival fade —
+	// otherwise the bubble visibly blinks out and re-fades on finalize. The
+	// in-flight bubble itself carries the fade (on stream start) instead.
+	let streamedMessageId = $state<string | null>(null);
+
 	// Land focus in the follow-up composer whenever the conversation
 	// becomes ready for input — on entering a conversation (including
 	// switching straight from another one), and the moment an in-flight
@@ -892,6 +899,7 @@
 						// would be. The for-await's tail awaits invalidateAll
 						// and clears in-flight only after the canonical rows
 						// have landed.
+						streamedMessageId = event.assistantMessage.id;
 						if (!sawToolCalls) {
 							messages = [...messages, event.assistantMessage];
 							inFlightOpen = false;
@@ -1027,6 +1035,7 @@
 			// Send / edit: drop optimistic, then append both canonical rows.
 			// Retry: only append the new assistant — the user message
 			// already exists in the array.
+			streamedMessageId = body.assistantMessage.id;
 			if (isRetry) {
 				messages = [...messages, body.assistantMessage];
 			} else {
@@ -1429,7 +1438,9 @@
 				-->
 				<div
 					id="msg-{m.id}"
-					in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
+					in:fade={{
+						duration: listMounted && !reduceMotion && m.id !== streamedMessageId ? 160 : 0
+					}}
 					class={['group', mergeWithPrev && 'mt-0!', mergeWithNext && 'mb-0!']}
 				>
 				{#if m.id === editingMessageId}
@@ -1478,16 +1489,18 @@
 			{/each}
 
 			{#if showInFlight}
-				<InFlightBubble
-					blocks={inFlightBlocks}
-					{assistantLabel}
-					label={inFlightLabel}
-					status={inFlightStatus}
-					progress={inFlightProgress}
-					{elapsedSeconds}
-					onImageClick={openImageInLightbox}
-					{openingLightboxFor}
-				/>
+				<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
+					<InFlightBubble
+						blocks={inFlightBlocks}
+						{assistantLabel}
+						label={inFlightLabel}
+						status={inFlightStatus}
+						progress={inFlightProgress}
+						{elapsedSeconds}
+						onImageClick={openImageInLightbox}
+						{openingLightboxFor}
+					/>
+				</div>
 			{/if}
 			<!--
 				Bottom sentinel for IntersectionObserver. Pinned to the very

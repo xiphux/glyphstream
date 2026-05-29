@@ -37,6 +37,7 @@ bundle-stats.html
 tests/.e2e-data/
 playwright-report/
 test-results/
+.playwright-cli/
 
 # OWUI export files — used as opt-in fixtures by the import test suite,
 # but they contain personal chat history and should never be committed.
