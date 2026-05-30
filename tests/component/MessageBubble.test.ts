@@ -74,7 +74,7 @@ describe('MessageBubble — role label', () => {
 });
 
 describe('MessageBubble — bubble styling', () => {
-	it('right-aligns + dark-tints user bubbles', () => {
+	it('right-aligns + accent-tints user bubbles', () => {
 		const { container } = render(MessageBubble, {
 			props: {
 				...baseProps,
@@ -83,7 +83,7 @@ describe('MessageBubble — bubble styling', () => {
 		});
 		const article = container.querySelector('article')!;
 		expect(article).toHaveClass('ml-auto');
-		expect(article).toHaveClass('bg-surface-inverse');
+		expect(article).toHaveClass('bg-accent/15');
 	});
 
 	it('light-tints assistant bubbles', () => {
