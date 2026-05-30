@@ -6,28 +6,43 @@ expected priority, not time-bound.
 
 ## Mid-term (v2)
 
-- **MCP server support.** Model Context Protocol gives clients a
-  plug-and-play way to add tool servers — Gmail, Calendar, filesystem,
-  GitHub, Linear — without GlyphStream having to build each integration.
-  MCP tools surface as standard tool calls and slot directly into the
-  existing tool registry (`src/lib/server/tools/`). Architectural
-  challenges remaining:
-  - *Transport.* MCP currently runs over stdio or SSE. Stdio doesn't
-    translate to a web frontend; SSE works (the `mcp-remote` pattern).
-    GlyphStream's Node process spawns / connects to MCP servers and
-    surfaces their tools to chat requests as standard `tools` array
-    entries — same loop pattern as web search.
-  - *Auth.* Gmail / Calendar / GitHub need OAuth flows that survive
-    across conversations. Per-user "connect <service>" affordance in
-    prefs, with tokens stored encrypted in DB.
-  - *Trust.* Arbitrary MCP servers can do arbitrary things. Need an
-    approve-each-tool-call UX (like Claude Desktop) with per-server
-    "always allow" promotion for trusted ones.
-
-  High value once shipped: any of the dozens of public MCP servers
-  becomes available in chat with zero GlyphStream-side integration code
-  per service. Probably the single biggest user-facing capability
-  expansion in v2 scope.
+- **MCP server support — v1 DONE.** Admin-defined `[[mcp_servers]]`
+  blocks in `config.toml` mirror the existing endpoint pattern with
+  static auth (none or `Authorization: Bearer ${env[api_key_env]}`).
+  Both stdio and Streamable HTTP transports are wired; stdio
+  connections eagerly connect at boot, reap after `idle_timeout_seconds`
+  of inactivity, and re-spawn transparently on the next tool call. One
+  failed server doesn't block the others — failures surface in
+  `/settings/mcp` and the rest of the boot continues. MCP tools register
+  into the existing tool registry under namespaced `mcp__<server>__<tool>`
+  names with `metadata.category = mcp:<server-id>`, so per-conversation
+  toggles and per-custom-model defaults handle them through the same
+  paths as built-ins. Untrusted MCP tools halt the streaming relay with
+  an inline Allow / Allow Always / Reject prompt; the resume endpoint
+  re-issues the upstream call once decisions land. Per-tool "always
+  allow" grants live at `/settings/permissions` — the cross-cutting
+  permissions surface skills and Open Terminal will plug into next.
+  Phase-2 work remaining:
+  - *OAuth per-user (v1b).* New `oauth_connections` table; multi-provider
+    abstraction in `src/lib/server/auth/providers/` mirroring how arctic
+    is wired for GitHub login today; per-user `/settings/connections` UI
+    with "Connect Gmail" affordances; `AUTH_SECRET`-keyed AES-256-GCM
+    encryption-at-rest for refresh tokens (the env var is already defined
+    in `.env.example` but currently unused). The OAuth path will sit
+    beside the v1 static-key path in the registry with no rework of v1.
+  - *Browser-side bridge for user-local MCP servers* (the `mcp-remote`
+    pattern). The Node process can't reach a server running on the
+    user's laptop if GlyphStream is hosted elsewhere; a server-relayed
+    WebSocket-to-browser transport closes that gap.
+  - *Argument-aware approval.* v1 prompts per tool name; a future policy
+    engine could let users say "allow `delete_message` but only when
+    `sender` matches X". The pending-approval row already persists args.
+  - *Resources + prompts.* MCP servers can expose URI-addressable data
+    and named prompt templates beyond tools — both are deliberately out
+    of scope for v1's tools-only cut.
+  - *Rich content blocks in tool results.* Image / audio blocks are
+    currently dropped with a placeholder note; relevant once Open
+    Terminal lands and screenshot-style outputs become useful.
 
 - **Agent skills (Anthropic skills spec).** A skill is a reusable
   capability bundle — a `SKILL.md` (name + description + body) plus
