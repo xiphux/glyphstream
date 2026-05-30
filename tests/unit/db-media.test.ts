@@ -10,6 +10,7 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
+	bulkHardDeleteMediaForUser,
 	decrementMediaForMessages,
 	findPurgeCandidates,
 	getMediaForUser,
@@ -346,6 +347,79 @@ describe('hardDeleteMediaForUser', () => {
 		// Re-linking afterward should not re-bump refCount because it's
 		// already at 0 (we cleared it).
 		expect(getRow(id)?.refCount).toBe(0);
+	});
+});
+
+describe('bulkHardDeleteMediaForUser', () => {
+	it('returns [] for an empty input', () => {
+		const u = seedUser();
+		expect(bulkHardDeleteMediaForUser([], u.id)).toEqual([]);
+	});
+
+	it('tombstones every live row in the selection + returns their storagePaths', () => {
+		const u = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		const c = makeMedia(u.id);
+		const result = bulkHardDeleteMediaForUser([a.id, b.id, c.id], u.id);
+		expect(result).toHaveLength(3);
+		const returnedIds = new Set(result.map((r) => r.id));
+		expect(returnedIds).toEqual(new Set([a.id, b.id, c.id]));
+		for (const r of result) {
+			expect(r.storagePath).toMatch(/\.png$/);
+		}
+		for (const id of [a.id, b.id, c.id]) {
+			const row = getRow(id);
+			expect(row?.hardDeletedAt).not.toBeNull();
+			expect(row?.refCount).toBe(0);
+		}
+	});
+
+	it('skips already-deleted rows without poisoning the rest of the batch', () => {
+		const u = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		hardDeleteMediaForUser(a.id, u.id);
+		const result = bulkHardDeleteMediaForUser([a.id, b.id], u.id);
+		// Only b should be in the result — a was already a tombstone.
+		expect(result.map((r) => r.id)).toEqual([b.id]);
+		expect(getRow(b.id)?.hardDeletedAt).not.toBeNull();
+	});
+
+	it('skips foreign-owned ids — no cross-user delete leak', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const own = makeMedia(u1.id);
+		const foreign = makeMedia(u2.id);
+		const result = bulkHardDeleteMediaForUser([own.id, foreign.id], u1.id);
+		expect(result.map((r) => r.id)).toEqual([own.id]);
+		// u2's row is untouched.
+		expect(getRow(foreign.id)?.hardDeletedAt).toBeNull();
+	});
+
+	it('drops message_media join rows for the deleted set', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image'
+		});
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }]
+		});
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		linkMessageMedia(msg.id, a.id);
+		linkMessageMedia(msg.id, b.id);
+		bulkHardDeleteMediaForUser([a.id, b.id], u.id);
+		// Both rows' join entries are gone (the listConversationsForMedia
+		// lookup is empty for each).
+		expect(listConversationsForMedia(a.id, u.id)).toEqual([]);
+		expect(listConversationsForMedia(b.id, u.id)).toEqual([]);
 	});
 });
 

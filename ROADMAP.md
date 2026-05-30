@@ -21,15 +21,6 @@ expected priority, not time-bound.
   first, embeddings as a follow-up when the embedding model is a hard
   dep anyway.
 
-- **Bulk gallery management.** As the library accumulates over months
-  of use, single-item delete becomes tedious. Worth adding multi-select
-  + bulk-delete (and maybe bulk-archive into a hidden tier) once the
-  pain is real — the library model commits the architecture to "users
-  curate the gallery themselves," so the curation tools need to scale
-  with library size. Selection state lives in the gallery page; the
-  bulk-delete API can compose `hardDeleteMediaForUser` over the
-  selection.
-
 - **Playwright e2e suite — expand coverage.** The suite is stood up
   (`tests/e2e/`): it boots a production build against a mock OpenAI-
   compatible upstream (`fixtures/mock-upstream.mjs`, a second

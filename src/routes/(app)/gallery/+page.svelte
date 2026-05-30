@@ -23,6 +23,14 @@
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
 
+	// Selection mode + selection set for bulk-delete. SvelteKit's reactivity
+	// on collections needs a fresh reference to fire, so toggle/clear rebuild
+	// the Set rather than mutating in place.
+	let selectMode = $state(false);
+	let selected = $state<Set<string>>(new Set());
+	let bulkDeleting = $state(false);
+	const selectedCount = $derived(selected.size);
+
 	// Conversation refs for the currently-open lightbox item.
 	// `null` means "we haven't fetched yet (loading)"; `[]` means "fetched,
 	// genuinely none" — distinguishing these matters because the empty case
@@ -119,6 +127,58 @@
 		}
 	}
 
+	function enterSelectMode() {
+		selectMode = true;
+		selected = new Set();
+		lightbox = null;
+	}
+
+	function exitSelectMode() {
+		selectMode = false;
+		selected = new Set();
+	}
+
+	function toggleSelected(id: string) {
+		// Rebuild the Set so $state-tracked reactivity fires; in-place
+		// add/delete on the same reference doesn't.
+		const next = new Set(selected);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selected = next;
+	}
+
+	async function deleteSelected() {
+		if (bulkDeleting || selected.size === 0) return;
+		const count = selected.size;
+		const ok = await confirmDialog.ask({
+			title: count === 1 ? 'Delete 1 item?' : `Delete ${count} items?`,
+			message: 'This action cannot be undone.'
+		});
+		if (!ok) return;
+		bulkDeleting = true;
+		error = null;
+		try {
+			const ids = Array.from(selected);
+			const res = await fetch('/api/media/bulk-delete', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ ids })
+			});
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			// Optimistically drop every requested id regardless of how many
+			// the server actually tombstoned — any in the request that
+			// weren't tombstoned were already gone, so they shouldn't be in
+			// the list anyway.
+			const dropped = new Set(ids);
+			items = items.filter((m) => !dropped.has(m.id));
+			exitSelectMode();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to delete selected media';
+		} finally {
+			bulkDeleting = false;
+		}
+	}
+
 	// Formatting helpers + Escape handling now live inside MediaLightbox —
 	// see src/lib/components/MediaLightbox.svelte. The lightbox state is
 	// still owned here so the conversations-fetch $effect above (and the
@@ -129,19 +189,52 @@
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
 		<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
-		<div class="flex gap-1 text-xs">
-			{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
-				{@const active = kindFilter === k}
+		<div class="flex items-center gap-2 text-xs">
+			{#if selectMode}
+				<span class="text-fg-muted">
+					{selectedCount === 0 ? 'Select items' : `${selectedCount} selected`}
+				</span>
 				<button
 					type="button"
-					onclick={() => setKind(k as 'image' | 'video' | null)}
-					class="rounded-md border px-3 py-1.5 transition {active
-						? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-						: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+					onclick={deleteSelected}
+					disabled={bulkDeleting || selectedCount === 0}
+					class="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-white transition hover:bg-red-700 disabled:opacity-40"
 				>
-					{label}
+					{bulkDeleting ? 'Deleting…' : 'Delete'}
 				</button>
-			{/each}
+				<button
+					type="button"
+					onclick={exitSelectMode}
+					disabled={bulkDeleting}
+					class="rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 transition hover:bg-surface-raised disabled:opacity-40"
+				>
+					Cancel
+				</button>
+			{:else}
+				<div class="flex gap-1">
+					{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
+						{@const active = kindFilter === k}
+						<button
+							type="button"
+							onclick={() => setKind(k as 'image' | 'video' | null)}
+							class="rounded-md border px-3 py-1.5 transition {active
+								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						>
+							{label}
+						</button>
+					{/each}
+				</div>
+				{#if items.length > 0}
+					<button
+						type="button"
+						onclick={enterSelectMode}
+						class="rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 transition hover:bg-surface-raised"
+					>
+						Select
+					</button>
+				{/if}
+			{/if}
 		</div>
 	</header>
 
@@ -162,12 +255,20 @@
 			-->
 			<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
 				{#each items as m (m.id)}
-					<li class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus">
+					{@const isSelected = selectMode && selected.has(m.id)}
+					<li class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
+						? 'border-surface-inverse ring-2 ring-surface-inverse'
+						: 'border-border hover:border-border-focus'}">
 						<button
 							type="button"
-							onclick={() => (lightbox = m)}
+							onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
 							class="block w-full"
-							aria-label="Open {m.kind} {m.promptExcerpt ?? ''}"
+							aria-label={selectMode
+								? isSelected
+									? `Deselect ${m.kind}`
+									: `Select ${m.kind}`
+								: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
+							aria-pressed={selectMode ? isSelected : undefined}
 						>
 							<div class="relative aspect-square w-full overflow-hidden">
 								{#if m.kind === 'image'}
@@ -212,16 +313,33 @@
 								</div>
 							{/if}
 						</button>
-						<button
-							type="button"
-							onclick={() => deleteOne(m.id)}
-							disabled={deletingId === m.id}
-							class="absolute left-1.5 top-1.5 rounded bg-red-600/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-700 disabled:opacity-50"
-							aria-label="Delete this media"
-							title="Delete"
-						>
-							{deletingId === m.id ? '…' : '×'}
-						</button>
+						{#if selectMode}
+							<!--
+								Checkbox badge for selection mode. Purely visual — the
+								whole tile is the toggle (the wrapping button handles
+								the click), so the badge is aria-hidden and not its
+								own focus target.
+							-->
+							<span
+								aria-hidden="true"
+								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
+									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+									: 'border-white/80 bg-black/40 text-transparent'}"
+							>
+								✓
+							</span>
+						{:else}
+							<button
+								type="button"
+								onclick={() => deleteOne(m.id)}
+								disabled={deletingId === m.id}
+								class="absolute left-1.5 top-1.5 rounded bg-red-600/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-700 disabled:opacity-50"
+								aria-label="Delete this media"
+								title="Delete"
+							>
+								{deletingId === m.id ? '…' : '×'}
+							</button>
+						{/if}
 					</li>
 				{/each}
 			</ul>

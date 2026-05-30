@@ -310,6 +310,42 @@ export function hardDeleteMediaForUser(
 	});
 }
 
+/**
+ * Bulk variant of hardDeleteMediaForUser — one transaction for the whole
+ * selection. Filters to the caller's own rows that aren't already hard-
+ * deleted (a single foreign or tombstoned id in the list doesn't poison
+ * the rest), then marks them tombstoned and drops their join rows in
+ * batched statements. Returns the `{id, storagePath}` pairs the caller
+ * should unlink from disk; ids passed in but excluded from the result
+ * are silently dropped, matching the single-id endpoint's idempotency
+ * shape. Empty input → empty output, no transaction.
+ */
+export function bulkHardDeleteMediaForUser(
+	ids: readonly string[],
+	userId: string
+): { id: string; storagePath: string }[] {
+	if (ids.length === 0) return [];
+	const db = getDb();
+	return db.transaction((tx) => {
+		const rows = tx
+			.select({ id: media.id, storagePath: media.storagePath })
+			.from(media)
+			.where(
+				and(eq(media.userId, userId), inArray(media.id, ids as string[]), isNull(media.hardDeletedAt))
+			)
+			.all();
+		if (rows.length === 0) return [];
+		const liveIds = rows.map((r) => r.id);
+		const now = Date.now();
+		tx.update(media)
+			.set({ hardDeletedAt: now, refCount: 0, unreferencedSince: now })
+			.where(inArray(media.id, liveIds))
+			.run();
+		tx.delete(messageMedia).where(inArray(messageMedia.mediaId, liveIds)).run();
+		return rows;
+	});
+}
+
 // --- Per-conversation orphan analysis (drives the delete-conversation UI) ---
 
 export interface ConversationOrphanCounts {
