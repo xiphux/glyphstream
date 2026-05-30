@@ -29,6 +29,31 @@ expected priority, not time-bound.
   per service. Probably the single biggest user-facing capability
   expansion in v2 scope.
 
+- **Agent skills (Anthropic skills spec).** A skill is a reusable
+  capability bundle — a `SKILL.md` (name + description + body) plus
+  optional resources — that loads into the model's context when the
+  user's intent matches the description. Same ecosystem-extensibility
+  story as MCP but on a different layer: MCP adds *tools*, skills add
+  *instructions + know-how* for using existing tools. The two compose
+  (a skill can declare which MCP tools it depends on). Architectural
+  challenges:
+  - *Storage.* Per-user `skills` table keyed by `user_id`, mirroring
+    the rest of the schema. Skill body inline on the row.
+  - *Activation.* Explicit via slash command (`/skill-name` in the
+    composer) and auto-trigger via description-matching on the user's
+    turn. Auto-trigger needs care — false positives pollute the system
+    prompt with irrelevant instructions; threshold-tuning is the
+    harder-than-it-looks part.
+  - *Script execution.* The spec lets skills ship scripts the agent
+    runs. For a self-hosted web app that's a substantial sandboxing
+    surface — running arbitrary user-provided code in the Node process
+    is a non-starter. MVP is instructions-only; script execution
+    delegates to whatever sandboxing an MCP server brings (the
+    **Open Terminal** item below).
+  - *Discovery.* A browse/import affordance for community skill
+    bundles, deferred until enough curated skills exist to anchor a
+    library UI.
+
 - **Memory system.** Tools for the model to read/write per-user memories —
   standing facts, preferences, ongoing context that should persist across
   conversations. Slots into the existing tool registry — memory access
@@ -96,6 +121,27 @@ expected priority, not time-bound.
 
 - **Bridge-side SSE normalization** (off by default via header). Saves
   duplicate normalizers if other clients ever consume the bridge.
+
+- **Open Terminal (open-webui/open-terminal).** Self-hosted terminal
+  + working-directory environment for the agent, exposed as an MCP
+  server — Open WebUI uses it to give chat sessions a sandboxed code
+  environment. Once the **MCP server support** item ships, plugging
+  Open Terminal in is "just another MCP endpoint" and the core
+  capability comes along for free. The remaining work is GlyphStream-
+  side UX polish that improves on the generic tool-call rendering:
+  - Terminal/command outputs deserve their own bubble treatment
+    (monospace, collapsible, optional re-run button) rather than the
+    generic tool-call block.
+  - A files panel surfacing the agent's working directory — browse,
+    preview, download. Effectively a per-conversation scoped file
+    explorer.
+  - Scope/quotas separate from MCP's per-call approval — directory-
+    level allowlist + writable-area boundary that persist across the
+    chain of tool calls within one turn.
+
+  Prereq is the MCP item, not direct integration work here. Listed
+  late in v2 because the value-over-baseline-MCP is incremental polish,
+  not a new capability.
 
 ## Long-term / nice-to-have
 
