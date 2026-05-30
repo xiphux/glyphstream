@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, blob, index, primaryKey } from 'drizzle-orm/sqlite-core';
 // Relative import (not the $lib alias) on purpose: schema.ts is loaded
 // outside the Vite build — by drizzle-kit, by the import-owui esbuild
 // bundle, and by Playwright's e2e global-setup — none of which resolve
@@ -168,6 +168,36 @@ export const customModels = sqliteTable('custom_models', {
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });
+
+// --- memories -------------------------------------------------------------
+//
+// Per-user standing facts the model has chosen to remember (preferences,
+// identity, durable interests). Browse-mode MVP: every row's `content` gets
+// inlined into the system prompt when the conversation's `personalization`
+// feature category is enabled, so the model always has the full index.
+// Write path is tool-calls (save_memory / update_memory / forget_memory);
+// the management UI is view + delete only.
+//
+// `embedding` + `embeddingModel` are the phase-2 hook: NULL means "not yet
+// embedded", a future backfill populates them, and the injection branch
+// then switches between body-inlining and a recall-tool hint based on
+// endpoint capability + memory count. No schema migration when that lands.
+
+export const memories = sqliteTable(
+	'memories',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		content: text('content').notNull(),
+		embedding: blob('embedding'),
+		embeddingModel: text('embedding_model'),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull()
+	},
+	(t) => [index('idx_memories_user_created').on(t.userId, t.createdAt)]
+);
 
 // --- media ----------------------------------------------------------------
 

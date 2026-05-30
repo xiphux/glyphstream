@@ -34,6 +34,7 @@ import {
 	composePersonaSystemPrompt,
 	getUserPreferences
 } from '$lib/server/db/queries/user-preferences';
+import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -389,14 +390,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// Resolve the system prompt sent upstream. Precedence:
 	//   1. The conversation's snapshotted prompt (set when a custom-model
 	//      preset or an explicit body.systemPrompt was used at create time).
-	//   2. The prefs-derived persona, composed from current prefs and
-	//      gated by the `personalization` opt-out. Re-derived per request
-	//      so pref edits propagate to existing chats and flipping the
-	//      toggle takes effect on the next send.
+	//   2. The prefs-derived persona + saved memories, composed from current
+	//      prefs/memories and gated by the `personalization` opt-out. Both
+	//      re-derived per request so edits propagate to existing chats and
+	//      flipping the toggle takes effect on the next send.
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
 	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
 		const prefs = getUserPreferences(locals.user.id);
-		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs);
+		const memories = listMemoriesForUser(locals.user.id);
+		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
 	}
 
 	// Build the upstream request from the active branch (now incl. new user msg).

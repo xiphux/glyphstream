@@ -61,7 +61,7 @@ export const FEATURE_CATEGORY_LABELS: Record<
 	personalization: {
 		label: 'Personalization',
 		description:
-			'Sends your name, About you, and Custom instructions from preferences as system context.'
+			'Sends your name, About you, and Custom instructions from preferences as system context, and lets the assistant save and recall memories about you.'
 	}
 };
 
@@ -566,3 +566,13 @@ export type StreamEvent =
 	| StreamToolCallArgsDeltaEvent
 	| StreamToolCallExecutingEvent
 	| StreamToolCallResultEvent;
+
+/** A saved per-user memory, as returned by `GET /api/user/memories` and
+ *  injected into the persona system prompt. Body shape matches the
+ *  `memories` table minus the (server-only) embedding columns. */
+export interface Memory {
+	id: string;
+	content: string;
+	createdAt: number;
+	updatedAt: number;
+}

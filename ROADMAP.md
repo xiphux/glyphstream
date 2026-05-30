@@ -54,20 +54,48 @@ expected priority, not time-bound.
     bundles, deferred until enough curated skills exist to anchor a
     library UI.
 
-- **Memory system.** Tools for the model to read/write per-user memories —
-  standing facts, preferences, ongoing context that should persist across
-  conversations. Slots into the existing tool registry — memory access
-  is tool-call-shaped. New `memories` table per `user_id`;
-  tools: `recall_memory(query)` for retrieval, `save_memory(text)` /
-  `forget_memory(id)` for writes. The recall/save tools should declare
-  `metadata.category: 'personalization'` so the existing per-conversation
-  toggle (which already gates the prefs-derived persona system prompt)
-  also seals memory reads/writes — both are avenues that ship personal
-  context to the model, so flipping the switch should close all of them.
-  Open question whether retrieval is keyword + recency or embedding-based —
-  embeddings are more powerful but make the feature dependent on having
-  an embedding model configured. Reasonable phasing: keyword/recency
-  first, semantic recall later (which also unlocks inline RAG below).
+- **Memory system — browse-mode MVP DONE.** Per-user `memories` table
+  plus `save_memory` / `update_memory` / `forget_memory` tools, all
+  declaring `metadata.category: 'personalization'` so the existing
+  per-conversation toggle seals both the persona prompt and memory
+  access in one switch. Browse mode injects every memory's body into
+  the system prompt so the model always has the full index without a
+  retrieval round-trip — works for every deployment regardless of
+  upstream embedding support. Management UI at `/settings/memories` is
+  view + delete only (locked-in MVP scope; manual add/edit is a
+  follow-up if demand shows up). Phase-2 work remaining:
+  - *Embedding-backed recall.* Schema already ships nullable
+    `embedding` / `embedding_model` columns so backfill is a pure
+    UPDATE. Adds a `recall_memory(query)` tool that activates when
+    the endpoint advertises `supportsEmbeddings`. The injection branch
+    in `composePersonaSystemPrompt` is marked with a `TODO(phase-2)`
+    — swap inlined bodies for a recall-tool hint when memory count ×
+    avg description tokens crosses a budget threshold or embeddings
+    are available. Avoids the small-context-local-model blowup.
+  - *Endpoint capability flag.* Add `supportsEmbeddings: boolean` to
+    `LoadedEndpoint` (mirroring `supportsTools`), wired from
+    `config.toml`. Drives both the recall-tool `isAvailable()` and
+    the injection-mode switch above.
+  - *Backfill worker.* Reads rows where `embedding IS NULL`, calls
+    the embedding endpoint, writes vectors back. No schema migration.
+  - *Manual add/edit in UI.* If the curated/AI-only feel grows
+    limiting, surface a textarea modal on the settings page +
+    `POST` / `PATCH /api/user/memories` endpoints.
+
+- **Per-custom-model default feature toggles.** Surfaced by the memory
+  MVP: the `personalization` toggle now seals two unrelated things
+  (persona prompt + memory) and the `web` toggle has always been
+  distinct from both. Some custom models will want one or both off by
+  default — e.g. a "code review" preset that shouldn't pull in
+  personal facts, or a "summarize this URL I'll paste" preset where
+  web access is redundant. Sketch: add
+  `defaultDisabledFeaturesJson` to `custom_models` (same JSON-array
+  shape as `conversations.disabled_features`); seed
+  `conversations.disabledFeaturesJson` from the model's defaults at
+  create time (still per-conversation overridable mid-chat as today,
+  this only changes the starting state); add a per-category toggle row
+  to the custom-model edit UI. Small change, real ergonomic win once
+  custom models start specializing.
 
 - **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
   GlyphStream can embed-and-retrieve attached docs/URLs and inject as

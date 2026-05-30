@@ -11,6 +11,7 @@
 
 import './clock';
 import './fetch-url';
+import './memory';
 import './web-search';
 
 export { get, list, openaiToolDefinitions, register } from './registry';

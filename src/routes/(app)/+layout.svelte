@@ -19,6 +19,7 @@
 	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 	import {
 		Archive,
+		Brain,
 		ChevronDown,
 		Image as ImageIcon,
 		Images,
@@ -952,6 +953,13 @@
 						>
 							<Settings size={14} strokeWidth={2.25} />
 							<span>Preferences</span>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							onSelect={() => goto('/settings/memories')}
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+						>
+							<Brain size={14} strokeWidth={2.25} />
+							<span>Memories</span>
 						</DropdownMenu.Item>
 						<DropdownMenu.Item
 							onSelect={() => {

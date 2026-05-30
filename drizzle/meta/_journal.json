@@ -78,6 +78,13 @@
       "when": 1780111000000,
       "tag": "0010_message_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1780164902293,
+      "tag": "0011_pale_doctor_spectrum",
+      "breakpoints": true
     }
   ]
 }

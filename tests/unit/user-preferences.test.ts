@@ -296,8 +296,9 @@ describe('setUserPreferences', () => {
 });
 
 describe('composePersonaSystemPrompt', () => {
-	it('returns null when all three personalization fields are empty', () => {
+	it('returns null when all personalization fields and memories are empty', () => {
 		expect(composePersonaSystemPrompt(EMPTY_PREFS)).toBeNull();
+		expect(composePersonaSystemPrompt(EMPTY_PREFS, [])).toBeNull();
 	});
 
 	it('includes only the name when only name is set', () => {
@@ -346,5 +347,32 @@ describe('composePersonaSystemPrompt', () => {
 		const customIdx = out!.indexOf('C');
 		expect(nameIdx).toBeLessThan(aboutIdx);
 		expect(aboutIdx).toBeLessThan(customIdx);
+	});
+
+	it('appends a Saved memories section after the persona fields', () => {
+		const out = composePersonaSystemPrompt(
+			{ ...EMPTY_PREFS, name: 'Chris' },
+			[
+				{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
+				{ id: 'm2', content: 'works as a backend engineer', createdAt: 1, updatedAt: 1 }
+			]
+		)!;
+		expect(out).toContain("user's name is Chris");
+		expect(out).toContain('Saved memories');
+		expect(out).toContain('[m1] prefers metric units');
+		expect(out).toContain('[m2] works as a backend engineer');
+		// Persona section comes first.
+		expect(out.indexOf('Chris')).toBeLessThan(out.indexOf('Saved memories'));
+	});
+
+	it('returns the memories section alone when prefs are empty but memories exist', () => {
+		// A user with no preferences set but with saved memories should still
+		// get a prompt — the memory section is independently sufficient.
+		const out = composePersonaSystemPrompt(EMPTY_PREFS, [
+			{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 }
+		])!;
+		expect(out).toContain('Saved memories');
+		expect(out).toContain('[m1] prefers metric units');
+		expect(out).not.toContain("user's name is");
 	});
 });

@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import type { UserPreferences } from '$lib/types/api';
 import { getDb } from '../client';
 import { users } from '../schema';
+import { composeMemorySection, type Memory } from './memories';
 
 const DEFAULTS: UserPreferences = {
 	name: '',
@@ -160,18 +161,33 @@ export function setUserPreferences(
 }
 
 /**
- * Compose the three personalization fields into a single system prompt
- * for the model. Each non-empty field becomes its own labeled section;
- * empty fields are omitted (no "Name: (blank)" leaks). Returns null when
- * all three are empty — the caller (conversation-create handler) treats
- * null as "no system prompt for this conversation."
+ * Compose the three personalization fields plus the saved-memory index
+ * into a single system prompt for the model. Each non-empty field
+ * becomes its own labeled section; empty fields are omitted (no "Name:
+ * (blank)" leaks). Returns null when all four (name, about, custom,
+ * memories) are empty — the caller (conversation-create handler)
+ * treats null as "no system prompt for this conversation."
  *
- * The labels are intentionally plain English rather than YAML/JSON keys:
- * we're authoring instructions for the model to read, and natural-
- * language section headers prime it better than a structured envelope
- * that the model has to parse.
+ * Memories ride in the same prompt because they ride the same gate:
+ * the conversation's `personalization` category toggle seals every
+ * avenue that ships personal context to the model. A user with no
+ * prefs but saved memories still gets a prompt; flipping the toggle
+ * off drops the whole thing.
+ *
+ * The labels are intentionally plain English rather than YAML/JSON
+ * keys: we're authoring instructions for the model to read, and
+ * natural-language section headers prime it better than a structured
+ * envelope that the model has to parse.
+ *
+ * TODO(phase-2): when an embedding endpoint is configured and the
+ * memory budget exceeds a threshold, swap the inlined bodies (via
+ * composeMemorySection) for a one-liner pointing at a recall_memory
+ * tool. The seam lives here.
  */
-export function composePersonaSystemPrompt(prefs: UserPreferences): string | null {
+export function composePersonaSystemPrompt(
+	prefs: UserPreferences,
+	memories: Memory[] = []
+): string | null {
 	const parts: string[] = [];
 	const name = prefs.name.trim();
 	const about = prefs.aboutYou.trim();
@@ -184,6 +200,10 @@ export function composePersonaSystemPrompt(prefs: UserPreferences): string | nul
 	}
 	if (custom) {
 		parts.push(`Additional instructions:\n${custom}`);
+	}
+	const memorySection = composeMemorySection(memories);
+	if (memorySection) {
+		parts.push(memorySection);
 	}
 	return parts.length === 0 ? null : parts.join('\n\n');
 }
