@@ -25,6 +25,7 @@
 		"import:owui": "tsx scripts/import-owui.ts"
 	},
 	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@mozilla/readability": "^0.6.0",
 		"arctic": "latest",
 		"better-sqlite3": "latest",

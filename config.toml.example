@@ -113,6 +113,50 @@
 # api_key_env = "SEARXNG_API_KEY"   # optional; many SearxNG instances need no auth
 # timeout_seconds = 10              # optional; default 10
 
+# Optional: MCP (Model Context Protocol) servers. Each [[mcp_servers]] block
+# defines an external tool server whose advertised tools get registered
+# alongside the built-in ones (web_search, fetch_url, memory, clock) and
+# become available to every conversation by default. Each server contributes
+# a per-conversation toggle category named `mcp:<id>` that gates all of its
+# tools in one switch.
+#
+# Two transports are supported:
+#   - "stdio": GlyphStream spawns the server as a subprocess and speaks
+#     line-delimited JSON-RPC over its stdin/stdout. The subprocess is
+#     reaped after `idle_timeout_seconds` of inactivity (default 900,
+#     i.e. 15 minutes) and re-spawned transparently on the next call.
+#     Set to 0 to keep the subprocess alive indefinitely.
+#   - "http": GlyphStream connects to a Streamable HTTP MCP endpoint.
+#     No idle reaping (HTTP keeps no expensive state at rest).
+#
+# MCP tools default to "ask every time" — the chat pauses with an Allow /
+# Allow Always / Reject prompt before the tool runs. "Allow Always" stores
+# the tool's namespaced name (mcp__<id>__<tool>) in the user's trusted-tools
+# list and bypasses future prompts; revoke from /settings/permissions.
+#
+# Example: the official filesystem MCP server, scoped to /tmp.
+# [[mcp_servers]]
+# id = "fs"
+# display_name = "Filesystem"
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+# timeout_seconds = 30        # optional; default 30
+# idle_timeout_seconds = 900  # optional; default 900 — set 0 to disable
+#
+# # Optional: extra env vars to pass into the subprocess. Each value is the
+# # *name* of a GlyphStream-side env var to source from (same convention as
+# # *_env fields elsewhere — the secret never lives in this file).
+# # env_from = { LINEAR_API_KEY = "LINEAR_API_KEY", DEBUG = "MCP_DEBUG" }
+#
+# Example: a hosted Streamable HTTP MCP server.
+# [[mcp_servers]]
+# id = "linear"
+# display_name = "Linear"
+# transport = "http"
+# url = "https://mcp.linear.app/mcp"
+# api_key_env = "LINEAR_MCP_KEY"   # optional; sent as Authorization: Bearer
+
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys
 # Put the public key here (plaintext, no secret), the private key in the
