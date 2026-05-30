@@ -87,7 +87,7 @@ describe('executeToolCalls', () => {
 		]);
 		const events: StreamEvent[] = [];
 
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -122,7 +122,7 @@ describe('executeToolCalls', () => {
 			{ type: 'tool_call', toolCallId: 'a', toolName: 'echo', arguments: '{}' },
 			{ type: 'tool_call', toolCallId: 'b', toolName: 'echo', arguments: '{}' }
 		]);
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -148,7 +148,7 @@ describe('executeToolCalls', () => {
 			{ type: 'tool_call', toolCallId: 'slow-1', toolName: 'slow', arguments: '{}' },
 			{ type: 'tool_call', toolCallId: 'fast-1', toolName: 'fast', arguments: '{}' }
 		]);
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -165,7 +165,7 @@ describe('executeToolCalls', () => {
 			{ type: 'tool_call', toolCallId: 'c1', toolName: 'no_such_tool', arguments: '{}' }
 		]);
 		const events: StreamEvent[] = [];
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -190,7 +190,7 @@ describe('executeToolCalls', () => {
 				arguments: 'not-valid-json{'
 			}
 		]);
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -210,7 +210,7 @@ describe('executeToolCalls', () => {
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
 			{ type: 'tool_call', toolCallId: 'c1', toolName: 'boom', arguments: '{}' }
 		]);
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -227,7 +227,7 @@ describe('executeToolCalls', () => {
 			{ type: 'tool_call', toolCallId: 'c1', toolName: 'graceful_fail', arguments: '{}' }
 		]);
 		const events: StreamEvent[] = [];
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
@@ -245,7 +245,7 @@ describe('executeToolCalls', () => {
 	it('returns an empty array when the assistant has no tool_call parts', async () => {
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([]);
 		const events: StreamEvent[] = [];
-		const toolMessages = await executeToolCalls({
+		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,

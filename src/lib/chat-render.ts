@@ -303,6 +303,56 @@ export function buildToolResultsMap(
 	return out;
 }
 
+export interface PendingApprovalInfo {
+	toolCallId: string;
+	toolName: string;
+	displayLabel?: string;
+	category?: string;
+	args: string;
+}
+
+/**
+ * Find every persisted tool_result row on the visible branch with
+ * `status: 'pending_approval'` and pair it with the original tool_call
+ * (toolName + arguments) from the assistant message that emitted it.
+ * Returned in branch order so the UI renders prompts in the same
+ * sequence the model proposed them.
+ *
+ * Returns [] in the steady state — the cards only appear when the model
+ * tried to use an MCP tool the user hasn't trusted yet AND the relay
+ * halted so the user could decide.
+ */
+export function buildPendingApprovals(messages: ChatMessage[]): PendingApprovalInfo[] {
+	const callIndex = new Map<
+		string,
+		{ toolName: string; args: string }
+	>();
+	for (const msg of messages) {
+		if (msg.role !== 'assistant') continue;
+		for (const p of msg.parts) {
+			if (p.type === 'tool_call') {
+				callIndex.set(p.toolCallId, { toolName: p.toolName, args: p.arguments });
+			}
+		}
+	}
+	const out: PendingApprovalInfo[] = [];
+	for (const msg of messages) {
+		if (msg.role !== 'tool') continue;
+		for (const p of msg.parts) {
+			if (p.type !== 'tool_result') continue;
+			if (p.status !== 'pending_approval') continue;
+			const call = callIndex.get(p.toolCallId);
+			if (!call) continue;
+			out.push({
+				toolCallId: p.toolCallId,
+				toolName: call.toolName,
+				args: call.args
+			});
+		}
+	}
+	return out;
+}
+
 // --- bubble-merge flags -------------------------------------------------
 
 /** Compute whether the message at `index` in `visibleMessages` should

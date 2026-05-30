@@ -623,6 +623,22 @@ export interface StreamToolCallResultEvent {
 	isError: boolean;
 }
 
+/**
+ * The server skipped this tool because the user hasn't granted it
+ * "always allow" yet. UI renders an inline approval prompt and disables
+ * the composer until the user posts a decision to the resume endpoint;
+ * the relay-loop halts (no further upstream call) until that resume
+ * arrives.
+ */
+export interface StreamToolPendingApprovalEvent {
+	type: 'tool_pending_approval';
+	toolCallId: string;
+	toolName: string;
+	displayLabel?: string;
+	category?: string;
+	args: string;
+}
+
 export type StreamEvent =
 	| StreamStartEvent
 	| StreamTextEvent
@@ -634,7 +650,8 @@ export type StreamEvent =
 	| StreamToolCallStartEvent
 	| StreamToolCallArgsDeltaEvent
 	| StreamToolCallExecutingEvent
-	| StreamToolCallResultEvent;
+	| StreamToolCallResultEvent
+	| StreamToolPendingApprovalEvent;
 
 /** A saved per-user memory, as returned by `GET /api/user/memories` and
  *  injected into the persona system prompt. Body shape matches the

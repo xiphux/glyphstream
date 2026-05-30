@@ -395,9 +395,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	//      prefs/memories and gated by the `personalization` opt-out. Both
 	//      re-derived per request so edits propagate to existing chats and
 	//      flipping the toggle takes effect on the next send.
+	// Hoisted outside the personalization gate because trustedMcpTools is
+	// independent of the persona-prompt branch — every turn needs to know
+	// which MCP tools to bypass the approval prompt for.
+	const prefs = getUserPreferences(locals.user.id);
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
 	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
-		const prefs = getUserPreferences(locals.user.id);
 		const memories = listMemoriesForUser(locals.user.id);
 		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
 	}
@@ -484,6 +487,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			return { ...requestBody, messages: nextMessages };
 		};
 
+		// Re-use the prefs loaded above to build the "always allow"
+		// allowlist consulted before each MCP tool runs. Built-in tools
+		// and user-trusted MCP tools execute inline; untrusted MCP tools
+		// halt the turn with an inline approval prompt.
+		const trustedSet = new Set(prefs?.trustedMcpTools ?? []);
+		const needsApproval = (toolName: string) => {
+			if (!toolName.startsWith('mcp__')) return false;
+			return !trustedSet.has(toolName);
+		};
+
 		const stream = await startStreamingRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
@@ -500,6 +513,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// The recorder branches survive client disconnect, so the
 			// recovery indicator stays accurate after an iOS PWA suspend.
 			onComplete: () => clearInFlight(params.id, inFlight),
+			needsApproval,
 			// Only enable the multi-iteration loop for endpoints whose
 			// models actually support tools. Endpoints without tools
 			// won't emit tool_calls anyway, but skipping the closure

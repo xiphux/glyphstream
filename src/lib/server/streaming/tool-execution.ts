@@ -18,7 +18,7 @@
 import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
 import { appendMessage, setActiveLeafMessageId } from '../db/queries/messages';
 import { get as getTool } from '../tools/registry';
-import type { ToolExecution } from '../tools/types';
+import type { Tool, ToolExecution } from '../tools/types';
 
 export interface ExecuteToolCallsParams {
 	/** The just-persisted assistant message that emitted the tool_calls.
@@ -32,6 +32,23 @@ export interface ExecuteToolCallsParams {
 	/** SSE writer for executing/result events. Disconnected clients
 	 *  no-op (the underlying writer swallows). */
 	emit: (event: StreamEvent) => void;
+	/**
+	 * Predicate consulted before each tool's execute(). When it returns
+	 * true, the tool is persisted as a pending_approval row instead of
+	 * being run; the relay loop then halts so the user can Allow / Allow
+	 * Always / Reject via the resume endpoint. Omitted → all tools
+	 * execute inline (built-in tools today).
+	 */
+	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
+}
+
+export interface ExecuteToolCallsResult {
+	/** Persisted tool messages (mixed pending and completed). */
+	toolMessages: ChatMessage[];
+	/** Number of pending_approval rows persisted this iteration. When
+	 *  non-zero, the relay must halt rather than rebuilding the next
+	 *  upstream request body. */
+	pendingCount: number;
 }
 
 /**
@@ -48,42 +65,71 @@ export interface ExecuteToolCallsParams {
  * after their parallel `execute()` calls settle, so created_at is
  * monotonic per row and the tree walk linearizes them deterministically.
  */
-export async function executeToolCalls(params: ExecuteToolCallsParams): Promise<ChatMessage[]> {
+export async function executeToolCalls(
+	params: ExecuteToolCallsParams
+): Promise<ExecuteToolCallsResult> {
 	const toolCallParts = params.assistantMessage.parts.filter(
 		(p): p is Extract<MessagePart, { type: 'tool_call' }> => p.type === 'tool_call'
 	);
-	if (toolCallParts.length === 0) return [];
+	if (toolCallParts.length === 0) return { toolMessages: [], pendingCount: 0 };
 
 	const signal = params.signal ?? new AbortController().signal;
+	const needsApproval = params.needsApproval ?? (() => false);
 
-	// Kick off all tools concurrently. Each task includes the emit calls
-	// for executing/result so they fire in real time, not after the
-	// Promise.allSettled barrier. Tools that fail throw or return
-	// isError; either way they serialize into a `role: 'tool'` row so
-	// the model can react to the failure (rather than the turn
-	// blowing up).
-	const executions = toolCallParts.map((part) => runOneTool(part, params, signal));
-	const settled = await Promise.all(executions); // runOneTool catches internally — no rejections expected
+	// Partition: tools the user hasn't approved (yet) get persisted as
+	// pending_approval rows and emit an SSE event for the inline prompt;
+	// every other tool runs inline as today.
+	const settled = await Promise.all(
+		toolCallParts.map(async (part) => {
+			const tool = getTool(part.toolName);
+			if (needsApproval(part.toolName, tool)) {
+				params.emit({
+					type: 'tool_pending_approval',
+					toolCallId: part.toolCallId,
+					toolName: part.toolName,
+					displayLabel: tool?.metadata?.displayLabel,
+					category: tool?.metadata?.category,
+					args: part.arguments
+				});
+				return { part, kind: 'pending' as const };
+			}
+			const execution = await runOneTool(part, params, signal);
+			return { part, kind: 'completed' as const, execution: execution.execution };
+		})
+	);
 
 	// Persist results serially so created_at strictly orders the rows.
 	// Tree shape: each tool message's parent is the assistant message;
 	// the active_leaf moves to whichever was persisted last (= last in
-	// tool-call order). PR5 parents the next iteration's upstream call
-	// to that same active_leaf.
+	// tool-call order). The next iteration's upstream call parents to
+	// that same active_leaf when the loop continues.
 	const toolMessages: ChatMessage[] = [];
-	for (const { part, execution } of settled) {
+	let pendingCount = 0;
+	for (const entry of settled) {
+		const part = entry.part;
+		// Pending rows carry `status: 'pending_approval'` + empty result;
+		// completed rows omit the status field to stay byte-identical with
+		// the pre-approval shape (read defenses default absent → completed).
+		const partPayload: Extract<MessagePart, { type: 'tool_result' }> =
+			entry.kind === 'pending'
+				? {
+						type: 'tool_result',
+						toolCallId: part.toolCallId,
+						result: '',
+						status: 'pending_approval'
+					}
+				: {
+						type: 'tool_result',
+						toolCallId: part.toolCallId,
+						result: entry.execution.content,
+						...(entry.execution.isError ? { isError: true } : {})
+					};
+		if (entry.kind === 'pending') pendingCount++;
 		const toolMsg = appendMessage({
 			conversationId: params.conversationId,
 			parentMessageId: params.assistantMessage.id,
 			role: 'tool',
-			parts: [
-				{
-					type: 'tool_result',
-					toolCallId: part.toolCallId,
-					result: execution.content,
-					...(execution.isError ? { isError: true } : {})
-				}
-			],
+			parts: [partPayload],
 			contentHtml: null,
 			reasoningText: null,
 			finishReason: null,
@@ -98,7 +144,7 @@ export async function executeToolCalls(params: ExecuteToolCallsParams): Promise<
 		setActiveLeafMessageId(params.conversationId, toolMessages[toolMessages.length - 1].id);
 	}
 
-	return toolMessages;
+	return { toolMessages, pendingCount };
 }
 
 interface SettledToolExecution {

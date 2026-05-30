@@ -44,6 +44,7 @@ import { parseSSEStream } from './sse-parser';
 import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
 import { executeToolCalls } from './tool-execution';
+import type { Tool } from '../tools/types';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client.
@@ -96,6 +97,15 @@ export interface RelayParams {
 	 * (tools execute, results persist, the turn ends).
 	 */
 	rebuildRequestBody?: () => Promise<ChatCompletionRequest>;
+	/**
+	 * Predicate forwarded to executeToolCalls so MCP tools the user
+	 * hasn't granted "always allow" pause the turn for an explicit
+	 * Allow / Allow Always / Reject prompt instead of executing inline.
+	 * When the predicate flags any tool, the loop halts (no
+	 * rebuildRequestBody call) and the stream ends with `done`; the
+	 * resume endpoint takes over once the user posts decisions.
+	 */
+	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
 }
 
 interface IterationResult {
@@ -177,17 +187,23 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			// Execute tools. The persisted role:'tool' children become the
 			// new active leaf — that's where the next iteration's upstream
 			// call gets parented.
-			const toolMessages = await executeToolCalls({
+			const { toolMessages, pendingCount } = await executeToolCalls({
 				assistantMessage: iterationResult.assistantMessage,
 				conversationId: params.conversationId,
 				userId: params.userId,
 				signal: params.abortSignal,
-				emit: write
+				emit: write,
+				needsApproval: params.needsApproval
 			});
 			parentMessageId =
 				toolMessages.length > 0
 					? toolMessages[toolMessages.length - 1].id
 					: iterationResult.assistantMessage.id;
+
+			// Any pending_approval rows mean the turn halts here — the
+			// resume endpoint will fill them in and continue with a fresh
+			// SSE stream once the user posts decisions.
+			if (pendingCount > 0) break;
 
 			// No `rebuildRequestBody` ⇒ single-iteration mode (the caller
 			// opted out of looping). Tools ran, results persisted; turn ends.

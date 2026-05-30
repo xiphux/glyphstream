@@ -19,6 +19,7 @@
 	import {
 		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
+		buildPendingApprovals,
 		buildToolResultsMap,
 		computeMergeFlags,
 		filterVisibleMessages,
@@ -28,6 +29,7 @@
 		updateToolCallResult as inFlightUpdateToolCallResult,
 		type InFlightSegment
 	} from '$lib/chat-render';
+	import PendingToolApproval from '$lib/components/chat/PendingToolApproval.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
@@ -117,6 +119,82 @@
 	// "separate sequential bubbles."
 	const visibleMessages = $derived(filterVisibleMessages(messages));
 	const toolResultsByCallId = $derived(buildToolResultsMap(messages));
+	// Pending MCP tool approvals on the active branch. Non-empty when the
+	// last assistant turn halted on one or more untrusted MCP tools — the
+	// composer hides until the user posts decisions to /tool-approval.
+	const pendingApprovals = $derived(buildPendingApprovals(messages));
+
+	// User's per-tool decisions, accumulating until every pending tool
+	// has one — at which point the Submit button enables and posts the
+	// batch as a single resume request.
+	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
+	let approvalSubmitting = $state(false);
+	let approvalError = $state<string | null>(null);
+
+	// Reset decisions whenever the pending set changes (a resume just
+	// completed, or a new turn left a different set of pending tools).
+	$effect(() => {
+		const ids = new Set(pendingApprovals.map((p) => p.toolCallId));
+		untrack(() => {
+			let mutated = false;
+			const next = new Map<string, ApprovalAction>();
+			for (const [id, action] of approvalDecisions) {
+				if (ids.has(id)) next.set(id, action);
+				else mutated = true;
+			}
+			if (mutated || next.size !== approvalDecisions.size) approvalDecisions = next;
+		});
+	});
+
+	const approvalsAllDecided = $derived(
+		pendingApprovals.length > 0 &&
+			pendingApprovals.every((p) => approvalDecisions.has(p.toolCallId))
+	);
+
+	function onApprovalSelect(toolCallId: string, action: ApprovalAction): void {
+		approvalDecisions = new Map(approvalDecisions).set(toolCallId, action);
+	}
+
+	async function submitApprovalDecisions(): Promise<void> {
+		if (approvalSubmitting) return;
+		const decisions = pendingApprovals.map((p) => ({
+			toolCallId: p.toolCallId,
+			action: approvalDecisions.get(p.toolCallId) ?? 'reject'
+		}));
+		approvalSubmitting = true;
+		approvalError = null;
+		try {
+			await runApprovalStream(data.conversation.id, decisions);
+			approvalDecisions = new Map();
+			await invalidateAll();
+		} catch (e) {
+			approvalError = e instanceof Error ? e.message : String(e);
+		} finally {
+			approvalSubmitting = false;
+		}
+	}
+
+	async function runApprovalStream(
+		convId: string,
+		decisions: Array<{ toolCallId: string; action: ApprovalAction }>
+	): Promise<void> {
+		const res = await fetch(`/api/conversations/${convId}/tool-approval`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+			body: JSON.stringify({ decisions })
+		});
+		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		if (!res.body) throw new Error('Server returned no body');
+		// Consume but ignore — the chat page invalidates on completion and
+		// the messages refetch surfaces every persisted update at once.
+		// Future v1.x: hook into the in-flight bubble pipeline so the
+		// resumed assistant text streams in live instead of appearing all
+		// at once on invalidate.
+		for await (const _rec of readSSE(res.body)) {
+			void _rec;
+		}
+	}
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
 	// model, derive the new modelKind from data.models so the composer's
@@ -1559,6 +1637,46 @@
 					 the message bubble itself, with its own Save/Cancel
 					 controls. Re-shown when the user dismisses the inline
 					 editor. -->
+			{:else if pendingApprovals.length > 0}
+				<!-- One or more MCP tools waiting for an approval decision.
+					 Composer is hidden until the user submits the batch;
+					 each card collects an action and the footer Submit
+					 button POSTs to /tool-approval so the relay resumes. -->
+				<div class="flex flex-col gap-3 rounded-xl border border-border bg-surface-panel p-4 shadow-lg">
+					<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
+						Tool approval needed
+					</div>
+					{#each pendingApprovals as p (p.toolCallId)}
+						<PendingToolApproval
+							toolCallId={p.toolCallId}
+							toolName={p.toolName}
+							displayLabel={p.displayLabel}
+							category={p.category}
+							args={p.args}
+							decision={approvalDecisions.get(p.toolCallId) ?? null}
+							busy={approvalSubmitting}
+							onSelect={onApprovalSelect}
+						/>
+					{/each}
+					{#if approvalError}
+						<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+							{approvalError}
+						</div>
+					{/if}
+					<div class="flex items-center justify-between gap-3">
+						<span class="text-xs text-fg-muted">
+							{approvalsAllDecided ? 'Ready to continue' : 'Pick an option for each tool above'}
+						</span>
+						<button
+							type="button"
+							class="rounded-md bg-surface-inverse px-3 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={!approvalsAllDecided || approvalSubmitting}
+							onclick={() => void submitApprovalDecisions()}
+						>
+							{approvalSubmitting ? 'Submitting…' : 'Continue'}
+						</button>
+					</div>
+				</div>
 			{:else}
 				<ChatComposer
 					bind:this={composerRef}

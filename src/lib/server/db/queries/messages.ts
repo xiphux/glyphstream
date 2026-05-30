@@ -76,6 +76,27 @@ export function appendMessage(input: AppendInput): ChatMessage {
 }
 
 /**
+ * Replace the persisted parts JSON for an existing message. Used by the
+ * MCP approval-resume flow to fill in a previously-pending tool_result
+ * row with the actual execution output. Returns whether a row matched.
+ */
+export function updateMessageParts(
+	messageId: string,
+	conversationId: string,
+	parts: MessagePart[]
+): boolean {
+	const db = getDb();
+	const result = db
+		.update(messages)
+		.set({ contentJson: JSON.stringify(parts) })
+		.where(
+			and(eq(messages.id, messageId), eq(messages.conversationId, conversationId))
+		)
+		.run();
+	return result.changes > 0;
+}
+
+/**
  * Walk the active branch root → leaf and return messages in order.
  *
  * Loads all messages for the conversation, then traverses the parent chain
