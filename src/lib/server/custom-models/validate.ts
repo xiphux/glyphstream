@@ -1,6 +1,14 @@
 import { error } from '@sveltejs/kit';
 import { getEndpoint } from '$lib/server/endpoints/registry';
-import type { CreateCustomModelRequest, CustomModelParameters } from '$lib/types/api';
+import {
+	FeatureCategoryValidationError,
+	validateDisabledFeatures
+} from '$lib/server/util/feature-categories';
+import type {
+	CreateCustomModelRequest,
+	CustomModelParameters,
+	FeatureCategory
+} from '$lib/types/api';
 
 export interface ValidatedCreate {
 	name: string;
@@ -9,6 +17,7 @@ export interface ValidatedCreate {
 	baseModelId: string;
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
+	defaultDisabledFeatures: FeatureCategory[];
 }
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
@@ -28,6 +37,7 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 	const description = body.description?.trim() || null;
 	const systemPrompt = body.systemPrompt?.trim() || null;
 	const parameters = validateParameters(body.parameters);
+	const defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 
 	return {
 		name,
@@ -35,8 +45,24 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		baseEndpointId,
 		baseModelId,
 		systemPrompt,
-		parameters
+		parameters,
+		defaultDisabledFeatures
 	};
+}
+
+/** Same shape rules as the per-conversation field — undefined / null → []
+ *  (no opt-outs), an array of known categories → de-duped, anything else
+ *  → 400. Unknown category strings 400 rather than silently dropping so
+ *  client typos don't quietly turn into "feature on." */
+export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[] {
+	try {
+		return validateDisabledFeatures(raw);
+	} catch (e) {
+		if (e instanceof FeatureCategoryValidationError) {
+			throw error(400, `defaultDisabledFeatures: ${e.message}`);
+		}
+		throw e;
+	}
 }
 
 /**

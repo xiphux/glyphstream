@@ -82,20 +82,18 @@ expected priority, not time-bound.
     limiting, surface a textarea modal on the settings page +
     `POST` / `PATCH /api/user/memories` endpoints.
 
-- **Per-custom-model default feature toggles.** Surfaced by the memory
-  MVP: the `personalization` toggle now seals two unrelated things
-  (persona prompt + memory) and the `web` toggle has always been
-  distinct from both. Some custom models will want one or both off by
-  default — e.g. a "code review" preset that shouldn't pull in
-  personal facts, or a "summarize this URL I'll paste" preset where
-  web access is redundant. Sketch: add
-  `defaultDisabledFeaturesJson` to `custom_models` (same JSON-array
-  shape as `conversations.disabled_features`); seed
-  `conversations.disabledFeaturesJson` from the model's defaults at
-  create time (still per-conversation overridable mid-chat as today,
-  this only changes the starting state); add a per-category toggle row
-  to the custom-model edit UI. Small change, real ergonomic win once
-  custom models start specializing.
+- **Per-custom-model default feature toggles — DONE.** Surfaced by
+  the memory MVP: the `personalization` toggle now seals two
+  unrelated things (persona prompt + memory) and the `web` toggle
+  has always been distinct from both, so some custom models want
+  one or both off by default. `custom_models` carries a
+  `defaultDisabledFeaturesJson` column (same JSON-array shape as
+  `conversations.disabled_features`); the composer seeds its
+  `disabledFeatures` $state from the selected preset's defaults
+  whenever the model selection changes, so the toggle UI matches
+  what the conversation will be created with and the user can still
+  override before sending. Per-category checkboxes in the custom
+  model edit form persist the defaults.
 
 - **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
   GlyphStream can embed-and-retrieve attached docs/URLs and inject as

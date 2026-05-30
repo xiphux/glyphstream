@@ -3,11 +3,14 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { confirmDialog } from '$lib/confirm.svelte';
-	import type {
-		CreateCustomModelRequest,
-		CustomModel,
-		CustomModelParameters,
-		ModelEntry
+	import {
+		FEATURE_CATEGORIES,
+		FEATURE_CATEGORY_LABELS,
+		type CreateCustomModelRequest,
+		type CustomModel,
+		type CustomModelParameters,
+		type FeatureCategory,
+		type ModelEntry
 	} from '$lib/types/api';
 
 	let { data } = $props<{
@@ -23,9 +26,22 @@
 	let temperatureStr = $state('');
 	let topPStr = $state('');
 	let maxTokensStr = $state('');
+	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
+
+	function isFeatureDefaultOn(cat: FeatureCategory): boolean {
+		return !defaultDisabledFeatures.includes(cat);
+	}
+
+	function setFeatureDefault(cat: FeatureCategory, on: boolean): void {
+		if (on) {
+			defaultDisabledFeatures = defaultDisabledFeatures.filter((c) => c !== cat);
+		} else if (!defaultDisabledFeatures.includes(cat)) {
+			defaultDisabledFeatures = [...defaultDisabledFeatures, cat];
+		}
+	}
 
 	function resetForm() {
 		editingId = null;
@@ -36,6 +52,7 @@
 		temperatureStr = '';
 		topPStr = '';
 		maxTokensStr = '';
+		defaultDisabledFeatures = [];
 		error = null;
 	}
 
@@ -48,6 +65,7 @@
 		temperatureStr = m.parameters?.temperature !== undefined ? String(m.parameters.temperature) : '';
 		topPStr = m.parameters?.top_p !== undefined ? String(m.parameters.top_p) : '';
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
+		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
 		error = null;
 	}
 
@@ -96,7 +114,8 @@
 				baseEndpointId,
 				baseModelId,
 				systemPrompt: systemPrompt.trim() || undefined,
-				parameters: buildParameters()
+				parameters: buildParameters(),
+				defaultDisabledFeatures: [...defaultDisabledFeatures]
 			};
 
 			const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
@@ -345,6 +364,37 @@
 									class="w-full rounded-md border border-border bg-surface-panel px-2 py-1 text-xs shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50"
 								/>
 							</div>
+						</div>
+					</details>
+
+					<details class="rounded-md border border-border px-3 py-2">
+						<summary class="cursor-pointer text-xs font-medium text-fg-secondary">
+							Default feature toggles (optional)
+						</summary>
+						<p class="mt-2 text-[11px] text-fg-muted">
+							Sets the starting state of the per-conversation feature toggles when this
+							preset is selected. The user can still flip individual toggles before
+							sending. Useful when a preset's purpose makes one of the features
+							irrelevant — e.g. a code-review preset that shouldn't pull in personal
+							context.
+						</p>
+						<div class="mt-3 flex flex-col gap-2">
+							{#each FEATURE_CATEGORIES as cat (cat)}
+								{@const label = FEATURE_CATEGORY_LABELS[cat]}
+								<label class="flex cursor-pointer items-start gap-2 text-xs">
+									<input
+										type="checkbox"
+										checked={isFeatureDefaultOn(cat)}
+										onchange={(e) => setFeatureDefault(cat, e.currentTarget.checked)}
+										disabled={busy}
+										class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
+									/>
+									<span class="min-w-0">
+										<span class="font-medium">{label.label}</span>
+										<span class="ml-1 text-fg-muted">on by default</span>
+									</span>
+								</label>
+							{/each}
 						</div>
 					</details>
 

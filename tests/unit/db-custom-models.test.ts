@@ -209,4 +209,80 @@ describe('custom-models CRUD', () => {
 		});
 		expect(deleteCustomModel(cm.id, u2.id)).toBe(false);
 	});
+
+	it('defaultDisabledFeatures defaults to [] when omitted from create', () => {
+		const u = seedUser();
+		const cm = createCustomModel({
+			userId: u.id,
+			name: 'Default',
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null
+		});
+		expect(cm.defaultDisabledFeatures).toEqual([]);
+		// Round-trip through the DB — the read-back should match.
+		expect(getCustomModelForUser(cm.id, u.id)?.defaultDisabledFeatures).toEqual([]);
+	});
+
+	it('createCustomModel persists explicit defaultDisabledFeatures', () => {
+		const u = seedUser();
+		const cm = createCustomModel({
+			userId: u.id,
+			name: 'No-personalization preset',
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+			defaultDisabledFeatures: ['personalization']
+		});
+		expect(cm.defaultDisabledFeatures).toEqual(['personalization']);
+		expect(getCustomModelForUser(cm.id, u.id)?.defaultDisabledFeatures).toEqual([
+			'personalization'
+		]);
+	});
+
+	it('updateCustomModel patches defaultDisabledFeatures + can clear via []', () => {
+		const u = seedUser();
+		const cm = createCustomModel({
+			userId: u.id,
+			name: 'X',
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+			defaultDisabledFeatures: ['personalization']
+		});
+		// Change to a different category.
+		const updated = updateCustomModel(cm.id, u.id, {
+			defaultDisabledFeatures: ['web']
+		});
+		expect(updated?.defaultDisabledFeatures).toEqual(['web']);
+		// Clear back to the global default.
+		const cleared = updateCustomModel(cm.id, u.id, {
+			defaultDisabledFeatures: []
+		});
+		expect(cleared?.defaultDisabledFeatures).toEqual([]);
+	});
+
+	it('updateCustomModel leaves defaultDisabledFeatures alone when not in the patch', () => {
+		const u = seedUser();
+		const cm = createCustomModel({
+			userId: u.id,
+			name: 'X',
+			description: null,
+			baseEndpointId: 'bridge',
+			baseModelId: 'x',
+			systemPrompt: null,
+			parameters: null,
+			defaultDisabledFeatures: ['personalization']
+		});
+		// Patch only the name — feature defaults should be preserved, not
+		// implicitly reset to [].
+		const updated = updateCustomModel(cm.id, u.id, { name: 'Renamed' });
+		expect(updated?.defaultDisabledFeatures).toEqual(['personalization']);
+	});
 });

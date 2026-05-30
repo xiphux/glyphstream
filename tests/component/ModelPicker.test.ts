@@ -50,6 +50,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		baseModelId: overrides.baseModelId ?? 'gpt-4o',
 		systemPrompt: overrides.systemPrompt ?? null,
 		parameters: overrides.parameters ?? null,
+		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
 		createdAt: 0,
 		updatedAt: 0
 	};

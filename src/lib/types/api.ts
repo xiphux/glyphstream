@@ -379,6 +379,11 @@ export interface CustomModel {
 	baseModelId: string;
 	systemPrompt: string | null;
 	parameters: CustomModelParameters | null;
+	/** Per-preset starting state for the per-conversation feature toggles
+	 *  — the composer seeds its `disabledFeatures` from this when the user
+	 *  picks the preset. Empty array means "all features on", same as the
+	 *  global default. */
+	defaultDisabledFeatures: FeatureCategory[];
 	createdAt: number;
 	updatedAt: number;
 }
@@ -390,6 +395,7 @@ export interface CreateCustomModelRequest {
 	baseModelId: string;
 	systemPrompt?: string;
 	parameters?: CustomModelParameters;
+	defaultDisabledFeatures?: FeatureCategory[];
 }
 
 export type UpdateCustomModelRequest = Partial<CreateCustomModelRequest>;

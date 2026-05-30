@@ -165,6 +165,16 @@ export const customModels = sqliteTable('custom_models', {
 	baseModelId: text('base_model_id').notNull(),
 	systemPrompt: text('system_prompt'),
 	parametersJson: text('parameters_json'),
+	// Per-preset starting state for the per-conversation feature toggles.
+	// Same JSON-array shape as `conversations.disabled_features`. The
+	// composer seeds its `disabledFeatures` state from this when the user
+	// picks the preset, so the toggle UI reflects what the conversation
+	// will be created with (the user can still override before sending).
+	// NULL / empty means all features default ON, same as the global
+	// default. Useful when a preset's purpose doesn't fit one of the
+	// gates — e.g. a code-review preset that shouldn't pull in personal
+	// context, or a URL-summarizer where web access is redundant.
+	defaultDisabledFeaturesJson: text('default_disabled_features'),
 	createdAt: integer('created_at').notNull(),
 	updatedAt: integer('updated_at').notNull()
 });

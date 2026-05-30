@@ -107,6 +107,26 @@
 		}
 		return data.models.find((m) => m.id === modelId);
 	});
+
+	// Seed the feature-toggle state from the selected custom model's
+	// defaults whenever the model selection changes. Base models reset to
+	// [] (the global default). User toggles AFTER picking a model are
+	// preserved because the effect only re-runs on modelId change, not on
+	// toggle mutations or customModels list refreshes (the lookup is
+	// untrack-wrapped). Switching to a different preset re-applies the
+	// new preset's defaults — picking a new preset means adopting its
+	// starting state.
+	$effect(() => {
+		const id = modelId;
+		untrack(() => {
+			if (id.startsWith('custom::')) {
+				const cm = data.customModels.find((m) => m.id === id.slice('custom::'.length));
+				disabledFeatures = cm ? [...cm.defaultDisabledFeatures] : [];
+			} else {
+				disabledFeatures = [];
+			}
+		});
+	});
 	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');
 	const composerPlaceholder = $derived(
 		pickedKind === 'image'

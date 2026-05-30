@@ -27,7 +27,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		baseEndpointId: validated.baseEndpointId,
 		baseModelId: validated.baseModelId,
 		systemPrompt: validated.systemPrompt,
-		parameters: validated.parameters
+		parameters: validated.parameters,
+		defaultDisabledFeatures: validated.defaultDisabledFeatures
 	});
 	return json({ customModel: model }, { status: 201 });
 };

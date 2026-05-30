@@ -121,4 +121,46 @@ describe('validateCreateInput', () => {
 		expect(r.description).toBeNull();
 		expect(r.systemPrompt).toBeNull();
 	});
+
+	it('defaults defaultDisabledFeatures to [] when omitted', () => {
+		const r = validateCreateInput(valid);
+		expect(r.defaultDisabledFeatures).toEqual([]);
+	});
+
+	it('accepts a valid defaultDisabledFeatures array', () => {
+		const r = validateCreateInput({ ...valid, defaultDisabledFeatures: ['personalization'] });
+		expect(r.defaultDisabledFeatures).toEqual(['personalization']);
+	});
+
+	it('de-dupes defaultDisabledFeatures entries', () => {
+		const r = validateCreateInput({
+			...valid,
+			defaultDisabledFeatures: ['personalization', 'personalization', 'web']
+		});
+		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'web']);
+	});
+
+	it('rejects unknown category strings', () => {
+		// SvelteKit's `error()` throws an HttpError whose `.message` is
+		// empty (the human-readable text lives on `.body.message`), so
+		// match on `.toThrow()` without a regex — same pattern as the
+		// other rejection cases in this file.
+		expect(() =>
+			validateCreateInput({
+				...valid,
+				// @ts-expect-error testing runtime defense against malformed input
+				defaultDisabledFeatures: ['personalization', 'no-such-category']
+			})
+		).toThrow();
+	});
+
+	it('rejects non-array defaultDisabledFeatures', () => {
+		expect(() =>
+			validateCreateInput({
+				...valid,
+				// @ts-expect-error testing runtime defense against malformed input
+				defaultDisabledFeatures: 'personalization'
+			})
+		).toThrow();
+	});
 });

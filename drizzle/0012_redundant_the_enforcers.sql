@@ -1,0 +1,1 @@
+ALTER TABLE `custom_models` ADD `default_disabled_features` text;

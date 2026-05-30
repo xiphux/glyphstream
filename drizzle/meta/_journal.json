@@ -85,6 +85,13 @@
       "when": 1780164902293,
       "tag": "0011_pale_doctor_spectrum",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1780166741984,
+      "tag": "0012_redundant_the_enforcers",
+      "breakpoints": true
     }
   ]
 }

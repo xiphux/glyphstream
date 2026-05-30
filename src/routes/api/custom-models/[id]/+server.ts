@@ -6,7 +6,10 @@ import {
 	getCustomModelForUser,
 	updateCustomModel
 } from '$lib/server/db/queries/custom-models';
-import { validateParameters } from '$lib/server/custom-models/validate';
+import {
+	validateDefaultDisabledFeatures,
+	validateParameters
+} from '$lib/server/custom-models/validate';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import type { UpdateCustomModelRequest } from '$lib/types/api';
 import type { RequestHandler } from './$types';
@@ -54,6 +57,9 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 	if (body.parameters !== undefined) {
 		patch.parameters = validateParameters(body.parameters);
+	}
+	if (body.defaultDisabledFeatures !== undefined) {
+		patch.defaultDisabledFeatures = validateDefaultDisabledFeatures(body.defaultDisabledFeatures);
 	}
 
 	const updated = updateCustomModel(params.id, locals.user.id, patch);
