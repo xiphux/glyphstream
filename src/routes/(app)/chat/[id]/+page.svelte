@@ -217,7 +217,15 @@
 			approvalDecisions = new Map();
 			await invalidateAll();
 		} catch (e) {
-			approvalError = e instanceof Error ? e.message : String(e);
+			// AbortError from clicking Stop mid-resume is expected and
+			// shouldn't surface as a red banner — same convention as the
+			// initial-send path. The server-side recorder will have
+			// committed whatever partial text it had; invalidateAll on
+			// the way out picks that up.
+			if (!isAbortError(e)) {
+				approvalError = e instanceof Error ? e.message : String(e);
+			}
+			await invalidateAll();
 		} finally {
 			approvalSubmitting = false;
 		}
@@ -235,28 +243,41 @@
 		inFlightProgress = null;
 		inFlightStatus = null;
 		inFlightOpen = true;
-		const res = await fetch(`/api/conversations/${convId}/tool-approval`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-			body: JSON.stringify({ decisions })
-		});
-		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-		if (!res.body) throw new Error('Server returned no body');
-		const { sawToolCalls } = await consumeChatStream(res.body, {
-			turnConvId,
-			optimisticId: null
-			// onDone omitted — approvalSubmitting clears in the caller's
-			// finally so the inline buttons stay disabled until the
-			// invalidate completes and the persisted rows surface.
-		});
-		if (convId === turnConvId) {
-			await invalidateAll();
-			if (sawToolCalls) {
-				inFlightOpen = false;
-				resetInFlightSegments();
-				inFlightProgress = null;
-				inFlightStatus = null;
+		// Reuse the same Stop wiring the initial send path uses — the
+		// in-flight registry on the server keys by conversation id, so
+		// stop()'s POST to /cancel reaches the resumed upstream call,
+		// and aborting `activeAbort` here tears down our local fetch.
+		// Without this the user has no way to halt a runaway resumed
+		// generation (small models in a thinking loop, etc.).
+		const abort = new AbortController();
+		activeAbort = abort;
+		try {
+			const res = await fetch(`/api/conversations/${convId}/tool-approval`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+				body: JSON.stringify({ decisions }),
+				signal: abort.signal
+			});
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+			if (!res.body) throw new Error('Server returned no body');
+			const { sawToolCalls } = await consumeChatStream(res.body, {
+				turnConvId,
+				optimisticId: null
+				// onDone omitted — approvalSubmitting clears in the caller's
+				// finally so the inline buttons stay disabled until the
+				// invalidate completes and the persisted rows surface.
+			});
+			if (convId === turnConvId) {
+				await invalidateAll();
+				if (sawToolCalls) {
+					inFlightOpen = false;
+					resetInFlightSegments();
+					inFlightProgress = null;
+					inFlightStatus = null;
+				}
 			}
+		} finally {
+			if (activeAbort === abort) activeAbort = null;
 		}
 	}
 
@@ -716,8 +737,15 @@
 	// recovered one.
 	const showInFlight = $derived(inFlightOpen || recoveredInFlight);
 	// A generation is in progress, whether or not this client is driving
-	// it — gates composer input + message actions the same as a live turn.
-	const generating = $derived(busy || recoveredInFlight);
+	// it — gates composer input + message actions the same as a live
+	// turn. Includes the approval-resume window (`approvalSubmitting`)
+	// so the composer disables and the Send button flips to Stop while
+	// the resumed iteration is streaming, AND the pending-approval
+	// window so the user can't type a new message while the existing
+	// turn is suspended waiting on a tool decision.
+	const generating = $derived(
+		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval
+	);
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
 	// progress signal for slow operations (image generation, video gen) and
@@ -1773,23 +1801,18 @@
 					 the message bubble itself, with its own Save/Cancel
 					 controls. Re-shown when the user dismisses the inline
 					 editor. -->
-			{:else if hasAnyPendingApproval}
-				<!-- One or more MCP tools waiting for an approval decision.
-					 The three Allow / Allow Always / Reject buttons render
-					 inline within each pending tool block above; the
-					 composer hides and a small "waiting" hint sits in its
-					 place. Auto-submit triggers the moment every pending
-					 tool has a decision. -->
-				<div class="rounded-xl border border-border bg-surface-panel/80 p-3 text-center text-xs text-fg-muted shadow-sm">
-					{#if approvalSubmitting}
-						Resuming…
-					{:else if approvalError}
-						<span class="text-rose-600 dark:text-rose-300">{approvalError}</span>
-					{:else}
-						Pick Allow / Allow always / Reject on the highlighted tool call{allPendingToolCallIds.size > 1 ? 's' : ''} above to continue.
-					{/if}
-				</div>
 			{:else}
+				<!--
+					Composer stays visible across the entire turn lifecycle —
+					sending, generating, pending-approval, and resuming. The
+					Allow / Allow Always / Reject buttons live inline with
+					their tool_call blocks above; the composer here disables
+					its textarea via `generating` so the user can't type a
+					new message mid-turn, and the Send slot flips to a Stop
+					button (canStop below) whenever there's a local fetch
+					that can be aborted — meaning the user can always halt a
+					runaway resumed generation, not just an initial one.
+				-->
 				<ChatComposer
 					bind:this={composerRef}
 					bind:composerText
@@ -1804,7 +1827,7 @@
 					{allowAttachments}
 					{hasValidModel}
 					{generating}
-					canStop={(busy && activeAbort != null) || recoveredInFlight}
+					canStop={((busy || approvalSubmitting) && activeAbort != null) || recoveredInFlight}
 					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 					onSend={() => void send()}
 					onStop={stop}
