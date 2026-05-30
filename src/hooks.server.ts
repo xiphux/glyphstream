@@ -1,11 +1,18 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
 import { startMediaPurger } from '$lib/server/media/purger';
+import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 
 // Start the media purge sweeper at module load — runs once per Node process.
 // Using top-level rather than the first-request handler so the sweep clock
 // starts even if no user has hit the server yet (e.g. on a fresh redeploy).
 startMediaPurger();
+
+// Kick off MCP server connections in parallel with whatever the first
+// request happens to need. The chat-completion handler awaits readiness
+// before advertising tools so the model never sees a partially-populated
+// MCP surface; the rest of the app is unblocked.
+void bootstrapMcp();
 
 // Paths that must always revalidate against the server. Browsers
 // special-case sw.js for SW updates, but reverse proxies and CDNs don't —

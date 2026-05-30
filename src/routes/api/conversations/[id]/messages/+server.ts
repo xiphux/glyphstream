@@ -30,6 +30,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { openaiToolDefinitions } from '$lib/server/tools';
+import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	composePersonaSystemPrompt,
 	getUserPreferences
@@ -432,6 +433,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId
 	);
 	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
+	// Block first request after a cold start until MCP discovery has
+	// finished — otherwise the model would see a partially-populated tool
+	// surface and refuse-to-use later in the turn would surface as flaky
+	// behavior. Subsequent calls hit a resolved promise immediately.
+	if (supportsTools) await awaitMcpReady();
 	// Per-conversation opt-outs filter out whole tool categories (e.g. 'web'
 	// closes both web_search and fetch_url so the model can't compose around
 	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category.

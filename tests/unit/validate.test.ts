@@ -140,16 +140,24 @@ describe('validateCreateInput', () => {
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'web']);
 	});
 
-	it('rejects unknown category strings', () => {
-		// SvelteKit's `error()` throws an HttpError whose `.message` is
-		// empty (the human-readable text lives on `.body.message`), so
-		// match on `.toThrow()` without a regex — same pattern as the
-		// other rejection cases in this file.
+	it('accepts MCP-style category strings (validator widened for runtime-discovered servers)', () => {
+		// Now that FeatureCategory is open at the type level so MCP servers
+		// can contribute `mcp:<server-id>` categories at startup, the base
+		// validator accepts any non-empty string. Strict checking against
+		// the live MCP registry lands with the dynamic category surface.
+		const r = validateCreateInput({
+			...valid,
+			defaultDisabledFeatures: ['personalization', 'mcp:filesystem']
+		});
+		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:filesystem']);
+	});
+
+	it('rejects non-string entries in defaultDisabledFeatures', () => {
 		expect(() =>
 			validateCreateInput({
 				...valid,
 				// @ts-expect-error testing runtime defense against malformed input
-				defaultDisabledFeatures: ['personalization', 'no-such-category']
+				defaultDisabledFeatures: ['personalization', 123]
 			})
 		).toThrow();
 	});

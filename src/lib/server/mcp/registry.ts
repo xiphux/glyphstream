@@ -59,6 +59,11 @@ export function initializeMcpServers(): Promise<void> {
 	return initPromise;
 }
 
+/** Returns the loaded config for a server, or undefined if it isn't registered. */
+export function getMcpServerCfg(serverId: string): LoadedMcpServer | undefined {
+	return entries.get(serverId)?.cfg;
+}
+
 /** Returns all configured servers in declaration order, alive or otherwise. */
 export function listMcpServerStates(): ReadonlyArray<{
 	id: string;

@@ -10,7 +10,7 @@
  * silently dropped so client typos don't quietly become "feature on."
  */
 
-import { isFeatureCategory } from '$lib/types/api';
+import { isFeatureCategoryString } from '$lib/types/api';
 import type { FeatureCategory } from '$lib/types/api';
 
 export class FeatureCategoryValidationError extends Error {}
@@ -24,9 +24,9 @@ export function validateDisabledFeatures(raw: unknown): FeatureCategory[] {
 	}
 	const out: FeatureCategory[] = [];
 	for (const entry of raw) {
-		if (!isFeatureCategory(entry)) {
+		if (!isFeatureCategoryString(entry)) {
 			throw new FeatureCategoryValidationError(
-				`Unknown feature category: ${JSON.stringify(entry)}`
+				`Invalid feature category entry: ${JSON.stringify(entry)}`
 			);
 		}
 		if (!out.includes(entry)) out.push(entry);

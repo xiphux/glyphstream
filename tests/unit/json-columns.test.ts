@@ -60,14 +60,17 @@ describe('parseDisabledFeatures', () => {
 		expect(parseDisabledFeatures('"web"')).toEqual([]);
 	});
 
-	it('silently drops unknown category strings (lenient on read)', () => {
-		// Deliberately asymmetric with validateDisabledFeatures (which throws):
-		// a stale category left over from a code change should turn into
-		// "feature on" rather than break the conversation. The API-side
-		// validator is the place to be strict.
-		expect(parseDisabledFeatures(JSON.stringify(['web', 'memory', 'totally-bogus']))).toEqual([
-			'web'
-		]);
+	it('preserves arbitrary non-empty strings (including MCP categories like mcp:foo)', () => {
+		// FeatureCategory was widened so dynamically-discovered MCP servers
+		// can contribute `mcp:<server-id>` opt-out categories. Round-tripping
+		// must preserve a user's choice even when the backing server isn't
+		// currently registered (e.g. a transient config edit) — otherwise the
+		// next save would wipe the preference. Conversation-create silently
+		// filters categories that aren't currently registered when seeding
+		// from a custom model's defaults.
+		expect(
+			parseDisabledFeatures(JSON.stringify(['web', 'mcp:filesystem', 'mcp:linear']))
+		).toEqual(['web', 'mcp:filesystem', 'mcp:linear']);
 	});
 
 	it('silently drops non-string entries', () => {

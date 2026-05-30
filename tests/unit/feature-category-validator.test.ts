@@ -36,13 +36,17 @@ describe('validateDisabledFeatures', () => {
 		}
 	});
 
-	it('rejects unknown category strings', () => {
-		expect(() => validateDisabledFeatures(['memory'])).toThrow(
-			/Unknown feature category.*memory/i
-		);
-		expect(() => validateDisabledFeatures(['web', 'totally-bogus'])).toThrow(
-			FeatureCategoryValidationError
-		);
+	it('accepts arbitrary non-empty category strings (widened for MCP server categories)', () => {
+		// FeatureCategory is open at the type level so MCP-registered
+		// categories like `mcp:filesystem` flow through unchanged. Strict
+		// checking against the live registry of built-ins + connected MCP
+		// servers lands with the dynamic category surface.
+		expect(validateDisabledFeatures(['mcp:filesystem'])).toEqual(['mcp:filesystem']);
+		expect(validateDisabledFeatures(['web', 'mcp:linear'])).toEqual(['web', 'mcp:linear']);
+	});
+
+	it('rejects empty strings', () => {
+		expect(() => validateDisabledFeatures([''])).toThrow(FeatureCategoryValidationError);
 	});
 
 	it('rejects non-string entries', () => {

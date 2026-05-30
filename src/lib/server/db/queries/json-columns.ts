@@ -6,7 +6,7 @@
  * re-inlined at each row-mapping site.
  */
 
-import { isFeatureCategory } from '$lib/types/api';
+import { isFeatureCategoryString } from '$lib/types/api';
 import type { CustomModelParameters, FeatureCategory, MessagePart } from '$lib/types/api';
 
 /**
@@ -39,11 +39,12 @@ export function parseModelParameters(raw: string | null): CustomModelParameters 
 /**
  * Parse a `disabled_features` column into FeatureCategory[]. Always
  * returns an array (never null) so callers don't have to branch — null
- * column / invalid JSON / non-array payload / unknown category strings
- * all normalize to an empty list (i.e. "all features on"). Unknown
- * strings are dropped silently rather than throwing: a stale category
- * left over after a code change should turn into "feature on" rather
- * than break the conversation.
+ * column / invalid JSON / non-array payload / non-string entries all
+ * normalize to an empty list (i.e. "all features on"). Both built-in
+ * categories AND opaque MCP categories (`mcp:<server-id>`) pass through
+ * unchanged: a category whose backing MCP server isn't currently
+ * registered survives a round-trip so the user's preference isn't lost
+ * across a transient config edit.
  */
 export function parseDisabledFeatures(raw: string | null): FeatureCategory[] {
 	if (!raw) return [];
@@ -54,5 +55,5 @@ export function parseDisabledFeatures(raw: string | null): FeatureCategory[] {
 		return [];
 	}
 	if (!Array.isArray(parsed)) return [];
-	return parsed.filter(isFeatureCategory);
+	return parsed.filter(isFeatureCategoryString);
 }

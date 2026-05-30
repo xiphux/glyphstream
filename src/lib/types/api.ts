@@ -47,11 +47,27 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 200;
  * URL directly). Both tools that touch the public web share the `web`
  * category so a single toggle seals the egress path.
  */
-export const FEATURE_CATEGORIES = ['web', 'personalization'] as const;
-export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
+export const BUILTIN_FEATURE_CATEGORIES = ['web', 'personalization'] as const;
+export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
+
+/**
+ * Per-conversation opt-out category. Open-ended at the type level because
+ * dynamically-discovered MCP servers register categories like
+ * `mcp:<server-id>` at startup. Built-in categories keep their narrow
+ * types via {@link BuiltinFeatureCategory}; the `string & {}` intersection
+ * preserves autocomplete on the built-ins while leaving the type open.
+ */
+export type FeatureCategory = BuiltinFeatureCategory | (string & {});
+
+/**
+ * Back-compat alias. Older call sites still iterate `FEATURE_CATEGORIES`
+ * to render the built-in toggles; the dynamic surface (built-ins + live
+ * MCP servers) is built at the UI layer.
+ */
+export const FEATURE_CATEGORIES = BUILTIN_FEATURE_CATEGORIES;
 
 export const FEATURE_CATEGORY_LABELS: Record<
-	FeatureCategory,
+	BuiltinFeatureCategory,
 	{ label: string; description: string }
 > = {
 	web: {
@@ -65,9 +81,22 @@ export const FEATURE_CATEGORY_LABELS: Record<
 	}
 };
 
-/** Runtime guard for use at request boundaries (validating PATCH bodies, etc.). */
-export function isFeatureCategory(v: unknown): v is FeatureCategory {
-	return typeof v === 'string' && (FEATURE_CATEGORIES as readonly string[]).includes(v);
+/**
+ * Runtime guard for the *built-in* feature categories. MCP categories
+ * (`mcp:<server-id>`) pass through validators directly as opaque strings;
+ * use {@link isFeatureCategoryString} when the goal is to accept any
+ * category form rather than narrow to a built-in.
+ */
+export function isBuiltinFeatureCategory(v: unknown): v is BuiltinFeatureCategory {
+	return typeof v === 'string' && (BUILTIN_FEATURE_CATEGORIES as readonly string[]).includes(v);
+}
+
+/** Back-compat alias for the built-in narrow-check. */
+export const isFeatureCategory = isBuiltinFeatureCategory;
+
+/** Non-empty string guard — accepts both built-in and MCP-style categories. */
+export function isFeatureCategoryString(v: unknown): v is FeatureCategory {
+	return typeof v === 'string' && v.length > 0;
 }
 
 /** A model as returned by `GET /api/models` (one row per upstream model, prefixed). */
