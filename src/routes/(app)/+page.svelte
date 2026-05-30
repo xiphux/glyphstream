@@ -306,6 +306,7 @@
 			{#snippet controls()}
 				<FeatureTogglesMenu
 					{disabledFeatures}
+					categories={data.featureCategories}
 					disabled={busy}
 					onChange={(next) => (disabledFeatures = next)}
 				/>

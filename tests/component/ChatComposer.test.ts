@@ -48,6 +48,20 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 		attachments: makeStore(),
 		modelKind: 'chat' as const,
 		disabledFeatures: [],
+		featureCategories: [
+			{
+				id: 'web',
+				label: 'Web access',
+				description: 'Lets the assistant search the web and fetch pages.',
+				source: 'builtin' as const
+			},
+			{
+				id: 'personalization',
+				label: 'Personalization',
+				description: 'Sends preferences + memory.',
+				source: 'builtin' as const
+			}
+		],
 		models: [makeModel()],
 		favoritedIds: [],
 		allowAttachments: true,

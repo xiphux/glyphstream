@@ -12,6 +12,14 @@ vi.mock('$lib/server/endpoints/registry', () => ({
 		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined
 }));
 
+// Stub the feature-categories registry so the MCP category check has
+// predictable input. v1 registers two built-ins + the categories below
+// for the suite; tests can add more via mockReturnValueOnce when needed.
+vi.mock('$lib/server/feature-categories', () => ({
+	getRegisteredCategoryIds: () =>
+		new Set(['web', 'personalization', 'mcp:filesystem'])
+}));
+
 describe('validateParameters', () => {
 	it('returns null for null/undefined/non-object input', () => {
 		expect(validateParameters(undefined)).toBeNull();
@@ -140,16 +148,37 @@ describe('validateCreateInput', () => {
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'web']);
 	});
 
-	it('accepts MCP-style category strings (validator widened for runtime-discovered servers)', () => {
-		// Now that FeatureCategory is open at the type level so MCP servers
-		// can contribute `mcp:<server-id>` categories at startup, the base
-		// validator accepts any non-empty string. Strict checking against
-		// the live MCP registry lands with the dynamic category surface.
+	it('accepts MCP categories backed by a currently-registered server', () => {
+		// The feature-categories registry mock declares `mcp:filesystem` is
+		// live; the validator passes it through alongside the built-in.
 		const r = validateCreateInput({
 			...valid,
 			defaultDisabledFeatures: ['personalization', 'mcp:filesystem']
 		});
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:filesystem']);
+	});
+
+	it('preserves mcp: categories whose server is not currently registered', () => {
+		// An admin removing an MCP server from config.toml shouldn't break
+		// every custom model that referenced it — the data round-trips so
+		// the preference returns intact when the server comes back.
+		const r = validateCreateInput({
+			...valid,
+			defaultDisabledFeatures: ['personalization', 'mcp:no-longer-registered']
+		});
+		expect(r.defaultDisabledFeatures).toEqual([
+			'personalization',
+			'mcp:no-longer-registered'
+		]);
+	});
+
+	it('rejects unknown non-MCP category strings', () => {
+		expect(() =>
+			validateCreateInput({
+				...valid,
+				defaultDisabledFeatures: ['personalization', 'made-up-category']
+			})
+		).toThrow();
 	});
 
 	it('rejects non-string entries in defaultDisabledFeatures', () => {

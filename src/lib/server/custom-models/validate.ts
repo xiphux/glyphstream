@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getEndpoint } from '$lib/server/endpoints/registry';
+import { getRegisteredCategoryIds } from '$lib/server/feature-categories';
 import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures
@@ -52,17 +53,30 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 
 /** Same shape rules as the per-conversation field — undefined / null → []
  *  (no opt-outs), an array of known categories → de-duped, anything else
- *  → 400. Unknown category strings 400 rather than silently dropping so
- *  client typos don't quietly turn into "feature on." */
+ *  → 400. Built-in typos 400 loudly (so a misspelled `web` doesn't
+ *  silently become "feature on"). MCP categories (`mcp:<id>`) pass
+ *  through even when the named server isn't currently registered: a
+ *  config.toml edit that temporarily removes an MCP server shouldn't
+ *  invalidate every custom model that mentioned it. Runtime tool
+ *  filtering treats absent categories as no-ops, so the data stays
+ *  preserved for the user without leaking into the upstream request. */
 export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[] {
+	let normalized: FeatureCategory[];
 	try {
-		return validateDisabledFeatures(raw);
+		normalized = validateDisabledFeatures(raw);
 	} catch (e) {
 		if (e instanceof FeatureCategoryValidationError) {
 			throw error(400, `defaultDisabledFeatures: ${e.message}`);
 		}
 		throw e;
 	}
+	const known = getRegisteredCategoryIds();
+	for (const entry of normalized) {
+		if (known.has(entry)) continue;
+		if (entry.startsWith('mcp:')) continue; // opaque MCP preservation
+		throw error(400, `defaultDisabledFeatures: unknown category "${entry}"`);
+	}
+	return normalized;
 }
 
 /**

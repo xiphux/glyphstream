@@ -4,17 +4,21 @@
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import {
-		FEATURE_CATEGORIES,
-		FEATURE_CATEGORY_LABELS,
 		type CreateCustomModelRequest,
 		type CustomModel,
 		type CustomModelParameters,
 		type FeatureCategory,
+		type FeatureCategoryEntry,
 		type ModelEntry
 	} from '$lib/types/api';
 
 	let { data } = $props<{
-		data: { customModels: CustomModel[]; models: ModelEntry[]; modelsError: string | null };
+		data: {
+			customModels: CustomModel[];
+			models: ModelEntry[];
+			modelsError: string | null;
+			featureCategories: FeatureCategoryEntry[];
+		};
 	}>();
 
 	// Form state. `editingId` null = creating a new preset; non-null = editing.
@@ -379,18 +383,17 @@
 							context.
 						</p>
 						<div class="mt-3 flex flex-col gap-2">
-							{#each FEATURE_CATEGORIES as cat (cat)}
-								{@const label = FEATURE_CATEGORY_LABELS[cat]}
+							{#each data.featureCategories as cat (cat.id)}
 								<label class="flex cursor-pointer items-start gap-2 text-xs">
 									<input
 										type="checkbox"
-										checked={isFeatureDefaultOn(cat)}
-										onchange={(e) => setFeatureDefault(cat, e.currentTarget.checked)}
+										checked={isFeatureDefaultOn(cat.id)}
+										onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
 										disabled={busy}
 										class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
 									/>
 									<span class="min-w-0">
-										<span class="font-medium">{label.label}</span>
+										<span class="font-medium">{cat.label}</span>
 										<span class="ml-1 text-fg-muted">on by default</span>
 									</span>
 								</label>

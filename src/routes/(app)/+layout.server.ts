@@ -3,6 +3,8 @@ import { listConversations } from '$lib/server/db/queries/conversations';
 import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listAllModels } from '$lib/server/endpoints/list-models';
+import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
+import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
@@ -19,11 +21,17 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	// ids without each (app) page having to re-fetch them. The home and
 	// chat pages then read them via `await parent()` instead of running
 	// their own copy of the same fetch loop.
+	//
+	// Block once on MCP discovery so featureCategories carries the
+	// `mcp:<id>` entries discovered at boot. Subsequent loads hit the
+	// memoized ready promise immediately.
+	await awaitMcpReady();
 	return {
 		user: locals.user,
 		conversations: listConversations(locals.user.id),
 		prefs: getUserPreferences(locals.user.id),
 		models: await listAllModels(),
-		customModels: listCustomModelsForUser(locals.user.id)
+		customModels: listCustomModelsForUser(locals.user.id),
+		featureCategories: getAllFeatureCategoryLabels()
 	};
 };

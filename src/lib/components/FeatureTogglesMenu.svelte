@@ -18,19 +18,21 @@
 <script lang="ts">
 	import { Popover, Switch } from 'bits-ui';
 	import { Sliders } from '@lucide/svelte';
-	import {
-		FEATURE_CATEGORIES,
-		FEATURE_CATEGORY_LABELS,
-		type FeatureCategory
-	} from '$lib/types/api';
+	import type { FeatureCategory, FeatureCategoryEntry } from '$lib/types/api';
 
 	interface Props {
 		disabledFeatures: readonly FeatureCategory[];
+		/**
+		 * Merged list of built-in + connected-MCP-server categories, assembled
+		 * server-side and passed in by the parent. Layout-level data so first
+		 * paint already has the right toggle set.
+		 */
+		categories: readonly FeatureCategoryEntry[];
 		onChange: (next: FeatureCategory[]) => void;
 		disabled?: boolean;
 	}
 
-	let { disabledFeatures, onChange, disabled = false }: Props = $props();
+	let { disabledFeatures, categories, onChange, disabled = false }: Props = $props();
 
 	function isEnabled(category: FeatureCategory): boolean {
 		return !disabledFeatures.includes(category);
@@ -79,9 +81,8 @@
 			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
 				This conversation
 			</div>
-			{#each FEATURE_CATEGORIES as category (category)}
-				{@const meta = FEATURE_CATEGORY_LABELS[category]}
-				{@const enabled = isEnabled(category)}
+			{#each categories as meta (meta.id)}
+				{@const enabled = isEnabled(meta.id)}
 				<label class="flex cursor-pointer items-start gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
 					<div class="flex-1">
 						<div class="text-sm font-medium text-fg">
@@ -93,7 +94,7 @@
 					</div>
 					<Switch.Root
 						checked={enabled}
-						onCheckedChange={(checked) => toggle(category, checked)}
+						onCheckedChange={(checked) => toggle(meta.id, checked)}
 						aria-label={meta.label}
 						class="relative mt-1 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
 					>

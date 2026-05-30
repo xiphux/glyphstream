@@ -99,6 +99,18 @@ export function isFeatureCategoryString(v: unknown): v is FeatureCategory {
 	return typeof v === 'string' && v.length > 0;
 }
 
+/**
+ * One entry in the dynamic category list assembled by
+ * `$lib/server/feature-categories.getAllFeatureCategoryLabels()`. Plain
+ * data; built once per layout load and shipped to the client.
+ */
+export interface FeatureCategoryEntry {
+	id: FeatureCategory;
+	label: string;
+	description: string;
+	source: 'builtin' | 'mcp';
+}
+
 /** A model as returned by `GET /api/models` (one row per upstream model, prefixed). */
 export interface ModelEntry {
 	/** Internal id: `{endpoint_id}::{upstream_model_id}` */

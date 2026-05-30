@@ -14,7 +14,13 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
-	import type { EnterBehavior, FeatureCategory, ModelEntry, ModelKind } from '$lib/types/api';
+	import type {
+		EnterBehavior,
+		FeatureCategory,
+		FeatureCategoryEntry,
+		ModelEntry,
+		ModelKind
+	} from '$lib/types/api';
 
 	interface Props {
 		composerText: string;
@@ -23,6 +29,7 @@
 		attachments: AttachmentStore;
 		modelKind: ModelKind | null;
 		disabledFeatures: FeatureCategory[];
+		featureCategories: readonly FeatureCategoryEntry[];
 		models: ModelEntry[];
 		favoritedIds: string[];
 		allowAttachments: boolean;
@@ -44,6 +51,7 @@
 		attachments,
 		modelKind,
 		disabledFeatures,
+		featureCategories,
 		models,
 		favoritedIds,
 		allowAttachments,
@@ -96,7 +104,12 @@
 		onSubmit={onSend}
 	>
 		{#snippet controls()}
-			<FeatureTogglesMenu {disabledFeatures} disabled={generating} onChange={onFeaturesChange} />
+			<FeatureTogglesMenu
+			{disabledFeatures}
+			categories={featureCategories}
+			disabled={generating}
+			onChange={onFeaturesChange}
+		/>
 			<div class="flex-1"></div>
 			<!--
 				Per-turn model picker: defaulted to the conversation's current

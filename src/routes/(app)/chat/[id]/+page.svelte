@@ -1568,6 +1568,7 @@
 					{attachments}
 					{modelKind}
 					{disabledFeatures}
+					featureCategories={data.featureCategories}
 					models={data.models}
 					favoritedIds={data.prefs?.favoriteModels ?? []}
 					{allowAttachments}
