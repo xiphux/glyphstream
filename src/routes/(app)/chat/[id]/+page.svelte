@@ -171,7 +171,7 @@
 	// either way; the client just doesn't need to wait for invalidate.
 	const allPendingToolCallIds = $derived(
 		new Set<string>([
-			...pendingApprovals.map((p) => p.toolCallId),
+			...pendingApprovals,
 			...liveInFlightPendingIds
 		])
 	);

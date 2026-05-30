@@ -295,6 +295,47 @@ describe('setUserPreferences', () => {
 		setUserPreferences(u.id, { showGreeting: true });
 		expect(getUserPreferences(u.id)?.showGreeting).toBe(true);
 	});
+
+	it('persists trustedMcpTools — MCP "always allow" grant storage', () => {
+		// Backing store for the PUT /api/user/trusted-tools/:name +
+		// /settings/permissions revoke endpoints. The endpoints just
+		// merge / splice the array and re-write; this confirms the
+		// underlying read-modify-write round-trips cleanly.
+		const u = seedUser();
+		setUserPreferences(u.id, {
+			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__list_directory']
+		});
+		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
+			'mcp__fs__read_file',
+			'mcp__fs__list_directory'
+		]);
+		// Revoke: filter out the targeted one + write back. Mirrors the
+		// DELETE handler's array splice.
+		setUserPreferences(u.id, {
+			trustedMcpTools: ['mcp__fs__list_directory']
+		});
+		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
+			'mcp__fs__list_directory'
+		]);
+		// Empty array is a valid clear (last revoke).
+		setUserPreferences(u.id, { trustedMcpTools: [] });
+		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([]);
+	});
+
+	it('de-dupes trustedMcpTools while preserving insertion order', () => {
+		// The PUT endpoint's idempotency contract: re-granting an
+		// already-trusted tool must not duplicate it. The underlying
+		// coercer is the same shape as favoriteModels — a defensive
+		// de-dupe runs on every write.
+		const u = seedUser();
+		setUserPreferences(u.id, {
+			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__read_file', 'mcp__linear__create_issue']
+		});
+		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
+			'mcp__fs__read_file',
+			'mcp__linear__create_issue'
+		]);
+	});
 });
 
 describe('composePersonaSystemPrompt', () => {

@@ -22,7 +22,12 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import { executeToolCalls } from '$lib/server/streaming/tool-execution';
-import { appendMessage } from '$lib/server/db/queries/messages';
+import {
+	appendMessage,
+	getMessage,
+	updateMessageParts,
+	walkActiveBranch
+} from '$lib/server/db/queries/messages';
 import { createConversation } from '$lib/server/db/queries/conversations';
 
 const REGISTERED_TOOLS = new Set<string>();
@@ -156,7 +161,7 @@ describe('executeToolCalls — approval partition', () => {
 });
 
 describe('buildPendingApprovals', () => {
-	it('pairs pending tool_result rows with their parent assistant tool_call info', () => {
+	it('returns the toolCallIds of pending_approval rows in branch order', () => {
 		const branch: ChatMessage[] = [
 			{
 				id: 'u1',
@@ -179,6 +184,12 @@ describe('buildPendingApprovals', () => {
 						toolCallId: 'call_x',
 						toolName: 'mcp__fs__read_file',
 						arguments: '{"path":"/tmp"}'
+					},
+					{
+						type: 'tool_call',
+						toolCallId: 'call_y',
+						toolName: 'mcp__fs__list_directory',
+						arguments: '{"path":"/var"}'
 					}
 				],
 				contentHtml: null,
@@ -207,16 +218,72 @@ describe('buildPendingApprovals', () => {
 				tokensIn: null,
 				tokensOut: null,
 				createdAt: 3
+			},
+			{
+				id: 't2',
+				role: 'tool',
+				parts: [
+					{
+						type: 'tool_result',
+						toolCallId: 'call_y',
+						result: '',
+						status: 'pending_approval'
+					}
+				],
+				contentHtml: null,
+				reasoningText: null,
+				finishReason: null,
+				modelUsed: null,
+				tokensIn: null,
+				tokensOut: null,
+				createdAt: 4
 			}
 		];
-		const pending = buildPendingApprovals(branch);
-		expect(pending).toEqual([
+		expect(buildPendingApprovals(branch)).toEqual(['call_x', 'call_y']);
+	});
+
+	it('skips already-completed tool_result rows', () => {
+		const branch: ChatMessage[] = [
 			{
-				toolCallId: 'call_x',
-				toolName: 'mcp__fs__read_file',
-				args: '{"path":"/tmp"}'
+				id: 't1',
+				role: 'tool',
+				parts: [
+					{
+						type: 'tool_result',
+						toolCallId: 'call_x',
+						result: '',
+						status: 'pending_approval'
+					}
+				],
+				contentHtml: null,
+				reasoningText: null,
+				finishReason: null,
+				modelUsed: null,
+				tokensIn: null,
+				tokensOut: null,
+				createdAt: 1
+			},
+			{
+				id: 't2',
+				role: 'tool',
+				parts: [
+					{
+						type: 'tool_result',
+						toolCallId: 'call_y',
+						result: 'done',
+						status: 'completed'
+					}
+				],
+				contentHtml: null,
+				reasoningText: null,
+				finishReason: null,
+				modelUsed: null,
+				tokensIn: null,
+				tokensOut: null,
+				createdAt: 2
 			}
-		]);
+		];
+		expect(buildPendingApprovals(branch)).toEqual(['call_x']);
 	});
 
 	it('returns [] when no rows are pending (status absent === completed)', () => {
@@ -241,5 +308,149 @@ describe('buildPendingApprovals', () => {
 			}
 		];
 		expect(buildPendingApprovals(branch)).toEqual([]);
+	});
+});
+
+describe('updateMessageParts', () => {
+	// Used by the approval-resume endpoint to fill in a previously-
+	// pending tool_result row with the actual execution output (or the
+	// declined-error result on reject). The DB shape matters because
+	// the relay continues from this state — a missing update would
+	// leave the row visible as pending forever.
+
+	it('rewrites the parts JSON of an existing message', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::gpt-4o',
+			modelKind: 'chat',
+			customModelId: null,
+			systemPrompt: null
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'go' }]
+		});
+		const assistant = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [
+				{
+					type: 'tool_call',
+					toolCallId: 'call_x',
+					toolName: 'mcp__fs__read_file',
+					arguments: '{}'
+				}
+			]
+		});
+		const pendingResult = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: assistant.id,
+			role: 'tool',
+			parts: [
+				{
+					type: 'tool_result',
+					toolCallId: 'call_x',
+					result: '',
+					status: 'pending_approval'
+				}
+			]
+		});
+
+		const ok = updateMessageParts(pendingResult.id, conv.id, [
+			{
+				type: 'tool_result',
+				toolCallId: 'call_x',
+				result: 'file contents here'
+			}
+		]);
+		expect(ok).toBe(true);
+		const persisted = getMessage(conv.id, pendingResult.id)!;
+		expect(persisted.parts).toEqual([
+			{ type: 'tool_result', toolCallId: 'call_x', result: 'file contents here' }
+		]);
+	});
+
+	it('returns false on a no-op update against the wrong message id', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::gpt-4o',
+			modelKind: 'chat',
+			customModelId: null,
+			systemPrompt: null
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'go' }]
+		});
+		// `user.id` is a real row but with a *different* conversationId
+		// scope on the predicate — cross-conversation update must fail.
+		expect(updateMessageParts(user.id, 'no-such-convo-id', [])).toBe(false);
+	});
+
+	it('does not move active_leaf_message_id (it edits in place)', () => {
+		// The relay parents the next iteration's assistant message at
+		// the current active_leaf. The resume endpoint only EDITS the
+		// pending tool_result row to fill in its result — it does not
+		// append new rows. Active_leaf must stay anchored to that tool
+		// message so initialParentMessageId can re-use it on the
+		// continued iteration (the previous "branching on every
+		// approval cycle" bug came from this anchor drifting).
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::gpt-4o',
+			modelKind: 'chat',
+			customModelId: null,
+			systemPrompt: null
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'go' }]
+		});
+		const assistant = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [
+				{
+					type: 'tool_call',
+					toolCallId: 'call_x',
+					toolName: 'mcp__fs__read_file',
+					arguments: '{}'
+				}
+			]
+		});
+		const pending = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: assistant.id,
+			role: 'tool',
+			parts: [
+				{
+					type: 'tool_result',
+					toolCallId: 'call_x',
+					result: '',
+					status: 'pending_approval'
+				}
+			]
+		});
+		const branchBefore = walkActiveBranch(conv.id).map((m) => m.id);
+		updateMessageParts(pending.id, conv.id, [
+			{ type: 'tool_result', toolCallId: 'call_x', result: 'ok' }
+		]);
+		const branchAfter = walkActiveBranch(conv.id).map((m) => m.id);
+		expect(branchAfter).toEqual(branchBefore);
+		expect(branchAfter[branchAfter.length - 1]).toBe(pending.id);
 	});
 });

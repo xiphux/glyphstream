@@ -410,3 +410,176 @@ describe('multi-iteration tool loop', () => {
 	});
 });
 
+// --- MCP approval halting + resume parenting ---------------------------
+
+describe('multi-iteration tool loop with needsApproval', () => {
+	it('halts after persisting a pending_approval row instead of looping', async () => {
+		// The relay's defining trait when approval is required: the model
+		// emits a tool_call, executeToolCalls writes a placeholder
+		// tool_result with status='pending_approval' (no execute()
+		// invocation), and the loop breaks BEFORE rebuildRequestBody so
+		// no second upstream call fires. The resume endpoint takes over
+		// from here.
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'mcp__fs__read_file',
+					description: 'read',
+					parameters: { type: 'object', properties: {} }
+				}
+			},
+			metadata: { category: 'mcp:fs' },
+			execute: () => {
+				throw new Error('approval-needed tools must not execute on the halt path');
+			}
+		});
+
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_a',
+					name: 'mcp__fs__read_file',
+					args: '{"path":"/tmp"}'
+				}),
+				finishChunk('tool_calls')
+			])
+		);
+
+		let rebuildCalls = 0;
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint,
+			providerQuirk: 'passthrough',
+			requestBody: {
+				model: 'bridge::test',
+				messages: [{ role: 'user', content: 'read it' }]
+			},
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			onComplete: () => {},
+			needsApproval: () => true,
+			rebuildRequestBody: async () => {
+				rebuildCalls++;
+				return { model: 'bridge::test', messages: [] };
+			}
+		});
+
+		const events = await drainEvents(stream);
+
+		expect(mocks.upstreamCalls).toHaveLength(1);
+		expect(rebuildCalls).toBe(0);
+
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+		const toolMsg = branch[2];
+		const part = toolMsg.parts[0] as Extract<
+			import('$lib/types/api').MessagePart,
+			{ type: 'tool_result' }
+		>;
+		expect(part.status).toBe('pending_approval');
+		expect(part.result).toBe('');
+
+		// The SSE stream carries a tool_pending_approval event so the
+		// in-flight bubble can flip the Allow / Always / Reject prompt
+		// in *before* the post-stream invalidate refetches the
+		// persisted row.
+		const types = events.map((e) => (e as { type: string }).type);
+		expect(types).toContain('tool_pending_approval');
+		expect(types[types.length - 1]).toBe('done');
+	});
+
+	it('initialParentMessageId parents iteration 0 to the active_leaf, not userMessage.id', async () => {
+		// Approval-resume scenario in miniature: simulate the post-
+		// approval state where the conversation already has user →
+		// assistant1(tool_call) → tool1(completed), and the resume
+		// endpoint kicks off a new relay anchored at tool1.id. Without
+		// the override, iteration 0's new assistant would parent to
+		// user.id and form a SIBLING of assistant1 — the branching
+		// bug we shipped a fix for.
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'noop_tool',
+					description: 'noop',
+					parameters: { type: 'object', properties: {} }
+				}
+			},
+			execute: () => ({ content: 'ok' })
+		});
+
+		const { conv, user, userId } = seedConversationWithUserMessage();
+
+		// Pre-seed the assistant + completed tool result that a prior
+		// halted turn would have left behind.
+		const a1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [
+				{
+					type: 'tool_call',
+					toolCallId: 'call_prior',
+					toolName: 'noop_tool',
+					arguments: '{}'
+				}
+			],
+			contentHtml: null,
+			reasoningText: null,
+			finishReason: 'tool_calls',
+			modelUsed: null,
+			tokensIn: null,
+			tokensOut: null
+		});
+		const t1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: a1.id,
+			role: 'tool',
+			parts: [
+				{ type: 'tool_result', toolCallId: 'call_prior', result: 'previously approved' }
+			],
+			contentHtml: null,
+			reasoningText: null,
+			finishReason: null,
+			modelUsed: null,
+			tokensIn: null,
+			tokensOut: null
+		});
+
+		// Iteration 0 of the resume: model gives a plain text answer.
+		mocks.upstreamResponses.push(() =>
+			sseResponse([textChunk('done.'), finishChunk('stop')])
+		);
+
+		await drainEvents(
+			await startStreamingRelay({
+				conversationId: conv.id,
+				userId,
+				conversationTitle: 'test',
+				modelKind: 'chat',
+				endpoint,
+				providerQuirk: 'passthrough',
+				requestBody: { model: 'bridge::test', messages: [] },
+				userMessage: user,
+				storedModelId: 'bridge::test',
+				onComplete: () => {},
+				initialParentMessageId: t1.id
+			})
+		);
+
+		// The new assistant should land as a CHILD of t1, not a sibling
+		// of a1 under the user message. Verify by walking the active
+		// branch end-to-end: user → a1 → t1 → assistant2.
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
+		expect(branch[1].id).toBe(a1.id);
+		expect(branch[2].id).toBe(t1.id);
+	});
+});
+

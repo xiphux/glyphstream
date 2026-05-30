@@ -6,12 +6,14 @@ import {
 	computeMergeFlags,
 	filterVisibleMessages,
 	inFlightToBlocks,
+	markToolCallPendingApproval,
 	messageToBlocks,
 	pushToolCall,
 	updateToolCallArgs,
 	updateToolCallResult,
 	type InFlightSegment,
-	type RenderBlock
+	type RenderBlock,
+	type ToolResultEntry
 } from '$lib/chat-render';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 
@@ -31,7 +33,7 @@ function msg(role: ChatMessage['role'], parts: MessagePart[], over: Partial<Chat
 	};
 }
 
-const NO_TOOL_RESULTS = new Map<string, { result: string; isError: boolean }>();
+const NO_TOOL_RESULTS = new Map<string, ToolResultEntry>();
 
 // --- messageToBlocks: persisted message → render blocks -----------------
 
@@ -590,6 +592,166 @@ describe('buildToolResultsMap', () => {
 			])
 		];
 		expect(buildToolResultsMap(messages).size).toBe(0);
+	});
+
+	it('surfaces the pending_approval status on the indexed entry', () => {
+		// MCP tools waiting on the user's approval prompt persist with
+		// `status: 'pending_approval'` + an empty result; the in-line
+		// tool block reads that off the map to render Allow / Always /
+		// Reject buttons.
+		const messages = [
+			msg('tool', [
+				{
+					type: 'tool_result',
+					toolCallId: 'c1',
+					result: '',
+					status: 'pending_approval'
+				}
+			])
+		];
+		expect(buildToolResultsMap(messages).get('c1')).toEqual({
+			result: '',
+			isError: false,
+			status: 'pending_approval'
+		});
+	});
+
+	it('omits the status field on completed rows (defensive read at consumers)', () => {
+		// Persisted shape stays byte-identical with the pre-approval
+		// schema for tools that ran inline (built-ins + trusted MCP) —
+		// `status` is absent rather than 'completed'.
+		const messages = [
+			msg('tool', [
+				{ type: 'tool_result', toolCallId: 'c1', result: 'done' }
+			])
+		];
+		const entry = buildToolResultsMap(messages).get('c1');
+		expect(entry).toEqual({ result: 'done', isError: false });
+		expect((entry as { status?: string }).status).toBeUndefined();
+	});
+});
+
+describe('messageToBlocks tool_call → pending_approval mapping', () => {
+	it("flips a tool_call block's status to 'pending_approval' when its result row says so", () => {
+		// The inline ToolCallBlock renders the Allow / Always / Reject
+		// buttons when status === 'pending_approval', so the mapping
+		// from the persisted tool_result.status to the RenderBlock
+		// status is the load-bearing link for the approval UI.
+		const assistant = msg(
+			'assistant',
+			[
+				{
+					type: 'tool_call',
+					toolCallId: 'call_x',
+					toolName: 'mcp__fs__read_file',
+					arguments: '{"path":"/tmp"}'
+				}
+			],
+			{ id: 'a1' }
+		);
+		const results = new Map<string, ToolResultEntry>([
+			['call_x', { result: '', isError: false, status: 'pending_approval' }]
+		]);
+		const blocks = messageToBlocks(assistant, results);
+		const toolBlock = blocks.find((b) => b.type === 'tool_call');
+		expect(toolBlock).toMatchObject({
+			type: 'tool_call',
+			toolCallId: 'call_x',
+			status: 'pending_approval'
+		});
+	});
+
+	it('renders as executing when there is no tool_result row at all', () => {
+		// The model just emitted the tool_call but the relay hasn't
+		// persisted the matching role:'tool' row yet — the inline
+		// block stays in the in-flight 'executing' spinner state.
+		const assistant = msg(
+			'assistant',
+			[
+				{ type: 'tool_call', toolCallId: 'call_y', toolName: 'clock', arguments: '{}' }
+			],
+			{ id: 'a1' }
+		);
+		const blocks = messageToBlocks(assistant, NO_TOOL_RESULTS);
+		const toolBlock = blocks.find((b) => b.type === 'tool_call');
+		expect(toolBlock).toMatchObject({ status: 'executing' });
+	});
+});
+
+describe('markToolCallPendingApproval', () => {
+	const baseSegment = {
+		kind: 'tool_call' as const,
+		toolCallId: 'call_x',
+		toolName: 'mcp__fs__read_file',
+		arguments: '{"path":"/tmp"}',
+		status: 'executing' as const
+	};
+
+	it("flips an existing segment's status without losing already-streamed arguments", () => {
+		// `tool_call_args_delta` events stream the args string in
+		// chunks before the relay decides whether the tool needs
+		// approval; the helper must preserve whatever the segment
+		// already buffered if the SSE event's args field is empty.
+		const segments: InFlightSegment[] = [baseSegment];
+		const next = markToolCallPendingApproval(segments, 'call_x', 'mcp__fs__read_file', '');
+		expect(next[0]).toMatchObject({
+			kind: 'tool_call',
+			toolCallId: 'call_x',
+			status: 'pending_approval',
+			arguments: '{"path":"/tmp"}'
+		});
+	});
+
+	it('prefers the SSE event args when non-empty (server has the canonical string)', () => {
+		const segments: InFlightSegment[] = [
+			{ ...baseSegment, arguments: '{"path":"/old"}' }
+		];
+		const next = markToolCallPendingApproval(
+			segments,
+			'call_x',
+			'mcp__fs__read_file',
+			'{"path":"/new"}'
+		);
+		expect(next[0]).toMatchObject({
+			status: 'pending_approval',
+			arguments: '{"path":"/new"}'
+		});
+	});
+
+	it('synthesizes a new segment when no matching tool_call_start was seen', () => {
+		// Defensive — if a `tool_pending_approval` event somehow
+		// lands without a prior `tool_call_start`, the helper
+		// appends a synthetic segment so the UI renders the prompt
+		// instead of silently dropping it.
+		const segments: InFlightSegment[] = [];
+		const next = markToolCallPendingApproval(
+			segments,
+			'call_x',
+			'mcp__fs__read_file',
+			'{"path":"/tmp"}'
+		);
+		expect(next).toHaveLength(1);
+		expect(next[0]).toMatchObject({
+			kind: 'tool_call',
+			toolCallId: 'call_x',
+			toolName: 'mcp__fs__read_file',
+			arguments: '{"path":"/tmp"}',
+			status: 'pending_approval'
+		});
+	});
+
+	it('returns the original array when the toolCallId points at a non-tool_call segment', () => {
+		// Should be impossible — toolCallIds don't collide across
+		// segment kinds — but defend against it by leaving the
+		// segments array untouched rather than rewriting the type.
+		const segments: InFlightSegment[] = [
+			{ kind: 'text', text: 'hi', html: '' }
+		];
+		const next = markToolCallPendingApproval(segments, 'call_x', 'x', '');
+		// Synthesizes a new segment because no matching tool_call exists.
+		expect(next).toHaveLength(2);
+		expect(next[0]).toEqual(segments[0]);
+		expect(next[1]).toMatchObject({ status: 'pending_approval' });
 	});
 });
 
