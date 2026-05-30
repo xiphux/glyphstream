@@ -6,38 +6,20 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
-- **Completion sounds + per-modality notification config.** Notifications
-  themselves shipped — Web Push for backgrounded tab/OS notification, an
-  in-app toast for "different thread, app still open," and silent on the
-  thread you're watching (see `docs/notifications.md`). The remaining
-  follow-ups all need per-user / per-modality toggles:
-  - Optional completion sound, with volume control.
-  - Per-modality config (e.g. "only sound for video, since they take
-    longest"). The notify payload already carries `modality`; the SW just
-    needs a per-modality routing pass on the client side.
-  - A "your devices" UI surfacing the `push_subscriptions.user_agent`
-    column with per-device revoke.
-
-- **Additional per-conversation opt-out categories.** The composer's
-  feature-toggle popover already ships with the **Web access** category
-  (gating `web_search` + `fetch_url` together; see README's
-  "Per-conversation feature toggles" section). The infrastructure —
-  `disabled_features` column, category-aware tool registry, popover UI
-  — generalizes to any future category by adding entries to
-  `FEATURE_CATEGORIES` + per-tool `metadata.category` declarations.
-  Concrete categories worth adding once their feature lands:
-  - **Personalization** (system prompt / name / persona injection)
-    — paired with the memory feature below.
-  - **Memory writes** — once a `save_memory` tool exists, give users
-    a switch that lets a conversation be read-only against memory.
-  - **Per-MCP-server categories** — when MCP support lands, each
-    connected server could expose its own category so a user can
-    "use this server's tools" or "don't" at the conversation level.
-  The "one unified toggle vs per-feature toggles" open question was
-  answered by the user explicitly: per-feature, grouped by capability,
-  with the priority that a switch must actually seal the threat it
-  claims to (which is why web_search and fetch_url share one category
-  instead of getting individual switches).
+- **Search chats.** As history accumulates over months, finding "the
+  conversation where I worked out X" becomes the limiting factor on
+  reusing prior context. SQLite FTS5 ships with better-sqlite3 — a
+  virtual table over `messages.content` + `conversations.title`,
+  maintained via triggers on insert/update, with a search affordance
+  in the sidebar that filters or replaces the conversation list. Hits
+  deep-link into the conversation scrolled to the matched message.
+  Index `content` (the source of truth) rather than `content_html` so
+  matches aren't polluted by markdown/HTML artifacts. Scope to the
+  current `user_id` in every query — the FTS table must carry it as a
+  column so multi-user (v2) doesn't need a reindex. Semantic search
+  belongs with the embeddings work below (see *Inline RAG*) — keyword
+  first, embeddings as a follow-up when the embedding model is a hard
+  dep anyway.
 
 - **Bulk gallery management.** As the library accumulates over months
   of use, single-item delete becomes tedious. Worth adding multi-select
@@ -47,24 +29,6 @@ expected priority, not time-bound.
   with library size. Selection state lives in the gallery page; the
   bulk-delete API can compose `hardDeleteMediaForUser` over the
   selection.
-
-- **Gallery favorite / pin tier.** A second-level distinction beyond
-  "in the gallery vs. hard-deleted" — media flagged as favorite is
-  protected from any future bulk-cleanup affordances (e.g. an
-  "archive media older than N months" sweep we might add later).
-  Storage is a single boolean column on the media row plus a UI
-  affordance in the lightbox (star icon next to download). Pairs
-  naturally with bulk-management since the workflow is "select many,
-  star the ones I care about, bulk-delete the rest."
-
-- **Preference toggle: default to deleting media when deleting
-  conversations.** Power users who generate hundreds of images per
-  session and reflexively want them all gone afterward should be able
-  to flip the conversation-delete dialog's checkbox default. Single
-  boolean on `UserPreferences`; one-line read in the layout's
-  `deleteConversation` flow when seeding the modal's initial
-  `deleteMediaToo` value. Trivially shippable any time the demand
-  shows up.
 
 - **Playwright e2e suite — expand coverage.** The suite is stood up
   (`tests/e2e/`): it boots a production build against a mock OpenAI-
@@ -84,36 +48,6 @@ expected priority, not time-bound.
   resulting recovery/resize, rather than driving a happy-path flow.
 
 ## Mid-term (v2)
-
-- **Virtualized message list.** Long conversations eventually overwhelm the
-  DOM. `@tanstack/svelte-virtual` is the candidate; the nontrivial part is
-  the streaming case — the bottom message's height grows mid-stream, so the
-  virtualizer has to re-measure on every chunk and the pin-to-bottom anchor
-  has to track virtualized content height (not DOM height). Pattern other
-  chat apps converge on: virtualize only the historical messages, leave the
-  streaming message in plain DOM until the stream completes. Trigger
-  condition — implement when real-world conversations actually feel janky in
-  production use; below that threshold the virtualizer's measurement
-  overhead can exceed the cost of just rendering everything.
-
-- **Multi-user.** Data model is multi-user-shaped (every row has `user_id`);
-  needs invite/admin UI + per-user resource isolation tests + an admin role.
-
-- **DB-backed endpoint management UI** (instead of `config.toml` only). Add
-  endpoints from a settings page; reload registry without restart.
-
-- **More OAuth providers** (Google, generic OIDC). `arctic` supports these.
-
-- **Bridge-side SSE normalization** (off by default via header). Saves
-  duplicate normalizers if other clients ever consume the bridge.
-
-- **S3-compatible media storage.** `MediaStore` interface is already the
-  abstraction; implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
-
-- **Postgres deployment option.** Drizzle is dialect-portable; needs a
-  postgres-driver adapter and migration regeneration.
-
-- **Conversation export** (JSON / Markdown).
 
 - **MCP server support.** Model Context Protocol gives clients a
   plug-and-play way to add tool servers — Gmail, Calendar, filesystem,
@@ -143,38 +77,19 @@ expected priority, not time-bound.
   conversations. Slots into the existing tool registry — memory access
   is tool-call-shaped. New `memories` table per `user_id`;
   tools: `recall_memory(query)` for retrieval, `save_memory(text)` /
-  `forget_memory(id)` for writes. Open question whether retrieval is
-  keyword + recency or embedding-based — embeddings are more powerful but
-  make the feature dependent on having an embedding model configured.
-  Reasonable phasing: keyword/recency first, semantic recall later (which
-  also unlocks inline RAG below).
+  `forget_memory(id)` for writes. The recall/save tools should declare
+  `metadata.category: 'personalization'` so the existing per-conversation
+  toggle (which already gates the prefs-derived persona system prompt)
+  also seals memory reads/writes — both are avenues that ship personal
+  context to the model, so flipping the switch should close all of them.
+  Open question whether retrieval is keyword + recency or embedding-based —
+  embeddings are more powerful but make the feature dependent on having
+  an embedding model configured. Reasonable phasing: keyword/recency
+  first, semantic recall later (which also unlocks inline RAG below).
 
 - **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
   GlyphStream can embed-and-retrieve attached docs/URLs and inject as
   system context. Particularly useful for chats grounded in personal notes.
-
-## Long-term / nice-to-have
-
-- **2FA / passkeys.** Relevant once multi-user is on.
-
-- **Voice input** via local Whisper (or upstream `audio.transcriptions`
-  endpoint when the bridge supports it).
-
-- **Background sync / offline composition.** Service worker queues messages
-  while offline; resends when connectivity returns. Low priority — chat
-  apps generally don't need this.
-
-- **Animation polish pass — DONE** (Phase 2 of the theming work).
-  Token-driven motion (`--motion-*` / `--ease-*` in `app.css`): a subtle
-  pop-in (fade + drop) on the transient overlays (popovers, dropdowns,
-  dialog cards, toast), an opacity-only message-arrival fade, and the
-  streaming in-flight bubble fading in on stream start (the persisted row
-  suppresses its own re-fade so the swap is seamless). Everything
-  collapses to instant under `prefers-reduced-motion`. Not yet done:
-  branch-switch crossfade and list-reorder motion — left out as the
-  higher-risk bits near the scroll/streaming logic.
-
-- **Regenerate response** as a separate action from edit.
 
 - **Context compaction.** Pattern from Claude Code and other coding CLIs:
   summarize the conversation so far into a shorter representation, then
@@ -196,6 +111,89 @@ expected priority, not time-bound.
   auto-fired when per-model context-token estimate crosses a threshold
   (the token-usage surfacing from `0adaf0d` is the prereq for the
   latter).
+
+- **Multi-user.** Data model is multi-user-shaped (every row has `user_id`);
+  needs invite/admin UI + per-user resource isolation tests + an admin role.
+
+- **Virtualized message list.** Long conversations eventually overwhelm the
+  DOM. `@tanstack/svelte-virtual` is the candidate; the nontrivial part is
+  the streaming case — the bottom message's height grows mid-stream, so the
+  virtualizer has to re-measure on every chunk and the pin-to-bottom anchor
+  has to track virtualized content height (not DOM height). Pattern other
+  chat apps converge on: virtualize only the historical messages, leave the
+  streaming message in plain DOM until the stream completes. Trigger
+  condition — implement when real-world conversations actually feel janky in
+  production use; below that threshold the virtualizer's measurement
+  overhead can exceed the cost of just rendering everything.
+
+- **DB-backed endpoint management UI** (instead of `config.toml` only). Add
+  endpoints from a settings page; reload registry without restart.
+
+- **More OAuth providers** (Google, generic OIDC). `arctic` supports these.
+
+- **S3-compatible media storage.** `MediaStore` interface is already the
+  abstraction; implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
+
+- **Postgres deployment option.** Drizzle is dialect-portable; needs a
+  postgres-driver adapter and migration regeneration.
+
+- **Bridge-side SSE normalization** (off by default via header). Saves
+  duplicate normalizers if other clients ever consume the bridge.
+
+## Long-term / nice-to-have
+
+- **2FA / passkeys.** Relevant once multi-user is on.
+
+- **Voice input** via local Whisper (or upstream `audio.transcriptions`
+  endpoint when the bridge supports it).
+
+- **Conversation export** (JSON / Markdown). Useful as an exit ramp,
+  but the priority is building features that make users not want to
+  leave rather than making it easier to do so.
+
+- **Completion sounds + per-modality notification config.** Notifications
+  themselves shipped — Web Push for backgrounded tab/OS notification, an
+  in-app toast for "different thread, app still open," and silent on the
+  thread you're watching (see `docs/notifications.md`). Native iOS Web
+  Push covers the standard notification behavior; the follow-ups below
+  are polish on top:
+  - Optional completion sound, with volume control.
+  - Per-modality config (e.g. "only sound for video, since they take
+    longest"). The notify payload already carries `modality`; the SW just
+    needs a per-modality routing pass on the client side.
+  - A "your devices" UI surfacing the `push_subscriptions.user_agent`
+    column with per-device revoke.
+
+- **Gallery favorite / pin tier.** A second-level distinction beyond
+  "in the gallery vs. hard-deleted" — media flagged as favorite would be
+  protected from any future bulk-cleanup affordances (e.g. an
+  "archive media older than N months" sweep). Storage is a single
+  boolean column on the media row plus a UI affordance in the lightbox
+  (star icon next to download). Pairs naturally with bulk-management,
+  but the rationale only really materializes once an automated
+  bulk-cleanup affordance exists to protect favorites *from* — which
+  isn't itself on the roadmap.
+
+- **Preference toggle: default to deleting media when deleting
+  conversations.** Single boolean on `UserPreferences`; one-line read
+  in the layout's `deleteConversation` flow when seeding the modal's
+  initial `deleteMediaToo` value. Saves one click per delete for power
+  users who reflexively want media gone — trivial to ship if the demand
+  shows up, but low value otherwise.
+
+- **Background sync / offline composition.** Service worker queues messages
+  while offline; resends when connectivity returns. Low priority — chat
+  apps generally don't need this.
+
+- **Animation polish pass — DONE** (Phase 2 of the theming work).
+  Token-driven motion (`--motion-*` / `--ease-*` in `app.css`): a subtle
+  pop-in (fade + drop) on the transient overlays (popovers, dropdowns,
+  dialog cards, toast), an opacity-only message-arrival fade, and the
+  streaming in-flight bubble fading in on stream start (the persisted row
+  suppresses its own re-fade so the swap is seamless). Everything
+  collapses to instant under `prefers-reduced-motion`. Not yet done:
+  branch-switch crossfade and list-reorder motion — left out as the
+  higher-risk bits near the scroll/streaming logic.
 
 - **Themes — DONE.** Three style *personalities* (not just palette
   swaps): **GlyphStream** Signature (neutral + frosted glass), **Claude**
