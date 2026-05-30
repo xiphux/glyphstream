@@ -46,6 +46,17 @@ const MODELS = {
 			supports_tools: false
 		},
 		{
+			// Same as mock-chat but ticks slowly between chunks (see
+			// SLOW_CHUNK_DELAY_MS) so e2e specs have a real in-flight
+			// window in which to dispatch visibility/connectivity events.
+			id: 'mock-chat-slow',
+			object: 'model',
+			kind: 'chat',
+			display_name: 'Mock Chat Slow',
+			owned_by: 'mock',
+			supports_tools: false
+		},
+		{
 			id: 'mock-image',
 			object: 'model',
 			kind: 'image',
@@ -72,17 +83,26 @@ function sendJson(res, status, obj) {
 	res.end(payload);
 }
 
+/** Per-chunk delay for `mock-chat-slow`. Picked long enough that a spec
+ *  can race events (visibilitychange / offline / online) into the middle
+ *  of the relay's stream while `busy=true`, but short enough that the
+ *  whole 6-word reply still finishes well inside the default 30s test
+ *  timeout. */
+const SLOW_CHUNK_DELAY_MS = 250;
+const FAST_CHUNK_DELAY_MS = 5;
+
 /** Emit the fixed reply as OpenAI chat-completion SSE chunks: a role
  *  chunk, one chunk per word, a finish chunk, a usage chunk, then
  *  [DONE]. Matches what PassthroughNormalizer expects. */
-function streamChatCompletion(res) {
+function streamChatCompletion(res, model) {
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache, no-store',
 		Connection: 'keep-alive'
 	});
 	const id = 'chatcmpl-mock';
-	const base = { id, object: 'chat.completion.chunk', model: 'mock-chat' };
+	const base = { id, object: 'chat.completion.chunk', model: model ?? 'mock-chat' };
+	const delay = model === 'mock-chat-slow' ? SLOW_CHUNK_DELAY_MS : FAST_CHUNK_DELAY_MS;
 
 	const chunks = [];
 	chunks.push({ ...base, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] });
@@ -107,7 +127,7 @@ function streamChatCompletion(res) {
 		if (i < chunks.length) {
 			res.write(`data: ${JSON.stringify(chunks[i])}\n\n`);
 			i++;
-			setTimeout(tick, 5);
+			setTimeout(tick, delay);
 		} else {
 			res.write('data: [DONE]\n\n');
 			res.end();
@@ -143,12 +163,15 @@ const server = createServer(async (req, res) => {
 	if (req.method === 'POST' && path === '/v1/chat/completions') {
 		const raw = await readBody(req);
 		let wantsStream = false;
+		let model = 'mock-chat';
 		try {
-			wantsStream = JSON.parse(raw || '{}').stream === true;
+			const body = JSON.parse(raw || '{}');
+			wantsStream = body.stream === true;
+			if (typeof body.model === 'string') model = body.model;
 		} catch {
-			/* default to sync */
+			/* default to sync, default model */
 		}
-		return wantsStream ? streamChatCompletion(res) : syncChatCompletion(res);
+		return wantsStream ? streamChatCompletion(res, model) : syncChatCompletion(res);
 	}
 
 	if (req.method === 'POST' && path === '/v1/images/generations') {

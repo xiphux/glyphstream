@@ -6,22 +6,26 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
-- **Playwright e2e suite — expand coverage.** The suite is stood up
-  (`tests/e2e/`): it boots a production build against a mock OpenAI-
-  compatible upstream (`fixtures/mock-upstream.mjs`, a second
-  webServer) and walks the four high-value flows on both desktop and
-  mobile — send a message, generate an image + regenerate from gallery
-  (which exercises the gallery-launch `sessionStorage` handoff), edit a
-  root message + verify it branches, and archive with Undo. Auth is
-  covered via cookie-injected storageState plus an unauthenticated-
-  redirect test. Still uncovered, and still manual-test territory
-  because they need browser-*event* simulation rather than new flows:
-  composer auto-resize after a programmatic text-set, iOS suspension
-  recovery (`visibilitychange`), network-handoff recovery
-  (`online`/`offline`), and the autoattach state machine on branch
-  switches. Add these as a second tranche on top of the existing
-  harness — emulate the visibility/connectivity events and assert the
-  resulting recovery/resize, rather than driving a happy-path flow.
+- **Playwright e2e suite — DONE.** The suite (`tests/e2e/`) boots a
+  production build against a mock OpenAI-compatible upstream
+  (`fixtures/mock-upstream.mjs`, a second webServer) and walks the
+  high-value flows on both desktop and mobile. The first tranche
+  (`flows.spec.ts`) covers happy paths: send a message, generate an
+  image + regenerate from gallery (which exercises the gallery-launch
+  `sessionStorage` handoff), edit a root message + verify it branches,
+  archive with Undo, and the theme switcher. Auth is covered via
+  cookie-injected storageState plus an unauthenticated-redirect test.
+  The second tranche (`events.spec.ts`) covers the browser-event cases
+  that were initially called out as manual-test territory: composer
+  auto-resize after a programmatic text-set (the gallery-launch
+  handoff's `text =` assignment), iOS suspension recovery
+  (`visibilitychange` while busy), network-handoff recovery (real
+  `context.setOffline` kills the in-flight stream + the catch path
+  swallows the toast and invalidates), and the autoattach state machine
+  on branch switches (edit → new branch's image is the attached one;
+  sibling-arrow back swaps it again). The `mock-chat-slow` model added
+  to the fixture upstream gives the visibility/connectivity tests a
+  real in-flight window to dispatch events into.
 
 ## Mid-term (v2)
 
