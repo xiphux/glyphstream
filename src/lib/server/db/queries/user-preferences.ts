@@ -26,7 +26,8 @@ const DEFAULTS: UserPreferences = {
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
-	favoriteModels: []
+	favoriteModels: [],
+	trustedMcpTools: []
 };
 
 /**
@@ -99,8 +100,29 @@ function coerceUserPreferences(
 		favoriteModels:
 			input.favoriteModels === undefined
 				? fallback.favoriteModels
-				: coerceFavoriteModels(input.favoriteModels, fallback.favoriteModels)
+				: coerceFavoriteModels(input.favoriteModels, fallback.favoriteModels),
+		trustedMcpTools:
+			input.trustedMcpTools === undefined
+				? fallback.trustedMcpTools
+				: coerceStringArray(input.trustedMcpTools, fallback.trustedMcpTools)
 	};
+}
+
+/** Generic non-mixed-array string coercer — used for trustedMcpTools. Same
+ *  defensive shape as coerceFavoriteModels: reject non-arrays / mixed-type
+ *  arrays outright (those indicate a caller bug, not recoverable noise),
+ *  de-dupe while preserving first-occurrence order. */
+function coerceStringArray(input: unknown, fallback: string[]): string[] {
+	if (!Array.isArray(input)) return fallback;
+	if (!input.every((v) => typeof v === 'string')) return fallback;
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const v of input as string[]) {
+		if (seen.has(v)) continue;
+		seen.add(v);
+		out.push(v);
+	}
+	return out;
 }
 
 /** Pure: parse a raw JSON string into a UserPreferences object, filling in

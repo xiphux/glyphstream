@@ -216,7 +216,21 @@ export type MessagePart =
 	| { type: 'video'; mediaId: string }
 	| { type: 'reasoning'; text: string }
 	| { type: 'tool_call'; toolCallId: string; toolName: string; arguments: string }
-	| { type: 'tool_result'; toolCallId: string; result: string; isError?: boolean };
+	| {
+			type: 'tool_result';
+			toolCallId: string;
+			result: string;
+			isError?: boolean;
+			/**
+			 * Lifecycle state for MCP tool calls that require approval. Absent
+			 * on existing rows and on all built-in tool results — the
+			 * defensive default at read sites is `'completed'`. A
+			 * `'pending_approval'` row carries an empty `result` until the
+			 * user clicks Allow / Allow Always / Reject; the resume endpoint
+			 * fills it in and flips the status.
+			 */
+			status?: 'pending_approval' | 'completed';
+	  };
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -350,6 +364,14 @@ export interface UserPreferences {
 	 * cheaper than gardening the stored list on every config edit.
 	 */
 	favoriteModels: string[];
+	/**
+	 * Namespaced MCP tool names (`mcp__<server>__<tool>`) the user has
+	 * granted "always allow" — bypasses the per-tool-call approval prompt
+	 * on subsequent calls. Default []. Cross-cutting permission storage
+	 * shared with future skill / Open Terminal grants; revoke via the
+	 * `/settings/permissions` page.
+	 */
+	trustedMcpTools: string[];
 }
 
 export interface ConversationSummary {

@@ -36,7 +36,8 @@ const EMPTY_PREFS = {
 	notificationsEnabled: false,
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
-	favoriteModels: [] as string[]
+	favoriteModels: [] as string[],
+	trustedMcpTools: [] as string[]
 };
 
 describe('parseUserPreferences', () => {
@@ -241,7 +242,8 @@ describe('setUserPreferences', () => {
 			'notificationsForegroundToast',
 			'notificationsShowContent',
 			'showGreeting',
-			'theme'
+			'theme',
+			'trustedMcpTools'
 		]);
 	});
 
