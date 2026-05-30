@@ -203,6 +203,15 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const lastUserMessage = [...updatedBranch].reverse().find((m) => m.role === 'user');
 	if (!lastUserMessage) throw error(500, 'No user message anchor for resume');
 
+	// CRITICAL: parent the resumed assistant message to the current
+	// active_leaf (the just-completed tool result), not to the user
+	// message. Without this override, every resume creates a sibling of
+	// the prior assistant turn and the conversation forks once per
+	// approval cycle. Falls back to the last message on the branch if
+	// active_leaf somehow drifted.
+	const initialParentMessageId =
+		meta.activeLeafMessageId ?? updatedBranch[updatedBranch.length - 1]?.id ?? lastUserMessage.id;
+
 	const inFlight = registerInFlight(params.id, endpoint);
 
 	const stream = await startStreamingRelay({
@@ -218,7 +227,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		abortSignal: inFlight.controller.signal,
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
-		rebuildRequestBody: buildRequestBody
+		rebuildRequestBody: buildRequestBody,
+		initialParentMessageId
 	});
 
 	return new Response(stream, {

@@ -29,7 +29,6 @@
 		updateToolCallResult as inFlightUpdateToolCallResult,
 		type InFlightSegment
 	} from '$lib/chat-render';
-	import PendingToolApproval from '$lib/components/chat/PendingToolApproval.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
@@ -156,12 +155,26 @@
 		approvalDecisions = new Map(approvalDecisions).set(toolCallId, action);
 	}
 
-	async function submitApprovalDecisions(): Promise<void> {
+	// Auto-submit the moment every pending tool has a decision so the
+	// common single-pending case is a single click rather than click +
+	// Continue. Guard with `approvalSubmitting` so the effect doesn't
+	// loop while the resume stream is in flight, and only fire when
+	// pendingApprovals is non-empty (otherwise we'd submit an empty
+	// batch on every load).
+	$effect(() => {
+		if (!approvalsAllDecided) return;
 		if (approvalSubmitting) return;
-		const decisions = pendingApprovals.map((p) => ({
+		const snapshot = pendingApprovals.map((p) => ({
 			toolCallId: p.toolCallId,
 			action: approvalDecisions.get(p.toolCallId) ?? 'reject'
 		}));
+		untrack(() => void submitApprovalDecisions(snapshot));
+	});
+
+	async function submitApprovalDecisions(
+		decisions: Array<{ toolCallId: string; action: ApprovalAction }>
+	): Promise<void> {
+		if (approvalSubmitting) return;
 		approvalSubmitting = true;
 		approvalError = null;
 		try {
@@ -1573,6 +1586,9 @@
 					{mergeWithNext}
 					onImageClick={openImageInLightbox}
 					{openingLightboxFor}
+					{approvalDecisions}
+					approvalBusy={approvalSubmitting}
+					{onApprovalSelect}
 				/>
 				{/if}
 				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
@@ -1639,43 +1655,19 @@
 					 editor. -->
 			{:else if pendingApprovals.length > 0}
 				<!-- One or more MCP tools waiting for an approval decision.
-					 Composer is hidden until the user submits the batch;
-					 each card collects an action and the footer Submit
-					 button POSTs to /tool-approval so the relay resumes. -->
-				<div class="flex flex-col gap-3 rounded-xl border border-border bg-surface-panel p-4 shadow-lg">
-					<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
-						Tool approval needed
-					</div>
-					{#each pendingApprovals as p (p.toolCallId)}
-						<PendingToolApproval
-							toolCallId={p.toolCallId}
-							toolName={p.toolName}
-							displayLabel={p.displayLabel}
-							category={p.category}
-							args={p.args}
-							decision={approvalDecisions.get(p.toolCallId) ?? null}
-							busy={approvalSubmitting}
-							onSelect={onApprovalSelect}
-						/>
-					{/each}
-					{#if approvalError}
-						<div class="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
-							{approvalError}
-						</div>
+					 The three Allow / Allow Always / Reject buttons render
+					 inline within each pending tool block above; the
+					 composer hides and a small "waiting" hint sits in its
+					 place. Auto-submit triggers the moment every pending
+					 tool has a decision. -->
+				<div class="rounded-xl border border-border bg-surface-panel/80 p-3 text-center text-xs text-fg-muted shadow-sm">
+					{#if approvalSubmitting}
+						Resuming…
+					{:else if approvalError}
+						<span class="text-rose-600 dark:text-rose-300">{approvalError}</span>
+					{:else}
+						Pick Allow / Allow always / Reject on the highlighted tool call{pendingApprovals.length > 1 ? 's' : ''} above to continue.
 					{/if}
-					<div class="flex items-center justify-between gap-3">
-						<span class="text-xs text-fg-muted">
-							{approvalsAllDecided ? 'Ready to continue' : 'Pick an option for each tool above'}
-						</span>
-						<button
-							type="button"
-							class="rounded-md bg-surface-inverse px-3 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-							disabled={!approvalsAllDecided || approvalSubmitting}
-							onclick={() => void submitApprovalDecisions()}
-						>
-							{approvalSubmitting ? 'Submitting…' : 'Continue'}
-						</button>
-					</div>
 				</div>
 			{:else}
 				<ChatComposer

@@ -11,18 +11,23 @@
 -->
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
-	import { messageToBlocks } from '$lib/chat-render';
+	import { messageToBlocks, type ToolResultEntry } from '$lib/chat-render';
 	import type { ChatMessage } from '$lib/types/api';
+
+	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
 
 	interface Props {
 		message: ChatMessage;
-		toolResultsByCallId: Map<string, { result: string; isError: boolean }>;
+		toolResultsByCallId: Map<string, ToolResultEntry>;
 		userLabel: string;
 		assistantLabel: string;
 		mergeWithPrev: boolean;
 		mergeWithNext: boolean;
 		onImageClick: (mediaId: string) => void;
 		openingLightboxFor?: string | null;
+		approvalDecisions?: Map<string, ApprovalAction>;
+		approvalBusy?: boolean;
+		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
 	}
 
 	let {
@@ -33,7 +38,10 @@
 		mergeWithPrev,
 		mergeWithNext,
 		onImageClick,
-		openingLightboxFor = null
+		openingLightboxFor = null,
+		approvalDecisions,
+		approvalBusy = false,
+		onApprovalSelect
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -64,5 +72,8 @@
 		blocks={messageToBlocks(message, toolResultsByCallId)}
 		{onImageClick}
 		{openingLightboxFor}
+		{approvalDecisions}
+		{approvalBusy}
+		{onApprovalSelect}
 	/>
 </article>

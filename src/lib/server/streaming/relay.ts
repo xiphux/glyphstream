@@ -106,6 +106,16 @@ export interface RelayParams {
 	 * resume endpoint takes over once the user posts decisions.
 	 */
 	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
+	/**
+	 * Override for iteration 0's parent message. For the standard
+	 * messages POST this stays undefined and the relay parents the
+	 * first assistant message to `userMessage.id`. The approval-resume
+	 * endpoint instead passes the current active_leaf (the last tool
+	 * message from the halted turn) so the continuation lands as a
+	 * child of that tool message rather than a sibling of the prior
+	 * assistant — otherwise every resume forks the branch.
+	 */
+	initialParentMessageId?: string;
 }
 
 interface IterationResult {
@@ -149,7 +159,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 	let finalTextPreview = '';
 	let stoppedFinal = false;
 	let currentRequestBody = params.requestBody;
-	let parentMessageId = params.userMessage.id;
+	let parentMessageId = params.initialParentMessageId ?? params.userMessage.id;
 
 	try {
 		for (let iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {

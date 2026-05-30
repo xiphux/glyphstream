@@ -36,7 +36,7 @@ export type RenderBlock =
 			arguments: string;
 			result?: string;
 			isError?: boolean;
-			status: 'executing' | 'done' | 'error';
+			status: 'executing' | 'done' | 'error' | 'pending_approval';
 	  }
 	| { type: 'image'; mediaId: string; alt?: string }
 	| { type: 'video'; mediaId: string };
@@ -184,7 +184,7 @@ export function updateToolCallResult(
  *  'error' if isError); otherwise it's 'executing' (still in-flight). */
 export function messageToBlocks(
 	m: ChatMessage,
-	toolResults: Map<string, { result: string; isError: boolean }>
+	toolResults: Map<string, ToolResultEntry>
 ): RenderBlock[] {
 	const blocks: RenderBlock[] = [];
 	if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText, open: false });
@@ -205,7 +205,7 @@ export function messageToBlocks(
 function partToBlock(
 	p: MessagePart,
 	m: ChatMessage,
-	toolResults: Map<string, { result: string; isError: boolean }>,
+	toolResults: Map<string, ToolResultEntry>,
 	usedContentHtml: boolean
 ): RenderBlock | null {
 	switch (p.type) {
@@ -216,15 +216,19 @@ function partToBlock(
 			}
 			return { type: 'plain-text', text: p.text };
 		case 'tool_call': {
-			const status = toolResults.get(p.toolCallId);
+			const entry = toolResults.get(p.toolCallId);
+			let status: 'executing' | 'done' | 'error' | 'pending_approval';
+			if (!entry) status = 'executing';
+			else if (entry.status === 'pending_approval') status = 'pending_approval';
+			else status = entry.isError ? 'error' : 'done';
 			return {
 				type: 'tool_call',
 				toolCallId: p.toolCallId,
 				toolName: p.toolName,
 				arguments: p.arguments,
-				result: status?.result,
-				isError: status?.isError,
-				status: status ? (status.isError ? 'error' : 'done') : 'executing'
+				result: entry?.result,
+				isError: entry?.isError,
+				status
 			};
 		}
 		case 'image':
@@ -286,18 +290,30 @@ export function filterVisibleMessages(messages: ChatMessage[]): ChatMessage[] {
 	return messages.filter((m) => m.role !== 'tool');
 }
 
+export interface ToolResultEntry {
+	result: string;
+	isError: boolean;
+	status?: 'pending_approval';
+}
+
 /** Build the `toolCallId → result` lookup that messageToBlocks uses to
- *  resolve tool_call statuses. */
+ *  resolve tool_call statuses. Carries the pending_approval status
+ *  through so the inline tool block can render the Allow / Always /
+ *  Reject prompt right where its tool_call appears. */
 export function buildToolResultsMap(
 	messages: ChatMessage[]
-): Map<string, { result: string; isError: boolean }> {
-	const out = new Map<string, { result: string; isError: boolean }>();
+): Map<string, ToolResultEntry> {
+	const out = new Map<string, ToolResultEntry>();
 	for (const msg of messages) {
 		if (msg.role !== 'tool') continue;
 		for (const p of msg.parts) {
-			if (p.type === 'tool_result') {
-				out.set(p.toolCallId, { result: p.result, isError: p.isError === true });
-			}
+			if (p.type !== 'tool_result') continue;
+			const entry: ToolResultEntry = {
+				result: p.result,
+				isError: p.isError === true
+			};
+			if (p.status === 'pending_approval') entry.status = 'pending_approval';
+			out.set(p.toolCallId, entry);
 		}
 	}
 	return out;

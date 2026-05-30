@@ -11,6 +11,8 @@
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
 
+	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+
 	interface Props {
 		blocks: RenderBlock[];
 		/** Invoked when an image block is clicked (opens the lightbox). */
@@ -18,9 +20,22 @@
 		/** Media id currently being fetched for the lightbox; its image
 		 *  button is disabled to avoid a double-open race. */
 		openingLightboxFor?: string | null;
+		/** Per-tool decisions the user has staged. Pending tool blocks
+		 *  read their own toolCallId out of this map to highlight the
+		 *  selected button. */
+		approvalDecisions?: Map<string, ApprovalAction>;
+		approvalBusy?: boolean;
+		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
 	}
 
-	let { blocks, onImageClick, openingLightboxFor = null }: Props = $props();
+	let {
+		blocks,
+		onImageClick,
+		openingLightboxFor = null,
+		approvalDecisions,
+		approvalBusy = false,
+		onApprovalSelect
+	}: Props = $props();
 
 	function blockKey(b: RenderBlock, i: number): string {
 		if (b.type === 'tool_call') return 'tool_call:' + b.toolCallId;
@@ -54,6 +69,10 @@
 			result={block.result}
 			isError={block.isError}
 			status={block.status}
+			toolCallId={block.toolCallId}
+			decision={approvalDecisions?.get(block.toolCallId) ?? null}
+			{approvalBusy}
+			{onApprovalSelect}
 		/>
 	{:else if block.type === 'image'}
 		{@const mediaId = block.mediaId}
