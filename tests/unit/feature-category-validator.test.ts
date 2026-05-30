@@ -16,6 +16,14 @@ describe('validateDisabledFeatures', () => {
 
 	it('accepts a single known category', () => {
 		expect(validateDisabledFeatures(['web'])).toEqual(['web']);
+		expect(validateDisabledFeatures(['personalization'])).toEqual(['personalization']);
+	});
+
+	it('accepts multiple known categories together', () => {
+		expect(validateDisabledFeatures(['web', 'personalization'])).toEqual([
+			'web',
+			'personalization'
+		]);
 	});
 
 	it('deduplicates repeated entries', () => {

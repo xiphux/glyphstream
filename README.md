@@ -314,19 +314,27 @@ an issue if you have a real use case.
 ### Per-conversation feature toggles
 
 The composer surfaces a small popover (the sliders icon next to the
-attach button) with one switch per opt-out *category*. Today there's a
-single switch — **Web access** — that disables both `web_search` and
-`fetch_url` together for the conversation it's flipped on. Future
-opt-outs (personalization context, memory writes) will slot in as
-additional switches in the same popover.
+attach button) with one switch per opt-out *category*:
+
+- **Web access** disables both `web_search` and `fetch_url` together,
+  so the model can't compose around partial gating by `fetch_url`-ing
+  a search-engine URL directly. The two web-touching tools share a
+  `web` category and the single switch closes the whole egress path.
+- **Personalization** suppresses the prefs-derived persona (your
+  Name / About you / Custom instructions) that would otherwise be
+  injected as the system message. Useful for chats where you'd rather
+  not ship your standing context to the assistant. Has no effect on
+  conversations that carry an explicit system prompt or were started
+  from a custom-model preset — those already snapshot whatever prompt
+  *they* declared.
 
 Why category-level rather than one switch per tool: an opt-out
-motivated by privacy is a security boundary, not a UX grouping. Hiding
-`web_search` while leaving `fetch_url` reachable would be a false
-sense of security — the model can trivially compose around partial
-gating by `fetch_url`-ing a search-engine URL directly. The two
-web-touching tools share a `web` category so the single switch closes
-the whole egress path.
+motivated by privacy is a security boundary, not a UX grouping. The
+`web` category bundling described above is the same instinct behind
+keeping personalization broad — when memory and MCP land, their
+personal-context tools will slot under `personalization` too so a
+single switch seals every avenue that ships personal context to the
+model.
 
 Defaults are **all features on** for every new conversation — never
 sticky across sessions, since a one-time off-flip carrying forward

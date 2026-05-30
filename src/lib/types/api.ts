@@ -26,10 +26,19 @@ export function isModelKind(v: unknown): v is ModelKind {
 export const MAX_CONVERSATION_TITLE_LENGTH = 200;
 
 /**
- * Feature-category keys for per-conversation opt-out. Tools declare a
- * `category` in their metadata; conversations carry a `disabledFeatures`
- * list; the chat handler filters out any tool whose category appears in
- * that list before advertising tools to the model.
+ * Feature-category keys for per-conversation opt-out. Two wirings share
+ * the same `disabledFeatures` list:
+ *
+ *   1. Tools declare a `category` in their metadata; the chat handler
+ *      filters out any tool whose category appears in the list before
+ *      advertising tools to the model. (`web` works this way.)
+ *   2. The messages handler also consults the list directly for non-tool
+ *      gates — notably `personalization`, which suppresses the
+ *      prefs-derived persona system prompt (name / About you / Custom
+ *      instructions) at request time. When MCP and memory land, their
+ *      tools will categorize under `personalization` too so a single
+ *      switch seals every avenue that ships personal context to the
+ *      model.
  *
  * Why category-level instead of per-tool? Privacy-sensitive opt-outs are
  * security boundaries, not UX groupings. Hiding `web_search` while
@@ -38,7 +47,7 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 200;
  * URL directly). Both tools that touch the public web share the `web`
  * category so a single toggle seals the egress path.
  */
-export const FEATURE_CATEGORIES = ['web'] as const;
+export const FEATURE_CATEGORIES = ['web', 'personalization'] as const;
 export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
 
 export const FEATURE_CATEGORY_LABELS: Record<
@@ -47,8 +56,12 @@ export const FEATURE_CATEGORY_LABELS: Record<
 > = {
 	web: {
 		label: 'Web access',
+		description: 'Lets the assistant search the web and fetch pages.'
+	},
+	personalization: {
+		label: 'Personalization',
 		description:
-			'Lets the assistant search the web and fetch pages. Turn off to keep this conversation from making outbound web requests.'
+			'Sends your name, About you, and Custom instructions from preferences as system context.'
 	}
 };
 
@@ -224,13 +237,19 @@ export interface UserPreferences {
 	/**
 	 * The three personalization fields below are combined server-side
 	 * (via composePersonaSystemPrompt in user-preferences.ts) into a
-	 * single system prompt at conversation-create time. Splitting them
-	 * gives users discoverable structure — "Name" prompts you to enter
-	 * one, "About you" prompts you to think about standing context,
-	 * "Custom instructions" prompts you to think about tone/style —
-	 * rather than handing them a blank textarea with no scaffolding.
-	 * All three are optional; empty fields are omitted from the
-	 * composed prompt entirely (no "Name: (blank)" leaks).
+	 * single system prompt and injected as the conversation's system
+	 * message at request time — so edits here propagate to existing
+	 * chats that don't have a custom-model preset or an explicit
+	 * system prompt set. Gated per-conversation by the
+	 * `personalization` entry in FEATURE_CATEGORIES.
+	 *
+	 * Splitting them gives users discoverable structure — "Name"
+	 * prompts you to enter one, "About you" prompts you to think about
+	 * standing context, "Custom instructions" prompts you to think
+	 * about tone/style — rather than handing them a blank textarea
+	 * with no scaffolding. All three are optional; empty fields are
+	 * omitted from the composed prompt entirely (no "Name: (blank)"
+	 * leaks).
 	 */
 	/** How the user wants the assistant to refer to them. */
 	name: string;

@@ -6,10 +6,6 @@ import {
 	listConversations
 } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
-import {
-	composePersonaSystemPrompt,
-	getUserPreferences
-} from '$lib/server/db/queries/user-preferences';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
@@ -86,18 +82,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		resolvedEndpointId = parsed.endpointId;
 		resolvedModelId = modelId;
-		// System prompt resolution order: explicit body value > composed
-		// persona (from the user's name / aboutYou / customInstructions
-		// preference fields) > null. The custom-model branch above always
-		// snapshots from the preset, so this only matters when starting a
-		// fresh chat against a base model directly.
+		// Snapshot only an explicit body-provided system prompt. The
+		// prefs-derived persona (name / aboutYou / customInstructions) is
+		// composed at request time in the messages handler — gated by the
+		// `personalization` opt-out — so flipping the toggle mid-chat
+		// takes effect immediately and pref edits propagate to existing
+		// chats. The custom-model branch above still snapshots from the
+		// preset because preset edits are explicitly meant not to
+		// retroactively change in-flight chats.
 		const explicit = body.systemPrompt?.trim();
-		if (explicit) {
-			resolvedSystemPrompt = explicit;
-		} else {
-			const prefs = getUserPreferences(locals.user.id);
-			resolvedSystemPrompt = prefs ? composePersonaSystemPrompt(prefs) : null;
-		}
+		resolvedSystemPrompt = explicit || null;
 	}
 
 	let disabledFeatures;

@@ -30,6 +30,10 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { openaiToolDefinitions } from '$lib/server/tools';
+import {
+	composePersonaSystemPrompt,
+	getUserPreferences
+} from '$lib/server/db/queries/user-preferences';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -382,6 +386,19 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		});
 	}
 
+	// Resolve the system prompt sent upstream. Precedence:
+	//   1. The conversation's snapshotted prompt (set when a custom-model
+	//      preset or an explicit body.systemPrompt was used at create time).
+	//   2. The prefs-derived persona, composed from current prefs and
+	//      gated by the `personalization` opt-out. Re-derived per request
+	//      so pref edits propagate to existing chats and flipping the
+	//      toggle takes effect on the next send.
+	let effectiveSystemPrompt: string | null = meta.systemPrompt;
+	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
+		const prefs = getUserPreferences(locals.user.id);
+		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs);
+	}
+
 	// Build the upstream request from the active branch (now incl. new user msg).
 	// Messages with no image parts forward as plain-string content (best
 	// compat with non-vision upstreams). Messages WITH image parts forward
@@ -395,7 +412,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const upstreamMessages = await serializeBranchForUpstream(
 		branch,
 		(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
-		meta.systemPrompt
+		effectiveSystemPrompt
 	);
 
 	const requestBody: ChatCompletionRequest = {
@@ -454,7 +471,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			const nextMessages = await serializeBranchForUpstream(
 				nextBranch,
 				(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
-				meta.systemPrompt
+				effectiveSystemPrompt
 			);
 			return { ...requestBody, messages: nextMessages };
 		};
