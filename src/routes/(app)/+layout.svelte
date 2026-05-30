@@ -590,7 +590,7 @@
 		Archived sidebar link.
 	-->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface transition-[transform,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[transform,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {busyId !== null
 			? 'pointer-events-none'

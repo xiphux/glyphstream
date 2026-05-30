@@ -36,6 +36,12 @@
 	--color-surface-sunken: oklch(92.5% 0.01 250);
 	--color-surface-panel: oklch(99.4% 0.004 250);
 	--color-surface-inverse: oklch(21% 0.015 258);
+	/* Sidebar / flanking-pane surface. Slightly deeper + a hair more
+	   chroma than `--color-surface` so the sidebar reads as a distinct
+	   "material" from the main canvas — the Mac-app pattern of a tinted
+	   sidebar next to a brighter main pane. Signature-only; Claude +
+	   ChatGPT alias this back to --color-surface to stay single-material. */
+	--color-surface-sidebar: oklch(96.5% 0.013 250);
 
 	/* Foreground / text */
 	--color-fg: oklch(21% 0.012 258);
@@ -66,6 +72,11 @@
 	--color-surface-sunken: oklch(37% 0.014 258);
 	--color-surface-panel: oklch(21% 0.014 258);
 	--color-surface-inverse: oklch(97% 0.006 250);
+	/* Sidebar slightly LIGHTER than the dark canvas — the dark-mode
+	   "vibrancy" pattern (sidebar reads as a translucent veil over the
+	   dark surface). Still below --color-surface-raised so cards/buttons
+	   inside the sidebar still pop forward. */
+	--color-surface-sidebar: oklch(17.5% 0.016 258);
 
 	--color-fg: oklch(97% 0.006 250);
 	--color-fg-secondary: oklch(87% 0.009 254);
@@ -180,6 +191,9 @@
 	--blur-surface: 0px;
 	--glass-bg: var(--color-surface-panel);
 	--glass-bg-soft: var(--color-surface-panel);
+	/* Single-material: sidebar matches main pane. Resolves at use-time, so
+	   one declaration covers both Claude light + Claude dark. */
+	--color-surface-sidebar: var(--color-surface);
 }
 [data-scheme='dark'][data-theme='claude'] {
 	--color-surface: oklch(0.19 0.012 58);
@@ -226,6 +240,8 @@
 	--blur-surface: 0px;
 	--glass-bg: var(--color-surface-panel);
 	--glass-bg-soft: var(--color-surface-panel);
+	/* Single-material: sidebar matches main pane. (See Claude block.) */
+	--color-surface-sidebar: var(--color-surface);
 }
 [data-scheme='dark'][data-theme='chatgpt'] {
 	--color-surface: oklch(0.18 0 0);
