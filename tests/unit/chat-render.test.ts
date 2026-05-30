@@ -665,4 +665,44 @@ describe('computeMergeFlags', () => {
 			mergeWithNext: false
 		});
 	});
+
+	it('mergeIntoInFlight forces mergeWithNext on the trailing assistant', () => {
+		// Approval-resume case: the prior turn halted on a tool call so
+		// the persisted view ends on an assistant row, then the live
+		// in-flight bubble streams the next iteration's content below.
+		// Without this flag the two visually look like separate bubbles
+		// until invalidate, then "snap" together.
+		expect(computeMergeFlags([u, a1], 1, null, true)).toEqual({
+			mergeWithPrev: false,
+			mergeWithNext: true
+		});
+	});
+
+	it('mergeIntoInFlight does not affect non-trailing assistants', () => {
+		// Only the LAST visible message gets the in-flight merge — the
+		// in-flight bubble fuses with that one, not the one before it.
+		expect(computeMergeFlags([a1, a2], 0, null, true)).toEqual({
+			mergeWithPrev: false,
+			mergeWithNext: true // still merges with a2, not because of in-flight
+		});
+		// The trailing a2 also gets the in-flight forced merge — it
+		// already merges with a1 via the persisted rule + with the live
+		// bubble below.
+		expect(computeMergeFlags([a1, a2], 1, null, true)).toEqual({
+			mergeWithPrev: true,
+			mergeWithNext: true
+		});
+	});
+
+	it('mergeIntoInFlight has no effect when the trailing message is a user row', () => {
+		// Normal send case: user message at the end + in-flight bubble
+		// for the new assistant response. They render as separate
+		// bubbles (the user bubble is right-aligned, the assistant
+		// in-flight is left-aligned) — merge logic shouldn't fuse
+		// across roles.
+		expect(computeMergeFlags([a1, u], 1, null, true)).toEqual({
+			mergeWithPrev: false,
+			mergeWithNext: false
+		});
+	});
 });

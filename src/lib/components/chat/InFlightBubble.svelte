@@ -27,6 +27,13 @@
 		approvalDecisions?: Map<string, ApprovalAction>;
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
+		/** True when the immediately-preceding message is a persisted
+		 *  assistant turn — drops the top rounded corner + role label so
+		 *  the live bubble fuses with that prior message visually. Used
+		 *  during the approval-resume flow: the prior turn halted on a
+		 *  tool_call, the resumed turn streams in here, and after
+		 *  invalidate the two will be merged in the persisted view. */
+		mergeWithPrev?: boolean;
 	}
 
 	let {
@@ -40,12 +47,21 @@
 		openingLightboxFor = null,
 		approvalDecisions,
 		approvalBusy = false,
-		onApprovalSelect
+		onApprovalSelect,
+		mergeWithPrev = false
 	}: Props = $props();
 </script>
 
-<article class="min-w-0 rounded-2xl bg-surface-raised px-4 py-3 text-sm">
-	<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
+<article
+	class={[
+		'min-w-0 bg-surface-raised px-4 text-sm',
+		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
+		'rounded-b-2xl pb-3'
+	]}
+>
+	{#if !mergeWithPrev}
+		<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
+	{/if}
 	<RenderBlocks
 		{blocks}
 		{onImageClick}

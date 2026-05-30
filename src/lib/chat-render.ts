@@ -414,11 +414,22 @@ export function buildPendingApprovals(messages: ChatMessage[]): PendingApprovalI
  *
  *  Merges happen only between consecutive `role:'assistant'` rows.
  *  Editing breaks the merge — the inline-edit replaces the article
- *  entirely, so we don't want it visually fused with its neighbors. */
+ *  entirely, so we don't want it visually fused with its neighbors.
+ *
+ *  `mergeIntoInFlight` is true when the in-flight bubble is open and the
+ *  message at `index` is the trailing assistant message — the live
+ *  bubble is then conceptually a continuation of that row (the
+ *  approval-resume case, where the prior turn halted on a tool call and
+ *  the resumed turn streams in the next iteration's text). Forcing
+ *  `mergeWithNext` here keeps the bottom rounded corner off so the
+ *  live bubble visually fuses with the prior one, matching how the
+ *  persisted view will look after invalidate. Avoids the "snap from
+ *  two bubbles to one" jolt when the stream completes. */
 export function computeMergeFlags(
 	visibleMessages: ChatMessage[],
 	index: number,
-	editingMessageId: string | null
+	editingMessageId: string | null,
+	mergeIntoInFlight = false
 ): { mergeWithPrev: boolean; mergeWithNext: boolean } {
 	const m = visibleMessages[index];
 	if (!m || m.role !== 'assistant' || m.id === editingMessageId) {
@@ -426,10 +437,12 @@ export function computeMergeFlags(
 	}
 	const prev = index > 0 ? visibleMessages[index - 1] : null;
 	const next = index < visibleMessages.length - 1 ? visibleMessages[index + 1] : null;
+	const isLastVisible = index === visibleMessages.length - 1;
 	return {
 		mergeWithPrev:
 			!!prev && prev.role === 'assistant' && prev.id !== editingMessageId,
 		mergeWithNext:
-			!!next && next.role === 'assistant' && next.id !== editingMessageId
+			(!!next && next.role === 'assistant' && next.id !== editingMessageId) ||
+			(mergeIntoInFlight && isLastVisible)
 	};
 }

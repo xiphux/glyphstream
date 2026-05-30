@@ -1639,7 +1639,12 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-				{@const merge = computeMergeFlags(visibleMessages, i, editingMessageId)}
+				{@const merge = computeMergeFlags(
+					visibleMessages,
+					i,
+					editingMessageId,
+					inFlightOpen
+				)}
 				{@const mergeWithPrev = merge.mergeWithPrev}
 				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
@@ -1714,7 +1719,13 @@
 			{/each}
 
 			{#if showInFlight}
-				<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
+				{@const last = visibleMessages[visibleMessages.length - 1]}
+				{@const fuseWithPrevAssistant =
+					!!last && last.role === 'assistant' && last.id !== editingMessageId}
+				<div
+					class={fuseWithPrevAssistant ? 'mt-0!' : ''}
+					in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
+				>
 					<InFlightBubble
 						blocks={inFlightBlocks}
 						{assistantLabel}
@@ -1727,6 +1738,7 @@
 						{approvalDecisions}
 						approvalBusy={approvalSubmitting}
 						{onApprovalSelect}
+						mergeWithPrev={fuseWithPrevAssistant}
 					/>
 				</div>
 			{/if}
