@@ -29,9 +29,11 @@
 		PanelLeftClose,
 		PanelLeftOpen,
 		Pencil,
+		Plug,
 		Plus,
 		Search,
 		Settings,
+		ShieldCheck,
 		SlidersHorizontal,
 		Sparkles,
 		Trash2,
@@ -960,6 +962,20 @@
 						>
 							<Brain size={14} strokeWidth={2.25} />
 							<span>Memories</span>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							onSelect={() => goto('/settings/mcp')}
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+						>
+							<Plug size={14} strokeWidth={2.25} />
+							<span>MCP servers</span>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item
+							onSelect={() => goto('/settings/permissions')}
+							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+						>
+							<ShieldCheck size={14} strokeWidth={2.25} />
+							<span>Permissions</span>
 						</DropdownMenu.Item>
 						<DropdownMenu.Item
 							onSelect={() => {
