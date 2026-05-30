@@ -49,7 +49,11 @@ export async function connectMcpServer(
 	connectTimeoutMs: number
 ): Promise<McpConnection> {
 	const client = new Client(
-		{ name: 'glyphstream', version: '0.11.0' },
+		// __APP_VERSION__ is baked from package.json at build time (see
+		// vite.config.ts). Keeps the MCP initialize handshake's
+		// clientInfo.version in lockstep with the build the server's
+		// actually running, instead of drifting silently on each bump.
+		{ name: 'glyphstream', version: __APP_VERSION__ },
 		{ capabilities: {} }
 	);
 
