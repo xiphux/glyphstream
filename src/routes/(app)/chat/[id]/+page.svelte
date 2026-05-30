@@ -24,6 +24,7 @@
 		computeMergeFlags,
 		filterVisibleMessages,
 		inFlightToBlocks,
+		markToolCallPendingApproval as inFlightMarkToolCallPendingApproval,
 		pushToolCall as inFlightPushToolCall,
 		updateToolCallArgs as inFlightUpdateToolCallArgs,
 		updateToolCallResult as inFlightUpdateToolCallResult,
@@ -109,6 +110,11 @@
 		serverInFlightSince = data.inFlightSince;
 	});
 
+	// In-flight streaming state. Lifted to the top of the script so the
+	// derived approval-pending state (below) can reference it; the
+	// mutation helpers + the rest of the SSE pipeline live further down.
+	let inFlightSegments = $state<InFlightSegment[]>([]);
+
 	// Fold tool-result messages out of the visible list and expose them
 	// via a side-map keyed by tool_call_id. The matching assistant
 	// message renders each of its tool_call parts as a ToolCallBlock
@@ -133,8 +139,12 @@
 
 	// Reset decisions whenever the pending set changes (a resume just
 	// completed, or a new turn left a different set of pending tools).
+	// Track BOTH the persisted pending set and the live in-flight
+	// pending set so a decision the user picked against a live row
+	// survives the moment when invalidate adds the same row to the
+	// persisted list (the id is in both during the overlap).
 	$effect(() => {
-		const ids = new Set(pendingApprovals.map((p) => p.toolCallId));
+		const ids = allPendingToolCallIds;
 		untrack(() => {
 			let mutated = false;
 			const next = new Map<string, ApprovalAction>();
@@ -146,9 +156,29 @@
 		});
 	});
 
+	// Live in-flight pending tool IDs — extracted from the streaming
+	// bubble's segments so the approval prompt is responsive *during*
+	// the stream, not only after invalidate refetches the persisted
+	// pending rows.
+	const liveInFlightPendingIds = $derived(
+		inFlightSegments
+			.filter((s) => s.kind === 'tool_call' && s.status === 'pending_approval')
+			.map((s) => (s as { toolCallId: string }).toolCallId)
+	);
+	// Union of persisted-row pending IDs + live in-flight pending IDs.
+	// The server already persisted the live ones before emitting the SSE
+	// event (and before `done`), so the resume endpoint can find them
+	// either way; the client just doesn't need to wait for invalidate.
+	const allPendingToolCallIds = $derived(
+		new Set<string>([
+			...pendingApprovals.map((p) => p.toolCallId),
+			...liveInFlightPendingIds
+		])
+	);
+	const hasAnyPendingApproval = $derived(allPendingToolCallIds.size > 0);
 	const approvalsAllDecided = $derived(
-		pendingApprovals.length > 0 &&
-			pendingApprovals.every((p) => approvalDecisions.has(p.toolCallId))
+		allPendingToolCallIds.size > 0 &&
+			Array.from(allPendingToolCallIds).every((id) => approvalDecisions.has(id))
 	);
 
 	function onApprovalSelect(toolCallId: string, action: ApprovalAction): void {
@@ -159,16 +189,21 @@
 	// common single-pending case is a single click rather than click +
 	// Continue. Guard with `approvalSubmitting` so the effect doesn't
 	// loop while the resume stream is in flight, and only fire when
-	// pendingApprovals is non-empty (otherwise we'd submit an empty
-	// batch on every load).
+	// there's at least one pending tool (otherwise we'd submit an
+	// empty batch on every load). Builds the decision list from the
+	// merged live+persisted id set so clicks on the in-flight bubble
+	// resume just as fast as clicks on the persisted bubble.
 	$effect(() => {
 		if (!approvalsAllDecided) return;
 		if (approvalSubmitting) return;
-		const snapshot = pendingApprovals.map((p) => ({
-			toolCallId: p.toolCallId,
-			action: approvalDecisions.get(p.toolCallId) ?? 'reject'
-		}));
-		untrack(() => void submitApprovalDecisions(snapshot));
+		const ids = allPendingToolCallIds;
+		untrack(() => {
+			const snapshot = Array.from(ids).map((id) => ({
+				toolCallId: id,
+				action: approvalDecisions.get(id) ?? 'reject'
+			}));
+			void submitApprovalDecisions(snapshot);
+		});
 	});
 
 	async function submitApprovalDecisions(
@@ -192,6 +227,14 @@
 		convId: string,
 		decisions: Array<{ toolCallId: string; action: ApprovalAction }>
 	): Promise<void> {
+		const turnConvId = convId;
+		// Open the in-flight bubble so the user sees text + tool calls
+		// streaming in live instead of staring at "Resuming…" for the
+		// duration of the model's response.
+		resetInFlightSegments();
+		inFlightProgress = null;
+		inFlightStatus = null;
+		inFlightOpen = true;
 		const res = await fetch(`/api/conversations/${convId}/tool-approval`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -199,13 +242,21 @@
 		});
 		if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 		if (!res.body) throw new Error('Server returned no body');
-		// Consume but ignore — the chat page invalidates on completion and
-		// the messages refetch surfaces every persisted update at once.
-		// Future v1.x: hook into the in-flight bubble pipeline so the
-		// resumed assistant text streams in live instead of appearing all
-		// at once on invalidate.
-		for await (const _rec of readSSE(res.body)) {
-			void _rec;
+		const { sawToolCalls } = await consumeChatStream(res.body, {
+			turnConvId,
+			optimisticId: null
+			// onDone omitted — approvalSubmitting clears in the caller's
+			// finally so the inline buttons stay disabled until the
+			// invalidate completes and the persisted rows surface.
+		});
+		if (convId === turnConvId) {
+			await invalidateAll();
+			if (sawToolCalls) {
+				inFlightOpen = false;
+				resetInFlightSegments();
+				inFlightProgress = null;
+				inFlightStatus = null;
+			}
 		}
 	}
 
@@ -575,7 +626,10 @@
 	// helpers + the segments-to-blocks conversion are pure functions in
 	// $lib/chat-render so they can be vitest-tested independently of the
 	// Svelte component.
-	let inFlightSegments = $state<InFlightSegment[]>([]);
+	// inFlightSegments lifted to the top of the script — see the
+	// pending-approval derivations that depend on it. The other three
+	// pieces of in-flight state stay here next to the helper functions
+	// that mutate them.
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
 	let inFlightStatus = $state<string | null>(null);
@@ -597,6 +651,18 @@
 	}
 	function updateInFlightToolCallResult(toolCallId: string, result: string, isError: boolean) {
 		inFlightSegments = inFlightUpdateToolCallResult(inFlightSegments, toolCallId, result, isError);
+	}
+	function markInFlightToolCallPendingApproval(
+		toolCallId: string,
+		toolName: string,
+		args: string
+	) {
+		inFlightSegments = inFlightMarkToolCallPendingApproval(
+			inFlightSegments,
+			toolCallId,
+			toolName,
+			args
+		);
 	}
 
 	const inFlightBlocks = $derived(inFlightToBlocks(inFlightSegments));
@@ -785,6 +851,148 @@
 		};
 	}
 
+	/**
+	 * Shared SSE consumer used by the initial send / edit / retry path
+	 * (sendStreaming below) AND the approval-resume path
+	 * (runApprovalStream further down). Both flows want identical
+	 * handling of every event the relay emits — text/reasoning/tool-call
+	 * deltas drive the in-flight bubble, `tool_pending_approval` flips
+	 * the in-flight tool segment to render the inline Allow/Always/
+	 * Reject buttons live, `done` either finalizes or hands off to the
+	 * caller's invalidate path.
+	 *
+	 * Returns whether the stream included tool calls so the caller can
+	 * decide between (a) keeping the in-flight bubble visible until
+	 * invalidate lands the canonical intermediate rows or (b) clearing
+	 * it immediately for single-iteration turns.
+	 */
+	async function consumeChatStream(
+		body: ReadableStream<Uint8Array>,
+		ctx: {
+			turnConvId: string;
+			optimisticId: string | null;
+			/** Fired when `done` arrives so the caller can flip its busy
+			 *  flag mid-stream (background title delivery still keeps the
+			 *  SSE open after done in the messages POST path). */
+			onDone?: () => void;
+		}
+	): Promise<{ sawToolCalls: boolean }> {
+		let sawToolCalls = false;
+		for await (const rec of readSSE(body)) {
+			// Abandoned mid-stream by a conversation switch — stop
+			// touching shared render state; it belongs to a different
+			// conversation now.
+			if (convId !== ctx.turnConvId) break;
+			let event: StreamEvent;
+			try {
+				event = JSON.parse(rec.data) as StreamEvent;
+			} catch {
+				continue;
+			}
+			switch (event.type) {
+				case 'start':
+					// Send / edit: replace the optimistic placeholder with
+					// the canonical persisted user message. Retry +
+					// resume: no optimistic id (resume's start event
+					// carries the prior user message we already render),
+					// so this branch is a no-op.
+					if (ctx.optimisticId) {
+						messages = messages.some((m) => m.id === ctx.optimisticId)
+							? messages.map((m) => (m.id === ctx.optimisticId ? event.userMessage : m))
+							: [...messages, event.userMessage];
+						await tick();
+						scrollToBottom();
+					}
+					break;
+				case 'text':
+					appendInFlightText(event.chunk);
+					if (isNearBottom) scrollToBottom();
+					break;
+				case 'reasoning':
+					appendInFlightReasoning(event.chunk);
+					if (isNearBottom) scrollToBottom();
+					break;
+				case 'tool_call_start':
+					// New tool_call segment in 'executing' state — by the
+					// time the model decides to call a tool it's
+					// effectively committed.
+					sawToolCalls = true;
+					pushInFlightToolCall(event.toolCallId, event.toolName);
+					if (isNearBottom) scrollToBottom();
+					break;
+				case 'tool_call_args_delta':
+					updateInFlightToolCallArgs(event.toolCallId, event.argumentsDelta);
+					break;
+				case 'tool_call_executing':
+					// Explicit case kept so future "tool is running…"
+					// affordances can hook here.
+					break;
+				case 'tool_call_result':
+					updateInFlightToolCallResult(event.toolCallId, event.result, event.isError);
+					break;
+				case 'tool_pending_approval':
+					// Untrusted MCP tool — the relay halted before
+					// executing. Flip the in-flight segment to
+					// pending_approval so the Allow/Always/Reject
+					// buttons appear right where the tool call rendered,
+					// without waiting for the post-stream invalidate.
+					sawToolCalls = true;
+					markInFlightToolCallPendingApproval(
+						event.toolCallId,
+						event.toolName,
+						event.args
+					);
+					if (isNearBottom) scrollToBottom();
+					break;
+				case 'progress':
+					inFlightProgress = event.percent;
+					inFlightStatus = event.status ?? null;
+					break;
+				case 'title':
+					// Task-model auto-title arrived ahead of `done`.
+					// Update the chat-page header immediately; the
+					// sidebar refreshes via invalidateAll after the
+					// stream closes.
+					title = event.title;
+					break;
+				case 'done':
+					// Single-iteration turn: optimistically append the
+					// final assistant message and clear in-flight —
+					// snappy because `done`'s message is the only new
+					// server-side row.
+					//
+					// Multi-iteration turn (sawToolCalls): `done`
+					// carries only the FINAL iteration's row; the
+					// intermediate assistant + role:'tool' rows live
+					// in the DB and come back via invalidateAll once
+					// the stream closes. Keep the in-flight bubble
+					// visible until then so the user doesn't stare at
+					// a blank gap.
+					streamedMessageId = event.assistantMessage.id;
+					if (!sawToolCalls) {
+						messages = [...messages, event.assistantMessage];
+						inFlightOpen = false;
+						resetInFlightSegments();
+						inFlightProgress = null;
+						inFlightStatus = null;
+					} else {
+						inFlightProgress = null;
+						inFlightStatus = null;
+					}
+					ctx.onDone?.();
+					break;
+				case 'error':
+					errorMsg = event.message;
+					inFlightOpen = false;
+					inFlightProgress = null;
+					inFlightStatus = null;
+					resetInFlightSegments();
+					break;
+			}
+		}
+		return { sawToolCalls };
+	}
+
 	// SendOptions used to live inline here; extracted to
 	// `$lib/chat-send-body` so the wire body construction can be
 	// unit-tested in isolation. The chat-page uses the same shape
@@ -921,127 +1129,24 @@
 			}
 			if (!res.body) throw new Error('Server returned no body');
 
-			for await (const rec of readSSE(res.body)) {
-				// Abandoned mid-stream by a conversation switch — stop
-				// touching shared render state; it belongs to a
-				// different conversation now.
-				if (convId !== turnConvId) break;
-				let event: StreamEvent;
-				try {
-					event = JSON.parse(rec.data) as StreamEvent;
-				} catch {
-					continue;
+			const consumed = await consumeChatStream(res.body, {
+				turnConvId,
+				optimisticId,
+				onDone: () => {
+					// Release the composer now — `done` means the response
+					// is complete. The relay deliberately keeps the SSE
+					// stream open past this point so the background
+					// auto-title task can still deliver a `title` event
+					// (first exchange only); the for-await loop keeps
+					// reading for it. But the user must not be blocked
+					// from sending a follow-up while a cosmetic title
+					// generates, so `busy` releases here rather than in
+					// `finally` (which only runs once the stream
+					// actually closes).
+					busy = false;
 				}
-				switch (event.type) {
-					case 'start':
-						// Send / edit: replace the optimistic placeholder with
-						// the canonical persisted user message. Retry: the
-						// canonical user message already exists in the array
-						// (it predates this turn) so we just no-op here.
-						if (optimisticId) {
-							messages = messages.some((m) => m.id === optimisticId)
-								? messages.map((m) => (m.id === optimisticId ? event.userMessage : m))
-								: [...messages, event.userMessage];
-							await tick();
-							scrollToBottom();
-						}
-						break;
-					case 'text':
-						// Append to the last text segment, or open a new one
-						// after a tool_call. The segments array drives the
-						// in-flight bubble's render directly — order matches
-						// arrival order, so multi-tool turns (text₀ → tool_a
-						// → text₁ → tool_b → text₂) render in the same shape
-						// as the persisted view does post-reload.
-						appendInFlightText(event.chunk);
-						if (isNearBottom) scrollToBottom();
-						break;
-					case 'reasoning':
-						// Append to the trailing reasoning segment, or open a
-						// new one after text/tool_call. Lets the in-flight
-						// bubble render reasoning at its chronological
-						// position rather than always at the top.
-						appendInFlightReasoning(event.chunk);
-						if (isNearBottom) scrollToBottom();
-						break;
-					case 'tool_call_start':
-						// New tool_call segment in 'executing' state — by the
-						// time the model decides to call a tool it's effectively
-						// committed. The server flips to a real 'executing'
-						// event once it actually starts running the tool, but
-						// for v1 the args-streaming phase is fast enough that
-						// the distinction isn't visible.
-						sawToolCalls = true;
-						pushInFlightToolCall(event.toolCallId, event.toolName);
-						if (isNearBottom) scrollToBottom();
-						break;
-					case 'tool_call_args_delta':
-						updateInFlightToolCallArgs(event.toolCallId, event.argumentsDelta);
-						break;
-					case 'tool_call_executing':
-						// Already 'executing' from start — explicit case kept
-						// so future "tool is running…" affordances can hook here.
-						break;
-					case 'tool_call_result':
-						updateInFlightToolCallResult(event.toolCallId, event.result, event.isError);
-						break;
-					case 'progress':
-						inFlightProgress = event.percent;
-						inFlightStatus = event.status ?? null;
-						break;
-					case 'title':
-						// Task-model auto-title arrived ahead of `done`. Update
-						// the chat-page header immediately; the sidebar
-						// refreshes via the invalidateAll() that runs after
-						// `done` below.
-						title = event.title;
-						break;
-					case 'done':
-						// Single-iteration turn: optimistically append the final
-						// assistant message and clear in-flight — snappy because
-						// `done`'s message is the only new server-side row.
-						//
-						// Multi-iteration turn (sawToolCalls): `done` carries
-						// only the FINAL iteration's row; the intermediate
-						// assistant + role:'tool' rows live in the DB and come
-						// back via invalidateAll() once the stream closes.
-						// Keep the in-flight bubble visible — its content (the
-						// streamed reasoning + tool block + final text) is
-						// closer to the canonical render than a blank gap
-						// would be. The for-await's tail awaits invalidateAll
-						// and clears in-flight only after the canonical rows
-						// have landed.
-						streamedMessageId = event.assistantMessage.id;
-						if (!sawToolCalls) {
-							messages = [...messages, event.assistantMessage];
-							inFlightOpen = false;
-							resetInFlightSegments();
-												inFlightProgress = null;
-							inFlightStatus = null;
-						} else {
-							inFlightProgress = null;
-							inFlightStatus = null;
-						}
-						// Release the composer now — `done` means the response
-						// is complete. The relay deliberately keeps the SSE
-						// stream open past this point so the background
-						// auto-title task can still deliver a `title` event
-						// (first exchange only); the for-await loop keeps
-						// reading for it. But the user must not be blocked from
-						// sending a follow-up while a cosmetic title generates,
-						// so `busy` releases here rather than in `finally`
-						// (which only runs once the stream actually closes).
-						busy = false;
-						break;
-					case 'error':
-						errorMsg = event.message;
-						inFlightOpen = false;
-						inFlightProgress = null;
-						inFlightStatus = null;
-						resetInFlightSegments();
-						break;
-				}
-			}
+			});
+			sawToolCalls = consumed.sawToolCalls;
 			if (convId === turnConvId) {
 				// Await the reload so the in-flight bubble (still visible for
 				// multi-iteration tool turns — see the `done` handler) only
@@ -1619,6 +1724,9 @@
 						{elapsedSeconds}
 						onImageClick={openImageInLightbox}
 						{openingLightboxFor}
+						{approvalDecisions}
+						approvalBusy={approvalSubmitting}
+						{onApprovalSelect}
 					/>
 				</div>
 			{/if}
@@ -1653,7 +1761,7 @@
 					 the message bubble itself, with its own Save/Cancel
 					 controls. Re-shown when the user dismisses the inline
 					 editor. -->
-			{:else if pendingApprovals.length > 0}
+			{:else if hasAnyPendingApproval}
 				<!-- One or more MCP tools waiting for an approval decision.
 					 The three Allow / Allow Always / Reject buttons render
 					 inline within each pending tool block above; the
@@ -1666,7 +1774,7 @@
 					{:else if approvalError}
 						<span class="text-rose-600 dark:text-rose-300">{approvalError}</span>
 					{:else}
-						Pick Allow / Allow always / Reject on the highlighted tool call{pendingApprovals.length > 1 ? 's' : ''} above to continue.
+						Pick Allow / Allow always / Reject on the highlighted tool call{allPendingToolCallIds.size > 1 ? 's' : ''} above to continue.
 					{/if}
 				</div>
 			{:else}

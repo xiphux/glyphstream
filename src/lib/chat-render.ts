@@ -62,7 +62,7 @@ export interface InFlightToolCallSegment {
 	toolCallId: string;
 	toolName: string;
 	arguments: string;
-	status: 'executing' | 'done' | 'error';
+	status: 'executing' | 'done' | 'error' | 'pending_approval';
 	result?: string;
 	isError?: boolean;
 }
@@ -172,6 +172,43 @@ export function updateToolCallResult(
 	return [
 		...segments.slice(0, idx),
 		{ ...seg, status: isError ? 'error' : 'done', result, isError },
+		...segments.slice(idx + 1)
+	];
+}
+
+/** Flip a tool_call segment to `pending_approval` so the in-flight bubble
+ *  renders the Allow / Allow Always / Reject buttons the instant the
+ *  server-side decision lands — instead of waiting for the post-stream
+ *  invalidate to surface the persisted status. */
+export function markToolCallPendingApproval(
+	segments: InFlightSegment[],
+	toolCallId: string,
+	toolName: string,
+	args: string
+): InFlightSegment[] {
+	const idx = segments.findIndex(
+		(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
+	);
+	if (idx < 0) {
+		// Defensive — server emitted pending_approval for a tool_call we
+		// never saw a `tool_call_start` for. Synthesize the segment so
+		// the UI doesn't drop the approval prompt entirely.
+		return [
+			...segments,
+			{
+				kind: 'tool_call',
+				toolCallId,
+				toolName,
+				arguments: args,
+				status: 'pending_approval'
+			}
+		];
+	}
+	const seg = segments[idx];
+	if (seg.kind !== 'tool_call') return segments;
+	return [
+		...segments.slice(0, idx),
+		{ ...seg, status: 'pending_approval', arguments: args || seg.arguments },
 		...segments.slice(idx + 1)
 	];
 }

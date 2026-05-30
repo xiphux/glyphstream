@@ -11,6 +11,8 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
 
+	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+
 	interface Props {
 		blocks: RenderBlock[];
 		/** Bubble header label (the assistant/model name). */
@@ -22,6 +24,9 @@
 		elapsedSeconds: number;
 		onImageClick: (mediaId: string) => void;
 		openingLightboxFor?: string | null;
+		approvalDecisions?: Map<string, ApprovalAction>;
+		approvalBusy?: boolean;
+		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
 	}
 
 	let {
@@ -32,13 +37,23 @@
 		progress,
 		elapsedSeconds,
 		onImageClick,
-		openingLightboxFor = null
+		openingLightboxFor = null,
+		approvalDecisions,
+		approvalBusy = false,
+		onApprovalSelect
 	}: Props = $props();
 </script>
 
 <article class="min-w-0 rounded-2xl bg-surface-raised px-4 py-3 text-sm">
 	<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
-	<RenderBlocks {blocks} {onImageClick} {openingLightboxFor} />
+	<RenderBlocks
+		{blocks}
+		{onImageClick}
+		{openingLightboxFor}
+		{approvalDecisions}
+		{approvalBusy}
+		{onApprovalSelect}
+	/>
 	{#if blocks.length === 0}
 		<!-- Pre-first-token placeholder: thinking dots + optional
 		     progress/elapsed indicators. Once any text or tool_call
