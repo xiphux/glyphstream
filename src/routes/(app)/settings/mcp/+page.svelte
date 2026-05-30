@@ -1,5 +1,15 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { Switch } from 'bits-ui';
 	import { CircleCheck, CircleAlert, CircleSlash, Loader2 } from '@lucide/svelte';
+	import { toast } from '$lib/toast.svelte';
+
+	interface ToolRow {
+		name: string;
+		registeredName: string;
+		description: string;
+		trusted: boolean;
+	}
 
 	interface ServerInfo {
 		id: string;
@@ -7,10 +17,32 @@
 		transport: 'stdio' | 'http';
 		state: 'connected' | 'idle' | 'failed' | 'reconnecting';
 		error: string | null;
-		tools: Array<{ name: string; description: string }>;
+		tools: ToolRow[];
 	}
 
 	let { data } = $props<{ data: { servers: ServerInfo[] } }>();
+
+	let busyName = $state<string | null>(null);
+
+	async function toggleTrust(tool: ToolRow): Promise<void> {
+		if (busyName) return;
+		busyName = tool.registeredName;
+		const method = tool.trusted ? 'DELETE' : 'PUT';
+		try {
+			const res = await fetch(
+				`/api/user/trusted-tools/${encodeURIComponent(tool.registeredName)}`,
+				{ method }
+			);
+			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
+			await invalidateAll();
+		} catch (e) {
+			toast.error(
+				`Couldn't ${tool.trusted ? 'revoke' : 'grant'}: ${e instanceof Error ? e.message : String(e)}`
+			);
+		} finally {
+			busyName = null;
+		}
+	}
 
 	function stateLabel(state: ServerInfo['state']): string {
 		switch (state) {
@@ -98,11 +130,32 @@
 								</div>
 								<ul class="mt-2 flex flex-col gap-1.5">
 									{#each server.tools as tool (tool.name)}
-										<li class="rounded-md border border-border bg-surface-sunken/40 p-2 text-xs">
-											<span class="font-mono font-medium">{tool.name}</span>
-											{#if tool.description}
-												<p class="mt-0.5 text-fg-muted">{tool.description}</p>
-											{/if}
+										<li class="flex items-start gap-3 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs">
+											<div class="min-w-0 flex-1">
+												<span class="font-mono font-medium">{tool.name}</span>
+												{#if tool.description}
+													<p class="mt-0.5 text-fg-muted">{tool.description}</p>
+												{/if}
+											</div>
+											<label class="flex shrink-0 cursor-pointer items-center gap-1.5 pt-0.5">
+												<Switch.Root
+													checked={tool.trusted}
+													onCheckedChange={() => void toggleTrust(tool)}
+													disabled={busyName === tool.registeredName}
+													aria-label="Always allow {tool.name}"
+													title={tool.trusted
+														? 'Currently always allowed. Toggle off to require approval again.'
+														: 'Toggle on to pre-grant "always allow" without waiting for the first call.'}
+													class="relative mt-0.5 inline-flex h-4 w-7 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel disabled:cursor-not-allowed disabled:opacity-50"
+												>
+													<Switch.Thumb
+														class="block h-3 w-3 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[0.875rem]"
+													/>
+												</Switch.Root>
+												<span class="text-[10px] uppercase tracking-wide text-fg-muted">
+													Always allow
+												</span>
+											</label>
 										</li>
 									{/each}
 								</ul>
