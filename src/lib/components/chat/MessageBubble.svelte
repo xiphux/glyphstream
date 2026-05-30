@@ -49,7 +49,7 @@
 	class={[
 		'min-w-0 px-4 text-sm',
 		message.role === 'user'
-			? 'ml-auto max-w-[85%] bg-surface-inverse text-fg-inverse'
+			? 'ml-auto max-w-[85%] bg-accent/15'
 			: message.role === 'assistant'
 				? 'bg-surface-raised'
 				: 'bg-amber-50 dark:bg-amber-950/40',
