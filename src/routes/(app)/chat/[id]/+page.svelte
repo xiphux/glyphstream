@@ -355,8 +355,29 @@
 	// load. Opacity-only (no layout shift) so it can't perturb the pin-to-
 	// bottom / scroll math. Honors prefers-reduced-motion.
 	let listMounted = $state(false);
+	// Message id the deep-link arrived for. Drives a brief highlight class
+	// on the matching wrapper that fades out via `transition-colors`. The
+	// id is cleared after the fade completes so the class doesn't stick.
+	let highlightedMessageId = $state<string | null>(null);
 	onMount(() => {
 		listMounted = true;
+		// Deep-link from the search modal: URL hash like `#msg-<id>`.
+		// Wait for the message wrappers to be in the DOM before scrolling.
+		const hash = typeof location !== 'undefined' ? location.hash : '';
+		const match = hash.match(/^#msg-(.+)$/);
+		if (!match) return;
+		const targetId = decodeURIComponent(match[1]);
+		void tick().then(() => {
+			const el = document.getElementById(`msg-${targetId}`);
+			if (!el) return;
+			el.scrollIntoView({ block: 'center', behavior: 'auto' });
+			highlightedMessageId = targetId;
+			// 1500ms covers the user's eye-track plus the CSS fade so the
+			// transient state doesn't visibly snap off when we clear it.
+			setTimeout(() => {
+				if (highlightedMessageId === targetId) highlightedMessageId = null;
+			}, 1500);
+		});
 	});
 	const reduceMotion =
 		typeof window !== 'undefined' &&
@@ -1441,7 +1462,12 @@
 					in:fade={{
 						duration: listMounted && !reduceMotion && m.id !== streamedMessageId ? 160 : 0
 					}}
-					class={['group', mergeWithPrev && 'mt-0!', mergeWithNext && 'mb-0!']}
+					class={[
+						'group rounded-lg transition-colors duration-1000',
+						mergeWithPrev && 'mt-0!',
+						mergeWithNext && 'mb-0!',
+						m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15'
+					]}
 				>
 				{#if m.id === editingMessageId}
 					<!--

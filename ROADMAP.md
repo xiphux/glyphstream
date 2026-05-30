@@ -6,21 +6,6 @@ expected priority, not time-bound.
 
 ## Near-term (v1.x)
 
-- **Search chats.** As history accumulates over months, finding "the
-  conversation where I worked out X" becomes the limiting factor on
-  reusing prior context. SQLite FTS5 ships with better-sqlite3 — a
-  virtual table over `messages.content` + `conversations.title`,
-  maintained via triggers on insert/update, with a search affordance
-  in the sidebar that filters or replaces the conversation list. Hits
-  deep-link into the conversation scrolled to the matched message.
-  Index `content` (the source of truth) rather than `content_html` so
-  matches aren't polluted by markdown/HTML artifacts. Scope to the
-  current `user_id` in every query — the FTS table must carry it as a
-  column so multi-user (v2) doesn't need a reindex. Semantic search
-  belongs with the embeddings work below (see *Inline RAG*) — keyword
-  first, embeddings as a follow-up when the embedding model is a hard
-  dep anyway.
-
 - **Playwright e2e suite — expand coverage.** The suite is stood up
   (`tests/e2e/`): it boots a production build against a mock OpenAI-
   compatible upstream (`fixtures/mock-upstream.mjs`, a second

@@ -7,6 +7,8 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import SearchModal from '$lib/components/SearchModal.svelte';
+	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
@@ -27,6 +29,7 @@
 		PanelLeftOpen,
 		Pencil,
 		Plus,
+		Search,
 		Settings,
 		SlidersHorizontal,
 		Sparkles,
@@ -542,6 +545,18 @@
 			cancelRename();
 		}
 	}
+
+	// Global Cmd/Ctrl+K opens the search modal. Convention matches
+	// GitHub / Linear / ChatGPT / Claude. We preventDefault so the
+	// browser's own K-keyed behavior (e.g. Firefox's search bar in some
+	// configs) doesn't fight us. The modal itself handles Escape /
+	// arrow / Enter once open — see SearchModal.svelte.
+	function onGlobalKey(e: KeyboardEvent) {
+		if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+			e.preventDefault();
+			searchModal.show();
+		}
+	}
 </script>
 
 <div class="flex h-[100dvh] overflow-hidden">
@@ -643,6 +658,29 @@
 				<Plus size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>New chat</span>{/if}
 			</a>
+			<!--
+				Search trigger. Uses the same nav-link styling as the surrounding
+				links but acts as a button (opens the modal). The Cmd/Ctrl+K
+				hint is only shown when the sidebar is expanded — the collapsed
+				icon-only form falls back to the title attribute.
+			-->
+			<button
+				type="button"
+				onclick={() => searchModal.show()}
+				title={collapsed ? 'Search chats (⌘K)' : 'Search chats'}
+				class="flex w-full items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm transition hover:bg-surface-sunken/70 active:bg-surface-sunken {collapsed
+					? 'sm:justify-center sm:px-0'
+					: ''}"
+			>
+				<Search size={16} strokeWidth={2.25} class="shrink-0" />
+				{#if !collapsed}
+					<span class="flex-1">Search</span>
+					<kbd
+						class="hidden rounded border border-border-strong bg-surface-panel px-1 text-[10px] font-medium text-fg-muted sm:inline"
+						aria-hidden="true">⌘K</kbd
+					>
+				{/if}
+			</button>
 			<a
 				href="/gallery"
 				title={collapsed ? 'Gallery' : ''}
@@ -988,3 +1026,11 @@
 	custom-model / branch deletes drive it instead of window.confirm().
 -->
 <ConfirmDialog />
+
+<!--
+	Host for the app-wide search modal (searchModal.show()). Sidebar
+	Search button + the Cmd/Ctrl+K shortcut both feed this one surface.
+-->
+<SearchModal />
+
+<svelte:window onkeydown={onGlobalKey} />

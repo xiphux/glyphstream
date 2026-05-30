@@ -71,6 +71,13 @@
       "when": 1779930793893,
       "tag": "0009_talented_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1780111000000,
+      "tag": "0010_message_search_index",
+      "breakpoints": true
     }
   ]
 }
