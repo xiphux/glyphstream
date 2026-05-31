@@ -1,0 +1,12 @@
+node_modules
+build
+.svelte-kit
+.output
+coverage
+playwright-report
+test-results
+pnpm-lock.yaml
+drizzle
+static
+*.min.js
+*.min.css

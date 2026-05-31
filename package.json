@@ -12,9 +12,11 @@
 		"build": "vite build && pnpm exec esbuild scripts/import-owui.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=build/scripts/import-owui.js",
 		"analyze": "ANALYZE=1 vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
+		"prepare": "svelte-kit sync || echo '' ; husky || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
 		"db:generate": "drizzle-kit generate",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
@@ -23,6 +25,9 @@
 		"test:ui": "vitest --ui",
 		"test:e2e": "playwright test",
 		"import:owui": "tsx scripts/import-owui.ts"
+	},
+	"lint-staged": {
+		"*.{js,ts,svelte,json,css,md}": "prettier --write"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.29.0",
@@ -57,6 +62,10 @@
 		"drizzle-kit": "latest",
 		"esbuild": "^0.28.0",
 		"happy-dom": "^20.9.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.0.6",
+		"prettier": "^3.8.3",
+		"prettier-plugin-svelte": "^4.0.1",
 		"rollup-plugin-visualizer": "^7.0.1",
 		"svelte": "^5.55.9",
 		"svelte-check": "^4.4.8",
