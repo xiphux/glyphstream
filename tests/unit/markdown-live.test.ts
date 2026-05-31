@@ -1,9 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { renderLiveMarkdown } from '$lib/markdown-live';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 import {
 	resetLiveHighlighterForTests,
 	setLiveHighlighterForTests,
 } from '$lib/markdown-live-shiki.svelte';
+
+// markdown-it is dynamic-imported in production. Force the load once so
+// the rest of these synchronous tests get the real render path.
+beforeAll(async () => {
+	await ensureLiveMarkdown();
+});
 
 afterEach(() => {
 	resetLiveHighlighterForTests();

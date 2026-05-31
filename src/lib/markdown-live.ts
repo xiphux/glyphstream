@@ -15,9 +15,16 @@
  * so the in-flight render and the post-done render look as close to
  * identical as possible — the only change on `done` is broader code
  * coverage.
+ *
+ * markdown-it itself (~45 KB gzip) is dynamic-imported so login,
+ * gallery, settings, and the home page never pay for it. The chat
+ * route kicks the load off at mount via `ensureLiveMarkdown()`;
+ * `renderLiveMarkdown()` falls back to an escaped <p>…</p> until the
+ * chunk lands, which on a fast network is invisible because the first
+ * tokens arrive after the import.
  */
 
-import MarkdownIt from 'markdown-it';
+import type MarkdownIt from 'markdown-it';
 import {
 	getLiveHighlighter,
 	resolveLiveLang,
@@ -27,11 +34,36 @@ import {
 const LIGHT_THEME = 'github-light';
 const DARK_THEME = 'github-dark';
 
+let markdownItCtor: typeof MarkdownIt | null = null;
 let cached: MarkdownIt | null = null;
+let loadingPromise: Promise<typeof MarkdownIt | null> | null = null;
 
-function getMd(): MarkdownIt {
-	if (cached) return cached;
-	const md = new MarkdownIt({
+/**
+ * Kick off the markdown-it lazy import. Idempotent — subsequent calls
+ * return the in-flight or already-resolved promise. Resolves to null on
+ * load failure; callers should keep using the plain-text fallback.
+ *
+ * Callers don't need to await this — `renderLiveMarkdown()` falls back
+ * gracefully until the module lands and the next streaming tick picks
+ * it up automatically.
+ */
+export function ensureLiveMarkdown(): Promise<typeof MarkdownIt | null> {
+	if (loadingPromise) return loadingPromise;
+	loadingPromise = (async () => {
+		try {
+			const mod = await import('markdown-it');
+			markdownItCtor = mod.default;
+			return markdownItCtor;
+		} catch (err) {
+			console.warn('Failed to load markdown-it for live rendering', err);
+			return null;
+		}
+	})();
+	return loadingPromise;
+}
+
+function build(Ctor: typeof MarkdownIt): MarkdownIt {
+	const md = new Ctor({
 		html: false,
 		linkify: true,
 		typographer: false,
@@ -64,8 +96,16 @@ function getMd(): MarkdownIt {
 		token.attrSet('rel', 'noopener noreferrer');
 		return defaultLinkOpen(tokens, idx, options, env, self);
 	};
-	cached = md;
 	return md;
+}
+
+function escapeHtml(s: string): string {
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
 }
 
 /**
@@ -77,6 +117,10 @@ function getMd(): MarkdownIt {
  * automatically re-render the moment the lazy shiki chunk lands —
  * without it, an already-rendered streaming segment would stay plain
  * until the next text chunk arrived.
+ *
+ * Until the markdown-it chunk has landed, returns the raw text in an
+ * escaped <p>. Streaming re-runs this on every tick so the next chunk
+ * after the import resolves picks up the real render automatically.
  */
 export function renderLiveMarkdown(text: string): string {
 	if (!text) return '';
@@ -84,5 +128,10 @@ export function renderLiveMarkdown(text: string): string {
 	// finished arriving before shiki loaded would stay un-highlighted
 	// until the next text chunk pushed them through markdown-it again.
 	void liveHighlighterReady.value;
-	return getMd().render(text);
+	if (!markdownItCtor) {
+		void ensureLiveMarkdown();
+		return `<p>${escapeHtml(text)}</p>`;
+	}
+	if (!cached) cached = build(markdownItCtor);
+	return cached.render(text);
 }

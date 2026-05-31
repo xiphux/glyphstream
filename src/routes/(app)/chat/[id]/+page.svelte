@@ -3,7 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import { invalidateAll } from '$app/navigation';
 	import { preferredFirstName } from '$lib/greeting';
-	import { renderLiveMarkdown } from '$lib/markdown-live';
+	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
 	import { readSSE } from '$lib/sse-client';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
@@ -519,6 +519,11 @@
 		// own reactive `liveHighlighterReady` signal once loaded, which
 		// the rAF-driven inFlightSegments effect picks up automatically.
 		void ensureLiveHighlighter();
+		// markdown-it itself is also route-lazy (~45 KB gzip). Kicking it
+		// off at mount means the first streaming tick after the user sends
+		// a message almost always finds it already loaded; while it's
+		// loading renderLiveMarkdown falls back to an escaped <p>.
+		void ensureLiveMarkdown();
 		// Deep-link from the search modal: URL hash like `#msg-<id>`.
 		// Wait for the message wrappers to be in the DOM before scrolling.
 		const hash = typeof location !== 'undefined' ? location.hash : '';
