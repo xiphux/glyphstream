@@ -291,6 +291,38 @@ parentPort.on('message', async (msg: HostMessage) => {
 const WORKSPACE = '/workspace';
 const materializedManifest = new Map<string, string>();
 
+/**
+ * Per-file and aggregate caps on what comes back out of /workspace/.
+ *
+ * The worker has a memory ceiling already, but generated files are
+ * shipped to the host via `postMessage` and then written through the
+ * MediaStore — a 500 MB file would round-trip across the message channel
+ * before anyone could intervene. These caps bound the worst case to
+ * roughly the user-upload cap (25 MB per file, 50 MB total). Code that
+ * blows past them gets its file silently dropped from the result and a
+ * warning in the server logs; the model sees the file isn't in `files:`
+ * and can chunk on the next turn.
+ */
+const MAX_GENERATED_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_GENERATED_TOTAL_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Reject filenames that would let a model escape /workspace/. The shipped
+ * surface (pre-files from the host AND files Pyodide's `readdir` returns)
+ * should never contain `/`, `..`, or NUL — but a sloppy upload row's
+ * `originalFilename` can carry `../etc/passwd` style strings, and a
+ * future Pyodide VFS quirk could surface a weird name. Refuse anything
+ * non-trivial so a single broken file can't corrupt this worker's
+ * Pyodide stdlib (sandboxed inside WASM — no host filesystem reach —
+ * but corruption forces an LRU evict + cold restart).
+ */
+function isSafeWorkspaceFilename(name: string): boolean {
+	if (!name) return false;
+	if (name === '.' || name === '..') return false;
+	if (name.includes('/') || name.includes('\\') || name.includes('\0')) return false;
+	return true;
+}
+
 function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 	const FS = (py as unknown as { FS: PyodideFS }).FS;
 	try {
@@ -307,7 +339,12 @@ function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 		// chdir on an already-current dir is a no-op; if it ever does
 		// fail we can fall back to the absolute path — not catastrophic.
 	}
-	const wanted = new Set(preFiles.map((f) => f.filename));
+	const safe = preFiles.filter((f) => {
+		if (isSafeWorkspaceFilename(f.filename)) return true;
+		console.warn(`[code-interpreter] refused unsafe pre-file name: ${JSON.stringify(f.filename)}`);
+		return false;
+	});
+	const wanted = new Set(safe.map((f) => f.filename));
 
 	// Drop materialized files the host no longer says are attached.
 	for (const filename of Array.from(materializedManifest.keys())) {
@@ -320,7 +357,7 @@ function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 		materializedManifest.delete(filename);
 	}
 
-	for (const f of preFiles) {
+	for (const f of safe) {
 		const cached = materializedManifest.get(f.filename);
 		if (cached === f.sha256) continue; // unchanged
 		try {
@@ -360,14 +397,29 @@ function snapshotWorkspace(py: PyodideInterface): Map<string, string> {
 function diffWorkspace(py: PyodideInterface, preSnapshot: Map<string, string>): PostFile[] {
 	const FS = (py as unknown as { FS: PyodideFS }).FS;
 	const out: PostFile[] = [];
+	let totalBytes = 0;
 	try {
 		const entries = FS.readdir(WORKSPACE);
 		for (const name of entries) {
 			if (name === '.' || name === '..') continue;
+			if (!isSafeWorkspaceFilename(name)) continue;
 			try {
 				const bytes = FS.readFile(`${WORKSPACE}/${name}`);
+				if (bytes.byteLength > MAX_GENERATED_FILE_BYTES) {
+					console.warn(
+						`[code-interpreter] dropped /workspace/${name}: ${bytes.byteLength}B exceeds per-file cap (${MAX_GENERATED_FILE_BYTES}B)`,
+					);
+					continue;
+				}
 				const sha = sha256Hex(bytes);
 				if (preSnapshot.get(name) === sha) continue; // unchanged
+				if (totalBytes + bytes.byteLength > MAX_GENERATED_TOTAL_BYTES) {
+					console.warn(
+						`[code-interpreter] dropped /workspace/${name}: aggregate diff would exceed ${MAX_GENERATED_TOTAL_BYTES}B`,
+					);
+					continue;
+				}
+				totalBytes += bytes.byteLength;
 				out.push({ filename: name, bytes, sha256: sha });
 				materializedManifest.set(name, sha);
 			} catch {
