@@ -190,9 +190,18 @@ async function doConnect(
 	firstTime: boolean,
 	existingTools: McpToolDescriptor[] | null,
 ): Promise<ConnectedEntry | FailedEntry> {
+	const timeoutMs = cfg.timeoutSeconds * 1000;
 	try {
-		const client = await connectMcpServer(cfg, cfg.timeoutSeconds * 1000);
-		const tools = firstTime || existingTools === null ? await client.listTools() : existingTools;
+		const client = await connectMcpServer(cfg, timeoutMs);
+		// connectMcpServer enforces its own timeout on the handshake but
+		// listTools has none — a server that completes the handshake and
+		// then never responds to the tools/list request would otherwise
+		// hang awaitMcpReady() (and the layout load that awaits it)
+		// forever. Race against the same per-server budget.
+		const tools =
+			firstTime || existingTools === null
+				? await withTimeout(client.listTools(), timeoutMs, `${cfg.id} listTools`)
+				: existingTools;
 		client.onClose(() => markIdle(cfg.id));
 		return {
 			state: 'connected',
@@ -209,6 +218,22 @@ async function doConnect(
 		}
 		return { state: 'failed', cfg, error: msg };
 	}
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+		promise.then(
+			(v) => {
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(timer);
+				reject(e);
+			},
+		);
+	});
 }
 
 function scheduleIdleReap(serverId: string): void {
