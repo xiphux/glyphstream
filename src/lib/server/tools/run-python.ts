@@ -27,6 +27,22 @@ import { runPython } from '../code-interpreter/pool';
 import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
 import type { RunPythonPreFile } from '../code-interpreter/pool';
 
+// Memoized at module scope: building the description requires reading
+// `config.toml`, and SvelteKit's analyse postbuild loads every server
+// module during `vite build` — including this one — when config.toml is
+// not yet in the docker build context (it's runtime-only). Computing
+// the description eagerly in the tool-literal-init would throw at build
+// time; gating it behind a getter that fires on first read keeps the
+// build clean and shifts validation to first request (which is fine —
+// every other config validator in this codebase is similarly lazy, and
+// production deployments always have config.toml present by then).
+let cachedDescription: string | null = null;
+function getRunPythonDescription(): string {
+	if (cachedDescription !== null) return cachedDescription;
+	cachedDescription = buildToolDescription();
+	return cachedDescription;
+}
+
 function buildToolDescription(): string {
 	const cfg = getCodeInterpreterConfig();
 	return `Execute Python code in this conversation's persistent sandboxed interpreter.
@@ -49,7 +65,9 @@ export const runPythonTool: Tool = {
 		type: 'function',
 		function: {
 			name: 'run_python',
-			description: buildToolDescription(),
+			get description(): string {
+				return getRunPythonDescription();
+			},
 			parameters: {
 				type: 'object',
 				properties: {

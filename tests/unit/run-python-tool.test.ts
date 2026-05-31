@@ -88,6 +88,17 @@ describe('runPythonTool — metadata + availability', () => {
 		expect(runPythonTool.isAvailable?.()).toBe(false);
 	});
 
+	it('renders the description lazily, interpolating the active config', () => {
+		// The description is computed by a getter — eager evaluation
+		// would read config.toml at module-init time and break
+		// SvelteKit's analyse postbuild in environments where config.toml
+		// hasn't been mounted yet (docker build context, CI).
+		const desc = runPythonTool.definition.function.description;
+		expect(desc).toContain('30-second wall-clock');
+		expect(desc).toContain('512 MB of memory');
+		expect(desc).toContain(`${Math.round(mocks.config.idleTimeoutSeconds / 60)} minutes`);
+	});
+
 	it('declares { code: string } required, no extra properties', () => {
 		const params = runPythonTool.definition.function.parameters as {
 			properties: Record<string, unknown>;
