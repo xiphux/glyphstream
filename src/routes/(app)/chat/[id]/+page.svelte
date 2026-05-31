@@ -127,6 +127,21 @@
 	const toolResultsByCallId = $derived(rendered.toolResultsByCallId);
 	const pendingApprovals = $derived(rendered.pendingApprovals);
 
+	// Precompute merge flags once per render rather than calling
+	// computeMergeFlags inside the per-row {@const} in the {#each}.
+	// Each call is O(1) but it was running for every row on every
+	// reactive update; building the map up-front keeps render walks
+	// linear instead of having the per-row inputs (editing id,
+	// inFlightOpen) re-trigger work for every message.
+	const mergeFlagsById = $derived.by(() => {
+		const map = new Map<string, { mergeWithPrev: boolean; mergeWithNext: boolean }>();
+		for (let i = 0; i < visibleMessages.length; i++) {
+			const m = visibleMessages[i];
+			map.set(m.id, computeMergeFlags(visibleMessages, i, editingMessageId, inFlightOpen));
+		}
+		return map;
+	});
+
 	// User's per-tool decisions, accumulating until every pending tool
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
@@ -1644,7 +1659,7 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-				{@const merge = computeMergeFlags(visibleMessages, i, editingMessageId, inFlightOpen)}
+				{@const merge = mergeFlagsById.get(m.id) ?? { mergeWithPrev: false, mergeWithNext: false }}
 				{@const mergeWithPrev = merge.mergeWithPrev}
 				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
