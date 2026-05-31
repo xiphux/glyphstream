@@ -46,7 +46,18 @@ const config = {
 			mode: 'auto',
 			directives: {
 				'default-src': ['self'],
-				'script-src': ['self'],
+				// The sha256 below pins the inline <script> in src/app.html
+				// (the pre-paint color-scheme + GPU-blur IIFEs). SvelteKit's
+				// CSP nonces its own injected scripts but does NOT
+				// auto-hash user-authored inline scripts in app.html, so
+				// without this pin the dev server refuses to execute it
+				// (and dropping it to an external file would cost a
+				// render-blocking request and reintroduce a FOUC window).
+				//
+				// If you edit that inline script, this hash goes stale and
+				// the browser console will print the new expected hash in
+				// the next CSP violation report — copy it back here.
+				'script-src': ['self', 'sha256-zDStjHdKrEZbvvMjU3DTG6VQNdNJybPV2z/de+vq88A='],
 				'style-src': ['self', 'unsafe-inline'],
 				'img-src': ['self', 'data:', 'blob:'],
 				'media-src': ['self', 'blob:'],
