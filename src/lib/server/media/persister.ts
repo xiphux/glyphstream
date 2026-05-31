@@ -14,6 +14,7 @@ import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
+import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
 import { truncateEllipsis } from '$lib/text';
 
 const PROMPT_EXCERPT_MAX = 500;
@@ -96,11 +97,39 @@ async function resolveBytes(
 		return { bytes: Buffer.from(urlOrB64.b64_json, 'base64'), contentType: 'image/png' };
 	}
 	if (urlOrB64.url) {
-		// If the URL is relative (e.g. "/v1/files/abc/content"), resolve
-		// against the endpoint's base URL.
-		const absolute = urlOrB64.url.startsWith('http')
-			? urlOrB64.url
-			: new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
+		// Relative URL (e.g. "/v1/files/abc/content") resolves against the
+		// endpoint's base URL and is trusted by construction — it lives on
+		// the same host the operator configured. An absolute URL is the
+		// untrusted case: a compromised or malicious upstream could point
+		// us at 169.254.169.254 (cloud metadata) or an internal admin URL.
+		// Allow it only when it stays on the configured endpoint's host, or
+		// when the hostname is publicly routable. The most common
+		// legitimate off-host case is OpenAI's image responses, which
+		// return Azure-blob CDN URLs distinct from api.openai.com.
+		let absolute: string;
+		if (urlOrB64.url.startsWith('http')) {
+			let parsed: URL;
+			try {
+				parsed = new URL(urlOrB64.url);
+			} catch {
+				throw new Error(`Image generation response url is not a valid URL: ${urlOrB64.url}`);
+			}
+			const endpointHost = new URL(endpoint.baseUrl).hostname.toLowerCase();
+			if (parsed.hostname.toLowerCase() !== endpointHost) {
+				try {
+					assertHttpScheme(parsed);
+					await assertHostnameRoutable(parsed.hostname);
+				} catch (e) {
+					if (e instanceof UrlPolicyError) {
+						throw new Error(`Upstream returned an unsafe media URL: ${e.message}`);
+					}
+					throw e;
+				}
+			}
+			absolute = urlOrB64.url;
+		} else {
+			absolute = new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
+		}
 		return fetchUpstreamBytes(endpoint, absolute);
 	}
 	throw new Error('Image generation response had neither url nor b64_json');
