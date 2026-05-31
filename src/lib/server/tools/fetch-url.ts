@@ -19,12 +19,17 @@
  * Body capped at 256 KB, extracted text truncated to ~20 KB.
  */
 
-import dns from 'node:dns';
 import { Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
+import {
+	assertHostnameRoutable,
+	assertHttpScheme,
+	assertNotConfiguredBackend,
+	isPrivateIp,
+} from './url-policy';
 
 const TIMEOUT_MS = 10_000;
 // 2 MB body cap. Modern article pages routinely ship 500 KB-1.5 MB of raw
@@ -99,10 +104,9 @@ async function fetchAndExtract(initialUrl: string, ctxSignal: AbortSignal): Prom
 	}
 
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-		if (current.protocol !== 'http:' && current.protocol !== 'https:') {
-			throw new Error(`Refused scheme "${current.protocol}" - only http(s) URLs are allowed.`);
-		}
-		await assertNotPrivate(current.hostname);
+		assertHttpScheme(current);
+		assertNotConfiguredBackend(current);
+		await assertHostnameRoutable(current.hostname);
 
 		const signal = composeSignals(ctxSignal, AbortSignal.timeout(TIMEOUT_MS));
 		const res = await fetch(current, {
@@ -296,61 +300,10 @@ function decodeEntities(s: string): string {
 	});
 }
 
-async function assertNotPrivate(hostname: string): Promise<void> {
-	const addrs = await dns.promises.lookup(hostname, { all: true });
-	for (const a of addrs) {
-		if (isPrivateIp(a.address)) {
-			throw new Error(`Refused: ${hostname} resolves to private/reserved address ${a.address}.`);
-		}
-	}
-}
-
-/**
- * Returns true for IPv4 / IPv6 addresses in private, loopback, link-local,
- * CGNAT, benchmark, multicast, reserved, or cloud-metadata ranges. Used as
- * a coarse SSRF allowlist - block by default; let only globally-routable
- * unicast addresses through.
- *
- * Unparseable inputs are treated as private (fail-closed).
- */
-export function isPrivateIp(ip: string): boolean {
-	if (!ip) return true;
-	const cleaned = ip.split('%')[0];
-
-	const v4 = cleaned.includes('.')
-		? cleaned.startsWith('::ffff:')
-			? cleaned.slice('::ffff:'.length)
-			: cleaned
-		: null;
-	if (v4 !== null) {
-		const parts = v4.split('.');
-		if (parts.length !== 4) return true;
-		const nums = parts.map((p) => Number(p));
-		if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-		const [a, b] = nums;
-		if (a === 0) return true; // 0.0.0.0/8
-		if (a === 10) return true; // 10.0.0.0/8
-		if (a === 127) return true; // loopback 127.0.0.0/8
-		if (a === 169 && b === 254) return true; // 169.254.0.0/16 (link-local + AWS metadata)
-		if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-		if (a === 192 && b === 168) return true; // 192.168.0.0/16
-		if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 (CGNAT)
-		if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15 (benchmark)
-		if (a >= 224) return true; // 224.0.0.0/4 (multicast) + 240.0.0.0/4 (reserved)
-		return false;
-	}
-
-	if (!cleaned.includes(':')) return true; // not an IP literal at all -> fail closed
-
-	const lower = cleaned.toLowerCase();
-	if (lower === '::' || lower === '::1') return true;
-	// fc00::/7 - unique local addresses (first byte fc or fd)
-	if (/^f[cd][0-9a-f]{2}:/.test(lower)) return true;
-	// fe80::/10 - link-local (first 10 bits 1111111010 -> first byte fe + nibble 8/9/a/b)
-	if (/^fe[89ab][0-9a-f]:/.test(lower)) return true;
-	// ff00::/8 - multicast
-	if (/^ff[0-9a-f]{2}:/.test(lower)) return true;
-	return false;
-}
+// `isPrivateIp` continues to be referenced by existing tests via the
+// import-from-fetch-url path (and possibly by callers that want the
+// pure predicate without a redirect loop). Re-export from the shared
+// module so the public surface here stays the same after the refactor.
+export { isPrivateIp };
 
 register(fetchUrlTool);
