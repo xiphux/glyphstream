@@ -31,6 +31,7 @@
  */
 
 import { parentPort } from 'node:worker_threads';
+import { createHash } from 'node:crypto';
 import { loadPyodide, type PyodideInterface } from 'pyodide';
 import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
 
@@ -340,15 +341,14 @@ function snapshotWorkspace(py: PyodideInterface): Map<string, string> {
 		const entries = FS.readdir(WORKSPACE);
 		for (const name of entries) {
 			if (name === '.' || name === '..') continue;
+			// Try readFile directly — succeeds for regular files, throws
+			// for directories / specials. Avoids relying on emscripten's
+			// stat.mode bits matching Linux S_IFREG semantics exactly.
 			try {
-				const stat = FS.stat(`${WORKSPACE}/${name}`);
-				// 0o040000 = S_IFDIR; skip subdirectories for v1 — the
-				// round-trip surface is files in the top-level workspace.
-				if ((stat.mode & 0o170000) !== 0o100000) continue;
 				const bytes = FS.readFile(`${WORKSPACE}/${name}`);
 				snap.set(name, sha256Hex(bytes));
 			} catch {
-				// Skip unreadable entries.
+				// Directory or unreadable — skip.
 			}
 		}
 	} catch {
@@ -365,17 +365,13 @@ function diffWorkspace(py: PyodideInterface, preSnapshot: Map<string, string>): 
 		for (const name of entries) {
 			if (name === '.' || name === '..') continue;
 			try {
-				const stat = FS.stat(`${WORKSPACE}/${name}`);
-				if ((stat.mode & 0o170000) !== 0o100000) continue;
 				const bytes = FS.readFile(`${WORKSPACE}/${name}`);
 				const sha = sha256Hex(bytes);
 				if (preSnapshot.get(name) === sha) continue; // unchanged
 				out.push({ filename: name, bytes, sha256: sha });
-				// Track in the materialized manifest so the next call
-				// recognizes our own outputs as "already present".
 				materializedManifest.set(name, sha);
 			} catch {
-				// Skip unreadable entries.
+				// Directory or unreadable — skip.
 			}
 		}
 	} catch {
@@ -393,22 +389,11 @@ interface PyodideFS {
 	readdir(path: string): string[];
 	readFile(path: string): Uint8Array;
 	writeFile(path: string, data: Uint8Array): void;
-	stat(path: string): { mode: number };
 	chdir(path: string): void;
 }
 
 function sha256Hex(bytes: Uint8Array): string {
-	// node:crypto isn't available inside Pyodide-internal modules but it
-	// IS available in the worker_threads context. Worker boot runs
-	// before Pyodide, so this resolves the standard Node crypto.
-	// eslint-disable-next-line @typescript-eslint/no-require-imports
-	const { createHash } = require('node:crypto') as { createHash: (alg: string) => CryptoHash };
 	const h = createHash('sha256');
 	h.update(bytes);
 	return h.digest('hex');
-}
-
-interface CryptoHash {
-	update(data: Uint8Array): void;
-	digest(encoding: 'hex'): string;
 }
