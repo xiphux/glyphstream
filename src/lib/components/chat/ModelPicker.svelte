@@ -343,9 +343,23 @@
 			align="end"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
+			onOpenAutoFocus={(e) => {
+				// Skip auto-focus on touch devices. bits-ui's FocusScope would
+				// otherwise pull focus to the search input on every open, and
+				// on iOS that springs the on-screen keyboard — which then
+				// races with Floating UI's sizing pass and leaves the inner
+				// list in a state where touch-scroll attempts bubble out to
+				// the (already-locked) page instead of scrolling the list.
+				// On non-touch the auto-focus is still desirable; let it run.
+				if (window.matchMedia?.('(pointer: coarse)').matches) {
+					e.preventDefault();
+				}
+			}}
 			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
-			<!-- Search row. Auto-focuses on open via Popover's focus-trap. -->
+			<!-- Search row. Auto-focuses on open via Popover's focus-trap on
+				 pointer:fine devices; tap-to-focus on touch (see onOpenAutoFocus
+				 above). -->
 			<div class="flex items-center gap-2 border-b border-border px-3 py-2">
 				<Search size={14} strokeWidth={2.25} class="opacity-50" />
 				<input
@@ -361,7 +375,7 @@
 				/>
 			</div>
 
-			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto py-1">
+			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto overscroll-contain py-1">
 				{#if filteredItems.length === 0}
 					<p class="px-3 py-3 text-xs text-fg-muted">
 						{items.length === 0 ? 'No models available.' : `No matches for "${search.trim()}"`}
