@@ -16,8 +16,8 @@
  */
 
 import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
-import { appendMessage, setActiveLeafMessageId } from '../db/queries/messages';
-import { linkMessageMedia } from '../db/queries/media';
+import { appendMessage, setActiveLeafMessageId, updateMessageParts } from '../db/queries/messages';
+import { getMediaForUser, linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
 import type { Tool, ToolExecution } from '../tools/types';
 
@@ -151,9 +151,37 @@ export async function executeToolCalls(
 		// likewise). Link them to the freshly-persisted tool row so
 		// the renderer can surface them as attachments and the orphan
 		// reaper sees the same ref-count semantics user uploads use.
+		// We also append matching MessageParts (image / video / file)
+		// for each linked media so the existing render path draws
+		// chips / inline previews on the tool bubble without needing
+		// to consult the message_media join at render time.
 		if (entry.kind === 'completed' && entry.execution.attachedMediaIds) {
+			const extraParts: MessagePart[] = [];
 			for (const mediaId of entry.execution.attachedMediaIds) {
 				linkMessageMedia(toolMsg.id, mediaId);
+				const m = getMediaForUser(mediaId, params.userId);
+				if (!m) continue;
+				if (m.kind === 'image') {
+					extraParts.push({ type: 'image', mediaId });
+				} else if (m.kind === 'video') {
+					extraParts.push({ type: 'video', mediaId });
+				} else {
+					// 'file' kind — chip rendering with denormalized
+					// filename + size so the renderer needs no lookup.
+					extraParts.push({
+						type: 'file',
+						mediaId,
+						filename: m.originalFilename ?? mediaId,
+						byteSize: m.byteSize,
+					});
+				}
+			}
+			if (extraParts.length > 0) {
+				updateMessageParts(toolMsg.id, params.conversationId, [partPayload, ...extraParts]);
+				// Reflect the persisted change on the in-memory ChatMessage
+				// the relay returns to its callers, so the very next
+				// branch-walk after this turn sees the file parts too.
+				toolMsg.parts = [partPayload, ...extraParts];
 			}
 		}
 		toolMessages.push(toolMsg);

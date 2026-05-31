@@ -12,6 +12,8 @@
 	 */
 	import type { Snippet } from 'svelte';
 	import { Check, ShieldCheck, ShieldX } from '@lucide/svelte';
+	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
+	import type { ToolResultAttachment } from '$lib/chat-render';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
@@ -37,6 +39,10 @@
 		decision?: ApprovalAction | null;
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
+		/** Media the tool produced — rendered as inline image / video /
+		 *  download chip after the result, so the user sees the artifact
+		 *  attached to the same block as the call that produced it. */
+		attachments?: ToolResultAttachment[];
 	}
 
 	let {
@@ -50,6 +56,7 @@
 		decision = null,
 		approvalBusy = false,
 		onApprovalSelect,
+		attachments,
 	}: Props = $props();
 
 	// Pretty-print JSON when it parses; otherwise the raw string. Cheap
@@ -192,6 +199,33 @@
 				</div>
 				<pre
 					class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyResult}</pre>
+			</div>
+		{/if}
+		{#if attachments && attachments.length > 0}
+			<div class="mt-2 flex flex-wrap gap-2">
+				{#each attachments as att (att.mediaId)}
+					{#if att.type === 'image'}
+						<img
+							src="/api/media/{att.mediaId}/content"
+							alt=""
+							loading="lazy"
+							class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
+						/>
+					{:else if att.type === 'video'}
+						<!-- svelte-ignore a11y_media_has_caption -->
+						<video
+							src="/api/media/{att.mediaId}/content"
+							controls
+							class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
+						></video>
+					{:else}
+						<FileAttachmentChip
+							filename={att.filename}
+							byteSize={att.byteSize}
+							href={`/api/media/${att.mediaId}/content`}
+						/>
+					{/if}
+				{/each}
 			</div>
 		{/if}
 	</div>

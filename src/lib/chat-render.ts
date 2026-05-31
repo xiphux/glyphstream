@@ -37,6 +37,10 @@ export type RenderBlock =
 			result?: string;
 			isError?: boolean;
 			status: 'executing' | 'done' | 'error' | 'pending_approval';
+			/** Media the tool produced — rendered inside the tool block
+			 *  under the result so the chip / preview lives where the
+			 *  tool call lives, not in a separate visible bubble. */
+			attachments?: ToolResultAttachment[];
 	  }
 	| { type: 'image'; mediaId: string; alt?: string }
 	| { type: 'video'; mediaId: string }
@@ -260,6 +264,7 @@ function partToBlock(
 				result: entry?.result,
 				isError: entry?.isError,
 				status,
+				...(entry?.attachments ? { attachments: entry.attachments } : {}),
 			};
 		}
 		case 'image':
@@ -328,29 +333,57 @@ export function filterVisibleMessages(messages: ChatMessage[]): ChatMessage[] {
 	return messages.filter((m) => m.role !== 'tool');
 }
 
+/** Media attachments the tool produced during execution (e.g. files
+ *  Python wrote under /workspace/). Carried through the tool-result
+ *  index so the inline tool block can render them as chips / inline
+ *  previews where the tool_call sits, instead of needing a separate
+ *  visible bubble for the tool message itself. */
+export type ToolResultAttachment =
+	| { type: 'image'; mediaId: string }
+	| { type: 'video'; mediaId: string }
+	| { type: 'file'; mediaId: string; filename: string; byteSize: number };
+
 export interface ToolResultEntry {
 	result: string;
 	isError: boolean;
 	status?: 'pending_approval';
+	/** Optional; absent when the tool didn't produce any media. */
+	attachments?: ToolResultAttachment[];
 }
 
 /** Build the `toolCallId → result` lookup that messageToBlocks uses to
  *  resolve tool_call statuses. Carries the pending_approval status
  *  through so the inline tool block can render the Allow / Always /
- *  Reject prompt right where its tool_call appears. */
+ *  Reject prompt right where its tool_call appears. Also collects any
+ *  image / video / file parts that share the tool message — those are
+ *  the media the tool produced, surfaced under the tool block. */
 export function buildToolResultsMap(messages: ChatMessage[]): Map<string, ToolResultEntry> {
 	const out = new Map<string, ToolResultEntry>();
 	for (const msg of messages) {
 		if (msg.role !== 'tool') continue;
+		let resultPart: Extract<MessagePart, { type: 'tool_result' }> | null = null;
+		const attachments: ToolResultAttachment[] = [];
 		for (const p of msg.parts) {
-			if (p.type !== 'tool_result') continue;
-			const entry: ToolResultEntry = {
-				result: p.result,
-				isError: p.isError === true,
-			};
-			if (p.status === 'pending_approval') entry.status = 'pending_approval';
-			out.set(p.toolCallId, entry);
+			if (p.type === 'tool_result') resultPart = p;
+			else if (p.type === 'image') attachments.push({ type: 'image', mediaId: p.mediaId });
+			else if (p.type === 'video') attachments.push({ type: 'video', mediaId: p.mediaId });
+			else if (p.type === 'file') {
+				attachments.push({
+					type: 'file',
+					mediaId: p.mediaId,
+					filename: p.filename,
+					byteSize: p.byteSize,
+				});
+			}
 		}
+		if (!resultPart) continue;
+		const entry: ToolResultEntry = {
+			result: resultPart.result,
+			isError: resultPart.isError === true,
+		};
+		if (resultPart.status === 'pending_approval') entry.status = 'pending_approval';
+		if (attachments.length > 0) entry.attachments = attachments;
+		out.set(resultPart.toolCallId, entry);
 	}
 	return out;
 }

@@ -19,7 +19,7 @@ import { error } from '@sveltejs/kit';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { walkActiveBranch, updateMessageParts } from '$lib/server/db/queries/messages';
-import { linkMessageMedia } from '$lib/server/db/queries/media';
+import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
@@ -119,14 +119,33 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			};
 			// Any media the tool created during approval-resume execution
 			// (e.g. run_python writing files) gets linked to the now-
-			// completed tool row, mirroring how the inline path in
-			// tool-execution.ts handles attachedMediaIds.
+			// completed tool row + surfaced as MessageParts on the same
+			// row so the renderer draws chips / inline previews, mirroring
+			// the inline path in tool-execution.ts.
+			const extraParts: MessagePart[] = [];
 			if (execution.attachedMediaIds && execution.attachedMediaIds.length > 0) {
 				for (const mediaId of execution.attachedMediaIds) {
 					linkMessageMedia(toolMsg.id, mediaId);
+					const m = getMediaForUser(mediaId, userId);
+					if (!m) continue;
+					if (m.kind === 'image') {
+						extraParts.push({ type: 'image', mediaId });
+					} else if (m.kind === 'video') {
+						extraParts.push({ type: 'video', mediaId });
+					} else {
+						extraParts.push({
+							type: 'file',
+							mediaId,
+							filename: m.originalFilename ?? mediaId,
+							byteSize: m.byteSize,
+						});
+					}
 				}
 			}
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
+			updateMessageParts(toolMsg.id, params.id, [nextPart, ...extraParts]);
+			updatedAny = true;
+			continue;
 		}
 
 		updateMessageParts(toolMsg.id, params.id, [nextPart]);

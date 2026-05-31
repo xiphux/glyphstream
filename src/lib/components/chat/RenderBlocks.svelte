@@ -72,6 +72,7 @@
 			result={block.result}
 			isError={block.isError}
 			status={block.status}
+			attachments={block.attachments}
 			toolCallId={block.toolCallId}
 			decision={approvalDecisions?.get(block.toolCallId) ?? null}
 			{approvalBusy}
