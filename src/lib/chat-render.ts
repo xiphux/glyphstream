@@ -458,3 +458,126 @@ export function computeMergeFlags(
 			(mergeIntoInFlight && isLastVisible),
 	};
 }
+
+// --- code-shaped tool args ---------------------------------------------------
+//
+// Some tools' "args" are really source code wrapped in a JSON envelope
+// (today: `run_python`, whose only parameter `code` is a multi-line
+// Python string). Rendering that envelope verbatim — `{"code":"import
+// pandas\\nimport numpy ..."}` — is technically accurate but unreadable
+// at a glance. The streaming relay's `maybeRenderCodeArg` (server-only)
+// pre-renders the code through shiki at end-of-turn so the persisted
+// view shows syntax-highlighted Python. The streaming view doesn't get
+// shiki (it would blow the client bundle), but it CAN still show the
+// code as multi-line monospace text instead of the JSON envelope — that's
+// what `extractCodeArg` is for. Both paths consult the same
+// CODE_ARG_TOOLS table so the client and server agree on which tools
+// have code-shaped args and which language to highlight as.
+
+export interface CodeArgMeta {
+	codeField: string;
+	language: string;
+}
+
+export const CODE_ARG_TOOLS: Record<string, CodeArgMeta> = {
+	run_python: { codeField: 'code', language: 'python' },
+};
+
+/**
+ * Pull out the source-code field of a code-shaped tool's args, tolerating
+ * partial / mid-stream JSON. Returns null when the tool isn't in
+ * CODE_ARG_TOOLS, the args don't yet contain the code field, or the
+ * value is empty.
+ *
+ * Strategy:
+ *  1. Try strict JSON.parse first. Works for any complete message and
+ *     for the persisted-message path.
+ *  2. Fall back to a small state machine that walks the input looking
+ *     for `"<field>":` then captures the following JSON string,
+ *     decoding standard escapes (`\n`, `\t`, `\r`, `\"`, `\\`, `\/`,
+ *     `\b`, `\f`, `\uXXXX`) as it goes. On unterminated input it
+ *     returns what it has — which is exactly the right behavior for
+ *     mid-stream rendering: every additional token makes the displayed
+ *     code grow until the closing `"` flips us into the steady state.
+ *
+ * Unknown escapes pass through verbatim so a malformed model output
+ * doesn't make the args panel go blank.
+ */
+export function extractCodeArg(
+	toolName: string,
+	rawArgs: string,
+): { code: string; language: string } | null {
+	const meta = CODE_ARG_TOOLS[toolName];
+	if (!meta || !rawArgs) return null;
+
+	try {
+		const parsed = JSON.parse(rawArgs);
+		if (parsed && typeof parsed === 'object') {
+			const code = (parsed as Record<string, unknown>)[meta.codeField];
+			if (typeof code === 'string' && code.length > 0) {
+				return { code, language: meta.language };
+			}
+		}
+		return null;
+	} catch {
+		// Fall through to partial-extract.
+	}
+
+	const code = partialExtractStringField(rawArgs, meta.codeField);
+	if (code === null || code.length === 0) return null;
+	return { code, language: meta.language };
+}
+
+function partialExtractStringField(args: string, field: string): string | null {
+	const key = `"${field}"`;
+	let i = args.indexOf(key);
+	if (i < 0) return null;
+	i += key.length;
+	// Skip whitespace + colon + whitespace
+	while (i < args.length && (args[i] === ' ' || args[i] === '\t' || args[i] === '\n')) i++;
+	if (args[i] !== ':') return null;
+	i++;
+	while (i < args.length && (args[i] === ' ' || args[i] === '\t' || args[i] === '\n')) i++;
+	if (args[i] !== '"') return null;
+	i++;
+
+	let out = '';
+	while (i < args.length) {
+		const c = args[i];
+		if (c === '\\') {
+			const next = args[i + 1];
+			if (next === undefined) break; // incomplete escape at end-of-stream
+			if (next === 'n') out += '\n';
+			else if (next === 't') out += '\t';
+			else if (next === 'r') out += '\r';
+			else if (next === '"') out += '"';
+			else if (next === '\\') out += '\\';
+			else if (next === '/') out += '/';
+			else if (next === 'b') out += '\b';
+			else if (next === 'f') out += '\f';
+			else if (next === 'u') {
+				if (i + 5 >= args.length) break;
+				const hex = args.slice(i + 2, i + 6);
+				if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+					// Malformed unicode escape — pass through to avoid a blank panel.
+					out += '\\u' + hex;
+				} else {
+					out += String.fromCharCode(parseInt(hex, 16));
+				}
+				i += 6;
+				continue;
+			} else {
+				// Unknown escape — pass the next char through so we don't
+				// lose data on a malformed token.
+				out += next;
+			}
+			i += 2;
+		} else if (c === '"') {
+			return out;
+		} else {
+			out += c;
+			i++;
+		}
+	}
+	return out;
+}

@@ -45,6 +45,7 @@ import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
+import { CODE_ARG_TOOLS } from '$lib/chat-render';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client.
@@ -58,16 +59,13 @@ const MAX_TOOL_LOOP_ITERATIONS = 5;
 const DEBUG = logLevel() === 'debug';
 
 /**
- * Tools whose primary argument is a code string we know the language of.
- * Used at persist time to pre-render the code through shiki so the
- * ToolCallBlock can display it as syntax-highlighted source instead of
- * a JSON blob. Map value is the markdown info-string (which shiki maps
- * to a grammar). Extend the table when adding more code-shaped tools.
+ * Server-side pre-render of a code-shaped tool's primary argument
+ * through shiki. CODE_ARG_TOOLS lives in `$lib/chat-render` so the
+ * streaming view can use the same table to pick out the code for its
+ * un-highlighted mid-stream `<pre>` rendering — keeps server and
+ * client in sync on which tools have code args and which language to
+ * render as.
  */
-const CODE_ARG_TOOLS: Record<string, { codeField: string; language: string }> = {
-	run_python: { codeField: 'code', language: 'python' },
-};
-
 async function maybeRenderCodeArg(toolName: string, rawArgs: string): Promise<string | null> {
 	const meta = CODE_ARG_TOOLS[toolName];
 	if (!meta) return null;

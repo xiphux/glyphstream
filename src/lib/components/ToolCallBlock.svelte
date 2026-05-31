@@ -13,7 +13,7 @@
 	import type { Snippet } from 'svelte';
 	import { Check, ShieldCheck, ShieldX } from '@lucide/svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
-	import type { ToolResultAttachment } from '$lib/chat-render';
+	import { extractCodeArg, type ToolResultAttachment } from '$lib/chat-render';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
@@ -83,6 +83,16 @@
 
 	const prettyArgs = $derived(prettyJson(argumentsJson));
 	const prettyResult = $derived(prettyJson(result));
+
+	// Streaming-tolerant code extraction. While the server hasn't yet
+	// produced argumentsHtml (mid-stream, or pre-shiki for whatever
+	// reason), if the tool is one whose primary argument is source
+	// code (today: run_python), pull just the code out of the partial
+	// JSON envelope so the user sees actual newlined source instead of
+	// a one-liner like `{"code":"import pandas\\nimport ..."}`. Returns
+	// null for non-code tools and for envelopes that don't yet contain
+	// the code field — those fall through to the JSON pretty-print.
+	const streamingCode = $derived(argumentsHtml ? null : extractCodeArg(toolName, argumentsJson));
 
 	// Collapsed by default when the call is done — tool details are
 	// metadata for the curious, not primary content. Auto-expanded
@@ -162,6 +172,23 @@
 				whitelisted before reaching the DOM.
 			-->
 			<div class="gs-prose text-xs">{@html argumentsHtml}</div>
+		{:else if streamingCode}
+			<!--
+				Mid-stream code rendering. We have the language but no
+				shiki on the client (it'd blow the bundle budget), so we
+				render as plain monospace with newlines preserved. When
+				the message finishes streaming and the server-rendered
+				argumentsHtml lands, it replaces this view with the
+				highlighted version. The little "Python" label hints that
+				this is source code, not a JSON arguments dump.
+			-->
+			<div>
+				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
+					{streamingCode.language}
+				</div>
+				<pre
+					class="overflow-x-auto whitespace-pre break-normal font-mono text-[11px] text-fg-secondary">{streamingCode.code}</pre>
+			</div>
 		{:else if prettyArgs}
 			<div>
 				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">

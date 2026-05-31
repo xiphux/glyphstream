@@ -4,6 +4,7 @@ import {
 	appendText,
 	buildToolResultsMap,
 	computeMergeFlags,
+	extractCodeArg,
 	filterVisibleMessages,
 	inFlightToBlocks,
 	markToolCallPendingApproval,
@@ -844,5 +845,90 @@ describe('computeMergeFlags', () => {
 			mergeWithPrev: false,
 			mergeWithNext: false,
 		});
+	});
+});
+
+describe('extractCodeArg — streaming-tolerant partial JSON extraction', () => {
+	it('returns null for unknown tools', () => {
+		expect(extractCodeArg('clock', '{"code":"print(1)"}')).toBeNull();
+		expect(extractCodeArg('fetch_url', '{"code":"anything"}')).toBeNull();
+	});
+
+	it('returns null for empty args', () => {
+		expect(extractCodeArg('run_python', '')).toBeNull();
+	});
+
+	it('extracts the code field + language from a complete JSON envelope', () => {
+		expect(extractCodeArg('run_python', '{"code":"print(1+1)"}')).toEqual({
+			code: 'print(1+1)',
+			language: 'python',
+		});
+	});
+
+	it('decodes standard escape sequences in the strict-parse path', () => {
+		// `\n` in the JSON should decode to a real newline; the same source
+		// rendered as JSON pretty-print would have shown `\n` literal.
+		expect(
+			extractCodeArg('run_python', '{"code":"import pandas as pd\\nimport numpy as np"}')?.code,
+		).toBe('import pandas as pd\nimport numpy as np');
+	});
+
+	it('handles mid-stream args with no closing brace yet', () => {
+		// Common case during streaming: the model has emitted the code
+		// field but the closing `"` + `}` haven't arrived. We should
+		// still show what we have.
+		expect(extractCodeArg('run_python', '{"code":"import pandas')?.code).toBe('import pandas');
+	});
+
+	it('handles mid-stream args with no closing string quote yet', () => {
+		// Similar — even shorter, mid-string. The string fragment should
+		// keep growing as more tokens arrive.
+		expect(extractCodeArg('run_python', '{"code":"def fib(n):\\n    if n')?.code).toBe(
+			'def fib(n):\n    if n',
+		);
+	});
+
+	it('returns null before the code field has started streaming', () => {
+		// Edge: model emitted just the opening brace + a different field
+		// before code. Nothing to render yet.
+		expect(extractCodeArg('run_python', '{')).toBeNull();
+		expect(extractCodeArg('run_python', '{"other":"x"')).toBeNull();
+	});
+
+	it('drops an incomplete escape sequence at the end of the buffer', () => {
+		// `\` at end-of-string would be an incomplete escape — the
+		// extractor stops at it rather than decoding garbage.
+		expect(extractCodeArg('run_python', '{"code":"a\\')?.code).toBe('a');
+	});
+
+	it('decodes \\uXXXX escapes when complete; stops at incomplete ones', () => {
+		expect(extractCodeArg('run_python', '{"code":"\\u00e9clair"}')?.code).toBe('éclair');
+		// Incomplete unicode escape (only 2 hex digits arrived) — stop.
+		expect(extractCodeArg('run_python', '{"code":"x\\u00')?.code).toBe('x');
+	});
+
+	it('handles whitespace between the colon and the value', () => {
+		// Models occasionally insert spaces. Strict JSON tolerates this
+		// at end-of-message; the partial path needs to too.
+		expect(extractCodeArg('run_python', '{"code" :   "ok')?.code).toBe('ok');
+	});
+
+	it('handles escaped quotes inside the code', () => {
+		expect(extractCodeArg('run_python', '{"code":"print(\\"hi\\")"}')?.code).toBe('print("hi")');
+	});
+
+	it('strict path treats empty-string code as absent', () => {
+		// A complete envelope with empty code isn't useful to render —
+		// returning null lets ToolCallBlock fall through to the JSON
+		// view, which says "{ \"code\": \"\" }" and at least makes the
+		// empty intent visible.
+		expect(extractCodeArg('run_python', '{"code":""}')).toBeNull();
+	});
+
+	it('returns null when the strict parse succeeds but the field is the wrong type', () => {
+		// Malformed model output — the field exists but isn't a string.
+		// Don't crash; fall through to the JSON view.
+		expect(extractCodeArg('run_python', '{"code":42}')).toBeNull();
+		expect(extractCodeArg('run_python', '{"code":null}')).toBeNull();
 	});
 });
