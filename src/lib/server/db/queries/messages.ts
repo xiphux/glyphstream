@@ -293,20 +293,36 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
  *
  * Caps at 100 hops as a safety bound against ill-formed cycles
  * (shouldn't exist, but a runaway walk would loop forever).
+ *
+ * Single skeleton fetch of (id, parent, role) for the whole conversation
+ * + in-memory walk. The N+1 form (one getMessage per hop) ran up to 100
+ * round-trips per retry click on long tool turns.
  */
 export function findUserMessageAncestor(
 	conversationId: string,
 	startMessageId: string,
 ): ChatMessage | null {
+	const db = getDb();
+	const rows = db
+		.select({
+			id: messages.id,
+			parentMessageId: messages.parentMessageId,
+			role: messages.role,
+		})
+		.from(messages)
+		.where(eq(messages.conversationId, conversationId))
+		.all();
+	const byId = new Map(rows.map((r) => [r.id, r]));
+
 	const seen = new Set<string>();
-	let cursor = getMessage(conversationId, startMessageId);
+	let cursor = byId.get(startMessageId);
 	for (let hops = 0; hops < 100; hops++) {
 		if (!cursor) return null;
-		if (cursor.role === 'user') return cursor;
+		if (cursor.role === 'user') return getMessage(conversationId, cursor.id);
 		if (!cursor.parentMessageId) return null;
 		if (seen.has(cursor.parentMessageId)) return null; // cycle guard
 		seen.add(cursor.parentMessageId);
-		cursor = getMessage(conversationId, cursor.parentMessageId);
+		cursor = byId.get(cursor.parentMessageId);
 	}
 	return null;
 }
