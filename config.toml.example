@@ -170,3 +170,25 @@
 # vapid_public = "BPI...your-base64url-public-key..."
 # vapid_private_env = "VAPID_PRIVATE_KEY"
 # vapid_subject = "mailto:admin@example.com"
+
+# Optional: server-side Pyodide code interpreter (the `run_python` tool).
+# Pyodide runs in node:worker_threads — one worker per active conversation,
+# idle-reaped after `idle_timeout_seconds`, with a wall-clock per-call cap
+# and a V8 heap cap per worker. The whole block is optional; omit it to
+# accept the defaults shown below, or set `enabled = false` to ship the
+# binary without the tool registered.
+#
+# Python's network access (pyodide.http.pyfetch, urllib, requests,
+# micropip) is intercepted by a global fetch shim that applies the same
+# SSRF + configured-backend block as the fetch_url tool, AND honors the
+# per-conversation `web` feature toggle — disabling `web` for the
+# conversation also blocks Python network calls (including micropip),
+# so the model can't end-around the toggle via Pyodide.
+#
+# [code_interpreter]
+# enabled = true                  # master switch
+# pool_max = 10                   # max concurrent live workers
+# idle_timeout_seconds = 300      # 5 min of inactivity → worker reaped
+# call_timeout_seconds = 30       # wall-clock per call → terminate on overrun
+# worker_memory_mb = 512          # V8 old-space cap per worker
+# # pyodide_index_url = ""        # leave empty to resolve from node_modules

@@ -37,6 +37,7 @@
 		"drizzle-orm": "^0.45.2",
 		"linkedom": "^0.18.12",
 		"markdown-it": "^14.2.0",
+		"pyodide": "^0.29.4",
 		"sharp": "^0.34.5",
 		"shiki": "^4.1.0",
 		"smol-toml": "^1.6.1",
