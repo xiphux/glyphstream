@@ -99,6 +99,13 @@
       "when": 1780238445962,
       "tag": "0013_parched_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1780266174712,
+      "tag": "0014_skinny_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

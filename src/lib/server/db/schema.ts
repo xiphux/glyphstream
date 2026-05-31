@@ -291,5 +291,13 @@ export const messageMedia = sqliteTable(
 			.notNull()
 			.references(() => media.id, { onDelete: 'cascade' }),
 	},
-	(t) => [primaryKey({ columns: [t.messageId, t.mediaId] })],
+	(t) => [
+		primaryKey({ columns: [t.messageId, t.mediaId] }),
+		// The PK covers (message_id, media_id) lookups, but the reverse
+		// direction — "which messages reference this media?" — is hot too:
+		// listConversationsForMedia, countOrphanMediaInConversation, and the
+		// orphan-detection passes all filter on media_id alone. Without this
+		// index, those queries scan the whole join table.
+		index('idx_message_media_media_id').on(t.mediaId),
+	],
 );

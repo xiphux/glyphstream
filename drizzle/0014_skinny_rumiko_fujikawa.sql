@@ -1,0 +1,1 @@
+CREATE INDEX `idx_message_media_media_id` ON `message_media` (`media_id`);
