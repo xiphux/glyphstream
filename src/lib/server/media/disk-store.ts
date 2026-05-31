@@ -31,6 +31,25 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 	'video/mp4': 'mp4',
 	'video/webm': 'webm',
 	'video/quicktime': 'mov',
+	// Document / data kinds — relevant once the composer accepts non-image
+	// uploads (for the code interpreter) and the interpreter writes files
+	// back to the conversation. The stored extension only affects the
+	// on-disk filename; the served Content-Type comes from the media row,
+	// so consumers see the original type even if the extension fell back
+	// to 'bin'. Keep this list focused on what the composer actively
+	// solicits — unknowns fall through to 'bin' rather than guessing wrong.
+	'text/plain': 'txt',
+	'text/csv': 'csv',
+	'text/markdown': 'md',
+	'application/json': 'json',
+	'application/pdf': 'pdf',
+	'application/zip': 'zip',
+	'application/vnd.ms-excel': 'xls',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+	'application/msword': 'doc',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+	'application/vnd.ms-powerpoint': 'ppt',
+	'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
 };
 
 function extFor(contentType: string): string {

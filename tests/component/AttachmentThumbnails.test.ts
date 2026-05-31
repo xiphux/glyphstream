@@ -22,6 +22,8 @@ function makeItem(overrides: Partial<AttachedItem> = {}): AttachedItem {
 		objectUrl: overrides.objectUrl ?? 'blob:http://localhost/abc-123',
 		contentType: overrides.contentType ?? 'image/png',
 		byteSize: overrides.byteSize ?? 12345,
+		kind: overrides.kind ?? 'image',
+		filename: overrides.filename,
 		status: overrides.status ?? 'ready',
 		error: overrides.error,
 	};

@@ -95,12 +95,12 @@ describe('ChatComposer — rendering', () => {
 
 	it('shows the attach button when allowAttachments', () => {
 		render(ChatComposer, { props: baseProps() });
-		expect(screen.getByRole('button', { name: 'Attach image' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Attach file' })).toBeInTheDocument();
 	});
 
 	it('hides the attach button when not allowAttachments', () => {
 		render(ChatComposer, { props: baseProps({ allowAttachments: false }) });
-		expect(screen.queryByRole('button', { name: 'Attach image' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Attach file' })).toBeNull();
 	});
 
 	it('renders the model picker trigger', () => {

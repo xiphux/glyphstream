@@ -72,6 +72,27 @@ describe('media: insert + ref counting', () => {
 		expect(getRow(id)?.origin).toBe('generated');
 	});
 
+	it('insertMedia round-trips originalFilename on file-kind rows', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id, {
+			kind: 'file',
+			contentType: 'text/csv',
+			storagePath: 'ab/cd/test.csv',
+			sourceModel: null,
+			origin: 'uploaded',
+			originalFilename: 'Q4-budget.csv',
+		});
+		expect(getRow(id)?.originalFilename).toBe('Q4-budget.csv');
+	});
+
+	it('insertMedia defaults originalFilename to null when not supplied', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		// Legacy / generated rows don't have an original filename — null is
+		// the documented sentinel that drives the chip's fallback label.
+		expect(getRow(id)?.originalFilename).toBeNull();
+	});
+
 	it('uploaded origin starts purge-candidate (unreferencedSince=now)', () => {
 		const u = seedUser();
 		const before = Date.now();
@@ -297,6 +318,50 @@ describe('listMediaForUser', () => {
 		makeMedia(u.id, { origin: 'uploaded' });
 		const list = listMediaForUser(u.id);
 		expect(list.items).toHaveLength(1);
+	});
+
+	// File-kind rows are AI-generated artifacts (e.g. code interpreter
+	// outputs) or user uploads (xlsx/pdf/...). Neither belongs in the
+	// gallery UI — that's for visual library content. The default
+	// kind filter on listMediaForUser is the load-bearing piece that
+	// keeps them out across every gallery caller.
+	it('default kinds filter excludes kind: "file" — never leaks into gallery', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id, { kind: 'image' });
+		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		makeMedia(u.id, {
+			kind: 'file',
+			contentType: 'text/csv',
+			sourceModel: 'run_python',
+		});
+		const list = listMediaForUser(u.id);
+		const ids = list.items.map((i) => i.id).sort();
+		expect(ids).toEqual([img.id, vid.id].sort());
+	});
+
+	it('opts.kinds opt-in surfaces file rows for callers that want the full set', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id, { kind: 'image' });
+		const file = makeMedia(u.id, {
+			kind: 'file',
+			contentType: 'text/csv',
+			sourceModel: 'run_python',
+		});
+		const list = listMediaForUser(u.id, { kinds: ['image', 'video', 'file'] });
+		const ids = list.items.map((i) => i.id).sort();
+		expect(ids).toEqual([img.id, file.id].sort());
+	});
+
+	it('opts.kinds with a single kind narrows correctly', () => {
+		const u = seedUser();
+		makeMedia(u.id, { kind: 'image' });
+		const file = makeMedia(u.id, {
+			kind: 'file',
+			contentType: 'application/pdf',
+			sourceModel: 'run_python',
+		});
+		const list = listMediaForUser(u.id, { kinds: ['file'] });
+		expect(list.items.map((i) => i.id)).toEqual([file.id]);
 	});
 });
 

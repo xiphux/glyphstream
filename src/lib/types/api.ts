@@ -214,6 +214,19 @@ export type MessagePart =
 	| { type: 'text'; text: string }
 	| { type: 'image'; mediaId: string; alt?: string }
 	| { type: 'video'; mediaId: string }
+	| {
+			// A non-image, non-video file attachment (xlsx, csv, pdf, json, ...).
+			// Rendered as a download chip (filename + size + icon), not inline.
+			// `filename` and `byteSize` are denormalized off the `media` row
+			// at persist time so the renderer can draw the chip without a
+			// per-message media lookup. The chip's download href still
+			// resolves to /api/media/{mediaId}/content — `filename` is
+			// purely the display label / `download` attribute hint.
+			type: 'file';
+			mediaId: string;
+			filename: string;
+			byteSize: number;
+	  }
 	| { type: 'reasoning'; text: string }
 	| { type: 'tool_call'; toolCallId: string; toolName: string; arguments: string }
 	| {

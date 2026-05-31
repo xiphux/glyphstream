@@ -20,7 +20,9 @@ export interface MediaStoredRef {
 export interface MediaPutInput {
 	bytes: Buffer;
 	contentType: string;
-	kind: 'image' | 'video';
+	/** 'file' covers anything non-AV — xlsx, csv, pdf, etc. — used for
+	 *  user attachments and code-interpreter-generated artifacts. */
+	kind: 'image' | 'video' | 'file';
 }
 
 /** What `open()` returns — body + status info for serving the bytes. */

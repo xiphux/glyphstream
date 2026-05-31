@@ -115,15 +115,55 @@ async function encodeJpeg(
 	return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
+export type AttachmentKind = 'image' | 'video' | 'file';
+
+/**
+ * `accept` attribute string for the composer's hidden file input. Lists
+ * the same MIME types the server-side upload endpoint accepts (see
+ * `src/routes/api/uploads/+server.ts`). Keep the two lists in sync — a
+ * drift in either direction surfaces as either "user picks a file the
+ * server rejects" (annoying but recoverable) or "the picker hides
+ * something the server would accept" (silent feature gap).
+ *
+ * `image/\*` plus an enumerated document/data set; not a wildcard,
+ * since the server's allowlist is enumerated too and we'd rather the
+ * picker hide unsupported types than let users pick a `.dmg` that
+ * gets rejected on upload.
+ */
+export const ATTACHMENT_ACCEPT = [
+	'image/*',
+	'text/plain',
+	'text/csv',
+	'text/markdown',
+	'application/json',
+	'application/pdf',
+	'application/zip',
+	'application/vnd.ms-excel',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+	'application/msword',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'application/vnd.ms-powerpoint',
+	'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+].join(',');
+
 export interface AttachedItem {
 	/** Stable client-side id for keyed list rendering + bookkeeping. */
 	clientId: string;
 	/** Server-side media id once /api/uploads responds. Null while uploading. */
 	mediaId: string | null;
-	/** Local blob URL for the thumbnail. Revoked on remove + on store destroy. */
+	/** Local blob URL for the thumbnail (or server-side URL for the
+	 *  preview-less file kinds). Revoked on remove + on store destroy. */
 	objectUrl: string;
 	contentType: string;
 	byteSize: number;
+	/** Kind of attachment — drives whether to render a thumbnail or a
+	 *  download chip. 'image' is the legacy case; 'file' covers xlsx /
+	 *  pdf / csv / etc.; 'video' is reserved for future use (video
+	 *  upload UI doesn't exist yet but the type is honest). */
+	kind: AttachmentKind;
+	/** Original on-disk filename (only set for `kind: 'file'`). The chip
+	 *  UI uses this as its display label. */
+	filename?: string | null;
 	status: 'uploading' | 'ready' | 'error';
 	error?: string;
 }
@@ -132,7 +172,8 @@ interface UploadResponse {
 	id: string;
 	contentType: string;
 	byteSize: number;
-	kind: 'image';
+	kind: AttachmentKind;
+	originalFilename?: string | null;
 }
 
 export class AttachmentStore {
@@ -199,28 +240,34 @@ export class AttachmentStore {
 				objectUrl: `/api/media/${mediaId}/content`,
 				contentType: opts.contentType ?? 'image/*',
 				byteSize: opts.byteSize ?? 0,
+				kind: 'image',
 				status: 'ready',
 			},
 		];
 	}
 
 	private async addOne(file: File): Promise<void> {
-		// Soft-skip non-images. The hidden input has accept="image/*" but
-		// drag-drop and paste paths can drop arbitrary types — better to
-		// quietly ignore than to surface an error for every PDF that
-		// crosses the drop zone.
-		if (!file.type.startsWith('image/')) return;
+		// Determine the upload kind from MIME prefix. Drag-drop and paste
+		// paths can drop arbitrary types; if it's not image/video/known-
+		// document, soft-skip (better than surfacing an error for every
+		// stray file that crosses the drop zone).
+		const isImage = file.type.startsWith('image/');
+		const isVideo = file.type.startsWith('video/');
+		const kind: AttachmentKind = isImage ? 'image' : isVideo ? 'video' : 'file';
 
-		// Resize before creating the UI item so the thumbnail's objectUrl
-		// and the byteSize match what's actually being uploaded. The
-		// resize is bounded by image decode + canvas draw — typically
-		// <300ms even on a slow phone for a multi-MB photo. If a future
-		// us cares about showing progress here, the move would be to
-		// push a "decoding" status item first then swap it for the
-		// resized version.
-		const uploadFile = await maybeResize(file);
+		// Resize (image-only). Skipped for video and document kinds — they
+		// shouldn't be transformed in the browser. Image resize is bounded
+		// by image decode + canvas draw — typically <300ms even on a slow
+		// phone for a multi-MB photo. If a future us cares about showing
+		// progress here, the move would be to push a "decoding" status
+		// item first then swap it for the resized version.
+		const uploadFile = isImage ? await maybeResize(file) : file;
 
 		const clientId = crypto.randomUUID();
+		// For file kinds we don't render a thumbnail, but createObjectURL
+		// is still harmless and gives us a no-op handle to revoke
+		// uniformly on remove(). The chip UI ignores objectUrl for
+		// `kind: 'file'`.
 		const objectUrl = URL.createObjectURL(uploadFile);
 		const initial: AttachedItem = {
 			clientId,
@@ -228,6 +275,8 @@ export class AttachmentStore {
 			objectUrl,
 			contentType: uploadFile.type,
 			byteSize: uploadFile.size,
+			kind,
+			filename: kind === 'file' ? uploadFile.name : null,
 			status: 'uploading',
 		};
 		this.items = [...this.items, initial];
@@ -251,7 +300,15 @@ export class AttachmentStore {
 			}
 			const body = (await res.json()) as UploadResponse;
 			this.items = this.items.map((it) =>
-				it.clientId === clientId ? { ...it, mediaId: body.id, status: 'ready' as const } : it,
+				it.clientId === clientId
+					? {
+							...it,
+							mediaId: body.id,
+							kind: body.kind,
+							filename: body.originalFilename ?? it.filename ?? null,
+							status: 'ready' as const,
+						}
+					: it,
 			);
 		} catch (e) {
 			this.items = this.items.map((it) =>

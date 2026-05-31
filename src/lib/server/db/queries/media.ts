@@ -3,12 +3,17 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from
 import { getDb } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
 
+/** Union of valid `media.kind` values. 'file' covers anything that
+ *  isn't natively image/video (xlsx, csv, pdf, json, txt, ...) — used
+ *  for user attachments and code-interpreter outputs. */
+export type MediaKind = 'image' | 'video' | 'file';
+
 export interface MediaInsertInput {
 	userId: string;
 	storagePath: string;
 	contentType: string;
 	byteSize: number;
-	kind: 'image' | 'video';
+	kind: MediaKind;
 	sourceEndpointId: string | null;
 	sourceModel: string | null;
 	/** Truncated preview (~500 chars) for space-constrained surfaces. */
@@ -24,6 +29,13 @@ export interface MediaInsertInput {
 	 * never actually sent.
 	 */
 	origin?: 'generated' | 'uploaded';
+	/**
+	 * Original on-disk filename from the upload, e.g. "Q4-budget.xlsx".
+	 * Null for legacy rows and AI-generated images/videos. Lets the code
+	 * interpreter mount the file under its real name and the attachment
+	 * chip surface it as the display label.
+	 */
+	originalFilename?: string | null;
 }
 
 /** Insert a fresh media row (ref_count = 0; caller links it via linkMessageMedia). */
@@ -45,6 +57,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			sourceModel: input.sourceModel,
 			promptExcerpt: input.promptExcerpt,
 			promptFull: input.promptFull ?? null,
+			originalFilename: input.originalFilename ?? null,
 			createdAt: now,
 			refCount: 0,
 			// Uploads start in the "candidate for purge" state — if the user
@@ -88,7 +101,8 @@ export function getMediaForUser(
 	storagePath: string;
 	contentType: string;
 	byteSize: number;
-	kind: 'image' | 'video';
+	kind: MediaKind;
+	originalFilename: string | null;
 	hardDeletedAt: number | null;
 } | null {
 	const db = getDb();
@@ -99,6 +113,7 @@ export function getMediaForUser(
 			contentType: media.contentType,
 			byteSize: media.byteSize,
 			kind: media.kind,
+			originalFilename: media.originalFilename,
 			hardDeletedAt: media.hardDeletedAt,
 		})
 		.from(media)
@@ -139,7 +154,7 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 
 export interface MediaListItem {
 	id: string;
-	kind: 'image' | 'video';
+	kind: MediaKind;
 	contentType: string;
 	byteSize: number;
 	sourceEndpointId: string | null;
@@ -169,7 +184,21 @@ export interface MediaListResult {
  */
 export function listMediaForUser(
 	userId: string,
-	opts: { kind?: 'image' | 'video'; cursor?: string | null; limit?: number } = {},
+	opts: {
+		kind?: 'image' | 'video';
+		/**
+		 * Explicit kinds-allowlist. When omitted, defaults to
+		 * `['image', 'video']` so file-kind rows never leak into the
+		 * gallery UI; explicit callers (admin tooling, future browse-
+		 * by-conversation surfaces) can pass `['image', 'video', 'file']`
+		 * if they want the full set. Mutually exclusive with `kind`
+		 * (which is a single-value convenience for the gallery's
+		 * `?kind=image` / `?kind=video` filter param).
+		 */
+		kinds?: readonly MediaKind[];
+		cursor?: string | null;
+		limit?: number;
+	} = {},
 ): MediaListResult {
 	const db = getDb();
 	const limit = Math.max(1, Math.min(opts.limit ?? 60, 200));
@@ -185,13 +214,24 @@ export function listMediaForUser(
 		return or(lt(media.createdAt, at), and(eq(media.createdAt, at), lt(media.id, cId)));
 	})();
 
+	// Default to image+video only. Adding `kind: 'file'` to the schema
+	// means an unfiltered `listMediaForUser` would suddenly surface
+	// xlsx/pdf attachments in the gallery; pin the default so that
+	// change to the schema is silent and explicit at every call site
+	// that wants the wider set.
+	const allowedKinds: readonly MediaKind[] = opts.kind
+		? [opts.kind]
+		: (opts.kinds ?? ['image', 'video']);
+
 	const conditions = [
 		eq(media.userId, userId),
 		isNull(media.hardDeletedAt),
 		// Gallery is "what the AI made" — exclude user-supplied attachments
 		// even though they live in the same table for ref-counting reasons.
 		eq(media.origin, 'generated'),
-		opts.kind ? eq(media.kind, opts.kind) : undefined,
+		allowedKinds.length === 1
+			? eq(media.kind, allowedKinds[0])
+			: inArray(media.kind, allowedKinds as MediaKind[]),
 		cursorWhere,
 	].filter(Boolean) as Parameters<typeof and>[number][];
 
@@ -430,15 +470,24 @@ export function countOrphanMediaInConversation(
 	const orphans = collectOrphanGeneratedMediaIds(rows);
 
 	// First-seen kind per media, to split the orphan set into image/video.
-	const kindOf = new Map<string, 'image' | 'video'>();
+	// `kind: 'file'` rows (xlsx, csv, code-interpreter outputs, ...) are
+	// deliberately excluded from the count — the delete-conversation modal
+	// surfaces "X images, Y videos" as visual library housekeeping, and
+	// file attachments don't share that mental model. They still get
+	// orphan-reaped via the normal cascade; the user just isn't prompted
+	// about them. Revisit if users start asking "where did my generated
+	// CSVs go after I deleted that chat."
+	const kindOf = new Map<string, MediaKind>();
 	for (const r of rows) {
 		if (!kindOf.has(r.mediaId)) kindOf.set(r.mediaId, r.kind);
 	}
 	let images = 0;
 	let videos = 0;
 	for (const mediaId of orphans) {
-		if (kindOf.get(mediaId) === 'image') images++;
-		else videos++;
+		const k = kindOf.get(mediaId);
+		if (k === 'image') images++;
+		else if (k === 'video') videos++;
+		// kind === 'file': intentionally not counted; see comment above.
 	}
 	return { images, videos };
 }

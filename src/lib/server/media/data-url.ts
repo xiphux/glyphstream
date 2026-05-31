@@ -27,11 +27,23 @@ export interface LoadedMediaBytes {
 /**
  * Load a stored media row's bytes off disk after verifying ownership.
  * Used by both the vision-chat data-URL path and the I2I multipart path.
+ *
+ * Refuses `kind: 'file'` rows — those are user/file-attachment uploads
+ * (xlsx, csv, pdf, ...) that mean nothing as image-inputs to the vision
+ * model. The code interpreter has its own materialization path through
+ * the MediaStore; routing files into a vision-shaped data URL would
+ * either confuse the upstream or expose the bytes of an internal
+ * document to a model that can't read them.
  */
 export async function loadMediaBytes(mediaId: string, userId: string): Promise<LoadedMediaBytes> {
 	const row = getMediaForUser(mediaId, userId);
 	if (!row) throw new Error(`Media ${mediaId} not found for user`);
 	if (row.hardDeletedAt !== null) throw new Error(`Media ${mediaId} has been deleted`);
+	if (row.kind !== 'image' && row.kind !== 'video') {
+		throw new Error(
+			`Media ${mediaId} has kind '${row.kind}'; only image/video can be inlined as data URLs`,
+		);
+	}
 	const fullPath = resolve(mediaDir(), row.storagePath);
 	const bytes = await readFile(fullPath);
 	return { bytes, contentType: row.contentType, kind: row.kind };

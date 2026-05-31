@@ -222,7 +222,19 @@ export const media = sqliteTable(
 		storagePath: text('storage_path').notNull().unique(),
 		contentType: text('content_type').notNull(),
 		byteSize: integer('byte_size').notNull(),
-		kind: text('kind', { enum: ['image', 'video'] }).notNull(),
+		// 'file' covers anything that isn't an image or video — xlsx, csv,
+		// pdf, json, txt, etc. — which the user can attach as analyzable
+		// input for the code interpreter (or for a text model to reason
+		// about the filename). Gallery queries default-filter to
+		// ('image', 'video') so file kinds never leak into the visual
+		// library UI; see `listMediaForUser`.
+		kind: text('kind', { enum: ['image', 'video', 'file'] }).notNull(),
+		// Original filename from the upload (e.g. "Q4-budget.xlsx"). Null
+		// for legacy rows and for AI-generated images/videos where the
+		// concept doesn't apply. Used by the code interpreter to mount
+		// the file under its original name in the worker's virtual FS,
+		// and by the attachment-chip UI as the display label.
+		originalFilename: text('original_filename'),
 		// Where this asset came from. 'generated' = produced by an upstream
 		// model; 'uploaded' = sent by the user as a chat attachment. Same
 		// storage + ref-counting; the gallery filters on this so user

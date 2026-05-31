@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
 
 	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
@@ -39,7 +40,9 @@
 
 	function blockKey(b: RenderBlock, i: number): string {
 		if (b.type === 'tool_call') return 'tool_call:' + b.toolCallId;
-		if (b.type === 'image' || b.type === 'video') return b.type + ':' + b.mediaId;
+		if (b.type === 'image' || b.type === 'video' || b.type === 'file') {
+			return b.type + ':' + b.mediaId;
+		}
 		return b.type + ':' + i;
 	}
 </script>
@@ -97,5 +100,13 @@
 			controls
 			class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"
 		></video>
+	{:else if block.type === 'file'}
+		<div class="mt-2">
+			<FileAttachmentChip
+				filename={block.filename}
+				byteSize={block.byteSize}
+				href={`/api/media/${block.mediaId}/content`}
+			/>
+		</div>
 	{/if}
 {/each}

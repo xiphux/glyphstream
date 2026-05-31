@@ -1,7 +1,7 @@
 /**
  * POST /api/uploads
  *
- * Accepts a multipart upload of a single image and stores it via MediaStore
+ * Accepts a multipart upload of a single file and stores it via MediaStore
  * + a `media` row with `origin = 'uploaded'`. Returns the new media id so
  * the client can stash it alongside any composer state and forward it on
  * the next message-send call.
@@ -13,9 +13,13 @@
  * the existing media purger — uploads are stamped with `unreferenced_since
  * = now` on insert, so abandoned uploads are swept after the grace period.
  *
- * v1 scope is image-only (no video uploads, no documents). The upstream
- * paths that consume attachments — vision chat, image edits, video
- * input_reference — all want images.
+ * Scope: images, videos (vision / image-edit / video-input-reference
+ * pipelines), and documents (xlsx, csv, pdf, json, txt, ...) for the
+ * code-interpreter pipeline. The `kind` column on the media row is
+ * derived from the Content-Type prefix so downstream consumers can route
+ * by it without re-parsing the MIME. Non-image uploads also capture the
+ * user's original `file.name` so the code interpreter mounts them under
+ * a sensible filename and the attachment chip can label them clearly.
  */
 
 import { Buffer } from 'node:buffer';
@@ -23,10 +27,8 @@ import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { insertMedia } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
+import { classifyUpload } from '$lib/server/uploads/classify';
 import type { RequestHandler } from './$types';
-
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-const ALLOWED_PREFIXES = ['image/'] as const;
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
@@ -58,12 +60,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const contentType = file.type || 'application/octet-stream';
-	if (!ALLOWED_PREFIXES.some((p) => contentType.startsWith(p))) {
+	const classification = classifyUpload(contentType);
+	if (!classification) {
 		throw error(415, `Unsupported content type: ${contentType}`);
 	}
 
-	if (file.size > MAX_UPLOAD_BYTES) {
-		throw error(413, `File too large (${file.size} bytes; max ${MAX_UPLOAD_BYTES})`);
+	if (file.size > classification.maxBytes) {
+		throw error(413, `File too large (${file.size} bytes; max ${classification.maxBytes})`);
 	}
 
 	// `file.size` is reliable but `file.arrayBuffer()` may yield zero bytes
@@ -74,24 +77,35 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const store = getMediaStore();
-	const ref = await store.put({ bytes, contentType, kind: 'image' });
+	const ref = await store.put({ bytes, contentType, kind: classification.kind });
+
+	// Only stash the original filename for non-AV kinds where it carries
+	// meaning. AV uploads display by content type / thumbnail and the
+	// filename is noise; keeping it null there avoids surfacing
+	// "IMG_2412.heic" on every photo.
+	const originalFilename =
+		classification.kind === 'file' && typeof file.name === 'string' && file.name.length > 0
+			? file.name
+			: null;
 
 	const { id } = insertMedia({
 		userId: locals.user.id,
 		storagePath: ref.storagePath,
 		contentType: ref.contentType,
 		byteSize: ref.byteSize,
-		kind: 'image',
+		kind: classification.kind,
 		sourceEndpointId: null,
 		sourceModel: null,
 		promptExcerpt: null,
 		origin: 'uploaded',
+		originalFilename,
 	});
 
 	return json({
 		id,
 		contentType: ref.contentType,
 		byteSize: ref.byteSize,
-		kind: 'image' as const,
+		kind: classification.kind,
+		originalFilename,
 	});
 };

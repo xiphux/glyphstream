@@ -110,12 +110,12 @@ describe('ComposerCore — submit routing', () => {
 describe('ComposerCore — attachments', () => {
 	it('shows the attach button when allowAttachments', () => {
 		render(ComposerCore, { props: baseProps() });
-		expect(screen.getByRole('button', { name: 'Attach image' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Attach file' })).toBeInTheDocument();
 	});
 
 	it('hides the attach button when not allowAttachments', () => {
 		render(ComposerCore, { props: baseProps({ allowAttachments: false }) });
-		expect(screen.queryByRole('button', { name: 'Attach image' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Attach file' })).toBeNull();
 	});
 
 	it('adds picked files to the attachment store', async () => {

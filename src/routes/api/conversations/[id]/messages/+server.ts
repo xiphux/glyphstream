@@ -156,11 +156,22 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// Validate every attached media id belongs to this user and isn't
 		// hard-deleted before we persist anything — so a tampered request
 		// can't land an unowned-media reference on a real conversation row.
+		// We also stash the loaded rows (keyed by id) so the part-building
+		// step below can route by kind without a second DB roundtrip.
+		const attachedMediaById = new Map<
+			string,
+			{ kind: 'image' | 'video' | 'file'; byteSize: number; originalFilename: string | null }
+		>();
 		for (const mid of attachedMediaIds) {
 			const m = getMediaForUser(mid, locals.user.id);
 			if (!m || m.hardDeletedAt !== null) {
 				throw error(400, `Attached media "${mid}" not found`);
 			}
+			attachedMediaById.set(mid, {
+				kind: m.kind,
+				byteSize: m.byteSize,
+				originalFilename: m.originalFilename,
+			});
 		}
 
 		// Resolve the parent for the new user message. See
@@ -185,13 +196,31 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
 		// Persist user message + auto-title BEFORE upstream call so even if
 		// the upstream fails the user's input is preserved on the active
-		// branch. Image parts come after the text part so the UI renders
-		// text-then-images (the natural reading order of "<words>; here
-		// are the pictures").
+		// branch. Image/video/file parts come after the text part so the
+		// UI renders text-then-attachments (the natural reading order of
+		// "<words>; here are the pictures / here's the spreadsheet"). The
+		// part type is derived from the media's `kind` — file kinds get a
+		// download-chip part with denormalized filename + size so the
+		// renderer needs no media lookup at draw time.
 		const userParts: MessagePart[] = [];
 		if (text) userParts.push({ type: 'text', text });
 		for (const mid of attachedMediaIds) {
-			userParts.push({ type: 'image', mediaId: mid });
+			const m = attachedMediaById.get(mid)!;
+			if (m.kind === 'image') {
+				userParts.push({ type: 'image', mediaId: mid });
+			} else if (m.kind === 'video') {
+				userParts.push({ type: 'video', mediaId: mid });
+			} else {
+				userParts.push({
+					type: 'file',
+					mediaId: mid,
+					// Fall back to the media id when an upload pre-dates the
+					// original_filename column (legacy rows) — at least the
+					// chip won't render with an empty label.
+					filename: m.originalFilename ?? mid,
+					byteSize: m.byteSize,
+				});
+			}
 		}
 		userMessage = appendMessage({
 			conversationId: params.id,

@@ -39,12 +39,12 @@ describe('EditMessageForm — rendering', () => {
 
 	it('shows the attach button when allowAttachments', () => {
 		render(EditMessageForm, { props: { ...base, editText: 'x' } });
-		expect(screen.getByRole('button', { name: 'Attach image' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Attach file' })).toBeInTheDocument();
 	});
 
 	it('hides the attach button when not allowAttachments', () => {
 		render(EditMessageForm, { props: { ...base, allowAttachments: false, editText: 'x' } });
-		expect(screen.queryByRole('button', { name: 'Attach image' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Attach file' })).toBeNull();
 	});
 
 	it('focuses the textarea on mount', async () => {

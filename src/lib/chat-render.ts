@@ -39,7 +39,13 @@ export type RenderBlock =
 			status: 'executing' | 'done' | 'error' | 'pending_approval';
 	  }
 	| { type: 'image'; mediaId: string; alt?: string }
-	| { type: 'video'; mediaId: string };
+	| { type: 'video'; mediaId: string }
+	/** Non-image, non-video media attachment (xlsx/csv/pdf/json/...) —
+	 *  rendered as a download chip rather than inline. Filename + size
+	 *  are denormalized off the media row at persist time so the
+	 *  renderer needs no lookup; the download link still points at
+	 *  /api/media/{id}/content. */
+	| { type: 'file'; mediaId: string; filename: string; byteSize: number };
 
 // --- in-flight segments -------------------------------------------------
 //
@@ -260,6 +266,13 @@ function partToBlock(
 			return { type: 'image', mediaId: p.mediaId, alt: p.alt };
 		case 'video':
 			return { type: 'video', mediaId: p.mediaId };
+		case 'file':
+			return {
+				type: 'file',
+				mediaId: p.mediaId,
+				filename: p.filename,
+				byteSize: p.byteSize,
+			};
 		case 'reasoning':
 			// reasoning parts (future): folded into the message-level
 			// reasoning block at the top, not re-rendered inline

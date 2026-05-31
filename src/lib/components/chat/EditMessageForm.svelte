@@ -15,7 +15,7 @@
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import { autoResizeTextarea } from '$lib/composer';
 	import { composerEnterHandler } from '$lib/composer-keys';
-	import type { AttachmentStore } from '$lib/attachments.svelte';
+	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
 	import type { EnterBehavior } from '$lib/types/api';
 
 	interface Props {
@@ -85,7 +85,7 @@
 			<input
 				bind:this={fileInputEl}
 				type="file"
-				accept="image/*"
+				accept={ATTACHMENT_ACCEPT}
 				multiple
 				class="hidden"
 				onchange={(e) => {
@@ -99,8 +99,8 @@
 			<button
 				type="button"
 				onclick={() => fileInputEl?.click()}
-				aria-label="Attach image"
-				title="Attach image"
+				aria-label="Attach file"
+				title="Attach file"
 				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary"
 			>
 				<Plus size={18} strokeWidth={2.25} />
