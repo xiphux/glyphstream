@@ -44,7 +44,13 @@ import type {
 
 const DEBUG = logLevel() === 'debug';
 
-const POLL_INTERVAL_MS = 1500;
+// Polling cadence: starts tight so the first status flip surfaces fast,
+// then backs off by 50% per tick to a 3s ceiling so a 10-minute job
+// doesn't burn 400 requests at 1.5s each. 3s is the user-perceived
+// ceiling — past that the progress bar starts to feel stuck even when
+// the job is still running cleanly.
+const MIN_POLL_INTERVAL_MS = 1500;
+const MAX_POLL_INTERVAL_MS = 3000;
 const MAX_WAIT_MS = 20 * 60_000; // 20 minutes — generous; rate-limited by upstream timeouts anyway
 // Shorter than the chat-stream budget because the video title task
 // starts when the *video job is created*, not when it finishes — so it's
@@ -145,6 +151,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				emitProgress(safeWrite, job);
 
 				const startedAt = Date.now();
+				let pollInterval = MIN_POLL_INTERVAL_MS;
 				while (job.status !== 'completed' && job.status !== 'failed') {
 					// User clicked Stop — release the bridge slot via DELETE and
 					// emit a cancellation error to the client. We don't persist
@@ -164,7 +171,8 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						safeClose();
 						return;
 					}
-					await sleep(POLL_INTERVAL_MS);
+					await sleep(pollInterval);
+					pollInterval = Math.min(Math.floor(pollInterval * 1.5), MAX_POLL_INTERVAL_MS);
 					try {
 						job = await videoStatus(params.endpoint, job.id);
 						if (DEBUG)
