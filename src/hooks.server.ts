@@ -52,9 +52,9 @@ const STATE_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  *    in svelte.config.js) is the modern enforcement; this header is
  *    just for older user-agents that don't honor `frame-ancestors`.
  *
- * Not set here: HSTS. TLS termination happens at the Synology reverse
- * proxy in the canonical deployment, so HSTS belongs on the proxy where
- * the operator picks the max-age + preload posture.
+ * Not set here: HSTS. TLS termination is expected to happen at a
+ * reverse proxy in front of the Node process, so HSTS belongs there
+ * where the operator picks the max-age + preload posture.
  */
 const SECURITY_HEADERS: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
