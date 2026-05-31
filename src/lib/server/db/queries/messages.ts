@@ -94,13 +94,17 @@ export function updateMessageParts(
 /**
  * Walk the active branch root → leaf and return messages in order.
  *
- * Loads all messages for the conversation, then traverses the parent chain
- * from `active_leaf_message_id` backwards. Orphaned messages (from prior
- * "edit = truncate" operations) are still in the DB but aren't reachable
- * from active_leaf, so they're simply ignored by the walk.
+ * Two-step load to keep the heavy columns (content_json, content_html,
+ * reasoning_text, raw_response_json) bounded by the active branch length
+ * rather than the whole conversation. Long-edited threads can carry 2-3x
+ * the active-branch size in orphaned sibling subtrees; the previous
+ * single-query load pulled all of their JSON for no consumer.
  *
- * For v1 we expect conversations to be small (tens, not thousands of
- * messages). When that stops being true we'll switch to a recursive CTE.
+ *   1. Skeleton scan of (id, parent_message_id, created_at) — every row
+ *      in the conversation, but each is a few dozen bytes. Drives the
+ *      sibling-grouping for branch-aware rendering and lets us walk the
+ *      parent chain to compute the active-branch id list.
+ *   2. Heavy fetch of full columns for just the active-branch ids.
  */
 export function walkActiveBranch(conversationId: string): ChatMessage[] {
 	const db = getDb();
@@ -112,14 +116,22 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 
 	if (!conv?.activeLeaf) return [];
 
-	const rows = db.select().from(messages).where(eq(messages.conversationId, conversationId)).all();
-	const byId = new Map(rows.map((r) => [r.id, r]));
+	const skeletons = db
+		.select({
+			id: messages.id,
+			parentMessageId: messages.parentMessageId,
+			createdAt: messages.createdAt,
+		})
+		.from(messages)
+		.where(eq(messages.conversationId, conversationId))
+		.all();
+	const skelById = new Map(skeletons.map((r) => [r.id, r]));
 
 	// Group by parent_message_id so we can compute sibling counts /
 	// positions for messages on the active branch in O(N) instead of
 	// O(N) per active-branch entry.
-	const byParent = new Map<string | null, typeof rows>();
-	for (const r of rows) {
+	const byParent = new Map<string | null, typeof skeletons>();
+	for (const r of skeletons) {
 		const key = r.parentMessageId ?? null;
 		const list = byParent.get(key);
 		if (list) list.push(r);
@@ -129,19 +141,34 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 		list.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
 	}
 
+	// Walk parent chain to collect the active-branch id list (leaf → root).
+	const branchIds: string[] = [];
+	let cursor = skelById.get(conv.activeLeaf);
+	while (cursor) {
+		branchIds.push(cursor.id);
+		if (!cursor.parentMessageId) break;
+		cursor = skelById.get(cursor.parentMessageId);
+	}
+
+	const heavyRows = db
+		.select()
+		.from(messages)
+		.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, branchIds)))
+		.all();
+	const heavyById = new Map(heavyRows.map((r) => [r.id, r]));
+
 	const ordered: ChatMessage[] = [];
-	let current = byId.get(conv.activeLeaf);
-	while (current) {
-		const siblings = byParent.get(current.parentMessageId ?? null) ?? [current];
+	for (const id of branchIds) {
+		const row = heavyById.get(id);
+		if (!row) continue;
+		const siblings = byParent.get(row.parentMessageId ?? null) ?? [];
 		const siblingIds = siblings.map((s) => s.id);
-		const msg = rowToChatMessage(current);
-		msg.parentMessageId = current.parentMessageId;
-		msg.siblingCount = siblings.length;
-		msg.siblingPosition = siblingIds.indexOf(current.id) + 1;
-		msg.siblingIds = siblingIds;
+		const msg = rowToChatMessage(row);
+		msg.parentMessageId = row.parentMessageId;
+		msg.siblingCount = siblings.length || 1;
+		msg.siblingPosition = siblingIds.indexOf(row.id) + 1 || 1;
+		msg.siblingIds = siblingIds.length ? siblingIds : [row.id];
 		ordered.push(msg);
-		if (!current.parentMessageId) break;
-		current = byId.get(current.parentMessageId);
 	}
 	return ordered.reverse();
 }
