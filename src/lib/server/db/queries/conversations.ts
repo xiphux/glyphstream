@@ -167,7 +167,20 @@ export function updateConversationModel(
 export function getConversationDetail(id: string, userId: string): ConversationDetail | null {
 	const db = getDb();
 	const row = db
-		.select()
+		.select({
+			id: conversations.id,
+			title: conversations.title,
+			modelId: conversations.modelId,
+			modelKind: conversations.modelKind,
+			endpointId: conversations.endpointId,
+			customModelId: conversations.customModelId,
+			systemPrompt: conversations.systemPrompt,
+			parametersJson: conversations.parametersJson,
+			activeLeafMessageId: conversations.activeLeafMessageId,
+			createdAt: conversations.createdAt,
+			updatedAt: conversations.updatedAt,
+			disabledFeaturesJson: conversations.disabledFeaturesJson,
+		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.get();
