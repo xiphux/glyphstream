@@ -32,12 +32,7 @@
 
 import { parentPort } from 'node:worker_threads';
 import { loadPyodide, type PyodideInterface } from 'pyodide';
-import {
-	assertHostnameRoutable,
-	assertHttpScheme,
-	assertNotConfiguredBackend,
-	UrlPolicyError,
-} from '../tools/url-policy';
+import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
 
 // `parentPort` is non-null inside a worker_threads worker. If it's null
 // we've been imported by the main thread (test, dev tooling) — bail
@@ -58,6 +53,23 @@ interface CurrentCall {
 // outside an authorized run (e.g. background Pyodide internals fetching
 // stdlib chunks AFTER the initial load) are refused.
 let currentCall: CurrentCall | null = null;
+
+// Configured-backend host set, supplied by the pool at init time. The
+// worker can't read config.toml itself (it lives outside Vite's
+// transform pipeline and has no env layer in the bundled standalone
+// build), so the host snapshots the policy and ships it across the
+// message channel — same protection, no shared dependency on the
+// SvelteKit env runtime.
+let forbiddenHosts: ReadonlySet<string> = new Set();
+
+function assertNotForbiddenHost(url: URL): void {
+	const host = url.hostname.toLowerCase();
+	if (forbiddenHosts.has(host)) {
+		throw new UrlPolicyError(
+			`Refused: ${host} is a configured backend (an upstream LLM or search endpoint); the model is not allowed to reach it through tool calls.`,
+		);
+	}
+}
 
 const realFetch = globalThis.fetch.bind(globalThis);
 const MAX_REDIRECTS = 3;
@@ -88,7 +100,7 @@ async function followWithRevalidation(
 	let lastBodyInit = init?.body;
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
 		assertHttpScheme(current);
-		assertNotConfiguredBackend(current);
+		assertNotForbiddenHost(current);
 		if (call.disabledFeatures.has(NETWORK_FEATURE)) {
 			throw new UrlPolicyError(
 				'Refused: web access is disabled for this conversation; Python network calls (including pyfetch / micropip) are blocked.',
@@ -172,6 +184,9 @@ interface RunMessage {
 interface InitMessage {
 	type: 'init';
 	indexURL?: string;
+	/** Hostnames whose model-controlled fetches should be refused. Comes
+	 *  from `listForbiddenHosts()` on the host side at worker creation. */
+	forbiddenHosts?: readonly string[];
 }
 
 type HostMessage = RunMessage | InitMessage;
@@ -180,6 +195,9 @@ parentPort.on('message', async (msg: HostMessage) => {
 	if (!parentPort) return;
 	if (msg.type === 'init') {
 		try {
+			if (msg.forbiddenHosts) {
+				forbiddenHosts = new Set(msg.forbiddenHosts.map((h) => h.toLowerCase()));
+			}
 			await getPyodide(msg.indexURL);
 			parentPort.postMessage({ type: 'ready' });
 		} catch (err) {

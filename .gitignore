@@ -33,6 +33,11 @@ data/
 # Bundle analyzer output
 bundle-stats.html
 
+# esbuild-bundled code-interpreter worker. Rebuilt by `pnpm build:worker`,
+# which runs as a pre-step of both `pnpm dev` and `pnpm build` — never
+# commit the bundled output. The .ts source is the canonical version.
+src/lib/server/code-interpreter/worker.js
+
 # E2E test data + Playwright outputs
 tests/.e2e-data/
 playwright-report/

@@ -132,7 +132,11 @@ describe('runPython — happy path + isolation', () => {
 		expect(result.result).toEqual({ x: 42 });
 		expect(createdWorkers).toHaveLength(1);
 		const worker = createdWorkers[0];
-		expect(worker.posts[0]).toEqual({ type: 'init', indexURL: undefined });
+		// The init message also carries the configured-backend host set
+		// (from `listForbiddenHosts`), which varies by config.toml.
+		// Match the shape but not the host list — that's covered in
+		// url-policy.test.ts.
+		expect(worker.posts[0]).toMatchObject({ type: 'init' });
 		expect(worker.posts[1]).toMatchObject({
 			type: 'run',
 			code: 'x = 42',

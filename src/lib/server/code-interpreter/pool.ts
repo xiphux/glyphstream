@@ -25,6 +25,7 @@
 
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { getCodeInterpreterConfig } from './config';
+import { listForbiddenHosts } from '../tools/url-policy';
 
 // ---------------------------------------------------------------------------
 // Worker factory — abstracted so tests can swap in a fake.
@@ -406,7 +407,16 @@ async function doStart(
 				}
 			};
 			worker.on('message', onReady);
-			worker.postMessage({ type: 'init', indexURL: cfg.pyodideIndexUrl || undefined });
+			worker.postMessage({
+				type: 'init',
+				indexURL: cfg.pyodideIndexUrl || undefined,
+				// Snapshot the configured-backend host list and ship it
+				// across the message channel. The worker is bundled
+				// standalone and has no access to SvelteKit's env / config
+				// layer, so we apply the same policy by handing it the
+				// resolved set up front.
+				forbiddenHosts: listForbiddenHosts(),
+			});
 		});
 		onStatus?.('Python interpreter ready');
 
