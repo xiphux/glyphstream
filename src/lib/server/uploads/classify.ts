@@ -60,6 +60,12 @@ export interface UploadClassification {
 
 /** Returns null when the content type isn't accepted. */
 export function classifyUpload(contentType: string): UploadClassification | null {
+	// SVG is the only image format that can carry executable script
+	// content. We serve media bytes from same-origin under the user's
+	// session, so an SVG opened directly at /api/media/{id}/content would
+	// run scripts in our origin. No legitimate chat-app upload flow needs
+	// SVG, so we refuse outright rather than trying to sanitize.
+	if (contentType === 'image/svg+xml') return null;
 	if (contentType.startsWith('image/')) {
 		return { kind: 'image', maxBytes: MAX_UPLOAD_BYTES_IMAGE };
 	}

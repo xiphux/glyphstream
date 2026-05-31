@@ -19,6 +19,16 @@ describe('classifyUpload', () => {
 		expect(classifyUpload('image/heic')?.kind).toBe('image');
 	});
 
+	it('rejects image/svg+xml — SVG carries executable script content', () => {
+		// SVGs uploaded via the chat would otherwise be served from
+		// same-origin at /api/media/{id}/content under the user's session
+		// cookie. An attacker (or a misclick) landing a script-bearing SVG
+		// there would execute in our origin. No legitimate chat upload
+		// flow needs SVG, so we refuse it outright in the only place
+		// `image/*` would otherwise match.
+		expect(classifyUpload('image/svg+xml')).toBeNull();
+	});
+
 	it('returns kind:video for any video/* MIME', () => {
 		expect(classifyUpload('video/mp4')?.kind).toBe('video');
 		expect(classifyUpload('video/quicktime')?.kind).toBe('video');
