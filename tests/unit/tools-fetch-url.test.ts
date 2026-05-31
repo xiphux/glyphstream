@@ -178,7 +178,7 @@ describe('fetch_url HTML extraction', () => {
 		expect(JSON.parse(r.content).content).toBe('just some plain text\nwith two lines');
 	});
 
-	it('re-stringifies application/json with indentation', async () => {
+	it('passes application/json through as-is', async () => {
 		publicResolves();
 		globalThis.fetch = vi.fn(
 			async () =>
@@ -190,8 +190,7 @@ describe('fetch_url HTML extraction', () => {
 		const r = await fetchUrlTool.execute({ url: 'http://api.example/' }, ctx());
 		expect(r.isError).toBeUndefined();
 		const content = JSON.parse(r.content).content;
-		expect(content).toContain('"a": 1');
-		expect(content).toContain('"b": [');
+		expect(content).toBe('{"a":1,"b":[2,3]}');
 	});
 
 	it('rejects unsupported binary content types', async () => {

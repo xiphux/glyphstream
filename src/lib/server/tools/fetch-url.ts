@@ -156,11 +156,11 @@ async function processResponse(res: Response, finalUrl: string): Promise<FetchRe
 	if (mime === 'text/html' || mime === 'application/xhtml+xml') {
 		content = extractArticleText(raw);
 	} else if (mime === 'application/json') {
-		try {
-			content = JSON.stringify(JSON.parse(raw), null, 2);
-		} catch {
-			content = raw;
-		}
+		// Pass JSON through as-is rather than parse + stringify with
+		// indent. The model handles minified JSON fine; the previous
+		// round-trip cost an extra parse and a fresh allocation up to
+		// the same MAX_CONTENT_CHARS limit just to add whitespace.
+		content = raw;
 	} else {
 		content = raw;
 	}
