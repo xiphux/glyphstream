@@ -419,6 +419,57 @@ export function buildPendingApprovals(messages: ChatMessage[]): string[] {
 	return out;
 }
 
+export interface RenderedConversation {
+	visibleMessages: ChatMessage[];
+	toolResultsByCallId: Map<string, ToolResultEntry>;
+	pendingApprovals: string[];
+}
+
+/**
+ * Single-pass derivation of the three view-model pieces the chat page
+ * recomputes on every messages update. The three independent passes —
+ * filterVisibleMessages, buildToolResultsMap, buildPendingApprovals —
+ * each walked the array on its own, so a mid-stream tool result update
+ * cost three array walks where one would do.
+ */
+export function buildRenderedConversation(messages: ChatMessage[]): RenderedConversation {
+	const visibleMessages: ChatMessage[] = [];
+	const toolResultsByCallId = new Map<string, ToolResultEntry>();
+	const pendingApprovals: string[] = [];
+	for (const msg of messages) {
+		if (msg.role !== 'tool') {
+			visibleMessages.push(msg);
+			continue;
+		}
+		let resultPart: Extract<MessagePart, { type: 'tool_result' }> | null = null;
+		const attachments: ToolResultAttachment[] = [];
+		for (const p of msg.parts) {
+			if (p.type === 'tool_result') {
+				resultPart = p;
+				if (p.status === 'pending_approval') pendingApprovals.push(p.toolCallId);
+			} else if (p.type === 'image') attachments.push({ type: 'image', mediaId: p.mediaId });
+			else if (p.type === 'video') attachments.push({ type: 'video', mediaId: p.mediaId });
+			else if (p.type === 'file') {
+				attachments.push({
+					type: 'file',
+					mediaId: p.mediaId,
+					filename: p.filename,
+					byteSize: p.byteSize,
+				});
+			}
+		}
+		if (!resultPart) continue;
+		const entry: ToolResultEntry = {
+			result: resultPart.result,
+			isError: resultPart.isError === true,
+		};
+		if (resultPart.status === 'pending_approval') entry.status = 'pending_approval';
+		if (attachments.length > 0) entry.attachments = attachments;
+		toolResultsByCallId.set(resultPart.toolCallId, entry);
+	}
+	return { visibleMessages, toolResultsByCallId, pendingApprovals };
+}
+
 // --- bubble-merge flags -------------------------------------------------
 
 /** Compute whether the message at `index` in `visibleMessages` should

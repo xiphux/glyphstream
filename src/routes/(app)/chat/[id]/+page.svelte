@@ -20,10 +20,8 @@
 	import {
 		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
-		buildPendingApprovals,
-		buildToolResultsMap,
+		buildRenderedConversation,
 		computeMergeFlags,
-		filterVisibleMessages,
 		inFlightToBlocks,
 		markToolCallPendingApproval as inFlightMarkToolCallPendingApproval,
 		pushToolCall as inFlightPushToolCall,
@@ -119,12 +117,15 @@
 	// result as one visual unit instead of two separate bubbles. This
 	// is the "folded into assistant bubble" UX the user picked over
 	// "separate sequential bubbles."
-	const visibleMessages = $derived(filterVisibleMessages(messages));
-	const toolResultsByCallId = $derived(buildToolResultsMap(messages));
-	// Pending MCP tool approvals on the active branch. Non-empty when the
-	// last assistant turn halted on one or more untrusted MCP tools — the
-	// composer hides until the user posts decisions to /tool-approval.
-	const pendingApprovals = $derived(buildPendingApprovals(messages));
+	//
+	// `pendingApprovals` is the toolCallIds halted on untrusted MCP
+	// tools — non-empty hides the composer until the user posts
+	// decisions to /tool-approval. All three derive from the same
+	// messages array via a single pass to avoid three walks per update.
+	const rendered = $derived(buildRenderedConversation(messages));
+	const visibleMessages = $derived(rendered.visibleMessages);
+	const toolResultsByCallId = $derived(rendered.toolResultsByCallId);
+	const pendingApprovals = $derived(rendered.pendingApprovals);
 
 	// User's per-tool decisions, accumulating until every pending tool
 	// has one — at which point the Submit button enables and posts the
