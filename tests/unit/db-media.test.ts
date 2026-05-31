@@ -700,12 +700,16 @@ describe('listConversationsForMedia', () => {
 	it('returns multiple conversations newest first', async () => {
 		const u = seedUser();
 		const convA = makeConv(u.id);
-		// Sleep 2ms so the second conv has a strictly later updated_at;
-		// without this the two timestamps could collide and the
-		// newest-first ordering becomes nondeterministic in the test.
+		// Sleep 2ms between writes so updated_at strictly increases. The
+		// initial create gap isn't enough on its own — appendMessage bumps
+		// updated_at to the message's createdAt, so without a gap between
+		// the two appendMessage calls below convA and convB end up with
+		// identical updated_at values and the newest-first sort tie-breaks
+		// non-deterministically (which plan SQLite picks affects the order).
 		await new Promise((r) => setTimeout(r, 2));
 		const convB = makeConv(u.id);
 		const msgA = makeMsg(convA.id);
+		await new Promise((r) => setTimeout(r, 2));
 		const msgB = makeMsg(convB.id);
 		const { id: mediaId } = makeMedia(u.id);
 		linkMessageMedia(msgA.id, mediaId);
