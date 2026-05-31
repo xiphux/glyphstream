@@ -14,6 +14,11 @@
 	import { Check, ShieldCheck, ShieldX } from '@lucide/svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
 	import { extractCodeArg, type ToolResultAttachment } from '$lib/chat-render';
+	import {
+		highlightLiveCode,
+		liveHighlighterReady,
+		resolveLiveLang,
+	} from '$lib/markdown-live-shiki.svelte';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
 	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
@@ -93,6 +98,20 @@
 	// null for non-code tools and for envelopes that don't yet contain
 	// the code field — those fall through to the JSON pretty-print.
 	const streamingCode = $derived(argumentsHtml ? null : extractCodeArg(toolName, argumentsJson));
+
+	// Upgrade mid-stream code to client-side shiki the moment the lazy
+	// highlighter chunk lands. Reading `liveHighlighterReady.value`
+	// makes this $derived re-run on load. Returns null while the chunk
+	// is still in flight or for languages outside the client subset
+	// (today only python is wired to be reachable here), and the
+	// template falls back to plain monospace.
+	const streamingCodeHtml = $derived.by(() => {
+		if (!streamingCode) return null;
+		if (!liveHighlighterReady.value) return null;
+		const lang = resolveLiveLang(streamingCode.language);
+		if (!lang) return null;
+		return highlightLiveCode(streamingCode.code, lang);
+	});
 
 	// Collapsed by default when the call is done — tool details are
 	// metadata for the curious, not primary content. Auto-expanded
@@ -174,20 +193,28 @@
 			<div class="gs-prose text-xs">{@html argumentsHtml}</div>
 		{:else if streamingCode}
 			<!--
-				Mid-stream code rendering. We have the language but no
-				shiki on the client (it'd blow the bundle budget), so we
-				render as plain monospace with newlines preserved. When
-				the message finishes streaming and the server-rendered
-				argumentsHtml lands, it replaces this view with the
-				highlighted version. The little "Python" label hints that
-				this is source code, not a JSON arguments dump.
+				Mid-stream code rendering. Two paths:
+				1. The lazy client-side shiki chunk has loaded AND the
+				   language is in its subset (today: python) — render
+				   the highlighted HTML directly, same look as the
+				   eventual server render so there's no
+				   unhighlighted→highlighted flash when persistence
+				   swaps in argumentsHtml.
+				2. Otherwise — chunk still in flight, or language outside
+				   the subset — render plain monospace with newlines
+				   preserved. The server's full highlight lands later
+				   and takes over via argumentsHtml.
 			-->
 			<div>
 				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
 					{streamingCode.language}
 				</div>
-				<pre
-					class="overflow-x-auto whitespace-pre break-normal font-mono text-[11px] text-fg-secondary">{streamingCode.code}</pre>
+				{#if streamingCodeHtml}
+					<div class="gs-prose text-xs">{@html streamingCodeHtml}</div>
+				{:else}
+					<pre
+						class="overflow-x-auto whitespace-pre break-normal font-mono text-[11px] text-fg-secondary">{streamingCode.code}</pre>
+				{/if}
 			</div>
 		{:else if prettyArgs}
 			<div>

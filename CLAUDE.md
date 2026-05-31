@@ -88,11 +88,18 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   script in CI even with `pnpm.onlyBuiltDependencies` set. The dance is
   `pnpm install --frozen-lockfile --ignore-scripts` then `pnpm rebuild
 better-sqlite3 esbuild`. Same in Docker; same in CI.
-- **shiki must stay server-side.** It's ~500 KB; pulling it into the client
-  bundle would tank load times. The client uses `markdown-it` directly
-  _without_ shiki for live-streaming render
-  (`src/lib/markdown-live.ts`); the server uses `markdown-it` + shiki for
-  the persisted post-stream HTML.
+- **Shiki on the client is route-lazy + grammar-subsetted only.** The
+  full shiki bundle is ~500 KB and must stay server-side — that's where
+  the persisted post-stream HTML gets its full-coverage highlighting.
+  For the live in-flight render, the chat route lazy-loads a tiny
+  subset (`shiki/core` + JS regex engine + the `python` and `markdown`
+  grammars + the two github themes, ~72 KB gzip) via
+  `src/lib/markdown-live-shiki.svelte.ts`. Languages outside those two
+  still render as plain `<pre><code>` during streaming and pick up the
+  server's full highlight when persistence swaps in. Do NOT pull the
+  oniguruma WASM engine or any additional grammars into this client
+  path — it costs 50–200 KB raw per grammar and the marginal value
+  past Python tails off fast.
 - **Don't compress at the reverse proxy.** adapter-node has `precompress:
 true`, so static assets ship as `.br` + `.gz` on disk and sirv negotiates
   via `Accept-Encoding`. Re-compressing at the proxy double-compresses.

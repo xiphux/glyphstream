@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { preferredFirstName } from '$lib/greeting';
 	import { renderLiveMarkdown } from '$lib/markdown-live';
+	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
 	import { readSSE } from '$lib/sse-client';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
@@ -512,6 +513,12 @@
 	let highlightedMessageId = $state<string | null>(null);
 	onMount(() => {
 		listMounted = true;
+		// Start the lazy syntax-highlighter chunk download as soon as the
+		// chat opens. ~72 KB gzip, route-lazy. Idempotent; safe to call on
+		// every chat-page mount. Result is ignored — the module flips its
+		// own reactive `liveHighlighterReady` signal once loaded, which
+		// the rAF-driven inFlightSegments effect picks up automatically.
+		void ensureLiveHighlighter();
 		// Deep-link from the search modal: URL hash like `#msg-<id>`.
 		// Wait for the message wrappers to be in the DOM before scrolling.
 		const hash = typeof location !== 'undefined' ? location.hash : '';

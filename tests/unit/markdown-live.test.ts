@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { renderLiveMarkdown } from '$lib/markdown-live';
+import {
+	resetLiveHighlighterForTests,
+	setLiveHighlighterForTests,
+} from '$lib/markdown-live-shiki.svelte';
+
+afterEach(() => {
+	resetLiveHighlighterForTests();
+});
 
 describe('renderLiveMarkdown', () => {
 	it('returns empty string for empty input', () => {
@@ -16,11 +24,11 @@ describe('renderLiveMarkdown', () => {
 		expect(renderLiveMarkdown('# Title')).toContain('<h1>Title</h1>');
 	});
 
-	it('renders fenced code blocks (no syntax highlighting at this layer)', () => {
-		const out = renderLiveMarkdown('```\nconst x = 1;\n```');
+	it('renders fenced code blocks as plain pre/code when the lazy highlighter has not loaded yet', () => {
+		const out = renderLiveMarkdown('```python\nprint(1)\n```');
 		expect(out).toContain('<pre>');
-		expect(out).toContain('const x = 1;');
-		// Live renderer is intentionally shiki-free — no syntax classes.
+		expect(out).toContain('print(1)');
+		// Pre-load: no syntax-class injection.
 		expect(out).not.toContain('class="shiki');
 	});
 
@@ -43,7 +51,6 @@ describe('renderLiveMarkdown', () => {
 
 	it('does not pass raw HTML through (html: false guard)', () => {
 		const out = renderLiveMarkdown('<script>alert(1)</script> text');
-		// markdown-it should escape these instead of passing through.
 		expect(out).not.toContain('<script>');
 		expect(out).toContain('&lt;script&gt;');
 	});
@@ -52,5 +59,53 @@ describe('renderLiveMarkdown', () => {
 		const out = renderLiveMarkdown('- item one\n- item two');
 		expect(out).toContain('<ul>');
 		expect(out).toContain('<li>item one</li>');
+	});
+});
+
+describe('renderLiveMarkdown — shiki upgrade path', () => {
+	it('routes python/markdown fences through the highlighter once it lands', () => {
+		const fake = {
+			codeToHtml: (code: string, opts: { lang: string }) =>
+				`<pre class="shiki" data-lang="${opts.lang}">${code}</pre>`,
+		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
+		setLiveHighlighterForTests(fake);
+		const out = renderLiveMarkdown('```python\nprint(1)\n```');
+		expect(out).toContain('class="shiki"');
+		expect(out).toContain('data-lang="python"');
+	});
+
+	it('honors language aliases via resolveLiveLang (py → python)', () => {
+		const fake = {
+			codeToHtml: (code: string, opts: { lang: string }) =>
+				`<pre data-lang="${opts.lang}">${code}</pre>`,
+		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
+		setLiveHighlighterForTests(fake);
+		const out = renderLiveMarkdown('```py\nprint(1)\n```');
+		expect(out).toContain('data-lang="python"');
+	});
+
+	it('falls back to plain pre for languages outside the client subset', () => {
+		const fake = {
+			codeToHtml: (code: string, opts: { lang: string }) =>
+				`<pre data-lang="${opts.lang}">${code}</pre>`,
+		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
+		setLiveHighlighterForTests(fake);
+		const out = renderLiveMarkdown('```javascript\nconst x = 1;\n```');
+		expect(out).not.toContain('data-lang=');
+		expect(out).toContain('<pre>');
+		expect(out).toContain('const x = 1;');
+	});
+
+	it('falls back to plain pre when the highlighter throws', () => {
+		const fake = {
+			codeToHtml: () => {
+				throw new Error('grammar edge');
+			},
+		} as unknown as Parameters<typeof setLiveHighlighterForTests>[0];
+		setLiveHighlighterForTests(fake);
+		const out = renderLiveMarkdown('```python\nprint(1)\n```');
+		expect(out).toContain('<pre>');
+		expect(out).toContain('print(1)');
+		expect(out).not.toContain('class="shiki');
 	});
 });

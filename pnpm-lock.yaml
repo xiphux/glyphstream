@@ -14,6 +14,15 @@ importers:
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
+      '@shikijs/langs':
+        specifier: ^4.1.0
+        version: 4.1.0
+      '@shikijs/themes':
+        specifier: ^4.1.0
+        version: 4.1.0
+      '@shikijs/types':
+        specifier: ^4.1.0
+        version: 4.1.0
       arctic:
         specifier: ^3.7.0
         version: 3.7.0
