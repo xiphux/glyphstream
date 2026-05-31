@@ -201,32 +201,41 @@
 					class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyResult}</pre>
 			</div>
 		{/if}
-		{#if attachments && attachments.length > 0}
-			<div class="mt-2 flex flex-wrap gap-2">
-				{#each attachments as att (att.mediaId)}
-					{#if att.type === 'image'}
-						<img
-							src="/api/media/{att.mediaId}/content"
-							alt=""
-							loading="lazy"
-							class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
-						/>
-					{:else if att.type === 'video'}
-						<!-- svelte-ignore a11y_media_has_caption -->
-						<video
-							src="/api/media/{att.mediaId}/content"
-							controls
-							class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
-						></video>
-					{:else}
-						<FileAttachmentChip
-							filename={att.filename}
-							byteSize={att.byteSize}
-							href={`/api/media/${att.mediaId}/content`}
-						/>
-					{/if}
-				{/each}
-			</div>
-		{/if}
 	</div>
 </details>
+<!--
+	Generated attachments live OUTSIDE the <details> so they stay
+	visible even when the tool block auto-collapses (status: 'done').
+	A file the model just produced is the kind of artifact the user
+	wants to see immediately — if it were hidden inside the collapsed
+	block, the assistant's "here's the file" sentence would point at
+	nothing the user can click on, which surfaced as a real UX gap
+	in early smoke testing.
+-->
+{#if attachments && attachments.length > 0}
+	<div class="mt-2 flex flex-wrap gap-2">
+		{#each attachments as att (att.mediaId)}
+			{#if att.type === 'image'}
+				<img
+					src="/api/media/{att.mediaId}/content"
+					alt=""
+					loading="lazy"
+					class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
+				/>
+			{:else if att.type === 'video'}
+				<!-- svelte-ignore a11y_media_has_caption -->
+				<video
+					src="/api/media/{att.mediaId}/content"
+					controls
+					class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
+				></video>
+			{:else}
+				<FileAttachmentChip
+					filename={att.filename}
+					byteSize={att.byteSize}
+					href={`/api/media/${att.mediaId}/content`}
+				/>
+			{/if}
+		{/each}
+	</div>
+{/if}
