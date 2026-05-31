@@ -277,7 +277,11 @@ export const media = sqliteTable(
 	},
 	(t) => [
 		index('idx_media_user_created').on(t.userId, t.createdAt),
-		index('idx_media_unreferenced').on(t.unreferencedSince),
+		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
+		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the
+		// range column last lets SQLite use index-only equality probes on
+		// origin + hardDeletedAt before walking unreferenced_since rows.
+		index('idx_media_unreferenced').on(t.origin, t.hardDeletedAt, t.unreferencedSince),
 	],
 );
 
