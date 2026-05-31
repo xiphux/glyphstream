@@ -29,6 +29,34 @@ void bootstrapMcp();
 const ALWAYS_REVALIDATE_PATHS = new Set(['/service-worker.js', '/manifest.webmanifest']);
 
 /**
+ * Belt-and-suspenders security headers, applied to every response.
+ *
+ *  - `X-Content-Type-Options: nosniff` — refuse browser MIME-sniffing.
+ *    Defense in depth alongside our explicit Content-Type on media
+ *    responses; without it, an old browser could sniff a misclassified
+ *    upload back into `text/html` and execute it under our origin.
+ *
+ *  - `Referrer-Policy: strict-origin-when-cross-origin` — outbound links
+ *    from the chat (model citations, user-pasted URLs the user clicks)
+ *    leak only the origin, not the full path. Chat URLs of the form
+ *    `/chat/<uuid>` shouldn't end up in third-party referrer logs.
+ *
+ *  - `X-Frame-Options: DENY` — make the "we don't want to be iframed"
+ *    stance explicit. The CSP `frame-ancestors 'none'` directive (set
+ *    in svelte.config.js) is the modern enforcement; this header is
+ *    just for older user-agents that don't honor `frame-ancestors`.
+ *
+ * Not set here: HSTS. TLS termination happens at the Synology reverse
+ * proxy in the canonical deployment, so HSTS belongs on the proxy where
+ * the operator picks the max-age + preload posture.
+ */
+const SECURITY_HEADERS: Record<string, string> = {
+	'X-Content-Type-Options': 'nosniff',
+	'Referrer-Policy': 'strict-origin-when-cross-origin',
+	'X-Frame-Options': 'DENY',
+};
+
+/**
  * Populate event.locals.user on every request from the session cookie.
  * Routes/layouts decide whether to require it; this hook just *reads*.
  *
@@ -58,6 +86,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
+	for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+		response.headers.set(name, value);
+	}
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
 	}
