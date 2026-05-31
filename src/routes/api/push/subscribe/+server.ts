@@ -19,6 +19,11 @@ import {
 	upsertPushSubscription,
 } from '$lib/server/db/queries/push-subscriptions';
 import { getVapidPublicKey } from '$lib/server/push/web-push';
+import {
+	assertHostnameRoutable,
+	assertHttpScheme,
+	UrlPolicyError,
+} from '$lib/server/tools/url-policy-base';
 import type { RequestHandler } from './$types';
 
 interface SubscribeBody {
@@ -34,6 +39,39 @@ function requireString(v: unknown, field: string): string {
 	return v;
 }
 
+/**
+ * Validate that a push endpoint URL is safe to store and later POST to.
+ *
+ * The endpoint is the URL the browser hands back from
+ * `pushManager.subscribe()` — normally something like
+ * `https://fcm.googleapis.com/...` or `https://updates.push.services.mozilla.com/...`.
+ * Nothing on this code path forces it to be one of those, though: an
+ * authenticated client can submit any string, and when notifications fire
+ * later, the web-push library will dutifully POST the (potentially
+ * sensitive) notification payload to it.
+ *
+ * Run the same scheme + private-IP check our `fetch_url` tool uses so a
+ * malicious or compromised client can't aim the push channel at
+ * 169.254.169.254 (AWS metadata), an internal admin endpoint, or a
+ * `file:`/`gopher:` URL. Multi-user deployments (v2) inherit the same
+ * protection without further work.
+ */
+async function validatePushEndpoint(raw: string): Promise<void> {
+	let url: URL;
+	try {
+		url = new URL(raw);
+	} catch {
+		throw error(400, 'Push endpoint is not a valid URL');
+	}
+	try {
+		assertHttpScheme(url);
+		await assertHostnameRoutable(url.hostname);
+	} catch (e) {
+		if (e instanceof UrlPolicyError) throw error(400, e.message);
+		throw e;
+	}
+}
+
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 	// Soft 503 when the operator hasn't configured VAPID keys: the
@@ -47,6 +85,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const body = await parseJsonBody<SubscribeBody>(request);
 
 	const endpoint = requireString(body.endpoint, 'endpoint');
+	await validatePushEndpoint(endpoint);
 	const keys = body.keys ?? {};
 	const p256dh = requireString(keys.p256dh, 'keys.p256dh');
 	const auth = requireString(keys.auth, 'keys.auth');
