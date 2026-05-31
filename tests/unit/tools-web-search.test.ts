@@ -10,7 +10,12 @@ import { webSearchTool, _resetConfigCacheForTests } from '$lib/server/tools/web-
 import type { ToolContext } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
-	return { userId: 'u1', conversationId: 'c1', signal: new AbortController().signal };
+	return {
+		userId: 'u1',
+		conversationId: 'c1',
+		signal: new AbortController().signal,
+		disabledFeatures: [],
+	};
 }
 
 const realFetch = globalThis.fetch;

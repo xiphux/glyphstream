@@ -19,6 +19,7 @@ import { error } from '@sveltejs/kit';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { walkActiveBranch, updateMessageParts } from '$lib/server/db/queries/messages';
+import { linkMessageMedia } from '$lib/server/db/queries/media';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
@@ -103,13 +104,28 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				isError: true,
 			};
 		} else {
-			const execution = await runApprovedTool(toolCallPart, userId, params.id, request.signal);
+			const execution = await runApprovedTool(
+				toolCallPart,
+				userId,
+				params.id,
+				request.signal,
+				meta.disabledFeatures,
+			);
 			nextPart = {
 				type: 'tool_result',
 				toolCallId: resultPart.toolCallId,
 				result: execution.content,
 				...(execution.isError ? { isError: true } : {}),
 			};
+			// Any media the tool created during approval-resume execution
+			// (e.g. run_python writing files) gets linked to the now-
+			// completed tool row, mirroring how the inline path in
+			// tool-execution.ts handles attachedMediaIds.
+			if (execution.attachedMediaIds && execution.attachedMediaIds.length > 0) {
+				for (const mediaId of execution.attachedMediaIds) {
+					linkMessageMedia(toolMsg.id, mediaId);
+				}
+			}
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
 		}
 
@@ -219,6 +235,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		abortSignal: inFlight.controller.signal,
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
+		disabledFeatures: meta.disabledFeatures,
 		rebuildRequestBody: buildRequestBody,
 		initialParentMessageId,
 	});
@@ -274,7 +291,8 @@ async function runApprovedTool(
 	userId: string,
 	conversationId: string,
 	signal: AbortSignal,
-): Promise<{ content: string; isError: boolean }> {
+	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[],
+): Promise<{ content: string; isError: boolean; attachedMediaIds?: string[] }> {
 	const tool = getTool(toolCallPart.toolName);
 	if (!tool) {
 		return {
@@ -296,8 +314,16 @@ async function runApprovedTool(
 		}
 	}
 	try {
-		const execution = await Promise.resolve(tool.execute(args, { userId, conversationId, signal }));
-		return { content: execution.content, isError: execution.isError === true };
+		const execution = await Promise.resolve(
+			tool.execute(args, { userId, conversationId, signal, disabledFeatures }),
+		);
+		return {
+			content: execution.content,
+			isError: execution.isError === true,
+			...(execution.attachedMediaIds?.length
+				? { attachedMediaIds: execution.attachedMediaIds }
+				: {}),
+		};
 	} catch (e) {
 		return {
 			content: JSON.stringify({

@@ -47,7 +47,7 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 200;
  * URL directly). Both tools that touch the public web share the `web`
  * category so a single toggle seals the egress path.
  */
-export const BUILTIN_FEATURE_CATEGORIES = ['web', 'personalization'] as const;
+export const BUILTIN_FEATURE_CATEGORIES = ['web', 'personalization', 'code_interpreter'] as const;
 export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
 
 /**
@@ -78,6 +78,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		label: 'Personalization',
 		description:
 			'Sends your name, About you, and Custom instructions from preferences as system context, and lets the assistant save and recall memories about you.',
+	},
+	code_interpreter: {
+		label: 'Code interpreter',
+		description:
+			'Lets the assistant run Python in a sandboxed in-browser-style interpreter for compute, analysis, and plotting. Attached files become available; files Python writes appear as conversation attachments.',
 	},
 };
 

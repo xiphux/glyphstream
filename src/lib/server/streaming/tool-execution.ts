@@ -17,6 +17,7 @@
 
 import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
 import { appendMessage, setActiveLeafMessageId } from '../db/queries/messages';
+import { linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
 import type { Tool, ToolExecution } from '../tools/types';
 
@@ -29,6 +30,14 @@ export interface ExecuteToolCallsParams {
 	/** Forwarded to each tool's ToolContext so cooperative tools can
 	 *  bail when the user clicks Stop. */
 	signal?: AbortSignal;
+	/**
+	 * Per-conversation feature-category opt-outs. Threaded through to
+	 * each tool's `ToolContext` so behavior-only consumers (notably
+	 * `run_python`'s network shim, gated by the `'web'` toggle) can
+	 * honor the same conversation switches the model's tool-list filter
+	 * uses. Defaults to `[]` when omitted.
+	 */
+	disabledFeatures?: readonly import('$lib/types/api').FeatureCategory[];
 	/** SSE writer for executing/result events. Disconnected clients
 	 *  no-op (the underlying writer swallows). */
 	emit: (event: StreamEvent) => void;
@@ -137,6 +146,16 @@ export async function executeToolCalls(
 			tokensIn: null,
 			tokensOut: null,
 		});
+		// Tools may have created media during execute() (run_python
+		// writes generated files via MediaStore; future tools may do
+		// likewise). Link them to the freshly-persisted tool row so
+		// the renderer can surface them as attachments and the orphan
+		// reaper sees the same ref-count semantics user uploads use.
+		if (entry.kind === 'completed' && entry.execution.attachedMediaIds) {
+			for (const mediaId of entry.execution.attachedMediaIds) {
+				linkMessageMedia(toolMsg.id, mediaId);
+			}
+		}
 		toolMessages.push(toolMsg);
 	}
 
@@ -202,6 +221,7 @@ async function runOneTool(
 				userId: params.userId,
 				conversationId: params.conversationId,
 				signal,
+				disabledFeatures: params.disabledFeatures ?? [],
 			}),
 		);
 	} catch (e) {

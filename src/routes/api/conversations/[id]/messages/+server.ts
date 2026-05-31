@@ -539,6 +539,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// recovery indicator stays accurate after an iOS PWA suspend.
 			onComplete: () => clearInFlight(params.id, inFlight),
 			needsApproval,
+			// Threaded into each tool's ToolContext so behavior-only
+			// consumers (e.g. run_python's Python network shim, which
+			// blocks egress when 'web' is off even though run_python is
+			// in 'code_interpreter') can honor the conversation's
+			// disabled-features without a registry-level filter.
+			disabledFeatures: meta.disabledFeatures,
 			// Only enable the multi-iteration loop for endpoints whose
 			// models actually support tools. Endpoints without tools
 			// won't emit tool_calls anyway, but skipping the closure

@@ -48,6 +48,13 @@ export interface WorkerFactoryArgs {
 }
 export type WorkerFactory = (args: WorkerFactoryArgs) => ManagedWorker;
 
+// NOTE: the URL resolves to `./worker.js` so this works against the
+// `pnpm build` SSR output (Vite emits the worker as a chunk in the
+// adapter-node bundle). For `pnpm dev`, Node's `worker_threads` can't
+// load `.ts` directly through Vite — a follow-up will either pre-compile
+// the worker module separately or wrap it in a tiny `.js` shim that
+// loads via tsx. Unit tests bypass this entirely via
+// `setWorkerFactoryForTests`.
 const defaultWorkerUrl = new URL('./worker.js', import.meta.url);
 
 const defaultWorkerFactory: WorkerFactory = ({ memoryMb }) =>
@@ -137,10 +144,26 @@ export function initializeCodeInterpreter(): void {
 	installShutdownHook();
 }
 
+export interface RunPythonPreFile {
+	filename: string;
+	bytes: Uint8Array;
+	sha256: string;
+}
+
+export interface RunPythonPostFile {
+	filename: string;
+	bytes: Uint8Array;
+	sha256: string;
+}
+
 export interface RunPythonParams {
 	conversationId: string;
 	code: string;
 	disabledFeatures: readonly string[];
+	/** Files to materialize into the worker's `/workspace/` before
+	 *  executing `code`. Per-worker manifest skips byte-identical
+	 *  re-copies across calls. */
+	preFiles?: readonly RunPythonPreFile[];
 	/** Per-call wall-clock cap in ms; overrides the config default. */
 	callTimeoutMs?: number;
 	/** External abort signal (e.g. the streaming-relay turn signal). */
@@ -155,6 +178,10 @@ export interface WorkerRunResult {
 	stdout: string;
 	stderr: string;
 	result: unknown;
+	/** Files written under `/workspace/` during this call that differ
+	 *  from the pre-call snapshot (new + modified). The caller persists
+	 *  them via MediaStore + insertMedia. */
+	newFiles: RunPythonPostFile[];
 }
 
 /**
@@ -236,6 +263,7 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 				callId,
 				code: params.code,
 				disabledFeatures: [...params.disabledFeatures],
+				preFiles: params.preFiles ? [...params.preFiles] : [],
 			});
 			entry.lastUsedAt = Date.now();
 			scheduleIdleReap(params.conversationId);
@@ -324,6 +352,7 @@ async function doStart(
 				stderr?: string;
 				result?: unknown;
 				message?: string;
+				newFiles?: RunPythonPostFile[];
 			};
 			if (msg.type === 'result' && typeof msg.callId === 'number') {
 				const resolver = pendingResolvers.get(msg.callId);
@@ -331,6 +360,7 @@ async function doStart(
 					stdout: msg.stdout ?? '',
 					stderr: msg.stderr ?? '',
 					result: msg.result ?? null,
+					newFiles: msg.newFiles ?? [],
 				});
 			} else if (msg.type === 'error' && typeof msg.callId === 'number') {
 				const resolver = pendingResolvers.get(msg.callId);

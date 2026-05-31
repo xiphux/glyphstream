@@ -13,7 +13,8 @@ vi.mock('$lib/server/endpoints/registry', () => ({
 // predictable input. v1 registers two built-ins + the categories below
 // for the suite; tests can add more via mockReturnValueOnce when needed.
 vi.mock('$lib/server/feature-categories', () => ({
-	getRegisteredCategoryIds: () => new Set(['web', 'personalization', 'mcp:filesystem']),
+	getRegisteredCategoryIds: () =>
+		new Set(['web', 'personalization', 'code_interpreter', 'mcp:filesystem']),
 }));
 
 describe('validateParameters', () => {
@@ -140,6 +141,14 @@ describe('validateCreateInput', () => {
 			defaultDisabledFeatures: ['personalization', 'personalization', 'web'],
 		});
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'web']);
+	});
+
+	it('accepts the code_interpreter built-in category', () => {
+		const r = validateCreateInput({
+			...valid,
+			defaultDisabledFeatures: ['code_interpreter'],
+		});
+		expect(r.defaultDisabledFeatures).toEqual(['code_interpreter']);
 	});
 
 	it('accepts MCP categories backed by a currently-registered server', () => {

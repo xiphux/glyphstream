@@ -3,7 +3,12 @@ import { clockTool } from '$lib/server/tools/clock';
 import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
-	return { userId: 'u1', conversationId: 'c1', signal: new AbortController().signal };
+	return {
+		userId: 'u1',
+		conversationId: 'c1',
+		signal: new AbortController().signal,
+		disabledFeatures: [],
+	};
 }
 
 function run(t: Tool, args: unknown): ToolExecution {

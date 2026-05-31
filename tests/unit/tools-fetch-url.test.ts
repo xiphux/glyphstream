@@ -11,7 +11,12 @@ import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '$lib/server/tool
 import type { ToolContext } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
-	return { userId: 'u1', conversationId: 'c1', signal: new AbortController().signal };
+	return {
+		userId: 'u1',
+		conversationId: 'c1',
+		signal: new AbortController().signal,
+		disabledFeatures: [],
+	};
 }
 
 function publicResolves() {

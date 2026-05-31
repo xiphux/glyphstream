@@ -149,11 +149,24 @@ async function getPyodide(indexURL?: string): Promise<PyodideInterface> {
 	return pyodideInitPromise;
 }
 
+interface PreFile {
+	filename: string;
+	bytes: Uint8Array;
+	sha256: string;
+}
+
+interface PostFile {
+	filename: string;
+	bytes: Uint8Array;
+	sha256: string;
+}
+
 interface RunMessage {
 	type: 'run';
 	callId: number;
 	code: string;
 	disabledFeatures: string[];
+	preFiles: PreFile[];
 }
 
 interface InitMessage {
@@ -183,6 +196,14 @@ parentPort.on('message', async (msg: HostMessage) => {
 		try {
 			const py = await getPyodide();
 			currentCall = { disabledFeatures: new Set(msg.disabledFeatures) };
+
+			// Mount the conversation's attached files into the Pyodide VFS
+			// under /workspace/ — per-worker manifest lets us skip files
+			// that are byte-identical to what's already there (saves a
+			// full re-copy of a multi-MB dataset on every turn).
+			materializeWorkspace(py, msg.preFiles);
+			const preSnapshot = snapshotWorkspace(py);
+
 			let stdout = '';
 			let stderr = '';
 			py.setStdout({
@@ -213,12 +234,19 @@ parentPort.on('message', async (msg: HostMessage) => {
 			} finally {
 				currentCall = null;
 			}
+
+			// Diff /workspace/ against the pre-call snapshot; new or
+			// modified files come back to the host to be persisted as
+			// conversation media.
+			const newFiles = diffWorkspace(py, preSnapshot);
+
 			parentPort.postMessage({
 				type: 'result',
 				callId: msg.callId,
 				stdout,
 				stderr,
 				result,
+				newFiles,
 			});
 		} catch (err) {
 			parentPort.postMessage({
@@ -229,3 +257,121 @@ parentPort.on('message', async (msg: HostMessage) => {
 		}
 	}
 });
+
+// --- VFS file-round-trip helpers ------------------------------------------
+
+const WORKSPACE = '/workspace';
+const materializedManifest = new Map<string, string>();
+
+function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
+	const FS = (py as unknown as { FS: PyodideFS }).FS;
+	try {
+		FS.mkdir(WORKSPACE);
+	} catch {
+		// Already exists — fine.
+	}
+	const wanted = new Set(preFiles.map((f) => f.filename));
+
+	// Drop materialized files the host no longer says are attached.
+	for (const filename of Array.from(materializedManifest.keys())) {
+		if (wanted.has(filename)) continue;
+		try {
+			FS.unlink(`${WORKSPACE}/${filename}`);
+		} catch {
+			// Best-effort cleanup; missing file is OK.
+		}
+		materializedManifest.delete(filename);
+	}
+
+	for (const f of preFiles) {
+		const cached = materializedManifest.get(f.filename);
+		if (cached === f.sha256) continue; // unchanged
+		try {
+			FS.writeFile(`${WORKSPACE}/${f.filename}`, f.bytes);
+			materializedManifest.set(f.filename, f.sha256);
+		} catch (err) {
+			// One bad file shouldn't poison the whole run — log to stderr
+			// so the model can see it via captured stderr.
+			console.warn(`[code-interpreter] failed to materialize ${f.filename}:`, err);
+		}
+	}
+}
+
+function snapshotWorkspace(py: PyodideInterface): Map<string, string> {
+	const snap = new Map<string, string>();
+	const FS = (py as unknown as { FS: PyodideFS }).FS;
+	try {
+		const entries = FS.readdir(WORKSPACE);
+		for (const name of entries) {
+			if (name === '.' || name === '..') continue;
+			try {
+				const stat = FS.stat(`${WORKSPACE}/${name}`);
+				// 0o040000 = S_IFDIR; skip subdirectories for v1 — the
+				// round-trip surface is files in the top-level workspace.
+				if ((stat.mode & 0o170000) !== 0o100000) continue;
+				const bytes = FS.readFile(`${WORKSPACE}/${name}`);
+				snap.set(name, sha256Hex(bytes));
+			} catch {
+				// Skip unreadable entries.
+			}
+		}
+	} catch {
+		// Directory missing → empty snapshot.
+	}
+	return snap;
+}
+
+function diffWorkspace(py: PyodideInterface, preSnapshot: Map<string, string>): PostFile[] {
+	const FS = (py as unknown as { FS: PyodideFS }).FS;
+	const out: PostFile[] = [];
+	try {
+		const entries = FS.readdir(WORKSPACE);
+		for (const name of entries) {
+			if (name === '.' || name === '..') continue;
+			try {
+				const stat = FS.stat(`${WORKSPACE}/${name}`);
+				if ((stat.mode & 0o170000) !== 0o100000) continue;
+				const bytes = FS.readFile(`${WORKSPACE}/${name}`);
+				const sha = sha256Hex(bytes);
+				if (preSnapshot.get(name) === sha) continue; // unchanged
+				out.push({ filename: name, bytes, sha256: sha });
+				// Track in the materialized manifest so the next call
+				// recognizes our own outputs as "already present".
+				materializedManifest.set(name, sha);
+			} catch {
+				// Skip unreadable entries.
+			}
+		}
+	} catch {
+		// Empty workspace.
+	}
+	return out;
+}
+
+// Pyodide's FS surface is loosely typed in the public package; cherry-pick
+// the bits we need so call sites stay type-checked even though the
+// underlying object is `any`.
+interface PyodideFS {
+	mkdir(path: string): void;
+	unlink(path: string): void;
+	readdir(path: string): string[];
+	readFile(path: string): Uint8Array;
+	writeFile(path: string, data: Uint8Array): void;
+	stat(path: string): { mode: number };
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+	// node:crypto isn't available inside Pyodide-internal modules but it
+	// IS available in the worker_threads context. Worker boot runs
+	// before Pyodide, so this resolves the standard Node crypto.
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const { createHash } = require('node:crypto') as { createHash: (alg: string) => CryptoHash };
+	const h = createHash('sha256');
+	h.update(bytes);
+	return h.digest('hex');
+}
+
+interface CryptoHash {
+	update(data: Uint8Array): void;
+	digest(encoding: 'hex'): string;
+}

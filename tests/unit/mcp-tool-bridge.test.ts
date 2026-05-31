@@ -110,6 +110,7 @@ describe('mcpToolFor execute()', () => {
 				userId: 'u1',
 				conversationId: 'c1',
 				signal: ac.signal,
+				disabledFeatures: [],
 			},
 		);
 		expect(mocks.callMcpTool).toHaveBeenCalledWith(
@@ -135,6 +136,7 @@ describe('mcpToolFor execute()', () => {
 				userId: 'u1',
 				conversationId: 'c1',
 				signal: ac.signal,
+				disabledFeatures: [],
 			},
 		);
 		expect(result.isError).toBe(true);

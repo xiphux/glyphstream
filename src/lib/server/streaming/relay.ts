@@ -107,6 +107,15 @@ export interface RelayParams {
 	 */
 	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
 	/**
+	 * Per-conversation feature-category opt-outs. Forwarded through
+	 * `executeToolCalls` into each tool's `ToolContext`, so tools whose
+	 * behavior depends on a non-self category (run_python checking
+	 * `'web'` to gate its Python network shim) can honor the
+	 * conversation's switches at execute time, not just request-build
+	 * time.
+	 */
+	disabledFeatures?: readonly import('$lib/types/api').FeatureCategory[];
+	/**
 	 * Override for iteration 0's parent message. For the standard
 	 * messages POST this stays undefined and the relay parents the
 	 * first assistant message to `userMessage.id`. The approval-resume
@@ -204,6 +213,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 				conversationId: params.conversationId,
 				userId: params.userId,
 				signal: params.abortSignal,
+				disabledFeatures: params.disabledFeatures,
 				emit: write,
 				needsApproval: params.needsApproval,
 			});

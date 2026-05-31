@@ -28,6 +28,18 @@ export interface ToolContext {
 	userId: string;
 	conversationId: string;
 	signal: AbortSignal;
+	/**
+	 * Per-conversation feature-category opt-outs (`disabled_features`).
+	 * Most built-ins ignore this — registry-level filtering at request
+	 * build time (via `openaiToolDefinitions({ excludeCategories })`)
+	 * is enough when the tool's ENTIRE existence is gated by the
+	 * category. Tools whose BEHAVIOR depends on a sibling category —
+	 * notably `run_python`, whose Python network shim must refuse
+	 * egress when `'web'` is disabled even though `run_python` itself
+	 * lives in `'code_interpreter'` — read it here. Always an array
+	 * (possibly empty), never undefined.
+	 */
+	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[];
 }
 
 /**
@@ -42,6 +54,16 @@ export interface ToolContext {
 export interface ToolExecution {
 	content: string;
 	isError?: boolean;
+	/**
+	 * Media ids the executor created during this call (e.g. files
+	 * Python wrote under /workspace/). The streaming-relay's
+	 * tool-execution path picks these up after persisting the tool-
+	 * result message and calls `linkMessageMedia(toolMsg.id, id)`
+	 * for each, symmetric with how user uploads attach to user
+	 * messages via the wire-level `attachedMediaIds`. Tools that
+	 * don't generate media omit this field.
+	 */
+	attachedMediaIds?: string[];
 }
 
 /**

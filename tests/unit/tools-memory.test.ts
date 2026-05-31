@@ -16,7 +16,12 @@ import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
 
 function ctx(userId: string): ToolContext {
-	return { userId, conversationId: 'c1', signal: new AbortController().signal };
+	return {
+		userId,
+		conversationId: 'c1',
+		signal: new AbortController().signal,
+		disabledFeatures: [],
+	};
 }
 
 function run(t: Tool, args: unknown, c: ToolContext): ToolExecution {
