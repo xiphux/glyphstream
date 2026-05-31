@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	serializeBranchForUpstream,
-	serializeMessageForUpstream
+	serializeMessageForUpstream,
 } from '$lib/server/endpoints/serialize-upstream';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 
@@ -16,7 +16,7 @@ function msg(role: ChatMessage['role'], parts: MessagePart[], id = 'm1'): ChatMe
 		modelUsed: null,
 		tokensIn: null,
 		tokensOut: null,
-		createdAt: 0
+		createdAt: 0,
 	};
 }
 
@@ -28,7 +28,7 @@ describe('serializeMessageForUpstream', () => {
 	it('serializes a plain user message as bare-string content', async () => {
 		const out = await serializeMessageForUpstream(
 			msg('user', [{ type: 'text', text: 'hello' }]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({ role: 'user', content: 'hello' });
 	});
@@ -37,9 +37,9 @@ describe('serializeMessageForUpstream', () => {
 		const out = await serializeMessageForUpstream(
 			msg('user', [
 				{ type: 'text', text: 'one ' },
-				{ type: 'text', text: 'two' }
+				{ type: 'text', text: 'two' },
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({ role: 'user', content: 'one two' });
 	});
@@ -49,9 +49,9 @@ describe('serializeMessageForUpstream', () => {
 		const out = await serializeMessageForUpstream(
 			msg('assistant', [
 				{ type: 'reasoning', text: 'thinking...' },
-				{ type: 'text', text: 'the answer' }
+				{ type: 'text', text: 'the answer' },
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({ role: 'assistant', content: 'the answer' });
 	});
@@ -60,16 +60,16 @@ describe('serializeMessageForUpstream', () => {
 		const out = await serializeMessageForUpstream(
 			msg('user', [
 				{ type: 'text', text: 'what is this?' },
-				{ type: 'image', mediaId: 'media-abc' }
+				{ type: 'image', mediaId: 'media-abc' },
 			]),
-			async (id) => `data:image/png;base64,FAKE-${id}`
+			async (id) => `data:image/png;base64,FAKE-${id}`,
 		);
 		expect(out).toEqual({
 			role: 'user',
 			content: [
 				{ type: 'text', text: 'what is this?' },
-				{ type: 'image_url', image_url: { url: 'data:image/png;base64,FAKE-media-abc' } }
-			]
+				{ type: 'image_url', image_url: { url: 'data:image/png;base64,FAKE-media-abc' } },
+			],
 		});
 	});
 
@@ -81,10 +81,10 @@ describe('serializeMessageForUpstream', () => {
 					type: 'tool_call',
 					toolCallId: 'call_abc',
 					toolName: 'get_current_time',
-					arguments: '{"timezone":"UTC"}'
-				}
+					arguments: '{"timezone":"UTC"}',
+				},
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({
 			role: 'assistant',
@@ -93,9 +93,9 @@ describe('serializeMessageForUpstream', () => {
 				{
 					id: 'call_abc',
 					type: 'function',
-					function: { name: 'get_current_time', arguments: '{"timezone":"UTC"}' }
-				}
-			]
+					function: { name: 'get_current_time', arguments: '{"timezone":"UTC"}' },
+				},
+			],
 		});
 	});
 
@@ -106,10 +106,10 @@ describe('serializeMessageForUpstream', () => {
 					type: 'tool_call',
 					toolCallId: 'call_xyz',
 					toolName: 'get_current_time',
-					arguments: '{}'
-				}
+					arguments: '{}',
+				},
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({
 			role: 'assistant',
@@ -118,9 +118,9 @@ describe('serializeMessageForUpstream', () => {
 				{
 					id: 'call_xyz',
 					type: 'function',
-					function: { name: 'get_current_time', arguments: '{}' }
-				}
-			]
+					function: { name: 'get_current_time', arguments: '{}' },
+				},
+			],
 		});
 	});
 
@@ -128,27 +128,27 @@ describe('serializeMessageForUpstream', () => {
 		const out = await serializeMessageForUpstream(
 			msg('assistant', [
 				{ type: 'tool_call', toolCallId: 'a', toolName: 't1', arguments: '{}' },
-				{ type: 'tool_call', toolCallId: 'b', toolName: 't2', arguments: '{}' }
+				{ type: 'tool_call', toolCallId: 'b', toolName: 't2', arguments: '{}' },
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out?.tool_calls).toEqual([
 			{ id: 'a', type: 'function', function: { name: 't1', arguments: '{}' } },
-			{ id: 'b', type: 'function', function: { name: 't2', arguments: '{}' } }
+			{ id: 'b', type: 'function', function: { name: 't2', arguments: '{}' } },
 		]);
 	});
 
 	it('serializes a tool result message with tool_call_id', async () => {
 		const out = await serializeMessageForUpstream(
 			msg('tool', [
-				{ type: 'tool_result', toolCallId: 'call_abc', result: '{"iso":"2026-05-26T00:00:00Z"}' }
+				{ type: 'tool_result', toolCallId: 'call_abc', result: '{"iso":"2026-05-26T00:00:00Z"}' },
 			]),
-			noMedia
+			noMedia,
 		);
 		expect(out).toEqual({
 			role: 'tool',
 			tool_call_id: 'call_abc',
-			content: '{"iso":"2026-05-26T00:00:00Z"}'
+			content: '{"iso":"2026-05-26T00:00:00Z"}',
 		});
 	});
 
@@ -163,11 +163,11 @@ describe('serializeBranchForUpstream', () => {
 		const out = await serializeBranchForUpstream(
 			[msg('user', [{ type: 'text', text: 'hi' }])],
 			noMedia,
-			'You are helpful.'
+			'You are helpful.',
 		);
 		expect(out).toEqual([
 			{ role: 'system', content: 'You are helpful.' },
-			{ role: 'user', content: 'hi' }
+			{ role: 'user', content: 'hi' },
 		]);
 	});
 
@@ -175,7 +175,7 @@ describe('serializeBranchForUpstream', () => {
 		const out = await serializeBranchForUpstream(
 			[msg('user', [{ type: 'text', text: 'hi' }])],
 			noMedia,
-			null
+			null,
 		);
 		expect(out).toEqual([{ role: 'user', content: 'hi' }]);
 	});
@@ -194,17 +194,17 @@ describe('serializeBranchForUpstream', () => {
 						type: 'tool_call',
 						toolCallId: 'call_1',
 						toolName: 'get_current_time',
-						arguments: '{"timezone":"Asia/Tokyo"}'
-					}
+						arguments: '{"timezone":"Asia/Tokyo"}',
+					},
 				],
-				'a1'
+				'a1',
 			),
 			msg(
 				'tool',
 				[{ type: 'tool_result', toolCallId: 'call_1', result: '{"iso":"2026-05-26T00:00:00Z"}' }],
-				't1'
+				't1',
 			),
-			msg('assistant', [{ type: 'text', text: "It's 9 AM in Tokyo." }], 'a2')
+			msg('assistant', [{ type: 'text', text: "It's 9 AM in Tokyo." }], 'a2'),
 		];
 		const out = await serializeBranchForUpstream(branch, noMedia, null);
 		expect(out).toEqual([
@@ -216,16 +216,16 @@ describe('serializeBranchForUpstream', () => {
 					{
 						id: 'call_1',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '{"timezone":"Asia/Tokyo"}' }
-					}
-				]
+						function: { name: 'get_current_time', arguments: '{"timezone":"Asia/Tokyo"}' },
+					},
+				],
 			},
 			{
 				role: 'tool',
 				tool_call_id: 'call_1',
-				content: '{"iso":"2026-05-26T00:00:00Z"}'
+				content: '{"iso":"2026-05-26T00:00:00Z"}',
 			},
-			{ role: 'assistant', content: "It's 9 AM in Tokyo." }
+			{ role: 'assistant', content: "It's 9 AM in Tokyo." },
 		]);
 	});
 
@@ -235,13 +235,23 @@ describe('serializeBranchForUpstream', () => {
 			msg(
 				'assistant',
 				[
-					{ type: 'tool_call', toolCallId: 'a', toolName: 'get_current_time', arguments: '{"timezone":"Asia/Tokyo"}' },
-					{ type: 'tool_call', toolCallId: 'b', toolName: 'get_current_time', arguments: '{"timezone":"Europe/London"}' }
+					{
+						type: 'tool_call',
+						toolCallId: 'a',
+						toolName: 'get_current_time',
+						arguments: '{"timezone":"Asia/Tokyo"}',
+					},
+					{
+						type: 'tool_call',
+						toolCallId: 'b',
+						toolName: 'get_current_time',
+						arguments: '{"timezone":"Europe/London"}',
+					},
 				],
-				'asst1'
+				'asst1',
 			),
 			msg('tool', [{ type: 'tool_result', toolCallId: 'a', result: 'tokyo time' }], 't1'),
-			msg('tool', [{ type: 'tool_result', toolCallId: 'b', result: 'london time' }], 't2')
+			msg('tool', [{ type: 'tool_result', toolCallId: 'b', result: 'london time' }], 't2'),
 		];
 		const out = await serializeBranchForUpstream(branch, noMedia, null);
 		expect(out).toHaveLength(4);

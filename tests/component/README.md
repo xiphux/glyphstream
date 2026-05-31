@@ -1,9 +1,10 @@
 # Component tests
 
 Vitest + [`@testing-library/svelte`](https://testing-library.com/docs/svelte-testing-library/intro)
-+ [`happy-dom`](https://github.com/capricorn86/happy-dom). Same runner as
-the unit suite — `pnpm test` runs both. Per-file environment header is
-all that distinguishes a component test from a unit test.
+
+- [`happy-dom`](https://github.com/capricorn86/happy-dom). Same runner as
+  the unit suite — `pnpm test` runs both. Per-file environment header is
+  all that distinguishes a component test from a unit test.
 
 ## Writing a test
 
@@ -18,13 +19,13 @@ import userEvent from '@testing-library/user-event';
 import MyComponent from '$lib/components/MyComponent.svelte';
 
 describe('MyComponent', () => {
-  it('does the thing', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(MyComponent, { props: { value: 'hi', onChange } });
-    await user.click(screen.getByRole('button', { name: 'Submit' }));
-    expect(onChange).toHaveBeenCalledWith('hi');
-  });
+	it('does the thing', async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		render(MyComponent, { props: { value: 'hi', onChange } });
+		await user.click(screen.getByRole('button', { name: 'Submit' }));
+		expect(onChange).toHaveBeenCalledWith('hi');
+	});
 });
 ```
 
@@ -41,7 +42,7 @@ What the boilerplate gives you for free:
 ## Gotchas worth knowing
 
 **bits-ui Portal**. Components rendered through `Popover.Portal`,
-`Dialog.Portal`, etc. land in `document.body`, *not* in the original
+`Dialog.Portal`, etc. land in `document.body`, _not_ in the original
 render container. Use `screen.*` queries
 (`screen.getByRole`, `screen.getByLabelText`) instead of
 `container.querySelector(...)`, since `screen` looks at the entire
@@ -51,7 +52,7 @@ queries content this way — copy from there.
 **bits-ui state attributes**. Switches and other stateful bits-ui
 primitives carry `data-state="checked|unchecked|open|closed"` that
 flips synchronously even when CSS transitions would defer the
-*visual* state. Assert against the attribute, not against visibility:
+_visual_ state. Assert against the attribute, not against visibility:
 
 ```ts
 expect(sw).toHaveAttribute('data-state', 'checked');
@@ -78,7 +79,7 @@ happy-dom. The warning means "a `$derived` was read after its
 owning effect was destroyed" — harmless during teardown (nothing
 observable reads the stale value), but the noise drowns out
 warnings worth seeing. The filter is string-matched, narrow, and
-documented inline at the suppression site; *all other* warnings —
+documented inline at the suppression site; _all other_ warnings —
 including any `derived_inert` that fires in dev / browser from
 code we wrote — surface normally. Drop the filter when bits-ui or
 Svelte addresses the underlying source.
@@ -89,7 +90,7 @@ component depending on them will need something like:
 
 ```ts
 vi.mock('$app/state', () => ({
-  page: { url: new URL('http://localhost/'), data: {} }
+	page: { url: new URL('http://localhost/'), data: {} },
 }));
 ```
 

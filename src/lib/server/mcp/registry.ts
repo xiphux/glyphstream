@@ -1,5 +1,10 @@
 import { loadMcpServers, type LoadedMcpServer } from './config';
-import { connectMcpServer, type McpConnection, type McpToolDescriptor, type McpCallResult } from './client';
+import {
+	connectMcpServer,
+	type McpConnection,
+	type McpToolDescriptor,
+	type McpCallResult,
+} from './client';
 
 interface ConnectedEntry {
 	state: 'connected';
@@ -79,7 +84,7 @@ export function listMcpServerStates(): ReadonlyArray<{
 		transport: e.cfg.transport,
 		state: e.state,
 		error: e.state === 'failed' ? e.error : undefined,
-		tools: e.state === 'failed' ? [] : (e.tools ?? [])
+		tools: e.state === 'failed' ? [] : (e.tools ?? []),
 	}));
 }
 
@@ -105,7 +110,7 @@ export async function callMcpTool(
 	serverId: string,
 	toolName: string,
 	args: unknown,
-	signal: AbortSignal
+	signal: AbortSignal,
 ): Promise<McpCallResult> {
 	const cfg = entries.get(serverId)?.cfg;
 	if (!cfg) throw new Error(`mcp: unknown server "${serverId}"`);
@@ -159,7 +164,7 @@ async function ensureConnected(serverId: string): Promise<McpConnection> {
 async function connectAndRecord(
 	cfg: LoadedMcpServer,
 	firstTime: boolean,
-	existingTools: McpToolDescriptor[] | null = null
+	existingTools: McpToolDescriptor[] | null = null,
 ): Promise<ConnectedEntry | FailedEntry> {
 	// Coalesce concurrent attempts: install a reconnecting entry whose promise
 	// every concurrent caller awaits.
@@ -167,7 +172,7 @@ async function connectAndRecord(
 		state: 'reconnecting',
 		cfg,
 		tools: existingTools,
-		promise: doConnect(cfg, firstTime, existingTools)
+		promise: doConnect(cfg, firstTime, existingTools),
 	};
 	entries.set(cfg.id, reconnecting);
 	const settled = await reconnecting.promise;
@@ -183,7 +188,7 @@ async function connectAndRecord(
 async function doConnect(
 	cfg: LoadedMcpServer,
 	firstTime: boolean,
-	existingTools: McpToolDescriptor[] | null
+	existingTools: McpToolDescriptor[] | null,
 ): Promise<ConnectedEntry | FailedEntry> {
 	try {
 		const client = await connectMcpServer(cfg, cfg.timeoutSeconds * 1000);
@@ -195,7 +200,7 @@ async function doConnect(
 			client,
 			tools,
 			lastUsedAt: Date.now(),
-			idleTimerId: null
+			idleTimerId: null,
 		};
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -261,7 +266,7 @@ function installShutdownHook(): void {
 		await Promise.all(
 			Array.from(entries.values()).map(async (e) => {
 				if (e.state === 'connected') await e.client.close().catch(() => {});
-			})
+			}),
 		);
 	};
 	process.on('SIGINT', () => {

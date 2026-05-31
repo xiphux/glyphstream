@@ -25,7 +25,7 @@ async function setFavoriteModels(next: readonly string[]): Promise<void> {
 		const res = await fetch('/api/user/preferences', {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ favoriteModels: next })
+			body: JSON.stringify({ favoriteModels: next }),
 		});
 		if (!res.ok) {
 			toast.error(`Couldn't update favorites: ${await errorMessageFromResponse(res)}`);
@@ -33,15 +33,13 @@ async function setFavoriteModels(next: readonly string[]): Promise<void> {
 		}
 		await invalidateAll();
 	} catch (e) {
-		toast.error(
-			`Couldn't update favorites: ${e instanceof Error ? e.message : String(e)}`
-		);
+		toast.error(`Couldn't update favorites: ${e instanceof Error ? e.message : String(e)}`);
 	}
 }
 
 export async function toggleFavoriteModel(
 	currentFavorites: readonly string[],
-	modelValue: string
+	modelValue: string,
 ): Promise<void> {
 	const isFavorited = currentFavorites.includes(modelValue);
 	const next = isFavorited
@@ -64,7 +62,7 @@ export function reorder(
 	current: readonly string[],
 	dragged: string,
 	target: string,
-	position: 'before' | 'after'
+	position: 'before' | 'after',
 ): string[] {
 	if (dragged === target) return [...current];
 	if (!current.includes(dragged) || !current.includes(target)) return [...current];

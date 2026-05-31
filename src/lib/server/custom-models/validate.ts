@@ -3,12 +3,12 @@ import { getEndpoint } from '$lib/server/endpoints/registry';
 import { getRegisteredCategoryIds } from '$lib/server/feature-categories';
 import {
 	FeatureCategoryValidationError,
-	validateDisabledFeatures
+	validateDisabledFeatures,
 } from '$lib/server/util/feature-categories';
 import type {
 	CreateCustomModelRequest,
 	CustomModelParameters,
-	FeatureCategory
+	FeatureCategory,
 } from '$lib/types/api';
 
 export interface ValidatedCreate {
@@ -47,7 +47,7 @@ export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCr
 		baseModelId,
 		systemPrompt,
 		parameters,
-		defaultDisabledFeatures
+		defaultDisabledFeatures,
 	};
 }
 
@@ -86,16 +86,12 @@ export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[]
  * without breaking older client builds.
  */
 export function validateParameters(
-	raw: CustomModelParameters | undefined | null
+	raw: CustomModelParameters | undefined | null,
 ): CustomModelParameters | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const out: CustomModelParameters = {};
 	if (raw.temperature !== undefined) {
-		if (
-			typeof raw.temperature !== 'number' ||
-			raw.temperature < 0 ||
-			raw.temperature > 2
-		) {
+		if (typeof raw.temperature !== 'number' || raw.temperature < 0 || raw.temperature > 2) {
 			throw error(400, "'temperature' must be a number between 0 and 2");
 		}
 		out.temperature = raw.temperature;

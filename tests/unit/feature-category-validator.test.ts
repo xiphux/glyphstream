@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	FeatureCategoryValidationError,
-	validateDisabledFeatures
+	validateDisabledFeatures,
 } from '$lib/server/util/feature-categories';
 
 describe('validateDisabledFeatures', () => {
@@ -22,7 +22,7 @@ describe('validateDisabledFeatures', () => {
 	it('accepts multiple known categories together', () => {
 		expect(validateDisabledFeatures(['web', 'personalization'])).toEqual([
 			'web',
-			'personalization'
+			'personalization',
 		]);
 	});
 

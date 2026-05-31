@@ -42,8 +42,7 @@ const OWUI_FILE_URL_RE = /!\[([^\]]*)\]\(\/api\/v1\/files\/[^)]+\)/g;
  * inner content is HTML-entity-encoded and prefixed with markdown
  * blockquote markers (`> ...` rendered as `&gt; ...`).
  */
-const OWUI_REASONING_RE =
-	/<details\s+type="reasoning"[^>]*>([\s\S]*?)<\/details>/i;
+const OWUI_REASONING_RE = /<details\s+type="reasoning"[^>]*>([\s\S]*?)<\/details>/i;
 const OWUI_SUMMARY_RE = /<summary[^>]*>[\s\S]*?<\/summary>/i;
 
 export interface ImportOptions {
@@ -98,7 +97,7 @@ export async function importOwuiExport(
 	rawJson: unknown,
 	userId: string,
 	db: ImportDb,
-	opts: ImportOptions = {}
+	opts: ImportOptions = {},
 ): Promise<ImportResult> {
 	if (!Array.isArray(rawJson)) {
 		throw new Error('Export root must be an array of conversations');
@@ -108,7 +107,7 @@ export async function importOwuiExport(
 		imported: 0,
 		archived: 0,
 		skipped: [],
-		errors: []
+		errors: [],
 	};
 
 	for (const entry of rawJson as OwuiExportEntry[]) {
@@ -130,7 +129,7 @@ export async function importOwuiExport(
 		} catch (e) {
 			result.errors.push({
 				id,
-				reason: e instanceof Error ? e.message : String(e)
+				reason: e instanceof Error ? e.message : String(e),
 			});
 		}
 	}
@@ -148,7 +147,7 @@ async function importOne(
 	entry: OwuiExportEntry,
 	userId: string,
 	db: ImportDb,
-	opts: ImportOptions
+	opts: ImportOptions,
 ): Promise<ImportOutcome> {
 	const history = entry?.chat?.history;
 	const owuiMessages = history?.messages;
@@ -165,7 +164,7 @@ async function importOne(
 	const seen = new Set<string>();
 
 	const roots = Object.values(owuiMessages).filter(
-		(m): m is OwuiTreeMessage => !!m && (m.parentId === null || m.parentId === undefined)
+		(m): m is OwuiTreeMessage => !!m && (m.parentId === null || m.parentId === undefined),
 	);
 	const queue: OwuiTreeMessage[] = [...roots];
 	while (queue.length > 0) {
@@ -203,15 +202,15 @@ async function importOne(
 	const owuiModel = entry?.chat?.models?.[0] ?? 'unknown';
 	const modelKind = detectModelKind(
 		owuiModel,
-		ordered.map((o) => o.msg)
+		ordered.map((o) => o.msg),
 	);
 	const createdAt = secondsToMs(entry?.created_at) ?? Date.now();
 	const updatedAt = secondsToMs(entry?.updated_at) ?? createdAt;
 	const archivedAt = entry?.archived ? updatedAt : null;
 	const activeLeafOwuiId = history?.currentId;
 	const activeLeafNewId = activeLeafOwuiId
-		? idMap.get(activeLeafOwuiId) ?? null
-		: idMap.get(ordered[ordered.length - 1].owuiId) ?? null;
+		? (idMap.get(activeLeafOwuiId) ?? null)
+		: (idMap.get(ordered[ordered.length - 1].owuiId) ?? null);
 
 	const title = entry?.title ?? entry?.chat?.title ?? null;
 
@@ -260,7 +259,7 @@ async function importOne(
 				activeLeafMessageId: null, // set after messages exist
 				createdAt,
 				updatedAt,
-				archivedAt
+				archivedAt,
 			})
 			.run();
 
@@ -288,9 +287,7 @@ async function importOne(
 					id: newId,
 					conversationId,
 					parentMessageId:
-						msg.parentId && idMap.get(msg.parentId)
-							? idMap.get(msg.parentId)!
-							: null,
+						msg.parentId && idMap.get(msg.parentId) ? idMap.get(msg.parentId)! : null,
 					role,
 					contentJson: JSON.stringify(parts),
 					contentHtml,
@@ -300,7 +297,7 @@ async function importOne(
 					tokensIn: null,
 					tokensOut: null,
 					rawResponseJson: null,
-					createdAt: secondsToMs(msg.timestamp) ?? createdAt
+					createdAt: secondsToMs(msg.timestamp) ?? createdAt,
 				})
 				.run();
 		}
@@ -409,9 +406,6 @@ function decodeHtmlEntities(s: string): string {
 		.replace(/&apos;/g, "'")
 		.replace(/&nbsp;/g, ' ')
 		.replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(Number(dec)))
-		.replace(/&#x([0-9a-f]+);/gi, (_m, hex) =>
-			String.fromCodePoint(Number.parseInt(hex, 16))
-		)
+		.replace(/&#x([0-9a-f]+);/gi, (_m, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
 		.replace(/&amp;/g, '&');
 }
-

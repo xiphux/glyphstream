@@ -13,7 +13,11 @@ import { render, screen } from '@testing-library/svelte';
 import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 
-function makeMessage(role: MessageRole, parts: MessagePart[], overrides: Partial<ChatMessage> = {}): ChatMessage {
+function makeMessage(
+	role: MessageRole,
+	parts: MessagePart[],
+	overrides: Partial<ChatMessage> = {},
+): ChatMessage {
 	return {
 		id: overrides.id ?? 'm-1',
 		role,
@@ -25,7 +29,7 @@ function makeMessage(role: MessageRole, parts: MessagePart[], overrides: Partial
 		tokensIn: null,
 		tokensOut: null,
 		createdAt: 0,
-		...overrides
+		...overrides,
 	};
 }
 
@@ -35,7 +39,7 @@ const baseProps = {
 	assistantLabel: 'gpt-4o',
 	mergeWithPrev: false,
 	mergeWithNext: false,
-	onImageClick: vi.fn()
+	onImageClick: vi.fn(),
 };
 
 describe('MessageBubble — role label', () => {
@@ -43,8 +47,8 @@ describe('MessageBubble — role label', () => {
 		render(MessageBubble, {
 			props: {
 				...baseProps,
-				message: makeMessage('user', [{ type: 'text', text: 'hello' }])
-			}
+				message: makeMessage('user', [{ type: 'text', text: 'hello' }]),
+			},
 		});
 		expect(screen.getByText('Chris')).toBeInTheDocument();
 		expect(screen.getByText('hello')).toBeInTheDocument();
@@ -54,8 +58,8 @@ describe('MessageBubble — role label', () => {
 		render(MessageBubble, {
 			props: {
 				...baseProps,
-				message: makeMessage('assistant', [{ type: 'text', text: 'hi there' }])
-			}
+				message: makeMessage('assistant', [{ type: 'text', text: 'hi there' }]),
+			},
 		});
 		expect(screen.getByText('gpt-4o')).toBeInTheDocument();
 	});
@@ -65,8 +69,8 @@ describe('MessageBubble — role label', () => {
 			props: {
 				...baseProps,
 				mergeWithPrev: true,
-				message: makeMessage('assistant', [{ type: 'text', text: 'continued' }])
-			}
+				message: makeMessage('assistant', [{ type: 'text', text: 'continued' }]),
+			},
 		});
 		expect(screen.queryByText('gpt-4o')).toBeNull();
 		expect(screen.getByText('continued')).toBeInTheDocument();
@@ -78,8 +82,8 @@ describe('MessageBubble — bubble styling', () => {
 		const { container } = render(MessageBubble, {
 			props: {
 				...baseProps,
-				message: makeMessage('user', [{ type: 'text', text: 'x' }])
-			}
+				message: makeMessage('user', [{ type: 'text', text: 'x' }]),
+			},
 		});
 		const article = container.querySelector('article')!;
 		expect(article).toHaveClass('ml-auto');
@@ -90,8 +94,8 @@ describe('MessageBubble — bubble styling', () => {
 		const { container } = render(MessageBubble, {
 			props: {
 				...baseProps,
-				message: makeMessage('assistant', [{ type: 'text', text: 'x' }])
-			}
+				message: makeMessage('assistant', [{ type: 'text', text: 'x' }]),
+			},
 		});
 		expect(container.querySelector('article')).toHaveClass('bg-surface-raised');
 	});
@@ -100,8 +104,8 @@ describe('MessageBubble — bubble styling', () => {
 		const { container } = render(MessageBubble, {
 			props: {
 				...baseProps,
-				message: makeMessage('tool', [{ type: 'text', text: 'x' }])
-			}
+				message: makeMessage('tool', [{ type: 'text', text: 'x' }]),
+			},
 		});
 		expect(container.querySelector('article')).toHaveClass('bg-amber-50');
 	});
@@ -111,8 +115,8 @@ describe('MessageBubble — bubble styling', () => {
 			props: {
 				...baseProps,
 				mergeWithPrev: true,
-				message: makeMessage('assistant', [{ type: 'text', text: 'x' }])
-			}
+				message: makeMessage('assistant', [{ type: 'text', text: 'x' }]),
+			},
 		});
 		expect(container.querySelector('article')).toHaveClass('rounded-t-none');
 	});
@@ -122,8 +126,8 @@ describe('MessageBubble — bubble styling', () => {
 			props: {
 				...baseProps,
 				mergeWithNext: true,
-				message: makeMessage('assistant', [{ type: 'text', text: 'x' }])
-			}
+				message: makeMessage('assistant', [{ type: 'text', text: 'x' }]),
+			},
 		});
 		expect(container.querySelector('article')).toHaveClass('rounded-b-none');
 	});
@@ -135,9 +139,9 @@ describe('MessageBubble — body rendering', () => {
 			props: {
 				...baseProps,
 				message: makeMessage('assistant', [{ type: 'text', text: 'raw' }], {
-					contentHtml: '<p>rendered <code>html</code></p>'
-				})
-			}
+					contentHtml: '<p>rendered <code>html</code></p>',
+				}),
+			},
 		});
 		expect(container.querySelector('.gs-prose code')?.textContent).toBe('html');
 	});
@@ -147,9 +151,9 @@ describe('MessageBubble — body rendering', () => {
 			props: {
 				...baseProps,
 				message: makeMessage('assistant', [{ type: 'text', text: 'answer' }], {
-					reasoningText: 'let me think'
-				})
-			}
+					reasoningText: 'let me think',
+				}),
+			},
 		});
 		expect(screen.getByText('Reasoning')).toBeInTheDocument();
 		expect(screen.getByText('let me think')).toBeInTheDocument();

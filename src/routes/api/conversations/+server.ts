@@ -1,22 +1,15 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import {
-	createConversation,
-	listConversations
-} from '$lib/server/db/queries/conversations';
+import { createConversation, listConversations } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
-import type {
-	CreateConversationRequest,
-	CustomModelParameters,
-	ModelKind
-} from '$lib/types/api';
+import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
 import {
 	FeatureCategoryValidationError,
-	validateDisabledFeatures
+	validateDisabledFeatures,
 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
@@ -58,7 +51,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		if (!getEndpoint(cm.baseEndpointId)) {
 			throw error(
 				400,
-				`Custom model references unknown endpoint "${cm.baseEndpointId}" — has it been removed from config.toml?`
+				`Custom model references unknown endpoint "${cm.baseEndpointId}" — has it been removed from config.toml?`,
 			);
 		}
 		resolvedEndpointId = cm.baseEndpointId;
@@ -72,10 +65,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 		const parsed = parseModelId(modelId);
 		if (!parsed) {
-			throw error(
-				400,
-				`Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`
-			);
+			throw error(400, `Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`);
 		}
 		if (!getEndpoint(parsed.endpointId)) {
 			throw error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
@@ -111,7 +101,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		parameters: resolvedParameters,
 		customModelId: resolvedCustomModelId,
 		title: body.title?.trim() || null,
-		disabledFeatures
+		disabledFeatures,
 	});
 	return json({ conversation: conv }, { status: 201 });
 };

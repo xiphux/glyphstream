@@ -59,9 +59,7 @@ export function thumbStoragePath(storagePath: string): string {
  * is possible (source missing, sharp decode error). Callers should
  * fall back to streaming the original in the null case.
  */
-export async function getOrCreateThumbnail(
-	storagePath: string
-): Promise<ThumbnailRef | null> {
+export async function getOrCreateThumbnail(storagePath: string): Promise<ThumbnailRef | null> {
 	const root = resolve(mediaDir());
 	const sourceAbs = resolve(root, storagePath);
 	if (!existsSync(sourceAbs)) return null;
@@ -74,7 +72,7 @@ export async function getOrCreateThumbnail(
 		return {
 			absolutePath: thumbAbs,
 			byteSize: stats.size,
-			contentType: 'image/jpeg'
+			contentType: 'image/jpeg',
 		};
 	}
 
@@ -87,7 +85,7 @@ export async function getOrCreateThumbnail(
 		await sharp(sourceAbs)
 			.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
 				fit: 'inside',
-				withoutEnlargement: true
+				withoutEnlargement: true,
 			})
 			.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
 			.toFile(thumbAbs);
@@ -95,7 +93,7 @@ export async function getOrCreateThumbnail(
 		return {
 			absolutePath: thumbAbs,
 			byteSize: stats.size,
-			contentType: 'image/jpeg'
+			contentType: 'image/jpeg',
 		};
 	} catch (e) {
 		// One bad input shouldn't kill the endpoint. Log + null so

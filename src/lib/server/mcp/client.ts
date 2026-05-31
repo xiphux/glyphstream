@@ -1,5 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport, getDefaultEnvironment } from '@modelcontextprotocol/sdk/client/stdio.js';
+import {
+	StdioClientTransport,
+	getDefaultEnvironment,
+} from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { LoadedMcpServer } from './config';
 
@@ -32,7 +35,7 @@ export interface McpConnection {
 		name: string,
 		args: unknown,
 		signal: AbortSignal,
-		timeoutMs: number
+		timeoutMs: number,
 	): Promise<McpCallResult>;
 	close(): Promise<void>;
 	/** Subscribe to transport-level close events (subprocess died, HTTP session expired). */
@@ -46,7 +49,7 @@ export interface McpConnection {
  */
 export async function connectMcpServer(
 	cfg: LoadedMcpServer,
-	connectTimeoutMs: number
+	connectTimeoutMs: number,
 ): Promise<McpConnection> {
 	const client = new Client(
 		// __APP_VERSION__ is baked from package.json at build time (see
@@ -54,7 +57,7 @@ export async function connectMcpServer(
 		// clientInfo.version in lockstep with the build the server's
 		// actually running, instead of drifting silently on each bump.
 		{ name: 'glyphstream', version: __APP_VERSION__ },
-		{ capabilities: {} }
+		{ capabilities: {} },
 	);
 
 	const transport =
@@ -62,12 +65,12 @@ export async function connectMcpServer(
 			? new StdioClientTransport({
 					command: cfg.command,
 					args: cfg.args,
-					env: { ...getDefaultEnvironment(), ...cfg.env }
+					env: { ...getDefaultEnvironment(), ...cfg.env },
 				})
 			: new StreamableHTTPClientTransport(new URL(cfg.url), {
 					requestInit: cfg.apiKey
 						? { headers: { Authorization: `Bearer ${cfg.apiKey}` } }
-						: undefined
+						: undefined,
 				});
 
 	const ac = new AbortController();
@@ -103,24 +106,19 @@ export async function connectMcpServer(
 			return res.tools.map((t) => ({
 				name: t.name,
 				description: t.description ?? '',
-				inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object' }
+				inputSchema: (t.inputSchema as Record<string, unknown>) ?? { type: 'object' },
 			}));
 		},
 
-		async callTool(
-			name,
-			args,
-			signal,
-			timeoutMs
-		): Promise<McpCallResult> {
+		async callTool(name, args, signal, timeoutMs): Promise<McpCallResult> {
 			const res = await client.callTool(
 				{ name, arguments: (args as Record<string, unknown> | undefined) ?? {} },
 				undefined,
-				{ signal, timeout: timeoutMs }
+				{ signal, timeout: timeoutMs },
 			);
 			return {
 				content: (res.content as McpContentBlock[]) ?? [],
-				isError: res.isError === true
+				isError: res.isError === true,
 			};
 		},
 
@@ -130,6 +128,6 @@ export async function connectMcpServer(
 
 		onClose(cb) {
 			closeListeners.push(cb);
-		}
+		},
 	};
 }

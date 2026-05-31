@@ -27,7 +27,7 @@ const DEFAULTS: UserPreferences = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [],
-	trustedMcpTools: []
+	trustedMcpTools: [],
 };
 
 /**
@@ -60,7 +60,7 @@ function coerceFavoriteModels(input: unknown, fallback: string[]): string[] {
  */
 function coerceUserPreferences(
 	input: Partial<Record<keyof UserPreferences, unknown>>,
-	fallback: UserPreferences
+	fallback: UserPreferences,
 ): UserPreferences {
 	return {
 		name: typeof input.name === 'string' ? input.name : fallback.name,
@@ -104,7 +104,7 @@ function coerceUserPreferences(
 		trustedMcpTools:
 			input.trustedMcpTools === undefined
 				? fallback.trustedMcpTools
-				: coerceStringArray(input.trustedMcpTools, fallback.trustedMcpTools)
+				: coerceStringArray(input.trustedMcpTools, fallback.trustedMcpTools),
 	};
 }
 
@@ -163,7 +163,7 @@ export function getUserPreferences(userId: string): UserPreferences | null {
  */
 export function setUserPreferences(
 	userId: string,
-	patch: Partial<UserPreferences>
+	patch: Partial<UserPreferences>,
 ): UserPreferences {
 	const db = getDb();
 	return db.transaction((tx) => {
@@ -208,7 +208,7 @@ export function setUserPreferences(
  */
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,
-	memories: Memory[] = []
+	memories: Memory[] = [],
 ): string | null {
 	const parts: string[] = [];
 	const name = prefs.name.trim();

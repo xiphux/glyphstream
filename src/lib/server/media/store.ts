@@ -47,7 +47,7 @@ export interface MediaStore {
 	open(
 		storagePath: string,
 		contentType: string,
-		range?: MediaRange
+		range?: MediaRange,
 	): Promise<MediaOpenResult | null>;
 	/** Best-effort delete; missing files don't error. */
 	delete(storagePath: string): Promise<void>;

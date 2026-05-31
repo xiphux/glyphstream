@@ -14,11 +14,11 @@ import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
-	mediaDir: ''
+	mediaDir: '',
 }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 vi.mock('$lib/server/env', () => ({
 	mediaDir: () => mocks.mediaDir,
@@ -27,7 +27,7 @@ vi.mock('$lib/server/env', () => ({
 	// reads tripping up the mock.
 	dbPath: () => './data/glyphstream.db',
 	configPath: () => './config.toml',
-	logLevel: () => 'info'
+	logLevel: () => 'info',
 }));
 
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -63,7 +63,7 @@ describe('loadMediaBytes', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		writeMediaFile('ab/cd/test.png', bytes);
 
@@ -84,7 +84,7 @@ describe('loadMediaBytes', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		// Even though the file exists on disk, ownership check fails first
 		// — and crucially before the readFile, so we don't leak existence.
@@ -107,14 +107,10 @@ describe('loadMediaBytes', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		writeMediaFile('aa/bb/zapped.png', Buffer.from('PNG'));
-		mocks.testDb
-			.update(media)
-			.set({ hardDeletedAt: Date.now() })
-			.where(eq(media.id, id))
-			.run();
+		mocks.testDb.update(media).set({ hardDeletedAt: Date.now() }).where(eq(media.id, id)).run();
 		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(/deleted/i);
 	});
 
@@ -132,7 +128,7 @@ describe('loadMediaBytes', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(/ENOENT/);
 	});
@@ -150,7 +146,7 @@ describe('mediaIdToDataUrl', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		writeMediaFile('aa/bb/hello.bin', bytes);
 
@@ -169,7 +165,7 @@ describe('mediaIdToDataUrl', () => {
 			kind: 'image',
 			sourceEndpointId: null,
 			sourceModel: null,
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		writeMediaFile('aa/bb/secret.png', Buffer.from([0x00]));
 		await expect(mediaIdToDataUrl(id, attacker.id)).rejects.toThrow(/not found/i);

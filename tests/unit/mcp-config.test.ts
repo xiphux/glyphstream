@@ -7,8 +7,8 @@ import { McpConfigError, loadMcpServers } from '$lib/server/mcp/config';
 const envStub = vi.hoisted(() => ({ values: {} as Record<string, string> }));
 vi.mock('$env/dynamic/private', () => ({
 	env: new Proxy({} as Record<string, string>, {
-		get: (_t, k: string) => envStub.values[k]
-	})
+		get: (_t, k: string) => envStub.values[k],
+	}),
 }));
 
 const tmpDirs: string[] = [];
@@ -48,7 +48,7 @@ command = "npx"
 			args: [],
 			env: {},
 			timeoutSeconds: 30,
-			idleTimeoutSeconds: 900
+			idleTimeoutSeconds: 900,
 		});
 	});
 
@@ -64,7 +64,7 @@ url = "https://mcp.linear.app/mcp"
 			id: 'linear',
 			transport: 'http',
 			url: 'https://mcp.linear.app/mcp',
-			apiKey: null
+			apiKey: null,
 		});
 	});
 
@@ -137,7 +137,7 @@ idle_timeout_seconds = 60
 		`);
 		expect(loadMcpServers(path)[0]).toMatchObject({
 			timeoutSeconds: 5,
-			idleTimeoutSeconds: 60
+			idleTimeoutSeconds: 60,
 		});
 	});
 

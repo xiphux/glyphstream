@@ -16,9 +16,9 @@ describe('dragHasFiles', () => {
 	});
 
 	it('is false for a text-only or empty drag', () => {
-		expect(
-			dragHasFiles({ dataTransfer: { types: ['text/plain'] } } as unknown as DragEvent)
-		).toBe(false);
+		expect(dragHasFiles({ dataTransfer: { types: ['text/plain'] } } as unknown as DragEvent)).toBe(
+			false,
+		);
 		expect(dragHasFiles({ dataTransfer: null } as unknown as DragEvent)).toBe(false);
 	});
 });
@@ -32,7 +32,7 @@ describe('extractImageFiles', () => {
 	it('falls back to .items when .files is empty', () => {
 		const items = [
 			{ kind: 'file', type: 'image/png', getAsFile: () => img('c.png') },
-			{ kind: 'string', type: 'text/plain', getAsFile: () => null }
+			{ kind: 'string', type: 'text/plain', getAsFile: () => null },
 		];
 		const dt = { files: [], items } as unknown as DataTransfer;
 		expect(extractImageFiles(dt).map((f) => f.name)).toEqual(['c.png']);

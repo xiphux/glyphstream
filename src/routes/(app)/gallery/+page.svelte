@@ -6,7 +6,7 @@
 	import type {
 		MediaConversationRef,
 		MediaListItem,
-		MediaListResult
+		MediaListResult,
 	} from '$lib/server/db/queries/media';
 
 	let { data } = $props<{ data: { initial: MediaListResult; kind: 'image' | 'video' | null } }>();
@@ -111,7 +111,7 @@
 		if (deletingId) return;
 		const ok = await confirmDialog.ask({
 			title: 'Delete this media?',
-			message: 'This action cannot be undone.'
+			message: 'This action cannot be undone.',
 		});
 		if (!ok) return;
 		deletingId = id;
@@ -152,7 +152,7 @@
 		const count = selected.size;
 		const ok = await confirmDialog.ask({
 			title: count === 1 ? 'Delete 1 item?' : `Delete ${count} items?`,
-			message: 'This action cannot be undone.'
+			message: 'This action cannot be undone.',
 		});
 		if (!ok) return;
 		bulkDeleting = true;
@@ -162,7 +162,7 @@
 			const res = await fetch('/api/media/bulk-delete', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ ids })
+				body: JSON.stringify({ ids }),
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			// Optimistically drop every requested id regardless of how many
@@ -253,12 +253,16 @@
 				cells; clicking opens the full asset in the lightbox at native
 				aspect ratio.
 			-->
-			<ul class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+			<ul
+				class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+			>
 				{#each items as m (m.id)}
 					{@const isSelected = selectMode && selected.has(m.id)}
-					<li class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-						? 'border-surface-inverse ring-2 ring-surface-inverse'
-						: 'border-border hover:border-border-focus'}">
+					<li
+						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
+							? 'border-surface-inverse ring-2 ring-surface-inverse'
+							: 'border-border hover:border-border-focus'}"
+					>
 						<button
 							type="button"
 							onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
@@ -302,7 +306,9 @@
 										playsinline
 										class="h-full w-full object-cover"
 									></video>
-									<div class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white">
+									<div
+										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+									>
 										video
 									</div>
 								{/if}
@@ -359,7 +365,9 @@
 		{/if}
 
 		{#if error}
-			<div class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
+			<div
+				class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
+			>
 				{error}
 			</div>
 		{/if}

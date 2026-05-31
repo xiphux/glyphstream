@@ -21,7 +21,7 @@ function chunk(opts: {
 	if (opts.reasoning !== undefined) delta.reasoning = opts.reasoning;
 	if (opts.reasoning_content !== undefined) delta.reasoning_content = opts.reasoning_content;
 	return JSON.stringify({
-		choices: [{ delta, finish_reason: opts.finish_reason ?? null }]
+		choices: [{ delta, finish_reason: opts.finish_reason ?? null }],
 	});
 }
 
@@ -49,9 +49,9 @@ describe('passthrough normalizer', () => {
 			rec(
 				JSON.stringify({
 					choices: [{ delta: { content: 'x' }, finish_reason: 'stop' }],
-					usage: { prompt_tokens: 5, completion_tokens: 2 }
-				})
-			)
+					usage: { prompt_tokens: 5, completion_tokens: 2 },
+				}),
+			),
 		);
 		expect(r.finishReason).toBe('stop');
 		expect(r.usage).toEqual({ promptTokens: 5, completionTokens: 2 });
@@ -66,12 +66,10 @@ describe('passthrough normalizer', () => {
 describe('openai-o-series normalizer', () => {
 	it('emits delta.reasoning_content as reasoning, then delta.content as text', () => {
 		const n = createNormalizer('openai-o-series');
-		const r = n.process(
-			rec(chunk({ reasoning_content: 'thinking…', content: 'answer' }))
-		);
+		const r = n.process(rec(chunk({ reasoning_content: 'thinking…', content: 'answer' })));
 		expect(r.deltas).toEqual([
 			{ type: 'reasoning', text: 'thinking…' },
-			{ type: 'text', text: 'answer' }
+			{ type: 'text', text: 'answer' },
 		]);
 	});
 
@@ -94,7 +92,7 @@ describe('openrouter normalizer', () => {
 		const r = n.process(rec(chunk({ reasoning: 'analyzing', content: 'reply' })));
 		expect(r.deltas).toEqual([
 			{ type: 'reasoning', text: 'analyzing' },
-			{ type: 'text', text: 'reply' }
+			{ type: 'text', text: 'reply' },
 		]);
 	});
 
@@ -111,7 +109,7 @@ describe('deepseek-r1 normalizer', () => {
 		const r1 = n.process(rec(chunk({ content: '<think>brain</think>hello' })));
 		expect(r1.deltas).toEqual([
 			{ type: 'reasoning', text: 'brain' },
-			{ type: 'text', text: 'hello' }
+			{ type: 'text', text: 'hello' },
 		]);
 	});
 
@@ -124,7 +122,7 @@ describe('deepseek-r1 normalizer', () => {
 		const r2 = n.process(rec(chunk({ content: 'ink>inside</think>after' })));
 		expect(r2.deltas).toEqual([
 			{ type: 'reasoning', text: 'inside' },
-			{ type: 'text', text: 'after' }
+			{ type: 'text', text: 'after' },
 		]);
 	});
 
@@ -181,9 +179,9 @@ function toolChunk(toolCalls: ToolCallChunk[], opts: { finish_reason?: string } 
 		choices: [
 			{
 				delta: { tool_calls: toolCalls },
-				finish_reason: opts.finish_reason ?? null
-			}
-		]
+				finish_reason: opts.finish_reason ?? null,
+			},
+		],
 	});
 }
 
@@ -197,13 +195,13 @@ describe('passthrough normalizer · tool_calls', () => {
 						index: 0,
 						id: 'call_abc',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '' }
-					}
-				])
-			)
+						function: { name: 'get_current_time', arguments: '' },
+					},
+				]),
+			),
 		);
 		expect(r.deltas).toEqual([
-			{ type: 'tool_call_start', toolCallId: 'call_abc', toolName: 'get_current_time', index: 0 }
+			{ type: 'tool_call_start', toolCallId: 'call_abc', toolName: 'get_current_time', index: 0 },
 		]);
 	});
 
@@ -216,14 +214,19 @@ describe('passthrough normalizer · tool_calls', () => {
 						index: 0,
 						id: 'call_abc',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '{"timezone":' }
-					}
-				])
-			)
+						function: { name: 'get_current_time', arguments: '{"timezone":' },
+					},
+				]),
+			),
 		);
 		expect(r.deltas).toEqual([
 			{ type: 'tool_call_start', toolCallId: 'call_abc', toolName: 'get_current_time', index: 0 },
-			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: '{"timezone":' }
+			{
+				type: 'tool_call_args_delta',
+				toolCallId: 'call_abc',
+				index: 0,
+				argumentsDelta: '{"timezone":',
+			},
 		]);
 	});
 
@@ -237,22 +240,25 @@ describe('passthrough normalizer · tool_calls', () => {
 						index: 0,
 						id: 'call_abc',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '{"' }
-					}
-				])
-			)
+						function: { name: 'get_current_time', arguments: '{"' },
+					},
+				]),
+			),
 		);
 		// Chunk 2: more args, no id/name
-		const r2 = n.process(
-			rec(toolChunk([{ index: 0, function: { arguments: 'timezone":"UTC' } }]))
-		);
+		const r2 = n.process(rec(toolChunk([{ index: 0, function: { arguments: 'timezone":"UTC' } }])));
 		expect(r2.deltas).toEqual([
-			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: 'timezone":"UTC' }
+			{
+				type: 'tool_call_args_delta',
+				toolCallId: 'call_abc',
+				index: 0,
+				argumentsDelta: 'timezone":"UTC',
+			},
 		]);
 		// Chunk 3: closing
 		const r3 = n.process(rec(toolChunk([{ index: 0, function: { arguments: '"}' } }])));
 		expect(r3.deltas).toEqual([
-			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: '"}' }
+			{ type: 'tool_call_args_delta', toolCallId: 'call_abc', index: 0, argumentsDelta: '"}' },
 		]);
 	});
 
@@ -266,20 +272,20 @@ describe('passthrough normalizer · tool_calls', () => {
 						index: 0,
 						id: 'call_one',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '' }
+						function: { name: 'get_current_time', arguments: '' },
 					},
 					{
 						index: 1,
 						id: 'call_two',
 						type: 'function',
-						function: { name: 'get_current_time', arguments: '' }
-					}
-				])
-			)
+						function: { name: 'get_current_time', arguments: '' },
+					},
+				]),
+			),
 		);
 		expect(r.deltas).toEqual([
 			{ type: 'tool_call_start', toolCallId: 'call_one', toolName: 'get_current_time', index: 0 },
-			{ type: 'tool_call_start', toolCallId: 'call_two', toolName: 'get_current_time', index: 1 }
+			{ type: 'tool_call_start', toolCallId: 'call_two', toolName: 'get_current_time', index: 1 },
 		]);
 		// Args for call_two arrive while call_one is mid-stream — must
 		// route to the right id by index.
@@ -287,13 +293,13 @@ describe('passthrough normalizer · tool_calls', () => {
 			rec(
 				toolChunk([
 					{ index: 0, function: { arguments: 'A' } },
-					{ index: 1, function: { arguments: 'B' } }
-				])
-			)
+					{ index: 1, function: { arguments: 'B' } },
+				]),
+			),
 		);
 		expect(r2.deltas).toEqual([
 			{ type: 'tool_call_args_delta', toolCallId: 'call_one', index: 0, argumentsDelta: 'A' },
-			{ type: 'tool_call_args_delta', toolCallId: 'call_two', index: 1, argumentsDelta: 'B' }
+			{ type: 'tool_call_args_delta', toolCallId: 'call_two', index: 1, argumentsDelta: 'B' },
 		]);
 	});
 
@@ -313,10 +319,10 @@ describe('passthrough normalizer · tool_calls', () => {
 						index: 0,
 						id: 'call_x',
 						type: 'function',
-						function: { name: 't', arguments: '' }
-					}
-				])
-			)
+						function: { name: 't', arguments: '' },
+					},
+				]),
+			),
 		);
 		// Second chunk with arguments: "" — should not emit a delta event.
 		const r = n.process(rec(toolChunk([{ index: 0, function: { arguments: '' } }])));
@@ -338,19 +344,19 @@ describe('passthrough normalizer · tool_calls', () => {
 										index: 0,
 										id: 'call_q',
 										type: 'function',
-										function: { name: 'get_current_time' }
-									}
-								]
+										function: { name: 'get_current_time' },
+									},
+								],
 							},
-							finish_reason: null
-						}
-					]
-				})
-			)
+							finish_reason: null,
+						},
+					],
+				}),
+			),
 		);
 		expect(r.deltas).toEqual([
 			{ type: 'text', text: 'let me check ' },
-			{ type: 'tool_call_start', toolCallId: 'call_q', toolName: 'get_current_time', index: 0 }
+			{ type: 'tool_call_start', toolCallId: 'call_q', toolName: 'get_current_time', index: 0 },
 		]);
 	});
 
@@ -376,19 +382,19 @@ describe('openai-o-series normalizer · tool_calls', () => {
 										index: 0,
 										id: 'call_o',
 										type: 'function',
-										function: { name: 'get_current_time' }
-									}
-								]
+										function: { name: 'get_current_time' },
+									},
+								],
 							},
-							finish_reason: null
-						}
-					]
-				})
-			)
+							finish_reason: null,
+						},
+					],
+				}),
+			),
 		);
 		expect(r.deltas).toEqual([
 			{ type: 'reasoning', text: 'thinking...' },
-			{ type: 'tool_call_start', toolCallId: 'call_o', toolName: 'get_current_time', index: 0 }
+			{ type: 'tool_call_start', toolCallId: 'call_o', toolName: 'get_current_time', index: 0 },
 		]);
 	});
 });
@@ -408,19 +414,19 @@ describe('openrouter normalizer · tool_calls', () => {
 										index: 0,
 										id: 'call_r',
 										type: 'function',
-										function: { name: 'get_current_time' }
-									}
-								]
+										function: { name: 'get_current_time' },
+									},
+								],
 							},
-							finish_reason: null
-						}
-					]
-				})
-			)
+							finish_reason: null,
+						},
+					],
+				}),
+			),
 		);
 		expect(r.deltas).toEqual([
 			{ type: 'reasoning', text: 'thinking...' },
-			{ type: 'tool_call_start', toolCallId: 'call_r', toolName: 'get_current_time', index: 0 }
+			{ type: 'tool_call_start', toolCallId: 'call_r', toolName: 'get_current_time', index: 0 },
 		]);
 	});
 });

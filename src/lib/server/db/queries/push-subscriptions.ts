@@ -53,7 +53,7 @@ export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow 
 			auth: input.auth,
 			userAgent: input.userAgent ?? null,
 			createdAt: now,
-			lastSeenAt: now
+			lastSeenAt: now,
 		})
 		.onConflictDoUpdate({
 			target: pushSubscriptions.endpoint,
@@ -62,8 +62,8 @@ export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow 
 				p256dh: input.p256dh,
 				auth: input.auth,
 				userAgent: input.userAgent ?? null,
-				lastSeenAt: now
-			}
+				lastSeenAt: now,
+			},
 		})
 		.run();
 	const row = db
@@ -82,11 +82,7 @@ export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow 
  */
 export function listPushSubscriptionsForUser(userId: string): PushSubscriptionRow[] {
 	const db = getDb();
-	return db
-		.select()
-		.from(pushSubscriptions)
-		.where(eq(pushSubscriptions.userId, userId))
-		.all();
+	return db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)).all();
 }
 
 /**

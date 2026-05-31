@@ -23,7 +23,7 @@ function makeItem(overrides: Partial<AttachedItem> = {}): AttachedItem {
 		contentType: overrides.contentType ?? 'image/png',
 		byteSize: overrides.byteSize ?? 12345,
 		status: overrides.status ?? 'ready',
-		error: overrides.error
+		error: overrides.error,
 	};
 }
 
@@ -36,7 +36,7 @@ function makeStore(items: AttachedItem[], remove = vi.fn()): AttachmentStore {
 describe('AttachmentThumbnails — rendering', () => {
 	it('renders nothing when there are no items', () => {
 		render(AttachmentThumbnails, {
-			props: { attachments: makeStore([]) }
+			props: { attachments: makeStore([]) },
 		});
 		expect(screen.queryByRole('img')).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Remove attachment' })).toBeNull();
@@ -45,12 +45,12 @@ describe('AttachmentThumbnails — rendering', () => {
 	it('renders one img per item, with the objectUrl as src', () => {
 		const items = [
 			makeItem({ clientId: 'a', objectUrl: 'blob:http://localhost/a' }),
-			makeItem({ clientId: 'b', objectUrl: 'blob:http://localhost/b' })
+			makeItem({ clientId: 'b', objectUrl: 'blob:http://localhost/b' }),
 		];
 		// Thumbnails use alt="" (decorative) so they're excluded from the
 		// a11y tree — query via the DOM directly.
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore(items) }
+			props: { attachments: makeStore(items) },
 		});
 		const imgs = container.querySelectorAll('img');
 		expect(imgs).toHaveLength(2);
@@ -67,7 +67,7 @@ describe('AttachmentThumbnails — rendering', () => {
 	it('applies the supplied wrapper class', () => {
 		const items = [makeItem()];
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore(items), class: 'mb-2' }
+			props: { attachments: makeStore(items), class: 'mb-2' },
 		});
 		expect(container.querySelector('.mb-2')).toBeInTheDocument();
 	});
@@ -76,7 +76,7 @@ describe('AttachmentThumbnails — rendering', () => {
 describe('AttachmentThumbnails — status overlays', () => {
 	it('shows no overlay on ready items', () => {
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore([makeItem({ status: 'ready' })]) }
+			props: { attachments: makeStore([makeItem({ status: 'ready' })]) },
 		});
 		// Spinner uses animate-spin; error overlay shows AlertCircle (svg)
 		// — neither should be present.
@@ -85,7 +85,7 @@ describe('AttachmentThumbnails — status overlays', () => {
 
 	it('shows a spinner overlay while uploading', () => {
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore([makeItem({ status: 'uploading' })]) }
+			props: { attachments: makeStore([makeItem({ status: 'uploading' })]) },
 		});
 		expect(container.querySelector('.animate-spin')).toBeInTheDocument();
 	});
@@ -93,10 +93,8 @@ describe('AttachmentThumbnails — status overlays', () => {
 	it('shows an error overlay on error', () => {
 		const { container } = render(AttachmentThumbnails, {
 			props: {
-				attachments: makeStore([
-					makeItem({ status: 'error', error: 'upload rejected' })
-				])
-			}
+				attachments: makeStore([makeItem({ status: 'error', error: 'upload rejected' })]),
+			},
 		});
 		// Error overlay has a red-tinted background class.
 		expect(container.querySelector('.bg-red-600\\/40')).toBeInTheDocument();
@@ -109,10 +107,10 @@ describe('AttachmentThumbnails — status overlays', () => {
 					makeItem({
 						status: 'error',
 						error: 'File too large',
-						contentType: 'image/png'
-					})
-				])
-			}
+						contentType: 'image/png',
+					}),
+				]),
+			},
 		});
 		const wrapper = container.querySelector('[title="File too large"]');
 		expect(wrapper).toBeInTheDocument();
@@ -121,17 +119,15 @@ describe('AttachmentThumbnails — status overlays', () => {
 	it('falls back to contentType in title when no error', () => {
 		const { container } = render(AttachmentThumbnails, {
 			props: {
-				attachments: makeStore([
-					makeItem({ contentType: 'image/jpeg', status: 'ready' })
-				])
-			}
+				attachments: makeStore([makeItem({ contentType: 'image/jpeg', status: 'ready' })]),
+			},
 		});
 		expect(container.querySelector('[title="image/jpeg"]')).toBeInTheDocument();
 	});
 
 	it('dims the img while uploading', () => {
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore([makeItem({ status: 'uploading' })]) }
+			props: { attachments: makeStore([makeItem({ status: 'uploading' })]) },
 		});
 		const img = container.querySelector('img')!;
 		expect(img).toHaveClass('opacity-60');
@@ -139,7 +135,7 @@ describe('AttachmentThumbnails — status overlays', () => {
 
 	it('dims the img more aggressively on error', () => {
 		const { container } = render(AttachmentThumbnails, {
-			props: { attachments: makeStore([makeItem({ status: 'error' })]) }
+			props: { attachments: makeStore([makeItem({ status: 'error' })]) },
 		});
 		const img = container.querySelector('img')!;
 		expect(img).toHaveClass('opacity-40');
@@ -162,7 +158,7 @@ describe('AttachmentThumbnails — remove', () => {
 		const items = [
 			makeItem({ clientId: 'first' }),
 			makeItem({ clientId: 'second' }),
-			makeItem({ clientId: 'third' })
+			makeItem({ clientId: 'third' }),
 		];
 		render(AttachmentThumbnails, { props: { attachments: makeStore(items, remove) } });
 		const buttons = screen.getAllByRole('button', { name: 'Remove attachment' });

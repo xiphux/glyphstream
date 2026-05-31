@@ -28,7 +28,7 @@
 		pushToolCall as inFlightPushToolCall,
 		updateToolCallArgs as inFlightUpdateToolCallArgs,
 		updateToolCallResult as inFlightUpdateToolCallResult,
-		type InFlightSegment
+		type InFlightSegment,
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
@@ -42,7 +42,7 @@
 		MessagePart,
 		ModelKind,
 		SendMessageResponse,
-		StreamEvent
+		StreamEvent,
 	} from '$lib/types/api';
 
 	let { data } = $props();
@@ -51,11 +51,7 @@
 	// if set, else GitHub display name's first token, else login) +
 	// the model's friendly name (server resolves custom-model name).
 	const userLabel = $derived(
-		preferredFirstName(
-			data.prefs?.name,
-			data.user.displayName,
-			data.user.githubUsername
-		)
+		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.githubUsername),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
 
@@ -81,7 +77,7 @@
 			const res = await fetch(`/api/conversations/${data.conversation.id}`, {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ disabledFeatures: next })
+				body: JSON.stringify({ disabledFeatures: next }),
 			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
@@ -163,22 +159,19 @@
 	const liveInFlightPendingIds = $derived(
 		inFlightSegments
 			.filter((s) => s.kind === 'tool_call' && s.status === 'pending_approval')
-			.map((s) => (s as { toolCallId: string }).toolCallId)
+			.map((s) => (s as { toolCallId: string }).toolCallId),
 	);
 	// Union of persisted-row pending IDs + live in-flight pending IDs.
 	// The server already persisted the live ones before emitting the SSE
 	// event (and before `done`), so the resume endpoint can find them
 	// either way; the client just doesn't need to wait for invalidate.
 	const allPendingToolCallIds = $derived(
-		new Set<string>([
-			...pendingApprovals,
-			...liveInFlightPendingIds
-		])
+		new Set<string>([...pendingApprovals, ...liveInFlightPendingIds]),
 	);
 	const hasAnyPendingApproval = $derived(allPendingToolCallIds.size > 0);
 	const approvalsAllDecided = $derived(
 		allPendingToolCallIds.size > 0 &&
-			Array.from(allPendingToolCallIds).every((id) => approvalDecisions.has(id))
+			Array.from(allPendingToolCallIds).every((id) => approvalDecisions.has(id)),
 	);
 
 	function onApprovalSelect(toolCallId: string, action: ApprovalAction): void {
@@ -200,14 +193,14 @@
 		untrack(() => {
 			const snapshot = Array.from(ids).map((id) => ({
 				toolCallId: id,
-				action: approvalDecisions.get(id) ?? 'reject'
+				action: approvalDecisions.get(id) ?? 'reject',
 			}));
 			void submitApprovalDecisions(snapshot);
 		});
 	});
 
 	async function submitApprovalDecisions(
-		decisions: Array<{ toolCallId: string; action: ApprovalAction }>
+		decisions: Array<{ toolCallId: string; action: ApprovalAction }>,
 	): Promise<void> {
 		if (approvalSubmitting) return;
 		approvalSubmitting = true;
@@ -233,7 +226,7 @@
 
 	async function runApprovalStream(
 		convId: string,
-		decisions: Array<{ toolCallId: string; action: ApprovalAction }>
+		decisions: Array<{ toolCallId: string; action: ApprovalAction }>,
 	): Promise<void> {
 		const turnConvId = convId;
 		// Open the in-flight bubble so the user sees text + tool calls
@@ -256,13 +249,13 @@
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
 				body: JSON.stringify({ decisions }),
-				signal: abort.signal
+				signal: abort.signal,
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			if (!res.body) throw new Error('Server returned no body');
 			const { sawToolCalls } = await consumeChatStream(res.body, {
 				turnConvId,
-				optimisticId: null
+				optimisticId: null,
 				// onDone omitted — approvalSubmitting clears in the caller's
 				// finally so the inline buttons stay disabled until the
 				// invalidate completes and the persisted rows surface.
@@ -400,8 +393,7 @@
 			.reverse()
 			.find((m) => m.role === 'assistant' && m.parts.some((p) => p.type === 'image'));
 		const imagePart = lastAssistant?.parts.find((p) => p.type === 'image');
-		const candidateMediaId =
-			imagePart?.type === 'image' ? imagePart.mediaId : null;
+		const candidateMediaId = imagePart?.type === 'image' ? imagePart.mediaId : null;
 
 		untrack(() => {
 			// Branch switched / new turn arrived — the previous
@@ -411,9 +403,7 @@
 			// attachments stay untouched: we only ever remove items
 			// whose mediaId matches what *we* added.
 			if (autoAttached && autoAttached.assistantId !== lastAssistant?.id) {
-				const stale = attachments.items.find(
-					(i) => i.mediaId === autoAttached!.mediaId
-				);
+				const stale = attachments.items.find((i) => i.mediaId === autoAttached!.mediaId);
 				if (stale) attachments.remove(stale.clientId);
 				autoAttached = null;
 			}
@@ -458,9 +448,7 @@
 			if (openingLightboxFor === mediaId) lightbox = m;
 		} catch (e) {
 			if (openingLightboxFor === mediaId) {
-				toast.error(
-					`Couldn't load image details: ${e instanceof Error ? e.message : String(e)}`
-				);
+				toast.error(`Couldn't load image details: ${e instanceof Error ? e.message : String(e)}`);
 			}
 		} finally {
 			if (openingLightboxFor === mediaId) openingLightboxFor = null;
@@ -496,7 +484,7 @@
 			([entry]) => {
 				isNearBottom = entry.isIntersecting;
 			},
-			{ root, rootMargin: '0px 0px 100px 0px', threshold: 0 }
+			{ root, rootMargin: '0px 0px 100px 0px', threshold: 0 },
 		);
 		observer.observe(sentinel);
 		return () => observer.disconnect();
@@ -613,10 +601,7 @@
 		function onVisibilityChange() {
 			if (document.visibilityState === 'hidden' && busy) {
 				wasHiddenDuringFetch = true;
-			} else if (
-				document.visibilityState === 'visible' &&
-				wasHiddenDuringFetch
-			) {
+			} else if (document.visibilityState === 'visible' && wasHiddenDuringFetch) {
 				// Reconcile against server state — if the generation
 				// completed while we were backgrounded, the new assistant
 				// message will arrive via the load function.
@@ -673,16 +658,12 @@
 	function updateInFlightToolCallResult(toolCallId: string, result: string, isError: boolean) {
 		inFlightSegments = inFlightUpdateToolCallResult(inFlightSegments, toolCallId, result, isError);
 	}
-	function markInFlightToolCallPendingApproval(
-		toolCallId: string,
-		toolName: string,
-		args: string
-	) {
+	function markInFlightToolCallPendingApproval(toolCallId: string, toolName: string, args: string) {
 		inFlightSegments = inFlightMarkToolCallPendingApproval(
 			inFlightSegments,
 			toolCallId,
 			toolName,
-			args
+			args,
 		);
 	}
 
@@ -731,7 +712,7 @@
 	const recoveredInFlight = $derived(
 		serverInFlightSince !== null &&
 			!inFlightOpen &&
-			messages[messages.length - 1]?.role !== 'assistant'
+			messages[messages.length - 1]?.role !== 'assistant',
 	);
 	// The in-flight bubble shows for either a live local turn or a
 	// recovered one.
@@ -744,7 +725,7 @@
 	// window so the user can't type a new message while the existing
 	// turn is suspended waiting on a tool decision.
 	const generating = $derived(
-		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval
+		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval,
 	);
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
@@ -773,7 +754,7 @@
 			? 'Generating image'
 			: modelKind === 'video'
 				? 'Generating video'
-				: 'Thinking'
+				: 'Thinking',
 	);
 
 	// Abandon the in-flight turn when navigating to a different
@@ -826,8 +807,7 @@
 				// title task) or the registry cleared with no message
 				// (a cancelled generation).
 				const msgs = body.conversation.messages;
-				const finished =
-					msgs[msgs.length - 1]?.role === 'assistant' || body.inFlightSince === null;
+				const finished = msgs[msgs.length - 1]?.role === 'assistant' || body.inFlightSince === null;
 				if (finished && !stopped) {
 					stopped = true;
 					clearInterval(interval);
@@ -856,10 +836,7 @@
 	 * The temp id is prefixed `optimistic-` so any code that compares
 	 * by id (replacement, removal, error recovery) can recognize it.
 	 */
-	function buildOptimisticUserMessage(
-		text: string,
-		attachedMediaIds: string[]
-	): ChatMessage {
+	function buildOptimisticUserMessage(text: string, attachedMediaIds: string[]): ChatMessage {
 		const parts: MessagePart[] = [];
 		if (text) parts.push({ type: 'text', text });
 		for (const mediaId of attachedMediaIds) {
@@ -875,7 +852,7 @@
 			modelUsed: null,
 			tokensIn: null,
 			tokensOut: null,
-			createdAt: Date.now()
+			createdAt: Date.now(),
 		};
 	}
 
@@ -903,7 +880,7 @@
 			 *  flag mid-stream (background title delivery still keeps the
 			 *  SSE open after done in the messages POST path). */
 			onDone?: () => void;
-		}
+		},
 	): Promise<{ sawToolCalls: boolean }> {
 		let sawToolCalls = false;
 		for await (const rec of readSSE(body)) {
@@ -965,11 +942,7 @@
 					// buttons appear right where the tool call rendered,
 					// without waiting for the post-stream invalidate.
 					sawToolCalls = true;
-					markInFlightToolCallPendingApproval(
-						event.toolCallId,
-						event.toolName,
-						event.args
-					);
+					markInFlightToolCallPendingApproval(event.toolCallId, event.toolName, event.args);
 					if (isNearBottom) scrollToBottom();
 					break;
 				case 'progress':
@@ -1035,7 +1008,7 @@
 	async function sendStreaming(
 		text: string,
 		attachedMediaIds: string[] = [],
-		options: SendOptions = {}
+		options: SendOptions = {},
 	) {
 		// The conversation this turn belongs to. The chat-page component
 		// is reused across conversation navigations, so by the time an
@@ -1141,16 +1114,16 @@
 				attachedMediaIds,
 				modelId,
 				modelKind,
-				options
+				options,
 			});
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Accept: 'text/event-stream'
+					Accept: 'text/event-stream',
 				},
 				body: JSON.stringify(requestBody),
-				signal: abort.signal
+				signal: abort.signal,
 			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
@@ -1172,7 +1145,7 @@
 					// `finally` (which only runs once the stream
 					// actually closes).
 					busy = false;
-				}
+				},
 			});
 			sawToolCalls = consumed.sawToolCalls;
 			if (convId === turnConvId) {
@@ -1185,7 +1158,7 @@
 				if (sawToolCalls) {
 					inFlightOpen = false;
 					resetInFlightSegments();
-								inFlightProgress = null;
+					inFlightProgress = null;
 					inFlightStatus = null;
 				}
 			}
@@ -1230,7 +1203,7 @@
 			if (activeAbort === abort) {
 				inFlightOpen = false;
 				resetInFlightSegments();
-						inFlightProgress = null;
+				inFlightProgress = null;
 				inFlightStatus = null;
 				busy = false;
 				activeAbort = null;
@@ -1242,7 +1215,7 @@
 		text: string,
 		attachedMediaIds: string[] = [],
 		optimisticId: string | null = null,
-		options: SendOptions = {}
+		options: SendOptions = {},
 	) {
 		// See sendStreaming — the component is reused across conversation
 		// navigations, so the result of this (20-60s) request must not be
@@ -1260,13 +1233,13 @@
 				attachedMediaIds,
 				modelId,
 				modelKind,
-				options
+				options,
 			});
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(requestBody),
-				signal: abort.signal
+				signal: abort.signal,
 			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
@@ -1284,9 +1257,9 @@
 			if (isRetry) {
 				messages = [...messages, body.assistantMessage];
 			} else {
-				messages = (
-					optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages
-				).concat([body.userMessage, body.assistantMessage]);
+				messages = (optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages).concat(
+					[body.userMessage, body.assistantMessage],
+				);
 			}
 			// Image branch is non-streaming, so the task-model title (if
 			// any) piggybacks on the response body rather than an SSE
@@ -1371,11 +1344,7 @@
 		attachments.clear();
 		editingMessageId = null;
 		editingParentId = null;
-		await sendStreaming(
-			text,
-			attachedMediaIds,
-			editParent ? { parentMessageId: editParent } : {}
-		);
+		await sendStreaming(text, attachedMediaIds, editParent ? { parentMessageId: editParent } : {});
 	}
 
 	/**
@@ -1587,10 +1556,9 @@
 		if (generating) return;
 		errorMsg = null;
 		try {
-			const res = await fetch(
-				`/api/conversations/${convId}/messages/${targetMessageId}/select`,
-				{ method: 'POST' }
-			);
+			const res = await fetch(`/api/conversations/${convId}/messages/${targetMessageId}/select`, {
+				method: 'POST',
+			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
@@ -1615,15 +1583,14 @@
 		if (generating) return;
 		const ok = await confirmDialog.ask({
 			title: 'Delete this branch?',
-			message: 'This deletes the branch and every message on it. It cannot be undone.'
+			message: 'This deletes the branch and every message on it. It cannot be undone.',
 		});
 		if (!ok) return;
 		errorMsg = null;
 		try {
-			const res = await fetch(
-				`/api/conversations/${convId}/messages/${m.id}/branch`,
-				{ method: 'DELETE' }
-			);
+			const res = await fetch(`/api/conversations/${convId}/messages/${m.id}/branch`, {
+				method: 'DELETE',
+			});
 			if (!res.ok && res.status !== 404) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
@@ -1644,10 +1611,7 @@
 		content now slides under the frosted-glass composer, which is the
 		transition, rather than dissolving into the page bg.
 	-->
-	<div
-		bind:this={scrollContainer}
-		class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4"
-	>
+	<div bind:this={scrollContainer} class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4">
 		<div
 			class="mx-auto min-w-0 max-w-3xl space-y-4"
 			style="padding-bottom: {composerHeight + 24}px"
@@ -1667,12 +1631,7 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-				{@const merge = computeMergeFlags(
-					visibleMessages,
-					i,
-					editingMessageId,
-					inFlightOpen
-				)}
+				{@const merge = computeMergeFlags(visibleMessages, i, editingMessageId, inFlightOpen)}
 				{@const mergeWithPrev = merge.mergeWithPrev}
 				{@const mergeWithNext = merge.mergeWithNext}
 				<!--
@@ -1689,60 +1648,60 @@
 				<div
 					id="msg-{m.id}"
 					in:fade={{
-						duration: listMounted && !reduceMotion && m.id !== streamedMessageId ? 160 : 0
+						duration: listMounted && !reduceMotion && m.id !== streamedMessageId ? 160 : 0,
 					}}
 					class={[
 						'group rounded-lg transition-colors duration-1000',
 						mergeWithPrev && 'mt-0!',
 						mergeWithNext && 'mb-0!',
-						m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15'
+						m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
 					]}
 				>
-				{#if m.id === editingMessageId}
-					<!--
+					{#if m.id === editingMessageId}
+						<!--
 						Inline editor: replaces the static bubble with an
 						editable surface in the same position so it's
 						unambiguous WHICH message is being edited. Save creates
 						a sibling under the original's parent (preserving the
 						original as a branch); Cancel discards.
 					-->
-					<EditMessageForm
-						bind:editText
-						attachments={editAttachments}
-						{allowAttachments}
-						enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-						onSave={() => void saveEdit()}
-						onCancel={cancelEdit}
-					/>
-				{:else}
-				<MessageBubble
-					message={m}
-					{toolResultsByCallId}
-					{userLabel}
-					{assistantLabel}
-					{mergeWithPrev}
-					{mergeWithNext}
-					onImageClick={openImageInLightbox}
-					{openingLightboxFor}
-					{approvalDecisions}
-					approvalBusy={approvalSubmitting}
-					{onApprovalSelect}
-				/>
-				{/if}
-				{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
-					<MessageActions
-						message={m}
-						{generating}
-						recentlyCopied={recentlyCopiedId === m.id}
-						canCopy={hasCopyableText(m)}
-						userSentTokens={m.role === 'user' ? userSentTokens[i] : null}
-						onCopy={() => copyMessage(m)}
-						onEdit={() => beginEdit(m)}
-						onRetry={() => retryAssistant(m)}
-						onSelectSibling={(id) => selectSibling(id)}
-						onDeleteBranch={() => deleteBranch(m)}
-					/>
-				{/if}
+						<EditMessageForm
+							bind:editText
+							attachments={editAttachments}
+							{allowAttachments}
+							enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+							onSave={() => void saveEdit()}
+							onCancel={cancelEdit}
+						/>
+					{:else}
+						<MessageBubble
+							message={m}
+							{toolResultsByCallId}
+							{userLabel}
+							{assistantLabel}
+							{mergeWithPrev}
+							{mergeWithNext}
+							onImageClick={openImageInLightbox}
+							{openingLightboxFor}
+							{approvalDecisions}
+							approvalBusy={approvalSubmitting}
+							{onApprovalSelect}
+						/>
+					{/if}
+					{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
+						<MessageActions
+							message={m}
+							{generating}
+							recentlyCopied={recentlyCopiedId === m.id}
+							canCopy={hasCopyableText(m)}
+							userSentTokens={m.role === 'user' ? userSentTokens[i] : null}
+							onCopy={() => copyMessage(m)}
+							onEdit={() => beginEdit(m)}
+							onRetry={() => retryAssistant(m)}
+							onSelectSibling={(id) => selectSibling(id)}
+							onDeleteBranch={() => deleteBranch(m)}
+						/>
+					{/if}
 				</div>
 			{/each}
 
@@ -1788,10 +1747,7 @@
 		composer re-enables them. Its measured height pads the message list.
 	-->
 	<div class="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
-		<div
-			class="pointer-events-auto relative mx-auto max-w-3xl"
-			bind:clientHeight={composerHeight}
-		>
+		<div class="pointer-events-auto relative mx-auto max-w-3xl" bind:clientHeight={composerHeight}>
 			<ScrollToBottomButton
 				visible={!isNearBottom}
 				onClick={() => scrollToBottom({ smooth: true })}
@@ -1851,8 +1807,4 @@
 	user is currently inside one and "Regenerate" otherwise reads
 	ambiguously.
 -->
-<MediaLightbox
-	media={lightbox}
-	onClose={() => (lightbox = null)}
-	inConversation
-/>
+<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} inConversation />

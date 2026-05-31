@@ -4,10 +4,7 @@ import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { parseMessageParts } from './json-columns';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
-import {
-	decrementMediaForMessages,
-	hardDeleteOrphanGeneratedMediaForMessages
-} from './media';
+import { decrementMediaForMessages, hardDeleteOrphanGeneratedMediaForMessages } from './media';
 
 interface AppendInput {
 	conversationId: string;
@@ -51,7 +48,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				tokensIn: input.tokensIn ?? null,
 				tokensOut: input.tokensOut ?? null,
 				rawResponseJson: input.rawResponseJson ?? null,
-				createdAt: now
+				createdAt: now,
 			})
 			.run();
 
@@ -71,7 +68,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 		modelUsed: input.modelUsed ?? null,
 		tokensIn: input.tokensIn ?? null,
 		tokensOut: input.tokensOut ?? null,
-		createdAt: now
+		createdAt: now,
 	};
 }
 
@@ -83,15 +80,13 @@ export function appendMessage(input: AppendInput): ChatMessage {
 export function updateMessageParts(
 	messageId: string,
 	conversationId: string,
-	parts: MessagePart[]
+	parts: MessagePart[],
 ): boolean {
 	const db = getDb();
 	const result = db
 		.update(messages)
 		.set({ contentJson: JSON.stringify(parts) })
-		.where(
-			and(eq(messages.id, messageId), eq(messages.conversationId, conversationId))
-		)
+		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
 		.run();
 	return result.changes > 0;
 }
@@ -117,11 +112,7 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 
 	if (!conv?.activeLeaf) return [];
 
-	const rows = db
-		.select()
-		.from(messages)
-		.where(eq(messages.conversationId, conversationId))
-		.all();
+	const rows = db.select().from(messages).where(eq(messages.conversationId, conversationId)).all();
 	const byId = new Map(rows.map((r) => [r.id, r]));
 
 	// Group by parent_message_id so we can compute sibling counts /
@@ -161,7 +152,7 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
  * roots) are skipped — the map is keyed by a non-null parent id.
  */
 export function buildChildrenByParent<T extends { id: string; parentId: string | null }>(
-	rows: readonly T[]
+	rows: readonly T[],
 ): Map<string, T[]> {
 	const byParent = new Map<string, T[]>();
 	for (const r of rows) {
@@ -186,14 +177,14 @@ export function buildChildrenByParent<T extends { id: string; parentId: string |
  */
 export function deepestDescendant(
 	startId: string,
-	childrenByParent: ReadonlyMap<string, ReadonlyArray<{ id: string; createdAt: number }>>
+	childrenByParent: ReadonlyMap<string, ReadonlyArray<{ id: string; createdAt: number }>>,
 ): string {
 	let cursor = startId;
 	for (;;) {
 		const children = childrenByParent.get(cursor);
 		if (!children || children.length === 0) break;
 		const sorted = [...children].sort(
-			(a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)
+			(a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id),
 		);
 		cursor = sorted[0].id;
 	}
@@ -212,7 +203,7 @@ export function deepestDescendant(
  */
 export function selectBranch(
 	conversationId: string,
-	messageId: string
+	messageId: string,
 ): { newActiveLeaf: string } | null {
 	const db = getDb();
 	const target = db
@@ -226,7 +217,7 @@ export function selectBranch(
 		.select({
 			id: messages.id,
 			parentId: messages.parentMessageId,
-			createdAt: messages.createdAt
+			createdAt: messages.createdAt,
 		})
 		.from(messages)
 		.where(eq(messages.conversationId, conversationId))
@@ -246,10 +237,7 @@ export function selectBranch(
  * server needs to look up the assistant message being retried + its
  * parent user message. Includes parentMessageId on the returned object
  * (the walk path doesn't, since order encodes parent→child there). */
-export function getMessage(
-	conversationId: string,
-	messageId: string
-): ChatMessage | null {
+export function getMessage(conversationId: string, messageId: string): ChatMessage | null {
 	const db = getDb();
 	const row = db
 		.select()
@@ -281,7 +269,7 @@ export function getMessage(
  */
 export function findUserMessageAncestor(
 	conversationId: string,
-	startMessageId: string
+	startMessageId: string,
 ): ChatMessage | null {
 	const seen = new Set<string>();
 	let cursor = getMessage(conversationId, startMessageId);
@@ -337,7 +325,7 @@ export function resolveParentForUserMessage(input: {
 			return {
 				ok: false,
 				reason: 'edited-message-not-found',
-				id: input.editedMessageId
+				id: input.editedMessageId,
 			};
 		}
 		return { ok: true, parentMessageId: edited.parentMessageId ?? null };
@@ -348,7 +336,7 @@ export function resolveParentForUserMessage(input: {
 			return {
 				ok: false,
 				reason: 'parent-message-not-found',
-				id: input.parentMessageId
+				id: input.parentMessageId,
 			};
 		}
 		return { ok: true, parentMessageId: candidate.id };
@@ -359,10 +347,7 @@ export function resolveParentForUserMessage(input: {
 /** Direct active_leaf override — used by retry to point at the parent user
  * message before re-dispatching, so walkActiveBranch builds the upstream
  * request from the right history. */
-export function setActiveLeafMessageId(
-	conversationId: string,
-	messageId: string
-): void {
+export function setActiveLeafMessageId(conversationId: string, messageId: string): void {
 	const db = getDb();
 	db.update(conversations)
 		.set({ activeLeafMessageId: messageId, updatedAt: Date.now() })
@@ -399,7 +384,7 @@ export function setActiveLeafMessageId(
 export function deleteBranch(
 	conversationId: string,
 	messageId: string,
-	userId: string
+	userId: string,
 ):
 	| {
 			deletedIds: string[];
@@ -420,7 +405,7 @@ export function deleteBranch(
 			.select({
 				id: messages.id,
 				parentId: messages.parentMessageId,
-				createdAt: messages.createdAt
+				createdAt: messages.createdAt,
 			})
 			.from(messages)
 			.where(eq(messages.conversationId, conversationId))
@@ -496,7 +481,7 @@ export function deleteBranch(
 
 export function truncateAtMessage(
 	conversationId: string,
-	messageId: string
+	messageId: string,
 ): { newActiveLeaf: string | null } | null {
 	const db = getDb();
 	const target = db
@@ -526,6 +511,6 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		modelUsed: row.modelUsed,
 		tokensIn: row.tokensIn,
 		tokensOut: row.tokensOut,
-		createdAt: row.createdAt
+		createdAt: row.createdAt,
 	};
 }

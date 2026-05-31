@@ -7,7 +7,7 @@ describe('buildTitlePrompt', () => {
 			userText: 'What is TypeScript?',
 			userMediaKinds: [],
 			assistantText: 'A typed superset of JavaScript.',
-			assistantHasMedia: false
+			assistantHasMedia: false,
 		});
 		expect(msgs).not.toBeNull();
 		expect(msgs!.length).toBe(2);
@@ -22,7 +22,7 @@ describe('buildTitlePrompt', () => {
 			userText: 'a cat in a hat',
 			userMediaKinds: [],
 			assistantText: null,
-			assistantHasMedia: false
+			assistantHasMedia: false,
 		});
 		expect(msgs).not.toBeNull();
 		expect(msgs![1].content).toContain('a cat in a hat');
@@ -36,7 +36,7 @@ describe('buildTitlePrompt', () => {
 			userText: 'sunset over mountains',
 			userMediaKinds: [],
 			assistantText: '   ',
-			assistantHasMedia: true
+			assistantHasMedia: true,
 		});
 		expect(msgs!.length).toBe(2);
 		expect(msgs![1].content).toContain('sunset over mountains');
@@ -51,7 +51,7 @@ describe('buildTitlePrompt', () => {
 			userText: 'Write a story about a wizard named Alex',
 			userMediaKinds: [],
 			assistantText: 'In the misty hills of Eldoria, Alex pulled out his staff and',
-			assistantHasMedia: false
+			assistantHasMedia: false,
 		});
 		const body = msgs![1].content;
 		expect(body).toContain('<conversation>');
@@ -68,7 +68,7 @@ describe('buildTitlePrompt', () => {
 			userText: long,
 			userMediaKinds: [],
 			assistantText: null,
-			assistantHasMedia: false
+			assistantHasMedia: false,
 		});
 		// 500-char cap applies to the user-text portion (the wrapper + trailer
 		// add fixed overhead). Verify the run of x's is bounded, not the full
@@ -85,16 +85,16 @@ describe('buildTitlePrompt', () => {
 				userText: '',
 				userMediaKinds: [],
 				assistantText: null,
-				assistantHasMedia: false
-			})
+				assistantHasMedia: false,
+			}),
 		).toBeNull();
 		expect(
 			buildTitlePrompt({
 				userText: '   ',
 				userMediaKinds: [],
 				assistantText: '\n\n',
-				assistantHasMedia: false
-			})
+				assistantHasMedia: false,
+			}),
 		).toBeNull();
 	});
 });

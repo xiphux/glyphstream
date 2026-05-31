@@ -70,10 +70,10 @@ accounts can log in. Three pieces to set up:
 Go to [github.com/settings/developers](https://github.com/settings/developers)
 → **New OAuth App**. Fill in:
 
-| Field | Value |
-|---|---|
-| **Application name** | Anything you like (e.g. `GlyphStream`) |
-| **Homepage URL** | Your public origin — same value you'll set for `EXTERNAL_BASE_URL`. Examples: `http://localhost:5173` for local dev, `https://glyphstream.example.com` for prod |
+| Field                          | Value                                                                                                                                                               |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Application name**           | Anything you like (e.g. `GlyphStream`)                                                                                                                              |
+| **Homepage URL**               | Your public origin — same value you'll set for `EXTERNAL_BASE_URL`. Examples: `http://localhost:5173` for local dev, `https://glyphstream.example.com` for prod     |
 | **Authorization callback URL** | The homepage URL + `/api/auth/github/callback`. E.g. `http://localhost:5173/api/auth/github/callback` or `https://glyphstream.example.com/api/auth/github/callback` |
 
 After creation, click **Generate a new client secret** and capture both:
@@ -160,7 +160,7 @@ rename any conversation manually via the sidebar **Rename** action —
 manual renames win even if they race a running title task.
 
 > **TOML scoping gotcha:** `task_model` is a top-level scalar, and TOML
-> binds every bare key to the *most recently opened* table header —
+> binds every bare key to the _most recently opened_ table header —
 > there is no syntax to return to the root table once a header appears.
 > So `task_model` must sit above **every** `[[endpoints]]` and
 > `[table]` header in the file. Placed below an `[[endpoints]]` block
@@ -411,7 +411,7 @@ the MCP entry in `ROADMAP.md` for the phase-2 hook points.
 ### Per-conversation feature toggles
 
 The composer surfaces a small popover (the sliders icon next to the
-attach button) with one switch per opt-out *category*:
+attach button) with one switch per opt-out _category_:
 
 - **Web access** disables both `web_search` and `fetch_url` together,
   so the model can't compose around partial gating by `fetch_url`-ing
@@ -424,7 +424,7 @@ attach button) with one switch per opt-out *category*:
   sensitive turn can't grow the saved memory store. Has no effect on
   conversations that carry an explicit system prompt or were started
   from a custom-model preset — those already snapshot whatever prompt
-  *they* declared.
+  _they_ declared.
 - **One toggle per configured MCP server** (`mcp:<server-id>`,
   labeled with the server's `display_name`). Closes off every tool
   that server advertises in one switch — the natural unit of trust
@@ -565,7 +565,7 @@ docker compose exec glyphstream node /app/build/scripts/import-owui.js \
 Caveats:
 
 - Imported conversations get a synthetic `endpoint_id = 'imported-owui'` —
-  full history is preserved and viewable, but sending a *new* message in
+  full history is preserved and viewable, but sending a _new_ message in
   an imported conversation will fail with "endpoint not configured" until
   a future "reassign endpoint" UI lands.
 - OWUI's export references images by URL to its own file API; once OWUI

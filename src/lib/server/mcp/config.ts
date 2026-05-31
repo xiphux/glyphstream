@@ -92,7 +92,7 @@ export function loadMcpServers(path = configPath()): LoadedMcpServer[] {
 	if (raw === undefined) return [];
 	if (!Array.isArray(raw)) {
 		throw new McpConfigError(
-			`'mcp_servers' in ${absolutePath} must be an array of [[mcp_servers]] tables`
+			`'mcp_servers' in ${absolutePath} must be an array of [[mcp_servers]] tables`,
 		);
 	}
 
@@ -102,7 +102,7 @@ export function loadMcpServers(path = configPath()): LoadedMcpServer[] {
 		const server = validateMcpServer(raw[i] as RawMcpServer, i, absolutePath);
 		if (seenIds.has(server.id)) {
 			throw new McpConfigError(
-				`Duplicate mcp_servers id "${server.id}" in ${absolutePath} — every MCP server must be unique`
+				`Duplicate mcp_servers id "${server.id}" in ${absolutePath} — every MCP server must be unique`,
 			);
 		}
 		seenIds.add(server.id);
@@ -117,7 +117,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	const id = requireString(raw.id, 'id', at);
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
 		throw new McpConfigError(
-			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`
+			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`,
 		);
 	}
 
@@ -127,7 +127,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	const transportStr = requireString(raw.transport, 'transport', at);
 	if (!(VALID_TRANSPORTS as readonly string[]).includes(transportStr)) {
 		throw new McpConfigError(
-			`${at}: transport "${transportStr}" must be one of ${VALID_TRANSPORTS.join(', ')}`
+			`${at}: transport "${transportStr}" must be one of ${VALID_TRANSPORTS.join(', ')}`,
 		);
 	}
 	const transport = transportStr as McpTransport;
@@ -154,7 +154,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	// transport === 'http'
 	if (raw.command !== undefined || raw.args !== undefined || raw.env_from !== undefined) {
 		throw new McpConfigError(
-			`${at}: 'command'/'args'/'env_from' are only valid for transport="stdio"`
+			`${at}: 'command'/'args'/'env_from' are only valid for transport="stdio"`,
 		);
 	}
 	const url = requireString(raw.url, 'url', at);
@@ -168,7 +168,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new McpConfigError(
-				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`
+				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
 		apiKey = envValue;
@@ -180,7 +180,7 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
 		throw new McpConfigError(
-			`${at}: 'env_from' must be a table of { SUBPROCESS_VAR = "GLYPHSTREAM_ENV_VAR" } entries`
+			`${at}: 'env_from' must be a table of { SUBPROCESS_VAR = "GLYPHSTREAM_ENV_VAR" } entries`,
 		);
 	}
 	const result: Record<string, string> = {};
@@ -189,7 +189,7 @@ function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new McpConfigError(
-				`${at}: env_from.${key}="${envName}" but env var ${envName} is unset or empty`
+				`${at}: env_from.${key}="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
 		result[key] = envValue;
@@ -220,7 +220,7 @@ function requireNumber(
 	v: unknown,
 	field: string,
 	at: string,
-	opts: { min?: number; max?: number } = {}
+	opts: { min?: number; max?: number } = {},
 ): number {
 	if (typeof v !== 'number' || !Number.isFinite(v)) {
 		throw new McpConfigError(`${at}: '${field}' must be a number`);

@@ -10,7 +10,16 @@
 -->
 <script lang="ts">
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronLeft, ChevronRight, Copy, Info, Pencil, RotateCcw, Trash2 } from '@lucide/svelte';
+	import {
+		Check,
+		ChevronLeft,
+		ChevronRight,
+		Copy,
+		Info,
+		Pencil,
+		RotateCcw,
+		Trash2,
+	} from '@lucide/svelte';
 	import type { ChatMessage } from '$lib/types/api';
 
 	interface Props {
@@ -40,7 +49,7 @@
 		onEdit,
 		onRetry,
 		onSelectSibling,
-		onDeleteBranch
+		onDeleteBranch,
 	}: Props = $props();
 
 	const tokenFmt = new Intl.NumberFormat();
@@ -51,7 +60,7 @@
 	const assistantOut = $derived(message.role === 'assistant' ? (message.tokensOut ?? 0) : 0);
 	const showTokens = $derived(
 		(message.role === 'assistant' && assistantOut > 0) ||
-			(message.role === 'user' && userSentTokens != null && userSentTokens > 0)
+			(message.role === 'user' && userSentTokens != null && userSentTokens > 0),
 	);
 	const siblingCount = $derived(message.siblingCount ?? 1);
 	const hasSiblings = $derived(siblingCount > 1);
@@ -187,8 +196,8 @@
 							</dd>
 						</dl>
 						<p class="mt-2 text-[11px] leading-snug text-fg-muted">
-							Full conversation passed to the model at this turn — includes the
-							system prompt and prior messages, not just this one.
+							Full conversation passed to the model at this turn — includes the system prompt and
+							prior messages, not just this one.
 						</p>
 					{:else}
 						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">

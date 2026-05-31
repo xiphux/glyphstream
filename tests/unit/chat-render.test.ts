@@ -13,11 +13,15 @@ import {
 	updateToolCallResult,
 	type InFlightSegment,
 	type RenderBlock,
-	type ToolResultEntry
+	type ToolResultEntry,
 } from '$lib/chat-render';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 
-function msg(role: ChatMessage['role'], parts: MessagePart[], over: Partial<ChatMessage> = {}): ChatMessage {
+function msg(
+	role: ChatMessage['role'],
+	parts: MessagePart[],
+	over: Partial<ChatMessage> = {},
+): ChatMessage {
 	return {
 		id: 'm-' + role,
 		role,
@@ -29,7 +33,7 @@ function msg(role: ChatMessage['role'], parts: MessagePart[], over: Partial<Chat
 		tokensIn: null,
 		tokensOut: null,
 		createdAt: 0,
-		...over
+		...over,
 	};
 }
 
@@ -46,7 +50,7 @@ describe('messageToBlocks', () => {
 	it('renders an assistant with contentHtml as an html block', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'text', text: 'hi' }], { contentHtml: '<p>hi</p>' }),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([{ type: 'html', html: '<p>hi</p>' }]);
 	});
@@ -54,7 +58,7 @@ describe('messageToBlocks', () => {
 	it('falls back to plain-text for an assistant without contentHtml', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'text', text: 'raw' }]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([{ type: 'plain-text', text: 'raw' }]);
 	});
@@ -63,20 +67,20 @@ describe('messageToBlocks', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'text', text: 'hi' }], {
 				reasoningText: 'thinking...',
-				contentHtml: '<p>hi</p>'
+				contentHtml: '<p>hi</p>',
 			}),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([
 			{ type: 'reasoning', text: 'thinking...', open: false },
-			{ type: 'html', html: '<p>hi</p>' }
+			{ type: 'html', html: '<p>hi</p>' },
 		]);
 	});
 
 	it('persisted reasoning is collapsed by default (open=false)', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'text', text: 'hi' }], { reasoningText: 'thoughts' }),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks[0]).toEqual({ type: 'reasoning', text: 'thoughts', open: false });
 	});
@@ -85,9 +89,9 @@ describe('messageToBlocks', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [
 				{ type: 'text', text: '' },
-				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' }
+				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' },
 			]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([
 			{
@@ -97,36 +101,34 @@ describe('messageToBlocks', () => {
 				arguments: '{}',
 				result: undefined,
 				isError: undefined,
-				status: 'executing'
-			}
+				status: 'executing',
+			},
 		]);
 	});
 
 	it('renders tool_call as executing when no matching result is in the map', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [
-				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' }
+				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' },
 			]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks[0]).toMatchObject({ type: 'tool_call', status: 'executing', result: undefined });
 	});
 
 	it('renders tool_call as done when matching result exists', () => {
-		const results = new Map([
-			['c1', { result: '{"iso":"2026-05-26T00:00:00Z"}', isError: false }]
-		]);
+		const results = new Map([['c1', { result: '{"iso":"2026-05-26T00:00:00Z"}', isError: false }]]);
 		const blocks = messageToBlocks(
 			msg('assistant', [
-				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' }
+				{ type: 'tool_call', toolCallId: 'c1', toolName: 'get_current_time', arguments: '{}' },
 			]),
-			results
+			results,
 		);
 		expect(blocks[0]).toMatchObject({
 			type: 'tool_call',
 			status: 'done',
 			result: '{"iso":"2026-05-26T00:00:00Z"}',
-			isError: false
+			isError: false,
 		});
 	});
 
@@ -134,7 +136,7 @@ describe('messageToBlocks', () => {
 		const results = new Map([['c1', { result: 'broken', isError: true }]]);
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}' }]),
-			results
+			results,
 		);
 		expect(blocks[0]).toMatchObject({ type: 'tool_call', status: 'error', isError: true });
 	});
@@ -142,14 +144,14 @@ describe('messageToBlocks', () => {
 	it('renders multiple tool_calls in part order, each looked up independently', () => {
 		const results = new Map([
 			['a', { result: 'A', isError: false }],
-			['b', { result: 'B', isError: true }]
+			['b', { result: 'B', isError: true }],
 		]);
 		const blocks = messageToBlocks(
 			msg('assistant', [
 				{ type: 'tool_call', toolCallId: 'a', toolName: 't1', arguments: '{}' },
-				{ type: 'tool_call', toolCallId: 'b', toolName: 't2', arguments: '{}' }
+				{ type: 'tool_call', toolCallId: 'b', toolName: 't2', arguments: '{}' },
 			]),
-			results
+			results,
 		);
 		expect(blocks).toHaveLength(2);
 		expect(blocks[0]).toMatchObject({ toolCallId: 'a', status: 'done' });
@@ -166,15 +168,15 @@ describe('messageToBlocks', () => {
 				'assistant',
 				[
 					{ type: 'text', text: 'first' },
-					{ type: 'text', text: 'second' }
+					{ type: 'text', text: 'second' },
 				],
-				{ contentHtml: '<p>first</p>' }
+				{ contentHtml: '<p>first</p>' },
 			),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([
 			{ type: 'html', html: '<p>first</p>' },
-			{ type: 'plain-text', text: 'second' }
+			{ type: 'plain-text', text: 'second' },
 		]);
 	});
 
@@ -182,20 +184,20 @@ describe('messageToBlocks', () => {
 		const blocks = messageToBlocks(
 			msg('user', [
 				{ type: 'text', text: 'look' },
-				{ type: 'image', mediaId: 'media-1', alt: 'cat' }
+				{ type: 'image', mediaId: 'media-1', alt: 'cat' },
 			]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([
 			{ type: 'plain-text', text: 'look' },
-			{ type: 'image', mediaId: 'media-1', alt: 'cat' }
+			{ type: 'image', mediaId: 'media-1', alt: 'cat' },
 		]);
 	});
 
 	it('renders video parts as video blocks', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'video', mediaId: 'v1' }]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([{ type: 'video', mediaId: 'v1' }]);
 	});
@@ -206,7 +208,7 @@ describe('messageToBlocks', () => {
 		// helper must not render them inline.
 		const blocks = messageToBlocks(
 			msg('assistant', [{ type: 'tool_result', toolCallId: 'x', result: 'leaked' }]),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([]);
 	});
@@ -217,15 +219,15 @@ describe('messageToBlocks', () => {
 				'assistant',
 				[
 					{ type: 'text', text: 'let me check' },
-					{ type: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}' }
+					{ type: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}' },
 				],
-				{ contentHtml: '<p>let me check</p>' }
+				{ contentHtml: '<p>let me check</p>' },
 			),
-			NO_TOOL_RESULTS
+			NO_TOOL_RESULTS,
 		);
 		expect(blocks).toEqual([
 			{ type: 'html', html: '<p>let me check</p>' },
-			expect.objectContaining({ type: 'tool_call', toolCallId: 'c1' })
+			expect.objectContaining({ type: 'tool_call', toolCallId: 'c1' }),
 		]);
 	});
 });
@@ -236,7 +238,7 @@ describe('inFlightToBlocks', () => {
 	it('returns just a reasoning block when only a reasoning segment is present', () => {
 		const segs: InFlightSegment[] = [{ kind: 'reasoning', text: 'thinking...' }];
 		expect(inFlightToBlocks(segs)).toEqual([
-			{ type: 'reasoning', text: 'thinking...', open: true }
+			{ type: 'reasoning', text: 'thinking...', open: true },
 		]);
 	});
 
@@ -271,8 +273,8 @@ describe('inFlightToBlocks', () => {
 				toolCallId: 'c1',
 				toolName: 'get_current_time',
 				arguments: '{}',
-				status: 'executing'
-			}
+				status: 'executing',
+			},
 		];
 		expect(inFlightToBlocks(segs)).toEqual([
 			{
@@ -282,8 +284,8 @@ describe('inFlightToBlocks', () => {
 				arguments: '{}',
 				result: undefined,
 				isError: undefined,
-				status: 'executing'
-			}
+				status: 'executing',
+			},
 		]);
 	});
 
@@ -297,16 +299,10 @@ describe('inFlightToBlocks', () => {
 			{ kind: 'tool_call', toolCallId: 'a', toolName: 'x', arguments: '{}', status: 'done' },
 			{ kind: 'text', text: 't1', html: '<p>t1</p>' },
 			{ kind: 'tool_call', toolCallId: 'b', toolName: 'y', arguments: '{}', status: 'done' },
-			{ kind: 'text', text: 't2', html: '<p>t2</p>' }
+			{ kind: 'text', text: 't2', html: '<p>t2</p>' },
 		];
 		const blocks = inFlightToBlocks(segs);
-		expect(blocks.map((b) => b.type)).toEqual([
-			'html',
-			'tool_call',
-			'html',
-			'tool_call',
-			'html'
-		]);
+		expect(blocks.map((b) => b.type)).toEqual(['html', 'tool_call', 'html', 'tool_call', 'html']);
 		expect((blocks[1] as Extract<RenderBlock, { type: 'tool_call' }>).toolCallId).toBe('a');
 		expect((blocks[3] as Extract<RenderBlock, { type: 'tool_call' }>).toolCallId).toBe('b');
 	});
@@ -320,7 +316,7 @@ describe('inFlightToBlocks', () => {
 		const segs: InFlightSegment[] = [
 			{ kind: 'text', text: 'pre', html: '<p>pre</p>' },
 			{ kind: 'reasoning', text: 'mid-thought' },
-			{ kind: 'text', text: 'post', html: '<p>post</p>' }
+			{ kind: 'text', text: 'post', html: '<p>post</p>' },
 		];
 		const blocks = inFlightToBlocks(segs);
 		expect(blocks.map((b) => b.type)).toEqual(['html', 'reasoning', 'html']);
@@ -332,13 +328,13 @@ describe('inFlightToBlocks', () => {
 			{ kind: 'reasoning', text: 'should i call the tool?' },
 			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' },
 			{ kind: 'reasoning', text: 'great, now phrase it' },
-			{ kind: 'text', text: 'the answer is 42', html: '<p>the answer is 42</p>' }
+			{ kind: 'text', text: 'the answer is 42', html: '<p>the answer is 42</p>' },
 		];
 		expect(inFlightToBlocks(segs).map((b) => b.type)).toEqual([
 			'reasoning',
 			'tool_call',
 			'reasoning',
-			'html'
+			'html',
 		]);
 	});
 
@@ -351,15 +347,15 @@ describe('inFlightToBlocks', () => {
 				arguments: '{}',
 				status: 'error',
 				result: 'oh no',
-				isError: true
-			}
+				isError: true,
+			},
 		];
 		const blocks = inFlightToBlocks(segs);
 		expect(blocks[0]).toMatchObject({
 			type: 'tool_call',
 			status: 'error',
 			result: 'oh no',
-			isError: true
+			isError: true,
 		});
 	});
 });
@@ -386,7 +382,7 @@ describe('appendText', () => {
 
 	it('opens a fresh text segment after a tool_call segment', () => {
 		const initial: InFlightSegment[] = [
-			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' }
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' },
 		];
 		const next = appendText(initial, 'after-tool');
 		expect(next).toHaveLength(2);
@@ -404,16 +400,12 @@ describe('appendText', () => {
 
 describe('appendReasoning', () => {
 	it('opens a first reasoning segment when the list is empty', () => {
-		expect(appendReasoning([], 'thinking')).toEqual([
-			{ kind: 'reasoning', text: 'thinking' }
-		]);
+		expect(appendReasoning([], 'thinking')).toEqual([{ kind: 'reasoning', text: 'thinking' }]);
 	});
 
 	it('grows the trailing reasoning segment', () => {
 		const initial: InFlightSegment[] = [{ kind: 'reasoning', text: 'first' }];
-		expect(appendReasoning(initial, ' more')).toEqual([
-			{ kind: 'reasoning', text: 'first more' }
-		]);
+		expect(appendReasoning(initial, ' more')).toEqual([{ kind: 'reasoning', text: 'first more' }]);
 	});
 
 	it('opens a fresh reasoning segment after a text segment (interleaved)', () => {
@@ -425,7 +417,7 @@ describe('appendReasoning', () => {
 
 	it('opens a fresh reasoning segment after a tool_call segment', () => {
 		const initial: InFlightSegment[] = [
-			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' }
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}', status: 'done' },
 		];
 		const next = appendReasoning(initial, 'now what');
 		expect(next).toHaveLength(2);
@@ -450,8 +442,8 @@ describe('pushToolCall', () => {
 				toolCallId: 'c1',
 				toolName: 'get_current_time',
 				arguments: '',
-				status: 'executing'
-			}
+				status: 'executing',
+			},
 		]);
 	});
 
@@ -465,7 +457,7 @@ describe('pushToolCall', () => {
 });
 
 describe('updateToolCallArgs', () => {
-	it('appends to the matching tool_call\'s arguments', () => {
+	it("appends to the matching tool_call's arguments", () => {
 		let segs = pushToolCall([], 'c1', 'x');
 		segs = updateToolCallArgs(segs, 'c1', '{"a":');
 		segs = updateToolCallArgs(segs, 'c1', '1}');
@@ -483,7 +475,7 @@ describe('updateToolCallArgs', () => {
 
 	it('no-ops on an unknown toolCallId (defensive against spec-violating upstreams)', () => {
 		const initial: InFlightSegment[] = [
-			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' }
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' },
 		];
 		const next = updateToolCallArgs(initial, 'nope', 'orphan');
 		expect(next).toEqual(initial);
@@ -491,7 +483,7 @@ describe('updateToolCallArgs', () => {
 
 	it('returns a new array (does not mutate input)', () => {
 		const initial: InFlightSegment[] = [
-			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' }
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' },
 		];
 		const next = updateToolCallArgs(initial, 'c1', 'a');
 		expect(next).not.toBe(initial);
@@ -514,7 +506,7 @@ describe('updateToolCallResult', () => {
 
 	it('no-ops on an unknown toolCallId', () => {
 		const initial: InFlightSegment[] = [
-			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' }
+			{ kind: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '', status: 'executing' },
 		];
 		const next = updateToolCallResult(initial, 'nope', 'orphan', false);
 		expect(next).toEqual(initial);
@@ -535,7 +527,7 @@ describe('filterVisibleMessages', () => {
 		const messages = [
 			msg('user', [{ type: 'text', text: 'a' }], { id: 'u' }),
 			msg('assistant', [{ type: 'text', text: 'b' }], { id: 'a' }),
-			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'x' }], { id: 't' })
+			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'x' }], { id: 't' }),
 		];
 		expect(filterVisibleMessages(messages).map((m) => m.id)).toEqual(['u', 'a']);
 	});
@@ -560,16 +552,14 @@ describe('buildToolResultsMap', () => {
 	});
 
 	it('indexes a single tool_result by toolCallId', () => {
-		const messages = [
-			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'r1' }])
-		];
+		const messages = [msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'r1' }])];
 		const map = buildToolResultsMap(messages);
 		expect(map.get('c1')).toEqual({ result: 'r1', isError: false });
 	});
 
 	it('preserves isError=true when set on the part', () => {
 		const messages = [
-			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'oops', isError: true }])
+			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'oops', isError: true }]),
 		];
 		expect(buildToolResultsMap(messages).get('c1')).toEqual({ result: 'oops', isError: true });
 	});
@@ -577,7 +567,7 @@ describe('buildToolResultsMap', () => {
 	it('collects results from multiple tool messages', () => {
 		const messages = [
 			msg('tool', [{ type: 'tool_result', toolCallId: 'a', result: 'A' }], { id: 't1' }),
-			msg('tool', [{ type: 'tool_result', toolCallId: 'b', result: 'B' }], { id: 't2' })
+			msg('tool', [{ type: 'tool_result', toolCallId: 'b', result: 'B' }], { id: 't2' }),
 		];
 		const map = buildToolResultsMap(messages);
 		expect(map.get('a')).toEqual({ result: 'A', isError: false });
@@ -587,9 +577,7 @@ describe('buildToolResultsMap', () => {
 	it('ignores non-tool messages entirely', () => {
 		const messages = [
 			msg('user', [{ type: 'text', text: 'hi' }]),
-			msg('assistant', [
-				{ type: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}' }
-			])
+			msg('assistant', [{ type: 'tool_call', toolCallId: 'c1', toolName: 'x', arguments: '{}' }]),
 		];
 		expect(buildToolResultsMap(messages).size).toBe(0);
 	});
@@ -605,14 +593,14 @@ describe('buildToolResultsMap', () => {
 					type: 'tool_result',
 					toolCallId: 'c1',
 					result: '',
-					status: 'pending_approval'
-				}
-			])
+					status: 'pending_approval',
+				},
+			]),
 		];
 		expect(buildToolResultsMap(messages).get('c1')).toEqual({
 			result: '',
 			isError: false,
-			status: 'pending_approval'
+			status: 'pending_approval',
 		});
 	});
 
@@ -620,11 +608,7 @@ describe('buildToolResultsMap', () => {
 		// Persisted shape stays byte-identical with the pre-approval
 		// schema for tools that ran inline (built-ins + trusted MCP) —
 		// `status` is absent rather than 'completed'.
-		const messages = [
-			msg('tool', [
-				{ type: 'tool_result', toolCallId: 'c1', result: 'done' }
-			])
-		];
+		const messages = [msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: 'done' }])];
 		const entry = buildToolResultsMap(messages).get('c1');
 		expect(entry).toEqual({ result: 'done', isError: false });
 		expect((entry as { status?: string }).status).toBeUndefined();
@@ -644,20 +628,20 @@ describe('messageToBlocks tool_call → pending_approval mapping', () => {
 					type: 'tool_call',
 					toolCallId: 'call_x',
 					toolName: 'mcp__fs__read_file',
-					arguments: '{"path":"/tmp"}'
-				}
+					arguments: '{"path":"/tmp"}',
+				},
 			],
-			{ id: 'a1' }
+			{ id: 'a1' },
 		);
 		const results = new Map<string, ToolResultEntry>([
-			['call_x', { result: '', isError: false, status: 'pending_approval' }]
+			['call_x', { result: '', isError: false, status: 'pending_approval' }],
 		]);
 		const blocks = messageToBlocks(assistant, results);
 		const toolBlock = blocks.find((b) => b.type === 'tool_call');
 		expect(toolBlock).toMatchObject({
 			type: 'tool_call',
 			toolCallId: 'call_x',
-			status: 'pending_approval'
+			status: 'pending_approval',
 		});
 	});
 
@@ -667,10 +651,8 @@ describe('messageToBlocks tool_call → pending_approval mapping', () => {
 		// block stays in the in-flight 'executing' spinner state.
 		const assistant = msg(
 			'assistant',
-			[
-				{ type: 'tool_call', toolCallId: 'call_y', toolName: 'clock', arguments: '{}' }
-			],
-			{ id: 'a1' }
+			[{ type: 'tool_call', toolCallId: 'call_y', toolName: 'clock', arguments: '{}' }],
+			{ id: 'a1' },
 		);
 		const blocks = messageToBlocks(assistant, NO_TOOL_RESULTS);
 		const toolBlock = blocks.find((b) => b.type === 'tool_call');
@@ -684,7 +666,7 @@ describe('markToolCallPendingApproval', () => {
 		toolCallId: 'call_x',
 		toolName: 'mcp__fs__read_file',
 		arguments: '{"path":"/tmp"}',
-		status: 'executing' as const
+		status: 'executing' as const,
 	};
 
 	it("flips an existing segment's status without losing already-streamed arguments", () => {
@@ -698,23 +680,21 @@ describe('markToolCallPendingApproval', () => {
 			kind: 'tool_call',
 			toolCallId: 'call_x',
 			status: 'pending_approval',
-			arguments: '{"path":"/tmp"}'
+			arguments: '{"path":"/tmp"}',
 		});
 	});
 
 	it('prefers the SSE event args when non-empty (server has the canonical string)', () => {
-		const segments: InFlightSegment[] = [
-			{ ...baseSegment, arguments: '{"path":"/old"}' }
-		];
+		const segments: InFlightSegment[] = [{ ...baseSegment, arguments: '{"path":"/old"}' }];
 		const next = markToolCallPendingApproval(
 			segments,
 			'call_x',
 			'mcp__fs__read_file',
-			'{"path":"/new"}'
+			'{"path":"/new"}',
 		);
 		expect(next[0]).toMatchObject({
 			status: 'pending_approval',
-			arguments: '{"path":"/new"}'
+			arguments: '{"path":"/new"}',
 		});
 	});
 
@@ -728,7 +708,7 @@ describe('markToolCallPendingApproval', () => {
 			segments,
 			'call_x',
 			'mcp__fs__read_file',
-			'{"path":"/tmp"}'
+			'{"path":"/tmp"}',
 		);
 		expect(next).toHaveLength(1);
 		expect(next[0]).toMatchObject({
@@ -736,7 +716,7 @@ describe('markToolCallPendingApproval', () => {
 			toolCallId: 'call_x',
 			toolName: 'mcp__fs__read_file',
 			arguments: '{"path":"/tmp"}',
-			status: 'pending_approval'
+			status: 'pending_approval',
 		});
 	});
 
@@ -744,9 +724,7 @@ describe('markToolCallPendingApproval', () => {
 		// Should be impossible — toolCallIds don't collide across
 		// segment kinds — but defend against it by leaving the
 		// segments array untouched rather than rewriting the type.
-		const segments: InFlightSegment[] = [
-			{ kind: 'text', text: 'hi', html: '' }
-		];
+		const segments: InFlightSegment[] = [{ kind: 'text', text: 'hi', html: '' }];
 		const next = markToolCallPendingApproval(segments, 'call_x', 'x', '');
 		// Synthesizes a new segment because no matching tool_call exists.
 		expect(next).toHaveLength(2);
@@ -766,42 +744,42 @@ describe('computeMergeFlags', () => {
 	it('no merge on a lone message', () => {
 		expect(computeMergeFlags([u], 0, null)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 
 	it('no merge for a user message regardless of neighbors', () => {
 		expect(computeMergeFlags([a1, u], 1, null)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 
 	it('first of two adjacent assistants merges WithNext only', () => {
 		expect(computeMergeFlags([a1, a2], 0, null)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: true
+			mergeWithNext: true,
 		});
 	});
 
 	it('second of two adjacent assistants merges WithPrev only', () => {
 		expect(computeMergeFlags([a1, a2], 1, null)).toEqual({
 			mergeWithPrev: true,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 
 	it('middle assistant in a 3-row group merges with both sides', () => {
 		expect(computeMergeFlags([a1, a2, a3], 1, null)).toEqual({
 			mergeWithPrev: true,
-			mergeWithNext: true
+			mergeWithNext: true,
 		});
 	});
 
 	it('does not merge assistant with adjacent user message', () => {
 		expect(computeMergeFlags([u, a1, u], 1, null)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 
@@ -811,20 +789,20 @@ describe('computeMergeFlags', () => {
 		// with adjacent bubbles.
 		expect(computeMergeFlags([a1, a2, a3], 1, 'a2')).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 		expect(computeMergeFlags([a1, a2, a3], 0, 'a2')).toMatchObject({
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 		expect(computeMergeFlags([a1, a2, a3], 2, 'a2')).toMatchObject({
-			mergeWithPrev: false
+			mergeWithPrev: false,
 		});
 	});
 
 	it('handles out-of-range index gracefully', () => {
 		expect(computeMergeFlags([a1], 5, null)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 
@@ -836,7 +814,7 @@ describe('computeMergeFlags', () => {
 		// until invalidate, then "snap" together.
 		expect(computeMergeFlags([u, a1], 1, null, true)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: true
+			mergeWithNext: true,
 		});
 	});
 
@@ -845,14 +823,14 @@ describe('computeMergeFlags', () => {
 		// in-flight bubble fuses with that one, not the one before it.
 		expect(computeMergeFlags([a1, a2], 0, null, true)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: true // still merges with a2, not because of in-flight
+			mergeWithNext: true, // still merges with a2, not because of in-flight
 		});
 		// The trailing a2 also gets the in-flight forced merge — it
 		// already merges with a1 via the persisted rule + with the live
 		// bubble below.
 		expect(computeMergeFlags([a1, a2], 1, null, true)).toEqual({
 			mergeWithPrev: true,
-			mergeWithNext: true
+			mergeWithNext: true,
 		});
 	});
 
@@ -864,7 +842,7 @@ describe('computeMergeFlags', () => {
 		// across roles.
 		expect(computeMergeFlags([a1, u], 1, null, true)).toEqual({
 			mergeWithPrev: false,
-			mergeWithNext: false
+			mergeWithNext: false,
 		});
 	});
 });

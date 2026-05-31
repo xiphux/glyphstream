@@ -60,7 +60,7 @@ export function firstName(displayName: string | null, fallback: string): string 
 export function preferredFirstName(
 	preferenceName: string | null | undefined,
 	displayName: string | null,
-	fallback: string
+	fallback: string,
 ): string {
 	const fromPref = preferenceName?.trim();
 	if (fromPref) return fromPref;

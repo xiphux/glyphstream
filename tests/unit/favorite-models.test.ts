@@ -11,18 +11,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	invalidateAll: vi.fn(async () => {}),
 	toastError: vi.fn(),
-	toastSuccess: vi.fn()
+	toastSuccess: vi.fn(),
 }));
 
 vi.mock('$app/navigation', () => ({
-	invalidateAll: mocks.invalidateAll
+	invalidateAll: mocks.invalidateAll,
 }));
 
 vi.mock('$lib/toast.svelte', () => ({
 	toast: {
 		error: mocks.toastError,
-		success: mocks.toastSuccess
-	}
+		success: mocks.toastSuccess,
+	},
 }));
 
 import { reorder, reorderFavoriteModels, toggleFavoriteModel } from '$lib/favorite-models';
@@ -103,7 +103,7 @@ describe('toggleFavoriteModel — success path', () => {
 describe('toggleFavoriteModel — failure paths', () => {
 	it('shows an error toast and does NOT invalidate on non-ok response', async () => {
 		global.fetch = vi.fn(
-			async () => new Response('{"error":"validation failed"}', { status: 400 })
+			async () => new Response('{"error":"validation failed"}', { status: 400 }),
 		) as never;
 		await toggleFavoriteModel(['a'], 'b');
 		expect(mocks.toastError).toHaveBeenCalledOnce();

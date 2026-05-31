@@ -25,10 +25,7 @@ import { browser } from '$app/environment';
  */
 export function isPushSupported(): boolean {
 	return (
-		browser &&
-		'serviceWorker' in navigator &&
-		'PushManager' in window &&
-		'Notification' in window
+		browser && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
 	);
 }
 
@@ -97,7 +94,7 @@ export async function subscribe(vapidPublicKey: string): Promise<SubscribeResult
 		existing ??
 		(await reg.pushManager.subscribe({
 			userVisibleOnly: true,
-			applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+			applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
 		}));
 
 	const body = subscription.toJSON();
@@ -109,8 +106,8 @@ export async function subscribe(vapidPublicKey: string): Promise<SubscribeResult
 			body: JSON.stringify({
 				endpoint: body.endpoint,
 				keys: body.keys,
-				userAgent: navigator.userAgent
-			})
+				userAgent: navigator.userAgent,
+			}),
 		});
 		if (!res.ok) return { ok: false, reason: 'network' };
 	} catch {
@@ -138,7 +135,7 @@ export async function unsubscribe(): Promise<void> {
 			method: 'DELETE',
 			credentials: 'same-origin',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ endpoint: subscription.endpoint })
+			body: JSON.stringify({ endpoint: subscription.endpoint }),
 		});
 	} catch {
 		// Swallow — the browser unsubscribe below still happens, and a

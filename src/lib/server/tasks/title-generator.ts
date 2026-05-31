@@ -26,7 +26,7 @@ import { chatCompletionSync, UpstreamError } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import {
 	getConversationFirstExchange,
-	setConversationTitleIfFallback
+	setConversationTitleIfFallback,
 } from '../db/queries/conversations';
 import { getTaskModel, type ResolvedTaskModel } from './task-model';
 import { truncateEllipsis } from '$lib/text';
@@ -64,7 +64,7 @@ export interface GenerateTitleResult {
  */
 export async function generateConversationTitle(
 	conversationId: string,
-	opts: { taskModel?: ResolvedTaskModel | null } = {}
+	opts: { taskModel?: ResolvedTaskModel | null } = {},
 ): Promise<GenerateTitleResult | null> {
 	const taskModel = opts.taskModel === undefined ? getTaskModel() : opts.taskModel;
 	if (!taskModel) {
@@ -80,8 +80,7 @@ export async function generateConversationTitle(
 
 	const promptMessages = buildTitlePrompt(exchange);
 	if (!promptMessages) {
-		if (DEBUG)
-			console.debug(`[title-gen] empty prompt for ${conversationId}; skipping`);
+		if (DEBUG) console.debug(`[title-gen] empty prompt for ${conversationId}; skipping`);
 		return null;
 	}
 
@@ -89,22 +88,22 @@ export async function generateConversationTitle(
 	try {
 		upstreamContent = await callTaskModel(taskModel.endpoint, taskModel.upstreamId, promptMessages);
 	} catch (e) {
-		const cause = e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
+		const cause =
+			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
 		if (DEBUG) console.debug(`[title-gen] task model call failed for ${conversationId}: ${cause}`);
 		return null;
 	}
 
 	const title = sanitizeTitle(upstreamContent);
 	if (!title) {
-		if (DEBUG)
-			console.debug(`[title-gen] task model returned empty/garbage for ${conversationId}`);
+		if (DEBUG) console.debug(`[title-gen] task model returned empty/garbage for ${conversationId}`);
 		return null;
 	}
 
 	const persisted = setConversationTitleIfFallback(conversationId, title);
 	if (DEBUG)
 		console.debug(
-			`[title-gen] ${conversationId} → "${title}" (${persisted ? 'persisted' : 'skipped: user/ai title already set'})`
+			`[title-gen] ${conversationId} → "${title}" (${persisted ? 'persisted' : 'skipped: user/ai title already set'})`,
 		);
 	return { title, persisted };
 }
@@ -144,7 +143,7 @@ export function buildTitlePrompt(exchange: {
 
 	return [
 		{ role: 'system', content: SYSTEM_PROMPT },
-		{ role: 'user', content: body }
+		{ role: 'user', content: body },
 	];
 }
 
@@ -165,7 +164,7 @@ export function sanitizeTitle(raw: string): string {
 		["'", "'"],
 		['“', '”'],
 		['‘', '’'],
-		['«', '»']
+		['«', '»'],
 	];
 	for (const [open, close] of quotePairs) {
 		if (s.startsWith(open) && s.endsWith(close) && s.length >= 2) {
@@ -185,7 +184,7 @@ export function sanitizeTitle(raw: string): string {
 async function callTaskModel(
 	endpoint: LoadedEndpoint,
 	upstreamId: string,
-	taskMessages: TaskMessage[]
+	taskMessages: TaskMessage[],
 ): Promise<string> {
 	const resp = await chatCompletionSync(endpoint, {
 		model: upstreamId,
@@ -194,7 +193,7 @@ async function callTaskModel(
 		// 60 tokens is enough for any sane 3-7 word title with room.
 		max_tokens: 60,
 		// Lower temperature for deterministic title-like output.
-		temperature: 0.3
+		temperature: 0.3,
 	});
 	return resp.choices?.[0]?.message?.content ?? '';
 }

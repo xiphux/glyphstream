@@ -31,24 +31,18 @@ describe('pickAction', () => {
 	});
 
 	it('os: windows reported, but all hidden', () => {
-		expect(
-			pickAction([report('conv-2', false), report('conv-3', false)], PAYLOAD)
-		).toBe('os');
+		expect(pickAction([report('conv-2', false), report('conv-3', false)], PAYLOAD)).toBe('os');
 	});
 
 	it('silent overrides toast: matching window visible + another window visible', () => {
 		// Multi-monitor / split-screen: both windows visible. The matching
 		// thread wins — the SSE there delivered the message; no toast needed.
-		expect(
-			pickAction([report('conv-1', true), report('conv-2', true)], PAYLOAD)
-		).toBe('silent');
+		expect(pickAction([report('conv-1', true), report('conv-2', true)], PAYLOAD)).toBe('silent');
 	});
 
 	it('silent only triggers when the matching window is visible', () => {
 		// Matching conversation exists but is hidden — fall through to toast/os.
-		expect(
-			pickAction([report('conv-1', false), report('conv-2', true)], PAYLOAD)
-		).toBe('toast');
+		expect(pickAction([report('conv-1', false), report('conv-2', true)], PAYLOAD)).toBe('toast');
 		expect(pickAction([report('conv-1', false)], PAYLOAD)).toBe('os');
 	});
 

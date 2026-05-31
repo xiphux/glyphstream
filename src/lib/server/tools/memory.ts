@@ -37,13 +37,13 @@ export const saveMemoryTool: Tool = {
 				properties: {
 					content: {
 						type: 'string',
-						description: `The memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`
-					}
+						description: `The memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
+					},
 				},
 				required: ['content'],
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Save memory', icon: 'brain', category: 'personalization' },
 	execute(args, ctx): ToolExecution {
@@ -51,7 +51,7 @@ export const saveMemoryTool: Tool = {
 		if ('error' in parsed) return errorResult(parsed.error);
 		const { id } = createMemory(ctx.userId, parsed.content);
 		return { content: JSON.stringify({ id, saved: true }) };
-	}
+	},
 };
 
 export const updateMemoryTool: Tool = {
@@ -67,17 +67,17 @@ export const updateMemoryTool: Tool = {
 					id: {
 						type: 'string',
 						description:
-							'The id of the memory to update — the bracketed value shown next to the entry in "Saved memories".'
+							'The id of the memory to update — the bracketed value shown next to the entry in "Saved memories".',
 					},
 					content: {
 						type: 'string',
-						description: `The new memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`
-					}
+						description: `The new memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
+					},
 				},
 				required: ['id', 'content'],
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Update memory', icon: 'brain', category: 'personalization' },
 	execute(args, ctx): ToolExecution {
@@ -86,7 +86,7 @@ export const updateMemoryTool: Tool = {
 		const matched = updateMemory(ctx.userId, parsed.id, parsed.content);
 		if (!matched) return errorResult(`No memory with id "${parsed.id}".`);
 		return { content: JSON.stringify({ id: parsed.id, updated: true }) };
-	}
+	},
 };
 
 export const forgetMemoryTool: Tool = {
@@ -102,13 +102,13 @@ export const forgetMemoryTool: Tool = {
 					id: {
 						type: 'string',
 						description:
-							'The id of the memory to forget — the bracketed value shown next to the entry in "Saved memories".'
-					}
+							'The id of the memory to forget — the bracketed value shown next to the entry in "Saved memories".',
+					},
 				},
 				required: ['id'],
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Forget memory', icon: 'brain', category: 'personalization' },
 	execute(args, ctx): ToolExecution {
@@ -117,7 +117,7 @@ export const forgetMemoryTool: Tool = {
 		const matched = deleteMemory(ctx.userId, parsed.id);
 		if (!matched) return errorResult(`No memory with id "${parsed.id}".`);
 		return { content: JSON.stringify({ id: parsed.id, forgotten: true }) };
-	}
+	},
 };
 
 function parseContentArg(args: unknown): { content: string } | { error: string } {
@@ -131,7 +131,9 @@ function parseContentArg(args: unknown): { content: string } | { error: string }
 	const trimmed = a.content.trim();
 	if (trimmed.length === 0) return { error: '`content` must be non-empty.' };
 	if (trimmed.length > MAX_CONTENT_CHARS) {
-		return { error: `\`content\` exceeds ${MAX_CONTENT_CHARS} characters — keep memories to one sentence.` };
+		return {
+			error: `\`content\` exceeds ${MAX_CONTENT_CHARS} characters — keep memories to one sentence.`,
+		};
 	}
 	return { content: trimmed };
 }

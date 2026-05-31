@@ -92,10 +92,7 @@ export function appendText(segments: InFlightSegment[], chunk: string): InFlight
 	}
 	const last = segments[segments.length - 1];
 	if (last.kind === 'text') {
-		return [
-			...segments.slice(0, -1),
-			{ kind: 'text', text: last.text + chunk, html: last.html }
-		];
+		return [...segments.slice(0, -1), { kind: 'text', text: last.text + chunk, html: last.html }];
 	}
 	return [...segments, { kind: 'text', text: chunk, html: '' }];
 }
@@ -106,10 +103,7 @@ export function appendText(segments: InFlightSegment[], chunk: string): InFlight
  *  reasoning segment opens for the next batch. This is what lets the
  *  in-flight bubble render reasoning at its chronological position
  *  rather than always at the top. */
-export function appendReasoning(
-	segments: InFlightSegment[],
-	chunk: string
-): InFlightSegment[] {
+export function appendReasoning(segments: InFlightSegment[], chunk: string): InFlightSegment[] {
 	if (segments.length === 0) {
 		return [{ kind: 'reasoning', text: chunk }];
 	}
@@ -125,11 +119,11 @@ export function appendReasoning(
 export function pushToolCall(
 	segments: InFlightSegment[],
 	toolCallId: string,
-	toolName: string
+	toolName: string,
 ): InFlightSegment[] {
 	return [
 		...segments,
-		{ kind: 'tool_call', toolCallId, toolName, arguments: '', status: 'executing' }
+		{ kind: 'tool_call', toolCallId, toolName, arguments: '', status: 'executing' },
 	];
 }
 
@@ -140,18 +134,16 @@ export function pushToolCall(
 export function updateToolCallArgs(
 	segments: InFlightSegment[],
 	toolCallId: string,
-	argsDelta: string
+	argsDelta: string,
 ): InFlightSegment[] {
-	const idx = segments.findIndex(
-		(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
-	);
+	const idx = segments.findIndex((s) => s.kind === 'tool_call' && s.toolCallId === toolCallId);
 	if (idx < 0) return segments;
 	const seg = segments[idx];
 	if (seg.kind !== 'tool_call') return segments;
 	return [
 		...segments.slice(0, idx),
 		{ ...seg, arguments: seg.arguments + argsDelta },
-		...segments.slice(idx + 1)
+		...segments.slice(idx + 1),
 	];
 }
 
@@ -161,18 +153,16 @@ export function updateToolCallResult(
 	segments: InFlightSegment[],
 	toolCallId: string,
 	result: string,
-	isError: boolean
+	isError: boolean,
 ): InFlightSegment[] {
-	const idx = segments.findIndex(
-		(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
-	);
+	const idx = segments.findIndex((s) => s.kind === 'tool_call' && s.toolCallId === toolCallId);
 	if (idx < 0) return segments;
 	const seg = segments[idx];
 	if (seg.kind !== 'tool_call') return segments;
 	return [
 		...segments.slice(0, idx),
 		{ ...seg, status: isError ? 'error' : 'done', result, isError },
-		...segments.slice(idx + 1)
+		...segments.slice(idx + 1),
 	];
 }
 
@@ -184,11 +174,9 @@ export function markToolCallPendingApproval(
 	segments: InFlightSegment[],
 	toolCallId: string,
 	toolName: string,
-	args: string
+	args: string,
 ): InFlightSegment[] {
-	const idx = segments.findIndex(
-		(s) => s.kind === 'tool_call' && s.toolCallId === toolCallId
-	);
+	const idx = segments.findIndex((s) => s.kind === 'tool_call' && s.toolCallId === toolCallId);
 	if (idx < 0) {
 		// Defensive — server emitted pending_approval for a tool_call we
 		// never saw a `tool_call_start` for. Synthesize the segment so
@@ -200,8 +188,8 @@ export function markToolCallPendingApproval(
 				toolCallId,
 				toolName,
 				arguments: args,
-				status: 'pending_approval'
-			}
+				status: 'pending_approval',
+			},
 		];
 	}
 	const seg = segments[idx];
@@ -209,7 +197,7 @@ export function markToolCallPendingApproval(
 	return [
 		...segments.slice(0, idx),
 		{ ...seg, status: 'pending_approval', arguments: args || seg.arguments },
-		...segments.slice(idx + 1)
+		...segments.slice(idx + 1),
 	];
 }
 
@@ -221,7 +209,7 @@ export function markToolCallPendingApproval(
  *  'error' if isError); otherwise it's 'executing' (still in-flight). */
 export function messageToBlocks(
 	m: ChatMessage,
-	toolResults: Map<string, ToolResultEntry>
+	toolResults: Map<string, ToolResultEntry>,
 ): RenderBlock[] {
 	const blocks: RenderBlock[] = [];
 	if (m.reasoningText) blocks.push({ type: 'reasoning', text: m.reasoningText, open: false });
@@ -243,7 +231,7 @@ function partToBlock(
 	p: MessagePart,
 	m: ChatMessage,
 	toolResults: Map<string, ToolResultEntry>,
-	usedContentHtml: boolean
+	usedContentHtml: boolean,
 ): RenderBlock | null {
 	switch (p.type) {
 		case 'text':
@@ -265,7 +253,7 @@ function partToBlock(
 				arguments: p.arguments,
 				result: entry?.result,
 				isError: entry?.isError,
-				status
+				status,
 			};
 		}
 		case 'image':
@@ -310,7 +298,7 @@ export function inFlightToBlocks(segments: InFlightSegment[]): RenderBlock[] {
 					arguments: seg.arguments,
 					result: seg.result,
 					isError: seg.isError,
-					status: seg.status
+					status: seg.status,
 				});
 				break;
 		}
@@ -337,9 +325,7 @@ export interface ToolResultEntry {
  *  resolve tool_call statuses. Carries the pending_approval status
  *  through so the inline tool block can render the Allow / Always /
  *  Reject prompt right where its tool_call appears. */
-export function buildToolResultsMap(
-	messages: ChatMessage[]
-): Map<string, ToolResultEntry> {
+export function buildToolResultsMap(messages: ChatMessage[]): Map<string, ToolResultEntry> {
 	const out = new Map<string, ToolResultEntry>();
 	for (const msg of messages) {
 		if (msg.role !== 'tool') continue;
@@ -347,7 +333,7 @@ export function buildToolResultsMap(
 			if (p.type !== 'tool_result') continue;
 			const entry: ToolResultEntry = {
 				result: p.result,
-				isError: p.isError === true
+				isError: p.isError === true,
 			};
 			if (p.status === 'pending_approval') entry.status = 'pending_approval';
 			out.set(p.toolCallId, entry);
@@ -405,7 +391,7 @@ export function computeMergeFlags(
 	visibleMessages: ChatMessage[],
 	index: number,
 	editingMessageId: string | null,
-	mergeIntoInFlight = false
+	mergeIntoInFlight = false,
 ): { mergeWithPrev: boolean; mergeWithNext: boolean } {
 	const m = visibleMessages[index];
 	if (!m || m.role !== 'assistant' || m.id === editingMessageId) {
@@ -415,10 +401,9 @@ export function computeMergeFlags(
 	const next = index < visibleMessages.length - 1 ? visibleMessages[index + 1] : null;
 	const isLastVisible = index === visibleMessages.length - 1;
 	return {
-		mergeWithPrev:
-			!!prev && prev.role === 'assistant' && prev.id !== editingMessageId,
+		mergeWithPrev: !!prev && prev.role === 'assistant' && prev.id !== editingMessageId,
 		mergeWithNext:
 			(!!next && next.role === 'assistant' && next.id !== editingMessageId) ||
-			(mergeIntoInFlight && isLastVisible)
+			(mergeIntoInFlight && isLastVisible),
 	};
 }

@@ -14,7 +14,7 @@ import { error } from '@sveltejs/kit';
  * special-casing.
  */
 export function requireUser(
-	locals: App.Locals
+	locals: App.Locals,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
 	if (!locals.user) throw error(401, 'Authentication required');
 }

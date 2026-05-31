@@ -3,7 +3,7 @@ import {
 	clearSessionCookie,
 	invalidateSession,
 	readSessionCookie,
-	validateSessionToken
+	validateSessionToken,
 } from '$lib/server/auth/session';
 import type { RequestHandler } from './$types';
 

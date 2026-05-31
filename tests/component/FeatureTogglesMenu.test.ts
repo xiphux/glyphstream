@@ -26,14 +26,14 @@ const CATEGORIES: FeatureCategoryEntry[] = [
 		id: 'web',
 		label: 'Web access',
 		description: 'Lets the assistant search the web and fetch pages.',
-		source: 'builtin'
+		source: 'builtin',
 	},
 	{
 		id: 'personalization',
 		label: 'Personalization',
 		description: 'Sends preferences + memory.',
-		source: 'builtin'
-	}
+		source: 'builtin',
+	},
 ];
 
 /** Same as CATEGORIES but with one connected MCP server added. */
@@ -43,28 +43,28 @@ const CATEGORIES_WITH_MCP: FeatureCategoryEntry[] = [
 		id: 'mcp:filesystem',
 		label: 'Filesystem',
 		description: 'Tools from the "Filesystem" MCP server (2 tools).',
-		source: 'mcp'
-	}
+		source: 'mcp',
+	},
 ];
 
 describe('FeatureTogglesMenu — trigger button', () => {
 	it('renders with the expected aria-label', () => {
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		expect(screen.getByLabelText('Feature toggles')).toBeInTheDocument();
 	});
 
 	it('has no off-state dot when all features are enabled', () => {
 		const { container } = render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		expect(container.querySelector('.bg-amber-500')).toBeNull();
 	});
 
 	it('shows an off-state dot when any feature is disabled', () => {
 		const { container } = render(FeatureTogglesMenu, {
-			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		expect(container.querySelector('.bg-amber-500')).toBeInTheDocument();
 	});
@@ -75,8 +75,8 @@ describe('FeatureTogglesMenu — trigger button', () => {
 				disabledFeatures: [],
 				categories: CATEGORIES,
 				onChange: vi.fn(),
-				disabled: true
-			}
+				disabled: true,
+			},
 		});
 		expect(screen.getByLabelText('Feature toggles')).toBeDisabled();
 	});
@@ -86,7 +86,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 	it('opens on trigger click and renders a row per category', async () => {
 		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		for (const meta of CATEGORIES) {
@@ -101,21 +101,21 @@ describe('FeatureTogglesMenu — popover content', () => {
 			props: {
 				disabledFeatures: [],
 				categories: CATEGORIES_WITH_MCP,
-				onChange: vi.fn()
-			}
+				onChange: vi.fn(),
+			},
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		expect(screen.getByText('Filesystem')).toBeInTheDocument();
 		expect(screen.getByRole('switch', { name: 'Filesystem' })).toHaveAttribute(
 			'data-state',
-			'checked'
+			'checked',
 		);
 	});
 
 	it('renders a switch per category, checked when its category is enabled', async () => {
 		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		for (const meta of CATEGORIES) {
@@ -127,7 +127,7 @@ describe('FeatureTogglesMenu — popover content', () => {
 	it('switch reads as unchecked when its category is in disabledFeatures', async () => {
 		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() }
+			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		const sw = screen.getByRole('switch', { name: 'Web access' });
@@ -140,7 +140,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES, onChange }
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		await user.click(screen.getByRole('switch', { name: 'Web access' }));
@@ -151,7 +151,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange }
+			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		await user.click(screen.getByRole('switch', { name: 'Web access' }));
@@ -162,7 +162,7 @@ describe('FeatureTogglesMenu — toggle callbacks', () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
 		render(FeatureTogglesMenu, {
-			props: { disabledFeatures: [], categories: CATEGORIES_WITH_MCP, onChange }
+			props: { disabledFeatures: [], categories: CATEGORIES_WITH_MCP, onChange },
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		await user.click(screen.getByRole('switch', { name: 'Filesystem' }));

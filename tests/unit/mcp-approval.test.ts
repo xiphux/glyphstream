@@ -18,7 +18,7 @@ import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import { executeToolCalls } from '$lib/server/streaming/tool-execution';
@@ -26,7 +26,7 @@ import {
 	appendMessage,
 	getMessage,
 	updateMessageParts,
-	walkActiveBranch
+	walkActiveBranch,
 } from '$lib/server/db/queries/messages';
 import { createConversation } from '$lib/server/db/queries/conversations';
 
@@ -37,10 +37,10 @@ function registerMockTool(name: string, execute: Tool['execute'], category?: str
 	register({
 		definition: {
 			type: 'function',
-			function: { name, description: '', parameters: { type: 'object' } }
+			function: { name, description: '', parameters: { type: 'object' } },
 		},
 		metadata: category ? { category } : undefined,
-		execute
+		execute,
 	});
 	REGISTERED_TOOLS.add(name);
 }
@@ -59,7 +59,7 @@ describe('executeToolCalls — approval partition', () => {
 		registerMockTool(
 			'mcp__fs__read_file',
 			async (): Promise<ToolExecution> => ({ content: 'ok' }),
-			'mcp:fs'
+			'mcp:fs',
 		);
 		const conv = createConversation({
 			userId: u.id,
@@ -67,13 +67,13 @@ describe('executeToolCalls — approval partition', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: null,
-			systemPrompt: null
+			systemPrompt: null,
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'read /etc/hosts please' }]
+			parts: [{ type: 'text', text: 'read /etc/hosts please' }],
 		});
 		const assistant = appendMessage({
 			conversationId: conv.id,
@@ -84,9 +84,9 @@ describe('executeToolCalls — approval partition', () => {
 					type: 'tool_call',
 					toolCallId: 'call_a',
 					toolName: 'mcp__fs__read_file',
-					arguments: '{"path":"/etc/hosts"}'
-				}
-			]
+					arguments: '{"path":"/etc/hosts"}',
+				},
+			],
 		});
 
 		const events: StreamEvent[] = [];
@@ -95,7 +95,7 @@ describe('executeToolCalls — approval partition', () => {
 			conversationId: conv.id,
 			userId: u.id,
 			emit: (e) => events.push(e),
-			needsApproval: () => true
+			needsApproval: () => true,
 		});
 
 		expect(result.pendingCount).toBe(1);
@@ -110,23 +110,20 @@ describe('executeToolCalls — approval partition', () => {
 
 	it('executes inline tools whose predicate returns false', async () => {
 		const u = seedUser();
-		registerMockTool(
-			'auto_tool',
-			async (): Promise<ToolExecution> => ({ content: 'computed-ok' })
-		);
+		registerMockTool('auto_tool', async (): Promise<ToolExecution> => ({ content: 'computed-ok' }));
 		const conv = createConversation({
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: null,
-			systemPrompt: null
+			systemPrompt: null,
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'go' }]
+			parts: [{ type: 'text', text: 'go' }],
 		});
 		const assistant = appendMessage({
 			conversationId: conv.id,
@@ -137,9 +134,9 @@ describe('executeToolCalls — approval partition', () => {
 					type: 'tool_call',
 					toolCallId: 'call_b',
 					toolName: 'auto_tool',
-					arguments: '{}'
-				}
-			]
+					arguments: '{}',
+				},
+			],
 		});
 
 		const result = await executeToolCalls({
@@ -147,7 +144,7 @@ describe('executeToolCalls — approval partition', () => {
 			conversationId: conv.id,
 			userId: u.id,
 			emit: () => {},
-			needsApproval: () => false
+			needsApproval: () => false,
 		});
 
 		expect(result.pendingCount).toBe(0);
@@ -173,7 +170,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 1
+				createdAt: 1,
 			},
 			{
 				id: 'a1',
@@ -183,14 +180,14 @@ describe('buildPendingApprovals', () => {
 						type: 'tool_call',
 						toolCallId: 'call_x',
 						toolName: 'mcp__fs__read_file',
-						arguments: '{"path":"/tmp"}'
+						arguments: '{"path":"/tmp"}',
 					},
 					{
 						type: 'tool_call',
 						toolCallId: 'call_y',
 						toolName: 'mcp__fs__list_directory',
-						arguments: '{"path":"/var"}'
-					}
+						arguments: '{"path":"/var"}',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -198,7 +195,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 2
+				createdAt: 2,
 			},
 			{
 				id: 't1',
@@ -208,8 +205,8 @@ describe('buildPendingApprovals', () => {
 						type: 'tool_result',
 						toolCallId: 'call_x',
 						result: '',
-						status: 'pending_approval'
-					}
+						status: 'pending_approval',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -217,7 +214,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 3
+				createdAt: 3,
 			},
 			{
 				id: 't2',
@@ -227,8 +224,8 @@ describe('buildPendingApprovals', () => {
 						type: 'tool_result',
 						toolCallId: 'call_y',
 						result: '',
-						status: 'pending_approval'
-					}
+						status: 'pending_approval',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -236,8 +233,8 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 4
-			}
+				createdAt: 4,
+			},
 		];
 		expect(buildPendingApprovals(branch)).toEqual(['call_x', 'call_y']);
 	});
@@ -252,8 +249,8 @@ describe('buildPendingApprovals', () => {
 						type: 'tool_result',
 						toolCallId: 'call_x',
 						result: '',
-						status: 'pending_approval'
-					}
+						status: 'pending_approval',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -261,7 +258,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 1
+				createdAt: 1,
 			},
 			{
 				id: 't2',
@@ -271,8 +268,8 @@ describe('buildPendingApprovals', () => {
 						type: 'tool_result',
 						toolCallId: 'call_y',
 						result: 'done',
-						status: 'completed'
-					}
+						status: 'completed',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -280,8 +277,8 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 2
-			}
+				createdAt: 2,
+			},
 		];
 		expect(buildPendingApprovals(branch)).toEqual(['call_x']);
 	});
@@ -295,8 +292,8 @@ describe('buildPendingApprovals', () => {
 					{
 						type: 'tool_result',
 						toolCallId: 'call_x',
-						result: 'done'
-					}
+						result: 'done',
+					},
 				],
 				contentHtml: null,
 				reasoningText: null,
@@ -304,8 +301,8 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
-				createdAt: 1
-			}
+				createdAt: 1,
+			},
 		];
 		expect(buildPendingApprovals(branch)).toEqual([]);
 	});
@@ -326,13 +323,13 @@ describe('updateMessageParts', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: null,
-			systemPrompt: null
+			systemPrompt: null,
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'go' }]
+			parts: [{ type: 'text', text: 'go' }],
 		});
 		const assistant = appendMessage({
 			conversationId: conv.id,
@@ -343,9 +340,9 @@ describe('updateMessageParts', () => {
 					type: 'tool_call',
 					toolCallId: 'call_x',
 					toolName: 'mcp__fs__read_file',
-					arguments: '{}'
-				}
-			]
+					arguments: '{}',
+				},
+			],
 		});
 		const pendingResult = appendMessage({
 			conversationId: conv.id,
@@ -356,22 +353,22 @@ describe('updateMessageParts', () => {
 					type: 'tool_result',
 					toolCallId: 'call_x',
 					result: '',
-					status: 'pending_approval'
-				}
-			]
+					status: 'pending_approval',
+				},
+			],
 		});
 
 		const ok = updateMessageParts(pendingResult.id, conv.id, [
 			{
 				type: 'tool_result',
 				toolCallId: 'call_x',
-				result: 'file contents here'
-			}
+				result: 'file contents here',
+			},
 		]);
 		expect(ok).toBe(true);
 		const persisted = getMessage(conv.id, pendingResult.id)!;
 		expect(persisted.parts).toEqual([
-			{ type: 'tool_result', toolCallId: 'call_x', result: 'file contents here' }
+			{ type: 'tool_result', toolCallId: 'call_x', result: 'file contents here' },
 		]);
 	});
 
@@ -383,13 +380,13 @@ describe('updateMessageParts', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: null,
-			systemPrompt: null
+			systemPrompt: null,
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'go' }]
+			parts: [{ type: 'text', text: 'go' }],
 		});
 		// `user.id` is a real row but with a *different* conversationId
 		// scope on the predicate — cross-conversation update must fail.
@@ -411,13 +408,13 @@ describe('updateMessageParts', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: null,
-			systemPrompt: null
+			systemPrompt: null,
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'go' }]
+			parts: [{ type: 'text', text: 'go' }],
 		});
 		const assistant = appendMessage({
 			conversationId: conv.id,
@@ -428,9 +425,9 @@ describe('updateMessageParts', () => {
 					type: 'tool_call',
 					toolCallId: 'call_x',
 					toolName: 'mcp__fs__read_file',
-					arguments: '{}'
-				}
-			]
+					arguments: '{}',
+				},
+			],
 		});
 		const pending = appendMessage({
 			conversationId: conv.id,
@@ -441,13 +438,13 @@ describe('updateMessageParts', () => {
 					type: 'tool_result',
 					toolCallId: 'call_x',
 					result: '',
-					status: 'pending_approval'
-				}
-			]
+					status: 'pending_approval',
+				},
+			],
 		});
 		const branchBefore = walkActiveBranch(conv.id).map((m) => m.id);
 		updateMessageParts(pending.id, conv.id, [
-			{ type: 'tool_result', toolCallId: 'call_x', result: 'ok' }
+			{ type: 'tool_result', toolCallId: 'call_x', result: 'ok' },
 		]);
 		const branchAfter = walkActiveBranch(conv.id).map((m) => m.id);
 		expect(branchAfter).toEqual(branchBefore);

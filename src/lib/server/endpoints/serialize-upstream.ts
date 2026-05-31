@@ -12,7 +12,7 @@ import type { ChatMessage, MessagePart } from '$lib/types/api';
 import type {
 	ChatCompletionContentPart,
 	ChatCompletionRequest,
-	ChatCompletionRequestToolCall
+	ChatCompletionRequestToolCall,
 } from './client';
 
 /** Resolve a stored media id to a data: URL the upstream can consume.
@@ -36,7 +36,7 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
 		.map((p) => ({
 			id: p.toolCallId,
 			type: 'function' as const,
-			function: { name: p.toolName, arguments: p.arguments }
+			function: { name: p.toolName, arguments: p.arguments },
 		}));
 }
 
@@ -56,17 +56,17 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
  */
 export async function serializeMessageForUpstream(
 	m: ChatMessage,
-	resolveMediaUrl: MediaUrlResolver
+	resolveMediaUrl: MediaUrlResolver,
 ): Promise<ChatCompletionRequest['messages'][number] | null> {
 	if (m.role === 'tool') {
 		const result = m.parts.find(
-			(p): p is Extract<MessagePart, { type: 'tool_result' }> => p.type === 'tool_result'
+			(p): p is Extract<MessagePart, { type: 'tool_result' }> => p.type === 'tool_result',
 		);
 		if (!result) return null;
 		return {
 			role: 'tool',
 			content: result.result,
-			tool_call_id: result.toolCallId
+			tool_call_id: result.toolCallId,
 		};
 	}
 
@@ -85,7 +85,7 @@ export async function serializeMessageForUpstream(
 		}
 		const out: ChatCompletionRequest['messages'][number] = {
 			role: m.role as 'system' | 'user' | 'assistant',
-			content
+			content,
 		};
 		if (toolCalls.length > 0) out.tool_calls = toolCalls;
 		return out;
@@ -99,13 +99,13 @@ export async function serializeMessageForUpstream(
 		return {
 			role: 'assistant',
 			content: text.length > 0 ? text : null,
-			tool_calls: toolCalls
+			tool_calls: toolCalls,
 		};
 	}
 
 	return {
 		role: m.role as 'system' | 'user' | 'assistant',
-		content: text
+		content: text,
 	};
 }
 
@@ -117,7 +117,7 @@ export async function serializeMessageForUpstream(
 export async function serializeBranchForUpstream(
 	branch: ChatMessage[],
 	resolveMediaUrl: MediaUrlResolver,
-	systemPrompt: string | null
+	systemPrompt: string | null,
 ): Promise<ChatCompletionRequest['messages']> {
 	const out: ChatCompletionRequest['messages'] = [];
 	if (systemPrompt) {

@@ -46,25 +46,26 @@ export const webSearchTool: Tool = {
 				properties: {
 					query: {
 						type: 'string',
-						description: 'Search query, plain natural-language text.'
+						description: 'Search query, plain natural-language text.',
 					},
 					max_results: {
 						type: 'integer',
 						description: `How many results to return (1-${MAX_MAX_RESULTS}, default ${DEFAULT_MAX_RESULTS}).`,
 						minimum: 1,
-						maximum: MAX_MAX_RESULTS
-					}
+						maximum: MAX_MAX_RESULTS,
+					},
 				},
 				required: ['query'],
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Web search', icon: 'search', category: 'web' },
 	isAvailable: () => getConfig() !== null,
 	async execute(args, ctx): Promise<ToolExecution> {
 		const cfg = getConfig();
-		if (!cfg) return errorResult('web_search not configured ([search] block missing from config.toml).');
+		if (!cfg)
+			return errorResult('web_search not configured ([search] block missing from config.toml).');
 
 		const parsed = parseArgs(args);
 		if ('error' in parsed) return errorResult(parsed.error);
@@ -89,7 +90,9 @@ export const webSearchTool: Tool = {
 			try {
 				body = await res.json();
 			} catch {
-				return errorResult('SearxNG response was not valid JSON (is `search.formats: [json]` enabled?).');
+				return errorResult(
+					'SearxNG response was not valid JSON (is `search.formats: [json]` enabled?).',
+				);
 			}
 			const raw = Array.isArray((body as { results?: unknown[] }).results)
 				? ((body as { results: unknown[] }).results as Array<Record<string, unknown>>)
@@ -97,13 +100,13 @@ export const webSearchTool: Tool = {
 			const results = raw.slice(0, maxResults).map((r) => ({
 				title: typeof r.title === 'string' ? r.title : '',
 				url: typeof r.url === 'string' ? r.url : '',
-				snippet: typeof r.content === 'string' ? r.content : ''
+				snippet: typeof r.content === 'string' ? r.content : '',
 			}));
 			return { content: JSON.stringify({ query, results }) };
 		} catch (e) {
 			return errorResult(e instanceof Error ? e.message : String(e));
 		}
-	}
+	},
 };
 
 interface ParsedArgs {

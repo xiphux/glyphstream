@@ -47,7 +47,7 @@
 		rows = 1,
 		enterBehavior,
 		onSubmit,
-		controls
+		controls,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);

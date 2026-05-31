@@ -62,7 +62,7 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 	if (/(?:^|[/_-])(?:sora|veo|kling|runway|ltx[_-]?video|wan[_-]?video)/.test(id)) return 'video';
 	if (
 		/(?:^|[/_-])(?:dall[_-]?e|stable[_-]?diffusion|sdxl|sd[_-]?\d|flux|midjourney|imagen|ideogram|titan-image|playground)/.test(
-			id
+			id,
 		)
 	) {
 		return 'image';
@@ -102,6 +102,6 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		kindKnown: detected !== null,
 		group,
 		groupKey,
-		supportsTools
+		supportsTools,
 	};
 }

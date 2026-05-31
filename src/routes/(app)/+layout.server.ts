@@ -32,6 +32,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		prefs: getUserPreferences(locals.user.id),
 		models: await listAllModels(),
 		customModels: listCustomModelsForUser(locals.user.id),
-		featureCategories: getAllFeatureCategoryLabels()
+		featureCategories: getAllFeatureCategoryLabels(),
 	};
 };

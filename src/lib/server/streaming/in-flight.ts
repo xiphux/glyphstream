@@ -34,16 +34,13 @@ const inFlight = new Map<string, InFlightEntry>();
  * conversation (rare — UI prevents send while busy, but defend anyway),
  * cancel it first so we never have two upstream calls racing.
  */
-export function registerInFlight(
-	conversationId: string,
-	endpoint: LoadedEndpoint
-): InFlightEntry {
+export function registerInFlight(conversationId: string, endpoint: LoadedEndpoint): InFlightEntry {
 	const prior = inFlight.get(conversationId);
 	if (prior) prior.controller.abort();
 	const entry: InFlightEntry = {
 		controller: new AbortController(),
 		endpoint,
-		startedAt: Date.now()
+		startedAt: Date.now(),
 	};
 	inFlight.set(conversationId, entry);
 	return entry;

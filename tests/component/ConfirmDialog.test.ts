@@ -34,7 +34,7 @@ describe('ConfirmDialog — rendering', () => {
 		render(ConfirmDialog);
 		void confirmDialog.ask({
 			title: 'Delete this branch?',
-			message: 'This will remove three messages.'
+			message: 'This will remove three messages.',
 		});
 		await tick();
 		expect(screen.getByRole('alertdialog')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('ConfirmDialog — rendering', () => {
 		void confirmDialog.ask({
 			title: 'Discard draft?',
 			message: 'Your changes will be lost.',
-			confirmLabel: 'Discard'
+			confirmLabel: 'Discard',
 		});
 		await tick();
 		expect(screen.getByRole('button', { name: 'Discard' })).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('ConfirmDialog — resolution', () => {
 		// short timer.
 		const pending = Promise.race([
 			promise.then(() => 'resolved'),
-			new Promise((r) => setTimeout(() => r('pending'), 30))
+			new Promise((r) => setTimeout(() => r('pending'), 30)),
 		]);
 		await expect(pending).resolves.toBe('pending');
 		// Clean up so afterEach's cancel doesn't have to resolve it twice.

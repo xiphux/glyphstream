@@ -42,11 +42,7 @@
 		scrollEl?: HTMLElement | null;
 	}
 
-	let {
-		children,
-		class: className = '',
-		scrollEl = $bindable(null)
-	}: Props = $props();
+	let { children, class: className = '', scrollEl = $bindable(null) }: Props = $props();
 
 	// Whether the user can scroll further in each direction. Recomputed
 	// on scroll, on content mutation (new favorite added, conversation
@@ -88,7 +84,7 @@
 	// you start/stop scrolling rather than popping. Same duration as the
 	// rest of the sidebar's hover/transition affordances.
 	const maskValue = $derived(
-		`linear-gradient(to bottom, transparent 0, black ${fadeTop}, black calc(100% - ${fadeBottom}), transparent 100%)`
+		`linear-gradient(to bottom, transparent 0, black ${fadeTop}, black calc(100% - ${fadeBottom}), transparent 100%)`,
 	);
 </script>
 

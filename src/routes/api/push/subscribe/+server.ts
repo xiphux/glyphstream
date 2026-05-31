@@ -16,7 +16,7 @@ import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import {
 	deletePushSubscriptionByEndpoint,
-	upsertPushSubscription
+	upsertPushSubscription,
 } from '$lib/server/db/queries/push-subscriptions';
 import { getVapidPublicKey } from '$lib/server/push/web-push';
 import type { RequestHandler } from './$types';
@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		endpoint,
 		p256dh,
 		auth,
-		userAgent
+		userAgent,
 	});
 	return json({ id: row.id, endpoint: row.endpoint }, { status: 201 });
 };

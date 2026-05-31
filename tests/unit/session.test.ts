@@ -18,7 +18,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -27,7 +27,7 @@ import {
 	invalidateSession,
 	readSessionCookie,
 	setSessionCookie,
-	validateSessionToken
+	validateSessionToken,
 } from '$lib/server/auth/session';
 import { sessions } from '$lib/server/db/schema';
 
@@ -63,7 +63,11 @@ describe('createSession', () => {
 		const byRaw = mocks.testDb.select().from(sessions).where(eq(sessions.id, token)).get();
 		expect(byRaw).toBeUndefined();
 		// The hashed form is what's stored.
-		const byHash = mocks.testDb.select().from(sessions).where(eq(sessions.id, hash(token))).get();
+		const byHash = mocks.testDb
+			.select()
+			.from(sessions)
+			.where(eq(sessions.id, hash(token)))
+			.get();
 		expect(byHash).toBeDefined();
 		expect(byHash!.userId).toBe(u.id);
 	});
@@ -142,7 +146,11 @@ describe('validateSessionToken', () => {
 		const { token, expiresAt } = createSession(u.id);
 		const ctx = validateSessionToken(token);
 		expect(ctx!.expiresAt).toBe(expiresAt);
-		const row = mocks.testDb.select().from(sessions).where(eq(sessions.id, hash(token))).get();
+		const row = mocks.testDb
+			.select()
+			.from(sessions)
+			.where(eq(sessions.id, hash(token)))
+			.get();
 		expect(row!.expiresAt).toBe(expiresAt);
 	});
 });
@@ -171,7 +179,7 @@ describe('cookie helpers', () => {
 			},
 			delete(name: string, _opts: unknown) {
 				store.delete(name);
-			}
+			},
 		};
 	}
 

@@ -6,6 +6,6 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	// See /(app)/+page.server.ts for why.
 	await parent();
 	return {
-		archivedConversations: listArchivedConversations(locals.user!.id)
+		archivedConversations: listArchivedConversations(locals.user!.id),
 	};
 };

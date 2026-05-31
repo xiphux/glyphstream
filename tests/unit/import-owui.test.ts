@@ -6,19 +6,19 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
 	extractReasoning,
 	importOwuiExport,
 	stripOwuiFileUrls,
-	IMPORTED_ENDPOINT_ID
+	IMPORTED_ENDPOINT_ID,
 } from '$lib/server/import/owui';
 import {
 	getConversationDetail,
 	listArchivedConversations,
-	listConversations
+	listConversations,
 } from '$lib/server/db/queries/conversations';
 
 beforeEach(() => {
@@ -51,7 +51,7 @@ function makeTextChat(overrides: { id?: string; archived?: boolean } = {}) {
 						childrenIds: ['ai-1'],
 						role: 'user',
 						content: 'Hello!',
-						timestamp: 1700000000
+						timestamp: 1700000000,
 					},
 					'ai-1': {
 						id: 'ai-1',
@@ -60,7 +60,7 @@ function makeTextChat(overrides: { id?: string; archived?: boolean } = {}) {
 						role: 'assistant',
 						content: 'Hi there!',
 						timestamp: 1700000010,
-						model: 'chatgpt'
+						model: 'chatgpt',
 					},
 					'user-2': {
 						id: 'user-2',
@@ -68,7 +68,7 @@ function makeTextChat(overrides: { id?: string; archived?: boolean } = {}) {
 						childrenIds: ['ai-2'],
 						role: 'user',
 						content: 'Tell me a joke',
-						timestamp: 1700000020
+						timestamp: 1700000020,
 					},
 					'ai-2': {
 						id: 'ai-2',
@@ -77,14 +77,14 @@ function makeTextChat(overrides: { id?: string; archived?: boolean } = {}) {
 						role: 'assistant',
 						content: 'Why did the chicken…',
 						timestamp: 1700000030,
-						model: 'chatgpt'
-					}
-				}
-			}
+						model: 'chatgpt',
+					},
+				},
+			},
 		},
 		created_at: 1700000000,
 		updated_at: 1700000040,
-		archived: overrides.archived ?? false
+		archived: overrides.archived ?? false,
 	};
 }
 
@@ -106,7 +106,7 @@ function makeReasoningChat() {
 						parentId: null,
 						role: 'user',
 						content: 'Why use dense over MoE?',
-						timestamp: 1700002000
+						timestamp: 1700002000,
 					},
 					'ai-r': {
 						id: 'ai-r',
@@ -115,14 +115,14 @@ function makeReasoningChat() {
 						content:
 							'<details type="reasoning" done="true" duration="4">\n<summary>Thought for 4 seconds</summary>\n&gt; The user is asking about MoE vs dense.\n&gt;\n&gt; I&#x27;ll cover memory, training, &amp; inference.\n</details>\nDense models still thrive because of memory bandwidth limits and training simplicity.',
 						timestamp: 1700002010,
-						model: 'deepseek-v4-pro'
-					}
-				}
-			}
+						model: 'deepseek-v4-pro',
+					},
+				},
+			},
 		},
 		created_at: 1700002000,
 		updated_at: 1700002010,
-		archived: false
+		archived: false,
 	};
 }
 
@@ -141,7 +141,7 @@ function makeImageChat() {
 						parentId: null,
 						role: 'user',
 						content: 'Draw a red panda',
-						timestamp: 1700001000
+						timestamp: 1700001000,
 					},
 					'ai-img': {
 						id: 'ai-img',
@@ -149,14 +149,14 @@ function makeImageChat() {
 						role: 'assistant',
 						content: '![Generated Image](/api/v1/files/abc-123/content)',
 						timestamp: 1700001010,
-						model: 'openai_image_video.comfyui/anima'
-					}
-				}
-			}
+						model: 'openai_image_video.comfyui/anima',
+					},
+				},
+			},
 		},
 		created_at: 1700001000,
 		updated_at: 1700001010,
-		archived: false
+		archived: false,
 	};
 }
 
@@ -179,17 +179,12 @@ describe('importOwuiExport', () => {
 		expect(conv.updatedAt).toBe(1700000040 * 1000);
 
 		const detail = getConversationDetail(conv.id, u.id);
-		expect(detail?.messages.map((m) => m.role)).toEqual([
-			'user',
-			'assistant',
-			'user',
-			'assistant'
-		]);
+		expect(detail?.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
 		expect(detail?.messages.map((m) => m.parts[0])).toEqual([
 			{ type: 'text', text: 'Hello!' },
 			{ type: 'text', text: 'Hi there!' },
 			{ type: 'text', text: 'Tell me a joke' },
-			{ type: 'text', text: 'Why did the chicken…' }
+			{ type: 'text', text: 'Why did the chicken…' },
 		]);
 		// activeLeaf points to the last assistant message.
 		expect(detail?.activeLeafMessageId).toBe(detail?.messages[3].id);
@@ -218,7 +213,7 @@ describe('importOwuiExport', () => {
 		const assistant = detail?.messages.find((m) => m.role === 'assistant');
 		expect(assistant?.parts[0]).toEqual({
 			type: 'text',
-			text: '_[image unavailable: Generated Image]_'
+			text: '_[image unavailable: Generated Image]_',
 		});
 	});
 
@@ -236,11 +231,7 @@ describe('importOwuiExport', () => {
 
 	it('OWUI archived flag → archivedAt = updatedAt', async () => {
 		const u = seedUser();
-		await importOwuiExport(
-			[makeTextChat({ id: 'arch-1', archived: true })],
-			u.id,
-			mocks.testDb
-		);
+		await importOwuiExport([makeTextChat({ id: 'arch-1', archived: true })], u.id, mocks.testDb);
 		expect(listConversations(u.id)).toHaveLength(0);
 		const archived = listArchivedConversations(u.id);
 		expect(archived).toHaveLength(1);
@@ -252,7 +243,7 @@ describe('importOwuiExport', () => {
 		const exports = [
 			makeTextChat({ id: 'a' }),
 			makeTextChat({ id: 'b' }),
-			makeTextChat({ id: 'c', archived: true })
+			makeTextChat({ id: 'c', archived: true }),
 		];
 		const result = await importOwuiExport(exports, u.id, mocks.testDb);
 		expect(result.imported).toBe(3);
@@ -266,7 +257,7 @@ describe('importOwuiExport', () => {
 		const result = await importOwuiExport(
 			[{ id: 'broken', chat: {} }, makeTextChat()],
 			u.id,
-			mocks.testDb
+			mocks.testDb,
 		);
 		expect(result.imported).toBe(1);
 		expect(result.skipped).toHaveLength(1);
@@ -275,15 +266,15 @@ describe('importOwuiExport', () => {
 
 	it('throws when the root is not an array', async () => {
 		const u = seedUser();
-		await expect(
-			importOwuiExport({ not: 'an array' }, u.id, mocks.testDb)
-		).rejects.toThrow(/must be an array/i);
+		await expect(importOwuiExport({ not: 'an array' }, u.id, mocks.testDb)).rejects.toThrow(
+			/must be an array/i,
+		);
 	});
 
 	it('dryRun does not write to the DB', async () => {
 		const u = seedUser();
 		const result = await importOwuiExport([makeTextChat()], u.id, mocks.testDb, {
-			dryRun: true
+			dryRun: true,
 		});
 		expect(result.imported).toBe(1);
 		expect(listConversations(u.id)).toHaveLength(0);
@@ -352,7 +343,7 @@ describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 		// Just sanity: should import some non-trivial number.
 		expect(result.imported).toBeGreaterThan(0);
 		console.log(
-			`[real-export] imported=${result.imported}, archived=${result.archived}, skipped=${result.skipped.length}`
+			`[real-export] imported=${result.imported}, archived=${result.archived}, skipped=${result.skipped.length}`,
 		);
 	});
 });
@@ -361,7 +352,7 @@ describe('extractReasoning', () => {
 	it('returns null reasoning when no <details> block is present', () => {
 		expect(extractReasoning('Just an answer.')).toEqual({
 			reasoning: null,
-			content: 'Just an answer.'
+			content: 'Just an answer.',
 		});
 	});
 
@@ -388,11 +379,10 @@ describe('extractReasoning', () => {
 	});
 
 	it('returns empty reasoning as null (no spurious empty parts)', () => {
-		const raw =
-			'<details type="reasoning"><summary>x</summary></details>\nAnswer.';
+		const raw = '<details type="reasoning"><summary>x</summary></details>\nAnswer.';
 		expect(extractReasoning(raw)).toEqual({
 			reasoning: null,
-			content: 'Answer.'
+			content: 'Answer.',
 		});
 	});
 
@@ -411,14 +401,17 @@ describe('importOwuiExport with reasoning', () => {
 		const detail = getConversationDetail(listConversations(u.id)[0].id, u.id);
 		const assistant = detail?.messages.find((m) => m.role === 'assistant');
 		expect(assistant?.parts).toEqual([
-			{ type: 'reasoning', text: 'The user is asking about MoE vs dense.\n\nI\'ll cover memory, training, & inference.' },
+			{
+				type: 'reasoning',
+				text: "The user is asking about MoE vs dense.\n\nI'll cover memory, training, & inference.",
+			},
 			{
 				type: 'text',
-				text: 'Dense models still thrive because of memory bandwidth limits and training simplicity.'
-			}
+				text: 'Dense models still thrive because of memory bandwidth limits and training simplicity.',
+			},
 		]);
 		expect(assistant?.reasoningText).toBe(
-			'The user is asking about MoE vs dense.\n\nI\'ll cover memory, training, & inference.'
+			"The user is asking about MoE vs dense.\n\nI'll cover memory, training, & inference.",
 		);
 	});
 
@@ -437,23 +430,20 @@ describe('importOwuiExport with reasoning', () => {
 
 describe('stripOwuiFileUrls', () => {
 	it('replaces single-line image references', () => {
-		expect(
-			stripOwuiFileUrls('![Generated Image](/api/v1/files/abc-123/content)')
-		).toBe('_[image unavailable: Generated Image]_');
+		expect(stripOwuiFileUrls('![Generated Image](/api/v1/files/abc-123/content)')).toBe(
+			'_[image unavailable: Generated Image]_',
+		);
 	});
 
 	it('replaces multiple references in one message', () => {
-		const input =
-			'First: ![A](/api/v1/files/x/content) and second: ![B](/api/v1/files/y/content)';
+		const input = 'First: ![A](/api/v1/files/x/content) and second: ![B](/api/v1/files/y/content)';
 		expect(stripOwuiFileUrls(input)).toBe(
-			'First: _[image unavailable: A]_ and second: _[image unavailable: B]_'
+			'First: _[image unavailable: A]_ and second: _[image unavailable: B]_',
 		);
 	});
 
 	it('handles empty alt text', () => {
-		expect(stripOwuiFileUrls('![](/api/v1/files/x/content)')).toBe(
-			'_[image unavailable]_'
-		);
+		expect(stripOwuiFileUrls('![](/api/v1/files/x/content)')).toBe('_[image unavailable]_');
 	});
 
 	it('leaves non-OWUI image references alone', () => {
@@ -463,9 +453,7 @@ describe('stripOwuiFileUrls', () => {
 
 	it('preserves surrounding markdown', () => {
 		expect(
-			stripOwuiFileUrls(
-				'Here is a picture:\n\n![A](/api/v1/files/abc/content)\n\nIsn\'t it nice?'
-			)
-		).toBe('Here is a picture:\n\n_[image unavailable: A]_\n\nIsn\'t it nice?');
+			stripOwuiFileUrls("Here is a picture:\n\n![A](/api/v1/files/abc/content)\n\nIsn't it nice?"),
+		).toBe("Here is a picture:\n\n_[image unavailable: A]_\n\nIsn't it nice?");
 	});
 });

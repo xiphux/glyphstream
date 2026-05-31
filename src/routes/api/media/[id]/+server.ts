@@ -1,9 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
-import {
-	getMediaListItemForUser,
-	hardDeleteMediaForUser
-} from '$lib/server/db/queries/media';
+import { getMediaListItemForUser, hardDeleteMediaForUser } from '$lib/server/db/queries/media';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
@@ -33,9 +30,6 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if (!result) throw error(404, 'Media not found');
 	// Unlink the bytes after the row is gone. unlinkMediaFiles swallows a
 	// failed unlink so a leaked file can't turn this delete into a 500.
-	await unlinkMediaFiles(
-		[{ id: params.id, storagePath: result.storagePath }],
-		'media.delete'
-	);
+	await unlinkMediaFiles([{ id: params.id, storagePath: result.storagePath }], 'media.delete');
 	return new Response(null, { status: 204 });
 };

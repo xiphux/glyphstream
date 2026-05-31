@@ -47,10 +47,10 @@ export type ArbiterAction = 'silent' | 'toast' | 'os';
  */
 export function pickAction(
 	reports: ActiveConversationReport[],
-	payload: ArbiterPayload
+	payload: ArbiterPayload,
 ): ArbiterAction {
 	const sameThreadVisible = reports.some(
-		(r) => r.visible && r.conversationId === payload.conversationId
+		(r) => r.visible && r.conversationId === payload.conversationId,
 	);
 	if (sameThreadVisible) return 'silent';
 

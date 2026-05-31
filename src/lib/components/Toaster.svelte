@@ -8,13 +8,13 @@
 	const kindIcon = {
 		success: Check,
 		info: Info,
-		error: AlertCircle
+		error: AlertCircle,
 	} as const;
 
 	const kindIconClass = {
 		success: 'text-emerald-600 dark:text-emerald-400',
 		info: 'text-fg-muted',
-		error: 'text-red-600 dark:text-red-400'
+		error: 'text-red-600 dark:text-red-400',
 	} as const;
 </script>
 

@@ -12,26 +12,30 @@ import type { UpstreamModel } from '$lib/types/api';
 
 const mocks = vi.hoisted(() => ({
 	listUpstreamModels: vi.fn<(endpoint: LoadedEndpoint) => Promise<UpstreamModel[]>>(),
-	listEndpoints: vi.fn<() => LoadedEndpoint[]>()
+	listEndpoints: vi.fn<() => LoadedEndpoint[]>(),
 }));
 
 vi.mock('$lib/server/endpoints/client', async () => {
 	// Real UpstreamError so the error-message formatting branch is exercised
 	// instead of stubbed.
 	const actual = await vi.importActual<typeof import('$lib/server/endpoints/client')>(
-		'$lib/server/endpoints/client'
+		'$lib/server/endpoints/client',
 	);
 	return {
 		...actual,
-		listUpstreamModels: mocks.listUpstreamModels
+		listUpstreamModels: mocks.listUpstreamModels,
 	};
 });
 
 vi.mock('$lib/server/endpoints/registry', () => ({
-	listEndpoints: mocks.listEndpoints
+	listEndpoints: mocks.listEndpoints,
 }));
 
-import { listAllModels, listAllModelsWithErrors, resetModelCache } from '$lib/server/endpoints/list-models';
+import {
+	listAllModels,
+	listAllModelsWithErrors,
+	resetModelCache,
+} from '$lib/server/endpoints/list-models';
 import { ConfigError } from '$lib/server/endpoints/config';
 import { UpstreamError } from '$lib/server/endpoints/client';
 
@@ -45,7 +49,7 @@ function endpoint(id: string, overrides: Partial<LoadedEndpoint> = {}): LoadedEn
 		groupBy: 'endpoint',
 		providerQuirk: 'passthrough',
 		requestTimeoutSeconds: 30,
-		...overrides
+		...overrides,
 	} as LoadedEndpoint;
 }
 
@@ -79,14 +83,14 @@ describe('listAllModels — cold cache', () => {
 		mocks.listEndpoints.mockReturnValue([endpoint('a'), endpoint('b')]);
 		mocks.listUpstreamModels.mockImplementation(async (ep) => [
 			{ id: `${ep.id}-model-1` },
-			{ id: `${ep.id}-model-2` }
+			{ id: `${ep.id}-model-2` },
 		]);
 		const models = await listAllModels();
 		expect(models.map((m) => m.id).sort()).toEqual([
 			'a::a-model-1',
 			'a::a-model-2',
 			'b::b-model-1',
-			'b::b-model-2'
+			'b::b-model-2',
 		]);
 		expect(mocks.listUpstreamModels).toHaveBeenCalledTimes(2);
 	});
@@ -107,7 +111,7 @@ describe('listAllModels — concurrent cold requests dedup', () => {
 		mocks.listUpstreamModels.mockReturnValue(
 			new Promise<UpstreamModel[]>((res) => {
 				release = res;
-			})
+			}),
 		);
 		const p1 = listAllModels();
 		const p2 = listAllModels();
@@ -164,7 +168,7 @@ describe('listAllModels — stale-while-revalidate', () => {
 		mocks.listUpstreamModels.mockReturnValueOnce(
 			new Promise<UpstreamModel[]>((res) => {
 				release = res;
-			})
+			}),
 		);
 		// Three back-to-back stale reads while the refresh is in flight.
 		await Promise.all([listAllModels(), listAllModels(), listAllModels()]);
@@ -190,7 +194,7 @@ describe('listAllModelsWithErrors — error preservation', () => {
 			vi.advanceTimersByTime(61_000);
 
 			mocks.listUpstreamModels.mockRejectedValueOnce(
-				new UpstreamError('Endpoint "a" returned HTTP 503', 503, '{"error":"down"}')
+				new UpstreamError('Endpoint "a" returned HTTP 503', 503, '{"error":"down"}'),
 			);
 			// Stale read — succeeds with prior data; refresh fires in background.
 			const stale = await listAllModelsWithErrors();

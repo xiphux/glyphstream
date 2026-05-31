@@ -34,9 +34,7 @@ export function dragHasFiles(e: DragEvent): boolean {
  */
 export function extractImageFiles(source: DataTransfer | null | undefined): File[] {
 	if (!source) return [];
-	const fromFiles = Array.from(source.files ?? []).filter((f) =>
-		f.type.startsWith('image/')
-	);
+	const fromFiles = Array.from(source.files ?? []).filter((f) => f.type.startsWith('image/'));
 	if (fromFiles.length > 0) return fromFiles;
 	const out: File[] = [];
 	for (const item of source.items ?? []) {

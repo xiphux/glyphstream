@@ -7,7 +7,7 @@ export class UpstreamError extends Error {
 	constructor(
 		message: string,
 		readonly status: number | null,
-		readonly body: string | null
+		readonly body: string | null,
 	) {
 		super(message);
 	}
@@ -25,22 +25,22 @@ export async function listUpstreamModels(endpoint: LoadedEndpoint): Promise<Upst
 		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /models`);
 
 	const parsed = await parseJson<{ data?: unknown }>(
 		res,
-		`Endpoint "${endpoint.id}" returned non-JSON /models`
+		`Endpoint "${endpoint.id}" returned non-JSON /models`,
 	);
 	const data = parsed.data;
 	if (!Array.isArray(data)) {
 		throw new UpstreamError(
 			`Endpoint "${endpoint.id}" returned malformed /models (missing data[] array)`,
 			200,
-			null
+			null,
 		);
 	}
 	return data as UpstreamModel[];
@@ -64,7 +64,7 @@ async function safeReadBody(res: Response): Promise<string | null> {
 async function doFetch(
 	url: string,
 	init: RequestInit,
-	networkErrorPrefix: string
+	networkErrorPrefix: string,
 ): Promise<Response> {
 	try {
 		return await fetch(url, init);
@@ -210,11 +210,7 @@ export interface ChatCompletionRequest {
 		function: { name: string; description: string; parameters: Record<string, unknown> };
 	}>;
 	/** Spec values: 'auto' | 'required' | 'none' | { type:'function', function:{name} } */
-	tool_choice?:
-		| 'auto'
-		| 'required'
-		| 'none'
-		| { type: 'function'; function: { name: string } };
+	tool_choice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } };
 }
 
 /** Just enough of the OpenAI response shape for v1 to extract the assistant text + usage. */
@@ -245,7 +241,7 @@ export interface ChatCompletionResponse {
 export async function chatCompletionStream(
 	endpoint: LoadedEndpoint,
 	body: ChatCompletionRequest,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<Response> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
 	const res = await doFetch(
@@ -255,22 +251,22 @@ export async function chatCompletionStream(
 			headers: {
 				'Content-Type': 'application/json',
 				Accept: 'text/event-stream',
-				...authHeaders(endpoint)
+				...authHeaders(endpoint),
 			},
 			body: JSON.stringify({ ...body, stream: true }),
-			signal
+			signal,
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(
 		res,
-		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions (stream)`
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions (stream)`,
 	);
 	if (!res.body) {
 		throw new UpstreamError(
 			`Endpoint "${endpoint.id}" returned 200 but no response body`,
 			200,
-			null
+			null,
 		);
 	}
 	return res;
@@ -298,7 +294,7 @@ export interface ImageGenerationResponse {
 export async function imageGeneration(
 	endpoint: LoadedEndpoint,
 	body: ImageGenerationRequest,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<ImageGenerationResponse> {
 	const url = `${endpoint.baseUrl}/images/generations`;
 	const res = await doFetch(
@@ -307,19 +303,16 @@ export async function imageGeneration(
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...authHeaders(endpoint)
+				...authHeaders(endpoint),
 			},
 			body: JSON.stringify(body),
-			signal: composeSignals(
-				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-				signal
-			)
+			signal: composeSignals(AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000), signal),
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(
 		res,
-		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/generations`
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/generations`,
 	);
 	return parseJson<ImageGenerationResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }
@@ -355,7 +348,7 @@ export interface ImageEditRequest {
 export async function imageEdit(
 	endpoint: LoadedEndpoint,
 	body: ImageEditRequest,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<ImageGenerationResponse> {
 	const url = `${endpoint.baseUrl}/images/edits`;
 	const fd = new FormData();
@@ -372,7 +365,7 @@ export async function imageEdit(
 		fd.append(
 			'mask',
 			toBlob(body.mask.bytes, body.mask.contentType),
-			filenameFor(body.mask.contentType)
+			filenameFor(body.mask.contentType),
 		);
 	}
 	if (body.n !== undefined) fd.append('n', String(body.n));
@@ -387,12 +380,9 @@ export async function imageEdit(
 			method: 'POST',
 			headers: authHeaders(endpoint),
 			body: fd,
-			signal: composeSignals(
-				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-				signal
-			)
+			signal: composeSignals(AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000), signal),
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /images/edits`);
 	return parseJson<ImageGenerationResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
@@ -419,7 +409,7 @@ function filenameFor(contentType: string): string {
 function toBlob(buffer: Buffer, contentType: string): Blob {
 	const ab = buffer.buffer.slice(
 		buffer.byteOffset,
-		buffer.byteOffset + buffer.byteLength
+		buffer.byteOffset + buffer.byteLength,
 	) as ArrayBuffer;
 	return new Blob([ab], { type: contentType });
 }
@@ -458,7 +448,7 @@ export interface VideoJob {
 export async function videoCreate(
 	endpoint: LoadedEndpoint,
 	body: VideoCreateRequest,
-	signal?: AbortSignal
+	signal?: AbortSignal,
 ): Promise<VideoJob> {
 	const url = `${endpoint.baseUrl}/videos`;
 	const form = new FormData();
@@ -470,7 +460,7 @@ export async function videoCreate(
 		form.append(
 			'input_reference',
 			toBlob(body.inputReference.bytes, body.inputReference.contentType),
-			filenameFor(body.inputReference.contentType)
+			filenameFor(body.inputReference.contentType),
 		);
 	}
 
@@ -480,12 +470,9 @@ export async function videoCreate(
 			method: 'POST',
 			headers: { ...authHeaders(endpoint) }, // do NOT set Content-Type — fetch handles multipart
 			body: form,
-			signal: composeSignals(
-				AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-				signal
-			)
+			signal: composeSignals(AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000), signal),
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos`);
 	return parseJson<VideoJob>(res, `Endpoint "${endpoint.id}" returned non-JSON from /videos`);
@@ -496,16 +483,13 @@ export async function videoCreate(
  * runner slot. Best-effort: swallows errors (the worst case is the bridge
  * keeps running the job; the caller's local state is already terminal).
  */
-export async function videoCancel(
-	endpoint: LoadedEndpoint,
-	videoId: string
-): Promise<void> {
+export async function videoCancel(endpoint: LoadedEndpoint, videoId: string): Promise<void> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}`;
 	try {
 		await fetch(url, {
 			method: 'DELETE',
 			headers: authHeaders(endpoint),
-			signal: AbortSignal.timeout(10_000)
+			signal: AbortSignal.timeout(10_000),
 		});
 	} catch (e) {
 		console.warn(`[videoCancel] best-effort DELETE for ${videoId} failed:`, e);
@@ -513,34 +497,31 @@ export async function videoCancel(
 }
 
 /** GET /v1/videos/{id} for polling. */
-export async function videoStatus(
-	endpoint: LoadedEndpoint,
-	videoId: string
-): Promise<VideoJob> {
+export async function videoStatus(endpoint: LoadedEndpoint, videoId: string): Promise<VideoJob> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}`;
 	const res = await doFetch(
 		url,
 		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 		},
-		`Network error polling endpoint "${endpoint.id}" at ${url}`
+		`Network error polling endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(
 		res,
-		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos/${videoId}`
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /videos/${videoId}`,
 	);
 	return parseJson<VideoJob>(
 		res,
-		`Endpoint "${endpoint.id}" returned non-JSON from /videos/${videoId}`
+		`Endpoint "${endpoint.id}" returned non-JSON from /videos/${videoId}`,
 	);
 }
 
 /** GET /v1/videos/{id}/content — raw mp4 bytes. Only valid once status === "completed". */
 export async function videoFetchContent(
 	endpoint: LoadedEndpoint,
-	videoId: string
+	videoId: string,
 ): Promise<{ bytes: Buffer; contentType: string }> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}/content`;
 	const res = await doFetch(
@@ -549,9 +530,9 @@ export async function videoFetchContent(
 			method: 'GET',
 			headers: authHeaders(endpoint),
 			// Extended timeout — large videos legitimately take a while to download.
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000 * 5)
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000 * 5),
 		},
-		`Network error fetching video content at ${url}`
+		`Network error fetching video content at ${url}`,
 	);
 	await ensureOk(res, `Fetching video content returned HTTP ${res.status}`);
 	const arrayBuf = await res.arrayBuffer();
@@ -567,16 +548,16 @@ export async function videoFetchContent(
  */
 export async function fetchUpstreamBytes(
 	endpoint: LoadedEndpoint,
-	urlString: string
+	urlString: string,
 ): Promise<{ bytes: Buffer; contentType: string }> {
 	const res = await doFetch(
 		urlString,
 		{
 			method: 'GET',
 			headers: authHeaders(endpoint),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 		},
-		`Network error fetching media from ${urlString}`
+		`Network error fetching media from ${urlString}`,
 	);
 	await ensureOk(res, `Fetching media from ${urlString} returned HTTP ${res.status}`);
 	const arrayBuf = await res.arrayBuffer();
@@ -590,7 +571,7 @@ export async function fetchUpstreamBytes(
  */
 export async function chatCompletionSync(
 	endpoint: LoadedEndpoint,
-	body: ChatCompletionRequest
+	body: ChatCompletionRequest,
 ): Promise<ChatCompletionResponse> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
 	const res = await doFetch(
@@ -599,16 +580,16 @@ export async function chatCompletionSync(
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...authHeaders(endpoint)
+				...authHeaders(endpoint),
 			},
 			body: JSON.stringify({ ...body, stream: false }),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000)
+			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 		},
-		`Network error contacting endpoint "${endpoint.id}" at ${url}`
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
 	await ensureOk(
 		res,
-		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions`
+		`Endpoint "${endpoint.id}" returned HTTP ${res.status} from /chat/completions`,
 	);
 	return parseJson<ChatCompletionResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }

@@ -31,9 +31,9 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 					name: t.name,
 					registeredName,
 					description: t.description ?? '',
-					trusted: trusted.has(registeredName)
+					trusted: trusted.has(registeredName),
 				};
-			})
-		}))
+			}),
+		})),
 	};
 };

@@ -4,7 +4,7 @@ import {
 	openSidebar,
 	resetData,
 	sendChatFromHome,
-	generateImageFromHome
+	generateImageFromHome,
 } from './helpers';
 
 // Clean slate before each flow — see resetData's header for why the
@@ -84,14 +84,14 @@ test.describe('flow: archive with undo', () => {
 		const toast = page.getByRole('status');
 		await expect(toast).toContainText('Conversation archived');
 		await expect(
-			page.getByRole('button', { name: `Options for conversation ${title}` })
+			page.getByRole('button', { name: `Options for conversation ${title}` }),
 		).toHaveCount(0);
 
 		// Undo restores it (and navigates back to the chat we were viewing).
 		await toast.getByRole('button', { name: 'Undo' }).click();
 		await openSidebar(page, isMobile);
 		await expect(
-			page.getByRole('button', { name: `Options for conversation ${title}` })
+			page.getByRole('button', { name: `Options for conversation ${title}` }),
 		).toBeVisible();
 	});
 });

@@ -23,7 +23,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const page = listMediaForUser(locals.user.id, {
 		kind,
 		cursor,
-		limit: Number.isFinite(limit) ? limit : undefined
+		limit: Number.isFinite(limit) ? limit : undefined,
 	});
 	return json(page);
 };

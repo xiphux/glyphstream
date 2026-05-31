@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import { eq } from 'drizzle-orm';
@@ -13,7 +13,7 @@ import {
 	upsertPushSubscription,
 	listPushSubscriptionsForUser,
 	deletePushSubscriptionByEndpoint,
-	deletePushSubscriptionsByEndpoints
+	deletePushSubscriptionsByEndpoints,
 } from '$lib/server/db/queries/push-subscriptions';
 import { users } from '$lib/server/db/schema';
 
@@ -29,7 +29,7 @@ const SAMPLE = {
 	endpoint: 'https://fcm.googleapis.com/fcm/send/abc123',
 	p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',
 	auth: 'tBHItJI5svbpez7KI4CCXg',
-	userAgent: 'Mozilla/5.0 Chrome'
+	userAgent: 'Mozilla/5.0 Chrome',
 };
 
 describe('upsertPushSubscription', () => {
@@ -41,7 +41,7 @@ describe('upsertPushSubscription', () => {
 			endpoint: SAMPLE.endpoint,
 			p256dh: SAMPLE.p256dh,
 			auth: SAMPLE.auth,
-			userAgent: SAMPLE.userAgent
+			userAgent: SAMPLE.userAgent,
 		});
 		expect(row.createdAt).toBe(row.lastSeenAt);
 	});
@@ -55,7 +55,7 @@ describe('upsertPushSubscription', () => {
 			userId: u.id,
 			...SAMPLE,
 			p256dh: 'newKey',
-			auth: 'newAuth'
+			auth: 'newAuth',
 		});
 		expect(second.createdAt).toBe(first.createdAt);
 		expect(second.lastSeenAt).toBeGreaterThan(first.lastSeenAt);
@@ -82,10 +82,11 @@ describe('listPushSubscriptionsForUser', () => {
 		upsertPushSubscription({ userId: a.id, ...SAMPLE, endpoint: 'https://push.example/a1' });
 		upsertPushSubscription({ userId: a.id, ...SAMPLE, endpoint: 'https://push.example/a2' });
 		upsertPushSubscription({ userId: b.id, ...SAMPLE, endpoint: 'https://push.example/b1' });
-		expect(listPushSubscriptionsForUser(a.id).map((r) => r.endpoint).sort()).toEqual([
-			'https://push.example/a1',
-			'https://push.example/a2'
-		]);
+		expect(
+			listPushSubscriptionsForUser(a.id)
+				.map((r) => r.endpoint)
+				.sort(),
+		).toEqual(['https://push.example/a1', 'https://push.example/a2']);
 	});
 
 	it('returns empty array when the user has no subscriptions', () => {

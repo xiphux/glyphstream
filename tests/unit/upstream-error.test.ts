@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	extractUpstreamErrorMessage,
 	formatUpstreamError,
-	UpstreamError
+	UpstreamError,
 } from '$lib/server/endpoints/client';
 
 describe('extractUpstreamErrorMessage', () => {
@@ -17,11 +17,11 @@ describe('extractUpstreamErrorMessage', () => {
 			error: {
 				code: 500,
 				message: 'image input is not supported - hint: provide the mmproj',
-				type: 'server_error'
-			}
+				type: 'server_error',
+			},
 		});
 		expect(extractUpstreamErrorMessage(body)).toBe(
-			'image input is not supported - hint: provide the mmproj'
+			'image input is not supported - hint: provide the mmproj',
 		);
 	});
 
@@ -70,12 +70,12 @@ describe('formatUpstreamError', () => {
 			JSON.stringify({
 				error: {
 					code: 500,
-					message: 'image input is not supported - hint: provide the mmproj'
-				}
-			})
+					message: 'image input is not supported - hint: provide the mmproj',
+				},
+			}),
 		);
 		expect(formatUpstreamError(e)).toBe(
-			'Endpoint "llama" returned HTTP 500 from /chat/completions (stream): image input is not supported - hint: provide the mmproj'
+			'Endpoint "llama" returned HTTP 500 from /chat/completions (stream): image input is not supported - hint: provide the mmproj',
 		);
 	});
 
@@ -83,10 +83,10 @@ describe('formatUpstreamError', () => {
 		const e = new UpstreamError(
 			'Network error contacting endpoint "x" at http://…: ECONNREFUSED',
 			null,
-			null
+			null,
 		);
 		expect(formatUpstreamError(e)).toBe(
-			'Network error contacting endpoint "x" at http://…: ECONNREFUSED'
+			'Network error contacting endpoint "x" at http://…: ECONNREFUSED',
 		);
 	});
 });

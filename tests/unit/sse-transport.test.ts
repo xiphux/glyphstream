@@ -1,13 +1,18 @@
 /** Tests for the shared SSE transport used by the streaming relays. */
 
 import { describe, expect, it } from 'vitest';
-import { errorMessage, formatSSE, isAbortError, sseWriter } from '$lib/server/streaming/sse-transport';
+import {
+	errorMessage,
+	formatSSE,
+	isAbortError,
+	sseWriter,
+} from '$lib/server/streaming/sse-transport';
 import { UpstreamError } from '$lib/server/endpoints/client';
 
 describe('formatSSE', () => {
 	it('frames an event with the event: and data: fields', () => {
 		expect(formatSSE({ type: 'text', chunk: 'hi' })).toBe(
-			'event: text\ndata: {"type":"text","chunk":"hi"}\n\n'
+			'event: text\ndata: {"type":"text","chunk":"hi"}\n\n',
 		);
 	});
 });
@@ -17,7 +22,7 @@ describe('errorMessage', () => {
 		const e = new UpstreamError(
 			'Endpoint "x" returned HTTP 500',
 			500,
-			JSON.stringify({ error: { message: 'boom' } })
+			JSON.stringify({ error: { message: 'boom' } }),
 		);
 		expect(errorMessage(e)).toBe('Endpoint "x" returned HTTP 500: boom');
 	});
@@ -60,7 +65,7 @@ describe('sseWriter', () => {
 		const dec = new TextDecoder();
 		const w = sseWriter({
 			enqueue: (c: Uint8Array) => chunks.push(dec.decode(c)),
-			close: () => {}
+			close: () => {},
 		} as unknown as ReadableStreamDefaultController<Uint8Array>);
 		w.write({ type: 'text', chunk: 'x' });
 		expect(chunks).toEqual(['event: text\ndata: {"type":"text","chunk":"x"}\n\n']);
@@ -73,7 +78,7 @@ describe('sseWriter', () => {
 			},
 			close: () => {
 				throw new Error('already closed');
-			}
+			},
 		} as unknown as ReadableStreamDefaultController<Uint8Array>);
 		expect(() => w.write({ type: 'text', chunk: 'x' })).not.toThrow();
 		expect(() => w.close()).not.toThrow();

@@ -9,7 +9,7 @@
 		type CustomModelParameters,
 		type FeatureCategory,
 		type FeatureCategoryEntry,
-		type ModelEntry
+		type ModelEntry,
 	} from '$lib/types/api';
 
 	let { data } = $props<{
@@ -66,7 +66,8 @@
 		description = m.description ?? '';
 		baseModelComposite = `${m.baseEndpointId}::${m.baseModelId}`;
 		systemPrompt = m.systemPrompt ?? '';
-		temperatureStr = m.parameters?.temperature !== undefined ? String(m.parameters.temperature) : '';
+		temperatureStr =
+			m.parameters?.temperature !== undefined ? String(m.parameters.temperature) : '';
 		topPStr = m.parameters?.top_p !== undefined ? String(m.parameters.top_p) : '';
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
@@ -119,7 +120,7 @@
 				baseModelId,
 				systemPrompt: systemPrompt.trim() || undefined,
 				parameters: buildParameters(),
-				defaultDisabledFeatures: [...defaultDisabledFeatures]
+				defaultDisabledFeatures: [...defaultDisabledFeatures],
 			};
 
 			const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
@@ -127,7 +128,7 @@
 			const res = await fetch(url, {
 				method,
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
+				body: JSON.stringify(body),
 			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
@@ -145,7 +146,7 @@
 		if (deletingId) return;
 		const ok = await confirmDialog.ask({
 			title: `Delete preset "${m.name}"?`,
-			message: "Existing chats won't be affected."
+			message: "Existing chats won't be affected.",
 		});
 		if (!ok) return;
 		deletingId = m.id;
@@ -162,7 +163,6 @@
 			deletingId = null;
 		}
 	}
-
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
@@ -183,7 +183,9 @@
 					Your presets ({data.customModels.length})
 				</h2>
 				{#if data.customModels.length === 0}
-					<p class="rounded-md border border-dashed border-border-strong px-3 py-4 text-sm text-fg-muted">
+					<p
+						class="rounded-md border border-dashed border-border-strong px-3 py-4 text-sm text-fg-muted"
+					>
 						None yet — create one on the right.
 					</p>
 				{:else}
@@ -196,16 +198,14 @@
 									: 'border-border hover:border-border-focus'}"
 							>
 								<div class="flex items-start justify-between gap-2">
-									<button
-										type="button"
-										onclick={() => loadIntoForm(m)}
-										class="flex-1 text-left"
-									>
+									<button type="button" onclick={() => loadIntoForm(m)} class="flex-1 text-left">
 										<div class="text-sm font-medium">{m.name}</div>
 										{#if m.description}
 											<div class="mt-0.5 text-xs text-fg-muted line-clamp-2">{m.description}</div>
 										{/if}
-										<div class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-fg-muted">
+										<div
+											class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-fg-muted"
+										>
 											<span class="rounded bg-surface-sunken px-1.5 py-0.5">
 												{m.baseEndpointId}::{m.baseModelId}
 											</span>
@@ -261,12 +261,17 @@
 				</div>
 
 				{#if data.modelsError}
-					<div class="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+					<div
+						class="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+					>
 						Model list unavailable: {data.modelsError}
 					</div>
 				{/if}
 
-				<form onsubmit={save} class="space-y-3 rounded-lg border border-border bg-surface-panel p-4">
+				<form
+					onsubmit={save}
+					class="space-y-3 rounded-lg border border-border bg-surface-panel p-4"
+				>
 					<div>
 						<label class="mb-1 block text-xs font-medium" for="name">Name</label>
 						<input
@@ -295,11 +300,7 @@
 
 					<div>
 						<label class="mb-1 block text-xs font-medium" for="base-model">Base model</label>
-						<ModelPicker
-							models={data.models}
-							bind:value={baseModelComposite}
-							disabled={busy}
-						/>
+						<ModelPicker models={data.models} bind:value={baseModelComposite} disabled={busy} />
 					</div>
 
 					<div>
@@ -322,7 +323,10 @@
 						</summary>
 						<div class="mt-3 grid grid-cols-3 gap-2">
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="temp">
+								<label
+									class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted"
+									for="temp"
+								>
 									Temperature
 								</label>
 								<input
@@ -338,7 +342,10 @@
 								/>
 							</div>
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="topp">
+								<label
+									class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted"
+									for="topp"
+								>
 									Top-p
 								</label>
 								<input
@@ -354,7 +361,10 @@
 								/>
 							</div>
 							<div>
-								<label class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted" for="maxtok">
+								<label
+									class="mb-1 block text-[10px] uppercase tracking-wide text-fg-muted"
+									for="maxtok"
+								>
 									Max tokens
 								</label>
 								<input
@@ -376,11 +386,10 @@
 							Default feature toggles (optional)
 						</summary>
 						<p class="mt-2 text-[11px] text-fg-muted">
-							Sets the starting state of the per-conversation feature toggles when this
-							preset is selected. The user can still flip individual toggles before
-							sending. Useful when a preset's purpose makes one of the features
-							irrelevant — e.g. a code-review preset that shouldn't pull in personal
-							context.
+							Sets the starting state of the per-conversation feature toggles when this preset is
+							selected. The user can still flip individual toggles before sending. Useful when a
+							preset's purpose makes one of the features irrelevant — e.g. a code-review preset that
+							shouldn't pull in personal context.
 						</p>
 						<div class="mt-3 flex flex-col gap-2">
 							{#each data.featureCategories as cat (cat.id)}
@@ -402,7 +411,9 @@
 					</details>
 
 					{#if error}
-						<div class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+						<div
+							class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+						>
 							{error}
 						</div>
 					{/if}

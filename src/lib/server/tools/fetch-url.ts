@@ -49,13 +49,13 @@ export const fetchUrlTool: Tool = {
 				properties: {
 					url: {
 						type: 'string',
-						description: 'Absolute http(s) URL to fetch.'
-					}
+						description: 'Absolute http(s) URL to fetch.',
+					},
 				},
 				required: ['url'],
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Fetch URL', icon: 'link', category: 'web' },
 	async execute(args, ctx): Promise<ToolExecution> {
@@ -69,7 +69,7 @@ export const fetchUrlTool: Tool = {
 		} catch (e) {
 			return errorResult(e instanceof Error ? e.message : String(e));
 		}
-	}
+	},
 };
 
 function parseUrlArg(args: unknown): string | null {
@@ -100,9 +100,7 @@ async function fetchAndExtract(initialUrl: string, ctxSignal: AbortSignal): Prom
 
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
 		if (current.protocol !== 'http:' && current.protocol !== 'https:') {
-			throw new Error(
-				`Refused scheme "${current.protocol}" - only http(s) URLs are allowed.`
-			);
+			throw new Error(`Refused scheme "${current.protocol}" - only http(s) URLs are allowed.`);
 		}
 		await assertNotPrivate(current.hostname);
 
@@ -112,8 +110,8 @@ async function fetchAndExtract(initialUrl: string, ctxSignal: AbortSignal): Prom
 			signal,
 			headers: {
 				'user-agent': 'glyphstream',
-				accept: 'text/html, text/plain, application/json, text/markdown, */*;q=0.1'
-			}
+				accept: 'text/html, text/plain, application/json, text/markdown, */*;q=0.1',
+			},
 		});
 
 		if (res.status >= 300 && res.status < 400) {
@@ -171,7 +169,7 @@ async function processResponse(res: Response, finalUrl: string): Promise<FetchRe
 		status: res.status,
 		content_type: contentType || mime,
 		content,
-		...(truncated ? { truncated: true } : {})
+		...(truncated ? { truncated: true } : {}),
 	};
 }
 
@@ -180,11 +178,7 @@ function parseCharset(contentType: string): string {
 	return m ? m[1] : 'utf-8';
 }
 
-async function readBodyWithCap(
-	res: Response,
-	maxBytes: number,
-	charset: string
-): Promise<string> {
+async function readBodyWithCap(res: Response, maxBytes: number, charset: string): Promise<string> {
 	if (!res.body) return '';
 	const reader = res.body.getReader();
 	const chunks: Uint8Array[] = [];
@@ -266,7 +260,7 @@ export function extractTextFromHtml(html: string): string {
 	s = s.replace(/<!--[\s\S]*?-->/g, '');
 	s = s.replace(
 		/<(script|style|head|nav|footer|aside|noscript|template|svg|iframe)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
-		''
+		'',
 	);
 	s = s.replace(/<(?:br|hr)\s*\/?>/gi, '\n');
 	s = s.replace(/<\/(?:p|div|li|tr|h[1-6]|section|article|header|blockquote|pre)\s*>/gi, '\n\n');
@@ -285,7 +279,7 @@ const NAMED_ENTITIES: Record<string, string> = {
 	gt: '>',
 	quot: '"',
 	apos: "'",
-	nbsp: ' '
+	nbsp: ' ',
 };
 
 function decodeEntities(s: string): string {
@@ -306,9 +300,7 @@ async function assertNotPrivate(hostname: string): Promise<void> {
 	const addrs = await dns.promises.lookup(hostname, { all: true });
 	for (const a of addrs) {
 		if (isPrivateIp(a.address)) {
-			throw new Error(
-				`Refused: ${hostname} resolves to private/reserved address ${a.address}.`
-			);
+			throw new Error(`Refused: ${hostname} resolves to private/reserved address ${a.address}.`);
 		}
 	}
 }

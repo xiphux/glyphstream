@@ -12,12 +12,12 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	mediaDir: '' as string,
-	graceMs: 0
+	graceMs: 0,
 }));
 
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 vi.mock('$lib/server/env', () => ({
@@ -33,7 +33,7 @@ vi.mock('$lib/server/env', () => ({
 	githubClientId: () => 'test',
 	githubClientSecret: () => 'test',
 	publicBaseUrl: () => 'http://localhost',
-	allowedGithubUserIdsRaw: () => ''
+	allowedGithubUserIdsRaw: () => '',
 }));
 
 import { runPurgeSweep } from '$lib/server/media/purger';
@@ -81,7 +81,7 @@ describe('runPurgeSweep', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		// insertMedia already stamps uploads at insert time; clear so we
 		// exercise the crash-recovery stamp path the sweep is meant for.
@@ -106,7 +106,7 @@ describe('runPurgeSweep', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		// Hardcoded grace is 30min; stamp way past that.
 		const longAgo = Date.now() - 24 * 60 * 60 * 1000;
@@ -133,7 +133,7 @@ describe('runPurgeSweep', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		// Stamp as unreferenced 1 minute ago — grace is 30min, so this stays.
 		mocks.testDb
@@ -161,7 +161,7 @@ describe('runPurgeSweep', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		mocks.testDb
 			.update(media)
@@ -185,15 +185,11 @@ describe('runPurgeSweep', () => {
 			kind: 'image',
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::x',
-			promptExcerpt: 'a panda'
+			promptExcerpt: 'a panda',
 			// origin defaults to 'generated'
 		});
 		// Even way past grace, generated media is library-preserved.
-		mocks.testDb
-			.update(media)
-			.set({ unreferencedSince: 1 })
-			.where(eq(media.id, id))
-			.run();
+		mocks.testDb.update(media).set({ unreferencedSince: 1 }).where(eq(media.id, id)).run();
 
 		const r = await runPurgeSweep();
 		expect(r.hardDeleted).toBe(0);

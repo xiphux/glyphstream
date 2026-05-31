@@ -16,7 +16,7 @@
 		return d.toLocaleDateString(undefined, {
 			month: 'short',
 			day: 'numeric',
-			year: sameYear ? undefined : 'numeric'
+			year: sameYear ? undefined : 'numeric',
 		});
 	}
 
@@ -30,14 +30,14 @@
 		const ok = await confirmDialog.ask({
 			title: 'Forget this memory?',
 			message: truncate(m.content, 140),
-			confirmLabel: 'Forget'
+			confirmLabel: 'Forget',
 		});
 		if (!ok) return;
 
 		busyId = m.id;
 		try {
 			const res = await fetch(`/api/user/memories/${encodeURIComponent(m.id)}`, {
-				method: 'DELETE'
+				method: 'DELETE',
 			});
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`HTTP ${res.status}`);
@@ -55,8 +55,8 @@
 	<header class="shrink-0 px-4 py-3">
 		<h1 class="text-lg font-semibold tracking-tight">Memories</h1>
 		<p class="text-xs text-fg-muted">
-			Standing facts the assistant has saved about you. These ride along in every
-			new conversation when Personalization is on. Delete any that no longer apply.
+			Standing facts the assistant has saved about you. These ride along in every new conversation
+			when Personalization is on. Delete any that no longer apply.
 		</p>
 	</header>
 

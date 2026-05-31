@@ -71,10 +71,7 @@ test.describe('authenticated app shell', () => {
 		void isMobile;
 	});
 
-	test('sidebar collapse toggle persists state to localStorage', async ({
-		page,
-		isMobile
-	}) => {
+	test('sidebar collapse toggle persists state to localStorage', async ({ page, isMobile }) => {
 		// Collapse only applies at sm+ — skip on mobile (drawer pattern).
 		test.skip(isMobile, 'Collapse toggle is desktop-only');
 		await page.goto('/');
@@ -91,11 +88,7 @@ test.describe('authenticated app shell', () => {
 		await toggle.evaluate((el: HTMLButtonElement) => el.click());
 
 		await expect
-			.poll(() =>
-				page.evaluate(() =>
-					window.localStorage.getItem('glyphstream:sidebarCollapsed')
-				)
-			)
+			.poll(() => page.evaluate(() => window.localStorage.getItem('glyphstream:sidebarCollapsed')))
 			.toBe('1');
 	});
 

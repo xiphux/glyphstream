@@ -28,7 +28,7 @@ export function seedUser(overrides: Partial<SeededUser> = {}): SeededUser {
 			email: null,
 			displayName: null,
 			createdAt: Date.now(),
-			lastLoginAt: null
+			lastLoginAt: null,
 		})
 		.run();
 	return { id, githubUserId, githubUsername };

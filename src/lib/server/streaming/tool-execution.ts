@@ -66,10 +66,10 @@ export interface ExecuteToolCallsResult {
  * monotonic per row and the tree walk linearizes them deterministically.
  */
 export async function executeToolCalls(
-	params: ExecuteToolCallsParams
+	params: ExecuteToolCallsParams,
 ): Promise<ExecuteToolCallsResult> {
 	const toolCallParts = params.assistantMessage.parts.filter(
-		(p): p is Extract<MessagePart, { type: 'tool_call' }> => p.type === 'tool_call'
+		(p): p is Extract<MessagePart, { type: 'tool_call' }> => p.type === 'tool_call',
 	);
 	if (toolCallParts.length === 0) return { toolMessages: [], pendingCount: 0 };
 
@@ -89,13 +89,13 @@ export async function executeToolCalls(
 					toolName: part.toolName,
 					displayLabel: tool?.metadata?.displayLabel,
 					category: tool?.metadata?.category,
-					args: part.arguments
+					args: part.arguments,
 				});
 				return { part, kind: 'pending' as const };
 			}
 			const execution = await runOneTool(part, params, signal);
 			return { part, kind: 'completed' as const, execution: execution.execution };
-		})
+		}),
 	);
 
 	// Persist results serially so created_at strictly orders the rows.
@@ -116,13 +116,13 @@ export async function executeToolCalls(
 						type: 'tool_result',
 						toolCallId: part.toolCallId,
 						result: '',
-						status: 'pending_approval'
+						status: 'pending_approval',
 					}
 				: {
 						type: 'tool_result',
 						toolCallId: part.toolCallId,
 						result: entry.execution.content,
-						...(entry.execution.isError ? { isError: true } : {})
+						...(entry.execution.isError ? { isError: true } : {}),
 					};
 		if (entry.kind === 'pending') pendingCount++;
 		const toolMsg = appendMessage({
@@ -135,7 +135,7 @@ export async function executeToolCalls(
 			finishReason: null,
 			modelUsed: null,
 			tokensIn: null,
-			tokensOut: null
+			tokensOut: null,
 		});
 		toolMessages.push(toolMsg);
 	}
@@ -155,7 +155,7 @@ interface SettledToolExecution {
 async function runOneTool(
 	part: Extract<MessagePart, { type: 'tool_call' }>,
 	params: ExecuteToolCallsParams,
-	signal: AbortSignal
+	signal: AbortSignal,
 ): Promise<SettledToolExecution> {
 	params.emit({ type: 'tool_call_executing', toolCallId: part.toolCallId });
 
@@ -163,13 +163,13 @@ async function runOneTool(
 	if (!tool) {
 		const execution: ToolExecution = {
 			content: JSON.stringify({ error: `Unknown tool: ${part.toolName}` }),
-			isError: true
+			isError: true,
 		};
 		params.emit({
 			type: 'tool_call_result',
 			toolCallId: part.toolCallId,
 			result: execution.content,
-			isError: true
+			isError: true,
 		});
 		return { part, execution };
 	}
@@ -181,15 +181,15 @@ async function runOneTool(
 		} catch (e) {
 			const execution: ToolExecution = {
 				content: JSON.stringify({
-					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`
+					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`,
 				}),
-				isError: true
+				isError: true,
 			};
 			params.emit({
 				type: 'tool_call_result',
 				toolCallId: part.toolCallId,
 				result: execution.content,
-				isError: true
+				isError: true,
 			});
 			return { part, execution };
 		}
@@ -201,15 +201,15 @@ async function runOneTool(
 			tool.execute(args, {
 				userId: params.userId,
 				conversationId: params.conversationId,
-				signal
-			})
+				signal,
+			}),
 		);
 	} catch (e) {
 		execution = {
 			content: JSON.stringify({
-				error: `Tool "${part.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`
+				error: `Tool "${part.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`,
 			}),
-			isError: true
+			isError: true,
 		};
 	}
 
@@ -217,7 +217,7 @@ async function runOneTool(
 		type: 'tool_call_result',
 		toolCallId: part.toolCallId,
 		result: execution.content,
-		isError: execution.isError === true
+		isError: execution.isError === true,
 	});
 	return { part, execution };
 }

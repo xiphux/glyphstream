@@ -6,7 +6,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -14,7 +14,7 @@ import {
 	createMemory,
 	deleteMemory,
 	listMemoriesForUser,
-	updateMemory
+	updateMemory,
 } from '$lib/server/db/queries/memories';
 import { users } from '$lib/server/db/schema';
 
@@ -133,16 +133,14 @@ describe('composeMemorySection', () => {
 	it('renders each memory as `[id] content` on its own line', () => {
 		const out = composeMemorySection([
 			{ id: 'a1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
-			{ id: 'b2', content: 'works at Acme', createdAt: 1, updatedAt: 1 }
+			{ id: 'b2', content: 'works at Acme', createdAt: 1, updatedAt: 1 },
 		])!;
 		expect(out).toContain('[a1] prefers metric units');
 		expect(out).toContain('[b2] works at Acme');
 	});
 
 	it('includes the header explaining the index and the write tools', () => {
-		const out = composeMemorySection([
-			{ id: 'a', content: 'fact', createdAt: 0, updatedAt: 0 }
-		])!;
+		const out = composeMemorySection([{ id: 'a', content: 'fact', createdAt: 0, updatedAt: 0 }])!;
 		expect(out).toMatch(/Saved memories/);
 		// The header must teach the model the id-bracketed convention and the
 		// names of the write tools — otherwise it can't act on the index.

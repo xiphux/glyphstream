@@ -30,7 +30,7 @@ import type {
 	StreamTextEvent,
 	StreamTitleEvent,
 	StreamToolCallArgsDeltaEvent,
-	StreamToolCallStartEvent
+	StreamToolCallStartEvent,
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
@@ -124,7 +124,9 @@ interface IterationResult {
 	stopped: boolean;
 }
 
-export async function startStreamingRelay(params: RelayParams): Promise<ReadableStream<Uint8Array>> {
+export async function startStreamingRelay(
+	params: RelayParams,
+): Promise<ReadableStream<Uint8Array>> {
 	return new ReadableStream({
 		async start(controller) {
 			const { write, close } = sseWriter(controller);
@@ -134,7 +136,7 @@ export async function startStreamingRelay(params: RelayParams): Promise<Readable
 				params.onComplete();
 				close();
 			}
-		}
+		},
 	});
 }
 
@@ -150,7 +152,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 	const startEvent: StreamStartEvent = {
 		type: 'start',
 		userMessage: params.userMessage,
-		assistantMessageId: ''
+		assistantMessageId: '',
 	};
 	write(startEvent);
 
@@ -172,7 +174,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 				params,
 				requestBody: currentRequestBody,
 				parentMessageId,
-				write
+				write,
 			});
 			if (!iterationResult) return; // upstream failed; error already emitted
 
@@ -203,7 +205,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 				userId: params.userId,
 				signal: params.abortSignal,
 				emit: write,
-				needsApproval: params.needsApproval
+				needsApproval: params.needsApproval,
 			});
 			parentMessageId =
 				toolMessages.length > 0
@@ -225,7 +227,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			if (iter === MAX_TOOL_LOOP_ITERATIONS - 1) {
 				write({
 					type: 'error',
-					message: `Tool loop exceeded the safety bound (${MAX_TOOL_LOOP_ITERATIONS} iterations). The model kept emitting tool_calls; results are persisted but the conversation may be incomplete.`
+					message: `Tool loop exceeded the safety bound (${MAX_TOOL_LOOP_ITERATIONS} iterations). The model kept emitting tool_calls; results are persisted but the conversation may be incomplete.`,
 				});
 				break;
 			}
@@ -235,7 +237,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			} catch (e) {
 				write({
 					type: 'error',
-					message: `Failed to rebuild request body for next iteration: ${errorMessage(e)}`
+					message: `Failed to rebuild request body for next iteration: ${errorMessage(e)}`,
 				});
 				return;
 			}
@@ -256,7 +258,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 					assistantMessageId: finalAssistantMessage.id,
 					conversationTitle: params.conversationTitle ?? 'New conversation',
 					previewText: finalTextPreview,
-					modality: relayModalityFor(params.modelKind)
+					modality: relayModalityFor(params.modelKind),
 				}).catch((e) => console.warn('[stream/relay] notify failed:', e));
 			}
 		}
@@ -291,11 +293,7 @@ async function runOneIteration(args: {
 	const { params, requestBody, parentMessageId, write } = args;
 	let upstreamResponse: Response;
 	try {
-		upstreamResponse = await chatCompletionStream(
-			params.endpoint,
-			requestBody,
-			params.abortSignal
-		);
+		upstreamResponse = await chatCompletionStream(params.endpoint, requestBody, params.abortSignal);
 	} catch (e) {
 		write({ type: 'error', message: errorMessage(e) });
 		return null;
@@ -311,7 +309,7 @@ async function runOneIteration(args: {
 	const recorderPromise = recordAndPersistOneIteration({
 		upstream: forRecorder,
 		params,
-		parentMessageId
+		parentMessageId,
 	}).catch((e) => {
 		console.error('[stream/relay] recorder branch failed:', e);
 		throw e;
@@ -334,7 +332,7 @@ async function runOneIteration(args: {
 		if (!(isAbortError(e) || params.abortSignal?.aborted)) {
 			write({
 				type: 'error',
-				message: `Upstream stream failed: ${errorMessage(e)}`
+				message: `Upstream stream failed: ${errorMessage(e)}`,
 			} satisfies StreamErrorEvent);
 		}
 	}
@@ -397,7 +395,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 			type: 'tool_call',
 			toolCallId: tc.id,
 			toolName: tc.name,
-			arguments: tc.args
+			arguments: tc.args,
 		});
 	}
 	const contentHtml = await renderMarkdown(textBuf);
@@ -411,7 +409,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		finishReason: stopped ? 'cancelled' : finishReason,
 		modelUsed: params.storedModelId,
 		tokensIn,
-		tokensOut
+		tokensOut,
 	});
 
 	return { assistantMessage, textForPushPreview: textBuf, stopped };
@@ -424,7 +422,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 				toolCallAccum.set(d.index, {
 					id: d.toolCallId,
 					name: d.toolName,
-					args: ''
+					args: '',
 				});
 			} else if (d.type === 'tool_call_args_delta') {
 				const entry = toolCallAccum.get(d.index);
@@ -455,7 +453,7 @@ function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
 			const ev: StreamToolCallStartEvent = {
 				type: 'tool_call_start',
 				toolCallId: d.toolCallId,
-				toolName: d.toolName
+				toolName: d.toolName,
 			};
 			write(ev);
 			return;
@@ -464,7 +462,7 @@ function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
 			const ev: StreamToolCallArgsDeltaEvent = {
 				type: 'tool_call_args_delta',
 				toolCallId: d.toolCallId,
-				argumentsDelta: d.argumentsDelta
+				argumentsDelta: d.argumentsDelta,
 			};
 			write(ev);
 			return;

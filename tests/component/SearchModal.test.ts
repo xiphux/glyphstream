@@ -80,12 +80,12 @@ describe('SearchModal — debounced search', () => {
 							updatedAt: 1,
 							kind: 'message',
 							messageId: 'm1',
-							snippet: 'a <mark>recipe</mark> here'
-						}
-					]
+							snippet: 'a <mark>recipe</mark> here',
+						},
+					],
 				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
+				{ status: 200, headers: { 'Content-Type': 'application/json' } },
+			),
 		);
 
 		render(SearchModal);
@@ -103,8 +103,8 @@ describe('SearchModal — debounced search', () => {
 		const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
 			new Response(JSON.stringify({ results: [] }), {
 				status: 200,
-				headers: { 'Content-Type': 'application/json' }
-			})
+				headers: { 'Content-Type': 'application/json' },
+			}),
 		);
 		render(SearchModal);
 		searchModal.show();
@@ -130,12 +130,12 @@ describe('SearchModal — activation', () => {
 							updatedAt: 1,
 							kind: 'message',
 							messageId: 'm42',
-							snippet: 'hit'
-						}
-					]
+							snippet: 'hit',
+						},
+					],
 				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
+				{ status: 200, headers: { 'Content-Type': 'application/json' } },
+			),
 		);
 
 		render(SearchModal);
@@ -166,12 +166,12 @@ describe('SearchModal — activation', () => {
 							updatedAt: 1,
 							kind: 'title',
 							messageId: null,
-							snippet: 'Title <mark>hit</mark>'
-						}
-					]
+							snippet: 'Title <mark>hit</mark>',
+						},
+					],
 				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			)
+				{ status: 200, headers: { 'Content-Type': 'application/json' } },
+			),
 		);
 
 		render(SearchModal);

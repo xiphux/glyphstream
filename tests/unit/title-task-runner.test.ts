@@ -23,27 +23,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
 	getTaskModel: vi.fn<() => { endpoint: unknown; upstreamId: string } | null>(),
 	getConversationTitleSource: vi.fn<(id: string) => 'fallback' | 'ai' | 'user' | null>(),
-	generateConversationTitle: vi.fn<
-		(id: string) => Promise<{ title: string; persisted: boolean } | null>
-	>()
+	generateConversationTitle:
+		vi.fn<(id: string) => Promise<{ title: string; persisted: boolean } | null>>(),
 }));
 
 vi.mock('$lib/server/tasks/task-model', () => ({
-	getTaskModel: mocks.getTaskModel
+	getTaskModel: mocks.getTaskModel,
 }));
 
 vi.mock('$lib/server/db/queries/conversations', () => ({
-	getConversationTitleSource: mocks.getConversationTitleSource
+	getConversationTitleSource: mocks.getConversationTitleSource,
 }));
 
 vi.mock('$lib/server/tasks/title-generator', () => ({
-	generateConversationTitle: mocks.generateConversationTitle
+	generateConversationTitle: mocks.generateConversationTitle,
 }));
 
-import {
-	raceTitle,
-	startTitleTaskIfFirstExchange
-} from '$lib/server/tasks/title-task-runner';
+import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 
 beforeEach(() => {
 	mocks.getTaskModel.mockReset();
@@ -106,7 +102,7 @@ describe('startTitleTaskIfFirstExchange — result shaping', () => {
 		// doesn't actually carry, so resolve to null.
 		mocks.generateConversationTitle.mockResolvedValue({
 			title: 'Stale',
-			persisted: false
+			persisted: false,
 		});
 		expect(await startTitleTaskIfFirstExchange('c1')).toBeNull();
 	});

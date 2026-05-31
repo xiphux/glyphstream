@@ -6,20 +6,16 @@ import type {
 	ConversationSummary,
 	CustomModelParameters,
 	FeatureCategory,
-	ModelKind
+	ModelKind,
 } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
-import {
-	parseDisabledFeatures,
-	parseMessageParts,
-	parseModelParameters
-} from './json-columns';
+import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
 	hardDeleteOrphanGeneratedMediaForMessages,
-	listMessageIdsForConversation
+	listMessageIdsForConversation,
 } from './media';
 
 export type TitleSource = 'fallback' | 'ai' | 'user';
@@ -56,7 +52,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			createdAt: now,
 			updatedAt: now,
 			archivedAt: null,
-			disabledFeaturesJson: disabledFeatures.length ? JSON.stringify(disabledFeatures) : null
+			disabledFeaturesJson: disabledFeatures.length ? JSON.stringify(disabledFeatures) : null,
 		})
 		.run();
 	return {
@@ -72,7 +68,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		createdAt: now,
 		updatedAt: now,
 		messages: [],
-		disabledFeatures
+		disabledFeatures,
 	};
 }
 
@@ -84,7 +80,7 @@ export function listConversations(userId: string): ConversationSummary[] {
 			title: conversations.title,
 			modelId: conversations.modelId,
 			createdAt: conversations.createdAt,
-			updatedAt: conversations.updatedAt
+			updatedAt: conversations.updatedAt,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
@@ -100,7 +96,7 @@ export function listArchivedConversations(userId: string): ConversationSummary[]
 			title: conversations.title,
 			modelId: conversations.modelId,
 			createdAt: conversations.createdAt,
-			updatedAt: conversations.updatedAt
+			updatedAt: conversations.updatedAt,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
@@ -151,7 +147,7 @@ export function unarchiveConversation(id: string, userId: string): boolean {
 export function updateConversationModel(
 	id: string,
 	userId: string,
-	patch: { endpointId: string; modelId: string; modelKind: ModelKind | null }
+	patch: { endpointId: string; modelId: string; modelKind: ModelKind | null },
 ): boolean {
 	const db = getDb();
 	const res = db
@@ -160,7 +156,7 @@ export function updateConversationModel(
 			endpointId: patch.endpointId,
 			modelId: patch.modelId,
 			modelKind: patch.modelKind,
-			updatedAt: Date.now()
+			updatedAt: Date.now(),
 		})
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.run();
@@ -168,10 +164,7 @@ export function updateConversationModel(
 }
 
 /** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */
-export function getConversationDetail(
-	id: string,
-	userId: string
-): ConversationDetail | null {
+export function getConversationDetail(id: string, userId: string): ConversationDetail | null {
 	const db = getDb();
 	const row = db
 		.select()
@@ -193,14 +186,14 @@ export function getConversationDetail(
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 		messages: walkActiveBranch(id),
-		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson)
+		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 	};
 }
 
 /** Light fetch (no messages walk) — used when we just need to verify ownership and look up endpoint/model. */
 export function getConversationMeta(
 	id: string,
-	userId: string
+	userId: string,
 ): {
 	id: string;
 	endpointId: string;
@@ -223,7 +216,7 @@ export function getConversationMeta(
 			parametersJson: conversations.parametersJson,
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId,
-			disabledFeaturesJson: conversations.disabledFeaturesJson
+			disabledFeaturesJson: conversations.disabledFeaturesJson,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -238,7 +231,7 @@ export function getConversationMeta(
 		parameters: parseModelParameters(row.parametersJson),
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId,
-		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson)
+		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
 	};
 }
 
@@ -252,13 +245,13 @@ export function getConversationMeta(
 export function setDisabledFeatures(
 	id: string,
 	userId: string,
-	features: FeatureCategory[]
+	features: FeatureCategory[],
 ): boolean {
 	const db = getDb();
 	const res = db
 		.update(conversations)
 		.set({
-			disabledFeaturesJson: features.length ? JSON.stringify(features) : null
+			disabledFeaturesJson: features.length ? JSON.stringify(features) : null,
 		})
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.run();
@@ -283,7 +276,7 @@ export function setDisabledFeatures(
 export function setConversationTitle(
 	id: string,
 	title: string,
-	opts: { source?: TitleSource } = {}
+	opts: { source?: TitleSource } = {},
 ): void {
 	const db = getDb();
 	db.update(conversations)
@@ -349,7 +342,7 @@ export function renameConversation(id: string, userId: string, newTitle: string)
 	}
 	if (trimmed.length > MAX_CONVERSATION_TITLE_LENGTH) {
 		throw new RenameValidationError(
-			`Title cannot exceed ${MAX_CONVERSATION_TITLE_LENGTH} characters`
+			`Title cannot exceed ${MAX_CONVERSATION_TITLE_LENGTH} characters`,
 		);
 	}
 	const db = getDb();
@@ -390,8 +383,8 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 			and(
 				eq(messages.conversationId, id),
 				isNull(messages.parentMessageId),
-				eq(messages.role, 'user')
-			)
+				eq(messages.role, 'user'),
+			),
 		)
 		.orderBy(asc(messages.createdAt))
 		.get();
@@ -404,8 +397,8 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 			and(
 				eq(messages.conversationId, id),
 				eq(messages.parentMessageId, rootUser.id),
-				eq(messages.role, 'assistant')
-			)
+				eq(messages.role, 'assistant'),
+			),
 		)
 		.orderBy(asc(messages.createdAt))
 		.get();
@@ -457,7 +450,7 @@ export function getConversationFirstExchange(id: string): FirstExchange | null {
 export function deleteConversation(
 	id: string,
 	userId: string,
-	opts: { deleteMedia?: boolean } = {}
+	opts: { deleteMedia?: boolean } = {},
 ): { ok: boolean; toUnlink: Array<{ id: string; storagePath: string }> } {
 	const db = getDb();
 	return db.transaction((tx) => {

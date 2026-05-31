@@ -6,7 +6,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -20,12 +20,12 @@ import {
 	listConversationsForMedia,
 	listMediaForUser,
 	listMessageIdsForConversation,
-	stampOrphanedZeroRefRows
+	stampOrphanedZeroRefRows,
 } from '$lib/server/db/queries/media';
 import {
 	archiveConversation,
 	createConversation,
-	deleteConversation
+	deleteConversation,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { media } from '$lib/server/db/schema';
@@ -48,7 +48,7 @@ function makeMedia(userId: string, overrides: Partial<Parameters<typeof insertMe
 		sourceEndpointId: 'bridge',
 		sourceModel: 'comfyui/sdxl',
 		promptExcerpt: 'a panda',
-		...overrides
+		...overrides,
 	});
 }
 
@@ -90,13 +90,13 @@ describe('media: insert + ref counting', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'look at this' }]
+			parts: [{ type: 'text', text: 'look at this' }],
 		});
 		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		// Stamped at upload time.
@@ -113,13 +113,13 @@ describe('media: insert + ref counting', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'here it is' }]
+			parts: [{ type: 'text', text: 'here it is' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
@@ -132,13 +132,13 @@ describe('media: insert + ref counting', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
@@ -153,19 +153,19 @@ describe('media: insert + ref counting', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg1 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'a' }]
+			parts: [{ type: 'text', text: 'a' }],
 		});
 		const msg2 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: msg1.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'b' }]
+			parts: [{ type: 'text', text: 'b' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg1.id, id);
@@ -189,13 +189,13 @@ describe('media: insert + ref counting', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
@@ -214,13 +214,13 @@ describe('deleteConversation cascade decrements media refs', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
@@ -333,13 +333,13 @@ describe('hardDeleteMediaForUser', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const { id } = makeMedia(u.id);
 		linkMessageMedia(msg.id, id);
@@ -403,13 +403,13 @@ describe('bulkHardDeleteMediaForUser', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const a = makeMedia(u.id);
 		const b = makeMedia(u.id);
@@ -499,13 +499,13 @@ describe('purger sweep queries', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		const { id } = makeMedia(u.id, { origin: 'uploaded' });
 		linkMessageMedia(msg.id, id);
@@ -522,31 +522,31 @@ describe('listMessageIdsForConversation', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const conv2 = createConversation({
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::y',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const m1 = appendMessage({
 			conversationId: conv1.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: '1' }]
+			parts: [{ type: 'text', text: '1' }],
 		});
 		const m2 = appendMessage({
 			conversationId: conv1.id,
 			parentMessageId: m1.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: '2' }]
+			parts: [{ type: 'text', text: '2' }],
 		});
 		appendMessage({
 			conversationId: conv2.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: '3' }]
+			parts: [{ type: 'text', text: '3' }],
 		});
 
 		const ids = listMessageIdsForConversation(conv1.id);
@@ -575,7 +575,7 @@ describe('listConversationsForMedia', () => {
 			userId,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: kind
+			modelKind: kind,
 		});
 	}
 
@@ -584,7 +584,7 @@ describe('listConversationsForMedia', () => {
 			conversationId,
 			parentMessageId: null,
 			role,
-			parts: [{ type: 'text', text: 'placeholder' }]
+			parts: [{ type: 'text', text: 'placeholder' }],
 		});
 	}
 

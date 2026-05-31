@@ -69,11 +69,7 @@ describe('timeOfDayGreeting', () => {
 	// assert slot-membership rather than exact strings so the variation
 	// mechanism itself is what's covered, not just one (date, hour) point.
 	const MORNING_VARIATIONS = ['Good morning', 'Top of the morning', 'Morning'];
-	const AFTERNOON_VARIATIONS = [
-		'Good afternoon',
-		'Afternoon',
-		"Hope your day's going well"
-	];
+	const AFTERNOON_VARIATIONS = ['Good afternoon', 'Afternoon', "Hope your day's going well"];
 	const EVENING_VARIATIONS = ['Good evening', 'Evening', 'Hope your day went well'];
 
 	it('returns "Still up" before 5am (singleton — no variations)', () => {

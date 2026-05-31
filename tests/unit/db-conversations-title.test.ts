@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -15,7 +15,7 @@ import {
 	RenameValidationError,
 	renameConversation,
 	setConversationTitle,
-	setConversationTitleIfFallback
+	setConversationTitleIfFallback,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage, setActiveLeafMessageId } from '$lib/server/db/queries/messages';
 
@@ -34,7 +34,7 @@ describe('title_source state machine', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(getConversationTitleSource(conv.id)).toBe('fallback');
 	});
@@ -45,7 +45,7 @@ describe('title_source state machine', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		setConversationTitle(conv.id, 'first-line preview');
 		expect(getConversationTitleSource(conv.id)).toBe('fallback');
@@ -58,7 +58,7 @@ describe('title_source state machine', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
-			title: 'preview…'
+			title: 'preview…',
 		});
 		const ok = setConversationTitleIfFallback(conv.id, 'AI Generated Title');
 		expect(ok).toBe(true);
@@ -71,7 +71,7 @@ describe('title_source state machine', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		// First AI write succeeds
 		expect(setConversationTitleIfFallback(conv.id, 'First AI')).toBe(true);
@@ -86,7 +86,7 @@ describe('title_source state machine', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		renameConversation(conv.id, u.id, 'My Manual Title');
 		expect(getConversationTitleSource(conv.id)).toBe('user');
@@ -104,7 +104,7 @@ describe('renameConversation', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const ok = renameConversation(conv.id, u.id, '  New Title  ');
 		expect(ok).toBe(true);
@@ -117,7 +117,7 @@ describe('renameConversation', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(() => renameConversation(conv.id, u.id, '')).toThrow(RenameValidationError);
 		expect(() => renameConversation(conv.id, u.id, '   ')).toThrow(RenameValidationError);
@@ -129,7 +129,7 @@ describe('renameConversation', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const long = 'x'.repeat(201);
 		expect(() => renameConversation(conv.id, u.id, long)).toThrow(RenameValidationError);
@@ -144,7 +144,7 @@ describe('renameConversation', () => {
 			userId: owner.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const ok = renameConversation(conv.id, attacker.id, 'Hijacked');
 		expect(ok).toBe(false);
@@ -159,7 +159,7 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(getConversationFirstExchange(conv.id)).toBeNull();
 	});
@@ -170,13 +170,13 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'Hello world' }]
+			parts: [{ type: 'text', text: 'Hello world' }],
 		});
 		const ex = getConversationFirstExchange(conv.id);
 		expect(ex).not.toBeNull();
@@ -192,19 +192,19 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'What is X?' }]
+			parts: [{ type: 'text', text: 'What is X?' }],
 		});
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'X is …' }]
+			parts: [{ type: 'text', text: 'X is …' }],
 		});
 		const ex = getConversationFirstExchange(conv.id);
 		expect(ex!.userText).toBe('What is X?');
@@ -217,7 +217,7 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::sdxl',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		appendMessage({
 			conversationId: conv.id,
@@ -225,8 +225,8 @@ describe('getConversationFirstExchange', () => {
 			role: 'user',
 			parts: [
 				{ type: 'text', text: 'a cat in a hat' },
-				{ type: 'image', mediaId: 'm-1' }
-			]
+				{ type: 'image', mediaId: 'm-1' },
+			],
 		});
 		const ex = getConversationFirstExchange(conv.id);
 		expect(ex!.userText).toBe('a cat in a hat');
@@ -239,19 +239,19 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::sdxl',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'a sunset' }]
+			parts: [{ type: 'text', text: 'a sunset' }],
 		});
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
 			role: 'assistant',
-			parts: [{ type: 'image', mediaId: 'm-2' }]
+			parts: [{ type: 'image', mediaId: 'm-2' }],
 		});
 		const ex = getConversationFirstExchange(conv.id);
 		expect(ex!.assistantText).toBe('');
@@ -266,26 +266,26 @@ describe('getConversationFirstExchange', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const user = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'q' }]
+			parts: [{ type: 'text', text: 'q' }],
 		});
 		const first = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'first answer' }]
+			parts: [{ type: 'text', text: 'first answer' }],
 		});
 		// Sibling assistant from a regenerate
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'second answer' }]
+			parts: [{ type: 'text', text: 'second answer' }],
 		});
 		setActiveLeafMessageId(conv.id, first.id);
 		const ex = getConversationFirstExchange(conv.id);

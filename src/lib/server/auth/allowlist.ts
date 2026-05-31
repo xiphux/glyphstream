@@ -22,7 +22,7 @@ export function loadAllowlist(): Set<number> {
 		const n = Number.parseInt(trimmed, 10);
 		if (!Number.isInteger(n) || n <= 0 || String(n) !== trimmed) {
 			throw new Error(
-				`ALLOWED_GITHUB_USER_IDS contains an invalid entry: "${trimmed}". Use numeric GitHub user IDs only.`
+				`ALLOWED_GITHUB_USER_IDS contains an invalid entry: "${trimmed}". Use numeric GitHub user IDs only.`,
 			);
 		}
 		ids.add(n);

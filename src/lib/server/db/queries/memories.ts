@@ -31,7 +31,7 @@ export function listMemoriesForUser(userId: string): Memory[] {
 			id: memories.id,
 			content: memories.content,
 			createdAt: memories.createdAt,
-			updatedAt: memories.updatedAt
+			updatedAt: memories.updatedAt,
 		})
 		.from(memories)
 		.where(eq(memories.userId, userId))
@@ -51,7 +51,7 @@ export function createMemory(userId: string, content: string): { id: string } {
 			embedding: null,
 			embeddingModel: null,
 			createdAt: now,
-			updatedAt: now
+			updatedAt: now,
 		})
 		.run();
 	return { id };

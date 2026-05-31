@@ -19,7 +19,7 @@
 		return d.toLocaleDateString(undefined, {
 			month: 'short',
 			day: 'numeric',
-			year: sameYear ? undefined : 'numeric'
+			year: sameYear ? undefined : 'numeric',
 		});
 	}
 
@@ -67,16 +67,12 @@
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="shrink-0 px-4 py-3">
 		<h1 class="text-lg font-semibold tracking-tight">Archived conversations</h1>
-		<p class="text-xs text-fg-muted">
-			Click to reopen, or use the menu to unarchive or delete.
-		</p>
+		<p class="text-xs text-fg-muted">Click to reopen, or use the menu to unarchive or delete.</p>
 	</header>
 
 	<div class="flex-1 overflow-y-auto px-4 py-2">
 		{#if data.archivedConversations.length === 0}
-			<p class="px-2 py-12 text-center text-sm text-fg-muted">
-				No archived conversations.
-			</p>
+			<p class="px-2 py-12 text-center text-sm text-fg-muted">No archived conversations.</p>
 		{:else}
 			<ul class="mx-auto max-w-3xl space-y-0.5">
 				{#each data.archivedConversations as c (c.id)}

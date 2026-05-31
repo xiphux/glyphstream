@@ -1,23 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-	validateCreateInput,
-	validateParameters
-} from '$lib/server/custom-models/validate';
+import { validateCreateInput, validateParameters } from '$lib/server/custom-models/validate';
 
 // Stub the endpoint registry so the validator's "is this a known endpoint?"
 // check has predictable input. Otherwise validateCreateInput would try to
 // load config.toml from disk.
 vi.mock('$lib/server/endpoints/registry', () => ({
 	getEndpoint: (id: string) =>
-		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined
+		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined,
 }));
 
 // Stub the feature-categories registry so the MCP category check has
 // predictable input. v1 registers two built-ins + the categories below
 // for the suite; tests can add more via mockReturnValueOnce when needed.
 vi.mock('$lib/server/feature-categories', () => ({
-	getRegisteredCategoryIds: () =>
-		new Set(['web', 'personalization', 'mcp:filesystem'])
+	getRegisteredCategoryIds: () => new Set(['web', 'personalization', 'mcp:filesystem']),
 }));
 
 describe('validateParameters', () => {
@@ -68,7 +64,7 @@ describe('validateParameters', () => {
 		expect(validateParameters({ temperature: 0.7, top_p: 0.9, max_tokens: 1000 })).toEqual({
 			temperature: 0.7,
 			top_p: 0.9,
-			max_tokens: 1000
+			max_tokens: 1000,
 		});
 	});
 });
@@ -77,7 +73,7 @@ describe('validateCreateInput', () => {
 	const valid = {
 		name: 'Coding Bot',
 		baseEndpointId: 'bridge',
-		baseModelId: 'gpt-4o'
+		baseModelId: 'gpt-4o',
 	};
 
 	it('accepts the minimum required fields', () => {
@@ -95,7 +91,7 @@ describe('validateCreateInput', () => {
 			...valid,
 			name: '  Coding Bot  ',
 			description: '  for code  ',
-			systemPrompt: '  Be concise  '
+			systemPrompt: '  Be concise  ',
 		});
 		expect(r.name).toBe('Coding Bot');
 		expect(r.description).toBe('for code');
@@ -111,9 +107,7 @@ describe('validateCreateInput', () => {
 	});
 
 	it('rejects unknown endpoint', () => {
-		expect(() =>
-			validateCreateInput({ ...valid, baseEndpointId: 'no-such-endpoint' })
-		).toThrow();
+		expect(() => validateCreateInput({ ...valid, baseEndpointId: 'no-such-endpoint' })).toThrow();
 	});
 
 	it('rejects empty baseModelId', () => {
@@ -124,7 +118,7 @@ describe('validateCreateInput', () => {
 		const r = validateCreateInput({
 			...valid,
 			description: '   ',
-			systemPrompt: ''
+			systemPrompt: '',
 		});
 		expect(r.description).toBeNull();
 		expect(r.systemPrompt).toBeNull();
@@ -143,7 +137,7 @@ describe('validateCreateInput', () => {
 	it('de-dupes defaultDisabledFeatures entries', () => {
 		const r = validateCreateInput({
 			...valid,
-			defaultDisabledFeatures: ['personalization', 'personalization', 'web']
+			defaultDisabledFeatures: ['personalization', 'personalization', 'web'],
 		});
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'web']);
 	});
@@ -153,7 +147,7 @@ describe('validateCreateInput', () => {
 		// live; the validator passes it through alongside the built-in.
 		const r = validateCreateInput({
 			...valid,
-			defaultDisabledFeatures: ['personalization', 'mcp:filesystem']
+			defaultDisabledFeatures: ['personalization', 'mcp:filesystem'],
 		});
 		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:filesystem']);
 	});
@@ -164,20 +158,17 @@ describe('validateCreateInput', () => {
 		// the preference returns intact when the server comes back.
 		const r = validateCreateInput({
 			...valid,
-			defaultDisabledFeatures: ['personalization', 'mcp:no-longer-registered']
+			defaultDisabledFeatures: ['personalization', 'mcp:no-longer-registered'],
 		});
-		expect(r.defaultDisabledFeatures).toEqual([
-			'personalization',
-			'mcp:no-longer-registered'
-		]);
+		expect(r.defaultDisabledFeatures).toEqual(['personalization', 'mcp:no-longer-registered']);
 	});
 
 	it('rejects unknown non-MCP category strings', () => {
 		expect(() =>
 			validateCreateInput({
 				...valid,
-				defaultDisabledFeatures: ['personalization', 'made-up-category']
-			})
+				defaultDisabledFeatures: ['personalization', 'made-up-category'],
+			}),
 		).toThrow();
 	});
 
@@ -186,8 +177,8 @@ describe('validateCreateInput', () => {
 			validateCreateInput({
 				...valid,
 				// @ts-expect-error testing runtime defense against malformed input
-				defaultDisabledFeatures: ['personalization', 123]
-			})
+				defaultDisabledFeatures: ['personalization', 123],
+			}),
 		).toThrow();
 	});
 
@@ -196,8 +187,8 @@ describe('validateCreateInput', () => {
 			validateCreateInput({
 				...valid,
 				// @ts-expect-error testing runtime defense against malformed input
-				defaultDisabledFeatures: 'personalization'
-			})
+				defaultDisabledFeatures: 'personalization',
+			}),
 		).toThrow();
 	});
 });

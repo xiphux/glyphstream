@@ -28,7 +28,7 @@ import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	composePersonaSystemPrompt,
 	getUserPreferences,
-	setUserPreferences
+	setUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { get as getTool } from '$lib/server/tools/registry';
@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const body = await parseJsonBody<ApprovalBody>(request);
 	if (!body || !Array.isArray(body.decisions) || body.decisions.length === 0) {
-		throw error(400, "Expected { decisions: [{ toolCallId, action }, ...] }");
+		throw error(400, 'Expected { decisions: [{ toolCallId, action }, ...] }');
 	}
 	for (const d of body.decisions) {
 		if (typeof d.toolCallId !== 'string' || d.toolCallId.length === 0) {
@@ -100,20 +100,15 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				type: 'tool_result',
 				toolCallId: resultPart.toolCallId,
 				result: JSON.stringify({ error: 'User declined this tool call.' }),
-				isError: true
+				isError: true,
 			};
 		} else {
-			const execution = await runApprovedTool(
-				toolCallPart,
-				userId,
-				params.id,
-				request.signal
-			);
+			const execution = await runApprovedTool(toolCallPart, userId, params.id, request.signal);
 			nextPart = {
 				type: 'tool_result',
 				toolCallId: resultPart.toolCallId,
 				result: execution.content,
-				...(execution.isError ? { isError: true } : {})
+				...(execution.isError ? { isError: true } : {}),
 			};
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
 		}
@@ -136,10 +131,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const prefs = getUserPreferences(userId);
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
-	if (
-		effectiveSystemPrompt === null &&
-		!meta.disabledFeatures.includes('personalization')
-	) {
+	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
 		const memories = listMemoriesForUser(userId);
 		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
 	}
@@ -149,7 +141,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const allModels = await listAllModels();
 	const modelEntry = allModels.find(
-		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId
+		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
 	);
 	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
 	if (!supportsTools) {
@@ -169,13 +161,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const nextMessages = await serializeBranchForUpstream(
 			nextBranch,
 			(mediaId) => mediaIdToDataUrl(mediaId, userId),
-			effectiveSystemPrompt
+			effectiveSystemPrompt,
 		);
 		const requestBody: ChatCompletionRequest = {
 			model: parsed.upstreamId,
 			messages: nextMessages,
 			stream: true,
-			stream_options: { include_usage: true }
+			stream_options: { include_usage: true },
 		};
 		if (toolDefs.length > 0) {
 			requestBody.tools = toolDefs;
@@ -228,7 +220,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
 		rebuildRequestBody: buildRequestBody,
-		initialParentMessageId
+		initialParentMessageId,
 	});
 
 	return new Response(stream, {
@@ -236,8 +228,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache, no-store, no-transform',
 			Connection: 'keep-alive',
-			'X-Accel-Buffering': 'no'
-		}
+			'X-Accel-Buffering': 'no',
+		},
 	});
 };
 
@@ -253,16 +245,14 @@ function findPending(branch: ChatMessage[], toolCallId: string): FoundPending | 
 			m.role === 'tool' &&
 			m.parts.some(
 				(p) =>
-					isToolResultPart(p) &&
-					p.toolCallId === toolCallId &&
-					p.status === 'pending_approval'
-			)
+					isToolResultPart(p) && p.toolCallId === toolCallId && p.status === 'pending_approval',
+			),
 	);
 	if (toolMsgIdx < 0) return null;
 	const toolMsg = branch[toolMsgIdx];
 	const resultPart = toolMsg.parts.find(
 		(p): p is Extract<MessagePart, { type: 'tool_result' }> =>
-			isToolResultPart(p) && p.toolCallId === toolCallId
+			isToolResultPart(p) && p.toolCallId === toolCallId,
 	);
 	if (!resultPart) return null;
 	// Walk backwards from the tool msg to find the assistant that emitted
@@ -270,7 +260,7 @@ function findPending(branch: ChatMessage[], toolCallId: string): FoundPending | 
 	for (let i = toolMsgIdx - 1; i >= 0; i--) {
 		const candidate = branch[i].parts.find(
 			(p): p is Extract<MessagePart, { type: 'tool_call' }> =>
-				isToolCallPart(p) && p.toolCallId === toolCallId
+				isToolCallPart(p) && p.toolCallId === toolCallId,
 		);
 		if (candidate) {
 			return { toolMsg, resultPart, toolCallPart: candidate };
@@ -283,13 +273,13 @@ async function runApprovedTool(
 	toolCallPart: Extract<MessagePart, { type: 'tool_call' }>,
 	userId: string,
 	conversationId: string,
-	signal: AbortSignal
+	signal: AbortSignal,
 ): Promise<{ content: string; isError: boolean }> {
 	const tool = getTool(toolCallPart.toolName);
 	if (!tool) {
 		return {
 			content: JSON.stringify({ error: `Unknown tool: ${toolCallPart.toolName}` }),
-			isError: true
+			isError: true,
 		};
 	}
 	let args: unknown = {};
@@ -299,23 +289,21 @@ async function runApprovedTool(
 		} catch (e) {
 			return {
 				content: JSON.stringify({
-					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`
+					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`,
 				}),
-				isError: true
+				isError: true,
 			};
 		}
 	}
 	try {
-		const execution = await Promise.resolve(
-			tool.execute(args, { userId, conversationId, signal })
-		);
+		const execution = await Promise.resolve(tool.execute(args, { userId, conversationId, signal }));
 		return { content: execution.content, isError: execution.isError === true };
 	} catch (e) {
 		return {
 			content: JSON.stringify({
-				error: `Tool "${toolCallPart.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`
+				error: `Tool "${toolCallPart.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`,
 			}),
-			isError: true
+			isError: true,
 		};
 	}
 }

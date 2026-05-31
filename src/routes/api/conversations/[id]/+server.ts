@@ -8,13 +8,13 @@ import {
 	renameConversation,
 	RenameValidationError,
 	setDisabledFeatures,
-	unarchiveConversation
+	unarchiveConversation,
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getInFlight } from '$lib/server/streaming/in-flight';
 import {
 	FeatureCategoryValidationError,
-	validateDisabledFeatures
+	validateDisabledFeatures,
 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
@@ -57,7 +57,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	if (presentCount !== 1) {
 		throw error(
 			400,
-			'Body must be exactly one of { archived: boolean }, { title: string }, or { disabledFeatures: string[] }'
+			'Body must be exactly one of { archived: boolean }, { title: string }, or { disabledFeatures: string[] }',
 		);
 	}
 
@@ -101,7 +101,6 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	return new Response(null, { status: 204 });
 };
 
-
 export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	requireUser(locals);
 	// Query-string flag so the client can express "also purge media that
@@ -110,7 +109,7 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	// (library model: media is preserved unless the user explicitly opts in).
 	const deleteMedia = url.searchParams.get('deleteMedia') === 'true';
 	const { ok, toUnlink } = deleteConversation(params.id, locals.user.id, {
-		deleteMedia
+		deleteMedia,
 	});
 	if (!ok) throw error(404, 'Conversation not found');
 

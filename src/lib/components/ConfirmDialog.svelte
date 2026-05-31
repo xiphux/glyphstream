@@ -31,9 +31,7 @@
 			if (e.target === e.currentTarget) confirmDialog.cancel();
 		}}
 	>
-		<div
-			class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl"
-		>
+		<div class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl">
 			<h2 id="confirm-dialog-title" class="text-base font-semibold">{p.title}</h2>
 			<p class="mt-2 text-sm text-fg-muted">{p.message}</p>
 			<div class="mt-5 flex items-center justify-end gap-2">

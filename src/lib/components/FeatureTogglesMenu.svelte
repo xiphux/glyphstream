@@ -78,12 +78,12 @@
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
 			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-border surface-glass gs-pop p-3 shadow-lg"
 		>
-			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">
-				This conversation
-			</div>
+			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">This conversation</div>
 			{#each categories as meta (meta.id)}
 				{@const enabled = isEnabled(meta.id)}
-				<label class="flex cursor-pointer items-start gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+				<label
+					class="flex cursor-pointer items-start gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+				>
 					<div class="flex-1">
 						<div class="text-sm font-medium text-fg">
 							{meta.label}

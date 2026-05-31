@@ -37,7 +37,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		kindKnown: overrides.kindKnown ?? true,
 		group: overrides.group ?? 'Bridge',
 		groupKey: overrides.groupKey ?? endpointId,
-		supportsTools: overrides.supportsTools ?? false
+		supportsTools: overrides.supportsTools ?? false,
 	};
 }
 
@@ -52,7 +52,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		parameters: overrides.parameters ?? null,
 		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
 		createdAt: 0,
-		updatedAt: 0
+		updatedAt: 0,
 	};
 }
 
@@ -77,7 +77,7 @@ describe('ModelPicker — trigger', () => {
 	it('strips an owner/ prefix from the trigger label', () => {
 		const m = makeModel({
 			id: 'bridge::meta-llama/Llama-3-70b',
-			displayName: 'meta-llama/Llama-3-70b'
+			displayName: 'meta-llama/Llama-3-70b',
 		});
 		render(ModelPicker, { props: { models: [m], value: m.id } });
 		expect(screen.getByText('Llama-3-70b')).toBeInTheDocument();
@@ -91,22 +91,22 @@ describe('ModelPicker — trigger', () => {
 			props: {
 				models: [m],
 				customModels: [cm],
-				value: `custom::${cm.id}`
-			}
+				value: `custom::${cm.id}`,
+			},
 		});
 		expect(screen.getByText('My fancy preset')).toBeInTheDocument();
 	});
 
 	it('honors the disabled prop on the trigger', () => {
 		render(ModelPicker, {
-			props: { models: [makeModel()], value: '', disabled: true }
+			props: { models: [makeModel()], value: '', disabled: true },
 		});
 		expect(screen.getByLabelText('Select model')).toBeDisabled();
 	});
 
 	it('supports the inline variant (uses different class shape than full-width)', () => {
 		const { rerender } = render(ModelPicker, {
-			props: { models: [makeModel()], value: '', inline: false }
+			props: { models: [makeModel()], value: '', inline: false },
 		});
 		const full = screen.getByLabelText('Select model');
 		expect(full).toHaveClass('w-full');
@@ -130,7 +130,7 @@ describe('ModelPicker — opening + listing', () => {
 		const user = userEvent.setup();
 		const models = [
 			makeModel({ id: 'bridge::a', displayName: 'Model A' }),
-			makeModel({ id: 'bridge::b', displayName: 'Model B' })
+			makeModel({ id: 'bridge::b', displayName: 'Model B' }),
 		];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
@@ -163,13 +163,13 @@ describe('ModelPicker — search filtering', () => {
 			upstreamId: 'llama-3.1-70b',
 			displayName: 'llama-3.1-70b',
 			group: 'Groq',
-			groupKey: 'groq'
+			groupKey: 'groq',
 		}),
 		makeModel({
 			id: 'bridge::claude-3-opus',
 			displayName: 'claude-3-opus',
-			group: 'OpenAI'
-		})
+			group: 'OpenAI',
+		}),
 	];
 
 	it('narrows results to matching displayName', async () => {
@@ -243,7 +243,7 @@ describe('ModelPicker — custom presets', () => {
 		const user = userEvent.setup();
 		const cm = makeCustom({ id: 'p1', name: 'My fancy preset' });
 		render(ModelPicker, {
-			props: { models: [baseModel], customModels: [cm], value: '' }
+			props: { models: [baseModel], customModels: [cm], value: '' },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Your presets')).toBeInTheDocument();
@@ -255,7 +255,7 @@ describe('ModelPicker — custom presets', () => {
 		const onChange = vi.fn();
 		const cm = makeCustom({ id: 'p1', name: 'My fancy preset' });
 		render(ModelPicker, {
-			props: { models: [baseModel], customModels: [cm], value: '', onChange }
+			props: { models: [baseModel], customModels: [cm], value: '', onChange },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		await user.click(screen.getByRole('option', { name: /My fancy preset/ }));
@@ -266,7 +266,7 @@ describe('ModelPicker — custom presets', () => {
 		const user = userEvent.setup();
 		const cm = makeCustom({ id: 'orphan', name: 'Orphaned', baseModelId: 'gone' });
 		render(ModelPicker, {
-			props: { models: [baseModel], customModels: [cm], value: '' }
+			props: { models: [baseModel], customModels: [cm], value: '' },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.queryByText('Your presets')).toBeNull();
@@ -281,7 +281,7 @@ describe('ModelPicker — favorites', () => {
 	it('renders the Favorites group when favoritedIds is non-empty', async () => {
 		const user = userEvent.setup();
 		render(ModelPicker, {
-			props: { models: [a, b], value: '', favoritedIds: ['bridge::b'] }
+			props: { models: [a, b], value: '', favoritedIds: ['bridge::b'] },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Favorites')).toBeInTheDocument();
@@ -303,8 +303,8 @@ describe('ModelPicker — favorites', () => {
 			props: {
 				models: [a, b],
 				value: '',
-				favoritedIds: ['bridge::a', 'bridge::ghost-removed']
-			}
+				favoritedIds: ['bridge::a', 'bridge::ghost-removed'],
+			},
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Favorites')).toBeInTheDocument();
@@ -319,7 +319,7 @@ describe('ModelPicker — favorites', () => {
 	it('renders a star button when onToggleFavorite is supplied', async () => {
 		const user = userEvent.setup();
 		render(ModelPicker, {
-			props: { models: [a], value: '', onToggleFavorite: vi.fn() }
+			props: { models: [a], value: '', onToggleFavorite: vi.fn() },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByLabelText('Favorite model')).toBeInTheDocument();
@@ -338,7 +338,7 @@ describe('ModelPicker — favorites', () => {
 		const onToggleFavorite = vi.fn();
 		const onChange = vi.fn();
 		render(ModelPicker, {
-			props: { models: [a], value: '', onToggleFavorite, onChange }
+			props: { models: [a], value: '', onToggleFavorite, onChange },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		await user.click(screen.getByLabelText('Favorite model'));
@@ -353,8 +353,8 @@ describe('ModelPicker — favorites', () => {
 				models: [a],
 				value: '',
 				favoritedIds: ['bridge::a'],
-				onToggleFavorite: vi.fn()
-			}
+				onToggleFavorite: vi.fn(),
+			},
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		// The row appears twice (Favorites + Bridge); each has its own
@@ -366,7 +366,7 @@ describe('ModelPicker — favorites', () => {
 	it('hides the Favorites group while searching', async () => {
 		const user = userEvent.setup();
 		render(ModelPicker, {
-			props: { models: [a, b], value: '', favoritedIds: ['bridge::a'] }
+			props: { models: [a, b], value: '', favoritedIds: ['bridge::a'] },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByText('Favorites')).toBeInTheDocument();
@@ -383,16 +383,16 @@ describe('ModelPicker — filterKinds', () => {
 			makeModel({
 				id: 'bridge::flux',
 				displayName: 'flux',
-				kind: 'image'
+				kind: 'image',
 			}),
 			makeModel({
 				id: 'bridge::embed-1',
 				displayName: 'embed-1',
-				kind: 'embedding'
-			})
+				kind: 'embedding',
+			}),
 		];
 		render(ModelPicker, {
-			props: { models, value: '', filterKinds: ['chat'] }
+			props: { models, value: '', filterKinds: ['chat'] },
 		});
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByRole('option', { name: /chat-1/ })).toBeInTheDocument();
@@ -405,7 +405,7 @@ describe('ModelPicker — keyboard navigation', () => {
 	const models = [
 		makeModel({ id: 'bridge::a', displayName: 'A' }),
 		makeModel({ id: 'bridge::b', displayName: 'B' }),
-		makeModel({ id: 'bridge::c', displayName: 'C' })
+		makeModel({ id: 'bridge::c', displayName: 'C' }),
 	];
 
 	it('Enter selects the highlighted option', async () => {
@@ -459,9 +459,7 @@ describe('ModelPicker — keyboard navigation', () => {
 describe('ModelPicker — kind emojis', () => {
 	it('renders the camera emoji for image kind', async () => {
 		const user = userEvent.setup();
-		const models = [
-			makeModel({ id: 'bridge::flux', displayName: 'flux', kind: 'image' })
-		];
+		const models = [makeModel({ id: 'bridge::flux', displayName: 'flux', kind: 'image' })];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
 		const option = screen.getByRole('option', { name: /flux/ });
@@ -470,9 +468,7 @@ describe('ModelPicker — kind emojis', () => {
 
 	it('renders the video camera emoji for video kind', async () => {
 		const user = userEvent.setup();
-		const models = [
-			makeModel({ id: 'bridge::wan', displayName: 'wan', kind: 'video' })
-		];
+		const models = [makeModel({ id: 'bridge::wan', displayName: 'wan', kind: 'video' })];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
 		const option = screen.getByRole('option', { name: /wan/ });
@@ -498,15 +494,15 @@ describe('ModelPicker — owner sublabel', () => {
 				displayName: 'gpt',
 				ownedBy: 'openai',
 				group: 'Bridge',
-				groupKey: 'bridge'
+				groupKey: 'bridge',
 			}),
 			makeModel({
 				id: 'bridge::claude',
 				displayName: 'claude',
 				ownedBy: 'anthropic',
 				group: 'Bridge',
-				groupKey: 'bridge'
-			})
+				groupKey: 'bridge',
+			}),
 		];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
@@ -523,8 +519,8 @@ describe('ModelPicker — owner sublabel', () => {
 				displayName: 'gpt-3',
 				ownedBy: 'openai',
 				group: 'Bridge',
-				groupKey: 'bridge'
-			})
+				groupKey: 'bridge',
+			}),
 		];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));

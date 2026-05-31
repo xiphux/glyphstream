@@ -31,13 +31,13 @@
 		try {
 			const res = await fetch(
 				`/api/user/trusted-tools/${encodeURIComponent(tool.registeredName)}`,
-				{ method }
+				{ method },
 			);
 			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
 			await invalidateAll();
 		} catch (e) {
 			toast.error(
-				`Couldn't ${tool.trusted ? 'revoke' : 'grant'}: ${e instanceof Error ? e.message : String(e)}`
+				`Couldn't ${tool.trusted ? 'revoke' : 'grant'}: ${e instanceof Error ? e.message : String(e)}`,
 			);
 		} finally {
 			busyName = null;
@@ -84,7 +84,9 @@
 	<div class="flex-1 overflow-y-auto px-4 py-4">
 		<div class="mx-auto flex max-w-2xl flex-col gap-3">
 			{#if data.servers.length === 0}
-				<div class="rounded-lg border border-border bg-surface-panel p-6 text-center text-sm text-fg-muted">
+				<div
+					class="rounded-lg border border-border bg-surface-panel p-6 text-center text-sm text-fg-muted"
+				>
 					<p>No MCP servers configured.</p>
 					<p class="mt-2 text-xs">
 						Add <code class="font-mono">[[mcp_servers]]</code> blocks to your
@@ -118,7 +120,9 @@
 						</header>
 
 						{#if server.error}
-							<div class="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+							<div
+								class="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+							>
 								{server.error}
 							</div>
 						{/if}
@@ -130,7 +134,9 @@
 								</div>
 								<ul class="mt-2 flex flex-col gap-1.5">
 									{#each server.tools as tool (tool.name)}
-										<li class="flex items-start gap-3 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs">
+										<li
+											class="flex items-start gap-3 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs"
+										>
 											<div class="min-w-0 flex-1">
 												<span class="font-mono font-medium">{tool.name}</span>
 												{#if tool.description}

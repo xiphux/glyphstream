@@ -6,14 +6,14 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
 	composePersonaSystemPrompt,
 	getUserPreferences,
 	parseUserPreferences,
-	setUserPreferences
+	setUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { users } from '$lib/server/db/schema';
 
@@ -37,7 +37,7 @@ const EMPTY_PREFS = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [] as string[],
-	trustedMcpTools: [] as string[]
+	trustedMcpTools: [] as string[],
 };
 
 describe('parseUserPreferences', () => {
@@ -60,25 +60,23 @@ describe('parseUserPreferences', () => {
 			name: 'Chris',
 			aboutYou: '',
 			customInstructions: '',
-			enterBehavior: 'send'
+			enterBehavior: 'send',
 		});
 		expect(parseUserPreferences('{"enterBehavior":"newline"}')).toMatchObject({
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 	});
 
 	it('coerces invalid field types to defaults', () => {
+		expect(parseUserPreferences(JSON.stringify({ name: 42, enterBehavior: 'send' }))).toMatchObject(
+			{ name: '' },
+		);
 		expect(
-			parseUserPreferences(JSON.stringify({ name: 42, enterBehavior: 'send' }))
-		).toMatchObject({ name: '' });
-		expect(
-			parseUserPreferences(
-				JSON.stringify({ aboutYou: ['array', 'instead', 'of', 'string'] })
-			)
+			parseUserPreferences(JSON.stringify({ aboutYou: ['array', 'instead', 'of', 'string'] })),
 		).toMatchObject({ aboutYou: '' });
-		expect(
-			parseUserPreferences(JSON.stringify({ enterBehavior: 'bogus' }))
-		).toMatchObject({ enterBehavior: 'send' });
+		expect(parseUserPreferences(JSON.stringify({ enterBehavior: 'bogus' }))).toMatchObject({
+			enterBehavior: 'send',
+		});
 	});
 
 	it('ignores extra fields without throwing', () => {
@@ -89,22 +87,20 @@ describe('parseUserPreferences', () => {
 			enterBehavior: 'newline',
 			// Legacy / unknown shapes don't pollute the parsed object.
 			systemPrompt: 'left over from earlier schema',
-			futurePref: 'whatever'
+			futurePref: 'whatever',
 		});
 		expect(parseUserPreferences(blob)).toEqual({
 			...EMPTY_PREFS,
 			name: 'Chris',
 			aboutYou: 'engineer',
 			customInstructions: 'be brief',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 	});
 
 	it('parses favoriteModels as a string array', () => {
 		expect(
-			parseUserPreferences(
-				JSON.stringify({ favoriteModels: ['openai::gpt-4', 'custom::abc'] })
-			)
+			parseUserPreferences(JSON.stringify({ favoriteModels: ['openai::gpt-4', 'custom::abc'] })),
 		).toMatchObject({ favoriteModels: ['openai::gpt-4', 'custom::abc'] });
 	});
 
@@ -113,26 +109,22 @@ describe('parseUserPreferences', () => {
 		// noise — silently filtering bad elements would hide it. Fall back
 		// to the default empty array.
 		expect(
-			parseUserPreferences(
-				JSON.stringify({ favoriteModels: ['openai::gpt-4', 42, null] })
-			)
+			parseUserPreferences(JSON.stringify({ favoriteModels: ['openai::gpt-4', 42, null] })),
 		).toMatchObject({ favoriteModels: [] });
 	});
 
 	it('falls back to the default for a non-array favoriteModels', () => {
-		expect(
-			parseUserPreferences(JSON.stringify({ favoriteModels: 'not-an-array' }))
-		).toMatchObject({ favoriteModels: [] });
-		expect(
-			parseUserPreferences(JSON.stringify({ favoriteModels: null }))
-		).toMatchObject({ favoriteModels: [] });
+		expect(parseUserPreferences(JSON.stringify({ favoriteModels: 'not-an-array' }))).toMatchObject({
+			favoriteModels: [],
+		});
+		expect(parseUserPreferences(JSON.stringify({ favoriteModels: null }))).toMatchObject({
+			favoriteModels: [],
+		});
 	});
 
 	it('de-dupes favoriteModels while preserving first-occurrence order', () => {
 		expect(
-			parseUserPreferences(
-				JSON.stringify({ favoriteModels: ['a', 'b', 'a', 'c', 'b'] })
-			)
+			parseUserPreferences(JSON.stringify({ favoriteModels: ['a', 'b', 'a', 'c', 'b'] })),
 		).toMatchObject({ favoriteModels: ['a', 'b', 'c'] });
 	});
 
@@ -142,13 +134,13 @@ describe('parseUserPreferences', () => {
 				JSON.stringify({
 					notificationsEnabled: true,
 					notificationsShowContent: true,
-					notificationsForegroundToast: false
-				})
-			)
+					notificationsForegroundToast: false,
+				}),
+			),
 		).toMatchObject({
 			notificationsEnabled: true,
 			notificationsShowContent: true,
-			notificationsForegroundToast: false
+			notificationsForegroundToast: false,
 		});
 		// Non-boolean values fall back to defaults.
 		expect(
@@ -156,13 +148,13 @@ describe('parseUserPreferences', () => {
 				JSON.stringify({
 					notificationsEnabled: 'yes',
 					notificationsShowContent: 1,
-					notificationsForegroundToast: null
-				})
-			)
+					notificationsForegroundToast: null,
+				}),
+			),
 		).toMatchObject({
 			notificationsEnabled: false,
 			notificationsShowContent: false,
-			notificationsForegroundToast: true
+			notificationsForegroundToast: true,
 		});
 	});
 });
@@ -183,14 +175,14 @@ describe('getUserPreferences', () => {
 			name: 'Chris',
 			aboutYou: 'software engineer',
 			customInstructions: 'be concise',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 		expect(getUserPreferences(u.id)).toEqual({
 			...EMPTY_PREFS,
 			name: 'Chris',
 			aboutYou: 'software engineer',
 			customInstructions: 'be concise',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 	});
 });
@@ -201,7 +193,7 @@ describe('setUserPreferences', () => {
 		setUserPreferences(u.id, {
 			name: 'Chris',
 			aboutYou: 'engineer',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 		// Update only the name — other fields preserved.
 		setUserPreferences(u.id, { name: 'C' });
@@ -209,7 +201,7 @@ describe('setUserPreferences', () => {
 			...EMPTY_PREFS,
 			name: 'C',
 			aboutYou: 'engineer',
-			enterBehavior: 'newline'
+			enterBehavior: 'newline',
 		});
 	});
 
@@ -243,7 +235,7 @@ describe('setUserPreferences', () => {
 			'notificationsShowContent',
 			'showGreeting',
 			'theme',
-			'trustedMcpTools'
+			'trustedMcpTools',
 		]);
 	});
 
@@ -252,7 +244,7 @@ describe('setUserPreferences', () => {
 		const next = setUserPreferences(u.id, { name: 'Chris' });
 		expect(next).toEqual({
 			...EMPTY_PREFS,
-			name: 'Chris'
+			name: 'Chris',
 		});
 	});
 
@@ -261,29 +253,26 @@ describe('setUserPreferences', () => {
 		setUserPreferences(u.id, {
 			notificationsEnabled: true,
 			notificationsShowContent: true,
-			notificationsForegroundToast: false
+			notificationsForegroundToast: false,
 		});
 		expect(getUserPreferences(u.id)).toMatchObject({
 			notificationsEnabled: true,
 			notificationsShowContent: true,
-			notificationsForegroundToast: false
+			notificationsForegroundToast: false,
 		});
 		// Partial update leaves other notification fields alone.
 		setUserPreferences(u.id, { notificationsShowContent: false });
 		expect(getUserPreferences(u.id)).toMatchObject({
 			notificationsEnabled: true,
 			notificationsShowContent: false,
-			notificationsForegroundToast: false
+			notificationsForegroundToast: false,
 		});
 	});
 
 	it('persists favoriteModels and accepts an empty array as a valid clear', () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { favoriteModels: ['openai::gpt-4', 'custom::abc'] });
-		expect(getUserPreferences(u.id)?.favoriteModels).toEqual([
-			'openai::gpt-4',
-			'custom::abc'
-		]);
+		expect(getUserPreferences(u.id)?.favoriteModels).toEqual(['openai::gpt-4', 'custom::abc']);
 		setUserPreferences(u.id, { favoriteModels: [] });
 		expect(getUserPreferences(u.id)?.favoriteModels).toEqual([]);
 	});
@@ -303,20 +292,18 @@ describe('setUserPreferences', () => {
 		// underlying read-modify-write round-trips cleanly.
 		const u = seedUser();
 		setUserPreferences(u.id, {
-			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__list_directory']
+			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__list_directory'],
 		});
 		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
 			'mcp__fs__read_file',
-			'mcp__fs__list_directory'
+			'mcp__fs__list_directory',
 		]);
 		// Revoke: filter out the targeted one + write back. Mirrors the
 		// DELETE handler's array splice.
 		setUserPreferences(u.id, {
-			trustedMcpTools: ['mcp__fs__list_directory']
+			trustedMcpTools: ['mcp__fs__list_directory'],
 		});
-		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
-			'mcp__fs__list_directory'
-		]);
+		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual(['mcp__fs__list_directory']);
 		// Empty array is a valid clear (last revoke).
 		setUserPreferences(u.id, { trustedMcpTools: [] });
 		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([]);
@@ -329,11 +316,11 @@ describe('setUserPreferences', () => {
 		// de-dupe runs on every write.
 		const u = seedUser();
 		setUserPreferences(u.id, {
-			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__read_file', 'mcp__linear__create_issue']
+			trustedMcpTools: ['mcp__fs__read_file', 'mcp__fs__read_file', 'mcp__linear__create_issue'],
 		});
 		expect(getUserPreferences(u.id)?.trustedMcpTools).toEqual([
 			'mcp__fs__read_file',
-			'mcp__linear__create_issue'
+			'mcp__linear__create_issue',
 		]);
 	});
 });
@@ -357,7 +344,7 @@ describe('composePersonaSystemPrompt', () => {
 			...EMPTY_PREFS,
 			name: '   ',
 			aboutYou: 'real content',
-			customInstructions: '\n\n'
+			customInstructions: '\n\n',
 		});
 		expect(out).not.toContain('name is');
 		expect(out).toContain('About the user');
@@ -369,7 +356,7 @@ describe('composePersonaSystemPrompt', () => {
 			...EMPTY_PREFS,
 			name: 'Chris',
 			aboutYou: 'software engineer',
-			customInstructions: 'be concise'
+			customInstructions: 'be concise',
 		});
 		expect(out).toContain("user's name is Chris");
 		expect(out).toContain('About the user:\nsoftware engineer');
@@ -383,7 +370,7 @@ describe('composePersonaSystemPrompt', () => {
 			...EMPTY_PREFS,
 			name: 'A',
 			aboutYou: 'B',
-			customInstructions: 'C'
+			customInstructions: 'C',
 		});
 		const nameIdx = out!.indexOf('A');
 		const aboutIdx = out!.indexOf('B');
@@ -393,13 +380,10 @@ describe('composePersonaSystemPrompt', () => {
 	});
 
 	it('appends a Saved memories section after the persona fields', () => {
-		const out = composePersonaSystemPrompt(
-			{ ...EMPTY_PREFS, name: 'Chris' },
-			[
-				{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
-				{ id: 'm2', content: 'works as a backend engineer', createdAt: 1, updatedAt: 1 }
-			]
-		)!;
+		const out = composePersonaSystemPrompt({ ...EMPTY_PREFS, name: 'Chris' }, [
+			{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
+			{ id: 'm2', content: 'works as a backend engineer', createdAt: 1, updatedAt: 1 },
+		])!;
 		expect(out).toContain("user's name is Chris");
 		expect(out).toContain('Saved memories');
 		expect(out).toContain('[m1] prefers metric units');
@@ -412,7 +396,7 @@ describe('composePersonaSystemPrompt', () => {
 		// A user with no preferences set but with saved memories should still
 		// get a prompt — the memory section is independently sufficient.
 		const out = composePersonaSystemPrompt(EMPTY_PREFS, [
-			{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 }
+			{ id: 'm1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
 		])!;
 		expect(out).toContain('Saved memories');
 		expect(out).toContain('[m1] prefers metric units');

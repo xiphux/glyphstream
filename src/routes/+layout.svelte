@@ -31,7 +31,7 @@
 				immediate: true,
 				onNeedRefresh() {
 					updateAvailable = true;
-				}
+				},
 				// onOfflineReady intentionally omitted — we don't want a
 				// "ready offline" toast on the very first SW install; the
 				// app already works fine before then.
@@ -61,7 +61,7 @@
 					// routes, so we answer over the port the SW handed us.
 					ev.ports[0]?.postMessage({
 						conversationId: page.params.id ?? null,
-						visible: document.visibilityState === 'visible'
+						visible: document.visibilityState === 'visible',
 					} satisfies ActiveConversationReport);
 					return;
 				}
@@ -69,7 +69,7 @@
 					const { conversationId, conversationTitle } = data.payload;
 					toast.info(conversationTitle, {
 						action: { label: 'Open', handler: () => goto(`/chat/${conversationId}`) },
-						duration: 6000
+						duration: 6000,
 					});
 				} else if (data.kind === 'navigate_to_conversation') {
 					void goto(`/chat/${data.conversationId}`);

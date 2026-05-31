@@ -41,7 +41,7 @@
 		openingLightboxFor = null,
 		approvalDecisions,
 		approvalBusy = false,
-		onApprovalSelect
+		onApprovalSelect,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -49,7 +49,7 @@
 			? userLabel
 			: message.role === 'assistant'
 				? assistantLabel
-				: message.role
+				: message.role,
 	);
 </script>
 
@@ -62,7 +62,7 @@
 				? 'bg-surface-raised'
 				: 'bg-amber-50 dark:bg-amber-950/40',
 		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
-		mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3'
+		mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3',
 	]}
 >
 	{#if !mergeWithPrev}

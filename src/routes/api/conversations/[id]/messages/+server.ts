@@ -5,7 +5,7 @@ import { parseJsonBody } from '$lib/server/http';
 import {
 	getConversationMeta,
 	setConversationTitle,
-	updateConversationModel
+	updateConversationModel,
 } from '$lib/server/db/queries/conversations';
 import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import {
@@ -14,7 +14,7 @@ import {
 	getMessage,
 	resolveParentForUserMessage,
 	setActiveLeafMessageId,
-	walkActiveBranch
+	walkActiveBranch,
 } from '$lib/server/db/queries/messages';
 import {
 	chatCompletionSync,
@@ -23,7 +23,7 @@ import {
 	imageGeneration,
 	UpstreamError,
 	type ChatCompletionRequest,
-	type ImageEditInputFile
+	type ImageEditInputFile,
 } from '$lib/server/endpoints/client';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { listAllModels } from '$lib/server/endpoints/list-models';
@@ -33,7 +33,7 @@ import { openaiToolDefinitions } from '$lib/server/tools';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	composePersonaSystemPrompt,
-	getUserPreferences
+	getUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { logLevel } from '$lib/server/env';
@@ -54,7 +54,7 @@ import type {
 	ChatMessage,
 	MessagePart,
 	SendMessageRequest,
-	SendMessageResponse
+	SendMessageResponse,
 } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
@@ -97,7 +97,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		updateConversationModel(params.id, locals.user.id, {
 			endpointId: newParsed.endpointId,
 			modelId: body.modelId,
-			modelKind: newKind
+			modelKind: newKind,
 		});
 		meta.endpointId = newParsed.endpointId;
 		meta.modelId = body.modelId;
@@ -114,7 +114,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	if (!parsed || !getEndpoint(parsed.endpointId)) {
 		throw error(
 			400,
-			'This conversation has no valid model. Pick one from the model picker before sending.'
+			'This conversation has no valid model. Pick one from the model picker before sending.',
 		);
 	}
 	const endpoint = getEndpoint(parsed.endpointId)!;
@@ -174,13 +174,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			conversationId: params.id,
 			activeLeafMessageId: meta.activeLeafMessageId ?? null,
 			editedMessageId: body.editedMessageId,
-			parentMessageId: body.parentMessageId
+			parentMessageId: body.parentMessageId,
 		});
 		if (!resolved.ok) {
 			const field =
-				resolved.reason === 'edited-message-not-found'
-					? 'editedMessageId'
-					: 'parentMessageId';
+				resolved.reason === 'edited-message-not-found' ? 'editedMessageId' : 'parentMessageId';
 			throw error(400, `${field} "${resolved.id}" not found`);
 		}
 		const parentForMessage = resolved.parentMessageId;
@@ -199,7 +197,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			conversationId: params.id,
 			parentMessageId: parentForMessage,
 			role: 'user',
-			parts: userParts
+			parts: userParts,
 		});
 		for (const mid of attachedMediaIds) {
 			linkMessageMedia(userMessage.id, mid);
@@ -213,7 +211,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
 	if (DEBUG) {
 		console.debug(
-			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}${isRetry ? ' retry=1' : ''}`
+			`[messages] dispatch conversation=${params.id} modelKind=${meta.modelKind} modelId=${meta.modelId} stream=${url.searchParams.get('stream') === '1'}${isRetry ? ' retry=1' : ''}`,
 		);
 	}
 
@@ -257,11 +255,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 					images.push({ bytes: loaded.bytes, contentType: loaded.contentType });
 				}
 				if (DEBUG) {
-					const summary = images
-						.map((i) => `${i.contentType}:${i.bytes.byteLength}B`)
-						.join(', ');
+					const summary = images.map((i) => `${i.contentType}:${i.bytes.byteLength}B`).join(', ');
 					console.debug(
-						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${promptText.slice(0, 60)}"`
+						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${promptText.slice(0, 60)}"`,
 					);
 				}
 				upstream = await imageEdit(
@@ -271,14 +267,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 						prompt: promptText,
 						images,
 						n: 1,
-						response_format: 'url'
+						response_format: 'url',
 					},
-					inFlight.controller.signal
+					inFlight.controller.signal,
 				);
 			} else {
 				if (DEBUG) {
 					console.debug(
-						`[messages] t2i generate → /images/generations: prompt="${promptText.slice(0, 60)}"`
+						`[messages] t2i generate → /images/generations: prompt="${promptText.slice(0, 60)}"`,
 					);
 				}
 				upstream = await imageGeneration(
@@ -287,9 +283,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 						model: parsed.upstreamId,
 						prompt: promptText,
 						n: 1,
-						response_format: 'url'
+						response_format: 'url',
 					},
-					inFlight.controller.signal
+					inFlight.controller.signal,
 				);
 			}
 			const result = upstream.data?.[0];
@@ -301,7 +297,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				endpoint,
 				sourceModel: meta.modelId,
 				prompt: promptText,
-				urlOrB64: { url: result.url, b64_json: result.b64_json }
+				urlOrB64: { url: result.url, b64_json: result.b64_json },
 			});
 			const assistantMessage = appendMessage({
 				conversationId: params.id,
@@ -309,7 +305,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				role: 'assistant',
 				parts: [{ type: 'image', mediaId }],
 				modelUsed: meta.modelId,
-				rawResponseJson: JSON.stringify(upstream)
+				rawResponseJson: JSON.stringify(upstream),
 			});
 			linkMessageMedia(assistantMessage.id, mediaId);
 			void notifyConversationComplete({
@@ -318,7 +314,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				assistantMessageId: assistantMessage.id,
 				conversationTitle: meta.title ?? 'New conversation',
 				previewText: '',
-				modality: 'image'
+				modality: 'image',
 			}).catch((e) => console.warn('[messages] image notify failed:', e));
 			// Race the title task against a bounded budget so a slow task
 			// model never delays the image response. Title gen has been
@@ -328,7 +324,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			const response: SendMessageResponse = {
 				userMessage: userMessage as ChatMessage,
 				assistantMessage: assistantMessage as ChatMessage,
-				...(title ? { title } : {})
+				...(title ? { title } : {}),
 			};
 			return json(response);
 		} catch (e) {
@@ -357,7 +353,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
 			if (DEBUG) {
 				console.debug(
-					`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${promptText.slice(0, 60)}"`
+					`[messages] i2v with input_reference: ${loaded.contentType}:${loaded.bytes.byteLength}B prompt="${promptText.slice(0, 60)}"`,
 				);
 			}
 		}
@@ -376,15 +372,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// the client SSE connection minutes before the polling loop
 			// finishes, and the chat page's recovery indicator depends on
 			// the slot staying populated until the generation truly ends.
-			onComplete: () => clearInFlight(params.id, inFlight)
+			onComplete: () => clearInFlight(params.id, inFlight),
 		});
 		return new Response(stream, {
 			headers: {
 				'Content-Type': 'text/event-stream',
 				'Cache-Control': 'no-cache, no-store, no-transform',
 				Connection: 'keep-alive',
-				'X-Accel-Buffering': 'no'
-			}
+				'X-Accel-Buffering': 'no',
+			},
 		});
 	}
 
@@ -418,12 +414,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const upstreamMessages = await serializeBranchForUpstream(
 		branch,
 		(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
-		effectiveSystemPrompt
+		effectiveSystemPrompt,
 	);
 
 	const requestBody: ChatCompletionRequest = {
 		model: parsed.upstreamId,
-		messages: upstreamMessages
+		messages: upstreamMessages,
 	};
 
 	// Splice in native tool-calling when the resolved model supports it.
@@ -433,7 +429,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// ModelEntry below.
 	const allModels = await listAllModels();
 	const modelEntry = allModels.find(
-		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId
+		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
 	);
 	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
 	// Block first request after a cold start until MCP discovery has
@@ -482,7 +478,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			const nextMessages = await serializeBranchForUpstream(
 				nextBranch,
 				(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
-				effectiveSystemPrompt
+				effectiveSystemPrompt,
 			);
 			return { ...requestBody, messages: nextMessages };
 		};
@@ -518,7 +514,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// models actually support tools. Endpoints without tools
 			// won't emit tool_calls anyway, but skipping the closure
 			// makes the single-iteration path explicit.
-			...(toolDefs.length > 0 ? { rebuildRequestBody } : {})
+			...(toolDefs.length > 0 ? { rebuildRequestBody } : {}),
 		});
 		return new Response(stream, {
 			headers: {
@@ -526,8 +522,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				'Cache-Control': 'no-cache, no-store, no-transform',
 				Connection: 'keep-alive',
 				// Defeat reverse-proxy buffering (Nginx/Caddy/CloudFront).
-				'X-Accel-Buffering': 'no'
-			}
+				'X-Accel-Buffering': 'no',
+			},
 		});
 	}
 
@@ -561,7 +557,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		modelUsed: meta.modelId,
 		tokensIn,
 		tokensOut,
-		rawResponseJson: JSON.stringify(upstream)
+		rawResponseJson: JSON.stringify(upstream),
 	});
 
 	// Title task: same shape as the image branch — fire now (after both
@@ -571,13 +567,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// generator's conditional UPDATE handles "already AI/user-titled."
 	const syncTitle = await raceTitle(
 		startTitleTaskIfFirstExchange(params.id),
-		TITLE_DELIVERY_BUDGET_MS
+		TITLE_DELIVERY_BUDGET_MS,
 	);
 
 	const response: SendMessageResponse = {
 		userMessage: userMessage as ChatMessage,
 		assistantMessage: assistantMessage as ChatMessage,
-		...(syncTitle ? { title: syncTitle } : {})
+		...(syncTitle ? { title: syncTitle } : {}),
 	};
 	return json(response);
 };

@@ -13,22 +13,22 @@ const mocks = vi.hoisted(() => ({
 		timeoutSeconds: number;
 		idleTimeoutSeconds: number;
 	}>,
-	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>()
+	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
 vi.mock('$lib/server/mcp/config', () => ({
-	loadMcpServers: () => mocks.servers
+	loadMcpServers: () => mocks.servers,
 }));
 
 vi.mock('$lib/server/mcp/client', () => ({
-	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args)
+	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 
 import {
 	initializeMcpServers,
 	listMcpServerStates,
 	getMcpServerTools,
-	resetMcpRegistryForTests
+	resetMcpRegistryForTests,
 } from '$lib/server/mcp/registry';
 
 interface FakeConn {
@@ -43,14 +43,14 @@ function fakeConnection(toolNames: string[]): FakeConn {
 	const closeListeners: Array<() => void> = [];
 	return {
 		listTools: vi.fn(async () =>
-			toolNames.map((name) => ({ name, description: '', inputSchema: { type: 'object' } }))
+			toolNames.map((name) => ({ name, description: '', inputSchema: { type: 'object' } })),
 		),
 		callTool: vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }], isError: false })),
 		close: vi.fn(async () => {}),
 		onClose: vi.fn((cb: () => void) => {
 			closeListeners.push(cb);
 		}),
-		closeListeners
+		closeListeners,
 	};
 }
 
@@ -74,7 +74,7 @@ describe('initializeMcpServers', () => {
 				args: [],
 				env: {},
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 900
+				idleTimeoutSeconds: 900,
 			},
 			{
 				id: 'linear',
@@ -83,8 +83,8 @@ describe('initializeMcpServers', () => {
 				url: 'https://x',
 				apiKey: null,
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 0
-			}
+				idleTimeoutSeconds: 0,
+			},
 		];
 		const fsConn = fakeConnection(['read_file', 'list_directory']);
 		const linearConn = fakeConnection(['create_issue']);
@@ -95,10 +95,7 @@ describe('initializeMcpServers', () => {
 
 		await initializeMcpServers();
 
-		expect(getMcpServerTools('fs').map((t) => t.name)).toEqual([
-			'read_file',
-			'list_directory'
-		]);
+		expect(getMcpServerTools('fs').map((t) => t.name)).toEqual(['read_file', 'list_directory']);
 		expect(getMcpServerTools('linear').map((t) => t.name)).toEqual(['create_issue']);
 		const states = listMcpServerStates();
 		expect(states.find((s) => s.id === 'fs')?.state).toBe('connected');
@@ -115,7 +112,7 @@ describe('initializeMcpServers', () => {
 				args: [],
 				env: {},
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 900
+				idleTimeoutSeconds: 900,
 			},
 			{
 				id: 'ok',
@@ -125,8 +122,8 @@ describe('initializeMcpServers', () => {
 				args: [],
 				env: {},
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 900
-			}
+				idleTimeoutSeconds: 900,
+			},
 		];
 		const okConn = fakeConnection(['read']);
 		mocks.connectImpl.mockImplementation(async (...args: unknown[]) => {
@@ -157,17 +154,13 @@ describe('initializeMcpServers', () => {
 				args: [],
 				env: {},
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 900
-			}
+				idleTimeoutSeconds: 900,
+			},
 		];
 		const conn = fakeConnection(['read']);
 		mocks.connectImpl.mockResolvedValue(conn);
 
-		await Promise.all([
-			initializeMcpServers(),
-			initializeMcpServers(),
-			initializeMcpServers()
-		]);
+		await Promise.all([initializeMcpServers(), initializeMcpServers(), initializeMcpServers()]);
 
 		expect(mocks.connectImpl).toHaveBeenCalledTimes(1);
 	});

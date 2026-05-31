@@ -24,15 +24,14 @@ function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 		isBusy: false,
 		addFiles: vi.fn(),
 		remove: vi.fn(),
-		...overrides
+		...overrides,
 	} as unknown as AttachmentStore;
 }
 
 // A minimal controls snippet: a submit button (to test form submit) plus a
 // marker so we can confirm the snippet renders into the action row.
 const controls = createRawSnippet(() => ({
-	render: () =>
-		`<button type="submit" aria-label="Stub send" data-testid="ctrl">go</button>`
+	render: () => `<button type="submit" aria-label="Stub send" data-testid="ctrl">go</button>`,
 }));
 
 function baseProps(overrides: Record<string, unknown> = {}) {
@@ -45,7 +44,7 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 		enterBehavior: 'send' as const,
 		onSubmit: vi.fn(),
 		controls,
-		...overrides
+		...overrides,
 	};
 }
 

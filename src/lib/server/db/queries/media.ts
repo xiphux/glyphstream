@@ -52,7 +52,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			// will sweep it after the grace period. linkMessageMedia clears
 			// this back to null when the file actually gets attached.
 			unreferencedSince: origin === 'uploaded' ? now : null,
-			hardDeletedAt: null
+			hardDeletedAt: null,
 		})
 		.run();
 	return { id };
@@ -71,7 +71,7 @@ export function linkMessageMedia(messageId: string, mediaId: string): void {
 			tx.update(media)
 				.set({
 					refCount: sql`${media.refCount} + 1`,
-					unreferencedSince: null
+					unreferencedSince: null,
 				})
 				.where(eq(media.id, mediaId))
 				.run();
@@ -82,7 +82,7 @@ export function linkMessageMedia(messageId: string, mediaId: string): void {
 /** Look up a media row owned by `userId` (returns null on not-found / ownership mismatch). */
 export function getMediaForUser(
 	mediaId: string,
-	userId: string
+	userId: string,
 ): {
 	id: string;
 	storagePath: string;
@@ -99,7 +99,7 @@ export function getMediaForUser(
 			contentType: media.contentType,
 			byteSize: media.byteSize,
 			kind: media.kind,
-			hardDeletedAt: media.hardDeletedAt
+			hardDeletedAt: media.hardDeletedAt,
 		})
 		.from(media)
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId)))
@@ -115,10 +115,7 @@ export function getMediaForUser(
  * when the row doesn't exist, is hard-deleted, or belongs to a
  * different user.
  */
-export function getMediaListItemForUser(
-	mediaId: string,
-	userId: string
-): MediaListItem | null {
+export function getMediaListItemForUser(mediaId: string, userId: string): MediaListItem | null {
 	const db = getDb();
 	const row = db
 		.select({
@@ -130,16 +127,10 @@ export function getMediaListItemForUser(
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
-			createdAt: media.createdAt
+			createdAt: media.createdAt,
 		})
 		.from(media)
-		.where(
-			and(
-				eq(media.id, mediaId),
-				eq(media.userId, userId),
-				isNull(media.hardDeletedAt)
-			)
-		)
+		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
 		.get();
 	return row ?? null;
 }
@@ -178,7 +169,7 @@ export interface MediaListResult {
  */
 export function listMediaForUser(
 	userId: string,
-	opts: { kind?: 'image' | 'video'; cursor?: string | null; limit?: number } = {}
+	opts: { kind?: 'image' | 'video'; cursor?: string | null; limit?: number } = {},
 ): MediaListResult {
 	const db = getDb();
 	const limit = Math.max(1, Math.min(opts.limit ?? 60, 200));
@@ -201,7 +192,7 @@ export function listMediaForUser(
 		// even though they live in the same table for ref-counting reasons.
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : undefined,
-		cursorWhere
+		cursorWhere,
 	].filter(Boolean) as Parameters<typeof and>[number][];
 
 	// Fetch limit+1 to detect whether there's another page.
@@ -215,7 +206,7 @@ export function listMediaForUser(
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
-			createdAt: media.createdAt
+			createdAt: media.createdAt,
 		})
 		.from(media)
 		.where(and(...conditions))
@@ -251,17 +242,14 @@ export interface MediaConversationRef {
  * isn't used anywhere" case — which is the right shape for the gallery
  * lightbox: 0-result is the cleanup signal we want to surface.
  */
-export function listConversationsForMedia(
-	mediaId: string,
-	userId: string
-): MediaConversationRef[] {
+export function listConversationsForMedia(mediaId: string, userId: string): MediaConversationRef[] {
 	const db = getDb();
 	return db
 		.selectDistinct({
 			id: conversations.id,
 			title: conversations.title,
 			updatedAt: conversations.updatedAt,
-			archivedAt: conversations.archivedAt
+			archivedAt: conversations.archivedAt,
 		})
 		.from(messageMedia)
 		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
@@ -286,7 +274,7 @@ export function listConversationsForMedia(
  */
 export function hardDeleteMediaForUser(
 	mediaId: string,
-	userId: string
+	userId: string,
 ): { storagePath: string } | null {
 	const db = getDb();
 	return db.transaction((tx) => {
@@ -322,7 +310,7 @@ export function hardDeleteMediaForUser(
  */
 export function bulkHardDeleteMediaForUser(
 	ids: readonly string[],
-	userId: string
+	userId: string,
 ): { id: string; storagePath: string }[] {
 	if (ids.length === 0) return [];
 	const db = getDb();
@@ -331,7 +319,11 @@ export function bulkHardDeleteMediaForUser(
 			.select({ id: media.id, storagePath: media.storagePath })
 			.from(media)
 			.where(
-				and(eq(media.userId, userId), inArray(media.id, ids as string[]), isNull(media.hardDeletedAt))
+				and(
+					eq(media.userId, userId),
+					inArray(media.id, ids as string[]),
+					isNull(media.hardDeletedAt),
+				),
 			)
 			.all();
 		if (rows.length === 0) return [];
@@ -377,7 +369,7 @@ export function collectOrphanGeneratedMediaIds(
 		refCount: number;
 		origin: 'generated' | 'uploaded';
 		hardDeletedAt: number | null;
-	}>
+	}>,
 ): Set<string> {
 	const localCount = new Map<string, number>();
 	const meta = new Map<
@@ -390,7 +382,7 @@ export function collectOrphanGeneratedMediaIds(
 			meta.set(r.mediaId, {
 				refCount: r.refCount,
 				origin: r.origin,
-				hardDeletedAt: r.hardDeletedAt
+				hardDeletedAt: r.hardDeletedAt,
 			});
 		}
 	}
@@ -418,7 +410,7 @@ export function collectOrphanGeneratedMediaIds(
  */
 export function countOrphanMediaInConversation(
 	conversationId: string,
-	userId: string
+	userId: string,
 ): ConversationOrphanCounts {
 	const db = getDb();
 	const rows = db
@@ -427,7 +419,7 @@ export function countOrphanMediaInConversation(
 			kind: media.kind,
 			refCount: media.refCount,
 			origin: media.origin,
-			hardDeletedAt: media.hardDeletedAt
+			hardDeletedAt: media.hardDeletedAt,
 		})
 		.from(messageMedia)
 		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
@@ -476,7 +468,7 @@ export function countOrphanMediaInConversation(
  */
 export function hardDeleteOrphanGeneratedMediaForMessages(
 	messageIds: string[],
-	userId: string
+	userId: string,
 ): Array<{ id: string; storagePath: string }> {
 	if (messageIds.length === 0) return [];
 
@@ -488,7 +480,7 @@ export function hardDeleteOrphanGeneratedMediaForMessages(
 				storagePath: media.storagePath,
 				refCount: media.refCount,
 				origin: media.origin,
-				hardDeletedAt: media.hardDeletedAt
+				hardDeletedAt: media.hardDeletedAt,
 			})
 			.from(messageMedia)
 			.innerJoin(media, eq(media.id, messageMedia.mediaId))
@@ -552,7 +544,7 @@ export function decrementMediaForMessages(messageIds: string[]): void {
 			tx.update(media)
 				.set({
 					refCount: sql`MAX(${media.refCount} - ${dec}, 0)`,
-					unreferencedSince: sql`CASE WHEN MAX(${media.refCount} - ${dec}, 0) = 0 THEN ${now} ELSE ${media.unreferencedSince} END`
+					unreferencedSince: sql`CASE WHEN MAX(${media.refCount} - ${dec}, 0) = 0 THEN ${now} ELSE ${media.unreferencedSince} END`,
 				})
 				.where(eq(media.id, mediaId))
 				.run();
@@ -598,8 +590,8 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 				isNull(media.hardDeletedAt),
 				isNotNull(media.unreferencedSince),
 				lte(media.unreferencedSince, olderThanMs),
-				eq(media.origin, 'uploaded')
-			)
+				eq(media.origin, 'uploaded'),
+			),
 		)
 		.orderBy(asc(media.unreferencedSince))
 		.limit(limit)
@@ -609,10 +601,7 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 /** Mark a media row hard-deleted (post file unlink). */
 export function markHardDeleted(mediaId: string): void {
 	const db = getDb();
-	db.update(media)
-		.set({ hardDeletedAt: Date.now() })
-		.where(eq(media.id, mediaId))
-		.run();
+	db.update(media).set({ hardDeletedAt: Date.now() }).where(eq(media.id, mediaId)).run();
 }
 
 /**
@@ -635,8 +624,8 @@ export function stampOrphanedZeroRefRows(): number {
 				isNull(media.hardDeletedAt),
 				isNull(media.unreferencedSince),
 				eq(media.refCount, 0),
-				eq(media.origin, 'uploaded')
-			)
+				eq(media.origin, 'uploaded'),
+			),
 		)
 		.run();
 	return r.changes;

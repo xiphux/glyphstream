@@ -11,7 +11,7 @@ const VALID_QUIRKS: readonly ProviderQuirk[] = [
 	'passthrough',
 	'deepseek-r1',
 	'openai-o-series',
-	'openrouter'
+	'openrouter',
 ];
 
 /**
@@ -99,7 +99,9 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 		return [];
 	}
 	if (!Array.isArray(endpointsRaw)) {
-		throw new ConfigError(`'endpoints' in ${absolutePath} must be an array of [[endpoints]] tables`);
+		throw new ConfigError(
+			`'endpoints' in ${absolutePath} must be an array of [[endpoints]] tables`,
+		);
 	}
 
 	const endpoints: LoadedEndpoint[] = [];
@@ -108,7 +110,7 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 		const ep = validateEndpoint(endpointsRaw[i] as RawEndpoint, i, absolutePath);
 		if (seenIds.has(ep.id)) {
 			throw new ConfigError(
-				`Duplicate endpoint id "${ep.id}" in ${absolutePath} — every endpoint must be unique`
+				`Duplicate endpoint id "${ep.id}" in ${absolutePath} — every endpoint must be unique`,
 			);
 		}
 		seenIds.add(ep.id);
@@ -137,16 +139,12 @@ export interface LoadedNotificationsConfig {
 	vapidSubject: string;
 }
 
-export function loadNotificationsConfig(
-	path = configPath()
-): LoadedNotificationsConfig | null {
+export function loadNotificationsConfig(path = configPath()): LoadedNotificationsConfig | null {
 	const { parsed, absolutePath } = readAndParse(path);
 	const raw = parsed.notifications;
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'object' || Array.isArray(raw)) {
-		throw new ConfigError(
-			`'[notifications]' in ${absolutePath} must be a TOML table`
-		);
+		throw new ConfigError(`'[notifications]' in ${absolutePath} must be a TOML table`);
 	}
 	const block = raw as Record<string, unknown>;
 	const at = `[notifications] in ${absolutePath}`;
@@ -155,7 +153,7 @@ export function loadNotificationsConfig(
 	const vapidSubject = requireString(block.vapid_subject, 'vapid_subject', at);
 	if (!/^mailto:.+@.+$/.test(vapidSubject) && !/^https?:\/\//.test(vapidSubject)) {
 		throw new ConfigError(
-			`${at}: vapid_subject "${vapidSubject}" must be a mailto: or http(s):// URL`
+			`${at}: vapid_subject "${vapidSubject}" must be a mailto: or http(s):// URL`,
 		);
 	}
 
@@ -163,7 +161,7 @@ export function loadNotificationsConfig(
 	const envValue = env[envName];
 	if (!envValue) {
 		throw new ConfigError(
-			`${at}: vapid_private_env="${envName}" but env var ${envName} is unset or empty`
+			`${at}: vapid_private_env="${envName}" but env var ${envName} is unset or empty`,
 		);
 	}
 
@@ -185,12 +183,12 @@ export function loadTaskModel(path = configPath()): string | null {
 	if (raw === undefined || raw === null) return null;
 	if (typeof raw !== 'string' || raw.length === 0) {
 		throw new ConfigError(
-			`'task_model' in ${absolutePath} must be a non-empty string of the form "endpoint_id::model_id"`
+			`'task_model' in ${absolutePath} must be a non-empty string of the form "endpoint_id::model_id"`,
 		);
 	}
 	if (parseModelId(raw) === null) {
 		throw new ConfigError(
-			`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`
+			`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`,
 		);
 	}
 	return raw;
@@ -239,7 +237,7 @@ export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new ConfigError(
-				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`
+				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
 		apiKey = envValue;
@@ -259,7 +257,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	const id = requireString(raw.id, 'id', at);
 	if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) {
 		throw new ConfigError(
-			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`
+			`${at}: id "${id}" must be 1-64 chars, lowercase alphanumeric or dash, starting with alphanumeric`,
 		);
 	}
 
@@ -280,7 +278,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		const envValue = env[envName];
 		if (!envValue) {
 			throw new ConfigError(
-				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`
+				`${at}: api_key_env="${envName}" but env var ${envName} is unset or empty`,
 			);
 		}
 		apiKey = envValue;
@@ -296,7 +294,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		const q = requireString(raw.provider_quirk, 'provider_quirk', at);
 		if (!(VALID_QUIRKS as readonly string[]).includes(q)) {
 			throw new ConfigError(
-				`${at}: provider_quirk "${q}" must be one of ${VALID_QUIRKS.join(', ')}`
+				`${at}: provider_quirk "${q}" must be one of ${VALID_QUIRKS.join(', ')}`,
 			);
 		}
 		providerQuirk = q as ProviderQuirk;
@@ -306,15 +304,15 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	if (raw.group_by !== undefined) {
 		const g = requireString(raw.group_by, 'group_by', at);
 		if (!(VALID_GROUPINGS as readonly string[]).includes(g)) {
-			throw new ConfigError(
-				`${at}: group_by "${g}" must be one of ${VALID_GROUPINGS.join(', ')}`
-			);
+			throw new ConfigError(`${at}: group_by "${g}" must be one of ${VALID_GROUPINGS.join(', ')}`);
 		}
 		groupBy = g as ProviderGrouping;
 	}
 
 	const supportsTools =
-		raw.supports_tools === undefined ? false : requireBoolean(raw.supports_tools, 'supports_tools', at);
+		raw.supports_tools === undefined
+			? false
+			: requireBoolean(raw.supports_tools, 'supports_tools', at);
 
 	return {
 		id,
@@ -324,7 +322,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		requestTimeoutSeconds,
 		providerQuirk,
 		groupBy,
-		supportsTools
+		supportsTools,
 	};
 }
 
@@ -346,7 +344,7 @@ function requireNumber(
 	v: unknown,
 	field: string,
 	at: string,
-	opts: { min?: number; max?: number } = {}
+	opts: { min?: number; max?: number } = {},
 ): number {
 	if (typeof v !== 'number' || !Number.isFinite(v)) {
 		throw new ConfigError(`${at}: '${field}' must be a number`);

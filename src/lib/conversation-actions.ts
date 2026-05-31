@@ -11,7 +11,7 @@ export async function setArchived(id: string, archived: boolean): Promise<void> 
 	const res = await fetch(`/api/conversations/${id}`, {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ archived })
+		body: JSON.stringify({ archived }),
 	});
 	if (!res.ok && res.status !== 404) {
 		throw new Error(`Server returned ${res.status}`);

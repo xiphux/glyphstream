@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -13,7 +13,7 @@ import {
 	deleteCustomModel,
 	getCustomModelForUser,
 	listCustomModelsForUser,
-	updateCustomModel
+	updateCustomModel,
 } from '$lib/server/db/queries/custom-models';
 import { createConversation, getConversationDetail } from '$lib/server/db/queries/conversations';
 
@@ -35,7 +35,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'gpt-4o',
 			systemPrompt: 'Be terse',
-			parameters: { temperature: 0.3 }
+			parameters: { temperature: 0.3 },
 		});
 		expect(cm.id).toBeTruthy();
 		expect(cm.name).toBe('Coding Bot');
@@ -52,7 +52,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'gpt-4o',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(getCustomModelForUser(cm.id, u1.id)?.name).toBe('X');
 		expect(getCustomModelForUser(cm.id, u2.id)).toBeNull();
@@ -68,7 +68,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		createCustomModel({
 			userId: u.id,
@@ -77,7 +77,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		createCustomModel({
 			userId: u2.id,
@@ -86,7 +86,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		const list = listCustomModelsForUser(u.id);
 		expect(list.map((c) => c.name)).toEqual(['Alpha', 'Bravo']);
@@ -101,11 +101,11 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'gpt-4o',
 			systemPrompt: 'orig prompt',
-			parameters: { temperature: 0.5 }
+			parameters: { temperature: 0.5 },
 		});
 		const updated = updateCustomModel(cm.id, u.id, {
 			name: 'Renamed',
-			parameters: { temperature: 0.9 }
+			parameters: { temperature: 0.9 },
 		});
 		expect(updated?.name).toBe('Renamed');
 		expect(updated?.description).toBe('orig desc'); // unchanged
@@ -122,11 +122,11 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'gpt-4o',
 			systemPrompt: 'remove me too',
-			parameters: { temperature: 0.5 }
+			parameters: { temperature: 0.5 },
 		});
 		const updated = updateCustomModel(cm.id, u.id, {
 			description: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(updated?.description).toBeNull();
 		expect(updated?.parameters).toBeNull();
@@ -142,7 +142,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(updateCustomModel(cm.id, u2.id, { name: 'hijack' })).toBeNull();
 		// Original is untouched.
@@ -158,7 +158,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(deleteCustomModel(cm.id, u.id)).toBe(true);
 		expect(getCustomModelForUser(cm.id, u.id)).toBeNull();
@@ -173,7 +173,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'gpt-4o',
 			systemPrompt: 'stay',
-			parameters: null
+			parameters: null,
 		});
 		const conv = createConversation({
 			userId: u.id,
@@ -181,7 +181,7 @@ describe('custom-models CRUD', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 			customModelId: cm.id,
-			systemPrompt: 'stay'
+			systemPrompt: 'stay',
 		});
 		deleteCustomModel(cm.id, u.id);
 
@@ -205,7 +205,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(deleteCustomModel(cm.id, u2.id)).toBe(false);
 	});
@@ -219,7 +219,7 @@ describe('custom-models CRUD', () => {
 			baseEndpointId: 'bridge',
 			baseModelId: 'x',
 			systemPrompt: null,
-			parameters: null
+			parameters: null,
 		});
 		expect(cm.defaultDisabledFeatures).toEqual([]);
 		// Round-trip through the DB — the read-back should match.
@@ -236,11 +236,11 @@ describe('custom-models CRUD', () => {
 			baseModelId: 'x',
 			systemPrompt: null,
 			parameters: null,
-			defaultDisabledFeatures: ['personalization']
+			defaultDisabledFeatures: ['personalization'],
 		});
 		expect(cm.defaultDisabledFeatures).toEqual(['personalization']);
 		expect(getCustomModelForUser(cm.id, u.id)?.defaultDisabledFeatures).toEqual([
-			'personalization'
+			'personalization',
 		]);
 	});
 
@@ -254,16 +254,16 @@ describe('custom-models CRUD', () => {
 			baseModelId: 'x',
 			systemPrompt: null,
 			parameters: null,
-			defaultDisabledFeatures: ['personalization']
+			defaultDisabledFeatures: ['personalization'],
 		});
 		// Change to a different category.
 		const updated = updateCustomModel(cm.id, u.id, {
-			defaultDisabledFeatures: ['web']
+			defaultDisabledFeatures: ['web'],
 		});
 		expect(updated?.defaultDisabledFeatures).toEqual(['web']);
 		// Clear back to the global default.
 		const cleared = updateCustomModel(cm.id, u.id, {
-			defaultDisabledFeatures: []
+			defaultDisabledFeatures: [],
 		});
 		expect(cleared?.defaultDisabledFeatures).toEqual([]);
 	});
@@ -278,7 +278,7 @@ describe('custom-models CRUD', () => {
 			baseModelId: 'x',
 			systemPrompt: null,
 			parameters: null,
-			defaultDisabledFeatures: ['personalization']
+			defaultDisabledFeatures: ['personalization'],
 		});
 		// Patch only the name — feature defaults should be preserved, not
 		// implicitly reset to [].

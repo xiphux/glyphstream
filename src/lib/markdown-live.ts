@@ -21,7 +21,7 @@ function getMd(): MarkdownIt {
 		html: false,
 		linkify: true,
 		typographer: false,
-		breaks: false
+		breaks: false,
 	});
 	const defaultLinkOpen =
 		md.renderer.rules.link_open ??

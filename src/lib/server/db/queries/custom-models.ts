@@ -38,7 +38,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		parameters: parseModelParameters(row.parametersJson),
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
 		createdAt: row.createdAt,
-		updatedAt: row.updatedAt
+		updatedAt: row.updatedAt,
 	};
 }
 
@@ -86,7 +86,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 			parametersJson: input.parameters ? JSON.stringify(input.parameters) : null,
 			defaultDisabledFeaturesJson: encodeDisabledFeatures(defaultDisabledFeatures),
 			createdAt: now,
-			updatedAt: now
+			updatedAt: now,
 		})
 		.run();
 	return {
@@ -99,7 +99,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		parameters: input.parameters,
 		defaultDisabledFeatures,
 		createdAt: now,
-		updatedAt: now
+		updatedAt: now,
 	};
 }
 
@@ -112,7 +112,7 @@ export function createCustomModel(input: CreateInput): CustomModel {
 export function updateCustomModel(
 	id: string,
 	userId: string,
-	input: UpdateInput
+	input: UpdateInput,
 ): CustomModel | null {
 	const db = getDb();
 	return db.transaction((tx) => {

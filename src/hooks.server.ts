@@ -54,9 +54,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		theme
 			? {
 					transformPageChunk: ({ html }) =>
-						html.replace('<html lang="en"', `<html lang="en" data-theme="${theme}"`)
+						html.replace('<html lang="en"', `<html lang="en" data-theme="${theme}"`),
 				}
-			: undefined
+			: undefined,
 	);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
@@ -78,9 +78,9 @@ export const handle: Handle = async ({ event, resolve }) => {
  */
 export const handleError: HandleServerError = ({ error, event, status }) => {
 	if (status < 500) return undefined;
-	const stack = error instanceof Error ? error.stack ?? error.message : String(error);
+	const stack = error instanceof Error ? (error.stack ?? error.message) : String(error);
 	console.error(
-		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`
+		`[server error] ${event.request.method} ${event.url.pathname} → ${status}:\n${stack}`,
 	);
 	return undefined;
 };

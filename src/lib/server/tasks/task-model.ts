@@ -60,7 +60,7 @@ export function getTaskModel(): ResolvedTaskModel | null {
 	const endpoint = getEndpoint(parsed.endpointId);
 	if (!endpoint) {
 		console.warn(
-			`[task-model] task_model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`
+			`[task-model] task_model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
 		);
 		cached = { resolved: null };
 		return null;

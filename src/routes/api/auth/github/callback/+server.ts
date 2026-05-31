@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 
 	if (!isAllowed(profile.id)) {
 		console.warn(
-			`[oauth/callback] Rejecting GitHub user "${profile.login}" (id=${profile.id}) — not in allowlist`
+			`[oauth/callback] Rejecting GitHub user "${profile.login}" (id=${profile.id}) — not in allowlist`,
 		);
 		loginError('not_authorized');
 	}
@@ -41,7 +41,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		githubUserId: profile.id,
 		githubUsername: profile.login,
 		email: profile.email,
-		displayName: profile.name
+		displayName: profile.name,
 	});
 
 	const { token, expiresAt } = createSession(userId);

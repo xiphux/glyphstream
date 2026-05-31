@@ -7,10 +7,7 @@
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
-	import {
-		GALLERY_LAUNCH_KEY,
-		type GalleryLaunchIntent
-	} from '$lib/gallery-launch';
+	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
@@ -27,11 +24,7 @@
 		greeting = timeOfDayGreeting(new Date());
 	});
 	const userFirstName = $derived(
-		preferredFirstName(
-			data.prefs?.name,
-			data.user.displayName,
-			data.user.githubUsername
-		)
+		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.githubUsername),
 	);
 
 	// Selection value mirrors what ModelPicker emits:
@@ -79,7 +72,7 @@
 				const cm = data.customModels.find((m) => m.id === cmId);
 				if (!cm) continue;
 				baseKind = data.models.find(
-					(m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`
+					(m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`,
 				)?.kind;
 			} else {
 				baseKind = data.models.find((m) => m.id === fav)?.kind;
@@ -133,7 +126,7 @@
 			? 'Describe an image to generate…'
 			: pickedKind === 'video'
 				? 'Describe a video to generate…'
-				: 'How can I help you today?'
+				: 'How can I help you today?',
 	);
 
 	let text = $state('');
@@ -216,11 +209,11 @@
 			const createBody: CreateConversationRequest = modelId.startsWith('custom::')
 				? {
 						customModelId: modelId.slice('custom::'.length),
-						modelKind: resolvedBase?.kind
+						modelKind: resolvedBase?.kind,
 					}
 				: {
 						modelId,
-						modelKind: resolvedBase?.kind
+						modelKind: resolvedBase?.kind,
 					};
 			if (disabledFeatures.length > 0) {
 				createBody.disabledFeatures = [...disabledFeatures];
@@ -228,7 +221,7 @@
 			const createRes = await fetch('/api/conversations', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(createBody)
+				body: JSON.stringify(createBody),
 			});
 			if (!createRes.ok) {
 				throw new Error(await errorMessageFromResponse(createRes));
@@ -246,8 +239,8 @@
 				pendingFirstMessageKey(conversation.id),
 				JSON.stringify({
 					text,
-					attachedMediaIds: attachments.readyMediaIds()
-				} satisfies PendingFirstMessage)
+					attachedMediaIds: attachments.readyMediaIds(),
+				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });
@@ -269,7 +262,9 @@
 			<img>) so its strokes use currentColor and adapt to dark mode.
 		-->
 		<div class="mb-6 flex flex-col items-center gap-4">
-			<div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border">
+			<div
+				class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border"
+			>
 				<svg
 					viewBox="0 0 32 32"
 					class="h-8 w-8 text-accent"
@@ -325,8 +320,7 @@
 					disabled={busy}
 					inline
 					favoritedIds={data.prefs?.favoriteModels ?? []}
-					onToggleFavorite={(id) =>
-						void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
 				/>
 				<button
 					type="submit"

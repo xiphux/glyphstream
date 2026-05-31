@@ -27,9 +27,7 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 	test('hidden→visible while busy doesn’t surface an error toast', async ({ page }) => {
 		const prompt = 'Visibility recovery hello';
 		await page.goto('/');
-		await expect(page.getByRole('button', { name: 'Select model' })).toContainText(
-			'Mock Chat'
-		);
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
 		await selectModel(page, /^Mock Chat Slow$/);
 		await page.locator('textarea').first().fill(prompt);
 		const send = page.getByRole('button', { name: 'Send message' });
@@ -42,7 +40,7 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 		// attached and `busy === true`.
 		await page.waitForURL(/\/chat\/[^/]+$/);
 		await expect(page.getByText('Thinking', { exact: false }).first()).toBeVisible({
-			timeout: 5_000
+			timeout: 5_000,
 		});
 
 		// Mid-stream: hide, then come back. Hidden flips
@@ -57,7 +55,7 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 		await page.evaluate(() => {
 			Object.defineProperty(document, 'visibilityState', {
 				configurable: true,
-				get: () => 'hidden'
+				get: () => 'hidden',
 			});
 			document.dispatchEvent(new Event('visibilitychange'));
 		});
@@ -65,7 +63,7 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 		await page.evaluate(() => {
 			Object.defineProperty(document, 'visibilityState', {
 				configurable: true,
-				get: () => 'visible'
+				get: () => 'visible',
 			});
 			document.dispatchEvent(new Event('visibilitychange'));
 		});
@@ -85,13 +83,11 @@ test.describe('event: visibilitychange recovery during in-flight stream', () => 
 test.describe('event: online/offline recovery during in-flight stream', () => {
 	test('offline→online mid-stream recovers without surfacing an error', async ({
 		page,
-		context
+		context,
 	}) => {
 		const prompt = 'Connectivity recovery hello';
 		await page.goto('/');
-		await expect(page.getByRole('button', { name: 'Select model' })).toContainText(
-			'Mock Chat'
-		);
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
 		await selectModel(page, /^Mock Chat Slow$/);
 		await page.locator('textarea').first().fill(prompt);
 		const send = page.getByRole('button', { name: 'Send message' });
@@ -100,7 +96,7 @@ test.describe('event: online/offline recovery during in-flight stream', () => {
 
 		await page.waitForURL(/\/chat\/[^/]+$/);
 		await expect(page.getByText('Thinking', { exact: false }).first()).toBeVisible({
-			timeout: 5_000
+			timeout: 5_000,
 		});
 
 		// Real offline: context.setOffline kills the in-flight SSE
@@ -143,7 +139,7 @@ test.describe('event: composer auto-resize after programmatic text-set', () => {
 			'$effect in ComposerCore.svelte is supposed to react to the bound',
 			'`text` change and call autoResizeTextarea(el) once the DOM has',
 			'flushed — without that, a programmatic set leaves the textarea',
-			'stuck at one row even though the content overflows.'
+			'stuck at one row even though the content overflows.',
 		].join('\n');
 
 		// Baseline: an empty composer's natural single-row height.
@@ -157,7 +153,7 @@ test.describe('event: composer auto-resize after programmatic text-set', () => {
 		await page.evaluate((prompt) => {
 			window.sessionStorage.setItem(
 				'glyphstream:galleryLaunch',
-				JSON.stringify({ kind: 'regenerate', prompt, sourceModelId: null })
+				JSON.stringify({ kind: 'regenerate', prompt, sourceModelId: null }),
 			);
 		}, longPrompt);
 		await page.goto('/');
@@ -178,7 +174,7 @@ test.describe('event: composer auto-resize after programmatic text-set', () => {
 
 test.describe('event: autoattach state machine on branch switches', () => {
 	test('editing the prompt re-points the auto-attached image at the new branch', async ({
-		page
+		page,
 	}) => {
 		// Image model: a successful generation lands an assistant image,
 		// and the auto-attach effect pre-fills the next-turn composer
@@ -221,9 +217,7 @@ test.describe('event: autoattach state machine on branch switches', () => {
 		// The auto-attached mediaId should have swapped to the new
 		// branch's image. Poll because the post-stream attach is a
 		// post-mount effect.
-		await expect
-			.poll(attachedMediaId, { timeout: 10_000 })
-			.not.toBe(branchAMediaId);
+		await expect.poll(attachedMediaId, { timeout: 10_000 }).not.toBe(branchAMediaId);
 		const branchBMediaId = await attachedMediaId();
 		expect(branchBMediaId).toBeTruthy();
 

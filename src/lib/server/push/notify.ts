@@ -18,7 +18,7 @@
 import type { NotifyModality, NotifyPushPayload } from '$lib/types/push';
 import {
 	deletePushSubscriptionsByEndpoints,
-	listPushSubscriptionsForUser
+	listPushSubscriptionsForUser,
 } from '../db/queries/push-subscriptions';
 import { getUserPreferences } from '../db/queries/user-preferences';
 import { truncateEllipsis } from '$lib/text';
@@ -84,7 +84,7 @@ function truncateTitle(title: string): string {
  *    the endpoint is gone).
  */
 export async function notifyConversationComplete(
-	input: NotifyConversationCompleteInput
+	input: NotifyConversationCompleteInput,
 ): Promise<void> {
 	const prefs = getUserPreferences(input.userId);
 	if (!prefs || !prefs.notificationsEnabled) return;
@@ -98,7 +98,7 @@ export async function notifyConversationComplete(
 		assistantMessageId: input.assistantMessageId,
 		conversationTitle: truncateTitle(input.conversationTitle),
 		modality: input.modality,
-		foregroundToast: prefs.notificationsForegroundToast
+		foregroundToast: prefs.notificationsForegroundToast,
 	};
 	if (prefs.notificationsShowContent) {
 		const preview = buildPreview(input.previewText);
@@ -111,19 +111,17 @@ export async function notifyConversationComplete(
 		subs.map(async (sub) => {
 			const webSub: WebPushSubscription = {
 				endpoint: sub.endpoint,
-				keys: { p256dh: sub.p256dh, auth: sub.auth }
+				keys: { p256dh: sub.p256dh, auth: sub.auth },
 			};
 			const result = await sendPushNotification(webSub, payloadJson);
 			if (!result.ok) {
 				if (result.statusCode === 404 || result.statusCode === 410) {
 					stale.push(sub.endpoint);
 				} else if (result.statusCode !== undefined) {
-					console.warn(
-						`[push] send failed status=${result.statusCode} endpoint=${sub.endpoint}`
-					);
+					console.warn(`[push] send failed status=${result.statusCode} endpoint=${sub.endpoint}`);
 				}
 			}
-		})
+		}),
 	);
 
 	if (stale.length > 0) deletePushSubscriptionsByEndpoints(stale);

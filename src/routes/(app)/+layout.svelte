@@ -38,7 +38,7 @@
 		Sparkles,
 		Trash2,
 		User as UserIcon,
-		Video as VideoIcon
+		Video as VideoIcon,
 	} from '@lucide/svelte';
 	import type { ModelKind } from '$lib/types/api';
 	import { tick } from 'svelte';
@@ -262,10 +262,7 @@
 		if (!dragged || !target || !position) return;
 		const current = data.prefs?.favoriteModels ?? [];
 		const newOrder = reorder(current, dragged, target, position);
-		if (
-			newOrder.length === current.length &&
-			newOrder.every((v, i) => v === current[i])
-		) {
+		if (newOrder.length === current.length && newOrder.every((v, i) => v === current[i])) {
 			return;
 		}
 		await reorderFavoriteModels(newOrder);
@@ -372,9 +369,7 @@
 	// during SSR there's no localStorage so we default to expanded and
 	// accept a brief width animation if the user had collapsed it.
 	const COLLAPSE_KEY = 'glyphstream:sidebarCollapsed';
-	let collapsed = $state(
-		browser ? localStorage.getItem(COLLAPSE_KEY) === '1' : false
-	);
+	let collapsed = $state(browser ? localStorage.getItem(COLLAPSE_KEY) === '1' : false);
 	$effect(() => {
 		if (browser) localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
 	});
@@ -428,17 +423,13 @@
 								await goto(`/chat/${id}`);
 							}
 						} catch (e) {
-							toast.error(
-								`Couldn't undo: ${e instanceof Error ? e.message : String(e)}`
-							);
+							toast.error(`Couldn't undo: ${e instanceof Error ? e.message : String(e)}`);
 						}
-					}
-				}
+					},
+				},
 			});
 		} catch (e) {
-			toast.error(
-				`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`
-			);
+			toast.error(`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			busyId = null;
 		}
@@ -473,9 +464,7 @@
 				await invalidateAll();
 			}
 		} catch (e) {
-			toast.error(
-				`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`
-			);
+			toast.error(`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
 			busyId = null;
 		}
@@ -526,16 +515,14 @@
 			const res = await fetch(`/api/conversations/${id}`, {
 				method: 'PATCH',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ title: next })
+				body: JSON.stringify({ title: next }),
 			});
 			if (!res.ok) {
 				throw new Error(await errorMessageFromResponse(res));
 			}
 			await invalidateAll();
 		} catch (e) {
-			toast.error(
-				`Couldn't rename conversation: ${e instanceof Error ? e.message : String(e)}`
-			);
+			toast.error(`Couldn't rename conversation: ${e instanceof Error ? e.message : String(e)}`);
 		}
 	}
 
@@ -619,7 +606,11 @@
 			 below the iOS status bar in PWA standalone mode (viewport-fit=cover
 			 + black-translucent status bar). Falls through to the default 1rem
 			 on desktop / Android / mobile Safari where the inset is 0. -->
-		<div class="flex items-center {collapsed ? 'justify-center' : 'justify-between'} px-3 pb-2 pt-[max(1rem,env(safe-area-inset-top))] sm:pl-4 sm:pt-4">
+		<div
+			class="flex items-center {collapsed
+				? 'justify-center'
+				: 'justify-between'} px-3 pb-2 pt-[max(1rem,env(safe-area-inset-top))] sm:pl-4 sm:pt-4"
+		>
 			{#if !collapsed}
 				<!-- Title + version pair. items-baseline so the smaller
 					 version aligns to GlyphStream's baseline rather than
@@ -653,9 +644,7 @@
 				href="/"
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {newChatPending
 					? 'bg-surface-sunken text-accent'
-					: 'hover:bg-surface-sunken/70'} {collapsed
-					? 'sm:justify-center sm:px-0'
-					: ''}"
+					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
 				title={collapsed ? 'New chat' : 'Start a new chat'}
 			>
 				<Plus size={16} strokeWidth={2.25} class="shrink-0" />
@@ -689,9 +678,7 @@
 				title={collapsed ? 'Gallery' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {galleryActive
 					? 'bg-surface-sunken text-accent'
-					: 'hover:bg-surface-sunken/70'} {collapsed
-					? 'sm:justify-center sm:px-0'
-					: ''}"
+					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
 			>
 				<Images size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>Gallery</span>{/if}
@@ -701,9 +688,7 @@
 				title={collapsed ? 'Custom models' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {customModelsActive
 					? 'bg-surface-sunken text-accent'
-					: 'hover:bg-surface-sunken/70'} {collapsed
-					? 'sm:justify-center sm:px-0'
-					: ''}"
+					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
 			>
 				<SlidersHorizontal size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>Custom models</span>{/if}
@@ -713,9 +698,7 @@
 				title={collapsed ? 'Archived' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {archivedActive
 					? 'bg-surface-sunken text-accent'
-					: 'hover:bg-surface-sunken/70'} {collapsed
-					? 'sm:justify-center sm:px-0'
-					: ''}"
+					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
 			>
 				<Archive size={16} strokeWidth={2.25} class="shrink-0" />
 				{#if !collapsed}<span>Archived</span>{/if}
@@ -746,17 +729,12 @@
 						Favorites
 					</h2>
 				{/if}
-				<ScrollPane
-					class="max-h-[30vh] px-2"
-					bind:scrollEl={favScrollEl}
-				>
+				<ScrollPane class="max-h-[30vh] px-2" bind:scrollEl={favScrollEl}>
 					<ul bind:this={dragListEl} class="space-y-0.5">
 						{#each favoriteEntries as fav (fav.value)}
 							{@const isDragging = draggingValue === fav.value}
-							{@const isDropBefore =
-								dropTargetValue === fav.value && dropPosition === 'before'}
-							{@const isDropAfter =
-								dropTargetValue === fav.value && dropPosition === 'after'}
+							{@const isDropBefore = dropTargetValue === fav.value && dropPosition === 'before'}
+							{@const isDropAfter = dropTargetValue === fav.value && dropPosition === 'after'}
 							<li
 								data-value={fav.value}
 								draggable="true"
@@ -820,98 +798,95 @@
 			{#if data.conversations.length === 0}
 				<p class="px-5 py-2 text-xs text-fg-muted">No conversations yet.</p>
 			{:else}
-				<ScrollPane
-					class="min-h-0 flex-1 px-2"
-					bind:scrollEl={recentsScrollEl}
-				>
+				<ScrollPane class="min-h-0 flex-1 px-2" bind:scrollEl={recentsScrollEl}>
 					<ul class="space-y-0.5">
-					{#each data.conversations as c (c.id)}
-						{@const href = `/chat/${c.id}`}
-						{@const active = currentPath === href || pendingPath === href}
-						{@const isRenaming = renamingId === c.id}
-						<li class="group relative">
-							{#if isRenaming}
-								<!--
+						{#each data.conversations as c (c.id)}
+							{@const href = `/chat/${c.id}`}
+							{@const active = currentPath === href || pendingPath === href}
+							{@const isRenaming = renamingId === c.id}
+							<li class="group relative">
+								{#if isRenaming}
+									<!--
 									Inline-edit affordance. We swap the anchor for
 									an input bound to renameDraft; Enter commits,
 									Esc cancels, blur-without-change cancels.
 									Same padding/typography as the anchor so the
 									row doesn't reflow when entering edit mode.
 								-->
-								<input
-									type="text"
-									bind:this={renameInputEl}
-									bind:value={renameDraft}
-									onkeydown={onRenameKey}
-									onblur={commitRename}
-									maxlength={MAX_CONVERSATION_TITLE_LENGTH}
-									aria-label="Rename conversation"
-									class="block w-full rounded-md border border-border-strong bg-surface-panel py-2 pl-3 pr-3 text-sm focus:border-border-focus focus:outline-none"
-								/>
-							{:else}
-								<a
-									{href}
-									class="flex items-center gap-1.5 rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-surface-sunken {active
-										? 'bg-surface-sunken text-accent'
-										: 'hover:bg-surface-sunken/70'}"
-								>
-									{#if isTitlePending(c.id)}
-										<!-- Subtle spinner while the background auto-title
+									<input
+										type="text"
+										bind:this={renameInputEl}
+										bind:value={renameDraft}
+										onkeydown={onRenameKey}
+										onblur={commitRename}
+										maxlength={MAX_CONVERSATION_TITLE_LENGTH}
+										aria-label="Rename conversation"
+										class="block w-full rounded-md border border-border-strong bg-surface-panel py-2 pl-3 pr-3 text-sm focus:border-border-focus focus:outline-none"
+									/>
+								{:else}
+									<a
+										{href}
+										class="flex items-center gap-1.5 rounded-md py-2 pl-3 pr-8 text-sm transition active:bg-surface-sunken {active
+											? 'bg-surface-sunken text-accent'
+											: 'hover:bg-surface-sunken/70'}"
+									>
+										{#if isTitlePending(c.id)}
+											<!-- Subtle spinner while the background auto-title
 											 task is still generating this conversation's
 											 title (see $lib/title-pending). -->
-										<span
-											class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
-											aria-hidden="true"
-											title="Generating title…"
-										></span>
-									{/if}
-									<span class="min-w-0 truncate">{c.title ?? 'Untitled'}</span>
-								</a>
-								<DropdownMenu.Root
-									open={openOverflowFor === c.id}
-									onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
-								>
-									<DropdownMenu.Trigger
-										disabled={busyId === c.id}
-										title="Conversation options"
-										aria-label="Options for conversation {c.title ?? 'Untitled'}"
-										class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
+											<span
+												class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
+												aria-hidden="true"
+												title="Generating title…"
+											></span>
+										{/if}
+										<span class="min-w-0 truncate">{c.title ?? 'Untitled'}</span>
+									</a>
+									<DropdownMenu.Root
+										open={openOverflowFor === c.id}
+										onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
 									>
-										<MoreVertical size={14} strokeWidth={2.25} />
-									</DropdownMenu.Trigger>
-									<DropdownMenu.Portal>
-										<DropdownMenu.Content
-											sideOffset={4}
-											align="end"
-											class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
+										<DropdownMenu.Trigger
+											disabled={busyId === c.id}
+											title="Conversation options"
+											aria-label="Options for conversation {c.title ?? 'Untitled'}"
+											class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
 										>
-											<DropdownMenu.Item
-												onSelect={() => startRename(c.id, c.title)}
-												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+											<MoreVertical size={14} strokeWidth={2.25} />
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Portal>
+											<DropdownMenu.Content
+												sideOffset={4}
+												align="end"
+												class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 											>
-												<Pencil size={14} strokeWidth={2.25} />
-												<span>Rename</span>
-											</DropdownMenu.Item>
-											<DropdownMenu.Item
-												onSelect={() => archiveConversation(c.id)}
-												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-											>
-												<Archive size={14} strokeWidth={2.25} />
-												<span>Archive</span>
-											</DropdownMenu.Item>
-											<DropdownMenu.Item
-												onSelect={() => requestDelete(c.id)}
-												class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
-											>
-												<Trash2 size={14} strokeWidth={2.25} />
-												<span>Delete</span>
-											</DropdownMenu.Item>
-										</DropdownMenu.Content>
-									</DropdownMenu.Portal>
-								</DropdownMenu.Root>
-							{/if}
-						</li>
-					{/each}
+												<DropdownMenu.Item
+													onSelect={() => startRename(c.id, c.title)}
+													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+												>
+													<Pencil size={14} strokeWidth={2.25} />
+													<span>Rename</span>
+												</DropdownMenu.Item>
+												<DropdownMenu.Item
+													onSelect={() => archiveConversation(c.id)}
+													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+												>
+													<Archive size={14} strokeWidth={2.25} />
+													<span>Archive</span>
+												</DropdownMenu.Item>
+												<DropdownMenu.Item
+													onSelect={() => requestDelete(c.id)}
+													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
+												>
+													<Trash2 size={14} strokeWidth={2.25} />
+													<span>Delete</span>
+												</DropdownMenu.Item>
+											</DropdownMenu.Content>
+										</DropdownMenu.Portal>
+									</DropdownMenu.Root>
+								{/if}
+							</li>
+						{/each}
 					</ul>
 				</ScrollPane>
 			{/if}
@@ -1010,7 +985,9 @@
 			 PWA standalone doesn't overlap the tap target. sm:hidden so this
 			 entire row only renders on mobile — desktop has the static
 			 sidebar always visible. -->
-		<div class="flex shrink-0 items-center gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden">
+		<div
+			class="flex shrink-0 items-center gap-2 px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:hidden"
+		>
 			<button
 				type="button"
 				onclick={() => (drawerOpen = true)}

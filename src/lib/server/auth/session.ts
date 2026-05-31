@@ -59,7 +59,7 @@ export function validateSessionToken(token: string): AuthContext | null {
 		.select({
 			sessionId: sessions.id,
 			expiresAt: sessions.expiresAt,
-			user: users
+			user: users,
 		})
 		.from(sessions)
 		.innerJoin(users, eq(sessions.userId, users.id))
@@ -87,8 +87,8 @@ export function validateSessionToken(token: string): AuthContext | null {
 			githubUserId: row.user.githubUserId,
 			githubUsername: row.user.githubUsername,
 			displayName: row.user.displayName,
-			email: row.user.email
-		}
+			email: row.user.email,
+		},
 	};
 }
 
@@ -105,7 +105,7 @@ export function setSessionCookie(cookies: Cookies, token: string, expiresAt: num
 		httpOnly: true,
 		sameSite: 'lax',
 		secure: process.env.NODE_ENV === 'production',
-		expires: new Date(expiresAt)
+		expires: new Date(expiresAt),
 	});
 }
 

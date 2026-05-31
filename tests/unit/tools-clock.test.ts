@@ -18,7 +18,7 @@ describe('get_current_time', () => {
 		expect(clockTool.definition.function.parameters).toMatchObject({
 			type: 'object',
 			properties: { timezone: { type: 'string' } },
-			additionalProperties: false
+			additionalProperties: false,
 		});
 	});
 

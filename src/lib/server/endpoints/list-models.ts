@@ -73,7 +73,9 @@ export async function listAllModelsWithErrors(): Promise<EndpointResult[]> {
 	return Promise.all(endpoints.map((endpoint) => getOrFetch(endpoint)));
 }
 
-async function getOrFetch(endpoint: ReturnType<typeof listEndpoints>[number]): Promise<EndpointResult> {
+async function getOrFetch(
+	endpoint: ReturnType<typeof listEndpoints>[number],
+): Promise<EndpointResult> {
 	const now = Date.now();
 	const cached = cache.get(endpoint.id);
 
@@ -93,7 +95,9 @@ async function getOrFetch(endpoint: ReturnType<typeof listEndpoints>[number]): P
 	return { endpointId: endpoint.id, models: entry.models, error: entry.error };
 }
 
-function refreshInBackground(endpoint: ReturnType<typeof listEndpoints>[number]): Promise<CacheEntry> {
+function refreshInBackground(
+	endpoint: ReturnType<typeof listEndpoints>[number],
+): Promise<CacheEntry> {
 	const pending = inFlight.get(endpoint.id);
 	if (pending) return pending;
 
@@ -104,7 +108,7 @@ function refreshInBackground(endpoint: ReturnType<typeof listEndpoints>[number])
 			const entry: CacheEntry = {
 				models,
 				expiresAt: Date.now() + CACHE_TTL_MS,
-				error: null
+				error: null,
 			};
 			cache.set(endpoint.id, entry);
 			return entry;
@@ -124,7 +128,7 @@ function refreshInBackground(endpoint: ReturnType<typeof listEndpoints>[number])
 			const entry: CacheEntry = {
 				models: prior?.models ?? [],
 				expiresAt: Date.now() + CACHE_TTL_MS,
-				error: msg
+				error: msg,
 			};
 			cache.set(endpoint.id, entry);
 			return entry;

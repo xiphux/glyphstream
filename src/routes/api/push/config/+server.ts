@@ -21,6 +21,6 @@ export const GET: RequestHandler = ({ locals }) => {
 	const vapidPublicKey = getVapidPublicKey();
 	return json({
 		enabled: vapidPublicKey !== null,
-		vapidPublicKey
+		vapidPublicKey,
 	});
 };

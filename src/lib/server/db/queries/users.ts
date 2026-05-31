@@ -31,7 +31,7 @@ export function upsertUserByGithub(input: UpsertUserInput): string {
 				githubUsername: input.githubUsername,
 				email: input.email,
 				displayName: input.displayName,
-				lastLoginAt: now
+				lastLoginAt: now,
 			})
 			.where(eq(users.id, existing.id))
 			.run();
@@ -47,7 +47,7 @@ export function upsertUserByGithub(input: UpsertUserInput): string {
 			email: input.email,
 			displayName: input.displayName,
 			createdAt: now,
-			lastLoginAt: now
+			lastLoginAt: now,
 		})
 		.run();
 	return id;

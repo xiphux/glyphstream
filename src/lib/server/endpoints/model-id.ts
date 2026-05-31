@@ -17,14 +17,12 @@
  * malformed input — no `::` separator, an empty endpoint id, or an empty
  * upstream id.
  */
-export function parseModelId(
-	modelId: string
-): { endpointId: string; upstreamId: string } | null {
+export function parseModelId(modelId: string): { endpointId: string; upstreamId: string } | null {
 	const idx = modelId.indexOf('::');
 	if (idx <= 0 || idx === modelId.length - 2) return null;
 	return {
 		endpointId: modelId.slice(0, idx),
-		upstreamId: modelId.slice(idx + 2)
+		upstreamId: modelId.slice(idx + 2),
 	};
 }
 

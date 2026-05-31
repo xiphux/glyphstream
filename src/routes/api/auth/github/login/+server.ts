@@ -13,7 +13,7 @@ export const GET: RequestHandler = ({ cookies }) => {
 		httpOnly: true,
 		sameSite: 'lax',
 		secure: process.env.NODE_ENV === 'production',
-		maxAge: STATE_TTL_SECONDS
+		maxAge: STATE_TTL_SECONDS,
 	});
 
 	throw redirect(302, url.toString());

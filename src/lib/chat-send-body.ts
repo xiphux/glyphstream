@@ -78,7 +78,7 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 		return {
 			regenerateFromMessageId: opts.retryFromMessageId,
 			modelId: input.modelId,
-			modelKind: input.modelKind
+			modelKind: input.modelKind,
 		};
 	}
 
@@ -88,6 +88,6 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 		modelId: input.modelId,
 		modelKind: input.modelKind,
 		...(opts.editedMessageId ? { editedMessageId: opts.editedMessageId } : {}),
-		...(opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {})
+		...(opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
 	};
 }

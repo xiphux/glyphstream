@@ -5,14 +5,14 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import { buildFtsQuery, searchConversations } from '$lib/server/db/queries/search';
 import {
 	createConversation,
 	deleteConversation,
-	renameConversation
+	renameConversation,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 
@@ -30,7 +30,7 @@ function newConv(userId: string, title?: string) {
 		endpointId: 'bridge',
 		modelId: 'bridge::x',
 		modelKind: 'chat',
-		title: title ?? null
+		title: title ?? null,
 	});
 }
 
@@ -39,7 +39,7 @@ function userText(convId: string, text: string, parent: string | null = null) {
 		conversationId: convId,
 		parentMessageId: parent,
 		role: 'user',
-		parts: [{ type: 'text', text }]
+		parts: [{ type: 'text', text }],
 	});
 }
 
@@ -196,7 +196,7 @@ describe('searchConversations', () => {
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'image', mediaId: 'fake-media-id' }]
+			parts: [{ type: 'image', mediaId: 'fake-media-id' }],
 		});
 		// An image-only message indexes the empty string — searching for
 		// anything content-bearing should yield no results from it.

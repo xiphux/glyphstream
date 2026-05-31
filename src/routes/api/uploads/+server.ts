@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		if (/body.*too.*large|413|exceeded/i.test(msg)) {
 			throw error(
 				413,
-				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.'
+				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
 			);
 		}
 		throw error(400, 'Body must be multipart/form-data');
@@ -63,10 +63,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	if (file.size > MAX_UPLOAD_BYTES) {
-		throw error(
-			413,
-			`File too large (${file.size} bytes; max ${MAX_UPLOAD_BYTES})`
-		);
+		throw error(413, `File too large (${file.size} bytes; max ${MAX_UPLOAD_BYTES})`);
 	}
 
 	// `file.size` is reliable but `file.arrayBuffer()` may yield zero bytes
@@ -88,13 +85,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		sourceEndpointId: null,
 		sourceModel: null,
 		promptExcerpt: null,
-		origin: 'uploaded'
+		origin: 'uploaded',
 	});
 
 	return json({
 		id,
 		contentType: ref.contentType,
 		byteSize: ref.byteSize,
-		kind: 'image' as const
+		kind: 'image' as const,
 	});
 };

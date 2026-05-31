@@ -48,8 +48,8 @@ export async function fetchGithubProfile(code: string): Promise<GithubUserProfil
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			Accept: 'application/vnd.github+json',
-			'User-Agent': 'glyphstream'
-		}
+			'User-Agent': 'glyphstream',
+		},
 	});
 	if (!userRes.ok) {
 		throw new Error(`GitHub /user returned HTTP ${userRes.status}`);
@@ -73,8 +73,8 @@ export async function fetchGithubProfile(code: string): Promise<GithubUserProfil
 				headers: {
 					Authorization: `Bearer ${accessToken}`,
 					Accept: 'application/vnd.github+json',
-					'User-Agent': 'glyphstream'
-				}
+					'User-Agent': 'glyphstream',
+				},
 			});
 			if (emailsRes.ok) {
 				const list = (await emailsRes.json()) as Array<{
@@ -94,7 +94,7 @@ export async function fetchGithubProfile(code: string): Promise<GithubUserProfil
 		id: user.id,
 		login: user.login,
 		name: typeof user.name === 'string' ? user.name : null,
-		email
+		email,
 	};
 }
 

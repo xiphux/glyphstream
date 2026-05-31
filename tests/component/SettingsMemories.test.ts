@@ -19,7 +19,7 @@ import type { Memory } from '$lib/types/api';
 const invalidateAllMock = vi.fn();
 vi.mock('$app/navigation', () => ({
 	invalidateAll: () => invalidateAllMock(),
-	goto: vi.fn()
+	goto: vi.fn(),
 }));
 
 // The page renders the trash button but the confirm modal itself is
@@ -47,7 +47,7 @@ function mkMemory(over: Partial<Memory> = {}): Memory {
 		id: over.id ?? 'm1',
 		content: over.content ?? 'prefers metric units',
 		createdAt: over.createdAt ?? Date.now(),
-		updatedAt: over.updatedAt ?? Date.now()
+		updatedAt: over.updatedAt ?? Date.now(),
 	};
 }
 
@@ -70,10 +70,10 @@ describe('Memories settings page — list rendering', () => {
 				data: {
 					memories: [
 						mkMemory({ id: 'a', content: 'prefers metric units' }),
-						mkMemory({ id: 'b', content: 'works at Acme' })
-					]
-				}
-			}
+						mkMemory({ id: 'b', content: 'works at Acme' }),
+					],
+				},
+			},
 		});
 		expect(screen.getByText('prefers metric units')).toBeInTheDocument();
 		expect(screen.getByText('works at Acme')).toBeInTheDocument();
@@ -83,9 +83,9 @@ describe('Memories settings page — list rendering', () => {
 		render(MemoriesPage, {
 			props: {
 				data: {
-					memories: [mkMemory({ id: 'a' }), mkMemory({ id: 'b' })]
-				}
-			}
+					memories: [mkMemory({ id: 'a' }), mkMemory({ id: 'b' })],
+				},
+			},
 		});
 		expect(screen.getAllByLabelText('Forget memory')).toHaveLength(2);
 	});
@@ -95,7 +95,7 @@ describe('Memories settings page — delete flow', () => {
 	it('opens the ConfirmDialog with the memory content as the message', async () => {
 		const user = userEvent.setup();
 		render(MemoriesPage, {
-			props: { data: { memories: [mkMemory({ id: 'm1', content: 'prefers metric units' })] } }
+			props: { data: { memories: [mkMemory({ id: 'm1', content: 'prefers metric units' })] } },
 		});
 		render(ConfirmDialog);
 
@@ -117,7 +117,7 @@ describe('Memories settings page — delete flow', () => {
 		const user = userEvent.setup();
 		fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 		render(MemoriesPage, {
-			props: { data: { memories: [mkMemory({ id: 'm1', content: 'fact' })] } }
+			props: { data: { memories: [mkMemory({ id: 'm1', content: 'fact' })] } },
 		});
 		render(ConfirmDialog);
 
@@ -135,7 +135,7 @@ describe('Memories settings page — delete flow', () => {
 	it('does not call fetch when the user cancels', async () => {
 		const user = userEvent.setup();
 		render(MemoriesPage, {
-			props: { data: { memories: [mkMemory({ id: 'm1' })] } }
+			props: { data: { memories: [mkMemory({ id: 'm1' })] } },
 		});
 		render(ConfirmDialog);
 

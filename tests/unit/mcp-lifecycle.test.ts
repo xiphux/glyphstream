@@ -13,22 +13,22 @@ const mocks = vi.hoisted(() => ({
 		timeoutSeconds: number;
 		idleTimeoutSeconds: number;
 	}>,
-	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>()
+	connectImpl: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
 vi.mock('$lib/server/mcp/config', () => ({
-	loadMcpServers: () => mocks.servers
+	loadMcpServers: () => mocks.servers,
 }));
 
 vi.mock('$lib/server/mcp/client', () => ({
-	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args)
+	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 
 import {
 	initializeMcpServers,
 	callMcpTool,
 	listMcpServerStates,
-	resetMcpRegistryForTests
+	resetMcpRegistryForTests,
 } from '$lib/server/mcp/registry';
 
 interface FakeConn {
@@ -43,14 +43,14 @@ function fakeConnection(): FakeConn {
 	const closeListeners: Array<() => void> = [];
 	return {
 		listTools: vi.fn(async () => [
-			{ name: 'do_thing', description: '', inputSchema: { type: 'object' } }
+			{ name: 'do_thing', description: '', inputSchema: { type: 'object' } },
 		]),
 		callTool: vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }], isError: false })),
 		close: vi.fn(async () => {}),
 		onClose: vi.fn((cb: () => void) => {
 			closeListeners.push(cb);
 		}),
-		closeListeners
+		closeListeners,
 	};
 }
 
@@ -63,7 +63,7 @@ function stdioServer(idleTimeoutSeconds: number) {
 		args: [],
 		env: {},
 		timeoutSeconds: 30,
-		idleTimeoutSeconds
+		idleTimeoutSeconds,
 	};
 }
 
@@ -114,8 +114,8 @@ describe('idle reaper', () => {
 				url: 'https://x',
 				apiKey: null,
 				timeoutSeconds: 30,
-				idleTimeoutSeconds: 60
-			}
+				idleTimeoutSeconds: 60,
+			},
 		];
 		const conn = fakeConnection();
 		mocks.connectImpl.mockResolvedValue(conn);

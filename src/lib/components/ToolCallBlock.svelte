@@ -49,7 +49,7 @@
 		toolCallId,
 		decision = null,
 		approvalBusy = false,
-		onApprovalSelect
+		onApprovalSelect,
 	}: Props = $props();
 
 	// Pretty-print JSON when it parses; otherwise the raw string. Cheap
@@ -73,7 +73,7 @@
 	// because the user typically WANTS to see what went wrong. Pending-
 	// approval rows stay expanded so the prompt + args are visible.
 	const openByDefault = $derived(
-		status === 'executing' || status === 'error' || status === 'pending_approval'
+		status === 'executing' || status === 'error' || status === 'pending_approval',
 	);
 
 	const badgeColorClass = $derived(
@@ -83,7 +83,7 @@
 				? 'text-red-700 dark:text-red-400'
 				: status === 'pending_approval'
 					? 'text-amber-700 dark:text-amber-400'
-					: 'text-emerald-700 dark:text-emerald-400'
+					: 'text-emerald-700 dark:text-emerald-400',
 	);
 
 	function approvalButtonClass(action: ApprovalAction): string {
@@ -105,9 +105,7 @@
 	open={openByDefault}
 	class="mt-2 rounded-md border border-border-strong bg-surface-panel text-xs"
 >
-	<summary
-		class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-fg-muted select-none"
-	>
+	<summary class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-fg-muted select-none">
 		<span class="text-[10px] font-semibold uppercase tracking-wider opacity-70">Tool</span>
 		<span class="font-mono text-xs text-fg-secondary">{toolName}</span>
 		<span class="flex-1"></span>
@@ -119,7 +117,9 @@
 			the cases the user actually wants to notice at a glance.
 		-->
 		{#if status !== 'done'}
-			<span class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide {badgeColorClass}">
+			<span
+				class="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide {badgeColorClass}"
+			>
 				{#if status === 'executing'}
 					<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>
 					running
@@ -139,12 +139,15 @@
 				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
 					Arguments
 				</div>
-				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyArgs}</pre>
+				<pre
+					class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyArgs}</pre>
 			</div>
 		{/if}
 		{#if status === 'pending_approval'}
 			<div class="rounded border-l-2 border-amber-400 pl-2 dark:border-amber-500/70">
-				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300">
+				<div
+					class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300"
+				>
 					Awaiting your approval
 				</div>
 				<div class="flex flex-wrap gap-1.5 pb-1 pt-0.5">
@@ -152,8 +155,7 @@
 						type="button"
 						class={approvalButtonClass('allow')}
 						disabled={approvalBusy || !onApprovalSelect || !toolCallId}
-						onclick={() =>
-							toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'allow')}
+						onclick={() => toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'allow')}
 					>
 						<Check size={12} strokeWidth={2.5} aria-hidden="true" />
 						Allow
@@ -172,8 +174,7 @@
 						type="button"
 						class={approvalButtonClass('reject')}
 						disabled={approvalBusy || !onApprovalSelect || !toolCallId}
-						onclick={() =>
-							toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'reject')}
+						onclick={() => toolCallId && onApprovalSelect && onApprovalSelect(toolCallId, 'reject')}
 					>
 						<ShieldX size={12} strokeWidth={2.5} aria-hidden="true" />
 						Reject
@@ -181,15 +182,16 @@
 				</div>
 			</div>
 		{:else if result !== undefined}
-			<div
-				class="rounded {isError
-					? 'border-l-2 border-red-400 pl-2 dark:border-red-500'
-					: ''}"
-			>
-				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider {isError ? 'text-red-600 dark:text-red-400' : 'text-fg-muted'}">
+			<div class="rounded {isError ? 'border-l-2 border-red-400 pl-2 dark:border-red-500' : ''}">
+				<div
+					class="mb-0.5 text-[10px] font-medium uppercase tracking-wider {isError
+						? 'text-red-600 dark:text-red-400'
+						: 'text-fg-muted'}"
+				>
 					{isError ? 'Error' : 'Result'}
 				</div>
-				<pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyResult}</pre>
+				<pre
+					class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] text-fg-secondary">{prettyResult}</pre>
 			</div>
 		{/if}
 	</div>

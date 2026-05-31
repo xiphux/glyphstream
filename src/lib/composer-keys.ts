@@ -18,7 +18,7 @@ import type { EnterBehavior } from '$lib/types/api';
  */
 export function composerEnterHandler(
 	behavior: EnterBehavior,
-	onSend: (e: KeyboardEvent) => void
+	onSend: (e: KeyboardEvent) => void,
 ): (e: KeyboardEvent) => void {
 	return (e: KeyboardEvent) => {
 		if (e.key !== 'Enter' || e.isComposing) return;

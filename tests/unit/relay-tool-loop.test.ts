@@ -5,12 +5,12 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	upstreamResponses: [] as Array<() => Response>,
-	upstreamCalls: [] as unknown[]
+	upstreamCalls: [] as unknown[],
 }));
 
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 vi.mock('$lib/server/endpoints/client', async (orig) => {
@@ -24,25 +24,22 @@ vi.mock('$lib/server/endpoints/client', async (orig) => {
 				throw new Error('no canned upstream response left');
 			}
 			return next();
-		})
+		}),
 	};
 });
 
 // Push and title task subsystems both touch process-global state that
 // isn't worth standing up in this test — stub them as no-ops.
 vi.mock('$lib/server/push/notify', () => ({
-	notifyConversationComplete: vi.fn(async () => {})
+	notifyConversationComplete: vi.fn(async () => {}),
 }));
 vi.mock('$lib/server/tasks/title-task-runner', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
-	raceTitle: vi.fn(async (p: Promise<string | null>) => p)
+	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
 
 import { createConversation } from '$lib/server/db/queries/conversations';
-import {
-	appendMessage,
-	walkActiveBranch
-} from '$lib/server/db/queries/messages';
+import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import { _resetForTests, register } from '$lib/server/tools/registry';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
@@ -69,7 +66,7 @@ const endpoint: LoadedEndpoint = {
 	requestTimeoutSeconds: 120,
 	providerQuirk: 'passthrough',
 	groupBy: 'endpoint',
-	supportsTools: true
+	supportsTools: true,
 };
 
 /** Build a Response whose body is the given SSE lines, terminated by [DONE]. */
@@ -82,7 +79,7 @@ function sseResponse(records: string[]): Response {
 			}
 			controller.enqueue(enc.encode(`data: [DONE]\n\n`));
 			controller.close();
-		}
+		},
 	});
 	return new Response(stream, { status: 200 });
 }
@@ -103,13 +100,13 @@ function toolCallStartChunk(args: {
 							index: args.index,
 							id: args.id,
 							type: 'function',
-							function: { name: args.name, arguments: args.args ?? '' }
-						}
-					]
+							function: { name: args.name, arguments: args.args ?? '' },
+						},
+					],
 				},
-				finish_reason: null
-			}
-		]
+				finish_reason: null,
+			},
+		],
 	});
 }
 
@@ -154,13 +151,17 @@ async function drainEvents(stream: ReadableStream<Uint8Array>): Promise<unknown[
 	return events;
 }
 
-function seedConversationWithUserMessage(): { conv: { id: string }; user: ChatMessage; userId: string } {
+function seedConversationWithUserMessage(): {
+	conv: { id: string };
+	user: ChatMessage;
+	userId: string;
+} {
 	const u = seedUser();
 	const conv = createConversation({
 		userId: u.id,
 		endpointId: 'bridge',
 		modelId: 'bridge::test',
-		modelKind: 'chat'
+		modelKind: 'chat',
 	});
 	const userMsg = appendMessage({
 		conversationId: conv.id,
@@ -172,7 +173,7 @@ function seedConversationWithUserMessage(): { conv: { id: string }; user: ChatMe
 		finishReason: null,
 		modelUsed: null,
 		tokensIn: null,
-		tokensOut: null
+		tokensOut: null,
 	});
 	return { conv, user: userMsg, userId: u.id };
 }
@@ -185,10 +186,10 @@ describe('multi-iteration tool loop', () => {
 				function: {
 					name: 'get_current_time',
 					description: 'time',
-					parameters: { type: 'object', properties: {}, additionalProperties: false }
-				}
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+				},
 			},
-			execute: () => ({ content: JSON.stringify({ iso: '2026-05-26T18:42:00Z' }) })
+			execute: () => ({ content: JSON.stringify({ iso: '2026-05-26T18:42:00Z' }) }),
 		});
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
@@ -200,17 +201,14 @@ describe('multi-iteration tool loop', () => {
 					index: 0,
 					id: 'call_t',
 					name: 'get_current_time',
-					args: '{}'
+					args: '{}',
 				}),
-				finishChunk('tool_calls')
-			])
+				finishChunk('tool_calls'),
+			]),
 		);
 		// Iteration 1: model gives the final text answer
 		mocks.upstreamResponses.push(() =>
-			sseResponse([
-				textChunk("It's 2:42 PM UTC."),
-				finishChunk('stop')
-			])
+			sseResponse([textChunk("It's 2:42 PM UTC."), finishChunk('stop')]),
 		);
 
 		let onCompleteCalls = 0;
@@ -224,11 +222,11 @@ describe('multi-iteration tool loop', () => {
 					function: {
 						name: 'get_current_time',
 						description: 'time',
-						parameters: { type: 'object', properties: {} }
-					}
-				}
+						parameters: { type: 'object', properties: {} },
+					},
+				},
 			],
-			tool_choice: 'auto'
+			tool_choice: 'auto',
 		};
 
 		const stream = await startStreamingRelay({
@@ -248,8 +246,11 @@ describe('multi-iteration tool loop', () => {
 				rebuildCalls++;
 				// Test stub: in production this re-serializes the branch.
 				// Here we just return a body shape that signals "iteration 1."
-				return { ...initialBody, messages: [...initialBody.messages, { role: 'user', content: 'follow up' }] };
-			}
+				return {
+					...initialBody,
+					messages: [...initialBody.messages, { role: 'user', content: 'follow up' }],
+				};
+			},
 		});
 
 		const events = await drainEvents(stream);
@@ -269,8 +270,8 @@ describe('multi-iteration tool loop', () => {
 			{
 				type: 'tool_result',
 				toolCallId: 'call_t',
-				result: JSON.stringify({ iso: '2026-05-26T18:42:00Z' })
-			}
+				result: JSON.stringify({ iso: '2026-05-26T18:42:00Z' }),
+			},
 		]);
 		expect(a2.finishReason).toBe('stop');
 		const a2Text = a2.parts.find((p) => p.type === 'text') as { text: string };
@@ -288,7 +289,7 @@ describe('multi-iteration tool loop', () => {
 			'tool_call_executing',
 			'tool_call_result',
 			'text',
-			'done'
+			'done',
 		]);
 
 		// `done` carries the FINAL assistant message (a2), not the
@@ -307,18 +308,18 @@ describe('multi-iteration tool loop', () => {
 				function: {
 					name: 'noop',
 					description: 'no-op',
-					parameters: { type: 'object', properties: {}, additionalProperties: false }
-				}
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+				},
 			},
-			execute: () => ({ content: 'ran' })
+			execute: () => ({ content: 'ran' }),
 		});
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
 		mocks.upstreamResponses.push(() =>
 			sseResponse([
 				toolCallStartChunk({ index: 0, id: 'c1', name: 'noop', args: '{}' }),
-				finishChunk('tool_calls')
-			])
+				finishChunk('tool_calls'),
+			]),
 		);
 
 		const stream = await startStreamingRelay({
@@ -330,11 +331,11 @@ describe('multi-iteration tool loop', () => {
 			providerQuirk: 'passthrough',
 			requestBody: {
 				model: 'bridge::test',
-				messages: [{ role: 'user', content: 'do it' }]
+				messages: [{ role: 'user', content: 'do it' }],
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
-			onComplete: () => {}
+			onComplete: () => {},
 			// no rebuildRequestBody — single-iteration mode
 		});
 
@@ -356,10 +357,10 @@ describe('multi-iteration tool loop', () => {
 				function: {
 					name: 'loopy',
 					description: 'loop',
-					parameters: { type: 'object', properties: {}, additionalProperties: false }
-				}
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+				},
 			},
-			execute: () => ({ content: 'still going' })
+			execute: () => ({ content: 'still going' }),
 		});
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
@@ -371,10 +372,10 @@ describe('multi-iteration tool loop', () => {
 						index: 0,
 						id: `c${i}`,
 						name: 'loopy',
-						args: '{}'
+						args: '{}',
 					}),
-					finishChunk('tool_calls')
-				])
+					finishChunk('tool_calls'),
+				]),
 			);
 		}
 
@@ -387,15 +388,15 @@ describe('multi-iteration tool loop', () => {
 			providerQuirk: 'passthrough',
 			requestBody: {
 				model: 'bridge::test',
-				messages: [{ role: 'user', content: 'do it' }]
+				messages: [{ role: 'user', content: 'do it' }],
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
 			onComplete: () => {},
 			rebuildRequestBody: async () => ({
 				model: 'bridge::test',
-				messages: [{ role: 'user', content: 'do it' }]
-			})
+				messages: [{ role: 'user', content: 'do it' }],
+			}),
 		});
 
 		const events = await drainEvents(stream);
@@ -426,13 +427,13 @@ describe('multi-iteration tool loop with needsApproval', () => {
 				function: {
 					name: 'mcp__fs__read_file',
 					description: 'read',
-					parameters: { type: 'object', properties: {} }
-				}
+					parameters: { type: 'object', properties: {} },
+				},
 			},
 			metadata: { category: 'mcp:fs' },
 			execute: () => {
 				throw new Error('approval-needed tools must not execute on the halt path');
-			}
+			},
 		});
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
@@ -442,10 +443,10 @@ describe('multi-iteration tool loop with needsApproval', () => {
 					index: 0,
 					id: 'call_a',
 					name: 'mcp__fs__read_file',
-					args: '{"path":"/tmp"}'
+					args: '{"path":"/tmp"}',
 				}),
-				finishChunk('tool_calls')
-			])
+				finishChunk('tool_calls'),
+			]),
 		);
 
 		let rebuildCalls = 0;
@@ -458,7 +459,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 			providerQuirk: 'passthrough',
 			requestBody: {
 				model: 'bridge::test',
-				messages: [{ role: 'user', content: 'read it' }]
+				messages: [{ role: 'user', content: 'read it' }],
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
@@ -467,7 +468,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 			rebuildRequestBody: async () => {
 				rebuildCalls++;
 				return { model: 'bridge::test', messages: [] };
-			}
+			},
 		});
 
 		const events = await drainEvents(stream);
@@ -508,10 +509,10 @@ describe('multi-iteration tool loop with needsApproval', () => {
 				function: {
 					name: 'noop_tool',
 					description: 'noop',
-					parameters: { type: 'object', properties: {} }
-				}
+					parameters: { type: 'object', properties: {} },
+				},
 			},
-			execute: () => ({ content: 'ok' })
+			execute: () => ({ content: 'ok' }),
 		});
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
@@ -527,35 +528,31 @@ describe('multi-iteration tool loop with needsApproval', () => {
 					type: 'tool_call',
 					toolCallId: 'call_prior',
 					toolName: 'noop_tool',
-					arguments: '{}'
-				}
+					arguments: '{}',
+				},
 			],
 			contentHtml: null,
 			reasoningText: null,
 			finishReason: 'tool_calls',
 			modelUsed: null,
 			tokensIn: null,
-			tokensOut: null
+			tokensOut: null,
 		});
 		const t1 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: a1.id,
 			role: 'tool',
-			parts: [
-				{ type: 'tool_result', toolCallId: 'call_prior', result: 'previously approved' }
-			],
+			parts: [{ type: 'tool_result', toolCallId: 'call_prior', result: 'previously approved' }],
 			contentHtml: null,
 			reasoningText: null,
 			finishReason: null,
 			modelUsed: null,
 			tokensIn: null,
-			tokensOut: null
+			tokensOut: null,
 		});
 
 		// Iteration 0 of the resume: model gives a plain text answer.
-		mocks.upstreamResponses.push(() =>
-			sseResponse([textChunk('done.'), finishChunk('stop')])
-		);
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('done.'), finishChunk('stop')]));
 
 		await drainEvents(
 			await startStreamingRelay({
@@ -569,8 +566,8 @@ describe('multi-iteration tool loop with needsApproval', () => {
 				userMessage: user,
 				storedModelId: 'bridge::test',
 				onComplete: () => {},
-				initialParentMessageId: t1.id
-			})
+				initialParentMessageId: t1.id,
+			}),
 		);
 
 		// The new assistant should land as a CHILD of t1, not a sibling
@@ -582,4 +579,3 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		expect(branch[2].id).toBe(t1.id);
 	});
 });
-

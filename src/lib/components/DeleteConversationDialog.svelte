@@ -27,7 +27,7 @@
 
 	let {
 		targetId = $bindable(null),
-		onconfirm
+		onconfirm,
 	}: {
 		/** Conversation id to confirm deletion of, or null when closed. */
 		targetId?: string | null;
@@ -71,9 +71,7 @@
 			.catch((e) => {
 				// A superseded fetch failing is not the user's concern.
 				if (token !== fetchToken) return;
-				toast.error(
-					`Couldn't open delete dialog: ${e instanceof Error ? e.message : String(e)}`
-				);
+				toast.error(`Couldn't open delete dialog: ${e instanceof Error ? e.message : String(e)}`);
 				targetId = null;
 			});
 	});
@@ -133,15 +131,9 @@
 			if (e.target === e.currentTarget) cancel();
 		}}
 	>
-		<div
-			class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl"
-		>
-			<h2 id="delete-conv-title" class="text-base font-semibold">
-				Delete this conversation?
-			</h2>
-			<p class="mt-2 text-sm text-fg-muted">
-				This action cannot be undone.
-			</p>
+		<div class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl">
+			<h2 id="delete-conv-title" class="text-base font-semibold">Delete this conversation?</h2>
+			<p class="mt-2 text-sm text-fg-muted">This action cannot be undone.</p>
 			{#if hasMedia}
 				<!--
 					Default unchecked = library-model behavior: deleting the

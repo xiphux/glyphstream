@@ -6,7 +6,7 @@ import {
 	ConfigError,
 	loadEndpoints,
 	loadNotificationsConfig,
-	loadSearchConfig
+	loadSearchConfig,
 } from '$lib/server/endpoints/config';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
@@ -14,8 +14,8 @@ import {
 const envStub = vi.hoisted(() => ({ values: {} as Record<string, string> }));
 vi.mock('$env/dynamic/private', () => ({
 	env: new Proxy({} as Record<string, string>, {
-		get: (_t, k: string) => envStub.values[k]
-	})
+		get: (_t, k: string) => envStub.values[k],
+	}),
 }));
 
 const tmpDirs: string[] = [];
@@ -47,7 +47,7 @@ base_url = "http://localhost:8080/v1"
 			baseUrl: 'http://localhost:8080/v1',
 			apiKey: null,
 			requestTimeoutSeconds: 120,
-			providerQuirk: 'passthrough'
+			providerQuirk: 'passthrough',
 		});
 	});
 
@@ -246,7 +246,7 @@ vapid_subject = "mailto:admin@example.com"
 		expect(loadNotificationsConfig(path)).toEqual({
 			vapidPublic: 'BPI-public-key',
 			vapidPrivate: 'super-secret-private',
-			vapidSubject: 'mailto:admin@example.com'
+			vapidSubject: 'mailto:admin@example.com',
 		});
 	});
 
@@ -326,7 +326,7 @@ url = "http://192.168.1.10:8888"
 		expect(loadSearchConfig(path)).toEqual({
 			url: 'http://192.168.1.10:8888',
 			apiKey: null,
-			timeoutSeconds: 10
+			timeoutSeconds: 10,
 		});
 	});
 

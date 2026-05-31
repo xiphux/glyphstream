@@ -19,7 +19,7 @@ export const users = sqliteTable('users', {
 	// never touched preferences (the parser fills in defaults). Schemaless
 	// so adding new preferences isn't migration-gated; the parsing layer
 	// validates each field defensively with fallbacks.
-	preferencesJson: text('preferences_json')
+	preferencesJson: text('preferences_json'),
 });
 
 export const sessions = sqliteTable('sessions', {
@@ -27,7 +27,7 @@ export const sessions = sqliteTable('sessions', {
 	userId: text('user_id')
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
-	expiresAt: integer('expires_at').notNull()
+	expiresAt: integer('expires_at').notNull(),
 });
 
 // Web Push subscriptions. One row per (user, browser-endpoint) pair: users
@@ -52,9 +52,9 @@ export const pushSubscriptions = sqliteTable(
 		// Never used to gate behavior — endpoint is the identity.
 		userAgent: text('user_agent'),
 		createdAt: integer('created_at').notNull(),
-		lastSeenAt: integer('last_seen_at').notNull()
+		lastSeenAt: integer('last_seen_at').notNull(),
 	},
-	(t) => [index('idx_push_subscriptions_user_id').on(t.userId)]
+	(t) => [index('idx_push_subscriptions_user_id').on(t.userId)],
 );
 
 // --- conversations + messages (TREE-SHAPED) ------------------------------
@@ -91,7 +91,7 @@ export const conversations = sqliteTable(
 		// without re-fetching upstream /v1/models on every send.
 		modelKind: text('model_kind', { enum: MODEL_KINDS }),
 		customModelId: text('custom_model_id').references(() => customModels.id, {
-			onDelete: 'set null'
+			onDelete: 'set null',
 		}),
 		systemPrompt: text('system_prompt'),
 		// Sampling/generation params snapshotted from the custom model at
@@ -107,7 +107,7 @@ export const conversations = sqliteTable(
 		// On message hard-delete, auto-null the pointer; app logic should
 		// already have moved the active leaf elsewhere first.
 		activeLeafMessageId: text('active_leaf_message_id').references((): any => messages.id, {
-			onDelete: 'set null'
+			onDelete: 'set null',
 		}),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
@@ -116,9 +116,9 @@ export const conversations = sqliteTable(
 		// JSON-serialized array of category keys, e.g. `["web"]`. Null/empty
 		// means all features ON. Stored as a JSON array (not a column per
 		// feature) so adding categories doesn't require a migration each time.
-		disabledFeaturesJson: text('disabled_features')
+		disabledFeaturesJson: text('disabled_features'),
 	},
-	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)]
+	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)],
 );
 
 export const messages = sqliteTable(
@@ -144,12 +144,12 @@ export const messages = sqliteTable(
 		tokensOut: integer('tokens_out'),
 		// Full upstream response (debug / troubleshoot).
 		rawResponseJson: text('raw_response_json'),
-		createdAt: integer('created_at').notNull()
+		createdAt: integer('created_at').notNull(),
 	},
 	(t) => [
 		index('idx_messages_conv_parent').on(t.conversationId, t.parentMessageId),
-		index('idx_messages_conv_created').on(t.conversationId, t.createdAt)
-	]
+		index('idx_messages_conv_created').on(t.conversationId, t.createdAt),
+	],
 );
 
 // --- custom models (system-prompt presets) -------------------------------
@@ -176,7 +176,7 @@ export const customModels = sqliteTable('custom_models', {
 	// context, or a URL-summarizer where web access is redundant.
 	defaultDisabledFeaturesJson: text('default_disabled_features'),
 	createdAt: integer('created_at').notNull(),
-	updatedAt: integer('updated_at').notNull()
+	updatedAt: integer('updated_at').notNull(),
 });
 
 // --- memories -------------------------------------------------------------
@@ -204,9 +204,9 @@ export const memories = sqliteTable(
 		embedding: blob('embedding'),
 		embeddingModel: text('embedding_model'),
 		createdAt: integer('created_at').notNull(),
-		updatedAt: integer('updated_at').notNull()
+		updatedAt: integer('updated_at').notNull(),
 	},
-	(t) => [index('idx_memories_user_created').on(t.userId, t.createdAt)]
+	(t) => [index('idx_memories_user_created').on(t.userId, t.createdAt)],
 );
 
 // --- media ----------------------------------------------------------------
@@ -261,12 +261,12 @@ export const media = sqliteTable(
 		// Set when ref_count drops to 0; used to compute grace-period expiry.
 		unreferencedSince: integer('unreferenced_since'),
 		// Set after grace period; bytes removed from disk, row preserved.
-		hardDeletedAt: integer('hard_deleted_at')
+		hardDeletedAt: integer('hard_deleted_at'),
 	},
 	(t) => [
 		index('idx_media_user_created').on(t.userId, t.createdAt),
-		index('idx_media_unreferenced').on(t.unreferencedSince)
-	]
+		index('idx_media_unreferenced').on(t.unreferencedSince),
+	],
 );
 
 export const messageMedia = sqliteTable(
@@ -277,7 +277,7 @@ export const messageMedia = sqliteTable(
 			.references(() => messages.id, { onDelete: 'cascade' }),
 		mediaId: text('media_id')
 			.notNull()
-			.references(() => media.id, { onDelete: 'cascade' })
+			.references(() => media.id, { onDelete: 'cascade' }),
 	},
-	(t) => [primaryKey({ columns: [t.messageId, t.mediaId] })]
+	(t) => [primaryKey({ columns: [t.messageId, t.mediaId] })],
 );

@@ -12,7 +12,7 @@ describe('buildChildrenByParent', () => {
 		const rows = [
 			{ id: 'a', parentId: null },
 			{ id: 'b', parentId: 'a' },
-			{ id: 'c', parentId: 'a' }
+			{ id: 'c', parentId: 'a' },
 		];
 		const map = buildChildrenByParent(rows);
 		expect(map.get('a')?.map((r) => r.id)).toEqual(['b', 'c']);
@@ -29,7 +29,7 @@ describe('deepestDescendant', () => {
 		const rows = [
 			{ id: 'root', parentId: null, createdAt: 0 },
 			{ id: 'child', parentId: 'root', createdAt: 1 },
-			{ id: 'grandchild', parentId: 'child', createdAt: 2 }
+			{ id: 'grandchild', parentId: 'child', createdAt: 2 },
 		];
 		expect(deepestDescendant('root', buildChildrenByParent(rows))).toBe('grandchild');
 	});
@@ -37,13 +37,13 @@ describe('deepestDescendant', () => {
 	it('prefers the most recent child, breaking ties by id descending', () => {
 		const byTime = [
 			{ id: 'older', parentId: 'root', createdAt: 1 },
-			{ id: 'newer', parentId: 'root', createdAt: 2 }
+			{ id: 'newer', parentId: 'root', createdAt: 2 },
 		];
 		expect(deepestDescendant('root', buildChildrenByParent(byTime))).toBe('newer');
 
 		const tie = [
 			{ id: 'aaa', parentId: 'root', createdAt: 5 },
-			{ id: 'bbb', parentId: 'root', createdAt: 5 }
+			{ id: 'bbb', parentId: 'root', createdAt: 5 },
 		];
 		expect(deepestDescendant('root', buildChildrenByParent(tie))).toBe('bbb');
 	});

@@ -9,7 +9,7 @@
 		isPushSupported,
 		loadPushConfig,
 		subscribe as subscribeToPush,
-		unsubscribe as unsubscribeFromPush
+		unsubscribe as unsubscribeFromPush,
 	} from '$lib/push-subscribe';
 
 	let { data } = $props<{ data: { prefs: UserPreferences } }>();
@@ -37,7 +37,7 @@
 	const THEMES: { id: ThemeName; label: string; description: string }[] = [
 		{ id: 'glyphstream', label: 'GlyphStream', description: 'Signature frosted glass' },
 		{ id: 'claude', label: 'Claude', description: 'Warm paper, soft edges' },
-		{ id: 'chatgpt', label: 'ChatGPT', description: 'Cool, compact, flat' }
+		{ id: 'chatgpt', label: 'ChatGPT', description: 'Cool, compact, flat' },
 	];
 
 	function applyThemeToDom(t: ThemeName) {
@@ -71,13 +71,12 @@
 	const SCHEMES: { id: ColorScheme; label: string }[] = [
 		{ id: 'system', label: 'System' },
 		{ id: 'light', label: 'Light' },
-		{ id: 'dark', label: 'Dark' }
+		{ id: 'dark', label: 'Dark' },
 	];
 
 	function applySchemeToDom(s: ColorScheme) {
 		const dark =
-			s === 'dark' ||
-			(s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+			s === 'dark' || (s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 		document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
 		document.cookie = `gs-scheme=${s}; path=/; max-age=31536000; samesite=lax`;
 		syncThemeColorMeta();
@@ -152,7 +151,7 @@
 			!pushSupported ||
 			iosBeforeInstall ||
 			permissionState === 'denied' ||
-			serverConfigured === false
+			serverConfigured === false,
 	);
 
 	const masterDisabledReason = $derived(
@@ -164,7 +163,7 @@
 					? 'Notifications are blocked in browser settings. Enable them in your browser to turn this on.'
 					: serverConfigured === false
 						? 'Push notifications are not configured on this server.'
-						: null
+						: null,
 	);
 
 	onMount(async () => {
@@ -184,7 +183,7 @@
 		const res = await fetch('/api/user/preferences', {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(patch)
+			body: JSON.stringify(patch),
 		});
 		if (!res.ok) return null;
 		return (await res.json()) as UserPreferences;
@@ -277,9 +276,9 @@
 				<div>
 					<h2 class="text-sm font-semibold">Personalization</h2>
 					<p class="mt-0.5 text-xs text-fg-muted">
-						Composed into a system prompt for new conversations (when not using a
-						custom-model preset). Doesn't change existing chats — only future ones.
-						Empty fields are omitted entirely.
+						Composed into a system prompt for new conversations (when not using a custom-model
+						preset). Doesn't change existing chats — only future ones. Empty fields are omitted
+						entirely.
 					</p>
 				</div>
 
@@ -328,9 +327,7 @@
 			<section class="flex flex-col gap-2">
 				<div>
 					<h2 class="text-sm font-semibold">Composer</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">
-						How the message composer treats the Enter key.
-					</p>
+					<p class="mt-0.5 text-xs text-fg-muted">How the message composer treats the Enter key.</p>
 				</div>
 				<div class="flex flex-col gap-2 text-sm">
 					<label class="flex cursor-pointer items-start gap-2">
@@ -347,9 +344,7 @@
 						/>
 						<span>
 							<span class="font-medium">Enter sends</span>
-							<span class="text-fg-muted">
-								— Shift+Enter inserts a newline. (Default.)
-							</span>
+							<span class="text-fg-muted"> — Shift+Enter inserts a newline. (Default.) </span>
 						</span>
 					</label>
 					<label class="flex cursor-pointer items-start gap-2">
@@ -366,9 +361,7 @@
 						/>
 						<span>
 							<span class="font-medium">Enter inserts a newline</span>
-							<span class="text-fg-muted">
-								— Cmd/Ctrl+Enter sends.
-							</span>
+							<span class="text-fg-muted"> — Cmd/Ctrl+Enter sends. </span>
 						</span>
 					</label>
 				</div>
@@ -400,8 +393,8 @@
 				<div>
 					<h2 class="text-sm font-semibold">Theme</h2>
 					<p class="mt-0.5 text-xs text-fg-muted">
-						Pick a visual style. Light vs dark within each follows your system
-						setting. Applies instantly.
+						Pick a visual style. Light vs dark within each follows your system setting. Applies
+						instantly.
 					</p>
 				</div>
 				<div class="grid grid-cols-3 gap-2">
@@ -410,8 +403,7 @@
 							type="button"
 							onclick={() => selectTheme(t.id)}
 							aria-pressed={theme === t.id}
-							class="flex flex-col gap-1 rounded-lg border p-3 text-left transition {theme ===
-							t.id
+							class="flex flex-col gap-1 rounded-lg border p-3 text-left transition {theme === t.id
 								? 'border-border-focus bg-surface-sunken'
 								: 'border-border hover:bg-surface-raised'}"
 						>
@@ -446,10 +438,9 @@
 				<div>
 					<h2 class="text-sm font-semibold">Notifications</h2>
 					<p class="mt-0.5 text-xs text-fg-muted">
-						Ping you when an assistant message finishes — toast when you're in
-						the app on a different page, OS notification when you've switched
-						apps or locked your phone. On iOS this needs the PWA installed to
-						the Home Screen first.
+						Ping you when an assistant message finishes — toast when you're in the app on a
+						different page, OS notification when you've switched apps or locked your phone. On iOS
+						this needs the PWA installed to the Home Screen first.
 					</p>
 				</div>
 
@@ -464,8 +455,7 @@
 					<span>
 						<span class="font-medium">Enable notifications</span>
 						<span class="text-fg-muted">
-							— receive push notifications on this device when a message
-							completes.
+							— receive push notifications on this device when a message completes.
 						</span>
 					</span>
 				</label>
@@ -496,8 +486,8 @@
 					<span>
 						<span class="font-medium">Show message preview</span>
 						<span class="text-fg-muted">
-							— include a snippet of the assistant's reply in the notification
-							body. Turn off if your threads are private to the device.
+							— include a snippet of the assistant's reply in the notification body. Turn off if
+							your threads are private to the device.
 						</span>
 					</span>
 				</label>
@@ -516,9 +506,8 @@
 					<span>
 						<span class="font-medium">In-app toast for other threads</span>
 						<span class="text-fg-muted">
-							— pop a toast when a thread completes while you're on a different
-							page. Turn off to only get OS-level notifications when the app is
-							backgrounded.
+							— pop a toast when a thread completes while you're on a different page. Turn off to
+							only get OS-level notifications when the app is backgrounded.
 						</span>
 					</span>
 				</label>

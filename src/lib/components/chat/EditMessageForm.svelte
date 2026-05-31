@@ -33,7 +33,7 @@
 		allowAttachments,
 		enterBehavior,
 		onSave,
-		onCancel
+		onCancel,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
@@ -52,13 +52,17 @@
 		void tick().then(() => textareaEl?.focus());
 	});
 
-	const canSave = $derived(!(!editText.trim() && attachments.items.length === 0) && !attachments.isBusy);
+	const canSave = $derived(
+		!(!editText.trim() && attachments.items.length === 0) && !attachments.isBusy,
+	);
 </script>
 
 <article
 	class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-surface-panel p-3 shadow-sm dark:border-amber-800"
 >
-	<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400">
+	<div
+		class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400"
+	>
 		Editing
 	</div>
 	<AttachmentThumbnails {attachments} class="mb-2" />

@@ -19,7 +19,7 @@
 		FeatureCategory,
 		FeatureCategoryEntry,
 		ModelEntry,
-		ModelKind
+		ModelKind,
 	} from '$lib/types/api';
 
 	interface Props {
@@ -62,7 +62,7 @@
 		onSend,
 		onStop,
 		onFeaturesChange,
-		onToggleFavorite
+		onToggleFavorite,
 	}: Props = $props();
 
 	let coreRef = $state<{ focus: () => void } | null>(null);
@@ -74,14 +74,16 @@
 	}
 
 	const placeholder = $derived(
-		modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…'
+		modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…',
 	);
 
 	const canSend = $derived(
-		!((!composerText.trim() && attachments.items.length === 0) ||
+		!(
+			(!composerText.trim() && attachments.items.length === 0) ||
 			generating ||
 			attachments.isBusy ||
-			!hasValidModel)
+			!hasValidModel
+		),
 	);
 </script>
 
@@ -105,11 +107,11 @@
 	>
 		{#snippet controls()}
 			<FeatureTogglesMenu
-			{disabledFeatures}
-			categories={featureCategories}
-			disabled={generating}
-			onChange={onFeaturesChange}
-		/>
+				{disabledFeatures}
+				categories={featureCategories}
+				disabled={generating}
+				onChange={onFeaturesChange}
+			/>
 			<div class="flex-1"></div>
 			<!--
 				Per-turn model picker: defaulted to the conversation's current

@@ -4,9 +4,7 @@
 
 <div class="flex min-h-screen items-center justify-center p-6">
 	<div class="w-full max-w-sm">
-		<div
-			class="rounded-2xl border border-border bg-surface-panel p-8 shadow-sm"
-		>
+		<div class="rounded-2xl border border-border bg-surface-panel p-8 shadow-sm">
 			<h1 class="text-2xl font-semibold tracking-tight">GlyphStream</h1>
 			<p class="mt-1 text-sm text-fg-muted">
 				Sign in to continue. Access is limited to allowlisted GitHub accounts.
@@ -33,8 +31,6 @@
 			</a>
 		</div>
 
-		<p class="mt-4 text-center text-xs text-fg-muted">
-			Self-hosted. Closed registration.
-		</p>
+		<p class="mt-4 text-center text-xs text-fg-muted">Self-hosted. Closed registration.</p>
 	</div>
 </div>

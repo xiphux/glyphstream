@@ -48,7 +48,7 @@
 		approvalDecisions,
 		approvalBusy = false,
 		onApprovalSelect,
-		mergeWithPrev = false
+		mergeWithPrev = false,
 	}: Props = $props();
 </script>
 
@@ -56,7 +56,7 @@
 	class={[
 		'min-w-0 bg-surface-raised px-4 text-sm',
 		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
-		'rounded-b-2xl pb-3'
+		'rounded-b-2xl pb-3',
 	]}
 >
 	{#if !mergeWithPrev}
@@ -82,7 +82,9 @@
 				<span class="animate-pulse [animation-delay:240ms]">·</span>
 			</span>
 			{#if status && status !== 'in_progress'}
-				<span class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary">
+				<span
+					class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
+				>
 					{status}
 				</span>
 			{/if}

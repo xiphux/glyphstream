@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	parseDisabledFeatures,
 	parseMessageParts,
-	parseModelParameters
+	parseModelParameters,
 } from '$lib/server/db/queries/json-columns';
 
 describe('parseMessageParts', () => {
@@ -26,7 +26,7 @@ describe('parseMessageParts', () => {
 describe('parseModelParameters', () => {
 	it('parses a valid parameters object', () => {
 		expect(parseModelParameters(JSON.stringify({ temperature: 0.7 }))).toEqual({
-			temperature: 0.7
+			temperature: 0.7,
 		});
 	});
 
@@ -68,9 +68,11 @@ describe('parseDisabledFeatures', () => {
 		// next save would wipe the preference. Conversation-create silently
 		// filters categories that aren't currently registered when seeding
 		// from a custom model's defaults.
-		expect(
-			parseDisabledFeatures(JSON.stringify(['web', 'mcp:filesystem', 'mcp:linear']))
-		).toEqual(['web', 'mcp:filesystem', 'mcp:linear']);
+		expect(parseDisabledFeatures(JSON.stringify(['web', 'mcp:filesystem', 'mcp:linear']))).toEqual([
+			'web',
+			'mcp:filesystem',
+			'mcp:linear',
+		]);
 	});
 
 	it('silently drops non-string entries', () => {

@@ -32,6 +32,6 @@ export const GET: RequestHandler = async ({ locals }) => {
 		data: allModels,
 		// Per-endpoint errors surface here so a single broken upstream
 		// doesn't hide the others' models. Frontend can show a banner.
-		endpoint_errors: errors
+		endpoint_errors: errors,
 	});
 };

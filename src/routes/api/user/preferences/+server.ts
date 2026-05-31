@@ -13,10 +13,7 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import {
-	getUserPreferences,
-	setUserPreferences
-} from '$lib/server/db/queries/user-preferences';
+import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
@@ -93,13 +90,13 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		path: '/',
 		maxAge: 60 * 60 * 24 * 365,
 		httpOnly: false,
-		sameSite: 'lax'
+		sameSite: 'lax',
 	});
 	cookies.set('gs-scheme', next.colorScheme, {
 		path: '/',
 		maxAge: 60 * 60 * 24 * 365,
 		httpOnly: false,
-		sameSite: 'lax'
+		sameSite: 'lax',
 	});
 	return json(next);
 };

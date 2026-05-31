@@ -3,10 +3,10 @@
 GlyphStream surfaces assistant-message completions in three ways,
 depending on where the user actually is when the stream finishes:
 
-| Where the user is | What happens |
-| --- | --- |
-| Looking at the thread itself, tab visible | Nothing extra — the SSE stream is already delivering the message in real time. |
-| In the app, tab visible, but on a different thread or page | An in-app toast appears with the conversation title and an **Open** action. |
+| Where the user is                                             | What happens                                                                             |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Looking at the thread itself, tab visible                     | Nothing extra — the SSE stream is already delivering the message in real time.           |
+| In the app, tab visible, but on a different thread or page    | An in-app toast appears with the conversation title and an **Open** action.              |
 | Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread. |
 
 The decision lives in `src/lib/sw/arbiter.ts` (pure function, unit-tested

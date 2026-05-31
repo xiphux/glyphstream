@@ -12,7 +12,7 @@
 import {
 	BUILTIN_FEATURE_CATEGORIES,
 	FEATURE_CATEGORY_LABELS,
-	type FeatureCategoryEntry
+	type FeatureCategoryEntry,
 } from '$lib/types/api';
 import { listMcpServerStates } from './mcp/registry';
 
@@ -23,7 +23,7 @@ export function getAllFeatureCategoryLabels(): FeatureCategoryEntry[] {
 		id,
 		label: FEATURE_CATEGORY_LABELS[id].label,
 		description: FEATURE_CATEGORY_LABELS[id].description,
-		source: 'builtin'
+		source: 'builtin',
 	}));
 	const mcp: FeatureCategoryEntry[] = listMcpServerStates()
 		.filter((s) => s.state !== 'failed')
@@ -34,7 +34,7 @@ export function getAllFeatureCategoryLabels(): FeatureCategoryEntry[] {
 				id: `mcp:${s.id}`,
 				label: s.displayName,
 				description: `Tools from the "${s.displayName}" MCP server (${toolCount} ${noun}).`,
-				source: 'mcp'
+				source: 'mcp',
 			};
 		});
 	return [...builtin, ...mcp];

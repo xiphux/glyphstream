@@ -38,8 +38,8 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 		groups: Array.from(groups.entries()).map(([id, value]) => ({
 			id,
 			displayName: value.displayName,
-			tools: value.tools.sort()
-		}))
+			tools: value.tools.sort(),
+		})),
 	};
 };
 

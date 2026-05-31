@@ -25,7 +25,7 @@ function makeKeyEvent(opts: {
 		shiftKey: opts.shiftKey ?? false,
 		metaKey: opts.metaKey ?? false,
 		ctrlKey: opts.ctrlKey ?? false,
-		preventDefault: vi.fn()
+		preventDefault: vi.fn(),
 	} as unknown as KeyboardEvent & { preventDefault: ReturnType<typeof vi.fn> };
 }
 

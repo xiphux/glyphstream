@@ -64,9 +64,7 @@ export interface SseWriter {
  * recorder branch must keep running to persist the message, so a dead
  * client is a no-op here, never an exception.
  */
-export function sseWriter(
-	controller: ReadableStreamDefaultController<Uint8Array>
-): SseWriter {
+export function sseWriter(controller: ReadableStreamDefaultController<Uint8Array>): SseWriter {
 	const enc = new TextEncoder();
 	return {
 		write(event: StreamEvent) {
@@ -82,6 +80,6 @@ export function sseWriter(
 			} catch {
 				// already closed; ignore
 			}
-		}
+		},
 	};
 }

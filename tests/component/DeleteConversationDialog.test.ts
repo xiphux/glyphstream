@@ -26,8 +26,8 @@ function mockOrphanMedia(counts: { images: number; videos: number }) {
 		async () =>
 			new Response(JSON.stringify(counts), {
 				status: 200,
-				headers: { 'content-type': 'application/json' }
-			})
+				headers: { 'content-type': 'application/json' },
+			}),
 	) as typeof fetch;
 }
 
@@ -38,7 +38,7 @@ afterEach(() => {
 describe('DeleteConversationDialog — rendering', () => {
 	it('renders nothing when targetId is null', () => {
 		render(DeleteConversationDialog, {
-			props: { targetId: null, onconfirm: vi.fn() }
+			props: { targetId: null, onconfirm: vi.fn() },
 		});
 		expect(screen.queryByRole('alertdialog')).toBeNull();
 	});
@@ -46,7 +46,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('renders the dialog once the orphan-media fetch resolves', async () => {
 		mockOrphanMedia({ images: 0, videos: 0 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		// Dialog doesn't render until counts are populated.
 		await waitFor(() => {
@@ -59,7 +59,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('hides the "also delete media" checkbox when there is no media', async () => {
 		mockOrphanMedia({ images: 0, videos: 0 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		expect(screen.queryByRole('checkbox')).toBeNull();
@@ -69,7 +69,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('shows the checkbox unchecked by default when media exists', async () => {
 		mockOrphanMedia({ images: 3, videos: 1 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
@@ -80,7 +80,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('formats the media count text', async () => {
 		mockOrphanMedia({ images: 3, videos: 1 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		expect(screen.getByText('3 images and 1 video')).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('pluralizes correctly for singular and plural counts', async () => {
 		mockOrphanMedia({ images: 1, videos: 2 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		expect(screen.getByText('1 image and 2 videos')).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe('DeleteConversationDialog — rendering', () => {
 	it('omits zero-count modalities from the text', async () => {
 		mockOrphanMedia({ images: 0, videos: 2 });
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-1', onconfirm: vi.fn() }
+			props: { targetId: 'conv-1', onconfirm: vi.fn() },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		expect(screen.getByText('2 videos')).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe('DeleteConversationDialog — actions', () => {
 		const onconfirm = vi.fn();
 		const user = userEvent.setup();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await user.click(screen.getByRole('button', { name: 'Delete' }));
@@ -124,7 +124,7 @@ describe('DeleteConversationDialog — actions', () => {
 		const onconfirm = vi.fn();
 		const user = userEvent.setup();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await user.click(screen.getByRole('checkbox'));
@@ -137,7 +137,7 @@ describe('DeleteConversationDialog — actions', () => {
 		const onconfirm = vi.fn();
 		const user = userEvent.setup();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -152,7 +152,7 @@ describe('DeleteConversationDialog — actions', () => {
 		const onconfirm = vi.fn();
 		const user = userEvent.setup();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await user.keyboard('{Escape}');
@@ -166,7 +166,7 @@ describe('DeleteConversationDialog — actions', () => {
 		mockOrphanMedia({ images: 0, videos: 0 });
 		const onconfirm = vi.fn();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await fireEvent.click(screen.getByRole('alertdialog'));
@@ -181,7 +181,7 @@ describe('DeleteConversationDialog — actions', () => {
 		const onconfirm = vi.fn();
 		const user = userEvent.setup();
 		render(DeleteConversationDialog, {
-			props: { targetId: 'conv-42', onconfirm }
+			props: { targetId: 'conv-42', onconfirm },
 		});
 		await waitFor(() => screen.getByRole('alertdialog'));
 		await user.click(screen.getByText('Delete this conversation?'));
@@ -209,12 +209,12 @@ describe('DeleteConversationDialog — flushes only the requesting fetch', () =>
 			const body = call === 1 ? await firstPromise : secondCounts;
 			return new Response(JSON.stringify(body), {
 				status: 200,
-				headers: { 'content-type': 'application/json' }
+				headers: { 'content-type': 'application/json' },
 			});
 		}) as typeof fetch;
 
 		const { rerender } = render(DeleteConversationDialog, {
-			props: { targetId: 'first', onconfirm: vi.fn() }
+			props: { targetId: 'first', onconfirm: vi.fn() },
 		});
 		// Re-target before resolving the first fetch.
 		await rerender({ targetId: 'second', onconfirm: vi.fn() });

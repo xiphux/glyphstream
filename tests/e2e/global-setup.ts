@@ -29,7 +29,7 @@ export const TEST_USER = {
 	id: '00000000-0000-0000-0000-000000000001',
 	githubUserId: 99999,
 	githubUsername: 'e2e-tester',
-	displayName: 'E2E Tester'
+	displayName: 'E2E Tester',
 };
 
 export default async function globalSetup() {
@@ -56,7 +56,7 @@ export default async function globalSetup() {
 			email: 'e2e@example.test',
 			displayName: TEST_USER.displayName,
 			createdAt: Date.now(),
-			lastLoginAt: Date.now()
+			lastLoginAt: Date.now(),
 		})
 		.run();
 
@@ -65,9 +65,7 @@ export default async function globalSetup() {
 	const token = randomBytes(20).toString('base64url');
 	const sessionId = createHash('sha256').update(token).digest('hex');
 	const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
-	db.insert(schema.sessions)
-		.values({ id: sessionId, userId: TEST_USER.id, expiresAt })
-		.run();
+	db.insert(schema.sessions).values({ id: sessionId, userId: TEST_USER.id, expiresAt }).run();
 
 	sqlite.close();
 
@@ -84,10 +82,10 @@ export default async function globalSetup() {
 				expires: expiresAt / 1000, // Playwright wants seconds since epoch
 				httpOnly: true,
 				secure: false,
-				sameSite: 'Lax' as const
-			}
+				sameSite: 'Lax' as const,
+			},
 		],
-		origins: []
+		origins: [],
 	};
 	writeFileSync(STORAGE_STATE_PATH, JSON.stringify(storageState, null, 2));
 }

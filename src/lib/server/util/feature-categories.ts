@@ -19,14 +19,14 @@ export function validateDisabledFeatures(raw: unknown): FeatureCategory[] {
 	if (raw === undefined || raw === null) return [];
 	if (!Array.isArray(raw)) {
 		throw new FeatureCategoryValidationError(
-			'disabledFeatures must be an array of category strings'
+			'disabledFeatures must be an array of category strings',
 		);
 	}
 	const out: FeatureCategory[] = [];
 	for (const entry of raw) {
 		if (!isFeatureCategoryString(entry)) {
 			throw new FeatureCategoryValidationError(
-				`Invalid feature category entry: ${JSON.stringify(entry)}`
+				`Invalid feature category entry: ${JSON.stringify(entry)}`,
 			);
 		}
 		if (!out.includes(entry)) out.push(entry);

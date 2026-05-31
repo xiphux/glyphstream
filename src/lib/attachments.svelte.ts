@@ -36,12 +36,7 @@ import type { ModelKind } from '$lib/types/api';
 
 const RESIZE_SKIP_BELOW_BYTES = 500 * 1024;
 const RESIZE_TARGET_BYTES = 300 * 1024;
-const RESIZE_SKIP_TYPES = new Set([
-	'image/gif',
-	'image/svg+xml',
-	'image/heic',
-	'image/heif'
-]);
+const RESIZE_SKIP_TYPES = new Set(['image/gif', 'image/svg+xml', 'image/heic', 'image/heif']);
 
 /**
  * Progressively-more-aggressive (dimension, quality) attempts.
@@ -57,7 +52,7 @@ const RESIZE_ATTEMPTS: ReadonlyArray<{ maxDim: number; quality: number }> = [
 	{ maxDim: 1568, quality: 0.7 },
 	{ maxDim: 1024, quality: 0.8 },
 	{ maxDim: 1024, quality: 0.65 },
-	{ maxDim: 768, quality: 0.65 }
+	{ maxDim: 768, quality: 0.65 },
 ];
 
 /** Best-effort image resize. Returns the original file if resize is
@@ -104,7 +99,7 @@ async function maybeResize(file: File): Promise<File> {
 async function encodeJpeg(
 	img: HTMLImageElement,
 	maxDim: number,
-	quality: number
+	quality: number,
 ): Promise<Blob | null> {
 	const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
 	const w = Math.max(1, Math.round(img.width * scale));
@@ -117,9 +112,7 @@ async function encodeJpeg(
 	ctx.fillStyle = '#fff';
 	ctx.fillRect(0, 0, w, h);
 	ctx.drawImage(img, 0, 0, w, h);
-	return await new Promise<Blob | null>((resolve) =>
-		canvas.toBlob(resolve, 'image/jpeg', quality)
-	);
+	return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
 }
 
 export interface AttachedItem {
@@ -197,10 +190,7 @@ export class AttachmentStore {
 	 * upload entirely; the thumbnail is served straight from
 	 * /api/media/{id}/content.
 	 */
-	attachExisting(
-		mediaId: string,
-		opts: { contentType?: string; byteSize?: number } = {}
-	): void {
+	attachExisting(mediaId: string, opts: { contentType?: string; byteSize?: number } = {}): void {
 		this.items = [
 			...this.items,
 			{
@@ -209,8 +199,8 @@ export class AttachmentStore {
 				objectUrl: `/api/media/${mediaId}/content`,
 				contentType: opts.contentType ?? 'image/*',
 				byteSize: opts.byteSize ?? 0,
-				status: 'ready'
-			}
+				status: 'ready',
+			},
 		];
 	}
 
@@ -238,7 +228,7 @@ export class AttachmentStore {
 			objectUrl,
 			contentType: uploadFile.type,
 			byteSize: uploadFile.size,
-			status: 'uploading'
+			status: 'uploading',
 		};
 		this.items = [...this.items, initial];
 
@@ -261,7 +251,7 @@ export class AttachmentStore {
 			}
 			const body = (await res.json()) as UploadResponse;
 			this.items = this.items.map((it) =>
-				it.clientId === clientId ? { ...it, mediaId: body.id, status: 'ready' as const } : it
+				it.clientId === clientId ? { ...it, mediaId: body.id, status: 'ready' as const } : it,
 			);
 		} catch (e) {
 			this.items = this.items.map((it) =>
@@ -269,9 +259,9 @@ export class AttachmentStore {
 					? {
 							...it,
 							status: 'error' as const,
-							error: e instanceof Error ? e.message : String(e)
+							error: e instanceof Error ? e.message : String(e),
 						}
-					: it
+					: it,
 			);
 		}
 	}

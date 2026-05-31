@@ -80,7 +80,7 @@ function safeSnippet(raw: string): string {
 export function searchConversations(
 	userId: string,
 	rawQuery: string,
-	opts: SearchOptions = {}
+	opts: SearchOptions = {},
 ): SearchResult[] {
 	const match = buildFtsQuery(rawQuery);
 	if (!match) return [];
@@ -133,7 +133,7 @@ export function searchConversations(
 			updatedAt: r.updated_at,
 			kind: r.kind,
 			messageId: r.message_id,
-			snippet: safeSnippet(r.snippet)
+			snippet: safeSnippet(r.snippet),
 		});
 		if (out.length >= limit) break;
 	}

@@ -15,10 +15,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
 	plugins: [sveltekit(), svelteTesting()],
 	test: {
-		include: [
-			'tests/unit/**/*.{test,spec}.{js,ts}',
-			'tests/component/**/*.{test,spec}.{js,ts}'
-		],
+		include: ['tests/unit/**/*.{test,spec}.{js,ts}', 'tests/component/**/*.{test,spec}.{js,ts}'],
 		// Default is "node" — most of our pure-logic tests don't need a DOM.
 		// Component tests header with /* @vitest-environment happy-dom */
 		// to flip the env per-file (see tests/component/README.md). happy-dom
@@ -32,6 +29,6 @@ export default defineConfig({
 		// Run each test file in its own process so DB tests with global
 		// connection state don't cross-contaminate. Cheap because the
 		// suite is small.
-		isolate: true
-	}
+		isolate: true,
+	},
 });

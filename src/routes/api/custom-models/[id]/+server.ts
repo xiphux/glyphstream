@@ -4,11 +4,11 @@ import { parseJsonBody } from '$lib/server/http';
 import {
 	deleteCustomModel,
 	getCustomModelForUser,
-	updateCustomModel
+	updateCustomModel,
 } from '$lib/server/db/queries/custom-models';
 import {
 	validateDefaultDisabledFeatures,
-	validateParameters
+	validateParameters,
 } from '$lib/server/custom-models/validate';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import type { UpdateCustomModelRequest } from '$lib/types/api';

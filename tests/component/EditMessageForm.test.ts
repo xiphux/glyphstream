@@ -18,7 +18,7 @@ function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 		isBusy: false,
 		addFiles: vi.fn(),
 		remove: vi.fn(),
-		...overrides
+		...overrides,
 	} as unknown as AttachmentStore;
 }
 
@@ -27,7 +27,7 @@ const base = {
 	allowAttachments: true,
 	enterBehavior: 'send' as const,
 	onSave: vi.fn(),
-	onCancel: vi.fn()
+	onCancel: vi.fn(),
 };
 
 describe('EditMessageForm — rendering', () => {
@@ -111,7 +111,7 @@ describe('EditMessageForm — actions', () => {
 		const user = userEvent.setup();
 		const onSave = vi.fn();
 		render(EditMessageForm, {
-			props: { ...base, onSave, enterBehavior: 'send', editText: 'hi' }
+			props: { ...base, onSave, enterBehavior: 'send', editText: 'hi' },
 		});
 		const textarea = screen.getByRole('textbox');
 		textarea.focus();
@@ -123,7 +123,7 @@ describe('EditMessageForm — actions', () => {
 		const user = userEvent.setup();
 		const onSave = vi.fn();
 		render(EditMessageForm, {
-			props: { ...base, onSave, enterBehavior: 'newline', editText: 'hi' }
+			props: { ...base, onSave, enterBehavior: 'newline', editText: 'hi' },
 		});
 		const textarea = screen.getByRole('textbox');
 		textarea.focus();

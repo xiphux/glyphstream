@@ -15,7 +15,7 @@
 
 	let {
 		attachments,
-		class: className = ''
+		class: className = '',
 	}: {
 		attachments: AttachmentStore;
 		class?: string;
@@ -23,9 +23,7 @@
 </script>
 
 {#if attachments.items.length > 0}
-	<div
-		class="flex flex-wrap gap-2 border-b border-border pb-2 {className}"
-	>
+	<div class="flex flex-wrap gap-2 border-b border-border pb-2 {className}">
 		{#each attachments.items as a (a.clientId)}
 			<div
 				class="group/thumb relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-surface-raised"
@@ -41,15 +39,13 @@
 							: ''}"
 				/>
 				{#if a.status === 'uploading'}
-					<div
-						class="absolute inset-0 flex items-center justify-center bg-black/20 text-white"
-					>
-						<div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+					<div class="absolute inset-0 flex items-center justify-center bg-black/20 text-white">
+						<div
+							class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"
+						></div>
 					</div>
 				{:else if a.status === 'error'}
-					<div
-						class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
-					>
+					<div class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white">
 						<AlertCircle size={20} strokeWidth={2} />
 					</div>
 				{/if}

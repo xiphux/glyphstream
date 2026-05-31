@@ -34,7 +34,7 @@
 		openingLightboxFor = null,
 		approvalDecisions,
 		approvalBusy = false,
-		onApprovalSelect
+		onApprovalSelect,
 	}: Props = $props();
 
 	function blockKey(b: RenderBlock, i: number): string {

@@ -23,7 +23,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 
 export default defineConfig({
 	define: {
-		__APP_VERSION__: JSON.stringify(pkg.version)
+		__APP_VERSION__: JSON.stringify(pkg.version),
 	},
 	plugins: [
 		tailwindcss(),
@@ -71,17 +71,17 @@ export default defineConfig({
 						src: '/icon.svg',
 						sizes: 'any',
 						type: 'image/svg+xml',
-						purpose: 'any maskable'
-					}
-				]
+						purpose: 'any maskable',
+					},
+				],
 			},
 			injectManifest: {
 				// Precache the built shell. We only register precache routes
 				// inside the SW, so /api/* and SSE streams pass through to
 				// the network unintercepted — no need for the generateSW-only
 				// runtimeCaching/navigateFallback opt-outs.
-				globPatterns: ['client/**/*.{js,css,html,ico,svg,woff2}']
-			}
+				globPatterns: ['client/**/*.{js,css,html,ico,svg,woff2}'],
+			},
 		}),
 		analyze &&
 			(visualizer({
@@ -89,7 +89,7 @@ export default defineConfig({
 				template: 'treemap',
 				gzipSize: true,
 				brotliSize: true,
-				open: false
-			}) as PluginOption)
-	].filter(Boolean) as PluginOption[]
+				open: false,
+			}) as PluginOption),
+	].filter(Boolean) as PluginOption[],
 });

@@ -5,16 +5,12 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 // Import the tool module for its side-effect registration in the singleton
 // registry, AND the per-tool exports we want to invoke directly.
-import {
-	saveMemoryTool,
-	updateMemoryTool,
-	forgetMemoryTool
-} from '$lib/server/tools/memory';
+import { saveMemoryTool, updateMemoryTool, forgetMemoryTool } from '$lib/server/tools/memory';
 import { openaiToolDefinitions } from '$lib/server/tools/registry';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
@@ -53,19 +49,19 @@ describe('memory tool definitions + metadata', () => {
 
 	it('save_memory requires a content arg', () => {
 		expect(saveMemoryTool.definition.function.parameters).toMatchObject({
-			required: ['content']
+			required: ['content'],
 		});
 	});
 
 	it('update_memory requires id + content', () => {
 		expect(updateMemoryTool.definition.function.parameters).toMatchObject({
-			required: ['id', 'content']
+			required: ['id', 'content'],
 		});
 	});
 
 	it('forget_memory requires id', () => {
 		expect(forgetMemoryTool.definition.function.parameters).toMatchObject({
-			required: ['id']
+			required: ['id'],
 		});
 	});
 });
@@ -165,7 +161,7 @@ describe('personalization category gate', () => {
 		// even seeing the tools advertised, it cannot "discover" and call
 		// them.
 		const names = openaiToolDefinitions({ excludeCategories: ['personalization'] }).map(
-			(d) => d.function.name
+			(d) => d.function.name,
 		);
 		for (const t of MEMORY_TOOL_NAMES) {
 			expect(names).not.toContain(t);
@@ -173,9 +169,7 @@ describe('personalization category gate', () => {
 	});
 
 	it('excluding `web` alone does not filter memory tools', () => {
-		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map(
-			(d) => d.function.name
-		);
+		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map((d) => d.function.name);
 		for (const t of MEMORY_TOOL_NAMES) {
 			expect(names).toContain(t);
 		}

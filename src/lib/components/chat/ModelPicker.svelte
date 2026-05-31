@@ -50,7 +50,7 @@
 		disabled = false,
 		inline = false,
 		favoritedIds = [],
-		onToggleFavorite
+		onToggleFavorite,
 	}: Props = $props();
 
 	function kindEmoji(kind: ModelKind): string {
@@ -120,7 +120,7 @@
 				isCustom: true,
 				groupKey: '__custom',
 				groupLabel: 'Your presets',
-				searchText: `${cm.name} ${base.displayName} ${cm.description ?? ''}`.toLowerCase()
+				searchText: `${cm.name} ${base.displayName} ${cm.description ?? ''}`.toLowerCase(),
 			});
 		}
 
@@ -139,13 +139,9 @@
 
 		const baseItems: PickerItem[] = [];
 		for (const [, group] of byGroup) {
-			const distinctOwners = new Set(
-				group.map((m) => m.ownedBy).filter((o): o is string => !!o)
-			);
+			const distinctOwners = new Set(group.map((m) => m.ownedBy).filter((o): o is string => !!o));
 			const showOwner = distinctOwners.size > 1;
-			const sortedGroup = [...group].sort((a, b) =>
-				a.displayName.localeCompare(b.displayName)
-			);
+			const sortedGroup = [...group].sort((a, b) => a.displayName.localeCompare(b.displayName));
 			for (const m of sortedGroup) {
 				baseItems.push({
 					value: m.id,
@@ -156,7 +152,7 @@
 					groupKey: m.groupKey,
 					groupLabel: m.group,
 					searchText:
-						`${m.displayName} ${m.ownedBy ?? ''} ${m.upstreamId} ${m.endpointId} ${m.group}`.toLowerCase()
+						`${m.displayName} ${m.ownedBy ?? ''} ${m.upstreamId} ${m.endpointId} ${m.group}`.toLowerCase(),
 				});
 			}
 		}
@@ -178,7 +174,7 @@
 				out.push({
 					...item,
 					groupKey: '__favorites',
-					groupLabel: 'Favorites'
+					groupLabel: 'Favorites',
 				});
 			}
 		}
@@ -207,9 +203,7 @@
 		// view confuses more than it helps.
 		const tokens = q.split(/\s+/);
 		return items.filter(
-			(item) =>
-				item.groupKey !== '__favorites' &&
-				tokens.every((t) => item.searchText.includes(t))
+			(item) => item.groupKey !== '__favorites' && tokens.every((t) => item.searchText.includes(t)),
 		);
 	});
 
@@ -265,9 +259,7 @@
 		// region. `block: 'nearest'` keeps the user in the same scroll
 		// position when the highlight is already on screen.
 		queueMicrotask(() => {
-			const el = listEl?.querySelector<HTMLElement>(
-				`[data-picker-index="${next}"]`
-			);
+			const el = listEl?.querySelector<HTMLElement>(`[data-picker-index="${next}"]`);
 			el?.scrollIntoView({ block: 'nearest' });
 		});
 	}
@@ -372,15 +364,15 @@
 			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto py-1">
 				{#if filteredItems.length === 0}
 					<p class="px-3 py-3 text-xs text-fg-muted">
-						{items.length === 0
-							? 'No models available.'
-							: `No matches for "${search.trim()}"`}
+						{items.length === 0 ? 'No models available.' : `No matches for "${search.trim()}"`}
 					</p>
 				{/if}
 
 				{#each groupedRender as g (g.key)}
 					{#if g.label}
-						<div class="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
+						<div
+							class="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-fg-muted"
+						>
 							{g.label}
 						</div>
 					{/if}
@@ -443,11 +435,7 @@
 										? 'text-amber-500 opacity-100'
 										: 'opacity-0 group-hover/row:opacity-100'}"
 								>
-									<Star
-										size={14}
-										strokeWidth={2.25}
-										fill={isFavorited ? 'currentColor' : 'none'}
-									/>
+									<Star size={14} strokeWidth={2.25} fill={isFavorited ? 'currentColor' : 'none'} />
 								</button>
 							{/if}
 						</div>

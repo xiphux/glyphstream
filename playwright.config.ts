@@ -25,18 +25,18 @@ export default defineConfig({
 	use: {
 		baseURL: 'http://localhost:3000',
 		storageState: './tests/.e2e-data/auth.json',
-		trace: 'on-first-retry'
+		trace: 'on-first-retry',
 	},
 	globalSetup: './tests/e2e/global-setup.ts',
 	projects: [
 		{
 			name: 'chromium-desktop',
-			use: { ...devices['Desktop Chrome'] }
+			use: { ...devices['Desktop Chrome'] },
 		},
 		{
 			name: 'chromium-mobile',
-			use: { ...devices['Pixel 5'] }
-		}
+			use: { ...devices['Pixel 5'] },
+		},
 	],
 	// Two servers: the mock OpenAI upstream (started first so it's ready
 	// when the app lists models) and the app itself. Playwright waits for
@@ -50,7 +50,7 @@ export default defineConfig({
 			url: 'http://localhost:3001/v1/models',
 			reuseExistingServer: !process.env.CI,
 			timeout: 30_000,
-			env: { MOCK_UPSTREAM_PORT: '3001' }
+			env: { MOCK_UPSTREAM_PORT: '3001' },
 		},
 		{
 			// Build then run the compiled adapter-node handler. `&&` chained
@@ -74,8 +74,8 @@ export default defineConfig({
 				ALLOWED_GITHUB_USER_IDS: '99999',
 				EXTERNAL_BASE_URL: 'http://localhost:3000',
 				CONFIG_PATH: './tests/e2e/fixtures/config.toml',
-				LOG_LEVEL: 'warn'
-			}
-		}
-	]
+				LOG_LEVEL: 'warn',
+			},
+		},
+	],
 });

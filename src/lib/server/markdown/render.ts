@@ -52,7 +52,7 @@ const PRELOADED_LANGS = [
 	'vue',
 	'xml',
 	'yaml',
-	'zig'
+	'zig',
 ];
 
 // Some common aliases users write that aren't shiki language ids.
@@ -63,7 +63,7 @@ const LANG_ALIASES: Record<string, string> = {
 	rb: 'ruby',
 	rs: 'rust',
 	sh: 'bash',
-	yml: 'yaml'
+	yml: 'yaml',
 };
 
 let highlighterPromise: Promise<Highlighter> | null = null;
@@ -72,7 +72,7 @@ function getHighlighter(): Promise<Highlighter> {
 	if (!highlighterPromise) {
 		highlighterPromise = createHighlighter({
 			themes: [LIGHT_THEME, DARK_THEME],
-			langs: PRELOADED_LANGS
+			langs: PRELOADED_LANGS,
 		});
 	}
 	return highlighterPromise;
@@ -99,7 +99,7 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 						return highlighter.codeToHtml(code, {
 							lang: resolved,
 							themes: { light: LIGHT_THEME, dark: DARK_THEME },
-							defaultColor: false // emit CSS vars for both themes; no html-class flip needed
+							defaultColor: false, // emit CSS vars for both themes; no html-class flip needed
 						});
 					} catch {
 						// fall through to default
@@ -107,7 +107,7 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 				}
 				// Fallback: escape and wrap in plain pre/code so default rendering applies.
 				return '';
-			}
+			},
 		});
 
 		// Make all rendered links open in a new tab and disable referrer leakage.

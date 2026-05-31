@@ -22,7 +22,7 @@ import {
 	videoFetchContent,
 	videoStatus,
 	type VideoCreateRequest,
-	type VideoJob
+	type VideoJob,
 } from '../endpoints/client';
 import { setVideoJobId } from './in-flight';
 import { errorMessage, isAbortError, sseWriter } from './sse-transport';
@@ -39,7 +39,7 @@ import type {
 	StreamEvent,
 	StreamProgressEvent,
 	StreamStartEvent,
-	StreamTitleEvent
+	StreamTitleEvent,
 } from '$lib/types/api';
 
 const DEBUG = logLevel() === 'debug';
@@ -91,7 +91,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				const startEv: StreamStartEvent = {
 					type: 'start',
 					userMessage: params.userMessage,
-					assistantMessageId: ''
+					assistantMessageId: '',
 				};
 				safeWrite(startEv);
 
@@ -106,7 +106,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				try {
 					const req: VideoCreateRequest = {
 						model: parseModelId(params.storedModelId)?.upstreamId ?? params.storedModelId,
-						prompt: params.prompt
+						prompt: params.prompt,
 					};
 					if (params.inputReference) {
 						req.inputReference = params.inputReference;
@@ -116,7 +116,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 							? `, input_reference=${params.inputReference.contentType}:${params.inputReference.bytes.byteLength}B`
 							: '';
 						console.debug(
-							`[video-relay] POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`
+							`[video-relay] POST /videos to ${params.endpoint.id} model=${req.model}${refSummary}`,
 						);
 					}
 					job = await videoCreate(params.endpoint, req, params.abortSignal);
@@ -135,7 +135,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					console.error(`[video-relay] videoCreate failed:`, msg);
 					safeWrite({
 						type: 'error',
-						message: `Could not start video job: ${msg}`
+						message: `Could not start video job: ${msg}`,
 					} satisfies StreamErrorEvent);
 					safeClose();
 					return;
@@ -159,7 +159,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					if (Date.now() - startedAt > MAX_WAIT_MS) {
 						safeWrite({
 							type: 'error',
-							message: `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`
+							message: `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`,
 						} satisfies StreamErrorEvent);
 						safeClose();
 						return;
@@ -169,7 +169,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						job = await videoStatus(params.endpoint, job.id);
 						if (DEBUG)
 							console.debug(
-								`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`
+								`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`,
 							);
 					} catch (e) {
 						// Transient upstream blip — keep polling unless we've burned the budget.
@@ -197,7 +197,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					const msg = errorMessage(e);
 					safeWrite({
 						type: 'error',
-						message: `Could not fetch video content: ${msg}`
+						message: `Could not fetch video content: ${msg}`,
 					} satisfies StreamErrorEvent);
 					safeClose();
 					return;
@@ -211,7 +211,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						sourceModel: params.storedModelId,
 						prompt: params.prompt,
 						bytes,
-						contentType
+						contentType,
 					});
 					assistantMessage = appendMessage({
 						conversationId: params.conversationId,
@@ -219,14 +219,14 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						role: 'assistant',
 						parts: [{ type: 'video', mediaId }],
 						modelUsed: params.storedModelId,
-						rawResponseJson: JSON.stringify(job)
+						rawResponseJson: JSON.stringify(job),
 					});
 					linkMessageMedia(assistantMessage.id, mediaId);
 				} catch (e) {
 					const msg = errorMessage(e);
 					safeWrite({
 						type: 'error',
-						message: `Could not persist video: ${msg}`
+						message: `Could not persist video: ${msg}`,
 					} satisfies StreamErrorEvent);
 					safeClose();
 					return;
@@ -242,7 +242,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					assistantMessageId: assistantMessage.id,
 					conversationTitle: params.conversationTitle ?? 'New conversation',
 					previewText: '',
-					modality: 'video'
+					modality: 'video',
 				}).catch((e) => console.warn('[video-relay] notify failed:', e));
 
 				// Same ordering as the chat relay: emit `done` first so the
@@ -268,7 +268,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				// recovery indicator the chat page hydrates from this slot.
 				params.onComplete();
 			}
-		}
+		},
 	});
 }
 
@@ -276,7 +276,7 @@ function emitProgress(write: (e: StreamEvent) => void, job: VideoJob): void {
 	const ev: StreamProgressEvent = {
 		type: 'progress',
 		percent: typeof job.progress === 'number' ? job.progress : null,
-		status: job.status
+		status: job.status,
 	};
 	write(ev);
 }

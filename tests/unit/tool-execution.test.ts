@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import { createConversation } from '$lib/server/db/queries/conversations';
@@ -25,32 +25,29 @@ afterEach(() => {
 	_resetForTests();
 });
 
-function mkTool(
-	name: string,
-	exec: Tool['execute']
-): Tool {
+function mkTool(name: string, exec: Tool['execute']): Tool {
 	return {
 		definition: {
 			type: 'function',
 			function: {
 				name,
 				description: name,
-				parameters: { type: 'object', properties: {}, additionalProperties: false }
-			}
+				parameters: { type: 'object', properties: {}, additionalProperties: false },
+			},
 		},
-		execute: exec
+		execute: exec,
 	};
 }
 
 function seedConversationWithAssistantToolCalls(
-	toolCallParts: Extract<MessagePart, { type: 'tool_call' }>[]
+	toolCallParts: Extract<MessagePart, { type: 'tool_call' }>[],
 ): { userId: string; conversationId: string; assistantMessage: ChatMessage } {
 	const u = seedUser();
 	const conv = createConversation({
 		userId: u.id,
 		endpointId: 'bridge',
 		modelId: 'bridge::test',
-		modelKind: 'chat'
+		modelKind: 'chat',
 	});
 	const userMsg = appendMessage({
 		conversationId: conv.id,
@@ -62,7 +59,7 @@ function seedConversationWithAssistantToolCalls(
 		finishReason: null,
 		modelUsed: null,
 		tokensIn: null,
-		tokensOut: null
+		tokensOut: null,
 	});
 	const assistantMessage = appendMessage({
 		conversationId: conv.id,
@@ -74,7 +71,7 @@ function seedConversationWithAssistantToolCalls(
 		finishReason: 'tool_calls',
 		modelUsed: 'bridge::test',
 		tokensIn: 10,
-		tokensOut: 5
+		tokensOut: 5,
 	});
 	return { userId: u.id, conversationId: conv.id, assistantMessage };
 }
@@ -83,7 +80,7 @@ describe('executeToolCalls', () => {
 	it('runs a registered tool and persists the result as a role:tool child', async () => {
 		register(mkTool('echo', (args) => ({ content: JSON.stringify({ echoed: args }) })));
 		const { conversationId, userId, assistantMessage } = seedConversationWithAssistantToolCalls([
-			{ type: 'tool_call', toolCallId: 'call_1', toolName: 'echo', arguments: '{"x":1}' }
+			{ type: 'tool_call', toolCallId: 'call_1', toolName: 'echo', arguments: '{"x":1}' },
 		]);
 		const events: StreamEvent[] = [];
 
@@ -91,7 +88,7 @@ describe('executeToolCalls', () => {
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: (e) => events.push(e)
+			emit: (e) => events.push(e),
 		});
 
 		expect(toolMessages).toHaveLength(1);
@@ -101,7 +98,7 @@ describe('executeToolCalls', () => {
 		const persisted = getMessage(conversationId, toolMessages[0].id)!;
 		expect(persisted.parentMessageId).toBe(assistantMessage.id);
 		expect(toolMessages[0].parts).toEqual([
-			{ type: 'tool_result', toolCallId: 'call_1', result: JSON.stringify({ echoed: { x: 1 } }) }
+			{ type: 'tool_result', toolCallId: 'call_1', result: JSON.stringify({ echoed: { x: 1 } }) },
 		]);
 
 		// SSE event sequence per tool: executing → result
@@ -111,8 +108,8 @@ describe('executeToolCalls', () => {
 				type: 'tool_call_result',
 				toolCallId: 'call_1',
 				result: JSON.stringify({ echoed: { x: 1 } }),
-				isError: false
-			}
+				isError: false,
+			},
 		]);
 	});
 
@@ -120,13 +117,13 @@ describe('executeToolCalls', () => {
 		register(mkTool('echo', () => ({ content: 'ok' })));
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
 			{ type: 'tool_call', toolCallId: 'a', toolName: 'echo', arguments: '{}' },
-			{ type: 'tool_call', toolCallId: 'b', toolName: 'echo', arguments: '{}' }
+			{ type: 'tool_call', toolCallId: 'b', toolName: 'echo', arguments: '{}' },
 		]);
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: () => {}
+			emit: () => {},
 		});
 		// Active leaf moves to the LAST persisted tool message — its id
 		// becomes the parent for any follow-up upstream call (PR5).
@@ -141,18 +138,18 @@ describe('executeToolCalls', () => {
 			mkTool('slow', async () => {
 				await new Promise((r) => setTimeout(r, 20));
 				return { content: 'slow-result' };
-			})
+			}),
 		);
 		register(mkTool('fast', () => ({ content: 'fast-result' })));
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
 			{ type: 'tool_call', toolCallId: 'slow-1', toolName: 'slow', arguments: '{}' },
-			{ type: 'tool_call', toolCallId: 'fast-1', toolName: 'fast', arguments: '{}' }
+			{ type: 'tool_call', toolCallId: 'fast-1', toolName: 'fast', arguments: '{}' },
 		]);
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: () => {}
+			emit: () => {},
 		});
 		expect(toolMessages).toHaveLength(2);
 		const [first, second] = toolMessages;
@@ -162,14 +159,14 @@ describe('executeToolCalls', () => {
 
 	it('returns isError when the tool is unknown', async () => {
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
-			{ type: 'tool_call', toolCallId: 'c1', toolName: 'no_such_tool', arguments: '{}' }
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'no_such_tool', arguments: '{}' },
 		]);
 		const events: StreamEvent[] = [];
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: (e) => events.push(e)
+			emit: (e) => events.push(e),
 		});
 		expect(toolMessages).toHaveLength(1);
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
@@ -187,14 +184,14 @@ describe('executeToolCalls', () => {
 				type: 'tool_call',
 				toolCallId: 'c1',
 				toolName: 'echo',
-				arguments: 'not-valid-json{'
-			}
+				arguments: 'not-valid-json{',
+			},
 		]);
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: () => {}
+			emit: () => {},
 		});
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
@@ -205,16 +202,16 @@ describe('executeToolCalls', () => {
 		register(
 			mkTool('boom', () => {
 				throw new Error('intentional');
-			})
+			}),
 		);
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
-			{ type: 'tool_call', toolCallId: 'c1', toolName: 'boom', arguments: '{}' }
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'boom', arguments: '{}' },
 		]);
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: () => {}
+			emit: () => {},
 		});
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
@@ -224,21 +221,21 @@ describe('executeToolCalls', () => {
 	it('respects the isError flag from a tool that returns it directly', async () => {
 		register(mkTool('graceful_fail', () => ({ content: 'sorry', isError: true })));
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
-			{ type: 'tool_call', toolCallId: 'c1', toolName: 'graceful_fail', arguments: '{}' }
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'graceful_fail', arguments: '{}' },
 		]);
 		const events: StreamEvent[] = [];
 		const { toolMessages } = await executeToolCalls({
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: (e) => events.push(e)
+			emit: (e) => events.push(e),
 		});
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
 		expect(part.result).toBe('sorry');
 		expect(events[events.length - 1]).toMatchObject({
 			type: 'tool_call_result',
-			isError: true
+			isError: true,
 		});
 	});
 
@@ -249,7 +246,7 @@ describe('executeToolCalls', () => {
 			assistantMessage,
 			conversationId,
 			userId,
-			emit: (e) => events.push(e)
+			emit: (e) => events.push(e),
 		});
 		expect(toolMessages).toEqual([]);
 		expect(events).toEqual([]);

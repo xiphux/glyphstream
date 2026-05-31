@@ -1,24 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-	callMcpTool: vi.fn<(...args: unknown[]) => Promise<unknown>>()
+	callMcpTool: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
 }));
 
 vi.mock('$lib/server/mcp/registry', async () => {
 	const actual = await vi.importActual<typeof import('$lib/server/mcp/registry')>(
-		'$lib/server/mcp/registry'
+		'$lib/server/mcp/registry',
 	);
 	return {
 		...actual,
-		callMcpTool: (...args: unknown[]) => mocks.callMcpTool(...args)
+		callMcpTool: (...args: unknown[]) => mocks.callMcpTool(...args),
 	};
 });
 
-import {
-	buildRegisteredName,
-	flattenMcpResult,
-	mcpToolFor
-} from '$lib/server/mcp/tool-bridge';
+import { buildRegisteredName, flattenMcpResult, mcpToolFor } from '$lib/server/mcp/tool-bridge';
 import type { LoadedMcpServer } from '$lib/server/mcp/config';
 
 const FAKE_SERVER: LoadedMcpServer = {
@@ -29,7 +25,7 @@ const FAKE_SERVER: LoadedMcpServer = {
 	args: [],
 	env: {},
 	timeoutSeconds: 30,
-	idleTimeoutSeconds: 900
+	idleTimeoutSeconds: 900,
 };
 
 beforeEach(() => {
@@ -62,9 +58,9 @@ describe('flattenMcpResult', () => {
 		const out = flattenMcpResult({
 			content: [
 				{ type: 'text', text: 'first' },
-				{ type: 'text', text: 'second' }
+				{ type: 'text', text: 'second' },
 			],
-			isError: false
+			isError: false,
 		});
 		expect(out).toEqual({ content: 'first\nsecond', isError: false });
 	});
@@ -73,9 +69,9 @@ describe('flattenMcpResult', () => {
 		const out = flattenMcpResult({
 			content: [
 				{ type: 'text', text: 'see image' },
-				{ type: 'image', data: 'base64...', mimeType: 'image/png' }
+				{ type: 'image', data: 'base64...', mimeType: 'image/png' },
 			],
-			isError: false
+			isError: false,
 		});
 		expect(out.content).toBe('see image\n[non-text content omitted in v1]');
 		expect(out.isError).toBe(false);
@@ -84,7 +80,7 @@ describe('flattenMcpResult', () => {
 	it('propagates isError = true', () => {
 		const out = flattenMcpResult({
 			content: [{ type: 'text', text: 'something went wrong' }],
-			isError: true
+			isError: true,
 		});
 		expect(out.isError).toBe(true);
 		expect(out.content).toBe('something went wrong');
@@ -100,24 +96,27 @@ describe('mcpToolFor execute()', () => {
 	it('proxies the call through callMcpTool with the original (un-namespaced) tool name', async () => {
 		mocks.callMcpTool.mockResolvedValue({
 			content: [{ type: 'text', text: 'ok' }],
-			isError: false
+			isError: false,
 		});
 		const tool = mcpToolFor(FAKE_SERVER, {
 			name: 'read_file',
 			description: 'Read a file',
-			inputSchema: { type: 'object', properties: { path: { type: 'string' } } }
+			inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
 		});
 		const ac = new AbortController();
-		const result = await tool.execute({ path: '/tmp/x' }, {
-			userId: 'u1',
-			conversationId: 'c1',
-			signal: ac.signal
-		});
+		const result = await tool.execute(
+			{ path: '/tmp/x' },
+			{
+				userId: 'u1',
+				conversationId: 'c1',
+				signal: ac.signal,
+			},
+		);
 		expect(mocks.callMcpTool).toHaveBeenCalledWith(
 			'fs',
 			'read_file',
 			{ path: '/tmp/x' },
-			ac.signal
+			ac.signal,
 		);
 		expect(result).toEqual({ content: 'ok', isError: false });
 	});
@@ -127,14 +126,17 @@ describe('mcpToolFor execute()', () => {
 		const tool = mcpToolFor(FAKE_SERVER, {
 			name: 'read_file',
 			description: '',
-			inputSchema: { type: 'object' }
+			inputSchema: { type: 'object' },
 		});
 		const ac = new AbortController();
-		const result = await tool.execute({}, {
-			userId: 'u1',
-			conversationId: 'c1',
-			signal: ac.signal
-		});
+		const result = await tool.execute(
+			{},
+			{
+				userId: 'u1',
+				conversationId: 'c1',
+				signal: ac.signal,
+			},
+		);
 		expect(result.isError).toBe(true);
 		expect(result.content).toContain('reconnect failed');
 	});
@@ -143,7 +145,7 @@ describe('mcpToolFor execute()', () => {
 		const tool = mcpToolFor(FAKE_SERVER, {
 			name: 'list_directory',
 			description: 'List entries',
-			inputSchema: { type: 'object' }
+			inputSchema: { type: 'object' },
 		});
 		expect(tool.metadata?.category).toBe('mcp:fs');
 		expect(tool.metadata?.displayLabel).toBe('list_directory');
@@ -154,12 +156,12 @@ describe('mcpToolFor execute()', () => {
 		const tool = mcpToolFor(FAKE_SERVER, {
 			name: 'do_thing',
 			description: '',
-			inputSchema: null as unknown as Record<string, unknown>
+			inputSchema: null as unknown as Record<string, unknown>,
 		});
 		expect(tool.definition.function.parameters).toEqual({
 			type: 'object',
 			properties: {},
-			additionalProperties: true
+			additionalProperties: true,
 		});
 	});
 
@@ -167,7 +169,7 @@ describe('mcpToolFor execute()', () => {
 		const tool = mcpToolFor(FAKE_SERVER, {
 			name: 'no_desc',
 			description: '',
-			inputSchema: { type: 'object' }
+			inputSchema: { type: 'object' },
 		});
 		expect(tool.definition.function.description).toContain('Filesystem');
 	});

@@ -12,7 +12,11 @@ import userEvent from '@testing-library/user-event';
 import RenderBlocks from '$lib/components/chat/RenderBlocks.svelte';
 import type { RenderBlock } from '$lib/chat-render';
 
-function renderBlocks(blocks: RenderBlock[], onImageClick = vi.fn(), openingLightboxFor: string | null = null) {
+function renderBlocks(
+	blocks: RenderBlock[],
+	onImageClick = vi.fn(),
+	openingLightboxFor: string | null = null,
+) {
 	return render(RenderBlocks, { props: { blocks, onImageClick, openingLightboxFor } });
 }
 
@@ -32,7 +36,9 @@ describe('RenderBlocks — reasoning', () => {
 
 describe('RenderBlocks — html + plain-text', () => {
 	it('renders html blocks via {@html}', () => {
-		const { container } = renderBlocks([{ type: 'html', html: '<p>hello <strong>world</strong></p>' }]);
+		const { container } = renderBlocks([
+			{ type: 'html', html: '<p>hello <strong>world</strong></p>' },
+		]);
 		expect(container.querySelector('.gs-prose strong')?.textContent).toBe('world');
 	});
 
@@ -51,8 +57,8 @@ describe('RenderBlocks — tool_call', () => {
 				toolName: 'get_current_time',
 				arguments: '{}',
 				result: '{"iso":"2026-01-01"}',
-				status: 'done'
-			}
+				status: 'done',
+			},
 		]);
 		// ToolCallBlock renders the tool name + TOOL label.
 		expect(screen.getByText('get_current_time')).toBeInTheDocument();
@@ -110,9 +116,9 @@ describe('RenderBlocks — multiple blocks', () => {
 				toolCallId: 'tc-1',
 				toolName: 'search',
 				arguments: '{}',
-				status: 'done'
+				status: 'done',
 			},
-			{ type: 'plain-text', text: 'after' }
+			{ type: 'plain-text', text: 'after' },
 		]);
 		const text = container.textContent ?? '';
 		expect(text.indexOf('before')).toBeLessThan(text.indexOf('search'));

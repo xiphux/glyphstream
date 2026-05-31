@@ -12,7 +12,7 @@ import {
 	getInFlight,
 	registerInFlight,
 	resetInFlight,
-	setVideoJobId
+	setVideoJobId,
 } from '$lib/server/streaming/in-flight';
 
 function endpoint(id: string): LoadedEndpoint {
@@ -23,7 +23,7 @@ function endpoint(id: string): LoadedEndpoint {
 		apiKey: null,
 		groupBy: 'endpoint',
 		providerQuirk: 'passthrough',
-		requestTimeoutSeconds: 30
+		requestTimeoutSeconds: 30,
 	} as LoadedEndpoint;
 }
 

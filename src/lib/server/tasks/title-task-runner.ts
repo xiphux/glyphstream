@@ -31,7 +31,7 @@ export function startTitleTaskIfFirstExchange(conversationId: string): Promise<s
 		(e) => {
 			console.warn('[title-task] generator threw:', e);
 			return null;
-		}
+		},
 	);
 }
 
@@ -43,7 +43,7 @@ export function startTitleTaskIfFirstExchange(conversationId: string): Promise<s
  */
 export function raceTitle(
 	promise: Promise<string | null>,
-	timeoutMs: number
+	timeoutMs: number,
 ): Promise<string | null> {
 	return new Promise((resolve) => {
 		let settled = false;

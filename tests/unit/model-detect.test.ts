@@ -14,7 +14,7 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		providerQuirk: 'passthrough',
 		groupBy: 'endpoint',
 		supportsTools: false,
-		...overrides
+		...overrides,
 	};
 }
 
@@ -42,12 +42,8 @@ describe('detectKind', () => {
 		});
 
 		it('uses OpenRouter-style architecture.output_modalities', () => {
-			expect(
-				detectKind({ id: 'x', architecture: { output_modalities: ['image'] } })
-			).toBe('image');
-			expect(
-				detectKind({ id: 'x', architecture: { output_modalities: ['text'] } })
-			).toBe('chat');
+			expect(detectKind({ id: 'x', architecture: { output_modalities: ['image'] } })).toBe('image');
+			expect(detectKind({ id: 'x', architecture: { output_modalities: ['text'] } })).toBe('chat');
 		});
 	});
 
@@ -109,16 +105,14 @@ describe('normalizeUpstreamModel', () => {
 	});
 
 	it('uses display_name if set, otherwise the upstream id', () => {
-		expect(
-			normalizeUpstreamModel(ep(), { id: 'gpt-4o', display_name: 'GPT-4o' }).displayName
-		).toBe('GPT-4o');
+		expect(normalizeUpstreamModel(ep(), { id: 'gpt-4o', display_name: 'GPT-4o' }).displayName).toBe(
+			'GPT-4o',
+		);
 		expect(normalizeUpstreamModel(ep(), { id: 'gpt-4o' }).displayName).toBe('gpt-4o');
 	});
 
 	it('extracts owned_by when set, null when missing', () => {
-		expect(
-			normalizeUpstreamModel(ep(), { id: 'x', owned_by: 'comfyui' }).ownedBy
-		).toBe('comfyui');
+		expect(normalizeUpstreamModel(ep(), { id: 'x', owned_by: 'comfyui' }).ownedBy).toBe('comfyui');
 		expect(normalizeUpstreamModel(ep(), { id: 'x' }).ownedBy).toBeNull();
 	});
 
@@ -130,10 +124,10 @@ describe('normalizeUpstreamModel', () => {
 		});
 
 		it('uses owned_by for both group and groupKey when groupBy="owned_by"', () => {
-			const e = normalizeUpstreamModel(
-				ep({ groupBy: 'owned_by' }),
-				{ id: 'x', owned_by: 'openrouter' }
-			);
+			const e = normalizeUpstreamModel(ep({ groupBy: 'owned_by' }), {
+				id: 'x',
+				owned_by: 'openrouter',
+			});
 			expect(e.group).toBe('openrouter');
 			expect(e.groupKey).toBe('openrouter');
 		});
@@ -145,10 +139,7 @@ describe('normalizeUpstreamModel', () => {
 		});
 
 		it('falls back to endpoint.displayName when groupBy="owned_by" and owned_by is empty', () => {
-			const e = normalizeUpstreamModel(
-				ep({ groupBy: 'owned_by' }),
-				{ id: 'x', owned_by: '' }
-			);
+			const e = normalizeUpstreamModel(ep({ groupBy: 'owned_by' }), { id: 'x', owned_by: '' });
 			expect(e.group).toBe('Bridge');
 			expect(e.groupKey).toBe('bridge');
 		});
@@ -161,19 +152,21 @@ describe('normalizeUpstreamModel', () => {
 		});
 
 		it('uses endpoint.supportsTools when upstream omits the field', () => {
-			expect(normalizeUpstreamModel(ep({ supportsTools: true }), { id: 'x' }).supportsTools).toBe(true);
+			expect(normalizeUpstreamModel(ep({ supportsTools: true }), { id: 'x' }).supportsTools).toBe(
+				true,
+			);
 		});
 
 		it('prefers the per-model upstream signal over the endpoint config', () => {
 			// Endpoint says yes globally, but this specific model says no.
 			expect(
 				normalizeUpstreamModel(ep({ supportsTools: true }), { id: 'x', supports_tools: false })
-					.supportsTools
+					.supportsTools,
 			).toBe(false);
 			// Endpoint says no, but this model says yes.
 			expect(
 				normalizeUpstreamModel(ep({ supportsTools: false }), { id: 'x', supports_tools: true })
-					.supportsTools
+					.supportsTools,
 			).toBe(true);
 		});
 
@@ -182,8 +175,8 @@ describe('normalizeUpstreamModel', () => {
 			expect(
 				normalizeUpstreamModel(ep({ supportsTools: true }), {
 					id: 'x',
-					supports_tools: null
-				}).supportsTools
+					supports_tools: null,
+				}).supportsTools,
 			).toBe(true);
 		});
 	});

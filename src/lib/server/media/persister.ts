@@ -26,7 +26,7 @@ const PROMPT_EXCERPT_MAX = 500;
 function promptFields(prompt: string): { promptFull: string; promptExcerpt: string } {
 	return {
 		promptFull: prompt,
-		promptExcerpt: truncateEllipsis(prompt, PROMPT_EXCERPT_MAX)
+		promptExcerpt: truncateEllipsis(prompt, PROMPT_EXCERPT_MAX),
 	};
 }
 
@@ -50,7 +50,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		kind: 'image',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
-		...promptFields(input.prompt)
+		...promptFields(input.prompt),
 	});
 	return id;
 }
@@ -70,7 +70,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 	const ref = await store.put({
 		bytes: input.bytes,
 		contentType: input.contentType || 'video/mp4',
-		kind: 'video'
+		kind: 'video',
 	});
 	const { id } = insertMedia({
 		userId: input.userId,
@@ -80,14 +80,14 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		kind: 'video',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
-		...promptFields(input.prompt)
+		...promptFields(input.prompt),
 	});
 	return id;
 }
 
 async function resolveBytes(
 	endpoint: LoadedEndpoint,
-	urlOrB64: { url?: string; b64_json?: string }
+	urlOrB64: { url?: string; b64_json?: string },
 ): Promise<{ bytes: Buffer; contentType: string }> {
 	if (urlOrB64.b64_json) {
 		// Bridge / OpenAI default to PNG when returning b64_json with no

@@ -23,7 +23,7 @@ const BASE = {
 	text: 'hello world',
 	attachedMediaIds: [],
 	modelId: 'bridge::gpt-image-1',
-	modelKind: 'image' as const
+	modelKind: 'image' as const,
 };
 
 describe('buildSendRequestBody', () => {
@@ -32,7 +32,7 @@ describe('buildSendRequestBody', () => {
 			text: 'hello world',
 			attachedMediaIds: [],
 			modelId: 'bridge::gpt-image-1',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 	});
 
@@ -45,7 +45,7 @@ describe('buildSendRequestBody', () => {
 		// signal and edits won't branch.
 		const body = buildSendRequestBody({
 			...BASE,
-			options: { editedMessageId: 'msg-123' }
+			options: { editedMessageId: 'msg-123' },
 		});
 		expect(body.editedMessageId).toBe('msg-123');
 	});
@@ -53,7 +53,7 @@ describe('buildSendRequestBody', () => {
 	it('forwards parentMessageId when set (legacy direct-parent override)', () => {
 		const body = buildSendRequestBody({
 			...BASE,
-			options: { parentMessageId: 'msg-456' }
+			options: { parentMessageId: 'msg-456' },
 		});
 		expect(body.parentMessageId).toBe('msg-456');
 	});
@@ -66,8 +66,8 @@ describe('buildSendRequestBody', () => {
 			...BASE,
 			options: {
 				editedMessageId: 'msg-edited',
-				parentMessageId: 'msg-parent'
-			}
+				parentMessageId: 'msg-parent',
+			},
 		});
 		expect(body.editedMessageId).toBe('msg-edited');
 		expect(body.parentMessageId).toBe('msg-parent');
@@ -86,7 +86,7 @@ describe('buildSendRequestBody', () => {
 		// the body — that would trip the server's 400 path.
 		const body = buildSendRequestBody({
 			...BASE,
-			options: { editedMessageId: '', parentMessageId: '' }
+			options: { editedMessageId: '', parentMessageId: '' },
 		});
 		expect(body).not.toHaveProperty('editedMessageId');
 		expect(body).not.toHaveProperty('parentMessageId');
@@ -99,12 +99,12 @@ describe('buildSendRequestBody', () => {
 		// server-side anyway, and including them is misleading.
 		const body = buildSendRequestBody({
 			...BASE,
-			options: { retryFromMessageId: 'asst-789' }
+			options: { retryFromMessageId: 'asst-789' },
 		});
 		expect(body).toEqual({
 			regenerateFromMessageId: 'asst-789',
 			modelId: 'bridge::gpt-image-1',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		expect(body).not.toHaveProperty('text');
 		expect(body).not.toHaveProperty('attachedMediaIds');
@@ -119,8 +119,8 @@ describe('buildSendRequestBody', () => {
 			options: {
 				retryFromMessageId: 'asst-789',
 				editedMessageId: 'msg-edit',
-				parentMessageId: 'msg-parent'
-			}
+				parentMessageId: 'msg-parent',
+			},
 		});
 		expect(body.regenerateFromMessageId).toBe('asst-789');
 		expect(body).not.toHaveProperty('editedMessageId');
@@ -134,7 +134,7 @@ describe('buildSendRequestBody', () => {
 		// needs to transmit faithfully.
 		const body = buildSendRequestBody({
 			...BASE,
-			modelKind: null
+			modelKind: null,
 		});
 		expect(body.modelKind).toBeNull();
 	});
@@ -142,7 +142,7 @@ describe('buildSendRequestBody', () => {
 	it('preserves attachedMediaIds across the wire', () => {
 		const body = buildSendRequestBody({
 			...BASE,
-			attachedMediaIds: ['m1', 'm2', 'm3']
+			attachedMediaIds: ['m1', 'm2', 'm3'],
 		});
 		expect(body.attachedMediaIds).toEqual(['m1', 'm2', 'm3']);
 	});

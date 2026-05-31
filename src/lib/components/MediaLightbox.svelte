@@ -1,14 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { Download, ImagePlus, RotateCcw, Trash2, X } from '@lucide/svelte';
-	import type {
-		MediaConversationRef,
-		MediaListItem
-	} from '$lib/server/db/queries/media';
-	import {
-		GALLERY_LAUNCH_KEY,
-		type GalleryLaunchIntent
-	} from '$lib/gallery-launch';
+	import type { MediaConversationRef, MediaListItem } from '$lib/server/db/queries/media';
+	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 
 	interface Props {
 		/** The media being shown; null means the lightbox is closed (renders nothing). */
@@ -53,7 +47,7 @@
 		deletingId = null,
 		conversationsUsingThis = undefined,
 		conversationsError = null,
-		inConversation = false
+		inConversation = false,
 	}: Props = $props();
 
 	function fmtBytes(n: number): string {
@@ -106,7 +100,7 @@
 		stashIntent({
 			kind: 'regenerate',
 			prompt,
-			sourceModelId: sourceModelIdFor(m)
+			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
 		await goto('/');
@@ -120,7 +114,7 @@
 		stashIntent({
 			kind: 'starting-image',
 			mediaId: m.id,
-			sourceModelId: sourceModelIdFor(m)
+			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
 		await goto('/');
@@ -251,9 +245,7 @@
 				{:else if conversationsError}
 					<p class="text-center text-red-300">{conversationsError}</p>
 				{:else if conversationsUsingThis.length === 0}
-					<p class="text-center opacity-60">
-						Not used in any conversation — safe to delete.
-					</p>
+					<p class="text-center opacity-60">Not used in any conversation — safe to delete.</p>
 				{:else}
 					<div class="text-center opacity-60">
 						Used in {conversationsUsingThis.length}

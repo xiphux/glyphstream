@@ -4,7 +4,7 @@ import {
 	get,
 	list,
 	openaiToolDefinitions,
-	register
+	register,
 } from '$lib/server/tools/registry';
 import type { Tool } from '$lib/server/tools/types';
 
@@ -15,10 +15,10 @@ function mkTool(name: string, description = 'test tool'): Tool {
 			function: {
 				name,
 				description,
-				parameters: { type: 'object', properties: {}, additionalProperties: false }
-			}
+				parameters: { type: 'object', properties: {}, additionalProperties: false },
+			},
 		},
-		execute: () => ({ content: `ran ${name}` })
+		execute: () => ({ content: `ran ${name}` }),
 	};
 }
 
@@ -97,9 +97,7 @@ describe('tool registry', () => {
 		register(uncategorized);
 		register(web1);
 		register(web2);
-		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map(
-			(d) => d.function.name
-		);
+		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map((d) => d.function.name);
 		expect(names).toEqual(['clock']);
 	});
 
@@ -114,9 +112,7 @@ describe('tool registry', () => {
 	it('excludeCategories leaves tools without a category alone', () => {
 		const a = mkTool('a');
 		register(a);
-		expect(openaiToolDefinitions({ excludeCategories: ['web', 'memory'] })).toEqual([
-			a.definition
-		]);
+		expect(openaiToolDefinitions({ excludeCategories: ['web', 'memory'] })).toEqual([a.definition]);
 	});
 
 	it('isAvailable + excludeCategories filters compose', () => {
@@ -124,21 +120,19 @@ describe('tool registry', () => {
 		const gatedAvail: Tool = {
 			...mkTool('gated-avail'),
 			metadata: { category: 'web' },
-			isAvailable: () => false
+			isAvailable: () => false,
 		};
 		// 'memory' is a stand-in for a future category that isn't 'web' —
 		// the filter should treat it as distinct regardless of whether it's
 		// in FEATURE_CATEGORIES yet.
 		const otherCat: Tool = {
 			...mkTool('other'),
-			metadata: { category: 'memory' as never }
+			metadata: { category: 'memory' as never },
 		};
 		register(ok);
 		register(gatedAvail);
 		register(otherCat);
-		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map(
-			(d) => d.function.name
-		);
+		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map((d) => d.function.name);
 		// 'ok' excluded by category, 'gated-avail' excluded by both, 'other' survives.
 		expect(names).toEqual(['other']);
 	});

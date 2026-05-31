@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 			} catch {
 				return [];
 			}
-		})
+		}),
 	);
 	return { customModels, models: results.flat(), modelsError: null };
 };

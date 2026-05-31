@@ -18,7 +18,7 @@ const base = {
 	status: null as string | null,
 	progress: null as number | null,
 	elapsedSeconds: 0,
-	onImageClick: vi.fn()
+	onImageClick: vi.fn(),
 };
 
 describe('InFlightBubble — placeholder (no blocks yet)', () => {
@@ -59,7 +59,7 @@ describe('InFlightBubble — placeholder (no blocks yet)', () => {
 
 	it('uses the supplied generating label for image/video', () => {
 		render(InFlightBubble, {
-			props: { ...base, blocks: [], label: 'Generating image' }
+			props: { ...base, blocks: [], label: 'Generating image' },
 		});
 		expect(screen.getByText('Generating image')).toBeInTheDocument();
 	});
@@ -81,8 +81,8 @@ describe('InFlightBubble — with blocks', () => {
 				toolCallId: 'tc-1',
 				toolName: 'web_search',
 				arguments: '{"query":"x"}',
-				status: 'executing'
-			}
+				status: 'executing',
+			},
 		];
 		render(InFlightBubble, { props: { ...base, blocks } });
 		expect(screen.getByText('web_search')).toBeInTheDocument();

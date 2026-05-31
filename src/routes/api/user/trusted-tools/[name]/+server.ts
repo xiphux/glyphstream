@@ -12,10 +12,7 @@
  */
 
 import { error } from '@sveltejs/kit';
-import {
-	getUserPreferences,
-	setUserPreferences
-} from '$lib/server/db/queries/user-preferences';
+import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import type { RequestHandler } from './$types';
 
 export const PUT: RequestHandler = async ({ params, locals }) => {
@@ -26,7 +23,7 @@ export const PUT: RequestHandler = async ({ params, locals }) => {
 	const trusted = prefs?.trustedMcpTools ?? [];
 	if (trusted.includes(name)) return new Response(null, { status: 204 });
 	setUserPreferences(locals.user.id, {
-		trustedMcpTools: [...trusted, name]
+		trustedMcpTools: [...trusted, name],
 	});
 	return new Response(null, { status: 204 });
 };
@@ -39,7 +36,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	const trusted = prefs?.trustedMcpTools ?? [];
 	if (!trusted.includes(name)) return new Response(null, { status: 404 });
 	setUserPreferences(locals.user.id, {
-		trustedMcpTools: trusted.filter((t) => t !== name)
+		trustedMcpTools: trusted.filter((t) => t !== name),
 	});
 	return new Response(null, { status: 204 });
 };

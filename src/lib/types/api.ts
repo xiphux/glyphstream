@@ -72,13 +72,13 @@ export const FEATURE_CATEGORY_LABELS: Record<
 > = {
 	web: {
 		label: 'Web access',
-		description: 'Lets the assistant search the web and fetch pages.'
+		description: 'Lets the assistant search the web and fetch pages.',
 	},
 	personalization: {
 		label: 'Personalization',
 		description:
-			'Sends your name, About you, and Custom instructions from preferences as system context, and lets the assistant save and recall memories about you.'
-	}
+			'Sends your name, About you, and Custom instructions from preferences as system context, and lets the assistant save and recall memories about you.',
+	},
 };
 
 /**

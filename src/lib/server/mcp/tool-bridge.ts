@@ -1,11 +1,6 @@
 import type { Tool, ToolExecution } from '../tools/types';
 import { register } from '../tools/registry';
-import {
-	callMcpTool,
-	getMcpServerCfg,
-	getMcpServerTools,
-	listMcpServerStates
-} from './registry';
+import { callMcpTool, getMcpServerCfg, getMcpServerTools, listMcpServerStates } from './registry';
 import type { McpCallResult, McpContentBlock, McpToolDescriptor } from './client';
 import type { LoadedMcpServer } from './config';
 
@@ -55,12 +50,12 @@ export function mcpToolFor(server: LoadedMcpServer, mcpTool: McpToolDescriptor):
 			function: {
 				name: registeredName,
 				description,
-				parameters: normalizeParameters(mcpTool.inputSchema)
-			}
+				parameters: normalizeParameters(mcpTool.inputSchema),
+			},
 		},
 		metadata: {
 			displayLabel: mcpTool.name,
-			category: categoryName
+			category: categoryName,
 		},
 		async execute(args, ctx): Promise<ToolExecution> {
 			try {
@@ -70,7 +65,7 @@ export function mcpToolFor(server: LoadedMcpServer, mcpTool: McpToolDescriptor):
 				const message = err instanceof Error ? err.message : String(err);
 				return { content: JSON.stringify({ error: message }), isError: true };
 			}
-		}
+		},
 	};
 }
 

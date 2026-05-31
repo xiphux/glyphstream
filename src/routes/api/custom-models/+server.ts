@@ -1,10 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import {
-	createCustomModel,
-	listCustomModelsForUser
-} from '$lib/server/db/queries/custom-models';
+import { createCustomModel, listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
 import { validateCreateInput } from '$lib/server/custom-models/validate';
 import type { CreateCustomModelRequest } from '$lib/types/api';
 import type { RequestHandler } from './$types';
@@ -28,7 +25,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		baseModelId: validated.baseModelId,
 		systemPrompt: validated.systemPrompt,
 		parameters: validated.parameters,
-		defaultDisabledFeatures: validated.defaultDisabledFeatures
+		defaultDisabledFeatures: validated.defaultDisabledFeatures,
 	});
 	return json({ customModel: model }, { status: 201 });
 };

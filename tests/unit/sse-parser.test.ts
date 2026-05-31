@@ -14,9 +14,7 @@ import { parseSSEStream, type SSERecord } from '$lib/server/streaming/sse-parser
 
 /** Wrap a string (or array of pre-split chunks) as a ReadableStream<Uint8Array>. */
 function streamFrom(input: string | string[]): ReadableStream<Uint8Array> {
-	const chunks = (Array.isArray(input) ? input : [input]).map((s) =>
-		new TextEncoder().encode(s)
-	);
+	const chunks = (Array.isArray(input) ? input : [input]).map((s) => new TextEncoder().encode(s));
 	let i = 0;
 	return new ReadableStream({
 		pull(controller) {
@@ -25,7 +23,7 @@ function streamFrom(input: string | string[]): ReadableStream<Uint8Array> {
 			} else {
 				controller.close();
 			}
-		}
+		},
 	});
 }
 
@@ -83,9 +81,7 @@ describe('parseSSEStream — block parsing', () => {
 	});
 
 	it('ignores id: and retry: fields (we do not reconnect)', async () => {
-		const records = await collect(
-			streamFrom('id: 42\nretry: 5000\ndata: ping\n\n')
-		);
+		const records = await collect(streamFrom('id: 42\nretry: 5000\ndata: ping\n\n'));
 		expect(records).toEqual([{ event: 'message', data: 'ping' }]);
 	});
 });
@@ -97,9 +93,7 @@ describe('parseSSEStream — line endings', () => {
 	});
 
 	it('handles mixed LF/CRLF within a single stream', async () => {
-		const records = await collect(
-			streamFrom('data: lf\n\ndata: crlf\r\n\r\n')
-		);
+		const records = await collect(streamFrom('data: lf\n\ndata: crlf\r\n\r\n'));
 		expect(records.map((r) => r.data)).toEqual(['lf', 'crlf']);
 	});
 });
@@ -125,7 +119,7 @@ describe('parseSSEStream — chunk boundaries', () => {
 				controller.enqueue(first);
 				controller.enqueue(second);
 				controller.close();
-			}
+			},
 		});
 		const records = await collect(stream);
 		expect(records[0].data).toBe('🚀');
@@ -167,8 +161,8 @@ describe('parseSSEStream — OpenAI-shaped payloads', () => {
 			[
 				'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
 				'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
-				'data: [DONE]\n\n'
-			].join('')
+				'data: [DONE]\n\n',
+			].join(''),
 		);
 		const records = await collect(stream);
 		expect(records.length).toBe(3);

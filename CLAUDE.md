@@ -57,7 +57,7 @@ tests/e2e/            # playwright (production-build webServer)
 - Media is ref-counted via the `message_media` join table. The background
   purger sweeps zero-ref rows past `MEDIA_GRACE_PERIOD_DAYS`.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
-  the field stores the *name* of an env var, never the secret itself.
+  the field stores the _name_ of an env var, never the secret itself.
 - `await parent()` at the start of every `(app)` page server load. Without
   it the page's `locals.user!.id` deref races with the layout's
   redirect-on-no-auth and surfaces a 500 instead of a 302.
@@ -87,14 +87,14 @@ pnpm analyze      # production build with rollup-plugin-visualizer
 - **pnpm 10 + native modules**: `pnpm install` blocks better-sqlite3's build
   script in CI even with `pnpm.onlyBuiltDependencies` set. The dance is
   `pnpm install --frozen-lockfile --ignore-scripts` then `pnpm rebuild
-  better-sqlite3 esbuild`. Same in Docker; same in CI.
+better-sqlite3 esbuild`. Same in Docker; same in CI.
 - **shiki must stay server-side.** It's ~500 KB; pulling it into the client
   bundle would tank load times. The client uses `markdown-it` directly
-  *without* shiki for live-streaming render
+  _without_ shiki for live-streaming render
   (`src/lib/markdown-live.ts`); the server uses `markdown-it` + shiki for
   the persisted post-stream HTML.
 - **Don't compress at the reverse proxy.** adapter-node has `precompress:
-  true`, so static assets ship as `.br` + `.gz` on disk and sirv negotiates
+true`, so static assets ship as `.br` + `.gz` on disk and sirv negotiates
   via `Accept-Encoding`. Re-compressing at the proxy double-compresses.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
@@ -106,13 +106,13 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   no CSS instead of erroring, and we've stepped on both:
   - Important modifier moved from prefix to **suffix**: `mt-0!` is
     correct, `!mt-0` (v3) silently emits nothing.
-  - `space-y-*` now sets `margin-block-end` on *every* child (v3 set
+  - `space-y-*` now sets `margin-block-end` on _every_ child (v3 set
     `margin-top` on subsequent siblings via `* + *`). Closing a gap
     between two specific siblings means overriding `mb-0!` on the
     upper child, not `mt-0!` on the lower one.
-  When something visual doesn't apply, check the generated CSS in
-  the inline `<style data-sveltekit>` to confirm Tailwind picked the
-  class up — silent no-op is the failure mode here.
+    When something visual doesn't apply, check the generated CSS in
+    the inline `<style data-sveltekit>` to confirm Tailwind picked the
+    class up — silent no-op is the failure mode here.
 
 ## Roadmap
 

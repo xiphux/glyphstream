@@ -35,15 +35,15 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	const thumb = await getOrCreateThumbnail(row.storagePath);
 	if (thumb) {
 		const stream = Readable.toWeb(
-			createReadStream(thumb.absolutePath)
+			createReadStream(thumb.absolutePath),
 		) as unknown as ReadableStream;
 		return new Response(stream, {
 			status: 200,
 			headers: {
 				'Content-Type': thumb.contentType,
 				'Content-Length': String(thumb.byteSize),
-				'Cache-Control': 'private, max-age=31536000, immutable'
-			}
+				'Cache-Control': 'private, max-age=31536000, immutable',
+			},
 		});
 	}
 
@@ -60,7 +60,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		headers: {
 			'Content-Type': fallback.contentType,
 			'Content-Length': String(fallback.contentLength),
-			'Cache-Control': 'private, max-age=31536000, immutable'
-		}
+			'Cache-Control': 'private, max-age=31536000, immutable',
+		},
 	});
 };

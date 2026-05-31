@@ -21,7 +21,7 @@ function makeStore(overrides: Partial<AttachmentStore> = {}): AttachmentStore {
 		isBusy: false,
 		addFiles: vi.fn(),
 		remove: vi.fn(),
-		...overrides
+		...overrides,
 	} as unknown as AttachmentStore;
 }
 
@@ -36,7 +36,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		kindKnown: true,
 		group: 'Bridge',
 		groupKey: 'bridge',
-		supportsTools: false
+		supportsTools: false,
 	};
 }
 
@@ -53,14 +53,14 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 				id: 'web',
 				label: 'Web access',
 				description: 'Lets the assistant search the web and fetch pages.',
-				source: 'builtin' as const
+				source: 'builtin' as const,
 			},
 			{
 				id: 'personalization',
 				label: 'Personalization',
 				description: 'Sends preferences + memory.',
-				source: 'builtin' as const
-			}
+				source: 'builtin' as const,
+			},
 		],
 		models: [makeModel()],
 		favoritedIds: [],
@@ -73,7 +73,7 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 		onStop: vi.fn(),
 		onFeaturesChange: vi.fn(),
 		onToggleFavorite: vi.fn(),
-		...overrides
+		...overrides,
 	};
 }
 

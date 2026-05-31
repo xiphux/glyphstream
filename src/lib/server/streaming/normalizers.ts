@@ -87,7 +87,7 @@ interface OpenAIChunk {
  */
 function parseToolCallsDelta(
 	calls: OpenAIToolCallDelta[] | undefined,
-	seenById: Map<number, string>
+	seenById: Map<number, string>,
 ): NormalizedDelta[] {
 	if (!calls || calls.length === 0) return [];
 	const out: NormalizedDelta[] = [];
@@ -101,7 +101,7 @@ function parseToolCallsDelta(
 				type: 'tool_call_start',
 				toolCallId: tc.id,
 				toolName: tc.function?.name ?? '',
-				index: tc.index
+				index: tc.index,
 			});
 		}
 
@@ -114,7 +114,7 @@ function parseToolCallsDelta(
 					type: 'tool_call_args_delta',
 					toolCallId: id,
 					index: tc.index,
-					argumentsDelta: argsDelta
+					argumentsDelta: argsDelta,
 				});
 			}
 		}
@@ -138,7 +138,7 @@ function commonExtras(chunk: OpenAIChunk): Pick<NormalizedResult, 'finishReason'
 	if (chunk.usage) {
 		out.usage = {
 			promptTokens: chunk.usage.prompt_tokens,
-			completionTokens: chunk.usage.completion_tokens
+			completionTokens: chunk.usage.completion_tokens,
 		};
 	}
 	return out;
@@ -247,7 +247,10 @@ class DeepseekR1Normalizer implements StreamNormalizer {
 			if (idx !== -1) {
 				// Found the next tag — emit the prefix in current mode, then flip.
 				if (idx > 0) {
-					out.push({ type: this.mode === 'text' ? 'text' : 'reasoning', text: this.buffer.slice(0, idx) });
+					out.push({
+						type: this.mode === 'text' ? 'text' : 'reasoning',
+						text: this.buffer.slice(0, idx),
+					});
 				}
 				this.buffer = this.buffer.slice(idx + target.length);
 				this.mode = this.mode === 'text' ? 'reasoning' : 'text';

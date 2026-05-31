@@ -27,32 +27,22 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
-import {
-	appendMessage,
-	setActiveLeafMessageId
-} from '$lib/server/db/queries/messages';
+import { appendMessage, setActiveLeafMessageId } from '$lib/server/db/queries/messages';
 import { createConversation } from '$lib/server/db/queries/conversations';
 import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 
-const RECOVERY_SQL = readFileSync(
-	resolve('./drizzle/0006_recover_prompts.sql'),
-	'utf-8'
-);
+const RECOVERY_SQL = readFileSync(resolve('./drizzle/0006_recover_prompts.sql'), 'utf-8');
 
 function runRecovery() {
 	mocks.testDb.run(sql.raw(RECOVERY_SQL));
 }
 
 function getRow(mediaId: string) {
-	return mocks.testDb
-		.select()
-		.from(media)
-		.where(eq(media.id, mediaId))
-		.get();
+	return mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
 }
 
 const LONG_PROMPT =
@@ -79,19 +69,19 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const userMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: LONG_PROMPT }]
+			parts: [{ type: 'text', text: LONG_PROMPT }],
 		});
 		const assistantMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: userMsg.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'here you go' }]
+			parts: [{ type: 'text', text: 'here you go' }],
 		});
 		setActiveLeafMessageId(conv.id, assistantMsg.id);
 		// Seed legacy state: persister wrote the excerpt, 0005's backfill
@@ -106,7 +96,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::image',
 			promptExcerpt: EXCERPT_FALLBACK,
-			promptFull: EXCERPT_FALLBACK
+			promptFull: EXCERPT_FALLBACK,
 		});
 		linkMessageMedia(assistantMsg.id, mediaId);
 
@@ -129,7 +119,7 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const sourceImage = insertMedia({
 			userId: u.id,
@@ -140,7 +130,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		const editPrompt = 'remove the background and make the panda blue';
 		const userMsg = appendMessage({
@@ -149,14 +139,14 @@ describe('migration 0006: prompt recovery', () => {
 			role: 'user',
 			parts: [
 				{ type: 'image', mediaId: sourceImage.id },
-				{ type: 'text', text: editPrompt }
-			]
+				{ type: 'text', text: editPrompt },
+			],
 		});
 		const assistantMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: userMsg.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'done' }]
+			parts: [{ type: 'text', text: 'done' }],
 		});
 		setActiveLeafMessageId(conv.id, assistantMsg.id);
 		const { id: mediaId } = insertMedia({
@@ -168,7 +158,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::image',
 			promptExcerpt: editPrompt,
-			promptFull: editPrompt // already short, but same fallback signature
+			promptFull: editPrompt, // already short, but same fallback signature
 		});
 		linkMessageMedia(assistantMsg.id, mediaId);
 
@@ -192,19 +182,19 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const userA = appendMessage({
 			conversationId: convA.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: earlyPrompt }]
+			parts: [{ type: 'text', text: earlyPrompt }],
 		});
 		const assistantA = appendMessage({
 			conversationId: convA.id,
 			parentMessageId: userA.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'made it' }]
+			parts: [{ type: 'text', text: 'made it' }],
 		});
 		setActiveLeafMessageId(convA.id, assistantA.id);
 
@@ -217,7 +207,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::image',
 			promptExcerpt: 'something',
-			promptFull: 'something'
+			promptFull: 'something',
 		});
 		linkMessageMedia(assistantA.id, mediaId);
 
@@ -226,7 +216,7 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const userB = appendMessage({
 			conversationId: convB.id,
@@ -234,14 +224,14 @@ describe('migration 0006: prompt recovery', () => {
 			role: 'user',
 			parts: [
 				{ type: 'image', mediaId },
-				{ type: 'text', text: lateFollowUpPrompt }
-			]
+				{ type: 'text', text: lateFollowUpPrompt },
+			],
 		});
 		const assistantB = appendMessage({
 			conversationId: convB.id,
 			parentMessageId: userB.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'tweaked' }]
+			parts: [{ type: 'text', text: 'tweaked' }],
 		});
 		setActiveLeafMessageId(convB.id, assistantB.id);
 		linkMessageMedia(assistantB.id, mediaId);
@@ -260,19 +250,19 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const userMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'a different prompt entirely' }]
+			parts: [{ type: 'text', text: 'a different prompt entirely' }],
 		});
 		const assistantMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: userMsg.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'ok' }]
+			parts: [{ type: 'text', text: 'ok' }],
 		});
 		setActiveLeafMessageId(conv.id, assistantMsg.id);
 		const PRESERVED_FULL = 'real full prompt with all the details intact';
@@ -285,7 +275,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::image',
 			promptExcerpt: 'real full prompt with…', // different from full
-			promptFull: PRESERVED_FULL
+			promptFull: PRESERVED_FULL,
 		});
 		linkMessageMedia(assistantMsg.id, mediaId);
 
@@ -311,7 +301,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::image',
 			promptExcerpt: EXCERPT_FALLBACK,
-			promptFull: EXCERPT_FALLBACK
+			promptFull: EXCERPT_FALLBACK,
 		});
 		// No linkMessageMedia call — this media is unlinked, mimicking
 		// "the conversation that generated me was deleted long ago".
@@ -331,13 +321,13 @@ describe('migration 0006: prompt recovery', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const userMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'unrelated text' }]
+			parts: [{ type: 'text', text: 'unrelated text' }],
 		});
 		setActiveLeafMessageId(conv.id, userMsg.id);
 		const { id: mediaId } = insertMedia({
@@ -350,7 +340,7 @@ describe('migration 0006: prompt recovery', () => {
 			sourceModel: null,
 			promptExcerpt: null,
 			promptFull: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		linkMessageMedia(userMsg.id, mediaId);
 

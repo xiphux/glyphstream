@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import {
@@ -18,7 +18,7 @@ import {
 	listConversations,
 	setDisabledFeatures,
 	unarchiveConversation,
-	updateConversationModel
+	updateConversationModel,
 } from '$lib/server/db/queries/conversations';
 import {
 	appendMessage,
@@ -29,12 +29,12 @@ import {
 	selectBranch,
 	setActiveLeafMessageId,
 	truncateAtMessage,
-	walkActiveBranch
+	walkActiveBranch,
 } from '$lib/server/db/queries/messages';
 import {
 	countOrphanMediaInConversation,
 	insertMedia,
-	linkMessageMedia
+	linkMessageMedia,
 } from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -54,7 +54,7 @@ describe('conversations CRUD', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(conv.id).toBeTruthy();
 		expect(conv.activeLeafMessageId).toBeNull();
@@ -72,7 +72,7 @@ describe('conversations CRUD', () => {
 			modelKind: 'chat',
 			systemPrompt: 'Be concise',
 			parameters: { temperature: 0.7, max_tokens: 500 },
-			customModelId: null
+			customModelId: null,
 		});
 		const detail = getConversationDetail(conv.id, u.id);
 		expect(detail?.systemPrompt).toBe('Be concise');
@@ -86,7 +86,7 @@ describe('conversations CRUD', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::a',
 			modelKind: 'chat',
-			title: 'A'
+			title: 'A',
 		});
 		// Bump the second one's updatedAt so order is deterministic.
 		await new Promise((r) => setTimeout(r, 5));
@@ -95,7 +95,7 @@ describe('conversations CRUD', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::b',
 			modelKind: 'chat',
-			title: 'B'
+			title: 'B',
 		});
 		const list = listConversations(u.id);
 		expect(list.map((c) => c.id)).toEqual([b.id, a.id]);
@@ -108,7 +108,7 @@ describe('conversations CRUD', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(listConversations(u1.id)).toHaveLength(1);
 		expect(listConversations(u2.id)).toHaveLength(0);
@@ -121,7 +121,7 @@ describe('conversations CRUD', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(getConversationDetail(conv.id, u2.id)).toBeNull();
 	});
@@ -132,13 +132,13 @@ describe('conversations CRUD', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'hi' }]
+			parts: [{ type: 'text', text: 'hi' }],
 		});
 		expect(deleteConversation(conv.id, u.id).ok).toBe(true);
 		expect(getConversationDetail(conv.id, u.id)).toBeNull();
@@ -151,7 +151,7 @@ describe('conversations CRUD', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(deleteConversation(conv.id, u2.id).ok).toBe(false);
 		// And the conversation should still exist for the real owner.
@@ -165,7 +165,7 @@ describe('conversations CRUD', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
 			modelKind: 'chat',
-			parameters: { temperature: 0.5 }
+			parameters: { temperature: 0.5 },
 		});
 		const meta = getConversationMeta(conv.id, u.id);
 		expect(meta?.parameters).toEqual({ temperature: 0.5 });
@@ -179,7 +179,7 @@ describe('per-conversation feature opt-outs', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(conv.disabledFeatures).toEqual([]);
 		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual([]);
@@ -193,7 +193,7 @@ describe('per-conversation feature opt-outs', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
 			modelKind: 'chat',
-			disabledFeatures: ['web']
+			disabledFeatures: ['web'],
 		});
 		expect(conv.disabledFeatures).toEqual(['web']);
 		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual(['web']);
@@ -205,7 +205,7 @@ describe('per-conversation feature opt-outs', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(setDisabledFeatures(conv.id, u.id, ['web'])).toBe(true);
 		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual(['web']);
@@ -218,7 +218,7 @@ describe('per-conversation feature opt-outs', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
 			modelKind: 'chat',
-			disabledFeatures: ['web']
+			disabledFeatures: ['web'],
 		});
 		expect(setDisabledFeatures(conv.id, u.id, [])).toBe(true);
 		expect(getConversationMeta(conv.id, u.id)?.disabledFeatures).toEqual([]);
@@ -231,7 +231,7 @@ describe('per-conversation feature opt-outs', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(setDisabledFeatures(conv.id, u2.id, ['web'])).toBe(false);
 		expect(getConversationMeta(conv.id, u1.id)?.disabledFeatures).toEqual([]);
@@ -243,7 +243,7 @@ describe('per-conversation feature opt-outs', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const beforeTs = getConversationDetail(conv.id, u.id)!.updatedAt;
 		await new Promise((r) => setTimeout(r, 3));
@@ -260,7 +260,7 @@ describe('archiving', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
 			modelKind: 'chat',
-			title: 'A'
+			title: 'A',
 		});
 		expect(listConversations(u.id)).toHaveLength(1);
 		expect(listArchivedConversations(u.id)).toHaveLength(0);
@@ -276,7 +276,7 @@ describe('archiving', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		archiveConversation(conv.id, u.id);
 		expect(unarchiveConversation(conv.id, u.id)).toBe(true);
@@ -290,7 +290,7 @@ describe('archiving', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const before = listConversations(u.id)[0];
 		archiveConversation(conv.id, u.id);
@@ -305,7 +305,7 @@ describe('archiving', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(archiveConversation(conv.id, u2.id)).toBe(false);
 		expect(listConversations(u1.id)).toHaveLength(1);
@@ -318,7 +318,7 @@ describe('archiving', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		archiveConversation(conv.id, u1.id);
 		expect(unarchiveConversation(conv.id, u2.id)).toBe(false);
@@ -332,7 +332,7 @@ describe('archiving', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		archiveConversation(conv.id, u1.id);
 		expect(listArchivedConversations(u1.id)).toHaveLength(1);
@@ -345,7 +345,7 @@ describe('archiving', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		archiveConversation(conv.id, u.id);
 		expect(getConversationDetail(conv.id, u.id)).not.toBeNull();
@@ -360,7 +360,7 @@ describe('updateConversationModel', () => {
 			endpointId: 'bridge',
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
-			systemPrompt: extra?.systemPrompt
+			systemPrompt: extra?.systemPrompt,
 		});
 		return { u, conv };
 	}
@@ -370,7 +370,7 @@ describe('updateConversationModel', () => {
 		const ok = updateConversationModel(conv.id, u.id, {
 			endpointId: 'groq',
 			modelId: 'groq::llama-3.3-70b',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(ok).toBe(true);
 		const meta = getConversationMeta(conv.id, u.id);
@@ -384,7 +384,7 @@ describe('updateConversationModel', () => {
 		updateConversationModel(conv.id, u.id, {
 			endpointId: 'groq',
 			modelId: 'groq::llama-3.3-70b',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(getConversationMeta(conv.id, u.id)?.systemPrompt).toBe('You are Bert.');
 	});
@@ -394,7 +394,7 @@ describe('updateConversationModel', () => {
 		updateConversationModel(conv.id, u.id, {
 			endpointId: 'bridge',
 			modelId: 'bridge::comfyui/sdxl',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		expect(getConversationMeta(conv.id, u.id)?.modelKind).toBe('image');
 	});
@@ -407,7 +407,7 @@ describe('updateConversationModel', () => {
 		updateConversationModel(conv.id, u.id, {
 			endpointId: 'bridge',
 			modelId: 'bridge::other',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		// listConversations returns updatedAt; verify it advanced.
 		const list = listConversations(u.id);
@@ -424,7 +424,7 @@ describe('updateConversationModel', () => {
 		const ok = updateConversationModel(conv.id, intruder.id, {
 			endpointId: 'groq',
 			modelId: 'groq::llama-3.3-70b',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(ok).toBe(false);
 	});
@@ -434,7 +434,7 @@ describe('updateConversationModel', () => {
 		const ok = updateConversationModel('does-not-exist', u.id, {
 			endpointId: 'groq',
 			modelId: 'groq::llama-3.3-70b',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(ok).toBe(false);
 	});
@@ -447,7 +447,7 @@ describe('messages: append + active-branch walk', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		return { u, conv };
 	}
@@ -458,7 +458,7 @@ describe('messages: append + active-branch walk', () => {
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'hello' }]
+			parts: [{ type: 'text', text: 'hello' }],
 		});
 		const detail = getConversationDetail(conv.id, u.id);
 		expect(detail?.activeLeafMessageId).toBe(m.id);
@@ -472,19 +472,19 @@ describe('messages: append + active-branch walk', () => {
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'first' }]
+			parts: [{ type: 'text', text: 'first' }],
 		});
 		const m2 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: m1.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'reply' }]
+			parts: [{ type: 'text', text: 'reply' }],
 		});
 		const m3 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: m2.id,
 			role: 'user',
-			parts: [{ type: 'text', text: 'follow-up' }]
+			parts: [{ type: 'text', text: 'follow-up' }],
 		});
 		const branch = walkActiveBranch(conv.id);
 		expect(branch.map((m) => m.id)).toEqual([m1.id, m2.id, m3.id]);
@@ -496,13 +496,13 @@ describe('messages: append + active-branch walk', () => {
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'first' }]
+			parts: [{ type: 'text', text: 'first' }],
 		});
 		const m2 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: m1.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'reply' }]
+			parts: [{ type: 'text', text: 'reply' }],
 		});
 
 		const r = truncateAtMessage(conv.id, m2.id);
@@ -520,13 +520,13 @@ describe('messages: append + active-branch walk', () => {
 			userId: seedUser().id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const otherMsg = appendMessage({
 			conversationId: other.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'x' }]
+			parts: [{ type: 'text', text: 'x' }],
 		});
 		expect(truncateAtMessage(conv.id, otherMsg.id)).toBeNull();
 	});
@@ -538,7 +538,7 @@ describe('branching: siblings + selectBranch', () => {
 			userId,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 	}
 
@@ -546,13 +546,13 @@ describe('branching: siblings + selectBranch', () => {
 		convId: string,
 		parentId: string | null,
 		role: 'user' | 'assistant',
-		text: string
+		text: string,
 	) {
 		return appendMessage({
 			conversationId: convId,
 			parentMessageId: parentId,
 			role,
-			parts: [{ type: 'text', text }]
+			parts: [{ type: 'text', text }],
 		});
 	}
 
@@ -667,31 +667,31 @@ describe('deleteBranch', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const u1 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'branch A' }]
+			parts: [{ type: 'text', text: 'branch A' }],
 		});
 		const a1 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: u1.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'A reply' }]
+			parts: [{ type: 'text', text: 'A reply' }],
 		});
 		const u2 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'branch B' }]
+			parts: [{ type: 'text', text: 'branch B' }],
 		});
 		const a2 = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: u2.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'B reply' }]
+			parts: [{ type: 'text', text: 'B reply' }],
 		});
 		return { user: u, conv, u1, a1, u2, a2 };
 	}
@@ -743,7 +743,7 @@ describe('deleteBranch', () => {
 			kind: 'image',
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::x',
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		linkMessageMedia(a1.id, mediaId);
 		linkMessageMedia(a2.id, mediaId);
@@ -765,7 +765,7 @@ describe('deleteBranch', () => {
 			.select({
 				refCount: media.refCount,
 				unreferencedSince: media.unreferencedSince,
-				hardDeletedAt: media.hardDeletedAt
+				hardDeletedAt: media.hardDeletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
@@ -787,7 +787,7 @@ describe('deleteBranch', () => {
 			kind: 'image',
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::x',
-			promptExcerpt: null
+			promptExcerpt: null,
 		});
 		linkMessageMedia(a1.id, mediaId);
 
@@ -796,7 +796,7 @@ describe('deleteBranch', () => {
 		// Caller gets the storage path back so it can unlink the file
 		// from disk post-commit.
 		expect(result && 'toUnlink' in result && result.toUnlink).toEqual([
-			{ id: mediaId, storagePath: 'ab/cd/orphan.png' }
+			{ id: mediaId, storagePath: 'ab/cd/orphan.png' },
 		]);
 
 		// hardDeletedAt is stamped inside the transaction so the row is
@@ -805,7 +805,7 @@ describe('deleteBranch', () => {
 		const after = mocks.testDb
 			.select({
 				refCount: media.refCount,
-				hardDeletedAt: media.hardDeletedAt
+				hardDeletedAt: media.hardDeletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
@@ -831,7 +831,7 @@ describe('deleteBranch', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		linkMessageMedia(a1.id, mediaId);
 
@@ -847,7 +847,7 @@ describe('deleteBranch', () => {
 			.select({
 				refCount: media.refCount,
 				unreferencedSince: media.unreferencedSince,
-				hardDeletedAt: media.hardDeletedAt
+				hardDeletedAt: media.hardDeletedAt,
 			})
 			.from(media)
 			.where(eq(media.id, mediaId))
@@ -863,13 +863,13 @@ describe('deleteBranch', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const root = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'only message' }]
+			parts: [{ type: 'text', text: 'only message' }],
 		});
 		const result = deleteBranch(conv.id, root.id, u.id);
 		expect(result).toEqual({ refusedReason: 'no-siblings' });
@@ -892,19 +892,19 @@ describe('countOrphanMediaInConversation', () => {
 			userId,
 			endpointId: 'bridge',
 			modelId: `bridge::${modelKind}`,
-			modelKind
+			modelKind,
 		});
 		const userMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'make something' }]
+			parts: [{ type: 'text', text: 'make something' }],
 		});
 		const assistantMsg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: userMsg.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'sure' }]
+			parts: [{ type: 'text', text: 'sure' }],
 		});
 		return { conv, userMsg, assistantMsg };
 	}
@@ -918,7 +918,7 @@ describe('countOrphanMediaInConversation', () => {
 			kind,
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::sdxl',
-			promptExcerpt: 'something'
+			promptExcerpt: 'something',
 		});
 	}
 
@@ -928,11 +928,11 @@ describe('countOrphanMediaInConversation', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::chat',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 0,
-			videos: 0
+			videos: 0,
 		});
 	});
 
@@ -943,7 +943,7 @@ describe('countOrphanMediaInConversation', () => {
 		linkMessageMedia(assistantMsg.id, mediaId);
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 1,
-			videos: 0
+			videos: 0,
 		});
 	});
 
@@ -958,7 +958,7 @@ describe('countOrphanMediaInConversation', () => {
 		linkMessageMedia(assistantMsg.id, vid.id);
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 2,
-			videos: 1
+			videos: 1,
 		});
 	});
 
@@ -974,7 +974,7 @@ describe('countOrphanMediaInConversation', () => {
 		linkMessageMedia(b.assistantMsg.id, shared);
 		expect(countOrphanMediaInConversation(a.conv.id, u.id)).toEqual({
 			images: 0,
-			videos: 0
+			videos: 0,
 		});
 	});
 
@@ -990,7 +990,7 @@ describe('countOrphanMediaInConversation', () => {
 			conversationId: conv.id,
 			parentMessageId: userMsg.id, // sibling of the original assistantMsg
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'second variant' }]
+			parts: [{ type: 'text', text: 'second variant' }],
 		});
 		const { id: mediaId } = makeGenerated(u.id, 'image');
 		linkMessageMedia(assistantMsg.id, mediaId);
@@ -999,7 +999,7 @@ describe('countOrphanMediaInConversation', () => {
 		// the conversation, so the orphan count is 1.
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 1,
-			videos: 0
+			videos: 0,
 		});
 	});
 
@@ -1018,12 +1018,12 @@ describe('countOrphanMediaInConversation', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		linkMessageMedia(assistantMsg.id, uploaded);
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 0,
-			videos: 0
+			videos: 0,
 		});
 	});
 
@@ -1041,7 +1041,7 @@ describe('countOrphanMediaInConversation', () => {
 			.run();
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({
 			images: 0,
-			videos: 0
+			videos: 0,
 		});
 	});
 });
@@ -1056,7 +1056,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			kind: 'image',
 			sourceEndpointId: 'bridge',
 			sourceModel: 'bridge::sdxl',
-			promptExcerpt: 'something'
+			promptExcerpt: 'something',
 		});
 	}
 
@@ -1066,7 +1066,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::chat',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
@@ -1082,13 +1082,13 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'made it' }]
+			parts: [{ type: 'text', text: 'made it' }],
 		});
 		const { id: mediaId } = makeGenerated(u.id, 'aa/bb/preserved.png');
 		linkMessageMedia(msg.id, mediaId);
@@ -1097,11 +1097,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 		expect(result.ok).toBe(true);
 		expect(result.toUnlink).toEqual([]);
 
-		const row = mocks.testDb
-			.select()
-			.from(media)
-			.where(eq(media.id, mediaId))
-			.get();
+		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
 		expect(row?.hardDeletedAt).toBeNull();
 		expect(row?.refCount).toBe(0);
 	});
@@ -1112,28 +1108,22 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'made it' }]
+			parts: [{ type: 'text', text: 'made it' }],
 		});
 		const { id: mediaId } = makeGenerated(u.id, 'aa/bb/orphan.png');
 		linkMessageMedia(msg.id, mediaId);
 
 		const result = deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(result.ok).toBe(true);
-		expect(result.toUnlink).toEqual([
-			{ id: mediaId, storagePath: 'aa/bb/orphan.png' }
-		]);
+		expect(result.toUnlink).toEqual([{ id: mediaId, storagePath: 'aa/bb/orphan.png' }]);
 
-		const row = mocks.testDb
-			.select()
-			.from(media)
-			.where(eq(media.id, mediaId))
-			.get();
+		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
 		expect(row?.hardDeletedAt).not.toBeNull();
 	});
 
@@ -1147,25 +1137,25 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msgA = appendMessage({
 			conversationId: convA.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'a' }]
+			parts: [{ type: 'text', text: 'a' }],
 		});
 		const convB = createConversation({
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msgB = appendMessage({
 			conversationId: convB.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'b' }]
+			parts: [{ type: 'text', text: 'b' }],
 		});
 		const { id: shared } = makeGenerated(u.id, 'aa/bb/shared.png');
 		linkMessageMedia(msgA.id, shared);
@@ -1175,11 +1165,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 		expect(result.ok).toBe(true);
 		expect(result.toUnlink).toEqual([]); // shared, not orphaned
 
-		const row = mocks.testDb
-			.select()
-			.from(media)
-			.where(eq(media.id, shared))
-			.get();
+		const row = mocks.testDb.select().from(media).where(eq(media.id, shared)).get();
 		expect(row?.hardDeletedAt).toBeNull();
 		expect(row?.refCount).toBe(1);
 	});
@@ -1195,13 +1181,13 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'with upload attached' }]
+			parts: [{ type: 'text', text: 'with upload attached' }],
 		});
 		const { id: uploaded } = insertMedia({
 			userId: u.id,
@@ -1212,7 +1198,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			sourceEndpointId: null,
 			sourceModel: null,
 			promptExcerpt: null,
-			origin: 'uploaded'
+			origin: 'uploaded',
 		});
 		linkMessageMedia(msg.id, uploaded);
 
@@ -1220,11 +1206,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 		expect(result.ok).toBe(true);
 		expect(result.toUnlink).toEqual([]);
 
-		const row = mocks.testDb
-			.select()
-			.from(media)
-			.where(eq(media.id, uploaded))
-			.get();
+		const row = mocks.testDb.select().from(media).where(eq(media.id, uploaded)).get();
 		expect(row?.hardDeletedAt).toBeNull();
 		expect(row?.refCount).toBe(0);
 		expect(row?.unreferencedSince).not.toBeNull();
@@ -1240,13 +1222,13 @@ describe('deleteConversation with the deleteMedia flag', () => {
 			userId: u1.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::image',
-			modelKind: 'image'
+			modelKind: 'image',
 		});
 		const msg = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'something' }]
+			parts: [{ type: 'text', text: 'something' }],
 		});
 		const { id: mediaId } = makeGenerated(u1.id, 'aa/bb/cross.png');
 		linkMessageMedia(msg.id, mediaId);
@@ -1257,11 +1239,7 @@ describe('deleteConversation with the deleteMedia flag', () => {
 
 		// Conversation and media both still intact for the real owner.
 		expect(getConversationDetail(conv.id, u1.id)).not.toBeNull();
-		const row = mocks.testDb
-			.select()
-			.from(media)
-			.where(eq(media.id, mediaId))
-			.get();
+		const row = mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
 		expect(row?.hardDeletedAt).toBeNull();
 		expect(row?.refCount).toBe(1);
 	});
@@ -1280,25 +1258,25 @@ describe('resolveParentForUserMessage', () => {
 			userId,
 			endpointId: 'bridge',
 			modelId: 'bridge::chat',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const root = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: null,
 			role: 'user',
-			parts: [{ type: 'text', text: 'first' }]
+			parts: [{ type: 'text', text: 'first' }],
 		});
 		const reply = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: root.id,
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'ok' }]
+			parts: [{ type: 'text', text: 'ok' }],
 		});
 		const followUp = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: reply.id,
 			role: 'user',
-			parts: [{ type: 'text', text: 'second' }]
+			parts: [{ type: 'text', text: 'second' }],
 		});
 		setActiveLeafMessageId(conv.id, followUp.id);
 		return { conv, root, reply, followUp };
@@ -1315,7 +1293,7 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
 			activeLeafMessageId: 'should-be-ignored-because-editedMessageId-wins',
-			editedMessageId: root.id
+			editedMessageId: root.id,
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: null });
 	});
@@ -1329,7 +1307,7 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
 			activeLeafMessageId: followUp.id,
-			editedMessageId: followUp.id
+			editedMessageId: followUp.id,
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: reply.id });
 	});
@@ -1340,12 +1318,12 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
 			activeLeafMessageId: null,
-			editedMessageId: 'no-such-message'
+			editedMessageId: 'no-such-message',
 		});
 		expect(result).toEqual({
 			ok: false,
 			reason: 'edited-message-not-found',
-			id: 'no-such-message'
+			id: 'no-such-message',
 		});
 	});
 
@@ -1362,7 +1340,7 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: b.conv.id,
 			activeLeafMessageId: b.followUp.id,
-			editedMessageId: a.root.id
+			editedMessageId: a.root.id,
 		});
 		expect(result.ok).toBe(false);
 	});
@@ -1373,7 +1351,7 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
 			activeLeafMessageId: null,
-			parentMessageId: reply.id
+			parentMessageId: reply.id,
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: reply.id });
 	});
@@ -1384,12 +1362,12 @@ describe('resolveParentForUserMessage', () => {
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
 			activeLeafMessageId: null,
-			parentMessageId: 'no-such-message'
+			parentMessageId: 'no-such-message',
 		});
 		expect(result).toEqual({
 			ok: false,
 			reason: 'parent-message-not-found',
-			id: 'no-such-message'
+			id: 'no-such-message',
 		});
 	});
 
@@ -1405,7 +1383,7 @@ describe('resolveParentForUserMessage', () => {
 			conversationId: conv.id,
 			activeLeafMessageId: null,
 			editedMessageId: root.id,
-			parentMessageId: reply.id // would resolve to reply.id if used
+			parentMessageId: reply.id, // would resolve to reply.id if used
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: null });
 	});
@@ -1415,7 +1393,7 @@ describe('resolveParentForUserMessage', () => {
 		const { conv, followUp } = setupConvWithBranch(u.id);
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
-			activeLeafMessageId: followUp.id
+			activeLeafMessageId: followUp.id,
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: followUp.id });
 	});
@@ -1429,11 +1407,11 @@ describe('resolveParentForUserMessage', () => {
 			userId: u.id,
 			endpointId: 'bridge',
 			modelId: 'bridge::chat',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 		const result = resolveParentForUserMessage({
 			conversationId: conv.id,
-			activeLeafMessageId: null
+			activeLeafMessageId: null,
 		});
 		expect(result).toEqual({ ok: true, parentMessageId: null });
 	});
@@ -1450,7 +1428,7 @@ describe('resolveParentForUserMessage', () => {
 			conversationId: conv.id,
 			activeLeafMessageId: followUp.id,
 			editedMessageId: '',
-			parentMessageId: ''
+			parentMessageId: '',
 		});
 		// Falls through to activeLeafMessageId.
 		expect(result).toEqual({ ok: true, parentMessageId: followUp.id });
@@ -1468,14 +1446,14 @@ describe('findUserMessageAncestor', () => {
 			userId,
 			endpointId: 'bridge',
 			modelId: 'bridge::x',
-			modelKind: 'chat'
+			modelKind: 'chat',
 		});
 	}
 
 	function append(
 		conversationId: string,
 		parentMessageId: string | null,
-		role: 'system' | 'user' | 'assistant' | 'tool'
+		role: 'system' | 'user' | 'assistant' | 'tool',
 	) {
 		return appendMessage({
 			conversationId,
@@ -1487,7 +1465,7 @@ describe('findUserMessageAncestor', () => {
 			finishReason: null,
 			modelUsed: null,
 			tokensIn: null,
-			tokensOut: null
+			tokensOut: null,
 		});
 	}
 

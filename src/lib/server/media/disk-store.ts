@@ -18,7 +18,7 @@ import type {
 	MediaPutInput,
 	MediaRange,
 	MediaStore,
-	MediaStoredRef
+	MediaStoredRef,
 } from './store';
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
@@ -30,7 +30,7 @@ const EXT_BY_CONTENT_TYPE: Record<string, string> = {
 	'image/avif': 'avif',
 	'video/mp4': 'mp4',
 	'video/webm': 'webm',
-	'video/quicktime': 'mov'
+	'video/quicktime': 'mov',
 };
 
 function extFor(contentType: string): string {
@@ -61,14 +61,14 @@ export class DiskMediaStore implements MediaStore {
 		return {
 			storagePath,
 			byteSize: input.bytes.byteLength,
-			contentType: input.contentType
+			contentType: input.contentType,
 		};
 	}
 
 	async open(
 		storagePath: string,
 		contentType: string,
-		range?: MediaRange
+		range?: MediaRange,
 	): Promise<MediaOpenResult | null> {
 		const absolute = resolve(root(), storagePath);
 		if (!existsSync(absolute)) return null;
@@ -82,13 +82,13 @@ export class DiskMediaStore implements MediaStore {
 				stream: createReadStream(absolute, { start, end }),
 				contentLength: end - start + 1,
 				contentRange: { start, end, total: size },
-				contentType
+				contentType,
 			};
 		}
 		return {
 			stream: createReadStream(absolute),
 			contentLength: size,
-			contentType
+			contentType,
 		};
 	}
 
@@ -140,7 +140,7 @@ export function getMediaStore(): DiskMediaStore {
  */
 export async function unlinkMediaFiles(
 	files: ReadonlyArray<{ id: string; storagePath: string }>,
-	logTag: string
+	logTag: string,
 ): Promise<void> {
 	if (files.length === 0) return;
 	const store = getMediaStore();
@@ -149,11 +149,8 @@ export async function unlinkMediaFiles(
 			try {
 				await store.delete(m.storagePath);
 			} catch (e) {
-				console.warn(
-					`[${logTag}] failed to unlink media ${m.id} at ${m.storagePath}:`,
-					e
-				);
+				console.warn(`[${logTag}] failed to unlink media ${m.id} at ${m.storagePath}:`, e);
 			}
-		})
+		}),
 	);
 }

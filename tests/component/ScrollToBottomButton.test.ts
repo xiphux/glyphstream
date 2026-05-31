@@ -8,7 +8,7 @@ import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svel
 describe('ScrollToBottomButton', () => {
 	it('is opaque + tabbable + not aria-hidden when visible', () => {
 		const { container } = render(ScrollToBottomButton, {
-			props: { visible: true, onClick: vi.fn() }
+			props: { visible: true, onClick: vi.fn() },
 		});
 		expect(container.querySelector('.opacity-100')).toBeInTheDocument();
 		const btn = screen.getByRole('button', { name: 'Scroll to latest message' });
@@ -18,7 +18,7 @@ describe('ScrollToBottomButton', () => {
 
 	it('is transparent + untabbable + aria-hidden when not visible', () => {
 		const { container } = render(ScrollToBottomButton, {
-			props: { visible: false, onClick: vi.fn() }
+			props: { visible: false, onClick: vi.fn() },
 		});
 		expect(container.querySelector('.opacity-0')).toBeInTheDocument();
 		// aria-hidden=true removes it from the a11y tree, so query the DOM.

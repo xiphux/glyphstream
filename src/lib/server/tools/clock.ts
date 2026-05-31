@@ -24,12 +24,12 @@ export const clockTool: Tool = {
 				properties: {
 					timezone: {
 						type: 'string',
-						description: 'IANA timezone name. Defaults to UTC if omitted.'
-					}
+						description: 'IANA timezone name. Defaults to UTC if omitted.',
+					},
 				},
-				additionalProperties: false
-			}
-		}
+				additionalProperties: false,
+			},
+		},
 	},
 	metadata: { displayLabel: 'Clock', icon: 'clock' },
 	execute(args) {
@@ -39,25 +39,25 @@ export const clockTool: Tool = {
 			const human = new Intl.DateTimeFormat('en-US', {
 				timeZone: tz,
 				dateStyle: 'full',
-				timeStyle: 'long'
+				timeStyle: 'long',
 			}).format(now);
 			return {
 				content: JSON.stringify({
 					iso: now.toISOString(),
 					human,
-					timezone: tz
-				})
+					timezone: tz,
+				}),
 			};
 		} catch {
 			// Intl.DateTimeFormat throws RangeError on unknown timezones.
 			return {
 				content: JSON.stringify({
-					error: `Unknown IANA timezone: ${tz}. Try a name like "America/New_York" or "UTC".`
+					error: `Unknown IANA timezone: ${tz}. Try a name like "America/New_York" or "UTC".`,
 				}),
-				isError: true
+				isError: true,
 			};
 		}
-	}
+	},
 };
 
 function parseTimezone(args: unknown): string {

@@ -6,25 +6,25 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	sendCalls: [] as Array<{ subscription: unknown; payload: string }>,
 	sendResult: { ok: true } as { ok: boolean; statusCode?: number },
-	sendResultsByEndpoint: new Map<string, { ok: boolean; statusCode?: number }>()
+	sendResultsByEndpoint: new Map<string, { ok: boolean; statusCode?: number }>(),
 }));
 
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 vi.mock('$lib/server/push/web-push', () => ({
 	sendPushNotification: vi.fn(async (subscription: { endpoint: string }, payload: string) => {
 		mocks.sendCalls.push({ subscription, payload });
 		return mocks.sendResultsByEndpoint.get(subscription.endpoint) ?? mocks.sendResult;
-	})
+	}),
 }));
 
 import { buildPreview, notifyConversationComplete } from '$lib/server/push/notify';
 import {
 	listPushSubscriptionsForUser,
-	upsertPushSubscription
+	upsertPushSubscription,
 } from '$lib/server/db/queries/push-subscriptions';
 import { setUserPreferences } from '$lib/server/db/queries/user-preferences';
 
@@ -41,7 +41,7 @@ afterEach(() => {
 
 const SAMPLE_KEYS = {
 	p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',
-	auth: 'tBHItJI5svbpez7KI4CCXg'
+	auth: 'tBHItJI5svbpez7KI4CCXg',
 };
 
 describe('buildPreview', () => {
@@ -50,7 +50,8 @@ describe('buildPreview', () => {
 	});
 
 	it('strips code fences, inline code, headers, bold/italic, links', () => {
-		const md = '# Title\n\n**Bold** and *italic* and `code`. See [link](https://x).\n\n```js\nconst x = 1;\n```\nDone.';
+		const md =
+			'# Title\n\n**Bold** and *italic* and `code`. See [link](https://x).\n\n```js\nconst x = 1;\n```\nDone.';
 		const out = buildPreview(md);
 		expect(out).not.toMatch(/[*#`]/);
 		expect(out).not.toContain('https://x');
@@ -90,7 +91,7 @@ describe('notifyConversationComplete', () => {
 			assistantMessageId: 'msg1',
 			conversationTitle: 'About cats',
 			previewText: 'Cats are mysterious **creatures**.',
-			modality: 'chat' as const
+			modality: 'chat' as const,
 		};
 	}
 
@@ -122,7 +123,7 @@ describe('notifyConversationComplete', () => {
 			conversationId: 'conv1',
 			conversationTitle: 'About cats',
 			foregroundToast: true,
-			modality: 'chat'
+			modality: 'chat',
 		});
 	});
 
@@ -130,7 +131,7 @@ describe('notifyConversationComplete', () => {
 		const u = seedUser();
 		setUserPreferences(u.id, {
 			notificationsEnabled: true,
-			notificationsShowContent: true
+			notificationsShowContent: true,
 		});
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
@@ -156,8 +157,9 @@ describe('notifyConversationComplete', () => {
 		upsertPushSubscription({ userId: u.id, endpoint: 'b', ...SAMPLE_KEYS });
 		upsertPushSubscription({ userId: u.id, endpoint: 'c', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
-		expect(new Set(mocks.sendCalls.map((c) => (c.subscription as { endpoint: string }).endpoint)))
-			.toEqual(new Set(['a', 'b', 'c']));
+		expect(
+			new Set(mocks.sendCalls.map((c) => (c.subscription as { endpoint: string }).endpoint)),
+		).toEqual(new Set(['a', 'b', 'c']));
 	});
 
 	it('deletes subscriptions that return 410 Gone but keeps healthy ones', async () => {
@@ -193,7 +195,7 @@ describe('notifyConversationComplete', () => {
 		const u = seedUser();
 		setUserPreferences(u.id, {
 			notificationsEnabled: true,
-			notificationsForegroundToast: false
+			notificationsForegroundToast: false,
 		});
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));

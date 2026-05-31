@@ -30,7 +30,9 @@ import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/pus
 
 // SW context: redeclare `self` with the correct worker-scope type so
 // addEventListener and clients/registration narrow correctly.
-declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision: string | null }> };
+declare const self: ServiceWorkerGlobalScope & {
+	__WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+};
 
 precacheAndRoute(self.__WB_MANIFEST);
 
@@ -61,7 +63,7 @@ async function handlePush(event: PushEvent): Promise<void> {
 
 	const clientsList = await self.clients.matchAll({
 		type: 'window',
-		includeUncontrolled: true
+		includeUncontrolled: true,
 	});
 
 	// Ask each window to self-report its route + visibility. WindowClient.url
@@ -70,7 +72,7 @@ async function handlePush(event: PushEvent): Promise<void> {
 	// on — the window itself is the authority. A window that doesn't answer
 	// in time (suspended / closed) is treated as absent.
 	const probed = await Promise.all(
-		clientsList.map(async (client) => ({ client, report: await queryClient(client) }))
+		clientsList.map(async (client) => ({ client, report: await queryClient(client) })),
 	);
 	const reports: ActiveConversationReport[] = [];
 	for (const p of probed) {
@@ -79,7 +81,7 @@ async function handlePush(event: PushEvent): Promise<void> {
 
 	const arbiterPayload: ArbiterPayload = {
 		conversationId: payload.conversationId,
-		foregroundToast: payload.foregroundToast
+		foregroundToast: payload.foregroundToast,
 	};
 
 	const action = pickAction(reports, arbiterPayload);
@@ -102,7 +104,7 @@ async function handlePush(event: PushEvent): Promise<void> {
 		data: { conversationId: payload.conversationId },
 		icon: '/icon.svg',
 		badge: '/icon.svg',
-		renotify: true
+		renotify: true,
 	} as NotificationOptions);
 }
 
@@ -113,10 +115,7 @@ async function handlePush(event: PushEvent): Promise<void> {
  * within the timeout — a suspended or unresponsive window can't be
  * "actively viewing" anything, so the arbiter treats null as absent.
  */
-function queryClient(
-	client: Client,
-	timeoutMs = 500
-): Promise<ActiveConversationReport | null> {
+function queryClient(client: Client, timeoutMs = 500): Promise<ActiveConversationReport | null> {
 	return new Promise((resolve) => {
 		const channel = new MessageChannel();
 		let settled = false;
@@ -133,7 +132,7 @@ function queryClient(
 			finish(
 				data && typeof data.visible === 'boolean'
 					? { conversationId: data.conversationId ?? null, visible: data.visible }
-					: null
+					: null,
 			);
 		};
 		try {
@@ -156,7 +155,7 @@ async function focusOrOpen(conversationId: string): Promise<void> {
 	const targetPath = `/chat/${conversationId}`;
 	const clientsList = await self.clients.matchAll({
 		type: 'window',
-		includeUncontrolled: true
+		includeUncontrolled: true,
 	});
 	for (let i = 0; i < clientsList.length; i++) {
 		const c = clientsList[i];

@@ -15,7 +15,7 @@ export interface SSERecord {
 }
 
 export async function* parseSSEStream(
-	stream: ReadableStream<Uint8Array>
+	stream: ReadableStream<Uint8Array>,
 ): AsyncIterable<SSERecord> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder('utf-8');

@@ -70,8 +70,8 @@ function printHelp(): void {
 			'Options:',
 			'  --user-id, -u <uuid>   GlyphStream user id (must already exist)',
 			'  --dry-run              Parse + count, do not write to the DB',
-			'  --help, -h             Show this help'
-		].join('\n')
+			'  --help, -h             Show this help',
+		].join('\n'),
 	);
 }
 

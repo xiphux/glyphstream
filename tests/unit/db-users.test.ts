@@ -13,7 +13,7 @@ import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
-	closeDb: () => {}
+	closeDb: () => {},
 }));
 
 import { upsertUserByGithub } from '$lib/server/db/queries/users';
@@ -33,7 +33,7 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 42,
 			githubUsername: 'octocat',
 			email: 'octocat@example.com',
-			displayName: 'The Octocat'
+			displayName: 'The Octocat',
 		});
 		expect(typeof id).toBe('string');
 		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get();
@@ -54,13 +54,13 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 42,
 			githubUsername: 'octocat',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		const second = upsertUserByGithub({
 			githubUserId: 42,
 			githubUsername: 'octocat',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		expect(second).toBe(first);
 	});
@@ -70,7 +70,7 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 42,
 			githubUsername: 'old-name',
 			email: 'old@example.com',
-			displayName: 'Old Name'
+			displayName: 'Old Name',
 		});
 		const beforeRow = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
 
@@ -83,7 +83,7 @@ describe('upsertUserByGithub', () => {
 				githubUserId: 42,
 				githubUsername: 'new-name',
 				email: 'new@example.com',
-				displayName: 'New Name'
+				displayName: 'New Name',
 			});
 		} finally {
 			vi.useRealTimers();
@@ -104,13 +104,13 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 1,
 			githubUsername: 'a',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		const b = upsertUserByGithub({
 			githubUserId: 2,
 			githubUsername: 'b',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		expect(a).not.toBe(b);
 	});
@@ -120,7 +120,7 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 99,
 			githubUsername: 'minimal',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
 		expect(row.email).toBeNull();
@@ -132,13 +132,13 @@ describe('upsertUserByGithub', () => {
 			githubUserId: 42,
 			githubUsername: 'octo',
 			email: 'set@example.com',
-			displayName: 'Set Name'
+			displayName: 'Set Name',
 		});
 		upsertUserByGithub({
 			githubUserId: 42,
 			githubUsername: 'octo',
 			email: null,
-			displayName: null
+			displayName: null,
 		});
 		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
 		expect(row.email).toBeNull();

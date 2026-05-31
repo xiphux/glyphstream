@@ -26,10 +26,11 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 		'Content-Type': result.contentType,
 		'Content-Length': String(result.contentLength),
 		'Accept-Ranges': 'bytes',
-		'Cache-Control': 'private, max-age=31536000, immutable'
+		'Cache-Control': 'private, max-age=31536000, immutable',
 	};
 	if (result.contentRange) {
-		headers['Content-Range'] = `bytes ${result.contentRange.start}-${result.contentRange.end}/${result.contentRange.total}`;
+		headers['Content-Range'] =
+			`bytes ${result.contentRange.start}-${result.contentRange.end}/${result.contentRange.total}`;
 	}
 
 	const webStream = Readable.toWeb(result.stream) as unknown as ReadableStream;
@@ -43,7 +44,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
  */
 function parseRange(
 	header: string | null,
-	totalBytes: number
+	totalBytes: number,
 ): { start: number; end: number } | null {
 	if (!header) return null;
 	const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());

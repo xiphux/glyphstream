@@ -39,7 +39,7 @@ function init(): LoadedNotificationsConfig | null {
 		webpush.setVapidDetails(
 			loadedConfig.vapidSubject,
 			loadedConfig.vapidPublic,
-			loadedConfig.vapidPrivate
+			loadedConfig.vapidPrivate,
 		);
 	}
 	return loadedConfig;
@@ -77,7 +77,7 @@ export interface PushSendResult {
  */
 export async function sendPushNotification(
 	subscription: WebPushSubscription,
-	payload: string
+	payload: string,
 ): Promise<PushSendResult> {
 	if (!init()) return { ok: false };
 	try {

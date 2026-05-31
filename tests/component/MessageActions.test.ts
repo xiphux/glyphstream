@@ -24,7 +24,7 @@ function makeMessage(role: MessageRole, overrides: Partial<ChatMessage> = {}): C
 		tokensIn: null,
 		tokensOut: overrides.tokensOut ?? null,
 		createdAt: 0,
-		...overrides
+		...overrides,
 	};
 }
 
@@ -33,20 +33,20 @@ const cb = () => ({
 	onEdit: vi.fn(),
 	onRetry: vi.fn(),
 	onSelectSibling: vi.fn(),
-	onDeleteBranch: vi.fn()
+	onDeleteBranch: vi.fn(),
 });
 
 const baseProps = {
 	generating: false,
 	recentlyCopied: false,
 	canCopy: true,
-	userSentTokens: null as number | null
+	userSentTokens: null as number | null,
 };
 
 describe('MessageActions — per-role buttons', () => {
 	it('user messages show Edit but not Retry', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Edit message' })).toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
@@ -54,7 +54,7 @@ describe('MessageActions — per-role buttons', () => {
 
 	it('assistant messages show Retry but not Edit', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('assistant') }
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant') },
 		});
 		expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
@@ -62,21 +62,21 @@ describe('MessageActions — per-role buttons', () => {
 
 	it('shows Copy when canCopy is true', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Copy message' })).toBeInTheDocument();
 	});
 
 	it('hides Copy when canCopy is false', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), canCopy: false, message: makeMessage('assistant') }
+			props: { ...baseProps, ...cb(), canCopy: false, message: makeMessage('assistant') },
 		});
 		expect(screen.queryByRole('button', { name: 'Copy message' })).toBeNull();
 	});
 
 	it('shows the Copied label + checkmark state when recentlyCopied', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), recentlyCopied: true, message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), recentlyCopied: true, message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
 	});
@@ -109,14 +109,14 @@ describe('MessageActions — callbacks', () => {
 
 	it('disables Edit/Retry while generating', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Edit message' })).toBeDisabled();
 	});
 
 	it('leaves Copy enabled even while generating', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Copy message' })).not.toBeDisabled();
 	});
@@ -129,7 +129,7 @@ describe('MessageActions — sibling navigation', () => {
 			siblingCount: 3,
 			siblingPosition: 2,
 			siblingIds: ['a', 'b', 'c'],
-			...overrides
+			...overrides,
 		});
 
 	it('renders the position counter when siblings exist', () => {
@@ -139,7 +139,7 @@ describe('MessageActions — sibling navigation', () => {
 
 	it('does not render sibling nav for a lone message', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { siblingCount: 1 }) }
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { siblingCount: 1 }) },
 		});
 		expect(screen.queryByRole('button', { name: 'Previous sibling' })).toBeNull();
 	});
@@ -164,7 +164,7 @@ describe('MessageActions — sibling navigation', () => {
 
 	it('disables Previous at the first sibling', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: sibProps({ siblingPosition: 1 }) }
+			props: { ...baseProps, ...cb(), message: sibProps({ siblingPosition: 1 }) },
 		});
 		expect(screen.getByRole('button', { name: 'Previous sibling' })).toBeDisabled();
 		expect(screen.getByRole('button', { name: 'Next sibling' })).not.toBeDisabled();
@@ -172,7 +172,7 @@ describe('MessageActions — sibling navigation', () => {
 
 	it('disables Next at the last sibling', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: sibProps({ siblingPosition: 3 }) }
+			props: { ...baseProps, ...cb(), message: sibProps({ siblingPosition: 3 }) },
 		});
 		expect(screen.getByRole('button', { name: 'Next sibling' })).toBeDisabled();
 	});
@@ -189,29 +189,33 @@ describe('MessageActions — sibling navigation', () => {
 describe('MessageActions — token popover', () => {
 	it('shows the token trigger for an assistant message with tokensOut', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 512 }) }
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 512 }) },
 		});
-		expect(screen.getByRole('button', { name: 'Token usage for this message' })).toBeInTheDocument();
+		expect(
+			screen.getByRole('button', { name: 'Token usage for this message' }),
+		).toBeInTheDocument();
 	});
 
 	it('hides the token trigger when an assistant message has zero tokensOut', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 0 }) }
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 0 }) },
 		});
 		expect(screen.queryByRole('button', { name: 'Token usage for this message' })).toBeNull();
 	});
 
 	it('shows the token trigger for a user message with userSentTokens', () => {
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), userSentTokens: 1024, message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), userSentTokens: 1024, message: makeMessage('user') },
 		});
-		expect(screen.getByRole('button', { name: 'Token usage for this message' })).toBeInTheDocument();
+		expect(
+			screen.getByRole('button', { name: 'Token usage for this message' }),
+		).toBeInTheDocument();
 	});
 
 	it('reveals "Generated" count on open for assistant messages', async () => {
 		const user = userEvent.setup();
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 512 }) }
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 512 }) },
 		});
 		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
 		expect(screen.getByText('Generated')).toBeInTheDocument();
@@ -221,7 +225,7 @@ describe('MessageActions — token popover', () => {
 	it('reveals "Sent to model" count on open for user messages', async () => {
 		const user = userEvent.setup();
 		render(MessageActions, {
-			props: { ...baseProps, ...cb(), userSentTokens: 1024, message: makeMessage('user') }
+			props: { ...baseProps, ...cb(), userSentTokens: 1024, message: makeMessage('user') },
 		});
 		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
 		expect(screen.getByText('Sent to model')).toBeInTheDocument();

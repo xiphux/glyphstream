@@ -43,7 +43,7 @@
 import {
 	findPurgeCandidates,
 	markHardDeleted,
-	stampOrphanedZeroRefRows
+	stampOrphanedZeroRefRows,
 } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
 
@@ -85,9 +85,7 @@ export async function runPurgeSweep(): Promise<{
 		}
 
 		if (stamped > 0 || hardDeleted > 0) {
-			console.log(
-				`[purger] sweep done: stamped=${stamped}, hardDeleted=${hardDeleted}`
-			);
+			console.log(`[purger] sweep done: stamped=${stamped}, hardDeleted=${hardDeleted}`);
 		}
 		return { stamped, hardDeleted };
 	} finally {
@@ -115,7 +113,7 @@ export function startMediaPurger(): void {
 	console.log(
 		`[purger] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min, grace ${
 			GRACE_PERIOD_MS / 60000
-		}min (uploads only)`
+		}min (uploads only)`,
 	);
 }
 

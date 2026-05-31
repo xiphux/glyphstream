@@ -8,14 +8,14 @@ describe('parseModelId', () => {
 	it('splits a well-formed id on the :: separator', () => {
 		expect(parseModelId('groq::llama-3.1-70b')).toEqual({
 			endpointId: 'groq',
-			upstreamId: 'llama-3.1-70b'
+			upstreamId: 'llama-3.1-70b',
 		});
 	});
 
 	it('splits on the first :: so a separator inside the upstream id survives', () => {
 		expect(parseModelId('bridge::weird::name')).toEqual({
 			endpointId: 'bridge',
-			upstreamId: 'weird::name'
+			upstreamId: 'weird::name',
 		});
 	});
 

@@ -4,14 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const lookupMock = vi.hoisted(() => vi.fn());
 vi.mock('node:dns', () => ({
 	default: { promises: { lookup: lookupMock } },
-	promises: { lookup: lookupMock }
+	promises: { lookup: lookupMock },
 }));
 
-import {
-	fetchUrlTool,
-	isPrivateIp,
-	extractTextFromHtml
-} from '$lib/server/tools/fetch-url';
+import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '$lib/server/tools/fetch-url';
 import type { ToolContext } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
@@ -44,7 +40,7 @@ describe('fetch_url tool definition', () => {
 			type: 'object',
 			properties: { url: { type: 'string' } },
 			required: ['url'],
-			additionalProperties: false
+			additionalProperties: false,
 		});
 	});
 
@@ -107,7 +103,7 @@ describe('fetch_url SSRF guard', () => {
 		lookupMock.mockResolvedValue([{ address: '169.254.169.254', family: 4 }]);
 		const r = await fetchUrlTool.execute(
 			{ url: 'http://169.254.169.254/latest/meta-data/' },
-			ctx()
+			ctx(),
 		);
 		expect(r.isError).toBe(true);
 	});
@@ -122,7 +118,7 @@ describe('fetch_url SSRF guard', () => {
 			if (u.startsWith('http://public.example')) {
 				return new Response(null, {
 					status: 302,
-					headers: { location: 'http://intranet.example/admin' }
+					headers: { location: 'http://intranet.example/admin' },
 				});
 			}
 			throw new Error('should not fetch private host');
@@ -136,17 +132,18 @@ describe('fetch_url SSRF guard', () => {
 describe('fetch_url HTML extraction', () => {
 	it('extracts readable text, strips script/style, decodes entities', async () => {
 		publicResolves();
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				`<html><head><title>x</title></head><body>
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(
+					`<html><head><title>x</title></head><body>
 				<script>alert("evil")</script>
 				<style>.x{color:red}</style>
 				<h1>Hello &amp; World</h1>
 				<p>Line one.</p>
 				<p>Line two &lt;b&gt;.</p>
 				</body></html>`,
-				{ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } }
-			)
+					{ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
+				),
 		) as any;
 
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
@@ -164,11 +161,12 @@ describe('fetch_url HTML extraction', () => {
 
 	it('passes text/plain through unchanged', async () => {
 		publicResolves();
-		globalThis.fetch = vi.fn(async () =>
-			new Response('just some plain text\nwith two lines', {
-				status: 200,
-				headers: { 'content-type': 'text/plain' }
-			})
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response('just some plain text\nwith two lines', {
+					status: 200,
+					headers: { 'content-type': 'text/plain' },
+				}),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/foo.txt' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -177,11 +175,12 @@ describe('fetch_url HTML extraction', () => {
 
 	it('re-stringifies application/json with indentation', async () => {
 		publicResolves();
-		globalThis.fetch = vi.fn(async () =>
-			new Response('{"a":1,"b":[2,3]}', {
-				status: 200,
-				headers: { 'content-type': 'application/json' }
-			})
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response('{"a":1,"b":[2,3]}', {
+					status: 200,
+					headers: { 'content-type': 'application/json' },
+				}),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://api.example/' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -192,11 +191,12 @@ describe('fetch_url HTML extraction', () => {
 
 	it('rejects unsupported binary content types', async () => {
 		publicResolves();
-		globalThis.fetch = vi.fn(async () =>
-			new Response(new Uint8Array([0, 1, 2]), {
-				status: 200,
-				headers: { 'content-type': 'image/png' }
-			})
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(new Uint8Array([0, 1, 2]), {
+					status: 200,
+					headers: { 'content-type': 'image/png' },
+				}),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/x.png' }, ctx());
 		expect(r.isError).toBe(true);
@@ -207,8 +207,8 @@ describe('fetch_url HTML extraction', () => {
 		publicResolves();
 		// 3 MB of data — exceeds the 2 MB cap
 		const big = new Uint8Array(3 * 1024 * 1024).fill(65);
-		globalThis.fetch = vi.fn(async () =>
-			new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } })
+		globalThis.fetch = vi.fn(
+			async () => new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
@@ -243,11 +243,12 @@ describe('fetch_url HTML extraction', () => {
   <footer><div>Comments, related posts, ad tracker scripts</div></footer>
   <script>analytics.fire()</script>
 </body></html>`;
-		globalThis.fetch = vi.fn(async () =>
-			new Response(articleHtml, {
-				status: 200,
-				headers: { 'content-type': 'text/html; charset=utf-8' }
-			})
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(articleHtml, {
+					status: 200,
+					headers: { 'content-type': 'text/html; charset=utf-8' },
+				}),
 		) as any;
 
 		const r = await fetchUrlTool.execute({ url: 'http://blog.example/best-bread' }, ctx());
@@ -267,11 +268,12 @@ describe('fetch_url HTML extraction', () => {
 		publicResolves();
 		// Short, non-article HTML — Readability will return null or trivial
 		// content; we should still get something usable from the regex path.
-		globalThis.fetch = vi.fn(async () =>
-			new Response(
-				'<html><body><h1>Hello &amp; World</h1><p>Short page.</p></body></html>',
-				{ status: 200, headers: { 'content-type': 'text/html' } }
-			)
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response('<html><body><h1>Hello &amp; World</h1><p>Short page.</p></body></html>', {
+					status: 200,
+					headers: { 'content-type': 'text/html' },
+				}),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -283,8 +285,8 @@ describe('fetch_url HTML extraction', () => {
 	it('truncates extracted text to 20 KB and flags truncated', async () => {
 		publicResolves();
 		const big = 'a'.repeat(25_000);
-		globalThis.fetch = vi.fn(async () =>
-			new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } })
+		globalThis.fetch = vi.fn(
+			async () => new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -302,7 +304,7 @@ describe('fetch_url HTML extraction', () => {
 			hop++;
 			return new Response(null, {
 				status: 302,
-				headers: { location: `http://example.com/hop${hop}` }
+				headers: { location: `http://example.com/hop${hop}` },
 			});
 		}) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
@@ -317,12 +319,12 @@ describe('fetch_url HTML extraction', () => {
 			if (u.endsWith('/start')) {
 				return new Response(null, {
 					status: 301,
-					headers: { location: 'http://example.com/end' }
+					headers: { location: 'http://example.com/end' },
 				});
 			}
 			return new Response('done', {
 				status: 200,
-				headers: { 'content-type': 'text/plain' }
+				headers: { 'content-type': 'text/plain' },
 			});
 		}) as any;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/start' }, ctx());
@@ -356,7 +358,7 @@ describe('isPrivateIp', () => {
 		'fe80::1',
 		'ff02::1',
 		'::ffff:127.0.0.1',
-		'::ffff:10.0.0.1'
+		'::ffff:10.0.0.1',
 	];
 	for (const ip of privateCases) {
 		it(`rejects ${ip}`, () => expect(isPrivateIp(ip)).toBe(true));
@@ -367,7 +369,7 @@ describe('isPrivateIp', () => {
 		'1.1.1.1',
 		'93.184.216.34',
 		'2606:4700:4700::1111',
-		'2001:4860:4860::8888'
+		'2001:4860:4860::8888',
 	];
 	for (const ip of publicCases) {
 		it(`allows ${ip}`, () => expect(isPrivateIp(ip)).toBe(false));
@@ -388,7 +390,7 @@ describe('isPrivateIp', () => {
 describe('extractTextFromHtml', () => {
 	it('drops script and style blocks completely', () => {
 		const out = extractTextFromHtml(
-			'<p>before</p><script>bad()</script><p>after</p><style>p{}</style>'
+			'<p>before</p><script>bad()</script><p>after</p><style>p{}</style>',
 		);
 		expect(out).not.toContain('bad');
 		expect(out).not.toContain('p{}');
@@ -397,9 +399,7 @@ describe('extractTextFromHtml', () => {
 	});
 
 	it('decodes named and numeric entities', () => {
-		const out = extractTextFromHtml(
-			'<p>&amp; &lt; &gt; &quot; &apos; &nbsp; &#65; &#x41;</p>'
-		);
+		const out = extractTextFromHtml('<p>&amp; &lt; &gt; &quot; &apos; &nbsp; &#65; &#x41;</p>');
 		// nbsp decodes to space, then runs of spaces collapse to one.
 		expect(out).toBe('& < > " \' A A');
 	});
@@ -409,9 +409,7 @@ describe('extractTextFromHtml', () => {
 	});
 
 	it('preserves paragraph breaks but collapses runs of whitespace', () => {
-		const out = extractTextFromHtml(
-			'<p>one</p>\n\n\n<p>two</p>     <p>three</p>'
-		);
+		const out = extractTextFromHtml('<p>one</p>\n\n\n<p>two</p>     <p>three</p>');
 		expect(out).toBe('one\n\ntwo\n\nthree');
 	});
 

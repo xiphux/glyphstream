@@ -3,7 +3,7 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 // Mock the env so each test controls what ALLOWED_GITHUB_USER_IDS returns.
 const mocks = vi.hoisted(() => ({ raw: '' }));
 vi.mock('$lib/server/env', () => ({
-	allowedGithubUserIdsRaw: () => mocks.raw
+	allowedGithubUserIdsRaw: () => mocks.raw,
 }));
 
 import { isAllowed, loadAllowlist, resetAllowlist } from '$lib/server/auth/allowlist';

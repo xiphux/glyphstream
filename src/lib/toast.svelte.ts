@@ -46,7 +46,7 @@ interface ShowOptions {
 const DEFAULT_DURATION: Record<ToastKind, number> = {
 	success: 4000,
 	info: 4000,
-	error: 6000
+	error: 6000,
 };
 
 class ToastStore {
@@ -62,7 +62,7 @@ class ToastStore {
 			id: crypto.randomUUID(),
 			kind,
 			message,
-			action: options.action
+			action: options.action,
 		};
 		const duration = options.duration ?? DEFAULT_DURATION[kind];
 		if (duration > 0) {
