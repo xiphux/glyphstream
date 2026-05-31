@@ -97,6 +97,61 @@ expected priority, not time-bound.
     limiting, surface a textarea modal on the settings page +
     `POST` / `PATCH /api/user/memories` endpoints.
 
+- **Code interpreter (server-side Pyodide) — v1 DONE.** A `run_python`
+  built-in tool in a new `code_interpreter` feature category. Pyodide
+  runs in `node:worker_threads` (one worker per active conversation,
+  state-machine lifecycle mirroring the MCP registry: ready / starting /
+  idle / failed, idle-reaped after 5 min, LRU-evicted at the pool cap,
+  wall-clock timeout terminates stuck workers, OOM exit propagates as a
+  recoverable model error, SIGINT/SIGTERM shutdown reaps cleanly).
+  Python's network access (`pyodide.http.pyfetch`, `urllib`, `requests`,
+  `micropip`) goes through a `globalThis.fetch` shim installed before
+  Pyodide loads — applies the same SSRF + configured-backend block as
+  the `fetch_url` tool (extracted into `url-policy-base.ts` so the
+  esbuild-bundled worker can pick it up without dragging in the
+  SvelteKit env layer), AND honors the per-conversation `web` toggle
+  so disabling it for the conversation blocks the agent's Python
+  network too — micropip rides on the same gate. Files round-trip
+  with the conversation media store: user-uploaded files (any kind)
+  and earlier-turn Python outputs (origin='generated' +
+  sourceModel='run_python') materialize into `/workspace/` before each
+  call; new / modified files Python writes during the call get
+  persisted as `origin='generated', sourceModel='run_python'` media
+  and surface as inline previews / download chips in the tool block
+  (chips rendered outside the collapsible `<details>` so the artifact
+  stays visible even when args + result are collapsed). The worker
+  bundles standalone via `esbuild` (run by `pnpm build:worker` as a
+  pre-step of both `pnpm dev` and `pnpm build`) so Node's
+  `worker_threads` can load it directly. Phase-2 work remaining:
+  - _Streaming stdout._ Today's worker captures all stdout / stderr
+    and returns it in one chunk at end of call. A long-running cell
+    (training loop, batched data processing) feels frozen for the
+    duration. The worker could `postMessage` per-line chunks; the
+    relay forwards them as a new `tool_progress` SSE event; the
+    in-flight tool block appends.
+  - _Variable persistence across worker reaps._ Variables today live
+    only as long as the worker (lost on idle reap, timeout-terminate,
+    OOM). Pyodide can serialize the interpreter's `globals()` via
+    `dill`-style pickling — snapshot to
+    `data/code-interpreter/{conversationId}.bin`, restore on next
+    call. Bounded by size + age, config-gated.
+  - _Workspace UI._ A per-conversation files page / drawer surfacing
+    everything under `/workspace/` for browse / preview / download /
+    delete. Today the user only sees files via the chip on the tool
+    block that produced them.
+  - _micropip wheel cache._ Pyodide already auto-caches wheels into
+    `node_modules` on first fetch from the CDN, but a per-conversation
+    or per-user override path under `data/code-interpreter/wheels/`
+    would let operators pin a specific wheel set without round-
+    tripping the CDN every cold start.
+  - _Pre-warm pool on startup._ Config flag `prewarm_workers = N` to
+    spin up N idle workers at boot so the first per-conversation
+    call doesn't pay the 2–5 s cold start.
+  - _Per-tool-call approval (optional)._ Even sandboxed by
+    construction, some users may want to see code before it runs.
+    The existing MCP approval infrastructure could be reused with a
+    per-user trust list.
+
 - **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
   GlyphStream can embed-and-retrieve attached docs/URLs and inject as
   system context. Particularly useful for chats grounded in personal notes.
@@ -153,7 +208,7 @@ expected priority, not time-bound.
 - **Persistent agentic workspace (Open Terminal or equivalent).**
   Self-hosted shell + filesystem environment for long-running,
   multi-turn code tasks — clone a repo, modify files across turns,
-  run tests, open a PR. Distinct from the in-browser code interpreter
+  run tests, open a PR. Distinct from the server-side code interpreter
   (which is the scratchpad-compute path); this is for repo-style work
   where state needs to persist on a real disk with real tools.
 
@@ -207,7 +262,7 @@ expected priority, not time-bound.
 
   Prereq is the OpenAPI-translation extension (lighter path) or a
   dedicated connection layer (heavier). Listed late in v2 because for
-  many cases the in-browser code interpreter covers the need; this
+  many cases the server-side code interpreter covers the need; this
   item is specifically about long-lived repo-style work the
   interpreter can't do.
 
