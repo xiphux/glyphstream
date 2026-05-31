@@ -14,6 +14,27 @@ export interface SSERecord {
 	data: string;
 }
 
+/**
+ * Hard cap on the per-stream pending buffer. A well-behaved upstream
+ * emits a blank-line separator every chunk or two, so the buffer never
+ * grows past a few KB. The cap exists to bound the worst case where a
+ * misbehaving upstream emits a single unbroken payload — without it,
+ * `buffer += ...` keeps allocating until the process OOMs. 8 MiB is
+ * roughly two orders of magnitude past any legitimate single SSE block
+ * we've seen in practice and still leaves room for a multi-MB error
+ * body before it trips.
+ */
+const MAX_SSE_BUFFER_BYTES = 8 * 1024 * 1024;
+
+export class SSEBufferOverflowError extends Error {
+	constructor(public readonly bufferBytes: number) {
+		super(
+			`SSE buffer exceeded ${MAX_SSE_BUFFER_BYTES} bytes without a block separator (saw ${bufferBytes} bytes). Aborting to avoid OOM.`,
+		);
+		this.name = 'SSEBufferOverflowError';
+	}
+}
+
 export async function* parseSSEStream(
 	stream: ReadableStream<Uint8Array>,
 ): AsyncIterable<SSERecord> {
@@ -41,6 +62,10 @@ export async function* parseSSEStream(
 				buffer = buffer.slice(sepIdx).replace(/^(\r?\n){2}/, '');
 				const rec = parseBlock(block);
 				if (rec) yield rec;
+			}
+
+			if (buffer.length > MAX_SSE_BUFFER_BYTES) {
+				throw new SSEBufferOverflowError(buffer.length);
 			}
 		}
 	} finally {
