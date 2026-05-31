@@ -97,5 +97,13 @@ export interface Tool {
 	 * Called once per request that consults the registry; cheap.
 	 */
 	isAvailable?(): boolean;
+	/**
+	 * Maximum wall-clock for a single execute() call. Past this the tool
+	 * gets an abort signal and the call resolves as an error result so
+	 * the rest of the turn's tool_calls and the next iteration can
+	 * proceed without waiting on a hung tool. Omit to use the default
+	 * (DEFAULT_TOOL_TIMEOUT_MS in tool-execution.ts).
+	 */
+	timeoutMs?: number;
 	execute(args: unknown, ctx: ToolContext): Promise<ToolExecution> | ToolExecution;
 }

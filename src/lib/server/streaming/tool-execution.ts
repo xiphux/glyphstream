@@ -21,6 +21,16 @@ import { getMediaForUser, linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
 import type { Tool, ToolExecution } from '../tools/types';
 
+/**
+ * Per-tool wall-clock cap when the tool itself doesn't declare one. A
+ * tool whose execute() exceeds this gets its signal aborted and the
+ * call resolves as an error result; the rest of the turn's tool_calls
+ * settle on schedule rather than the whole turn hanging on one stuck
+ * tool. 120s leaves room for slow web fetches / MCP round-trips while
+ * still firing well before the upstream model's own request timeout.
+ */
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
+
 export interface ExecuteToolCallsParams {
 	/** The just-persisted assistant message that emitted the tool_calls.
 	 *  Tool result messages will be parented to this row. */
@@ -242,23 +252,39 @@ async function runOneTool(
 		}
 	}
 
+	const timeoutMs = tool.timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
+	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	const combinedSignal = AbortSignal.any([signal, timeoutSignal]);
+
 	let execution: ToolExecution;
 	try {
 		execution = await Promise.resolve(
 			tool.execute(args, {
 				userId: params.userId,
 				conversationId: params.conversationId,
-				signal,
+				signal: combinedSignal,
 				disabledFeatures: params.disabledFeatures ?? [],
 			}),
 		);
 	} catch (e) {
-		execution = {
-			content: JSON.stringify({
-				error: `Tool "${part.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`,
-			}),
-			isError: true,
-		};
+		// Distinguish timeout from arbitrary throws so the model gets a
+		// clear "this tool ran out of time" rather than a generic abort
+		// error — helps it decide whether to retry with shorter input.
+		if (timeoutSignal.aborted && !signal.aborted) {
+			execution = {
+				content: JSON.stringify({
+					error: `Tool "${part.toolName}" exceeded its ${timeoutMs}ms timeout`,
+				}),
+				isError: true,
+			};
+		} else {
+			execution = {
+				content: JSON.stringify({
+					error: `Tool "${part.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`,
+				}),
+				isError: true,
+			};
+		}
 	}
 
 	params.emit({
