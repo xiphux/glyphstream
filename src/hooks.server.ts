@@ -29,6 +29,12 @@ void bootstrapMcp();
 const ALWAYS_REVALIDATE_PATHS = new Set(['/service-worker.js', '/manifest.webmanifest']);
 
 /**
+ * State-mutating methods that need a same-origin Origin header on
+ * /api/* — see the check inside `handle`.
+ */
+const STATE_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
  * Belt-and-suspenders security headers, applied to every response.
  *
  *  - `X-Content-Type-Options: nosniff` — refuse browser MIME-sniffing.
@@ -64,6 +70,42 @@ const SECURITY_HEADERS: Record<string, string> = {
  * locals.user itself — done in each +server.ts to keep the hook simple.
  */
 export const handle: Handle = async ({ event, resolve }) => {
+	// CSRF gate for /api/* state-mutating requests. SvelteKit's built-in
+	// csrf.checkOrigin only fires on form-encoded submissions, not the
+	// JSON POST/PATCH/DELETE traffic our API actually uses. SameSite=Lax
+	// on the session cookie blocks the cookie from being sent on cross-
+	// origin POSTs already, but that's a property of the cookie, not
+	// the route — a single explicit check here makes the same guarantee
+	// at the route layer regardless of cookie-config drift.
+	//
+	// Preferred signal is `Sec-Fetch-Site`: it's browser-set, not
+	// spoofable by attacker JS, and unaffected by reverse-proxy header
+	// rewriting (where a missing X-Forwarded-Proto could otherwise make
+	// Origin and event.url.origin disagree on scheme). Falls back to a
+	// straight Origin compare for the handful of browsers too old to
+	// emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
+	//
+	// GET / HEAD are unaffected — no state change, and Origin isn't
+	// consistently sent on them. The /api/auth/github/callback flow is
+	// GET only and protected separately via its state cookie.
+	if (STATE_MUTATING_METHODS.has(event.request.method) && event.url.pathname.startsWith('/api/')) {
+		const fetchSite = event.request.headers.get('sec-fetch-site');
+		if (fetchSite) {
+			// Browser-set. Acceptable values: same-origin (trust),
+			// same-site / cross-site / none (refuse — sibling subdomains
+			// and direct-navigation state changes aren't legitimate here).
+			if (fetchSite !== 'same-origin') {
+				return new Response('Forbidden: origin mismatch', { status: 403 });
+			}
+		} else {
+			// Legacy browser without Fetch-Metadata. Fall back to Origin.
+			const origin = event.request.headers.get('origin');
+			if (origin !== event.url.origin) {
+				return new Response('Forbidden: origin mismatch', { status: 403 });
+			}
+		}
+	}
+
 	const token = readSessionCookie(event.cookies);
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
