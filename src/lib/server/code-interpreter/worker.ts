@@ -234,6 +234,15 @@ parentPort.on('message', async (msg: HostMessage) => {
 					stderr += s;
 				},
 			});
+			// Auto-load any Pyodide packages the code imports (numpy,
+			// pandas, matplotlib, scipy, sympy, scikit-learn, ...). Reads
+			// from the local node_modules/pyodide/ package store — no
+			// network needed for the standard scientific stack. Per
+			// Pyodide's docs this is the idiomatic way to surface
+			// "common imports just work" semantics inside a single
+			// interpreter session.
+			await py.loadPackagesFromImports(msg.code);
+
 			let result: unknown = null;
 			try {
 				const raw = await py.runPythonAsync(msg.code);
@@ -287,6 +296,15 @@ function materializeWorkspace(py: PyodideInterface, preFiles: PreFile[]): void {
 		FS.mkdir(WORKSPACE);
 	} catch {
 		// Already exists — fine.
+	}
+	// Set cwd to /workspace so relative paths Just Work for the model
+	// (`pd.read_csv('sales.csv')` etc.). Persistent across calls in the
+	// same interpreter. Idempotent.
+	try {
+		FS.chdir(WORKSPACE);
+	} catch {
+		// chdir on an already-current dir is a no-op; if it ever does
+		// fail we can fall back to the absolute path — not catastrophic.
 	}
 	const wanted = new Set(preFiles.map((f) => f.filename));
 
@@ -376,6 +394,7 @@ interface PyodideFS {
 	readFile(path: string): Uint8Array;
 	writeFile(path: string, data: Uint8Array): void;
 	stat(path: string): { mode: number };
+	chdir(path: string): void;
 }
 
 function sha256Hex(bytes: Uint8Array): string {
