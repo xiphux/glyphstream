@@ -69,6 +69,14 @@ export interface InFlightTextSegment {
 	/** Cached rendered HTML — populated by the page's rAF effect. Empty
 	 *  string means "render plain-text fallback while waiting." */
 	html: string;
+	/** The text value `html` was produced from. Lets the rAF effect skip
+	 *  the markdown render for segments whose text didn't change since
+	 *  the last tick — when a multi-segment turn (text → tool → text)
+	 *  has only one segment growing, the others would otherwise be
+	 *  re-parsed for nothing on every frame. Optional so tests can
+	 *  construct segments without it; the rAF effect treats missing as
+	 *  "needs render." */
+	htmlFromText?: string;
 }
 
 export interface InFlightToolCallSegment {

@@ -721,7 +721,10 @@
 		inFlightHtmlFrame = requestAnimationFrame(() => {
 			inFlightHtmlFrame = 0;
 			for (const s of inFlightSegments) {
-				if (s.kind === 'text') s.html = renderLiveMarkdown(s.text);
+				if (s.kind !== 'text') continue;
+				if (s.htmlFromText === s.text) continue;
+				s.html = renderLiveMarkdown(s.text);
+				s.htmlFromText = s.text;
 			}
 		});
 	});
