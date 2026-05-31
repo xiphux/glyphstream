@@ -150,26 +150,66 @@ expected priority, not time-bound.
 - **Bridge-side SSE normalization** (off by default via header). Saves
   duplicate normalizers if other clients ever consume the bridge.
 
-- **Open Terminal (open-webui/open-terminal).** Self-hosted terminal
-  - working-directory environment for the agent, exposed as an MCP
-    server — Open WebUI uses it to give chat sessions a sandboxed code
-    environment. Once the **MCP server support** item ships, plugging
-    Open Terminal in is "just another MCP endpoint" and the core
-    capability comes along for free. The remaining work is GlyphStream-
-    side UX polish that improves on the generic tool-call rendering:
-  * Terminal/command outputs deserve their own bubble treatment
+- **Persistent agentic workspace (Open Terminal or equivalent).**
+  Self-hosted shell + filesystem environment for long-running,
+  multi-turn code tasks — clone a repo, modify files across turns,
+  run tests, open a PR. Distinct from the in-browser code interpreter
+  (which is the scratchpad-compute path); this is for repo-style work
+  where state needs to persist on a real disk with real tools.
+
+  Open Terminal (open-webui/open-terminal) is the most-developed
+  candidate, but integration is meaningfully more involved than "just
+  plug in as MCP":
+  - _Their MCP wrapper is awkward to ship in containers._ MCP is a
+    separate `open-terminal mcp` subcommand whose `[mcp]` extras
+    aren't installed in the default Docker image. Users would need a
+    custom image (or override CMD) to use it.
+  - _The richest Open Terminal capability is REST-shaped, not MCP-
+    shaped._ The file sidebar, PTY terminal tab, port detection /
+    reverse proxy, and multipart upload all live behind
+    `include_in_schema=False` — they're absent from `/openapi.json`
+    and therefore absent from the FastMCP tool surface too. Open
+    WebUI's "Open Terminal connection" drives the REST API directly +
+    makes browser-side calls to the hidden endpoints for the sidebar
+    / terminal / preview UI; that's where the integration value comes
+    from.
+  - _Per-conversation isolation isn't built in._ Single-user mode
+    shares `/home/user` across all sessions; `x-session-id` is a
+    cwd hint, not a boundary. Multi-device-same-user or future
+    multi-user can have conversations clobber each other's working
+    trees. Hardening exists (multi-user mode → per-Linux-user
+    isolation; bwrap-per-call → per-conversation seal; gVisor/Kata
+    as runtime → stronger boundary) but none of it is upstream
+    out-of-the-box.
+
+  Two integration paths exist, in order of effort:
+  - _OpenAPI → MCP translation in the registry._ Extend the MCP
+    transport types with an `openapi://...` mode that fetches a spec
+    and registers each operation as a tool — the same translation
+    Open WebUI does. Sidesteps the upstream MCP wrapper's packaging
+    gaps, and is a generally useful capability (any OpenAPI-shaped
+    sandbox works, not just Open Terminal).
+  - _First-class "Open Terminal connection."_ Reimplements what
+    Open WebUI's connection mode does: REST-driven file sidebar,
+    PTY terminal tab, port preview. Substantially more work; only
+    worth doing if persistent workspaces become load-bearing.
+
+  GlyphStream-side UX polish that applies to either path:
+  - Terminal/command outputs deserve their own bubble treatment
     (monospace, collapsible, optional re-run button) rather than the
     generic tool-call block.
-  * A files panel surfacing the agent's working directory — browse,
+  - A files panel surfacing the agent's working directory — browse,
     preview, download. Effectively a per-conversation scoped file
     explorer.
-  * Scope/quotas separate from MCP's per-call approval — directory-
+  - Scope/quotas separate from MCP's per-call approval — directory-
     level allowlist + writable-area boundary that persist across the
     chain of tool calls within one turn.
 
-  Prereq is the MCP item, not direct integration work here. Listed
-  late in v2 because the value-over-baseline-MCP is incremental polish,
-  not a new capability.
+  Prereq is the OpenAPI-translation extension (lighter path) or a
+  dedicated connection layer (heavier). Listed late in v2 because for
+  many cases the in-browser code interpreter covers the need; this
+  item is specifically about long-lived repo-style work the
+  interpreter can't do.
 
 ## Long-term / nice-to-have
 
