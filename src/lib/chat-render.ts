@@ -34,6 +34,10 @@ export type RenderBlock =
 			toolCallId: string;
 			toolName: string;
 			arguments: string;
+			/** Pre-rendered code-fenced HTML when the tool's primary
+			 *  argument is source code (today: run_python). Renderer
+			 *  prefers this over JSON pretty-print when present. */
+			argsHtml?: string;
 			result?: string;
 			isError?: boolean;
 			status: 'executing' | 'done' | 'error' | 'pending_approval';
@@ -261,6 +265,7 @@ function partToBlock(
 				toolCallId: p.toolCallId,
 				toolName: p.toolName,
 				arguments: p.arguments,
+				...(p.argsHtml ? { argsHtml: p.argsHtml } : {}),
 				result: entry?.result,
 				isError: entry?.isError,
 				status,

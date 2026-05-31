@@ -233,7 +233,26 @@ export type MessagePart =
 			byteSize: number;
 	  }
 	| { type: 'reasoning'; text: string }
-	| { type: 'tool_call'; toolCallId: string; toolName: string; arguments: string }
+	| {
+			type: 'tool_call';
+			toolCallId: string;
+			toolName: string;
+			arguments: string;
+			/**
+			 * Optional pre-rendered HTML of the tool's "primary" argument
+			 * when we know it's source code (today: `run_python`'s `code`
+			 * parameter, server-rendered through the same shiki-backed
+			 * markdown pipeline as assistant message bodies). The
+			 * ToolCallBlock prefers this over the raw JSON args when
+			 * present — a Python script reads better as syntax-highlighted
+			 * Python than as `{"code": "import pandas as pd\\nimport ..."}`.
+			 *
+			 * Absent for non-code tools (clock, web_search, fetch_url, MCP
+			 * tools whose args are configuration not code) and for older
+			 * persisted rows that pre-date this field.
+			 */
+			argsHtml?: string;
+	  }
 	| {
 			type: 'tool_result';
 			toolCallId: string;

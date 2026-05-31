@@ -21,6 +21,15 @@
 	interface Props {
 		toolName: string;
 		argumentsJson: string;
+		/** Pre-rendered HTML for tools whose primary argument is source
+		 *  code (today: run_python — the code parameter rendered through
+		 *  the same shiki pipeline as assistant message bodies). When
+		 *  present, replaces the JSON pretty-print under "Arguments" so
+		 *  Python reads as syntax-highlighted Python, not a stringified
+		 *  JSON blob. Server-only path; live-streaming view falls back to
+		 *  argumentsJson because the args are still arriving as a JSON
+		 *  blob then. */
+		argumentsHtml?: string;
 		/** undefined while the tool is still executing. */
 		result?: string;
 		isError?: boolean;
@@ -48,6 +57,7 @@
 	let {
 		toolName,
 		argumentsJson,
+		argumentsHtml,
 		result,
 		isError,
 		status,
@@ -141,7 +151,18 @@
 		{/if}
 	</summary>
 	<div class="space-y-2 border-t border-border p-2">
-		{#if prettyArgs}
+		{#if argumentsHtml}
+			<!--
+				Server-rendered code (today: run_python's `code` arg
+				through shiki, same pipeline as assistant message bodies).
+				Inherits the existing .gs-prose styling so the code block
+				visually matches the rest of the chat. {@html} is safe
+				here: the source went through markdown-it with html=false
+				and our shiki-driven renderer, so it's structurally
+				whitelisted before reaching the DOM.
+			-->
+			<div class="gs-prose text-xs">{@html argumentsHtml}</div>
+		{:else if prettyArgs}
 			<div>
 				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-fg-muted">
 					Arguments

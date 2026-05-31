@@ -10,14 +10,16 @@ import type { OpenAIToolDefinition, Tool } from './types';
 
 const tools = new Map<string, Tool>();
 
-/** Register a tool. Throws on duplicate names — every tool's function
- *  name must be globally unique because that's the key the model emits
- *  in `tool_calls[].function.name`. */
+/** Register a tool. Re-registering the same name replaces the entry —
+ *  this is the desired behavior under Vite HMR (the dev server re-
+ *  evaluates the tools module and re-runs each `register()`; throwing
+ *  would force a full restart on every edit). MCP tools register via
+ *  the same path at startup; they don't re-register at runtime in v1,
+ *  so the replace semantics are only exercised in dev mode HMR. The
+ *  registry stays globally unique by construction — Map key collision
+ *  means latest-wins, not coexistence. */
 export function register(tool: Tool): void {
 	const name = tool.definition.function.name;
-	if (tools.has(name)) {
-		throw new Error(`Tool "${name}" is already registered`);
-	}
 	tools.set(name, tool);
 }
 

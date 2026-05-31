@@ -57,6 +57,42 @@ const MAX_TOOL_LOOP_ITERATIONS = 5;
 
 const DEBUG = logLevel() === 'debug';
 
+/**
+ * Tools whose primary argument is a code string we know the language of.
+ * Used at persist time to pre-render the code through shiki so the
+ * ToolCallBlock can display it as syntax-highlighted source instead of
+ * a JSON blob. Map value is the markdown info-string (which shiki maps
+ * to a grammar). Extend the table when adding more code-shaped tools.
+ */
+const CODE_ARG_TOOLS: Record<string, { codeField: string; language: string }> = {
+	run_python: { codeField: 'code', language: 'python' },
+};
+
+async function maybeRenderCodeArg(toolName: string, rawArgs: string): Promise<string | null> {
+	const meta = CODE_ARG_TOOLS[toolName];
+	if (!meta) return null;
+	if (!rawArgs) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(rawArgs);
+	} catch {
+		// Streaming may have left partial JSON on a stop/error path —
+		// fall back to the raw JSON pretty-print in that case.
+		return null;
+	}
+	if (!parsed || typeof parsed !== 'object') return null;
+	const code = (parsed as Record<string, unknown>)[meta.codeField];
+	if (typeof code !== 'string' || code.length === 0) return null;
+	// Wrap in a fenced code block — same path assistant message bodies
+	// take, so we inherit the existing shiki setup, theme, and CSS.
+	const md = '```' + meta.language + '\n' + code + '\n```';
+	try {
+		return await renderMarkdown(md);
+	} catch {
+		return null;
+	}
+}
+
 function relayModalityFor(kind: ModelKind | null): NotifyModality {
 	if (kind === 'image' || kind === 'video' || kind === 'embedding') return kind;
 	return 'chat';
@@ -401,11 +437,22 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 
 	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
 	for (const tc of toolCallAccum.values()) {
+		// For tools whose primary argument is source code (today:
+		// run_python's `code` parameter), pre-render that code through
+		// the same shiki-backed markdown pipeline that produces
+		// contentHtml. The renderer prefers `argsHtml` over the raw JSON
+		// args when present, so the persisted view reads as syntax-
+		// highlighted Python instead of a stringified JSON blob. Safe to
+		// no-op silently — JSON parse failure, missing field, unknown
+		// tool, render error: each path falls back to the un-highlighted
+		// JSON args via the absent field.
+		const argsHtml = await maybeRenderCodeArg(tc.name, tc.args);
 		parts.push({
 			type: 'tool_call',
 			toolCallId: tc.id,
 			toolName: tc.name,
 			arguments: tc.args,
+			...(argsHtml ? { argsHtml } : {}),
 		});
 	}
 	const contentHtml = await renderMarkdown(textBuf);

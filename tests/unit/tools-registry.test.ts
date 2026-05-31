@@ -51,9 +51,18 @@ describe('tool registry', () => {
 		expect(list()).toEqual([a, b, c]);
 	});
 
-	it('throws on duplicate registration', () => {
-		register(mkTool('dup'));
-		expect(() => register(mkTool('dup'))).toThrow(/already registered/);
+	it('replaces on duplicate registration (HMR-friendly)', () => {
+		// Vite re-evaluates the tools/index.ts module on edit and re-runs
+		// every built-in's register() — throwing would force a full
+		// restart on each save. Replacing keeps the registry idempotent
+		// without leaving stale duplicates around. Production still calls
+		// register() exactly once per tool at startup, so the replace
+		// path only matters for dev-mode HMR.
+		const first = mkTool('dup', 'first description');
+		const second = mkTool('dup', 'second description');
+		register(first);
+		register(second);
+		expect(get('dup')?.definition.function.description).toBe('second description');
 	});
 
 	it('openaiToolDefinitions returns just the definitions', () => {

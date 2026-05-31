@@ -69,6 +69,7 @@
 		<ToolCallBlock
 			toolName={block.toolName}
 			argumentsJson={block.arguments}
+			argumentsHtml={block.argsHtml}
 			result={block.result}
 			isError={block.isError}
 			status={block.status}
