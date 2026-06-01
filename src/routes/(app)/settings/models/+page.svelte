@@ -100,46 +100,64 @@
 		return Object.keys(params).length > 0 ? params : undefined;
 	}
 
-	async function save(e: Event) {
-		e.preventDefault();
-		if (busy) return;
-		busy = true;
+	/**
+	 * Run a CRUD action while a busy flag is held, surfacing any thrown
+	 * error through the page-level `error` slot. The `setBusy` setter is
+	 * a closure so callers can use either a boolean flag (save) or a
+	 * string id flag (delete: which row is in flight).
+	 */
+	async function withBusy(
+		setBusy: (busy: boolean) => void,
+		action: () => Promise<void>,
+	): Promise<void> {
+		setBusy(true);
 		error = null;
 		try {
-			if (!name.trim()) throw new Error('Name is required');
-			if (!baseModelComposite) throw new Error('Pick a base model');
-			const sep = baseModelComposite.indexOf('::');
-			if (sep < 0) throw new Error('Malformed base model id');
-			const baseEndpointId = baseModelComposite.slice(0, sep);
-			const baseModelId = baseModelComposite.slice(sep + 2);
-
-			const body: CreateCustomModelRequest = {
-				name: name.trim(),
-				description: description.trim() || undefined,
-				baseEndpointId,
-				baseModelId,
-				systemPrompt: systemPrompt.trim() || undefined,
-				parameters: buildParameters(),
-				defaultDisabledFeatures: [...defaultDisabledFeatures],
-			};
-
-			const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
-			const method = editingId ? 'PATCH' : 'POST';
-			const res = await fetch(url, {
-				method,
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body),
-			});
-			if (!res.ok) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			resetForm();
-			await invalidateAll();
+			await action();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
-			busy = false;
+			setBusy(false);
 		}
+	}
+
+	async function save(e: Event) {
+		e.preventDefault();
+		if (busy) return;
+		await withBusy(
+			(b) => (busy = b),
+			async () => {
+				if (!name.trim()) throw new Error('Name is required');
+				if (!baseModelComposite) throw new Error('Pick a base model');
+				const sep = baseModelComposite.indexOf('::');
+				if (sep < 0) throw new Error('Malformed base model id');
+				const baseEndpointId = baseModelComposite.slice(0, sep);
+				const baseModelId = baseModelComposite.slice(sep + 2);
+
+				const body: CreateCustomModelRequest = {
+					name: name.trim(),
+					description: description.trim() || undefined,
+					baseEndpointId,
+					baseModelId,
+					systemPrompt: systemPrompt.trim() || undefined,
+					parameters: buildParameters(),
+					defaultDisabledFeatures: [...defaultDisabledFeatures],
+				};
+
+				const url = editingId ? `/api/custom-models/${editingId}` : '/api/custom-models';
+				const method = editingId ? 'PATCH' : 'POST';
+				const res = await fetch(url, {
+					method,
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(body),
+				});
+				if (!res.ok) {
+					throw new Error(await errorMessageFromResponse(res));
+				}
+				resetForm();
+				await invalidateAll();
+			},
+		);
 	}
 
 	async function deleteOne(m: CustomModel) {
@@ -149,19 +167,17 @@
 			message: "Existing chats won't be affected.",
 		});
 		if (!ok) return;
-		deletingId = m.id;
-		try {
-			const res = await fetch(`/api/custom-models/${m.id}`, { method: 'DELETE' });
-			if (!res.ok && res.status !== 404) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			if (editingId === m.id) resetForm();
-			await invalidateAll();
-		} catch (e) {
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
-			deletingId = null;
-		}
+		await withBusy(
+			(b) => (deletingId = b ? m.id : null),
+			async () => {
+				const res = await fetch(`/api/custom-models/${m.id}`, { method: 'DELETE' });
+				if (!res.ok && res.status !== 404) {
+					throw new Error(await errorMessageFromResponse(res));
+				}
+				if (editingId === m.id) resetForm();
+				await invalidateAll();
+			},
+		);
 	}
 </script>
 
