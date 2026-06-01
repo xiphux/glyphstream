@@ -5,12 +5,12 @@
 	"type": "module",
 	"packageManager": "pnpm@10.28.1",
 	"engines": {
-		"node": ">=22.0.0"
+		"node": ">=24.0.0"
 	},
 	"scripts": {
 		"dev": "pnpm build:worker && vite dev",
-		"build": "pnpm build:worker && vite build && pnpm exec esbuild scripts/import-owui.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=build/scripts/import-owui.js && cp src/lib/server/code-interpreter/worker.js build/server/chunks/worker.js",
-		"build:worker": "pnpm exec esbuild src/lib/server/code-interpreter/worker.ts --bundle --platform=node --target=node22 --format=esm --external:pyodide --outfile=src/lib/server/code-interpreter/worker.js",
+		"build": "pnpm build:worker && vite build && pnpm exec esbuild scripts/import-owui.ts --bundle --platform=node --target=node24 --format=esm --packages=external --outfile=build/scripts/import-owui.js && cp src/lib/server/code-interpreter/worker.js build/server/chunks/worker.js",
+		"build:worker": "pnpm exec esbuild src/lib/server/code-interpreter/worker.ts --bundle --platform=node --target=node24 --format=esm --external:pyodide --outfile=src/lib/server/code-interpreter/worker.js",
 		"analyze": "ANALYZE=1 vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo '' ; husky || echo ''",

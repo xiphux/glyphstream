@@ -73,3 +73,21 @@ export function publicBaseUrl(): string {
 export function allowedGithubUserIdsRaw(): string {
 	return readString('ALLOWED_GITHUB_USER_IDS', '');
 }
+
+// --- HTTP transport ------------------------------------------------------
+
+/**
+ * On-the-fly compression for dynamic responses (SSR HTML, JSON API).
+ * Default off: most deploys put a reverse proxy in front (Caddy / nginx)
+ * which compresses dynamic responses there, and leaving this off avoids
+ * the round-trip cost of compressing twice.
+ *
+ * Set COMPRESS_DYNAMIC=1 when the proxy in front *can't* compress —
+ * Synology's built-in reverse proxy is the canonical case. See
+ * src/lib/server/compression.ts for the skip rules (SSE is always
+ * skipped to keep streaming responses unbuffered).
+ */
+export function compressDynamicResponses(): boolean {
+	const v = readString('COMPRESS_DYNAMIC', '').toLowerCase();
+	return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+}

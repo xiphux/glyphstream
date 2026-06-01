@@ -1,7 +1,14 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
+import { maybeCompressResponse } from '$lib/server/compression';
+import { compressDynamicResponses } from '$lib/server/env';
 import { startMediaPurger } from '$lib/server/media/purger';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
+
+// Resolve the COMPRESS_DYNAMIC env var once at module load — there's no
+// reason to re-read on every request, and a deploy that flips it
+// restarts the process anyway.
+const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
 
 // Start the media purge sweeper at module load — runs once per Node process.
 // Using top-level rather than the first-request handler so the sweep clock
@@ -133,6 +140,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
+	}
+	// Optional on-the-fly gzip for SSR + JSON, off by default. Use only
+	// when no compression-capable proxy is in front (Synology). See the
+	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
+	// inside maybeCompressResponse — the chat-stream UI depends on
+	// unbuffered delivery.
+	if (SHOULD_COMPRESS_DYNAMIC) {
+		return await maybeCompressResponse(response, event.request);
 	}
 	return response;
 };

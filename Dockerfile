@@ -17,7 +17,7 @@
 # ----------------------------------------------------------------------
 
 # --- builder ----------------------------------------------------------
-FROM node:alpine AS builder
+FROM node:26-alpine AS builder
 
 RUN apk add --no-cache python3 make g++
 
@@ -45,7 +45,7 @@ RUN pnpm rebuild better-sqlite3 esbuild \
 
 
 # --- proddeps ---------------------------------------------------------
-FROM node:alpine AS proddeps
+FROM node:26-alpine AS proddeps
 
 RUN apk add --no-cache python3 make g++
 
@@ -64,7 +64,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 
 
 # --- runtime ----------------------------------------------------------
-FROM node:alpine AS runtime
+FROM node:26-alpine AS runtime
 
 # tini = PID 1 with proper signal handling. Without it, SIGTERM doesn't
 # reach the Node process cleanly, which means the media purger interval
