@@ -29,6 +29,7 @@ import {
 	callMcpTool,
 	listMcpServerStates,
 	resetMcpRegistryForTests,
+	retryMcpServer,
 } from '$lib/server/mcp/registry';
 
 interface FakeConn {
@@ -207,5 +208,52 @@ describe('idle reconnect', () => {
 		const result = await callMcpTool('fs', 'do_thing', {}, ac.signal);
 		expect(result.isError).toBe(false);
 		expect(listMcpServerStates()[0].state).toBe('connected');
+	});
+});
+
+describe('retryMcpServer', () => {
+	it('promotes a failed entry to connected on a successful re-handshake', async () => {
+		mocks.servers = [stdioServer(900)];
+		mocks.connectImpl
+			.mockRejectedValueOnce(new Error('initial boot failure'))
+			.mockResolvedValueOnce(fakeConnection());
+		await initializeMcpServers();
+		expect(listMcpServerStates()[0].state).toBe('failed');
+
+		const result = await retryMcpServer('fs');
+		expect(result).toEqual({ state: 'connected', error: null });
+		expect(listMcpServerStates()[0].state).toBe('connected');
+	});
+
+	it('reports the new error when the retry also fails', async () => {
+		mocks.servers = [stdioServer(900)];
+		mocks.connectImpl
+			.mockRejectedValueOnce(new Error('first error'))
+			.mockRejectedValueOnce(new Error('second error'));
+		await initializeMcpServers();
+		expect(listMcpServerStates()[0].state).toBe('failed');
+
+		const result = await retryMcpServer('fs');
+		expect(result).toEqual({ state: 'failed', error: 'second error' });
+		expect(listMcpServerStates()[0].state).toBe('failed');
+	});
+
+	it('tears down a connected entry and reconnects from scratch', async () => {
+		mocks.servers = [stdioServer(900)];
+		const conn1 = fakeConnection();
+		const conn2 = fakeConnection();
+		mocks.connectImpl.mockResolvedValueOnce(conn1).mockResolvedValueOnce(conn2);
+		await initializeMcpServers();
+		expect(listMcpServerStates()[0].state).toBe('connected');
+
+		const result = await retryMcpServer('fs');
+		expect(result.state).toBe('connected');
+		// Old client gets closed; new client is what's live.
+		expect(conn1.close).toHaveBeenCalledTimes(1);
+		expect(conn2.listTools).toHaveBeenCalledTimes(1);
+	});
+
+	it('throws when the server id is unknown', async () => {
+		await expect(retryMcpServer('nope')).rejects.toThrow(/unknown server/);
 	});
 });

@@ -131,6 +131,43 @@ export async function callMcpTool(
 	}
 }
 
+/**
+ * Force a fresh connection attempt for `serverId`, regardless of its
+ * current state. Used by the `/settings/mcp` retry button so users have
+ * a recovery path when the boot handshake landed in `failed` and there
+ * are no tools registered to drive `ensureConnected` from a tool call.
+ *
+ * Tears down any live connection first — the SDK's StreamableHTTP
+ * transport caches the session ID internally with no public reset, so
+ * recreating the Client + transport is the only way to clear it.
+ */
+export async function retryMcpServer(serverId: string): Promise<{
+	state: 'connected' | 'failed';
+	error: string | null;
+}> {
+	const entry = entries.get(serverId);
+	if (!entry) throw new Error(`mcp: unknown server "${serverId}"`);
+	if (entry.state === 'reconnecting') {
+		const settled = await entry.promise;
+		return summarizeSettled(settled);
+	}
+	if (entry.state === 'connected') {
+		if (entry.idleTimerId) clearTimeout(entry.idleTimerId);
+		await entry.client.close().catch(() => {});
+	}
+	const settled = await connectAndRecord(entry.cfg, /* firstTime */ false);
+	return summarizeSettled(settled);
+}
+
+function summarizeSettled(e: ConnectedEntry | FailedEntry): {
+	state: 'connected' | 'failed';
+	error: string | null;
+} {
+	return e.state === 'connected'
+		? { state: 'connected', error: null }
+		: { state: 'failed', error: e.error };
+}
+
 async function ensureConnected(serverId: string): Promise<McpConnection> {
 	const entry = entries.get(serverId);
 	if (!entry) throw new Error(`mcp: unknown server "${serverId}"`);

@@ -23,6 +23,29 @@
 	let { data } = $props<{ data: { servers: ServerInfo[] } }>();
 
 	let busyName = $state<string | null>(null);
+	let retryingId = $state<string | null>(null);
+
+	async function retryServer(server: ServerInfo): Promise<void> {
+		if (retryingId) return;
+		retryingId = server.id;
+		try {
+			const res = await fetch(`/api/mcp/servers/${encodeURIComponent(server.id)}/reconnect`, {
+				method: 'POST',
+			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const body = (await res.json()) as { state: 'connected' | 'failed'; error: string | null };
+			if (body.state === 'connected') {
+				toast.success(`Reconnected to ${server.displayName}`);
+			} else {
+				toast.error(`Still failing: ${body.error ?? 'unknown error'}`);
+			}
+			await invalidateAll();
+		} catch (e) {
+			toast.error(`Retry failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			retryingId = null;
+		}
+	}
 
 	async function toggleTrust(tool: ToolRow): Promise<void> {
 		if (busyName) return;
@@ -121,9 +144,19 @@
 
 						{#if server.error}
 							<div
-								class="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+								class="mt-3 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
 							>
-								{server.error}
+								<div class="min-w-0 flex-1 break-words">{server.error}</div>
+								{#if server.state === 'failed'}
+									<button
+										type="button"
+										onclick={() => void retryServer(server)}
+										disabled={retryingId === server.id}
+										class="shrink-0 rounded-md border border-rose-300 bg-rose-100 px-2 py-1 text-[11px] font-medium transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800 dark:bg-rose-900/40 dark:hover:bg-rose-900/60"
+									>
+										{retryingId === server.id ? 'Retrying…' : 'Retry'}
+									</button>
+								{/if}
 							</div>
 						{/if}
 

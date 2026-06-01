@@ -46,8 +46,44 @@ export interface McpConnection {
  * Spawn the configured MCP server, complete the protocol handshake, and
  * return a connection wrapper. Throws on any failure (caller catches and
  * records).
+ *
+ * For Streamable HTTP transports this auto-retries the handshake once on
+ * a "Session not found" response. Per the MCP spec, the client is meant
+ * to discard a stale session ID and re-initialize when it sees this; the
+ * @modelcontextprotocol/sdk doesn't do that automatically. At boot we
+ * have no session ID of our own to clear, but the upstream's session
+ * affinity may need a second roll — Fastmail's MCP, for example, load-
+ * balances such that `initialize` and `notifications/initialized` can
+ * land on different replicas, and the second one rejects the session
+ * the first one just minted. Rebuilding the Client + transport and
+ * trying again clears the SDK's internal `_sessionId` for free.
  */
 export async function connectMcpServer(
+	cfg: LoadedMcpServer,
+	connectTimeoutMs: number,
+): Promise<McpConnection> {
+	try {
+		return await openMcpConnection(cfg, connectTimeoutMs);
+	} catch (err) {
+		if (cfg.transport === 'http' && isSessionLostError(err)) {
+			return await openMcpConnection(cfg, connectTimeoutMs);
+		}
+		throw err;
+	}
+}
+
+/**
+ * Detect a "Session not found" signal from the upstream. The spec maps
+ * this to HTTP 404 + JSON-RPC code -32001, but real-world MCP servers
+ * vary (Fastmail returns it as -32600 "Invalid Request"), so match on
+ * the message text rather than the code.
+ */
+function isSessionLostError(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	return /session not found/i.test(err.message);
+}
+
+async function openMcpConnection(
 	cfg: LoadedMcpServer,
 	connectTimeoutMs: number,
 ): Promise<McpConnection> {

@@ -111,15 +111,24 @@ function normalizeParameters(schema: unknown): Record<string, unknown> {
 }
 
 /**
- * Register one Tool entry per discovered MCP tool. Idempotent at the
- * registry level via the duplicate-name throw — caller must only invoke
- * once per process.
+ * Register one Tool entry per discovered MCP tool. The tool registry's
+ * `register()` is replace-semantics, so re-running this after a
+ * post-boot reconnect is safe.
  */
 export function registerAllMcpTools(): void {
 	for (const state of listMcpServerStates()) {
 		if (state.state === 'failed') continue;
-		const cfg = getMcpServerCfg(state.id);
-		if (!cfg) continue;
-		for (const t of getMcpServerTools(state.id)) register(mcpToolFor(cfg, t));
+		registerMcpServerTools(state.id);
 	}
+}
+
+/**
+ * Register the currently-advertised tools for a single server. Used by
+ * the manual-reconnect path so a server that came up after boot can be
+ * surfaced to the LLM without restarting the process.
+ */
+export function registerMcpServerTools(serverId: string): void {
+	const cfg = getMcpServerCfg(serverId);
+	if (!cfg) return;
+	for (const t of getMcpServerTools(serverId)) register(mcpToolFor(cfg, t));
 }
