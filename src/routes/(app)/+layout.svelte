@@ -10,9 +10,7 @@
 	import SearchModal from '$lib/components/SearchModal.svelte';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
-	import { toast } from '$lib/toast.svelte';
-	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { setArchived, deleteConversation } from '$lib/conversation-actions';
+	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
 	import { isTitlePending } from '$lib/title-pending.svelte';
@@ -41,7 +39,6 @@
 		Video as VideoIcon,
 	} from '@lucide/svelte';
 	import type { ModelKind } from '$lib/types/api';
-	import { tick } from 'svelte';
 
 	let { data, children } = $props();
 
@@ -191,7 +188,11 @@
 		getCurrent: () => data.prefs?.favoriteModels ?? [],
 	});
 
-	let busyId = $state<string | null>(null);
+	const convUi = new ConversationUiActions({
+		getPathname: () => page.url.pathname,
+		goto,
+		invalidateAll,
+	});
 
 	// Mobile drawer state. The aside is `hidden ... sm:flex` on wide
 	// viewports as before; on narrow viewports it slides in from the left
@@ -232,153 +233,6 @@
 		if (untrack(() => openOverflowFor) !== null) return;
 		drawerOpen = false;
 	});
-
-	async function archiveConversation(id: string) {
-		if (busyId) return;
-		busyId = id;
-		// Capture before any navigation so the Undo handler can decide
-		// whether to bring the user back to where they were.
-		const wasViewingChat = page.url.pathname === `/chat/${id}`;
-		try {
-			await setArchived(id, true);
-			// Archive is "I'm done with this thread" in the same spirit
-			// as delete — the user is signaling they want it out of
-			// their immediate view. Mirror delete's behavior and send
-			// them to the new-chat surface rather than pulling them
-			// deeper into the archive. The toast below confirms the
-			// action and offers Undo so a misclick is one tap to
-			// recover instead of a trip through /archived.
-			if (wasViewingChat) {
-				await goto('/', { invalidateAll: true });
-			} else {
-				await invalidateAll();
-			}
-			toast.success('Conversation archived', {
-				action: {
-					label: 'Undo',
-					handler: async () => {
-						try {
-							await setArchived(id, false);
-							await invalidateAll();
-							// Land the user back on the chat they were
-							// viewing when they archived. If they were on
-							// some other surface, leave them where they are.
-							if (wasViewingChat) {
-								await goto(`/chat/${id}`);
-							}
-						} catch (e) {
-							toast.error(`Couldn't undo: ${e instanceof Error ? e.message : String(e)}`);
-						}
-					},
-				},
-			});
-		} catch (e) {
-			toast.error(`Couldn't archive conversation: ${e instanceof Error ? e.message : String(e)}`);
-		} finally {
-			busyId = null;
-		}
-	}
-
-	// Delete flow: the conversation overflow menu's Delete item opens
-	// the shared <DeleteConversationDialog> (rendered at the bottom of
-	// this file). That component fetches the orphan-media counts,
-	// renders the confirm modal — with the "also delete N images"
-	// checkbox when there is media — and on confirm calls performDelete
-	// below with the user's checkbox answer. The dialog only *asks*;
-	// performDelete owns the actual DELETE because the post-delete
-	// navigation here (bounce off /chat/:id) differs from the
-	// archived list's.
-	let deleteTargetId = $state<string | null>(null);
-
-	function requestDelete(id: string) {
-		// The sidebar is already pointer-events-none while busyId is
-		// set; this guard is belt-and-suspenders against a stray click.
-		if (busyId) return;
-		deleteTargetId = id;
-	}
-
-	async function performDelete(id: string, deleteMedia: boolean) {
-		if (busyId) return;
-		busyId = id;
-		try {
-			await deleteConversation(id, deleteMedia);
-			if (page.url.pathname === `/chat/${id}`) {
-				await goto('/', { invalidateAll: true });
-			} else {
-				await invalidateAll();
-			}
-		} catch (e) {
-			toast.error(`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`);
-		} finally {
-			busyId = null;
-		}
-	}
-
-	// Inline rename state. `renamingId` is the conversation id currently
-	// being edited; `renameDraft` is the working input value. We avoid
-	// optimistic-update gymnastics (mutating the load prop) — Enter
-	// fires the PATCH, closes the input, and invalidateAll() pulls the
-	// fresh title in. Esc / blur-without-change bail out silently.
-	let renamingId = $state<string | null>(null);
-	let renameDraft = $state('');
-	let renameInputEl = $state<HTMLInputElement | null>(null);
-	let renameOriginal = $state('');
-
-	async function startRename(id: string, currentTitle: string | null) {
-		renamingId = id;
-		renameOriginal = currentTitle ?? '';
-		renameDraft = currentTitle ?? '';
-		await tick();
-		renameInputEl?.focus();
-		renameInputEl?.select();
-	}
-
-	function cancelRename() {
-		renamingId = null;
-		renameDraft = '';
-		renameOriginal = '';
-	}
-
-	async function commitRename() {
-		if (!renamingId) return;
-		const id = renamingId;
-		const next = renameDraft.trim();
-		// No-op exits: empty input (treat as cancel) and unchanged value.
-		if (next.length === 0 || next === renameOriginal.trim()) {
-			cancelRename();
-			return;
-		}
-		// Optimistic-ish: close the input immediately so the UI feels
-		// responsive even before the PATCH round-trip resolves. The text
-		// shown in the sidebar reverts to the stale title until
-		// invalidateAll() lands the new one — sub-300ms in practice.
-		renamingId = null;
-		renameDraft = '';
-		renameOriginal = '';
-		try {
-			const res = await fetch(`/api/conversations/${id}`, {
-				method: 'PATCH',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ title: next }),
-			});
-			if (!res.ok) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			await invalidateAll();
-		} catch (e) {
-			toast.error(`Couldn't rename conversation: ${e instanceof Error ? e.message : String(e)}`);
-		}
-	}
-
-	function onRenameKey(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			void commitRename();
-		} else if (e.key === 'Escape') {
-			e.preventDefault();
-			cancelRename();
-		}
-	}
 
 	// Global Cmd/Ctrl+K opens the search modal. Convention matches
 	// GitHub / Linear / ChatGPT / Claude. We preventDefault so the
@@ -428,7 +282,7 @@
 		 + recents header hide entirely when collapsed; nav items show
 		 just their lucide icons with `title` tooltips. -->
 	<!--
-		`busyId !== null` makes the entire sidebar inert while an
+		`convUi.busyId !== null` makes the entire sidebar inert while an
 		archive/delete is in flight. The dropdown menu's Content lives
 		in a portal'd subtree (document.body), so the action the user
 		just initiated remains responsive — but any sidebar nav link or
@@ -441,7 +295,8 @@
 	<aside
 		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[transform,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
-			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {busyId !== null
+			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {convUi.busyId !==
+		null
 			? 'pointer-events-none'
 			: ''}"
 	>
@@ -649,22 +504,22 @@
 						{#each data.conversations as c (c.id)}
 							{@const href = `/chat/${c.id}`}
 							{@const active = currentPath === href || pendingPath === href}
-							{@const isRenaming = renamingId === c.id}
+							{@const isRenaming = convUi.renamingId === c.id}
 							<li class="group relative">
 								{#if isRenaming}
 									<!--
 									Inline-edit affordance. We swap the anchor for
-									an input bound to renameDraft; Enter commits,
+									an input bound to convUi.renameDraft; Enter commits,
 									Esc cancels, blur-without-change cancels.
 									Same padding/typography as the anchor so the
 									row doesn't reflow when entering edit mode.
 								-->
 									<input
 										type="text"
-										bind:this={renameInputEl}
-										bind:value={renameDraft}
-										onkeydown={onRenameKey}
-										onblur={commitRename}
+										bind:this={convUi.renameInputEl}
+										bind:value={convUi.renameDraft}
+										onkeydown={convUi.onRenameKey}
+										onblur={convUi.commitRename}
 										maxlength={MAX_CONVERSATION_TITLE_LENGTH}
 										aria-label="Rename conversation"
 										class="block w-full rounded-md border border-border-strong bg-surface-panel py-2 pl-3 pr-3 text-sm focus:border-border-focus focus:outline-none"
@@ -693,7 +548,7 @@
 										onOpenChange={(o) => (openOverflowFor = o ? c.id : null)}
 									>
 										<DropdownMenu.Trigger
-											disabled={busyId === c.id}
+											disabled={convUi.busyId === c.id}
 											title="Conversation options"
 											aria-label="Options for conversation {c.title ?? 'Untitled'}"
 											class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
@@ -707,21 +562,21 @@
 												class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 											>
 												<DropdownMenu.Item
-													onSelect={() => startRename(c.id, c.title)}
+													onSelect={() => convUi.startRename(c.id, c.title)}
 													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 												>
 													<Pencil size={14} strokeWidth={2.25} />
 													<span>Rename</span>
 												</DropdownMenu.Item>
 												<DropdownMenu.Item
-													onSelect={() => archiveConversation(c.id)}
+													onSelect={() => convUi.archive(c.id)}
 													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 												>
 													<Archive size={14} strokeWidth={2.25} />
 													<span>Archive</span>
 												</DropdownMenu.Item>
 												<DropdownMenu.Item
-													onSelect={() => requestDelete(c.id)}
+													onSelect={() => convUi.requestDelete(c.id)}
 													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
 												>
 													<Trash2 size={14} strokeWidth={2.25} />
@@ -865,7 +720,7 @@
 	The same component backs the /archived list so both delete paths
 	are identical.
 -->
-<DeleteConversationDialog bind:targetId={deleteTargetId} onconfirm={performDelete} />
+<DeleteConversationDialog bind:targetId={convUi.deleteTargetId} onconfirm={convUi.performDelete} />
 
 <!--
 	Host for the app-wide confirm dialog (confirmDialog.ask()). Like the

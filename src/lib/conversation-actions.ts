@@ -6,6 +6,8 @@
  * navigation and Undo orchestration.
  */
 
+import { errorMessageFromResponse } from '$lib/fetch-error';
+
 /** Archive or unarchive a conversation. */
 export async function setArchived(id: string, archived: boolean): Promise<void> {
 	const res = await fetch(`/api/conversations/${id}`, {
@@ -29,5 +31,22 @@ export async function deleteConversation(id: string, deleteMedia: boolean): Prom
 	const res = await fetch(url, { method: 'DELETE' });
 	if (!res.ok && res.status !== 404) {
 		throw new Error(`Server returned ${res.status}`);
+	}
+}
+
+/**
+ * Rename a conversation. Unlike archive/delete this reads the server's
+ * error body (via errorMessageFromResponse) because a rename can fail
+ * for validation reasons — empty title, max length, etc — and the user
+ * benefits from seeing the specific message.
+ */
+export async function renameConversation(id: string, title: string): Promise<void> {
+	const res = await fetch(`/api/conversations/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ title }),
+	});
+	if (!res.ok) {
+		throw new Error(await errorMessageFromResponse(res));
 	}
 }
