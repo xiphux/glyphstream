@@ -11,8 +11,7 @@
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
-
-	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+	import type { ApprovalAction } from '$lib/approval-workflow';
 
 	interface Props {
 		blocks: RenderBlock[];

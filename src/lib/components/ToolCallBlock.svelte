@@ -19,9 +19,9 @@
 		liveHighlighterReady,
 		resolveLiveLang,
 	} from '$lib/markdown-live-shiki.svelte';
+	import type { ApprovalAction } from '$lib/approval-workflow';
 
 	type Status = 'executing' | 'done' | 'error' | 'pending_approval';
-	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
 
 	interface Props {
 		toolName: string;

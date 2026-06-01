@@ -13,8 +13,7 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import { messageToBlocks, type ToolResultEntry } from '$lib/chat-render';
 	import type { ChatMessage } from '$lib/types/api';
-
-	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
+	import type { ApprovalAction } from '$lib/approval-workflow';
 
 	interface Props {
 		message: ChatMessage;

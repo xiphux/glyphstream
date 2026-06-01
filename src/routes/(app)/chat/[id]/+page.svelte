@@ -6,6 +6,11 @@
 	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
 	import { consumeChatStream } from '$lib/consume-chat-stream';
+	import {
+		buildApprovalDecisionsSnapshot,
+		runApprovalResume,
+		type ApprovalAction,
+	} from '$lib/approval-workflow';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
@@ -144,7 +149,6 @@
 	// User's per-tool decisions, accumulating until every pending tool
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
-	type ApprovalAction = 'allow' | 'allow_always' | 'reject';
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
 	let approvalSubmitting = $state(false);
 	let approvalError = $state<string | null>(null);
@@ -207,11 +211,7 @@
 		if (approvalSubmitting) return;
 		const ids = allPendingToolCallIds;
 		untrack(() => {
-			const snapshot = Array.from(ids).map((id) => ({
-				toolCallId: id,
-				action: approvalDecisions.get(id) ?? 'reject',
-			}));
-			void submitApprovalDecisions(snapshot);
+			void submitApprovalDecisions(buildApprovalDecisionsSnapshot(ids, approvalDecisions));
 		});
 	});
 
@@ -261,21 +261,16 @@
 		const abort = new AbortController();
 		activeAbort = abort;
 		try {
-			const res = await fetch(`/api/conversations/${convId}/tool-approval`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-				body: JSON.stringify({ decisions }),
-				signal: abort.signal,
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			if (!res.body) throw new Error('Server returned no body');
-			const { sawToolCalls } = await runChatStream(res.body, {
-				turnConvId,
-				optimisticId: null,
-				// onDone omitted — approvalSubmitting clears in the caller's
-				// finally so the inline buttons stay disabled until the
-				// invalidate completes and the persisted rows surface.
-			});
+			const { sawToolCalls } = await runApprovalResume(convId, decisions, abort.signal, (body) =>
+				runChatStream(body, {
+					turnConvId,
+					optimisticId: null,
+					// onDone omitted — approvalSubmitting clears in the
+					// caller's finally so the inline buttons stay disabled
+					// until the invalidate completes and the persisted
+					// rows surface.
+				}),
+			);
 			if (convId === turnConvId) {
 				await invalidateAll();
 				if (sawToolCalls) {
