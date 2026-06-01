@@ -1,6 +1,6 @@
 import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import {
 	getConversationMeta,
@@ -73,8 +73,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		throw error(400, "'text' or 'attachedMediaIds' is required");
 	}
 
-	const meta = getConversationMeta(params.id, locals.user.id);
-	if (!meta) throw error(404, 'Conversation not found');
+	const meta = requireFound(
+		getConversationMeta(params.id, locals.user.id),
+		'Conversation not found',
+	);
 
 	// Per-turn model override: when the client supplies a `modelId` that
 	// differs from what the conversation row currently stores, validate it

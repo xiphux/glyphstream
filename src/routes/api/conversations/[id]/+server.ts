@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import {
 	archiveConversation,
@@ -17,8 +17,10 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
-	const conv = getConversationDetail(params.id, locals.user.id);
-	if (!conv) throw error(404, 'Conversation not found');
+	const conv = requireFound(
+		getConversationDetail(params.id, locals.user.id),
+		'Conversation not found',
+	);
 	// `inFlightSince` lets the chat page's recovery poll detect — without
 	// the heavyweight page reload — when a generation it's tracking has
 	// finished. DB-only otherwise, so it's cheap to poll.

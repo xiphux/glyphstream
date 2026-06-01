@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import {
 	deleteCustomModel,
@@ -16,8 +16,10 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
-	const m = getCustomModelForUser(params.id, locals.user.id);
-	if (!m) throw error(404, 'Custom model not found');
+	const m = requireFound(
+		getCustomModelForUser(params.id, locals.user.id),
+		'Custom model not found',
+	);
 	return json({ customModel: m });
 };
 

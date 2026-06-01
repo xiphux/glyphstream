@@ -1,5 +1,5 @@
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { json } from '@sveltejs/kit';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { truncateAtMessage } from '$lib/server/db/queries/messages';
 import type { RequestHandler } from './$types';
@@ -14,11 +14,11 @@ import type { RequestHandler } from './$types';
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 
-	const meta = getConversationMeta(params.id, locals.user.id);
-	if (!meta) throw error(404, 'Conversation not found');
-
-	const result = truncateAtMessage(params.id, params.messageId);
-	if (!result) throw error(404, 'Message not found in this conversation');
+	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
+	const result = requireFound(
+		truncateAtMessage(params.id, params.messageId),
+		'Message not found in this conversation',
+	);
 
 	return json({ activeLeafMessageId: result.newActiveLeaf });
 };

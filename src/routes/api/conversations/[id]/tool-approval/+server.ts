@@ -16,6 +16,7 @@
  */
 
 import { error } from '@sveltejs/kit';
+import { requireFound } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { walkActiveBranch, updateMessageParts } from '$lib/server/db/queries/messages';
@@ -73,8 +74,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 	}
 
-	const meta = getConversationMeta(params.id, userId);
-	if (!meta) throw error(404, 'Conversation not found');
+	const meta = requireFound(getConversationMeta(params.id, userId), 'Conversation not found');
 	const endpoint = getEndpoint(meta.endpointId);
 	if (!endpoint) {
 		throw error(409, `Endpoint "${meta.endpointId}" is no longer in config.toml`);

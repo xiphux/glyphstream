@@ -22,7 +22,7 @@
  */
 
 import { error } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { deleteBranch } from '$lib/server/db/queries/messages';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
@@ -31,11 +31,12 @@ import type { RequestHandler } from './$types';
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 
-	const meta = getConversationMeta(params.id, locals.user.id);
-	if (!meta) throw error(404, 'Conversation not found');
+	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
 
-	const result = deleteBranch(params.id, params.messageId, locals.user.id);
-	if (!result) throw error(404, 'Message not found in this conversation');
+	const result = requireFound(
+		deleteBranch(params.id, params.messageId, locals.user.id),
+		'Message not found in this conversation',
+	);
 	if ('refusedReason' in result) {
 		throw error(400, 'Cannot delete a branch that has no siblings');
 	}

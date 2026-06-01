@@ -1,5 +1,5 @@
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { json } from '@sveltejs/kit';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { videoCancel } from '$lib/server/endpoints/client';
 import { getInFlight } from '$lib/server/streaming/in-flight';
@@ -20,8 +20,7 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 
 	// Verify ownership of the conversation before letting anyone cancel it.
-	const meta = getConversationMeta(params.id, locals.user.id);
-	if (!meta) throw error(404, 'Conversation not found');
+	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
 
 	const inFlight = getInFlight(params.id);
 	if (!inFlight) {

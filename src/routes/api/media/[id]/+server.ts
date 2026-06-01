@@ -1,5 +1,5 @@
-import { error, json } from '@sveltejs/kit';
-import { requireUser } from '$lib/server/auth/guard';
+import { json } from '@sveltejs/kit';
+import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getMediaListItemForUser, hardDeleteMediaForUser } from '$lib/server/db/queries/media';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
@@ -12,8 +12,7 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
-	const m = getMediaListItemForUser(params.id, locals.user.id);
-	if (!m) throw error(404, 'Media not found');
+	const m = requireFound(getMediaListItemForUser(params.id, locals.user.id), 'Media not found');
 	return json(m);
 };
 
@@ -26,8 +25,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
  */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
-	const result = hardDeleteMediaForUser(params.id, locals.user.id);
-	if (!result) throw error(404, 'Media not found');
+	const result = requireFound(hardDeleteMediaForUser(params.id, locals.user.id), 'Media not found');
 	// Unlink the bytes after the row is gone. unlinkMediaFiles swallows a
 	// failed unlink so a leaked file can't turn this delete into a 500.
 	await unlinkMediaFiles([{ id: params.id, storagePath: result.storagePath }], 'media.delete');
