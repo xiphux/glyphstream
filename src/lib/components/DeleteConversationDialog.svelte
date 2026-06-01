@@ -22,6 +22,7 @@
 -->
 <script lang="ts">
 	import { toast } from '$lib/toast.svelte';
+	import BaseDialog from './BaseDialog.svelte';
 
 	type MediaCounts = { images: number; videos: number };
 
@@ -90,10 +91,6 @@
 		onconfirm(id, deleteMedia);
 	}
 
-	function onWindowKey(e: KeyboardEvent) {
-		if (e.key === 'Escape' && targetId !== null) cancel();
-	}
-
 	function formatMediaCounts(c: MediaCounts): string {
 		const parts: string[] = [];
 		if (c.images > 0) {
@@ -106,68 +103,54 @@
 	}
 </script>
 
-<svelte:window onkeydown={onWindowKey} />
-
 <!--
-	role=alertdialog rather than role=dialog because the action is
-	destructive — alertdialog signals to assistive tech that the
-	dialog needs explicit user input before dismissal (no auto-close
-	on focus loss). Backdrop click cancels; Escape cancels.
-
 	`counts` non-null is the open condition: it is only ever set while
 	a target is active and is cleared the moment the dialog closes.
+	The shell (role=alertdialog, backdrop, Escape) lives in BaseDialog.
 -->
 {#if counts}
 	{@const c = counts}
 	{@const hasMedia = c.images > 0 || c.videos > 0}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
-	<div
-		role="alertdialog"
-		aria-modal="true"
-		aria-labelledby="delete-conv-title"
-		tabindex="-1"
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) cancel();
-		}}
+	<BaseDialog
+		open={true}
+		onCancel={cancel}
+		titleId="delete-conv-title"
+		title="Delete this conversation?"
 	>
-		<div class="w-full max-w-md rounded-lg border border-border surface-glass gs-pop p-5 shadow-xl">
-			<h2 id="delete-conv-title" class="text-base font-semibold">Delete this conversation?</h2>
-			<p class="mt-2 text-sm text-fg-muted">This action cannot be undone.</p>
-			{#if hasMedia}
-				<!--
-					Default unchecked = library-model behavior: deleting the
-					conversation by itself doesn't touch gallery items,
-					mirroring how deleting an email doesn't touch a separate
-					photo library. Checking opts into the tightly-coupled
-					outcome for this delete only.
-				-->
-				<label
-					class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-neutral-50 p-3 text-sm dark:bg-neutral-800/40"
-				>
-					<input type="checkbox" bind:checked={deleteMediaToo} class="mt-0.5" />
-					<span>
-						Also delete <span class="font-medium">{formatMediaCounts(c)}</span>
-						from gallery.
-					</span>
-				</label>
-			{/if}
-			<div class="mt-5 flex items-center justify-end gap-2">
-				<button
-					type="button"
-					onclick={cancel}
-					class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised"
-				>
-					Cancel
-				</button>
-				<button
-					type="button"
-					onclick={confirmDelete}
-					class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-				>
-					Delete
-				</button>
-			</div>
+		<p class="mt-2 text-sm text-fg-muted">This action cannot be undone.</p>
+		{#if hasMedia}
+			<!--
+				Default unchecked = library-model behavior: deleting the
+				conversation by itself doesn't touch gallery items,
+				mirroring how deleting an email doesn't touch a separate
+				photo library. Checking opts into the tightly-coupled
+				outcome for this delete only.
+			-->
+			<label
+				class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-neutral-50 p-3 text-sm dark:bg-neutral-800/40"
+			>
+				<input type="checkbox" bind:checked={deleteMediaToo} class="mt-0.5" />
+				<span>
+					Also delete <span class="font-medium">{formatMediaCounts(c)}</span>
+					from gallery.
+				</span>
+			</label>
+		{/if}
+		<div class="mt-5 flex items-center justify-end gap-2">
+			<button
+				type="button"
+				onclick={cancel}
+				class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised"
+			>
+				Cancel
+			</button>
+			<button
+				type="button"
+				onclick={confirmDelete}
+				class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+			>
+				Delete
+			</button>
 		</div>
-	</div>
+	</BaseDialog>
 {/if}
