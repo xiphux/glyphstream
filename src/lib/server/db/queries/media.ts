@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
 
@@ -41,7 +41,7 @@ export interface MediaInsertInput {
 /** Insert a fresh media row (ref_count = 0; caller links it via linkMessageMedia). */
 export function insertMedia(input: MediaInsertInput): { id: string } {
 	const db = getDb();
-	const id = randomUUID();
+	const id = generateId();
 	const now = Date.now();
 	const origin = input.origin ?? 'generated';
 	db.insert(media)

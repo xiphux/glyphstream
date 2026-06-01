@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 import type {
 	ConversationDetail,
@@ -34,7 +34,7 @@ interface CreateInput {
 
 export function createConversation(input: CreateInput): ConversationDetail {
 	const db = getDb();
-	const id = randomUUID();
+	const id = generateId();
 	const now = Date.now();
 	const disabledFeatures = input.disabledFeatures ?? [];
 	db.insert(conversations)

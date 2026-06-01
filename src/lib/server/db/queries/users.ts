@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { users } from '../schema';
 
@@ -38,7 +38,7 @@ export function upsertUserByGithub(input: UpsertUserInput): string {
 		return existing.id;
 	}
 
-	const id = randomUUID();
+	const id = generateId();
 	db.insert(users)
 		.values({
 			id,

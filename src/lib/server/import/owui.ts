@@ -21,10 +21,10 @@
  * reads coherently.
  */
 
-import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { conversations, messages } from '../db/schema';
+import { generateId } from '../util/id';
 import type * as schema from '../db/schema';
 import { renderMarkdown } from '../markdown/render';
 import type { MessagePart, ModelKind } from '$lib/types/api';
@@ -195,10 +195,10 @@ async function importOne(
 
 	// Pre-allocate new UUIDs so child rows can reference parents by mapped id.
 	for (const { owuiId } of ordered) {
-		idMap.set(owuiId, randomUUID());
+		idMap.set(owuiId, generateId());
 	}
 
-	const conversationId = randomUUID();
+	const conversationId = generateId();
 	const owuiModel = entry?.chat?.models?.[0] ?? 'unknown';
 	const modelKind = detectModelKind(
 		owuiModel,

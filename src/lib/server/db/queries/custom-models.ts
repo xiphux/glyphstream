@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import type { CustomModel, CustomModelParameters, FeatureCategory } from '$lib/types/api';
 import { getDb } from '../client';
 import { customModels } from '../schema';
@@ -71,7 +71,7 @@ export function getCustomModelForUser(id: string, userId: string): CustomModel |
 
 export function createCustomModel(input: CreateInput): CustomModel {
 	const db = getDb();
-	const id = randomUUID();
+	const id = generateId();
 	const now = Date.now();
 	const defaultDisabledFeatures = input.defaultDisabledFeatures ?? [];
 	db.insert(customModels)

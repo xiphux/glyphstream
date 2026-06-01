@@ -10,8 +10,8 @@
  * index without a retrieval round-trip. `embedding` + `embeddingModel`
  * are the phase-2 hook — NULL until a future backfill populates them.
  */
-import { randomUUID } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import type { Memory } from '$lib/types/api';
 import { getDb } from '../client';
 import { memories } from '../schema';
@@ -41,7 +41,7 @@ export function listMemoriesForUser(userId: string): Memory[] {
 
 export function createMemory(userId: string, content: string): { id: string } {
 	const db = getDb();
-	const id = randomUUID();
+	const id = generateId();
 	const now = Date.now();
 	db.insert(memories)
 		.values({

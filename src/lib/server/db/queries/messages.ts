@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { eq, and, inArray } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { parseMessageParts } from './json-columns';
 import { getDb } from '../client';
@@ -30,7 +30,7 @@ interface AppendInput {
  */
 export function appendMessage(input: AppendInput): ChatMessage {
 	const db = getDb();
-	const id = randomUUID();
+	const id = generateId();
 	const now = Date.now();
 
 	db.transaction((tx) => {

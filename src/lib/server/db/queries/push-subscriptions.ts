@@ -9,8 +9,8 @@
  * wouldn't permit anyway.
  */
 
-import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
+import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { pushSubscriptions } from '../schema';
 
@@ -43,7 +43,7 @@ interface UpsertInput {
 export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow {
 	const db = getDb();
 	const now = Date.now();
-	const newId = randomUUID();
+	const newId = generateId();
 	db.insert(pushSubscriptions)
 		.values({
 			id: newId,
