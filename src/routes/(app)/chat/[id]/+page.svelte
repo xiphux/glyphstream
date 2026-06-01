@@ -1010,6 +1010,64 @@
 	// slice). That client-side use is unchanged; only the wire-body
 	// construction moved.
 
+	/**
+	 * Shared front-half for both send paths (sendStreaming and
+	 * sendImageGeneration). Snapshots the conversation id for the
+	 * abandon-on-conversation-switch guards, installs a fresh
+	 * AbortController as the active one (so Stop / a newer turn can
+	 * abort this one), and builds the wire body once. The optimistic-
+	 * bubble setup stays in sendStreaming since the image branch
+	 * receives `optimisticId` as input from its caller.
+	 */
+	function startTurn(text: string, attachedMediaIds: string[], options: SendOptions) {
+		const turnConvId = convId;
+		const isRetry = !!options.retryFromMessageId;
+		const abort = new AbortController();
+		activeAbort = abort;
+		// Wire body construction lives in `buildSendRequestBody` — see
+		// that module for the three modes (retry, edit, plain send) and
+		// why the field-spread shape matters.
+		const requestBody = buildSendRequestBody({
+			text,
+			attachedMediaIds,
+			modelId,
+			modelKind,
+			options,
+		});
+		return { turnConvId, isRetry, abort, requestBody };
+	}
+
+	/**
+	 * Shared catch-side reconciliation for both send paths.
+	 *
+	 * AbortError from clicking Stop is expected — don't surface as a
+	 * user-facing error. The server-side recorder will have committed
+	 * whatever partial text it had; invalidateAll picks that up.
+	 *
+	 * wasHiddenDuringFetch / wasOfflineDuringFetch are the "client
+	 * connection died, server still has the generation" cases: iOS
+	 * suspension and network handoff (wifi↔cellular, dead zone,
+	 * airplane-mode toggle) respectively. Either way the fetch error
+	 * is a connectivity artifact, not a real server-side failure, so
+	 * we re-sync against the conversation instead of surfacing a
+	 * misleading toast. The actual generation is whatever the server
+	 * made of it — completed, still running, or genuinely errored on
+	 * its end — and the invalidate picks up whichever.
+	 *
+	 * All of this is render state for `turnConvId`'s thread — skip it
+	 * entirely if the user has since navigated away (the abandon-on-
+	 * navigation $effect already cleaned up).
+	 */
+	function handleSendError(e: unknown, turnConvId: string): void {
+		if (convId !== turnConvId) return;
+		if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
+			void invalidateAll();
+		} else {
+			errorMsg = e instanceof Error ? e.message : String(e);
+		}
+		inFlightOpen = false;
+	}
+
 	async function sendStreaming(
 		text: string,
 		attachedMediaIds: string[] = [],
@@ -1108,19 +1166,8 @@
 		// in the `finally` removes it once the title task has run.
 		if (isFirstExchange) markTitlePending(turnConvId);
 
-		const abort = new AbortController();
-		activeAbort = abort;
+		const { abort, requestBody } = startTurn(text, attachedMediaIds, options);
 		try {
-			// Wire body construction lives in `buildSendRequestBody` —
-			// see that module for the three modes (retry, edit, plain
-			// send) and why the field-spread shape matters.
-			const requestBody = buildSendRequestBody({
-				text,
-				attachedMediaIds,
-				modelId,
-				modelKind,
-				options,
-			});
 			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
 				method: 'POST',
 				headers: {
@@ -1168,32 +1215,7 @@
 				}
 			}
 		} catch (e) {
-			// AbortError from clicking Stop is expected — don't surface as
-			// a user-facing error. The server-side recorder will have committed
-			// whatever partial text it had; invalidateAll picks that up.
-			//
-			// `wasHiddenDuringFetch` / `wasOfflineDuringFetch` are the
-			// "client connection died, server still has the generation"
-			// cases: iOS suspension and network handoff (wifi↔cellular,
-			// dead zone, airplane-mode toggle) respectively. Either way
-			// the fetch error is a connectivity artifact, not a real
-			// server-side failure, so we re-sync against the conversation
-			// instead of surfacing a misleading toast. The actual
-			// generation is whatever the server made of it — completed,
-			// still running, or genuinely errored on its end — and the
-			// invalidate picks up whichever.
-			//
-			// All of this is render state for `turnConvId`'s thread —
-			// skip it entirely if the user has since navigated away
-			// (the abandon-on-navigation $effect already cleaned up).
-			if (convId === turnConvId) {
-				if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
-					void invalidateAll();
-				} else {
-					errorMsg = e instanceof Error ? e.message : String(e);
-				}
-				inFlightOpen = false;
-			}
+			handleSendError(e, turnConvId);
 		} finally {
 			// The stream has closed — the title task (if any) has delivered
 			// or timed out. Drop the sidebar spinner. Gated on isFirstExchange
@@ -1225,21 +1247,8 @@
 		// See sendStreaming — the component is reused across conversation
 		// navigations, so the result of this (20-60s) request must not be
 		// grafted onto whatever conversation is on screen when it lands.
-		const turnConvId = convId;
-		const abort = new AbortController();
-		activeAbort = abort;
-		const isRetry = !!options.retryFromMessageId;
+		const { turnConvId, isRetry, abort, requestBody } = startTurn(text, attachedMediaIds, options);
 		try {
-			// Same wire-body builder as sendStreaming — image generation
-			// goes through the sync JSON path (one-shot generate, no
-			// SSE) but the body shape is identical.
-			const requestBody = buildSendRequestBody({
-				text,
-				attachedMediaIds,
-				modelId,
-				modelKind,
-				options,
-			});
 			const res = await fetch(`/api/conversations/${convId}/messages`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -1276,23 +1285,7 @@
 			inFlightOpen = false;
 			void invalidateAll();
 		} catch (e) {
-			// Same shape as sendStreaming's catch — see its comment for
-			// why suspension / connectivity-transition errors get
-			// reconciled rather than surfaced. Image generation in
-			// particular benefits because the 20-60s round trip is
-			// exactly the window where users switch apps, lock their
-			// phones, or step into / out of wifi range and lose the
-			// fetch.
-			// Skip if the user navigated away mid-request — the abandon-
-			// on-navigation $effect already reset this thread's state.
-			if (convId === turnConvId) {
-				if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
-					void invalidateAll();
-				} else {
-					errorMsg = e instanceof Error ? e.message : String(e);
-				}
-				inFlightOpen = false;
-			}
+			handleSendError(e, turnConvId);
 		} finally {
 			// Only the turn that still owns the controller clears it. The
 			// in-flight bubble close lives here (not in the success / catch
