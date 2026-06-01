@@ -14,7 +14,7 @@
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
 	import { syncThemeColorMeta } from '$lib/theme-color';
-	import { reorder, reorderFavoriteModels } from '$lib/favorite-models';
+	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 	import {
@@ -186,166 +186,10 @@
 		return out;
 	});
 
-	// --- Favorites drag-and-drop ------------------------------------
-	//
-	// Native HTML5 drag-drop only — staying under the 250 KB bundle
-	// ceiling, the list is small (~10s of items max), and the codebase
-	// already uses the native API for image drops on the composer.
-	//
-	// The <li> carries draggable="true"; the inner <a> has
-	// draggable="false" so its default link-drag preview doesn't override
-	// the row's drag image. Click navigation on the anchor is unaffected
-	// by draggable=false.
-	let draggingValue = $state<string | null>(null);
-	let dropTargetValue = $state<string | null>(null);
-	let dropPosition = $state<'before' | 'after' | null>(null);
-	let dragListEl = $state<HTMLUListElement | null>(null);
-
-	// Pixel distance from the scroll-pane's top/bottom edge inside which
-	// auto-scroll engages while dragging. Speed scales linearly from 0
-	// at the edge of the zone to MAX_AUTO_SCROLL_SPEED at the very edge.
-	const AUTO_SCROLL_EDGE_PX = 32;
-	const MAX_AUTO_SCROLL_SPEED = 12;
-	let lastPointerY = 0;
-	let autoScrollSpeed = 0;
-	let autoScrollRaf: number | null = null;
-
-	function handleFavDragStart(e: DragEvent, value: string) {
-		if (!e.dataTransfer) return;
-		draggingValue = value;
-		e.dataTransfer.effectAllowed = 'move';
-		// Some browsers (Firefox especially) require dataTransfer to
-		// carry *something* for the drag to start.
-		e.dataTransfer.setData('text/plain', value);
-	}
-
-	function computeDropPosition(clientY: number, el: HTMLElement): 'before' | 'after' {
-		const rect = el.getBoundingClientRect();
-		return clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-	}
-
-	function handleFavDragOver(e: DragEvent, value: string) {
-		if (draggingValue === null) return;
-		e.preventDefault();
-		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-		lastPointerY = e.clientY;
-		updateAutoScroll();
-		// Don't render an indicator on the row being dragged itself —
-		// no visible target for "dropped where it already is."
-		if (value === draggingValue) {
-			dropTargetValue = null;
-			dropPosition = null;
-			return;
-		}
-		dropTargetValue = value;
-		dropPosition = computeDropPosition(e.clientY, e.currentTarget as HTMLElement);
-	}
-
-	function handleFavDragLeave(e: DragEvent) {
-		// `dragleave` fires on every row transition too; only clear when
-		// the pointer actually exits the list (relatedTarget is outside
-		// the <ul>, or null — happens when leaving the viewport).
-		const related = e.relatedTarget as Node | null;
-		if (!related || !dragListEl || !dragListEl.contains(related)) {
-			dropTargetValue = null;
-			dropPosition = null;
-			stopAutoScroll();
-		}
-	}
-
-	async function handleFavDrop(e: DragEvent) {
-		e.preventDefault();
-		const dragged = draggingValue;
-		const target = dropTargetValue;
-		const position = dropPosition;
-		resetDragState();
-		if (!dragged || !target || !position) return;
-		const current = data.prefs?.favoriteModels ?? [];
-		const newOrder = reorder(current, dragged, target, position);
-		if (newOrder.length === current.length && newOrder.every((v, i) => v === current[i])) {
-			return;
-		}
-		await reorderFavoriteModels(newOrder);
-	}
-
-	function handleFavDragEnd() {
-		// Fires on drop-outside-list, ESC-cancel, or after a successful
-		// drop — covers the cleanup gap if `handleFavDrop` didn't run.
-		resetDragState();
-	}
-
-	function resetDragState() {
-		draggingValue = null;
-		dropTargetValue = null;
-		dropPosition = null;
-		stopAutoScroll();
-	}
-
-	function updateAutoScroll() {
-		if (!favScrollEl) {
-			autoScrollSpeed = 0;
-			return;
-		}
-		const rect = favScrollEl.getBoundingClientRect();
-		const distFromTop = lastPointerY - rect.top;
-		const distFromBottom = rect.bottom - lastPointerY;
-		if (distFromTop >= 0 && distFromTop < AUTO_SCROLL_EDGE_PX) {
-			const ratio = 1 - distFromTop / AUTO_SCROLL_EDGE_PX;
-			autoScrollSpeed = -Math.ceil(ratio * MAX_AUTO_SCROLL_SPEED);
-		} else if (distFromBottom >= 0 && distFromBottom < AUTO_SCROLL_EDGE_PX) {
-			const ratio = 1 - distFromBottom / AUTO_SCROLL_EDGE_PX;
-			autoScrollSpeed = Math.ceil(ratio * MAX_AUTO_SCROLL_SPEED);
-		} else {
-			autoScrollSpeed = 0;
-		}
-		if (autoScrollSpeed !== 0 && autoScrollRaf === null) {
-			startAutoScrollLoop();
-		} else if (autoScrollSpeed === 0 && autoScrollRaf !== null) {
-			stopAutoScroll();
-		}
-	}
-
-	function startAutoScrollLoop() {
-		const step = () => {
-			if (autoScrollSpeed === 0 || !favScrollEl || draggingValue === null) {
-				autoScrollRaf = null;
-				return;
-			}
-			favScrollEl.scrollTop += autoScrollSpeed;
-			// The list is moving under the pointer; refresh the indicator
-			// against the new geometry so it tracks the correct neighbor.
-			refreshDropTargetFromPointer();
-			autoScrollRaf = requestAnimationFrame(step);
-		};
-		autoScrollRaf = requestAnimationFrame(step);
-	}
-
-	function stopAutoScroll() {
-		if (autoScrollRaf !== null) {
-			cancelAnimationFrame(autoScrollRaf);
-			autoScrollRaf = null;
-		}
-		autoScrollSpeed = 0;
-	}
-
-	function refreshDropTargetFromPointer() {
-		if (draggingValue === null || !dragListEl) return;
-		const items = dragListEl.querySelectorAll<HTMLLIElement>(':scope > li');
-		for (const li of items) {
-			const rect = li.getBoundingClientRect();
-			if (lastPointerY >= rect.top && lastPointerY <= rect.bottom) {
-				const value = li.dataset.value ?? null;
-				if (value && value !== draggingValue) {
-					dropTargetValue = value;
-					dropPosition = lastPointerY < rect.top + rect.height / 2 ? 'before' : 'after';
-				} else {
-					dropTargetValue = null;
-					dropPosition = null;
-				}
-				return;
-			}
-		}
-	}
+	const favDrag = new FavoritesDrag({
+		getScrollEl: () => favScrollEl,
+		getCurrent: () => data.prefs?.favoriteModels ?? [],
+	});
 
 	let busyId = $state<string | null>(null);
 
@@ -730,19 +574,21 @@
 					</h2>
 				{/if}
 				<ScrollPane class="max-h-[30vh] px-2" bind:scrollEl={favScrollEl}>
-					<ul bind:this={dragListEl} class="space-y-0.5">
+					<ul bind:this={favDrag.listEl} class="space-y-0.5">
 						{#each favoriteEntries as fav (fav.value)}
-							{@const isDragging = draggingValue === fav.value}
-							{@const isDropBefore = dropTargetValue === fav.value && dropPosition === 'before'}
-							{@const isDropAfter = dropTargetValue === fav.value && dropPosition === 'after'}
+							{@const isDragging = favDrag.draggingValue === fav.value}
+							{@const isDropBefore =
+								favDrag.dropTargetValue === fav.value && favDrag.dropPosition === 'before'}
+							{@const isDropAfter =
+								favDrag.dropTargetValue === fav.value && favDrag.dropPosition === 'after'}
 							<li
 								data-value={fav.value}
 								draggable="true"
-								ondragstart={(e) => handleFavDragStart(e, fav.value)}
-								ondragover={(e) => handleFavDragOver(e, fav.value)}
-								ondragleave={handleFavDragLeave}
-								ondrop={handleFavDrop}
-								ondragend={handleFavDragEnd}
+								ondragstart={(e) => favDrag.handleDragStart(e, fav.value)}
+								ondragover={(e) => favDrag.handleDragOver(e, fav.value)}
+								ondragleave={favDrag.handleDragLeave}
+								ondrop={favDrag.handleDrop}
+								ondragend={favDrag.handleDragEnd}
 								class="rounded-md border-y-2 border-transparent transition {isDragging
 									? 'opacity-40'
 									: ''} {isDropBefore ? 'border-t-sky-500!' : ''} {isDropAfter
