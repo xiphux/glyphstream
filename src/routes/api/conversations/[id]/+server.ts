@@ -12,10 +12,7 @@ import {
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getInFlight } from '$lib/server/streaming/in-flight';
-import {
-	FeatureCategoryValidationError,
-	validateDisabledFeatures,
-} from '$lib/server/util/feature-categories';
+import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params }) => {
@@ -73,13 +70,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	if (hasDisabledFeatures) {
-		let features;
-		try {
-			features = validateDisabledFeatures(body.disabledFeatures);
-		} catch (e) {
-			if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
-			throw e;
-		}
+		const features = validateDisabledFeaturesOrThrow400(body.disabledFeatures);
 		const ok = setDisabledFeatures(params.id, locals.user.id, features);
 		if (!ok) throw error(404, 'Conversation not found');
 		return new Response(null, { status: 204 });

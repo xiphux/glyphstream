@@ -10,6 +10,7 @@
  * silently dropped so client typos don't quietly become "feature on."
  */
 
+import { error } from '@sveltejs/kit';
 import { isFeatureCategoryString } from '$lib/types/api';
 import type { FeatureCategory } from '$lib/types/api';
 
@@ -32,4 +33,17 @@ export function validateDisabledFeatures(raw: unknown): FeatureCategory[] {
 		if (!out.includes(entry)) out.push(entry);
 	}
 	return out;
+}
+
+/**
+ * Route-handler convenience: validate, and convert a
+ * FeatureCategoryValidationError into a SvelteKit 400 in one step.
+ */
+export function validateDisabledFeaturesOrThrow400(raw: unknown): FeatureCategory[] {
+	try {
+		return validateDisabledFeatures(raw);
+	} catch (e) {
+		if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
+		throw e;
+	}
 }

@@ -7,10 +7,7 @@ import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
 import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
-import {
-	FeatureCategoryValidationError,
-	validateDisabledFeatures,
-} from '$lib/server/util/feature-categories';
+import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals }) => {
@@ -84,13 +81,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedSystemPrompt = explicit || null;
 	}
 
-	let disabledFeatures;
-	try {
-		disabledFeatures = validateDisabledFeatures(body.disabledFeatures);
-	} catch (e) {
-		if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
-		throw e;
-	}
+	const disabledFeatures = validateDisabledFeaturesOrThrow400(body.disabledFeatures);
 
 	const conv = createConversation({
 		userId: locals.user.id,
