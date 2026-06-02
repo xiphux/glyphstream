@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { Undo2 } from '@lucide/svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
@@ -36,7 +36,7 @@
 				method: 'DELETE',
 			});
 			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-			await invalidateAll();
+			await invalidate('settings:permissions');
 		} catch (e) {
 			toast.error(`Couldn't revoke: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {

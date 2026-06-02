@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { Switch } from 'bits-ui';
 	import { CircleCheck, CircleAlert, CircleSlash, Loader2 } from '@lucide/svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -39,7 +39,7 @@
 			} else {
 				toast.error(`Still failing: ${body.error ?? 'unknown error'}`);
 			}
-			await invalidateAll();
+			await invalidate('settings:mcp');
 		} catch (e) {
 			toast.error(`Retry failed: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
@@ -57,7 +57,7 @@
 				{ method },
 			);
 			if (!res.ok && res.status !== 404) throw new Error(`HTTP ${res.status}`);
-			await invalidateAll();
+			await invalidate('settings:mcp');
 		} catch (e) {
 			toast.error(
 				`Couldn't ${tool.trusted ? 'revoke' : 'grant'}: ${e instanceof Error ? e.message : String(e)}`,

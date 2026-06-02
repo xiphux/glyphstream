@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invalidateAll } from '$app/navigation';
+	import { invalidate } from '$app/navigation';
 	import { Trash2 } from '@lucide/svelte';
 	import type { Memory } from '$lib/types/api';
 	import { confirmDialog } from '$lib/confirm.svelte';
@@ -42,7 +42,7 @@
 			if (!res.ok && res.status !== 404) {
 				throw new Error(`HTTP ${res.status}`);
 			}
-			await invalidateAll();
+			await invalidate('settings:memories');
 		} catch (e) {
 			toast.error(`Couldn't forget: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {

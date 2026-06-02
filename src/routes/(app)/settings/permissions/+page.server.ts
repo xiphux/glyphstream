@@ -15,9 +15,13 @@ import type { PageServerLoad } from './$types';
  * config.toml still appear, in a separate "Unknown" group — we
  * preserve the data so re-adding the server restores the grant.
  */
-export const load: PageServerLoad = async ({ locals, parent }) => {
+export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
+	// Tagged so the page can `invalidate('settings:permissions')` after a
+	// revoke without re-running the (app) layout — the trust grants this
+	// page lists are independent of the layout's sidebar/picker data.
+	depends('settings:permissions');
 	await awaitMcpReady();
 	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];

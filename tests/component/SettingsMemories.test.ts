@@ -16,9 +16,9 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Memory } from '$lib/types/api';
 
-const invalidateAllMock = vi.fn();
+const invalidateMock = vi.fn();
 vi.mock('$app/navigation', () => ({
-	invalidateAll: () => invalidateAllMock(),
+	invalidate: (key: string) => invalidateMock(key),
 	goto: vi.fn(),
 }));
 
@@ -33,7 +33,7 @@ import { confirmDialog } from '$lib/confirm.svelte';
 const fetchMock = vi.fn();
 
 beforeEach(() => {
-	invalidateAllMock.mockReset();
+	invalidateMock.mockReset();
 	fetchMock.mockReset();
 	globalThis.fetch = fetchMock as unknown as typeof fetch;
 });
@@ -113,7 +113,7 @@ describe('Memories settings page — delete flow', () => {
 		expect(within(dialog).getByRole('button', { name: 'Forget' })).toBeInTheDocument();
 	});
 
-	it('issues a DELETE and invalidates when the user confirms', async () => {
+	it('issues a DELETE and invalidates the memories key when the user confirms', async () => {
 		const user = userEvent.setup();
 		fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 		render(MemoriesPage, {
@@ -129,7 +129,9 @@ describe('Memories settings page — delete flow', () => {
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe('/api/user/memories/m1');
 		expect((init as RequestInit | undefined)?.method).toBe('DELETE');
-		expect(invalidateAllMock).toHaveBeenCalledTimes(1);
+		// Scoped invalidate avoids re-running the (app) layout load —
+		// the memories change doesn't touch sidebar/picker data.
+		expect(invalidateMock).toHaveBeenCalledWith('settings:memories');
 	});
 
 	it('does not call fetch when the user cancels', async () => {
@@ -144,6 +146,6 @@ describe('Memories settings page — delete flow', () => {
 		await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(invalidateAllMock).not.toHaveBeenCalled();
+		expect(invalidateMock).not.toHaveBeenCalled();
 	});
 });
