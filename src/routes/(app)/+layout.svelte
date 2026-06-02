@@ -7,7 +7,6 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import SearchModal from '$lib/components/SearchModal.svelte';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
@@ -732,7 +731,17 @@
 <!--
 	Host for the app-wide search modal (searchModal.show()). Sidebar
 	Search button + the Cmd/Ctrl+K shortcut both feed this one surface.
+
+	Dynamically imported on first open so the modal's code (+ its
+	debounced /api/conversations/search fetcher) stays out of the layout
+	critical path — most sessions never invoke search. The {#if} guard
+	also means the modal's own window-Escape listener is only registered
+	while open, which is when it's actually needed.
 -->
-<SearchModal />
+{#if searchModal.open}
+	{#await import('$lib/components/SearchModal.svelte') then { default: SearchModal }}
+		<SearchModal />
+	{/await}
+{/if}
 
 <svelte:window onkeydown={onGlobalKey} />
