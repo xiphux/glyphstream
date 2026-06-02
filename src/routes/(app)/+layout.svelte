@@ -16,21 +16,16 @@
 	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 	import {
 		Archive,
-		Brain,
 		ChevronDown,
 		Image as ImageIcon,
 		Images,
-		LogOut,
 		Menu,
 		MoreVertical,
 		PanelLeftClose,
 		PanelLeftOpen,
 		Pencil,
-		Plug,
 		Plus,
 		Search,
-		Settings,
-		ShieldCheck,
 		SlidersHorizontal,
 		Sparkles,
 		Trash2,
@@ -206,6 +201,12 @@
 	// be open at a time (opening a new one closes the previous through
 	// the onOpenChange callback flipping this slot).
 	let openOverflowFor = $state<string | null>(null);
+
+	// Whether the bottom-of-sidebar account dropdown is currently open.
+	// Tracked so the <AccountMenuContent> portal (the dropdown's items +
+	// their icons) can be dynamic-imported on first open instead of
+	// living in the layout chunk for sessions that never open it.
+	let accountMenuOpen = $state(false);
 
 	// Desktop collapse state. Only affects the sm+ static sidebar; the
 	// mobile drawer always opens to the full width when toggled.
@@ -602,7 +603,7 @@
 			desktop, the trigger shrinks to a single User icon.
 		-->
 		<div class="mt-2 border-t border-border px-3 py-2 text-xs text-fg-muted">
-			<DropdownMenu.Root>
+			<DropdownMenu.Root bind:open={accountMenuOpen}>
 				<DropdownMenu.Trigger
 					class="flex w-full items-center gap-2 rounded transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-border-focus focus-visible:outline-none disabled:opacity-50 {collapsed
 						? 'sm:justify-center'
@@ -617,60 +618,17 @@
 						<UserIcon size={14} strokeWidth={2.25} />
 					{/if}
 				</DropdownMenu.Trigger>
-				<DropdownMenu.Portal>
-					<DropdownMenu.Content
-						sideOffset={6}
-						align="start"
-						side="top"
-						class="z-50 min-w-[180px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
-					>
-						<DropdownMenu.Item
-							onSelect={() => goto('/settings/preferences')}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-						>
-							<Settings size={14} strokeWidth={2.25} />
-							<span>Preferences</span>
-						</DropdownMenu.Item>
-						<DropdownMenu.Item
-							onSelect={() => goto('/settings/memories')}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-						>
-							<Brain size={14} strokeWidth={2.25} />
-							<span>Memories</span>
-						</DropdownMenu.Item>
-						<DropdownMenu.Item
-							onSelect={() => goto('/settings/mcp')}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-						>
-							<Plug size={14} strokeWidth={2.25} />
-							<span>MCP servers</span>
-						</DropdownMenu.Item>
-						<DropdownMenu.Item
-							onSelect={() => goto('/settings/permissions')}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-						>
-							<ShieldCheck size={14} strokeWidth={2.25} />
-							<span>Permissions</span>
-						</DropdownMenu.Item>
-						<DropdownMenu.Item
-							onSelect={() => {
-								// Form-submit semantics for logout: POST to the
-								// session-clearing endpoint and follow its redirect.
-								// Building a hidden form lets us reuse the existing
-								// /api/auth/logout handler unchanged.
-								const f = document.createElement('form');
-								f.method = 'POST';
-								f.action = '/api/auth/logout';
-								document.body.appendChild(f);
-								f.submit();
-							}}
-							class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-						>
-							<LogOut size={14} strokeWidth={2.25} />
-							<span>Sign out</span>
-						</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Portal>
+				<!--
+					Dynamically imported on first open so the five menu items
+					and their five lucide icons (Settings / Brain / Plug /
+					ShieldCheck / LogOut) stay out of the layout chunk for
+					sessions that never open this menu.
+				-->
+				{#if accountMenuOpen}
+					{#await import('$lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
+						<AccountMenuContent {goto} />
+					{/await}
+				{/if}
 			</DropdownMenu.Root>
 		</div>
 	</aside>
