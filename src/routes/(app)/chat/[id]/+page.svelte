@@ -36,7 +36,6 @@
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
-	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { MediaListItem } from '$lib/server/db/queries/media';
@@ -1799,5 +1798,17 @@
 	wording that makes it explicit they start a *new* chat, since the
 	user is currently inside one and "Regenerate" otherwise reads
 	ambiguously.
+
+	Dynamically imported on first open so the ~10 KB gz chunk stays out
+	of the chat-route critical path — most chat sessions never tap an
+	image. Vite caches the resolved module, so subsequent opens reuse
+	it without a network fetch. The `{#await}` only mounts under the
+	`{#if lightbox}` guard, which the fetch in openImageInLightbox sets
+	~100-200 ms after the tap — easily long enough for the import chunk
+	to land in parallel on the first open.
 -->
-<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} inConversation />
+{#if lightbox}
+	{#await import('$lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
+		<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} inConversation />
+	{/await}
+{/if}
