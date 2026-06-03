@@ -89,13 +89,24 @@ export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	return new Response(); // unreachable
 };
 
-async function fetchProfileOr(reason: () => never, code: string): Promise<GithubUserProfile> {
+/**
+ * Run the profile fetch and translate failures into the caller's two
+ * error codes. OAuth-protocol failures (bad code, invalid client) get
+ * mapped to `oauthError`; everything else (network down, malformed JSON,
+ * 5xx from upstream) hits `upstreamError`. Keeping the two distinct
+ * lets the operator-facing message distinguish "your sign-in failed"
+ * from "GitHub itself is having a bad day."
+ */
+async function fetchProfileOr(
+	reasons: { oauthError: () => never; upstreamError: () => never },
+	code: string,
+): Promise<GithubUserProfile> {
 	try {
 		return await fetchGithubProfile(code);
 	} catch (e) {
-		if (e instanceof OAuth2RequestError) reason();
+		if (e instanceof OAuth2RequestError) reasons.oauthError();
 		console.error('[oauth/callback] GitHub profile fetch failed:', e);
-		reason();
+		reasons.upstreamError();
 	}
 }
 
@@ -122,7 +133,13 @@ async function handleSetup(args: {
 	// to 10 min, so it can't be forged or replayed past expiry.
 	if (countUsers() > 0) throw redirect(302, '/login');
 
-	const profile = await fetchProfileOr(() => setupError('oauth_exchange_failed'), code);
+	const profile = await fetchProfileOr(
+		{
+			oauthError: () => setupError('oauth_exchange_failed'),
+			upstreamError: () => setupError('upstream_failure'),
+		},
+		code,
+	);
 
 	const userId = createInitialUser({
 		displayName: carry.displayName,
@@ -159,7 +176,13 @@ async function handleLink(args: {
 		linkBack('invalid_state');
 	}
 
-	const profile = await fetchProfileOr(() => linkBack('exchange_failed'), code);
+	const profile = await fetchProfileOr(
+		{
+			oauthError: () => linkBack('exchange_failed'),
+			upstreamError: () => linkBack('upstream_failure'),
+		},
+		code,
+	);
 
 	if (findUserByOAuth('github', String(profile.id))) {
 		linkBack('already_linked');
@@ -188,7 +211,13 @@ async function handleLogin(args: {
 		loginError('invalid_oauth_state');
 	}
 
-	const profile = await fetchProfileOr(() => loginError('oauth_exchange_failed'), code);
+	const profile = await fetchProfileOr(
+		{
+			oauthError: () => loginError('oauth_exchange_failed'),
+			upstreamError: () => loginError('upstream_failure'),
+		},
+		code,
+	);
 	const externalId = String(profile.id);
 	const binding = findUserByOAuth('github', externalId);
 

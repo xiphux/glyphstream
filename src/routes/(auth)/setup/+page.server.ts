@@ -10,6 +10,10 @@ const ERROR_MESSAGES: Record<string, string> = {
 	setup_token_required: 'A setup token is required to continue.',
 };
 
+// `upstream_failure` reuses the same operator-friendly wording the
+// login page uses, so the callback can emit a single code that fits
+// both contexts.
+
 /**
  * First-run wizard load. Three branches keyed off the setupGate
  * verdict:
