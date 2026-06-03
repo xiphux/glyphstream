@@ -28,7 +28,7 @@ import {
 	fetchGithubProfile,
 	type GithubUserProfile,
 } from '$lib/server/auth/github';
-import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
+import { SETUP_GITHUB_CARRY_COOKIE } from '$lib/server/auth/setup';
 import { verify } from '$lib/server/auth/signed-cookies';
 import {
 	addOAuthAccount,
@@ -72,7 +72,6 @@ export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	if (setupCarrySigned) {
 		await handleSetup({
 			cookies,
-			url,
 			code,
 			state,
 			loginState,
@@ -102,13 +101,12 @@ async function fetchProfileOr(reason: () => never, code: string): Promise<Github
 
 async function handleSetup(args: {
 	cookies: import('@sveltejs/kit').Cookies;
-	url: URL;
 	code: string | null;
 	state: string | null;
 	loginState: string | undefined;
 	setupCarrySigned: string;
 }): Promise<never> {
-	const { cookies, url, code, state, loginState, setupCarrySigned } = args;
+	const { cookies, code, state, loginState, setupCarrySigned } = args;
 
 	if (!code || !state || !loginState || state !== loginState) {
 		setupError('invalid_oauth_state');
@@ -116,11 +114,13 @@ async function handleSetup(args: {
 	const carry = verify<SetupCarry>(setupCarrySigned);
 	if (!carry) setupError('invalid_oauth_state');
 
-	// Re-check the gate — a parallel tab could have completed setup
-	// while this round-trip was in flight.
-	const verdict = setupGate(url);
-	if (verdict === 'closed') throw redirect(302, '/login');
-	if (verdict !== 'allowed') setupError('setup_token_required');
+	// Close the parallel-tab race only. The signed carry cookie's
+	// existence already proves the start endpoint accepted the
+	// SETUP_TOKEN (if any) — re-running the full setupGate here would
+	// spuriously fail because GitHub's redirect URI doesn't carry
+	// `?token=…`. The carry is HMAC-signed with AUTH_SECRET and TTL'd
+	// to 10 min, so it can't be forged or replayed past expiry.
+	if (countUsers() > 0) throw redirect(302, '/login');
 
 	const profile = await fetchProfileOr(() => setupError('oauth_exchange_failed'), code);
 
