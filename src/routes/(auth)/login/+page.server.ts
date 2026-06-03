@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { githubLoginEnabled, passkeyLoginEnabled } from '$lib/server/env';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -12,5 +13,11 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(302, '/');
 	const errorCode = url.searchParams.get('error');
 	const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? 'Login failed.') : null;
-	return { errorMessage };
+	// Expose which login methods are enabled so the page can render the
+	// right buttons. validateAuthMethodsEnabled() at boot guarantees at
+	// least one is true.
+	return {
+		errorMessage,
+		methods: { github: githubLoginEnabled(), passkey: passkeyLoginEnabled() },
+	};
 };

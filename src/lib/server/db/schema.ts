@@ -30,6 +30,38 @@ export const sessions = sqliteTable('sessions', {
 	expiresAt: integer('expires_at').notNull(),
 });
 
+// WebAuthn / passkey credentials. Bound to an existing user (always
+// bootstrapped via GitHub OAuth first), so this table only ever holds
+// additional sign-in methods — it is never the source of identity.
+// `id` is the credential ID returned by the authenticator (base64url,
+// globally unique per spec) so it's safe as the PK and as the lookup
+// key during usernameless discoverable-credential login. `public_key`
+// is COSE bytes from @simplewebauthn/server; stored as BLOB to avoid
+// round-tripping through base64 on every verify. `counter` is the
+// signature counter — bumped atomically with `last_used_at` after a
+// successful login; the verify path also clone-detects against the
+// stored value (when stored > 0; some authenticators always return 0).
+// `backed_up` / `device_type` come from the registration response and
+// drive a "Synced" indicator in settings.
+export const passkeyCredentials = sqliteTable(
+	'passkey_credentials',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		publicKey: blob('public_key').notNull(),
+		counter: integer('counter').notNull().default(0),
+		transportsJson: text('transports_json'),
+		backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
+		deviceType: text('device_type', { enum: ['singleDevice', 'multiDevice'] }).notNull(),
+		name: text('name'),
+		createdAt: integer('created_at').notNull(),
+		lastUsedAt: integer('last_used_at'),
+	},
+	(t) => [index('idx_passkey_credentials_user_id').on(t.userId)],
+);
+
 // Web Push subscriptions. One row per (user, browser-endpoint) pair: users
 // may have several devices (laptop + phone + tablet), each producing its own
 // endpoint URL from the push service. The endpoint is UNIQUE — resubscribing

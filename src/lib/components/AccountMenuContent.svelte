@@ -4,9 +4,8 @@
 	Split into its own file so the layout can dynamically import it the
 	first time the user opens the dropdown. The Trigger stays inline in
 	the layout — it has to be there for bits-ui's open/close + focus
-	mechanics — but the five menu items and their five lucide icons
-	(Settings / Brain / Plug / ShieldCheck / LogOut) only get pulled in
-	when this menu actually opens.
+	mechanics — but the menu items and their lucide icons only get
+	pulled in when this menu actually opens.
 
 	`goto` is passed in (rather than imported) so this component has no
 	dependency on the routing surface; it's a thin presentational shell
@@ -14,7 +13,7 @@
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
-	import { Brain, LogOut, Plug, Settings, ShieldCheck } from '@lucide/svelte';
+	import { Brain, KeyRound, LogOut, Plug, Settings, ShieldCheck } from '@lucide/svelte';
 
 	let { goto }: { goto: (path: string) => unknown } = $props();
 </script>
@@ -53,6 +52,13 @@
 		>
 			<ShieldCheck size={14} strokeWidth={2.25} />
 			<span>Permissions</span>
+		</DropdownMenu.Item>
+		<DropdownMenu.Item
+			onSelect={() => goto('/settings/security')}
+			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+		>
+			<KeyRound size={14} strokeWidth={2.25} />
+			<span>Security</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
 			onSelect={() => {

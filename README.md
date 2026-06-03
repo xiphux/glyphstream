@@ -59,11 +59,26 @@ See `config.toml.example` and `.env.example` for the full surface. The
 [GitHub authentication](#github-authentication) section below walks
 through the three OAuth-related env vars in detail.
 
-## GitHub authentication
+## Authentication
 
-GlyphStream signs users in via GitHub OAuth with a **numeric-user-id
-allowlist** — no public registration, no password store, only specific
-accounts can log in. Three pieces to set up:
+GlyphStream supports two sign-in methods:
+
+- **GitHub OAuth** with a numeric-user-id allowlist (always the bootstrap
+  path — every user is first created via OAuth, gated by the allowlist).
+- **Passkeys (WebAuthn)** as a fast biometric / hardware-key login, bound
+  to an existing user after first GitHub sign-in. A passkey ceremony with
+  `userVerification: required` is multi-factor by construction, so there
+  is no separate TOTP / authenticator-app layer.
+
+Both methods can be enabled together (default), or either disabled via
+`GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED` in `.env`. At least one
+must remain enabled — the server refuses to boot otherwise. To go
+passkey-only after registering one or more passkeys: set
+`GITHUB_LOGIN_ENABLED=0` and restart.
+
+### GitHub OAuth setup
+
+GitHub OAuth is the bootstrap path — three pieces to set up:
 
 ### 1. Create a GitHub OAuth App
 
@@ -123,6 +138,30 @@ EXTERNAL_BASE_URL=https://glyphstream.example.com
 > `PUBLIC_BASE_URL` would silently fail to read server-side and
 > default to `localhost`, which then mismatches the OAuth callback in
 > production. The `EXTERNAL_` prefix dodges that footgun.
+
+### Passkey login (optional)
+
+Once you've signed in via GitHub at least once, visit **Settings →
+Security** to bind a passkey to your account. Each registered passkey
+appears in the list with a name, "Synced" / device-type badges, and
+when it was last used. You can rename or remove passkeys at any time.
+
+Multiple passkeys per account are supported and recommended — register
+one per ecosystem (iCloud Keychain, 1Password / Bitwarden, etc.) so a
+single outage doesn't lock you out. The "Add passkey" button respects
+whichever authenticator the OS / browser offers, so picking a different
+provider per registration is just a matter of accepting the right
+prompt at the time.
+
+> **EXTERNAL_BASE_URL is load-bearing for passkeys.** WebAuthn binds
+> credentials to a relying-party ID, which GlyphStream derives from the
+> hostname in `EXTERNAL_BASE_URL`. Changing the value after passkeys are
+> registered will invalidate every existing credential — affected users
+> will need to sign in via GitHub and re-register. Treat the value as
+> stable infrastructure once any passkey exists.
+
+When `PASSKEY_LOGIN_ENABLED=0`, the "Add passkey" button hides but the
+list stays visible so existing rows can be pruned.
 
 ## Auto-titling (optional)
 

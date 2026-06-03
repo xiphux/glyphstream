@@ -268,7 +268,12 @@ expected priority, not time-bound.
 
 ## Long-term / nice-to-have
 
-- **2FA / passkeys.** Relevant once multi-user is on.
+- **2FA layered on GitHub OAuth.** Passkey login shipped as a peer
+  primary method (Settings → Security) — the `userVerification: required`
+  ceremony is itself multi-factor, so this entry is only about adding an
+  authenticator-app TOTP layer to the GitHub side. Low priority — for a
+  self-hosted instance with a numeric-ID allowlist, the GitHub-side
+  attack surface is already narrow.
 
 - **Voice input** via local Whisper (or upstream `audio.transcriptions`
   endpoint when the bridge supports it).

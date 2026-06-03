@@ -52,3 +52,13 @@ export function upsertUserByGithub(input: UpsertUserInput): string {
 		.run();
 	return id;
 }
+
+/**
+ * Bump `last_login_at` without touching any other field. Used by the
+ * passkey login path — there's no GitHub profile to upsert from, but
+ * the "when did this user last sign in" stat should still update.
+ */
+export function bumpUserLastLogin(userId: string): void {
+	const db = getDb();
+	db.update(users).set({ lastLoginAt: Date.now() }).where(eq(users.id, userId)).run();
+}

@@ -13,8 +13,9 @@ model.
 ## Stack
 
 SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite,
-dialect-portable) · Lucia v3 + arctic for OAuth · bits-ui (headless) ·
-markdown-it + shiki · Vitest + Playwright · pnpm.
+dialect-portable) · arctic (GitHub OAuth) + @simplewebauthn (passkeys),
+custom Lucia-style session module · bits-ui (headless) · markdown-it +
+shiki · Vitest + Playwright · pnpm.
 
 ## Layout
 

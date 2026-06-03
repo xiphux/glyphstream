@@ -1,5 +1,55 @@
 <script lang="ts">
+	import { KeyRound } from '@lucide/svelte';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
+
 	let { data } = $props();
+
+	let passkeyBusy = $state(false);
+	let passkeyError = $state<string | null>(null);
+
+	async function signInWithPasskey() {
+		if (passkeyBusy) return;
+		passkeyBusy = true;
+		passkeyError = null;
+		try {
+			// Dynamic-import the WebAuthn browser shim so GitHub-only deploys
+			// don't pay its ~5 KB on the critical path.
+			const { startAuthentication } = await import('@simplewebauthn/browser');
+
+			const optionsRes = await fetch('/api/auth/passkey/login/options', { method: 'POST' });
+			if (!optionsRes.ok) {
+				passkeyError = await errorMessageFromResponse(optionsRes);
+				return;
+			}
+			const optionsJSON = await optionsRes.json();
+
+			let authResponse;
+			try {
+				authResponse = await startAuthentication({ optionsJSON });
+			} catch (e) {
+				// NotAllowedError = user dismissed the picker. Swallow silently.
+				if (e instanceof DOMException && e.name === 'NotAllowedError') return;
+				passkeyError = e instanceof Error ? e.message : String(e);
+				return;
+			}
+
+			const verifyRes = await fetch('/api/auth/passkey/login/verify', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ response: authResponse }),
+			});
+			if (!verifyRes.ok) {
+				passkeyError = await errorMessageFromResponse(verifyRes);
+				return;
+			}
+			// Full navigation rather than SPA — picks up the new session
+			// cookie cleanly and runs the (app) layout's auth gate from a
+			// fresh page load.
+			window.location.href = '/';
+		} finally {
+			passkeyBusy = false;
+		}
+	}
 </script>
 
 <div class="flex min-h-screen items-center justify-center p-6">
@@ -18,17 +68,50 @@
 				</div>
 			{/if}
 
-			<a
-				href="/api/auth/github/login"
-				class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-surface-inverse px-4 py-2.5 text-sm font-medium text-fg-inverse transition hover:opacity-90"
-			>
-				<svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true" fill="currentColor">
-					<path
-						d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.27-.01-1.18-.02-2.14-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.27-1.7-1.27-1.7-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18a10.93 10.93 0 0 1 5.74 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.41-5.25 5.69.41.36.78 1.05.78 2.13 0 1.54-.01 2.79-.01 3.16 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"
-					/>
-				</svg>
-				Sign in with GitHub
-			</a>
+			{#if passkeyError}
+				<div
+					class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+				>
+					{passkeyError}
+				</div>
+			{/if}
+
+			{#if data.methods.github}
+				<a
+					href="/api/auth/github/login"
+					class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-surface-inverse px-4 py-2.5 text-sm font-medium text-fg-inverse transition hover:opacity-90"
+				>
+					<svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true" fill="currentColor">
+						<path
+							d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.27-.01-1.18-.02-2.14-3.2.7-3.88-1.36-3.88-1.36-.52-1.34-1.27-1.7-1.27-1.7-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18a10.93 10.93 0 0 1 5.74 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.41-5.25 5.69.41.36.78 1.05.78 2.13 0 1.54-.01 2.79-.01 3.16 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"
+						/>
+					</svg>
+					Sign in with GitHub
+				</a>
+			{/if}
+
+			{#if data.methods.github && data.methods.passkey}
+				<div class="my-4 flex items-center gap-3 text-xs text-fg-muted">
+					<span class="h-px flex-1 bg-border"></span>
+					<span>or</span>
+					<span class="h-px flex-1 bg-border"></span>
+				</div>
+			{/if}
+
+			{#if data.methods.passkey}
+				<button
+					type="button"
+					onclick={signInWithPasskey}
+					disabled={passkeyBusy}
+					class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface-raised px-4 py-2.5 text-sm font-medium text-fg transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50 {data
+						.methods.github
+						? ''
+						: 'mt-6'}"
+				>
+					<KeyRound size={16} strokeWidth={2.25} />
+					{passkeyBusy ? 'Waiting for passkey…' : 'Sign in with a passkey'}
+				</button>
+			{/if}
 		</div>
 
 		<p class="mt-4 text-center text-xs text-fg-muted">Self-hosted. Closed registration.</p>

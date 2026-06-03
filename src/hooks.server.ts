@@ -1,9 +1,15 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
 import { maybeCompressResponse } from '$lib/server/compression';
-import { compressDynamicResponses } from '$lib/server/env';
+import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
 import { startMediaPurger } from '$lib/server/media/purger';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
+
+// Refuse to start if the auth-method toggles leave no way in. Better to
+// crash at boot with a clear message than serve a /login page with zero
+// buttons. Also catches the "passkeys on but EXTERNAL_BASE_URL not set in
+// prod" misconfig, since the RP ID is derived from it.
+validateAuthMethodsEnabled();
 
 // Resolve the COMPRESS_DYNAMIC env var once at module load — there's no
 // reason to re-read on every request, and a deploy that flips it
