@@ -85,9 +85,10 @@
 
 	async function unlinkProvider(provider: string) {
 		if (linkBusy) return;
+		const label = providerLabel(provider);
 		const ok = await confirmDialog.ask({
-			title: `Unlink ${provider}?`,
-			message: `You won't be able to sign in via ${provider} after this.`,
+			title: `Unlink ${label}?`,
+			message: `You won't be able to sign in via ${label} after this.`,
 			confirmLabel: 'Unlink',
 		});
 		if (!ok) return;
@@ -100,7 +101,7 @@
 				toast.error(`Couldn't unlink: ${await errorMessageFromResponse(res)}`);
 				return;
 			}
-			toast.success(`${provider} unlinked.`);
+			toast.success(`${label} unlinked.`);
 			await invalidate('settings:oauth-accounts');
 		} finally {
 			linkBusy = false;
