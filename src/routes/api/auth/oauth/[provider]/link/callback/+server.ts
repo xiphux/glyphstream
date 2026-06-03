@@ -11,9 +11,8 @@
  */
 import { redirect } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
-import { OAuth2RequestError, fetchGithubProfile } from '$lib/server/auth/github';
+import { LINK_STATE_COOKIE, OAuth2RequestError, fetchGithubProfile } from '$lib/server/auth/github';
 import { addOAuthAccount, findUserByOAuth } from '$lib/server/db/queries/oauth-accounts';
-import { LINK_STATE_COOKIE } from '../start/+server';
 import type { RequestHandler } from './$types';
 
 function back(reason: string): never {

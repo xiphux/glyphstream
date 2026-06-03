@@ -13,12 +13,11 @@
 import { error, redirect } from '@sveltejs/kit';
 import { generateState } from 'arctic';
 import { getGithubClient, STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/server/auth/github';
-import { setupGate } from '$lib/server/auth/setup';
+import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
 import { sign } from '$lib/server/auth/signed-cookies';
 import { githubLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
-export const SETUP_CARRY_COOKIE = 'glyphstream_setup_github_carry';
 const CARRY_TTL_MS = STATE_TTL_SECONDS * 1000;
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
@@ -49,7 +48,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	// round-trip. Signed so the callback can trust the values without a
 	// server-side stash; expires alongside the state cookie.
 	const carry = sign({ displayName, email: email || null }, CARRY_TTL_MS);
-	cookies.set(SETUP_CARRY_COOKIE, carry, {
+	cookies.set(SETUP_GITHUB_CARRY_COOKIE, carry, {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',

@@ -7,12 +7,11 @@
  */
 import { redirect } from '@sveltejs/kit';
 import { OAuth2RequestError, STATE_COOKIE, fetchGithubProfile } from '$lib/server/auth/github';
-import { setupGate } from '$lib/server/auth/setup';
+import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
 import { verify } from '$lib/server/auth/signed-cookies';
 import { addOAuthAccount } from '$lib/server/db/queries/oauth-accounts';
 import { createInitialUser } from '$lib/server/db/queries/users';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
-import { SETUP_CARRY_COOKIE } from '../start/+server';
 import type { RequestHandler } from './$types';
 
 interface CarryPayload {
@@ -35,9 +34,9 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	const code = url.searchParams.get('code');
 	const state = url.searchParams.get('state');
 	const storedState = cookies.get(STATE_COOKIE);
-	const carrySigned = cookies.get(SETUP_CARRY_COOKIE);
+	const carrySigned = cookies.get(SETUP_GITHUB_CARRY_COOKIE);
 	cookies.delete(STATE_COOKIE, { path: '/' });
-	cookies.delete(SETUP_CARRY_COOKIE, { path: '/' });
+	cookies.delete(SETUP_GITHUB_CARRY_COOKIE, { path: '/' });
 
 	if (!code || !state || !storedState || state !== storedState) {
 		setupError('invalid_oauth_state');

@@ -14,6 +14,14 @@ const GITHUB_USER_EMAILS_API = 'https://api.github.com/user/emails';
  */
 export const STATE_COOKIE = 'glyphstream_oauth_state';
 
+/**
+ * Distinct state cookie for the *link* flow (Settings → Security →
+ * "Link GitHub"). Separating it from the login STATE_COOKIE means a
+ * tab in the middle of a login flow can't be confused for a link
+ * flow if the callback URLs are ever crossed.
+ */
+export const LINK_STATE_COOKIE = 'glyphstream_oauth_link_state';
+
 /** How long the user has to complete the GitHub round-trip before the
  *  OAuth state cookie expires. */
 export const STATE_TTL_SECONDS = 600;

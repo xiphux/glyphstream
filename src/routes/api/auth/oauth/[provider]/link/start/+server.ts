@@ -8,11 +8,9 @@
 import { error, redirect } from '@sveltejs/kit';
 import { generateState } from 'arctic';
 import { requireUser } from '$lib/server/auth/guard';
-import { getGithubClient, STATE_TTL_SECONDS } from '$lib/server/auth/github';
+import { getGithubClient, LINK_STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/server/auth/github';
 import { githubLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
-
-export const LINK_STATE_COOKIE = 'glyphstream_oauth_link_state';
 
 export const POST: RequestHandler = ({ locals, cookies, params }) => {
 	requireUser(locals);

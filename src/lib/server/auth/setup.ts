@@ -20,6 +20,15 @@ import { timingSafeEqual } from 'node:crypto';
 import { countUsers } from '../db/queries/users';
 import { setupToken } from '../env';
 
+/**
+ * Cookie names used by the /setup flows. They live here rather than in
+ * the `+server.ts` files because SvelteKit validates route-file exports
+ * against a fixed list (HTTP method handlers + a few config slots) —
+ * route files can't share named constants.
+ */
+export const SETUP_GITHUB_CARRY_COOKIE = 'glyphstream_setup_github_carry';
+export const SETUP_PASSKEY_CARRY_COOKIE = 'glyphstream_setup_passkey_carry';
+
 export type SetupGateVerdict = 'allowed' | 'needs-token' | 'closed';
 
 export function setupGate(url: URL): SetupGateVerdict {

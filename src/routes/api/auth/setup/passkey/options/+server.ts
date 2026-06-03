@@ -13,13 +13,12 @@
 import { error, json } from '@sveltejs/kit';
 import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '$lib/server/auth/passkey';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
-import { setupGate } from '$lib/server/auth/setup';
+import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
 import { sign } from '$lib/server/auth/signed-cookies';
 import { generateId } from '$lib/server/util/id';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
-export const SETUP_PASSKEY_CARRY_COOKIE = 'glyphstream_setup_passkey_carry';
 const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {

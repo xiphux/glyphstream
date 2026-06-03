@@ -13,13 +13,12 @@ import {
 	readRegistrationChallengeCookie,
 	verifyRegistration,
 } from '$lib/server/auth/passkey';
-import { setupGate } from '$lib/server/auth/setup';
+import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
 import { verify } from '$lib/server/auth/signed-cookies';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
 import { type AuthenticatorTransport, insertCredential } from '$lib/server/db/queries/passkey';
 import { createInitialUser } from '$lib/server/db/queries/users';
 import { passkeyLoginEnabled } from '$lib/server/env';
-import { SETUP_PASSKEY_CARRY_COOKIE } from '../options/+server';
 import type { RequestHandler } from './$types';
 
 interface CarryPayload {
