@@ -166,12 +166,11 @@ whichever authenticator the OS / browser offers, so picking a different
 provider per registration is just a matter of accepting the right
 prompt at the time.
 
-> **EXTERNAL_BASE_URL is load-bearing for passkeys.** WebAuthn binds
-> credentials to a relying-party ID, which GlyphStream derives from the
-> hostname in `EXTERNAL_BASE_URL`. Changing the value after passkeys are
-> registered will invalidate every existing credential — affected users
-> will need to sign in via another bound method and re-register. Treat
-> the value as stable infrastructure once any passkey exists.
+> **Don't change `EXTERNAL_BASE_URL` after passkeys are registered.**
+> GlyphStream derives the WebAuthn relying-party ID from its hostname;
+> changing the value invalidates every existing credential, and
+> affected users have to sign in via another bound method and
+> re-register.
 
 When `PASSKEY_LOGIN_ENABLED=0`, the "Add passkey" button hides but the
 list stays visible so existing rows can be pruned.
