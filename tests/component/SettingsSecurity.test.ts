@@ -297,21 +297,25 @@ describe('Security settings page — OAuth unlink', () => {
 });
 
 describe('Security settings page — Link GitHub', () => {
-	it('renders the Link GitHub button when GitHub is enabled and not linked', () => {
+	it('renders the Link GitHub link when GitHub is enabled and not linked', () => {
 		render(SecurityPage, {
 			props: { data: { ...baseData, oauthAccounts: [], passkeys: [mkPasskey({ id: 'p' })] } },
 		});
-		expect(screen.getByRole('button', { name: /Link GitHub/ })).toBeInTheDocument();
+		// Plain anchor — `<form method="POST">` would be CSP-blocked
+		// since the start endpoint redirects to github.com.
+		const link = screen.getByRole('link', { name: /Link GitHub/ });
+		expect(link).toBeInTheDocument();
+		expect(link.getAttribute('href')).toBe('/api/auth/oauth/github/link/start');
 	});
 
-	it('hides the Link GitHub button when already linked', () => {
+	it('hides the Link GitHub link when already linked', () => {
 		render(SecurityPage, {
 			props: { data: { ...baseData, passkeys: [mkPasskey({ id: 'p' })] } },
 		});
-		expect(screen.queryByRole('button', { name: /Link GitHub/ })).toBeNull();
+		expect(screen.queryByRole('link', { name: /Link GitHub/ })).toBeNull();
 	});
 
-	it('hides the Link GitHub button when GITHUB_LOGIN_ENABLED is false', () => {
+	it('hides the Link GitHub link when GITHUB_LOGIN_ENABLED is false', () => {
 		render(SecurityPage, {
 			props: {
 				data: {
@@ -322,7 +326,7 @@ describe('Security settings page — Link GitHub', () => {
 				},
 			},
 		});
-		expect(screen.queryByRole('button', { name: /Link GitHub/ })).toBeNull();
+		expect(screen.queryByRole('link', { name: /Link GitHub/ })).toBeNull();
 	});
 });
 

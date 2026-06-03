@@ -107,16 +107,11 @@
 		}
 	}
 
-	function linkGithub() {
-		// Form-submit so the POST start endpoint can set its state cookie
-		// alongside the redirect to GitHub.
-		const form = document.createElement('form');
-		form.method = 'POST';
-		form.action = '/api/auth/oauth/github/link/start';
-		form.style.display = 'none';
-		document.body.appendChild(form);
-		form.submit();
-	}
+	// Plain navigation to the link-start endpoint. POST-via-form would
+	// trip the CSP's `form-action 'self'` since the endpoint ultimately
+	// redirects to github.com; top-level navigations aren't policed
+	// the same way. Same shape as the existing /login GitHub link.
+	const linkGithubHref = '/api/auth/oauth/github/link/start';
 
 	async function addPasskey() {
 		if (addBusy) return;
@@ -280,15 +275,13 @@
 
 				{#if data.githubEnabled && !githubLinked}
 					<div class="mt-4 border-t border-border pt-3">
-						<button
-							type="button"
-							onclick={linkGithub}
-							disabled={linkBusy}
-							class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+						<a
+							href={linkGithubHref}
+							class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken"
 						>
 							<Plus size={14} strokeWidth={2.25} />
 							Link GitHub
-						</button>
+						</a>
 					</div>
 				{/if}
 

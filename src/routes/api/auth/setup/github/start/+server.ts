@@ -3,14 +3,17 @@
  * trip for the first-run wizard. Validates the setup gate (count must
  * still be zero, token must match if SETUP_TOKEN is set), captures the
  * operator-supplied display name + email in a signed carry cookie, and
- * redirects to GitHub. The callback reads the carry cookie back, fetches
- * the profile, and atomically creates the user + the GitHub binding.
+ * returns the GitHub authorization URL.
  *
- * Method is POST so the form submit can include the form fields; the
- * existing /api/auth/github/login GET endpoint stays for the login path
- * where there's nothing to carry.
+ * Returns JSON `{ url }` rather than a 302 so the client can drive
+ * the navigation via `window.location.href`. A `<form method="POST">`
+ * would be cleaner but the CSP's `form-action 'self'` rejects form
+ * submissions ending at github.com. Top-level navigations (anchor
+ * clicks, `window.location.href` assignment) aren't policed the same
+ * way, so the redirect-to-GitHub still works once the client takes
+ * over.
  */
-import { error, redirect } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import { generateState } from 'arctic';
 import { getGithubClient, STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/server/auth/github';
 import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
@@ -25,9 +28,14 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const verdict = setupGate(url);
 	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
 
-	const form = await request.formData();
-	const displayName = String(form.get('displayName') ?? '').trim();
-	const email = String(form.get('email') ?? '').trim();
+	let body: { displayName?: unknown; email?: unknown };
+	try {
+		body = (await request.json()) as { displayName?: unknown; email?: unknown };
+	} catch {
+		throw error(400, 'Malformed JSON body');
+	}
+	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
+	const email = typeof body.email === 'string' ? body.email.trim() : '';
 	if (displayName.length === 0) throw error(400, 'Display name is required');
 	if (displayName.length > 60) throw error(400, 'Display name too long');
 	if (email.length > 120) throw error(400, 'Email too long');
@@ -56,5 +64,5 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		maxAge: STATE_TTL_SECONDS,
 	});
 
-	throw redirect(302, oauthUrl.toString());
+	return json({ url: oauthUrl.toString() });
 };

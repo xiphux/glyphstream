@@ -8,6 +8,8 @@
 	let email = $state('');
 	let passkeyBusy = $state(false);
 	let passkeyError = $state<string | null>(null);
+	let githubBusy = $state(false);
+	let githubError = $state<string | null>(null);
 
 	function tokenSuffix(): string {
 		// Carry the operator-supplied setup token through to the API
@@ -62,25 +64,35 @@
 		}
 	}
 
-	function continueWithGithub() {
-		// Submit as a POST form so the start endpoint can write its
-		// signed-carry cookie atomically alongside the redirect.
-		const form = document.createElement('form');
-		form.method = 'POST';
-		form.action = `/api/auth/setup/github/start${tokenSuffix()}`;
-		form.style.display = 'none';
-		for (const [name, value] of [
-			['displayName', displayName.trim()],
-			['email', email.trim()],
-		]) {
-			const input = document.createElement('input');
-			input.type = 'hidden';
-			input.name = name;
-			input.value = value;
-			form.appendChild(input);
+	async function continueWithGithub() {
+		if (githubBusy) return;
+		const name = displayName.trim();
+		if (name.length === 0) {
+			githubError = 'Pick a display name first.';
+			return;
 		}
-		document.body.appendChild(form);
-		form.submit();
+		githubBusy = true;
+		githubError = null;
+		try {
+			// AJAX-POST so the start endpoint can write its signed-carry
+			// cookie before responding, then the client drives the
+			// navigation manually. A `<form method="POST">` would be
+			// rejected by the CSP's `form-action 'self'` directive since
+			// the start endpoint ultimately redirects to github.com.
+			const res = await fetch(`/api/auth/setup/github/start${tokenSuffix()}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ displayName: name, email: email.trim() }),
+			});
+			if (!res.ok) {
+				githubError = await errorMessageFromResponse(res);
+				return;
+			}
+			const { url } = (await res.json()) as { url: string };
+			window.location.href = url;
+		} finally {
+			githubBusy = false;
+		}
 	}
 </script>
 
@@ -135,11 +147,11 @@
 					/>
 				</div>
 
-				{#if passkeyError}
+				{#if passkeyError || githubError}
 					<div
 						class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
 					>
-						{passkeyError}
+						{passkeyError ?? githubError}
 					</div>
 				{/if}
 
@@ -147,7 +159,8 @@
 					<button
 						type="button"
 						onclick={continueWithGithub}
-						class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-surface-inverse px-4 py-2.5 text-sm font-medium text-fg-inverse transition hover:opacity-90"
+						disabled={githubBusy}
+						class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-surface-inverse px-4 py-2.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 					>
 						<svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true" fill="currentColor">
 							<path

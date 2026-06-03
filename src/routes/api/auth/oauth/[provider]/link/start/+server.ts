@@ -1,9 +1,16 @@
 /**
- * POST /api/auth/oauth/:provider/link/start — kick off a session-
+ * GET /api/auth/oauth/:provider/link/start — kick off a session-
  * attached OAuth round-trip whose callback binds the resulting profile
  * to the *current* user (rather than looking up an existing binding).
  * Uses a separate state cookie from the login flow so a tab swap can't
  * confuse the two paths.
+ *
+ * GET so the settings page can link to it via a plain anchor —
+ * `<form method="POST">` would be blocked by the CSP's
+ * `form-action 'self'` directive, since the start endpoint ultimately
+ * redirects to github.com. Top-level navigations (from `<a href>` or
+ * `window.location.href`) aren't restricted by CSP. The existing
+ * /api/auth/github/login follows the same pattern.
  */
 import { error, redirect } from '@sveltejs/kit';
 import { generateState } from 'arctic';
@@ -12,7 +19,7 @@ import { getGithubClient, LINK_STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/serv
 import { githubLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = ({ locals, cookies, params }) => {
+export const GET: RequestHandler = ({ locals, cookies, params }) => {
 	requireUser(locals);
 	if (params.provider !== 'github') throw error(404, 'Unknown provider');
 	if (!githubLoginEnabled()) throw error(403, 'GitHub login is disabled');
