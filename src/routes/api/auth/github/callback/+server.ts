@@ -1,58 +1,198 @@
 /**
- * GET /api/auth/github/callback — finish a GitHub OAuth ceremony.
+ * GET /api/auth/github/callback — the SINGLE landing point for every
+ * GitHub OAuth round-trip, because GitHub OAuth apps only support one
+ * registered callback URL. Three flows fan out from here based on
+ * which cookies the matching `start` endpoint stashed:
  *
- * OAuth here is pure authentication against an existing
- * `oauth_accounts` binding — it never creates a user on the fly. The
- * binding is established deliberately:
- *  - by PR 2's `/setup` wizard (creates the first user + first binding
- *    atomically), or
- *  - by PR 2's Settings → Security "Link GitHub" flow (an already-
- *    signed-in operator linking a provider to their existing account).
+ *  - Setup flow → `SETUP_GITHUB_CARRY_COOKIE` is set (signed payload
+ *    carrying the operator's typed display name + email). We
+ *    atomically createInitialUser + addOAuthAccount, then sign in.
+ *  - Link-new flow → `LINK_STATE_COOKIE` is set instead of the login
+ *    state cookie. The caller already has a session; we
+ *    addOAuthAccount onto their existing user and bounce back to
+ *    /settings/security.
+ *  - Login flow → only `STATE_COOKIE` is set. We look up the existing
+ *    binding via findUserByOAuth and create a session.
  *
- * A callback whose GitHub profile id isn't already in `oauth_accounts`
- * is refused — there is no allowlist and no auto-create path. This
- * makes the single-user-cap structural rather than list-maintained.
+ * The flow is detected by cookie presence rather than a URL parameter
+ * because the path is fixed; the cookies were set under glyphstream's
+ * own origin and survive the GitHub round-trip (SameSite=Lax). Each
+ * flow uses its own state cookie name so a tab in the middle of one
+ * flow can't be hijacked into another.
  */
 import { redirect } from '@sveltejs/kit';
-import { OAuth2RequestError, STATE_COOKIE, fetchGithubProfile } from '$lib/server/auth/github';
-import { findUserByOAuth, touchOAuthAccount } from '$lib/server/db/queries/oauth-accounts';
-import { bumpUserLastLogin, countUsers } from '$lib/server/db/queries/users';
+import {
+	LINK_STATE_COOKIE,
+	OAuth2RequestError,
+	STATE_COOKIE,
+	fetchGithubProfile,
+	type GithubUserProfile,
+} from '$lib/server/auth/github';
+import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
+import { verify } from '$lib/server/auth/signed-cookies';
+import {
+	addOAuthAccount,
+	findUserByOAuth,
+	touchOAuthAccount,
+} from '$lib/server/db/queries/oauth-accounts';
+import { bumpUserLastLogin, countUsers, createInitialUser } from '$lib/server/db/queries/users';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
 import type { RequestHandler } from './$types';
+
+interface SetupCarry {
+	displayName: string;
+	email: string | null;
+}
 
 function loginError(reason: string): never {
 	throw redirect(302, `/login?error=${encodeURIComponent(reason)}`);
 }
 
-export const GET: RequestHandler = async ({ url, cookies }) => {
+function setupError(reason: string): never {
+	throw redirect(302, `/setup?error=${encodeURIComponent(reason)}`);
+}
+
+function linkBack(reason: string): never {
+	throw redirect(302, `/settings/security?link=${encodeURIComponent(reason)}`);
+}
+
+export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	const code = url.searchParams.get('code');
 	const state = url.searchParams.get('state');
-	const storedState = cookies.get(STATE_COOKIE);
+
+	// Read every flow-marker cookie up front so we can clear them all,
+	// then dispatch on which was set. Each ceremony is single-use.
+	const setupCarrySigned = cookies.get(SETUP_GITHUB_CARRY_COOKIE);
+	const linkState = cookies.get(LINK_STATE_COOKIE);
+	const loginState = cookies.get(STATE_COOKIE);
+	cookies.delete(SETUP_GITHUB_CARRY_COOKIE, { path: '/' });
+	cookies.delete(LINK_STATE_COOKIE, { path: '/' });
 	cookies.delete(STATE_COOKIE, { path: '/' });
 
-	if (!code || !state || !storedState || state !== storedState) {
+	if (setupCarrySigned) {
+		await handleSetup({
+			cookies,
+			url,
+			code,
+			state,
+			loginState,
+			setupCarrySigned,
+		});
+		return new Response(); // unreachable — handleSetup always throws redirect
+	}
+
+	if (linkState) {
+		await handleLink({ cookies, locals, code, state, linkState });
+		return new Response(); // unreachable
+	}
+
+	await handleLogin({ cookies, code, state, loginState });
+	return new Response(); // unreachable
+};
+
+async function fetchProfileOr(reason: () => never, code: string): Promise<GithubUserProfile> {
+	try {
+		return await fetchGithubProfile(code);
+	} catch (e) {
+		if (e instanceof OAuth2RequestError) reason();
+		console.error('[oauth/callback] GitHub profile fetch failed:', e);
+		reason();
+	}
+}
+
+async function handleSetup(args: {
+	cookies: import('@sveltejs/kit').Cookies;
+	url: URL;
+	code: string | null;
+	state: string | null;
+	loginState: string | undefined;
+	setupCarrySigned: string;
+}): Promise<never> {
+	const { cookies, url, code, state, loginState, setupCarrySigned } = args;
+
+	if (!code || !state || !loginState || state !== loginState) {
+		setupError('invalid_oauth_state');
+	}
+	const carry = verify<SetupCarry>(setupCarrySigned);
+	if (!carry) setupError('invalid_oauth_state');
+
+	// Re-check the gate — a parallel tab could have completed setup
+	// while this round-trip was in flight.
+	const verdict = setupGate(url);
+	if (verdict === 'closed') throw redirect(302, '/login');
+	if (verdict !== 'allowed') setupError('setup_token_required');
+
+	const profile = await fetchProfileOr(() => setupError('oauth_exchange_failed'), code);
+
+	const userId = createInitialUser({
+		displayName: carry.displayName,
+		email: carry.email ?? profile.email,
+	});
+	addOAuthAccount({
+		userId,
+		provider: 'github',
+		externalId: String(profile.id),
+		externalUsername: profile.login,
+		externalEmail: profile.email,
+	});
+
+	const { token, expiresAt } = createSession(userId);
+	setSessionCookie(cookies, token, expiresAt);
+
+	throw redirect(302, '/');
+}
+
+async function handleLink(args: {
+	cookies: import('@sveltejs/kit').Cookies;
+	locals: App.Locals;
+	code: string | null;
+	state: string | null;
+	linkState: string;
+}): Promise<never> {
+	const { locals, code, state, linkState } = args;
+
+	if (!locals.user) {
+		// Session expired mid-flow. Bounce to login; nothing to bind to.
+		throw redirect(302, '/login');
+	}
+	if (!code || !state || state !== linkState) {
+		linkBack('invalid_state');
+	}
+
+	const profile = await fetchProfileOr(() => linkBack('exchange_failed'), code);
+
+	if (findUserByOAuth('github', String(profile.id))) {
+		linkBack('already_linked');
+	}
+
+	addOAuthAccount({
+		userId: locals.user.id,
+		provider: 'github',
+		externalId: String(profile.id),
+		externalUsername: profile.login,
+		externalEmail: profile.email,
+	});
+
+	linkBack('success');
+}
+
+async function handleLogin(args: {
+	cookies: import('@sveltejs/kit').Cookies;
+	code: string | null;
+	state: string | null;
+	loginState: string | undefined;
+}): Promise<never> {
+	const { cookies, code, state, loginState } = args;
+
+	if (!code || !state || !loginState || state !== loginState) {
 		loginError('invalid_oauth_state');
 	}
 
-	let profile;
-	try {
-		profile = await fetchGithubProfile(code);
-	} catch (e) {
-		if (e instanceof OAuth2RequestError) {
-			loginError('oauth_exchange_failed');
-		}
-		console.error('[oauth/callback] GitHub profile fetch failed:', e);
-		loginError('upstream_failure');
-	}
-
+	const profile = await fetchProfileOr(() => loginError('oauth_exchange_failed'), code);
 	const externalId = String(profile.id);
 	const binding = findUserByOAuth('github', externalId);
 
 	if (!binding) {
-		// No matching oauth_accounts row. The two refusal paths give the
-		// operator a distinct hint at /login:
-		//  - count === 0 → "no user exists; complete /setup first"
-		//  - count > 0  → "this GitHub account isn't linked to the operator"
 		if (countUsers() === 0) {
 			console.warn(
 				`[oauth/callback] Rejecting GitHub user "${profile.login}" (id=${profile.id}) — no operator account exists yet`,
@@ -72,9 +212,6 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		loginError('not_authorized');
 	}
 
-	// Refresh the provider's view of the operator's identity (their
-	// GitHub username can change between logins; the bound row should
-	// reflect what GitHub says now).
 	touchOAuthAccount('github', externalId, {
 		externalUsername: profile.login,
 		externalEmail: profile.email,
@@ -85,4 +222,4 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	setSessionCookie(cookies, token, expiresAt);
 
 	throw redirect(302, '/');
-};
+}
