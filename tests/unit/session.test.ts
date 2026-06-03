@@ -90,12 +90,12 @@ describe('validateSessionToken', () => {
 	});
 
 	it('returns the AuthContext for a valid token, with sessionId set to the HASH', () => {
-		const u = seedUser({ githubUsername: 'alice' });
+		const u = seedUser({ displayName: 'Alice' });
 		const { token, expiresAt } = createSession(u.id);
 		const ctx = validateSessionToken(token);
 		expect(ctx).not.toBeNull();
 		expect(ctx!.user.id).toBe(u.id);
-		expect(ctx!.user.githubUsername).toBe('alice');
+		expect(ctx!.user.displayName).toBe('Alice');
 		// sessionId returned to callers is the DB key (hash), not the raw
 		// token — invalidate() and other downstream operations work on it.
 		expect(ctx!.sessionId).toBe(hash(token));

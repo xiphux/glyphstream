@@ -78,10 +78,8 @@ describe('getRpId / getExpectedOrigin', () => {
 describe('generateRegistrationOptionsForUser', () => {
 	const user: SessionUser = {
 		id: 'abc-123',
-		githubUserId: 4242,
-		githubUsername: 'octocat',
 		displayName: 'The Octocat',
-		email: null,
+		email: 'octo@example.test',
 	};
 
 	function makeCredentialRow(over: Partial<PasskeyCredentialRow> = {}): PasskeyCredentialRow {
@@ -104,7 +102,8 @@ describe('generateRegistrationOptionsForUser', () => {
 		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
 		expect(opts.rpName).toBe(RP_NAME);
 		expect(opts.rpID).toBe('chat.example.com');
-		expect(opts.userName).toBe('octocat');
+		// Email is the closest thing to a stable user-palatable handle.
+		expect(opts.userName).toBe('octo@example.test');
 		expect(opts.userDisplayName).toBe('The Octocat');
 	});
 
@@ -116,10 +115,17 @@ describe('generateRegistrationOptionsForUser', () => {
 		expect(decoded).toBe('abc-123');
 	});
 
-	it('falls back to githubUsername when displayName is null', async () => {
+	it('falls back to email when displayName is null', async () => {
 		await generateRegistrationOptionsForUser({ ...user, displayName: null }, []);
 		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
-		expect(opts.userDisplayName).toBe('octocat');
+		expect(opts.userDisplayName).toBe('octo@example.test');
+	});
+
+	it('falls back to id for userName when neither email nor displayName is set', async () => {
+		await generateRegistrationOptionsForUser({ ...user, displayName: null, email: null }, []);
+		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
+		expect(opts.userName).toBe('abc-123');
+		expect(opts.userDisplayName).toBe('Operator');
 	});
 
 	it('requires user verification and sets attestation to none', async () => {

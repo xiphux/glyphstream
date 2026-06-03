@@ -70,10 +70,6 @@ export function publicBaseUrl(): string {
 	return readString('EXTERNAL_BASE_URL', 'http://localhost:5173').replace(/\/+$/, '');
 }
 
-export function allowedGithubUserIdsRaw(): string {
-	return readString('ALLOWED_GITHUB_USER_IDS', '');
-}
-
 function readBool(name: string, fallback: boolean): boolean {
 	const raw = env[name];
 	if (raw === undefined || raw === '') return fallback;
@@ -84,10 +80,11 @@ function readBool(name: string, fallback: boolean): boolean {
 }
 
 /**
- * Whether the GitHub OAuth button is shown on /login. Default on: every
- * user is bootstrapped via GitHub (the allowlist is the only thing
- * controlling who can register a user row), so disabling this only makes
- * sense once an operator has already bound a passkey to their account.
+ * Whether the GitHub OAuth button is shown on /login. Default on. OAuth
+ * is pure authentication against an existing `oauth_accounts` binding;
+ * an unbound external_id is refused with `provider_not_bound`. So
+ * disabling this on a passkey-only operator simply hides a button that
+ * wouldn't work for them anyway.
  */
 export function githubLoginEnabled(): boolean {
 	return readBool('GITHUB_LOGIN_ENABLED', true);

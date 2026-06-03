@@ -1,9 +1,10 @@
 /**
- * upsertUserByGithub is the gate every login flows through. The
- * "stable internal id across re-logins" + "refresh upstream profile
- * fields on every login" contract is what lets the rest of the app
- * key everything off our internal id rather than chasing GitHub's
- * mutable username.
+ * `users` is the single-row identity anchor after the PR 1 refactor:
+ * provider-agnostic, created exactly once via `/setup`, never
+ * upserted from a login path. These tests cover the single-user-cap
+ * enforcement, the small read helpers used by session validation and
+ * the `/setup` gate, and the lifecycle around `last_login_at` /
+ * `disabled_at`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,7 +17,12 @@ vi.mock('$lib/server/db/client', () => ({
 	closeDb: () => {},
 }));
 
-import { upsertUserByGithub } from '$lib/server/db/queries/users';
+import {
+	bumpUserLastLogin,
+	countUsers,
+	createInitialUser,
+	getDisabledAt,
+} from '$lib/server/db/queries/users';
 import { users } from '$lib/server/db/schema';
 
 beforeEach(() => {
@@ -27,121 +33,85 @@ afterEach(() => {
 	closeTestDb();
 });
 
-describe('upsertUserByGithub', () => {
-	it('inserts a brand-new user and returns its id', () => {
-		const id = upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'octocat',
-			email: 'octocat@example.com',
-			displayName: 'The Octocat',
-		});
-		expect(typeof id).toBe('string');
-		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get();
-		expect(row).toBeDefined();
-		expect(row!.githubUserId).toBe(42);
-		expect(row!.githubUsername).toBe('octocat');
-		expect(row!.email).toBe('octocat@example.com');
-		expect(row!.displayName).toBe('The Octocat');
-		expect(row!.createdAt).toBeGreaterThan(0);
-		expect(row!.lastLoginAt).toBe(row!.createdAt);
-	});
-
-	it('reuses the same internal id when the same github_user_id logs in again', () => {
-		// The whole reason we don't key off github_username — usernames can
-		// be renamed/recycled; the numeric user id is stable. Internal id
-		// must NOT shift on re-login or every FK in the DB points at orphan.
-		const first = upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'octocat',
-			email: null,
-			displayName: null,
-		});
-		const second = upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'octocat',
-			email: null,
-			displayName: null,
-		});
-		expect(second).toBe(first);
-	});
-
-	it('refreshes username/email/displayName/lastLoginAt on subsequent logins', () => {
-		const id = upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'old-name',
-			email: 'old@example.com',
-			displayName: 'Old Name',
-		});
-		const beforeRow = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
-
-		// Advance the clock so lastLoginAt visibly updates.
-		const after = beforeRow.lastLoginAt! + 1000;
-		vi.useFakeTimers();
-		vi.setSystemTime(after);
-		try {
-			upsertUserByGithub({
-				githubUserId: 42,
-				githubUsername: 'new-name',
-				email: 'new@example.com',
-				displayName: 'New Name',
-			});
-		} finally {
-			vi.useRealTimers();
-		}
+describe('createInitialUser', () => {
+	it('inserts a user with the supplied display name + email', () => {
+		const before = Date.now();
+		const id = createInitialUser({ displayName: 'Operator', email: 'op@example.test' });
+		const after = Date.now();
 
 		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
-		expect(row.githubUsername).toBe('new-name');
-		expect(row.email).toBe('new@example.com');
-		expect(row.displayName).toBe('New Name');
-		expect(row.lastLoginAt).toBe(after);
-		// created_at is immutable — it's "first ever sign-in time," not "most
-		// recent activity time." Don't rewrite history.
-		expect(row.createdAt).toBe(beforeRow.createdAt);
+		expect(row.displayName).toBe('Operator');
+		expect(row.email).toBe('op@example.test');
+		expect(row.disabledAt).toBeNull();
+		expect(row.createdAt).toBeGreaterThanOrEqual(before);
+		expect(row.createdAt).toBeLessThanOrEqual(after);
+		expect(row.lastLoginAt).toBe(row.createdAt);
 	});
 
-	it('issues distinct internal ids for distinct github users', () => {
-		const a = upsertUserByGithub({
-			githubUserId: 1,
-			githubUsername: 'a',
-			email: null,
-			displayName: null,
-		});
-		const b = upsertUserByGithub({
-			githubUserId: 2,
-			githubUsername: 'b',
-			email: null,
-			displayName: null,
-		});
-		expect(a).not.toBe(b);
-	});
-
-	it('accepts null email and displayName on insert', () => {
-		const id = upsertUserByGithub({
-			githubUserId: 99,
-			githubUsername: 'minimal',
-			email: null,
-			displayName: null,
-		});
+	it('accepts a null email', () => {
+		const id = createInitialUser({ displayName: 'Operator', email: null });
 		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
 		expect(row.email).toBeNull();
-		expect(row.displayName).toBeNull();
 	});
 
-	it('overwrites previously-set email/displayName back to null when GitHub clears them', () => {
-		const id = upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'octo',
-			email: 'set@example.com',
-			displayName: 'Set Name',
-		});
-		upsertUserByGithub({
-			githubUserId: 42,
-			githubUsername: 'octo',
-			email: null,
-			displayName: null,
-		});
-		const row = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
-		expect(row.email).toBeNull();
-		expect(row.displayName).toBeNull();
+	it('honors a pre-allocated id (passkey /setup flow needs this)', () => {
+		const fixedId = 'pre-allocated-uuid';
+		const returned = createInitialUser({ id: fixedId, displayName: 'Op', email: null });
+		expect(returned).toBe(fixedId);
+		expect(countUsers()).toBe(1);
+	});
+
+	it('throws when a user already exists — single-user-cap', () => {
+		createInitialUser({ displayName: 'First', email: null });
+		expect(() => createInitialUser({ displayName: 'Second', email: null })).toThrow(
+			/setup is closed/i,
+		);
+	});
+});
+
+describe('countUsers', () => {
+	it('returns 0 on an empty users table', () => {
+		expect(countUsers()).toBe(0);
+	});
+
+	it('returns 1 after the initial user is created', () => {
+		createInitialUser({ displayName: 'Op', email: null });
+		expect(countUsers()).toBe(1);
+	});
+});
+
+describe('getDisabledAt', () => {
+	it('returns null for an active user', () => {
+		const id = createInitialUser({ displayName: 'Op', email: null });
+		expect(getDisabledAt(id)).toBeNull();
+	});
+
+	it('returns the stored timestamp for a disabled user', () => {
+		const id = createInitialUser({ displayName: 'Op', email: null });
+		mocks.testDb.update(users).set({ disabledAt: 1_700_000_000_000 }).where(eq(users.id, id)).run();
+		expect(getDisabledAt(id)).toBe(1_700_000_000_000);
+	});
+
+	it('returns null for an unknown user id', () => {
+		expect(getDisabledAt('does-not-exist')).toBeNull();
+	});
+});
+
+describe('bumpUserLastLogin', () => {
+	it('bumps last_login_at without touching other fields', async () => {
+		const id = createInitialUser({ displayName: 'Op', email: 'op@x' });
+		const before = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
+		await new Promise((r) => setTimeout(r, 2));
+		bumpUserLastLogin(id);
+		const after = mocks.testDb.select().from(users).where(eq(users.id, id)).get()!;
+		expect(after.lastLoginAt!).toBeGreaterThan(before.lastLoginAt!);
+		expect(after.displayName).toBe(before.displayName);
+		expect(after.email).toBe(before.email);
+		expect(after.createdAt).toBe(before.createdAt);
+		expect(after.disabledAt).toBeNull();
+	});
+
+	it('is a no-op when the id does not match a row', () => {
+		expect(() => bumpUserLastLogin('does-not-exist')).not.toThrow();
 	});
 });

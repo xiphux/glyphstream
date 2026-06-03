@@ -1,4 +1,12 @@
-import { sqliteTable, text, integer, blob, index, primaryKey } from 'drizzle-orm/sqlite-core';
+import {
+	sqliteTable,
+	text,
+	integer,
+	blob,
+	index,
+	primaryKey,
+	uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 // Relative import (not the $lib alias) on purpose: schema.ts is loaded
 // outside the Vite build — by drizzle-kit, by the import-owui esbuild
 // bundle, and by Playwright's e2e global-setup — none of which resolve
@@ -9,18 +17,57 @@ import { MODEL_KINDS } from '../../types/api';
 
 export const users = sqliteTable('users', {
 	id: text('id').primaryKey(),
-	githubUserId: integer('github_user_id').notNull().unique(),
-	githubUsername: text('github_username').notNull(),
 	email: text('email'),
 	displayName: text('display_name'),
 	createdAt: integer('created_at').notNull(),
 	lastLoginAt: integer('last_login_at'),
+	// Operator-disabled flag — when non-null, this user's sessions are
+	// invalidated at the next request and new logins (via any method) are
+	// refused with 403. Replaces the GitHub-numeric-ID allowlist's
+	// revocation semantics: there's no list to maintain in sync with
+	// reality; toggling this column is the single source of truth.
+	disabledAt: integer('disabled_at'),
 	// User-level preferences serialized as JSON. Null when the user has
 	// never touched preferences (the parser fills in defaults). Schemaless
 	// so adding new preferences isn't migration-gated; the parsing layer
 	// validates each field defensively with fallbacks.
 	preferencesJson: text('preferences_json'),
 });
+
+// OAuth provider bindings. 1-to-many off `users` — a single user can
+// have zero, one, or several OAuth accounts (GitHub today; Google,
+// GitLab, etc. in the future), plus zero or more passkeys. The login
+// callback looks up by (provider, external_id); binding a new provider
+// happens only via the /setup wizard or the Settings → Security
+// "Link …" flow (no auto-create-on-first-login).
+//
+// `external_id` is text rather than integer because GitHub gives
+// numeric ids but other providers (Google, generic OIDC) give string
+// ids; storing them uniformly avoids a per-provider column choice.
+//
+// `external_username` and `external_email` mirror the provider's view
+// of the operator's identity at last sync time — useful for the
+// "linked as @octocat" label in settings, and as fallback for the
+// user-level `users.display_name` / `users.email` at create time.
+export const oauthAccounts = sqliteTable(
+	'oauth_accounts',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		provider: text('provider').notNull(),
+		externalId: text('external_id').notNull(),
+		externalUsername: text('external_username'),
+		externalEmail: text('external_email'),
+		createdAt: integer('created_at').notNull(),
+		lastSyncedAt: integer('last_synced_at'),
+	},
+	(t) => [
+		uniqueIndex('uq_oauth_accounts_provider_external').on(t.provider, t.externalId),
+		index('idx_oauth_accounts_user_id').on(t.userId),
+	],
+);
 
 export const sessions = sqliteTable('sessions', {
 	id: text('id').primaryKey(),

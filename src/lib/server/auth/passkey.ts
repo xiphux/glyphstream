@@ -84,11 +84,17 @@ export async function generateRegistrationOptionsForUser(
 	user: SessionUser,
 	existing: PasskeyCredentialRow[],
 ): Promise<PublicKeyCredentialCreationOptionsJSON> {
+	// WebAuthn `userName` is "a human-palatable stable identifier";
+	// `userDisplayName` is the friendly label. Email is the closest
+	// thing the operator typed in; fall back to display name then id
+	// so the password manager always has *something* recognizable.
+	const userName = user.email ?? user.displayName ?? user.id;
+	const userDisplayName = user.displayName ?? user.email ?? 'Operator';
 	return await generateRegistrationOptions({
 		rpName: RP_NAME,
 		rpID: getRpId(),
-		userName: user.githubUsername,
-		userDisplayName: user.displayName ?? user.githubUsername,
+		userName,
+		userDisplayName,
 		userID: new TextEncoder().encode(user.id),
 		attestationType: 'none',
 		authenticatorSelection: {

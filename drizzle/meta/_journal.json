@@ -120,6 +120,20 @@
       "when": 1780445220836,
       "tag": "0016_slow_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1780449342401,
+      "tag": "0017_youthful_power_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1780449378177,
+      "tag": "0018_tiresome_slipstream",
+      "breakpoints": true
     }
   ]
 }

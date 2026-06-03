@@ -165,15 +165,21 @@ describe('findCredentialById', () => {
 });
 
 describe('findUserForCredential', () => {
-	it('joins through to the owning user', () => {
-		const u = seedUser({ githubUserId: 4242, githubUsername: 'octocat' });
+	it('joins through to the owning user, propagating disabledAt = null', () => {
+		const u = seedUser();
 		insertCredential(makeInsert(u.id, { id: 'c1' }));
-		const out = findUserForCredential('c1');
-		expect(out).toEqual({
-			userId: u.id,
-			githubUserId: 4242,
-			githubUsername: 'octocat',
-		});
+		expect(findUserForCredential('c1')).toEqual({ userId: u.id, disabledAt: null });
+	});
+
+	it('propagates a non-null disabledAt so the login-verify guard can refuse', () => {
+		const u = seedUser();
+		insertCredential(makeInsert(u.id, { id: 'c1' }));
+		mocks.testDb
+			.update(users)
+			.set({ disabledAt: 1_700_000_000_000 })
+			.where(eq(users.id, u.id))
+			.run();
+		expect(findUserForCredential('c1')?.disabledAt).toBe(1_700_000_000_000);
 	});
 
 	it('returns null for an unknown credential id', () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { Check, KeyRound, Pencil, Trash2, X } from '@lucide/svelte';
+	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
 	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -9,11 +10,18 @@
 	let { data } = $props<{
 		data: {
 			passkeys: PasskeySummary[];
+			oauthAccounts: OAuthAccountSummary[];
 			githubEnabled: boolean;
 			passkeyEnabled: boolean;
-			githubUsername: string;
 		};
 	}>();
+
+	function providerLabel(provider: string): string {
+		// Friendly name for known providers; falls back to raw string for
+		// anything added later that doesn't have UI affordance yet.
+		if (provider === 'github') return 'GitHub';
+		return provider;
+	}
 
 	let addBusy = $state(false);
 	let addName = $state('');
@@ -168,15 +176,34 @@
 	<div class="flex-1 overflow-y-auto px-4 py-4">
 		<div class="mx-auto flex max-w-2xl flex-col gap-4">
 			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<h2 class="text-sm font-semibold">Login methods</h2>
+				<h2 class="text-sm font-semibold">Linked accounts</h2>
 				<p class="mt-1 text-xs text-fg-muted">
-					Your account is bound to GitHub user
-					<span class="font-medium text-fg">{data.githubUsername}</span>. Passkeys are an additional
-					sign-in method tied to this account.
+					OAuth providers bound to this account. Each binding can be used to sign in. Linking and
+					unlinking will land in a follow-up.
 				</p>
-				<dl class="mt-3 flex flex-col gap-1 text-xs text-fg-muted">
+				{#if data.oauthAccounts.length === 0}
+					<p class="mt-4 py-6 text-center text-sm text-fg-muted">
+						No OAuth accounts linked. You sign in via passkey only.
+					</p>
+				{:else}
+					<ul class="mt-3 flex flex-col gap-2">
+						{#each data.oauthAccounts as a (a.provider + ':' + a.externalId)}
+							<li
+								class="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5 text-sm"
+							>
+								<div class="min-w-0 flex-1">
+									<div class="font-medium">{providerLabel(a.provider)}</div>
+									<div class="text-xs text-fg-muted">
+										{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
+									</div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+				<dl class="mt-4 flex flex-col gap-1 border-t border-border pt-3 text-xs text-fg-muted">
 					<div class="flex justify-between">
-						<dt>GitHub OAuth</dt>
+						<dt>GitHub OAuth login</dt>
 						<dd class={data.githubEnabled ? 'text-fg' : 'text-fg-muted italic'}>
 							{data.githubEnabled ? 'Enabled' : 'Disabled'}
 						</dd>

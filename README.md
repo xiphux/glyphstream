@@ -19,8 +19,8 @@ them into a single chat UI with one model picker.
   period when no conversation references them.
 - **Custom models** = preset of (base model + system prompt + params), like
   custom GPTs.
-- **OAuth login with closed allowlist** for safe self-hosting on the public
-  internet.
+- **GitHub OAuth + passkey login** for safe self-hosting on the public
+  internet — single-user-cap baked in.
 - **PWA** — installable to iPhone homescreen.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
@@ -33,13 +33,13 @@ them into a single chat UI with one model picker.
 
 ## Stack
 
-SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite, dialect-portable) · Lucia v3 + arctic for OAuth · bits-ui for headless primitives · pnpm.
+SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite, dialect-portable) · arctic (GitHub OAuth) + @simplewebauthn (passkeys), custom Lucia-style session module · bits-ui for headless primitives · pnpm.
 
 ## Running locally
 
 ```bash
 pnpm install
-cp .env.example .env       # fill in AUTH_SECRET, GitHub OAuth, allowlist
+cp .env.example .env       # fill in AUTH_SECRET, optional GitHub OAuth
 cp config.toml.example config.toml   # define at least one upstream
 pnpm db:generate           # generate the initial migration
 pnpm dev                   # http://localhost:5173
@@ -52,35 +52,44 @@ Two files, by concern:
 - **`config.toml`** — endpoint definitions (one block per upstream). Safe to
   commit to a private repo because secrets live in env vars referenced by
   `*_env` field names.
-- **`.env`** — auth secrets, GitHub OAuth credentials, the allowlist, file
+- **`.env`** — auth secrets, optional GitHub OAuth credentials, file
   paths. Never committed.
 
 See `config.toml.example` and `.env.example` for the full surface. The
-[GitHub authentication](#github-authentication) section below walks
-through the three OAuth-related env vars in detail.
+[Authentication](#authentication) section below walks through the
+sign-in methods and the env vars that gate them.
 
 ## Authentication
 
-GlyphStream supports two sign-in methods:
+GlyphStream supports two sign-in methods, used independently or
+together:
 
-- **GitHub OAuth** with a numeric-user-id allowlist (always the bootstrap
-  path — every user is first created via OAuth, gated by the allowlist).
-- **Passkeys (WebAuthn)** as a fast biometric / hardware-key login, bound
-  to an existing user after first GitHub sign-in. A passkey ceremony with
-  `userVerification: required` is multi-factor by construction, so there
-  is no separate TOTP / authenticator-app layer.
+- **GitHub OAuth** — for operators who want SSO via GitHub.
+- **Passkeys (WebAuthn)** — for biometric / hardware-key login. A
+  passkey ceremony with `userVerification: required` is multi-factor
+  by construction; no separate TOTP layer is needed.
 
-Both methods can be enabled together (default), or either disabled via
-`GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED` in `.env`. At least one
-must remain enabled — the server refuses to boot otherwise. To go
-passkey-only after registering one or more passkeys: set
-`GITHUB_LOGIN_ENABLED=0` and restart.
+Both can be toggled via `GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED`
+in `.env` (default: both on). At least one must remain enabled — the
+server refuses to boot otherwise.
 
-### GitHub OAuth setup
+OAuth is **pure authentication against an existing binding** — never an
+account-creation path. The first-run setup wizard at `/setup` (landing
+in the next PR) creates the operator account and optionally binds the
+first OAuth provider. From then on, additional OAuth providers are
+linked deliberately from **Settings → Security**. A GitHub callback for
+an `external_id` that isn't already in `oauth_accounts` is refused with
+`provider_not_bound`; there is no allowlist, no auto-create.
 
-GitHub OAuth is the bootstrap path — three pieces to set up:
+Revocation is a single column: setting `users.disabled_at` invalidates
+every session and refuses every login method at the next request.
 
-### 1. Create a GitHub OAuth App
+### GitHub OAuth setup (optional)
+
+Required only if you want GitHub as one of the sign-in methods. Skip
+this whole section if you're going passkey-only.
+
+#### 1. Create a GitHub OAuth App
 
 Go to [github.com/settings/developers](https://github.com/settings/developers)
 → **New OAuth App**. Fill in:
@@ -96,27 +105,7 @@ After creation, click **Generate a new client secret** and capture both:
 - **Client ID** → `GITHUB_OAUTH_CLIENT_ID` in `.env`
 - **Client secret** → `GITHUB_OAUTH_CLIENT_SECRET` in `.env`
 
-### 2. Find your numeric GitHub user ID
-
-The allowlist matches on **numeric ID, not username**. Usernames can be
-deleted and re-registered by someone else; numeric IDs are immutable
-and tied to the original account. Fetch yours from GitHub's public API:
-
-```bash
-curl -s https://api.github.com/users/<your-login> | grep '"id":'
-#   "id": 1234567,
-```
-
-(Or open `https://api.github.com/users/<your-login>` in a browser if you
-don't have curl/grep handy.)
-
-Add it to `.env` as a comma-separated list (one or more allowed users):
-
-```
-ALLOWED_GITHUB_USER_IDS=1234567
-```
-
-### 3. Wire EXTERNAL_BASE_URL to the same origin
+#### 2. Wire EXTERNAL_BASE_URL to the same origin
 
 GlyphStream constructs the OAuth callback URL it sends to GitHub as
 `${EXTERNAL_BASE_URL}/api/auth/github/callback`. This has to match the
@@ -139,12 +128,13 @@ EXTERNAL_BASE_URL=https://glyphstream.example.com
 > default to `localhost`, which then mismatches the OAuth callback in
 > production. The `EXTERNAL_` prefix dodges that footgun.
 
-### Passkey login (optional)
+### Passkeys
 
-Once you've signed in via GitHub at least once, visit **Settings →
-Security** to bind a passkey to your account. Each registered passkey
-appears in the list with a name, "Synced" / device-type badges, and
-when it was last used. You can rename or remove passkeys at any time.
+Once signed in (via the `/setup` wizard or by completing an OAuth
+ceremony for an already-bound account), visit **Settings → Security**
+to bind a passkey. Each registered passkey appears in the list with a
+name, "Synced" / device-type badges, and when it was last used. You
+can rename or remove passkeys at any time.
 
 Multiple passkeys per account are supported and recommended — register
 one per ecosystem (iCloud Keychain, 1Password / Bitwarden, etc.) so a
@@ -157,8 +147,8 @@ prompt at the time.
 > credentials to a relying-party ID, which GlyphStream derives from the
 > hostname in `EXTERNAL_BASE_URL`. Changing the value after passkeys are
 > registered will invalidate every existing credential — affected users
-> will need to sign in via GitHub and re-register. Treat the value as
-> stable infrastructure once any passkey exists.
+> will need to sign in via another bound method and re-register. Treat
+> the value as stable infrastructure once any passkey exists.
 
 When `PASSKEY_LOGIN_ENABLED=0`, the "Add passkey" button hides but the
 list stays visible so existing rows can be pruned.

@@ -1,8 +1,7 @@
 /**
  * POST /api/auth/passkey/login/verify — finish a passkey login. Resolves
- * the credential by its id, verifies the signed assertion, re-checks
- * the allowlist on the owning user's GitHub ID (consistent with the
- * OAuth callback's behavior), updates the counter + last_used_at, and
+ * the credential by its id, verifies the signed assertion, refuses if
+ * the bound user is disabled, updates the counter + last_used_at, and
  * creates a session.
  *
  * Counter-clone guard: WebAuthn's `newCounter` should monotonically
@@ -20,7 +19,6 @@
  */
 import { error, json } from '@sveltejs/kit';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
-import { isAllowed } from '$lib/server/auth/allowlist';
 import {
 	clearLoginChallengeCookie,
 	decodeUserHandle,
@@ -72,13 +70,13 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	const owner = findUserForCredential(credential.id);
 	if (!owner) throw error(401, 'Unknown credential');
 
-	// Mirror the GitHub callback's allowlist behavior: revocation
-	// applies to passkey logins too. Existing sessions keep working
-	// until expiry — same trade-off as OAuth.
-	if (!isAllowed(owner.githubUserId)) {
-		console.warn(
-			`[passkey/login] Rejecting "${owner.githubUsername}" (github id=${owner.githubUserId}) — not in allowlist`,
-		);
+	// Disabled-flag check mirrors the GitHub callback's behavior:
+	// revocation applies uniformly across login methods. Existing
+	// sessions stop resolving at the next request thanks to the
+	// `disabled_at IS NULL` filter in validateSessionToken; new logins
+	// are refused here.
+	if (owner.disabledAt !== null) {
+		console.warn(`[passkey/login] Rejecting credential ${credential.id} — bound user is disabled`);
 		throw error(403, 'This account is not authorized to use this instance.');
 	}
 

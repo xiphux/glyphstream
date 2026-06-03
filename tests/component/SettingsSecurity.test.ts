@@ -39,7 +39,13 @@ const fetchMock = vi.fn();
 const baseData = {
 	githubEnabled: true,
 	passkeyEnabled: true,
-	githubUsername: 'octocat',
+	oauthAccounts: [] as Array<{
+		provider: string;
+		externalId: string;
+		externalUsername: string | null;
+		externalEmail: string | null;
+		createdAt: number;
+	}>,
 };
 
 beforeEach(() => {
@@ -69,9 +75,31 @@ describe('Security settings page — empty state', () => {
 		expect(screen.getByText(/No passkeys yet/)).toBeInTheDocument();
 	});
 
-	it('renders the linked GitHub username read-only', () => {
+	it('renders the linked OAuth account read-only when one is bound', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [],
+					oauthAccounts: [
+						{
+							provider: 'github',
+							externalId: '42',
+							externalUsername: 'octocat',
+							externalEmail: null,
+							createdAt: Date.now(),
+						},
+					],
+				},
+			},
+		});
+		expect(screen.getByText('GitHub')).toBeInTheDocument();
+		expect(screen.getByText('@octocat')).toBeInTheDocument();
+	});
+
+	it('shows the "no OAuth accounts" empty state when none are bound', () => {
 		render(SecurityPage, { props: { data: { ...baseData, passkeys: [] } } });
-		expect(screen.getByText('octocat')).toBeInTheDocument();
+		expect(screen.getByText(/No OAuth accounts linked/)).toBeInTheDocument();
 	});
 
 	it('exposes the "Add passkey" button when passkey login is enabled', () => {

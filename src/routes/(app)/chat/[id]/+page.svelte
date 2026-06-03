@@ -53,7 +53,7 @@
 	// if set, else GitHub display name's first token, else login) +
 	// the model's friendly name (server resolves custom-model name).
 	const userLabel = $derived(
-		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.githubUsername),
+		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
 

@@ -24,7 +24,7 @@
 		greeting = timeOfDayGreeting(new Date());
 	});
 	const userFirstName = $derived(
-		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.githubUsername),
+		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 
 	// Selection value mirrors what ModelPicker emits:

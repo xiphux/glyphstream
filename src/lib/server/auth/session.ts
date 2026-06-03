@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { getDb } from '../db/client';
 import { sessions, users } from '../db/schema';
@@ -24,8 +24,6 @@ function generateToken(): string {
 
 export interface SessionUser {
 	id: string;
-	githubUserId: number;
-	githubUsername: string;
 	displayName: string | null;
 	email: string | null;
 }
@@ -55,6 +53,12 @@ export function validateSessionToken(token: string): AuthContext | null {
 	if (!token) return null;
 	const sessionId = hashToken(token);
 	const db = getDb();
+	// `users.disabled_at IS NULL` filter on the join means an operator
+	// flipping the disabled bit invalidates every active session for
+	// that user at the next request, not just at next login. The
+	// session row stays in the DB (so re-enabling restores access
+	// without re-issuing a token) but it stops resolving until the
+	// disabled flag clears.
 	const row = db
 		.select({
 			sessionId: sessions.id,
@@ -63,7 +67,7 @@ export function validateSessionToken(token: string): AuthContext | null {
 		})
 		.from(sessions)
 		.innerJoin(users, eq(sessions.userId, users.id))
-		.where(eq(sessions.id, sessionId))
+		.where(and(eq(sessions.id, sessionId), isNull(users.disabledAt)))
 		.get();
 	if (!row) return null;
 
@@ -84,8 +88,6 @@ export function validateSessionToken(token: string): AuthContext | null {
 		expiresAt,
 		user: {
 			id: row.user.id,
-			githubUserId: row.user.githubUserId,
-			githubUsername: row.user.githubUsername,
 			displayName: row.user.displayName,
 			email: row.user.email,
 		},

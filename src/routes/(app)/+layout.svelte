@@ -609,10 +609,10 @@
 						? 'sm:justify-center'
 						: 'justify-between px-1'} py-1"
 					aria-label="Account menu"
-					title={data.user.displayName ?? data.user.githubUsername}
+					title={data.user.displayName ?? data.user.email ?? 'You'}
 				>
 					{#if !collapsed}
-						<span class="truncate">{data.user.displayName ?? data.user.githubUsername}</span>
+						<span class="truncate">{data.user.displayName ?? data.user.email ?? 'You'}</span>
 						<ChevronDown size={12} strokeWidth={2.25} class="shrink-0 opacity-60" />
 					{:else}
 						<UserIcon size={14} strokeWidth={2.25} />

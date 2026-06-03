@@ -164,20 +164,19 @@ export function findCredentialById(credentialId: string): PasskeyCredentialRow |
 
 export interface UserForCredential {
 	userId: string;
-	githubUserId: number;
-	githubUsername: string;
+	disabledAt: number | null;
 }
 
 /** Join helper: given a credential id, return the owning user's
- *  internal id + the github numeric id (for the allowlist re-check on
- *  login). Null when the credential doesn't exist. */
+ *  internal id + revocation flag (login-verify uses `disabledAt`
+ *  instead of the dropped allowlist re-check). Null when the
+ *  credential doesn't exist. */
 export function findUserForCredential(credentialId: string): UserForCredential | null {
 	const db = getDb();
 	const row = db
 		.select({
 			userId: users.id,
-			githubUserId: users.githubUserId,
-			githubUsername: users.githubUsername,
+			disabledAt: users.disabledAt,
 		})
 		.from(passkeyCredentials)
 		.innerJoin(users, eq(passkeyCredentials.userId, users.id))

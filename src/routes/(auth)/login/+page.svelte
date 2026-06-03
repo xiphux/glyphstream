@@ -56,9 +56,7 @@
 	<div class="w-full max-w-sm">
 		<div class="rounded-2xl border border-border bg-surface-panel p-8 shadow-sm">
 			<h1 class="text-2xl font-semibold tracking-tight">GlyphStream</h1>
-			<p class="mt-1 text-sm text-fg-muted">
-				Sign in to continue. Access is limited to allowlisted GitHub accounts.
-			</p>
+			<p class="mt-1 text-sm text-fg-muted">Sign in to continue.</p>
 
 			{#if data.errorMessage}
 				<div

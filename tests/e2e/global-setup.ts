@@ -3,13 +3,19 @@
  *
  * Opens the test DB at the path that the dev server (started by
  * Playwright's webServer) will use, applies migrations, inserts a test
- * user + session, and writes a storage-state file containing the
- * session cookie so every test starts already-authenticated.
+ * user + their GitHub OAuth binding + a session, and writes a
+ * storage-state file containing the session cookie so every test
+ * starts already-authenticated.
  *
  * This skips the GitHub OAuth round-trip entirely. Real OAuth flow
  * isn't worth running in every CI run (would need a test GitHub app
  * or HTTP mocking); cookie-injection covers "is the app behaving
  * correctly when authenticated", which is the actually-useful coverage.
+ *
+ * The OAuth binding row matters because post-PR-1 a user without any
+ * bound provider is treated as a passkey-only operator — fine for
+ * already-authenticated tests, but if any test exercises the GitHub
+ * callback's "match an existing binding" path it needs this row.
  */
 
 import { mkdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
@@ -27,9 +33,15 @@ const STORAGE_STATE_PATH = resolve(DATA_DIR, 'auth.json');
 
 export const TEST_USER = {
 	id: '00000000-0000-0000-0000-000000000001',
-	githubUserId: 99999,
-	githubUsername: 'e2e-tester',
 	displayName: 'E2E Tester',
+	email: 'e2e@example.test',
+};
+
+const TEST_OAUTH_ACCOUNT = {
+	id: '00000000-0000-0000-0000-000000000002',
+	provider: 'github' as const,
+	externalId: '99999',
+	externalUsername: 'e2e-tester',
 };
 
 export default async function globalSetup() {
@@ -47,16 +59,29 @@ export default async function globalSetup() {
 	const db = drizzle(sqlite, { schema });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 
-	// Seed the test user.
+	// Seed the test user + the OAuth binding that mirrors the operator's
+	// post-PR-1 shape (every user is bootstrapped with at least one
+	// linked provider; passkey-only is reachable after PR 2's wizard).
 	db.insert(schema.users)
 		.values({
 			id: TEST_USER.id,
-			githubUserId: TEST_USER.githubUserId,
-			githubUsername: TEST_USER.githubUsername,
-			email: 'e2e@example.test',
+			email: TEST_USER.email,
 			displayName: TEST_USER.displayName,
 			createdAt: Date.now(),
 			lastLoginAt: Date.now(),
+			disabledAt: null,
+		})
+		.run();
+	db.insert(schema.oauthAccounts)
+		.values({
+			id: TEST_OAUTH_ACCOUNT.id,
+			userId: TEST_USER.id,
+			provider: TEST_OAUTH_ACCOUNT.provider,
+			externalId: TEST_OAUTH_ACCOUNT.externalId,
+			externalUsername: TEST_OAUTH_ACCOUNT.externalUsername,
+			externalEmail: TEST_USER.email,
+			createdAt: Date.now(),
+			lastSyncedAt: Date.now(),
 		})
 		.run();
 
