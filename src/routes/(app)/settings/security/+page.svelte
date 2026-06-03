@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
-	import { Check, KeyRound, Pencil, Trash2, X } from '@lucide/svelte';
+	import { page } from '$app/state';
+	import { Check, KeyRound, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
 	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 	import { confirmDialog } from '$lib/confirm.svelte';
@@ -15,6 +16,29 @@
 			passkeyEnabled: boolean;
 		};
 	}>();
+
+	let linkBusy = $state(false);
+
+	// Surface the link-flow result from the callback's ?link= redirect.
+	$effect(() => {
+		const result = page.url.searchParams.get('link');
+		if (!result) return;
+		if (result === 'success') toast.success('Provider linked.');
+		else if (result === 'already_linked') toast.error('That provider is already linked.');
+		else if (result === 'invalid_state') toast.error('Link attempt failed (state mismatch).');
+		else if (result === 'exchange_failed') toast.error('Could not complete sign-in with GitHub.');
+		else if (result === 'upstream_failure') toast.error('GitHub is unreachable right now.');
+		else toast.error(`Link failed (${result}).`);
+		// Strip the query so a reload doesn't replay the toast.
+		const next = new URL(page.url);
+		next.searchParams.delete('link');
+		window.history.replaceState({}, '', next.toString());
+	});
+
+	const linkedProviders = $derived(
+		new Set(data.oauthAccounts.map((a: OAuthAccountSummary) => a.provider)),
+	);
+	const githubLinked = $derived(linkedProviders.has('github'));
 
 	function providerLabel(provider: string): string {
 		// Friendly name for known providers; falls back to raw string for
@@ -46,11 +70,53 @@
 		return p.name ?? `Passkey · added ${formatDate(p.createdAt)}`;
 	}
 
-	// A user is locked into a single remaining passkey when GitHub login
-	// is globally off AND this is their only credential. The server
-	// enforces this too (409 from DELETE); hiding the trash icon avoids
-	// surfacing a button that's guaranteed to error.
-	const lastMethodLocked = $derived(!data.githubEnabled && data.passkeys.length <= 1);
+	// A user is locked into a single remaining passkey when no OAuth
+	// binding exists AND this is their only credential. The server
+	// enforces this too (409 from DELETE); hiding the trash icon
+	// avoids surfacing a button that's guaranteed to error.
+	const lastMethodLocked = $derived(data.oauthAccounts.length === 0 && data.passkeys.length <= 1);
+
+	// Same shape applies to OAuth bindings: refuse the unlink if it
+	// would leave the user with zero passkeys AND zero remaining
+	// bindings.
+	function canUnlinkOAuth(): boolean {
+		return data.oauthAccounts.length - 1 + data.passkeys.length > 0;
+	}
+
+	async function unlinkProvider(provider: string) {
+		if (linkBusy) return;
+		const ok = await confirmDialog.ask({
+			title: `Unlink ${provider}?`,
+			message: `You won't be able to sign in via ${provider} after this.`,
+			confirmLabel: 'Unlink',
+		});
+		if (!ok) return;
+		linkBusy = true;
+		try {
+			const res = await fetch(`/api/auth/oauth/${encodeURIComponent(provider)}`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) {
+				toast.error(`Couldn't unlink: ${await errorMessageFromResponse(res)}`);
+				return;
+			}
+			toast.success(`${provider} unlinked.`);
+			await invalidate('settings:oauth-accounts');
+		} finally {
+			linkBusy = false;
+		}
+	}
+
+	function linkGithub() {
+		// Form-submit so the POST start endpoint can set its state cookie
+		// alongside the redirect to GitHub.
+		const form = document.createElement('form');
+		form.method = 'POST';
+		form.action = '/api/auth/oauth/github/link/start';
+		form.style.display = 'none';
+		document.body.appendChild(form);
+		form.submit();
+	}
 
 	async function addPasskey() {
 		if (addBusy) return;
@@ -178,8 +244,7 @@
 			<section class="rounded-lg border border-border bg-surface-panel p-4">
 				<h2 class="text-sm font-semibold">Linked accounts</h2>
 				<p class="mt-1 text-xs text-fg-muted">
-					OAuth providers bound to this account. Each binding can be used to sign in. Linking and
-					unlinking will land in a follow-up.
+					OAuth providers bound to this account. Each binding is an independent sign-in method.
 				</p>
 				{#if data.oauthAccounts.length === 0}
 					<p class="mt-4 py-6 text-center text-sm text-fg-muted">
@@ -197,10 +262,36 @@
 										{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
 									</div>
 								</div>
+								{#if canUnlinkOAuth()}
+									<button
+										type="button"
+										onclick={() => unlinkProvider(a.provider)}
+										disabled={linkBusy}
+										aria-label="Unlink provider"
+										class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+									>
+										<Trash2 size={14} strokeWidth={2.25} />
+									</button>
+								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
+
+				{#if data.githubEnabled && !githubLinked}
+					<div class="mt-4 border-t border-border pt-3">
+						<button
+							type="button"
+							onclick={linkGithub}
+							disabled={linkBusy}
+							class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							<Plus size={14} strokeWidth={2.25} />
+							Link GitHub
+						</button>
+					</div>
+				{/if}
+
 				<dl class="mt-4 flex flex-col gap-1 border-t border-border pt-3 text-xs text-fg-muted">
 					<div class="flex justify-between">
 						<dt>GitHub OAuth login</dt>

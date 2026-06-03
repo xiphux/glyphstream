@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { countUsers } from '$lib/server/db/queries/users';
 import { githubLoginEnabled, passkeyLoginEnabled } from '$lib/server/env';
 import type { PageServerLoad } from './$types';
 
@@ -14,6 +15,10 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) throw redirect(302, '/');
+	// On a fresh install the only way forward is the wizard. Redirect
+	// here too so a bookmarked /login on a clean DB lands operators in
+	// the right place.
+	if (countUsers() === 0) throw redirect(302, '/setup');
 	const errorCode = url.searchParams.get('error');
 	const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? 'Login failed.') : null;
 	// Expose which login methods are enabled so the page can render the

@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { listConversations } from '$lib/server/db/queries/conversations';
 import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
+import { countUsers } from '$lib/server/db/queries/users';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
@@ -9,6 +10,9 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url }) => {
 	if (!locals.user) {
+		// Fresh-install bootstrap: route the operator to the first-run
+		// wizard instead of a /login page they can't sign in at yet.
+		if (countUsers() === 0) throw redirect(302, '/setup');
 		throw redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
 	}
 	// Load prefs at the layout level so every (app) page has them on

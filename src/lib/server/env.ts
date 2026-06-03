@@ -101,6 +101,21 @@ export function passkeyLoginEnabled(): boolean {
 }
 
 /**
+ * Optional bootstrap token gating the /setup wizard. When set, /setup
+ * requires `?token=<value>` (constant-time compared) before any of its
+ * flows are reachable; when unset, /setup is openly accessible while
+ * the user count is zero. The token has no effect after the first user
+ * is created — /setup is closed structurally at that point.
+ *
+ * Empty string means "no token required" (the default). Operators on a
+ * known-indexed subdomain who want defense-in-depth set this to a
+ * random value.
+ */
+export function setupToken(): string {
+	return readString('SETUP_TOKEN', '').trim();
+}
+
+/**
  * Refuse to start if no login method is enabled. Called from
  * hooks.server.ts at module load so a misconfig becomes a crash instead
  * of a dead instance. Also surfaces an early warning when passkeys are

@@ -36,10 +36,22 @@ import { confirmDialog } from '$lib/confirm.svelte';
 
 const fetchMock = vi.fn();
 
+// Default baseData has the operator already linked to GitHub. This is
+// the post-/setup-via-GitHub shape — passkey-delete + provider-unlink
+// affordances are visible because the user has another method to fall
+// back on. Tests that exercise the last-method guards override this.
 const baseData = {
 	githubEnabled: true,
 	passkeyEnabled: true,
-	oauthAccounts: [] as Array<{
+	oauthAccounts: [
+		{
+			provider: 'github',
+			externalId: '42',
+			externalUsername: 'octocat',
+			externalEmail: null,
+			createdAt: Date.now(),
+		},
+	] as Array<{
 		provider: string;
 		externalId: string;
 		externalUsername: string | null;
@@ -98,7 +110,9 @@ describe('Security settings page — empty state', () => {
 	});
 
 	it('shows the "no OAuth accounts" empty state when none are bound', () => {
-		render(SecurityPage, { props: { data: { ...baseData, passkeys: [] } } });
+		render(SecurityPage, {
+			props: { data: { ...baseData, oauthAccounts: [], passkeys: [] } },
+		});
 		expect(screen.getByText(/No OAuth accounts linked/)).toBeInTheDocument();
 	});
 
@@ -221,17 +235,94 @@ describe('Security settings page — delete flow', () => {
 		expect(invalidateMock).not.toHaveBeenCalled();
 	});
 
-	it('hides the delete button on the sole remaining passkey when GitHub is disabled', () => {
+	it('hides the delete button on the sole remaining passkey when no OAuth provider is linked', () => {
 		render(SecurityPage, {
 			props: {
 				data: {
 					...baseData,
-					githubEnabled: false,
+					oauthAccounts: [],
 					passkeys: [mkPasskey({ id: 'only' })],
 				},
 			},
 		});
 		expect(screen.queryByLabelText('Delete passkey')).toBeNull();
+	});
+
+	it('keeps the delete button visible on the sole remaining passkey when an OAuth provider is linked', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [mkPasskey({ id: 'only' })],
+				},
+			},
+		});
+		expect(screen.getByLabelText('Delete passkey')).toBeInTheDocument();
+	});
+});
+
+describe('Security settings page — OAuth unlink', () => {
+	it('renders an unlink button on each provider row when another method exists', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [mkPasskey({ id: 'p1' })] } },
+		});
+		expect(screen.getByLabelText('Unlink provider')).toBeInTheDocument();
+	});
+
+	it('hides the unlink button when it would leave no viable sign-in method', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [] } },
+		});
+		expect(screen.queryByLabelText('Unlink provider')).toBeNull();
+	});
+
+	it('DELETEs the provider and invalidates on confirm', async () => {
+		const user = userEvent.setup();
+		fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [mkPasskey({ id: 'p1' })] } },
+		});
+		render(ConfirmDialog);
+
+		await user.click(screen.getByLabelText('Unlink provider'));
+		await tick();
+		await user.click(screen.getByRole('button', { name: 'Unlink' }));
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('/api/auth/oauth/github');
+		expect((init as RequestInit | undefined)?.method).toBe('DELETE');
+		expect(invalidateMock).toHaveBeenCalledWith('settings:oauth-accounts');
+	});
+});
+
+describe('Security settings page — Link GitHub', () => {
+	it('renders the Link GitHub button when GitHub is enabled and not linked', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, oauthAccounts: [], passkeys: [mkPasskey({ id: 'p' })] } },
+		});
+		expect(screen.getByRole('button', { name: /Link GitHub/ })).toBeInTheDocument();
+	});
+
+	it('hides the Link GitHub button when already linked', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [mkPasskey({ id: 'p' })] } },
+		});
+		expect(screen.queryByRole('button', { name: /Link GitHub/ })).toBeNull();
+	});
+
+	it('hides the Link GitHub button when GITHUB_LOGIN_ENABLED is false', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					githubEnabled: false,
+					oauthAccounts: [],
+					passkeys: [mkPasskey({ id: 'p' })],
+				},
+			},
+		});
+		expect(screen.queryByRole('button', { name: /Link GitHub/ })).toBeNull();
 	});
 });
 

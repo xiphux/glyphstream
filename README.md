@@ -74,15 +74,38 @@ in `.env` (default: both on). At least one must remain enabled — the
 server refuses to boot otherwise.
 
 OAuth is **pure authentication against an existing binding** — never an
-account-creation path. The first-run setup wizard at `/setup` (landing
-in the next PR) creates the operator account and optionally binds the
-first OAuth provider. From then on, additional OAuth providers are
-linked deliberately from **Settings → Security**. A GitHub callback for
-an `external_id` that isn't already in `oauth_accounts` is refused with
+account-creation path. The first-run setup wizard at `/setup` creates
+the operator account and binds the chosen first method (GitHub or
+passkey). From then on, additional OAuth providers are linked
+deliberately from **Settings → Security**. A GitHub callback for an
+`external_id` that isn't already in `oauth_accounts` is refused with
 `provider_not_bound`; there is no allowlist, no auto-create.
 
 Revocation is a single column: setting `users.disabled_at` invalidates
 every session and refuses every login method at the next request.
+
+### First-run setup
+
+On a fresh install with no users, visiting any page redirects to
+`/setup`. Pick a display name (and optionally an email), then either
+**Continue with GitHub** or **Set up a passkey**:
+
+- **GitHub** runs a standard OAuth round-trip; the callback creates
+  the user + binds the GitHub identity. Requires the OAuth app
+  configuration in the next subsection.
+- **Passkey** runs a WebAuthn registration ceremony; the verify step
+  creates the user + binds the credential atomically (no orphans on
+  abandon).
+
+`/setup` closes the moment the first user exists — direct visits land
+on `/login` instead. The operator can later add a second login method
+(passkey on a GitHub-bootstrapped account, or vice versa) from
+Settings → Security.
+
+For deployments on a long-known subdomain that want defense in depth
+against a "first visitor claims the account" race, set `SETUP_TOKEN`
+in `.env` to a random value; `/setup` then requires `?token=<value>`
+to render. The token has no effect once the first user exists.
 
 ### GitHub OAuth setup (optional)
 
