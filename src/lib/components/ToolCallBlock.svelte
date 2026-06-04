@@ -302,6 +302,7 @@
 				<video
 					src="/api/media/{att.mediaId}/content"
 					controls
+					playsinline
 					class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"
 				></video>
 			{:else}

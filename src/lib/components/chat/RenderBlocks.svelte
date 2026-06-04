@@ -99,6 +99,7 @@
 		<video
 			src="/api/media/{block.mediaId}/content"
 			controls
+			playsinline
 			class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"
 		></video>
 	{:else if block.type === 'file'}

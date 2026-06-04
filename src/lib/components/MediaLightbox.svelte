@@ -193,6 +193,7 @@
 					src="/api/media/{m.id}/content"
 					controls
 					autoplay
+					playsinline
 					class="max-h-full max-w-full rounded-lg"
 				></video>
 			{/if}
