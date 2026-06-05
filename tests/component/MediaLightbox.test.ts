@@ -181,13 +181,19 @@ describe('MediaLightbox — save button', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('uses the native share sheet when the platform supports file sharing', async () => {
+	it('uses the native share sheet on a touch-primary device with file sharing', async () => {
 		const user = userEvent.setup();
 		const fetchMock = vi.fn(async () => new Response(new Blob(['data']), { status: 200 }));
 		vi.stubGlobal('fetch', fetchMock);
-		const share = vi.fn(async () => {});
+		const share = vi.fn(async (_data: ShareData) => {});
 		const canShare = vi.fn(() => true);
 		vi.stubGlobal('navigator', { ...navigator, share, canShare });
+		// Simulate a touch-primary device (pointer: coarse) so the share
+		// sheet path is taken — desktop (pointer: fine) downloads directly.
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn((q: string) => ({ matches: q.includes('coarse'), media: q })),
+		);
 
 		render(MediaLightbox, {
 			props: { media: makeImage({ id: 'xyz', contentType: 'image/webp' }), onClose: vi.fn() },
@@ -198,10 +204,43 @@ describe('MediaLightbox — save button', () => {
 
 		expect(fetchMock).toHaveBeenCalledWith('/api/media/xyz/content');
 		expect(share).toHaveBeenCalledOnce();
-		const shared = share.mock.calls[0][0] as { files: File[] };
-		expect(shared.files[0]).toBeInstanceOf(File);
-		expect(shared.files[0].name).toBe('xyz.webp');
+		const shared = share.mock.calls[0][0];
+		expect(shared.files?.[0]).toBeInstanceOf(File);
+		expect(shared.files?.[0].name).toBe('xyz.webp');
 
+		vi.unstubAllGlobals();
+	});
+
+	it('downloads (not shares) on a desktop that supports the share API', async () => {
+		const user = userEvent.setup();
+		const fetchMock = vi.fn(async () => new Response(new Blob(['data']), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const share = vi.fn(async () => {});
+		const canShare = vi.fn(() => true);
+		vi.stubGlobal('navigator', { ...navigator, share, canShare });
+		// macOS Safari case: share API present, but a fine pointer (mouse /
+		// trackpad) means we should download directly, not pop the sheet.
+		// `(pointer: coarse)` does not match on this device.
+		vi.stubGlobal(
+			'matchMedia',
+			vi.fn((q: string) => ({ matches: false, media: q })),
+		);
+		const createObjectURL = vi.fn(() => 'blob:fake');
+		const revokeObjectURL = vi.fn();
+		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+		const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'xyz' }), onClose: vi.fn() },
+		});
+		// Fine pointer → labeled "Download", and clicking takes the blob path.
+		await user.click(screen.getByRole('button', { name: 'Download' }));
+
+		expect(share).not.toHaveBeenCalled();
+		expect(createObjectURL).toHaveBeenCalled();
+		expect(clickSpy).toHaveBeenCalled();
+
+		clickSpy.mockRestore();
 		vi.unstubAllGlobals();
 	});
 });

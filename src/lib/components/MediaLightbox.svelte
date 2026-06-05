@@ -120,20 +120,28 @@
 		await goto('/');
 	}
 
-	// Whether the platform can share *files* via the native sheet. iOS
-	// Safari (incl. standalone PWAs) supports Web Share Level 2; that's
-	// the only reliable "save to camera roll" path there — iOS ignores
-	// the `<a download>` attribute and instead navigates the webview to
-	// the asset, which in a home-screen PWA strands the user on Safari's
-	// Quick Look preview with no way back. Detected in an effect (not at
-	// module scope) so SSR renders the Download icon and the client
-	// upgrades to Share without a hydration mismatch.
-	let canShareFiles = $state(false);
+	// Whether to route saving through the native share sheet. iOS Safari
+	// (incl. standalone PWAs) supports Web Share Level 2; that's the only
+	// reliable "save to camera roll" path there — iOS ignores the
+	// `<a download>` attribute and instead navigates the webview to the
+	// asset, which in a home-screen PWA strands the user on Safari's Quick
+	// Look preview with no way back.
+	//
+	// But macOS Safari ALSO supports Web Share with files, while having a
+	// perfectly good direct download — there the share sheet is just extra
+	// taps. So we additionally require a touch-primary device via
+	// `(pointer: coarse)`: true on phones/tablets (incl. iOS PWAs), false
+	// on a Mac with a trackpad/mouse. Detected in an effect (not at module
+	// scope) so SSR renders the Download icon and the client upgrades to
+	// Share without a hydration mismatch.
+	let useShareSheet = $state(false);
 	$effect(() => {
-		canShareFiles =
+		const apiSupported =
 			typeof navigator !== 'undefined' &&
 			typeof navigator.canShare === 'function' &&
 			typeof navigator.share === 'function';
+		const touchPrimary = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+		useShareSheet = apiSupported && touchPrimary;
 	});
 
 	// id of the media whose content is currently being fetched, used to
@@ -164,7 +172,7 @@
 			const filename = filenameFor(m);
 			const file = new File([blob], filename, { type: m.contentType });
 
-			if (navigator.canShare?.({ files: [file] })) {
+			if (useShareSheet && navigator.canShare?.({ files: [file] })) {
 				try {
 					await navigator.share({ files: [file] });
 					return;
@@ -225,11 +233,11 @@
 					type="button"
 					onclick={() => shareOrDownload(m)}
 					disabled={savingId === m.id}
-					title={canShareFiles ? 'Share / Save' : 'Download'}
-					aria-label={canShareFiles ? 'Share or save' : 'Download'}
+					title={useShareSheet ? 'Share / Save' : 'Download'}
+					aria-label={useShareSheet ? 'Share or save' : 'Download'}
 					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
 				>
-					{#if canShareFiles}
+					{#if useShareSheet}
 						<Share size={14} strokeWidth={2.25} />
 					{:else}
 						<Download size={14} strokeWidth={2.25} />
