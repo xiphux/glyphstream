@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Download, ImagePlus, RotateCcw, Trash2, X } from '@lucide/svelte';
+	import { Download, ImagePlus, RotateCcw, Share, Trash2, X } from '@lucide/svelte';
 	import type { MediaConversationRef, MediaListItem } from '$lib/server/db/queries/media';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 
@@ -119,6 +119,79 @@
 		onClose();
 		await goto('/');
 	}
+
+	// Whether the platform can share *files* via the native sheet. iOS
+	// Safari (incl. standalone PWAs) supports Web Share Level 2; that's
+	// the only reliable "save to camera roll" path there — iOS ignores
+	// the `<a download>` attribute and instead navigates the webview to
+	// the asset, which in a home-screen PWA strands the user on Safari's
+	// Quick Look preview with no way back. Detected in an effect (not at
+	// module scope) so SSR renders the Download icon and the client
+	// upgrades to Share without a hydration mismatch.
+	let canShareFiles = $state(false);
+	$effect(() => {
+		canShareFiles =
+			typeof navigator !== 'undefined' &&
+			typeof navigator.canShare === 'function' &&
+			typeof navigator.share === 'function';
+	});
+
+	// id of the media whose content is currently being fetched, used to
+	// disable the button so a double-tap can't kick off two downloads.
+	let savingId = $state<string | null>(null);
+
+	function filenameFor(m: MediaListItem): string {
+		// MediaListItem carries no original filename — the lightbox shows
+		// generated images/videos — so derive an extension from the content
+		// type. `image/svg+xml` → `svg`, `image/webp` → `webp`.
+		const subtype = m.contentType.split('/')[1] ?? 'bin';
+		const ext = subtype.split('+')[0];
+		return `${m.id}.${ext}`;
+	}
+
+	/**
+	 * Save the asset. Fetches the content to a Blob, then prefers the
+	 * native share sheet (one tap → "Save Image" on iOS) when the platform
+	 * supports file sharing, falling back to a blob-URL `<a download>` on
+	 * desktop where the share API is absent but `download` works.
+	 */
+	async function shareOrDownload(m: MediaListItem) {
+		savingId = m.id;
+		try {
+			const res = await fetch(`/api/media/${m.id}/content`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const blob = await res.blob();
+			const filename = filenameFor(m);
+			const file = new File([blob], filename, { type: m.contentType });
+
+			if (navigator.canShare?.({ files: [file] })) {
+				try {
+					await navigator.share({ files: [file] });
+					return;
+				} catch (err) {
+					// User dismissed the sheet — nothing more to do.
+					if (err instanceof Error && err.name === 'AbortError') return;
+					// Any other share failure falls through to blob download.
+				}
+			}
+
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = filename;
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			URL.revokeObjectURL(url);
+		} catch {
+			// Fetch/permission failure: last-resort plain navigation so the
+			// button is never a dead end. (This is the one path that can
+			// strand an iOS PWA user, but it only fires on network error.)
+			window.location.href = `/api/media/${m.id}/content`;
+		} finally {
+			savingId = null;
+		}
+	}
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -148,15 +221,20 @@
 				</span>
 			</div>
 			<div class="flex gap-1.5">
-				<a
-					href="/api/media/{m.id}/content"
-					download
-					title="Download"
-					aria-label="Download"
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
+				<button
+					type="button"
+					onclick={() => shareOrDownload(m)}
+					disabled={savingId === m.id}
+					title={canShareFiles ? 'Share / Save' : 'Download'}
+					aria-label={canShareFiles ? 'Share or save' : 'Download'}
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
 				>
-					<Download size={14} strokeWidth={2.25} />
-				</a>
+					{#if canShareFiles}
+						<Share size={14} strokeWidth={2.25} />
+					{:else}
+						<Download size={14} strokeWidth={2.25} />
+					{/if}
+				</button>
 				{#if onDelete}
 					<button
 						type="button"

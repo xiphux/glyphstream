@@ -146,14 +146,63 @@ describe('MediaLightbox — close interactions', () => {
 	});
 });
 
-describe('MediaLightbox — download link', () => {
-	it('renders a download anchor pointing at the content endpoint', () => {
+describe('MediaLightbox — save button', () => {
+	// happy-dom exposes no Web Share API, so the component falls back to
+	// the blob-URL download path and labels the control "Download".
+	it('renders a download button (no share API in this env)', () => {
 		render(MediaLightbox, {
 			props: { media: makeImage({ id: 'xyz' }), onClose: vi.fn() },
 		});
-		const link = screen.getByRole('link', { name: 'Download' });
-		expect(link).toHaveAttribute('href', '/api/media/xyz/content');
-		expect(link).toHaveAttribute('download');
+		expect(screen.getByRole('button', { name: 'Download' })).toBeInTheDocument();
+		// No longer a navigating anchor — the old trap on iOS is gone.
+		expect(screen.queryByRole('link', { name: 'Download' })).toBeNull();
+	});
+
+	it('fetches the content endpoint and triggers a blob download when clicked', async () => {
+		const user = userEvent.setup();
+		const fetchMock = vi.fn(async () => new Response(new Blob(['data']), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const createObjectURL = vi.fn(() => 'blob:fake');
+		const revokeObjectURL = vi.fn();
+		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+		const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'xyz' }), onClose: vi.fn() },
+		});
+		await user.click(screen.getByRole('button', { name: 'Download' }));
+
+		expect(fetchMock).toHaveBeenCalledWith('/api/media/xyz/content');
+		expect(createObjectURL).toHaveBeenCalled();
+		expect(clickSpy).toHaveBeenCalled();
+		expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake');
+
+		clickSpy.mockRestore();
+		vi.unstubAllGlobals();
+	});
+
+	it('uses the native share sheet when the platform supports file sharing', async () => {
+		const user = userEvent.setup();
+		const fetchMock = vi.fn(async () => new Response(new Blob(['data']), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const share = vi.fn(async () => {});
+		const canShare = vi.fn(() => true);
+		vi.stubGlobal('navigator', { ...navigator, share, canShare });
+
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'xyz', contentType: 'image/webp' }), onClose: vi.fn() },
+		});
+		// Control surfaces as "Share or save" once the share API is present.
+		const btn = screen.getByRole('button', { name: 'Share or save' });
+		await user.click(btn);
+
+		expect(fetchMock).toHaveBeenCalledWith('/api/media/xyz/content');
+		expect(share).toHaveBeenCalledOnce();
+		const shared = share.mock.calls[0][0] as { files: File[] };
+		expect(shared.files[0]).toBeInstanceOf(File);
+		expect(shared.files[0].name).toBe('xyz.webp');
+
+		vi.unstubAllGlobals();
 	});
 });
 
