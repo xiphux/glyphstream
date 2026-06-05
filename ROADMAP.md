@@ -177,6 +177,45 @@ expected priority, not time-bound.
   (the token-usage surfacing from `0adaf0d` is the prereq for the
   latter).
 
+- **Multi-model fan-out / compare** (working name — also "model arena",
+  "compare mode", "broadcast prompt"). Send one prompt to several models
+  at once, read the results side by side, then keep the one(s) worth
+  keeping. Two shapes of the same idea:
+  - _Text._ Fan a single user turn out to N models and continue with the
+    winner. The tree schema already makes this nearly free: each response
+    is an assistant **sibling** off the shared `parent_message_id`, exactly
+    what a manual `retry` produces today — fan-out is just "fire N retries
+    at once, each pinned to a different (base model / custom-model)
+    preset." Picking a thread to continue = setting that sibling as the
+    conversation's `active_leaf_message_id`; the rest stay as branches
+    (non-destructive, reachable via the existing `‹ N/M ›` sibling-nav and
+    removable via delete-branch). So the substrate is mostly here — the
+    new parts are the multi-model **picker** in the composer and a
+    **compare view** (render the N in-flight siblings in parallel columns
+    rather than the one-at-a-time flip the sibling-nav gives).
+  - _Image._ Fan an image prompt out to N image models, keep the good
+    renders and delete the duds. Per-result `regenerate` (the model's
+    close but a bit off) is the existing retry-as-new-sibling again;
+    keep/delete is already the gallery's ref-counted media flow
+    (`message_media` join + grace-period purge). Reuses the gallery's
+    "launch with this prompt" handoff (`gallery-launch.ts`), just
+    multiplexed across models.
+
+  The load-bearing new infrastructure is a **per-endpoint concurrency
+  gate / queue**, which doesn't exist today (the only pool is the
+  code-interpreter worker pool). A cloud endpoint can take the whole
+  fan-out at once; a local `llama-server` or ComfyUI can hold exactly one
+  model in VRAM, so a second simultaneous generation either thrashes or
+  OOMs. Needs a `max_concurrency` (default 1 for local-style endpoints)
+  per-endpoint in `config.toml`, with a queue in front that serializes
+  excess requests and streams them as slots free up — the UI shows queued
+  siblings as "waiting" until their turn. The code-interpreter pool's
+  ready/starting/idle/failed state-machine + LRU cap is the precedent to
+  mirror. Open question: whether the gate is global per endpoint or
+  per-`(endpoint, model)` — a single backend that hot-swaps models still
+  serializes, but two distinct cloud deployments behind one endpoint
+  alias may not.
+
 - **Multi-user.** Data model is multi-user-shaped (every row has `user_id`);
   needs invite/admin UI + per-user resource isolation tests + an admin role.
 
