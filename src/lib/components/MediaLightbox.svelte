@@ -150,11 +150,32 @@
 
 	function filenameFor(m: MediaListItem): string {
 		// MediaListItem carries no original filename — the lightbox shows
-		// generated images/videos — so derive an extension from the content
-		// type. `image/svg+xml` → `svg`, `image/webp` → `webp`.
+		// generated images/videos — so we synthesize one. Shape is
+		// `glyphstream-<localtimestamp>-<shortid>.<ext>`:
+		//   - the `glyphstream-` prefix groups our exports together,
+		//   - the local-time timestamp sorts chronologically (and is the
+		//     part that survives into Files / desktop downloads),
+		//   - an 8-char id fragment guarantees uniqueness within a second.
+		// We deliberately avoid a prompt slug — booru-style prompts (quality
+		// tags, repeated boilerplate) make for non-descriptive, duplicated
+		// names. Extension is derived from the content type
+		// (`image/svg+xml` → `svg`, `image/webp` → `webp`).
 		const subtype = m.contentType.split('/')[1] ?? 'bin';
 		const ext = subtype.split('+')[0];
-		return `${m.id}.${ext}`;
+		const shortId = m.id.replace(/-/g, '').slice(0, 8);
+		return `glyphstream-${timestampSlug(m.createdAt)}-${shortId}.${ext}`;
+	}
+
+	// `YYYYMMDD-HHMMSS` in the viewer's local time. No colons (illegal in
+	// filenames on most platforms); zero-padded so lexical sort === chrono
+	// sort.
+	function timestampSlug(ms: number): string {
+		const d = new Date(ms);
+		const p = (n: number) => String(n).padStart(2, '0');
+		return (
+			`${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+			`-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
+		);
 	}
 
 	/**

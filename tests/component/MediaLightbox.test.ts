@@ -206,7 +206,9 @@ describe('MediaLightbox — save button', () => {
 		expect(share).toHaveBeenCalledOnce();
 		const shared = share.mock.calls[0][0];
 		expect(shared.files?.[0]).toBeInstanceOf(File);
-		expect(shared.files?.[0].name).toBe('xyz.webp');
+		// glyphstream-<YYYYMMDD-HHMMSS>-<8-char id>.<ext>; the timestamp is
+		// rendered in the runner's local time so match it loosely.
+		expect(shared.files?.[0].name).toMatch(/^glyphstream-\d{8}-\d{6}-xyz\.webp$/);
 
 		vi.unstubAllGlobals();
 	});
