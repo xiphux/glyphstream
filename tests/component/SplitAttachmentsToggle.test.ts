@@ -13,23 +13,21 @@ describe('SplitAttachmentsToggle', () => {
 		});
 		const btn = screen.getByRole('button');
 		expect(btn.getAttribute('aria-pressed')).toBe('false');
-		expect(btn.textContent).toContain('Split per image');
+		expect(btn.textContent).toContain('Split'); // compact label when off
 		await user.click(btn);
 		await tick();
 		expect(btn.getAttribute('aria-pressed')).toBe('true');
 	});
 
-	it('shows the cross-product generation count when enabled', () => {
-		// 3 images × 2 models = 6 generations.
+	it('shows the compact cross-product count (×N) when enabled', () => {
+		// 3 images × 2 models = ×6.
 		render(SplitAttachmentsToggle, {
 			props: { enabled: true, imageCount: 3, modelCount: 2 },
 		});
-		expect(screen.getByRole('button').textContent).toContain('6 generations');
-	});
-
-	it('singular grammar for a single generation', () => {
-		render(SplitAttachmentsToggle, { props: { enabled: true, imageCount: 1, modelCount: 1 } });
-		expect(screen.getByRole('button').textContent).toContain('1 generation');
-		expect(screen.getByRole('button').textContent).not.toContain('generations');
+		const btn = screen.getByRole('button');
+		expect(btn.textContent).toContain('×6');
+		// The wordy "generations"/"Split per image" caption is gone (kept narrow).
+		expect(btn.textContent).not.toContain('generations');
+		expect(btn.textContent).not.toContain('per image');
 	});
 });

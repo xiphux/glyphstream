@@ -294,14 +294,13 @@
 		return slash >= 0 ? label.slice(slash + 1) : label;
 	}
 	const triggerLabel = $derived.by(() => {
-		// A comparison of 2+ reads as "Comparing N models" (or "N variations"
-		// for image, where the same model may be sampled multiple times).
-		// Exactly one isn't a comparison — show that model's name (it collapses
-		// back to a normal single selection when the picker closes).
+		// A comparison of 2+ reads as "N models" (or "N variations" for media,
+		// where the same model may be sampled multiple times). The "Comparing"
+		// prefix is dropped — it added width without much clarity, and the closed
+		// trigger is tight on mobile. Exactly one isn't a comparison — show that
+		// model's name (it collapses back to a single selection on close).
 		if (compareMode && compareTotal >= 2) {
-			// "variations" for media (image/video), where the same model may be
-			// sampled multiple times; "models" for a chat comparison.
-			return `Comparing ${compareTotal} ${compareKind === 'chat' ? 'models' : 'variations'}`;
+			return `${compareTotal} ${compareKind === 'chat' ? 'models' : 'variations'}`;
 		}
 		if (compareMode && compareTotal === 1) {
 			const m = models.find((x) => x.id === compareSelections[0].modelId);

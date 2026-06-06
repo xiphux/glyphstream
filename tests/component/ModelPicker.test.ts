@@ -600,8 +600,8 @@ describe('ModelPicker — compare mode', () => {
 		await user.keyboard('{Escape}'); // close the popover
 		await tick();
 		// A comparison of one isn't a comparison: trigger shows the model name,
-		// not "Comparing 1 models".
-		expect(screen.queryByText(/Comparing/)).toBeNull();
+		// not a "1 model" count label.
+		expect(screen.queryByText('1 models')).toBeNull();
 		expect(screen.getByText('Model A')).toBeInTheDocument();
 	});
 
@@ -614,7 +614,7 @@ describe('ModelPicker — compare mode', () => {
 		await tick();
 		await user.keyboard('{Escape}');
 		await tick();
-		expect(screen.getByText('Comparing 2 models')).toBeInTheDocument();
+		expect(screen.getByText('2 models')).toBeInTheDocument();
 	});
 
 	it('previews the comparison cart on the closed trigger (hover bubble)', () => {
@@ -636,7 +636,7 @@ describe('ModelPicker — compare mode', () => {
 		// Picker closed: the trigger summarises the total (2×A + 1×B = 3), and
 		// the hover preview (in the DOM, revealed on hover) lists each model +
 		// count — no need to open the picker to recall the cart.
-		expect(screen.getByText('Comparing 3 models')).toBeInTheDocument();
+		expect(screen.getByText('3 models')).toBeInTheDocument();
 		expect(screen.getByText('Model A')).toBeInTheDocument();
 		expect(screen.getByText('Model B')).toBeInTheDocument();
 		expect(screen.getByText('×2')).toBeInTheDocument();
@@ -689,6 +689,6 @@ describe('ModelPicker — compare mode', () => {
 		await user.keyboard('{Escape}');
 		await tick();
 		// Media comparisons read as "variations", not "models".
-		expect(screen.getByText('Comparing 2 variations')).toBeInTheDocument();
+		expect(screen.getByText('2 variations')).toBeInTheDocument();
 	});
 });
