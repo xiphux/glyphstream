@@ -57,6 +57,9 @@ export interface FanoutColumn {
 	status: FanoutColumnStatus;
 	/** How many generations were ahead of this one in the endpoint's queue. */
 	queuedAhead: number;
+	/** Generation progress 0–100 for the poll-based video path, or null when
+	 *  unknown / not a video branch. */
+	progress: number | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
 	 *  hydrated from getSiblingAssistants on reload). */
 	persisted: ChatMessage | null;

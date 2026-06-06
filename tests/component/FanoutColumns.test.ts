@@ -34,6 +34,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		segments: overrides.segments ?? [],
 		status: overrides.status ?? 'streaming',
 		queuedAhead: overrides.queuedAhead ?? 0,
+		progress: overrides.progress ?? null,
 		persisted: overrides.persisted ?? null,
 		error: overrides.error ?? null,
 	};
@@ -165,6 +166,24 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		});
 		const discard = screen.getByRole('button', { name: /discard this response/i });
 		expect((discard as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it('shows the video poll progress in the column header', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [
+					{
+						...col({ branchId: 'v0', label: 'Sora', status: 'streaming' }),
+						modelKind: 'video',
+						progress: 47,
+					},
+				],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText('47%')).toBeTruthy();
 	});
 
 	it('lays images out as a vertical grid, text as a horizontal strip', () => {

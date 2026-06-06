@@ -73,8 +73,8 @@
 
 	// Kinds eligible for a comparison. A comparison must be single-modality
 	// (you can't compare a chat reply with an image), so once the first model
-	// is chosen the list locks to its kind. Video joins in a later phase.
-	const COMPARE_KINDS: readonly ModelKind[] = ['chat', 'image'];
+	// is chosen the list locks to its kind.
+	const COMPARE_KINDS: readonly ModelKind[] = ['chat', 'image', 'video'];
 	const compareKind = $derived(
 		compareSelections.length > 0
 			? models.find((m) => m.id === compareSelections[0].modelId)?.kind
@@ -299,7 +299,9 @@
 		// Exactly one isn't a comparison — show that model's name (it collapses
 		// back to a normal single selection when the picker closes).
 		if (compareMode && compareTotal >= 2) {
-			return `Comparing ${compareTotal} ${compareKind === 'image' ? 'variations' : 'models'}`;
+			// "variations" for media (image/video), where the same model may be
+			// sampled multiple times; "models" for a chat comparison.
+			return `Comparing ${compareTotal} ${compareKind === 'chat' ? 'models' : 'variations'}`;
 		}
 		if (compareMode && compareTotal === 1) {
 			const m = models.find((x) => x.id === compareSelections[0].modelId);

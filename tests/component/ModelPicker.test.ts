@@ -666,4 +666,29 @@ describe('ModelPicker — compare mode', () => {
 		// Chat model is hidden — can't mix kinds in one comparison.
 		expect(screen.queryByRole('option', { name: /Model A/ })).toBeNull();
 	});
+
+	it('compares video models, labelled as variations', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::sora', displayName: 'Sora', kind: 'video' }),
+					makeModel({ id: 'bridge::veo', displayName: 'Veo', kind: 'video' }),
+					makeModel({ id: 'bridge::chat', displayName: 'Chatter', kind: 'chat' }),
+				],
+				value: 'bridge::sora',
+				allowCompare: true,
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple')); // seeds Sora (video)
+		await user.click(screen.getByRole('option', { name: /Veo/ })); // + Veo
+		await tick();
+		// Video is compare-eligible and single-kind (chat hidden).
+		expect(screen.queryByRole('option', { name: /Chatter/ })).toBeNull();
+		await user.keyboard('{Escape}');
+		await tick();
+		// Media comparisons read as "variations", not "models".
+		expect(screen.getByText('Comparing 2 variations')).toBeInTheDocument();
+	});
 });

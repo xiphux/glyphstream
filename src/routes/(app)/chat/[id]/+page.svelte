@@ -742,10 +742,11 @@
 		fanoutColumns.some((c) => c.status === 'queued' || c.status === 'streaming'),
 	);
 	const fanoutColumnsSettled = $derived(fanoutComparing && allColumnsSettled(fanoutColumns));
-	// An image fan-out is keep-many: prune duds + regenerate, rather than pick
-	// one. Drives the column footer + settle behaviour. (Video joins the
-	// keep-many path in a later slice — add 'video' here when it ships.)
-	const fanoutIsMedia = $derived(fanoutColumns.some((c) => c.modelKind === 'image'));
+	// An image/video fan-out is keep-many: prune duds + regenerate, rather than
+	// pick one. Drives the column footer + settle behaviour.
+	const fanoutIsMedia = $derived(
+		fanoutColumns.some((c) => c.modelKind === 'image' || c.modelKind === 'video'),
+	);
 
 	function modelDisplayName(modelId: string | null): string {
 		if (!modelId) return 'Model';
@@ -772,6 +773,7 @@
 			segments: [],
 			status: 'done',
 			queuedAhead: 0,
+			progress: null,
 			persisted: m,
 			error: null,
 		}));
@@ -783,6 +785,7 @@
 			segments: [],
 			status: 'streaming',
 			queuedAhead: 0,
+			progress: null,
 			persisted: null,
 			error: null,
 		}));
@@ -1648,6 +1651,7 @@
 			segments: [],
 			status: 'queued' as const,
 			queuedAhead: 0,
+			progress: null,
 			persisted: null,
 			error: null,
 		}));
@@ -1673,10 +1677,10 @@
 		// 4. Resolve the outcome. If the user Stopped, leave the settled columns
 		//    as-is for manual pick/dismiss. Otherwise:
 		//    - 0 survivors → drop the columns + keep the prompt to edit/resend.
-		//    - image (keep-many) → keep the grid for ANY survivors so the user
-		//      can prune duds / regenerate; the parked-fan-out marker lets a
-		//      reload (even down to one kept image) rehydrate it.
-		//    - text with one survivor → promote it (nothing to compare); 2+ →
+		//    - media (image/video, keep-many) → keep the grid for ANY survivors
+		//      so the user can prune duds / regenerate; the parked-fan-out marker
+		//      lets a reload (even down to one kept variation) rehydrate it.
+		//    - chat with one survivor → promote it (nothing to compare); 2+ →
 		//      keep the grid for the pick.
 		if (fanoutColumns.some((c) => c.status === 'cancelled')) return;
 		const survivors = fanoutColumns.filter((c) => c.persisted);
@@ -1694,7 +1698,7 @@
 			}
 			return;
 		}
-		if (models[0]?.modelKind !== 'image' && survivors.length === 1) {
+		if (models[0]?.modelKind === 'chat' && survivors.length === 1) {
 			await pickFanout(survivors[0]);
 		}
 	}
@@ -1761,8 +1765,15 @@
 					col.status = 'streaming';
 					col.segments = inFlightAppendReasoning(col.segments, chunk);
 				},
+				onProgress(percent) {
+					// Video poll-relay progress (0–100). Surfaced in the column
+					// header while the job runs.
+					col.status = 'streaming';
+					col.progress = percent;
+				},
 				onDone({ assistantMessage }) {
 					col.persisted = assistantMessage;
+					col.progress = null;
 					col.status = 'done';
 				},
 				onError(message) {
@@ -1884,38 +1895,41 @@
 		}
 	}
 
-	/** Re-roll one image variation in place: generate a fresh sibling with the
-	 *  same model/prompt, then delete the old image once the new one lands. */
+	/** Re-roll one media variation in place: generate a fresh sibling with the
+	 *  same model/prompt, then delete the old one once the new one lands. */
 	async function regenerateFanout(col: FanoutColumn): Promise<void> {
 		// Serialize against the other grid mutations (pick/dismiss/discard) — an
 		// overlapping discard during an in-flight re-roll could otherwise drop
-		// the last kept image past the "keep at least one" guard.
+		// the last kept variation past the "keep at least one" guard.
 		if (!fanoutUserMessageId || fanoutPicking) return;
 		fanoutPicking = true;
 		const oldId = col.persisted?.id ?? null;
-		// Snapshot so a failed re-roll restores the original image (mirrors
+		// Snapshot so a failed re-roll restores the original (mirrors
 		// pick/dismiss) instead of leaving the column stuck on "Failed".
 		const snapshot = {
 			persisted: col.persisted,
 			status: col.status,
 			segments: col.segments,
 			error: col.error,
+			progress: col.progress,
 		};
 		col.persisted = null;
 		col.error = null;
 		col.segments = [];
+		col.progress = null;
 		col.status = 'streaming';
 		try {
 			const fresh = await runFanoutBranch(convId, fanoutUserMessageId, col);
 			if (!fresh) {
-				// Re-roll failed / was cancelled — restore the original image.
+				// Re-roll failed / was cancelled — restore the original.
 				col.persisted = snapshot.persisted;
 				col.status = snapshot.status;
 				col.segments = snapshot.segments;
 				col.error = snapshot.error;
+				col.progress = snapshot.progress;
 				return;
 			}
-			// Replace: now that a new sibling exists, drop the old image.
+			// Replace: now that a new sibling exists, drop the old one.
 			// Best-effort — a leftover old variation is harmless (extra sibling).
 			if (oldId && fresh.id !== oldId) {
 				try {

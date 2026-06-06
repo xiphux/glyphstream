@@ -57,6 +57,7 @@ describe('allColumnsSettled', () => {
 		segments: [],
 		status,
 		queuedAhead: 0,
+		progress: null,
 		persisted: null,
 		error: null,
 	});

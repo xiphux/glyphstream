@@ -106,6 +106,9 @@
 						<span class="text-fg-muted"
 							>Queued{c.queuedAhead > 0 ? ` · ${c.queuedAhead} ahead` : ''}</span
 						>
+					{:else if c.status === 'streaming' && c.progress !== null}
+						<!-- Video poll-relay progress. -->
+						<span class="font-mono tabular-nums text-fg-muted">{c.progress.toFixed(0)}%</span>
 					{:else if c.status === 'streaming'}
 						<span class="inline-flex gap-0.5 text-fg-muted" aria-label="Generating">
 							<span class="animate-pulse">·</span>
