@@ -9,9 +9,11 @@
  * The slot is held for the WHOLE generation (acquire before dispatch,
  * release in the relay's onComplete / the sync path's finally), not just the
  * HTTP POST — so a single-GPU local backend that can only hold one model in
- * VRAM serializes instead of thrashing. `max = Infinity` (the default for an
- * endpoint with no `max_concurrent`) makes the fast path always win, so the
- * gate is a zero-overhead pass-through for unconfigured endpoints.
+ * VRAM serializes instead of thrashing. An unconfigured endpoint defaults to
+ * `DEFAULT_MAX_CONCURRENT` (4) — a friendly cap so a large multi-model fan-out
+ * trickles rather than blasting the upstream. `max = Infinity` (which an
+ * operator can approximate with a high `max_concurrent`) makes the fast path
+ * always win, turning the gate into a zero-overhead pass-through.
  *
  * Keyed by endpoint id (string). A single backend that hot-swaps models
  * still shares one VRAM pool, so the gate is intentionally endpoint-wide
@@ -119,7 +121,7 @@ export function acquireEndpointSlot(
 
 	if (signal?.aborted) return Promise.reject(abortError());
 
-	// Fast path: capacity available (always true when max === Infinity).
+	// Fast path: capacity available (always true for an effectively-unlimited max).
 	if (gate.active < gate.max) {
 		gate.active++;
 		return Promise.resolve(makeSlot(gate));

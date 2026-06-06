@@ -25,7 +25,12 @@ export interface FanoutRecoveryState {
 	parentMessageId: string | null;
 	/** Persisted branch responses so far. */
 	siblings: ChatMessage[];
-	/** Branches still generating server-side. */
+	/** In-flight registry entries for this conversation — branches still
+	 *  generating. May transiently over-count by one: a branch persists its
+	 *  row (so it's also in `siblings`) a beat before the relay/handler finally
+	 *  clears its registry slot, so a poll landing in that window briefly sees
+	 *  it in both. Self-corrects on the next tick; the client renders a
+	 *  short-lived extra "Generating…" placeholder, never a lost result. */
 	pending: number;
 }
 

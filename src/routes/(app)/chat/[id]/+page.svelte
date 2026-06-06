@@ -650,6 +650,11 @@
 		for (const a of fanoutAborts.values()) a.abort();
 		fanoutAborts.clear();
 		fanoutLive = false;
+		// The flags have served their purpose for this turn (the poll drives
+		// recovery now). Clear them so a later regenerate on the recovered grid
+		// starts clean and can't misread a genuine failure as "Generating…".
+		wasHiddenDuringFetch = false;
+		wasOfflineDuringFetch = false;
 	}
 
 	$effect(() => {
@@ -747,6 +752,11 @@
 		return data.models.find((m) => m.id === modelId)?.displayName ?? modelId;
 	}
 
+	// branchId prefix for the server-driven "Generating…" placeholder columns of
+	// a recovered fan-out. Both the builder and the recovery-poll gate key off
+	// it, so it lives in one place.
+	const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
+
 	/** Rebuild the compare grid from server-truth recovery state (persisted
 	 *  branches + how many are still generating) — used on reload / disconnect
 	 *  recovery, where the client's own branch fetches are gone. */
@@ -766,7 +776,7 @@
 			error: null,
 		}));
 		const generating: FanoutColumn[] = Array.from({ length: pending }, (_, i) => ({
-			branchId: `recovered-pending:${i}`,
+			branchId: `${RECOVERED_PENDING_PREFIX}${i}`,
 			modelId: '',
 			modelKind: fallbackKind,
 			label: 'Generating…',
@@ -1019,7 +1029,7 @@
 	// the columns.
 	$effect(() => {
 		const recovering =
-			!fanoutLive && fanoutColumns.some((c) => c.branchId.startsWith('recovered-pending:'));
+			!fanoutLive && fanoutColumns.some((c) => c.branchId.startsWith(RECOVERED_PENDING_PREFIX));
 		if (!recovering) return;
 		const id = convId;
 		let stopped = false;
@@ -1596,6 +1606,12 @@
 		const isFirstExchange = messages.length === 0;
 		busy = true;
 		errorMsg = null;
+		// Clear the suspend/offline flags for this turn (mirrors sendStreaming).
+		// They're set on background/offline and only reset at a send's start;
+		// without this a stale flag from a prior backgrounded turn would make
+		// runFanoutBranch misclassify a genuine branch failure as "Generating…".
+		wasHiddenDuringFetch = false;
+		wasOfflineDuringFetch = false;
 
 		// 1. Create the shared user message (no dispatch).
 		let userMessage: ChatMessage;
@@ -1758,10 +1774,12 @@
 		} catch (e) {
 			if (isAbortError(e)) col.status = 'cancelled';
 			else if (wasHiddenDuringFetch || wasOfflineDuringFetch) {
-				// Suspension / connectivity drop, not a real failure — the server
-				// keeps generating + persisting. Leave the column "Generating…"
-				// for the recovery flow (handoffFanoutToRecovery + the poll) to
-				// rebuild from server truth.
+				// The TCP connection died to a suspension / connectivity drop
+				// BEFORE the visibility/online event fired (the common case is
+				// the reverse — handoffFanoutToRecovery aborts first, landing in
+				// the isAbortError branch above). Either way it's not a real
+				// failure: the server keeps generating + persisting, so leave the
+				// column "Generating…" for the recovery poll to rebuild.
 				col.status = 'streaming';
 			} else {
 				col.error = e instanceof Error ? e.message : String(e);

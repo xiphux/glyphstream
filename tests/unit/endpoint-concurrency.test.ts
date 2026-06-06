@@ -3,7 +3,8 @@
  * semantics — no real backend, no config file. Covers immediate grant under
  * capacity, FIFO ordering, release pumping exactly one waiter, release
  * idempotency, abort-while-queued (splice-out without consuming a slot),
- * abort-of-active freeing a slot, and the Infinity (never-queue) default.
+ * abort-of-active freeing a slot, and an effectively-unlimited (Infinity) cap
+ * never queuing. (The loader's default cap is finite — see endpoints-config.)
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
