@@ -299,7 +299,25 @@ Then in `config.toml`:
 id = "llama"
 base_url = "http://192.168.1.20:8080/v1"
 supports_tools = true
+max_concurrent = 1
 ```
+
+#### Limiting concurrency (`max_concurrent`)
+
+`max_concurrent` caps how many generations run against an endpoint at
+once. Extra requests **queue** (FIFO) and stream a "queued" state to the
+client until a slot frees; the slot is held for the whole generation
+(the entire stream / image / video job, not just the HTTP request).
+
+It defaults to **4** when omitted — a friendly cap so a large
+multi-model fan-out trickles instead of blasting the upstream all at
+once. Set it to **1** for a single-GPU local backend (`llama-server`,
+ComfyUI bridge) that can only hold one model in VRAM, so requests
+serialize instead of thrashing or OOMing; raise it (up to 1024) for a
+hosted provider that handles its own concurrency and you want more
+parallelism. The gate is per **endpoint** (a single backend that
+hot-swaps models still shares one VRAM pool), so a busy single-slot
+endpoint queues across all conversations and all fan-out branches.
 
 ### Web search
 
