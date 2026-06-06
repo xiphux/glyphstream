@@ -188,6 +188,16 @@ export const conversations = sqliteTable(
 		activeLeafMessageId: text('active_leaf_message_id').references((): any => messages.id, {
 			onDelete: 'set null',
 		}),
+		// When set, this conversation has an UNRESOLVED multi-model fan-out:
+		// the leaf is pinned at this user message while its N sibling assistant
+		// responses await the user's pick (text) or pruning (image). Set by
+		// .../messages/prepare; cleared by selectBranch (pick / dismiss /
+		// continue). Lets the page rehydrate the compare grid after a reload
+		// without guessing from sibling counts — a parked fan-out is explicit,
+		// so a retry or truncate parked on a user message can't masquerade as one.
+		fanoutParentMessageId: text('fanout_parent_message_id').references((): any => messages.id, {
+			onDelete: 'set null',
+		}),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		archivedAt: integer('archived_at'),

@@ -616,4 +616,28 @@ describe('ModelPicker — compare mode', () => {
 		await tick();
 		expect(screen.getByText('Comparing 2 models')).toBeInTheDocument();
 	});
+
+	it('compares image models too, locked to a single modality', async () => {
+		const user = userEvent.setup();
+		// Seed from an image model: compare should show image models and hide
+		// chat ones (a comparison is single-kind).
+		render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::a', displayName: 'Model A', kind: 'chat' }),
+					makeModel({ id: 'bridge::img1', displayName: 'Imager One', kind: 'image' }),
+					makeModel({ id: 'bridge::img2', displayName: 'Imager Two', kind: 'image' }),
+				],
+				value: 'bridge::img1',
+				allowCompare: true,
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple')); // seeds Imager One (image)
+		await tick();
+		expect(screen.getByRole('option', { name: /Imager One/ })).toBeInTheDocument();
+		expect(screen.getByRole('option', { name: /Imager Two/ })).toBeInTheDocument();
+		// Chat model is hidden — can't mix kinds in one comparison.
+		expect(screen.queryByRole('option', { name: /Model A/ })).toBeNull();
+	});
 });

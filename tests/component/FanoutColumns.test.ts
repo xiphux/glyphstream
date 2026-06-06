@@ -115,3 +115,55 @@ describe('FanoutColumns', () => {
 		expect(screen.getByRole('button', { name: /discard this response/i })).toBeTruthy();
 	});
 });
+
+describe('FanoutColumns — media (keep-many) mode', () => {
+	function mediaCol(branchId: string, status: FanoutColumn['status'] = 'done'): FanoutColumn {
+		return {
+			...col({ branchId, status, label: 'SDXL', persisted: persisted(branchId, 'img') }),
+			modelKind: 'image',
+		};
+	}
+
+	it('shows Regenerate + Discard and no "Continue with this" when onPick is omitted', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('b0'), mediaCol('b1')],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.queryByRole('button', { name: /continue with this/i })).toBeNull();
+		expect(screen.getAllByRole('button', { name: /regenerate/i })).toHaveLength(2);
+		expect(screen.getAllByRole('button', { name: /discard this response/i })).toHaveLength(2);
+		expect(screen.getByText(/2 variations/i)).toBeTruthy();
+	});
+
+	it('reports the picked column to onRegenerate', async () => {
+		const onRegenerate = vi.fn();
+		render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('b0'), mediaCol('b1')],
+				onDiscard: vi.fn(),
+				onRegenerate,
+				onImageClick: vi.fn(),
+			},
+		});
+		await userEvent.click(screen.getAllByRole('button', { name: /regenerate/i })[1]);
+		expect(onRegenerate).toHaveBeenCalledTimes(1);
+		expect(onRegenerate.mock.calls[0][0].branchId).toBe('b1');
+	});
+
+	it('disables discard on the last kept image (keep at least one)', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('only')],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		const discard = screen.getByRole('button', { name: /discard this response/i });
+		expect((discard as HTMLButtonElement).disabled).toBe(true);
+	});
+});

@@ -21,7 +21,7 @@
 import { json, error } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
+import { getConversationMeta, setFanoutParent } from '$lib/server/db/queries/conversations';
 import { createUserMessage } from '$lib/server/messages/create-user-message';
 import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 import type { ChatMessage, PrepareFanoutRequest, PrepareFanoutResponse } from '$lib/types/api';
@@ -54,6 +54,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		activeLeafMessageId: meta.activeLeafMessageId ?? null,
 		existingTitle: meta.title,
 	});
+
+	// Mark the conversation as having an unresolved fan-out parked on this user
+	// message, so a reload mid-comparison can rehydrate the compare grid
+	// (cleared when the user picks / dismisses, via selectBranch).
+	setFanoutParent(params.id, userMessage.id);
 
 	// Title generation runs once for the whole fan-out (branches suppress it).
 	// Fire-and-forget: the new title surfaces on the client's post-fan-out

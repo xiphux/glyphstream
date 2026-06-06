@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getConversationDetail } from '$lib/server/db/queries/conversations';
+import { getConversationDetail, getFanoutParent } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import { getSiblingAssistants } from '$lib/server/db/queries/messages';
@@ -31,16 +31,19 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		if (cm) assistantLabel = cm.name;
 	}
 
-	// Multi-model fan-out rehydration: when the active-branch tail is a user
-	// message (the leaf was pinned there while N branches generated and the
-	// user hasn't picked a winner yet), surface its assistant siblings so the
-	// page can re-render the compare columns after a reload. Only a genuine
-	// fan-out parks the leaf on a user message with assistant children —
-	// normal sends and retries always advance the leaf onto the assistant.
-	const branch = conversation.messages;
-	const tail = branch[branch.length - 1];
+	// Multi-model fan-out rehydration: a conversation with an unresolved
+	// fan-out carries an explicit marker (fanout_parent_message_id, set by
+	// .../prepare, cleared on pick/dismiss). When it points at the current
+	// active leaf, surface that user message's assistant siblings so the page
+	// re-renders the compare grid after a reload. The explicit marker (vs.
+	// guessing from "tail is a user message with N children") means a retry or
+	// truncate parked on a user message can't masquerade as a fan-out, and a
+	// single surviving branch is still surfaced.
+	const fanoutParent = getFanoutParent(conversation.id);
 	const fanoutSiblings =
-		tail?.role === 'user' ? getSiblingAssistants(conversation.id, tail.id) : [];
+		fanoutParent && fanoutParent === conversation.activeLeafMessageId
+			? getSiblingAssistants(conversation.id, fanoutParent)
+			: [];
 
 	return { conversation, assistantLabel, inFlightSince, fanoutSiblings };
 };

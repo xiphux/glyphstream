@@ -272,7 +272,10 @@ export function selectBranch(
 
 	const now = Date.now();
 	db.update(conversations)
-		.set({ activeLeafMessageId: cursor, updatedAt: now })
+		// Selecting a branch resolves any parked fan-out (the user picked a
+		// winner / dismissed the comparison), so clear the marker too. A no-op
+		// for ordinary sibling navigation, where it's already null.
+		.set({ activeLeafMessageId: cursor, updatedAt: now, fanoutParentMessageId: null })
 		.where(eq(conversations.id, conversationId))
 		.run();
 	return { newActiveLeaf: cursor };
@@ -535,10 +538,21 @@ export function deleteBranch(
 			}
 		}
 
-		// Pick the replacement sibling and walk down to its deepest
-		// descendant — that becomes the new active_leaf.
+		// Pick the replacement sibling and walk down to its deepest descendant
+		// — that becomes the new active_leaf ONLY IF the current leaf is inside
+		// the subtree we're deleting (the sibling-nav case: you deleted the
+		// branch you were viewing). If the leaf is elsewhere — e.g. an image
+		// fan-out parked on the user message while you discard an off-branch
+		// dud — leave it put so the parked grid stays intact.
 		const replacement = siblings[0];
-		const cursor = deepestDescendant(replacement.id, childrenByParent);
+		const fallbackCursor = deepestDescendant(replacement.id, childrenByParent);
+		const currentLeaf = tx
+			.select({ leaf: conversations.activeLeafMessageId })
+			.from(conversations)
+			.where(eq(conversations.id, conversationId))
+			.get()?.leaf;
+		const leafInDeleted = currentLeaf != null && toDelete.has(currentLeaf);
+		const cursor = leafInDeleted ? fallbackCursor : (currentLeaf ?? fallbackCursor);
 
 		// Order matters:
 		//   1. active_leaf reassign (so the FK's ON DELETE SET NULL

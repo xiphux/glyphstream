@@ -163,6 +163,30 @@ export function updateConversationModel(
 	return res.changes > 0;
 }
 
+/**
+ * Mark this conversation as having an unresolved multi-model fan-out parked
+ * on `parentMessageId` (the shared user message). The page load reads this to
+ * rehydrate the compare grid after a reload. Cleared when the fan-out resolves
+ * (selectBranch on a pick / dismiss / continue).
+ */
+export function setFanoutParent(conversationId: string, parentMessageId: string): void {
+	getDb()
+		.update(conversations)
+		.set({ fanoutParentMessageId: parentMessageId })
+		.where(eq(conversations.id, conversationId))
+		.run();
+}
+
+/** The parked fan-out's shared user-message id, or null when none. */
+export function getFanoutParent(conversationId: string): string | null {
+	const row = getDb()
+		.select({ p: conversations.fanoutParentMessageId })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+		.get();
+	return row?.p ?? null;
+}
+
 /** Returns the conversation with active-branch messages. Null if not found OR not owned by `userId`. */
 export function getConversationDetail(id: string, userId: string): ConversationDetail | null {
 	const db = getDb();

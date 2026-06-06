@@ -14,9 +14,11 @@ import {
 	deleteConversation,
 	getConversationDetail,
 	getConversationMeta,
+	getFanoutParent,
 	listArchivedConversations,
 	listConversations,
 	setDisabledFeatures,
+	setFanoutParent,
 	unarchiveConversation,
 	updateConversationModel,
 } from '$lib/server/db/queries/conversations';
@@ -1658,5 +1660,79 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 			modelUsed: 'bridge::c',
 		});
 		expect(getSiblingAssistants(conv.id, user.id).map((m) => m.id)).toEqual([a.id]);
+	});
+});
+
+describe('fan-out marker (parked-fan-out rehydration)', () => {
+	function seedFanout() {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::base',
+			modelKind: 'chat',
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'compare' }],
+		});
+		const a = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'A' }],
+			modelUsed: 'bridge::a',
+			advanceActiveLeaf: false,
+		});
+		const b = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'B' }],
+			modelUsed: 'bridge::b',
+			advanceActiveLeaf: false,
+		});
+		return { u, conv, user, a, b };
+	}
+
+	it('set/get round-trips and selectBranch clears the marker', () => {
+		const { u, conv, user, a } = seedFanout();
+		setFanoutParent(conv.id, user.id);
+		expect(getFanoutParent(conv.id)).toBe(user.id);
+
+		// Picking a winner resolves the fan-out → marker cleared, leaf advanced.
+		selectBranch(conv.id, a.id);
+		expect(getFanoutParent(conv.id)).toBeNull();
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(a.id);
+	});
+
+	it('deleteBranch keeps the parked leaf when discarding an off-branch sibling', () => {
+		const { u, conv, user, a, b } = seedFanout();
+		setFanoutParent(conv.id, user.id);
+		// Leaf is parked at the user message (advanceActiveLeaf:false above).
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+
+		// Discard sibling A — the leaf must stay parked at the user message
+		// (not jump to B), so the compare grid survives the prune.
+		const res = deleteBranch(conv.id, a.id, u.id);
+		expect(res && 'deletedIds' in res).toBe(true);
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+		// B remains; the marker is untouched (still pruning).
+		expect(getMessage(conv.id, b.id)?.id).toBe(b.id);
+		expect(getFanoutParent(conv.id)).toBe(user.id);
+	});
+
+	it('deleteBranch still moves the leaf when you delete the branch you are on', () => {
+		// Regression guard for the sibling-nav case (leaf inside the deleted
+		// subtree) — must keep advancing to a replacement sibling.
+		const { u, conv, user, a, b } = seedFanout();
+		// Make A the active leaf (as if the user navigated onto it).
+		selectBranch(conv.id, a.id);
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(a.id);
+		const res = deleteBranch(conv.id, a.id, u.id);
+		expect(res && 'newActiveLeaf' in res ? res.newActiveLeaf : null).toBe(b.id);
+		void user;
 	});
 });

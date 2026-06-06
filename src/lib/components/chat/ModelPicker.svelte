@@ -71,6 +71,16 @@
 		compareMode = $bindable(false),
 	}: Props = $props();
 
+	// Kinds eligible for a comparison. A comparison must be single-modality
+	// (you can't compare a chat reply with an image), so once the first model
+	// is chosen the list locks to its kind. Video joins in a later phase.
+	const COMPARE_KINDS: readonly ModelKind[] = ['chat', 'image'];
+	const compareKind = $derived(
+		compareSelections.length > 0
+			? models.find((m) => m.id === compareSelections[0].modelId)?.kind
+			: undefined,
+	);
+
 	function compareCountOf(modelId: string): number {
 		return compareSelections.find((s) => s.modelId === modelId)?.count ?? 0;
 	}
@@ -97,7 +107,8 @@
 		compareMode = !compareMode;
 		if (compareMode) {
 			const cur = models.find((m) => m.id === value);
-			compareSelections = cur && cur.kind === 'chat' ? [{ modelId: cur.id, count: 1 }] : [];
+			compareSelections =
+				cur && COMPARE_KINDS.includes(cur.kind) ? [{ modelId: cur.id, count: 1 }] : [];
 		} else {
 			compareSelections = [];
 		}
@@ -244,9 +255,17 @@
 	let searchInputEl = $state<HTMLInputElement | null>(null);
 
 	const filteredItems = $derived.by(() => {
-		// Compare mode only adds base chat models (presets/image/video are out
-		// of scope this cut) — hide the rest so the list reflects what's addable.
-		const base = compareMode ? items.filter((it) => !it.isCustom && it.kind === 'chat') : items;
+		// Compare mode only adds base models of an eligible kind (no presets),
+		// and once a kind is chosen it locks to that single modality — hide the
+		// rest so the list reflects what's addable.
+		const base = compareMode
+			? items.filter(
+					(it) =>
+						!it.isCustom &&
+						COMPARE_KINDS.includes(it.kind) &&
+						(!compareKind || it.kind === compareKind),
+				)
+			: items;
 		const q = search.trim().toLowerCase();
 		if (!q) return base;
 		// Tokenize on whitespace so multi-word queries like "openai gpt"

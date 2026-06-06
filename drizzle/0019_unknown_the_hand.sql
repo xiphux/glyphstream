@@ -1,0 +1,1 @@
+ALTER TABLE `conversations` ADD `fanout_parent_message_id` text REFERENCES messages(id);

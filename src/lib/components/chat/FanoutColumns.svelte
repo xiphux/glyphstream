@@ -7,7 +7,7 @@
 	column state, and the pick/discard requests.
 -->
 <script lang="ts">
-	import { Check, Trash2, CircleAlert } from '@lucide/svelte';
+	import { Check, Trash2, RefreshCw, CircleAlert } from '@lucide/svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import {
 		inFlightToBlocks,
@@ -19,17 +19,19 @@
 
 	interface Props {
 		columns: FanoutColumn[];
-		onPick: (column: FanoutColumn) => void;
-		/** Per-column discard. Optional — when omitted (text fan-out in this
-		 *  cut), the discard control is hidden; the image variation flow wires
-		 *  it in a later phase. */
+		/** Pick one column to continue the thread (text fan-out). When omitted,
+		 *  no "Continue with this" button renders — image fan-out is keep-many. */
+		onPick?: (column: FanoutColumn) => void;
+		/** Discard (delete) a column. Wired for image fan-out (prune the duds). */
 		onDiscard?: (column: FanoutColumn) => void;
+		/** Re-roll a column in place with the same model/prompt (image). */
+		onRegenerate?: (column: FanoutColumn) => void;
 		onImageClick: (mediaId: string) => void;
-		/** A pick/discard request is in flight — disables the controls. */
+		/** A pick/discard/regenerate request is in flight — disables the controls. */
 		busy?: boolean;
 	}
 
-	let { columns, onPick, onDiscard, onImageClick, busy = false }: Props = $props();
+	let { columns, onPick, onDiscard, onRegenerate, onImageClick, busy = false }: Props = $props();
 
 	// Fan-out branches are single-iteration with tools disabled, so there are
 	// never tool_result rows to thread in — an empty map is correct.
@@ -42,16 +44,31 @@
 	}
 
 	// "Continue with this" is only meaningful once a column has a persisted
-	// response. Discarding stays available for errored/cancelled columns too
-	// so the user can clear a failed branch.
+	// response. Regenerate/discard act on a settled column (done or failed),
+	// never one that's still generating.
 	function canPick(c: FanoutColumn): boolean {
 		return c.status === 'done' && c.persisted !== null;
+	}
+	function isSettled(c: FanoutColumn): boolean {
+		return c.status === 'done' || c.status === 'error' || c.status === 'cancelled';
+	}
+
+	// Image fan-out is keep-many (regenerate/discard, no single pick).
+	const isMedia = $derived(!onPick && (!!onDiscard || !!onRegenerate));
+	const countNoun = $derived(isMedia ? 'variations' : 'models');
+	// How many columns hold a real (persisted) result — the last one can't be
+	// discarded (deleteBranch needs a sibling to fall back to). Errored columns
+	// have no persisted row, so discarding them is a client-only cleanup.
+	const persistedCount = $derived(columns.filter((c) => c.persisted !== null).length);
+	function canDiscard(c: FanoutColumn): boolean {
+		return isSettled(c) && !(c.persisted !== null && persistedCount <= 1);
 	}
 </script>
 
 <section class="mt-2" aria-label="Model comparison">
 	<div class="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-fg-muted">
-		Comparing {columns.length} models
+		Comparing {columns.length}
+		{countNoun}
 	</div>
 	<div class="flex gap-3 overflow-x-auto pb-2">
 		{#each columns as c (c.branchId)}
@@ -95,28 +112,45 @@
 					{/if}
 				</div>
 
-				<footer class="flex items-center gap-2 border-t border-border px-2 py-2">
-					<button
-						type="button"
-						onclick={() => onPick(c)}
-						disabled={busy || !canPick(c)}
-						class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
-					>
-						<Check size={13} strokeWidth={2.5} /> Continue with this
-					</button>
-					{#if onDiscard}
-						<button
-							type="button"
-							onclick={() => onDiscard(c)}
-							disabled={busy}
-							aria-label="Discard this response"
-							title="Discard"
-							class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition hover:bg-surface-sunken hover:text-red-600 disabled:opacity-30 dark:hover:text-red-400"
-						>
-							<Trash2 size={14} />
-						</button>
-					{/if}
-				</footer>
+				{#if onPick || onRegenerate || onDiscard}
+					<footer class="flex items-center gap-2 border-t border-border px-2 py-2">
+						{#if onPick}
+							<button
+								type="button"
+								onclick={() => onPick(c)}
+								disabled={busy || !canPick(c)}
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
+							>
+								<Check size={13} strokeWidth={2.5} /> Continue with this
+							</button>
+						{/if}
+						{#if onRegenerate}
+							<button
+								type="button"
+								onclick={() => onRegenerate(c)}
+								disabled={busy || !isSettled(c)}
+								title="Regenerate this variation"
+								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg-secondary transition hover:bg-surface-sunken disabled:opacity-30"
+							>
+								<RefreshCw size={13} strokeWidth={2.5} /> Regenerate
+							</button>
+						{/if}
+						{#if onDiscard}
+							<button
+								type="button"
+								onclick={() => onDiscard(c)}
+								disabled={busy || !canDiscard(c)}
+								aria-label="Discard this response"
+								title={c.persisted !== null && persistedCount <= 1
+									? 'Keep at least one'
+									: 'Discard'}
+								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition hover:bg-surface-sunken hover:text-red-600 disabled:opacity-30 dark:hover:text-red-400"
+							>
+								<Trash2 size={14} />
+							</button>
+						{/if}
+					</footer>
+				{/if}
 			</article>
 		{/each}
 	</div>
