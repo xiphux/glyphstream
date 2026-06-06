@@ -1,10 +1,14 @@
 <!--
 	Multi-model fan-out compare view. Renders the N branch responses side by
 	side (horizontal scroll on narrow viewports) while they stream, then
-	surfaces "Continue with this" / discard controls on each once settled.
-	Picking one promotes that branch to the active thread; discarding deletes
-	a branch outright. Purely presentational — the page owns the SSE streams,
-	column state, and the pick/discard requests.
+	surfaces per-column actions once settled. Two modes, driven by which
+	callbacks the parent passes:
+	  - text (onPick): "Continue with this" promotes one branch to the active
+	    thread, the rest stay as siblings.
+	  - image keep-many (onDiscard + onRegenerate): prune the duds + re-roll in
+	    place; every kept image stays a sibling.
+	Purely presentational — the page owns the streams, column state, and the
+	pick / discard / regenerate requests.
 -->
 <script lang="ts">
 	import { Check, Trash2, RefreshCw, CircleAlert } from '@lucide/svelte';
