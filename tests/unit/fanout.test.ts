@@ -8,8 +8,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	allColumnsSettled,
 	expandCompareSelections,
+	expandFanoutBranches,
 	type CompareSelection,
 	type FanoutColumn,
+	type FanoutModel,
 } from '$lib/fanout';
 
 const resolve = (id: string) => {
@@ -48,6 +50,36 @@ describe('expandCompareSelections', () => {
 	});
 });
 
+describe('expandFanoutBranches', () => {
+	const img = (id: string): FanoutModel => ({ modelId: id, modelKind: 'image', displayName: id });
+	const a = img('bridge::a');
+	const b = img('bridge::b');
+
+	it('without split → one branch per model, no input override', () => {
+		expect(expandFanoutBranches([a, b], null)).toEqual([
+			{ ...a, inputMediaId: null },
+			{ ...b, inputMediaId: null },
+		]);
+		// Empty split list is treated the same as no split.
+		expect(expandFanoutBranches([a], [])).toEqual([{ ...a, inputMediaId: null }]);
+	});
+
+	it('crosses models with split images, image-outer / model-inner', () => {
+		expect(expandFanoutBranches([a, b], ['m1', 'm2'])).toEqual([
+			{ ...a, inputMediaId: 'm1' },
+			{ ...b, inputMediaId: 'm1' },
+			{ ...a, inputMediaId: 'm2' },
+			{ ...b, inputMediaId: 'm2' },
+		]);
+	});
+
+	it('single model split across N images → N branches (the headline case)', () => {
+		const out = expandFanoutBranches([a], ['m1', 'm2', 'm3']);
+		expect(out.map((x) => x.inputMediaId)).toEqual(['m1', 'm2', 'm3']);
+		expect(out.every((x) => x.modelId === 'bridge::a')).toBe(true);
+	});
+});
+
 describe('allColumnsSettled', () => {
 	const col = (status: FanoutColumn['status']): FanoutColumn => ({
 		branchId: 'b',
@@ -58,6 +90,7 @@ describe('allColumnsSettled', () => {
 		status,
 		queuedAhead: 0,
 		progress: null,
+		inputMediaId: null,
 		persisted: null,
 		error: null,
 	});

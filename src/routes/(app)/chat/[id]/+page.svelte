@@ -45,7 +45,9 @@
 	import {
 		allColumnsSettled,
 		expandCompareSelections,
+		expandFanoutBranches,
 		type CompareSelection,
+		type FanoutBranchSpec,
 		type FanoutColumn,
 		type FanoutModel,
 	} from '$lib/fanout';
@@ -718,6 +720,11 @@
 	// non-empty the next send fans the prompt out instead of single-sending.
 	let compareSelections = $state<CompareSelection[]>([]);
 	let compareMode = $state(false);
+	// Split-attachments: when on, each attached image fans out into its own
+	// image-edit / i2v generation (instead of all going into one). Composes
+	// with compare mode as a cross product (models × images). Bound into the
+	// composer's attachment strip.
+	let splitAttachments = $state(false);
 	const fanoutModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = data.models.find((x) => x.id === id);
@@ -781,6 +788,7 @@
 			status: 'done',
 			queuedAhead: 0,
 			progress: null,
+			inputMediaId: null, // wired from the sibling's source image in a later step
 			persisted: m,
 			error: null,
 		}));
@@ -793,6 +801,7 @@
 			status: 'streaming',
 			queuedAhead: 0,
 			progress: null,
+			inputMediaId: null,
 			persisted: null,
 			error: null,
 		}));
@@ -1580,6 +1589,9 @@
 		if ((!text && attachments.items.length === 0) || generating) return;
 		if (attachments.isBusy) return;
 		const attachedMediaIds = attachments.readyMediaIds();
+		// Split-attachments image set (one branch per image) captured before the
+		// strip is cleared below.
+		const splitImageIds = splitAttachments ? attachments.readyImageMediaIds() : null;
 		// Editing: send the new message as a sibling under the same parent
 		// as the original. The original stays in the DB as an alt branch.
 		const editParent = editingParentId;
@@ -1587,20 +1599,29 @@
 		attachments.clear();
 		editingMessageId = null;
 		editingParentId = null;
-		// Multi-model fan-out takes precedence over a single send (and over an
-		// in-progress edit — comparing is a fresh turn, not an edit). Needs 2+
-		// models; exactly one collapses to a normal single send with that model.
-		if (fanoutModels.length >= 2) {
-			const models = fanoutModels;
+		// Fan-out (multi-model and/or split-attachments) takes precedence over a
+		// single send (and over an in-progress edit — comparing is a fresh turn).
+		// Branches = the picked models (or the current single model) crossed with
+		// the split images; 2+ branches fans out, exactly one collapses to a
+		// normal send with that model.
+		const baseModels: FanoutModel[] =
+			fanoutModels.length > 0
+				? fanoutModels
+				: [{ modelId, modelKind: modelKind ?? 'chat', displayName: modelDisplayName(modelId) }];
+		const branches = expandFanoutBranches(baseModels, splitImageIds);
+		if (branches.length >= 2) {
 			resetCompare();
-			await sendFanout(text, attachedMediaIds, models);
+			splitAttachments = false;
+			await sendFanout(text, attachedMediaIds, branches);
 			return;
 		}
-		if (fanoutModels.length === 1) {
-			modelId = fanoutModels[0].modelId;
-			modelKind = fanoutModels[0].modelKind;
+		// Single effective branch — collapse to a normal send with that model.
+		if (fanoutModels.length >= 1) {
+			modelId = baseModels[0].modelId;
+			modelKind = baseModels[0].modelKind;
 			resetCompare();
 		}
+		splitAttachments = false;
 		await sendStreaming(text, attachedMediaIds, editParent ? { parentMessageId: editParent } : {});
 	}
 
@@ -1615,7 +1636,7 @@
 	async function sendFanout(
 		text: string,
 		attachedMediaIds: string[],
-		models: FanoutModel[],
+		branches: FanoutBranchSpec[],
 	): Promise<void> {
 		const turnConvId = convId;
 		const isFirstExchange = messages.length === 0;
@@ -1655,15 +1676,16 @@
 		// from clobbering the live grid until we disconnect / hand off.
 		fanoutLive = true;
 		if (isFirstExchange) markTitlePending(turnConvId);
-		fanoutColumns = models.map((m, i) => ({
+		fanoutColumns = branches.map((b, i) => ({
 			branchId: `${userMessage.id}:${i}`,
-			modelId: m.modelId,
-			modelKind: m.modelKind,
-			label: m.displayName,
+			modelId: b.modelId,
+			modelKind: b.modelKind,
+			label: b.displayName,
 			segments: [],
 			status: 'queued' as const,
 			queuedAhead: 0,
 			progress: null,
+			inputMediaId: b.inputMediaId,
 			persisted: null,
 			error: null,
 		}));
@@ -1710,7 +1732,7 @@
 			}
 			return;
 		}
-		if (models[0]?.modelKind === 'chat' && survivors.length === 1) {
+		if (branches[0]?.modelKind === 'chat' && survivors.length === 1) {
 			await pickFanout(survivors[0]);
 		}
 	}
@@ -1730,6 +1752,7 @@
 					parentMessageId: userMessageId,
 					modelId: col.modelId,
 					modelKind: col.modelKind,
+					inputMediaId: col.inputMediaId,
 				}),
 			);
 			// Image generation is synchronous (no SSE): one POST, one JSON
@@ -2038,8 +2061,9 @@
 			}
 			// A multi-model first message (the new-chat picker was in compare
 			// mode) routes to the fan-out flow instead of a single send.
-			if (pendingFanout) void sendFanout(pendingText, pendingMediaIds, pendingFanout);
-			else void sendStreaming(pendingText, pendingMediaIds);
+			if (pendingFanout) {
+				void sendFanout(pendingText, pendingMediaIds, expandFanoutBranches(pendingFanout, null));
+			} else void sendStreaming(pendingText, pendingMediaIds);
 		}
 	});
 

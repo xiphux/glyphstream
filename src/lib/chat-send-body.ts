@@ -104,11 +104,15 @@ export function buildFanoutBranchBody(input: {
 	parentMessageId: string;
 	modelId: string;
 	modelKind: ModelKind | null;
+	/** Split-attachments: restrict this branch to one of the shared message's
+	 *  images. Omitted for a non-split branch (derives all attachments). */
+	inputMediaId?: string | null;
 }): Record<string, unknown> {
 	return {
 		fanoutBranch: true,
 		parentMessageId: input.parentMessageId,
 		modelId: input.modelId,
 		modelKind: input.modelKind,
+		...(input.inputMediaId ? { inputMediaIds: [input.inputMediaId] } : {}),
 	};
 }

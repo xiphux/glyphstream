@@ -210,6 +210,19 @@ export class AttachmentStore {
 			.map((it) => it.mediaId!);
 	}
 
+	/** Ready image-kind media ids — the candidates for split-attachments
+	 *  (one image-edit / i2v generation per image). */
+	readyImageMediaIds(): string[] {
+		return this.items
+			.filter((it) => it.status === 'ready' && it.mediaId !== null && it.kind === 'image')
+			.map((it) => it.mediaId!);
+	}
+
+	/** Count of ready image attachments — gates the split toggle (needs 2+). */
+	get readyImageCount(): number {
+		return this.items.filter((it) => it.status === 'ready' && it.kind === 'image').length;
+	}
+
 	/** True if any attachment is still uploading — disable Send until resolved. */
 	get isBusy(): boolean {
 		return this.items.some((it) => it.status === 'uploading');

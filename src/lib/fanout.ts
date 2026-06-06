@@ -45,6 +45,34 @@ export function expandCompareSelections(
 	return out;
 }
 
+/** One concrete fan-out branch: a model paired with its (optional) split input
+ *  image. The cross product of the picked models and the split images. */
+export interface FanoutBranchSpec extends FanoutModel {
+	/** Split-attachments input image for this branch, or null when not
+	 *  splitting (the branch derives all the shared message's attachments). */
+	inputMediaId: string | null;
+}
+
+/** Cross-product the picked models with the split input images. When
+ *  `splitImageIds` is empty/null, splitting is off → one group per model with
+ *  no input override (today's behavior). Ordered image-outer / model-inner, so
+ *  each input image's variants sit together in the grid (and a single-model
+ *  split reads as image 1, 2, 3, …). */
+export function expandFanoutBranches(
+	models: readonly FanoutModel[],
+	splitImageIds: readonly string[] | null,
+): FanoutBranchSpec[] {
+	const groups: (string | null)[] =
+		splitImageIds && splitImageIds.length > 0 ? [...splitImageIds] : [null];
+	const out: FanoutBranchSpec[] = [];
+	for (const inputMediaId of groups) {
+		for (const m of models) {
+			out.push({ ...m, inputMediaId });
+		}
+	}
+	return out;
+}
+
 export interface FanoutColumn {
 	/** Client-side unique id; also the in-flight branch key sent to the server. */
 	branchId: string;
@@ -60,6 +88,9 @@ export interface FanoutColumn {
 	/** Generation progress 0–100 for the poll-based video path, or null when
 	 *  unknown / not a video branch. */
 	progress: number | null;
+	/** Split-attachments: the input image this branch edits / animates, shown
+	 *  as a thumbnail in the column header. Null for a non-split branch. */
+	inputMediaId: string | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
 	 *  hydrated from getSiblingAssistants on reload). */
 	persisted: ChatMessage | null;

@@ -175,4 +175,22 @@ describe('buildFanoutBranchBody', () => {
 		});
 		expect(body.modelKind).toBeNull();
 	});
+
+	it('sends inputMediaIds for a split-attachments branch, omits it otherwise', () => {
+		const split = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::sdxl',
+			modelKind: 'image',
+			inputMediaId: 'img-3',
+		});
+		expect(split.inputMediaIds).toEqual(['img-3']);
+
+		const noSplit = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::sdxl',
+			modelKind: 'image',
+			inputMediaId: null,
+		});
+		expect(noSplit).not.toHaveProperty('inputMediaIds');
+	});
 });
