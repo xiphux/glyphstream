@@ -66,11 +66,22 @@ export interface LoadedEndpoint {
 	 * requests queue (FIFO) until a slot frees — the slot is held for the
 	 * whole generation, so a single-GPU local backend (llama-server,
 	 * ComfyUI bridge) that can only hold one model in VRAM serializes
-	 * instead of thrashing. `Infinity` (the default when `max_concurrent`
-	 * is absent) means no gating — identical to pre-feature behavior.
+	 * instead of thrashing. Defaults to `DEFAULT_MAX_CONCURRENT` when
+	 * `max_concurrent` is absent — a friendly cap so a large multi-model
+	 * fan-out trickles instead of blasting the upstream all at once. Set it
+	 * to 1 for a single-GPU local backend, or high (up to 1024) for an
+	 * endpoint that handles its own concurrency.
 	 */
 	maxConcurrent: number;
 }
+
+/**
+ * Default per-endpoint concurrency when `max_concurrent` is omitted. Not
+ * unlimited: a multi-model fan-out (or several busy conversations) shouldn't
+ * fire an unbounded number of simultaneous upstream requests. Operators tune
+ * per endpoint — 1 for single-GPU local backends, higher for hosted APIs.
+ */
+export const DEFAULT_MAX_CONCURRENT = 4;
 
 export class ConfigError extends Error {}
 
@@ -324,7 +335,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 			? false
 			: requireBoolean(raw.supports_tools, 'supports_tools', at);
 
-	let maxConcurrent = Infinity;
+	let maxConcurrent = DEFAULT_MAX_CONCURRENT;
 	if (raw.max_concurrent !== undefined) {
 		maxConcurrent = requireNumber(raw.max_concurrent, 'max_concurrent', at, { min: 1, max: 1024 });
 		if (!Number.isInteger(maxConcurrent)) {

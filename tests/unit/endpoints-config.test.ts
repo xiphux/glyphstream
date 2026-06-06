@@ -48,7 +48,44 @@ base_url = "http://localhost:8080/v1"
 			apiKey: null,
 			requestTimeoutSeconds: 120,
 			providerQuirk: 'passthrough',
+			// Friendly default cap so a large fan-out trickles (not unlimited).
+			maxConcurrent: 4,
 		});
+	});
+
+	it('honors an explicit max_concurrent and validates its bounds', () => {
+		expect(
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 1
+			`),
+			)[0].maxConcurrent,
+		).toBe(1);
+
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 0
+			`),
+			),
+		).toThrow(ConfigError);
+
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 2.5
+			`),
+			),
+		).toThrow(/whole number/);
 	});
 
 	it('strips trailing slashes from base_url', () => {

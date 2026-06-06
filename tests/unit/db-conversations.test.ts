@@ -1735,4 +1735,37 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(res && 'newActiveLeaf' in res ? res.newActiveLeaf : null).toBe(b.id);
 		void user;
 	});
+
+	it('a leaf-advancing append clears a stale marker', () => {
+		const { conv, user } = seedFanout();
+		setFanoutParent(conv.id, user.id);
+		// A normal (leaf-advancing) message after the comparison resolves it.
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'follow-up' }],
+		});
+		expect(getFanoutParent(conv.id)).toBeNull();
+	});
+
+	it('truncateAtMessage clears the marker', () => {
+		const { conv, user, a } = seedFanout();
+		setFanoutParent(conv.id, user.id);
+		truncateAtMessage(conv.id, a.id);
+		expect(getFanoutParent(conv.id)).toBeNull();
+	});
+
+	it('a fan-out branch append (advanceActiveLeaf:false) leaves the marker set', () => {
+		const { conv, user } = seedFanout();
+		setFanoutParent(conv.id, user.id);
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'another branch' }],
+			advanceActiveLeaf: false,
+		});
+		expect(getFanoutParent(conv.id)).toBe(user.id);
+	});
 });

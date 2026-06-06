@@ -149,8 +149,10 @@ export function acquireEndpointSlot(
 	});
 }
 
-/** Live counts for an endpoint — backs the `queued` event payload and a
- *  future diagnostics surface. Returns zeros for an endpoint never seen. */
+/** Live counts for an endpoint — a future diagnostics surface (and the
+ *  test seam for the queue semantics). The `queued` event's `ahead` value is
+ *  computed inline in acquireEndpointSlot, not from this. Returns zeros for an
+ *  endpoint never seen. */
 export function getEndpointQueueDepth(endpointId: string): { active: number; waiting: number } {
 	const gate = gates.get(endpointId);
 	if (!gate) return { active: 0, waiting: 0 };

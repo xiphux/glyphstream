@@ -62,7 +62,11 @@ export function appendMessage(input: AppendInput): ChatMessage {
 
 		if (input.advanceActiveLeaf ?? true) {
 			tx.update(conversations)
-				.set({ activeLeafMessageId: id, updatedAt: now })
+				// Advancing the leaf off a parked fan-out resolves/abandons it
+				// (a normal send, edit, or retry after the comparison), so clear
+				// the marker. A no-op when none is set. Fan-out branches take the
+				// else-branch below and leave it pinned.
+				.set({ activeLeafMessageId: id, updatedAt: now, fanoutParentMessageId: null })
 				.where(eq(conversations.id, input.conversationId))
 				.run();
 		} else {
@@ -605,7 +609,9 @@ export function truncateAtMessage(
 	const newLeaf = target.parentId;
 	const now = Date.now();
 	db.update(conversations)
-		.set({ activeLeafMessageId: newLeaf, updatedAt: now })
+		// Truncating moves the leaf and abandons any parked fan-out, so clear
+		// the marker too (no-op when none is set).
+		.set({ activeLeafMessageId: newLeaf, updatedAt: now, fanoutParentMessageId: null })
 		.where(eq(conversations.id, conversationId))
 		.run();
 	return { newActiveLeaf: newLeaf };

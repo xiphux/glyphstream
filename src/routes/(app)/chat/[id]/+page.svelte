@@ -714,8 +714,9 @@
 		fanoutColumns.some((c) => c.status === 'queued' || c.status === 'streaming'),
 	);
 	const fanoutColumnsSettled = $derived(fanoutComparing && allColumnsSettled(fanoutColumns));
-	// A media (image/video) fan-out is keep-many: prune duds + regenerate,
-	// rather than pick one. Drives the column footer + settle behaviour.
+	// An image fan-out is keep-many: prune duds + regenerate, rather than pick
+	// one. Drives the column footer + settle behaviour. (Video joins the
+	// keep-many path in a later slice — add 'video' here when it ships.)
 	const fanoutIsMedia = $derived(fanoutColumns.some((c) => c.modelKind === 'image'));
 
 	function modelDisplayName(modelId: string | null): string {
@@ -1739,6 +1740,9 @@
 				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			}
 			fanoutColumns = fanoutColumns.filter((c) => c.branchId !== col.branchId);
+			// Defensive: if the grid emptied, drop the parked user-message handle
+			// too so nothing dangles.
+			if (fanoutColumns.length === 0) fanoutUserMessageId = null;
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1749,21 +1753,47 @@
 	/** Re-roll one image variation in place: generate a fresh sibling with the
 	 *  same model/prompt, then delete the old image once the new one lands. */
 	async function regenerateFanout(col: FanoutColumn): Promise<void> {
-		if (!fanoutUserMessageId) return;
+		// Serialize against the other grid mutations (pick/dismiss/discard) — an
+		// overlapping discard during an in-flight re-roll could otherwise drop
+		// the last kept image past the "keep at least one" guard.
+		if (!fanoutUserMessageId || fanoutPicking) return;
+		fanoutPicking = true;
 		const oldId = col.persisted?.id ?? null;
+		// Snapshot so a failed re-roll restores the original image (mirrors
+		// pick/dismiss) instead of leaving the column stuck on "Failed".
+		const snapshot = {
+			persisted: col.persisted,
+			status: col.status,
+			segments: col.segments,
+			error: col.error,
+		};
 		col.persisted = null;
 		col.error = null;
 		col.segments = [];
 		col.status = 'streaming';
-		const fresh = await runFanoutBranch(convId, fanoutUserMessageId, col);
-		// Replace: now that a new sibling exists, drop the old image. Best-effort
-		// — a leftover old variation is harmless (just an extra sibling).
-		if (oldId && fresh && fresh.id !== oldId) {
-			try {
-				await fetch(`/api/conversations/${convId}/messages/${oldId}/branch`, { method: 'DELETE' });
-			} catch {
-				// The new image is already in the column; ignore a failed cleanup.
+		try {
+			const fresh = await runFanoutBranch(convId, fanoutUserMessageId, col);
+			if (!fresh) {
+				// Re-roll failed / was cancelled — restore the original image.
+				col.persisted = snapshot.persisted;
+				col.status = snapshot.status;
+				col.segments = snapshot.segments;
+				col.error = snapshot.error;
+				return;
 			}
+			// Replace: now that a new sibling exists, drop the old image.
+			// Best-effort — a leftover old variation is harmless (extra sibling).
+			if (oldId && fresh.id !== oldId) {
+				try {
+					await fetch(`/api/conversations/${convId}/messages/${oldId}/branch`, {
+						method: 'DELETE',
+					});
+				} catch {
+					// The new image is already in the column; ignore a failed cleanup.
+				}
+			}
+		} finally {
+			fanoutPicking = false;
 		}
 	}
 

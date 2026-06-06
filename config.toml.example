@@ -94,12 +94,14 @@
 
 # Optional: cap how many generations run against this endpoint at once.
 # Extra requests queue (FIFO) and stream a "queued" state to the client
-# until a slot frees. The slot is held for the WHOLE generation, so this
-# is the knob for a single-GPU local backend (llama-server, ComfyUI
-# bridge) that can only hold one model in VRAM — set it to 1 so multiple
-# chats (or a multi-model fan-out) serialize instead of thrashing VRAM.
-# Omit for unlimited (the default) — right for hosted providers that
-# handle their own concurrency.
+# until a slot frees. The slot is held for the WHOLE generation.
+# Defaults to 4 when omitted — a friendly cap so a large multi-model
+# fan-out trickles instead of blasting the upstream all at once.
+#  - Set to 1 for a single-GPU local backend (llama-server, ComfyUI bridge)
+#    that can only hold one model in VRAM, so requests serialize instead of
+#    thrashing.
+#  - Raise it (up to 1024) for a hosted provider that handles its own
+#    concurrency and you want more parallelism.
 # max_concurrent = 1
 
 # Optional: web search via SearxNG. Backs the `web_search` tool, which
