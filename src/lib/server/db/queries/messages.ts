@@ -3,7 +3,7 @@ import { generateId } from '../../util/id';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { parseMessageParts } from './json-columns';
 import { getDb } from '../client';
-import { conversations, messages } from '../schema';
+import { conversations, media, messages } from '../schema';
 import { decrementMediaForMessages, hardDeleteOrphanGeneratedMediaForMessages } from './media';
 
 interface AppendInput {
@@ -331,11 +331,33 @@ export function getSiblingAssistants(
 		)
 		.all();
 	rows.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
-	return rows.map((row) => {
+	const msgs = rows.map((row) => {
 		const msg = rowToChatMessage(row);
 		msg.parentMessageId = row.parentMessageId;
 		return msg;
 	});
+
+	// Resolve each result's source image (split-attachments provenance) from its
+	// output media row, in one batched lookup — so a reloaded split grid keeps
+	// the per-result input thumbnail and regenerate re-rolls the right input.
+	const outputMediaId = (m: ChatMessage): string | null => {
+		const part = m.parts.find((p) => p.type === 'image' || p.type === 'video');
+		return part && (part.type === 'image' || part.type === 'video') ? part.mediaId : null;
+	};
+	const outputIds = msgs.map(outputMediaId).filter((id): id is string => id !== null);
+	if (outputIds.length > 0) {
+		const srcRows = db
+			.select({ id: media.id, src: media.sourceMediaId })
+			.from(media)
+			.where(inArray(media.id, outputIds))
+			.all();
+		const srcById = new Map(srcRows.map((r) => [r.id, r.src]));
+		for (const m of msgs) {
+			const out = outputMediaId(m);
+			if (out) m.sourceMediaId = srcById.get(out) ?? null;
+		}
+	}
+	return msgs;
 }
 
 /**

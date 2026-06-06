@@ -788,7 +788,7 @@
 			status: 'done',
 			queuedAhead: 0,
 			progress: null,
-			inputMediaId: null, // wired from the sibling's source image in a later step
+			inputMediaId: m.sourceMediaId ?? null,
 			persisted: m,
 			error: null,
 		}));

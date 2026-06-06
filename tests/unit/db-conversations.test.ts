@@ -1630,6 +1630,65 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 		expect(byId.get(b.id)).toBe('bridge::b');
 	});
 
+	it('getSiblingAssistants surfaces each image result’s source input (split provenance)', () => {
+		const { u, conv, user } = seedConvWithUser();
+		const inputImg = insertMedia({
+			userId: u.id,
+			storagePath: 'ab/cd/input.png',
+			contentType: 'image/png',
+			byteSize: 1024,
+			kind: 'image',
+			sourceEndpointId: null,
+			sourceModel: null,
+			promptExcerpt: null,
+			origin: 'uploaded',
+		});
+		// One assistant image sibling whose output media records inputImg as its
+		// source; a second whose output has no source (plain text-to-image).
+		const editOut = insertMedia({
+			userId: u.id,
+			storagePath: 'ab/cd/edit.png',
+			contentType: 'image/png',
+			byteSize: 2048,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::sdxl',
+			promptExcerpt: 'cartoon',
+			sourceMediaId: inputImg.id,
+		});
+		const plainOut = insertMedia({
+			userId: u.id,
+			storagePath: 'ab/cd/plain.png',
+			contentType: 'image/png',
+			byteSize: 2048,
+			kind: 'image',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'bridge::sdxl',
+			promptExcerpt: 'a panda',
+		});
+		const edited = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: editOut.id }],
+			modelUsed: 'bridge::sdxl',
+			advanceActiveLeaf: false,
+		});
+		const plain = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: plainOut.id }],
+			modelUsed: 'bridge::sdxl',
+			advanceActiveLeaf: false,
+		});
+		const byId = new Map(
+			getSiblingAssistants(conv.id, user.id).map((m) => [m.id, m.sourceMediaId]),
+		);
+		expect(byId.get(edited.id)).toBe(inputImg.id);
+		expect(byId.get(plain.id)).toBeNull();
+	});
+
 	it('getSiblingAssistants excludes non-assistant children and other parents', () => {
 		const { conv, user } = seedConvWithUser();
 		const a = appendMessage({

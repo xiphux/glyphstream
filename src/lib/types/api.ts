@@ -300,6 +300,14 @@ export interface ChatMessage {
 	siblingCount?: number;
 	siblingPosition?: number;
 	siblingIds?: string[];
+	/**
+	 * Input image this message's generated media was edited / animated from
+	 * (i2i edit, i2v) — the provenance recorded on the output media row.
+	 * Populated by `getSiblingAssistants` for the split-attachments grid, so a
+	 * reloaded fan-out keeps each result's input thumbnail + can regenerate it.
+	 * Undefined elsewhere.
+	 */
+	sourceMediaId?: string | null;
 }
 
 // --- user preferences --------------------------------------------------
