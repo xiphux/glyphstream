@@ -527,3 +527,68 @@ describe('ModelPicker — owner sublabel', () => {
 		expect(screen.queryByText('· openai')).toBeNull();
 	});
 });
+
+describe('ModelPicker — compare mode', () => {
+	function openCompare() {
+		return render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::a', displayName: 'Model A' }),
+					makeModel({ id: 'bridge::b', displayName: 'Model B' }),
+					makeModel({ id: 'bridge::img', displayName: 'Imager', kind: 'image' }),
+				],
+				value: 'bridge::a',
+				allowCompare: true,
+			},
+		});
+	}
+
+	it('hides the Multiple toggle unless allowCompare is set', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models: [makeModel()], value: '' } });
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.queryByText('Multiple')).toBeNull();
+	});
+
+	it('clicking a row adds + increments; the chip shows the count', async () => {
+		const user = userEvent.setup();
+		openCompare();
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple'));
+		// Enabling seeds the cart from the current selection (Model A ×1). The
+		// count shows on both the summary chip and the row badge, hence getAll.
+		expect(screen.getAllByText('×1').length).toBeGreaterThan(0);
+
+		// Click Model B's row → it joins the comparison.
+		await user.click(screen.getByRole('option', { name: /Model B/ }));
+		await tick();
+		// Click Model B again → its count goes to 2.
+		await user.click(screen.getByRole('option', { name: /Model B/ }));
+		await tick();
+		expect(screen.getAllByText('×2').length).toBeGreaterThan(0);
+	});
+
+	it('the chip − decrements and removes at zero', async () => {
+		const user = userEvent.setup();
+		openCompare();
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple'));
+		// Seeded with Model A ×1; decrement removes it.
+		await user.click(screen.getByLabelText('Remove one Model A'));
+		await tick();
+		expect(screen.getByText('Click models below to compare them…')).toBeInTheDocument();
+	});
+
+	it('restricts the list to chat models while comparing', async () => {
+		const user = userEvent.setup();
+		openCompare();
+		await user.click(screen.getByLabelText('Select model'));
+		// Image model is visible in normal mode…
+		expect(screen.getByRole('option', { name: /Imager/ })).toBeInTheDocument();
+		await user.click(screen.getByText('Multiple'));
+		await tick();
+		// …but hidden once comparing (chat-only this cut).
+		expect(screen.queryByRole('option', { name: /Imager/ })).toBeNull();
+		expect(screen.getByRole('option', { name: /Model A/ })).toBeInTheDocument();
+	});
+});

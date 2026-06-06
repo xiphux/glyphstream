@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronDown, Search, Star } from '@lucide/svelte';
+	import { Check, ChevronDown, Minus, Plus, Search, Star, Layers } from '@lucide/svelte';
+	import type { CompareSelection } from '$lib/fanout';
 	import type { CustomModel, ModelEntry, ModelKind } from '$lib/types/api';
 
 	interface Props {
@@ -39,6 +40,20 @@
 		 * is responsible for persisting + invalidating data.
 		 */
 		onToggleFavorite?: (id: string) => void;
+		/**
+		 * Enable multi-model "compare" mode — a toggle in the dropdown header
+		 * that flips rows from single-select to add-to-comparison. Off by
+		 * default, so the settings/per-turn pickers are unaffected. Only base
+		 * chat models are compare-eligible in this cut (no presets, no
+		 * image/video); the rest are hidden while comparing.
+		 */
+		allowCompare?: boolean;
+		/** The compare "cart": model id → count. Bindable so the consumer can
+		 *  read it (to drive a fan-out) and reset it. */
+		compareSelections?: CompareSelection[];
+		/** Whether compare mode is active. Bindable so the consumer can reflect
+		 *  it (e.g. relabel the Send button) and force it off. */
+		compareMode?: boolean;
 	}
 
 	let {
@@ -51,7 +66,42 @@
 		inline = false,
 		favoritedIds = [],
 		onToggleFavorite,
+		allowCompare = false,
+		compareSelections = $bindable([]),
+		compareMode = $bindable(false),
 	}: Props = $props();
+
+	function compareCountOf(modelId: string): number {
+		return compareSelections.find((s) => s.modelId === modelId)?.count ?? 0;
+	}
+	function addCompare(modelId: string) {
+		const existing = compareSelections.find((s) => s.modelId === modelId);
+		compareSelections = existing
+			? compareSelections.map((s) => (s.modelId === modelId ? { ...s, count: s.count + 1 } : s))
+			: [...compareSelections, { modelId, count: 1 }];
+	}
+	function decCompare(modelId: string) {
+		compareSelections = compareSelections.flatMap((s) =>
+			s.modelId !== modelId ? [s] : s.count > 1 ? [{ ...s, count: s.count - 1 }] : [],
+		);
+	}
+	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
+	// Display name for a model id, for the compare summary chips.
+	function modelLabel(modelId: string): string {
+		return models.find((m) => m.id === modelId)?.displayName ?? modelId;
+	}
+
+	// Flip compare mode: seed the cart from the current single selection (so
+	// the model you were on is already in the comparison), clear it on exit.
+	function toggleCompareMode() {
+		compareMode = !compareMode;
+		if (compareMode) {
+			const cur = models.find((m) => m.id === value);
+			compareSelections = cur && cur.kind === 'chat' ? [{ modelId: cur.id, count: 1 }] : [];
+		} else {
+			compareSelections = [];
+		}
+	}
 
 	function kindEmoji(kind: ModelKind): string {
 		switch (kind) {
@@ -194,15 +244,18 @@
 	let searchInputEl = $state<HTMLInputElement | null>(null);
 
 	const filteredItems = $derived.by(() => {
+		// Compare mode only adds base chat models (presets/image/video are out
+		// of scope this cut) — hide the rest so the list reflects what's addable.
+		const base = compareMode ? items.filter((it) => !it.isCustom && it.kind === 'chat') : items;
 		const q = search.trim().toLowerCase();
-		if (!q) return items;
+		if (!q) return base;
 		// Tokenize on whitespace so multi-word queries like "openai gpt"
 		// match anywhere in the haystack regardless of order. The favorites
 		// group is hidden when searching — every favorited row also exists
 		// in its native group, and duplicating matches in the flat-search
 		// view confuses more than it helps.
 		const tokens = q.split(/\s+/);
-		return items.filter(
+		return base.filter(
 			(item) => item.groupKey !== '__favorites' && tokens.every((t) => item.searchText.includes(t)),
 		);
 	});
@@ -218,6 +271,9 @@
 	 * Custom presets get their full user-given name preserved.
 	 */
 	const triggerLabel = $derived.by(() => {
+		if (compareMode && compareTotal > 0) {
+			return `Comparing ${compareTotal} ${compareTotal === 1 ? 'model' : 'models'}`;
+		}
 		if (!selected) return 'Choose a model…';
 		if (selected.isCustom) return selected.label;
 		const slash = selected.label.lastIndexOf('/');
@@ -274,7 +330,9 @@
 		} else if (e.key === 'Enter') {
 			e.preventDefault();
 			const item = filteredItems[highlightedIndex];
-			if (item) void selectItem(item);
+			if (!item) return;
+			if (compareMode) addCompare(item.value);
+			else void selectItem(item);
 		} else if (e.key === 'Home') {
 			e.preventDefault();
 			highlightedIndex = 0;
@@ -375,6 +433,50 @@
 				/>
 			</div>
 
+			{#if allowCompare}
+				<!-- Compare-mode controls. The toggle flips the list to
+				     multi-select: clicking a row then adds it to the comparison
+				     (popover stays open) instead of selecting + closing. -->
+				<div class="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+					<button
+						type="button"
+						onclick={toggleCompareMode}
+						aria-pressed={compareMode}
+						title="Compare multiple models at once"
+						class="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs transition {compareMode
+							? 'bg-accent/15 text-accent'
+							: 'text-fg-muted hover:bg-surface-raised'}"
+					>
+						<Layers size={13} strokeWidth={2.25} />
+						Multiple
+					</button>
+					{#if compareMode}
+						{#if compareSelections.length === 0}
+							<span class="text-xs text-fg-muted">Click models below to compare them…</span>
+						{:else}
+							{#each compareSelections as sel (sel.modelId)}
+								<span
+									class="inline-flex items-center gap-1 rounded-full border border-border bg-surface-raised py-0.5 pl-2 pr-1 text-xs"
+								>
+									<span class="max-w-[9rem] truncate" title={modelLabel(sel.modelId)}>
+										{modelLabel(sel.modelId)}
+									</span>
+									<span class="text-fg-muted">×{sel.count}</span>
+									<button
+										type="button"
+										onclick={() => decCompare(sel.modelId)}
+										aria-label="Remove one {modelLabel(sel.modelId)}"
+										class="flex h-4 w-4 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
+									>
+										<Minus size={11} strokeWidth={2.5} />
+									</button>
+								</span>
+							{/each}
+						{/if}
+					{/if}
+				</div>
+			{/if}
+
 			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto overscroll-contain py-1">
 				{#if filteredItems.length === 0}
 					<p class="px-3 py-3 text-xs text-fg-muted">
@@ -395,6 +497,7 @@
 						{@const isHighlighted = idx === highlightedIndex}
 						{@const isSelected = item.value === value}
 						{@const isFavorited = favoritedSet.has(item.value)}
+						{@const compareCount = compareMode ? compareCountOf(item.value) : 0}
 						<div
 							class="group/row flex w-full items-center gap-2 px-3 py-1.5 text-sm transition {isHighlighted
 								? 'bg-surface-raised'
@@ -405,9 +508,9 @@
 							<button
 								type="button"
 								role="option"
-								aria-selected={isSelected}
+								aria-selected={compareMode ? compareCount > 0 : isSelected}
 								data-picker-index={idx}
-								onclick={() => selectItem(item)}
+								onclick={() => (compareMode ? addCompare(item.value) : selectItem(item))}
 								class="flex min-w-0 flex-1 items-center gap-2 text-left"
 							>
 								<span class="min-w-0 flex-1 truncate">
@@ -424,18 +527,26 @@
 								{:else if item.kind === 'embedding'}
 									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
 								{/if}
-								{#if isSelected}
+								{#if compareMode}
+									{#if compareCount > 0}
+										<span class="shrink-0 text-xs font-medium text-accent tabular-nums"
+											>×{compareCount}</span
+										>
+									{/if}
+									<Plus size={14} strokeWidth={2.5} class="shrink-0 text-fg-muted" />
+								{:else if isSelected}
 									<Check size={14} strokeWidth={2.5} class="shrink-0 text-accent" />
 								{/if}
 							</button>
-							{#if onToggleFavorite}
+							{#if onToggleFavorite && !compareMode}
 								<!--
 									The star sits outside the select button so a click
 									toggles favorite without also picking the model. It
 									stays visible on hover or when already favorited;
 									otherwise it fades to keep unfilled rows quiet —
 									the picker is busy enough without a column of grey
-									stars in every row.
+									stars in every row. Hidden in compare mode to keep
+									the add-to-comparison target unambiguous.
 								-->
 								<button
 									type="button"

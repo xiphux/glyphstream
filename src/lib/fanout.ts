@@ -19,6 +19,32 @@ export interface FanoutModel {
 	displayName: string;
 }
 
+/** A model + how many copies of it to compare — the model picker's compare
+ *  state ("shopping cart" of counts). Expanded to one FanoutModel per count
+ *  at send time via `expandCompareSelections`. */
+export interface CompareSelection {
+	modelId: string;
+	count: number;
+}
+
+/** Expand `{ modelId, count }[]` into one FanoutModel per count, resolving
+ *  each model's display name + kind via `resolve` (skips ones that no longer
+ *  resolve — e.g. an endpoint removed from config since selection). */
+export function expandCompareSelections(
+	selections: readonly CompareSelection[],
+	resolve: (modelId: string) => { displayName: string; modelKind: ModelKind } | undefined,
+): FanoutModel[] {
+	const out: FanoutModel[] = [];
+	for (const sel of selections) {
+		const info = resolve(sel.modelId);
+		if (!info) continue;
+		for (let i = 0; i < sel.count; i++) {
+			out.push({ modelId: sel.modelId, modelKind: info.modelKind, displayName: info.displayName });
+		}
+	}
+	return out;
+}
+
 export interface FanoutColumn {
 	/** Client-side unique id; also the in-flight branch key sent to the server. */
 	branchId: string;

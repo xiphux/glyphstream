@@ -8,6 +8,7 @@
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
+	import { expandCompareSelections, type CompareSelection, type FanoutModel } from '$lib/fanout';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
 	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
@@ -31,6 +32,17 @@
 	//   - "endpointId::upstreamId"  → base model
 	//   - "custom::{customModelId}" → saved preset
 	let modelId = $state('');
+
+	// Multi-model compare "cart" from the picker. When non-empty on send, the
+	// first message fans out to these models instead of a single send.
+	let compareSelections = $state<CompareSelection[]>([]);
+	let compareMode = $state(false);
+	const fanoutFirstModels = $derived(
+		expandCompareSelections(compareSelections, (id) => {
+			const m = data.models.find((x) => x.id === id);
+			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
+		}),
+	);
 
 	// Per-conversation feature opt-outs (see FEATURE_CATEGORIES). Transient
 	// per page load — never persisted client-side, never restored across
@@ -197,7 +209,10 @@
 	});
 
 	async function startChat() {
-		if (!modelId || busy) return;
+		// A multi-model first message uses the comparison cart; otherwise the
+		// single picker selection. Fan-out needs at least one model in the cart.
+		const fanout = compareMode && fanoutFirstModels.length > 0 ? fanoutFirstModels : null;
+		if ((!fanout && !modelId) || busy) return;
 		if (!text.trim() && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
 		busy = true;
@@ -205,16 +220,21 @@
 		try {
 			// Build the create request based on what the picker selected. For
 			// presets we send `customModelId` and let the server resolve the
-			// base model + system prompt + parameters from the stored row.
-			const createBody: CreateConversationRequest = modelId.startsWith('custom::')
-				? {
-						customModelId: modelId.slice('custom::'.length),
-						modelKind: resolvedBase?.kind,
-					}
-				: {
-						modelId,
-						modelKind: resolvedBase?.kind,
-					};
+			// base model + system prompt + parameters from the stored row. For
+			// a fan-out, the conversation is created on the first comparison
+			// model (its stored default for any later single-model turns); each
+			// branch overrides the model per-message anyway.
+			let createBody: CreateConversationRequest;
+			if (fanout) {
+				createBody = { modelId: fanout[0].modelId, modelKind: fanout[0].modelKind };
+			} else if (modelId.startsWith('custom::')) {
+				createBody = {
+					customModelId: modelId.slice('custom::'.length),
+					modelKind: resolvedBase?.kind,
+				};
+			} else {
+				createBody = { modelId, modelKind: resolvedBase?.kind };
+			}
 			if (disabledFeatures.length > 0) {
 				createBody.disabledFeatures = [...disabledFeatures];
 			}
@@ -233,13 +253,14 @@
 			// Hand the first message off to the chat page so the streaming
 			// response renders inside the right route lifecycle. Stash in
 			// sessionStorage (per-conversation key) and navigate. Payload is
-			// JSON-encoded so we can carry attached media ids alongside the
-			// text — the chat page forwards them on the send call.
+			// JSON-encoded so we can carry attached media ids (and, for a
+			// fan-out, the model set) alongside the text.
 			window.sessionStorage.setItem(
 				pendingFirstMessageKey(conversation.id),
 				JSON.stringify({
 					text,
 					attachedMediaIds: attachments.readyMediaIds(),
+					...(fanout ? { fanoutModels: fanout } : {}),
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
@@ -321,15 +342,22 @@
 					inline
 					favoritedIds={data.prefs?.favoriteModels ?? []}
 					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+					allowCompare
+					bind:compareSelections
+					bind:compareMode
 				/>
 				<button
 					type="submit"
-					disabled={!modelId ||
+					disabled={(compareMode && fanoutFirstModels.length > 0 ? false : !modelId) ||
 						(!text.trim() && attachments.items.length === 0) ||
 						busy ||
 						attachments.isBusy}
-					aria-label="Send message"
-					title="Send"
+					aria-label={compareMode && fanoutFirstModels.length > 0
+						? `Send to ${fanoutFirstModels.length} models`
+						: 'Send message'}
+					title={compareMode && fanoutFirstModels.length > 0
+						? `Send to ${fanoutFirstModels.length} models`
+						: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

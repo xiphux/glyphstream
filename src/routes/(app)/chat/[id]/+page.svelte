@@ -41,7 +41,13 @@
 		type SendOptions,
 	} from '$lib/chat-send-body';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
-	import { allColumnsSettled, type FanoutColumn, type FanoutModel } from '$lib/fanout';
+	import {
+		allColumnsSettled,
+		expandCompareSelections,
+		type CompareSelection,
+		type FanoutColumn,
+		type FanoutModel,
+	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { MediaListItem } from '$lib/server/db/queries/media';
@@ -675,9 +681,17 @@
 	let inFlightQueued = $state<{ ahead: number } | null>(null);
 
 	// --- Multi-model fan-out -------------------------------------------------
-	// Models staged for a comparison (the composer chips). When non-empty, the
-	// next send fans the prompt out to each instead of a single send.
-	let fanoutModels = $state<FanoutModel[]>([]);
+	// The model picker's compare "cart" (model id → count) + whether compare
+	// mode is on. Bound into ChatComposer → ModelPicker. When the cart is
+	// non-empty the next send fans the prompt out instead of single-sending.
+	let compareSelections = $state<CompareSelection[]>([]);
+	let compareMode = $state(false);
+	const fanoutModels = $derived(
+		expandCompareSelections(compareSelections, (id) => {
+			const m = data.models.find((x) => x.id === id);
+			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
+		}),
+	);
 	// Live + settled comparison columns. Non-empty == the compare view is up.
 	let fanoutColumns = $state<FanoutColumn[]>([]);
 	// A pick/dismiss request is in flight.
@@ -695,16 +709,10 @@
 		return data.models.find((m) => m.id === modelId)?.displayName ?? modelId;
 	}
 
-	function addFanoutModel() {
-		const m = data.models.find((x) => x.id === modelId);
-		if (!m || m.kind !== 'chat') return;
-		fanoutModels = [
-			...fanoutModels,
-			{ modelId: m.id, modelKind: m.kind, displayName: m.displayName },
-		];
-	}
-	function removeFanoutModel(index: number) {
-		fanoutModels = fanoutModels.filter((_, i) => i !== index);
+	/** Reset the compare cart + mode (after a fan-out kicks off, or on nav). */
+	function resetCompare() {
+		compareSelections = [];
+		compareMode = false;
 	}
 
 	function resetInFlightSegments() {
@@ -862,7 +870,7 @@
 		for (const a of fanoutAborts.values()) a.abort();
 		fanoutAborts.clear();
 		fanoutColumns = [];
-		fanoutModels = [];
+		resetCompare();
 	});
 
 	// Re-hydrate the compare columns from server data after a reload (or a
@@ -1441,7 +1449,7 @@
 		// in-progress edit — comparing is a fresh turn, not an edit).
 		if (fanoutModels.length > 0) {
 			const models = fanoutModels;
-			fanoutModels = [];
+			resetCompare();
 			await sendFanout(text, attachedMediaIds, models);
 			return;
 		}
@@ -1684,6 +1692,7 @@
 			bootstrapped = true;
 			let pendingText = pending;
 			let pendingMediaIds: string[] = [];
+			let pendingFanout: FanoutModel[] | null = null;
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
@@ -1692,11 +1701,16 @@
 					if (Array.isArray(ids)) {
 						pendingMediaIds = ids.filter((s): s is string => typeof s === 'string');
 					}
+					const fm = (parsed as { fanoutModels?: unknown }).fanoutModels;
+					if (Array.isArray(fm) && fm.length > 0) pendingFanout = fm as FanoutModel[];
 				}
 			} catch {
 				// Old format — pending was already plain text.
 			}
-			void sendStreaming(pendingText, pendingMediaIds);
+			// A multi-model first message (the new-chat picker was in compare
+			// mode) routes to the fan-out flow instead of a single send.
+			if (pendingFanout) void sendFanout(pendingText, pendingMediaIds, pendingFanout);
+			else void sendStreaming(pendingText, pendingMediaIds);
 		}
 	});
 
@@ -2093,9 +2107,8 @@
 						recoveredInFlight ||
 						fanoutStreaming}
 					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-					{fanoutModels}
-					onAddFanoutModel={addFanoutModel}
-					onRemoveFanoutModel={removeFanoutModel}
+					bind:compareSelections
+					bind:compareMode
 					onSend={() => void send()}
 					onStop={stop}
 					onFeaturesChange={(next) => void persistDisabledFeatures(next)}

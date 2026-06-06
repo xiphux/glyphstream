@@ -9,12 +9,12 @@
 	canonical draft + per-turn model selection.
 -->
 <script lang="ts">
-	import { ArrowUp, Square, Columns3, X } from '@lucide/svelte';
+	import { ArrowUp, Square } from '@lucide/svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
-	import type { FanoutModel } from '$lib/fanout';
+	import type { CompareSelection } from '$lib/fanout';
 	import type {
 		EnterBehavior,
 		FeatureCategory,
@@ -39,13 +39,12 @@
 		/** True when a generation is in flight + cancellable (shows Stop). */
 		canStop: boolean;
 		enterBehavior: EnterBehavior;
-		/** Models queued for a multi-model fan-out comparison. When non-empty,
-		 *  the next send fans the prompt out to these instead of a single send. */
-		fanoutModels: FanoutModel[];
-		/** Add the currently-picked model to the fan-out comparison. */
-		onAddFanoutModel: () => void;
-		/** Remove the fan-out model at this index. */
-		onRemoveFanoutModel: (index: number) => void;
+		/** Multi-model compare "cart" (model id → count), owned by the model
+		 *  picker's compare mode. When non-empty, the next send fans the prompt
+		 *  out to these instead of a single send. */
+		compareSelections: CompareSelection[];
+		/** Whether the picker is in compare mode. */
+		compareMode: boolean;
 		onSend: () => void;
 		onStop: () => void;
 		onFeaturesChange: (next: FeatureCategory[]) => void;
@@ -67,9 +66,8 @@
 		generating,
 		canStop,
 		enterBehavior,
-		fanoutModels,
-		onAddFanoutModel,
-		onRemoveFanoutModel,
+		compareSelections = $bindable(),
+		compareMode = $bindable(),
 		onSend,
 		onStop,
 		onFeaturesChange,
@@ -97,11 +95,10 @@
 		),
 	);
 
-	// Fan-out (multi-model compare) is text-only in this cut — image/video
-	// fan-out is a later phase. The "+ Compare" affordance only shows for
-	// chat models, and an in-progress comparison can't be extended.
-	const canFanout = $derived(modelKind === 'chat');
-	const fanoutActive = $derived(fanoutModels.length > 0);
+	// Total models in the comparison cart (sum of per-model counts). When > 0
+	// the next send fans out instead of single-sending.
+	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
+	const fanoutActive = $derived(compareMode && compareTotal > 0);
 </script>
 
 <div class="relative mx-auto max-w-3xl">
@@ -110,27 +107,6 @@
 			class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
 		>
 			{errorMsg}
-		</div>
-	{/if}
-	{#if fanoutActive}
-		<div class="mb-2 flex flex-wrap items-center gap-1.5">
-			<span class="text-[11px] font-medium uppercase tracking-wide text-fg-muted">Compare</span>
-			{#each fanoutModels as fm, i (i)}
-				<span
-					class="inline-flex items-center gap-1 rounded-full border border-border bg-surface-raised px-2 py-0.5 text-xs text-fg-secondary"
-				>
-					<span class="max-w-[12rem] truncate" title={fm.displayName}>{fm.displayName}</span>
-					<button
-						type="button"
-						onclick={() => onRemoveFanoutModel(i)}
-						disabled={generating}
-						aria-label="Remove {fm.displayName} from comparison"
-						class="-mr-0.5 flex h-4 w-4 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-sunken hover:text-fg disabled:opacity-40"
-					>
-						<X size={11} strokeWidth={2.5} />
-					</button>
-				</span>
-			{/each}
 		</div>
 	{/if}
 	<ComposerCore
@@ -155,7 +131,8 @@
 				Per-turn model picker: defaulted to the conversation's current
 				model so the no-change case is invisible. Custom presets are
 				intentionally NOT shown here — they bundle persona, and
-				switching persona mid-thread is a different feature.
+				switching persona mid-thread is a different feature. `allowCompare`
+				adds the in-picker "Multiple" mode that drives the fan-out cart.
 			-->
 			<ModelPicker
 				{models}
@@ -165,25 +142,10 @@
 				inline
 				{favoritedIds}
 				{onToggleFavorite}
+				allowCompare
+				bind:compareSelections
+				bind:compareMode
 			/>
-			{#if canFanout}
-				<!--
-					Add the currently-picked model to the comparison set. Click
-					it once per model you want to compare (pick A → +, pick B →
-					+, …); the next send fans the prompt out to all of them.
-				-->
-				<button
-					type="button"
-					onclick={onAddFanoutModel}
-					disabled={generating}
-					aria-label="Add this model to the comparison"
-					title="Compare: send this prompt to multiple models at once"
-					class="flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50"
-				>
-					<Columns3 size={14} />
-					<span class="hidden sm:inline">Compare</span>
-				</button>
-			{/if}
 			{#if canStop}
 				<button
 					type="button"
@@ -198,11 +160,11 @@
 				<button
 					type="submit"
 					disabled={!canSend}
-					aria-label={fanoutActive ? `Send to ${fanoutModels.length} models` : 'Send message'}
+					aria-label={fanoutActive ? `Send to ${compareTotal} models` : 'Send message'}
 					title={!hasValidModel
 						? 'Pick a model to send'
 						: fanoutActive
-							? `Send to ${fanoutModels.length} models`
+							? `Send to ${compareTotal} models`
 							: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
