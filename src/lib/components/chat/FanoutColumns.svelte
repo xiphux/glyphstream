@@ -60,6 +60,25 @@
 	// Image fan-out is keep-many (regenerate/discard, no single pick).
 	const isMedia = $derived(!onPick && (!!onDiscard || !!onRegenerate));
 	const countNoun = $derived(isMedia ? 'variations' : 'models');
+
+	// Layout differs by mode. Text reads best side-by-side (compare responses
+	// left-to-right), so it scrolls horizontally. Images are bounded by the
+	// conversation width, where a horizontal strip only shows a couple at once
+	// — so they flow into a vertical grid (1-up on mobile, 2-up from sm) that
+	// the user scrolls naturally with the rest of the thread.
+	const containerClass = $derived(
+		isMedia ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : 'flex gap-3 overflow-x-auto pb-2',
+	);
+	const articleClass = $derived(
+		isMedia
+			? 'flex w-full flex-col rounded-2xl border border-border bg-surface-raised'
+			: 'flex min-w-[16rem] max-w-[22rem] flex-1 flex-col rounded-2xl border border-border bg-surface-raised',
+	);
+	// Text columns are equal-height (flex row) and scroll internally; image
+	// cells size to their picture and grow the page instead.
+	const bodyClass = $derived(
+		isMedia ? 'px-3 py-2 text-sm' : 'min-h-[3rem] flex-1 overflow-y-auto px-3 py-2 text-sm',
+	);
 	// How many columns hold a real (persisted) result — the last one can't be
 	// discarded (deleteBranch needs a sibling to fall back to). Errored columns
 	// have no persisted row, so discarding them is a client-only cleanup.
@@ -74,12 +93,10 @@
 		Comparing {columns.length}
 		{countNoun}
 	</div>
-	<div class="flex gap-3 overflow-x-auto pb-2">
+	<div class={containerClass}>
 		{#each columns as c (c.branchId)}
 			{@const blocks = blocksFor(c)}
-			<article
-				class="flex min-w-[16rem] max-w-[22rem] flex-1 flex-col rounded-2xl border border-border bg-surface-raised"
-			>
+			<article class={articleClass}>
 				<header
 					class="flex items-center gap-2 border-b border-border px-3 py-2 text-[11px] font-medium tracking-wide"
 				>
@@ -104,7 +121,7 @@
 					{/if}
 				</header>
 
-				<div class="min-h-[3rem] flex-1 overflow-y-auto px-3 py-2 text-sm">
+				<div class={bodyClass}>
 					{#if blocks.length > 0}
 						<RenderBlocks {blocks} {onImageClick} />
 					{:else if c.status === 'error'}

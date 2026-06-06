@@ -166,4 +166,29 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		const discard = screen.getByRole('button', { name: /discard this response/i });
 		expect((discard as HTMLButtonElement).disabled).toBe(true);
 	});
+
+	it('lays images out as a vertical grid, text as a horizontal strip', () => {
+		const { container: mediaC } = render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('b0'), mediaCol('b1')],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		// Image fan-out wraps into a grid the user scrolls vertically…
+		expect(mediaC.querySelector('.grid')).not.toBeNull();
+		expect(mediaC.querySelector('.overflow-x-auto')).toBeNull();
+
+		const { container: textC } = render(FanoutColumns, {
+			props: {
+				columns: [col({ branchId: 't0', status: 'done', persisted: persisted('t0', 'A') })],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		// …text stays a horizontal compare strip.
+		expect(textC.querySelector('.overflow-x-auto')).not.toBeNull();
+		expect(textC.querySelector('.grid')).toBeNull();
+	});
 });
