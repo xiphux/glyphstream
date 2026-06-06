@@ -42,6 +42,11 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import { _resetForTests, register } from '$lib/server/tools/registry';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
+import {
+	acquireEndpointSlot,
+	getEndpointQueueDepth,
+	resetEndpointGatesForTests,
+} from '$lib/server/endpoints/concurrency';
 import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage } from '$lib/types/api';
@@ -56,6 +61,7 @@ beforeEach(() => {
 afterEach(() => {
 	closeTestDb();
 	_resetForTests();
+	resetEndpointGatesForTests();
 });
 
 const endpoint: LoadedEndpoint = {
@@ -67,6 +73,7 @@ const endpoint: LoadedEndpoint = {
 	providerQuirk: 'passthrough',
 	groupBy: 'endpoint',
 	supportsTools: true,
+	maxConcurrent: Infinity,
 };
 
 /** Build a Response whose body is the given SSE lines, terminated by [DONE]. */
@@ -577,5 +584,95 @@ describe('multi-iteration tool loop with needsApproval', () => {
 		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant']);
 		expect(branch[1].id).toBe(a1.id);
 		expect(branch[2].id).toBe(t1.id);
+	});
+});
+
+describe('per-endpoint concurrency gate', () => {
+	it('emits `queued` and holds the turn until a slot frees', async () => {
+		mocks.upstreamResponses = [() => sseResponse([textChunk('hello'), finishChunk('stop')])];
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		const gated: LoadedEndpoint = { ...endpoint, id: 'gated', maxConcurrent: 1 };
+
+		// Occupy the endpoint's only slot so the relay must wait in line.
+		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+
+		let completed = false;
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint: gated,
+			providerQuirk: 'passthrough',
+			requestBody: { model: 'bridge::test', messages: [] },
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			onComplete: () => {
+				completed = true;
+			},
+		});
+
+		// Drain in the background — it can't finish while the slot is held.
+		const drained = drainEvents(stream);
+		await new Promise((r) => setTimeout(r, 10));
+
+		// The relay is parked in the queue: no upstream call, not complete.
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+		expect(mocks.upstreamCalls).toHaveLength(0);
+		expect(completed).toBe(false);
+
+		// Free the slot → the relay proceeds and runs the turn.
+		held.release();
+		const events = await drained;
+		const types = events.map((e) => (e as { type: string }).type);
+
+		// `queued` is the very first frame, ahead of `start`.
+		expect(types[0]).toBe('queued');
+		expect(types[1]).toBe('start');
+		expect(types).toContain('done');
+		expect(mocks.upstreamCalls).toHaveLength(1);
+		expect(completed).toBe(true);
+		// Slot released back to the gate once the turn settled.
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('drops a queued turn out of line when the user stops it', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		const gated: LoadedEndpoint = { ...endpoint, id: 'gated', maxConcurrent: 1 };
+		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+		const abort = new AbortController();
+
+		let completed = false;
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint: gated,
+			providerQuirk: 'passthrough',
+			requestBody: { model: 'bridge::test', messages: [] },
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			abortSignal: abort.signal,
+			onComplete: () => {
+				completed = true;
+			},
+		});
+
+		const drained = drainEvents(stream);
+		await new Promise((r) => setTimeout(r, 10));
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+
+		// Stop while queued: the relay abandons its place in line, never calls
+		// upstream, and closes without persisting an assistant row.
+		abort.abort();
+		const events = await drained;
+		expect(mocks.upstreamCalls).toHaveLength(0);
+		expect(completed).toBe(true);
+		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user']);
+		// The aborted waiter left the queue without taking the held slot.
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
+
+		held.release();
 	});
 });

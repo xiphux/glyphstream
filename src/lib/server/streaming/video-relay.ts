@@ -25,6 +25,7 @@ import {
 	type VideoJob,
 } from '../endpoints/client';
 import { setVideoJobId } from './in-flight';
+import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import { errorMessage, isAbortError, sseWriter } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
 import type { LoadedEndpoint } from '../endpoints/config';
@@ -92,8 +93,30 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 	return new ReadableStream({
 		async start(controller) {
 			const { write: safeWrite, close: safeClose } = sseWriter(controller);
+			let slot: EndpointSlot | null = null;
 
 			try {
+				// Hold a per-endpoint concurrency slot across the whole poll loop
+				// — a single-slot bridge runs one ComfyUI workflow at a time, so
+				// two video variations serialize. Emits `queued` if at capacity;
+				// resolves once a slot frees. Released in the finally.
+				try {
+					slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
+						signal: params.abortSignal,
+						onQueued: ({ position, ahead }) => safeWrite({ type: 'queued', position, ahead }),
+					});
+				} catch (e) {
+					// Stop clicked while queued — nothing started. Match the
+					// mid-create cancellation path (surface as a cancellation,
+					// not an error). No slot held, so the finally's release no-ops.
+					safeWrite({
+						type: 'error',
+						message: isAbortError(e) || params.abortSignal?.aborted ? 'Cancelled' : errorMessage(e),
+					} satisfies StreamErrorEvent);
+					safeClose();
+					return;
+				}
+
 				const startEv: StreamStartEvent = {
 					type: 'start',
 					userMessage: params.userMessage,
@@ -268,12 +291,13 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 
 				safeClose();
 			} finally {
-				// Release the in-flight slot once the relay's work is over,
-				// independent of whether the client SSE connection is still
-				// alive. iOS suspension cancels the response stream long
-				// before videoStatus polling finishes; clearing on response
-				// cancel (as the old wrapStreamCleanup did) would lose the
-				// recovery indicator the chat page hydrates from this slot.
+				// Free the per-endpoint concurrency slot, then release the
+				// in-flight slot — both independent of whether the client SSE
+				// connection is still alive. iOS suspension cancels the response
+				// stream long before videoStatus polling finishes; clearing on
+				// response cancel (as the old wrapStreamCleanup did) would lose
+				// the recovery indicator the chat page hydrates from this slot.
+				slot?.release();
 				params.onComplete();
 			}
 		},

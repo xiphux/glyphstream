@@ -92,6 +92,16 @@
 # self-report.
 # supports_tools = true
 
+# Optional: cap how many generations run against this endpoint at once.
+# Extra requests queue (FIFO) and stream a "queued" state to the client
+# until a slot frees. The slot is held for the WHOLE generation, so this
+# is the knob for a single-GPU local backend (llama-server, ComfyUI
+# bridge) that can only hold one model in VRAM — set it to 1 so multiple
+# chats (or a multi-model fan-out) serialize instead of thrashing VRAM.
+# Omit for unlimited (the default) — right for hosted providers that
+# handle their own concurrency.
+# max_concurrent = 1
+
 # Optional: web search via SearxNG. Backs the `web_search` tool, which
 # the assistant calls on its own when a query needs current information.
 # When this block is absent, `web_search` is hidden from the model

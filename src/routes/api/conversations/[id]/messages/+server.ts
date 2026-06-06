@@ -26,6 +26,7 @@ import {
 	type ImageEditInputFile,
 } from '$lib/server/endpoints/client';
 import { getEndpoint } from '$lib/server/endpoints/registry';
+import { acquireEndpointSlot, type EndpointSlot } from '$lib/server/endpoints/concurrency';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
@@ -272,7 +273,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// returns (typically multiple seconds), the title is usually ready.
 		const titlePromise = startTitleTaskIfFirstExchange(params.id);
 
+		let slot: EndpointSlot | null = null;
 		try {
+			// Hold a per-endpoint concurrency slot for the whole synchronous
+			// generation so a single-GPU backend serializes instead of
+			// thrashing VRAM. No SSE channel on the image path, so a full
+			// endpoint just blocks here (no `queued` event) until a slot
+			// frees; a Stop while waiting aborts the wait (handled by the
+			// catch below). Released in the finally.
+			slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
+				signal: inFlight.controller.signal,
+			});
+
 			// I2I: route to /v1/images/edits when any image is attached;
 			// otherwise t2i via /v1/images/generations. Multiple attachments
 			// go through as repeated `image` fields — the bridge's ComfyUI
@@ -369,6 +381,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			}
 			throw e;
 		} finally {
+			slot?.release();
 			clearInFlight(params.id, inFlight);
 		}
 	}

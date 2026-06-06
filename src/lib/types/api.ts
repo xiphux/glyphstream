@@ -620,6 +620,21 @@ export interface StreamErrorEvent {
 	message: string;
 }
 
+/**
+ * Sent before any generation events when the request had to wait for a
+ * per-endpoint concurrency slot (the endpoint's `max_concurrent` was full).
+ * The in-flight bubble shows a "Queued…" state until the first real event
+ * (`start` / `text` / `progress`) arrives once the slot is granted. May be
+ * emitted once; absent entirely when the slot was free immediately.
+ */
+export interface StreamQueuedEvent {
+	type: 'queued';
+	/** 1-indexed place in the endpoint's wait line at enqueue time. */
+	position: number;
+	/** How many other queued generations are ahead of this one. */
+	ahead: number;
+}
+
 // --- tool-call streaming events -----------------------------------------
 //
 // Server emits these inline between text/reasoning events as the upstream
@@ -684,6 +699,7 @@ export type StreamEvent =
 	| StreamTitleEvent
 	| StreamDoneEvent
 	| StreamErrorEvent
+	| StreamQueuedEvent
 	| StreamToolCallStartEvent
 	| StreamToolCallArgsDeltaEvent
 	| StreamToolCallExecutingEvent

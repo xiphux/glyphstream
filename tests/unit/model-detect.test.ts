@@ -14,6 +14,7 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		providerQuirk: 'passthrough',
 		groupBy: 'endpoint',
 		supportsTools: false,
+		maxConcurrent: Infinity,
 		...overrides,
 	};
 }

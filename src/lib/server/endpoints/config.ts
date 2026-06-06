@@ -39,6 +39,7 @@ interface RawEndpoint {
 	provider_quirk?: unknown;
 	group_by?: unknown;
 	supports_tools?: unknown;
+	max_concurrent?: unknown;
 }
 
 /** After validation + env-var resolution. */
@@ -60,6 +61,15 @@ export interface LoadedEndpoint {
 	 * (`ModelEntry.supportsTools` resolves both layers).
 	 */
 	supportsTools: boolean;
+	/**
+	 * Max generations allowed to run against this endpoint at once. Extra
+	 * requests queue (FIFO) until a slot frees — the slot is held for the
+	 * whole generation, so a single-GPU local backend (llama-server,
+	 * ComfyUI bridge) that can only hold one model in VRAM serializes
+	 * instead of thrashing. `Infinity` (the default when `max_concurrent`
+	 * is absent) means no gating — identical to pre-feature behavior.
+	 */
+	maxConcurrent: number;
 }
 
 export class ConfigError extends Error {}
@@ -314,6 +324,14 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 			? false
 			: requireBoolean(raw.supports_tools, 'supports_tools', at);
 
+	let maxConcurrent = Infinity;
+	if (raw.max_concurrent !== undefined) {
+		maxConcurrent = requireNumber(raw.max_concurrent, 'max_concurrent', at, { min: 1, max: 1024 });
+		if (!Number.isInteger(maxConcurrent)) {
+			throw new ConfigError(`${at}: 'max_concurrent' must be a whole number`);
+		}
+	}
+
 	return {
 		id,
 		displayName,
@@ -323,6 +341,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		providerQuirk,
 		groupBy,
 		supportsTools,
+		maxConcurrent,
 	};
 }
 

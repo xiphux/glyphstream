@@ -20,6 +20,10 @@
 		label: string;
 		status: string | null;
 		progress: number | null;
+		/** Non-null while waiting for a per-endpoint concurrency slot. Shows a
+		 *  "Queued…" placeholder instead of the generating verb until the slot
+		 *  is granted. `ahead` is how many generations are in line first. */
+		queued?: { ahead: number } | null;
 		elapsedSeconds: number;
 		onImageClick: (mediaId: string) => void;
 		openingLightboxFor?: string | null;
@@ -41,6 +45,7 @@
 		label,
 		status,
 		progress,
+		queued = null,
 		elapsedSeconds,
 		onImageClick,
 		openingLightboxFor = null,
@@ -74,13 +79,21 @@
 		     progress/elapsed indicators. Once any text or tool_call
 		     segment lands, RenderBlocks takes over. -->
 		<div class="mt-1 flex items-center gap-2 text-fg-muted">
-			<span>{label}</span>
+			<span>{queued ? 'Queued' : label}</span>
 			<span class="inline-flex gap-1">
 				<span class="animate-pulse">·</span>
 				<span class="animate-pulse [animation-delay:120ms]">·</span>
 				<span class="animate-pulse [animation-delay:240ms]">·</span>
 			</span>
-			{#if status && status !== 'in_progress'}
+			{#if queued}
+				{#if queued.ahead > 0}
+					<span
+						class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
+					>
+						{queued.ahead} ahead
+					</span>
+				{/if}
+			{:else if status && status !== 'in_progress'}
 				<span
 					class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
 				>

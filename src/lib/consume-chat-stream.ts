@@ -44,6 +44,10 @@ export interface ConsumeChatStreamCallbacks {
 		category: string | undefined,
 	): void;
 	onProgress?(percent: number | null, status: string | null): void;
+	/** The request is waiting for a per-endpoint concurrency slot. Fires at
+	 *  most once, before any generation events; the next real event signals
+	 *  the slot was granted. `ahead` is how many generations are in line first. */
+	onQueued?(position: number, ahead: number): void;
 	onTitle?(title: string): void;
 	/** Fires on the canonical `done` frame. `sawToolCalls` is true when the
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
@@ -111,6 +115,9 @@ export async function consumeChatStream(
 				break;
 			case 'progress':
 				cb.onProgress?.(event.percent, event.status ?? null);
+				break;
+			case 'queued':
+				cb.onQueued?.(event.position, event.ahead);
 				break;
 			case 'title':
 				cb.onTitle?.(event.title);

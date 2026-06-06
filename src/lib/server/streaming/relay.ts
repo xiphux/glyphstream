@@ -33,6 +33,7 @@ import type {
 	StreamToolCallStartEvent,
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
+import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
@@ -173,9 +174,28 @@ export async function startStreamingRelay(
 	return new ReadableStream({
 		async start(controller) {
 			const { write, close } = sseWriter(controller);
+			let slot: EndpointSlot | null = null;
 			try {
+				// Hold a per-endpoint concurrency slot for the WHOLE turn (all
+				// iterations + tool execution + persistence), so a single-GPU
+				// backend serializes instead of thrashing VRAM. Emits `queued`
+				// when the endpoint is at capacity; the await resolves once a
+				// slot frees. Released in the finally alongside onComplete.
+				slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
+					signal: params.abortSignal,
+					onQueued: ({ position, ahead }) => write({ type: 'queued', position, ahead }),
+				});
 				await runChatTurn(params, write);
+			} catch (err) {
+				// runChatTurn handles its own upstream errors internally; the
+				// only thing that throws out here is the slot acquisition being
+				// aborted (user clicked Stop while queued). Nothing ran, so no
+				// assistant row — close quietly on abort, surface anything else.
+				if (!isAbortError(err)) {
+					write({ type: 'error', message: errorMessage(err) });
+				}
 			} finally {
+				slot?.release();
 				params.onComplete();
 				close();
 			}

@@ -660,9 +660,15 @@
 	let inFlightOpen = $state(false);
 	let inFlightProgress = $state<number | null>(null);
 	let inFlightStatus = $state<string | null>(null);
+	// Set when the server emits a `queued` event (the endpoint's
+	// max_concurrent was full); cleared by resetInFlightSegments at turn
+	// boundaries and by the first real generation event below. Drives the
+	// "Queued…" placeholder in the in-flight bubble.
+	let inFlightQueued = $state<{ ahead: number } | null>(null);
 
 	function resetInFlightSegments() {
 		inFlightSegments = [];
+		inFlightQueued = null;
 	}
 	function appendInFlightText(chunk: string) {
 		inFlightSegments = inFlightAppendText(inFlightSegments, chunk);
@@ -910,7 +916,13 @@
 			// touching shared render state; it belongs to a different
 			// conversation now.
 			shouldContinue: () => convId === ctx.turnConvId,
+			onQueued(_position, ahead) {
+				// Waiting on a per-endpoint concurrency slot. Show "Queued…"
+				// until the slot is granted and the first real event lands.
+				inFlightQueued = { ahead };
+			},
 			async onStart(userMessage) {
+				inFlightQueued = null;
 				// Send / edit: replace the optimistic placeholder with
 				// the canonical persisted user message. Retry +
 				// resume: no optimistic id (resume's start event
@@ -925,14 +937,17 @@
 				}
 			},
 			onText(chunk) {
+				inFlightQueued = null;
 				appendInFlightText(chunk);
 				if (isNearBottom) scrollToBottom();
 			},
 			onReasoning(chunk) {
+				inFlightQueued = null;
 				appendInFlightReasoning(chunk);
 				if (isNearBottom) scrollToBottom();
 			},
 			onToolCallStart(toolCallId, toolName) {
+				inFlightQueued = null;
 				pushInFlightToolCall(toolCallId, toolName);
 				if (isNearBottom) scrollToBottom();
 			},
@@ -952,6 +967,7 @@
 				if (isNearBottom) scrollToBottom();
 			},
 			onProgress(percent, status) {
+				inFlightQueued = null;
 				inFlightProgress = percent;
 				inFlightStatus = status;
 			},
@@ -1711,6 +1727,7 @@
 						label={inFlightLabel}
 						status={inFlightStatus}
 						progress={inFlightProgress}
+						queued={inFlightQueued}
 						{elapsedSeconds}
 						onImageClick={openImageInLightbox}
 						{openingLightboxFor}
