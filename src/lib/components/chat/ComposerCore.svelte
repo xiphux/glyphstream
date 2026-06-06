@@ -36,8 +36,9 @@
 		/** Trailing action-row controls: feature toggles, model picker,
 		 *  send/stop. Rendered after the attach button. */
 		controls: Snippet;
-		/** Optional right-aligned bar rendered under the attachment thumbnails
-		 *  (e.g. the split-attachments toggle). The consumer decides when. */
+		/** Optional control rendered at the top-right of the attachment thumbnail
+		 *  row (e.g. the split-attachments toggle), via AttachmentThumbnails'
+		 *  `trailing` slot. The consumer decides when. */
 		attachmentBar?: Snippet;
 	}
 

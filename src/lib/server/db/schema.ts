@@ -192,9 +192,14 @@ export const conversations = sqliteTable(
 		// the leaf is pinned at this user message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
 		// .../messages/prepare; cleared by selectBranch (pick / dismiss /
-		// continue). Lets the page rehydrate the compare grid after a reload
-		// without guessing from sibling counts — a parked fan-out is explicit,
-		// so a retry or truncate parked on a user message can't masquerade as one.
+		// continue), truncateAtMessage, leaf-advancing appendMessage, and
+		// deleteBranch when the anchor is deleted. Lets the page rehydrate the
+		// compare grid after a reload without guessing from sibling counts.
+		// NOTE: this column was added via ALTER TABLE (migration 0019), which
+		// drizzle-kit can't emit an ON DELETE clause on — so the live FK is NO
+		// ACTION, not the `set null` declared here. The app therefore clears
+		// this reference explicitly in the query paths above rather than relying
+		// on the FK; do not assume the DB will null it for you.
 		fanoutParentMessageId: text('fanout_parent_message_id').references((): any => messages.id, {
 			onDelete: 'set null',
 		}),
@@ -338,8 +343,12 @@ export const media = sqliteTable(
 		// Drives the multi-model "split attachments" grid (each result labelled
 		// by its source thumbnail) and survives a reload, so a recovered split
 		// fan-out keeps its input pairing + can regenerate the right input.
-		// Null for text-to-image / uploads / legacy rows. `set null` on delete
-		// so purging the source doesn't orphan a foreign key.
+		// Null for text-to-image / uploads / legacy rows. Added via ALTER TABLE
+		// (migration 0020), so the live FK is NO ACTION, not the `set null`
+		// declared here (drizzle-kit can't emit ON DELETE on ADD COLUMN). In
+		// practice this never bites: media rows are only ever soft-deleted (the
+		// purger clears bytes + sets hard_deleted_at, never DELETEs the row), so
+		// the source row a generated asset points at always survives.
 		sourceMediaId: text('source_media_id').references((): any => media.id, {
 			onDelete: 'set null',
 		}),

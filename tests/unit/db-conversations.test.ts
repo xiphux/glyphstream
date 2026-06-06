@@ -1798,6 +1798,26 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getFanoutParent(conv.id)).toBe(user.id);
 	});
 
+	it('deleteBranch clears the marker (no FK error) when the parked anchor is deleted', () => {
+		const { u, conv, user } = seedFanout();
+		// Give the parked user message a sibling (e.g. an earlier edit) so
+		// deleteBranch has a replacement and actually removes `user` + its
+		// fan-out subtree.
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'other' }],
+			advanceActiveLeaf: false,
+		});
+		setFanoutParent(conv.id, user.id);
+		// Deleting the parked anchor must null the marker rather than FK-error on
+		// it (the live FK is NO ACTION — the app clears the reference itself).
+		const res = deleteBranch(conv.id, user.id, u.id);
+		expect(res && 'deletedIds' in res).toBe(true);
+		expect(getFanoutParent(conv.id)).toBeNull();
+	});
+
 	it('deleteBranch still moves the leaf when you delete the branch you are on', () => {
 		// Regression guard for the sibling-nav case (leaf inside the deleted
 		// subtree) — must keep advancing to a replacement sibling.

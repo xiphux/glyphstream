@@ -1626,12 +1626,13 @@
 	}
 
 	/**
-	 * Fan one prompt out to N models. Creates the shared user message once
-	 * (POST /prepare), then streams a sibling assistant response per model into
-	 * its own column. The active leaf stays pinned at the user message
-	 * (server-side, advanceActiveLeaf:false) so every branch serializes the
-	 * identical history and the unpicked siblings remain reachable; picking a
-	 * column promotes it to the active thread.
+	 * Fan one prompt out to N branches — the cross product of the picked models
+	 * and the split input images (so a branch is a model + optional input image).
+	 * Creates the shared user message once (POST /prepare), then streams a
+	 * sibling assistant response per branch into its own column. The active leaf
+	 * stays pinned at the user message (server-side, advanceActiveLeaf:false) so
+	 * every branch serializes the identical history and the unpicked siblings
+	 * remain reachable; picking a column promotes it to the active thread.
 	 */
 	async function sendFanout(
 		text: string,
@@ -1716,6 +1717,10 @@
 		//      lets a reload (even down to one kept variation) rehydrate it.
 		//    - chat with one survivor → promote it (nothing to compare); 2+ →
 		//      keep the grid for the pick.
+		// If a suspend/disconnect handed this fan-out off to recovery mid-flight
+		// (fanoutLive cleared), the recovery flow owns resolution now — don't let
+		// the live path auto-promote a survivor from a grid it no longer drives.
+		if (!fanoutLive) return;
 		if (fanoutColumns.some((c) => c.status === 'cancelled')) return;
 		const survivors = fanoutColumns.filter((c) => c.persisted);
 		if (survivors.length === 0) {

@@ -572,17 +572,29 @@ export function deleteBranch(
 		// dud — leave it put so the parked grid stays intact.
 		const replacement = siblings[0];
 		const fallbackCursor = deepestDescendant(replacement.id, childrenByParent);
-		const currentLeaf = tx
-			.select({ leaf: conversations.activeLeafMessageId })
+		const convRow = tx
+			.select({
+				leaf: conversations.activeLeafMessageId,
+				fanoutParent: conversations.fanoutParentMessageId,
+			})
 			.from(conversations)
 			.where(eq(conversations.id, conversationId))
-			.get()?.leaf;
+			.get();
+		const currentLeaf = convRow?.leaf;
 		const leafInDeleted = currentLeaf != null && toDelete.has(currentLeaf);
 		const cursor = leafInDeleted ? fallbackCursor : (currentLeaf ?? fallbackCursor);
+		// Clear the parked fan-out marker if its anchor user message is itself in
+		// the delete set — otherwise the conversation UPDATE below (and the row
+		// delete) would dangle / FK-error on it. The DB-level FK is NO ACTION
+		// (drizzle-kit can't emit ON DELETE via ALTER TABLE ADD COLUMN), so the
+		// app must null the reference explicitly, like selectBranch/truncate do.
+		const clearFanoutMarker = convRow?.fanoutParent != null && toDelete.has(convRow.fanoutParent);
 
 		// Order matters:
-		//   1. active_leaf reassign (so the FK's ON DELETE SET NULL
-		//      doesn't orphan the conversation when its leaf gets dropped)
+		//   1. active_leaf reassign — move the leaf off any row in the delete
+		//      set first. The active_leaf FK is NO ACTION at the DB level (see
+		//      schema.ts), so a leaf still pointing at a to-be-deleted row would
+		//      FK-error on the delete; the app moves it explicitly.
 		//   2. orphan-media hard-delete (must run BEFORE decrement; it
 		//      compares each media's ref_count to its local link count
 		//      inside the deletion set, and that comparison is only
@@ -600,7 +612,11 @@ export function deleteBranch(
 		// than its local-to-this-deletion count.
 		const now = Date.now();
 		tx.update(conversations)
-			.set({ activeLeafMessageId: cursor, updatedAt: now })
+			.set({
+				activeLeafMessageId: cursor,
+				updatedAt: now,
+				...(clearFanoutMarker ? { fanoutParentMessageId: null } : {}),
+			})
 			.where(eq(conversations.id, conversationId))
 			.run();
 
