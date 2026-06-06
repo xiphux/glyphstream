@@ -916,7 +916,7 @@
 			// touching shared render state; it belongs to a different
 			// conversation now.
 			shouldContinue: () => convId === ctx.turnConvId,
-			onQueued(_position, ahead) {
+			onQueued(ahead) {
 				// Waiting on a per-endpoint concurrency slot. Show "Queued…"
 				// until the slot is granted and the first real event lands.
 				inFlightQueued = { ahead };

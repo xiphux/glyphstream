@@ -183,7 +183,7 @@ export async function startStreamingRelay(
 				// slot frees. Released in the finally alongside onComplete.
 				slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
 					signal: params.abortSignal,
-					onQueued: ({ position, ahead }) => write({ type: 'queued', position, ahead }),
+					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 				});
 				await runChatTurn(params, write);
 			} catch (err) {

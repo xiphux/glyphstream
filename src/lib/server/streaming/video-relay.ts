@@ -103,7 +103,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				try {
 					slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
 						signal: params.abortSignal,
-						onQueued: ({ position, ahead }) => safeWrite({ type: 'queued', position, ahead }),
+						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
 					});
 				} catch (e) {
 					// Stop clicked while queued — nothing started. Match the

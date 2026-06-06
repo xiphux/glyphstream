@@ -51,8 +51,9 @@ function getGate(endpointId: string, max: number): Gate {
 }
 
 export interface EndpointSlot {
-	/** Free this slot and pump the next queued waiter. Idempotent — both a
-	 *  try/finally and a relay onComplete can fire it; only the first counts. */
+	/** Free this slot and pump the next queued waiter. Idempotent: a caller
+	 *  that releases the same slot from more than one cleanup path (e.g. both
+	 *  explicitly and from a finally) frees it exactly once. */
 	release(): void;
 }
 
@@ -62,9 +63,9 @@ export interface AcquireOptions {
 	 *  granted is unaffected — its own release frees the slot. */
 	signal?: AbortSignal;
 	/** Fires synchronously iff the request had to queue (capacity was full),
-	 *  with its place in line. Used to emit the `queued` SSE event before the
-	 *  await. Not called on the immediate-grant fast path. */
-	onQueued?: (info: { position: number; ahead: number }) => void;
+	 *  with how many generations are ahead of it. Used to emit the `queued`
+	 *  SSE event before the await. Not called on the immediate-grant fast path. */
+	onQueued?: (info: { ahead: number }) => void;
 }
 
 function makeSlot(gate: Gate): EndpointSlot {
@@ -98,6 +99,15 @@ function abortError(): Error {
  * Acquire a slot on `endpointId`, capped at `max` concurrent. Resolves
  * immediately when under capacity, otherwise queues FIFO and resolves once a
  * slot frees. Pass `endpoint.maxConcurrent` for `max`.
+ *
+ * If `opts.signal` aborts before the slot is granted, the returned promise
+ * rejects with an `AbortError` and the request leaves the queue without ever
+ * taking a slot. Each integration point folds that rejection into whatever
+ * cancellation it already does — deliberately not unified, because each
+ * medium cancels differently and should stay consistent with its own
+ * non-gate Stop path: the chat relay closes the SSE silently, the video
+ * relay emits a `Cancelled` error event, and the sync image path throws
+ * HTTP 499. A new caller should pick the matching option for its medium.
  */
 export function acquireEndpointSlot(
 	endpointId: string,
@@ -115,9 +125,9 @@ export function acquireEndpointSlot(
 		return Promise.resolve(makeSlot(gate));
 	}
 
-	// Slow path: enqueue. Report the queue position before pushing.
+	// Slow path: enqueue. Report how many are already waiting before pushing.
 	const ahead = gate.waiters.length;
-	onQueued?.({ position: ahead + 1, ahead });
+	onQueued?.({ ahead });
 
 	return new Promise<EndpointSlot>((resolve, reject) => {
 		const waiter: Waiter = {

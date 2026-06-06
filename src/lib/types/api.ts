@@ -629,8 +629,6 @@ export interface StreamErrorEvent {
  */
 export interface StreamQueuedEvent {
 	type: 'queued';
-	/** 1-indexed place in the endpoint's wait line at enqueue time. */
-	position: number;
 	/** How many other queued generations are ahead of this one. */
 	ahead: number;
 }

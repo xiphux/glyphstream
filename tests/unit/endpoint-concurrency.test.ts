@@ -29,7 +29,7 @@ describe('acquireEndpointSlot', () => {
 		expect(getEndpointQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 	});
 
-	it('queues once at capacity and fires onQueued with position', async () => {
+	it('queues once at capacity and fires onQueued with the count ahead', async () => {
 		const a = await acquireEndpointSlot('ep', 1);
 		const onQueued = vi.fn();
 		let granted = false;
@@ -40,7 +40,7 @@ describe('acquireEndpointSlot', () => {
 
 		await flush();
 		expect(granted).toBe(false);
-		expect(onQueued).toHaveBeenCalledWith({ position: 1, ahead: 0 });
+		expect(onQueued).toHaveBeenCalledWith({ ahead: 0 });
 		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 		a.release();
@@ -73,8 +73,8 @@ describe('acquireEndpointSlot', () => {
 
 		await flush();
 		// Second waiter sees one ahead of it.
-		expect(queued1).toHaveBeenCalledWith({ position: 1, ahead: 0 });
-		expect(queued2).toHaveBeenCalledWith({ position: 2, ahead: 1 });
+		expect(queued1).toHaveBeenCalledWith({ ahead: 0 });
+		expect(queued2).toHaveBeenCalledWith({ ahead: 1 });
 		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 2 });
 
 		a.release();
