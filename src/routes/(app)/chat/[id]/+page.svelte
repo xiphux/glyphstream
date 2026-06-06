@@ -1529,8 +1529,36 @@
 		busy = false;
 
 		// 3. Stream every branch concurrently.
-		await Promise.all(fanoutColumns.map((col) => runFanoutBranch(turnConvId, userMessage.id, col)));
-		if (convId === turnConvId) clearTitlePending(turnConvId);
+		try {
+			await Promise.all(
+				fanoutColumns.map((col) => runFanoutBranch(turnConvId, userMessage.id, col)),
+			);
+		} finally {
+			// Clear the first-exchange title spinner regardless of whether the
+			// user has since navigated away — the flag is module-level, so a
+			// Stop-then-navigate would otherwise leave it stuck on the sidebar.
+			if (isFirstExchange) clearTitlePending(turnConvId);
+		}
+		if (convId !== turnConvId) return;
+
+		// 4. Resolve degenerate outcomes so the conversation is never parked on
+		//    a user-message leaf with fewer than two responses — a state the
+		//    reload path can't surface as a comparison (the rehydration guard
+		//    needs >= 2 siblings to avoid false positives). If the user Stopped,
+		//    leave the settled columns as-is so they can pick/dismiss manually.
+		if (fanoutColumns.some((c) => c.status === 'cancelled')) return;
+		const survivors = fanoutColumns.filter((c) => c.persisted);
+		if (survivors.length >= 2) return; // genuine comparison — user picks
+		if (survivors.length === 1) {
+			// One model answered: promote it to the thread (no comparison to make).
+			await pickFanout(survivors[0]);
+		} else {
+			// Every branch failed: drop the columns and keep the prompt so the
+			// user can edit + resend (no assistant row was persisted on failure).
+			fanoutColumns = [];
+			errorMsg = 'No model responded. Edit your message and try again.';
+			await invalidateAll();
+		}
 	}
 
 	/** Drive one fan-out branch's SSE stream into its column's state. */
@@ -1599,12 +1627,17 @@
 		if (!col.persisted || fanoutPicking) return;
 		fanoutPicking = true;
 		const targetId = col.persisted.id;
+		// Clear optimistically (avoids a flash of columns + linear bubble during
+		// the invalidate), but keep a copy to restore if the select or refetch
+		// fails — otherwise a network error would wipe the compare view with no
+		// way back short of a full reload.
+		const savedColumns = fanoutColumns;
+		fanoutColumns = [];
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages/${targetId}/select`, {
 				method: 'POST',
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			fanoutColumns = [];
 			streamedMessageId = targetId;
 			await invalidateAll();
 			// Continue with the chosen model — the picker reflects it now and
@@ -1615,6 +1648,7 @@
 			modelId = col.modelId;
 			modelKind = col.modelKind;
 		} catch (e) {
+			fanoutColumns = savedColumns;
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
 			fanoutPicking = false;
@@ -1627,6 +1661,8 @@
 		if (fanoutPicking) return;
 		fanoutPicking = true;
 		const firstPersisted = fanoutColumns.find((c) => c.persisted);
+		// Clear optimistically but restore on failure (see pickFanout).
+		const savedColumns = fanoutColumns;
 		fanoutColumns = [];
 		try {
 			if (firstPersisted?.persisted) {
@@ -1636,6 +1672,7 @@
 			}
 			await invalidateAll();
 		} catch (e) {
+			fanoutColumns = savedColumns;
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {
 			fanoutPicking = false;

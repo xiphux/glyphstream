@@ -221,7 +221,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// modality the user prompt IS the topic, so the title task doesn't
 		// have to wait for the asset to land. By the time `imageGeneration`
 		// returns (typically multiple seconds), the title is usually ready.
-		const titlePromise = startTitleTaskIfFirstExchange(params.id);
+		// A fan-out branch suppresses it (like the chat/video relays) so N
+		// branches don't each fire one — /prepare runs it once for the turn.
+		const titlePromise = isFanout
+			? Promise.resolve<string | null>(null)
+			: startTitleTaskIfFirstExchange(params.id);
 
 		let slot: EndpointSlot | null = null;
 		try {

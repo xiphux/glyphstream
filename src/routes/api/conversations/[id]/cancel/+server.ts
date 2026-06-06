@@ -30,13 +30,19 @@ export const POST: RequestHandler = async ({ locals, params }) => {
 		return json({ cancelled: false });
 	}
 
-	for (const entry of entries) {
-		if (entry.videoJobId) {
-			// Best-effort bridge-side cancel; releases the bridge runner slot.
-			await videoCancel(entry.endpoint, entry.videoJobId);
-		}
-		entry.controller.abort();
-	}
+	// Cancel branches in parallel: videoCancel has a 10s timeout (and swallows
+	// its own errors), so a serial loop over a multi-branch video fan-out could
+	// stall Stop for N×10s against an unresponsive bridge. Promise.all bounds
+	// the whole endpoint to a single worst-case timeout regardless of N.
+	await Promise.all(
+		entries.map(async (entry) => {
+			if (entry.videoJobId) {
+				// Best-effort bridge-side cancel; releases the bridge runner slot.
+				await videoCancel(entry.endpoint, entry.videoJobId);
+			}
+			entry.controller.abort();
+		}),
+	);
 
 	return json({ cancelled: true });
 };
