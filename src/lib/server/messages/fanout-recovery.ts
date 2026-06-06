@@ -37,6 +37,11 @@ export interface FanoutRecoveryState {
 	 *  it in both. Self-corrects on the next tick; the client renders a
 	 *  short-lived extra "Generating…" placeholder, never a lost result. */
 	pending: number;
+	/** The model id of each still-generating branch (aligned with `pending`;
+	 *  empty string when an entry didn't record one). Lets the recovered grid
+	 *  label each "generating" placeholder with its model, like the live grid,
+	 *  instead of a bare "Generating…". */
+	pendingModelIds: string[];
 }
 
 export function getFanoutRecoveryState(
@@ -45,7 +50,7 @@ export function getFanoutRecoveryState(
 ): FanoutRecoveryState {
 	const parent = getFanoutParent(conversationId);
 	if (!parent || parent !== activeLeafMessageId) {
-		return { parentMessageId: null, kind: null, siblings: [], pending: 0 };
+		return { parentMessageId: null, kind: null, siblings: [], pending: 0, pendingModelIds: [] };
 	}
 	const entries = getInFlightEntries(conversationId);
 	return {
@@ -53,5 +58,6 @@ export function getFanoutRecoveryState(
 		kind: entries[0]?.modelKind ?? null,
 		siblings: getSiblingAssistants(conversationId, parent),
 		pending: entries.length,
+		pendingModelIds: entries.map((e) => e.modelId ?? ''),
 	};
 }

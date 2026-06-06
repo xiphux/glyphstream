@@ -43,6 +43,10 @@ export interface InFlightEntry {
 	/** This generation's modality — lets fan-out recovery render the right
 	 *  (media vs chat) compare grid even when no branch has persisted yet. */
 	modelKind: ModelKind | null;
+	/** This generation's model id — lets a recovered fan-out label each
+	 *  still-generating placeholder with its model (not a bare "Generating…"),
+	 *  matching the live grid. */
+	modelId: string | null;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -59,6 +63,7 @@ export function registerInFlight(
 	endpoint: LoadedEndpoint,
 	branchKey: string = DEFAULT_BRANCH,
 	modelKind: ModelKind | null = null,
+	modelId: string | null = null,
 ): InFlightEntry {
 	let byBranch = inFlight.get(conversationId);
 	if (!byBranch) {
@@ -73,6 +78,7 @@ export function registerInFlight(
 		startedAt: Date.now(),
 		branchKey,
 		modelKind,
+		modelId,
 	};
 	byBranch.set(branchKey, entry);
 	return entry;

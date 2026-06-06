@@ -82,6 +82,7 @@ describe('FanoutController — server recovery', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 'src-1')],
 			pending: 2,
+			pendingModelIds: ['bridge::sdxl', 'bridge::claude'],
 		};
 		fc.syncFromServer(server);
 
@@ -94,10 +95,10 @@ describe('FanoutController — server recovery', () => {
 			modelKind: 'image',
 			label: 'SDXL',
 		});
-		// All-pending placeholders take the server-reported kind (so an all-media
-		// recovery renders the media grid, not a chat strip).
-		expect(fc.columns[1].modelKind).toBe('image');
-		expect(fc.columns[1].status).toBe('streaming');
+		// Pending placeholders are labelled by their model (header reads like the
+		// live grid), not a bare "Generating…", and carry that model's kind.
+		expect(fc.columns[1]).toMatchObject({ status: 'streaming', label: 'SDXL', modelKind: 'image' });
+		expect(fc.columns[2]).toMatchObject({ label: 'Claude', modelKind: 'chat' });
 		expect(fc.isMedia).toBe(true);
 		expect(fc.hasRecoveredPending).toBe(true);
 	});

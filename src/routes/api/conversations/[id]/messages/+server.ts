@@ -232,6 +232,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		endpoint,
 		isFanout ? generateId() : undefined,
 		meta.modelKind,
+		meta.modelId,
 	);
 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----

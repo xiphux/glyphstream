@@ -39,6 +39,10 @@ export interface FanoutServerState {
 	kind: ModelKind | null;
 	siblings: ChatMessage[];
 	pending: number;
+	/** Model id per still-generating branch (aligned with `pending`), so the
+	 *  recovered grid labels each placeholder by model. Optional for back-compat
+	 *  with any caller that doesn't supply it. */
+	pendingModelIds?: string[];
 }
 
 /** Everything the controller needs from the host page. Getters for reactive
@@ -69,6 +73,13 @@ export interface FanoutDeps {
 /** branchId prefix for the server-driven "Generating…" placeholder columns of a
  *  recovered fan-out. The builder and the recovery-poll gate both key off it. */
 export const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
+
+/** Per-pending-branch model ids, normalized to the `pending` count — falls back
+ *  to blanks (unknown model → "Generating…" label) for an older server payload
+ *  that only reported a count. */
+function pendingIds(f: FanoutServerState): string[] {
+	return f.pendingModelIds ?? Array.from({ length: f.pending }, () => '');
+}
 
 export class FanoutController {
 	#deps: FanoutDeps;
@@ -107,19 +118,20 @@ export class FanoutController {
 	 *  recovery, where the client's own branch fetches are gone. */
 	#buildRecoveredColumns(
 		siblings: ChatMessage[],
-		pending: number,
+		pendingModelIds: string[],
 		kind: ModelKind | null,
 	): FanoutColumn[] {
 		const models = this.#deps.models();
-		const kindOf = (m: ChatMessage) => models.find((x) => x.id === m.modelUsed)?.kind ?? 'chat';
+		const kindById = (id: string | null) => models.find((x) => x.id === id)?.kind ?? null;
 		// Prefer the kind reported by the in-flight branches (so an all-pending
 		// media recovery — long for video — renders the media grid immediately,
 		// not a brief chat strip); fall back to a persisted sibling's kind.
-		const fallbackKind = kind ?? (siblings.length > 0 ? kindOf(siblings[0]) : 'chat');
+		const fallbackKind =
+			kind ?? (siblings.length > 0 ? (kindById(siblings[0].modelUsed) ?? 'chat') : 'chat');
 		const done: FanoutColumn[] = siblings.map((m) => ({
 			branchId: m.id,
 			modelId: m.modelUsed ?? '',
-			modelKind: kindOf(m),
+			modelKind: kindById(m.modelUsed) ?? 'chat',
 			label: this.#modelDisplayName(m.modelUsed),
 			segments: [],
 			status: 'done',
@@ -129,11 +141,13 @@ export class FanoutController {
 			persisted: m,
 			error: null,
 		}));
-		const generating: FanoutColumn[] = Array.from({ length: pending }, (_, i) => ({
+		const generating: FanoutColumn[] = pendingModelIds.map((id, i) => ({
 			branchId: `${RECOVERED_PENDING_PREFIX}${i}`,
-			modelId: '',
-			modelKind: fallbackKind,
-			label: 'Generating…',
+			modelId: id,
+			modelKind: kindById(id) ?? fallbackKind,
+			// Known model → label by its name (header reads like the live grid);
+			// only fall back to "Generating…" when the model is genuinely unknown.
+			label: id ? this.#modelDisplayName(id) : 'Generating…',
 			segments: [],
 			status: 'streaming',
 			queuedAhead: 0,
@@ -551,7 +565,7 @@ export class FanoutController {
 			return;
 		}
 		this.userMessageId = fanout.parentMessageId;
-		this.columns = this.#buildRecoveredColumns(fanout.siblings, fanout.pending, fanout.kind);
+		this.columns = this.#buildRecoveredColumns(fanout.siblings, pendingIds(fanout), fanout.kind);
 	}
 
 	/** True when the grid has server-driven "Generating…" placeholders the client
@@ -583,7 +597,7 @@ export class FanoutController {
 				// a live interaction (regenerate) has since taken over.
 				if (!this.live && this.#aborts.size === 0 && !this.picking && !this.#deps.busy()) {
 					this.userMessageId = f.parentMessageId;
-					this.columns = this.#buildRecoveredColumns(f.siblings, f.pending, f.kind);
+					this.columns = this.#buildRecoveredColumns(f.siblings, pendingIds(f), f.kind);
 				}
 				if (f.pending === 0) {
 					stopped = true;
