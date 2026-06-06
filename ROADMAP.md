@@ -177,44 +177,37 @@ expected priority, not time-bound.
   (the token-usage surfacing from `0adaf0d` is the prereq for the
   latter).
 
-- **Multi-model fan-out / compare** (working name — also "model arena",
-  "compare mode", "broadcast prompt"). Send one prompt to several models
-  at once, read the results side by side, then keep the one(s) worth
-  keeping. Two shapes of the same idea:
-  - _Text._ Fan a single user turn out to N models and continue with the
-    winner. The tree schema already makes this nearly free: each response
-    is an assistant **sibling** off the shared `parent_message_id`, exactly
-    what a manual `retry` produces today — fan-out is just "fire N retries
-    at once, each pinned to a different (base model / custom-model)
-    preset." Picking a thread to continue = setting that sibling as the
-    conversation's `active_leaf_message_id`; the rest stay as branches
-    (non-destructive, reachable via the existing `‹ N/M ›` sibling-nav and
-    removable via delete-branch). So the substrate is mostly here — the
-    new parts are the multi-model **picker** in the composer and a
-    **compare view** (render the N in-flight siblings in parallel columns
-    rather than the one-at-a-time flip the sibling-nav gives).
-  - _Image._ Fan an image prompt out to N image models, keep the good
-    renders and delete the duds. Per-result `regenerate` (the model's
-    close but a bit off) is the existing retry-as-new-sibling again;
-    keep/delete is already the gallery's ref-counted media flow
-    (`message_media` join + grace-period purge). Reuses the gallery's
-    "launch with this prompt" handoff (`gallery-launch.ts`), just
-    multiplexed across models.
-
-  The load-bearing new infrastructure is a **per-endpoint concurrency
-  gate / queue**, which doesn't exist today (the only pool is the
-  code-interpreter worker pool). A cloud endpoint can take the whole
-  fan-out at once; a local `llama-server` or ComfyUI can hold exactly one
-  model in VRAM, so a second simultaneous generation either thrashes or
-  OOMs. Needs a `max_concurrency` (default 1 for local-style endpoints)
-  per-endpoint in `config.toml`, with a queue in front that serializes
-  excess requests and streams them as slots free up — the UI shows queued
-  siblings as "waiting" until their turn. The code-interpreter pool's
-  ready/starting/idle/failed state-machine + LRU cap is the precedent to
-  mirror. Open question: whether the gate is global per endpoint or
-  per-`(endpoint, model)` — a single backend that hot-swaps models still
-  serializes, but two distinct cloud deployments behind one endpoint
-  alias may not.
+- **Multi-model fan-out / compare — DONE.** Send one prompt to several
+  models at once and compare the results side by side. Selection lives in
+  the model picker's **"Multiple" mode** (a compare cart with per-model
+  counts; chips + a closed-trigger hover preview), single-modality per
+  comparison. Works on any turn mid-conversation and on a new chat's first
+  message. Each branch is an assistant **sibling** off one shared user
+  message (created once via `.../messages/prepare`); the active leaf stays
+  pinned there (`appendMessage` gained `advanceActiveLeaf:false`) while the
+  branches generate, with each branch's model applied as a **transient
+  override** (recorded per-message via `modelUsed`, never rewriting the
+  conversation's stored model). An explicit `conversations.fanout_parent_
+message_id` marker drives the side-by-side **compare grid** + reload
+  rehydration.
+  - _Text_ is pick-one: "Continue with this" sets the chosen sibling as the
+    active leaf; the rest stay as `‹ N/M ›` branches.
+  - _Image / video_ is keep-many: prune duds (delete-branch, keep at least
+    one) + per-column **regenerate** (re-roll in place); the kept variations
+    stay as siblings, the first focused. Image uses a vertical 1-/2-up grid;
+    video streams per-column progress through the poll relay. i2v/regenerate
+    reuse the shared user message's input.
+  - _Disconnect recovery_ matches single-mode: branches finish + persist
+    server-side regardless of the client, and a reload / iOS-suspend mid-
+    fan-out rebuilds the grid from server truth (`getFanoutRecoveryState` =
+    persisted branches + in-flight count) with "Generating…" placeholders
+    that fill in via a poll.
+  - _Per-endpoint concurrency gate_ (`src/lib/server/endpoints/concurrency.ts`):
+    a FIFO slot gate held for the whole generation so a large fan-out
+    trickles instead of blasting an upstream. `max_concurrent` per endpoint
+    in `config.toml` (default 4; set 1 for a single-GPU local backend);
+    queued branches stream a `queued` state. Endpoint-wide (not
+    per-`(endpoint, model)`) since one backend shares one VRAM pool.
 
 - **Multi-user.** Data model is multi-user-shaped (every row has `user_id`);
   needs invite/admin UI + per-user resource isolation tests + an admin role.
