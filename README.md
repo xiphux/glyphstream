@@ -319,6 +319,13 @@ parallelism. The gate is per **endpoint** (a single backend that
 hot-swaps models still shares one VRAM pool), so a busy single-slot
 endpoint queues across all conversations and all fan-out branches.
 
+Because the cap is per endpoint, a bridge (like `openai-api-bridge`)
+that fronts **both** a local GPU and cloud providers is best split into
+**two endpoints** — one for the local providers with `max_concurrent =
+1`, one for the cloud providers left uncapped — so the VRAM limit
+applies only where it's needed. The bridge is a thin proxy (no model
+weights live in it), so running a second container for this is cheap.
+
 ### Web search
 
 The `web_search` tool is backed by [SearxNG](https://docs.searxng.org/),
