@@ -886,8 +886,17 @@
 	// the assistant siblings whenever the active-branch tail is a user message
 	// — only a fan-out parks the leaf there with multiple children. Guarded to
 	// `>= 2` siblings (a genuine comparison) so a stray single off-branch
-	// message (e.g. from a truncate) can't masquerade as one, and skipped
-	// whenever a live comparison already owns `fanoutColumns`.
+	// message (e.g. from a truncate, or a retry caught mid-flight) can't
+	// masquerade as one, and skipped whenever a live comparison already owns
+	// `fanoutColumns`.
+	//
+	// KNOWN GAP: a fan-out the user navigates away from mid-stream that then
+	// settles to exactly ONE persisted branch (the other errored upstream)
+	// leaves a lone good response under a user-message leaf that this guard
+	// won't surface — there's no ‹N/M› switcher to reach it. Closing it needs
+	// a persisted "this leaf is a parked fan-out" marker (sibling count alone
+	// can't tell a lone survivor from a stray off-branch message); deferred to
+	// the image/video phase where that marker lands. Narrow window, accepted.
 	$effect(() => {
 		const sibs = data.fanoutSiblings;
 		if (!sibs || sibs.length < 2) return;
@@ -1557,7 +1566,13 @@
 			// user can edit + resend (no assistant row was persisted on failure).
 			fanoutColumns = [];
 			errorMsg = 'No model responded. Edit your message and try again.';
-			await invalidateAll();
+			// Guard the refetch like pickFanout/dismissFanout do — errorMsg is
+			// already set, so a failing invalidate just shouldn't reject here.
+			try {
+				await invalidateAll();
+			} catch {
+				// Best-effort re-sync; the error is already surfaced above.
+			}
 		}
 	}
 
