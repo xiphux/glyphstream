@@ -213,7 +213,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// every code path that talks to upstream. Fan-out branches each get a
 	// unique key so they coexist in the registry instead of cancelling one
 	// another; a plain send uses the default single-slot key.
-	const inFlight = registerInFlight(params.id, endpoint, isFanout ? generateId() : undefined);
+	const inFlight = registerInFlight(
+		params.id,
+		endpoint,
+		isFanout ? generateId() : undefined,
+		meta.modelKind,
+	);
 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
 	if (meta.modelKind === 'image') {

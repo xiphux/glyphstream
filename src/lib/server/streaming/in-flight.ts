@@ -22,6 +22,7 @@
  */
 
 import type { LoadedEndpoint } from '../endpoints/config';
+import type { ModelKind } from '$lib/types/api';
 
 /** Key for a plain single-generation turn — at most one at a time per
  *  conversation, matching the pre-fan-out behavior. */
@@ -39,6 +40,9 @@ export interface InFlightEntry {
 	videoJobId?: string;
 	/** The key this entry is filed under within its conversation. */
 	branchKey: string;
+	/** This generation's modality — lets fan-out recovery render the right
+	 *  (media vs chat) compare grid even when no branch has persisted yet. */
+	modelKind: ModelKind | null;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -54,6 +58,7 @@ export function registerInFlight(
 	conversationId: string,
 	endpoint: LoadedEndpoint,
 	branchKey: string = DEFAULT_BRANCH,
+	modelKind: ModelKind | null = null,
 ): InFlightEntry {
 	let byBranch = inFlight.get(conversationId);
 	if (!byBranch) {
@@ -67,6 +72,7 @@ export function registerInFlight(
 		endpoint,
 		startedAt: Date.now(),
 		branchKey,
+		modelKind,
 	};
 	byBranch.set(branchKey, entry);
 	return entry;

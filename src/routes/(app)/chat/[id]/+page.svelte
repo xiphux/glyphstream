@@ -761,10 +761,17 @@
 	/** Rebuild the compare grid from server-truth recovery state (persisted
 	 *  branches + how many are still generating) — used on reload / disconnect
 	 *  recovery, where the client's own branch fetches are gone. */
-	function buildRecoveredColumns(siblings: ChatMessage[], pending: number): FanoutColumn[] {
+	function buildRecoveredColumns(
+		siblings: ChatMessage[],
+		pending: number,
+		kind: ModelKind | null,
+	): FanoutColumn[] {
 		const kindOf = (m: ChatMessage) =>
 			data.models.find((x) => x.id === m.modelUsed)?.kind ?? 'chat';
-		const fallbackKind = siblings.length > 0 ? kindOf(siblings[0]) : 'chat';
+		// Prefer the kind reported by the in-flight branches (so an all-pending
+		// media recovery — long for video — renders the media grid immediately,
+		// not a brief chat strip); fall back to a persisted sibling's kind.
+		const fallbackKind = kind ?? (siblings.length > 0 ? kindOf(siblings[0]) : 'chat');
 		const done: FanoutColumn[] = siblings.map((m) => ({
 			branchId: m.id,
 			modelId: m.modelUsed ?? '',
@@ -978,7 +985,7 @@
 				return;
 			}
 			fanoutUserMessageId = fanout.parentMessageId;
-			fanoutColumns = buildRecoveredColumns(fanout.siblings, fanout.pending);
+			fanoutColumns = buildRecoveredColumns(fanout.siblings, fanout.pending, fanout.kind);
 		});
 	});
 
@@ -1041,7 +1048,12 @@
 				const res = await fetch(`/api/conversations/${id}`);
 				if (stopped || !res.ok || convId !== id) return;
 				const body = (await res.json()) as {
-					fanout?: { parentMessageId: string | null; siblings: ChatMessage[]; pending: number };
+					fanout?: {
+						parentMessageId: string | null;
+						kind: ModelKind | null;
+						siblings: ChatMessage[];
+						pending: number;
+					};
 				};
 				const f = body.fanout;
 				if (!f?.parentMessageId) {
@@ -1055,7 +1067,7 @@
 				// unless a live interaction (regenerate) has since taken over.
 				if (!fanoutLive && fanoutAborts.size === 0 && !fanoutPicking && !busy) {
 					fanoutUserMessageId = f.parentMessageId;
-					fanoutColumns = buildRecoveredColumns(f.siblings, f.pending);
+					fanoutColumns = buildRecoveredColumns(f.siblings, f.pending, f.kind);
 				}
 				if (f.pending === 0) {
 					stopped = true;
@@ -1840,7 +1852,7 @@
 
 	/** Finish a comparison without an explicit per-column pick: make the first
 	 *  generated branch active (so the thread focuses a real response — the
-	 *  "Done" action for image keep-many, where every kept image stays a
+	 *  "Done" action for media keep-many, where every kept image/video stays a
 	 *  sibling reachable via ‹N/M›), then re-sync. */
 	async function dismissFanout(): Promise<void> {
 		if (fanoutPicking) return;

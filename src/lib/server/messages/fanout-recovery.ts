@@ -18,11 +18,16 @@
 import { getFanoutParent } from '../db/queries/conversations';
 import { getSiblingAssistants } from '../db/queries/messages';
 import { getInFlightEntries } from '../streaming/in-flight';
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage, ModelKind } from '$lib/types/api';
 
 export interface FanoutRecoveryState {
 	/** The shared user message the parked fan-out hangs off, or null when none. */
 	parentMessageId: string | null;
+	/** The fan-out's modality, from the still-generating branches — lets the
+	 *  client render the right (media vs chat) grid even when no branch has
+	 *  persisted yet (the all-pending window, long for video). Null when none
+	 *  are in flight (the client then infers from the persisted siblings). */
+	kind: ModelKind | null;
 	/** Persisted branch responses so far. */
 	siblings: ChatMessage[];
 	/** In-flight registry entries for this conversation — branches still
@@ -40,11 +45,13 @@ export function getFanoutRecoveryState(
 ): FanoutRecoveryState {
 	const parent = getFanoutParent(conversationId);
 	if (!parent || parent !== activeLeafMessageId) {
-		return { parentMessageId: null, siblings: [], pending: 0 };
+		return { parentMessageId: null, kind: null, siblings: [], pending: 0 };
 	}
+	const entries = getInFlightEntries(conversationId);
 	return {
 		parentMessageId: parent,
+		kind: entries[0]?.modelKind ?? null,
 		siblings: getSiblingAssistants(conversationId, parent),
-		pending: getInFlightEntries(conversationId).length,
+		pending: entries.length,
 	};
 }

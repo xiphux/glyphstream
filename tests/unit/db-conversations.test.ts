@@ -1776,6 +1776,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		// Not parked yet (no marker) → nothing to recover.
 		expect(getFanoutRecoveryState(conv.id, user.id)).toEqual({
 			parentMessageId: null,
+			kind: null,
 			siblings: [],
 			pending: 0,
 		});
@@ -1787,10 +1788,13 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(new Set(state.siblings.map((m) => m.id))).toEqual(new Set([a.id, b.id]));
 		expect(state.pending).toBe(0);
 
-		// Two branches still generating → pending reflects the in-flight count.
-		registerInFlight(conv.id, fakeEndpoint, 'br0');
-		registerInFlight(conv.id, fakeEndpoint, 'br1');
-		expect(getFanoutRecoveryState(conv.id, user.id).pending).toBe(2);
+		// Two branches still generating → pending + kind reflect the in-flight
+		// entries (so an all-pending media recovery renders the media grid).
+		registerInFlight(conv.id, fakeEndpoint, 'br0', 'image');
+		registerInFlight(conv.id, fakeEndpoint, 'br1', 'image');
+		const inflightState = getFanoutRecoveryState(conv.id, user.id);
+		expect(inflightState.pending).toBe(2);
+		expect(inflightState.kind).toBe('image');
 		resetInFlight();
 
 		// Marker that no longer matches the active leaf isn't surfaced.

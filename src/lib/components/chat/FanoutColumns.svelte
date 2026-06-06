@@ -5,8 +5,8 @@
 	callbacks the parent passes:
 	  - text (onPick): "Continue with this" promotes one branch to the active
 	    thread, the rest stay as siblings.
-	  - image keep-many (onDiscard + onRegenerate): prune the duds + re-roll in
-	    place; every kept image stays a sibling.
+	  - media keep-many (onDiscard + onRegenerate): prune the duds + re-roll in
+	    place; every kept image/video stays a sibling.
 	Purely presentational — the page owns the streams, column state, and the
 	pick / discard / regenerate requests.
 -->
@@ -24,9 +24,9 @@
 	interface Props {
 		columns: FanoutColumn[];
 		/** Pick one column to continue the thread (text fan-out). When omitted,
-		 *  no "Continue with this" button renders — image fan-out is keep-many. */
+		 *  no "Continue with this" button renders — media fan-out is keep-many. */
 		onPick?: (column: FanoutColumn) => void;
-		/** Discard (delete) a column. Wired for image fan-out (prune the duds). */
+		/** Discard (delete) a column. Wired for media fan-out (prune the duds). */
 		onDiscard?: (column: FanoutColumn) => void;
 		/** Re-roll a column in place with the same model/prompt (image). */
 		onRegenerate?: (column: FanoutColumn) => void;
@@ -57,7 +57,7 @@
 		return c.status === 'done' || c.status === 'error' || c.status === 'cancelled';
 	}
 
-	// Image fan-out is keep-many (regenerate/discard, no single pick).
+	// Media (image/video) fan-out is keep-many (regenerate/discard, no single pick).
 	const isMedia = $derived(!onPick && (!!onDiscard || !!onRegenerate));
 	const countNoun = $derived(isMedia ? 'variations' : 'models');
 
