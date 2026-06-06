@@ -169,6 +169,21 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		expect((discard as HTMLButtonElement).disabled).toBe(true);
 	});
 
+	it('shows the split input-image thumbnail in the column header', () => {
+		const { container } = render(FanoutColumns, {
+			props: {
+				columns: [
+					{ ...col({ branchId: 'v0', label: 'SDXL' }), modelKind: 'image', inputMediaId: 'src-7' },
+				],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		const thumb = container.querySelector<HTMLImageElement>('header img');
+		expect(thumb?.getAttribute('src')).toBe('/api/media/src-7/content');
+	});
+
 	it('shows the video poll progress in the column header', () => {
 		render(FanoutColumns, {
 			props: {

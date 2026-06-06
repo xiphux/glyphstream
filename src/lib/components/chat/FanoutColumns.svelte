@@ -100,6 +100,15 @@
 				<header
 					class="flex items-center gap-2 border-b border-border px-3 py-2 text-[11px] font-medium tracking-wide"
 				>
+					{#if c.inputMediaId}
+						<!-- Split-attachments: the input image this branch edits / animates,
+						     so each result reads as "this input → this model". -->
+						<img
+							src="/api/media/{c.inputMediaId}/content"
+							alt="Input image"
+							class="h-6 w-6 shrink-0 rounded object-cover ring-1 ring-border"
+						/>
+					{/if}
 					<span class="truncate text-fg-secondary" title={c.label}>{c.label}</span>
 					<span class="flex-1"></span>
 					{#if c.status === 'queued'}
