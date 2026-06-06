@@ -27,7 +27,9 @@
 		aria-label="Scroll to latest message"
 		aria-hidden={!visible}
 		tabindex={visible ? 0 : -1}
-		class="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-panel text-fg-secondary shadow-md transition hover:bg-surface-raised"
+		class="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-panel text-fg-secondary shadow-md transition hover:bg-surface-raised {visible
+			? 'pointer-events-auto'
+			: 'pointer-events-none'}"
 	>
 		<ArrowDown size={16} strokeWidth={2.25} />
 	</button>

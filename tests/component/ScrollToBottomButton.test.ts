@@ -27,6 +27,17 @@ describe('ScrollToBottomButton', () => {
 		expect(btn).toHaveAttribute('tabindex', '-1');
 	});
 
+	it('drops pointer events when hidden so it cannot eat clicks on content behind it', () => {
+		// opacity-0 alone keeps the invisible circle clickable — it sits over the
+		// composer, so it must be pointer-events-none when hidden (regression:
+		// it was swallowing clicks on the centered fan-out "Done" button).
+		const hidden = render(ScrollToBottomButton, { props: { visible: false, onClick: vi.fn() } });
+		expect(hidden.container.querySelector('button')).toHaveClass('pointer-events-none');
+
+		const shown = render(ScrollToBottomButton, { props: { visible: true, onClick: vi.fn() } });
+		expect(shown.container.querySelector('button')).toHaveClass('pointer-events-auto');
+	});
+
 	it('calls onClick when clicked', async () => {
 		const user = userEvent.setup();
 		const onClick = vi.fn();
