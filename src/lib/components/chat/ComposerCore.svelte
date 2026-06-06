@@ -132,10 +132,7 @@
 	ondrop={onDrop}
 	class="surface-glass-soft relative rounded-2xl border border-border-strong px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
-	<AttachmentThumbnails {attachments} class="px-1" />
-	{#if attachmentBar}
-		<div class="flex justify-end px-1 pb-1">{@render attachmentBar()}</div>
-	{/if}
+	<AttachmentThumbnails {attachments} class="px-1" trailing={attachmentBar} />
 	<textarea
 		bind:this={textareaEl}
 		bind:value={text}
