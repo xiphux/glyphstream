@@ -294,10 +294,13 @@
 		return slash >= 0 ? label.slice(slash + 1) : label;
 	}
 	const triggerLabel = $derived.by(() => {
-		// A comparison of 2+ models reads as "Comparing N models". Exactly one
-		// isn't a comparison — show that model's name (it collapses back to a
-		// normal single selection when the picker closes).
-		if (compareMode && compareTotal >= 2) return `Comparing ${compareTotal} models`;
+		// A comparison of 2+ reads as "Comparing N models" (or "N variations"
+		// for image, where the same model may be sampled multiple times).
+		// Exactly one isn't a comparison — show that model's name (it collapses
+		// back to a normal single selection when the picker closes).
+		if (compareMode && compareTotal >= 2) {
+			return `Comparing ${compareTotal} ${compareKind === 'image' ? 'variations' : 'models'}`;
+		}
 		if (compareMode && compareTotal === 1) {
 			const m = models.find((x) => x.id === compareSelections[0].modelId);
 			if (m) return stripOwner(m.displayName);
@@ -422,20 +425,45 @@
 </script>
 
 <Popover.Root bind:open>
-	<Popover.Trigger
-		{disabled}
-		class={inline
-			? 'group inline-flex max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50'
-			: 'group flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm transition hover:border-border-strong focus:border-border-focus focus:outline-none disabled:opacity-50'}
-		aria-label="Select model"
-	>
-		<span class="truncate">{triggerLabel}</span>
-		<ChevronDown
-			size={inline ? 12 : 14}
-			strokeWidth={2.25}
-			class="shrink-0 opacity-60 transition group-hover:opacity-100"
-		/>
-	</Popover.Trigger>
+	<div class={inline ? 'group/preview relative inline-flex' : 'group/preview relative w-full'}>
+		<Popover.Trigger
+			{disabled}
+			class={inline
+				? 'group inline-flex max-w-[200px] items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised focus:outline-none focus-visible:ring-1 focus-visible:ring-border-focus disabled:opacity-50'
+				: 'group flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm transition hover:border-border-strong focus:border-border-focus focus:outline-none disabled:opacity-50'}
+			aria-label="Select model"
+		>
+			<span class="truncate">{triggerLabel}</span>
+			<ChevronDown
+				size={inline ? 12 : 14}
+				strokeWidth={2.25}
+				class="shrink-0 opacity-60 transition group-hover:opacity-100"
+			/>
+		</Popover.Trigger>
+		{#if !open && compareMode && compareTotal >= 2}
+			<!-- At-a-glance preview of the comparison cart on hover, so you don't
+			     have to open the picker to recall what's selected. -->
+			<div
+				class="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 hidden group-hover/preview:block"
+			>
+				<div
+					class="min-w-[11rem] max-w-[18rem] rounded-lg border border-border surface-glass gs-pop px-2.5 py-2 text-xs shadow-lg"
+				>
+					<div class="mb-1 text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+						Comparing
+					</div>
+					<ul class="space-y-0.5">
+						{#each compareSelections as sel (sel.modelId)}
+							<li class="flex items-center justify-between gap-3">
+								<span class="truncate text-fg">{modelLabel(sel.modelId)}</span>
+								<span class="shrink-0 tabular-nums text-fg-muted">×{sel.count}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			</div>
+		{/if}
+	</div>
 	<Popover.Portal>
 		<Popover.Content
 			sideOffset={6}

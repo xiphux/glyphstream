@@ -617,6 +617,32 @@ describe('ModelPicker — compare mode', () => {
 		expect(screen.getByText('Comparing 2 models')).toBeInTheDocument();
 	});
 
+	it('previews the comparison cart on the closed trigger (hover bubble)', () => {
+		render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::a', displayName: 'Model A' }),
+					makeModel({ id: 'bridge::b', displayName: 'Model B' }),
+				],
+				value: 'bridge::a',
+				allowCompare: true,
+				compareMode: true,
+				compareSelections: [
+					{ modelId: 'bridge::a', count: 2 },
+					{ modelId: 'bridge::b', count: 1 },
+				],
+			},
+		});
+		// Picker closed: the trigger summarises the total (2×A + 1×B = 3), and
+		// the hover preview (in the DOM, revealed on hover) lists each model +
+		// count — no need to open the picker to recall the cart.
+		expect(screen.getByText('Comparing 3 models')).toBeInTheDocument();
+		expect(screen.getByText('Model A')).toBeInTheDocument();
+		expect(screen.getByText('Model B')).toBeInTheDocument();
+		expect(screen.getByText('×2')).toBeInTheDocument();
+		expect(screen.getByText('×1')).toBeInTheDocument();
+	});
+
 	it('compares image models too, locked to a single modality', async () => {
 		const user = userEvent.setup();
 		// Seed from an image model: compare should show image models and hide
