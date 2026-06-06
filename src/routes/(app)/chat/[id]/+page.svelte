@@ -2,6 +2,8 @@
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { invalidateAll } from '$app/navigation';
+	import { isAbortError } from '$lib/abort';
+	import { FanoutController } from '$lib/fanout-controller.svelte';
 	import { preferredFirstName } from '$lib/greeting';
 	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
@@ -36,19 +38,12 @@
 		type InFlightSegment,
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
-	import {
-		buildSendRequestBody,
-		buildFanoutBranchBody,
-		type SendOptions,
-	} from '$lib/chat-send-body';
+	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
-		allColumnsSettled,
 		expandCompareSelections,
 		expandFanoutBranches,
 		type CompareSelection,
-		type FanoutBranchSpec,
-		type FanoutColumn,
 		type FanoutModel,
 	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
@@ -59,8 +54,6 @@
 		FeatureCategory,
 		MessagePart,
 		ModelKind,
-		PrepareFanoutRequest,
-		PrepareFanoutResponse,
 		SendMessageResponse,
 	} from '$lib/types/api';
 
@@ -635,51 +628,58 @@
 	// the same way visibilitychange handles suspension.
 	let wasOfflineDuringFetch = $state(false);
 
+	// Multi-model fan-out controller (state + orchestration extracted to
+	// $lib/fanout-controller for testability). The page owns the composer/picker
+	// bindings + a few effects that delegate here; the controller reaches shared
+	// page state through these getters/setters.
+	const fanout = new FanoutController({
+		convId: () => convId,
+		models: () => data.models,
+		messageCount: () => messages.length,
+		busy: () => busy,
+		appendUserMessage: (m) => (messages = [...messages, m]),
+		setBusy: (b) => (busy = b),
+		setError: (m) => (errorMsg = m),
+		setActiveModel: (id, kind) => {
+			modelId = id;
+			modelKind = kind;
+		},
+		setStreamedMessageId: (id) => (streamedMessageId = id),
+		interrupted: () => wasHiddenDuringFetch || wasOfflineDuringFetch,
+		clearInterruptedFlags: () => {
+			wasHiddenDuringFetch = false;
+			wasOfflineDuringFetch = false;
+		},
+		scrollToBottom: () => scrollToBottom(),
+	});
+
 	// Visibility-change + connectivity listeners: tracks interruptions
 	// during in-flight sends, and re-invalidates on return so any work
 	// that completed in the background (the most common case for
 	// image/video generation, where the server keeps generating even
 	// after the client's fetch dies) shows up immediately rather than
 	// only after the user navigates away and back to force a refetch.
-	// A live fan-out interrupted by suspension/disconnect: its branch fetches
-	// are dead, but the server kept generating + persisting. Drop the client's
-	// hold so the server-truth rehydration (+ recovery poll) rebuilds the grid
-	// — completed images plus "Generating…" placeholders that fill in as the
-	// rest land. Aborting the dead fetches just clears their slots locally; the
-	// server generation is untouched.
-	function handoffFanoutToRecovery() {
-		if (!fanoutLive) return;
-		for (const a of fanoutAborts.values()) a.abort();
-		fanoutAborts.clear();
-		fanoutLive = false;
-		// The flags have served their purpose for this turn (the poll drives
-		// recovery now). Clear them so a later regenerate on the recovered grid
-		// starts clean and can't misread a genuine failure as "Generating…".
-		wasHiddenDuringFetch = false;
-		wasOfflineDuringFetch = false;
-	}
-
 	$effect(() => {
 		if (typeof document === 'undefined') return;
 		function onVisibilityChange() {
 			// A fan-out releases `busy` early (so the grid can show), so also
 			// track its branch streams as in-flight work worth recovering.
-			if (document.visibilityState === 'hidden' && (busy || fanoutStreaming)) {
+			if (document.visibilityState === 'hidden' && (busy || fanout.streaming)) {
 				wasHiddenDuringFetch = true;
 			} else if (document.visibilityState === 'visible' && wasHiddenDuringFetch) {
 				// Reconcile against server state — if the generation completed
 				// while we were backgrounded, the new message(s) arrive via the
 				// load function; a live fan-out hands off to recovery first.
-				handoffFanoutToRecovery();
+				fanout.handoffToRecovery();
 				void invalidateAll();
 			}
 		}
 		function onOffline() {
-			if (busy || fanoutStreaming) wasOfflineDuringFetch = true;
+			if (busy || fanout.streaming) wasOfflineDuringFetch = true;
 		}
 		function onOnline() {
 			if (wasOfflineDuringFetch) {
-				handoffFanoutToRecovery();
+				fanout.handoffToRecovery();
 				void invalidateAll();
 			}
 		}
@@ -731,81 +731,10 @@
 			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
 		}),
 	);
-	// Live + settled comparison columns. Non-empty == the compare view is up.
-	let fanoutColumns = $state<FanoutColumn[]>([]);
-	// A pick/dismiss request is in flight.
-	let fanoutPicking = $state(false);
-	// The shared user message of the live/parked fan-out — discard/regenerate
-	// reparent new branches to it. Null when no comparison is active.
-	let fanoutUserMessageId = $state<string | null>(null);
-	// True while THIS client is driving the fan-out (it started it and owns the
-	// branch fetches). False once recovered from server truth after a reload /
-	// disconnect, so the rehydration effect knows it may rebuild the grid.
-	let fanoutLive = $state(false);
-	// Per-branch abort controllers, keyed by column branchId, for Stop.
-	const fanoutAborts = new Map<string, AbortController>();
-	const fanoutComparing = $derived(fanoutColumns.length > 0);
-	const fanoutStreaming = $derived(
-		fanoutColumns.some((c) => c.status === 'queued' || c.status === 'streaming'),
-	);
-	const fanoutColumnsSettled = $derived(fanoutComparing && allColumnsSettled(fanoutColumns));
-	// An image/video fan-out is keep-many: prune duds + regenerate, rather than
-	// pick one. Drives the column footer + settle behaviour.
-	const fanoutIsMedia = $derived(
-		fanoutColumns.some((c) => c.modelKind === 'image' || c.modelKind === 'video'),
-	);
 
 	function modelDisplayName(modelId: string | null): string {
 		if (!modelId) return 'Model';
 		return data.models.find((m) => m.id === modelId)?.displayName ?? modelId;
-	}
-
-	// branchId prefix for the server-driven "Generating…" placeholder columns of
-	// a recovered fan-out. Both the builder and the recovery-poll gate key off
-	// it, so it lives in one place.
-	const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
-
-	/** Rebuild the compare grid from server-truth recovery state (persisted
-	 *  branches + how many are still generating) — used on reload / disconnect
-	 *  recovery, where the client's own branch fetches are gone. */
-	function buildRecoveredColumns(
-		siblings: ChatMessage[],
-		pending: number,
-		kind: ModelKind | null,
-	): FanoutColumn[] {
-		const kindOf = (m: ChatMessage) =>
-			data.models.find((x) => x.id === m.modelUsed)?.kind ?? 'chat';
-		// Prefer the kind reported by the in-flight branches (so an all-pending
-		// media recovery — long for video — renders the media grid immediately,
-		// not a brief chat strip); fall back to a persisted sibling's kind.
-		const fallbackKind = kind ?? (siblings.length > 0 ? kindOf(siblings[0]) : 'chat');
-		const done: FanoutColumn[] = siblings.map((m) => ({
-			branchId: m.id,
-			modelId: m.modelUsed ?? '',
-			modelKind: kindOf(m),
-			label: modelDisplayName(m.modelUsed),
-			segments: [],
-			status: 'done',
-			queuedAhead: 0,
-			progress: null,
-			inputMediaId: m.sourceMediaId ?? null,
-			persisted: m,
-			error: null,
-		}));
-		const generating: FanoutColumn[] = Array.from({ length: pending }, (_, i) => ({
-			branchId: `${RECOVERED_PENDING_PREFIX}${i}`,
-			modelId: '',
-			modelKind: fallbackKind,
-			label: 'Generating…',
-			segments: [],
-			status: 'streaming',
-			queuedAhead: 0,
-			progress: null,
-			inputMediaId: null,
-			persisted: null,
-			error: null,
-		}));
-		return [...done, ...generating];
 	}
 
 	/** Reset the compare cart + mode (after a fan-out kicks off, or on nav). */
@@ -893,7 +822,7 @@
 			// A live/parked fan-out owns the in-flight display via its columns,
 			// so don't also surface the single recovered bubble — its N branches
 			// keep serverInFlightSince set while the leaf sits on the user message.
-			!fanoutComparing &&
+			!fanout.comparing &&
 			messages[messages.length - 1]?.role !== 'assistant',
 	);
 	// The in-flight bubble shows for either a live local turn or a
@@ -907,7 +836,7 @@
 	// window so the user can't type a new message while the existing
 	// turn is suspended waiting on a tool decision.
 	const generating = $derived(
-		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval || fanoutComparing,
+		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval || fanout.comparing,
 	);
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
@@ -963,39 +892,21 @@
 		inFlightProgress = null;
 		inFlightStatus = null;
 		errorMsg = null;
-		// Tear down any fan-out from the conversation we're leaving — abort
-		// its in-flight branches and drop the comparison state. The new
+		// Tear down any fan-out from the conversation we're leaving — abort its
+		// in-flight branches and drop the comparison state. The new
 		// conversation's columns (if any) re-hydrate from its load data below.
-		for (const a of fanoutAborts.values()) a.abort();
-		fanoutAborts.clear();
-		fanoutColumns = [];
-		fanoutUserMessageId = null;
-		fanoutLive = false;
+		fanout.teardown();
 		resetCompare();
 	});
 
 	// Rebuild the compare grid from server-truth recovery state on a reload /
 	// conversation-switch into a parked fan-out (and re-run as `data` refreshes
 	// — e.g. the recovery poll's invalidate — to fill in branches as they land).
-	// The marker means any state here is a genuine parked fan-out, so a lone
-	// survivor or all-pending recovery is surfaced. Skipped while THIS client is
-	// driving the fan-out (fanoutLive) or has a branch fetch in flight (a live
-	// regenerate), so it never clobbers the in-session grid.
+	// The controller skips the rebuild while THIS client is driving the fan-out
+	// or has a branch fetch in flight, so it never clobbers the in-session grid.
 	$effect(() => {
-		const fanout = data.fanout;
-		untrack(() => {
-			if (fanoutLive || fanoutAborts.size > 0 || busy || fanoutPicking) return;
-			if (!fanout?.parentMessageId || (fanout.siblings.length === 0 && fanout.pending === 0)) {
-				// No parked fan-out on the server — drop any recovered grid.
-				if (fanoutColumns.length > 0) {
-					fanoutColumns = [];
-					fanoutUserMessageId = null;
-				}
-				return;
-			}
-			fanoutUserMessageId = fanout.parentMessageId;
-			fanoutColumns = buildRecoveredColumns(fanout.siblings, fanout.pending, fanout.kind);
-		});
+		const serverFanout = data.fanout;
+		untrack(() => fanout.syncFromServer(serverFanout));
 	});
 
 	// While a generation runs server-side that this client isn't driving
@@ -1042,54 +953,12 @@
 
 	// Recovery poll for a RECOVERED fan-out (rebuilt from server truth after a
 	// reload/disconnect, so it has "Generating…" placeholder columns the client
-	// isn't driving). Polls the lightweight GET for fresh `fanout` state and
-	// rebuilds the grid as branches land, stopping once none are pending. The
-	// live in-session fan-out doesn't need this — its own branch fetches drive
-	// the columns.
+	// isn't driving). The controller polls the lightweight GET and rebuilds the
+	// grid as branches land, stopping once none are pending. The live in-session
+	// fan-out doesn't need this — its own branch fetches drive the columns.
 	$effect(() => {
-		const recovering =
-			!fanoutLive && fanoutColumns.some((c) => c.branchId.startsWith(RECOVERED_PENDING_PREFIX));
-		if (!recovering) return;
-		const id = convId;
-		let stopped = false;
-		const interval = setInterval(async () => {
-			try {
-				const res = await fetch(`/api/conversations/${id}`);
-				if (stopped || !res.ok || convId !== id) return;
-				const body = (await res.json()) as {
-					fanout?: {
-						parentMessageId: string | null;
-						kind: ModelKind | null;
-						siblings: ChatMessage[];
-						pending: number;
-					};
-				};
-				const f = body.fanout;
-				if (!f?.parentMessageId) {
-					// Resolved/gone server-side — one full reload to reconcile.
-					stopped = true;
-					clearInterval(interval);
-					await invalidateAll();
-					return;
-				}
-				// Rebuild from fresh server truth (more done, fewer pending) —
-				// unless a live interaction (regenerate) has since taken over.
-				if (!fanoutLive && fanoutAborts.size === 0 && !fanoutPicking && !busy) {
-					fanoutUserMessageId = f.parentMessageId;
-					fanoutColumns = buildRecoveredColumns(f.siblings, f.pending, f.kind);
-				}
-				if (f.pending === 0) {
-					stopped = true;
-					clearInterval(interval);
-				}
-			} catch {
-				// Transient — the next tick retries.
-			}
-		}, 4000);
-		return () => {
-			stopped = true;
-			clearInterval(interval);
-		};
+		if (!fanout.hasRecoveredPending) return;
+		return fanout.startRecoveryPoll();
 	});
 
 	/**
@@ -1550,8 +1419,8 @@
 		// A streaming fan-out has its own per-branch controllers; cancel them
 		// all (and the server-side generations) rather than the single-turn
 		// abort path below.
-		if (fanoutStreaming) {
-			await stopFanout();
+		if (fanout.streaming) {
+			await fanout.stop();
 			return;
 		}
 		const abort = activeAbort;
@@ -1576,12 +1445,6 @@
 			// the server hasn't finished tearing down yet.
 			void invalidateAll();
 		}
-	}
-
-	function isAbortError(e: unknown): boolean {
-		if (e instanceof DOMException && e.name === 'AbortError') return true;
-		if (e instanceof Error && e.name === 'AbortError') return true;
-		return false;
 	}
 
 	async function send() {
@@ -1612,7 +1475,7 @@
 		if (branches.length >= 2) {
 			resetCompare();
 			splitAttachments = false;
-			await sendFanout(text, attachedMediaIds, branches);
+			await fanout.send(text, attachedMediaIds, branches);
 			return;
 		}
 		// Single effective branch — collapse to a normal send with that model.
@@ -1623,376 +1486,6 @@
 		}
 		splitAttachments = false;
 		await sendStreaming(text, attachedMediaIds, editParent ? { parentMessageId: editParent } : {});
-	}
-
-	/**
-	 * Fan one prompt out to N branches — the cross product of the picked models
-	 * and the split input images (so a branch is a model + optional input image).
-	 * Creates the shared user message once (POST /prepare), then streams a
-	 * sibling assistant response per branch into its own column. The active leaf
-	 * stays pinned at the user message (server-side, advanceActiveLeaf:false) so
-	 * every branch serializes the identical history and the unpicked siblings
-	 * remain reachable; picking a column promotes it to the active thread.
-	 */
-	async function sendFanout(
-		text: string,
-		attachedMediaIds: string[],
-		branches: FanoutBranchSpec[],
-	): Promise<void> {
-		const turnConvId = convId;
-		const isFirstExchange = messages.length === 0;
-		busy = true;
-		errorMsg = null;
-		// Clear the suspend/offline flags for this turn (mirrors sendStreaming).
-		// They're set on background/offline and only reset at a send's start;
-		// without this a stale flag from a prior backgrounded turn would make
-		// runFanoutBranch misclassify a genuine branch failure as "Generating…".
-		wasHiddenDuringFetch = false;
-		wasOfflineDuringFetch = false;
-
-		// 1. Create the shared user message (no dispatch).
-		let userMessage: ChatMessage;
-		try {
-			const res = await fetch(`/api/conversations/${convId}/messages/prepare`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text, attachedMediaIds } satisfies PrepareFanoutRequest),
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			userMessage = ((await res.json()) as PrepareFanoutResponse).userMessage;
-		} catch (e) {
-			if (convId === turnConvId) errorMsg = e instanceof Error ? e.message : String(e);
-			busy = false;
-			return;
-		}
-		if (convId !== turnConvId) {
-			busy = false;
-			return;
-		}
-
-		// 2. Render the user message and spin up the columns.
-		messages = [...messages, userMessage];
-		fanoutUserMessageId = userMessage.id;
-		// This client owns the fan-out — block the server-truth rehydration
-		// from clobbering the live grid until we disconnect / hand off.
-		fanoutLive = true;
-		if (isFirstExchange) markTitlePending(turnConvId);
-		fanoutColumns = branches.map((b, i) => ({
-			branchId: `${userMessage.id}:${i}`,
-			modelId: b.modelId,
-			modelKind: b.modelKind,
-			label: b.displayName,
-			segments: [],
-			status: 'queued' as const,
-			queuedAhead: 0,
-			progress: null,
-			inputMediaId: b.inputMediaId,
-			persisted: null,
-			error: null,
-		}));
-		await tick();
-		scrollToBottom();
-		// The compare view (fanoutComparing) now keeps the composer disabled
-		// until the user picks; the per-turn `busy` flag can release.
-		busy = false;
-
-		// 3. Stream every branch concurrently.
-		try {
-			await Promise.all(
-				fanoutColumns.map((col) => runFanoutBranch(turnConvId, userMessage.id, col)),
-			);
-		} finally {
-			// Clear the first-exchange title spinner regardless of whether the
-			// user has since navigated away — the flag is module-level, so a
-			// Stop-then-navigate would otherwise leave it stuck on the sidebar.
-			if (isFirstExchange) clearTitlePending(turnConvId);
-		}
-		if (convId !== turnConvId) return;
-
-		// 4. Resolve the outcome. If the user Stopped, leave the settled columns
-		//    as-is for manual pick/dismiss. Otherwise:
-		//    - 0 survivors → drop the columns + keep the prompt to edit/resend.
-		//    - media (image/video, keep-many) → keep the grid for ANY survivors
-		//      so the user can prune duds / regenerate; the parked-fan-out marker
-		//      lets a reload (even down to one kept variation) rehydrate it.
-		//    - chat with one survivor → promote it (nothing to compare); 2+ →
-		//      keep the grid for the pick.
-		// If a suspend/disconnect handed this fan-out off to recovery mid-flight
-		// (fanoutLive cleared), the recovery flow owns resolution now — don't let
-		// the live path auto-promote a survivor from a grid it no longer drives.
-		if (!fanoutLive) return;
-		if (fanoutColumns.some((c) => c.status === 'cancelled')) return;
-		const survivors = fanoutColumns.filter((c) => c.persisted);
-		if (survivors.length === 0) {
-			fanoutColumns = [];
-			fanoutUserMessageId = null;
-			fanoutLive = false;
-			errorMsg = 'No model responded. Edit your message and try again.';
-			// Guard the refetch like pickFanout/dismissFanout do — errorMsg is
-			// already set, so a failing invalidate just shouldn't reject here.
-			try {
-				await invalidateAll();
-			} catch {
-				// Best-effort re-sync; the error is already surfaced above.
-			}
-			return;
-		}
-		if (branches[0]?.modelKind === 'chat' && survivors.length === 1) {
-			await pickFanout(survivors[0]);
-		}
-	}
-
-	/** Drive one fan-out branch into its column's state — a streamed SSE turn
-	 *  for chat, or a one-shot JSON request for image (no stream). */
-	async function runFanoutBranch(
-		turnConvId: string,
-		userMessageId: string,
-		col: FanoutColumn,
-	): Promise<ChatMessage | null> {
-		const abort = new AbortController();
-		fanoutAborts.set(col.branchId, abort);
-		try {
-			const body = JSON.stringify(
-				buildFanoutBranchBody({
-					parentMessageId: userMessageId,
-					modelId: col.modelId,
-					modelKind: col.modelKind,
-					inputMediaId: col.inputMediaId,
-				}),
-			);
-			// Image generation is synchronous (no SSE): one POST, one JSON
-			// response carrying the persisted assistant message. The queued
-			// state isn't observable on this path (no event channel), so the
-			// column just reads "Generating…" until the image lands.
-			if (col.modelKind === 'image') {
-				col.status = 'streaming';
-				const res = await fetch(`/api/conversations/${turnConvId}/messages`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body,
-					signal: abort.signal,
-				});
-				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-				const parsed = (await res.json()) as SendMessageResponse;
-				if (convId === turnConvId) {
-					col.persisted = parsed.assistantMessage;
-					col.status = 'done';
-				}
-				return col.persisted;
-			}
-			const res = await fetch(`/api/conversations/${turnConvId}/messages?stream=1`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-				body,
-				signal: abort.signal,
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			if (!res.body) throw new Error('Server returned no body');
-			await consumeChatStream(res.body, {
-				shouldContinue: () => convId === turnConvId,
-				onQueued(ahead) {
-					col.status = 'queued';
-					col.queuedAhead = ahead;
-				},
-				onStart() {
-					col.status = 'streaming';
-				},
-				onText(chunk) {
-					col.status = 'streaming';
-					col.segments = inFlightAppendText(col.segments, chunk);
-				},
-				onReasoning(chunk) {
-					col.status = 'streaming';
-					col.segments = inFlightAppendReasoning(col.segments, chunk);
-				},
-				onProgress(percent) {
-					// Video poll-relay progress (0–100). Surfaced in the column
-					// header while the job runs.
-					col.status = 'streaming';
-					col.progress = percent;
-				},
-				onDone({ assistantMessage }) {
-					col.persisted = assistantMessage;
-					col.progress = null;
-					col.status = 'done';
-				},
-				onError(message) {
-					col.error = message;
-					col.status = 'error';
-				},
-			});
-			return col.persisted;
-		} catch (e) {
-			if (isAbortError(e)) col.status = 'cancelled';
-			else if (wasHiddenDuringFetch || wasOfflineDuringFetch) {
-				// The TCP connection died to a suspension / connectivity drop
-				// BEFORE the visibility/online event fired (the common case is
-				// the reverse — handoffFanoutToRecovery aborts first, landing in
-				// the isAbortError branch above). Either way it's not a real
-				// failure: the server keeps generating + persisting, so leave the
-				// column "Generating…" for the recovery poll to rebuild.
-				col.status = 'streaming';
-			} else {
-				col.error = e instanceof Error ? e.message : String(e);
-				col.status = 'error';
-			}
-			return null;
-		} finally {
-			fanoutAborts.delete(col.branchId);
-		}
-	}
-
-	/** Promote a column to the active thread: select its branch, drop the
-	 *  compare view, and continue the conversation with that model. */
-	async function pickFanout(col: FanoutColumn): Promise<void> {
-		if (!col.persisted || fanoutPicking) return;
-		fanoutPicking = true;
-		const targetId = col.persisted.id;
-		// Clear optimistically (avoids a flash of columns + linear bubble during
-		// the invalidate), but keep a copy to restore if the select or refetch
-		// fails — otherwise a network error would wipe the compare view with no
-		// way back short of a full reload.
-		const savedColumns = fanoutColumns;
-		fanoutColumns = [];
-		try {
-			const res = await fetch(`/api/conversations/${convId}/messages/${targetId}/select`, {
-				method: 'POST',
-			});
-			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			streamedMessageId = targetId;
-			await invalidateAll();
-			// Continue with the chosen model — the picker reflects it now and
-			// the next send persists it as the conversation's model. tick()
-			// lets the data-sync effect (which resets modelId from the
-			// unchanged conversation row) flush first so this assignment wins.
-			await tick();
-			modelId = col.modelId;
-			modelKind = col.modelKind;
-			fanoutUserMessageId = null;
-			fanoutLive = false;
-		} catch (e) {
-			fanoutColumns = savedColumns;
-			errorMsg = e instanceof Error ? e.message : String(e);
-		} finally {
-			fanoutPicking = false;
-		}
-	}
-
-	/** Finish a comparison without an explicit per-column pick: make the first
-	 *  generated branch active (so the thread focuses a real response — the
-	 *  "Done" action for media keep-many, where every kept image/video stays a
-	 *  sibling reachable via ‹N/M›), then re-sync. */
-	async function dismissFanout(): Promise<void> {
-		if (fanoutPicking) return;
-		fanoutPicking = true;
-		const firstPersisted = fanoutColumns.find((c) => c.persisted);
-		// Clear optimistically but restore on failure (see pickFanout).
-		const savedColumns = fanoutColumns;
-		fanoutColumns = [];
-		try {
-			if (firstPersisted?.persisted) {
-				await fetch(`/api/conversations/${convId}/messages/${firstPersisted.persisted.id}/select`, {
-					method: 'POST',
-				});
-			}
-			await invalidateAll();
-			fanoutUserMessageId = null;
-			fanoutLive = false;
-		} catch (e) {
-			fanoutColumns = savedColumns;
-			errorMsg = e instanceof Error ? e.message : String(e);
-		} finally {
-			fanoutPicking = false;
-		}
-	}
-
-	/** Discard (delete) one image variation — prune a dud. Removes the column
-	 *  and deletes its branch server-side; the leaf stays parked at the shared
-	 *  user message (deleteBranch keeps it when the deleted branch isn't the
-	 *  leaf), so the grid keeps showing the survivors. */
-	async function discardFanout(col: FanoutColumn): Promise<void> {
-		if (fanoutPicking) return;
-		fanoutPicking = true;
-		try {
-			if (col.persisted) {
-				const res = await fetch(
-					`/api/conversations/${convId}/messages/${col.persisted.id}/branch`,
-					{ method: 'DELETE' },
-				);
-				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-			}
-			fanoutColumns = fanoutColumns.filter((c) => c.branchId !== col.branchId);
-			// Defensive: if the grid emptied, drop the parked user-message handle
-			// too so nothing dangles.
-			if (fanoutColumns.length === 0) {
-				fanoutUserMessageId = null;
-				fanoutLive = false;
-			}
-		} catch (e) {
-			errorMsg = e instanceof Error ? e.message : String(e);
-		} finally {
-			fanoutPicking = false;
-		}
-	}
-
-	/** Re-roll one media variation in place: generate a fresh sibling with the
-	 *  same model/prompt, then delete the old one once the new one lands. */
-	async function regenerateFanout(col: FanoutColumn): Promise<void> {
-		// Serialize against the other grid mutations (pick/dismiss/discard) — an
-		// overlapping discard during an in-flight re-roll could otherwise drop
-		// the last kept variation past the "keep at least one" guard.
-		if (!fanoutUserMessageId || fanoutPicking) return;
-		fanoutPicking = true;
-		const oldId = col.persisted?.id ?? null;
-		// Snapshot so a failed re-roll restores the original (mirrors
-		// pick/dismiss) instead of leaving the column stuck on "Failed".
-		const snapshot = {
-			persisted: col.persisted,
-			status: col.status,
-			segments: col.segments,
-			error: col.error,
-			progress: col.progress,
-		};
-		col.persisted = null;
-		col.error = null;
-		col.segments = [];
-		col.progress = null;
-		col.status = 'streaming';
-		try {
-			const fresh = await runFanoutBranch(convId, fanoutUserMessageId, col);
-			if (!fresh) {
-				// Re-roll failed / was cancelled — restore the original.
-				col.persisted = snapshot.persisted;
-				col.status = snapshot.status;
-				col.segments = snapshot.segments;
-				col.error = snapshot.error;
-				col.progress = snapshot.progress;
-				return;
-			}
-			// Replace: now that a new sibling exists, drop the old one.
-			// Best-effort — a leftover old variation is harmless (extra sibling).
-			if (oldId && fresh.id !== oldId) {
-				try {
-					await fetch(`/api/conversations/${convId}/messages/${oldId}/branch`, {
-						method: 'DELETE',
-					});
-				} catch {
-					// The new image is already in the column; ignore a failed cleanup.
-				}
-			}
-		} finally {
-			fanoutPicking = false;
-		}
-	}
-
-	/** Stop a streaming fan-out: cancel every branch server-side + locally. */
-	async function stopFanout(): Promise<void> {
-		try {
-			await fetch(`/api/conversations/${convId}/cancel`, { method: 'POST' });
-		} catch {
-			// Best-effort — aborting locally still gives the "stopped" UX.
-		}
-		for (const a of fanoutAborts.values()) a.abort();
 	}
 
 	/**
@@ -2077,7 +1570,7 @@
 			];
 			const pendingBranches = expandFanoutBranches(pendingBase, pendingSplitImageIds);
 			if (pendingBranches.length >= 2) {
-				void sendFanout(pendingText, pendingMediaIds, pendingBranches);
+				void fanout.send(pendingText, pendingMediaIds, pendingBranches);
 			} else void sendStreaming(pendingText, pendingMediaIds);
 		}
 	});
@@ -2395,27 +1888,27 @@
 					/>
 				</div>
 			{/if}
-			{#if fanoutComparing}
+			{#if fanout.comparing}
 				<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
-					<!-- Text fan-out: pick one to continue. Image fan-out (keep-many):
+					<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
 					     discard duds + regenerate, no single pick. -->
 					<FanoutColumns
-						columns={fanoutColumns}
-						onPick={fanoutIsMedia ? undefined : (c) => void pickFanout(c)}
-						onDiscard={fanoutIsMedia ? (c) => void discardFanout(c) : undefined}
-						onRegenerate={fanoutIsMedia ? (c) => void regenerateFanout(c) : undefined}
+						columns={fanout.columns}
+						onPick={fanout.isMedia ? undefined : (c) => void fanout.pick(c)}
+						onDiscard={fanout.isMedia ? (c) => void fanout.discard(c) : undefined}
+						onRegenerate={fanout.isMedia ? (c) => void fanout.regenerate(c) : undefined}
 						onImageClick={openImageInLightbox}
-						busy={fanoutPicking}
+						busy={fanout.picking}
 					/>
-					{#if fanoutColumnsSettled}
+					{#if fanout.columnsSettled}
 						<div class="mt-2 flex justify-center">
 							<button
 								type="button"
-								onclick={() => void dismissFanout()}
-								disabled={fanoutPicking}
+								onclick={() => void fanout.dismiss()}
+								disabled={fanout.picking}
 								class="rounded-lg px-3 py-1.5 text-xs text-fg-muted transition hover:bg-surface-raised disabled:opacity-40"
 							>
-								{fanoutIsMedia ? 'Done' : 'Dismiss comparison'}
+								{fanout.isMedia ? 'Done' : 'Dismiss comparison'}
 							</button>
 						</div>
 					{/if}
@@ -2477,7 +1970,7 @@
 					{generating}
 					canStop={((busy || approvalSubmitting) && activeAbort != null) ||
 						recoveredInFlight ||
-						fanoutStreaming}
+						fanout.streaming}
 					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 					bind:compareSelections
 					bind:compareMode
