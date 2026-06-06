@@ -25,6 +25,7 @@ import {
 	deleteBranch,
 	findUserMessageAncestor,
 	getMessage,
+	getSiblingAssistants,
 	resolveParentForUserMessage,
 	selectBranch,
 	setActiveLeafMessageId,
@@ -1527,5 +1528,135 @@ describe('findUserMessageAncestor', () => {
 		const u = seedUser();
 		const c = seedConv(u.id);
 		expect(findUserMessageAncestor(c.id, 'nonexistent-id')).toBeNull();
+	});
+});
+
+describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
+	function seedConvWithUser() {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::base',
+			modelKind: 'chat',
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'compare these' }],
+		});
+		return { u, conv, user };
+	}
+
+	it('advanceActiveLeaf:false leaves the leaf pinned at the shared user message', () => {
+		const { u, conv, user } = seedConvWithUser();
+		// The /prepare step put the leaf on the user message.
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+
+		// Three fan-out branches land as siblings, none advancing the leaf.
+		const a = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'from model A' }],
+			modelUsed: 'bridge::a',
+			advanceActiveLeaf: false,
+		});
+		const b = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'from model B' }],
+			modelUsed: 'bridge::b',
+			advanceActiveLeaf: false,
+		});
+
+		// Leaf still on the user message — neither branch stole it.
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+		// Both siblings exist under the user message with their own model tag.
+		const sibs = walkActiveBranch(conv.id);
+		expect(sibs.map((m) => m.id)).toEqual([user.id]); // active branch is just the user msg
+		// Picking one advances the leaf into that branch.
+		const sel = selectBranch(conv.id, a.id);
+		expect(sel?.newActiveLeaf).toBe(a.id);
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(a.id);
+		// The unpicked sibling is still in the tree (reachable as a branch).
+		expect(getMessage(conv.id, b.id)?.id).toBe(b.id);
+	});
+
+	it('default append still advances the leaf (single-send back-compat)', () => {
+		const { u, conv, user } = seedConvWithUser();
+		const a = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'normal reply' }],
+			modelUsed: 'bridge::base',
+		});
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(a.id);
+	});
+
+	it('getSiblingAssistants returns the assistant children in order with modelUsed', () => {
+		const { conv, user } = seedConvWithUser();
+		const a = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'A' }],
+			modelUsed: 'bridge::a',
+			advanceActiveLeaf: false,
+		});
+		const b = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'B' }],
+			modelUsed: 'bridge::b',
+			advanceActiveLeaf: false,
+		});
+		// Order is createdAt-then-id (deterministic); both siblings present,
+		// each carrying its own model tag. The live view orders columns by
+		// client dispatch order, so we assert the pairing, not the sequence.
+		const sibs = getSiblingAssistants(conv.id, user.id);
+		expect(new Set(sibs.map((m) => m.id))).toEqual(new Set([a.id, b.id]));
+		const byId = new Map(sibs.map((m) => [m.id, m.modelUsed]));
+		expect(byId.get(a.id)).toBe('bridge::a');
+		expect(byId.get(b.id)).toBe('bridge::b');
+	});
+
+	it('getSiblingAssistants excludes non-assistant children and other parents', () => {
+		const { conv, user } = seedConvWithUser();
+		const a = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'A' }],
+			modelUsed: 'bridge::a',
+			advanceActiveLeaf: false,
+		});
+		// A tool message under the same parent must not appear as a column.
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'tool',
+			parts: [],
+			advanceActiveLeaf: false,
+		});
+		// A reply under a *different* user message must not leak in.
+		const user2 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: a.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'next' }],
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user2.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'C' }],
+			modelUsed: 'bridge::c',
+		});
+		expect(getSiblingAssistants(conv.id, user.id).map((m) => m.id)).toEqual([a.id]);
 	});
 });

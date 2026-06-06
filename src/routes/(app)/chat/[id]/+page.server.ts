@@ -2,7 +2,8 @@ import { error } from '@sveltejs/kit';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
-import { getInFlight } from '$lib/server/streaming/in-flight';
+import { getSiblingAssistants } from '$lib/server/db/queries/messages';
+import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, parent }) => {
@@ -19,7 +20,7 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 	// chat page uses to restore the "Generating…" indicator after an
 	// iOS suspension killed the client's fetch. Unix ms start time, or
 	// null when nothing is in flight.
-	const inFlightSince = getInFlight(params.id)?.startedAt ?? null;
+	const inFlightSince = getInFlightSince(params.id);
 
 	// Friendly label for the assistant in message bubbles. Custom models
 	// win because the user named them; otherwise we strip the verbose
@@ -30,5 +31,16 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		if (cm) assistantLabel = cm.name;
 	}
 
-	return { conversation, assistantLabel, inFlightSince };
+	// Multi-model fan-out rehydration: when the active-branch tail is a user
+	// message (the leaf was pinned there while N branches generated and the
+	// user hasn't picked a winner yet), surface its assistant siblings so the
+	// page can re-render the compare columns after a reload. Only a genuine
+	// fan-out parks the leaf on a user message with assistant children —
+	// normal sends and retries always advance the leaf onto the assistant.
+	const branch = conversation.messages;
+	const tail = branch[branch.length - 1];
+	const fanoutSiblings =
+		tail?.role === 'user' ? getSiblingAssistants(conversation.id, tail.id) : [];
+
+	return { conversation, assistantLabel, inFlightSince, fanoutSiblings };
 };

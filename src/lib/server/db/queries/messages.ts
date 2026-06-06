@@ -18,15 +18,23 @@ interface AppendInput {
 	tokensIn?: number | null;
 	tokensOut?: number | null;
 	rawResponseJson?: string | null;
+	/**
+	 * Whether to point the conversation's active_leaf_message_id at the new
+	 * message (default true). A multi-model fan-out sets this false: its N
+	 * sibling assistant messages all hang off one shared user message, and
+	 * the leaf must stay pinned at that user message (so every branch's
+	 * history walk is identical) until the user picks a winner. Letting each
+	 * concurrent append advance the leaf would make it ping-pong between
+	 * branches and corrupt the others' upstream context.
+	 */
+	advanceActiveLeaf?: boolean;
 }
 
 /**
- * Append a message under `parentMessageId` and update the conversation's
- * active_leaf_message_id to the new message. Returns the newly inserted row
- * shaped as a ChatMessage.
- *
- * v1 always appends to the active leaf, so the tree stays linear. v2 will
- * be able to call this with any `parentMessageId` to create branches.
+ * Append a message under `parentMessageId`. By default also points the
+ * conversation's active_leaf_message_id at the new message; pass
+ * `advanceActiveLeaf: false` to insert a sibling without moving the leaf
+ * (fan-out). Returns the newly inserted row shaped as a ChatMessage.
  */
 export function appendMessage(input: AppendInput): ChatMessage {
 	const db = getDb();
@@ -52,10 +60,20 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			})
 			.run();
 
-		tx.update(conversations)
-			.set({ activeLeafMessageId: id, updatedAt: now })
-			.where(eq(conversations.id, input.conversationId))
-			.run();
+		if (input.advanceActiveLeaf ?? true) {
+			tx.update(conversations)
+				.set({ activeLeafMessageId: id, updatedAt: now })
+				.where(eq(conversations.id, input.conversationId))
+				.run();
+		} else {
+			// Fan-out sibling: leave active_leaf pinned at the shared user
+			// message, but still bump updated_at so the conversation sorts to
+			// the top of the sidebar while branches stream in.
+			tx.update(conversations)
+				.set({ updatedAt: now })
+				.where(eq(conversations.id, input.conversationId))
+				.run();
+		}
 	});
 
 	return {
@@ -275,6 +293,42 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
 	const msg = rowToChatMessage(row);
 	msg.parentMessageId = row.parentMessageId;
 	return msg;
+}
+
+/**
+ * The assistant messages that hang directly off `parentUserMessageId`, in
+ * creation order. During a multi-model fan-out these are the N sibling
+ * responses rendered side by side; for a normal turn there's exactly one.
+ *
+ * Kept separate from `walkActiveBranch` (which only returns the active
+ * branch) because the fan-out compare view needs *all* the siblings under
+ * the shared user message at once — before the user has picked one to make
+ * active. Each returned message carries its own `modelUsed` so the column
+ * header can label which model produced it. Scoped to assistant rows so a
+ * (future) tool message child can't leak into the column grid.
+ */
+export function getSiblingAssistants(
+	conversationId: string,
+	parentUserMessageId: string,
+): ChatMessage[] {
+	const db = getDb();
+	const rows = db
+		.select()
+		.from(messages)
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				eq(messages.parentMessageId, parentUserMessageId),
+				eq(messages.role, 'assistant'),
+			),
+		)
+		.all();
+	rows.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+	return rows.map((row) => {
+		const msg = rowToChatMessage(row);
+		msg.parentMessageId = row.parentMessageId;
+		return msg;
+	});
 }
 
 /**

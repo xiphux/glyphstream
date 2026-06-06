@@ -2,20 +2,16 @@ import type { Buffer } from 'node:buffer';
 import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import {
-	getConversationMeta,
-	setConversationTitle,
-	updateConversationModel,
-} from '$lib/server/db/queries/conversations';
-import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
+import { getConversationMeta, updateConversationModel } from '$lib/server/db/queries/conversations';
+import { linkMessageMedia } from '$lib/server/db/queries/media';
 import {
 	appendMessage,
 	findUserMessageAncestor,
 	getMessage,
-	resolveParentForUserMessage,
 	setActiveLeafMessageId,
 	walkActiveBranch,
 } from '$lib/server/db/queries/messages';
+import { createUserMessage } from '$lib/server/messages/create-user-message';
 import {
 	chatCompletionSync,
 	formatUpstreamError,
@@ -27,6 +23,7 @@ import {
 } from '$lib/server/endpoints/client';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { acquireEndpointSlot, type EndpointSlot } from '$lib/server/endpoints/concurrency';
+import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
@@ -51,27 +48,27 @@ const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
 import { isModelKind } from '$lib/types/api';
-import type {
-	ChatMessage,
-	MessagePart,
-	SendMessageRequest,
-	SendMessageResponse,
-} from '$lib/types/api';
+import type { ChatMessage, SendMessageRequest, SendMessageResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
-
-const TITLE_PREVIEW_MAX = 60;
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
 	requireUser(locals);
 
 	const body = await parseJsonBody<SendMessageRequest>(request);
 	const isRetry = typeof body.regenerateFromMessageId === 'string' && body.regenerateFromMessageId;
+	// One branch of a multi-model fan-out: the shared user message already
+	// exists (created by /prepare) and is referenced via parentMessageId. The
+	// branch derives its prompt from that message, like retry.
+	const isFanout = body.fanoutBranch === true;
 	const text = body.text?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];
-	if (!isRetry && !text && attachedMediaIds.length === 0) {
+	if (!isRetry && !isFanout && !text && attachedMediaIds.length === 0) {
 		throw error(400, "'text' or 'attachedMediaIds' is required");
+	}
+	if (isFanout && isRetry) {
+		throw error(400, 'fanoutBranch and regenerateFromMessageId are mutually exclusive');
 	}
 
 	const meta = requireFound(
@@ -97,11 +94,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			throw error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
 		}
 		const newKind = isModelKind(body.modelKind) ? body.modelKind : meta.modelKind;
-		updateConversationModel(params.id, locals.user.id, {
-			endpointId: newParsed.endpointId,
-			modelId: body.modelId,
-			modelKind: newKind,
-		});
+		// A fan-out branch's model is TRANSIENT: skip the DB write so N
+		// concurrent branches don't clobber the conversation's stored default
+		// (whichever finished last would win). The branch's model is still
+		// applied to this dispatch via the in-memory `meta` mutation below and
+		// recorded per-message through `modelUsed`.
+		if (!isFanout) {
+			updateConversationModel(params.id, locals.user.id, {
+				endpointId: newParsed.endpointId,
+				modelId: body.modelId,
+				modelKind: newKind,
+			});
+		}
 		meta.endpointId = newParsed.endpointId;
 		meta.modelId = body.modelId;
 		meta.modelKind = newKind;
@@ -128,7 +132,24 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// regenerating. Either way the dispatcher uses it as the parent for
 	// the new assistant message.
 	let userMessage;
-	if (isRetry) {
+	if (isFanout) {
+		// The shared user message was created by /prepare; this branch just
+		// references it as the parent for its sibling assistant response.
+		const parentId = body.parentMessageId;
+		if (typeof parentId !== 'string' || !parentId) {
+			throw error(400, 'fanoutBranch requires parentMessageId (the shared user message)');
+		}
+		const parent = getMessage(params.id, parentId);
+		if (!parent) throw error(404, `Message "${parentId}" not found`);
+		if (parent.role !== 'user') {
+			throw error(400, 'fanoutBranch parentMessageId must reference a user message');
+		}
+		userMessage = parent;
+		// Deliberately do NOT setActiveLeafMessageId here. /prepare pinned the
+		// leaf at this user message and it must stay there: every concurrent
+		// branch serializes the identical history, and the unpicked siblings
+		// remain reachable branches until the user selects one.
+	} else if (isRetry) {
 		const target = getMessage(params.id, body.regenerateFromMessageId!);
 		if (!target) throw error(404, `Message "${body.regenerateFromMessageId}" not found`);
 		if (target.role !== 'assistant') {
@@ -156,89 +177,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// becomes a sibling subtree of the chain being retried.
 		setActiveLeafMessageId(params.id, userMessage.id);
 	} else {
-		// Validate every attached media id belongs to this user and isn't
-		// hard-deleted before we persist anything — so a tampered request
-		// can't land an unowned-media reference on a real conversation row.
-		// We also stash the loaded rows (keyed by id) so the part-building
-		// step below can route by kind without a second DB roundtrip.
-		const attachedMediaById = new Map<
-			string,
-			{ kind: 'image' | 'video' | 'file'; byteSize: number; originalFilename: string | null }
-		>();
-		for (const mid of attachedMediaIds) {
-			const m = getMediaForUser(mid, locals.user.id);
-			if (!m || m.hardDeletedAt !== null) {
-				throw error(400, `Attached media "${mid}" not found`);
-			}
-			attachedMediaById.set(mid, {
-				kind: m.kind,
-				byteSize: m.byteSize,
-				originalFilename: m.originalFilename,
-			});
-		}
-
-		// Resolve the parent for the new user message. See
-		// `resolveParentForUserMessage` for the three cases (edit /
-		// explicit parent / active-leaf append). The helper returns a
-		// discriminated result so we can map misses to the right 400
-		// without coupling the helper itself to SvelteKit's error
-		// machinery — that separation is what makes it cleanly unit-
-		// testable.
-		const resolved = resolveParentForUserMessage({
+		userMessage = createUserMessage({
 			conversationId: params.id,
-			activeLeafMessageId: meta.activeLeafMessageId ?? null,
+			userId: locals.user.id,
+			text,
+			attachedMediaIds,
 			editedMessageId: body.editedMessageId,
 			parentMessageId: body.parentMessageId,
+			activeLeafMessageId: meta.activeLeafMessageId ?? null,
+			existingTitle: meta.title,
 		});
-		if (!resolved.ok) {
-			const field =
-				resolved.reason === 'edited-message-not-found' ? 'editedMessageId' : 'parentMessageId';
-			throw error(400, `${field} "${resolved.id}" not found`);
-		}
-		const parentForMessage = resolved.parentMessageId;
-
-		// Persist user message + auto-title BEFORE upstream call so even if
-		// the upstream fails the user's input is preserved on the active
-		// branch. Image/video/file parts come after the text part so the
-		// UI renders text-then-attachments (the natural reading order of
-		// "<words>; here are the pictures / here's the spreadsheet"). The
-		// part type is derived from the media's `kind` — file kinds get a
-		// download-chip part with denormalized filename + size so the
-		// renderer needs no media lookup at draw time.
-		const userParts: MessagePart[] = [];
-		if (text) userParts.push({ type: 'text', text });
-		for (const mid of attachedMediaIds) {
-			const m = attachedMediaById.get(mid)!;
-			if (m.kind === 'image') {
-				userParts.push({ type: 'image', mediaId: mid });
-			} else if (m.kind === 'video') {
-				userParts.push({ type: 'video', mediaId: mid });
-			} else {
-				userParts.push({
-					type: 'file',
-					mediaId: mid,
-					// Fall back to the media id when an upload pre-dates the
-					// original_filename column (legacy rows) — at least the
-					// chip won't render with an empty label.
-					filename: m.originalFilename ?? mid,
-					byteSize: m.byteSize,
-				});
-			}
-		}
-		userMessage = appendMessage({
-			conversationId: params.id,
-			parentMessageId: parentForMessage,
-			role: 'user',
-			parts: userParts,
-		});
-		for (const mid of attachedMediaIds) {
-			linkMessageMedia(userMessage.id, mid);
-		}
-		if (!meta.title && text) {
-			const preview =
-				text.length > TITLE_PREVIEW_MAX ? text.slice(0, TITLE_PREVIEW_MAX - 1) + '…' : text;
-			setConversationTitle(params.id, preview);
-		}
 	}
 
 	if (DEBUG) {
@@ -262,8 +210,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
 	// Register this generation so POST /api/conversations/:id/cancel can
 	// reach the upstream call and abort it. We pass the signal down through
-	// every code path that talks to upstream.
-	const inFlight = registerInFlight(params.id, endpoint);
+	// every code path that talks to upstream. Fan-out branches each get a
+	// unique key so they coexist in the registry instead of cancelling one
+	// another; a plain send uses the default single-slot key.
+	const inFlight = registerInFlight(params.id, endpoint, isFanout ? generateId() : undefined);
 
 	// --- image-kind models: prompt → image; no streaming, no chat history -----
 	if (meta.modelKind === 'image') {
@@ -349,6 +299,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				parts: [{ type: 'image', mediaId }],
 				modelUsed: meta.modelId,
 				rawResponseJson: JSON.stringify(upstream),
+				advanceActiveLeaf: !isFanout,
 			});
 			linkMessageMedia(assistantMessage.id, mediaId);
 			void notifyConversationComplete({
@@ -411,6 +362,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			inputReference,
 			abortSignal: inFlight.controller.signal,
+			advanceActiveLeaf: !isFanout,
+			suppressTitleTask: isFanout,
+			// Stash the bridge job id on our in-flight entry so the cancel
+			// endpoint can DELETE /v1/videos/{id} for this branch.
+			onJobId: (jobId) => {
+				inFlight.videoJobId = jobId;
+			},
 			// Clear the registry slot when the relay's work is done — not
 			// when the response stream cancels. An iOS suspension drops
 			// the client SSE connection minutes before the polling loop
@@ -475,7 +433,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const modelEntry = allModels.find(
 		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
 	);
-	const supportsTools = modelEntry?.supportsTools ?? endpoint.supportsTools ?? false;
+	// Fan-out branches run single-iteration (no tool loop — a tool_call with
+	// no follow-up iteration would leave the model unable to respond to the
+	// result), so tools are disabled for them. Fan-out is for comparing model
+	// *responses*; tool-using comparison is a deliberate follow-up.
+	const supportsTools = (modelEntry?.supportsTools ?? endpoint.supportsTools ?? false) && !isFanout;
 	// Block first request after a cold start until MCP discovery has
 	// finished — otherwise the model would see a partially-populated tool
 	// surface and refuse-to-use later in the turn would surface as flaky
@@ -548,6 +510,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			storedModelId: meta.modelId,
 			abortSignal: inFlight.controller.signal,
+			// Fan-out branch: persist the assistant as a sibling without
+			// advancing the leaf (stays pinned at the shared user message),
+			// and don't start a per-branch title task (/prepare owns it once).
+			advanceActiveLeaf: !isFanout,
+			suppressTitleTask: isFanout,
 			// Clear the registry slot once the whole turn settles (all
 			// loop iterations + tool executions done), not per recorder.
 			// The recorder branches survive client disconnect, so the

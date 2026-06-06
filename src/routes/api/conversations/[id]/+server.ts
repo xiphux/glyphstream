@@ -11,7 +11,7 @@ import {
 	unarchiveConversation,
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
-import { getInFlight } from '$lib/server/streaming/in-flight';
+import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
@@ -24,7 +24,7 @@ export const GET: RequestHandler = ({ locals, params }) => {
 	// `inFlightSince` lets the chat page's recovery poll detect — without
 	// the heavyweight page reload — when a generation it's tracking has
 	// finished. DB-only otherwise, so it's cheap to poll.
-	const inFlightSince = getInFlight(params.id)?.startedAt ?? null;
+	const inFlightSince = getInFlightSince(params.id);
 	return json({ conversation: conv, inFlightSince });
 };
 

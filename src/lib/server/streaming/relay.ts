@@ -160,6 +160,21 @@ export interface RelayParams {
 	 * assistant — otherwise every resume forks the branch.
 	 */
 	initialParentMessageId?: string;
+	/**
+	 * Whether the persisted assistant message should advance the
+	 * conversation's active_leaf. Default true. A multi-model fan-out branch
+	 * passes false so its sibling lands under the shared user message without
+	 * stealing the leaf from the other concurrent branches — the leaf stays
+	 * pinned at the user message until the user picks a winner.
+	 */
+	advanceActiveLeaf?: boolean;
+	/**
+	 * Skip the first-exchange title task. Default false. A fan-out fires N
+	 * branch relays against one shared first exchange; without this each
+	 * would kick off its own title generation. `/prepare` runs the title
+	 * task once for the turn instead.
+	 */
+	suppressTitleTask?: boolean;
 }
 
 interface IterationResult {
@@ -248,8 +263,10 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			// Title task fires once per conversation, on the FIRST iteration.
 			// The helper itself idempotently no-ops on subsequent calls, but
 			// capturing the promise here and only racing it at the end keeps
-			// the race conditional clean.
-			if (titlePromise === null) {
+			// the race conditional clean. Fan-out suppresses it entirely — its
+			// N concurrent branches would each start a task against the same
+			// first exchange, so /prepare owns title generation once instead.
+			if (titlePromise === null && !params.suppressTitleTask) {
 				titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
 			}
 
@@ -485,6 +502,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		modelUsed: params.storedModelId,
 		tokensIn,
 		tokensOut,
+		advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 	});
 
 	return { assistantMessage, textForPushPreview: textBuf, stopped };

@@ -91,3 +91,24 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 		...(opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
 	};
 }
+
+/**
+ * Body for one branch of a multi-model fan-out. The shared user message was
+ * already created by POST .../messages/prepare; this branch streams a sibling
+ * assistant response under it using `modelId` as a TRANSIENT override (the
+ * server records it per-message via modelUsed and never rewrites the
+ * conversation's stored model). text/attachments are omitted — the server
+ * derives the prompt from the shared user message, like retry.
+ */
+export function buildFanoutBranchBody(input: {
+	parentMessageId: string;
+	modelId: string;
+	modelKind: ModelKind | null;
+}): Record<string, unknown> {
+	return {
+		fanoutBranch: true,
+		parentMessageId: input.parentMessageId,
+		modelId: input.modelId,
+		modelKind: input.modelKind,
+	};
+}

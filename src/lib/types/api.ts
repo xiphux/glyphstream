@@ -553,6 +553,38 @@ export interface SendMessageRequest {
 	modelId?: string;
 	/** Modality of the override model. Required when `modelId` is set. */
 	modelKind?: ModelKind;
+	/**
+	 * "Multi-model fan-out branch" — when true, this request is one of N
+	 * concurrent generations sharing the user message at `parentMessageId`
+	 * (created once by POST .../messages/prepare). The server does NOT create
+	 * a user message, does NOT advance the conversation's active_leaf (the N
+	 * siblings stay under the shared user message until the user picks one),
+	 * and treats `modelId` as a TRANSIENT override for this branch only — it
+	 * is recorded per-message via `modelUsed` and never rewrites the
+	 * conversation's stored model. `text` / `attachedMediaIds` are ignored
+	 * (derived from the shared user message, like retry). Single-iteration:
+	 * tool loops aren't supported on a fan-out branch.
+	 */
+	fanoutBranch?: boolean;
+}
+
+/**
+ * POST /api/conversations/:id/messages/prepare request — creates the shared
+ * user message for a multi-model fan-out without dispatching. Mirrors the
+ * user-message fields of `SendMessageRequest` (no model fields: each branch
+ * carries its own model).
+ */
+export interface PrepareFanoutRequest {
+	text: string;
+	attachedMediaIds?: string[];
+	parentMessageId?: string;
+	editedMessageId?: string;
+}
+
+/** POST .../messages/prepare response — the persisted shared user message
+ *  the client then parents each fan-out branch to. */
+export interface PrepareFanoutResponse {
+	userMessage: ChatMessage;
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */

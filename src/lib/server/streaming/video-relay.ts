@@ -24,7 +24,6 @@ import {
 	type VideoCreateRequest,
 	type VideoJob,
 } from '../endpoints/client';
-import { setVideoJobId } from './in-flight';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import { errorMessage, isAbortError, sseWriter } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
@@ -87,6 +86,19 @@ export interface VideoRelayParams {
 	 * hydrate when the user comes back.
 	 */
 	onComplete: () => void;
+	/**
+	 * Fires with the bridge-side job id as soon as POST /v1/videos returns,
+	 * so the route can stash it on the in-flight entry for cancellation
+	 * (DELETE /v1/videos/{id}). Keeps this relay decoupled from the in-flight
+	 * registry's keying — the route owns which entry to update.
+	 */
+	onJobId?: (jobId: string) => void;
+	/** Fan-out branch: persist the video as a sibling without advancing the
+	 *  conversation's active_leaf (default true = advance). */
+	advanceActiveLeaf?: boolean;
+	/** Skip the first-exchange title task (a fan-out runs it once in /prepare
+	 *  rather than per branch). Default false. */
+	suppressTitleTask?: boolean;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
@@ -129,7 +141,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				// conversation topic for image/video modalities, so title gen
 				// doesn't have to wait for the asset itself. By the time the
 				// video lands, the title is almost always ready.
-				const titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
+				const titlePromise = params.suppressTitleTask
+					? Promise.resolve<string | null>(null)
+					: startTitleTaskIfFirstExchange(params.conversationId);
 
 				let job: VideoJob;
 				try {
@@ -150,7 +164,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					}
 					job = await videoCreate(params.endpoint, req, params.abortSignal);
 					if (DEBUG) console.debug(`[video-relay] created job`, job);
-					setVideoJobId(params.conversationId, job.id);
+					params.onJobId?.(job.id);
 				} catch (e) {
 					// A Stop click mid-create aborts the upstream fetch — treat
 					// it as a cancellation (matching the in-loop abort path
@@ -251,6 +265,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						parts: [{ type: 'video', mediaId }],
 						modelUsed: params.storedModelId,
 						rawResponseJson: JSON.stringify(job),
+						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 					});
 					linkMessageMedia(assistantMessage.id, mediaId);
 				} catch (e) {

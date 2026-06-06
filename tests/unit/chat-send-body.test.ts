@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { buildSendRequestBody } from '$lib/chat-send-body';
+import { buildSendRequestBody, buildFanoutBranchBody } from '$lib/chat-send-body';
 
 const BASE = {
 	text: 'hello world',
@@ -145,5 +145,34 @@ describe('buildSendRequestBody', () => {
 			attachedMediaIds: ['m1', 'm2', 'm3'],
 		});
 		expect(body.attachedMediaIds).toEqual(['m1', 'm2', 'm3']);
+	});
+});
+
+describe('buildFanoutBranchBody', () => {
+	it('flags fanoutBranch, parents to the shared user message, and omits text', () => {
+		const body = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::claude',
+			modelKind: 'chat',
+		});
+		expect(body).toEqual({
+			fanoutBranch: true,
+			parentMessageId: 'user-1',
+			modelId: 'bridge::claude',
+			modelKind: 'chat',
+		});
+		// text/attachments are intentionally absent — derived server-side from
+		// the shared user message, like retry.
+		expect(body).not.toHaveProperty('text');
+		expect(body).not.toHaveProperty('attachedMediaIds');
+	});
+
+	it('carries modelKind through, including null', () => {
+		const body = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::x',
+			modelKind: null,
+		});
+		expect(body.modelKind).toBeNull();
 	});
 });
