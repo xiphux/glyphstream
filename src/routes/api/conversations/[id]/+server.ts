@@ -11,6 +11,7 @@ import {
 	unarchiveConversation,
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
+import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
@@ -25,7 +26,11 @@ export const GET: RequestHandler = ({ locals, params }) => {
 	// the heavyweight page reload — when a generation it's tracking has
 	// finished. DB-only otherwise, so it's cheap to poll.
 	const inFlightSince = getInFlightSince(params.id);
-	return json({ conversation: conv, inFlightSince });
+	// Same `fanout` recovery state the page load returns, so the poll can
+	// rebuild the compare grid (completed branches + how many are still
+	// generating) as branches land — without a full invalidate per landing.
+	const fanout = getFanoutRecoveryState(params.id, conv.activeLeafMessageId);
+	return json({ conversation: conv, inFlightSince, fanout });
 };
 
 /**

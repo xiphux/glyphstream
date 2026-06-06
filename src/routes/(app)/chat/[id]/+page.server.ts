@@ -1,8 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { getConversationDetail, getFanoutParent } from '$lib/server/db/queries/conversations';
+import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
-import { getSiblingAssistants } from '$lib/server/db/queries/messages';
+import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import type { PageServerLoad } from './$types';
 
@@ -31,19 +31,15 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		if (cm) assistantLabel = cm.name;
 	}
 
-	// Multi-model fan-out rehydration: a conversation with an unresolved
-	// fan-out carries an explicit marker (fanout_parent_message_id, set by
-	// .../prepare, cleared on pick/dismiss). When it points at the current
-	// active leaf, surface that user message's assistant siblings so the page
-	// re-renders the compare grid after a reload. The explicit marker (vs.
-	// guessing from "tail is a user message with N children") means a retry or
-	// truncate parked on a user message can't masquerade as a fan-out, and a
-	// single surviving branch is still surfaced.
-	const fanoutParent = getFanoutParent(conversation.id);
-	const fanoutSiblings =
-		fanoutParent && fanoutParent === conversation.activeLeafMessageId
-			? getSiblingAssistants(conversation.id, fanoutParent)
-			: [];
+	// Multi-model fan-out recovery: a conversation with an unresolved fan-out
+	// carries an explicit marker (fanout_parent_message_id, set by .../prepare,
+	// cleared on pick/dismiss). When it points at the current active leaf, the
+	// page rebuilds the compare grid from the persisted branches + the count
+	// still generating — so a reload mid-fan-out (iOS suspended the PWA) shows
+	// the completed images plus "generating" placeholders, and the poll fills
+	// the rest in as they land. The explicit marker means a retry/truncate
+	// parked on a user message can't masquerade as a fan-out.
+	const fanout = getFanoutRecoveryState(conversation.id, conversation.activeLeafMessageId);
 
-	return { conversation, assistantLabel, inFlightSince, fanoutSiblings };
+	return { conversation, assistantLabel, inFlightSince, fanout };
 };

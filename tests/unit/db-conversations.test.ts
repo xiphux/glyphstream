@@ -39,6 +39,9 @@ import {
 	insertMedia,
 	linkMessageMedia,
 } from '$lib/server/db/queries/media';
+import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
+import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
+import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import { media } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -1663,6 +1666,18 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 	});
 });
 
+const fakeEndpoint = {
+	id: 'bridge',
+	displayName: 'Bridge',
+	baseUrl: 'http://x/v1',
+	apiKey: null,
+	requestTimeoutSeconds: 30,
+	providerQuirk: 'passthrough',
+	groupBy: 'endpoint',
+	supportsTools: false,
+	maxConcurrent: 4,
+} satisfies LoadedEndpoint;
+
 describe('fan-out marker (parked-fan-out rehydration)', () => {
 	function seedFanout() {
 		const u = seedUser();
@@ -1754,6 +1769,32 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		setFanoutParent(conv.id, user.id);
 		truncateAtMessage(conv.id, a.id);
 		expect(getFanoutParent(conv.id)).toBeNull();
+	});
+
+	it('getFanoutRecoveryState reports siblings + pending only for a parked fan-out', () => {
+		const { conv, user, a, b } = seedFanout();
+		// Not parked yet (no marker) → nothing to recover.
+		expect(getFanoutRecoveryState(conv.id, user.id)).toEqual({
+			parentMessageId: null,
+			siblings: [],
+			pending: 0,
+		});
+
+		setFanoutParent(conv.id, user.id);
+		resetInFlight();
+		const state = getFanoutRecoveryState(conv.id, user.id);
+		expect(state.parentMessageId).toBe(user.id);
+		expect(new Set(state.siblings.map((m) => m.id))).toEqual(new Set([a.id, b.id]));
+		expect(state.pending).toBe(0);
+
+		// Two branches still generating → pending reflects the in-flight count.
+		registerInFlight(conv.id, fakeEndpoint, 'br0');
+		registerInFlight(conv.id, fakeEndpoint, 'br1');
+		expect(getFanoutRecoveryState(conv.id, user.id).pending).toBe(2);
+		resetInFlight();
+
+		// Marker that no longer matches the active leaf isn't surfaced.
+		expect(getFanoutRecoveryState(conv.id, 'some-other-leaf').parentMessageId).toBeNull();
 	});
 
 	it('a fan-out branch append (advanceActiveLeaf:false) leaves the marker set', () => {
