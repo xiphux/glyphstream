@@ -75,6 +75,9 @@ export interface VideoRelayParams {
 	 * multipart field on POST /v1/videos.
 	 */
 	inputReference?: { bytes: Buffer; contentType: string };
+	/** Media id of the I2V input image (the `inputReference`'s source row), so
+	 *  the persisted video records its provenance for the split grid. */
+	sourceMediaId?: string | null;
 	abortSignal?: AbortSignal;
 	/**
 	 * Fires once the relay has truly finished (job completed, failed, or
@@ -257,6 +260,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						prompt: params.prompt,
 						bytes,
 						contentType,
+						sourceMediaId: params.sourceMediaId ?? null,
 					});
 					assistantMessage = appendMessage({
 						conversationId: params.conversationId,

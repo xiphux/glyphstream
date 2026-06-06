@@ -37,6 +37,9 @@ interface PersistImageInput {
 	sourceModel: string;
 	prompt: string;
 	urlOrB64: { url?: string; b64_json?: string };
+	/** Input image this edit was produced from (i2i), for provenance + the
+	 *  split-attachments grid. Null for text-to-image. */
+	sourceMediaId?: string | null;
 }
 
 export async function persistGeneratedImage(input: PersistImageInput): Promise<string> {
@@ -51,6 +54,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		kind: 'image',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
+		sourceMediaId: input.sourceMediaId ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;
@@ -63,6 +67,8 @@ interface PersistVideoInput {
 	prompt: string;
 	bytes: Buffer;
 	contentType: string;
+	/** Input image this video was animated from (i2v). Null for text-to-video. */
+	sourceMediaId?: string | null;
 }
 
 /** Persist already-fetched video bytes (fetched directly from upstream by the caller). */
@@ -81,6 +87,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		kind: 'video',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
+		sourceMediaId: input.sourceMediaId ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;

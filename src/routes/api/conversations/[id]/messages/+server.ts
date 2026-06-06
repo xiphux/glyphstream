@@ -204,9 +204,23 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
 		.map((p) => p.text)
 		.join('');
-	const dispatchMediaIds = userMessage.parts
+	let dispatchMediaIds = userMessage.parts
 		.filter((p): p is { type: 'image'; mediaId: string } => p.type === 'image')
 		.map((p) => p.mediaId);
+	// Split-attachments: a fan-out branch may restrict itself to a subset of the
+	// shared user message's images (typically one), so N attached images fan out
+	// into N independent edits / animations. Only ids actually attached to the
+	// parent are honored — a branch can't smuggle in arbitrary media.
+	if (isFanout && Array.isArray(body.inputMediaIds)) {
+		const attached = new Set(dispatchMediaIds);
+		dispatchMediaIds = body.inputMediaIds.filter(
+			(m): m is string => typeof m === 'string' && attached.has(m),
+		);
+	}
+	// Provenance for an image-input generation (i2i edit / i2v): record the
+	// (first) source image so the split grid can label each result by its input
+	// and a reload can rebuild that pairing. Null for text-to-image/video.
+	const sourceMediaId = dispatchMediaIds[0] ?? null;
 
 	// Register this generation so POST /api/conversations/:id/cancel can
 	// reach the upstream call and abort it. We pass the signal down through
@@ -300,6 +314,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				sourceModel: meta.modelId,
 				prompt: promptText,
 				urlOrB64: { url: result.url, b64_json: result.b64_json },
+				sourceMediaId,
 			});
 			const assistantMessage = appendMessage({
 				conversationId: params.id,
@@ -370,6 +385,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			prompt: promptText,
 			userMessage: userMessage as ChatMessage,
 			inputReference,
+			sourceMediaId,
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,

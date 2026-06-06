@@ -333,6 +333,16 @@ export const media = sqliteTable(
 			.default('generated'),
 		sourceEndpointId: text('source_endpoint_id'),
 		sourceModel: text('source_model'),
+		// For a generated asset that edited / animated an input image
+		// (image-to-image edit, image-to-video), the media id of that input.
+		// Drives the multi-model "split attachments" grid (each result labelled
+		// by its source thumbnail) and survives a reload, so a recovered split
+		// fan-out keeps its input pairing + can regenerate the right input.
+		// Null for text-to-image / uploads / legacy rows. `set null` on delete
+		// so purging the source doesn't orphan a foreign key.
+		sourceMediaId: text('source_media_id').references((): any => media.id, {
+			onDelete: 'set null',
+		}),
 		// promptExcerpt: a truncated (500 char) preview, used everywhere the
 		// surrounding UI is space-constrained — gallery thumbnails, lightbox
 		// caption strip. promptFull: the original untruncated prompt, used

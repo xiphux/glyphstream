@@ -85,6 +85,14 @@ describe('media: insert + ref counting', () => {
 		expect(getRow(id)?.originalFilename).toBe('Q4-budget.csv');
 	});
 
+	it('insertMedia round-trips sourceMediaId (split / i2i provenance) and defaults it to null', () => {
+		const u = seedUser();
+		const input = makeMedia(u.id);
+		expect(getRow(input.id)?.sourceMediaId).toBeNull();
+		const edited = makeMedia(u.id, { sourceMediaId: input.id });
+		expect(getRow(edited.id)?.sourceMediaId).toBe(input.id);
+	});
+
 	it('insertMedia defaults originalFilename to null when not supplied', () => {
 		const u = seedUser();
 		const { id } = makeMedia(u.id);

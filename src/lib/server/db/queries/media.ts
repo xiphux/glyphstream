@@ -16,6 +16,9 @@ export interface MediaInsertInput {
 	kind: MediaKind;
 	sourceEndpointId: string | null;
 	sourceModel: string | null;
+	/** Input image this asset was edited / animated from (i2i edit, i2v).
+	 *  Null for text-to-image and uploads. */
+	sourceMediaId?: string | null;
 	/** Truncated preview (~500 chars) for space-constrained surfaces. */
 	promptExcerpt: string | null;
 	/** Full original prompt for "regenerate from gallery" flows. May
@@ -55,6 +58,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			origin,
 			sourceEndpointId: input.sourceEndpointId,
 			sourceModel: input.sourceModel,
+			sourceMediaId: input.sourceMediaId ?? null,
 			promptExcerpt: input.promptExcerpt,
 			promptFull: input.promptFull ?? null,
 			originalFilename: input.originalFilename ?? null,

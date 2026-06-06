@@ -141,6 +141,13 @@
       "when": 1780721208411,
       "tag": "0019_unknown_the_hand",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1780770477539,
+      "tag": "0020_ancient_jack_power",
+      "breakpoints": true
     }
   ]
 }

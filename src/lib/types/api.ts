@@ -566,6 +566,13 @@ export interface SendMessageRequest {
 	 * tool loops aren't supported on a fan-out branch.
 	 */
 	fanoutBranch?: boolean;
+	/**
+	 * Split-attachments: restrict THIS fan-out branch to a subset (typically
+	 * one) of the shared user message's attached images as its image input, so
+	 * N attached images fan out into N independent edits / animations. Only ids
+	 * actually attached to the parent are honored. Ignored unless `fanoutBranch`.
+	 */
+	inputMediaIds?: string[];
 }
 
 /**
