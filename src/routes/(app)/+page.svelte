@@ -6,6 +6,7 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
+	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 	import { expandCompareSelections, type CompareSelection, type FanoutModel } from '$lib/fanout';
@@ -37,6 +38,7 @@
 	// first message fans out to these models instead of a single send.
 	let compareSelections = $state<CompareSelection[]>([]);
 	let compareMode = $state(false);
+	let splitAttachments = $state(false);
 	const fanoutFirstModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = data.models.find((x) => x.id === id);
@@ -151,6 +153,16 @@
 	const attachments = new AttachmentStore();
 	let coreRef = $state<{ focus: () => void } | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(pickedKind));
+	// Split-attachments availability + cross-product count (mirrors ChatComposer).
+	const canSplit = $derived(
+		(pickedKind === 'image' || pickedKind === 'video') && attachments.readyImageCount >= 2,
+	);
+	const splitModelCount = $derived(
+		compareMode && fanoutFirstModels.length >= 2 ? fanoutFirstModels.length : 1,
+	);
+	$effect(() => {
+		if (!canSplit && splitAttachments) splitAttachments = false;
+	});
 	onDestroy(() => attachments.destroy());
 
 	// Pick up any pending gallery-launch intent stashed by MediaLightbox.
@@ -261,12 +273,17 @@
 			// sessionStorage (per-conversation key) and navigate. Payload is
 			// JSON-encoded so we can carry attached media ids (and, for a
 			// fan-out, the model set) alongside the text.
+			const splitImageIds =
+				splitAttachments && attachments.readyImageCount >= 2
+					? attachments.readyImageMediaIds()
+					: null;
 			window.sessionStorage.setItem(
 				pendingFirstMessageKey(conversation.id),
 				JSON.stringify({
 					text,
 					attachedMediaIds: attachments.readyMediaIds(),
 					...(fanout ? { fanoutModels: fanout } : {}),
+					...(splitImageIds ? { splitImageIds } : {}),
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
@@ -325,6 +342,16 @@
 			enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 			onSubmit={startChat}
 		>
+			{#snippet attachmentBar()}
+				{#if canSplit}
+					<SplitAttachmentsToggle
+						bind:enabled={splitAttachments}
+						imageCount={attachments.readyImageCount}
+						modelCount={splitModelCount}
+						disabled={busy}
+					/>
+				{/if}
+			{/snippet}
 			{#snippet controls()}
 				<FeatureTogglesMenu
 					{disabledFeatures}

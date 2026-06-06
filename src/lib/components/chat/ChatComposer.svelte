@@ -13,6 +13,7 @@
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
+	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
 	import type { CompareSelection } from '$lib/fanout';
 	import type {
@@ -45,6 +46,8 @@
 		compareSelections: CompareSelection[];
 		/** Whether the picker is in compare mode. */
 		compareMode: boolean;
+		/** Split-attachments: fan the prompt out across the attached images. */
+		splitAttachments?: boolean;
 		onSend: () => void;
 		onStop: () => void;
 		onFeaturesChange: (next: FeatureCategory[]) => void;
@@ -68,6 +71,7 @@
 		enterBehavior,
 		compareSelections = $bindable(),
 		compareMode = $bindable(),
+		splitAttachments = $bindable(false),
 		onSend,
 		onStop,
 		onFeaturesChange,
@@ -99,6 +103,19 @@
 	// comparison needs 2+; one model collapses to a normal single send.
 	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
 	const fanoutActive = $derived(compareMode && compareTotal >= 2);
+
+	// Split-attachments is offered only for image/video models (which consume an
+	// input image) with 2+ image attachments to fan across. Effective model
+	// count feeds the cross-product total shown on the toggle.
+	const canSplit = $derived(
+		(modelKind === 'image' || modelKind === 'video') && attachments.readyImageCount >= 2,
+	);
+	const splitModelCount = $derived(fanoutActive ? compareTotal : 1);
+	// Drop the flag the moment splitting stops being applicable, so a stale
+	// toggle can't fan out a send it no longer fits.
+	$effect(() => {
+		if (!canSplit && splitAttachments) splitAttachments = false;
+	});
 </script>
 
 <div class="relative mx-auto max-w-3xl">
@@ -119,6 +136,16 @@
 		{enterBehavior}
 		onSubmit={onSend}
 	>
+		{#snippet attachmentBar()}
+			{#if canSplit}
+				<SplitAttachmentsToggle
+					bind:enabled={splitAttachments}
+					imageCount={attachments.readyImageCount}
+					modelCount={splitModelCount}
+					disabled={generating}
+				/>
+			{/if}
+		{/snippet}
 		{#snippet controls()}
 			<FeatureTogglesMenu
 				{disabledFeatures}

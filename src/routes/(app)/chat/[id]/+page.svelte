@@ -2045,6 +2045,7 @@
 			let pendingText = pending;
 			let pendingMediaIds: string[] = [];
 			let pendingFanout: FanoutModel[] | null = null;
+			let pendingSplitImageIds: string[] | null = null;
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
@@ -2055,14 +2056,23 @@
 					}
 					const fm = (parsed as { fanoutModels?: unknown }).fanoutModels;
 					if (Array.isArray(fm) && fm.length > 0) pendingFanout = fm as FanoutModel[];
+					const split = (parsed as { splitImageIds?: unknown }).splitImageIds;
+					if (Array.isArray(split) && split.length > 0) {
+						pendingSplitImageIds = split.filter((s): s is string => typeof s === 'string');
+					}
 				}
 			} catch {
 				// Old format — pending was already plain text.
 			}
-			// A multi-model first message (the new-chat picker was in compare
-			// mode) routes to the fan-out flow instead of a single send.
-			if (pendingFanout) {
-				void sendFanout(pendingText, pendingMediaIds, expandFanoutBranches(pendingFanout, null));
+			// A multi-model and/or split-attachments first message fans out;
+			// otherwise it's a plain single send. Branches = the picked models
+			// (or the conversation's single model) crossed with the split images.
+			const pendingBase: FanoutModel[] = pendingFanout ?? [
+				{ modelId, modelKind: modelKind ?? 'chat', displayName: modelDisplayName(modelId) },
+			];
+			const pendingBranches = expandFanoutBranches(pendingBase, pendingSplitImageIds);
+			if (pendingBranches.length >= 2) {
+				void sendFanout(pendingText, pendingMediaIds, pendingBranches);
 			} else void sendStreaming(pendingText, pendingMediaIds);
 		}
 	});
@@ -2466,6 +2476,7 @@
 					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 					bind:compareSelections
 					bind:compareMode
+					bind:splitAttachments
 					onSend={() => void send()}
 					onStop={stop}
 					onFeaturesChange={(next) => void persistDisabledFeatures(next)}

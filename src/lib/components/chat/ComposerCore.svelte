@@ -36,6 +36,9 @@
 		/** Trailing action-row controls: feature toggles, model picker,
 		 *  send/stop. Rendered after the attach button. */
 		controls: Snippet;
+		/** Optional right-aligned bar rendered under the attachment thumbnails
+		 *  (e.g. the split-attachments toggle). The consumer decides when. */
+		attachmentBar?: Snippet;
 	}
 
 	let {
@@ -48,6 +51,7 @@
 		enterBehavior,
 		onSubmit,
 		controls,
+		attachmentBar,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
@@ -129,6 +133,9 @@
 	class="surface-glass-soft relative rounded-2xl border border-border-strong px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
 	<AttachmentThumbnails {attachments} class="px-1" />
+	{#if attachmentBar}
+		<div class="flex justify-end px-1 pb-1">{@render attachmentBar()}</div>
+	{/if}
 	<textarea
 		bind:this={textareaEl}
 		bind:value={text}

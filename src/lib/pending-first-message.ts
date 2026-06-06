@@ -19,6 +19,10 @@ export interface PendingFirstMessage {
 	 *  single send — set by the new-chat page when the picker was in compare
 	 *  mode. The chat page routes to its fan-out flow on pickup. */
 	fanoutModels?: FanoutModel[];
+	/** When present, split-attachments was on: fan out across these input
+	 *  images (crossed with `fanoutModels`, or the conversation's single model).
+	 *  Always 2+ when set. */
+	splitImageIds?: string[];
 }
 
 /** Per-conversation sessionStorage key for a pending first message. */
