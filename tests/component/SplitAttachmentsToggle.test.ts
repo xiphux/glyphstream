@@ -26,8 +26,22 @@ describe('SplitAttachmentsToggle', () => {
 		});
 		const btn = screen.getByRole('button');
 		expect(btn.textContent).toContain('×6');
-		// The wordy "generations"/"Split per image" caption is gone (kept narrow).
+		// The wordy caption lives in the popover now, not on the button itself.
 		expect(btn.textContent).not.toContain('generations');
 		expect(btn.textContent).not.toContain('per image');
+	});
+
+	it('carries a clarifying popover (in the DOM, revealed on hover)', () => {
+		const single = render(SplitAttachmentsToggle, {
+			props: { enabled: false, imageCount: 4, modelCount: 1 },
+		});
+		expect(single.container.textContent).toContain('Split per image');
+		expect(single.container.textContent).toContain('Runs the prompt on each image separately');
+
+		// With multiple models the popover spells out the cross product.
+		const cross = render(SplitAttachmentsToggle, {
+			props: { enabled: true, imageCount: 3, modelCount: 2 },
+		});
+		expect(cross.container.textContent).toContain('3 images × 2 models = 6 generations');
 	});
 });
