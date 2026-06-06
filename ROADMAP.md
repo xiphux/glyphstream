@@ -197,6 +197,13 @@ message_id` marker drives the side-by-side **compare grid** + reload
     stay as siblings, the first focused. Image uses a vertical 1-/2-up grid;
     video streams per-column progress through the poll relay. i2v/regenerate
     reuse the shared user message's input.
+  - _Split attachments_ is the second fan-out axis: a "Split per image" toggle
+    (image/video models, 2+ image attachments) fans one edit / i2v prompt
+    across the attached images — one generation per image — and crosses with
+    the picked models (M models × N images). Each branch sends `inputMediaIds`
+    to restrict itself to its image; the result media records `source_media_id`
+    so the grid labels each cell with its input thumbnail and recovery/
+    regenerate keep the pairing.
   - _Disconnect recovery_ matches single-mode: branches finish + persist
     server-side regardless of the client, and a reload / iOS-suspend mid-
     fan-out rebuilds the grid from server truth (`getFanoutRecoveryState` =
