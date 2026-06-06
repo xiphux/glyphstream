@@ -209,10 +209,14 @@
 	});
 
 	async function startChat() {
-		// A multi-model first message uses the comparison cart; otherwise the
-		// single picker selection. Fan-out needs at least one model in the cart.
-		const fanout = compareMode && fanoutFirstModels.length > 0 ? fanoutFirstModels : null;
-		if ((!fanout && !modelId) || busy) return;
+		// A multi-model first message uses the comparison cart (needs 2+);
+		// otherwise the single picker selection. One compare model collapses to
+		// a normal single send on that model.
+		const fanout = compareMode && fanoutFirstModels.length >= 2 ? fanoutFirstModels : null;
+		const singleCompareModel =
+			compareMode && fanoutFirstModels.length === 1 ? fanoutFirstModels[0].modelId : null;
+		const effectiveModelId = singleCompareModel ?? modelId;
+		if ((!fanout && !effectiveModelId) || busy) return;
 		if (!text.trim() && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
 		busy = true;
@@ -227,6 +231,8 @@
 			let createBody: CreateConversationRequest;
 			if (fanout) {
 				createBody = { modelId: fanout[0].modelId, modelKind: fanout[0].modelKind };
+			} else if (singleCompareModel) {
+				createBody = { modelId: singleCompareModel, modelKind: 'chat' };
 			} else if (modelId.startsWith('custom::')) {
 				createBody = {
 					customModelId: modelId.slice('custom::'.length),

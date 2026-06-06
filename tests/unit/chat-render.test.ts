@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	appendReasoning,
 	appendText,
+	assistantLabelForMessage,
 	buildToolResultsMap,
 	computeMergeFlags,
 	extractCodeArg,
@@ -930,5 +931,52 @@ describe('extractCodeArg — streaming-tolerant partial JSON extraction', () => 
 		// Don't crash; fall through to the JSON view.
 		expect(extractCodeArg('run_python', '{"code":42}')).toBeNull();
 		expect(extractCodeArg('run_python', '{"code":null}')).toBeNull();
+	});
+});
+
+describe('assistantLabelForMessage', () => {
+	const models = [
+		{ id: 'bridge::a', displayName: 'Model A' },
+		{ id: 'bridge::b', displayName: 'Model B' },
+	] as unknown as Parameters<typeof assistantLabelForMessage>[3];
+
+	const asst = (modelUsed: string | null) =>
+		({ role: 'assistant', modelUsed }) as Parameters<typeof assistantLabelForMessage>[0];
+
+	it('uses the conversation label for the conversation default model', () => {
+		// This is the path that preserves custom-preset naming: the preset's
+		// modelUsed equals the stored base model id.
+		expect(assistantLabelForMessage(asst('bridge::a'), 'bridge::a', 'My Preset', models)).toBe(
+			'My Preset',
+		);
+	});
+
+	it('labels a kept fan-out branch by its own model, not the conversation default', () => {
+		// Conversation default is bridge::a; this sibling was model B.
+		expect(assistantLabelForMessage(asst('bridge::b'), 'bridge::a', 'Model A', models)).toBe(
+			'Model B',
+		);
+	});
+
+	it('falls back to the conversation label when modelUsed is absent', () => {
+		expect(assistantLabelForMessage(asst(null), 'bridge::a', 'Model A', models)).toBe('Model A');
+	});
+
+	it('uses the conversation label for non-assistant rows', () => {
+		const user = { role: 'user', modelUsed: 'bridge::b' } as Parameters<
+			typeof assistantLabelForMessage
+		>[0];
+		expect(assistantLabelForMessage(user, 'bridge::a', 'You-conv', models)).toBe('You-conv');
+	});
+
+	it('strips endpoint + owner prefixes for an unknown (removed) model', () => {
+		expect(
+			assistantLabelForMessage(
+				asst('gone::meta-llama/Llama-3-70b'),
+				'bridge::a',
+				'Model A',
+				models,
+			),
+		).toBe('Llama-3-70b');
 	});
 });

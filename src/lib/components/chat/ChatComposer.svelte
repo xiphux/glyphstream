@@ -95,10 +95,10 @@
 		),
 	);
 
-	// Total models in the comparison cart (sum of per-model counts). When > 0
-	// the next send fans out instead of single-sending.
+	// Total models in the comparison cart (sum of per-model counts). A real
+	// comparison needs 2+; one model collapses to a normal single send.
 	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
-	const fanoutActive = $derived(compareMode && compareTotal > 0);
+	const fanoutActive = $derived(compareMode && compareTotal >= 2);
 </script>
 
 <div class="relative mx-auto max-w-3xl">

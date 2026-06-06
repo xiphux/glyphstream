@@ -591,4 +591,29 @@ describe('ModelPicker — compare mode', () => {
 		expect(screen.queryByRole('option', { name: /Imager/ })).toBeNull();
 		expect(screen.getByRole('option', { name: /Model A/ })).toBeInTheDocument();
 	});
+
+	it('collapses a single-model comparison back to single select on close', async () => {
+		const user = userEvent.setup();
+		openCompare(); // value = bridge::a
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple')); // seeds Model A ×1
+		await user.keyboard('{Escape}'); // close the popover
+		await tick();
+		// A comparison of one isn't a comparison: trigger shows the model name,
+		// not "Comparing 1 models".
+		expect(screen.queryByText(/Comparing/)).toBeNull();
+		expect(screen.getByText('Model A')).toBeInTheDocument();
+	});
+
+	it('keeps a 2-model comparison and labels the trigger on close', async () => {
+		const user = userEvent.setup();
+		openCompare();
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Multiple')); // Model A ×1
+		await user.click(screen.getByRole('option', { name: /Model B/ })); // + Model B
+		await tick();
+		await user.keyboard('{Escape}');
+		await tick();
+		expect(screen.getByText('Comparing 2 models')).toBeInTheDocument();
+	});
 });

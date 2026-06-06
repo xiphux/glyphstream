@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { Popover } from 'bits-ui';
 	import { Check, ChevronDown, Minus, Plus, Search, Star, Layers } from '@lucide/svelte';
 	import type { CompareSelection } from '$lib/fanout';
@@ -270,14 +270,22 @@
 	 * name. The full owner/model is still shown in the open dropdown row.
 	 * Custom presets get their full user-given name preserved.
 	 */
+	function stripOwner(label: string): string {
+		const slash = label.lastIndexOf('/');
+		return slash >= 0 ? label.slice(slash + 1) : label;
+	}
 	const triggerLabel = $derived.by(() => {
-		if (compareMode && compareTotal > 0) {
-			return `Comparing ${compareTotal} ${compareTotal === 1 ? 'model' : 'models'}`;
+		// A comparison of 2+ models reads as "Comparing N models". Exactly one
+		// isn't a comparison — show that model's name (it collapses back to a
+		// normal single selection when the picker closes).
+		if (compareMode && compareTotal >= 2) return `Comparing ${compareTotal} models`;
+		if (compareMode && compareTotal === 1) {
+			const m = models.find((x) => x.id === compareSelections[0].modelId);
+			if (m) return stripOwner(m.displayName);
 		}
 		if (!selected) return 'Choose a model…';
 		if (selected.isCustom) return selected.label;
-		const slash = selected.label.lastIndexOf('/');
-		return slash >= 0 ? selected.label.slice(slash + 1) : selected.label;
+		return stripOwner(selected.label);
 	});
 
 	// On open, jump highlight to the currently-selected row (or the first one
@@ -294,10 +302,24 @@
 		highlightedIndex = 0;
 	});
 
-	// Reset search every time the popover closes so the next open starts
-	// from a clean state.
+	// On close: reset search, and collapse a 0-or-1-model comparison back to
+	// single-select — a "comparison" of one model is just a normal selection,
+	// so promote it to `value` and exit compare mode (no point keeping the
+	// split-view machinery armed for one). untrack keeps this effect's only
+	// dependency `open`, so editing the cart while open doesn't re-fire it.
 	$effect(() => {
-		if (!open) search = '';
+		if (open) return;
+		search = '';
+		untrack(() => {
+			if (compareMode && compareTotal <= 1) {
+				if (compareTotal === 1) {
+					value = compareSelections[0].modelId;
+					onChange?.(value);
+				}
+				compareMode = false;
+				compareSelections = [];
+			}
+		});
 	});
 
 	async function selectItem(item: PickerItem) {

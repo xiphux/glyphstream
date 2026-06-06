@@ -25,6 +25,7 @@
 	import {
 		appendReasoning as inFlightAppendReasoning,
 		appendText as inFlightAppendText,
+		assistantLabelForMessage,
 		buildRenderedConversation,
 		computeMergeFlags,
 		inFlightToBlocks,
@@ -70,6 +71,13 @@
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
+
+	// Per-message assistant label — keeps a kept fan-out branch (or a per-turn
+	// model override) reading as the model that actually produced it, instead
+	// of the conversation default, once it's flipped to via the ‹N/M› sibling
+	// nav. See assistantLabelForMessage for the fallback rules.
+	const assistantLabelFor = (m: ChatMessage): string =>
+		assistantLabelForMessage(m, data.conversation.modelId, assistantLabel, data.models);
 
 	// Read data eagerly so SSR includes messages on first paint; $effect
 	// below re-syncs on subsequent navigation invalidation. The warning
@@ -1446,12 +1454,18 @@
 		editingMessageId = null;
 		editingParentId = null;
 		// Multi-model fan-out takes precedence over a single send (and over an
-		// in-progress edit — comparing is a fresh turn, not an edit).
-		if (fanoutModels.length > 0) {
+		// in-progress edit — comparing is a fresh turn, not an edit). Needs 2+
+		// models; exactly one collapses to a normal single send with that model.
+		if (fanoutModels.length >= 2) {
 			const models = fanoutModels;
 			resetCompare();
 			await sendFanout(text, attachedMediaIds, models);
 			return;
+		}
+		if (fanoutModels.length === 1) {
+			modelId = fanoutModels[0].modelId;
+			modelKind = fanoutModels[0].modelKind;
+			resetCompare();
 		}
 		await sendStreaming(text, attachedMediaIds, editParent ? { parentMessageId: editParent } : {});
 	}
@@ -1975,7 +1989,7 @@
 							message={m}
 							{toolResultsByCallId}
 							{userLabel}
-							{assistantLabel}
+							assistantLabel={assistantLabelFor(m)}
 							{mergeWithPrev}
 							{mergeWithNext}
 							onImageClick={openImageInLightbox}
