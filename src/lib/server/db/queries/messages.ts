@@ -591,10 +591,12 @@ export function deleteBranch(
 		const clearFanoutMarker = convRow?.fanoutParent != null && toDelete.has(convRow.fanoutParent);
 
 		// Order matters:
-		//   1. active_leaf reassign — move the leaf off any row in the delete
-		//      set first. The active_leaf FK is NO ACTION at the DB level (see
-		//      schema.ts), so a leaf still pointing at a to-be-deleted row would
-		//      FK-error on the delete; the app moves it explicitly.
+		//   1. active_leaf reassign — the active_leaf FK is ON DELETE SET NULL
+		//      (genuine, from CREATE TABLE in 0000), so deleting the leaf row
+		//      would null the pointer and leave the conversation with no current
+		//      position. Move it to a valid replacement first instead of letting
+		//      it go null. (The fanout-marker clear above is the NO-ACTION case —
+		//      that FK was added by ALTER and the app must null it explicitly.)
 		//   2. orphan-media hard-delete (must run BEFORE decrement; it
 		//      compares each media's ref_count to its local link count
 		//      inside the deletion set, and that comparison is only
