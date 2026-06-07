@@ -11,23 +11,54 @@
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 	import { expandCompareSelections, type CompareSelection, type FanoutModel } from '$lib/fanout';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
-	import { preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
+	import {
+		composeGreeting,
+		greetingContextKey,
+		pickGreeting,
+		preferredFirstName,
+	} from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 
 	let { data } = $props();
 
-	// Greeting is computed client-side so it reflects the user's local
-	// wall clock (SSR would use the server's timezone). Recomputed in an
-	// $effect on mount; falls back to a neutral greeting before hydration.
-	let greeting = $state('Hello');
+	// Greeting is computed client-side so it reflects the user's local wall
+	// clock (SSR would use the server's timezone). Each greeting is a template
+	// with an optional `{name}` token that composeGreeting() fills in; before
+	// hydration we fall back to a neutral one.
+	//
+	// Two triggers, two behaviors:
+	//   - Mount → roll a fresh random line. A fresh mount happens both on a
+	//     full reload and on a client-side nav back to this page (e.g. "New
+	//     chat" from a thread), so revisiting the page gives you a new quote.
+	//   - Refocus (tab refocus / resuming the PWA) → only re-roll if the line
+	//     has gone stale, i.e. its context key no longer matches the current
+	//     time/holiday. Switching away and back leaves a still-valid greeting
+	//     untouched, so it doesn't churn — but a night line you return to in
+	//     the morning gets refreshed.
+	let greetingPick = $state({ greeting: 'Hello, {name}', key: '' });
 	$effect(() => {
-		greeting = timeOfDayGreeting(new Date());
+		greetingPick = pickGreeting(new Date());
+		const onRefocus = () => {
+			if (greetingContextKey(new Date()) !== greetingPick.key) {
+				greetingPick = pickGreeting(new Date());
+			}
+		};
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') onRefocus();
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		window.addEventListener('focus', onRefocus);
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibility);
+			window.removeEventListener('focus', onRefocus);
+		};
 	});
 	const userFirstName = $derived(
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
+	const composedGreeting = $derived(composeGreeting(greetingPick.greeting, userFirstName));
 
 	// Selection value mirrors what ModelPicker emits:
 	//   - "endpointId::upstreamId"  → base model
@@ -326,7 +357,7 @@
 			</div>
 			{#if data.prefs?.showGreeting ?? true}
 				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-					<span class="text-fg">{greeting}, {userFirstName}</span>
+					<span class="text-fg">{composedGreeting}</span>
 				</h1>
 			{/if}
 		</div>

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { firstName, preferredFirstName, timeOfDayGreeting } from '$lib/greeting';
+import {
+	AFTERNOON,
+	ANYTIME,
+	composeGreeting,
+	EARLY,
+	EASTER_EGGS,
+	EVENING,
+	firstName,
+	greetingContextKey,
+	MORNING,
+	NIGHT,
+	pickGreeting,
+	preferredFirstName,
+} from '$lib/greeting';
 
 describe('firstName', () => {
 	it('takes the first whitespace-separated token of displayName', () => {
@@ -59,60 +72,141 @@ describe('preferredFirstName', () => {
 	});
 });
 
-describe('timeOfDayGreeting', () => {
-	function at(hour: number) {
-		const d = new Date(2026, 0, 1, hour, 30);
-		return timeOfDayGreeting(d);
+describe('composeGreeting', () => {
+	it('fills the {name} token with the user name', () => {
+		expect(composeGreeting('Welcome back, {name}', 'Chris')).toBe('Welcome back, Chris');
+	});
+
+	it('places the token wherever the template puts it (mid-sentence)', () => {
+		expect(composeGreeting("Well, well, well, if it isn't {name}", 'Chris')).toBe(
+			"Well, well, well, if it isn't Chris",
+		);
+	});
+
+	it('replaces every occurrence of the token', () => {
+		expect(composeGreeting('{name}, oh {name}', 'Chris')).toBe('Chris, oh Chris');
+	});
+
+	it('leaves name-free templates untouched', () => {
+		expect(composeGreeting('Ask me anything', 'Chris')).toBe('Ask me anything');
+	});
+});
+
+describe('pickGreeting', () => {
+	// `rand` is injectable so picks are deterministic in tests. A constant
+	// returns the same value every call; `seq` plays back a fixed sequence
+	// (first value gates the daytime easter egg, the next indexes the pool).
+	const constant = (v: number) => () => v;
+	function seq(...vals: number[]) {
+		let i = 0;
+		return () => vals[Math.min(i++, vals.length - 1)];
+	}
+	// Deterministic PRNG (mulberry32) for variety sweeps — reproducible across
+	// runs, unlike Math.random.
+	function prng(seed: number) {
+		return () => {
+			seed = (seed + 0x6d2b79f5) | 0;
+			let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+			t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+			return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+		};
 	}
 
-	// Variation slots — picked deterministically from per-day hash. Tests
-	// assert slot-membership rather than exact strings so the variation
-	// mechanism itself is what's covered, not just one (date, hour) point.
-	const MORNING_VARIATIONS = ['Good morning', 'Top of the morning', 'Morning'];
-	const AFTERNOON_VARIATIONS = ['Good afternoon', 'Afternoon', "Hope your day's going well"];
-	const EVENING_VARIATIONS = ['Good evening', 'Evening', 'Hope your day went well'];
+	// A plain mid-month, non-holiday date for the ordinary slot assertions.
+	function on(month: number, day: number, hour: number, rand: () => number) {
+		return pickGreeting(new Date(2026, month, day, hour, 30), rand).greeting;
+	}
+	// Pull the egg gate closed (first rand >= EGG_CHANCE), then index 0.
+	const noEgg = () => seq(0.99, 0);
 
-	it('returns "Still up" before 5am (singleton — no variations)', () => {
-		expect(at(0)).toBe('Still up');
-		expect(at(4)).toBe('Still up');
+	it('returns a wee-hours line before 5am', () => {
+		expect(EARLY).toContain(on(4, 12, 0, constant(0)));
+		expect(EARLY).toContain(on(4, 12, 4, constant(0.99)));
 	});
 
-	it('returns a morning variation 5am-noon', () => {
-		expect(MORNING_VARIATIONS).toContain(at(5));
-		expect(MORNING_VARIATIONS).toContain(at(11));
+	it('returns a morning line 5am-noon (egg gate closed)', () => {
+		expect([...MORNING, ...ANYTIME]).toContain(on(4, 12, 5, noEgg()));
+		expect([...MORNING, ...ANYTIME]).toContain(on(4, 12, 11, noEgg()));
 	});
 
-	it('returns an afternoon variation noon-5pm', () => {
-		expect(AFTERNOON_VARIATIONS).toContain(at(12));
-		expect(AFTERNOON_VARIATIONS).toContain(at(16));
+	it('returns an afternoon line noon-5pm (egg gate closed)', () => {
+		expect([...AFTERNOON, ...ANYTIME]).toContain(on(4, 12, 12, noEgg()));
+		expect([...AFTERNOON, ...ANYTIME]).toContain(on(4, 12, 16, noEgg()));
 	});
 
-	it('returns an evening variation 5pm-10pm', () => {
-		expect(EVENING_VARIATIONS).toContain(at(17));
-		expect(EVENING_VARIATIONS).toContain(at(21));
+	it('returns an evening line 5pm-10pm (egg gate closed)', () => {
+		expect([...EVENING, ...ANYTIME]).toContain(on(4, 12, 17, noEgg()));
+		expect([...EVENING, ...ANYTIME]).toContain(on(4, 12, 21, noEgg()));
 	});
 
-	it('returns "Burning the midnight oil" after 10pm (singleton — no variations)', () => {
-		expect(at(22)).toBe('Burning the midnight oil');
-		expect(at(23)).toBe('Burning the midnight oil');
+	it('returns a late-night line after 10pm', () => {
+		expect(NIGHT).toContain(on(4, 12, 22, constant(0)));
+		expect(NIGHT).toContain(on(4, 12, 23, constant(0.99)));
 	});
 
-	it('is stable within a calendar day — same day, different hours in slot → same greeting', () => {
-		// At 6am and 11am on the same day, the morning variation must
-		// match — refreshing the page in the morning shouldn't churn.
-		const morningEarly = timeOfDayGreeting(new Date(2026, 4, 12, 6, 0));
-		const morningLate = timeOfDayGreeting(new Date(2026, 4, 12, 11, 0));
-		expect(morningEarly).toBe(morningLate);
+	it('surfaces an easter egg when the daytime gate opens', () => {
+		// First rand below EGG_CHANCE opens the gate; the next indexes the egg.
+		expect(EASTER_EGGS).toContain(on(4, 12, 10, seq(0, 0)));
 	});
 
-	it('can vary across days within the same slot', () => {
-		// Sweep a year of morning visits at 8am. Variation indices are
-		// dayHash % 3, so we should see all 3 morning variations.
+	it('rolls a different line as randomness varies (not stuck)', () => {
+		// Same moment, many rolls — the blended pool should yield real variety.
+		const rand = prng(1);
 		const seen = new Set<string>();
-		for (let day = 1; day <= 31; day++) {
-			seen.add(timeOfDayGreeting(new Date(2026, 0, day, 8, 0)));
+		for (let i = 0; i < 200; i++) {
+			seen.add(pickGreeting(new Date(2026, 5, 12, 8, 0), rand).greeting);
 		}
-		// All three morning variations must appear across a month.
-		for (const v of MORNING_VARIATIONS) expect(seen.has(v)).toBe(true);
+		expect(seen.size).toBeGreaterThanOrEqual(8);
+	});
+
+	it('holiday lines win over the ordinary slot and ignore randomness', () => {
+		// New Year's morning greets with the holiday no matter what rand does.
+		expect(pickGreeting(new Date(2026, 0, 1, 9, 0), constant(0)).greeting).toBe(
+			'Happy New Year, {name}',
+		);
+		// Friday the 13th (2026-02-13 is a Friday) fires regardless of hour.
+		expect(pickGreeting(new Date(2026, 1, 13, 14, 0), constant(0)).greeting).toBe(
+			'Watch your step, {name}',
+		);
+	});
+
+	it('marks the nerd holidays on their dates', () => {
+		const g = (y: number, m: number, d: number) =>
+			pickGreeting(new Date(y, m, d, 10, 0), constant(0)).greeting;
+		expect(g(2026, 4, 4)).toBe('May the 4th be with you, {name}');
+		expect(g(2026, 4, 25)).toBe("Don't panic, {name}");
+		expect(g(2026, 10, 23)).toBe('Happy Fibonacci Day, {name}');
+		expect(g(2026, 2, 31)).toBe('Backed up lately, {name}?');
+		// Programmers' Day = 256th day: Sep 13 in common years, Sep 12 in leap.
+		expect(g(2026, 8, 13)).toBe("Happy Programmers' Day, {name}");
+		expect(g(2028, 8, 12)).toBe("Happy Programmers' Day, {name}");
+	});
+});
+
+describe('greetingContextKey', () => {
+	it('is stable within the same day + slot — refocus should leave it alone', () => {
+		// 6am and 11am on the same day share the morning slot.
+		const a = greetingContextKey(new Date(2026, 4, 12, 6, 0));
+		const b = greetingContextKey(new Date(2026, 4, 12, 11, 0));
+		expect(a).toBe(b);
+	});
+
+	it('changes when the time-of-day slot changes — refocus should re-roll', () => {
+		const evening = greetingContextKey(new Date(2026, 4, 12, 20, 0));
+		const night = greetingContextKey(new Date(2026, 4, 12, 23, 0));
+		expect(evening).not.toBe(night);
+	});
+
+	it('changes across days even within the same slot', () => {
+		const today = greetingContextKey(new Date(2026, 4, 12, 8, 0));
+		const tomorrow = greetingContextKey(new Date(2026, 4, 13, 8, 0));
+		expect(today).not.toBe(tomorrow);
+	});
+
+	it('keys off the holiday on holidays, so it holds all day', () => {
+		const morning = greetingContextKey(new Date(2026, 0, 1, 9, 0));
+		const evening = greetingContextKey(new Date(2026, 0, 1, 20, 0));
+		expect(morning).toBe(evening);
+		expect(morning).toContain('Happy New Year');
 	});
 });
