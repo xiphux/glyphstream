@@ -58,8 +58,26 @@
 	const showEdit = $derived(message.role === 'user');
 	const showRetry = $derived(message.role === 'assistant');
 	const assistantOut = $derived(message.role === 'assistant' ? (message.tokensOut ?? 0) : 0);
+	// Media (image/video) rows carry no token count — for them the popover
+	// shows a raw generation time instead of a tok/s rate.
+	const isMedia = $derived(
+		message.role === 'assistant' &&
+			message.parts.some((p) => p.type === 'image' || p.type === 'video'),
+	);
+	const genMs = $derived(message.role === 'assistant' ? message.genMs : null);
+	// One decimal second, e.g. "3.1s". Sub-second still reads naturally ("0.4s").
+	const genSeconds = $derived(genMs != null && genMs > 0 ? genMs / 1000 : null);
+	// tok/s only when we have both a token count and a positive span.
+	const tokPerSec = $derived(
+		assistantOut > 0 && genMs != null && genMs > 0 ? assistantOut / (genMs / 1000) : null,
+	);
+	const rateFmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+	const secFmt = new Intl.NumberFormat(undefined, {
+		minimumFractionDigits: 1,
+		maximumFractionDigits: 1,
+	});
 	const showTokens = $derived(
-		(message.role === 'assistant' && assistantOut > 0) ||
+		(message.role === 'assistant' && (assistantOut > 0 || genSeconds != null)) ||
 			(message.role === 'user' && userSentTokens != null && userSentTokens > 0),
 	);
 	const siblingCount = $derived(message.siblingCount ?? 1);
@@ -199,12 +217,25 @@
 							Full conversation passed to the model at this turn — includes the system prompt and
 							prior messages, not just this one.
 						</p>
+					{:else if isMedia}
+						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">
+							<dt class="text-fg-muted">Generated in</dt>
+							<dd class="text-right font-medium text-fg">
+								{genSeconds != null ? `${secFmt.format(genSeconds)}s` : '—'}
+							</dd>
+						</dl>
 					{:else}
 						<dl class="grid grid-cols-[auto_auto] gap-x-4 gap-y-1 tabular-nums">
 							<dt class="text-fg-muted">Generated</dt>
 							<dd class="text-right font-medium text-fg">
 								{tokenFmt.format(assistantOut)}
 							</dd>
+							{#if tokPerSec != null && genSeconds != null}
+								<dt class="text-fg-muted">Speed</dt>
+								<dd class="text-right font-medium text-fg">
+									{rateFmt.format(tokPerSec)} tok/s · {secFmt.format(genSeconds)}s
+								</dd>
+							{/if}
 						</dl>
 					{/if}
 				</Popover.Content>

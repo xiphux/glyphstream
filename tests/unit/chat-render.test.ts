@@ -34,6 +34,7 @@ function msg(
 		modelUsed: null,
 		tokensIn: null,
 		tokensOut: null,
+		genMs: null,
 		createdAt: 0,
 		...over,
 	};

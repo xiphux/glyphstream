@@ -32,6 +32,13 @@ export interface NormalizedResult {
 	deltas: NormalizedDelta[];
 	finishReason?: string | null;
 	usage?: { promptTokens?: number; completionTokens?: number };
+	/**
+	 * Authoritative generation time in ms, reported by the upstream when it
+	 * exposes one (llama.cpp's `timings.predicted_ms`). Source-measured, so
+	 * the relay prefers it over its own wall-clock first→last-token timing,
+	 * which includes network transit. Absent for spec-pure backends.
+	 */
+	upstreamGenMs?: number;
 	done?: boolean;
 }
 
@@ -68,6 +75,16 @@ interface OpenAIChunk {
 	usage?: {
 		prompt_tokens?: number;
 		completion_tokens?: number;
+	};
+	/**
+	 * llama.cpp server extension on the final usage chunk. Not OpenAI-spec,
+	 * but purely additive and self-detecting (present or absent), so we read
+	 * it opportunistically rather than gating it behind a provider_quirk.
+	 * `predicted_ms` is the model's decode-only generation time.
+	 */
+	timings?: {
+		predicted_ms?: number;
+		predicted_per_second?: number;
 	};
 }
 
@@ -131,8 +148,10 @@ function parseChunk(record: SSERecord): OpenAIChunk | null {
 	}
 }
 
-function commonExtras(chunk: OpenAIChunk): Pick<NormalizedResult, 'finishReason' | 'usage'> {
-	const out: Pick<NormalizedResult, 'finishReason' | 'usage'> = {};
+function commonExtras(
+	chunk: OpenAIChunk,
+): Pick<NormalizedResult, 'finishReason' | 'usage' | 'upstreamGenMs'> {
+	const out: Pick<NormalizedResult, 'finishReason' | 'usage' | 'upstreamGenMs'> = {};
 	const fin = chunk.choices?.[0]?.finish_reason;
 	if (fin) out.finishReason = fin;
 	if (chunk.usage) {
@@ -140,6 +159,10 @@ function commonExtras(chunk: OpenAIChunk): Pick<NormalizedResult, 'finishReason'
 			promptTokens: chunk.usage.prompt_tokens,
 			completionTokens: chunk.usage.completion_tokens,
 		};
+	}
+	const predictedMs = chunk.timings?.predicted_ms;
+	if (typeof predictedMs === 'number' && predictedMs > 0) {
+		out.upstreamGenMs = predictedMs;
 	}
 	return out;
 }

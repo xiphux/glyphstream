@@ -985,6 +985,7 @@
 			modelUsed: null,
 			tokensIn: null,
 			tokensOut: null,
+			genMs: null,
 			createdAt: Date.now(),
 		};
 	}

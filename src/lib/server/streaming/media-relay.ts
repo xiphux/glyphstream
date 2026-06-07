@@ -126,6 +126,9 @@ export function startMediaRelay(
 				// from QUEUED to a live timer; onStarted stamps the in-flight entry so
 				// a recovery rebuild can do the same.
 				params.onStarted?.();
+				// Generation clock starts here — after the queue wait, so the
+				// recorded time is decode/render only, not slot contention.
+				const genStartedAt = Date.now();
 				safeWrite({
 					type: 'start',
 					userMessage: params.userMessage,
@@ -153,6 +156,7 @@ export function startMediaRelay(
 						parts: [produced.part],
 						modelUsed: params.storedModelId,
 						rawResponseJson: produced.rawResponseJson,
+						genMs: Date.now() - genStartedAt,
 						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 					});
 					linkMessageMedia(assistantMessage.id, produced.mediaId);

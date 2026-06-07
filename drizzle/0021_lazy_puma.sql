@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `gen_ms` integer;

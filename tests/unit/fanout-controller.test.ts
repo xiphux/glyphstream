@@ -69,6 +69,7 @@ function imageSibling(id: string, modelUsed: string, sourceMediaId: string | nul
 		modelUsed,
 		tokensIn: null,
 		tokensOut: null,
+		genMs: null,
 		createdAt: 1,
 		sourceMediaId,
 	};

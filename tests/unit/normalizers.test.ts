@@ -57,6 +57,32 @@ describe('passthrough normalizer', () => {
 		expect(r.usage).toEqual({ promptTokens: 5, completionTokens: 2 });
 	});
 
+	it('surfaces llama.cpp timings.predicted_ms as upstreamGenMs', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(
+			rec(
+				JSON.stringify({
+					choices: [],
+					usage: { prompt_tokens: 4515, completion_tokens: 209 },
+					timings: { predicted_ms: 1361.372, predicted_per_second: 153.52 },
+				}),
+			),
+		);
+		expect(r.upstreamGenMs).toBe(1361.372);
+	});
+
+	it('leaves upstreamGenMs unset when no timings are present', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(rec(chunk({ content: 'x' })));
+		expect(r.upstreamGenMs).toBeUndefined();
+	});
+
+	it('ignores a non-positive predicted_ms', () => {
+		const n = createNormalizer('passthrough');
+		const r = n.process(rec(JSON.stringify({ choices: [], timings: { predicted_ms: 0 } })));
+		expect(r.upstreamGenMs).toBeUndefined();
+	});
+
 	it('ignores malformed JSON without throwing', () => {
 		const n = createNormalizer('passthrough');
 		expect(n.process(rec('{not json'))).toEqual({ deltas: [] });

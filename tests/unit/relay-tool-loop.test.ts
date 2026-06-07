@@ -357,6 +357,43 @@ describe('multi-iteration tool loop', () => {
 		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
 	});
 
+	it('persists upstream timings.predicted_ms as the assistant row genMs', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		// A plain text answer, then a final usage+timings chunk like llama.cpp
+		// emits. predicted_ms (1361.372) should win over the wall-clock span
+		// and be rounded to an integer.
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				textChunk('Roughly 50 million visitors annually.'),
+				finishChunk('stop'),
+				JSON.stringify({
+					choices: [],
+					usage: { prompt_tokens: 4515, completion_tokens: 209 },
+					timings: { predicted_ms: 1361.372, predicted_per_second: 153.52 },
+				}),
+			]),
+		);
+
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: null,
+			modelKind: 'chat',
+			endpoint,
+			providerQuirk: 'passthrough',
+			requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'visitors?' }] },
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			onComplete: () => {},
+		});
+		await drainEvents(stream);
+
+		const branch = walkActiveBranch(conv.id);
+		const assistant = branch.find((m) => m.role === 'assistant')!;
+		expect(assistant.tokensOut).toBe(209);
+		expect(assistant.genMs).toBe(1361);
+	});
+
 	it('hits MAX_TOOL_LOOP_ITERATIONS and emits an error rather than looping forever', async () => {
 		register({
 			definition: {

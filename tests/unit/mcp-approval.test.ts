@@ -170,6 +170,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 1,
 			},
 			{
@@ -195,6 +196,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 2,
 			},
 			{
@@ -214,6 +216,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 3,
 			},
 			{
@@ -233,6 +236,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 4,
 			},
 		];
@@ -258,6 +262,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 1,
 			},
 			{
@@ -277,6 +282,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 2,
 			},
 		];
@@ -301,6 +307,7 @@ describe('buildPendingApprovals', () => {
 				modelUsed: null,
 				tokensIn: null,
 				tokensOut: null,
+				genMs: null,
 				createdAt: 1,
 			},
 		];

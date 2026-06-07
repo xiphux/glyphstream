@@ -236,6 +236,12 @@ export const messages = sqliteTable(
 		modelUsed: text('model_used'),
 		tokensIn: integer('tokens_in'),
 		tokensOut: integer('tokens_out'),
+		// Generation wall-time in ms. For text: first→last content token
+		// (excludes time-to-first-token, and tool gaps fall between rows).
+		// For image/video: slot-acquired→persisted. Null on legacy rows and
+		// when no content was produced. The client derives tok/s from this
+		// plus `tokens_out`.
+		genMs: integer('gen_ms'),
 		// Full upstream response (debug / troubleshoot).
 		rawResponseJson: text('raw_response_json'),
 		createdAt: integer('created_at').notNull(),

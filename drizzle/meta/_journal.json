@@ -148,6 +148,13 @@
       "when": 1780770477539,
       "tag": "0020_ancient_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1780854368528,
+      "tag": "0021_lazy_puma",
+      "breakpoints": true
     }
   ]
 }

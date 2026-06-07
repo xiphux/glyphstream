@@ -16,6 +16,7 @@ function msg(role: ChatMessage['role'], parts: MessagePart[], id = 'm1'): ChatMe
 		modelUsed: null,
 		tokensIn: null,
 		tokensOut: null,
+		genMs: null,
 		createdAt: 0,
 	};
 }

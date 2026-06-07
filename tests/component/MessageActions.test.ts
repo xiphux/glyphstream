@@ -23,6 +23,7 @@ function makeMessage(role: MessageRole, overrides: Partial<ChatMessage> = {}): C
 		modelUsed: null,
 		tokensIn: null,
 		tokensOut: overrides.tokensOut ?? null,
+		genMs: overrides.genMs ?? null,
 		createdAt: 0,
 		...overrides,
 	};
@@ -230,5 +231,46 @@ describe('MessageActions — token popover', () => {
 		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
 		expect(screen.getByText('Sent to model')).toBeInTheDocument();
 		expect(screen.getByText('1,024')).toBeInTheDocument();
+	});
+
+	it('shows a tok/s rate + duration when genMs is present', async () => {
+		const user = userEvent.setup();
+		render(MessageActions, {
+			// 512 tokens over 4s ⇒ 128 tok/s.
+			props: {
+				...baseProps,
+				...cb(),
+				message: makeMessage('assistant', { tokensOut: 512, genMs: 4000 }),
+			},
+		});
+		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
+		expect(screen.getByText('Speed')).toBeInTheDocument();
+		expect(screen.getByText(/128 tok\/s · 4\.0s/)).toBeInTheDocument();
+	});
+
+	it('omits the Speed row when genMs is absent', async () => {
+		const user = userEvent.setup();
+		render(MessageActions, {
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant', { tokensOut: 512 }) },
+		});
+		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
+		expect(screen.queryByText('Speed')).toBeNull();
+	});
+
+	it('shows a raw generation time for an image message', async () => {
+		const user = userEvent.setup();
+		render(MessageActions, {
+			props: {
+				...baseProps,
+				...cb(),
+				message: makeMessage('assistant', {
+					parts: [{ type: 'image', mediaId: 'img-1' }],
+					genMs: 4200,
+				}),
+			},
+		});
+		await user.click(screen.getByRole('button', { name: 'Token usage for this message' }));
+		expect(screen.getByText('Generated in')).toBeInTheDocument();
+		expect(screen.getByText('4.2s')).toBeInTheDocument();
 	});
 });

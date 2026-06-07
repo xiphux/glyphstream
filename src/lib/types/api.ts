@@ -282,6 +282,9 @@ export interface ChatMessage {
 	modelUsed: string | null;
 	tokensIn: number | null;
 	tokensOut: number | null;
+	/** Generation wall-time in ms (see `messages.gen_ms`). Null on legacy
+	 *  rows or when nothing was generated. tok/s = tokensOut / (genMs/1000). */
+	genMs: number | null;
 	createdAt: number;
 	/** Parent in the message tree. Populated by `walkActiveBranch` and
 	 * `getMessage`. Used by Edit (sibling parent for the new message)

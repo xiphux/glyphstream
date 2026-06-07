@@ -17,6 +17,8 @@ interface AppendInput {
 	modelUsed?: string | null;
 	tokensIn?: number | null;
 	tokensOut?: number | null;
+	/** Generation wall-time in ms; see `messages.gen_ms` in schema.ts. */
+	genMs?: number | null;
 	rawResponseJson?: string | null;
 	/**
 	 * Whether to point the conversation's active_leaf_message_id at the new
@@ -55,6 +57,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				modelUsed: input.modelUsed ?? null,
 				tokensIn: input.tokensIn ?? null,
 				tokensOut: input.tokensOut ?? null,
+				genMs: input.genMs ?? null,
 				rawResponseJson: input.rawResponseJson ?? null,
 				createdAt: now,
 			})
@@ -90,6 +93,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 		modelUsed: input.modelUsed ?? null,
 		tokensIn: input.tokensIn ?? null,
 		tokensOut: input.tokensOut ?? null,
+		genMs: input.genMs ?? null,
 		createdAt: now,
 	};
 }
@@ -668,6 +672,7 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		modelUsed: row.modelUsed,
 		tokensIn: row.tokensIn,
 		tokensOut: row.tokensOut,
+		genMs: row.genMs,
 		createdAt: row.createdAt,
 	};
 }

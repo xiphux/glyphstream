@@ -28,6 +28,7 @@ function makeMessage(
 		modelUsed: null,
 		tokensIn: null,
 		tokensOut: null,
+		genMs: null,
 		createdAt: 0,
 		...overrides,
 	};

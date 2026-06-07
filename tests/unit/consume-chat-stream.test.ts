@@ -40,6 +40,7 @@ const USER_MSG: ChatMessage = {
 	modelUsed: null,
 	tokensIn: null,
 	tokensOut: null,
+	genMs: null,
 	createdAt: 1,
 	parentMessageId: null,
 };
@@ -54,6 +55,7 @@ const ASSISTANT_MSG: ChatMessage = {
 	modelUsed: null,
 	tokensIn: null,
 	tokensOut: null,
+	genMs: null,
 	createdAt: 2,
 	parentMessageId: 'user-1',
 };

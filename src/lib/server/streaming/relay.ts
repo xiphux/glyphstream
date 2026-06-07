@@ -471,6 +471,16 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	let tokensIn: number | null = null;
 	let tokensOut: number | null = null;
 	let stopped = false;
+	// Throughput timing: wall-clock of the first and last content (text or
+	// reasoning) delta. We measure first→last rather than request→last so the
+	// rate excludes time-to-first-token (prefill/queue latency). Tool-call
+	// gaps don't pollute this — each tool-loop iteration persists its own row,
+	// so a single message spans one contiguous generation.
+	let firstContentAt: number | null = null;
+	let lastContentAt: number | null = null;
+	// Source-measured generation time, when the upstream reports one (e.g.
+	// llama.cpp's timings.predicted_ms). Preferred over the wall-clock span.
+	let upstreamGenMs: number | null = null;
 
 	const toolCallAccum = new Map<number, { id: string; name: string; args: string }>();
 
@@ -484,6 +494,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 				if (result.usage.promptTokens !== undefined) tokensIn = result.usage.promptTokens;
 				if (result.usage.completionTokens !== undefined) tokensOut = result.usage.completionTokens;
 			}
+			if (result.upstreamGenMs !== undefined) upstreamGenMs = result.upstreamGenMs;
 			if (result.done) break;
 		}
 	} catch (e) {
@@ -516,6 +527,16 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		});
 	}
 	const contentHtml = await renderMarkdown(textBuf);
+	// Prefer the upstream's own decode-time when it reported one — it's
+	// source-measured, excluding the network transit our wall-clock includes.
+	// Otherwise fall back to the wall-clock span: only a positive span across
+	// ≥2 content deltas yields a meaningful rate; a single-chunk response has
+	// no measurable throughput, so leave it null.
+	const wallClockGenMs =
+		firstContentAt !== null && lastContentAt !== null && lastContentAt > firstContentAt
+			? lastContentAt - firstContentAt
+			: null;
+	const genMs = upstreamGenMs !== null ? Math.round(upstreamGenMs) : wallClockGenMs;
 	const assistantMessage = appendMessage({
 		conversationId: params.conversationId,
 		parentMessageId,
@@ -527,6 +548,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		modelUsed: params.storedModelId,
 		tokensIn,
 		tokensOut,
+		genMs,
 		advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 	});
 
@@ -534,6 +556,11 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 
 	function applyDeltas(deltas: NormalizedDelta[]) {
 		for (const d of deltas) {
+			if (d.type === 'text' || d.type === 'reasoning') {
+				const at = Date.now();
+				if (firstContentAt === null) firstContentAt = at;
+				lastContentAt = at;
+			}
 			if (d.type === 'text') textBuf += d.text;
 			else if (d.type === 'reasoning') reasoningBuf += d.text;
 			else if (d.type === 'tool_call_start') {
