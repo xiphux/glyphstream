@@ -5,6 +5,7 @@ import {
 	archiveConversation,
 	deleteConversation,
 	getConversationDetail,
+	getConversationMeta,
 	renameConversation,
 	RenameValidationError,
 	setDisabledFeatures,
@@ -16,19 +17,35 @@ import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = ({ locals, params }) => {
+export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
+
+	// Fan-out recovery poll (`?fanout=1`): the controller's 4s poll only reads
+	// `fanout` (+ inFlightSince) to rebuild the compare grid as branches land — it
+	// has no use for the conversation's message list. Skip getConversationDetail's
+	// walkActiveBranch (+ content_html serialization) entirely on this path; a
+	// poll over a long thread would otherwise re-fetch the whole thing each tick.
+	// getConversationMeta is the light, ownership-checked fetch that still carries
+	// the activeLeafMessageId getFanoutRecoveryState needs.
+	if (url.searchParams.get('fanout') === '1') {
+		const meta = requireFound(
+			getConversationMeta(params.id, locals.user.id),
+			'Conversation not found',
+		);
+		return json({
+			inFlightSince: getInFlightSince(params.id),
+			fanout: getFanoutRecoveryState(params.id, meta.activeLeafMessageId),
+		});
+	}
+
 	const conv = requireFound(
 		getConversationDetail(params.id, locals.user.id),
 		'Conversation not found',
 	);
-	// `inFlightSince` lets the chat page's recovery poll detect — without
-	// the heavyweight page reload — when a generation it's tracking has
-	// finished. DB-only otherwise, so it's cheap to poll.
+	// `inFlightSince` lets the chat page's single-send recovery poll detect —
+	// without the heavyweight page reload — when a generation it's tracking has
+	// finished (it needs the message list to see the assistant row land).
 	const inFlightSince = getInFlightSince(params.id);
-	// Same `fanout` recovery state the page load returns, so the poll can
-	// rebuild the compare grid (completed branches + how many are still
-	// generating) as branches land — without a full invalidate per landing.
 	const fanout = getFanoutRecoveryState(params.id, conv.activeLeafMessageId);
 	return json({ conversation: conv, inFlightSince, fanout });
 };
