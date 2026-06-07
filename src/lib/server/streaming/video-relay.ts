@@ -15,7 +15,8 @@
 
 import { Buffer } from 'node:buffer';
 import { linkMessageMedia } from '../db/queries/media';
-import { appendMessage, deleteBranch } from '../db/queries/messages';
+import { appendMessage } from '../db/queries/messages';
+import { deleteReplacedSibling } from '../messages/delete-replaced-sibling';
 import {
 	videoCancel,
 	videoCreate,
@@ -291,15 +292,16 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					return;
 				}
 
-				// Regenerate: the re-roll landed → drop the old sibling it replaced
-				// (server-side so it survives a refresh mid-re-roll; best-effort;
+				// Regenerate: the re-roll landed → drop the old sibling it replaced +
+				// unlink its bytes (server-side so it survives a refresh mid-re-roll;
 				// skipped on failure above so restore-on-failure keeps the original).
 				if (params.replacesMessageId) {
-					try {
-						deleteBranch(params.conversationId, params.replacesMessageId, params.userId);
-					} catch (e) {
-						console.warn('[video-relay] replace-delete failed:', errorMessage(e));
-					}
+					await deleteReplacedSibling(
+						params.conversationId,
+						params.replacesMessageId,
+						params.userId,
+						'video-relay.reroll',
+					);
 				}
 
 				// Multi-minute video runs are the canonical case for OS

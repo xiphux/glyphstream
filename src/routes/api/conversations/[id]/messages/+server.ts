@@ -225,11 +225,20 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// another; a plain send uses the default single-slot key.
 	// Regenerate (re-roll in place): the sibling this branch replaces. Recorded
 	// on the in-flight entry so recovery shadows the old-but-not-yet-deleted
-	// sibling while the re-roll runs. Display-only (it never deletes anything —
-	// the client does that once the new one lands), so a bad value would at most
-	// hide one of your own siblings from your recovered grid.
-	const replacesMessageId =
-		isFanout && typeof body.replacesMessageId === 'string' ? body.replacesMessageId : null;
+	// sibling while the re-roll runs, and the relay DELETES it server-side once
+	// the re-roll lands. Because that's a real destructive delete (the message +
+	// its subtree, plus media unlink), validate the id: honor it only when it's
+	// an assistant sibling under THIS fan-out's shared user message — a re-roll
+	// only ever replaces one of the comparison's own branches. A forged id would
+	// otherwise delete an arbitrary message of the caller's own when the re-roll
+	// finishes.
+	let replacesMessageId: string | null = null;
+	if (isFanout && typeof body.replacesMessageId === 'string') {
+		const target = getMessage(params.id, body.replacesMessageId);
+		if (target?.role === 'assistant' && target.parentMessageId === userMessage.id) {
+			replacesMessageId = body.replacesMessageId;
+		}
+	}
 	const inFlight = registerInFlight(
 		params.id,
 		endpoint,

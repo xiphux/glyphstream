@@ -584,8 +584,12 @@ export interface SendMessageRequest {
 	/**
 	 * Fan-out regenerate (re-roll in place): the sibling message id this branch
 	 * replaces. Recorded on the in-flight entry so recovery excludes the
-	 * old-but-not-yet-deleted sibling while the re-roll runs (the client deletes
-	 * it once the new one lands). Ignored unless `fanoutBranch`.
+	 * old-but-not-yet-deleted sibling while the re-roll runs, and the relay
+	 * DELETES it server-side (message + subtree + media) once the re-roll lands —
+	 * so the swap survives a client refresh mid-re-roll. Because it triggers a
+	 * real delete, the server validates it: honored only when it's an assistant
+	 * sibling under this fan-out's shared user message. Ignored unless
+	 * `fanoutBranch`.
 	 */
 	replacesMessageId?: string;
 }

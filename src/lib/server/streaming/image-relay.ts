@@ -22,7 +22,8 @@
  */
 
 import { linkMessageMedia } from '../db/queries/media';
-import { appendMessage, deleteBranch } from '../db/queries/messages';
+import { appendMessage } from '../db/queries/messages';
+import { deleteReplacedSibling } from '../messages/delete-replaced-sibling';
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint } from '../endpoints/config';
@@ -190,15 +191,16 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 				}
 
 				// Regenerate: now that the re-roll has landed, drop the old sibling
-				// it replaced (best-effort — a leftover is harmless). Server-side so
-				// it survives a client refresh mid-re-roll. Skipped on failure above
-				// (we returned), keeping the old image for restore-on-failure.
+				// it replaced + unlink its media bytes (server-side, so it survives a
+				// client refresh mid-re-roll). Skipped on failure above (we returned),
+				// keeping the old image for restore-on-failure.
 				if (params.replacesMessageId) {
-					try {
-						deleteBranch(params.conversationId, params.replacesMessageId, params.userId);
-					} catch (e) {
-						console.warn('[image-relay] replace-delete failed:', errorMessage(e));
-					}
+					await deleteReplacedSibling(
+						params.conversationId,
+						params.replacesMessageId,
+						params.userId,
+						'image-relay.reroll',
+					);
 				}
 
 				void notifyConversationComplete({
