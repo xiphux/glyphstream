@@ -1124,13 +1124,10 @@
 	// construction moved.
 
 	/**
-	 * Shared front-half for both send paths (sendStreaming and
-	 * sendImageGeneration). Snapshots the conversation id for the
-	 * abandon-on-conversation-switch guards, installs a fresh
-	 * AbortController as the active one (so Stop / a newer turn can
-	 * abort this one), and builds the wire body once. The optimistic-
-	 * bubble setup stays in sendStreaming since the image branch
-	 * receives `optimisticId` as input from its caller.
+	 * Shared front-half of sendStreaming (chat, image, and video all stream now).
+	 * Snapshots the conversation id for the abandon-on-conversation-switch
+	 * guards, installs a fresh AbortController as the active one (so Stop / a
+	 * newer turn can abort this one), and builds the wire body once.
 	 */
 	function startTurn(text: string, attachedMediaIds: string[], options: SendOptions) {
 		const turnConvId = convId;

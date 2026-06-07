@@ -1,20 +1,24 @@
 /**
- * Streaming image-generation relay. The single-image path (single-mode send)
- * is a plain synchronous POST → JSON; this SSE variant exists for multi-model
- * fan-out, where N image branches share one per-endpoint concurrency slot. A
- * single-GPU ComfyUI bridge runs one workflow at a time, so the branches
- * serialize — and the sync path can't tell the client which branch is actually
- * generating vs. waiting for a slot (every box just reads "Generating…").
+ * Streaming image-generation relay — the one and only image-generation path,
+ * used unconditionally by both a single-mode send and each multi-model fan-out
+ * branch (the route streams image regardless; there's no sync POST→JSON variant
+ * anymore).
  *
- * Streaming fixes that: it emits `queued` (with how many are ahead) while it
- * waits on the gate, `start` the moment it acquires the slot and begins
- * generating, then `done` with the persisted assistant message. The client
- * renders a QUEUED badge for waiting branches and an elapsed timer on the one
- * that's live — matching single-image generation.
+ * Why stream a one-shot generate: the per-endpoint concurrency slot. A
+ * single-GPU ComfyUI bridge runs one workflow at a time, so concurrent
+ * generations (the N branches of a fan-out, or even back-to-back single sends)
+ * serialize on the gate. A blocking POST can't tell the client which generation
+ * is actually running vs. waiting for a slot — every box just reads
+ * "Generating…". Streaming makes that observable: emit `queued` (with how many
+ * are ahead) while waiting on the gate, `start` the moment the slot is acquired
+ * and generation begins, then `done` with the persisted assistant message. The
+ * client renders a QUEUED badge for a waiting branch and an elapsed timer on the
+ * one that's live.
  *
  * Like the chat/video relays, the recorder runs independently of the client
  * connection: a disconnect mid-generation doesn't abort the work, so the image
- * still lands on the parked fan-out and the recovery flow picks it up.
+ * still lands (on the parked fan-out, or the conversation) and the recovery flow
+ * picks it up.
  */
 
 import { linkMessageMedia } from '../db/queries/media';
