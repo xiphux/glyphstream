@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 	linkMessageMedia: vi.fn(),
 	loadMediaBytes: vi.fn(),
 	unlinkMediaFiles: vi.fn(async () => {}),
+	notify: vi.fn(async () => {}),
 }));
 
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
@@ -40,7 +41,7 @@ vi.mock('$lib/server/media/data-url', () => ({
 vi.mock('$lib/server/media/disk-store', () => ({
 	unlinkMediaFiles: mocks.unlinkMediaFiles,
 }));
-vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: vi.fn(async () => {}) }));
+vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: mocks.notify }));
 vi.mock('$lib/server/tasks/title-task-runner', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
@@ -61,6 +62,7 @@ beforeEach(() => {
 	mocks.linkMessageMedia.mockReset();
 	mocks.loadMediaBytes.mockReset();
 	mocks.unlinkMediaFiles.mockReset().mockResolvedValue(undefined);
+	mocks.notify.mockReset().mockResolvedValue(undefined);
 	mocks.imageGeneration.mockResolvedValue({ data: [{ url: 'http://img/out.png' }] });
 });
 
@@ -138,6 +140,7 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
+		suppressNotify: over.suppressNotify ?? false,
 		replacesMessageId: over.replacesMessageId,
 		onStarted: over.onStarted,
 		onComplete: over.onComplete ?? vi.fn(),
@@ -199,6 +202,36 @@ describe('startImageRelay — happy path', () => {
 });
 
 describe('startImageRelay — fan-out semantics', () => {
+	it('suppressNotify skips the per-branch notification (aggregate handles it)', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					suppressNotify: true,
+				}),
+			),
+		);
+		expect(mocks.notify).not.toHaveBeenCalled();
+	});
+
+	it('notifies per-branch when suppressNotify is false (single send / regenerate)', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					suppressNotify: false,
+				}),
+			),
+		);
+		expect(mocks.notify).toHaveBeenCalledOnce();
+	});
+
 	it('advanceActiveLeaf:false pins the leaf at the shared user message', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		await drain(

@@ -66,8 +66,10 @@
 					return;
 				}
 				if (data.kind === 'message_complete_toast') {
-					const { conversationId, conversationTitle } = data.payload;
+					const { conversationId, conversationTitle, summary } = data.payload;
 					toast.info(conversationTitle, {
+						// Fan-out's "N ready" count, when present.
+						...(summary ? { description: summary } : {}),
 						action: { label: 'Open', handler: () => goto(`/chat/${conversationId}`) },
 						duration: 6000,
 					});

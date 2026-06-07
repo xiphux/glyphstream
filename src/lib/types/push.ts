@@ -29,6 +29,12 @@ export interface NotifyPushPayload {
 	/** Present iff notificationsShowContent is true. Omitted entirely
 	 *  (not even an empty string) when the user opted out. */
 	preview?: string;
+	/** A non-content summary line shown as the notification body — e.g. a
+	 *  multi-model fan-out's "3 images ready". Carries no message text (just a
+	 *  count + modality), so it is sent regardless of notificationsShowContent and
+	 *  takes precedence over `preview` as the body. Omitted for ordinary single
+	 *  sends, which use `preview`. */
+	summary?: string;
 	/** Whether the SW should postMessage to visible clients for an
 	 *  in-app toast. False -> silent foreground + OS notification only
 	 *  for backgrounded states. */

@@ -184,6 +184,14 @@ export interface RelayParams {
 	 * task once for the turn instead.
 	 */
 	suppressTitleTask?: boolean;
+	/**
+	 * Skip this branch's own completion push notification. Default false. An
+	 * initial multi-model fan-out branch passes true so the N branches don't each
+	 * notify; the route fires a single aggregate "N ready" notification when the
+	 * last branch settles (see notifyFanoutCompleteIfLast). A lone regenerate
+	 * leaves this false and notifies like any single generation.
+	 */
+	suppressNotify?: boolean;
 }
 
 interface IterationResult {
@@ -343,8 +351,13 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			write({ type: 'done', assistantMessage: finalAssistantMessage });
 
 			// Fire push notification for the completed turn — never per
-			// iteration. Same skip-on-cancel semantics as before.
-			if (!stoppedFinal && finalAssistantMessage.finishReason !== 'cancelled') {
+			// iteration. Same skip-on-cancel semantics as before. A fan-out
+			// branch suppresses its own (the route sends one aggregate instead).
+			if (
+				!params.suppressNotify &&
+				!stoppedFinal &&
+				finalAssistantMessage.finishReason !== 'cancelled'
+			) {
 				void notifyConversationComplete({
 					userId: params.userId,
 					conversationId: params.conversationId,

@@ -110,6 +110,10 @@ export function buildFanoutBranchBody(input: {
 	/** Regenerate (re-roll in place): the sibling this branch replaces, so
 	 *  recovery shadows the old-but-not-yet-deleted sibling during the re-roll. */
 	replacesMessageId?: string | null;
+	/** Total branch count of this fan-out — the server uses it only as the count
+	 *  in the single aggregate notification fired when the last branch settles.
+	 *  Omitted on a regenerate (a lone re-roll notifies on its own). */
+	fanoutSize?: number;
 }): Record<string, unknown> {
 	return {
 		fanoutBranch: true,
@@ -118,5 +122,6 @@ export function buildFanoutBranchBody(input: {
 		modelKind: input.modelKind,
 		...(input.inputMediaId ? { inputMediaIds: [input.inputMediaId] } : {}),
 		...(input.replacesMessageId ? { replacesMessageId: input.replacesMessageId } : {}),
+		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
 	};
 }

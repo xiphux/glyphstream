@@ -465,6 +465,7 @@ describe('FanoutController — actions', () => {
 
 		// One branch POST per spec, image-outer/model-inner, each carrying ONLY
 		// its own split image — the provenance that drives the per-image grid.
+		// fanoutSize (= branch count) rides on every branch for the aggregate notify.
 		expect(bodies).toEqual([
 			{
 				fanoutBranch: true,
@@ -472,6 +473,7 @@ describe('FanoutController — actions', () => {
 				modelId: 'bridge::sdxl',
 				modelKind: 'image',
 				inputMediaIds: ['img-1'],
+				fanoutSize: 4,
 			},
 			{
 				fanoutBranch: true,
@@ -479,6 +481,7 @@ describe('FanoutController — actions', () => {
 				modelId: 'bridge::flux',
 				modelKind: 'image',
 				inputMediaIds: ['img-1'],
+				fanoutSize: 4,
 			},
 			{
 				fanoutBranch: true,
@@ -486,6 +489,7 @@ describe('FanoutController — actions', () => {
 				modelId: 'bridge::sdxl',
 				modelKind: 'image',
 				inputMediaIds: ['img-2'],
+				fanoutSize: 4,
 			},
 			{
 				fanoutBranch: true,
@@ -493,6 +497,7 @@ describe('FanoutController — actions', () => {
 				modelId: 'bridge::flux',
 				modelKind: 'image',
 				inputMediaIds: ['img-2'],
+				fanoutSize: 4,
 			},
 		]);
 		vi.unstubAllGlobals();

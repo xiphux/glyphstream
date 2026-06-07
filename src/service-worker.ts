@@ -99,7 +99,9 @@ async function handlePush(event: PushEvent): Promise<void> {
 
 	// action === 'os' — raise an OS-level notification.
 	await self.registration.showNotification(payload.conversationTitle, {
-		body: payload.preview ?? 'New message',
+		// A fan-out's count summary ("3 images ready") is non-content and takes
+		// precedence; otherwise the message preview (when content is shown).
+		body: payload.summary ?? payload.preview ?? 'New message',
 		tag: payload.conversationId,
 		data: { conversationId: payload.conversationId },
 		icon: '/icon.svg',

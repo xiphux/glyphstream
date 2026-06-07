@@ -3,7 +3,6 @@ import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta, updateConversationModel } from '$lib/server/db/queries/conversations';
-import { linkMessageMedia } from '$lib/server/db/queries/media';
 import {
 	appendMessage,
 	findUserMessageAncestor,
@@ -24,6 +23,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride, isValidReplaceTarget } from '$lib/server/messages/fanout-dispatch';
+import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { openaiToolDefinitions } from '$lib/server/tools';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
@@ -34,7 +34,6 @@ import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
-import { notifyConversationComplete } from '$lib/server/push/notify';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
@@ -273,6 +272,29 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		replacesMessageId,
 	);
 
+	// An INITIAL fan-out branch (not a regenerate) suppresses its own per-branch
+	// notification; the route fires a single aggregate "N ready" when the LAST
+	// branch settles. A regenerate (replacesMessageId set) is a lone re-roll and
+	// keeps its own notify, like any single generation.
+	const isInitialFanout = isFanout && !replacesMessageId;
+	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
+	// Every relay's onComplete: free the in-flight slot, then (for an initial
+	// fan-out branch) let the last-to-finish branch fire the one aggregate notify.
+	// clearInFlight must run first so the last branch sees an empty registry.
+	const onBranchComplete = () => {
+		clearInFlight(params.id, inFlight);
+		if (isInitialFanout) {
+			notifyFanoutCompleteIfLast({
+				conversationId: params.id,
+				userId: locals.user.id,
+				userMessageId: userMessage.id,
+				conversationTitle: meta.title,
+				modality: meta.modelKind ?? 'chat',
+				fanoutSize,
+			});
+		}
+	};
+
 	// --- image-kind models: prompt → image; no chat history -------------------
 	// Always streamed (SSE) via startImageRelay — single send and fan-out branch
 	// alike (the client requests ?stream=1 for image everywhere). The relay holds
@@ -294,11 +316,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			suppressNotify: isInitialFanout,
 			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
-			onComplete: () => clearInFlight(params.id, inFlight),
+			onComplete: onBranchComplete,
 		});
 		return sseResponse(stream);
 	}
@@ -331,6 +354,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			suppressNotify: isInitialFanout,
 			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
@@ -345,7 +369,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// the client SSE connection minutes before the polling loop
 			// finishes, and the chat page's recovery indicator depends on
 			// the slot staying populated until the generation truly ends.
-			onComplete: () => clearInFlight(params.id, inFlight),
+			onComplete: onBranchComplete,
 		});
 		return sseResponse(stream);
 	}
@@ -479,6 +503,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// and don't start a per-branch title task (/prepare owns it once).
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			suppressNotify: isInitialFanout,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
@@ -486,7 +511,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// loop iterations + tool executions done), not per recorder.
 			// The recorder branches survive client disconnect, so the
 			// recovery indicator stays accurate after an iOS PWA suspend.
-			onComplete: () => clearInFlight(params.id, inFlight),
+			onComplete: onBranchComplete,
 			needsApproval,
 			// Threaded into each tool's ToolContext so behavior-only
 			// consumers (e.g. run_python's Python network shim, which

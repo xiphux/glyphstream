@@ -283,7 +283,10 @@ export class FanoutController {
 					signalEnqueued = resolve;
 				});
 				branchRuns.push(
-					this.#runBranch(turnConvId, userMessage.id, col, { onEnqueued: signalEnqueued }),
+					this.#runBranch(turnConvId, userMessage.id, col, {
+						onEnqueued: signalEnqueued,
+						fanoutSize: branches.length,
+					}),
 				);
 				await enqueued;
 			}
@@ -334,7 +337,7 @@ export class FanoutController {
 		turnConvId: string,
 		userMessageId: string,
 		col: FanoutColumn,
-		opts?: { replacesMessageId?: string | null; onEnqueued?: () => void },
+		opts?: { replacesMessageId?: string | null; onEnqueued?: () => void; fanoutSize?: number },
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
 		this.#aborts.set(col.branchId, abort);
@@ -356,6 +359,7 @@ export class FanoutController {
 					modelKind: col.modelKind,
 					inputMediaId: col.inputMediaId,
 					replacesMessageId: opts?.replacesMessageId,
+					fanoutSize: opts?.fanoutSize,
 				}),
 			);
 			const res = await fetch(`/api/conversations/${turnConvId}/messages?stream=1`, {

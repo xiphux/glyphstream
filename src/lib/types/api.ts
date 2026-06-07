@@ -592,6 +592,14 @@ export interface SendMessageRequest {
 	 * `fanoutBranch`.
 	 */
 	replacesMessageId?: string;
+	/**
+	 * Total number of branches in this fan-out (the grid size). Every initial
+	 * branch carries the same value; the server uses it only as the count in the
+	 * single aggregate "N ready" notification fired when the last branch settles.
+	 * Omitted on a regenerate (a lone re-roll keeps its own per-branch notify).
+	 * Ignored unless `fanoutBranch`.
+	 */
+	fanoutSize?: number;
 }
 
 /**

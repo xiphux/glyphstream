@@ -39,6 +39,11 @@ export interface NotifyConversationCompleteInput {
 	 *  modalities (image/video) — the preview will be empty either way. */
 	previewText: string;
 	modality: NotifyModality;
+	/** A non-content summary line (e.g. a fan-out's "3 images ready") used as the
+	 *  notification body in place of the message preview. Carries no message text,
+	 *  so it is sent regardless of notificationsShowContent. Omit for single
+	 *  sends. */
+	summary?: string;
 }
 
 /**
@@ -100,6 +105,9 @@ export async function notifyConversationComplete(
 		modality: input.modality,
 		foregroundToast: prefs.notificationsForegroundToast,
 	};
+	// A fan-out summary ("3 images ready") is a count, not message content, so it
+	// ships regardless of the show-content opt-out and serves as the body.
+	if (input.summary) payload.summary = input.summary;
 	if (prefs.notificationsShowContent) {
 		const preview = buildPreview(input.previewText);
 		if (preview.length > 0) payload.preview = preview;

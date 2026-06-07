@@ -61,6 +61,10 @@ export interface MediaRelayParams {
 	advanceActiveLeaf?: boolean;
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare). */
 	suppressTitleTask?: boolean;
+	/** Skip this branch's own completion notification. An initial fan-out branch
+	 *  passes true so the N branches don't each notify; the route fires one
+	 *  aggregate "N ready" when the last settles. A regenerate leaves it false. */
+	suppressNotify?: boolean;
 	/** Fan-out regenerate (re-roll in place): the old sibling this branch
 	 *  replaces, deleted server-side once the new one persists. */
 	replacesMessageId?: string | null;
@@ -171,14 +175,18 @@ export function startMediaRelay(
 					);
 				}
 
-				void notifyConversationComplete({
-					userId: params.userId,
-					conversationId: params.conversationId,
-					assistantMessageId: assistantMessage.id,
-					conversationTitle: params.conversationTitle ?? 'New conversation',
-					previewText: '',
-					modality: produced.modality,
-				}).catch((e) => console.warn('[media-relay] notify failed:', e));
+				// A fan-out branch suppresses its own notify; the route fires one
+				// aggregate "N ready" when the last branch settles.
+				if (!params.suppressNotify) {
+					void notifyConversationComplete({
+						userId: params.userId,
+						conversationId: params.conversationId,
+						assistantMessageId: assistantMessage.id,
+						conversationTitle: params.conversationTitle ?? 'New conversation',
+						previewText: '',
+						modality: produced.modality,
+					}).catch((e) => console.warn('[media-relay] notify failed:', e));
+				}
 
 				safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
 				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
