@@ -52,6 +52,12 @@ export interface InFlightEntry {
 	 *  while still queued behind the gate. Lets a recovered fan-out distinguish
 	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
 	generationStartedAt: number | null;
+	/** For a fan-out regenerate (re-roll in place): the sibling message id this
+	 *  branch will replace once it lands. The old sibling still exists during the
+	 *  re-roll (generate-then-delete keeps it as a restore-on-failure fallback),
+	 *  so recovery excludes it from the rebuilt grid — otherwise the old image +
+	 *  the in-flight re-roll show as two boxes instead of one in-place re-roll. */
+	replacesMessageId: string | null;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -69,6 +75,7 @@ export function registerInFlight(
 	branchKey: string = DEFAULT_BRANCH,
 	modelKind: ModelKind | null = null,
 	modelId: string | null = null,
+	replacesMessageId: string | null = null,
 ): InFlightEntry {
 	let byBranch = inFlight.get(conversationId);
 	if (!byBranch) {
@@ -88,6 +95,7 @@ export function registerInFlight(
 		// this when it emits `start`); a recovered fan-out uses it to tell a
 		// QUEUED branch from a generating one + restore the elapsed timer.
 		generationStartedAt: null,
+		replacesMessageId,
 	};
 	byBranch.set(branchKey, entry);
 	return entry;

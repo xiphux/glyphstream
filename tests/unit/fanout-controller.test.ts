@@ -273,6 +273,32 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('regenerate tells the server which sibling it replaces (recovery shadow)', async () => {
+		let branchBody: { replacesMessageId?: unknown } = {};
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			if (url.includes('?stream=1')) {
+				branchBody = JSON.parse(init?.body ?? '{}');
+				return sseResponse([
+					{ type: 'start', userMessage: imageSibling('u1', '', null), assistantMessageId: '' },
+					{ type: 'done', assistantMessage: imageSibling('new', 'bridge::sdxl', null) },
+				]);
+			}
+			return jsonResponse({}); // the old-image DELETE
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [imageSibling('old', 'bridge::sdxl', null)],
+			pending: 0,
+		});
+		await fc.regenerate(fc.columns[0]);
+		expect(branchBody.replacesMessageId).toBe('old');
+		vi.unstubAllGlobals();
+	});
+
 	it('stop posts cancel for the conversation', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({}));
 		vi.stubGlobal('fetch', fetchMock);

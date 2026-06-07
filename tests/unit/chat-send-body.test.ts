@@ -193,4 +193,21 @@ describe('buildFanoutBranchBody', () => {
 		});
 		expect(noSplit).not.toHaveProperty('inputMediaIds');
 	});
+
+	it('sends replacesMessageId for a regenerate branch, omits it otherwise', () => {
+		const reroll = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::sdxl',
+			modelKind: 'image',
+			replacesMessageId: 'old-sibling',
+		});
+		expect(reroll.replacesMessageId).toBe('old-sibling');
+
+		const fresh = buildFanoutBranchBody({
+			parentMessageId: 'user-1',
+			modelId: 'bridge::sdxl',
+			modelKind: 'image',
+		});
+		expect(fresh).not.toHaveProperty('replacesMessageId');
+	});
 });

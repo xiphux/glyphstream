@@ -65,10 +65,18 @@ export function getFanoutRecoveryState(
 		};
 	}
 	const entries = getInFlightEntries(conversationId);
+	// A fan-out regenerate keeps the old sibling until its re-roll lands (so a
+	// failed re-roll can restore it). Exclude any sibling an in-flight branch is
+	// replacing, so recovery shows the old box AS the in-flight re-roll (one
+	// in-place column) rather than the old image + the re-roll as two boxes.
+	const replaced = new Set(
+		entries.map((e) => e.replacesMessageId).filter((id): id is string => id !== null),
+	);
+	const siblings = getSiblingAssistants(conversationId, parent).filter((m) => !replaced.has(m.id));
 	return {
 		parentMessageId: parent,
 		kind: entries[0]?.modelKind ?? null,
-		siblings: getSiblingAssistants(conversationId, parent),
+		siblings,
 		pending: entries.length,
 		pendingModelIds: entries.map((e) => e.modelId ?? ''),
 		pendingStartedAt: entries.map((e) => e.generationStartedAt),

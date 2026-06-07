@@ -305,6 +305,7 @@ export class FanoutController {
 		turnConvId: string,
 		userMessageId: string,
 		col: FanoutColumn,
+		opts?: { replacesMessageId?: string | null },
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
 		this.#aborts.set(col.branchId, abort);
@@ -315,6 +316,7 @@ export class FanoutController {
 					modelId: col.modelId,
 					modelKind: col.modelKind,
 					inputMediaId: col.inputMediaId,
+					replacesMessageId: opts?.replacesMessageId,
 				}),
 			);
 			const res = await fetch(`/api/conversations/${turnConvId}/messages?stream=1`, {
@@ -507,7 +509,12 @@ export class FanoutController {
 		col.startedAt = null;
 		col.status = 'streaming';
 		try {
-			const fresh = await this.#runBranch(convId, this.userMessageId, col);
+			// Tell the server this branch replaces `oldId`, so a recovery mid-roll
+			// shadows the old-but-not-yet-deleted sibling (one in-place column, not
+			// the old image + the re-roll as two boxes).
+			const fresh = await this.#runBranch(convId, this.userMessageId, col, {
+				replacesMessageId: oldId,
+			});
 			if (!fresh) {
 				// Re-roll failed / was cancelled — restore the original.
 				col.persisted = snapshot.persisted;

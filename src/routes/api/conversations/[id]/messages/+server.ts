@@ -223,12 +223,20 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// every code path that talks to upstream. Fan-out branches each get a
 	// unique key so they coexist in the registry instead of cancelling one
 	// another; a plain send uses the default single-slot key.
+	// Regenerate (re-roll in place): the sibling this branch replaces. Recorded
+	// on the in-flight entry so recovery shadows the old-but-not-yet-deleted
+	// sibling while the re-roll runs. Display-only (it never deletes anything —
+	// the client does that once the new one lands), so a bad value would at most
+	// hide one of your own siblings from your recovered grid.
+	const replacesMessageId =
+		isFanout && typeof body.replacesMessageId === 'string' ? body.replacesMessageId : null;
 	const inFlight = registerInFlight(
 		params.id,
 		endpoint,
 		isFanout ? generateId() : undefined,
 		meta.modelKind,
 		meta.modelId,
+		replacesMessageId,
 	);
 
 	// --- image-kind models: prompt → image; no chat history -------------------

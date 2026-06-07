@@ -107,6 +107,9 @@ export function buildFanoutBranchBody(input: {
 	/** Split-attachments: restrict this branch to one of the shared message's
 	 *  images. Omitted for a non-split branch (derives all attachments). */
 	inputMediaId?: string | null;
+	/** Regenerate (re-roll in place): the sibling this branch replaces, so
+	 *  recovery shadows the old-but-not-yet-deleted sibling during the re-roll. */
+	replacesMessageId?: string | null;
 }): Record<string, unknown> {
 	return {
 		fanoutBranch: true,
@@ -114,5 +117,6 @@ export function buildFanoutBranchBody(input: {
 		modelId: input.modelId,
 		modelKind: input.modelKind,
 		...(input.inputMediaId ? { inputMediaIds: [input.inputMediaId] } : {}),
+		...(input.replacesMessageId ? { replacesMessageId: input.replacesMessageId } : {}),
 	};
 }

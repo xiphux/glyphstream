@@ -581,6 +581,13 @@ export interface SendMessageRequest {
 	 * actually attached to the parent are honored. Ignored unless `fanoutBranch`.
 	 */
 	inputMediaIds?: string[];
+	/**
+	 * Fan-out regenerate (re-roll in place): the sibling message id this branch
+	 * replaces. Recorded on the in-flight entry so recovery excludes the
+	 * old-but-not-yet-deleted sibling while the re-roll runs (the client deletes
+	 * it once the new one lands). Ignored unless `fanoutBranch`.
+	 */
+	replacesMessageId?: string;
 }
 
 /**
