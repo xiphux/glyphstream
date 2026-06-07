@@ -11,12 +11,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import {
 	clearInFlight,
+	conversationFanoutAtCapacity,
 	DEFAULT_BRANCH,
 	getInFlightEntries,
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
 } from '$lib/server/streaming/in-flight';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 
 function endpoint(id: string): LoadedEndpoint {
 	return {
@@ -128,6 +130,22 @@ describe('getInFlightSince', () => {
 		a.startedAt = 1000;
 		b.startedAt = 2000;
 		expect(getInFlightSince('c1')).toBe(1000);
+	});
+});
+
+describe('conversationFanoutAtCapacity', () => {
+	it('is false below the cap, true once the cap is reached, and scoped per conversation', () => {
+		expect(conversationFanoutAtCapacity('c1')).toBe(false);
+		// Fill c1 to one below the cap — still accepting.
+		for (let i = 0; i < MAX_FANOUT_BRANCHES_PER_CONVERSATION - 1; i++) {
+			registerInFlight('c1', endpoint('e'), `b${i}`);
+		}
+		expect(conversationFanoutAtCapacity('c1')).toBe(false);
+		// The branch that reaches the cap flips it.
+		registerInFlight('c1', endpoint('e'), 'b-last');
+		expect(conversationFanoutAtCapacity('c1')).toBe(true);
+		// A different conversation is unaffected.
+		expect(conversationFanoutAtCapacity('c2')).toBe(false);
 	});
 });
 

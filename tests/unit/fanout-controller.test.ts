@@ -20,7 +20,7 @@ import {
 	type FanoutDeps,
 	type FanoutServerState,
 } from '$lib/fanout-controller.svelte';
-import { expandFanoutBranches } from '$lib/fanout';
+import { expandFanoutBranches, MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 import type { ChatMessage, ModelEntry } from '$lib/types/api';
 
 const MODELS = [
@@ -297,6 +297,25 @@ describe('FanoutController — actions', () => {
 		});
 		await fc.regenerate(fc.columns[0]);
 		expect(branchBody.replacesMessageId).toBe('old');
+		vi.unstubAllGlobals();
+	});
+
+	it('refuses an oversized fan-out without dispatching (mirrors the server cap)', async () => {
+		const fetchMock = vi.fn(async () => jsonResponse({}));
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		const branches = Array.from({ length: MAX_FANOUT_BRANCHES_PER_CONVERSATION + 1 }, () => ({
+			modelId: 'bridge::sdxl',
+			modelKind: 'image' as const,
+			displayName: 'SDXL',
+			inputMediaId: null,
+		}));
+		await fc.send('x', [], branches);
+		// Bailed before even creating the shared user message — no network at all.
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(state.error).toContain('Too many variations');
+		expect(fc.live).toBe(false);
 		vi.unstubAllGlobals();
 	});
 

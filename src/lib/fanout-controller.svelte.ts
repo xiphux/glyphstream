@@ -20,7 +20,12 @@ import { isAbortError } from './abort';
 import { appendReasoning, appendText } from './chat-render';
 import { buildFanoutBranchBody } from './chat-send-body';
 import { consumeChatStream } from './consume-chat-stream';
-import { allColumnsSettled, type FanoutBranchSpec, type FanoutColumn } from './fanout';
+import {
+	allColumnsSettled,
+	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
+	type FanoutBranchSpec,
+	type FanoutColumn,
+} from './fanout';
 import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
 import type {
@@ -196,6 +201,15 @@ export class FanoutController {
 		attachedMediaIds: string[],
 		branches: FanoutBranchSpec[],
 	): Promise<void> {
+		// Mirror the server's per-conversation cap so a legitimate user who builds
+		// an oversized cross-product (models × split images) gets a friendly message
+		// up front instead of a mid-fan-out 429 on the branch dispatch.
+		if (branches.length > MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
+			this.#deps.setError(
+				`Too many variations: ${branches.length} exceeds the limit of ${MAX_FANOUT_BRANCHES_PER_CONVERSATION}. Reduce the number of models or split images.`,
+			);
+			return;
+		}
 		const turnConvId = this.#deps.convId();
 		const isFirstExchange = this.#deps.messageCount() === 0;
 		this.#deps.setBusy(true);

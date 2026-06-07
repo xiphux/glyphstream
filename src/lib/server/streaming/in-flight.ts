@@ -23,6 +23,7 @@
 
 import type { LoadedEndpoint } from '../endpoints/config';
 import type { ModelKind } from '$lib/types/api';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 
 /** Key for a plain single-generation turn — at most one at a time per
  *  conversation, matching the pre-fan-out behavior. */
@@ -115,6 +116,14 @@ export function clearInFlight(conversationId: string, entry: InFlightEntry): voi
 export function getInFlightEntries(conversationId: string): InFlightEntry[] {
 	const byBranch = inFlight.get(conversationId);
 	return byBranch ? [...byBranch.values()] : [];
+}
+
+/** True when the conversation already has the maximum number of concurrent
+ *  generations in flight — the dispatch handler 429s a further fan-out branch
+ *  past this, bounding the standing queue of held-open connections + registry
+ *  entries that an unbounded fan-out would otherwise pile up. */
+export function conversationFanoutAtCapacity(conversationId: string): boolean {
+	return getInFlightEntries(conversationId).length >= MAX_FANOUT_BRANCHES_PER_CONVERSATION;
 }
 
 /** Earliest `startedAt` across the conversation's in-flight generations, or

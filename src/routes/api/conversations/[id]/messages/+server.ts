@@ -35,7 +35,11 @@ import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
 import { notifyConversationComplete } from '$lib/server/push/notify';
-import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
+import {
+	clearInFlight,
+	conversationFanoutAtCapacity,
+	registerInFlight,
+} from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startImageRelay } from '$lib/server/streaming/image-relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
@@ -249,6 +253,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (isValidReplaceTarget(target, userMessage.id)) {
 			replacesMessageId = body.replacesMessageId;
 		}
+	}
+	// Cap concurrent fan-out branches per conversation. Each branch holds an open
+	// SSE connection + an in-flight entry + (past the gate) a queued waiter, so an
+	// unbounded fan-out is a resource-exhaustion vector even though the
+	// per-endpoint gate throttles the upstream calls. The check + registerInFlight
+	// run synchronously back-to-back (single-threaded), so concurrent branch POSTs
+	// can't race past the limit. The client mirrors it, so a legitimate user never
+	// reaches this. (Per-conversation only — a global cap is a noted follow-up.)
+	if (isFanout && conversationFanoutAtCapacity(params.id)) {
+		throw error(429, 'Too many concurrent generations for this conversation');
 	}
 	const inFlight = registerInFlight(
 		params.id,

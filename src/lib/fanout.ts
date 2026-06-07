@@ -9,6 +9,19 @@
 import type { InFlightSegment } from './chat-render';
 import type { ChatMessage, ModelKind } from './types/api';
 
+/**
+ * Hard ceiling on concurrent fan-out branches per conversation. Each branch
+ * holds an open SSE connection + an in-flight registry entry + (past the
+ * per-endpoint `max_concurrent` gate) a queued waiter, so an unbounded fan-out
+ * is a resource-exhaustion vector regardless of how the gate throttles the
+ * actual upstream calls. 32 sits well above any realistic compare (≤~10 models)
+ * or split cross-product (images × models) while bounding a single
+ * conversation's standing queue. Enforced server-side (the route 429s past it)
+ * and mirrored client-side (the controller refuses to dispatch an oversized
+ * fan-out) so a legitimate user hits a friendly message, not a raw 429.
+ */
+export const MAX_FANOUT_BRANCHES_PER_CONVERSATION = 32;
+
 export type FanoutColumnStatus = 'queued' | 'streaming' | 'done' | 'error' | 'cancelled';
 
 /** One model picked for a fan-out comparison. The same model may appear more
