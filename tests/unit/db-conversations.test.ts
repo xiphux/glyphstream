@@ -622,6 +622,26 @@ describe('branching: siblings + selectBranch', () => {
 		expect(aiB.id).not.toBe(aiA.id);
 	});
 
+	it('selectBranch does not bump updated_at (branch nav is a view change, not activity)', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const root = append(conv.id, null, 'user', 'q');
+		const aiA = append(conv.id, root.id, 'assistant', 'A');
+		await new Promise((r) => setTimeout(r, 5));
+		append(conv.id, root.id, 'assistant', 'B'); // active leaf = B
+
+		const updatedAtOf = (id: string) => listConversations(u.id).find((c) => c.id === id)?.updatedAt;
+		const before = updatedAtOf(conv.id);
+		expect(before).toBeTypeOf('number'); // guard: don't let undefined === undefined pass
+		// Sleep so that a stray updated_at bump would land on a distinct
+		// timestamp (Date.now() millisecond resolution) and fail the equality.
+		await new Promise((r) => setTimeout(r, 5));
+		selectBranch(conv.id, aiA.id);
+		const after = updatedAtOf(conv.id);
+
+		expect(after).toBe(before);
+	});
+
 	it('selectBranch refuses cross-conversation message ids', () => {
 		const u = seedUser();
 		const a = makeConv(u.id);

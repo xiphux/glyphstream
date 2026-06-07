@@ -278,12 +278,18 @@ export function selectBranch(
 
 	const cursor = deepestDescendant(messageId, buildChildrenByParent(rows));
 
-	const now = Date.now();
 	db.update(conversations)
 		// Selecting a branch resolves any parked fan-out (the user picked a
 		// winner / dismissed the comparison), so clear the marker too. A no-op
 		// for ordinary sibling navigation, where it's already null.
-		.set({ activeLeafMessageId: cursor, updatedAt: now, fanoutParentMessageId: null })
+		//
+		// We deliberately do NOT bump `updated_at`: branch navigation is a view
+		// change, not new activity, so it shouldn't reorder the sidebar's
+		// newest-first Recents. (Matches ChatGPT / Claude / Gemini, where
+		// switching between response variants leaves the conversation's
+		// position in the list untouched.) Actual content changes — new
+		// messages, edits, retries — still bump it through their own paths.
+		.set({ activeLeafMessageId: cursor, fanoutParentMessageId: null })
 		.where(eq(conversations.id, conversationId))
 		.run();
 	return { newActiveLeaf: cursor };

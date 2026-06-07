@@ -1692,9 +1692,27 @@
 			// new data and the DOM to reflect it, then scroll the sibling
 			// into the middle of the viewport.
 			await tick();
-			document
-				.getElementById(`msg-${targetMessageId}`)
-				?.scrollIntoView({ block: 'center', behavior: 'auto' });
+			const target = document.getElementById(`msg-${targetMessageId}`);
+			target?.scrollIntoView({ block: 'center', behavior: 'auto' });
+			// Image parts carry no stored dimensions and render lazily, so a
+			// freshly-switched-to image branch is ~0px tall at this point — the
+			// centering above lands wrong (often at the very top) and the image
+			// then loads and grows below the viewport, stranding the user. Re-
+			// center once each not-yet-loaded image in the new branch finishes,
+			// so a tall result settles where the user is looking. Re-resolving
+			// the node by id (rather than closing over `target`) makes a stale
+			// load from a since-abandoned rapid switch a safe no-op.
+			target?.querySelectorAll('img').forEach((img) => {
+				if (img.complete) return;
+				img.addEventListener(
+					'load',
+					() =>
+						document
+							.getElementById(`msg-${targetMessageId}`)
+							?.scrollIntoView({ block: 'center', behavior: 'auto' }),
+					{ once: true },
+				);
+			});
 		} catch (e) {
 			errorMsg = `Couldn't switch branch: ${e instanceof Error ? e.message : String(e)}`;
 		} finally {

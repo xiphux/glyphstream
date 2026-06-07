@@ -207,10 +207,15 @@ what already shipped, for context).
   high-contrast scheme is the most practical additional theme beyond
   aesthetics. Deferred until the need arises.
 
-- **Animation follow-ups.** The token-driven motion pass shipped
-  (overlay pop-in, message-arrival fade, in-flight bubble fade). Left out as
-  higher-risk near the scroll/streaming logic: branch-switch crossfade and
-  list-reorder motion.
+- **Stored media dimensions (kill layout shift).** Image/video parts carry
+  only `{ mediaId, alt }` — no intrinsic size — so the browser can't reserve
+  space and media pops the layout when it loads: CLS on first render and in
+  the lightbox, plus a jump-to-top when switching to a tall image branch
+  (currently patched with a re-center-on-image-load in `selectSibling`).
+  Capture width/height at generation / upload time, store on the media row,
+  thread it into the image part, and set `aspect-ratio` on the `<img>`. Makes
+  lazy-vs-eager loading irrelevant to layout and retires the re-center
+  workaround.
 
 - **Gallery favorite / pin tier.** A second-level distinction beyond "in the
   gallery vs. hard-deleted" — a favorite flag protecting media from any
