@@ -42,6 +42,10 @@ export interface FanoutServerState {
 	 *  recovered grid labels each placeholder by model. Optional for back-compat
 	 *  with any caller that doesn't supply it. */
 	pendingModelIds?: string[];
+	/** When each pending branch began generating (aligned with `pendingModelIds`),
+	 *  or null while still QUEUED — drives the recovered grid's QUEUED badge vs.
+	 *  elapsed timer. */
+	pendingStartedAt?: (number | null)[];
 }
 
 /** Everything the controller needs from the host page. Getters for reactive
@@ -73,11 +77,27 @@ export interface FanoutDeps {
  *  recovered fan-out. The builder and the recovery-poll gate both key off it. */
 export const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
 
-/** Per-pending-branch model ids, normalized to the `pending` count — falls back
- *  to blanks (unknown model → "Generating…" label) for an older server payload
- *  that only reported a count. */
-function pendingIds(f: FanoutServerState): string[] {
-	return f.pendingModelIds ?? Array.from({ length: f.pending }, () => '');
+interface PendingBranch {
+	/** Model id, or '' when unknown (older payload → "Generating…" label). */
+	modelId: string;
+	/** 'queued' (waiting on the gate) vs 'streaming' (generating). */
+	status: 'queued' | 'streaming';
+	/** Generation start, for the timer; null while queued / unknown. */
+	startedAt: number | null;
+}
+
+/** Per-pending-branch descriptors, normalized to the `pending` count. When the
+ *  server reports per-branch start times, each branch is QUEUED (no start yet)
+ *  or generating-with-a-timer. An older payload without that info falls back to
+ *  plain "Generating…" placeholders (status 'streaming', no timer). */
+function pendingBranches(f: FanoutServerState): PendingBranch[] {
+	const ids = f.pendingModelIds ?? Array.from({ length: f.pending }, () => '');
+	const starts = f.pendingStartedAt;
+	return ids.map((modelId, i) => {
+		if (!starts) return { modelId, status: 'streaming', startedAt: null };
+		const startedAt = starts[i] ?? null;
+		return { modelId, status: startedAt !== null ? 'streaming' : 'queued', startedAt };
+	});
 }
 
 export class FanoutController {
@@ -117,7 +137,7 @@ export class FanoutController {
 	 *  recovery, where the client's own branch fetches are gone. */
 	#buildRecoveredColumns(
 		siblings: ChatMessage[],
-		pendingModelIds: string[],
+		pending: PendingBranch[],
 		kind: ModelKind | null,
 	): FanoutColumn[] {
 		const models = this.#deps.models();
@@ -141,18 +161,20 @@ export class FanoutController {
 			persisted: m,
 			error: null,
 		}));
-		const generating: FanoutColumn[] = pendingModelIds.map((id, i) => ({
+		const generating: FanoutColumn[] = pending.map((pb, i) => ({
 			branchId: `${RECOVERED_PENDING_PREFIX}${i}`,
-			modelId: id,
-			modelKind: kindById(id) ?? fallbackKind,
+			modelId: pb.modelId,
+			modelKind: kindById(pb.modelId) ?? fallbackKind,
 			// Known model → label by its name (header reads like the live grid);
 			// only fall back to "Generating…" when the model is genuinely unknown.
-			label: id ? this.#modelDisplayName(id) : 'Generating…',
+			label: pb.modelId ? this.#modelDisplayName(pb.modelId) : 'Generating…',
 			segments: [],
-			status: 'streaming',
+			// Branch began generating → "Generating… {timer}"; still waiting on the
+			// gate → QUEUED badge. Restores the live grid's per-branch state.
+			status: pb.status,
 			queuedAhead: 0,
 			progress: null,
-			startedAt: null,
+			startedAt: pb.startedAt,
 			inputMediaId: null,
 			persisted: null,
 			error: null,
@@ -562,7 +584,11 @@ export class FanoutController {
 			return;
 		}
 		this.userMessageId = fanout.parentMessageId;
-		this.columns = this.#buildRecoveredColumns(fanout.siblings, pendingIds(fanout), fanout.kind);
+		this.columns = this.#buildRecoveredColumns(
+			fanout.siblings,
+			pendingBranches(fanout),
+			fanout.kind,
+		);
 	}
 
 	/** True when the grid has server-driven "Generating…" placeholders the client
@@ -594,7 +620,7 @@ export class FanoutController {
 				// a live interaction (regenerate) has since taken over.
 				if (!this.live && this.#aborts.size === 0 && !this.picking && !this.#deps.busy()) {
 					this.userMessageId = f.parentMessageId;
-					this.columns = this.#buildRecoveredColumns(f.siblings, pendingIds(f), f.kind);
+					this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 				}
 				if (f.pending === 0) {
 					stopped = true;

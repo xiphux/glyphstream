@@ -252,6 +252,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			onStarted: () => {
+				inFlight.generationStartedAt = Date.now();
+			},
 			onComplete: () => clearInFlight(params.id, inFlight),
 		});
 		return new Response(stream, {
@@ -292,6 +295,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			onStarted: () => {
+				inFlight.generationStartedAt = Date.now();
+			},
 			// Stash the bridge job id on our in-flight entry so the cancel
 			// endpoint can DELETE /v1/videos/{id} for this branch.
 			onJobId: (jobId) => {
@@ -443,6 +449,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// and don't start a per-branch title task (/prepare owns it once).
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			onStarted: () => {
+				inFlight.generationStartedAt = Date.now();
+			},
 			// Clear the registry slot once the whole turn settles (all
 			// loop iterations + tool executions done), not per recorder.
 			// The recorder branches survive client disconnect, so the

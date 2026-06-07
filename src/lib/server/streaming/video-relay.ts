@@ -102,6 +102,9 @@ export interface VideoRelayParams {
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare
 	 *  rather than per branch). Default false. */
 	suppressTitleTask?: boolean;
+	/** Fires when generation begins (slot acquired) — the route stamps the
+	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
+	onStarted?: () => void;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
@@ -132,6 +135,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					return;
 				}
 
+				// Slot acquired → generation begins; stamp the in-flight entry so a
+				// recovery rebuild can show this branch's timer (vs a still-QUEUED one).
+				params.onStarted?.();
 				const startEv: StreamStartEvent = {
 					type: 'start',
 					userMessage: params.userMessage,

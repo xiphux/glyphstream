@@ -62,6 +62,10 @@ export interface ImageRelayParams {
 	advanceActiveLeaf?: boolean;
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare). */
 	suppressTitleTask?: boolean;
+	/** Fires when generation actually begins (slot acquired) — the route stamps
+	 *  the in-flight entry so a recovered fan-out can show a QUEUED vs timer
+	 *  state per branch. */
+	onStarted?: () => void;
 	/** Fires when the relay truly finishes — the route clears the in-flight slot. */
 	onComplete: () => void;
 }
@@ -91,7 +95,9 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 				}
 
 				// Slot acquired → generation begins. `start` flips the client
-				// column from QUEUED to a live timer.
+				// column from QUEUED to a live timer; onStarted stamps the in-flight
+				// entry so a recovery rebuild can do the same.
+				params.onStarted?.();
 				safeWrite({
 					type: 'start',
 					userMessage: params.userMessage,

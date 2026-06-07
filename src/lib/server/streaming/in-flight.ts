@@ -47,6 +47,11 @@ export interface InFlightEntry {
 	 *  still-generating placeholder with its model (not a bare "Generating…"),
 	 *  matching the live grid. */
 	modelId: string | null;
+	/** Unix ms when this branch actually began generating (acquired its
+	 *  concurrency slot — the relay sets this when it emits `start`), or null
+	 *  while still queued behind the gate. Lets a recovered fan-out distinguish
+	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
+	generationStartedAt: number | null;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -79,6 +84,10 @@ export function registerInFlight(
 		branchKey,
 		modelKind,
 		modelId,
+		// Null until the relay acquires its slot + starts generating (it sets
+		// this when it emits `start`); a recovered fan-out uses it to tell a
+		// QUEUED branch from a generating one + restore the elapsed timer.
+		generationStartedAt: null,
 	};
 	byBranch.set(branchKey, entry);
 	return entry;

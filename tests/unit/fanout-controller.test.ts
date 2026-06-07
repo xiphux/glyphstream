@@ -103,6 +103,22 @@ describe('FanoutController — server recovery', () => {
 		expect(fc.hasRecoveredPending).toBe(true);
 	});
 
+	it('restores per-branch QUEUED vs generating-timer state on recovery', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [],
+			pending: 2,
+			pendingModelIds: ['bridge::sdxl', 'bridge::claude'],
+			pendingStartedAt: [1000, null], // first acquired its slot, second waiting
+		});
+		const [generating, queued] = fc.columns;
+		expect(generating).toMatchObject({ status: 'streaming', startedAt: 1000, label: 'SDXL' });
+		expect(queued).toMatchObject({ status: 'queued', startedAt: null, label: 'Claude' });
+	});
+
 	it('does not clobber a live in-session fan-out', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);

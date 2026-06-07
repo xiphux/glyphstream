@@ -42,6 +42,11 @@ export interface FanoutRecoveryState {
 	 *  label each "generating" placeholder with its model, like the live grid,
 	 *  instead of a bare "Generating…". */
 	pendingModelIds: string[];
+	/** When each pending branch began generating (acquired its slot), aligned
+	 *  with `pendingModelIds`, or null while still QUEUED behind the gate. Lets
+	 *  the recovered grid restore the per-branch QUEUED badge vs. elapsed timer
+	 *  — the full live state, important for a long iOS-suspended fan-out. */
+	pendingStartedAt: (number | null)[];
 }
 
 export function getFanoutRecoveryState(
@@ -50,7 +55,14 @@ export function getFanoutRecoveryState(
 ): FanoutRecoveryState {
 	const parent = getFanoutParent(conversationId);
 	if (!parent || parent !== activeLeafMessageId) {
-		return { parentMessageId: null, kind: null, siblings: [], pending: 0, pendingModelIds: [] };
+		return {
+			parentMessageId: null,
+			kind: null,
+			siblings: [],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+		};
 	}
 	const entries = getInFlightEntries(conversationId);
 	return {
@@ -59,5 +71,6 @@ export function getFanoutRecoveryState(
 		siblings: getSiblingAssistants(conversationId, parent),
 		pending: entries.length,
 		pendingModelIds: entries.map((e) => e.modelId ?? ''),
+		pendingStartedAt: entries.map((e) => e.generationStartedAt),
 	};
 }

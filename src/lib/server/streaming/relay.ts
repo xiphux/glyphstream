@@ -122,6 +122,9 @@ export interface RelayParams {
 	 * in-flight slot.
 	 */
 	onComplete: () => void;
+	/** Called when generation begins (slot acquired) — the route stamps the
+	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
+	onStarted?: () => void;
 	/**
 	 * Called between iterations of the tool loop to build the next
 	 * upstream request body — the route handler injects this closure
@@ -200,6 +203,9 @@ export async function startStreamingRelay(
 					signal: params.abortSignal,
 					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 				});
+				// Slot acquired → generation begins; stamp the in-flight entry so a
+				// recovered fan-out shows this branch's timer (vs a still-QUEUED one).
+				params.onStarted?.();
 				await runChatTurn(params, write);
 			} catch (err) {
 				// runChatTurn handles its own upstream errors internally; the

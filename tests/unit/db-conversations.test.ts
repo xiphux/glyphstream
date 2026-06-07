@@ -1859,6 +1859,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			siblings: [],
 			pending: 0,
 			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 
 		setFanoutParent(conv.id, user.id);
@@ -1870,15 +1871,19 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 
 		// Two branches still generating → pending + kind + per-branch model ids
 		// reflect the in-flight entries (so the recovered grid labels each
-		// placeholder by model, like the live grid).
-		registerInFlight(conv.id, fakeEndpoint, 'br0', 'image', 'bridge::sdxl');
+		// placeholder by model, like the live grid). One has acquired its slot
+		// (generationStartedAt set → timer); the other is still QUEUED (null).
+		const e0 = registerInFlight(conv.id, fakeEndpoint, 'br0', 'image', 'bridge::sdxl');
 		registerInFlight(conv.id, fakeEndpoint, 'br1', 'image', 'bridge::flux');
+		e0.generationStartedAt = 1234;
 		const inflightState = getFanoutRecoveryState(conv.id, user.id);
 		expect(inflightState.pending).toBe(2);
 		expect(inflightState.kind).toBe('image');
-		expect(new Set(inflightState.pendingModelIds)).toEqual(
-			new Set(['bridge::sdxl', 'bridge::flux']),
+		const byModel = new Map(
+			inflightState.pendingModelIds.map((id, i) => [id, inflightState.pendingStartedAt[i]]),
 		);
+		expect(byModel.get('bridge::sdxl')).toBe(1234); // generating → timer origin
+		expect(byModel.get('bridge::flux')).toBeNull(); // still queued
 		resetInFlight();
 
 		// Marker that no longer matches the active leaf isn't surfaced.
