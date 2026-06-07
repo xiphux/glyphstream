@@ -12,6 +12,7 @@
 -->
 <script lang="ts">
 	import { Check, Trash2, RefreshCw, CircleAlert } from '@lucide/svelte';
+	import { untrack } from 'svelte';
 	import RenderBlocks from './RenderBlocks.svelte';
 	import {
 		inFlightToBlocks,
@@ -60,6 +61,21 @@
 	// Media (image/video) fan-out is keep-many (regenerate/discard, no single pick).
 	const isMedia = $derived(!onPick && (!!onDiscard || !!onRegenerate));
 	const countNoun = $derived(isMedia ? 'variations' : 'models');
+
+	// Ticking clock for the per-column elapsed timer (a branch counts up from its
+	// `start` event — the moment it acquires its concurrency slot — like
+	// single-image generation). Only runs while a branch is actively timing, so
+	// a settled grid does no work.
+	let now = $state(Date.now());
+	const anyTiming = $derived(columns.some((c) => c.status === 'streaming' && c.startedAt !== null));
+	$effect(() => {
+		if (!anyTiming) return;
+		const id = setInterval(() => untrack(() => (now = Date.now())), 200);
+		return () => clearInterval(id);
+	});
+	function elapsed(c: FanoutColumn): number {
+		return c.startedAt !== null ? (now - c.startedAt) / 1000 : 0;
+	}
 
 	// Layout differs by mode. Text reads best side-by-side (compare responses
 	// left-to-right), so it scrolls horizontally. Images are bounded by the
@@ -111,14 +127,12 @@
 					{/if}
 					<span class="truncate text-fg-secondary" title={c.label}>{c.label}</span>
 					<span class="flex-1"></span>
-					{#if c.status === 'queued'}
-						<span class="text-fg-muted"
-							>Queued{c.queuedAhead > 0 ? ` · ${c.queuedAhead} ahead` : ''}</span
-						>
-					{:else if c.status === 'streaming' && c.progress !== null}
+					{#if c.status === 'streaming' && c.progress !== null}
 						<!-- Video poll-relay progress. -->
 						<span class="font-mono tabular-nums text-fg-muted">{c.progress.toFixed(0)}%</span>
 					{:else if c.status === 'streaming'}
+						<!-- The queued / timer state lives in the body; the header just
+						     carries a subtle "active" pulse. -->
 						<span class="inline-flex gap-0.5 text-fg-muted" aria-label="Generating">
 							<span class="animate-pulse">·</span>
 							<span class="animate-pulse [animation-delay:120ms]">·</span>
@@ -138,9 +152,26 @@
 						<RenderBlocks {blocks} {onImageClick} />
 					{:else if c.status === 'error'}
 						<p class="text-xs text-red-600 dark:text-red-400">{c.error ?? 'Generation failed'}</p>
+					{:else if c.status === 'queued'}
+						<!-- Waiting on the per-endpoint concurrency slot (e.g. a single-GPU
+						     backend running one branch at a time). -->
+						<p class="flex items-center gap-1.5 text-xs text-fg-muted">
+							<span
+								class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-secondary"
+							>
+								Queued
+							</span>
+							{#if c.queuedAhead > 0}<span>{c.queuedAhead} ahead</span>{/if}
+						</p>
 					{:else}
-						<p class="text-xs text-fg-muted">
-							{c.status === 'queued' ? 'Waiting for a slot…' : 'Generating…'}
+						<!-- Actively generating: count up from when this branch acquired
+						     its slot (the live one of a serialized fan-out), like single
+						     image generation. -->
+						<p class="flex items-center gap-2 text-xs text-fg-muted">
+							<span>Generating…</span>
+							{#if c.startedAt !== null && elapsed(c) >= 0.3}
+								<span class="font-mono tabular-nums">{elapsed(c).toFixed(1)}s</span>
+							{/if}
 						</p>
 					{/if}
 				</div>

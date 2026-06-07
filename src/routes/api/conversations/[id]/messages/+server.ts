@@ -41,6 +41,7 @@ import { persistGeneratedImage } from '$lib/server/media/persister';
 import { notifyConversationComplete } from '$lib/server/push/notify';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
+import { startImageRelay } from '$lib/server/streaming/image-relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
 import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 
@@ -235,8 +236,40 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		meta.modelId,
 	);
 
-	// --- image-kind models: prompt → image; no streaming, no chat history -----
+	// --- image-kind models: prompt → image; no chat history -------------------
 	if (meta.modelKind === 'image') {
+		// Fan-out branches request ?stream=1 so the per-branch concurrency queue
+		// + generation start are observable over SSE (a QUEUED badge while a
+		// branch waits on the gate, a live timer once it starts). The
+		// single-mode image send stays the synchronous JSON path below (Phase 2:
+		// converge both onto the relay + delete the sync path).
+		if (url.searchParams.get('stream') === '1') {
+			const stream = startImageRelay({
+				conversationId: params.id,
+				userId: locals.user.id,
+				conversationTitle: meta.title,
+				endpoint,
+				storedModelId: meta.modelId,
+				upstreamModelId: parsed.upstreamId,
+				prompt: promptText,
+				userMessage: userMessage as ChatMessage,
+				dispatchMediaIds,
+				sourceMediaId,
+				abortSignal: inFlight.controller.signal,
+				advanceActiveLeaf: !isFanout,
+				suppressTitleTask: isFanout,
+				onComplete: () => clearInFlight(params.id, inFlight),
+			});
+			return new Response(stream, {
+				headers: {
+					'Content-Type': 'text/event-stream',
+					'Cache-Control': 'no-cache, no-store, no-transform',
+					Connection: 'keep-alive',
+					'X-Accel-Buffering': 'no',
+				},
+			});
+		}
+
 		// Kick off title gen in parallel with image generation — for image
 		// modality the user prompt IS the topic, so the title task doesn't
 		// have to wait for the asset to land. By the time `imageGeneration`

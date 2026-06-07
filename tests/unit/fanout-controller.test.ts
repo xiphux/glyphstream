@@ -193,6 +193,18 @@ describe('FanoutController — actions', () => {
 		return { ok: true, json: async () => body } as unknown as Response;
 	}
 
+	/** A streamed (SSE) response — `data: {json}\n\n` per event, as readSSE parses. */
+	function sseResponse(events: unknown[]): Response {
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				const enc = new TextEncoder();
+				for (const e of events) controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+				controller.close();
+			},
+		});
+		return { ok: true, body } as unknown as Response;
+	}
+
 	it('discard deletes the branch + removes the column, clearing handles when empty', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({}));
 		vi.stubGlobal('fetch', fetchMock);
@@ -230,16 +242,24 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('send (image branches): prepares the user message then fills the grid', async () => {
+	it('send (image branches): prepares the user message then streams the grid', async () => {
 		const user = imageSibling('u1', '', null);
 		user.role = 'user';
+		// Image branches now stream over SSE (the relay emits start → done), like
+		// chat/video — so each branch surfaces its queued/start state.
 		const fetchMock = vi.fn(async (url: string) => {
 			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
-			// image branch POST → persisted assistant message
-			return jsonResponse({
-				userMessage: user,
-				assistantMessage: imageSibling(`r${fetchMock.mock.calls.length}`, 'bridge::sdxl', 'img-x'),
-			});
+			return sseResponse([
+				{ type: 'start', userMessage: user, assistantMessageId: '' },
+				{
+					type: 'done',
+					assistantMessage: imageSibling(
+						`r${fetchMock.mock.calls.length}`,
+						'bridge::sdxl',
+						'img-x',
+					),
+				},
+			]);
 		});
 		vi.stubGlobal('fetch', fetchMock);
 		const { deps, state } = makeDeps();
@@ -251,6 +271,11 @@ describe('FanoutController — actions', () => {
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: 'img-1' },
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: 'img-2' },
 			],
+		);
+		// Branches POST with ?stream=1 now (no sync image path).
+		expect(fetchMock).toHaveBeenCalledWith(
+			expect.stringContaining('/messages?stream=1'),
+			expect.anything(),
 		);
 		// Shared user message appended; two image columns landed (keep-many → grid stays).
 		expect(state.appended).toHaveLength(1);

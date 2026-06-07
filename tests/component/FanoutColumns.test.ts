@@ -35,6 +35,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		status: overrides.status ?? 'streaming',
 		queuedAhead: overrides.queuedAhead ?? 0,
 		progress: overrides.progress ?? null,
+		startedAt: overrides.startedAt ?? null,
 		inputMediaId: overrides.inputMediaId ?? null,
 		persisted: overrides.persisted ?? null,
 		error: overrides.error ?? null,
@@ -182,6 +183,31 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		});
 		const thumb = container.querySelector<HTMLImageElement>('header img');
 		expect(thumb?.getAttribute('src')).toBe('/api/media/src-7/content');
+	});
+
+	it('shows a QUEUED badge (with how many are ahead) for a waiting branch', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [col({ branchId: 'q', status: 'queued', queuedAhead: 2 })],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText('Queued')).toBeInTheDocument();
+		expect(screen.getByText('2 ahead')).toBeInTheDocument();
+	});
+
+	it('shows an elapsed timer in the body of the actively-generating branch', () => {
+		render(FanoutColumns, {
+			props: {
+				// Started ~4.2s ago, no image yet → "Generating… 4.2s".
+				columns: [col({ branchId: 'g', status: 'streaming', startedAt: Date.now() - 4200 })],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText('Generating…')).toBeInTheDocument();
+		expect(screen.getByText(/\d+\.\ds/)).toBeInTheDocument(); // e.g. "4.2s"
 	});
 
 	it('shows the video poll progress in the column header', () => {

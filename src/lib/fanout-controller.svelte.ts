@@ -29,7 +29,6 @@ import type {
 	ModelKind,
 	PrepareFanoutRequest,
 	PrepareFanoutResponse,
-	SendMessageResponse,
 } from './types/api';
 
 /** Server-truth recovery state for a parked fan-out (mirrors the server's
@@ -137,6 +136,7 @@ export class FanoutController {
 			status: 'done',
 			queuedAhead: 0,
 			progress: null,
+			startedAt: null,
 			inputMediaId: m.sourceMediaId ?? null,
 			persisted: m,
 			error: null,
@@ -152,6 +152,7 @@ export class FanoutController {
 			status: 'streaming',
 			queuedAhead: 0,
 			progress: null,
+			startedAt: null,
 			inputMediaId: null,
 			persisted: null,
 			error: null,
@@ -220,6 +221,7 @@ export class FanoutController {
 			status: 'queued' as const,
 			queuedAhead: 0,
 			progress: null,
+			startedAt: null,
 			inputMediaId: b.inputMediaId,
 			persisted: null,
 			error: null,
@@ -273,8 +275,10 @@ export class FanoutController {
 		}
 	}
 
-	/** Drive one fan-out branch into its column's state — a streamed SSE turn for
-	 *  chat, or a one-shot JSON request for image (no stream). */
+	/** Drive one fan-out branch into its column's state. Every kind streams over
+	 *  SSE — chat tokens, video progress, and (via the image relay) the image
+	 *  queue/start/done — so each branch surfaces its queued-vs-generating state
+	 *  uniformly (QUEUED badge + live timer). */
 	async #runBranch(
 		turnConvId: string,
 		userMessageId: string,
@@ -291,25 +295,6 @@ export class FanoutController {
 					inputMediaId: col.inputMediaId,
 				}),
 			);
-			// Image generation is synchronous (no SSE): one POST, one JSON response
-			// carrying the persisted assistant message. The queued state isn't
-			// observable on this path, so the column reads "Generating…" until done.
-			if (col.modelKind === 'image') {
-				col.status = 'streaming';
-				const res = await fetch(`/api/conversations/${turnConvId}/messages`, {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body,
-					signal: abort.signal,
-				});
-				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
-				const parsed = (await res.json()) as SendMessageResponse;
-				if (this.#deps.convId() === turnConvId) {
-					col.persisted = parsed.assistantMessage;
-					col.status = 'done';
-				}
-				return col.persisted;
-			}
 			const res = await fetch(`/api/conversations/${turnConvId}/messages?stream=1`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
@@ -326,6 +311,8 @@ export class FanoutController {
 				},
 				onStart() {
 					col.status = 'streaming';
+					// Generation began (slot acquired) — start the per-column timer.
+					col.startedAt = Date.now();
 				},
 				onText(chunk) {
 					col.status = 'streaming';
@@ -343,6 +330,7 @@ export class FanoutController {
 				onDone({ assistantMessage }) {
 					col.persisted = assistantMessage;
 					col.progress = null;
+					col.startedAt = null;
 					col.status = 'done';
 				},
 				onError(message) {
@@ -482,11 +470,13 @@ export class FanoutController {
 			segments: col.segments,
 			error: col.error,
 			progress: col.progress,
+			startedAt: col.startedAt,
 		};
 		col.persisted = null;
 		col.error = null;
 		col.segments = [];
 		col.progress = null;
+		col.startedAt = null;
 		col.status = 'streaming';
 		try {
 			const fresh = await this.#runBranch(convId, this.userMessageId, col);
@@ -497,6 +487,7 @@ export class FanoutController {
 				col.segments = snapshot.segments;
 				col.error = snapshot.error;
 				col.progress = snapshot.progress;
+				col.startedAt = snapshot.startedAt;
 				return;
 			}
 			// Replace: now that a new sibling exists, drop the old one. Best-effort

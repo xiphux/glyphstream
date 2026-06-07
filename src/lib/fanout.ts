@@ -88,6 +88,10 @@ export interface FanoutColumn {
 	/** Generation progress 0–100 for the poll-based video path, or null when
 	 *  unknown / not a video branch. */
 	progress: number | null;
+	/** Unix ms when this branch actually began generating (the SSE `start`
+	 *  event, i.e. it acquired its concurrency slot), for the elapsed timer.
+	 *  Null while queued / not yet started. */
+	startedAt: number | null;
 	/** Split-attachments: the input image this branch edits / animates, shown
 	 *  as a thumbnail in the column header. Null for a non-split branch. */
 	inputMediaId: string | null;
