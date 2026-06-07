@@ -39,6 +39,7 @@ import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { startImageRelay } from '$lib/server/streaming/image-relay';
 import { startVideoRelay } from '$lib/server/streaming/video-relay';
+import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 
 const TITLE_DELIVERY_BUDGET_MS = 5000;
@@ -285,14 +286,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			},
 			onComplete: () => clearInFlight(params.id, inFlight),
 		});
-		return new Response(stream, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache, no-store, no-transform',
-				Connection: 'keep-alive',
-				'X-Accel-Buffering': 'no',
-			},
-		});
+		return sseResponse(stream);
 	}
 
 	if (meta.modelKind === 'video') {
@@ -339,14 +333,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// the slot staying populated until the generation truly ends.
 			onComplete: () => clearInFlight(params.id, inFlight),
 		});
-		return new Response(stream, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache, no-store, no-transform',
-				Connection: 'keep-alive',
-				'X-Accel-Buffering': 'no',
-			},
-		});
+		return sseResponse(stream);
 	}
 
 	// Resolve the system prompt sent upstream. Precedence:
@@ -499,15 +486,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// makes the single-iteration path explicit.
 			...(toolDefs.length > 0 ? { rebuildRequestBody } : {}),
 		});
-		return new Response(stream, {
-			headers: {
-				'Content-Type': 'text/event-stream',
-				'Cache-Control': 'no-cache, no-store, no-transform',
-				Connection: 'keep-alive',
-				// Defeat reverse-proxy buffering (Nginx/Caddy/CloudFront).
-				'X-Accel-Buffering': 'no',
-			},
-		});
+		return sseResponse(stream);
 	}
 
 	// JSON / sync path (Phase 5 behavior preserved).

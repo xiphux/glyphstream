@@ -1,8 +1,8 @@
 /**
- * Shared SSE transport for the streaming relays (chat + video).
+ * Shared SSE transport for the streaming relays (chat + image + video).
  *
- * Both relays speak the same wire format — `event:`/`data:` frames of
- * StreamEvent JSON — and both must tolerate the client disconnecting
+ * All relays speak the same wire format — `event:`/`data:` frames of
+ * StreamEvent JSON — and all must tolerate the client disconnecting
  * mid-stream while the recorder branch keeps running. Before this module
  * the two relays each carried their own copy of formatSSE, the
  * swallow-on-disconnect write, the controller.close() guard, and the
@@ -45,6 +45,23 @@ export function isAbortError(e: unknown): boolean {
 		return true;
 	}
 	return false;
+}
+
+/**
+ * Wrap a relay's SSE body stream in a Response with the standard event-stream
+ * headers — the chat / image / video dispatch paths all return the same shape.
+ * `X-Accel-Buffering: no` + the no-transform cache directive defeat
+ * reverse-proxy buffering (Nginx/Caddy/CloudFront) so frames flush immediately.
+ */
+export function sseResponse(stream: ReadableStream<Uint8Array>): Response {
+	return new Response(stream, {
+		headers: {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache, no-store, no-transform',
+			Connection: 'keep-alive',
+			'X-Accel-Buffering': 'no',
+		},
+	});
 }
 
 /**
