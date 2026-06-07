@@ -37,6 +37,14 @@ export function resetData(): void {
 	db.pragma('busy_timeout = 5000');
 	db.pragma('foreign_keys = ON');
 	try {
+		// Null the conversation→message pointers first. active_leaf_message_id is
+		// ON DELETE SET NULL, but fanout_parent_message_id (ALTER-added) is NO
+		// ACTION — so a left-behind PARKED fan-out (the user never picked a branch)
+		// would block `DELETE FROM messages` with an FK error and wedge every
+		// subsequent test's reset. Clearing both up front makes reset robust.
+		db.prepare(
+			`UPDATE conversations SET active_leaf_message_id = NULL, fanout_parent_message_id = NULL`,
+		).run();
 		for (const table of ['message_media', 'messages', 'media', 'conversations', 'custom_models']) {
 			db.prepare(`DELETE FROM ${table}`).run();
 		}

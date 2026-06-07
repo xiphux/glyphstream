@@ -20,6 +20,7 @@ import {
 	type FanoutDeps,
 	type FanoutServerState,
 } from '$lib/fanout-controller.svelte';
+import { expandFanoutBranches } from '$lib/fanout';
 import type { ChatMessage, ModelEntry } from '$lib/types/api';
 
 const MODELS = [
@@ -353,6 +354,68 @@ describe('FanoutController — actions', () => {
 		expect(fc.columns.every((c) => c.status === 'done')).toBe(true);
 		expect(fc.isMedia).toBe(true);
 		expect(fc.live).toBe(true);
+		vi.unstubAllGlobals();
+	});
+
+	it('split fan-out: cross-product dispatches one branch per (image × model), each with its own input', async () => {
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		const bodies: Array<{ modelId?: string; inputMediaIds?: string[] }> = [];
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+			bodies.push(JSON.parse(init?.body ?? '{}'));
+			return sseResponse([
+				{ type: 'start', userMessage: user, assistantMessageId: '' },
+				{ type: 'done', assistantMessage: imageSibling(`r${bodies.length}`, 'bridge::sdxl', 'x') },
+			]);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+
+		// Mirror the page seam: split toggle → ready image ids → cross-product.
+		const branches = expandFanoutBranches(
+			[
+				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+				{ modelId: 'bridge::flux', modelKind: 'image', displayName: 'Flux' },
+			],
+			['img-1', 'img-2'],
+		);
+		expect(branches).toHaveLength(4); // 2 images × 2 models
+		await fc.send('cartoon', ['img-1', 'img-2'], branches);
+
+		// One branch POST per spec, image-outer/model-inner, each carrying ONLY
+		// its own split image — the provenance that drives the per-image grid.
+		expect(bodies).toEqual([
+			{
+				fanoutBranch: true,
+				parentMessageId: 'u1',
+				modelId: 'bridge::sdxl',
+				modelKind: 'image',
+				inputMediaIds: ['img-1'],
+			},
+			{
+				fanoutBranch: true,
+				parentMessageId: 'u1',
+				modelId: 'bridge::flux',
+				modelKind: 'image',
+				inputMediaIds: ['img-1'],
+			},
+			{
+				fanoutBranch: true,
+				parentMessageId: 'u1',
+				modelId: 'bridge::sdxl',
+				modelKind: 'image',
+				inputMediaIds: ['img-2'],
+			},
+			{
+				fanoutBranch: true,
+				parentMessageId: 'u1',
+				modelId: 'bridge::flux',
+				modelKind: 'image',
+				inputMediaIds: ['img-2'],
+			},
+		]);
 		vi.unstubAllGlobals();
 	});
 });
