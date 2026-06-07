@@ -23,6 +23,7 @@ import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
+import { resolveModelOverride, isValidReplaceTarget } from '$lib/server/messages/fanout-dispatch';
 import { openaiToolDefinitions } from '$lib/server/tools';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
@@ -90,12 +91,21 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			throw error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
 		}
 		const newKind = isModelKind(body.modelKind) ? body.modelKind : meta.modelKind;
-		// A fan-out branch's model is TRANSIENT: skip the DB write so N
-		// concurrent branches don't clobber the conversation's stored default
-		// (whichever finished last would win). The branch's model is still
-		// applied to this dispatch via the in-memory `meta` mutation below and
-		// recorded per-message through `modelUsed`.
-		if (!isFanout) {
+		// A fan-out branch's model is TRANSIENT (persist:false in
+		// resolveModelOverride): skip the DB write so N concurrent branches don't
+		// clobber the conversation's stored default (whichever finished last would
+		// win). The branch's model is still applied to this dispatch via the
+		// in-memory `meta` mutation below and recorded per-message via `modelUsed`.
+		const { persist: persistModel } = resolveModelOverride({
+			bodyModelId: body.modelId,
+			bodyModelKind: body.modelKind,
+			currentModelId: meta.modelId,
+			currentModelKind: meta.modelKind,
+			isFanout,
+			parseEndpointId: (id) => parseModelId(id)?.endpointId ?? null,
+			endpointExists: (id) => !!getEndpoint(id),
+		});
+		if (persistModel) {
 			updateConversationModel(params.id, locals.user.id, {
 				endpointId: newParsed.endpointId,
 				modelId: body.modelId,
@@ -235,7 +245,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	let replacesMessageId: string | null = null;
 	if (isFanout && typeof body.replacesMessageId === 'string') {
 		const target = getMessage(params.id, body.replacesMessageId);
-		if (target?.role === 'assistant' && target.parentMessageId === userMessage.id) {
+		if (isValidReplaceTarget(target, userMessage.id)) {
 			replacesMessageId = body.replacesMessageId;
 		}
 	}
