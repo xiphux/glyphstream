@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import { untrack } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { cubicOut } from 'svelte/easing';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
@@ -35,6 +37,18 @@
 	import type { ModelKind } from '$lib/types/api';
 
 	let { data, children } = $props();
+
+	// Shared FLIP config for the sidebar lists. When a conversation gets new
+	// activity it jumps to the top of Recents, and a favorites drag reorders
+	// the list — `animate:flip` slides the moved rows to their new slot rather
+	// than teleporting them, so the reordering reads as motion. Honors
+	// prefers-reduced-motion by collapsing the duration to 0 (read once at
+	// mount, matching the chat page's reduceMotion pattern). cubicOut decel
+	// feels right for a short positional settle.
+	const reduceMotion =
+		typeof window !== 'undefined' &&
+		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+	const flipParams = { duration: reduceMotion ? 0 : 220, easing: cubicOut };
 
 	// Keep <html data-theme> in sync with the authoritative theme pref.
 	// hooks.server.ts sets it from the gs-theme cookie before first paint
@@ -437,6 +451,7 @@
 							{@const isDropAfter =
 								favDrag.dropTargetValue === fav.value && favDrag.dropPosition === 'after'}
 							<li
+								animate:flip={flipParams}
 								data-value={fav.value}
 								draggable="true"
 								ondragstart={(e) => favDrag.handleDragStart(e, fav.value)}
@@ -505,7 +520,7 @@
 							{@const href = `/chat/${c.id}`}
 							{@const active = currentPath === href || pendingPath === href}
 							{@const isRenaming = convUi.renamingId === c.id}
-							<li class="group relative">
+							<li class="group relative" animate:flip={flipParams}>
 								{#if isRenaming}
 									<!--
 									Inline-edit affordance. We swap the anchor for

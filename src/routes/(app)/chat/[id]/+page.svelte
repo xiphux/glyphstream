@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import { invalidateAll } from '$app/navigation';
 	import { isAbortError } from '$lib/abort';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
@@ -565,6 +566,35 @@
 	const reduceMotion =
 		typeof window !== 'undefined' &&
 		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+	// Branch-switch direction. selectSibling sets this (+1 for "next" / ‹›,
+	// -1 for "previous") just before the invalidate that swaps the active
+	// branch in, and clears it once the new nodes have mounted. The
+	// messageIntro transition reads it so a sibling swap slides in
+	// directionally (the new branch arrives from the side you navigated
+	// toward) while an ordinary message arrival keeps its plain fade.
+	let branchSwitchDir = $state<1 | -1 | null>(null);
+
+	/**
+	 * Intro for a message wrapper. Three modes, picked at mount time:
+	 *  - reduced-motion / pre-mount / the live-streamed row → no animation
+	 *    (the streamed row suppresses its own re-fade so the persist swap is
+	 *    seamless — preserved from the previous in:fade).
+	 *  - mid branch-switch → directional fade + horizontal slide.
+	 *  - otherwise → the subtle opacity-only arrival fade.
+	 */
+	function messageIntro(_node: Element, p: { streamed: boolean }) {
+		if (!listMounted || reduceMotion || p.streamed) return { duration: 0 };
+		if (branchSwitchDir !== null) {
+			const dir = branchSwitchDir;
+			return {
+				duration: 260,
+				easing: cubicOut,
+				css: (t: number, u: number) => `opacity: ${t}; transform: translateX(${u * dir * 18}px)`,
+			};
+		}
+		return { duration: 160, css: (t: number) => `opacity: ${t}` };
+	}
 
 	// The assistant message id that just finished streaming / generating.
 	// Its content was already on screen as the in-flight bubble, so when
@@ -1642,9 +1672,14 @@
 	 * clamping leaves the user at the bottom (often far below where they
 	 * were when they clicked the arrow), or a longer one strands them
 	 * mid-content with no clear orientation. */
-	async function selectSibling(targetMessageId: string) {
+	async function selectSibling(targetMessageId: string, dir: 1 | -1 = 1) {
 		if (generating) return;
 		errorMsg = null;
+		// Arm the directional intro before the swap so the new branch's nodes
+		// read it as they mount; cleared after they're in (the running
+		// transition has already captured `dir`, so clearing can't truncate
+		// it). reduce-motion still no-ops inside messageIntro.
+		branchSwitchDir = reduceMotion ? null : dir;
 		try {
 			const res = await fetch(`/api/conversations/${convId}/messages/${targetMessageId}/select`, {
 				method: 'POST',
@@ -1662,6 +1697,8 @@
 				?.scrollIntoView({ block: 'center', behavior: 'auto' });
 		} catch (e) {
 			errorMsg = `Couldn't switch branch: ${e instanceof Error ? e.message : String(e)}`;
+		} finally {
+			branchSwitchDir = null;
 		}
 	}
 
@@ -1737,9 +1774,7 @@
 				-->
 				<div
 					id="msg-{m.id}"
-					in:fade={{
-						duration: listMounted && !reduceMotion && m.id !== streamedMessageId ? 160 : 0,
-					}}
+					in:messageIntro={{ streamed: m.id === streamedMessageId }}
 					class={[
 						'group rounded-lg transition-colors duration-1000',
 						mergeWithPrev && 'mt-0!',
@@ -1788,7 +1823,7 @@
 							onCopy={() => copyMessage(m)}
 							onEdit={() => beginEdit(m)}
 							onRetry={() => retryAssistant(m)}
-							onSelectSibling={(id) => selectSibling(id)}
+							onSelectSibling={(id, dir) => selectSibling(id, dir)}
 							onDeleteBranch={() => deleteBranch(m)}
 						/>
 					{/if}

@@ -35,7 +35,7 @@
 		onCopy: () => void;
 		onEdit: () => void;
 		onRetry: () => void;
-		onSelectSibling: (id: string) => void;
+		onSelectSibling: (id: string, dir: 1 | -1) => void;
 		onDeleteBranch: () => void;
 	}
 
@@ -101,7 +101,7 @@
 	{#if hasSiblings}
 		<button
 			type="button"
-			onclick={() => onSelectSibling(ids[pos - 2])}
+			onclick={() => onSelectSibling(ids[pos - 2], -1)}
 			disabled={pos === 1 || generating}
 			aria-label="Previous sibling"
 			title="Previous"
@@ -115,7 +115,7 @@
 		</span>
 		<button
 			type="button"
-			onclick={() => onSelectSibling(ids[pos])}
+			onclick={() => onSelectSibling(ids[pos], 1)}
 			disabled={pos === siblingCount || generating}
 			aria-label="Next sibling"
 			title="Next"

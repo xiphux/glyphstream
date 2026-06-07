@@ -150,8 +150,8 @@ describe('MessageActions — sibling navigation', () => {
 		const cbs = cb();
 		render(MessageActions, { props: { ...baseProps, ...cbs, message: sibProps({}) } });
 		await user.click(screen.getByRole('button', { name: 'Previous sibling' }));
-		// pos=2 → ids[pos-2] = ids[0] = 'a'
-		expect(cbs.onSelectSibling).toHaveBeenCalledWith('a');
+		// pos=2 → ids[pos-2] = ids[0] = 'a'; dir = -1 (previous)
+		expect(cbs.onSelectSibling).toHaveBeenCalledWith('a', -1);
 	});
 
 	it('Next selects the following sibling id', async () => {
@@ -159,8 +159,8 @@ describe('MessageActions — sibling navigation', () => {
 		const cbs = cb();
 		render(MessageActions, { props: { ...baseProps, ...cbs, message: sibProps({}) } });
 		await user.click(screen.getByRole('button', { name: 'Next sibling' }));
-		// pos=2 → ids[pos] = ids[2] = 'c'
-		expect(cbs.onSelectSibling).toHaveBeenCalledWith('c');
+		// pos=2 → ids[pos] = ids[2] = 'c'; dir = +1 (next)
+		expect(cbs.onSelectSibling).toHaveBeenCalledWith('c', 1);
 	});
 
 	it('disables Previous at the first sibling', () => {
