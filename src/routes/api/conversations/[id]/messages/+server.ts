@@ -15,14 +15,10 @@ import { createUserMessage } from '$lib/server/messages/create-user-message';
 import {
 	chatCompletionSync,
 	formatUpstreamError,
-	imageEdit,
-	imageGeneration,
 	UpstreamError,
 	type ChatCompletionRequest,
-	type ImageEditInputFile,
 } from '$lib/server/endpoints/client';
 import { getEndpoint } from '$lib/server/endpoints/registry';
-import { acquireEndpointSlot, type EndpointSlot } from '$lib/server/endpoints/concurrency';
 import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
@@ -37,7 +33,6 @@ import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
-import { persistGeneratedImage } from '$lib/server/media/persister';
 import { notifyConversationComplete } from '$lib/server/push/notify';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
@@ -237,162 +232,36 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	);
 
 	// --- image-kind models: prompt → image; no chat history -------------------
+	// Always streamed (SSE) via startImageRelay — single send and fan-out branch
+	// alike (the client requests ?stream=1 for image everywhere). The relay holds
+	// the per-endpoint concurrency slot and emits `queued` while waiting →
+	// `start` on acquire → `done` with the persisted image, so a busy endpoint
+	// surfaces a "Queued…" state + an honest timer instead of a blocking POST.
 	if (meta.modelKind === 'image') {
-		// Fan-out branches request ?stream=1 so the per-branch concurrency queue
-		// + generation start are observable over SSE (a QUEUED badge while a
-		// branch waits on the gate, a live timer once it starts). The
-		// single-mode image send stays the synchronous JSON path below (Phase 2:
-		// converge both onto the relay + delete the sync path).
-		if (url.searchParams.get('stream') === '1') {
-			const stream = startImageRelay({
-				conversationId: params.id,
-				userId: locals.user.id,
-				conversationTitle: meta.title,
-				endpoint,
-				storedModelId: meta.modelId,
-				upstreamModelId: parsed.upstreamId,
-				prompt: promptText,
-				userMessage: userMessage as ChatMessage,
-				dispatchMediaIds,
-				sourceMediaId,
-				abortSignal: inFlight.controller.signal,
-				advanceActiveLeaf: !isFanout,
-				suppressTitleTask: isFanout,
-				onComplete: () => clearInFlight(params.id, inFlight),
-			});
-			return new Response(stream, {
-				headers: {
-					'Content-Type': 'text/event-stream',
-					'Cache-Control': 'no-cache, no-store, no-transform',
-					Connection: 'keep-alive',
-					'X-Accel-Buffering': 'no',
-				},
-			});
-		}
-
-		// Kick off title gen in parallel with image generation — for image
-		// modality the user prompt IS the topic, so the title task doesn't
-		// have to wait for the asset to land. By the time `imageGeneration`
-		// returns (typically multiple seconds), the title is usually ready.
-		// A fan-out branch suppresses it (like the chat/video relays) so N
-		// branches don't each fire one — /prepare runs it once for the turn.
-		const titlePromise = isFanout
-			? Promise.resolve<string | null>(null)
-			: startTitleTaskIfFirstExchange(params.id);
-
-		let slot: EndpointSlot | null = null;
-		try {
-			// Hold a per-endpoint concurrency slot for the whole synchronous
-			// generation so a single-GPU backend serializes instead of
-			// thrashing VRAM. No SSE channel on the image path, so a full
-			// endpoint just blocks here (no `queued` event) until a slot
-			// frees; a Stop while waiting aborts the wait (handled by the
-			// catch below). Released in the finally.
-			slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
-				signal: inFlight.controller.signal,
-			});
-
-			// I2I: route to /v1/images/edits when any image is attached;
-			// otherwise t2i via /v1/images/generations. Multiple attachments
-			// go through as repeated `image` fields — the bridge's ComfyUI
-			// workflows that declare multiple `image_inputs` consume them in
-			// order; OpenAI's spec only honors the first.
-			let upstream;
-			if (dispatchMediaIds.length > 0) {
-				const images: ImageEditInputFile[] = [];
-				for (const mid of dispatchMediaIds) {
-					const loaded = await loadMediaBytes(mid, locals.user.id);
-					images.push({ bytes: loaded.bytes, contentType: loaded.contentType });
-				}
-				if (DEBUG) {
-					const summary = images.map((i) => `${i.contentType}:${i.bytes.byteLength}B`).join(', ');
-					console.debug(
-						`[messages] i2i edit → /images/edits: ${images.length} input(s) [${summary}] prompt="${promptText.slice(0, 60)}"`,
-					);
-				}
-				upstream = await imageEdit(
-					endpoint,
-					{
-						model: parsed.upstreamId,
-						prompt: promptText,
-						images,
-						n: 1,
-						response_format: 'url',
-					},
-					inFlight.controller.signal,
-				);
-			} else {
-				if (DEBUG) {
-					console.debug(
-						`[messages] t2i generate → /images/generations: prompt="${promptText.slice(0, 60)}"`,
-					);
-				}
-				upstream = await imageGeneration(
-					endpoint,
-					{
-						model: parsed.upstreamId,
-						prompt: promptText,
-						n: 1,
-						response_format: 'url',
-					},
-					inFlight.controller.signal,
-				);
-			}
-			const result = upstream.data?.[0];
-			if (!result || (!result.url && !result.b64_json)) {
-				throw error(502, 'Upstream returned no image data');
-			}
-			const mediaId = await persistGeneratedImage({
-				userId: locals.user.id,
-				endpoint,
-				sourceModel: meta.modelId,
-				prompt: promptText,
-				urlOrB64: { url: result.url, b64_json: result.b64_json },
-				sourceMediaId,
-			});
-			const assistantMessage = appendMessage({
-				conversationId: params.id,
-				parentMessageId: userMessage.id,
-				role: 'assistant',
-				parts: [{ type: 'image', mediaId }],
-				modelUsed: meta.modelId,
-				rawResponseJson: JSON.stringify(upstream),
-				advanceActiveLeaf: !isFanout,
-			});
-			linkMessageMedia(assistantMessage.id, mediaId);
-			void notifyConversationComplete({
-				userId: locals.user.id,
-				conversationId: params.id,
-				assistantMessageId: assistantMessage.id,
-				conversationTitle: meta.title ?? 'New conversation',
-				previewText: '',
-				modality: 'image',
-			}).catch((e) => console.warn('[messages] image notify failed:', e));
-			// Race the title task against a bounded budget so a slow task
-			// model never delays the image response. Title gen has been
-			// running since before imageGeneration started, so the typical
-			// case is "title already resolved by now."
-			const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
-			const response: SendMessageResponse = {
-				userMessage: userMessage as ChatMessage,
-				assistantMessage: assistantMessage as ChatMessage,
-				...(title ? { title } : {}),
-			};
-			return json(response);
-		} catch (e) {
-			if (inFlight.controller.signal.aborted) {
-				// User clicked Stop. Don't persist a noisy "failed" assistant
-				// message — the user message stays, they can resend.
-				throw error(499, 'Cancelled');
-			}
-			if (e instanceof UpstreamError) {
-				throw error(mapUpstreamStatus(e.status), `Upstream error: ${formatUpstreamError(e)}`);
-			}
-			throw e;
-		} finally {
-			slot?.release();
-			clearInFlight(params.id, inFlight);
-		}
+		const stream = startImageRelay({
+			conversationId: params.id,
+			userId: locals.user.id,
+			conversationTitle: meta.title,
+			endpoint,
+			storedModelId: meta.modelId,
+			upstreamModelId: parsed.upstreamId,
+			prompt: promptText,
+			userMessage: userMessage as ChatMessage,
+			dispatchMediaIds,
+			sourceMediaId,
+			abortSignal: inFlight.controller.signal,
+			advanceActiveLeaf: !isFanout,
+			suppressTitleTask: isFanout,
+			onComplete: () => clearInFlight(params.id, inFlight),
+		});
+		return new Response(stream, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache, no-store, no-transform',
+				Connection: 'keep-alive',
+				'X-Accel-Buffering': 'no',
+			},
+		});
 	}
 
 	if (meta.modelKind === 'video') {

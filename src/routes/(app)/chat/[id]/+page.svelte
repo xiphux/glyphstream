@@ -49,13 +49,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { MediaListItem } from '$lib/server/db/queries/media';
-	import type {
-		ChatMessage,
-		FeatureCategory,
-		MessagePart,
-		ModelKind,
-		SendMessageResponse,
-	} from '$lib/types/api';
+	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
 
 	let { data } = $props();
 
@@ -1267,13 +1261,11 @@
 			scrollToBottom();
 		}
 
-		// Image-kind conversations use the sync JSON path — there's nothing
-		// to stream (one-shot generate). Chat and video both stream via SSE
-		// (chat for tokens, video for poll-based progress events).
-		if (modelKind === 'image') {
-			await sendImageGeneration(text, attachedMediaIds, optimisticId, options);
-			return;
-		}
+		// Chat, image, and video all stream via SSE: chat for tokens, video for
+		// poll progress, image for the per-endpoint queue + start/done (so a busy
+		// endpoint surfaces a "Queued…" state + an honest timer, same as a
+		// fan-out branch). The image relay is just the video relay without
+		// progress events, so this consumer handles it unchanged.
 
 		// First message of a conversation ⇒ the server auto-titles it once
 		// the response lands. Flag the sidebar spinner now, at submit time,
@@ -1348,67 +1340,6 @@
 				resetInFlightSegments();
 				inFlightProgress = null;
 				inFlightStatus = null;
-				busy = false;
-				activeAbort = null;
-			}
-		}
-	}
-
-	async function sendImageGeneration(
-		text: string,
-		attachedMediaIds: string[] = [],
-		optimisticId: string | null = null,
-		options: SendOptions = {},
-	) {
-		// See sendStreaming — the component is reused across conversation
-		// navigations, so the result of this (20-60s) request must not be
-		// grafted onto whatever conversation is on screen when it lands.
-		const { turnConvId, isRetry, abort, requestBody } = startTurn(text, attachedMediaIds, options);
-		try {
-			const res = await fetch(`/api/conversations/${convId}/messages`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(requestBody),
-				signal: abort.signal,
-			});
-			if (!res.ok) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			const body = (await res.json()) as SendMessageResponse;
-			// Abandoned by a conversation switch while the request was in
-			// flight. The server still persisted the result — it'll show
-			// on this thread's next load — so just drop it here rather
-			// than splicing it into whatever conversation is on screen.
-			if (convId !== turnConvId) return;
-			// Send / edit: drop optimistic, then append both canonical rows.
-			// Retry: only append the new assistant — the user message
-			// already exists in the array.
-			streamedMessageId = body.assistantMessage.id;
-			if (isRetry) {
-				messages = [...messages, body.assistantMessage];
-			} else {
-				messages = (optimisticId ? messages.filter((m) => m.id !== optimisticId) : messages).concat(
-					[body.userMessage, body.assistantMessage],
-				);
-			}
-			// Image branch is non-streaming, so the task-model title (if
-			// any) piggybacks on the response body rather than an SSE
-			// frame. Same effect as the streaming 'title' case: update
-			// the local header now; invalidateAll below refreshes sidebar.
-			if (body.title) {
-				title = body.title;
-			}
-			inFlightOpen = false;
-			void invalidateAll();
-		} catch (e) {
-			handleSendError(e, turnConvId);
-		} finally {
-			// Only the turn that still owns the controller clears it. The
-			// in-flight bubble close lives here (not in the success / catch
-			// branches above) so a path that early-returned on a convId
-			// mismatch — or a thrown body parse — still resets the bubble.
-			if (activeAbort === abort) {
-				inFlightOpen = false;
 				busy = false;
 				activeAbort = null;
 			}
