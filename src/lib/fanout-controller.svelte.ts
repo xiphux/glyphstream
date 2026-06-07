@@ -342,12 +342,18 @@ export class FanoutController {
 		} catch (e) {
 			if (isAbortError(e)) col.status = 'cancelled';
 			else if (this.#deps.interrupted()) {
-				// The TCP connection died to a suspension / connectivity drop BEFORE
-				// the visibility/online event fired (the common case is the reverse —
-				// handoffToRecovery aborts first, landing in the isAbortError branch).
-				// Either way it's not a real failure: the server keeps generating, so
-				// leave the column "Generating…" for the recovery poll to rebuild.
+				// This branch's stream died to a suspension / connectivity drop (the
+				// page was hidden/offline during the fetch) — not a real failure; the
+				// server keeps generating. On a whole-tab suspend the sibling streams
+				// died too, so hand the fan-out off to server-truth recovery (which
+				// the visibility handler deliberately no longer does eagerly, to keep
+				// a healthy desktop tab-switch from dropping the live grid). Idempotent
+				// + leaves a non-live grid untouched.
 				col.status = 'streaming';
+				if (this.live) {
+					this.handoffToRecovery();
+					void invalidateAll();
+				}
 			} else {
 				col.error = e instanceof Error ? e.message : String(e);
 				col.status = 'error';

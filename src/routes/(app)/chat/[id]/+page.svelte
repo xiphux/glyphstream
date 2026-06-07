@@ -661,10 +661,14 @@
 			if (document.visibilityState === 'hidden' && (busy || fanout.streaming)) {
 				wasHiddenDuringFetch = true;
 			} else if (document.visibilityState === 'visible' && wasHiddenDuringFetch) {
-				// Reconcile against server state — if the generation completed
-				// while we were backgrounded, the new message(s) arrive via the
-				// load function; a live fan-out hands off to recovery first.
-				fanout.handoffToRecovery();
+				// Reconcile against server state — if a single generation completed
+				// while we were backgrounded, the new message arrives via the load.
+				// A live fan-out's streams are NOT eagerly handed off here: a desktop
+				// tab-switch fires visibilitychange without killing the SSE
+				// connections, and aborting them would needlessly drop a healthy live
+				// grid (losing the QUEUED badge + timer). If the connections actually
+				// died (iOS suspend), the branch fetches error and runBranch hands the
+				// fan-out off to recovery itself.
 				void invalidateAll();
 			}
 		}
@@ -672,10 +676,9 @@
 			if (busy || fanout.streaming) wasOfflineDuringFetch = true;
 		}
 		function onOnline() {
-			if (wasOfflineDuringFetch) {
-				fanout.handoffToRecovery();
-				void invalidateAll();
-			}
+			// Same reasoning as the visibility path — don't pre-emptively abort a
+			// live fan-out; an actually-dropped branch fetch recovers via runBranch.
+			if (wasOfflineDuringFetch) void invalidateAll();
 		}
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		window.addEventListener('offline', onOffline);

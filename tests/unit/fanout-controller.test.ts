@@ -229,6 +229,34 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('hands the fan-out off to recovery when a branch stream dies to a suspend', async () => {
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		// interrupted() true models "the page was hidden/offline during the fetch";
+		// the branch stream then drops (a TypeError, not an abort).
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+			throw new TypeError('Load failed');
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		state.interrupted = true;
+		const fc = new FanoutController(deps);
+		await fc.send(
+			'cartoon',
+			[],
+			[
+				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: null },
+				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: null },
+			],
+		);
+		// Live grid handed off to server-truth recovery (not shown as "Failed"),
+		// so the recovery flow can rebuild it.
+		expect(fc.live).toBe(false);
+		expect(fc.columns.every((c) => c.status !== 'error')).toBe(true);
+		vi.unstubAllGlobals();
+	});
+
 	it('stop posts cancel for the conversation', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({}));
 		vi.stubGlobal('fetch', fetchMock);
