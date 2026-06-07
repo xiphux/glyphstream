@@ -268,11 +268,26 @@ export class FanoutController {
 		// per-turn `busy` flag can release.
 		this.#deps.setBusy(false);
 
-		// 3. Stream every branch concurrently.
+		// 3. Stream every branch. Dispatch them in selection order, awaiting each
+		//    branch reaching the endpoint gate (its first SSE event) before firing
+		//    the next, so they enqueue in the order the user picked rather than
+		//    racing — the N branch POSTs are independent requests, and without
+		//    sequencing whichever reaches `acquireEndpointSlot` first wins the line.
+		//    Granted branches stream in the background while the rest dispatch, so
+		//    this only orders the sub-millisecond enqueue, not the generation.
 		try {
-			await Promise.all(
-				this.columns.map((col) => this.#runBranch(turnConvId, userMessage.id, col)),
-			);
+			const branchRuns: Promise<ChatMessage | null>[] = [];
+			for (const col of this.columns) {
+				let signalEnqueued!: () => void;
+				const enqueued = new Promise<void>((resolve) => {
+					signalEnqueued = resolve;
+				});
+				branchRuns.push(
+					this.#runBranch(turnConvId, userMessage.id, col, { onEnqueued: signalEnqueued }),
+				);
+				await enqueued;
+			}
+			await Promise.all(branchRuns);
 		} finally {
 			// Clear the first-exchange title spinner regardless of whether the
 			// user has since navigated away — the flag is module-level.
@@ -319,10 +334,20 @@ export class FanoutController {
 		turnConvId: string,
 		userMessageId: string,
 		col: FanoutColumn,
-		opts?: { replacesMessageId?: string | null },
+		opts?: { replacesMessageId?: string | null; onEnqueued?: () => void },
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
 		this.#aborts.set(col.branchId, abort);
+		// Fired once this branch has reached the endpoint gate (its first SSE
+		// event), so the caller can dispatch the next branch in order. Idempotent;
+		// the finally backstops it so a branch that fails before any event still
+		// releases the dispatch sequence instead of stalling it.
+		let enqueuedSignaled = false;
+		const markEnqueued = () => {
+			if (enqueuedSignaled) return;
+			enqueuedSignaled = true;
+			opts?.onEnqueued?.();
+		};
 		try {
 			const body = JSON.stringify(
 				buildFanoutBranchBody({
@@ -344,10 +369,17 @@ export class FanoutController {
 			await consumeChatStream(res.body, {
 				shouldContinue: () => this.#deps.convId() === turnConvId,
 				onQueued(ahead) {
+					// First event from this branch (it queued at the gate) — release
+					// the next branch's dispatch. `ahead` then counts down via the
+					// gate's re-emitted `queued` events as the line drains.
+					markEnqueued();
 					col.status = 'queued';
 					col.queuedAhead = ahead;
 				},
 				onStart() {
+					// First event when a slot was free immediately — release the next
+					// branch's dispatch.
+					markEnqueued();
 					col.status = 'streaming';
 					// Generation began (slot acquired) — start the per-column timer.
 					col.startedAt = Date.now();
@@ -398,6 +430,9 @@ export class FanoutController {
 			}
 			return null;
 		} finally {
+			// Backstop: a branch that errored before any SSE event (non-ok
+			// response, immediate abort) still unblocks the dispatch sequence.
+			markEnqueued();
 			this.#aborts.delete(col.branchId);
 		}
 	}

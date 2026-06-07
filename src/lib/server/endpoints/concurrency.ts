@@ -30,6 +30,10 @@ interface Waiter {
 	reject: (err: Error) => void;
 	signal?: AbortSignal;
 	onAbort?: () => void;
+	/** Re-report this waiter's current position as the line drains, so the
+	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
+	 *  initial onQueued. */
+	notifyAhead?: (ahead: number) => void;
 }
 
 interface Gate {
@@ -64,9 +68,11 @@ export interface AcquireOptions {
 	 *  the line and rejects with an AbortError. A request that has already been
 	 *  granted is unaffected — its own release frees the slot. */
 	signal?: AbortSignal;
-	/** Fires synchronously iff the request had to queue (capacity was full),
-	 *  with how many generations are ahead of it. Used to emit the `queued`
-	 *  SSE event before the await. Not called on the immediate-grant fast path. */
+	/** Fires when the request had to queue (capacity was full): once
+	 *  synchronously with the initial count ahead, then again with the updated
+	 *  count each time the line drains in front of it — so the `queued` SSE event
+	 *  it emits lets the client count "N ahead" down. Not called on the
+	 *  immediate-grant fast path. */
 	onQueued?: (info: { ahead: number }) => void;
 }
 
@@ -83,13 +89,28 @@ function makeSlot(gate: Gate): EndpointSlot {
 }
 
 function pump(gate: Gate): void {
+	let granted = 0;
 	while (gate.active < gate.max && gate.waiters.length > 0) {
 		const waiter = gate.waiters.shift()!;
 		if (waiter.signal && waiter.onAbort) {
 			waiter.signal.removeEventListener('abort', waiter.onAbort);
 		}
 		gate.active++;
+		granted++;
 		waiter.grant();
+	}
+	// Granting shifts waiters off the front, so everyone still in line just moved
+	// up — re-report their new positions so a queued branch's "N ahead" counts
+	// down as the line drains. Skip when nothing was granted (positions unchanged).
+	if (granted > 0) notifyWaiterPositions(gate);
+}
+
+/** Re-emit each still-queued waiter's current position (its index = how many are
+ *  ahead of it). Called whenever the line shifts — a grant pumps the front off,
+ *  or an abort splices one out — so a waiting caller's "N ahead" stays live. */
+function notifyWaiterPositions(gate: Gate): void {
+	for (let i = 0; i < gate.waiters.length; i++) {
+		gate.waiters[i].notifyAhead?.(i);
 	}
 }
 
@@ -135,6 +156,9 @@ export function acquireEndpointSlot(
 		const waiter: Waiter = {
 			grant: () => resolve(makeSlot(gate)),
 			reject,
+			// Re-emit position as the line drains so the client's "N ahead" counts
+			// down. Routes through the same onQueued → `queued` SSE channel.
+			notifyAhead: onQueued ? (ahead) => onQueued({ ahead }) : undefined,
 		};
 		if (signal) {
 			const onAbort = () => {
@@ -142,6 +166,8 @@ export function acquireEndpointSlot(
 				if (idx === -1) return; // already granted — nothing to drop
 				gate.waiters.splice(idx, 1);
 				reject(abortError());
+				// Those behind the dropped waiter moved up — refresh their positions.
+				notifyWaiterPositions(gate);
 			};
 			waiter.signal = signal;
 			waiter.onAbort = onAbort;

@@ -87,6 +87,81 @@ describe('acquireEndpointSlot', () => {
 		s2.release();
 	});
 
+	it('re-fires onQueued with a decremented count as the line drains', async () => {
+		// One active, three queued behind it (ahead 0, 1, 2). As each active
+		// generation finishes, the remaining waiters move up and must be told.
+		const active = await acquireEndpointSlot('ep', 1);
+		const q0 = vi.fn();
+		const q1 = vi.fn();
+		const q2 = vi.fn();
+		const p0 = acquireEndpointSlot('ep', 1, { onQueued: q0 });
+		const p1 = acquireEndpointSlot('ep', 1, { onQueued: q1 });
+		const p2 = acquireEndpointSlot('ep', 1, { onQueued: q2 });
+		await flush();
+
+		// Initial positions at enqueue.
+		expect(q0).toHaveBeenLastCalledWith({ ahead: 0 });
+		expect(q1).toHaveBeenLastCalledWith({ ahead: 1 });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
+
+		// First generation finishes → q0 is granted; q1 and q2 each move up one.
+		active.release();
+		const s0 = await p0;
+		expect(q1).toHaveBeenLastCalledWith({ ahead: 0 });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 1 });
+		// The granted waiter is no longer re-notified.
+		expect(q0).toHaveBeenCalledTimes(1);
+
+		// Next finishes → q1 granted, q2 reaches the front (0 ahead).
+		s0.release();
+		const s1 = await p1;
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 0 });
+
+		s1.release();
+		(await p2).release();
+	});
+
+	it('does not re-fire onQueued on a release that grants no one', async () => {
+		// Two slots, two active, one queued. Releasing one active frees a slot the
+		// queued waiter takes — but a SECOND queued waiter mustn't be spuriously
+		// re-notified when nothing further is granted.
+		const a = await acquireEndpointSlot('ep', 2);
+		const b = await acquireEndpointSlot('ep', 2);
+		const q = vi.fn();
+		const pq = acquireEndpointSlot('ep', 2, { onQueued: q });
+		await flush();
+		expect(q).toHaveBeenCalledTimes(1); // initial enqueue only
+
+		a.release(); // grants the queued waiter; no one left in line to re-notify
+		const sq = await pq;
+		expect(q).toHaveBeenCalledTimes(1);
+		b.release();
+		sq.release();
+	});
+
+	it('refreshes positions when a queued waiter aborts out of the middle', async () => {
+		const active = await acquireEndpointSlot('ep', 1);
+		const c1 = new AbortController();
+		const q0 = vi.fn();
+		const q1 = vi.fn();
+		const q2 = vi.fn();
+		const p0 = acquireEndpointSlot('ep', 1, { onQueued: q0 });
+		const p1 = acquireEndpointSlot('ep', 1, { signal: c1.signal, onQueued: q1 });
+		const p2 = acquireEndpointSlot('ep', 1, { onQueued: q2 });
+		await flush();
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
+
+		// Abort the middle waiter — the one behind it moves up to 1 ahead.
+		c1.abort();
+		await expect(p1).rejects.toMatchObject({ name: 'AbortError' });
+		expect(q2).toHaveBeenLastCalledWith({ ahead: 1 });
+
+		active.release();
+		const s0 = await p0;
+		s0.release();
+		(await p2).release();
+	});
+
 	it('release pumps exactly one waiter, not all', async () => {
 		const a = await acquireEndpointSlot('ep', 1);
 		let g1 = false;

@@ -319,6 +319,66 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('dispatches branches in selection order, holding each until the prior reaches the gate', async () => {
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		// Each branch stream withholds its first event until we release it, so we
+		// can observe that branch i+1's POST is not sent until branch i has reached
+		// the gate (emitted its first SSE event) — the ordering guarantee.
+		const postedModels: string[] = [];
+		const releases: Array<() => void> = [];
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+			const body = JSON.parse(init?.body ?? '{}') as { modelId: string };
+			postedModels.push(body.modelId);
+			let release!: () => void;
+			const held = new Promise<void>((r) => (release = r));
+			releases.push(release);
+			const stream = new ReadableStream<Uint8Array>({
+				async start(controller) {
+					const enc = new TextEncoder();
+					await held; // hold the first event until released
+					controller.enqueue(
+						enc.encode(
+							`data: ${JSON.stringify({ type: 'start', userMessage: user, assistantMessageId: '' })}\n\n`,
+						),
+					);
+					controller.enqueue(
+						enc.encode(
+							`data: ${JSON.stringify({ type: 'done', assistantMessage: imageSibling('r', 'bridge::a', null) })}\n\n`,
+						),
+					);
+					controller.close();
+				},
+			});
+			return { ok: true, body: stream } as unknown as Response;
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const done = fc.send(
+			'hi',
+			[],
+			[
+				{ modelId: 'bridge::a', modelKind: 'chat', displayName: 'A', inputMediaId: null },
+				{ modelId: 'bridge::b', modelKind: 'chat', displayName: 'B', inputMediaId: null },
+				{ modelId: 'bridge::c', modelKind: 'chat', displayName: 'C', inputMediaId: null },
+			],
+		);
+
+		// Only the first branch is dispatched; the rest wait for it to reach the gate.
+		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a']));
+		releases[0]();
+		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a', 'bridge::b']));
+		releases[1]();
+		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a', 'bridge::b', 'bridge::c']));
+		releases[2]();
+		await done;
+		// Columns stay in selection order throughout.
+		expect(fc.columns.map((c) => c.modelId)).toEqual(['bridge::a', 'bridge::b', 'bridge::c']);
+		vi.unstubAllGlobals();
+	});
+
 	it('stop posts cancel for the conversation', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({}));
 		vi.stubGlobal('fetch', fetchMock);
