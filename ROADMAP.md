@@ -1,242 +1,147 @@
 # GlyphStream — Roadmap
 
-Items deliberately deferred from v1 so the architecture stays informed by
-future direction without v1 trying to do it all. Listed roughly in order of
-expected priority, not time-bound.
+Future work deliberately deferred from v1 so the architecture stays informed
+by direction without v1 trying to do it all. Each item keeps its _why_ —
+check here before starting a "wouldn't it be nice if…", the rationale is
+probably already worked out. Listed roughly by priority within each tier, not
+time-bound.
+
+Completed work has been pruned. Where a shipped feature still has real
+follow-on work, only the remaining piece is listed (with a one-line note on
+what already shipped, for context).
 
 ## Mid-term (v2)
 
-- **MCP server support — v1 DONE.** Admin-defined `[[mcp_servers]]`
-  blocks in `config.toml` mirror the existing endpoint pattern with
-  static auth (none or `Authorization: Bearer ${env[api_key_env]}`).
-  Both stdio and Streamable HTTP transports are wired; stdio
-  connections eagerly connect at boot, reap after `idle_timeout_seconds`
-  of inactivity, and re-spawn transparently on the next tool call. One
-  failed server doesn't block the others — failures surface in
-  `/settings/mcp` and the rest of the boot continues. MCP tools register
-  into the existing tool registry under namespaced `mcp__<server>__<tool>`
-  names with `metadata.category = mcp:<server-id>`, so per-conversation
-  toggles and per-custom-model defaults handle them through the same
-  paths as built-ins. Untrusted MCP tools halt the streaming relay with
-  an inline Allow / Allow Always / Reject prompt; the resume endpoint
-  re-issues the upstream call once decisions land. Per-tool "always
-  allow" grants live at `/settings/permissions` — the cross-cutting
-  permissions surface skills and Open Terminal will plug into next.
-  Phase-2 work remaining:
+- **Agent skills (Anthropic skills spec).** A reusable capability bundle —
+  a `SKILL.md` (name + description + body) plus optional resources — that
+  loads into the model's context when the user's intent matches the
+  description. Same ecosystem-extensibility story as MCP but a different
+  layer: MCP adds _tools_, skills add _instructions + know-how_ for using
+  existing tools. The two compose (a skill can declare which MCP tools it
+  depends on). Open design points:
+  - _Storage._ Per-user `skills` table keyed by `user_id`, body inline on
+    the row, mirroring the rest of the schema.
+  - _Activation._ Explicit via slash command (`/skill-name` in the composer)
+    plus auto-trigger via description-matching on the user's turn. The
+    auto-trigger threshold is the harder-than-it-looks part — false
+    positives pollute the system prompt with irrelevant instructions.
+  - _Script execution._ The spec lets skills ship scripts the agent runs;
+    running arbitrary user code in the Node process is a non-starter. MVP is
+    instructions-only — script execution delegates to whatever sandboxing an
+    MCP server brings (see Open Terminal below).
+  - _Discovery._ A browse/import affordance for community bundles, deferred
+    until enough curated skills exist to anchor a library UI.
+
+- **MCP — per-user OAuth + phase-2.** _Shipped:_ admin-defined
+  `[[mcp_servers]]` with static auth (stdio + Streamable HTTP), tools
+  namespaced into the registry with per-conversation + per-custom-model
+  toggles, inline Allow/Always/Reject approval for untrusted tools, and
+  `/settings/mcp` + `/settings/permissions` surfaces. Remaining:
   - _OAuth per-user (v1b)._ New `oauth_connections` table; multi-provider
-    abstraction in `src/lib/server/auth/providers/` mirroring how arctic
-    is wired for GitHub login today; per-user `/settings/connections` UI
-    with "Connect Gmail" affordances; `AUTH_SECRET`-keyed AES-256-GCM
-    encryption-at-rest for refresh tokens (the env var is already defined
-    in `.env.example` but currently unused). The OAuth path will sit
-    beside the v1 static-key path in the registry with no rework of v1.
+    abstraction in `src/lib/server/auth/providers/` mirroring how arctic is
+    wired for GitHub login; per-user `/settings/connections` UI with
+    "Connect Gmail"-style affordances; `AUTH_SECRET`-keyed AES-256-GCM
+    encryption-at-rest for refresh tokens (the env var is already defined in
+    `.env.example` but unused). Sits beside the static-key path in the
+    registry — no rework of v1.
   - _Browser-side bridge for user-local MCP servers_ (the `mcp-remote`
-    pattern). The Node process can't reach a server running on the
-    user's laptop if GlyphStream is hosted elsewhere; a server-relayed
-    WebSocket-to-browser transport closes that gap.
-  - _Argument-aware approval._ v1 prompts per tool name; a future policy
-    engine could let users say "allow `delete_message` but only when
-    `sender` matches X". The pending-approval row already persists args.
-  - _Resources + prompts._ MCP servers can expose URI-addressable data
-    and named prompt templates beyond tools — both are deliberately out
-    of scope for v1's tools-only cut.
-  - _Rich content blocks in tool results._ Image / audio blocks are
-    currently dropped with a placeholder note; relevant once Open
-    Terminal lands and screenshot-style outputs become useful.
+    pattern). The Node process can't reach a server on the user's laptop if
+    GlyphStream is hosted elsewhere; a server-relayed WebSocket-to-browser
+    transport closes that gap.
+  - _Argument-aware approval._ v1 prompts per tool name; a policy engine
+    could let users say "allow `delete_message` but only when `sender`
+    matches X". The pending-approval row already persists args.
+  - _Resources + prompts._ MCP servers can expose URI-addressable data and
+    named prompt templates beyond tools — both out of scope for v1's
+    tools-only cut.
+  - _Rich content blocks in tool results._ Image/audio blocks are currently
+    dropped with a placeholder note; relevant once Open Terminal lands and
+    screenshot-style outputs become useful.
 
-- **Agent skills (Anthropic skills spec).** A skill is a reusable
-  capability bundle — a `SKILL.md` (name + description + body) plus
-  optional resources — that loads into the model's context when the
-  user's intent matches the description. Same ecosystem-extensibility
-  story as MCP but on a different layer: MCP adds _tools_, skills add
-  _instructions + know-how_ for using existing tools. The two compose
-  (a skill can declare which MCP tools it depends on). Architectural
-  challenges:
-  - _Storage._ Per-user `skills` table keyed by `user_id`, mirroring
-    the rest of the schema. Skill body inline on the row.
-  - _Activation._ Explicit via slash command (`/skill-name` in the
-    composer) and auto-trigger via description-matching on the user's
-    turn. Auto-trigger needs care — false positives pollute the system
-    prompt with irrelevant instructions; threshold-tuning is the
-    harder-than-it-looks part.
-  - _Script execution._ The spec lets skills ship scripts the agent
-    runs. For a self-hosted web app that's a substantial sandboxing
-    surface — running arbitrary user-provided code in the Node process
-    is a non-starter. MVP is instructions-only; script execution
-    delegates to whatever sandboxing an MCP server brings (the
-    **Open Terminal** item below).
-  - _Discovery._ A browse/import affordance for community skill
-    bundles, deferred until enough curated skills exist to anchor a
-    library UI.
-
-- **Memory system — browse-mode MVP DONE.** Per-user `memories` table
-  plus `save_memory` / `update_memory` / `forget_memory` tools, all
-  declaring `metadata.category: 'personalization'` so the existing
-  per-conversation toggle seals both the persona prompt and memory
-  access in one switch. Browse mode injects every memory's body into
-  the system prompt so the model always has the full index without a
-  retrieval round-trip — works for every deployment regardless of
-  upstream embedding support. Management UI at `/settings/memories` is
-  view + delete only (locked-in MVP scope; manual add/edit is a
-  follow-up if demand shows up). Phase-2 work remaining:
-  - _Embedding-backed recall._ Schema already ships nullable
-    `embedding` / `embedding_model` columns so backfill is a pure
-    UPDATE. Adds a `recall_memory(query)` tool that activates when
-    the endpoint advertises `supportsEmbeddings`. The injection branch
-    in `composePersonaSystemPrompt` is marked with a `TODO(phase-2)`
-    — swap inlined bodies for a recall-tool hint when memory count ×
-    avg description tokens crosses a budget threshold or embeddings
-    are available. Avoids the small-context-local-model blowup.
+- **Memory — embedding-backed recall + phase-2.** _Shipped:_ browse-mode MVP
+  (per-user `memories` table, `save`/`update`/`forget_memory` tools under
+  `metadata.category: 'personalization'`, full-index injection into the
+  system prompt so the model always has every memory without a retrieval
+  round-trip, view+delete UI at `/settings/memories`). Remaining:
+  - _Embedding-backed recall._ Schema already ships nullable `embedding` /
+    `embedding_model` columns so backfill is a pure UPDATE. Adds a
+    `recall_memory(query)` tool that activates when the endpoint advertises
+    `supportsEmbeddings`. `composePersonaSystemPrompt` is marked
+    `TODO(phase-2)` — swap inlined bodies for a recall-tool hint once memory
+    count × avg tokens crosses a budget threshold (avoids the
+    small-context-local-model blowup).
   - _Endpoint capability flag._ Add `supportsEmbeddings: boolean` to
-    `LoadedEndpoint` (mirroring `supportsTools`), wired from
-    `config.toml`. Drives both the recall-tool `isAvailable()` and
-    the injection-mode switch above.
-  - _Backfill worker._ Reads rows where `embedding IS NULL`, calls
-    the embedding endpoint, writes vectors back. No schema migration.
-  - _Manual add/edit in UI._ If the curated/AI-only feel grows
-    limiting, surface a textarea modal on the settings page +
-    `POST` / `PATCH /api/user/memories` endpoints.
+    `LoadedEndpoint` (mirroring `supportsTools`), wired from `config.toml`.
+    Drives both the recall-tool `isAvailable()` and the injection-mode
+    switch.
+  - _Backfill worker._ Reads rows where `embedding IS NULL`, calls the
+    embedding endpoint, writes vectors back. No schema migration.
+  - _Manual add/edit in UI._ If the AI-only feel grows limiting, add a
+    textarea modal + `POST`/`PATCH /api/user/memories`.
 
-- **Code interpreter (server-side Pyodide) — v1 DONE.** A `run_python`
-  built-in tool in a new `code_interpreter` feature category. Pyodide
-  runs in `node:worker_threads` (one worker per active conversation,
-  state-machine lifecycle mirroring the MCP registry: ready / starting /
-  idle / failed, idle-reaped after 5 min, LRU-evicted at the pool cap,
-  wall-clock timeout terminates stuck workers, OOM exit propagates as a
-  recoverable model error, SIGINT/SIGTERM shutdown reaps cleanly).
-  Python's network access (`pyodide.http.pyfetch`, `urllib`, `requests`,
-  `micropip`) goes through a `globalThis.fetch` shim installed before
-  Pyodide loads — applies the same SSRF + configured-backend block as
-  the `fetch_url` tool (extracted into `url-policy-base.ts` so the
-  esbuild-bundled worker can pick it up without dragging in the
-  SvelteKit env layer), AND honors the per-conversation `web` toggle
-  so disabling it for the conversation blocks the agent's Python
-  network too — micropip rides on the same gate. Files round-trip
-  with the conversation media store: user-uploaded files (any kind)
-  and earlier-turn Python outputs (origin='generated' +
-  sourceModel='run_python') materialize into `/workspace/` before each
-  call; new / modified files Python writes during the call get
-  persisted as `origin='generated', sourceModel='run_python'` media
-  and surface as inline previews / download chips in the tool block
-  (chips rendered outside the collapsible `<details>` so the artifact
-  stays visible even when args + result are collapsed). The worker
-  bundles standalone via `esbuild` (run by `pnpm build:worker` as a
-  pre-step of both `pnpm dev` and `pnpm build`) so Node's
-  `worker_threads` can load it directly. Phase-2 work remaining:
-  - _Streaming stdout._ Today's worker captures all stdout / stderr
-    and returns it in one chunk at end of call. A long-running cell
-    (training loop, batched data processing) feels frozen for the
-    duration. The worker could `postMessage` per-line chunks; the
-    relay forwards them as a new `tool_progress` SSE event; the
+- **Code interpreter — phase-2.** _Shipped:_ server-side Pyodide `run_python`
+  built-in (one `worker_threads` worker per conversation with a
+  ready/idle/failed lifecycle, idle-reap + LRU evict + wall-clock timeout;
+  network shimmed through the same SSRF + per-conversation `web` gate as
+  `fetch_url`; files round-trip with the conversation media store; worker
+  bundled standalone via esbuild). Remaining:
+  - _Streaming stdout._ Today's worker returns all stdout/stderr in one chunk
+    at end of call, so a long-running cell feels frozen. The worker could
+    `postMessage` per-line chunks → a new `tool_progress` SSE event → the
     in-flight tool block appends.
-  - _Variable persistence across worker reaps._ Variables today live
-    only as long as the worker (lost on idle reap, timeout-terminate,
-    OOM). Pyodide can serialize the interpreter's `globals()` via
-    `dill`-style pickling — snapshot to
-    `data/code-interpreter/{conversationId}.bin`, restore on next
-    call. Bounded by size + age, config-gated.
-  - _Workspace UI._ A per-conversation files page / drawer surfacing
-    everything under `/workspace/` for browse / preview / download /
-    delete. Today the user only sees files via the chip on the tool
-    block that produced them.
-  - _micropip wheel cache._ Pyodide already auto-caches wheels into
-    `node_modules` on first fetch from the CDN, but a per-conversation
-    or per-user override path under `data/code-interpreter/wheels/`
-    would let operators pin a specific wheel set without round-
-    tripping the CDN every cold start.
-  - _Pre-warm pool on startup._ Config flag `prewarm_workers = N` to
-    spin up N idle workers at boot so the first per-conversation
-    call doesn't pay the 2–5 s cold start.
-  - _Per-tool-call approval (optional)._ Even sandboxed by
-    construction, some users may want to see code before it runs.
-    The existing MCP approval infrastructure could be reused with a
-    per-user trust list.
+  - _Variable persistence across worker reaps._ Variables live only as long
+    as the worker (lost on reap/timeout/OOM). Snapshot `globals()` via
+    dill-style pickling to `data/code-interpreter/{conversationId}.bin`,
+    restore on next call. Bounded by size + age, config-gated.
+  - _Workspace UI._ A per-conversation files page/drawer surfacing everything
+    under `/workspace/` for browse/preview/download/delete. Today the user
+    only sees files via the chip on the producing tool block.
+  - _micropip wheel cache._ A per-conversation/per-user override path under
+    `data/code-interpreter/wheels/` so operators can pin a wheel set without
+    round-tripping the CDN on cold start.
+  - _Pre-warm pool._ Config flag `prewarm_workers = N` to spin up idle
+    workers at boot so the first call doesn't pay the 2–5 s cold start.
+  - _Per-tool-call approval (optional)._ Even sandboxed by construction, some
+    users may want to see code before it runs — reuse the MCP approval
+    infrastructure with a per-user trust list.
 
 - **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
-  GlyphStream can embed-and-retrieve attached docs/URLs and inject as
-  system context. Particularly useful for chats grounded in personal notes.
+  GlyphStream can embed-and-retrieve attached docs/URLs and inject as system
+  context. Particularly useful for chats grounded in personal notes.
 
-- **Context compaction.** Pattern from Claude Code and other coding CLIs:
-  summarize the conversation so far into a shorter representation, then
-  continue with that summary as the new history. Mostly relevant for
-  local LLMs — cloud providers ship 100k–1M tokens out of the box, but a
-  llama.cpp run is often pinned at 8k–32k and a long chat eventually
-  overflows. The manual workaround already works ("ask for a summary,
-  paste into a new chat"), so this is about ergonomics, not a missing
-  capability. Implementation sketch: a "Compact conversation" action on
-  the chat header that runs the summarization through the conversation's
-  _own_ main model, not the task model — the task model may be sized for
-  short prompts (title generation) and either not fit the full history
-  or be a smaller/weaker model that loses fidelity on details the main
-  model has been tracking. Output branches off the active leaf with the
-  summary as the new root user message; the tree-shaped schema preserves
-  the pre-compaction history automatically (no destructive migration),
-  so the user can switch back via the sibling-nav arrows if they want
-  the original thread. Open question: user-triggered only, or also
-  auto-fired when per-model context-token estimate crosses a threshold
-  (the token-usage surfacing from `0adaf0d` is the prereq for the
-  latter).
+- **Context compaction.** Summarize the conversation so far and continue from
+  that summary as the new history. Mostly relevant for local LLMs — cloud
+  providers ship 100k–1M tokens, but a llama.cpp run is often pinned at
+  8k–32k and a long chat overflows. The manual workaround already works
+  ("ask for a summary, paste into a new chat"), so this is ergonomics, not a
+  missing capability. Sketch: a "Compact conversation" header action that
+  runs the summarization through the conversation's _own_ main model (not the
+  task model, which may be sized for short prompts and lose fidelity); output
+  branches off the active leaf with the summary as a new root user message,
+  and the tree-shaped schema preserves pre-compaction history (switch back
+  via sibling-nav). Open question: user-triggered only, or auto-fire when a
+  per-model context estimate crosses a threshold.
 
-- **Multi-model fan-out / compare — DONE.** Send one prompt to several
-  models at once and compare the results side by side. Selection lives in
-  the model picker's **"Multiple" mode** (a compare cart with per-model
-  counts; chips + a closed-trigger hover preview), single-modality per
-  comparison. Works on any turn mid-conversation and on a new chat's first
-  message. Each branch is an assistant **sibling** off one shared user
-  message (created once via `.../messages/prepare`); the active leaf stays
-  pinned there (`appendMessage` gained `advanceActiveLeaf:false`) while the
-  branches generate, with each branch's model applied as a **transient
-  override** (recorded per-message via `modelUsed`, never rewriting the
-  conversation's stored model). An explicit `conversations.fanout_parent_
-message_id` marker drives the side-by-side **compare grid** + reload
-  rehydration.
-  - _Text_ is pick-one: "Continue with this" sets the chosen sibling as the
-    active leaf; the rest stay as `‹ N/M ›` branches.
-  - _Image / video_ is keep-many: prune duds (delete-branch, keep at least
-    one) + per-column **regenerate** (re-roll in place); the kept variations
-    stay as siblings, the first focused. Image uses a vertical 1-/2-up grid;
-    video streams per-column progress through the poll relay. i2v/regenerate
-    reuse the shared user message's input.
-  - _Split attachments_ is the second fan-out axis: a "Split per image" toggle
-    (image/video models, 2+ image attachments) fans one edit / i2v prompt
-    across the attached images — one generation per image — and crosses with
-    the picked models (M models × N images). Each branch sends `inputMediaIds`
-    to restrict itself to its image; the result media records `source_media_id`
-    so the grid labels each cell with its input thumbnail and recovery/
-    regenerate keep the pairing.
-  - _Disconnect recovery_ matches single-mode: branches finish + persist
-    server-side regardless of the client, and a reload / iOS-suspend mid-
-    fan-out rebuilds the grid from server truth (`getFanoutRecoveryState` =
-    persisted branches + in-flight count) with "Generating…" placeholders
-    that fill in via a poll.
-  - _Per-endpoint concurrency gate_ (`src/lib/server/endpoints/concurrency.ts`):
-    a FIFO slot gate held for the whole generation so a large fan-out
-    trickles instead of blasting an upstream. `max_concurrent` per endpoint
-    in `config.toml` (default 4; set 1 for a single-GPU local backend);
-    queued branches stream a `queued` state. Endpoint-wide (not
-    per-`(endpoint, model)`) since one backend shares one VRAM pool.
-
-- **Multi-user.** Data model is multi-user-shaped (every row has `user_id`);
-  needs invite/admin UI + per-user resource isolation tests + an admin role.
+- **Multi-user.** Data model is already multi-user-shaped (every row has
+  `user_id`); needs invite/admin UI + per-user resource-isolation tests + an
+  admin role.
 
 - **Virtualized message list.** Long conversations eventually overwhelm the
-  DOM. `@tanstack/svelte-virtual` is the candidate; the nontrivial part is
-  the streaming case — the bottom message's height grows mid-stream, so the
-  virtualizer has to re-measure on every chunk and the pin-to-bottom anchor
-  has to track virtualized content height (not DOM height). Pattern other
-  chat apps converge on: virtualize only the historical messages, leave the
-  streaming message in plain DOM until the stream completes. Trigger
-  condition — implement when real-world conversations actually feel janky in
-  production use; below that threshold the virtualizer's measurement
-  overhead can exceed the cost of just rendering everything.
+  DOM. `@tanstack/svelte-virtual` is the candidate; the hard part is the
+  streaming case — the bottom message's height grows mid-stream, so the
+  virtualizer re-measures on every chunk and the pin-to-bottom anchor tracks
+  virtualized content height. Likely pattern: virtualize only historical
+  messages, leave the streaming message in plain DOM until it completes.
+  Trigger — implement when real conversations actually feel janky; below that
+  threshold the measurement overhead can exceed just rendering everything.
 
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
-  endpoints from a settings page; reload registry without restart.
+  endpoints from a settings page; reload the registry without restart.
 
 - **More OAuth providers** (Google, generic OIDC). `arctic` supports these.
 
-- **S3-compatible media storage.** `MediaStore` interface is already the
-  abstraction; implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
+- **S3-compatible media storage.** `MediaStore` is already the abstraction;
+  implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
 
 - **Postgres deployment option.** Drizzle is dialect-portable; needs a
   postgres-driver adapter and migration regeneration.
@@ -244,141 +149,81 @@ message_id` marker drives the side-by-side **compare grid** + reload
 - **Bridge-side SSE normalization** (off by default via header). Saves
   duplicate normalizers if other clients ever consume the bridge.
 
-- **Persistent agentic workspace (Open Terminal or equivalent).**
-  Self-hosted shell + filesystem environment for long-running,
-  multi-turn code tasks — clone a repo, modify files across turns,
-  run tests, open a PR. Distinct from the server-side code interpreter
-  (which is the scratchpad-compute path); this is for repo-style work
-  where state needs to persist on a real disk with real tools.
+- **Persistent agentic workspace (Open Terminal or equivalent).** A
+  self-hosted shell + filesystem for long-running, multi-turn code tasks —
+  clone a repo, modify files across turns, run tests, open a PR. Distinct
+  from the code interpreter (the scratchpad-compute path); this is repo-style
+  work needing state on a real disk with real tools. Listed late because the
+  code interpreter covers many cases.
 
-  Open Terminal (open-webui/open-terminal) is the most-developed
-  candidate, but integration is meaningfully more involved than "just
-  plug in as MCP":
-  - _Their MCP wrapper is awkward to ship in containers._ MCP is a
-    separate `open-terminal mcp` subcommand whose `[mcp]` extras
-    aren't installed in the default Docker image. Users would need a
-    custom image (or override CMD) to use it.
-  - _The richest Open Terminal capability is REST-shaped, not MCP-
-    shaped._ The file sidebar, PTY terminal tab, port detection /
-    reverse proxy, and multipart upload all live behind
-    `include_in_schema=False` — they're absent from `/openapi.json`
-    and therefore absent from the FastMCP tool surface too. Open
-    WebUI's "Open Terminal connection" drives the REST API directly +
-    makes browser-side calls to the hidden endpoints for the sidebar
-    / terminal / preview UI; that's where the integration value comes
-    from.
-  - _Per-conversation isolation isn't built in._ Single-user mode
-    shares `/home/user` across all sessions; `x-session-id` is a
-    cwd hint, not a boundary. Multi-device-same-user or future
-    multi-user can have conversations clobber each other's working
-    trees. Hardening exists (multi-user mode → per-Linux-user
-    isolation; bwrap-per-call → per-conversation seal; gVisor/Kata
-    as runtime → stronger boundary) but none of it is upstream
-    out-of-the-box.
+  Open Terminal (open-webui/open-terminal) is the most-developed candidate,
+  but integration is more involved than "plug in as MCP": its MCP wrapper is
+  a separate subcommand absent from the default Docker image; its richest
+  capabilities (file sidebar, PTY terminal, port preview, upload) are
+  REST-shaped and hidden from `/openapi.json`; and per-conversation isolation
+  isn't built in (single-user mode shares `/home/user`). Two integration
+  paths, in order of effort:
+  - _OpenAPI → MCP translation in the registry._ Add an `openapi://...`
+    transport mode that fetches a spec and registers each operation as a
+    tool. Sidesteps the wrapper's packaging gaps and is generally useful (any
+    OpenAPI-shaped sandbox works). This is the prereq for the lighter path.
+  - _First-class "Open Terminal connection."_ Reimplements Open WebUI's
+    connection mode (REST file sidebar, PTY tab, port preview). Much more
+    work; only worth it if persistent workspaces become load-bearing.
 
-  Two integration paths exist, in order of effort:
-  - _OpenAPI → MCP translation in the registry._ Extend the MCP
-    transport types with an `openapi://...` mode that fetches a spec
-    and registers each operation as a tool — the same translation
-    Open WebUI does. Sidesteps the upstream MCP wrapper's packaging
-    gaps, and is a generally useful capability (any OpenAPI-shaped
-    sandbox works, not just Open Terminal).
-  - _First-class "Open Terminal connection."_ Reimplements what
-    Open WebUI's connection mode does: REST-driven file sidebar,
-    PTY terminal tab, port preview. Substantially more work; only
-    worth doing if persistent workspaces become load-bearing.
-
-  GlyphStream-side UX polish that applies to either path:
-  - Terminal/command outputs deserve their own bubble treatment
-    (monospace, collapsible, optional re-run button) rather than the
-    generic tool-call block.
-  - A files panel surfacing the agent's working directory — browse,
-    preview, download. Effectively a per-conversation scoped file
-    explorer.
-  - Scope/quotas separate from MCP's per-call approval — directory-
-    level allowlist + writable-area boundary that persist across the
-    chain of tool calls within one turn.
-
-  Prereq is the OpenAPI-translation extension (lighter path) or a
-  dedicated connection layer (heavier). Listed late in v2 because for
-  many cases the server-side code interpreter covers the need; this
-  item is specifically about long-lived repo-style work the
-  interpreter can't do.
+  GlyphStream-side UX that applies either way: terminal/command outputs
+  deserve their own bubble (monospace, collapsible, optional re-run) rather
+  than the generic tool-call block; a per-conversation file explorer; and
+  scope/quotas separate from per-call approval (directory allowlist +
+  writable-area boundary persisting across a turn's tool chain).
 
 ## Long-term / nice-to-have
 
-- **2FA layered on GitHub OAuth.** Passkey login shipped as a peer
-  primary method (Settings → Security) — the `userVerification: required`
-  ceremony is itself multi-factor, so this entry is only about adding an
-  authenticator-app TOTP layer to the GitHub side. Low priority — for a
-  self-hosted instance with a numeric-ID allowlist, the GitHub-side
-  attack surface is already narrow.
+- **2FA (TOTP) on GitHub OAuth.** Passkey login already shipped as a peer
+  primary method (the `userVerification: required` ceremony is itself
+  multi-factor), so this is only about adding an authenticator-app TOTP layer
+  to the GitHub side. Low priority — with a numeric-ID allowlist the
+  GitHub-side attack surface is already narrow.
 
-- **Voice input** via local Whisper (or upstream `audio.transcriptions`
-  endpoint when the bridge supports it).
+- **Voice input** via local Whisper (or the upstream `audio.transcriptions`
+  endpoint once the bridge supports it).
 
-- **Conversation export** (JSON / Markdown). Useful as an exit ramp,
-  but the priority is building features that make users not want to
-  leave rather than making it easier to do so.
+- **Conversation export** (JSON / Markdown). Useful as an exit ramp, but the
+  priority is building features that make users not want to leave.
 
-- **Completion sounds + per-modality notification config.** Notifications
-  themselves shipped — Web Push for backgrounded tab/OS notification, an
-  in-app toast for "different thread, app still open," and silent on the
-  thread you're watching (see `docs/notifications.md`). Native iOS Web
-  Push covers the standard notification behavior; the follow-ups below
-  are polish on top:
+- **Notification follow-ups.** _Shipped:_ Web Push (backgrounded
+  tab/OS notification), in-app toast for a different thread, silent on the
+  watched thread, native iOS Web Push (see `docs/notifications.md`).
+  Remaining polish:
   - Optional completion sound, with volume control.
-  - Per-modality config (e.g. "only sound for video, since they take
-    longest"). The notify payload already carries `modality`; the SW just
-    needs a per-modality routing pass on the client side.
-  - A "your devices" UI surfacing the `push_subscriptions.user_agent`
-    column with per-device revoke.
+  - Per-modality config (e.g. "only sound for video"). The notify payload
+    already carries `modality`; the SW just needs a per-modality routing
+    pass.
+  - A "your devices" UI surfacing `push_subscriptions.user_agent` with
+    per-device revoke.
 
-- **Gallery favorite / pin tier.** A second-level distinction beyond
-  "in the gallery vs. hard-deleted" — media flagged as favorite would be
-  protected from any future bulk-cleanup affordances (e.g. an
-  "archive media older than N months" sweep). Storage is a single
-  boolean column on the media row plus a UI affordance in the lightbox
-  (star icon next to download). Pairs naturally with bulk-management,
-  but the rationale only really materializes once an automated
-  bulk-cleanup affordance exists to protect favorites _from_ — which
-  isn't itself on the roadmap.
+- **High-contrast / accessibility theme.** The themes system (Signature /
+  Claude / ChatGPT, each light+dark, built on semantic tokens) shipped; a
+  high-contrast scheme is the most practical additional theme beyond
+  aesthetics. Deferred until the need arises.
 
-- **Preference toggle: default to deleting media when deleting
-  conversations.** Single boolean on `UserPreferences`; one-line read
-  in the layout's `deleteConversation` flow when seeding the modal's
-  initial `deleteMediaToo` value. Saves one click per delete for power
-  users who reflexively want media gone — trivial to ship if the demand
-  shows up, but low value otherwise.
+- **Animation follow-ups.** The token-driven motion pass shipped
+  (overlay pop-in, message-arrival fade, in-flight bubble fade). Left out as
+  higher-risk near the scroll/streaming logic: branch-switch crossfade and
+  list-reorder motion.
+
+- **Gallery favorite / pin tier.** A second-level distinction beyond "in the
+  gallery vs. hard-deleted" — a favorite flag protecting media from any
+  future bulk-cleanup sweep. A single boolean column + a lightbox star. The
+  rationale only materializes once an automated bulk-cleanup affordance
+  exists to protect favorites _from_.
+
+- **Preference: default to deleting media when deleting conversations.** A
+  single boolean on `UserPreferences`, read in the layout's
+  `deleteConversation` flow to seed the modal's `deleteMediaToo` default.
+  Saves a click for power users who reflexively want media gone — trivial to
+  ship if demand shows up.
 
 - **Background sync / offline composition.** Service worker queues messages
-  while offline; resends when connectivity returns. Low priority — chat
-  apps generally don't need this.
-
-- **Animation polish pass — DONE** (Phase 2 of the theming work).
-  Token-driven motion (`--motion-*` / `--ease-*` in `app.css`): a subtle
-  pop-in (fade + drop) on the transient overlays (popovers, dropdowns,
-  dialog cards, toast), an opacity-only message-arrival fade, and the
-  streaming in-flight bubble fading in on stream start (the persisted row
-  suppresses its own re-fade so the swap is seamless). Everything
-  collapses to instant under `prefers-reduced-motion`. Not yet done:
-  branch-switch crossfade and list-reorder motion — left out as the
-  higher-risk bits near the scroll/streaming logic.
-
-- **Themes — DONE.** Three style _personalities_ (not just palette
-  swaps): **GlyphStream** Signature (neutral + frosted glass), **Claude**
-  (warm paper, soft/large radii, clay accent), **ChatGPT** (cool grays,
-  tight radii, flat, green accent). Each ships light + dark following
-  `prefers-color-scheme`, selectable from Preferences. Built on the
-  semantic-token migration this item flagged as the prereq; per-theme
-  `[data-theme]` blocks override color + radius + shadow + glass.
-  Applied before first paint via a non-httpOnly `gs-theme` cookie +
-  `hooks.server.ts` `transformPageChunk` (no FOUC), reconciled against
-  the DB pref after hydration. An explicit **light/dark/system override**
-  also shipped: the dark cascade is attribute-driven (`data-scheme`,
-  resolved before first paint by an inline script from the `gs-scheme`
-  cookie or the OS), with a System/Light/Dark selector in Preferences. The
-  PWA `theme-color` tracks the active theme + scheme as well. Only
-  remaining follow-up, deferred until the need arises: a **high-contrast /
-  accessibility scheme** — the most practical additional theme beyond
-  aesthetics.
+  while offline, resends on reconnect. Low priority — chat apps generally
+  don't need this.
