@@ -248,7 +248,7 @@
 										disabled={deletingId === m.id}
 										title="Delete preset"
 										aria-label="Delete preset {m.name}"
-										class="rounded p-1 text-xs text-fg-muted opacity-0 transition group-hover:opacity-100 hover:bg-surface-sunken hover:text-red-700 disabled:opacity-50 dark:hover:text-red-400"
+										class="rounded p-1 text-xs text-fg-muted opacity-0 transition group-hover:opacity-100 hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
 									>
 										{deletingId === m.id ? '…' : '×'}
 									</button>
@@ -277,9 +277,7 @@
 				</div>
 
 				{#if data.modelsError}
-					<div
-						class="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
-					>
+					<div class="mb-3 rounded-md border px-3 py-2 text-xs alert-warning">
 						Model list unavailable: {data.modelsError}
 					</div>
 				{/if}
@@ -427,9 +425,7 @@
 					</details>
 
 					{#if error}
-						<div
-							class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-						>
+						<div class="rounded-md border px-3 py-2 text-sm alert-danger">
 							{error}
 						</div>
 					{/if}

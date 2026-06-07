@@ -428,7 +428,7 @@
 					{/each}
 				</div>
 				{#if themeError}
-					<p class="text-xs text-red-600 dark:text-red-400">{themeError}</p>
+					<p class="text-xs text-danger">{themeError}</p>
 				{/if}
 			</section>
 
@@ -461,9 +461,7 @@
 				</label>
 
 				{#if masterDisabledReason}
-					<div
-						class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
-					>
+					<div class="rounded-md border px-3 py-2 text-xs alert-warning">
 						{masterDisabledReason}
 					</div>
 				{:else if pushSupported}
@@ -513,18 +511,14 @@
 				</label>
 
 				{#if notifError}
-					<div
-						class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-					>
+					<div class="rounded-md border px-3 py-2 text-xs alert-danger">
 						{notifError}
 					</div>
 				{/if}
 			</section>
 
 			{#if saveError}
-				<div
-					class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-				>
+				<div class="rounded-md border px-3 py-2 text-sm alert-danger">
 					{saveError}
 				</div>
 			{/if}
@@ -534,7 +528,7 @@
 				 the absence of a Save button already implies auto-save. -->
 			<div class="flex h-5 items-center justify-end text-xs">
 				{#if savedFlash}
-					<span class="flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
+					<span class="flex items-center gap-1 text-success">
 						<Check size={14} strokeWidth={2.5} />
 						Saved
 					</span>

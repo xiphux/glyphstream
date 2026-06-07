@@ -59,6 +59,33 @@
 	   generated; the value is overridden per theme. */
 	--color-accent: oklch(62% 0.16 242);
 	--color-accent-fg: oklch(99% 0.012 242);
+
+	/* Semantic state colors. Tokenized (not raw Tailwind red/emerald/amber)
+	   so each theme keeps them on-palette — Claude warms them, ChatGPT holds
+	   `success` distinct from its green accent — and a single switch retunes
+	   them. Tuned for on-surface text/icon use; the [data-scheme='dark']
+	   block flips them lighter for contrast. Soft "alert box" fills are
+	   derived from these via color-mix at the use site, not stored as
+	   separate shades. `danger-emphasis` is the strong, scheme-stable fill
+	   for solid destructive buttons (with `danger-fg` as its readable
+	   foreground); plain `danger` is the text/icon/border value. */
+	--color-success: oklch(0.6 0.142 163);
+	--color-warning: oklch(0.69 0.17 64);
+	--color-danger: oklch(0.577 0.245 27);
+	--color-danger-emphasis: oklch(0.577 0.245 27);
+	--color-danger-fg: oklch(0.985 0.016 17);
+	/* Info — a true blue (distinct from Signature's sky accent), used for the
+	   neutral-informational affordance: the MCP "allow always" choice, info
+	   toasts. Flipped lighter in dark like the other state colors. */
+	--color-info: oklch(0.62 0.19 255);
+	--color-info-fg: oklch(0.99 0.01 255);
+
+	/* Favorite — the "pinned model" gold-star slot. Aliased to the theme
+	   accent so favorites adopt each theme's brand color (sky on Signature,
+	   clay on Claude, green on ChatGPT) and harmonize with the active-nav
+	   highlight, rather than being a fourth hardcoded hue. Switch to a fixed
+	   gold here if the per-theme tie-in ever reads as too subtle. */
+	--color-favorite: var(--color-accent);
 }
 
 /* GlyphStream Signature dark — cool-tinted dark neutrals + sky accent.
@@ -89,6 +116,16 @@
 	--color-border-focus: oklch(62% 0.14 242);
 
 	--color-accent: oklch(70% 0.15 242);
+
+	/* State colors lifted for legibility on the dark canvas. `danger`
+	   (text/icon) lightens; `danger-emphasis` (the solid-button fill) stays
+	   strong so a delete button still reads as a saturated red, not pink. */
+	--color-success: oklch(0.76 0.16 163);
+	--color-warning: oklch(0.83 0.16 82);
+	--color-danger: oklch(0.7 0.19 22);
+	--color-danger-emphasis: oklch(0.55 0.22 27);
+	--color-danger-fg: oklch(0.985 0.016 17);
+	--color-info: oklch(0.7 0.16 255);
 }
 [data-scheme='light'] {
 	color-scheme: light;
@@ -180,6 +217,18 @@
 	--color-border-focus: oklch(0.62 0.1 47);
 	--color-accent: oklch(0.62 0.13 42);
 	--color-accent-fg: oklch(0.98 0.01 85);
+	/* Warmed state colors: lower-chroma, hues nudged toward the theme's warm
+	   center so success/warning/danger read as part of the paper palette
+	   rather than cold system colors. */
+	--color-success: oklch(0.57 0.11 150);
+	--color-warning: oklch(0.68 0.13 58);
+	--color-danger: oklch(0.55 0.18 30);
+	--color-danger-emphasis: oklch(0.55 0.18 30);
+	--color-danger-fg: oklch(0.98 0.01 85);
+	/* Muted blue — Claude has no native blue, so info is softened to sit
+	   against the warm paper without reading as a cold system color. */
+	--color-info: oklch(0.55 0.1 248);
+	--color-info-fg: oklch(0.98 0.01 85);
 	--radius-sm: 0.375rem;
 	--radius-md: 0.5rem;
 	--radius-lg: 0.75rem;
@@ -210,6 +259,12 @@
 	--color-border-strong: oklch(0.41 0.014 58);
 	--color-border-focus: oklch(0.66 0.09 50);
 	--color-accent: oklch(0.7 0.12 48);
+	--color-success: oklch(0.72 0.12 150);
+	--color-warning: oklch(0.8 0.13 70);
+	--color-danger: oklch(0.68 0.16 28);
+	--color-danger-emphasis: oklch(0.52 0.17 30);
+	--color-danger-fg: oklch(0.98 0.01 85);
+	--color-info: oklch(0.68 0.1 248);
 }
 
 /* === ChatGPT — cool grays, green accent, tight + flat (no glass) ===== */
@@ -229,6 +284,16 @@
 	--color-border-focus: oklch(0.6 0.12 165);
 	--color-accent: oklch(0.58 0.13 164);
 	--color-accent-fg: oklch(0.99 0 0);
+	/* `success` sits at hue ~158, deliberately apart from the 164 green
+	   accent so a success marker doesn't blur into an interactive-green
+	   element. danger/warning stay neutral-system. */
+	--color-success: oklch(0.6 0.14 158);
+	--color-warning: oklch(0.7 0.16 65);
+	--color-danger: oklch(0.585 0.22 27);
+	--color-danger-emphasis: oklch(0.585 0.22 27);
+	--color-danger-fg: oklch(0.99 0 0);
+	--color-info: oklch(0.58 0.15 250);
+	--color-info-fg: oklch(0.99 0 0);
 	--radius-sm: 0.25rem;
 	--radius-md: 0.3rem;
 	--radius-lg: 0.4rem;
@@ -258,6 +323,38 @@
 	--color-border-strong: oklch(0.4 0 0);
 	--color-border-focus: oklch(0.66 0.12 165);
 	--color-accent: oklch(0.66 0.13 164);
+	--color-success: oklch(0.75 0.15 158);
+	--color-warning: oklch(0.82 0.16 80);
+	--color-danger: oklch(0.7 0.19 24);
+	--color-danger-emphasis: oklch(0.56 0.21 27);
+	--color-danger-fg: oklch(0.99 0 0);
+	--color-info: oklch(0.7 0.15 250);
+}
+
+/*
+ * Per-theme motion personalities. The motion/ease tokens live in :root
+ * (default = Signature: emphasized + springy); each theme retunes the feel
+ * to match its visual character — Claude softer + slower, ChatGPT tighter +
+ * quicker. Wrapped in `prefers-reduced-motion: no-preference` because these
+ * [data-theme] selectors have >= specificity than the :root block that zeroes
+ * the durations for reduced-motion AND come later in source order — without
+ * the guard they would re-inflate the durations for reduced-motion users.
+ */
+@media (prefers-reduced-motion: no-preference) {
+	[data-theme='claude'] {
+		--motion-fast: 150ms;
+		--motion-base: 260ms;
+		--motion-slow: 420ms;
+		--ease-standard: cubic-bezier(0.32, 0, 0.12, 1);
+		--ease-emphasized: cubic-bezier(0.34, 0, 0.06, 1);
+	}
+	[data-theme='chatgpt'] {
+		--motion-fast: 90ms;
+		--motion-base: 150ms;
+		--motion-slow: 240ms;
+		--ease-standard: cubic-bezier(0.25, 0, 0.25, 1);
+		--ease-emphasized: cubic-bezier(0.3, 0, 0.18, 1);
+	}
 }
 
 /* Frosted surface. Flat (opaque panel, no blur) unless the active theme
@@ -274,6 +371,34 @@
 	background-color: var(--glass-bg-soft);
 	backdrop-filter: blur(var(--blur-surface));
 	-webkit-backdrop-filter: blur(var(--blur-surface));
+}
+
+/* Soft "alert box" fills, derived from the state tokens via color-mix so a
+ * single class replaces the old six-class red/amber + dark-variant trio and
+ * stays theme-correct. Pair with `border` (width) + your own rounding /
+ * padding / text-size; these set only the three colors. The tint is mixed
+ * over --color-surface so it sits right on each theme's canvas in both
+ * schemes. */
+@utility alert-danger {
+	border-color: color-mix(in oklch, var(--color-danger) 32%, transparent);
+	background-color: color-mix(in oklch, var(--color-danger) 12%, var(--color-surface));
+	color: var(--color-danger);
+}
+@utility alert-warning {
+	border-color: color-mix(in oklch, var(--color-warning) 34%, transparent);
+	background-color: color-mix(in oklch, var(--color-warning) 14%, var(--color-surface));
+	color: var(--color-warning);
+}
+
+/* Solid destructive button: strong scheme-stable fill + readable foreground,
+ * with a hover that deepens the fill (theme-aware via color-mix toward
+ * black). Replaces the bg-red-600 / text-white / hover:bg-red-700 cluster. */
+@utility btn-danger {
+	background-color: var(--color-danger-emphasis);
+	color: var(--color-danger-fg);
+	&:hover {
+		background-color: color-mix(in oklch, var(--color-danger-emphasis) 88%, black);
+	}
 }
 
 /* Overlay entrance. A subtle fade + drop-in for transient surfaces that

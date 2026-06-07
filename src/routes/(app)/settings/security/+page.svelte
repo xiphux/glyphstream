@@ -264,7 +264,7 @@
 										onclick={() => unlinkProvider(a.provider)}
 										disabled={linkBusy}
 										aria-label="Unlink provider"
-										class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+										class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
 									>
 										<Trash2 size={14} strokeWidth={2.25} />
 									</button>
@@ -386,7 +386,7 @@
 												onclick={() => deletePasskey(p)}
 												disabled={busyId === p.id}
 												aria-label="Delete passkey"
-												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
 											>
 												<Trash2 size={14} strokeWidth={2.25} />
 											</button>
@@ -423,9 +423,7 @@
 							</button>
 						</div>
 						{#if addError}
-							<p
-								class="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-							>
+							<p class="mt-2 rounded-lg border px-2 py-1.5 text-xs alert-danger">
 								{addError}
 							</p>
 						{/if}

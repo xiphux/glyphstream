@@ -101,14 +101,14 @@ describe('MessageBubble — bubble styling', () => {
 		expect(container.querySelector('article')).toHaveClass('bg-surface-raised');
 	});
 
-	it('amber-tints tool bubbles', () => {
+	it('warning-tints tool bubbles', () => {
 		const { container } = render(MessageBubble, {
 			props: {
 				...baseProps,
 				message: makeMessage('tool', [{ type: 'text', text: 'x' }]),
 			},
 		});
-		expect(container.querySelector('article')).toHaveClass('bg-amber-50');
+		expect(container.querySelector('article')).toHaveClass('bg-warning/10');
 	});
 
 	it('collapses top corners + padding when mergeWithPrev', () => {

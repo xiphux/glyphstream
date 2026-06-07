@@ -83,13 +83,13 @@
 	function stateClass(state: ServerInfo['state']): string {
 		switch (state) {
 			case 'connected':
-				return 'text-emerald-600 dark:text-emerald-400';
+				return 'text-success';
 			case 'idle':
 				return 'text-fg-muted';
 			case 'reconnecting':
-				return 'text-amber-600 dark:text-amber-400';
+				return 'text-warning';
 			case 'failed':
-				return 'text-rose-600 dark:text-rose-400';
+				return 'text-danger';
 		}
 	}
 </script>
@@ -144,7 +144,7 @@
 
 						{#if server.error}
 							<div
-								class="mt-3 flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+								class="mt-3 flex items-start gap-2 rounded-md border px-3 py-2 text-xs alert-danger"
 							>
 								<div class="min-w-0 flex-1 break-words">{server.error}</div>
 								{#if server.state === 'failed'}
@@ -152,7 +152,7 @@
 										type="button"
 										onclick={() => void retryServer(server)}
 										disabled={retryingId === server.id}
-										class="shrink-0 rounded-md border border-rose-300 bg-rose-100 px-2 py-1 text-[11px] font-medium transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800 dark:bg-rose-900/40 dark:hover:bg-rose-900/60"
+										class="shrink-0 rounded-md border border-danger/40 bg-danger/10 px-2 py-1 text-[11px] font-medium text-danger transition hover:bg-danger/20 disabled:cursor-not-allowed disabled:opacity-50"
 									>
 										{retryingId === server.id ? 'Retrying…' : 'Retry'}
 									</button>

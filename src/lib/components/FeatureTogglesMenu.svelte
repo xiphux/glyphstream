@@ -65,7 +65,7 @@
 			<!-- Small dot in the corner so the closed-state user knows a
 			     toggle is off without having to open the popover. -->
 			<span
-				class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-amber-500 ring-2 ring-surface-panel"
+				class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
 				aria-hidden="true"
 			></span>
 		{/if}

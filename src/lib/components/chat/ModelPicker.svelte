@@ -626,8 +626,8 @@
 									}}
 									aria-label={isFavorited ? 'Unfavorite model' : 'Favorite model'}
 									title={isFavorited ? 'Unfavorite' : 'Favorite'}
-									class="shrink-0 rounded p-1 text-fg-subtle transition hover:bg-surface-sunken hover:text-amber-500 focus:opacity-100 focus-visible:opacity-100 {isFavorited
-										? 'text-amber-500 opacity-100'
+									class="shrink-0 rounded p-1 text-fg-subtle transition hover:bg-surface-sunken hover:text-favorite focus:opacity-100 focus-visible:opacity-100 {isFavorited
+										? 'text-favorite opacity-100'
 										: 'opacity-0 group-hover/row:opacity-100'}"
 								>
 									<Star size={14} strokeWidth={2.25} fill={isFavorited ? 'currentColor' : 'none'} />

@@ -198,7 +198,7 @@
 					type="button"
 					onclick={deleteSelected}
 					disabled={bulkDeleting || selectedCount === 0}
-					class="rounded-md border border-red-600 bg-red-600 px-3 py-1.5 text-white transition hover:bg-red-700 disabled:opacity-40"
+					class="rounded-md btn-danger px-3 py-1.5 transition disabled:opacity-40"
 				>
 					{bulkDeleting ? 'Deleting…' : 'Delete'}
 				</button>
@@ -339,7 +339,7 @@
 								type="button"
 								onclick={() => deleteOne(m.id)}
 								disabled={deletingId === m.id}
-								class="absolute left-1.5 top-1.5 rounded bg-red-600/85 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white opacity-0 transition group-hover:opacity-100 hover:bg-red-700 disabled:opacity-50"
+								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
 								aria-label="Delete this media"
 								title="Delete"
 							>
@@ -365,9 +365,7 @@
 		{/if}
 
 		{#if error}
-			<div
-				class="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200"
-			>
+			<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
 				{error}
 			</div>
 		{/if}

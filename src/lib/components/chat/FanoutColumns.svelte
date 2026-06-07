@@ -139,7 +139,7 @@
 							<span class="animate-pulse [animation-delay:240ms]">·</span>
 						</span>
 					{:else if c.status === 'error'}
-						<span class="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
+						<span class="inline-flex items-center gap-1 text-danger">
 							<CircleAlert size={12} /> Failed
 						</span>
 					{:else if c.status === 'cancelled'}
@@ -151,7 +151,7 @@
 					{#if blocks.length > 0}
 						<RenderBlocks {blocks} {onImageClick} />
 					{:else if c.status === 'error'}
-						<p class="text-xs text-red-600 dark:text-red-400">{c.error ?? 'Generation failed'}</p>
+						<p class="text-xs text-danger">{c.error ?? 'Generation failed'}</p>
 					{:else if c.status === 'queued'}
 						<!-- Waiting on the per-endpoint concurrency slot (e.g. a single-GPU
 						     backend running one branch at a time). -->
@@ -208,7 +208,7 @@
 								title={c.persisted !== null && persistedCount <= 1
 									? 'Keep at least one'
 									: 'Discard'}
-								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition hover:bg-surface-sunken hover:text-red-600 disabled:opacity-30 dark:hover:text-red-400"
+								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-30"
 							>
 								<Trash2 size={14} />
 							</button>

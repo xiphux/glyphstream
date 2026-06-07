@@ -271,7 +271,7 @@
 						disabled={deletingId === m.id}
 						title={deletingId === m.id ? 'Deleting…' : 'Delete'}
 						aria-label="Delete"
-						class="flex h-8 w-8 items-center justify-center rounded-md border border-red-700 bg-red-700 text-white transition hover:bg-red-800 disabled:opacity-50"
+						class="flex h-8 w-8 items-center justify-center rounded-md btn-danger transition disabled:opacity-50"
 					>
 						<Trash2 size={14} strokeWidth={2.25} />
 					</button>

@@ -82,7 +82,7 @@
 								onclick={() => requestForget(m)}
 								title="Forget this memory"
 								aria-label="Forget memory"
-								class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted opacity-0 transition hover:bg-surface-sunken hover:text-red-600 focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100 dark:hover:text-red-400"
+								class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted opacity-0 transition hover:bg-surface-sunken hover:text-danger focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100"
 							>
 								<Trash2 size={14} strokeWidth={2.25} />
 							</button>

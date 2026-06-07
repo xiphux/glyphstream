@@ -105,17 +105,13 @@
 			</p>
 
 			{#if data.errorMessage}
-				<div
-					class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-				>
+				<div class="mt-4 rounded-lg border px-3 py-2 text-sm alert-danger">
 					{data.errorMessage}
 				</div>
 			{/if}
 
 			{#if data.gated}
-				<div
-					class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-				>
+				<div class="mt-4 rounded-lg border px-3 py-2 text-sm alert-danger">
 					This instance requires a setup token. Visit /setup?token=&lt;value&gt; with the
 					<code class="font-mono text-xs">SETUP_TOKEN</code> configured in
 					<code class="font-mono text-xs">.env</code>.
@@ -148,9 +144,7 @@
 				</div>
 
 				{#if passkeyError || githubError}
-					<div
-						class="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-					>
+					<div class="mt-4 rounded-lg border px-3 py-2 text-sm alert-danger">
 						{passkeyError ?? githubError}
 					</div>
 				{/if}

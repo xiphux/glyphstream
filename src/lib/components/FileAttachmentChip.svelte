@@ -57,7 +57,7 @@
 	<div
 		class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted {status ===
 		'error'
-			? 'bg-red-600/20 text-red-500'
+			? 'bg-danger/15 text-danger'
 			: 'bg-surface'}"
 	>
 		{#if status === 'uploading'}

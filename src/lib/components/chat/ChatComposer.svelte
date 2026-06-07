@@ -120,9 +120,7 @@
 
 <div class="relative mx-auto max-w-3xl">
 	{#if errorMsg}
-		<div
-			class="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-		>
+		<div class="mb-2 rounded-md border px-3 py-2 text-xs alert-danger">
 			{errorMsg}
 		</div>
 	{/if}
@@ -179,7 +177,7 @@
 					onclick={onStop}
 					aria-label="Stop generation"
 					title="Stop"
-					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-white transition hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full btn-danger transition"
 				>
 					<Square size={14} strokeWidth={2.5} fill="currentColor" />
 				</button>

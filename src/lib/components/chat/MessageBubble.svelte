@@ -1,7 +1,7 @@
 <!--
 	Static (non-editing) render of one persisted chat message. The role
-	drives the bubble styling (user = dark right-aligned, assistant =
-	light, tool = amber). mergeWithPrev/mergeWithNext collapse consecutive
+	drives the bubble styling (user = accent-tinted right-aligned, assistant =
+	raised, tool = warning-tinted). mergeWithPrev/mergeWithNext collapse consecutive
 	assistant rows from a multi-iteration tool turn into one visual bubble
 	(shared corners, no duplicate role label) — see computeMergeFlags in
 	chat-render.ts.
@@ -59,7 +59,7 @@
 			? 'ml-auto max-w-[85%] bg-accent/15'
 			: message.role === 'assistant'
 				? 'bg-surface-raised'
-				: 'bg-amber-50 dark:bg-amber-950/40',
+				: 'bg-warning/10',
 		mergeWithPrev ? 'rounded-t-none pt-1' : 'rounded-t-2xl pt-3',
 		mergeWithNext ? 'rounded-b-none pb-1' : 'rounded-b-2xl pb-3',
 	]}

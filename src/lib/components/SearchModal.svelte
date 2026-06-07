@@ -191,7 +191,7 @@
 			<!-- Results / status -->
 			<div class="min-h-0 flex-1 overflow-y-auto">
 				{#if error}
-					<p class="px-4 py-3 text-sm text-red-600 dark:text-red-400">{error}</p>
+					<p class="px-4 py-3 text-sm text-danger">{error}</p>
 				{:else if query.trim() === ''}
 					<p class="px-4 py-3 text-sm text-fg-muted">Search your chats by title or message.</p>
 				{:else if results.length === 0 && !loading}

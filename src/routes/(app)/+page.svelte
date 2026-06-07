@@ -399,15 +399,13 @@
 		</ComposerCore>
 
 		{#if data.models.length === 0}
-			<p class="mt-3 text-center text-xs text-amber-700 dark:text-amber-300">
+			<p class="mt-3 text-center text-xs text-warning">
 				No models available — check <code>config.toml</code> and your endpoints.
 			</p>
 		{/if}
 
 		{#if errorMsg}
-			<div
-				class="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
-			>
+			<div class="mt-3 rounded-md border px-3 py-2 text-sm alert-danger">
 				{errorMsg}
 			</div>
 		{/if}

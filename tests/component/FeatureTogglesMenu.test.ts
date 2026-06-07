@@ -59,14 +59,14 @@ describe('FeatureTogglesMenu — trigger button', () => {
 		const { container } = render(FeatureTogglesMenu, {
 			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		expect(container.querySelector('.bg-amber-500')).toBeNull();
+		expect(container.querySelector('.bg-warning')).toBeNull();
 	});
 
 	it('shows an off-state dot when any feature is disabled', () => {
 		const { container } = render(FeatureTogglesMenu, {
 			props: { disabledFeatures: ['web'], categories: CATEGORIES, onChange: vi.fn() },
 		});
-		expect(container.querySelector('.bg-amber-500')).toBeInTheDocument();
+		expect(container.querySelector('.bg-warning')).toBeInTheDocument();
 	});
 
 	it('reflects the disabled prop on the trigger', () => {

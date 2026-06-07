@@ -58,13 +58,9 @@
 </script>
 
 <article
-	class="ml-auto max-w-[85%] rounded-2xl border border-amber-300 bg-surface-panel p-3 shadow-sm dark:border-amber-800"
+	class="ml-auto max-w-[85%] rounded-2xl border border-warning/45 bg-surface-panel p-3 shadow-sm"
 >
-	<div
-		class="mb-1 text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400"
-	>
-		Editing
-	</div>
+	<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-warning">Editing</div>
 	<AttachmentThumbnails {attachments} class="mb-2" />
 	<textarea
 		bind:this={textareaEl}

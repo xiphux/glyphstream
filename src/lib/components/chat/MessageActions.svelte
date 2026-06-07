@@ -134,7 +134,7 @@
 			disabled={generating}
 			aria-label="Delete this branch"
 			title="Delete branch"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-red-950/40 dark:hover:text-red-300"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-danger/10 hover:text-danger disabled:opacity-30 disabled:hover:bg-transparent"
 			class:order-first={isUser}
 		>
 			<Trash2 size={14} strokeWidth={2.25} />
@@ -149,7 +149,7 @@
 			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary"
 		>
 			{#if recentlyCopied}
-				<Check size={14} strokeWidth={2.25} class="text-emerald-600 dark:text-emerald-400" />
+				<Check size={14} strokeWidth={2.25} class="text-success" />
 			{:else}
 				<Copy size={14} strokeWidth={2.25} />
 			{/if}

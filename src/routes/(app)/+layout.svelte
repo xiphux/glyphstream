@@ -446,8 +446,8 @@
 								ondragend={favDrag.handleDragEnd}
 								class="rounded-md border-y-2 border-transparent transition {isDragging
 									? 'opacity-40'
-									: ''} {isDropBefore ? 'border-t-sky-500!' : ''} {isDropAfter
-									? 'border-b-sky-500!'
+									: ''} {isDropBefore ? 'border-t-accent!' : ''} {isDropAfter
+									? 'border-b-accent!'
 									: ''}"
 							>
 								<a
@@ -468,11 +468,11 @@
 										sidebar nav links, which are all lucide icons.
 									-->
 									{#if fav.kind === 'image'}
-										<ImageIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+										<ImageIcon size={16} strokeWidth={2.25} class="shrink-0 text-favorite" />
 									{:else if fav.kind === 'video'}
-										<VideoIcon size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+										<VideoIcon size={16} strokeWidth={2.25} class="shrink-0 text-favorite" />
 									{:else}
-										<Sparkles size={16} strokeWidth={2.25} class="shrink-0 text-amber-500" />
+										<Sparkles size={16} strokeWidth={2.25} class="shrink-0 text-favorite" />
 									{/if}
 									{#if !collapsed}<span class="min-w-0 truncate">{fav.label}</span>{/if}
 								</a>
@@ -577,7 +577,7 @@
 												</DropdownMenu.Item>
 												<DropdownMenu.Item
 													onSelect={() => convUi.requestDelete(c.id)}
-													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
+													class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-danger transition data-[highlighted]:bg-danger/10"
 												>
 													<Trash2 size={14} strokeWidth={2.25} />
 													<span>Delete</span>

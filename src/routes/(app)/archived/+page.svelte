@@ -109,7 +109,7 @@
 									</DropdownMenu.Item>
 									<DropdownMenu.Item
 										onSelect={() => requestDelete(c.id)}
-										class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-red-600 transition data-[highlighted]:bg-red-50 dark:text-red-400 dark:data-[highlighted]:bg-red-950/40"
+										class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-danger transition data-[highlighted]:bg-danger/10"
 									>
 										<Trash2 size={14} strokeWidth={2.25} />
 										<span>Delete</span>

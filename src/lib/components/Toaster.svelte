@@ -12,9 +12,9 @@
 	} as const;
 
 	const kindIconClass = {
-		success: 'text-emerald-600 dark:text-emerald-400',
+		success: 'text-success',
 		info: 'text-fg-muted',
-		error: 'text-red-600 dark:text-red-400',
+		error: 'text-danger',
 	} as const;
 </script>
 

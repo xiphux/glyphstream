@@ -163,8 +163,8 @@ describe('ToolCallBlock — result rendering', () => {
 				status: 'error',
 			},
 		});
-		// Error styling: the result wrapper gets `border-l-2 border-red-*`.
-		expect(container.querySelector('.border-red-400, .border-red-500')).toBeInTheDocument();
+		// Error styling: the result wrapper gets `border-l-2 border-danger`.
+		expect(container.querySelector('.border-danger')).toBeInTheDocument();
 	});
 
 	it('does not apply error styling on non-error results', () => {
@@ -176,7 +176,7 @@ describe('ToolCallBlock — result rendering', () => {
 				status: 'done',
 			},
 		});
-		expect(container.querySelector('.border-red-400, .border-red-500')).toBeNull();
+		expect(container.querySelector('.border-danger')).toBeNull();
 	});
 
 	it('renders empty-string results as the empty fallback', () => {

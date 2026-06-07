@@ -69,7 +69,7 @@
 							</div>
 						{:else if a.status === 'error'}
 							<div
-								class="absolute inset-0 flex items-center justify-center bg-red-600/40 text-white"
+								class="absolute inset-0 flex items-center justify-center bg-danger/40 text-danger-fg"
 							>
 								<AlertCircle size={20} strokeWidth={2} />
 							</div>

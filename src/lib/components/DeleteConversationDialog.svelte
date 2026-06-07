@@ -147,7 +147,7 @@
 			<button
 				type="button"
 				onclick={confirmDelete}
-				class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
+				class="rounded-md btn-danger px-4 py-2 text-sm font-medium transition"
 			>
 				Delete
 			</button>

@@ -42,18 +42,18 @@ describe('Toaster — rendering', () => {
 		expect(screen.getByRole('status')).toHaveAttribute('aria-live', 'polite');
 	});
 
-	it('renders an emerald success icon for success kind', async () => {
+	it('renders a success-token icon for success kind', async () => {
 		const { container } = render(Toaster);
 		toast.success('ok');
 		await tick();
-		expect(container.querySelector('.text-emerald-600, .text-emerald-400')).toBeInTheDocument();
+		expect(container.querySelector('.text-success')).toBeInTheDocument();
 	});
 
-	it('renders a red error icon for error kind', async () => {
+	it('renders a danger-token icon for error kind', async () => {
 		const { container } = render(Toaster);
 		toast.error('something broke');
 		await tick();
-		expect(container.querySelector('.text-red-600, .text-red-400')).toBeInTheDocument();
+		expect(container.querySelector('.text-danger')).toBeInTheDocument();
 	});
 
 	it('renders a neutral info icon for info kind', async () => {

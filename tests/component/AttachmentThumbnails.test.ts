@@ -98,8 +98,8 @@ describe('AttachmentThumbnails — status overlays', () => {
 				attachments: makeStore([makeItem({ status: 'error', error: 'upload rejected' })]),
 			},
 		});
-		// Error overlay has a red-tinted background class.
-		expect(container.querySelector('.bg-red-600\\/40')).toBeInTheDocument();
+		// Error overlay has a danger-tinted background class.
+		expect(container.querySelector('.bg-danger\\/40')).toBeInTheDocument();
 	});
 
 	it('uses the error message in the wrapper title attribute', () => {

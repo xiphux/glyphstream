@@ -124,12 +124,12 @@
 
 	const badgeColorClass = $derived(
 		status === 'executing'
-			? 'text-amber-700 dark:text-amber-400'
+			? 'text-warning'
 			: status === 'error'
-				? 'text-red-700 dark:text-red-400'
+				? 'text-danger'
 				: status === 'pending_approval'
-					? 'text-amber-700 dark:text-amber-400'
-					: 'text-emerald-700 dark:text-emerald-400',
+					? 'text-warning'
+					: 'text-success',
 	);
 
 	function approvalButtonClass(action: ApprovalAction): string {
@@ -138,11 +138,11 @@
 		const selected = decision === action;
 		switch (action) {
 			case 'allow':
-				return `${base} ${selected ? 'border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-500/60 dark:bg-emerald-950/40 dark:text-emerald-200' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
+				return `${base} ${selected ? 'border-success/50 bg-success/10 text-success' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 			case 'allow_always':
-				return `${base} ${selected ? 'border-blue-400 bg-blue-50 text-blue-900 dark:border-blue-500/60 dark:bg-blue-950/40 dark:text-blue-200' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
+				return `${base} ${selected ? 'border-info/50 bg-info/10 text-info' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 			case 'reject':
-				return `${base} ${selected ? 'border-rose-400 bg-rose-50 text-rose-900 dark:border-rose-500/60 dark:bg-rose-950/40 dark:text-rose-200' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
+				return `${base} ${selected ? 'border-danger/50 bg-danger/10 text-danger' : 'border-border bg-surface-panel text-fg hover:bg-surface-raised'}`;
 		}
 	}
 </script>
@@ -226,10 +226,8 @@
 			</div>
 		{/if}
 		{#if status === 'pending_approval'}
-			<div class="rounded border-l-2 border-amber-400 pl-2 dark:border-amber-500/70">
-				<div
-					class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300"
-				>
+			<div class="rounded border-l-2 border-warning pl-2">
+				<div class="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-warning">
 					Awaiting your approval
 				</div>
 				<div class="flex flex-wrap gap-1.5 pb-1 pt-0.5">
@@ -264,10 +262,10 @@
 				</div>
 			</div>
 		{:else if result !== undefined}
-			<div class="rounded {isError ? 'border-l-2 border-red-400 pl-2 dark:border-red-500' : ''}">
+			<div class="rounded {isError ? 'border-l-2 border-danger pl-2' : ''}">
 				<div
 					class="mb-0.5 text-[10px] font-medium uppercase tracking-wider {isError
-						? 'text-red-600 dark:text-red-400'
+						? 'text-danger'
 						: 'text-fg-muted'}"
 				>
 					{isError ? 'Error' : 'Result'}
