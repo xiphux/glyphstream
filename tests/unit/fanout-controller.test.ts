@@ -283,7 +283,7 @@ describe('FanoutController — actions', () => {
 					{ type: 'done', assistantMessage: imageSibling('new', 'bridge::sdxl', null) },
 				]);
 			}
-			return jsonResponse({}); // the old-image DELETE
+			return jsonResponse({}); // fallback (no client-side delete — the relay does it)
 		});
 		vi.stubGlobal('fetch', fetchMock);
 		const { deps } = makeDeps();

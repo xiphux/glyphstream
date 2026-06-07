@@ -22,7 +22,7 @@
  */
 
 import { linkMessageMedia } from '../db/queries/media';
-import { appendMessage } from '../db/queries/messages';
+import { appendMessage, deleteBranch } from '../db/queries/messages';
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint } from '../endpoints/config';
@@ -66,6 +66,12 @@ export interface ImageRelayParams {
 	advanceActiveLeaf?: boolean;
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare). */
 	suppressTitleTask?: boolean;
+	/** Fan-out regenerate (re-roll in place): the old sibling this branch
+	 *  replaces. Deleted here, server-side, once the new one persists — so the
+	 *  swap completes even if the client refreshed / suspended mid-re-roll (the
+	 *  old behavior deleted it client-side, which a refresh dropped). Not deleted
+	 *  on failure, so the client's restore-on-failure still has it. */
+	replacesMessageId?: string | null;
 	/** Fires when generation actually begins (slot acquired) — the route stamps
 	 *  the in-flight entry so a recovered fan-out can show a QUEUED vs timer
 	 *  state per branch. */
@@ -181,6 +187,18 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 					}
 					safeClose();
 					return;
+				}
+
+				// Regenerate: now that the re-roll has landed, drop the old sibling
+				// it replaced (best-effort — a leftover is harmless). Server-side so
+				// it survives a client refresh mid-re-roll. Skipped on failure above
+				// (we returned), keeping the old image for restore-on-failure.
+				if (params.replacesMessageId) {
+					try {
+						deleteBranch(params.conversationId, params.replacesMessageId, params.userId);
+					} catch (e) {
+						console.warn('[image-relay] replace-delete failed:', errorMessage(e));
+					}
 				}
 
 				void notifyConversationComplete({

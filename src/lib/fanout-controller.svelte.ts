@@ -509,9 +509,12 @@ export class FanoutController {
 		col.startedAt = null;
 		col.status = 'streaming';
 		try {
-			// Tell the server this branch replaces `oldId`, so a recovery mid-roll
-			// shadows the old-but-not-yet-deleted sibling (one in-place column, not
-			// the old image + the re-roll as two boxes).
+			// Tell the server this branch replaces `oldId`. The server (relay)
+			// deletes the old sibling once the re-roll persists — server-side so the
+			// swap completes even if the client refreshes mid-re-roll — and shadows
+			// it from recovery in the meantime (one in-place column, not the old
+			// image + the re-roll as two boxes). On failure it's NOT deleted, so the
+			// snapshot restore below brings the original back.
 			const fresh = await this.#runBranch(convId, this.userMessageId, col, {
 				replacesMessageId: oldId,
 			});
@@ -524,17 +527,6 @@ export class FanoutController {
 				col.progress = snapshot.progress;
 				col.startedAt = snapshot.startedAt;
 				return;
-			}
-			// Replace: now that a new sibling exists, drop the old one. Best-effort
-			// — a leftover old variation is harmless (extra sibling).
-			if (oldId && fresh.id !== oldId) {
-				try {
-					await fetch(`/api/conversations/${convId}/messages/${oldId}/branch`, {
-						method: 'DELETE',
-					});
-				} catch {
-					// The new media is already in the column; ignore a failed cleanup.
-				}
 			}
 		} finally {
 			this.picking = false;

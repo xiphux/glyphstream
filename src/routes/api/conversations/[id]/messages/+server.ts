@@ -260,6 +260,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
@@ -303,6 +304,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
+			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},

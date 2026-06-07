@@ -15,7 +15,7 @@
 
 import { Buffer } from 'node:buffer';
 import { linkMessageMedia } from '../db/queries/media';
-import { appendMessage } from '../db/queries/messages';
+import { appendMessage, deleteBranch } from '../db/queries/messages';
 import {
 	videoCancel,
 	videoCreate,
@@ -105,6 +105,9 @@ export interface VideoRelayParams {
 	/** Fires when generation begins (slot acquired) — the route stamps the
 	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
 	onStarted?: () => void;
+	/** Fan-out regenerate: the old sibling this branch replaces, deleted
+	 *  server-side once the re-roll persists (survives a refresh mid-re-roll). */
+	replacesMessageId?: string | null;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
@@ -286,6 +289,17 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 					} satisfies StreamErrorEvent);
 					safeClose();
 					return;
+				}
+
+				// Regenerate: the re-roll landed → drop the old sibling it replaced
+				// (server-side so it survives a refresh mid-re-roll; best-effort;
+				// skipped on failure above so restore-on-failure keeps the original).
+				if (params.replacesMessageId) {
+					try {
+						deleteBranch(params.conversationId, params.replacesMessageId, params.userId);
+					} catch (e) {
+						console.warn('[video-relay] replace-delete failed:', errorMessage(e));
+					}
 				}
 
 				// Multi-minute video runs are the canonical case for OS
