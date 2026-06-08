@@ -573,6 +573,23 @@ export const CODE_ARG_TOOLS: Record<string, CodeArgMeta> = {
 	run_python: { codeField: 'code', language: 'python' },
 };
 
+/** Whether a tool's primary argument is source code (→ CodeArgToolBlock). */
+export function isCodeArgTool(toolName: string): boolean {
+	return toolName in CODE_ARG_TOOLS;
+}
+
+/** Pretty-print a JSON string (2-space indent) when it parses; otherwise the
+ *  raw string. Shared by the tool-block components for args / result display.
+ *  Cheap even on large args — the args themselves are typically tiny. */
+export function prettyJson(s: string | undefined): string {
+	if (!s) return '';
+	try {
+		return JSON.stringify(JSON.parse(s), null, 2);
+	} catch {
+		return s;
+	}
+}
+
 /**
  * Pull out the source-code field of a code-shaped tool's args, tolerating
  * partial / mid-stream JSON. Returns null when the tool isn't in
@@ -677,13 +694,18 @@ function splitSkillResources(s: string): { text: string; resources: string[] } {
 	return { text, resources };
 }
 
+/** Whether a tool is a skill-activation tool (→ SkillToolBlock). */
+export function isSkillTool(toolName: string): boolean {
+	return toolName === 'activate_skill' || toolName === 'read_skill_file';
+}
+
 export function parseSkillToolDisplay(
 	toolName: string,
 	rawArgs: string,
 	result: string | undefined,
 	isError: boolean,
 ): SkillToolDisplay | null {
-	if (toolName !== 'activate_skill' && toolName !== 'read_skill_file') return null;
+	if (!isSkillTool(toolName)) return null;
 	const kind: SkillToolDisplay['kind'] = toolName === 'activate_skill' ? 'activate' : 'read_file';
 	const skillName = extractStringField(rawArgs, 'name');
 	const path = kind === 'read_file' ? extractStringField(rawArgs, 'path') : null;

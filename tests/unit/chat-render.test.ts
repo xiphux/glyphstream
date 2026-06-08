@@ -8,9 +8,12 @@ import {
 	extractCodeArg,
 	filterVisibleMessages,
 	inFlightToBlocks,
+	isCodeArgTool,
+	isSkillTool,
 	markToolCallPendingApproval,
 	messageToBlocks,
 	parseSkillToolDisplay,
+	prettyJson,
 	pushToolCall,
 	updateToolCallArgs,
 	updateToolCallResult,
@@ -980,6 +983,28 @@ describe('assistantLabelForMessage', () => {
 				models,
 			),
 		).toBe('Llama-3-70b');
+	});
+});
+
+describe('tool-block dispatch helpers', () => {
+	it('isSkillTool matches the two skill tools only', () => {
+		expect(isSkillTool('activate_skill')).toBe(true);
+		expect(isSkillTool('read_skill_file')).toBe(true);
+		expect(isSkillTool('run_python')).toBe(false);
+		expect(isSkillTool('web_search')).toBe(false);
+	});
+
+	it('isCodeArgTool matches CODE_ARG_TOOLS entries only', () => {
+		expect(isCodeArgTool('run_python')).toBe(true);
+		expect(isCodeArgTool('activate_skill')).toBe(false);
+		expect(isCodeArgTool('get_current_time')).toBe(false);
+	});
+
+	it('prettyJson pretty-prints valid JSON and passes other strings through', () => {
+		expect(prettyJson('{"a":1}')).toBe('{\n  "a": 1\n}');
+		expect(prettyJson('not json')).toBe('not json');
+		expect(prettyJson('')).toBe('');
+		expect(prettyJson(undefined)).toBe('');
 	});
 });
 

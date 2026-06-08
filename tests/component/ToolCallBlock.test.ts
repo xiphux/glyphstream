@@ -1,15 +1,18 @@
 /* @vitest-environment happy-dom */
 
 /**
- * Component test for ToolCallBlock — folded tool-call display.
+ * Component test for ToolCallBlock — the tool-call display dispatcher
+ * (→ SkillToolBlock / CodeArgToolBlock / GenericToolBlock via ToolBlockShell).
  *
- * Pure presentation, no bits-ui. Native `<details>` for the disclosure;
- * happy-dom supports the `open` attribute natively. The content inside
- * `<details>` is always in the DOM regardless of open state, so we can
- * assert on body content without expanding.
+ * Pure presentation, no bits-ui. Native `<details>` for the disclosure. NOTE:
+ * the body is rendered only while the block is OPEN (`{#if isOpen}` in the
+ * shell), so a COLLAPSED (status: 'done') block has NO body content in the DOM —
+ * any assertion on body content (args / result / skill body) must first
+ * `await expandDetails(container)`. Summary (tool/skill name + badge) and
+ * attachments (outside the `<details>`) are present while collapsed.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen } from '@testing-library/svelte';
 import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
@@ -89,31 +92,34 @@ describe('ToolCallBlock — open-by-default behavior', () => {
 });
 
 describe('ToolCallBlock — arguments rendering', () => {
-	it('pretty-prints valid JSON arguments', () => {
-		render(ToolCallBlock, {
+	it('pretty-prints valid JSON arguments', async () => {
+		const { container } = render(ToolCallBlock, {
 			props: {
 				toolName: 'x',
 				argumentsJson: '{"timezone":"America/New_York","verbose":true}',
 				status: 'done',
 			},
 		});
+		await expandDetails(container);
 		// JSON.stringify(obj, null, 2) preserves the key order and indents 2 spaces.
 		const pre = screen.getByText(/"timezone": "America\/New_York"/);
 		expect(pre).toBeInTheDocument();
 		expect(pre.textContent).toContain('"verbose": true');
 	});
 
-	it('shows the Arguments header when args are present', () => {
-		render(ToolCallBlock, {
+	it('shows the Arguments header when args are present', async () => {
+		const { container } = render(ToolCallBlock, {
 			props: { toolName: 'x', argumentsJson: '{"foo":1}', status: 'done' },
 		});
+		await expandDetails(container);
 		expect(screen.getByText('Arguments')).toBeInTheDocument();
 	});
 
-	it('falls back to raw string for malformed JSON', () => {
-		render(ToolCallBlock, {
+	it('falls back to raw string for malformed JSON', async () => {
+		const { container } = render(ToolCallBlock, {
 			props: { toolName: 'x', argumentsJson: '{not valid json', status: 'done' },
 		});
+		await expandDetails(container);
 		expect(screen.getByText('{not valid json')).toBeInTheDocument();
 	});
 
@@ -134,8 +140,8 @@ describe('ToolCallBlock — result rendering', () => {
 		expect(screen.queryByText('Error')).toBeNull();
 	});
 
-	it('renders the Result header and pretty-prints success results', () => {
-		render(ToolCallBlock, {
+	it('renders the Result header and pretty-prints success results', async () => {
+		const { container } = render(ToolCallBlock, {
 			props: {
 				toolName: 'x',
 				argumentsJson: '{}',
@@ -143,6 +149,7 @@ describe('ToolCallBlock — result rendering', () => {
 				status: 'done',
 			},
 		});
+		await expandDetails(container);
 		expect(screen.getByText('Result')).toBeInTheDocument();
 		const pre = screen.getByText(/"ok": true/);
 		expect(pre.textContent).toContain('[\n    1,\n    2,\n    3\n  ]');
@@ -188,13 +195,14 @@ describe('ToolCallBlock — result rendering', () => {
 		expect(container.querySelector('.border-danger')).toBeNull();
 	});
 
-	it('renders empty-string results as the empty fallback', () => {
+	it('renders empty-string results as the empty fallback', async () => {
 		// result === '' triggers `result !== undefined` so the block renders,
 		// but prettyJson('') returns '' — the pre is empty. Behavior worth
 		// pinning: an empty string is still treated as "a result exists".
-		render(ToolCallBlock, {
+		const { container } = render(ToolCallBlock, {
 			props: { toolName: 'x', argumentsJson: '{}', result: '', status: 'done' },
 		});
+		await expandDetails(container);
 		expect(screen.getByText('Result')).toBeInTheDocument();
 	});
 });
@@ -239,7 +247,7 @@ describe('ToolCallBlock — skill rendering', () => {
 		expect(container.textContent).not.toContain('Review the code carefully.');
 	});
 
-	it('lists bundled resources for an activated skill', () => {
+	it('lists bundled resources for an activated skill', async () => {
 		const { container } = render(ToolCallBlock, {
 			props: {
 				toolName: 'activate_skill',
@@ -248,11 +256,12 @@ describe('ToolCallBlock — skill rendering', () => {
 				status: 'done',
 			},
 		});
+		await expandDetails(container);
 		expect(container.textContent).toContain('references/api.md');
 		expect(container.textContent).not.toContain('<skill_resources');
 	});
 
-	it('renders read_skill_file as a Skill file chip with the path + file text', () => {
+	it('renders read_skill_file as a Skill file chip with the path + file text', async () => {
 		const { container } = render(ToolCallBlock, {
 			props: {
 				toolName: 'read_skill_file',
@@ -262,11 +271,13 @@ describe('ToolCallBlock — skill rendering', () => {
 				status: 'done',
 			},
 		});
+		// Chip (summary) is visible while collapsed; the file text is in the body.
 		expect(screen.getByText('Skill file')).toBeInTheDocument();
 		expect(screen.getByText('references/api.md')).toBeInTheDocument();
+		expect(screen.queryByText('Tool')).toBeNull();
+		await expandDetails(container);
 		expect(container.textContent).toContain('file text here');
 		expect(container.textContent).not.toContain('<skill_file');
-		expect(screen.queryByText('Tool')).toBeNull();
 	});
 
 	it('surfaces a skill activation error without the JSON envelope', () => {
@@ -282,5 +293,64 @@ describe('ToolCallBlock — skill rendering', () => {
 		expect(screen.getByText('Error')).toBeInTheDocument();
 		expect(container.textContent).toContain('No enabled skill named "ghost".');
 		expect(container.textContent).not.toContain('{"error"');
+	});
+});
+
+describe('ToolCallBlock — approval prompt (MCP / generic)', () => {
+	const pendingProps = {
+		toolName: 'mcp__server__do_thing',
+		argumentsJson: '{"x":1}',
+		status: 'pending_approval' as const,
+		toolCallId: 'call-1',
+	};
+
+	it('renders the three approval buttons + needs-approval badge (open by default)', () => {
+		// pending_approval is open-by-default, so no expand needed.
+		render(ToolCallBlock, { props: pendingProps });
+		expect(screen.getByText('needs approval')).toBeInTheDocument();
+		expect(screen.getByText('Awaiting your approval')).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Allow' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Allow always' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+	});
+
+	it('highlights only the staged decision', () => {
+		render(ToolCallBlock, { props: { ...pendingProps, decision: 'allow' } });
+		expect(screen.getByRole('button', { name: 'Allow' }).className).toContain('border-success/50');
+		expect(screen.getByRole('button', { name: 'Reject' }).className).not.toContain(
+			'border-danger/50',
+		);
+	});
+
+	it('fires onApprovalSelect with the toolCallId + action on click', async () => {
+		const onApprovalSelect = vi.fn();
+		render(ToolCallBlock, { props: { ...pendingProps, onApprovalSelect } });
+		screen.getByRole('button', { name: 'Reject' }).click();
+		expect(onApprovalSelect).toHaveBeenCalledWith('call-1', 'reject');
+	});
+
+	it('disables the buttons while approvalBusy', () => {
+		render(ToolCallBlock, {
+			props: { ...pendingProps, approvalBusy: true, onApprovalSelect: vi.fn() },
+		});
+		expect(screen.getByRole('button', { name: 'Allow' })).toBeDisabled();
+	});
+});
+
+describe('ToolCallBlock — attachments', () => {
+	it('shows produced media even when the block is collapsed (done)', () => {
+		// Attachments live outside <details>, so they're visible while collapsed.
+		const { container } = render(ToolCallBlock, {
+			props: {
+				toolName: 'run_python',
+				argumentsJson: '{"code":"x"}',
+				result: 'ok',
+				status: 'done',
+				attachments: [{ type: 'image', mediaId: 'media-9' }],
+			},
+		});
+		const img = container.querySelector('img');
+		expect(img).toBeInTheDocument();
+		expect(img?.getAttribute('src')).toContain('media-9');
 	});
 });
