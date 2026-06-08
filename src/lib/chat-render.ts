@@ -618,6 +618,102 @@ export function extractCodeArg(
 	return { code, language: meta.language };
 }
 
+/**
+ * Skill activation tools (`activate_skill` / `read_skill_file`) render with a
+ * bespoke compact affordance instead of the generic tool envelope — like
+ * run_python, dispatched purely on the tool name (the only signal the client
+ * has). This parses the name/path out of the args and UNWRAPS the result
+ * (`<skill_content>` / `<skill_file>` envelope, `<skill_resources>` manifest)
+ * so the UI can show the instructions/file directly, no XML/JSON plumbing.
+ */
+export interface SkillToolDisplay {
+	kind: 'activate' | 'read_file';
+	/** Skill name from the args (may be null mid-stream before args land). */
+	skillName: string | null;
+	/** Bundle-relative path (read_skill_file only). */
+	path: string | null;
+	/** Unwrapped body — markdown instructions (activate) or file text
+	 *  (read_file) — or null while the call is still executing (no result),
+	 *  or the error message when the call failed. */
+	body: string | null;
+	/** Bundled-resource paths surfaced by activate_skill, if any. */
+	resources: string[];
+	isError: boolean;
+}
+
+function extractStringField(rawArgs: string, field: string): string | null {
+	if (!rawArgs) return null;
+	try {
+		const parsed = JSON.parse(rawArgs);
+		if (parsed && typeof parsed === 'object') {
+			const v = (parsed as Record<string, unknown>)[field];
+			if (typeof v === 'string' && v.length > 0) return v;
+		}
+	} catch {
+		// mid-stream / malformed — fall through to the tolerant scan.
+	}
+	const partial = partialExtractStringField(rawArgs, field);
+	return partial && partial.length > 0 ? partial : null;
+}
+
+/** Pull the inner content of a `<tag …>…</tag>` envelope, or null. */
+function unwrapTag(s: string, tag: string): string | null {
+	const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`).exec(s);
+	return m ? m[1].trim() : null;
+}
+
+/** Split a `<skill_resources>… - path …</skill_resources>` manifest out of the
+ *  body, returning the body sans-manifest plus the listed resource paths. */
+function splitSkillResources(s: string): { text: string; resources: string[] } {
+	const block = /<skill_resources>([\s\S]*?)<\/skill_resources>/.exec(s);
+	if (!block) return { text: s.trim(), resources: [] };
+	const resources = block[1]
+		.split('\n')
+		.map((l) => l.trim())
+		.filter((l) => l.startsWith('- '))
+		.map((l) => l.slice(2).trim())
+		.filter(Boolean);
+	const text = s.replace(block[0], '').trim();
+	return { text, resources };
+}
+
+export function parseSkillToolDisplay(
+	toolName: string,
+	rawArgs: string,
+	result: string | undefined,
+	isError: boolean,
+): SkillToolDisplay | null {
+	if (toolName !== 'activate_skill' && toolName !== 'read_skill_file') return null;
+	const kind: SkillToolDisplay['kind'] = toolName === 'activate_skill' ? 'activate' : 'read_file';
+	const skillName = extractStringField(rawArgs, 'name');
+	const path = kind === 'read_file' ? extractStringField(rawArgs, 'path') : null;
+
+	let body: string | null = null;
+	let resources: string[] = [];
+	if (result !== undefined && result !== '') {
+		if (isError) {
+			// Recoverable tool errors come back as {"error":"…"}.
+			try {
+				const parsed = JSON.parse(result);
+				body =
+					parsed && typeof parsed === 'object' && typeof parsed.error === 'string'
+						? parsed.error
+						: result;
+			} catch {
+				body = result;
+			}
+		} else if (kind === 'activate') {
+			const inner = unwrapTag(result, 'skill_content') ?? result;
+			const split = splitSkillResources(inner);
+			body = split.text;
+			resources = split.resources;
+		} else {
+			body = unwrapTag(result, 'skill_file') ?? result;
+		}
+	}
+	return { kind, skillName, path, body, resources, isError };
+}
+
 function partialExtractStringField(args: string, field: string): string | null {
 	const key = `"${field}"`;
 	let i = args.indexOf(key);

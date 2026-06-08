@@ -10,6 +10,7 @@ import {
 	inFlightToBlocks,
 	markToolCallPendingApproval,
 	messageToBlocks,
+	parseSkillToolDisplay,
 	pushToolCall,
 	updateToolCallArgs,
 	updateToolCallResult,
@@ -979,5 +980,65 @@ describe('assistantLabelForMessage', () => {
 				models,
 			),
 		).toBe('Llama-3-70b');
+	});
+});
+
+describe('parseSkillToolDisplay', () => {
+	const activateResult =
+		'<skill_content name="review">\n\n# Review\n\nReview the code.\n\n<skill_resources>\nFiles bundled with this skill:\n- references/api.md\n- scripts/run.py\n</skill_resources>\n\n</skill_content>';
+
+	it('returns null for non-skill tools', () => {
+		expect(parseSkillToolDisplay('run_python', '{"code":"x"}', 'out', false)).toBeNull();
+		expect(parseSkillToolDisplay('web_search', '{}', '', false)).toBeNull();
+	});
+
+	it('parses an activate_skill call: name + unwrapped markdown body + resources', () => {
+		const d = parseSkillToolDisplay('activate_skill', '{"name":"review"}', activateResult, false)!;
+		expect(d.kind).toBe('activate');
+		expect(d.skillName).toBe('review');
+		expect(d.path).toBeNull();
+		expect(d.body).toBe('# Review\n\nReview the code.');
+		expect(d.body).not.toContain('<skill_content');
+		expect(d.body).not.toContain('<skill_resources');
+		expect(d.resources).toEqual(['references/api.md', 'scripts/run.py']);
+		expect(d.isError).toBe(false);
+	});
+
+	it('parses a read_skill_file call: name + path + unwrapped file text', () => {
+		const result =
+			'<skill_file name="review" path="references/api.md">\n# API\n\nstuff\n</skill_file>';
+		const d = parseSkillToolDisplay(
+			'read_skill_file',
+			'{"name":"review","path":"references/api.md"}',
+			result,
+			false,
+		)!;
+		expect(d.kind).toBe('read_file');
+		expect(d.skillName).toBe('review');
+		expect(d.path).toBe('references/api.md');
+		expect(d.body).toBe('# API\n\nstuff');
+	});
+
+	it('has a null body while still executing (no result yet)', () => {
+		const d = parseSkillToolDisplay('activate_skill', '{"name":"review"}', undefined, false)!;
+		expect(d.skillName).toBe('review');
+		expect(d.body).toBeNull();
+	});
+
+	it('surfaces the error message for a failed call', () => {
+		const d = parseSkillToolDisplay(
+			'activate_skill',
+			'{"name":"ghost"}',
+			'{"error":"No enabled skill named \\"ghost\\"."}',
+			true,
+		)!;
+		expect(d.isError).toBe(true);
+		expect(d.body).toBe('No enabled skill named "ghost".');
+	});
+
+	it('extracts the name from partial mid-stream args', () => {
+		// Args still arriving — no closing brace yet.
+		const d = parseSkillToolDisplay('activate_skill', '{"name":"review', undefined, false)!;
+		expect(d.skillName).toBe('review');
 	});
 });
