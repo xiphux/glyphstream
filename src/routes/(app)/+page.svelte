@@ -19,6 +19,7 @@
 	} from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
+	import { stripSkillCommand } from '$lib/skill-command';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 
 	let { data } = $props();
@@ -166,6 +167,12 @@
 		});
 	});
 	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');
+	// `/skill-name` autocomplete is offered only when starting a CHAT with the
+	// `skills` category enabled; the chat page's first send forwards the
+	// activation. Undefined → ComposerCore shows no menu.
+	const skillCommands = $derived(
+		pickedKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
+	);
 	const composerPlaceholder = $derived(
 		pickedKind === 'image'
 			? 'Describe an image to generate…'
@@ -259,8 +266,16 @@
 		const singleCompareModel =
 			compareMode && fanoutFirstModels.length === 1 ? fanoutFirstModels[0].modelId : null;
 		const effectiveModelId = singleCompareModel ?? modelId;
+		// Consume a leading `/skill-name` (explicit activation) when starting a
+		// chat with skills enabled; forwarded on the first send via the pending-
+		// message handoff. Gated so a disabled-skills / non-chat start sends `/foo`
+		// literally.
+		const skillsActive = pickedKind === 'chat' && !disabledFeatures.includes('skills');
+		const { text: cleanText, activatedSkillNames } = skillsActive
+			? stripSkillCommand(text.trim(), data.enabledSkills)
+			: { text: text.trim(), activatedSkillNames: [] as string[] };
 		if ((!fanout && !effectiveModelId) || busy) return;
-		if (!text.trim() && attachments.items.length === 0) return;
+		if (!cleanText && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
 		busy = true;
 		errorMsg = null;
@@ -311,10 +326,11 @@
 			window.sessionStorage.setItem(
 				pendingFirstMessageKey(conversation.id),
 				JSON.stringify({
-					text,
+					text: cleanText,
 					attachedMediaIds: attachments.readyMediaIds(),
 					...(fanout ? { fanoutModels: fanout } : {}),
 					...(splitImageIds ? { splitImageIds } : {}),
+					...(activatedSkillNames.length ? { activatedSkillNames } : {}),
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
@@ -371,6 +387,7 @@
 			placeholder={composerPlaceholder}
 			rows={2}
 			enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+			{skillCommands}
 			onSubmit={startChat}
 		>
 			{#snippet attachmentBar()}

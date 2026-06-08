@@ -23,6 +23,10 @@ export interface PendingFirstMessage {
 	 *  images (crossed with `fanoutModels`, or the conversation's single model).
 	 *  Always 2+ when set. */
 	splitImageIds?: string[];
+	/** Skills the user explicitly activated via `/skill-name` on the new-chat
+	 *  screen. The chat page forwards these as `activatedSkillNames` on the
+	 *  first send so the opening turn activates them. */
+	activatedSkillNames?: string[];
 }
 
 /** Per-conversation sessionStorage key for a pending first message. */

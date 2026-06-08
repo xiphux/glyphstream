@@ -42,7 +42,7 @@
 		}
 		const body = await res.json();
 		toast.success(`Imported skill "${body.skill?.name ?? ''}".`);
-		await invalidate('settings:skills');
+		await invalidate('app:skills');
 	}
 
 	async function importPaste() {
@@ -96,7 +96,7 @@
 				body: JSON.stringify({ enabled: !s.enabled }),
 			});
 			if (!res.ok) throw new Error(await errorMessage(res));
-			await invalidate('settings:skills');
+			await invalidate('app:skills');
 		} catch (e) {
 			toast.error(`Couldn't update: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
@@ -116,7 +116,7 @@
 		try {
 			const res = await fetch(`/api/user/skills/${encodeURIComponent(s.id)}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res));
-			await invalidate('settings:skills');
+			await invalidate('app:skills');
 		} catch (e) {
 			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {

@@ -14,6 +14,7 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
+	import { stripSkillCommand } from '$lib/skill-command';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
 	import type { CompareSelection } from '$lib/fanout';
 	import type {
@@ -33,6 +34,8 @@
 		disabledFeatures: FeatureCategory[];
 		featureCategories: readonly FeatureCategoryEntry[];
 		models: ModelEntry[];
+		/** The user's enabled skills, for the `/skill-name` autocomplete. */
+		enabledSkills?: { id: string; name: string; description: string }[];
 		favoritedIds: string[];
 		allowAttachments: boolean;
 		hasValidModel: boolean;
@@ -63,6 +66,7 @@
 		disabledFeatures,
 		featureCategories,
 		models,
+		enabledSkills = [],
 		favoritedIds,
 		allowAttachments,
 		hasValidModel,
@@ -90,9 +94,23 @@
 		modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…',
 	);
 
+	// `/skill-name` autocomplete is offered only on chat models with the `skills`
+	// category enabled for this conversation. Undefined → ComposerCore shows no
+	// menu. The server re-validates regardless (model tool support, enabled set).
+	const skillCommands = $derived(
+		modelKind === 'chat' && !disabledFeatures.includes('skills') ? enabledSkills : undefined,
+	);
+
+	// The effective message after a leading `/skill-name` is stripped (when the
+	// skill menu is active) — a bare command with no message isn't sendable.
+	const effectiveText = $derived(
+		skillCommands
+			? stripSkillCommand(composerText.trim(), skillCommands).text
+			: composerText.trim(),
+	);
 	const canSend = $derived(
 		!(
-			(!composerText.trim() && attachments.items.length === 0) ||
+			(!effectiveText && attachments.items.length === 0) ||
 			generating ||
 			attachments.isBusy ||
 			!hasValidModel
@@ -132,6 +150,7 @@
 		disabled={generating}
 		{placeholder}
 		{enterBehavior}
+		{skillCommands}
 		onSubmit={onSend}
 	>
 		{#snippet attachmentBar()}

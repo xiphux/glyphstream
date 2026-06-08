@@ -613,6 +613,17 @@ export interface SendMessageRequest {
 	 * Ignored unless `fanoutBranch`.
 	 */
 	fanoutSize?: number;
+	/**
+	 * Explicit skill activation — skill names the user invoked via the
+	 * `/skill-name` composer command for THIS turn. The server re-validates each
+	 * against the user's enabled skills and, for each match, synthesizes a real
+	 * `activate_skill` tool exchange in the branch before the model generates, so
+	 * the model receives the skill's full instructions (identical to a
+	 * model-driven activation). Server-authoritative: ignored on retry/fan-out,
+	 * when the model doesn't support tools, or when the `skills` feature category
+	 * is disabled for the conversation.
+	 */
+	activatedSkillNames?: string[];
 }
 
 /**

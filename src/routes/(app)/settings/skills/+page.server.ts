@@ -8,12 +8,13 @@ import type { PageServerLoad } from './$types';
  * locals.user!.id deref races the layout's redirect-on-no-auth and surfaces
  * as a 500 instead of a 302.
  *
- * Tagged so the page can `invalidate('settings:skills')` after a mutation to
- * re-run just this load rather than the whole (app) layout.
+ * Tagged `app:skills` (shared with the (app) layout's `enabledSkills`) so a
+ * mutation can `invalidate('app:skills')` to refresh BOTH this list and the
+ * composer's /skill autocomplete in one shot.
  */
 export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
-	depends('settings:skills');
+	depends('app:skills');
 	return { skills: listSkillsForUser(locals.user.id) };
 };

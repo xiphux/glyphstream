@@ -32,6 +32,10 @@ import {
 } from '$lib/server/db/queries/user-preferences';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
+import {
+	synthesizeSkillActivations,
+	type SyntheticActivationEvent,
+} from '$lib/server/chat/synthesize-skill-activation';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -419,6 +423,36 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		: { catalog: null, toolDefs: [] };
 	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
 
+	// Explicit skill activation (the /skill-name composer command). Synthesize a
+	// real activate_skill tool exchange BEFORE the model generates, so the model
+	// receives the skill body exactly as a model-driven activation would. The
+	// appends advance the active leaf, so the walkActiveBranch below already
+	// includes the exchange; `synthLeafId` becomes the relay's parent so the
+	// model's response continues off the tool result instead of forking off the
+	// user message. Server-authoritative: only a plain text send, with tool
+	// support, `skills` enabled, and only names that resolve to enabled skills.
+	let synthLeafId: string | undefined;
+	let preActivatedToolEvents: SyntheticActivationEvent[] = [];
+	if (
+		!isFanout &&
+		!isRetry &&
+		supportsTools &&
+		!meta.disabledFeatures.includes('skills') &&
+		Array.isArray(body.activatedSkillNames) &&
+		body.activatedSkillNames.length > 0
+	) {
+		const synth = await synthesizeSkillActivations({
+			conversationId: params.id,
+			userId: locals.user.id,
+			parentMessageId: userMessage.id,
+			names: body.activatedSkillNames,
+			disabledFeatures: meta.disabledFeatures,
+			signal: inFlight.controller.signal,
+		});
+		synthLeafId = synth?.leafMessageId;
+		preActivatedToolEvents = synth?.events ?? [];
+	}
+
 	// Build the upstream request from the active branch (now incl. new user msg).
 	// Messages with no image parts forward as plain-string content (best
 	// compat with non-vision upstreams). Messages WITH image parts forward
@@ -516,6 +550,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			storedModelId: meta.modelId,
 			abortSignal: inFlight.controller.signal,
+			// When the turn opened with an explicit skill activation, the model's
+			// first response continues off the synthetic tool result (not a sibling
+			// of the user message) — same seam the approval-resume flow uses — and
+			// the activation is replayed as live SSE so its block renders in-flight.
+			...(synthLeafId ? { initialParentMessageId: synthLeafId } : {}),
+			...(preActivatedToolEvents.length ? { preActivatedToolEvents } : {}),
 			// Fan-out branch: persist the assistant as a sibling without
 			// advancing the leaf (stays pinned at the shared user message),
 			// and don't start a per-branch title task (/prepare owns it once).
@@ -568,7 +608,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
 	const assistantMessage = appendMessage({
 		conversationId: params.id,
-		parentMessageId: userMessage.id,
+		// Continue off the synthetic skill-activation tool result when present,
+		// else off the user message (the streaming path does the same via the
+		// relay's initialParentMessageId).
+		parentMessageId: synthLeafId ?? userMessage.id,
 		role: 'assistant',
 		parts: [{ type: 'text', text: assistantText }],
 		contentHtml,

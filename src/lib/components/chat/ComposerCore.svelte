@@ -15,13 +15,21 @@
 	The form's submit (button OR Enter) routes to `onSubmit`.
 -->
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { Plus } from '@lucide/svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
+	import SkillMenu from '$lib/components/chat/SkillMenu.svelte';
 	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
 	import { composerEnterHandler } from '$lib/composer-keys';
+	import { filterSkillCommands, skillMenuQuery, type SkillCommandOption } from '$lib/skill-command';
 	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
 	import type { EnterBehavior } from '$lib/types/api';
+
+	interface SkillCommand extends SkillCommandOption {
+		id: string;
+		name: string;
+		description: string;
+	}
 
 	interface Props {
 		text: string;
@@ -40,6 +48,13 @@
 		 *  row (e.g. the split-attachments toggle), via AttachmentThumbnails'
 		 *  `trailing` slot. The consumer decides when. */
 		attachmentBar?: Snippet;
+		/** Opt-in `/skill-name` autocomplete. The consumer passes the user's
+		 *  ENABLED skills (already gated to `[]` when the conversation has the
+		 *  `skills` category disabled or the model lacks tool support). Undefined
+		 *  → no slash menu, behaving exactly as before (the home + chat composers
+		 *  share this component). Selecting only completes the name into the box;
+		 *  the consumer strips the leading `/name` on send via stripSkillCommand. */
+		skillCommands?: SkillCommand[];
 	}
 
 	let {
@@ -53,6 +68,7 @@
 		onSubmit,
 		controls,
 		attachmentBar,
+		skillCommands,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
@@ -74,6 +90,76 @@
 		void text;
 		if (el) autoResizeTextarea(el);
 	});
+
+	// --- /skill-name autocomplete (opt-in via `skillCommands`) ---------------
+	// The in-progress query (prefix after `/`, before any space), or null when
+	// the draft isn't a leading slash command. Closes naturally once a space is
+	// typed (the command is "locked in" and the user types the message).
+	const skillQuery = $derived(skillCommands ? skillMenuQuery(text) : null);
+	const filteredSkills = $derived(
+		skillQuery !== null && skillCommands ? filterSkillCommands(skillCommands, skillQuery) : [],
+	);
+	let skillHighlight = $state(0);
+	let skillMenuDismissed = $state(false);
+	const skillMenuOpen = $derived(filteredSkills.length > 0 && !skillMenuDismissed);
+
+	// Re-arm the menu + reset the highlight whenever the query value changes
+	// (typing more of the name, clearing it). Escape sets `dismissed` within a
+	// fixed query; this effect re-runs only when the query itself changes, so a
+	// dismissal sticks until the user edits the command.
+	$effect(() => {
+		void skillQuery;
+		skillMenuDismissed = false;
+		skillHighlight = 0;
+	});
+
+	async function selectSkill(name: string) {
+		const next = `/${name} `;
+		text = next;
+		await tick();
+		const el = textareaEl;
+		if (el) {
+			el.focus();
+			el.setSelectionRange(next.length, next.length);
+			autoResizeTextarea(el);
+		}
+	}
+
+	/** Consume Arrow/Enter/Tab/Escape ONLY while the menu is open. Returns true
+	 *  when handled (caller then skips the normal Enter-to-send handler). Never
+	 *  steals IME-composition keys. */
+	function handleSkillKey(e: KeyboardEvent): boolean {
+		if (e.isComposing) return false;
+		const n = filteredSkills.length;
+		if (n === 0) return false;
+		switch (e.key) {
+			case 'ArrowDown':
+				e.preventDefault();
+				skillHighlight = (skillHighlight + 1) % n;
+				return true;
+			case 'ArrowUp':
+				e.preventDefault();
+				skillHighlight = (skillHighlight - 1 + n) % n;
+				return true;
+			case 'Enter':
+			case 'Tab':
+				// Selection ONLY completes the name — it never submits.
+				e.preventDefault();
+				void selectSkill(filteredSkills[Math.min(skillHighlight, n - 1)].name);
+				return true;
+			case 'Escape':
+				e.preventDefault();
+				skillMenuDismissed = true;
+				return true;
+			default:
+				return false;
+		}
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (skillMenuOpen && handleSkillKey(e)) return;
+		composerEnterHandler(enterBehavior, () => onSubmit())(e);
+	}
 
 	// Drag-drop drop zone. The counter pattern absorbs the recursive
 	// enter/leave fired as the cursor crosses child elements.
@@ -133,6 +219,14 @@
 	ondrop={onDrop}
 	class="surface-glass-soft relative rounded-2xl border border-border-strong px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
+	{#if skillMenuOpen}
+		<SkillMenu
+			skills={filteredSkills}
+			highlightedIndex={skillHighlight}
+			onSelect={selectSkill}
+			onHover={(i) => (skillHighlight = i)}
+		/>
+	{/if}
 	<AttachmentThumbnails {attachments} class="px-1" trailing={attachmentBar} />
 	<textarea
 		bind:this={textareaEl}
@@ -140,7 +234,7 @@
 		{rows}
 		{placeholder}
 		{disabled}
-		onkeydown={composerEnterHandler(enterBehavior, () => onSubmit())}
+		onkeydown={onKeydown}
 		onpaste={onPaste}
 		class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 	></textarea>

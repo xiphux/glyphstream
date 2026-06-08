@@ -170,6 +170,21 @@ export interface RelayParams {
 	 */
 	initialParentMessageId?: string;
 	/**
+	 * Synthetic skill activations (the `/skill-name` command) already persisted
+	 * and folded into `requestBody` before this relay started. Replayed as live
+	 * SSE events at the very start of the stream (tool_call_start → executing →
+	 * result), so the activation block renders in-flight, in the right place
+	 * (before the model's response) — instead of popping in above the response
+	 * on the turn's post-stream invalidate. Empty/undefined for normal turns.
+	 */
+	preActivatedToolEvents?: ReadonlyArray<{
+		toolCallId: string;
+		toolName: string;
+		arguments: string;
+		result: string;
+		isError: boolean;
+	}>;
+	/**
 	 * Whether the persisted assistant message should advance the
 	 * conversation's active_leaf. Default true. A multi-model fan-out branch
 	 * passes false so its sibling lands under the shared user message without
@@ -220,6 +235,26 @@ export async function startStreamingRelay(
 				// Slot acquired → generation begins; stamp the in-flight entry so a
 				// recovered fan-out shows this branch's timer (vs a still-QUEUED one).
 				params.onStarted?.();
+				// Replay any pre-stream skill activations as live tool events so the
+				// block renders in-flight before the response (the rows are already
+				// persisted + in requestBody; this is purely the live-render echo).
+				for (const ev of params.preActivatedToolEvents ?? []) {
+					write({ type: 'tool_call_start', toolCallId: ev.toolCallId, toolName: ev.toolName });
+					if (ev.arguments) {
+						write({
+							type: 'tool_call_args_delta',
+							toolCallId: ev.toolCallId,
+							argumentsDelta: ev.arguments,
+						});
+					}
+					write({ type: 'tool_call_executing', toolCallId: ev.toolCallId });
+					write({
+						type: 'tool_call_result',
+						toolCallId: ev.toolCallId,
+						result: ev.result,
+						isError: ev.isError,
+					});
+				}
 				await runChatTurn(params, write);
 			} catch (err) {
 				// runChatTurn handles its own upstream errors internally; the

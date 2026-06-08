@@ -3,12 +3,13 @@ import { listConversations } from '$lib/server/db/queries/conversations';
 import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
 import { countUsers } from '$lib/server/db/queries/users';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
+import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = async ({ locals, url }) => {
+export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	if (!locals.user) {
 		// Fresh-install bootstrap: route the operator to the first-run
 		// wizard instead of a /login page they can't sign in at yet.
@@ -30,6 +31,10 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 	// `mcp:<id>` entries discovered at boot. Subsequent loads hit the
 	// memoized ready promise immediately.
 	await awaitMcpReady();
+	// Tagged so a skill mutation on /settings/skills can `invalidate('app:skills')`
+	// to refresh `enabledSkills` (the composer's /skill autocomplete) without a
+	// full reload — the layout load otherwise only re-runs on navigation.
+	depends('app:skills');
 	return {
 		user: locals.user,
 		conversations: listConversations(locals.user.id),
@@ -37,5 +42,12 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
 		models: await listAllModels(),
 		customModels: listCustomModelsForUser(locals.user.id),
 		featureCategories: getAllFeatureCategoryLabels(),
+		// Enabled skills (name + description) for the composer's /skill-name
+		// autocomplete. Catalog-index shape only — bodies stay server-side.
+		enabledSkills: listEnabledSkillsForUser(locals.user.id).map((s) => ({
+			id: s.id,
+			name: s.name,
+			description: s.description,
+		})),
 	};
 };

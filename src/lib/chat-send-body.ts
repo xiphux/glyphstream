@@ -61,6 +61,13 @@ export interface SendOptions {
 	 * it. text + attachedMediaIds are ignored in this mode.
 	 */
 	retryFromMessageId?: string;
+	/**
+	 * Explicit skill activation for this turn (from the `/skill-name`
+	 * composer command). Forwarded to the server, which synthesizes a real
+	 * activate_skill tool exchange per name. Omitted on retry (the retry
+	 * branch returns early before this is read).
+	 */
+	activatedSkillNames?: string[];
 }
 
 export interface BuildBodyInput {
@@ -89,6 +96,7 @@ export function buildSendRequestBody(input: BuildBodyInput): Record<string, unkn
 		modelKind: input.modelKind,
 		...(opts.editedMessageId ? { editedMessageId: opts.editedMessageId } : {}),
 		...(opts.parentMessageId ? { parentMessageId: opts.parentMessageId } : {}),
+		...(opts.activatedSkillNames?.length ? { activatedSkillNames: opts.activatedSkillNames } : {}),
 	};
 }
 

@@ -40,6 +40,7 @@
 	} from '$lib/chat-render';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
+	import { stripSkillCommand } from '$lib/skill-command';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
 		expandCompareSelections,
@@ -1410,7 +1411,15 @@
 	}
 
 	async function send() {
-		const text = composerText.trim();
+		// Consume a leading `/skill-name` (explicit activation) — only when skills
+		// are active for this conversation (chat model + `skills` enabled), so a
+		// disabled-skills conversation sends `/foo` literally. A bare command with
+		// no message strips to empty text and isn't sendable; a non-matching
+		// `/token` (e.g. a file path) is left untouched.
+		const skillsActive = modelKind === 'chat' && !disabledFeatures.includes('skills');
+		const { text, activatedSkillNames } = skillsActive
+			? stripSkillCommand(composerText.trim(), data.enabledSkills)
+			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
 		if ((!text && attachments.items.length === 0) || generating) return;
 		if (attachments.isBusy) return;
 		const attachedMediaIds = attachments.readyMediaIds();
@@ -1447,7 +1456,10 @@
 			resetCompare();
 		}
 		splitAttachments = false;
-		await sendStreaming(text, attachedMediaIds, editParent ? { parentMessageId: editParent } : {});
+		await sendStreaming(text, attachedMediaIds, {
+			...(editParent ? { parentMessageId: editParent } : {}),
+			...(activatedSkillNames.length ? { activatedSkillNames } : {}),
+		});
 	}
 
 	/**
@@ -1506,6 +1518,7 @@
 			let pendingMediaIds: string[] = [];
 			let pendingFanout: FanoutModel[] | null = null;
 			let pendingSplitImageIds: string[] | null = null;
+			let pendingActivatedSkillNames: string[] = [];
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
@@ -1520,6 +1533,10 @@
 					if (Array.isArray(split) && split.length > 0) {
 						pendingSplitImageIds = split.filter((s): s is string => typeof s === 'string');
 					}
+					const asn = (parsed as { activatedSkillNames?: unknown }).activatedSkillNames;
+					if (Array.isArray(asn)) {
+						pendingActivatedSkillNames = asn.filter((s): s is string => typeof s === 'string');
+					}
 				}
 			} catch {
 				// Old format — pending was already plain text.
@@ -1533,7 +1550,14 @@
 			const pendingBranches = expandFanoutBranches(pendingBase, pendingSplitImageIds);
 			if (pendingBranches.length >= 2) {
 				void fanout.send(pendingText, pendingMediaIds, pendingBranches);
-			} else void sendStreaming(pendingText, pendingMediaIds);
+			} else
+				void sendStreaming(
+					pendingText,
+					pendingMediaIds,
+					pendingActivatedSkillNames.length
+						? { activatedSkillNames: pendingActivatedSkillNames }
+						: {},
+				);
 		}
 	});
 
@@ -1949,6 +1973,7 @@
 					{disabledFeatures}
 					featureCategories={data.featureCategories}
 					models={data.models}
+					enabledSkills={data.enabledSkills}
 					favoritedIds={data.prefs?.favoriteModels ?? []}
 					{allowAttachments}
 					{hasValidModel}
