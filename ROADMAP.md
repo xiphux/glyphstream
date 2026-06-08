@@ -29,14 +29,15 @@ what already shipped, for context).
   skill names, omitted when empty) via a register-for-execution +
   advertise-dynamically split, since the static registry can't carry a per-user
   enum. Import (paste a `SKILL.md` or upload a folder) + enable/delete UI at
-  `/settings/skills`. Remaining:
-  - _Explicit activation._ A `/skill-name` composer slash command (+ autocomplete)
-    so a user can force-activate regardless of model judgment. No slash-command
-    system exists yet — meaningful new composer UX.
-  - _Script execution._ Scripts are stored + listed/readable but never run
-    (arbitrary user code in the Node process is a non-starter). Route
-    `scripts/*.py` through the existing Pyodide `run_python` sandbox where the
-    language matches; richer cases delegate to Open Terminal (below).
+  `/settings/skills`. _Explicit activation_ via a `/skill-name` composer slash
+  command (+ skill autocomplete) that synthesizes a real `activate_skill` tool
+  exchange — identical to model-driven activation, replayed live over SSE. Skill
+  activations + file reads render with a bespoke compact affordance (chip +
+  instructions on expand) rather than the raw tool envelope. _Script execution:_
+  `run_skill_script` runs a skill's bundled `scripts/*.py` (+ same-folder `.py`
+  siblings) in the existing Pyodide `run_python` sandbox — Python-only, gated on
+  the code interpreter; richer / non-Python cases delegate to Open Terminal
+  (below). Remaining:
   - _Activation dedupe._ Re-activating a skill re-injects its body (wasteful,
     harmless). The catalog header tells the model not to; true branch-aware
     dedupe (scan persisted `activate_skill` tool messages via `conversationId`)

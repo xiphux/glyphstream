@@ -195,8 +195,9 @@
 					/>
 				</div>
 				<p class="mt-2 text-xs text-fg-muted">
-					A multi-file bundle must contain a <code>SKILL.md</code> at its root. Scripts are stored but
-					never executed.
+					A multi-file bundle must contain a <code>SKILL.md</code> at its root. Python
+					<code>scripts/*.py</code> can be run on demand in the sandboxed interpreter (a script and
+					its same-folder <code>.py</code> files); other files are read-only.
 				</p>
 			</section>
 

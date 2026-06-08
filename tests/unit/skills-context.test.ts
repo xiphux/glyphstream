@@ -2,10 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
+const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB, ci: true }));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
+}));
+// run_skill_script is gated on the interpreter; pin it deterministically.
+vi.mock('$lib/server/code-interpreter/config', () => ({
+	isCodeInterpreterEnabled: () => mocks.ci,
+	getCodeInterpreterConfig: () => ({}),
+	resetCodeInterpreterConfigForTests: () => {},
 }));
 
 import { createSkill, setSkillEnabled, skillStoragePath } from '$lib/server/db/queries/skills';
@@ -48,7 +54,11 @@ describe('buildSkillsRequestContext', () => {
 		makeSkill(u.id, 'pdf-processing');
 		const ctx = buildSkillsRequestContext(u.id, []);
 		expect(ctx.catalog).toContain('pdf-processing');
-		expect(ctx.toolDefs.map((d) => d.function.name)).toEqual(['activate_skill', 'read_skill_file']);
+		expect(ctx.toolDefs.map((d) => d.function.name)).toEqual([
+			'activate_skill',
+			'read_skill_file',
+			'run_skill_script',
+		]);
 		// The enum must reflect the user's enabled skill names.
 		const props = ctx.toolDefs[0].function.parameters.properties as Record<
 			string,

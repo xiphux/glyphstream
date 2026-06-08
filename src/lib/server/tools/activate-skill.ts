@@ -27,6 +27,14 @@
 import { getEnabledSkillByName } from '../db/queries/skills';
 import { parseSkillMd } from '../skills/parse-skill-md';
 import { getSkillStore } from '../skills/disk-store';
+import {
+	buildScriptBootstrap,
+	dedupeByFilename,
+	materializeSkillScript,
+} from '../skills/script-materialize';
+import { isCodeInterpreterEnabled } from '../code-interpreter/config';
+import { runPython, type RunPythonPreFile } from '../code-interpreter/pool';
+import { collectConversationFiles, persistGeneratedFiles } from '../code-interpreter/files';
 import { register } from './registry';
 import type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution } from './types';
 
@@ -35,6 +43,9 @@ const ACTIVATE_DESCRIPTION =
 
 const READ_FILE_DESCRIPTION =
 	'Read one bundled file from inside a skill directory (e.g. a reference doc or script the activated skill instructions point to). Resolve relative paths from the skill root. Read-only — files are never executed.';
+
+const RUN_SCRIPT_DESCRIPTION =
+	"Run a bundled Python script (.py) from one of your skills in the sandboxed interpreter. The script and its same-directory .py siblings are loaded, conversation files are mounted under /workspace, and stdout/stderr plus any files it writes are returned — the same environment as run_python. Only .py scripts can be run (use read_skill_file for other files). Use this when an activated skill's instructions tell you to run one of its scripts.";
 
 function skillsDisabled(ctx: ToolContext): boolean {
 	return ctx.disabledFeatures.includes('skills');
@@ -155,6 +166,129 @@ export const readSkillFileTool: Tool = {
 	},
 };
 
+function parseRunScriptArgs(
+	args: unknown,
+): { name: string; path: string; argv: string[] } | { error: string } {
+	const parsed = parseNameAndPathArgs(args);
+	if ('error' in parsed) return parsed;
+	const a = args as { args?: unknown };
+	let argv: string[] = [];
+	if (a.args !== undefined) {
+		if (!Array.isArray(a.args) || !a.args.every((v) => typeof v === 'string')) {
+			return { error: '`args` must be an array of strings.' };
+		}
+		argv = a.args as string[];
+	}
+	return { name: parsed.name, path: parsed.path, argv };
+}
+
+export const runSkillScriptTool: Tool = {
+	// Static fallback definition — never advertised (isAvailable: false); the
+	// per-request form (with the skill-name enum) is built by
+	// runSkillScriptDefinition and gated on the code interpreter in
+	// skillToolDefinitions.
+	definition: {
+		type: 'function',
+		function: {
+			name: 'run_skill_script',
+			description: RUN_SCRIPT_DESCRIPTION,
+			parameters: {
+				type: 'object',
+				properties: {
+					name: { type: 'string', description: 'The skill whose script to run.' },
+					path: {
+						type: 'string',
+						description: 'Bundle-relative .py path, e.g. scripts/extract.py.',
+					},
+					args: { type: 'array', items: { type: 'string' } },
+				},
+				required: ['name', 'path'],
+				additionalProperties: false,
+			},
+		},
+	},
+	metadata: { displayLabel: 'Skill script', icon: 'terminal', category: 'skills' },
+	isAvailable: () => false,
+	async execute(args, ctx): Promise<ToolExecution> {
+		// Dual gate (defends the advertise→call race): skills + code interpreter.
+		if (skillsDisabled(ctx)) return errorResult('Skills are disabled for this conversation.');
+		if (ctx.disabledFeatures.includes('code_interpreter')) {
+			return errorResult('The code interpreter is disabled for this conversation.');
+		}
+		if (!isCodeInterpreterEnabled()) {
+			return errorResult('The code interpreter is not enabled on this server.');
+		}
+
+		const parsed = parseRunScriptArgs(args);
+		if ('error' in parsed) return errorResult(parsed.error);
+		if (!parsed.path.toLowerCase().endsWith('.py')) {
+			return errorResult(
+				'run_skill_script only runs .py scripts; use read_skill_file for other files.',
+			);
+		}
+
+		const ref = getEnabledSkillByName(ctx.userId, parsed.name);
+		if (!ref) return errorResult(`No enabled skill named "${parsed.name}".`);
+
+		const materialized = await materializeSkillScript(
+			getSkillStore(),
+			ref.storagePath,
+			parsed.path,
+		);
+		if (!materialized.ok) return errorResult(materialized.error);
+
+		// Mount conversation files too (so a script can process user uploads),
+		// best-effort like run_python. Skill files win on a basename collision.
+		let conversationFiles: RunPythonPreFile[] = [];
+		try {
+			conversationFiles = await collectConversationFiles(ctx.conversationId, ctx.userId);
+		} catch (e) {
+			console.warn('[run_skill_script] collectConversationFiles failed:', e);
+		}
+		const preFiles = dedupeByFilename([...conversationFiles, ...materialized.value.preFiles]);
+
+		try {
+			const result = await runPython({
+				conversationId: ctx.conversationId,
+				code: buildScriptBootstrap(materialized.value.entryBasename, parsed.argv),
+				disabledFeatures: ctx.disabledFeatures,
+				preFiles,
+				ctxSignal: ctx.signal,
+			});
+
+			let attachedMediaIds: string[] | undefined;
+			if (result.newFiles.length > 0) {
+				try {
+					attachedMediaIds = await persistGeneratedFiles({
+						userId: ctx.userId,
+						files: result.newFiles,
+					});
+				} catch (e) {
+					console.warn('[run_skill_script] persistGeneratedFiles failed:', e);
+				}
+			}
+
+			const payload: Record<string, unknown> = {
+				stdout: result.stdout,
+				stderr: result.stderr,
+				value: result.result,
+			};
+			if (attachedMediaIds && attachedMediaIds.length > 0) {
+				payload.files = attachedMediaIds.map((id, i) => ({
+					media_id: id,
+					filename: result.newFiles[i].filename,
+				}));
+			}
+			return {
+				content: JSON.stringify(payload),
+				...(attachedMediaIds && attachedMediaIds.length > 0 ? { attachedMediaIds } : {}),
+			};
+		} catch (e) {
+			return errorResult(e instanceof Error ? e.message : String(e));
+		}
+	},
+};
+
 /** Wrap an activated skill body + resource manifest per the spec's structured
  *  form, so the model can distinguish skill instructions from conversation
  *  content and knows which bundled files it can load. */
@@ -229,11 +363,48 @@ export function readSkillFileDefinition(skillNames: string[]): OpenAIToolDefinit
 	};
 }
 
+/** Per-request advertised definition for `run_skill_script`. Same
+ *  omit-when-empty contract; only appended (in skillToolDefinitions) when the
+ *  code interpreter is also available. */
+export function runSkillScriptDefinition(skillNames: string[]): OpenAIToolDefinition | null {
+	if (skillNames.length === 0) return null;
+	return {
+		type: 'function',
+		function: {
+			name: 'run_skill_script',
+			description: RUN_SCRIPT_DESCRIPTION,
+			parameters: {
+				type: 'object',
+				properties: {
+					name: {
+						type: 'string',
+						enum: skillNames,
+						description: 'The skill whose script to run, from <available_skills>.',
+					},
+					path: {
+						type: 'string',
+						description: 'Bundle-relative .py path, e.g. scripts/extract.py.',
+					},
+					args: {
+						type: 'array',
+						items: { type: 'string' },
+						description: 'Optional command-line args passed to the script as sys.argv[1:].',
+					},
+				},
+				required: ['name', 'path'],
+				additionalProperties: false,
+			},
+		},
+	};
+}
+
 /**
- * Both skill tools, advertised together when a user has ≥1 enabled skill and
- * the conversation hasn't disabled the `skills` category. Returns [] otherwise.
- * Centralizes the omit-when-empty + gate logic so the two request handlers
- * (messages + tool-approval) stay identical.
+ * The skill tools, advertised together when a user has ≥1 enabled skill and the
+ * conversation hasn't disabled the `skills` category. Returns [] otherwise.
+ * `run_skill_script` is additionally gated on the code interpreter (it runs
+ * Python): only when the interpreter is enabled server-wide AND not disabled for
+ * this conversation. Centralizes the omit-when-empty + gate logic so the two
+ * request handlers (messages + tool-approval) stay identical.
  */
 export function skillToolDefinitions(
 	skillNames: string[],
@@ -245,8 +416,13 @@ export function skillToolDefinitions(
 	if (activate) defs.push(activate);
 	const readFile = readSkillFileDefinition(skillNames);
 	if (readFile) defs.push(readFile);
+	if (!disabledFeatures.includes('code_interpreter') && isCodeInterpreterEnabled()) {
+		const runScript = runSkillScriptDefinition(skillNames);
+		if (runScript) defs.push(runScript);
+	}
 	return defs;
 }
 
 register(activateSkillTool);
 register(readSkillFileTool);
+register(runSkillScriptTool);
