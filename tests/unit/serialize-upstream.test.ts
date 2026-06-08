@@ -74,6 +74,48 @@ describe('serializeMessageForUpstream', () => {
 		});
 	});
 
+	it('notes a file attachment in text so the model knows it exists', async () => {
+		const out = await serializeMessageForUpstream(
+			msg('user', [
+				{ type: 'text', text: 'combine these' },
+				{ type: 'file', mediaId: 'm-a', filename: 'a.pdf', byteSize: 10 },
+				{ type: 'file', mediaId: 'm-b', filename: 'b.pdf', byteSize: 20 },
+			]),
+			noMedia,
+		);
+		expect(out).toEqual({
+			role: 'user',
+			content: 'combine these\n\n[Attached files: a.pdf, b.pdf]',
+		});
+	});
+
+	it('notes a file-only message (no text) as just the attachment line', async () => {
+		const out = await serializeMessageForUpstream(
+			msg('user', [{ type: 'file', mediaId: 'm-a', filename: 'report.pdf', byteSize: 10 }]),
+			noMedia,
+		);
+		expect(out).toEqual({ role: 'user', content: '[Attached file: report.pdf]' });
+	});
+
+	it('appends the file note as a text part alongside images', async () => {
+		const out = await serializeMessageForUpstream(
+			msg('user', [
+				{ type: 'text', text: 'use these' },
+				{ type: 'image', mediaId: 'img-1' },
+				{ type: 'file', mediaId: 'm-a', filename: 'data.csv', byteSize: 10 },
+			]),
+			async (id) => `data:image/png;base64,FAKE-${id}`,
+		);
+		expect(out).toEqual({
+			role: 'user',
+			content: [
+				{ type: 'text', text: 'use these' },
+				{ type: 'image_url', image_url: { url: 'data:image/png;base64,FAKE-img-1' } },
+				{ type: 'text', text: '[Attached file: data.csv]' },
+			],
+		});
+	});
+
 	it('serializes an assistant message with a tool_call into the OpenAI tool_calls shape', async () => {
 		const out = await serializeMessageForUpstream(
 			msg('assistant', [

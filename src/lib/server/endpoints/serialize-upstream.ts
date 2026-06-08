@@ -28,6 +28,23 @@ export function partsToText(parts: MessagePart[]): string {
 		.join('');
 }
 
+/**
+ * A text note naming a message's non-image file attachments (PDFs, CSVs,
+ * spreadsheets, …), or '' if there are none. Without this the upstream model
+ * never learns a file was attached: images ride the vision content array, but
+ * `file` parts have no native wire representation, so they'd otherwise be
+ * dropped — and the model can't act on (or even acknowledge) a file it was
+ * never told about. The filenames match how `collectConversationFiles` mounts
+ * them under `/workspace/`, so the model can reference them from run_python /
+ * run_skill_script (whose tool descriptions explain the mount).
+ */
+export function fileAttachmentNote(parts: MessagePart[]): string {
+	const files = parts.filter((p): p is Extract<MessagePart, { type: 'file' }> => p.type === 'file');
+	if (files.length === 0) return '';
+	const names = files.map((f) => f.filename).join(', ');
+	return `[Attached ${files.length === 1 ? 'file' : 'files'}: ${names}]`;
+}
+
 /** Pull the tool_call parts off an assistant message and reshape them
  *  into the OpenAI `tool_calls[]` wire format. */
 function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[] {
@@ -72,6 +89,7 @@ export async function serializeMessageForUpstream(
 
 	const toolCalls = m.role === 'assistant' ? extractToolCalls(m.parts) : [];
 	const hasImages = m.parts.some((p) => p.type === 'image');
+	const fileNote = fileAttachmentNote(m.parts);
 
 	if (hasImages) {
 		const content: ChatCompletionContentPart[] = [];
@@ -83,6 +101,9 @@ export async function serializeMessageForUpstream(
 				content.push({ type: 'image_url', image_url: { url } });
 			}
 		}
+		// Non-image attachments (files) get a text note so the model knows they
+		// exist and can reference them by name (they're mounted in /workspace/).
+		if (fileNote) content.push({ type: 'text', text: fileNote });
 		const out: ChatCompletionRequest['messages'][number] = {
 			role: m.role as 'system' | 'user' | 'assistant',
 			content,
@@ -91,7 +112,7 @@ export async function serializeMessageForUpstream(
 		return out;
 	}
 
-	const text = partsToText(m.parts);
+	const text = [partsToText(m.parts), fileNote].filter(Boolean).join('\n\n');
 
 	if (toolCalls.length > 0) {
 		// OpenAI permits null content alongside tool_calls when the
