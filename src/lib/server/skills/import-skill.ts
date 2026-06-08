@@ -3,13 +3,21 @@
  * into an on-disk bundle + a catalog row. Route-agnostic and unit-testable: the
  * API route's only job is to marshal the request into `SkillBundleFile[]`.
  *
- * Ordering matters for correctness: we reject a duplicate name BEFORE writing
- * the bundle, because putBundle atomically REPLACES any existing bundle at the
- * same `<userId>/<name>` path — writing first then discovering the collision
- * via the unique index would clobber the existing skill's files.
+ * Ordering matters for correctness: insert the catalog row BEFORE writing the
+ * bundle. `createSkill`'s synchronous `unique(userId, name)` index makes a
+ * concurrent same-name loser fail at the INSERT — before it touches disk — so
+ * it can never clobber the winner's bundle (both share the deterministic
+ * `<userId>/<name>` path, which `putBundle` replaces wholesale). On a bundle
+ * write failure we roll back the row we just inserted. `skillExistsByName` stays
+ * as a friendly pre-flight 409 for the common re-import case.
  */
 import type { Skill } from '$lib/types/api';
-import { createSkill, skillExistsByName, skillStoragePath } from '../db/queries/skills';
+import {
+	createSkill,
+	deleteSkill,
+	skillExistsByName,
+	skillStoragePath,
+} from '../db/queries/skills';
 import { getSkillStore } from './disk-store';
 import { parseSkillMd } from './parse-skill-md';
 import type { SkillBundleFile } from './store';
@@ -97,22 +105,28 @@ export async function importSkillBundle(
 	}
 
 	const storagePath = skillStoragePath(userId, name);
-	const store = getSkillStore();
-	try {
-		await store.putBundle(storagePath, files);
-	} catch (e) {
-		return { ok: false, status: 400, error: (e as Error).message };
-	}
 
+	// Insert the row first: the unique index rejects a concurrent same-name
+	// loser here, synchronously, before any disk write — so the loser can't
+	// clobber the winner's bundle at the shared path.
+	let skill: Skill;
 	try {
-		const skill = createSkill({ userId, name, description, storagePath });
-		return { ok: true, skill };
+		skill = createSkill({ userId, name, description, storagePath });
 	} catch (e) {
-		// Lost a rare create race — clean up the bundle we just wrote.
-		await store.deleteBundle(storagePath).catch(() => {});
 		if (isUniqueViolation(e)) {
 			return { ok: false, status: 409, error: `A skill named "${name}" already exists.` };
 		}
 		throw e;
 	}
+
+	// Then write the bundle; if that fails, roll back the row we just inserted
+	// so we never leave a catalog entry with no bundle on disk.
+	try {
+		await getSkillStore().putBundle(storagePath, files);
+	} catch (e) {
+		deleteSkill(userId, skill.id);
+		return { ok: false, status: 400, error: (e as Error).message };
+	}
+
+	return { ok: true, skill };
 }

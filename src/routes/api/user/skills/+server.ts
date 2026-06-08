@@ -34,7 +34,22 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 		files = [{ relPath: 'SKILL.md', bytes: Buffer.from(body.content, 'utf8') }];
 	} else if (contentType.includes('multipart/form-data')) {
-		const form = await request.formData();
+		let form: FormData;
+		try {
+			form = await request.formData();
+		} catch (e) {
+			// adapter-node aborts the body stream past BODY_SIZE_LIMIT, then
+			// formData() fails to parse the truncated body — surface a 413, not a
+			// misleading 500 (mirrors /api/uploads).
+			const msg = e instanceof Error ? e.message : String(e);
+			if (/body.*too.*large|413|exceeded/i.test(msg)) {
+				throw error(
+					413,
+					'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
+				);
+			}
+			throw error(400, 'Body must be multipart/form-data.');
+		}
 		const uploaded = form.getAll('file').filter((v): v is File => v instanceof File);
 		if (uploaded.length === 0) throw error(400, 'No files in the upload.');
 		files = [];

@@ -103,10 +103,12 @@ export function dedupeByFilename(preFiles: RunPythonPreFile[]): RunPythonPreFile
  * The Python entry the worker runs. `runpy.run_path(..., run_name='__main__')`
  * runs the script as `__main__` (so `if __name__ == '__main__':` fires) in a
  * fresh namespace — its globals don't leak into the conversation's persistent
- * interpreter. The entry name + argv ride a base64'd JSON blob so NOTHING is
- * string-interpolated into the Python source (injection-safe even for odd skill
- * filenames). A trailing `None` keeps the returned `value` clean (run_path
- * otherwise returns the module-globals dict).
+ * interpreter. The entry name + argv ride a base64'd JSON blob so no
+ * user-controlled data is interpolated into the Python source — only the base64
+ * string is, and its `[A-Za-z0-9+/=]` charset can't contain the single-quote
+ * delimiter, so it's injection-safe even for odd skill filenames. A trailing
+ * `None` keeps the returned `value` clean (run_path otherwise returns the
+ * module-globals dict).
  */
 export function buildScriptBootstrap(entryBasename: string, args: string[]): string {
 	const b64 = Buffer.from(JSON.stringify({ entry: entryBasename, args }), 'utf8').toString(

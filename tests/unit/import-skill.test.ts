@@ -96,6 +96,18 @@ describe('importSkillBundle', () => {
 		expect(onDisk).not.toContain('NEW BODY');
 	});
 
+	it('rolls back the catalog row when the bundle write fails (no dangling row)', async () => {
+		const u = seedUser();
+		// A 2 MiB+1 file trips putBundle's per-file cap AFTER the row is created
+		// (createSkill runs first now) — the row must be rolled back.
+		const tooBig = { relPath: 'big.bin', bytes: Buffer.alloc(2 * 1024 * 1024 + 1) };
+		const res = await importSkillBundle(u.id, [f('SKILL.md', VALID_SKILL), tooBig]);
+		expect(res).toMatchObject({ ok: false, status: 400 });
+		// No committed row, and no bundle on disk.
+		expect(listSkillsForUser(u.id)).toEqual([]);
+		expect(await getSkillStore().readSkillMd(`${u.id}/my-skill`)).toBeNull();
+	});
+
 	it('rejects a bundle with no SKILL.md (400)', async () => {
 		const u = seedUser();
 		const res = await importSkillBundle(u.id, [f('readme.md', 'nope')]);
