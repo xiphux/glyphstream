@@ -13,7 +13,7 @@
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
-	import { Brain, KeyRound, LogOut, Plug, Settings, ShieldCheck } from '@lucide/svelte';
+	import { Brain, KeyRound, LogOut, Plug, Settings, ShieldCheck, Sparkles } from '@lucide/svelte';
 
 	let { goto }: { goto: (path: string) => unknown } = $props();
 </script>
@@ -38,6 +38,13 @@
 		>
 			<Brain size={14} strokeWidth={2.25} />
 			<span>Memories</span>
+		</DropdownMenu.Item>
+		<DropdownMenu.Item
+			onSelect={() => goto('/settings/skills')}
+			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+		>
+			<Sparkles size={14} strokeWidth={2.25} />
+			<span>Skills</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
 			onSelect={() => goto('/settings/mcp')}

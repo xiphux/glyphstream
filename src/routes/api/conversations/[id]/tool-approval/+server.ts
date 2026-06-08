@@ -33,6 +33,7 @@ import {
 	setUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import { get as getTool } from '$lib/server/tools/registry';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
@@ -186,7 +187,15 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		throw error(500, 'Tools no longer enabled for this conversation; cannot resume.');
 	}
 
+	// Re-inject the agent-skills catalog + activation tools so a turn that
+	// activated a skill before pausing on an MCP approval keeps both on resume.
+	// Mirrors the message-send handler exactly (shared helper) — without this,
+	// the resumed turn would silently lose the skill catalog + activate_skill.
+	const skillsCtx = buildSkillsRequestContext(userId, meta.disabledFeatures);
+	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
+
 	const toolDefs = openaiToolDefinitions({ excludeCategories: meta.disabledFeatures });
+	toolDefs.push(...skillsCtx.toolDefs);
 	const trustedSet = new Set(prefs?.trustedMcpTools ?? []);
 	const needsApproval = (toolName: string) =>
 		toolName.startsWith('mcp__') && !trustedSet.has(toolName);

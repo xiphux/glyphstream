@@ -31,6 +31,7 @@ import {
 	getUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
 import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -391,6 +392,33 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
 	}
 
+	// Resolve tool support up front — before serializing the system prompt —
+	// because agent skills inject BOTH a Tier-1 catalog into the prompt and
+	// activation tools, and the catalog tells the model to call activate_skill.
+	// Advertising the catalog with no activation tool (fan-out, or a non-tool
+	// model) would be misleading, so both are gated on supportsTools. Resolution
+	// prefers the per-model upstream signal (ModelEntry.supportsTools) and falls
+	// back to the endpoint config.
+	const allModels = await listAllModels();
+	const modelEntry = allModels.find(
+		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
+	);
+	// Fan-out branches run single-iteration (no tool loop — a tool_call with no
+	// follow-up iteration would leave the model unable to respond to the
+	// result), so tools are disabled for them. Fan-out is for comparing model
+	// *responses*; tool-using comparison is a deliberate follow-up.
+	const supportsTools = (modelEntry?.supportsTools ?? endpoint.supportsTools ?? false) && !isFanout;
+
+	// Agent skills (Tier 1 + activation tools). Rides its own `skills`
+	// feature-category gate — NOT personalization — so the catalog reaches
+	// custom-model conversations with a snapshotted system prompt too. Folded
+	// into effectiveSystemPrompt here so both the initial serialize and the
+	// per-iteration rebuildRequestBody closure carry it.
+	const skillsCtx = supportsTools
+		? buildSkillsRequestContext(locals.user.id, meta.disabledFeatures)
+		: { catalog: null, toolDefs: [] };
+	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
+
 	// Build the upstream request from the active branch (now incl. new user msg).
 	// Messages with no image parts forward as plain-string content (best
 	// compat with non-vision upstreams). Messages WITH image parts forward
@@ -412,20 +440,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		messages: upstreamMessages,
 	};
 
-	// Splice in native tool-calling when the resolved model supports it.
-	// Resolution prefers the per-model upstream signal (ModelEntry.supportsTools,
-	// populated by normalizeUpstreamModel) and falls back to the endpoint
-	// config — both layers already collapsed by the time we read the
-	// ModelEntry below.
-	const allModels = await listAllModels();
-	const modelEntry = allModels.find(
-		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
-	);
-	// Fan-out branches run single-iteration (no tool loop — a tool_call with
-	// no follow-up iteration would leave the model unable to respond to the
-	// result), so tools are disabled for them. Fan-out is for comparing model
-	// *responses*; tool-using comparison is a deliberate follow-up.
-	const supportsTools = (modelEntry?.supportsTools ?? endpoint.supportsTools ?? false) && !isFanout;
 	// Block first request after a cold start until MCP discovery has
 	// finished — otherwise the model would see a partially-populated tool
 	// surface and refuse-to-use later in the turn would surface as flaky
@@ -433,10 +447,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	if (supportsTools) await awaitMcpReady();
 	// Per-conversation opt-outs filter out whole tool categories (e.g. 'web'
 	// closes both web_search and fetch_url so the model can't compose around
-	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category.
+	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category. The
+	// per-user skill activation tools are appended separately (they can't ride
+	// the static registry — their `name` enum is per-user) so activate_skill
+	// can be the only tool when skills are a user's sole enabled capability.
 	const toolDefs = supportsTools
 		? openaiToolDefinitions({ excludeCategories: meta.disabledFeatures })
 		: [];
+	toolDefs.push(...skillsCtx.toolDefs);
 	if (toolDefs.length > 0) {
 		requestBody.tools = toolDefs;
 		requestBody.tool_choice = 'auto';

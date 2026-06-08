@@ -12,23 +12,35 @@ what already shipped, for context).
 
 ## Mid-term (v2)
 
-- **Agent skills (Anthropic skills spec).** A reusable capability bundle —
-  a `SKILL.md` (name + description + body) plus optional resources — that
-  loads into the model's context when the user's intent matches the
-  description. Same ecosystem-extensibility story as MCP but a different
-  layer: MCP adds _tools_, skills add _instructions + know-how_ for using
-  existing tools. The two compose (a skill can declare which MCP tools it
-  depends on). Open design points:
-  - _Storage._ Per-user `skills` table keyed by `user_id`, body inline on
-    the row, mirroring the rest of the schema.
-  - _Activation._ Explicit via slash command (`/skill-name` in the composer)
-    plus auto-trigger via description-matching on the user's turn. The
-    auto-trigger threshold is the harder-than-it-looks part — false
-    positives pollute the system prompt with irrelevant instructions.
-  - _Script execution._ The spec lets skills ship scripts the agent runs;
-    running arbitrary user code in the Node process is a non-starter. MVP is
-    instructions-only — script execution delegates to whatever sandboxing an
-    MCP server brings (see Open Terminal below).
+- **Agent skills (agentskills.io spec).** _Shipped (MVP):_ per-user skill
+  bundles stored on disk verbatim (`SKILLS_DIR/<user>/<name>/`, a `SKILL.md`
+  plus arbitrary resources) with a lightweight catalog index in a `skills`
+  table — mirroring the media bytes-on-disk / metadata-in-DB split, not
+  inline-on-row, because skills are multi-file _packages_ and the spec ties
+  the directory name to the frontmatter `name`. Progressive disclosure per the
+  spec: a Tier-1 `<available_skills>` catalog injected into the system prompt
+  (gated by its own `skills` feature category, so it rides custom-model
+  conversations too), Tier-2 `activate_skill` returning the frontmatter-stripped
+  body + a resource manifest, Tier-3 `read_skill_file` reading any bundled file
+  path-jailed to the skill dir. Activation is model-driven (the spec's
+  recommendation over harness-side description-matching — the catalog + the
+  model's judgment _is_ the auto-trigger, sidestepping the false-positive
+  threshold). Both activation tools are per-user (enum of the caller's enabled
+  skill names, omitted when empty) via a register-for-execution +
+  advertise-dynamically split, since the static registry can't carry a per-user
+  enum. Import (paste a `SKILL.md` or upload a folder) + enable/delete UI at
+  `/settings/skills`. Remaining:
+  - _Explicit activation._ A `/skill-name` composer slash command (+ autocomplete)
+    so a user can force-activate regardless of model judgment. No slash-command
+    system exists yet — meaningful new composer UX.
+  - _Script execution._ Scripts are stored + listed/readable but never run
+    (arbitrary user code in the Node process is a non-starter). Route
+    `scripts/*.py` through the existing Pyodide `run_python` sandbox where the
+    language matches; richer cases delegate to Open Terminal (below).
+  - _Activation dedupe._ Re-activating a skill re-injects its body (wasteful,
+    harmless). The catalog header tells the model not to; true branch-aware
+    dedupe (scan persisted `activate_skill` tool messages via `conversationId`)
+    is the refinement.
   - _Discovery._ A browse/import affordance for community bundles, deferred
     until enough curated skills exist to anchor a library UI.
 

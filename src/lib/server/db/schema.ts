@@ -309,6 +309,44 @@ export const memories = sqliteTable(
 	(t) => [index('idx_memories_user_created').on(t.userId, t.createdAt)],
 );
 
+// --- skills ---------------------------------------------------------------
+//
+// Per-user agent-skill bundles (agentskills.io spec). Each skill is a
+// multi-file *package* stored on disk verbatim (SKILL.md + any resources)
+// under `${SKILLS_DIR}/<userId>/<name>/`; this row is the lightweight
+// catalog index. `name` + `description` are denormalized from the SKILL.md
+// frontmatter at import time so the Tier-1 catalog injected into every
+// request's system prompt is a cheap DB read, not a filesystem walk. The
+// body and bundled resources live only on disk, read on activation
+// (activate_skill / read_skill_file). `storagePath` is the relative dir
+// (`<userId>/<name>`); renaming a skill moves the directory and updates it.
+//
+// `unique(userId, name)` is load-bearing: activate_skill resolves a skill by
+// name, the on-disk directory is named after the skill, and the spec requires
+// the frontmatter `name` to match the parent directory — so names must be
+// unique within a user. `enabled` gates a skill out of the catalog + the
+// activation enum without deleting it.
+
+export const skills = sqliteTable(
+	'skills',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		description: text('description').notNull(),
+		storagePath: text('storage_path').notNull(),
+		enabled: integer('enabled').notNull().default(1),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+	},
+	(t) => [
+		uniqueIndex('uq_skills_user_name').on(t.userId, t.name),
+		index('idx_skills_user_created').on(t.userId, t.createdAt),
+	],
+);
+
 // --- media ----------------------------------------------------------------
 
 export const media = sqliteTable(

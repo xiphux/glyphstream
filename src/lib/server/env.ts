@@ -32,6 +32,10 @@ export function mediaDir(): string {
 	return readString('MEDIA_DIR', './data/media');
 }
 
+export function skillsDir(): string {
+	return readString('SKILLS_DIR', './data/skills');
+}
+
 // MEDIA_GRACE_PERIOD_DAYS / MEDIA_PURGE_INTERVAL_SECONDS were removed when
 // the purger's scope narrowed to abandoned uploads only — see the header
 // of src/lib/server/media/purger.ts. Generated media is preserved

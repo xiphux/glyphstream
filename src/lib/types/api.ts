@@ -47,7 +47,12 @@ export const MAX_CONVERSATION_TITLE_LENGTH = 200;
  * URL directly). Both tools that touch the public web share the `web`
  * category so a single toggle seals the egress path.
  */
-export const BUILTIN_FEATURE_CATEGORIES = ['web', 'personalization', 'code_interpreter'] as const;
+export const BUILTIN_FEATURE_CATEGORIES = [
+	'web',
+	'personalization',
+	'code_interpreter',
+	'skills',
+] as const;
 export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
 
 /**
@@ -83,6 +88,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		label: 'Code interpreter',
 		description:
 			'Lets the assistant run Python in a sandboxed in-browser-style interpreter for compute, analysis, and plotting. Attached files become available; files Python writes appear as conversation attachments.',
+	},
+	skills: {
+		label: 'Agent skills',
+		description:
+			'Lets the assistant load reusable skill instructions you’ve authored. The catalog of your enabled skills is offered to the assistant, which loads a skill’s full instructions on demand when a task matches.',
 	},
 };
 
@@ -779,6 +789,20 @@ export type StreamEvent =
 export interface Memory {
 	id: string;
 	content: string;
+	createdAt: number;
+	updatedAt: number;
+}
+
+/** A per-user agent skill, as returned by `GET /api/user/skills` and rendered
+ *  in the settings management UI. The `name` + `description` mirror the
+ *  SKILL.md frontmatter; the body and bundled resources live on disk and are
+ *  not part of this catalog-index shape. `enabled` gates the skill out of the
+ *  injected catalog + activation enum without deleting the bundle. */
+export interface Skill {
+	id: string;
+	name: string;
+	description: string;
+	enabled: boolean;
 	createdAt: number;
 	updatedAt: number;
 }

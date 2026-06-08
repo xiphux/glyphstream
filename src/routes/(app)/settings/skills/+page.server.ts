@@ -1,0 +1,19 @@
+import { error } from '@sveltejs/kit';
+import { listSkillsForUser } from '$lib/server/db/queries/skills';
+import type { PageServerLoad } from './$types';
+
+/**
+ * SSR the user's skills so the list paints with real data on first load.
+ * `await parent()` first per the (app) page convention — without it the
+ * locals.user!.id deref races the layout's redirect-on-no-auth and surfaces
+ * as a 500 instead of a 302.
+ *
+ * Tagged so the page can `invalidate('settings:skills')` after a mutation to
+ * re-run just this load rather than the whole (app) layout.
+ */
+export const load: PageServerLoad = async ({ locals, parent, depends }) => {
+	await parent();
+	if (!locals.user) throw error(401, 'Authentication required');
+	depends('settings:skills');
+	return { skills: listSkillsForUser(locals.user.id) };
+};
