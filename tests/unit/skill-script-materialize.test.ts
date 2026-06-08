@@ -3,6 +3,7 @@ import {
 	buildScriptBootstrap,
 	dedupeByFilename,
 	materializeSkillScript,
+	MAX_SCRIPT_SIBLINGS,
 } from '$lib/server/skills/script-materialize';
 import type { SkillStore } from '$lib/server/skills/store';
 import type { RunPythonPreFile } from '$lib/server/code-interpreter/pool';
@@ -65,6 +66,28 @@ describe('materializeSkillScript', () => {
 		expect(r.ok).toBe(false);
 		if (r.ok) return;
 		expect(r.error).toContain('helpers.py');
+	});
+
+	it('rejects a directory with more than the sibling cap of .py files', async () => {
+		const many: Record<string, string> = {};
+		for (let i = 0; i <= MAX_SCRIPT_SIBLINGS; i++) many[`scripts/s${i}.py`] = 'x';
+		const r = await materializeSkillScript(fakeStore(many), 'u/x', 'scripts/s0.py');
+		expect(r.ok).toBe(false);
+		if (r.ok) return;
+		expect(r.error).toContain('Too many');
+	});
+
+	it('skips a sibling that was listed but vanished (readFile → null)', async () => {
+		// listFiles reports gone.py, but readFile returns null for it (delete race).
+		const store = {
+			listFiles: async () => ['scripts/extract.py', 'scripts/helpers.py', 'scripts/gone.py'],
+			readFile: async (_sp: string, rel: string) =>
+				rel === 'scripts/gone.py' ? null : { bytes: Buffer.from('x', 'utf8'), relPath: rel },
+		} as unknown as Parameters<typeof materializeSkillScript>[0];
+		const r = await materializeSkillScript(store, 'u/x', 'scripts/extract.py');
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.value.preFiles.map((f) => f.filename).sort()).toEqual(['extract.py', 'helpers.py']);
 	});
 });
 
