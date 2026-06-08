@@ -17,9 +17,15 @@ test.beforeEach(() => resetData());
 test.describe('authenticated app shell', () => {
 	test('new-chat home renders the greeting + composer', async ({ page }) => {
 		await page.goto('/');
-		// Greeting is "{Greeting}, {firstName}". firstName is "E2E"
-		// (split of displayName "E2E Tester").
-		await expect(page.getByRole('heading', { level: 1 })).toContainText('E2E');
+		// The greeting is rolled client-side per visit (random line + local
+		// time-of-day), and many lines intentionally omit the user's name
+		// ("Burning the midnight oil", "Ask me anything", ...), so asserting a
+		// specific token here is flaky. Name composition is covered by the pure
+		// unit tests in tests/unit/greeting.test.ts; here we only smoke-test
+		// that the greeting heading renders.
+		const greeting = page.getByRole('heading', { level: 1 });
+		await expect(greeting).toBeVisible();
+		await expect(greeting).not.toBeEmpty();
 		await expect(page.locator('textarea')).toBeVisible();
 	});
 
