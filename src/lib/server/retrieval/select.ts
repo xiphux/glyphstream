@@ -97,9 +97,9 @@ export async function selectRelevant(
 }
 
 /**
- * Embed [query, ...candidates] in one batched call and rank candidates by
- * cosine to the query. Returns ScoredChunk indices relative to `candidates`,
- * or null on any failure (caller degrades to BM25).
+ * Embed [query, ...candidates] across one or more batched HTTP calls and rank
+ * candidates by cosine to the query. Returns ScoredChunk indices relative to
+ * `candidates`, or null on any failure (caller degrades to BM25).
  */
 async function denseRanking(
 	query: string,
@@ -146,7 +146,7 @@ async function denseRanking(
 		}
 		return cosineRank(vecs[0] as Vec, vecs.slice(1) as Vec[]);
 	} catch (e) {
-		console.warn('[fetch_url] embedding retrieval failed, falling back to BM25:', e);
+		console.warn('[retrieval] embedding retrieval failed, falling back to BM25:', e);
 		return null;
 	}
 }

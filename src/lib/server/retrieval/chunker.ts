@@ -29,8 +29,9 @@ export interface Chunk {
 	/**
 	 * Length of the leading `body` substring that is overlap duplicated from
 	 * the previous (blockIndex-1) chunk. The join in `select.ts` strips this
-	 * when both neighbors are selected, so overlap aids recall without
-	 * duplicating text in the final output. 0 when there's no overlap.
+	 * when both neighbors are selected and share the same breadcrumb (same
+	 * section), so overlap aids recall without duplicating text in the final
+	 * output. 0 when there's no overlap.
 	 */
 	overlapPrefixLen: number;
 }
@@ -89,8 +90,10 @@ export function chunkArticleHtml(contentHtml: string, title: string, opts?: Chun
 	try {
 		const { document } = parseHTML(`<!DOCTYPE html><html><body>${contentHtml}</body></html>`);
 		const root = document.body ?? document;
-		rootText = normalizeWhitespace(root.textContent ?? '');
 		collectUnits(root, [], cleanTitle, units);
+		// Only flatten the whole tree for the fallback below — on the common
+		// structured-page path (units found) this pass is pure waste.
+		if (units.length === 0) rootText = normalizeWhitespace(root.textContent ?? '');
 	} catch {
 		// Malformed fragment — fall through to the plain-text path below.
 	}
