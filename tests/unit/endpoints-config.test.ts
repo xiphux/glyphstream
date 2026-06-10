@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	ConfigError,
+	loadEmbeddingsConfig,
 	loadEndpoints,
 	loadNotificationsConfig,
 	loadSearchConfig,
@@ -431,5 +432,105 @@ api_key_env = "X"
 	it('rejects a non-table [search] entry', () => {
 		const path = writeConfig(`search = "nope"`);
 		expect(() => loadSearchConfig(path)).toThrow(ConfigError);
+	});
+});
+
+describe('loadEmbeddingsConfig', () => {
+	it('returns null when [embeddings] is absent', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadEmbeddingsConfig(path)).toBeNull();
+	});
+
+	it('parses a minimal [embeddings] block with default timeout', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "llama-embed"
+model_id = "nomic-embed-text"
+		`);
+		expect(loadEmbeddingsConfig(path)).toEqual({
+			endpointId: 'llama-embed',
+			modelId: 'nomic-embed-text',
+			timeoutSeconds: 30,
+			queryPrefix: '',
+			documentPrefix: '',
+			maxInputTokens: 512,
+		});
+	});
+
+	it('parses max_input_tokens when supplied', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+max_input_tokens = 8192
+		`);
+		expect(loadEmbeddingsConfig(path)?.maxInputTokens).toBe(8192);
+	});
+
+	it('parses optional query/document prefixes', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+query_prefix = "search_query: "
+document_prefix = "search_document: "
+		`);
+		const cfg = loadEmbeddingsConfig(path);
+		expect(cfg?.queryPrefix).toBe('search_query: ');
+		expect(cfg?.documentPrefix).toBe('search_document: ');
+	});
+
+	it('uses timeout_seconds when supplied', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+timeout_seconds = 5
+		`);
+		expect(loadEmbeddingsConfig(path)?.timeoutSeconds).toBe(5);
+	});
+
+	it('does NOT throw when endpoint_id names an unknown endpoint (resolved at use-time)', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "does-not-exist"
+model_id = "m"
+		`);
+		expect(loadEmbeddingsConfig(path)?.endpointId).toBe('does-not-exist');
+	});
+
+	it('rejects a missing endpoint_id', () => {
+		const path = writeConfig(`
+[embeddings]
+model_id = "m"
+		`);
+		expect(() => loadEmbeddingsConfig(path)).toThrow(/endpoint_id/);
+	});
+
+	it('rejects a missing model_id', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+		`);
+		expect(() => loadEmbeddingsConfig(path)).toThrow(/model_id/);
+	});
+
+	it('rejects timeout_seconds below 1', () => {
+		const path = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+timeout_seconds = 0
+		`);
+		expect(() => loadEmbeddingsConfig(path)).toThrow(/timeout_seconds/);
+	});
+
+	it('rejects a non-table [embeddings] entry', () => {
+		const path = writeConfig(`embeddings = "nope"`);
+		expect(() => loadEmbeddingsConfig(path)).toThrow(ConfigError);
 	});
 });

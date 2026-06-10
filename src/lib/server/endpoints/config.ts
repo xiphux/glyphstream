@@ -272,6 +272,67 @@ export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null
 	return { url, apiKey, timeoutSeconds };
 }
 
+export interface LoadedEmbeddingsConfig {
+	/** id of the [[endpoints]] block that hosts the embedding model. */
+	endpointId: string;
+	/** upstream model id passed as `model` to /v1/embeddings. */
+	modelId: string;
+	timeoutSeconds: number;
+	/**
+	 * Optional task-instruction prefixes. Some embedding models (nomic-embed,
+	 * e5, bge, gte) require asymmetric prefixes — "search_query: " on the query
+	 * and "search_document: " on the passages — to hit their trained accuracy.
+	 * OpenAI/Cohere-style models must NOT get them, so both default to empty.
+	 */
+	queryPrefix: string;
+	documentPrefix: string;
+	/**
+	 * The model's maximum input sequence length, in tokens. Each text we embed
+	 * is truncated to fit (an input over the limit makes the backend 500). The
+	 * default 512 is the conservative small-model floor (nomic-embed, e5, bge);
+	 * raise it to the real value for large-context models (e.g. 8192) so long
+	 * chunks embed whole instead of being clipped.
+	 */
+	maxInputTokens: number;
+}
+
+/**
+ * Parse the optional top-level `[embeddings]` block — the embedding model used
+ * for hybrid retrieval (fetch_url relevance selection; later recall_memory).
+ *
+ * Unlike `[search]`, this block carries no secret: baseUrl + apiKey come from
+ * the referenced endpoint. And like `loadTaskModel`, it does NOT verify the
+ * endpoint id resolves at load time — a typo shouldn't crash boot. The
+ * consumer looks the endpoint up at use-time and degrades to lexical-only
+ * retrieval when it's missing, so a stale id silently disables embeddings
+ * rather than erroring.
+ */
+export function loadEmbeddingsConfig(path = configPath()): LoadedEmbeddingsConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.embeddings;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[embeddings]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[embeddings] in ${absolutePath}`;
+
+	const endpointId = requireString(block.endpoint_id, 'endpoint_id', at);
+	const modelId = requireString(block.model_id, 'model_id', at);
+	const timeoutSeconds =
+		block.timeout_seconds === undefined
+			? 30
+			: requireNumber(block.timeout_seconds, 'timeout_seconds', at, { min: 1 });
+	const queryPrefix = optionalString(block.query_prefix, 'query_prefix', at);
+	const documentPrefix = optionalString(block.document_prefix, 'document_prefix', at);
+	const maxInputTokens =
+		block.max_input_tokens === undefined
+			? 512
+			: requireNumber(block.max_input_tokens, 'max_input_tokens', at, { min: 1 });
+
+	return { endpointId, modelId, timeoutSeconds, queryPrefix, documentPrefix, maxInputTokens };
+}
+
 function validateEndpoint(raw: RawEndpoint, index: number, path: string): LoadedEndpoint {
 	const at = `[[endpoints]] #${index} in ${path}`;
 
@@ -359,6 +420,15 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 function requireString(v: unknown, field: string, at: string): string {
 	if (typeof v !== 'string' || v.length === 0) {
 		throw new ConfigError(`${at}: required field '${field}' must be a non-empty string`);
+	}
+	return v;
+}
+
+/** A string field that may be omitted (→ '') but, if present, must be a string. */
+function optionalString(v: unknown, field: string, at: string): string {
+	if (v === undefined) return '';
+	if (typeof v !== 'string') {
+		throw new ConfigError(`${at}: '${field}' must be a string`);
 	}
 	return v;
 }

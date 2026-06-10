@@ -7,7 +7,31 @@ vi.mock('node:dns', () => ({
 	promises: { lookup: lookupMock },
 }));
 
-import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '$lib/server/tools/fetch-url';
+// Override only the embeddings seams (keep every other real export so the
+// SSRF guard's loadEndpoints / url-policy keep working). Default: no embeddings
+// configured → relevance selection runs BM25-only and never hits the network.
+const loadEmbeddingsConfigMock = vi.hoisted(() => vi.fn());
+const getEndpointMock = vi.hoisted(() => vi.fn());
+const embeddingsMock = vi.hoisted(() => vi.fn());
+vi.mock('$lib/server/endpoints/config', async (orig) => ({
+	...(await orig<typeof import('$lib/server/endpoints/config')>()),
+	loadEmbeddingsConfig: loadEmbeddingsConfigMock,
+}));
+vi.mock('$lib/server/endpoints/registry', async (orig) => ({
+	...(await orig<typeof import('$lib/server/endpoints/registry')>()),
+	getEndpoint: getEndpointMock,
+}));
+vi.mock('$lib/server/endpoints/client', async (orig) => ({
+	...(await orig<typeof import('$lib/server/endpoints/client')>()),
+	embeddings: embeddingsMock,
+}));
+
+import {
+	fetchUrlTool,
+	isPrivateIp,
+	extractTextFromHtml,
+	_resetConfigCacheForTests,
+} from '$lib/server/tools/fetch-url';
 import type { ToolContext } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
@@ -32,6 +56,10 @@ const realFetch = globalThis.fetch;
 
 beforeEach(() => {
 	lookupMock.mockReset();
+	loadEmbeddingsConfigMock.mockReset().mockReturnValue(null);
+	getEndpointMock.mockReset();
+	embeddingsMock.mockReset();
+	_resetConfigCacheForTests();
 });
 
 afterEach(() => {
@@ -43,7 +71,7 @@ describe('fetch_url tool definition', () => {
 		expect(fetchUrlTool.definition.function.name).toBe('fetch_url');
 		expect(fetchUrlTool.definition.function.parameters).toMatchObject({
 			type: 'object',
-			properties: { url: { type: 'string' } },
+			properties: { url: { type: 'string' }, find: { type: 'string' } },
 			required: ['url'],
 			additionalProperties: false,
 		});
@@ -286,7 +314,7 @@ describe('fetch_url HTML extraction', () => {
 		expect(parsed.content).toContain('Short page.');
 	});
 
-	it('truncates extracted text to 20 KB and flags truncated', async () => {
+	it('head-truncates to 20 KB with mode:truncated when over budget and no find', async () => {
 		publicResolves();
 		const big = 'a'.repeat(25_000);
 		globalThis.fetch = vi.fn(
@@ -296,7 +324,19 @@ describe('fetch_url HTML extraction', () => {
 		expect(r.isError).toBeUndefined();
 		const parsed = JSON.parse(r.content);
 		expect(parsed.content.length).toBe(20_000);
-		expect(parsed.truncated).toBe(true);
+		expect(parsed.mode).toBe('truncated');
+	});
+
+	it('returns mode:full and the whole text when under budget', async () => {
+		publicResolves();
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response('a short page', { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(parsed.mode).toBe('full');
+		expect(parsed.content).toBe('a short page');
 	});
 
 	it('follows up to 3 redirects then errors', async () => {
@@ -336,6 +376,102 @@ describe('fetch_url HTML extraction', () => {
 		const parsed = JSON.parse(r.content);
 		expect(parsed.url).toBe('http://example.com/end');
 		expect(parsed.content).toBe('done');
+	});
+});
+
+describe('fetch_url relevance selection (find)', () => {
+	// A page whose answer lives well past the 20 KB truncation cliff.
+	function cliffDoc(): string {
+		const filler = Array.from(
+			{ length: 80 },
+			(_, i) => `Section ${i}: ${'warehouse throughput logistics report '.repeat(15)}`,
+		).join('\n\n');
+		const needle =
+			'The rare quokka of Rottnest Island is a small marsupial famous for its accidental smile.';
+		return `${filler}\n\n${needle}`;
+	}
+
+	it('without find, the post-cliff answer is lost (mode:truncated)', async () => {
+		publicResolves();
+		const doc = cliffDoc();
+		expect(doc.length).toBeGreaterThan(20_000);
+		globalThis.fetch = vi.fn(
+			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(parsed.mode).toBe('truncated');
+		expect(parsed.content).not.toContain('quokka');
+	});
+
+	it('with find, surfaces the post-cliff answer via BM25 (mode:relevance)', async () => {
+		publicResolves();
+		const doc = cliffDoc();
+		globalThis.fetch = vi.fn(
+			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(r.isError).toBeUndefined();
+		expect(parsed.mode).toBe('relevance');
+		expect(parsed.content.length).toBeLessThanOrEqual(20_000);
+		expect(parsed.content).toContain('quokka');
+		// BM25-only path: no embedding model configured.
+		expect(embeddingsMock).not.toHaveBeenCalled();
+	});
+
+	it('uses the embedding endpoint when [embeddings] is configured', async () => {
+		publicResolves();
+		loadEmbeddingsConfigMock.mockReturnValue({
+			endpointId: 'embed',
+			modelId: 'm',
+			timeoutSeconds: 5,
+			queryPrefix: 'search_query: ',
+			documentPrefix: 'search_document: ',
+			maxInputTokens: 512,
+		});
+		getEndpointMock.mockReturnValue({ id: 'embed', baseUrl: 'http://embed', apiKey: null });
+		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
+			data: body.input.map((s, index) => ({
+				index,
+				embedding: /quokka/i.test(s) ? [1, 0] : [0, 1],
+			})),
+		}));
+		const doc = cliffDoc();
+		globalThis.fetch = vi.fn(
+			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(parsed.mode).toBe('relevance');
+		expect(parsed.content).toContain('quokka');
+		// Embedding may be split across several batched requests; the query goes
+		// first and carries the configured query prefix.
+		expect(embeddingsMock).toHaveBeenCalled();
+		expect(embeddingsMock.mock.calls[0][1].input[0]).toBe('search_query: quokka');
+	});
+
+	it('degrades to BM25 (not an error) when the embedding call fails', async () => {
+		publicResolves();
+		loadEmbeddingsConfigMock.mockReturnValue({
+			endpointId: 'embed',
+			modelId: 'm',
+			timeoutSeconds: 5,
+			queryPrefix: '',
+			documentPrefix: '',
+			maxInputTokens: 512,
+		});
+		getEndpointMock.mockReturnValue({ id: 'embed', baseUrl: 'http://embed', apiKey: null });
+		embeddingsMock.mockRejectedValue(new Error('embedding endpoint down'));
+		const doc = cliffDoc();
+		globalThis.fetch = vi.fn(
+			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(r.isError).toBeUndefined();
+		expect(parsed.mode).toBe('relevance');
+		expect(parsed.content).toContain('quokka');
 	});
 });
 

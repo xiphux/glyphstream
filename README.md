@@ -227,7 +227,9 @@ when to invoke a registered tool, GlyphStream runs it server-side, and
 the result is folded back into the conversation. The built-in toolset:
 
 - `get_current_time` — clock with optional IANA timezone.
-- `fetch_url` — read a single web page or text resource by URL.
+- `fetch_url` — read a single web page or text resource by URL. Takes an
+  optional `find` so long pages return the most relevant sections rather
+  than the first 20 KB (see [Web reading & RAG](#web-reading--rag)).
 - `web_search` — query a [SearxNG](https://docs.searxng.org/) instance
   (requires a `[search]` config block; see [Web search](#web-search)).
 - `run_python` — execute Python in a sandboxed Pyodide interpreter,
@@ -390,6 +392,63 @@ benchmark, multicast, or cloud-metadata addresses (10.x, 172.16-31.x,
 192.168.x, 127.x, 169.254.x, IPv6 ULA/link-local, etc.). Operators who
 want to point the model at LAN services aren't supported today; open
 an issue if you have a real use case.
+
+### Web reading & RAG
+
+`fetch_url` accepts an optional `find` argument — a plain-language note
+of what the model is looking for on the page. It only matters for long
+pages: when the extracted text exceeds the ~20 KB budget, instead of
+blindly keeping the first 20 KB, GlyphStream selects the **most relevant
+sections** and returns those (in document order). The result's `mode`
+field reports which path ran — `full` (page fit within budget),
+`truncated` (over budget, no `find`), or `relevance` (over budget,
+`find`-driven selection).
+
+Selection is hybrid retrieval over the page's own structure:
+
+- The article is chunked on its heading/paragraph boundaries, and each
+  chunk is prefixed with a breadcrumb (`Page Title › Section › Subsection`)
+  so a retrieved mid-document chunk keeps its context.
+- **BM25** (lexical) scores every chunk — always on, no configuration,
+  great for exact/rare terms (API names, error codes, identifiers).
+- **Embedding cosine** (semantic) is added _when an `[embeddings]` model
+  is configured_, and the two rankings are fused with Reciprocal Rank
+  Fusion. This catches paraphrase matches BM25 misses (a query about
+  "failures" matching a section titled "Resilience").
+
+Without `[embeddings]`, selection runs BM25-only — still far better than
+positional truncation. If the embedding endpoint is unreachable, slow, or
+returns something malformed, selection silently **falls back to BM25**;
+it never turns a fetch into an error.
+
+To enable the embedding leg, add an `[embeddings]` block naming an
+existing endpoint and an embedding model:
+
+```toml
+[embeddings]
+endpoint_id = "nas-bridge"        # one of your [[endpoints]] ids
+model_id = "text-embedding-3-small"
+# timeout_seconds = 30            # optional; default 30
+# max_input_tokens = 512          # optional; default 512 — the model's max
+#                                 # input length; each embedded text is
+#                                 # truncated to fit. Raise for big-context
+#                                 # models (e.g. 8192).
+# query_prefix = ""               # optional; default "". nomic/e5/bge/gte
+# document_prefix = ""            # need "search_query: "/"search_document: ";
+#                                 # OpenAI/Cohere-style models must NOT.
+```
+
+base_url and auth are inherited from the referenced endpoint. A bad
+`endpoint_id` quietly disables embeddings (degrades to BM25) rather than
+failing at boot. The same config also backs future embedding-based
+features, so it's capability-named rather than `fetch_url`-specific.
+
+> **Throughput matters.** Embedding dozens of chunks per long-page fetch
+> is only practical on a reasonably fast embedding endpoint (GPU-backed,
+> or a hosted provider). A slow CPU embedder will routinely exceed
+> `timeout_seconds` and fall back to BM25 — which is fine, just not the
+> hybrid path. BM25-only is the sensible mode when no fast embedder is
+> available.
 
 ### MCP servers
 

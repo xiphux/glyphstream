@@ -118,9 +118,23 @@ what already shipped, for context).
     users may want to see code before it runs — reuse the MCP approval
     infrastructure with a per-user trust list.
 
-- **Inline RAG with embeddings.** Bridge already supports `/v1/embeddings`;
-  GlyphStream can embed-and-retrieve attached docs/URLs and inject as system
-  context. Particularly useful for chats grounded in personal notes.
+- **Inline RAG with embeddings.** _Shipped (for web reads):_ `fetch_url` takes
+  an optional `find` and, on over-budget pages, replaces head-truncation with
+  hybrid relevance selection — structure-aware chunking with title›heading
+  breadcrumbs (`src/lib/server/retrieval/chunker.ts`), BM25 (`bm25.ts`) fused
+  with embedding cosine (`vector.ts`) via Reciprocal Rank Fusion (`select.ts`).
+  Gated on an optional top-level `[embeddings]` config block
+  (`loadEmbeddingsConfig`) + the `embeddings()` client; degrades to BM25-only
+  when absent or on any embedding failure. Embedding requests are batched and
+  per-input-truncated (`max_input_tokens`), with optional `query_prefix` /
+  `document_prefix` for nomic/e5/bge-style models. Remaining:
+  - _Apply to attached docs/URLs, not just `fetch_url`._ Embed-and-retrieve
+    user-attached files / pasted notes and inject as system context.
+  - _Reuse in `recall_memory`._ The memory phase-2 recall tool can import
+    `vector.ts` + `embeddings()` + `loadEmbeddingsConfig()` directly.
+  - _Phase 3 niceties._ Per-(url, model) embedding cache; return selected
+    section breadcrumbs so the model can re-`find`; optional cross-encoder
+    rerank; tune batch sizing per backend.
 
 - **Context compaction.** Summarize the conversation so far and continue from
   that summary as the new history. Mostly relevant for local LLMs — cloud

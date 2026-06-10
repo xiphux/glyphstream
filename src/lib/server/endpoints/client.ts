@@ -593,3 +593,45 @@ export async function chatCompletionSync(
 	);
 	return parseJson<ChatCompletionResponse>(res, `Endpoint "${endpoint.id}" returned non-JSON`);
 }
+
+export interface EmbeddingsRequest {
+	model: string;
+	input: string[];
+}
+
+export interface EmbeddingsResponse {
+	data?: Array<{ embedding?: number[]; index?: number }>;
+}
+
+/**
+ * POST /v1/embeddings — batched text → vectors. Mirrors `chatCompletionSync`
+ * (auth, doFetch/ensureOk/parseJson) with one deliberate difference: it does
+ * NOT impose `endpoint.requestTimeoutSeconds`. The embeddings timeout comes
+ * from the `[embeddings]` config block, which the caller bakes into `signal`
+ * via composeSignals — so this trusts the passed signal as the sole deadline.
+ */
+export async function embeddings(
+	endpoint: LoadedEndpoint,
+	body: EmbeddingsRequest,
+	signal?: AbortSignal,
+): Promise<EmbeddingsResponse> {
+	const url = `${endpoint.baseUrl}/embeddings`;
+	const res = await doFetch(
+		url,
+		{
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...authHeaders(endpoint),
+			},
+			body: JSON.stringify(body),
+			signal,
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
+	);
+	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /embeddings`);
+	return parseJson<EmbeddingsResponse>(
+		res,
+		`Endpoint "${endpoint.id}" returned non-JSON /embeddings`,
+	);
+}

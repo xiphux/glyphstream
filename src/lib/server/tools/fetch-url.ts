@@ -24,6 +24,10 @@ import { parseHTML } from 'linkedom';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
+import { loadEmbeddingsConfig, type LoadedEmbeddingsConfig } from '../endpoints/config';
+import { getEndpoint } from '../endpoints/registry';
+import { chunkArticleHtml, chunkPlainText } from '../retrieval/chunker';
+import { selectRelevant, EMBED_CAP, type RelevanceConfig } from '../retrieval/select';
 import {
 	assertHostnameRoutable,
 	assertHttpScheme,
@@ -48,13 +52,18 @@ export const fetchUrlTool: Tool = {
 		function: {
 			name: 'fetch_url',
 			description:
-				'Fetch a single web page or text resource by URL and return its readable contents. Use this after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content} as JSON. Refuses non-http(s) URLs and private/loopback/metadata addresses.',
+				'Fetch a single web page or text resource by URL and return its readable contents. Use this after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content, mode} as JSON. Refuses non-http(s) URLs and private/loopback/metadata addresses.',
 			parameters: {
 				type: 'object',
 				properties: {
 					url: {
 						type: 'string',
 						description: 'Absolute http(s) URL to fetch.',
+					},
+					find: {
+						type: 'string',
+						description:
+							'Optional: what you want to learn from this page, in plain words. Only affects long pages — when the readable text exceeds the size budget, the most relevant sections are selected and returned instead of just the first part. Ignored on short pages (the whole page is returned). Strongly recommended whenever you have a specific question about a long article or doc.',
 					},
 				},
 				required: ['url'],
@@ -68,8 +77,9 @@ export const fetchUrlTool: Tool = {
 		if (!url) {
 			return errorResult('Missing or invalid `url` argument (expected an absolute http(s) URL).');
 		}
+		const find = parseFindArg(args);
 		try {
-			const result = await fetchAndExtract(url, ctx.signal);
+			const result = await fetchAndExtract(url, find, ctx.signal);
 			return { content: JSON.stringify(result) };
 		} catch (e) {
 			return errorResult(e instanceof Error ? e.message : String(e));
@@ -83,6 +93,46 @@ function parseUrlArg(args: unknown): string | null {
 	return typeof u === 'string' && u.length > 0 ? u : null;
 }
 
+/** Optional `find` query: empty/blank/non-string is treated as absent. */
+function parseFindArg(args: unknown): string | undefined {
+	if (!args || typeof args !== 'object') return undefined;
+	const f = (args as { find?: unknown }).find;
+	return typeof f === 'string' && f.trim().length > 0 ? f : undefined;
+}
+
+let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
+
+function getEmbeddingsConfig(): LoadedEmbeddingsConfig | null {
+	if (!embeddingsConfigCache) embeddingsConfigCache = { value: loadEmbeddingsConfig() };
+	return embeddingsConfigCache.value;
+}
+
+/** Test hook: clear the memoized embeddings config so the next call re-reads. */
+export function _resetConfigCacheForTests(): void {
+	embeddingsConfigCache = undefined;
+}
+
+/**
+ * Resolve the embeddings config into a usable RelevanceConfig, or undefined
+ * when embeddings aren't configured / the named endpoint no longer resolves.
+ * Undefined makes selection degrade to BM25-only — never an error.
+ */
+function resolveRelevanceConfig(): RelevanceConfig | undefined {
+	const cfg = getEmbeddingsConfig();
+	if (!cfg) return undefined;
+	const endpoint = getEndpoint(cfg.endpointId);
+	if (!endpoint) return undefined;
+	return {
+		endpoint,
+		modelId: cfg.modelId,
+		timeoutSeconds: cfg.timeoutSeconds,
+		embedCap: EMBED_CAP,
+		queryPrefix: cfg.queryPrefix,
+		documentPrefix: cfg.documentPrefix,
+		maxInputTokens: cfg.maxInputTokens,
+	};
+}
+
 function errorResult(message: string): ToolExecution {
 	return { content: JSON.stringify({ error: message }), isError: true };
 }
@@ -92,10 +142,20 @@ interface FetchResult {
 	status: number;
 	content_type: string;
 	content: string;
-	truncated?: boolean;
+	/**
+	 * How `content` relates to the full page:
+	 * - 'full'       — the whole readable text (fit within budget).
+	 * - 'truncated'  — over budget, first slice kept (no `find` to select on).
+	 * - 'relevance'  — over budget, the sections most relevant to `find`.
+	 */
+	mode: 'full' | 'truncated' | 'relevance';
 }
 
-async function fetchAndExtract(initialUrl: string, ctxSignal: AbortSignal): Promise<FetchResult> {
+async function fetchAndExtract(
+	initialUrl: string,
+	find: string | undefined,
+	ctxSignal: AbortSignal,
+): Promise<FetchResult> {
 	let current: URL;
 	try {
 		current = new URL(initialUrl);
@@ -131,12 +191,17 @@ async function fetchAndExtract(initialUrl: string, ctxSignal: AbortSignal): Prom
 			continue;
 		}
 
-		return await processResponse(res, current.href);
+		return await processResponse(res, current.href, find, ctxSignal);
 	}
 	throw new Error(`Exceeded ${MAX_REDIRECTS} redirects.`);
 }
 
-async function processResponse(res: Response, finalUrl: string): Promise<FetchResult> {
+async function processResponse(
+	res: Response,
+	finalUrl: string,
+	find: string | undefined,
+	ctxSignal: AbortSignal,
+): Promise<FetchResult> {
 	const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
 	const mime = contentType.split(';')[0].trim();
 
@@ -152,29 +217,72 @@ async function processResponse(res: Response, finalUrl: string): Promise<FetchRe
 
 	const raw = await readBodyWithCap(res, MAX_BODY_BYTES, parseCharset(contentType));
 
-	let content: string;
+	// `text` is the flattened readable view (today's `content` for the full /
+	// truncated paths); `structured` retains the article HTML + title so the
+	// relevance path can chunk on real heading structure. Non-HTML resources
+	// have no structure, so they fall through to the plain-text chunker.
+	let text: string;
+	let structured: ArticleStructured | null = null;
 	if (mime === 'text/html' || mime === 'application/xhtml+xml') {
-		content = extractArticleText(raw);
-	} else if (mime === 'application/json') {
-		// Pass JSON through as-is rather than parse + stringify with
-		// indent. The model handles minified JSON fine; the previous
-		// round-trip cost an extra parse and a fresh allocation up to
-		// the same MAX_CONTENT_CHARS limit just to add whitespace.
-		content = raw;
+		structured = extractArticleStructured(raw);
+		text = structured ? structured.text : extractTextFromHtml(raw);
 	} else {
-		content = raw;
+		// JSON passes through as-is (the model handles minified JSON fine);
+		// text/plain & text/markdown likewise.
+		text = raw;
 	}
 
-	const truncated = content.length > MAX_CONTENT_CHARS;
-	if (truncated) content = content.slice(0, MAX_CONTENT_CHARS);
+	const { content, mode } = await selectOrTruncate(text, structured, find, ctxSignal);
 
 	return {
 		url: finalUrl,
 		status: res.status,
 		content_type: contentType || mime,
 		content,
-		...(truncated ? { truncated: true } : {}),
+		mode,
 	};
+}
+
+/**
+ * Decide what slice of the readable text to return:
+ * - under budget → the whole thing (no chunking, the common case);
+ * - over budget, no `find` → head-truncate (preserves prior behavior);
+ * - over budget, with `find` → relevance-select over the full body.
+ *
+ * Relevance is gated on an embedding model being configured, but the BM25 leg
+ * runs regardless, so even without embeddings this beats blind truncation.
+ */
+async function selectOrTruncate(
+	text: string,
+	structured: ArticleStructured | null,
+	find: string | undefined,
+	signal: AbortSignal,
+): Promise<{ content: string; mode: FetchResult['mode'] }> {
+	if (text.length <= MAX_CONTENT_CHARS) {
+		return { content: text, mode: 'full' };
+	}
+	if (!find) {
+		return { content: text.slice(0, MAX_CONTENT_CHARS), mode: 'truncated' };
+	}
+
+	const chunks =
+		structured && structured.contentHtml
+			? chunkArticleHtml(structured.contentHtml, structured.title)
+			: chunkPlainText(text, structured?.title ?? '');
+
+	// Nothing to choose among — fall back to head-truncation.
+	if (chunks.length <= 1) {
+		return { content: text.slice(0, MAX_CONTENT_CHARS), mode: 'truncated' };
+	}
+
+	const result = await selectRelevant(
+		chunks,
+		find,
+		MAX_CONTENT_CHARS,
+		signal,
+		resolveRelevanceConfig(),
+	);
+	return { content: result.content, mode: result.mode };
 }
 
 function parseCharset(contentType: string): string {
@@ -221,34 +329,50 @@ function concat(arrs: Uint8Array[]): Uint8Array {
 	return out;
 }
 
+export interface ArticleStructured {
+	title: string;
+	/** Cleaned article HTML (Readability `content`) — retains heading structure. */
+	contentHtml: string;
+	/** Flattened title + body text (the value `extractArticleText` returns). */
+	text: string;
+}
+
 /**
- * Extract readable article text from an HTML document.
+ * Run Mozilla's Readability (the same algorithm Firefox Reader View uses) and
+ * return both the flattened text and the cleaned article HTML, or null when
+ * the page isn't article-shaped (search results, directory indexes, stubs).
  *
- * Tries Mozilla's Readability algorithm first (the same one Firefox Reader
- * View uses) — on article-shaped pages it discards site chrome, comments,
- * navigation, related-post strips, etc. and returns just the article body
- * plus its title, typically 5-10x smaller than the raw page. Result is then
- * truncation-capped upstream so context never balloons.
- *
- * Readability returns null on pages it can't identify as an article
- * (search-result pages, directory indexes, very short stubs, error pages).
- * In that case we fall through to the regex stripper, which produces a
- * coarser but always-usable plain-text view.
+ * The HTML is kept so the relevance chunker can split on real heading
+ * structure; the flattened text is what the full/truncated paths return.
  */
-export function extractArticleText(html: string): string {
+export function extractArticleStructured(html: string): ArticleStructured | null {
 	try {
 		const { document } = parseHTML(html);
 		const article = new Readability(document as never).parse();
 		const text = article?.textContent?.trim();
 		if (text && text.length >= 200) {
-			const title = article?.title?.trim();
+			const title = article?.title?.trim() ?? '';
 			const body = normalizeWhitespace(text);
-			return title ? `${title}\n\n${body}` : body;
+			return {
+				title,
+				contentHtml: article?.content ?? '',
+				text: title ? `${title}\n\n${body}` : body,
+			};
 		}
 	} catch {
 		// Malformed HTML, parser quirk, or DOM API mismatch — fall through.
 	}
-	return extractTextFromHtml(html);
+	return null;
+}
+
+/**
+ * Extract readable article text from an HTML document. Thin wrapper over
+ * `extractArticleStructured` that falls back to the regex stripper (coarser
+ * but always-usable) when Readability can't identify an article. Behavior is
+ * unchanged from the original single-function form.
+ */
+export function extractArticleText(html: string): string {
+	return extractArticleStructured(html)?.text ?? extractTextFromHtml(html);
 }
 
 function normalizeWhitespace(s: string): string {

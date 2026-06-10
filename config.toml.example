@@ -125,6 +125,31 @@
 # api_key_env = "SEARXNG_API_KEY"   # optional; many SearxNG instances need no auth
 # timeout_seconds = 10              # optional; default 10
 
+# Optional: embedding model for hybrid retrieval. When present, the `fetch_url`
+# tool ranks the sections of an over-budget page with BM25 + embedding cosine
+# (fused via Reciprocal Rank Fusion) and returns the most relevant ones rather
+# than just the first ~20 KB. When absent, fetch_url falls back to BM25-only
+# selection (still far better than blind truncation), so this block is purely
+# an upgrade — omit it freely. See the README's "Web reading & RAG" section.
+#
+# `endpoint_id` names one of the [[endpoints]] above (base_url + auth are
+# inherited from it); `model_id` is the upstream embedding model. A bad
+# endpoint_id silently disables embeddings (degrades to BM25) rather than
+# erroring at boot.
+#
+# [embeddings]
+# endpoint_id = "nas-bridge"
+# model_id = "text-embedding-3-small"
+# timeout_seconds = 30            # optional; default 30
+# max_input_tokens = 512          # optional; default 512. The model's max input
+#                                 # sequence length — each embedded text is
+#                                 # truncated to fit (an over-limit input 500s).
+#                                 # Raise for large-context models (e.g. 8192).
+# query_prefix = ""               # optional; default "". Some models (nomic,
+# document_prefix = ""            # e5, bge, gte) need asymmetric task prefixes
+#                                 # ("search_query: " / "search_document: ");
+#                                 # OpenAI/Cohere-style models must NOT have them.
+
 # Optional: MCP (Model Context Protocol) servers. Each [[mcp_servers]] block
 # defines an external tool server whose advertised tools get registered
 # alongside the built-in ones (web_search, fetch_url, memory, clock) and
