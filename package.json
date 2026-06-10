@@ -41,6 +41,7 @@
 		"arctic": "^3.7.0",
 		"better-sqlite3": "^12.10.0",
 		"drizzle-orm": "^0.45.2",
+		"eventsource-parser": "^3.1.0",
 		"linkedom": "^0.18.12",
 		"markdown-it": "^14.2.0",
 		"pyodide": "^0.29.4",

@@ -10,7 +10,13 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseSSEStream, type SSERecord } from '$lib/server/streaming/sse-parser';
+import {
+	parseSSEStream,
+	SSEBufferOverflowError,
+	type SSERecord,
+} from '$lib/server/streaming/sse-parser';
+
+const MAX_SSE_BUFFER_BYTES = 8 * 1024 * 1024;
 
 /** Wrap a string (or array of pre-split chunks) as a ReadableStream<Uint8Array>. */
 function streamFrom(input: string | string[]): ReadableStream<Uint8Array> {
@@ -167,5 +173,31 @@ describe('parseSSEStream — OpenAI-shaped payloads', () => {
 		const records = await collect(stream);
 		expect(records.length).toBe(3);
 		expect(records[2].data).toBe('[DONE]');
+	});
+});
+
+describe('parseSSEStream — buffer overflow guard', () => {
+	it('throws SSEBufferOverflowError when a single block exceeds the cap with no separator', async () => {
+		// A misbehaving upstream that never emits a block separator would grow
+		// `buffer` unbounded; the cap aborts before OOM.
+		const oversized = 'data: ' + 'x'.repeat(MAX_SSE_BUFFER_BYTES + 1);
+		await expect(collect(streamFrom(oversized))).rejects.toThrow(SSEBufferOverflowError);
+	});
+
+	it('does NOT throw for a large payload that stays under the cap and terminates', async () => {
+		// Just under the cap, properly terminated — must parse, not trip the guard.
+		const big = 'x'.repeat(MAX_SSE_BUFFER_BYTES - 1024);
+		const records = await collect(streamFrom(`data: ${big}\n\n`));
+		expect(records[0].data).toBe(big);
+	});
+
+	it('does NOT trip across many well-separated blocks (buffer drains each block)', async () => {
+		// Cumulative bytes far exceed the cap, but no single pending block does —
+		// the guard measures the un-dispatched buffer, not the lifetime total.
+		const block = 'data: ' + 'y'.repeat(1024) + '\n\n';
+		const chunks = Array.from({ length: 16 * 1024 }, () => block); // ~16 MiB total
+		const records = await collect(streamFrom(chunks));
+		expect(records.length).toBe(16 * 1024);
+		expect(records[0].data.length).toBe(1024);
 	});
 });
