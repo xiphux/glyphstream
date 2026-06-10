@@ -28,17 +28,20 @@ const DEFAULT_K1 = 1.5;
 const DEFAULT_B = 0.75;
 
 /**
- * Lowercase, split on non-alphanumeric runs, drop single-char tokens.
+ * Lowercase, split on runs of non-letter/non-number, drop single-char tokens.
  *
- * Deliberately ASCII-only: `[^a-z0-9]+` discards CJK and accented terms.
- * That's acceptable for the lexical leg — the dense embedding leg covers
- * multilingual and semantic recall. No stemming, no stopword list; ubiquitous
- * words get a near-zero IDF naturally, so they cost nothing to keep.
+ * Unicode-aware (`\p{L}\p{N}`): accented Latin (café, Müller) and other scripts
+ * survive instead of being stripped, which matters because the lexical leg is
+ * the *default* path — most self-hosters won't configure the dense embedding
+ * leg that would otherwise cover multilingual recall. CJK has no inter-word
+ * spaces, so a run of ideographs becomes one token (substring-exact matching,
+ * not true segmentation) — coarse, but far better than dropping it. No
+ * stemming, no stopword list; ubiquitous words get a near-zero IDF naturally.
  */
 export function tokenize(s: string): string[] {
 	return s
 		.toLowerCase()
-		.split(/[^a-z0-9]+/)
+		.split(/[^\p{L}\p{N}]+/u)
 		.filter((t) => t.length >= 2);
 }
 

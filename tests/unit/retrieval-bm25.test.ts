@@ -14,6 +14,16 @@ describe('tokenize', () => {
 		expect(tokenize('')).toEqual([]);
 		expect(tokenize('!!! ... ---')).toEqual([]);
 	});
+
+	it('preserves accented Latin terms (Unicode-aware, not ASCII-only)', () => {
+		expect(tokenize('Café Müller naïve Größe')).toEqual(['café', 'müller', 'naïve', 'größe']);
+	});
+
+	it('keeps a run of CJK ideographs as a token', () => {
+		// No inter-word spaces, so the run becomes one substring-matchable token.
+		expect(tokenize('東京タワー and text')).toContain('text');
+		expect(tokenize('東京タワー')).toEqual(['東京タワー']);
+	});
 });
 
 describe('bm25Rank', () => {

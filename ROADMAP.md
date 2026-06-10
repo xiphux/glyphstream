@@ -159,11 +159,6 @@ what already shipped, for context).
     largest reported incremental gain after hybrid retrieval, and there's a
     cheap path here: an LLM endpoint is already in hand and candidates are
     already ≤64, so an LLM-rerank is one extra call. Beats further RRF tuning.
-  - _Unicode-aware BM25 tokenizer._ The default (no-embeddings) path is
-    English-biased — `bm25.ts` `tokenize` is ASCII-only (`[^a-z0-9]`), so CJK
-    and accented terms drop. The "hybrid covers multilingual" rationale only
-    holds for users who configure embeddings, which most self-hosters won't.
-    A `\p{L}\p{N}` tokenizer would lift the monolingual floor for free.
   - _Apply to attached docs/URLs, not just `fetch_url`._ Embed-and-retrieve
     user-attached files / pasted notes and inject as system context.
   - _Reuse in `recall_memory`._ The memory phase-2 recall tool can import
