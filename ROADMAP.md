@@ -127,14 +127,49 @@ what already shipped, for context).
   (`loadEmbeddingsConfig`) + the `embeddings()` client; degrades to BM25-only
   when absent or on any embedding failure. Embedding requests are batched and
   per-input-truncated (`max_input_tokens`), with optional `query_prefix` /
-  `document_prefix` for nomic/e5/bge-style models. Remaining:
+  `document_prefix` for nomic/e5/bge-style models.
+
+  Framing to keep in mind (from an architecture review): this feature
+  compensates for a fixed small context budget, so its value is _highest_ on
+  the small-context local LLMs this project targets and _lowest_ on frontier
+  cloud models (where "the answer is past 20 KB" is better solved by just
+  raising the budget — long-context beats RAG for a single doc that fits).
+  And it's tuned for **needle-finding, not whole-doc synthesis**: disjoint
+  chunks + ellipses give a fragmented view that's worse than contiguous
+  truncation for "summarize this page". The `find` description nudges toward
+  specific questions, but the limitation is inherent.
+
+  Remaining, roughly in priority order:
+  - _Context-aware budget (the real lever)._ `MAX_CONTENT_CHARS` (and the
+    relevance-trigger threshold) is one hard-coded value serving two very
+    different regimes. Make it configurable — ideally per-endpoint/context —
+    so a 200 K-context user gets a large budget and rarely fragments, while a
+    local-8 K user gets aggressive selection. Caveat: doing this _per active
+    model_ means giving the web tools access to the conversation's endpoint,
+    which `ToolContext` deliberately does not carry today; a global config
+    override is the cheap partial version.
+  - _Return selected section breadcrumbs so the model can re-`find`._ Today a
+    re-fetch with a new `find` flies blind — the model never learns which
+    sections exist or what was elided. Surfacing the selected/elided
+    breadcrumbs turns single-shot lookup into intelligent multi-hop. Ranked
+    _above_ the embedding cache: it's an agency/quality lever, not just
+    efficiency.
+  - _Reranker — the biggest deferred quality jump._ Hybrid retrieve →
+    cross-encoder or LLM rerank of the top ~15-20 → pack. Reranking is the
+    largest reported incremental gain after hybrid retrieval, and there's a
+    cheap path here: an LLM endpoint is already in hand and candidates are
+    already ≤64, so an LLM-rerank is one extra call. Beats further RRF tuning.
+  - _Unicode-aware BM25 tokenizer._ The default (no-embeddings) path is
+    English-biased — `bm25.ts` `tokenize` is ASCII-only (`[^a-z0-9]`), so CJK
+    and accented terms drop. The "hybrid covers multilingual" rationale only
+    holds for users who configure embeddings, which most self-hosters won't.
+    A `\p{L}\p{N}` tokenizer would lift the monolingual floor for free.
   - _Apply to attached docs/URLs, not just `fetch_url`._ Embed-and-retrieve
     user-attached files / pasted notes and inject as system context.
   - _Reuse in `recall_memory`._ The memory phase-2 recall tool can import
     `vector.ts` + `embeddings()` + `loadEmbeddingsConfig()` directly.
-  - _Phase 3 niceties._ Per-(url, model) embedding cache; return selected
-    section breadcrumbs so the model can re-`find`; optional cross-encoder
-    rerank; tune batch sizing per backend.
+  - _Smaller niceties._ Per-(url, model) embedding cache; tune batch sizing
+    per backend.
 
 - **Context compaction.** Summarize the conversation so far and continue from
   that summary as the new history. Mostly relevant for local LLMs — cloud

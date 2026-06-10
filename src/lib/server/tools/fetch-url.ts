@@ -63,7 +63,7 @@ export const fetchUrlTool: Tool = {
 					find: {
 						type: 'string',
 						description:
-							'Optional: what you want to learn from this page, in plain words. Only affects long pages — when the readable text exceeds the size budget, the most relevant sections are selected and returned instead of just the first part. Ignored on short pages (the whole page is returned). Strongly recommended whenever you have a specific question about a long article or doc.',
+							'Optional: what you want to learn from this page, in plain words. Only affects long pages — when the readable text exceeds the size budget, the most relevant sections are selected and returned instead of just the first part. Ignored on short pages (the whole page is returned). Use it when you have a SPECIFIC question about a long doc. Do NOT use it for whole-page summary or "what is the overall point" questions — selection returns disjoint sections, so for synthesis/overview omit `find` to get the page in document order.',
 					},
 				},
 				required: ['url'],
