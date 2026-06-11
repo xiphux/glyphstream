@@ -275,8 +275,8 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('regenerate tells the server which sibling it replaces (recovery shadow)', async () => {
-		let branchBody: { replacesMessageId?: unknown } = {};
+	it('regenerate adds a new sibling beside the source, flagged as an additive re-roll', async () => {
+		let branchBody: { reroll?: unknown; replacesMessageId?: unknown } = {};
 		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
 			if (url.includes('?stream=1')) {
 				branchBody = JSON.parse(init?.body ?? '{}');
@@ -285,7 +285,7 @@ describe('FanoutController — actions', () => {
 					{ type: 'done', assistantMessage: imageSibling('new', 'bridge::sdxl', null) },
 				]);
 			}
-			return jsonResponse({}); // fallback (no client-side delete — the relay does it)
+			return jsonResponse({});
 		});
 		vi.stubGlobal('fetch', fetchMock);
 		const { deps } = makeDeps();
@@ -297,25 +297,24 @@ describe('FanoutController — actions', () => {
 			pending: 0,
 		});
 		await fc.regenerate(fc.columns[0]);
-		expect(branchBody.replacesMessageId).toBe('old');
+		// Flagged as a re-roll (keeps its own notify), and NOT a destructive replace.
+		expect(branchBody.reroll).toBe(true);
+		expect(branchBody).not.toHaveProperty('replacesMessageId');
+		// Additive: the original survives, the re-roll lands right after it.
+		expect(fc.columns.map((c) => c.persisted?.id)).toEqual(['old', 'new']);
 		vi.unstubAllGlobals();
 	});
 
-	it('keeps the grid unlocked during a re-roll so other columns stay actionable', async () => {
+	it('an additive re-roll keeps the grid unlocked + the source column untouched', async () => {
 		// Hold the re-roll's branch stream open so we can inspect grid state while
-		// it's in flight — this is the regression guard for the bug where
-		// regenerating one variation disabled the controls on every variation.
+		// it's in flight — guards both the additive insert and the no-grid-lock
+		// behavior (regenerating one variation must not disable the others).
 		let releaseStream!: () => void;
 		const fetchMock = vi.fn(async (url: string) => {
 			if (url.includes('?stream=1')) {
 				const body = new ReadableStream<Uint8Array>({
 					start(controller) {
 						const enc = new TextEncoder();
-						controller.enqueue(
-							enc.encode(
-								`data: ${JSON.stringify({ type: 'start', userMessage: imageSibling('u1', '', null), assistantMessageId: '' })}\n\n`,
-							),
-						);
 						releaseStream = () => {
 							controller.enqueue(
 								enc.encode(
@@ -341,18 +340,18 @@ describe('FanoutController — actions', () => {
 		});
 
 		const reroll = fc.regenerate(fc.columns[0]);
-		await Promise.resolve();
-		// The grid-wide lock is NOT taken: the second column is settled and its
-		// own state untouched, so its Regenerate/Discard stay live.
+		// Insertion is synchronous: a fresh column lands right after its source 'a',
+		// with no grid-wide lock and the existing columns left settled + actionable.
 		expect(fc.picking).toBe(false);
-		expect(fc.columns[1].status).toBe('done');
-		expect(fc.columns[1].persisted?.id).toBe('b');
-		// The re-rolling column is the only one marked in-flight.
-		expect(fc.columns[0].status).toBe('streaming');
+		expect(fc.columns.map((c) => c.persisted?.id)).toEqual(['a', undefined, 'b']);
+		expect(fc.columns.map((c) => c.status)).toEqual(['done', 'queued', 'done']);
 
+		// Let the branch fetch begin reading its stream, then complete it.
+		await new Promise((r) => setTimeout(r, 0));
 		releaseStream();
 		await reroll;
-		expect(fc.columns[0].persisted?.id).toBe('new-a');
+		expect(fc.columns.map((c) => c.persisted?.id)).toEqual(['a', 'new-a', 'b']);
+		expect(fc.columns.map((c) => c.status)).toEqual(['done', 'done', 'done']);
 		expect(fc.picking).toBe(false);
 		vi.unstubAllGlobals();
 	});

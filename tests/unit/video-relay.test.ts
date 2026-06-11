@@ -138,7 +138,6 @@ function baseParams(over: Partial<VideoRelayParams> & Pick<VideoRelayParams, 'us
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
-		replacesMessageId: over.replacesMessageId,
 		onStarted: over.onStarted,
 		onJobId: over.onJobId,
 		onComplete: over.onComplete ?? vi.fn(),
@@ -196,7 +195,7 @@ describe('startVideoRelay — fan-out semantics', () => {
 		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(1);
 	});
 
-	it('replacesMessageId deletes the old sibling once the re-roll lands', async () => {
+	it('an additive re-roll adds a sibling without touching the original', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const old = appendMessage({
 			conversationId: conv.id,
@@ -213,14 +212,16 @@ describe('startVideoRelay — fan-out semantics', () => {
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
 					advanceActiveLeaf: false,
-					replacesMessageId: old.id,
 				}),
 			),
 		);
 		const newId = (events.find((e) => e.type === 'done') as { assistantMessage: ChatMessage })
 			.assistantMessage.id;
-		expect(getMessage(conv.id, old.id)).toBeNull();
-		expect(getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id)).toEqual([newId]);
+		// Non-destructive: the original survives, the re-roll lands beside it.
+		expect(getMessage(conv.id, old.id)).not.toBeNull();
+		const ids = getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id);
+		expect(ids).toHaveLength(2);
+		expect(ids).toEqual(expect.arrayContaining([old.id, newId]));
 	});
 });
 

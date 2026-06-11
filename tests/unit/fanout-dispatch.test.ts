@@ -1,20 +1,13 @@
 /**
  * Unit tests for the fan-out dispatch guards extracted from the messages route.
- * Two invariants that are otherwise awkward to reach through the full handler:
+ * The invariant that's otherwise awkward to reach through the full handler:
  *  - resolveModelOverride: a fan-out branch's model is TRANSIENT — it must never
  *    be persisted (persist:false), or N concurrent branches clobber the
  *    conversation's stored default. This is the regression guard the plan called
  *    a linchpin ("silently rewrites users' conversation models").
- *  - isValidReplaceTarget: a regenerate's replacesMessageId triggers a real
- *    server-side delete, so only an assistant sibling of the fan-out parent is
- *    honored.
  */
 import { describe, it, expect } from 'vitest';
-import {
-	resolveModelOverride,
-	isValidReplaceTarget,
-	ModelOverrideError,
-} from '$lib/server/messages/fanout-dispatch';
+import { resolveModelOverride, ModelOverrideError } from '$lib/server/messages/fanout-dispatch';
 
 const resolvers = {
 	parseEndpointId: (id: string) => (id.includes('::') ? id.split('::')[0] : null),
@@ -102,24 +95,5 @@ describe('resolveModelOverride', () => {
 				...resolvers,
 			}),
 		).toThrow(/not configured/);
-	});
-});
-
-describe('isValidReplaceTarget', () => {
-	const parent = 'user-1';
-	it('accepts an assistant sibling parented to the fan-out user message', () => {
-		expect(isValidReplaceTarget({ role: 'assistant', parentMessageId: parent }, parent)).toBe(true);
-	});
-	it('rejects a non-assistant (e.g. a user message with edit-siblings)', () => {
-		expect(isValidReplaceTarget({ role: 'user', parentMessageId: parent }, parent)).toBe(false);
-	});
-	it('rejects a message parented elsewhere', () => {
-		expect(isValidReplaceTarget({ role: 'assistant', parentMessageId: 'other' }, parent)).toBe(
-			false,
-		);
-	});
-	it('rejects an unknown id (null/undefined target)', () => {
-		expect(isValidReplaceTarget(null, parent)).toBe(false);
-		expect(isValidReplaceTarget(undefined, parent)).toBe(false);
 	});
 });

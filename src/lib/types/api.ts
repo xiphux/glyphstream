@@ -595,16 +595,14 @@ export interface SendMessageRequest {
 	 */
 	inputMediaIds?: string[];
 	/**
-	 * Fan-out regenerate (re-roll in place): the sibling message id this branch
-	 * replaces. Recorded on the in-flight entry so recovery excludes the
-	 * old-but-not-yet-deleted sibling while the re-roll runs, and the relay
-	 * DELETES it server-side (message + subtree + media) once the re-roll lands —
-	 * so the swap survives a client refresh mid-re-roll. Because it triggers a
-	 * real delete, the server validates it: honored only when it's an assistant
-	 * sibling under this fan-out's shared user message. Ignored unless
-	 * `fanoutBranch`.
+	 * Additive re-roll: marks this branch as a lone regenerate (another variation
+	 * appended to an existing grid) rather than one of an initial fan-out group.
+	 * Image/video re-rolls are non-destructive — the new sibling is added next to
+	 * the original, which the user keeps or discards. The server uses this only to
+	 * keep the branch's own per-branch notification instead of folding it into the
+	 * group's single aggregate notify. Ignored unless `fanoutBranch`.
 	 */
-	replacesMessageId?: string;
+	reroll?: boolean;
 	/**
 	 * Total number of branches in this fan-out (the grid size). Every initial
 	 * branch carries the same value; the server uses it only as the count in the

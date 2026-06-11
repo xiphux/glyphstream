@@ -125,12 +125,10 @@ export interface RelayParams {
 	/** Called when generation begins (slot acquired) — the route stamps the
 	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
 	onStarted?: () => void;
-	// TODO(chat-regenerate): unlike the image/video relays, this one has no
-	// `replacesMessageId` + server-side delete of the replaced sibling. That's
-	// fine today because chat fan-out is pick-one (regenerate is UI-gated to
-	// media via FanoutColumns' onRegenerate). If chat regenerate is ever
-	// enabled, a chat re-roll would leave its old sibling undeleted + unshadowed
-	// on recovery — wire deleteReplacedSibling here too, like the media relays.
+	// Note: chat fan-out is pick-one, so this relay has no regenerate path today
+	// (regenerate is UI-gated to media via FanoutColumns' onRegenerate). If chat
+	// regenerate is ever enabled it would be additive like the media re-roll —
+	// just another sibling under the shared user message, no delete to wire up.
 	/**
 	 * Called between iterations of the tool loop to build the next
 	 * upstream request body — the route handler injects this closure

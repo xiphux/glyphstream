@@ -194,20 +194,20 @@ describe('buildFanoutBranchBody', () => {
 		expect(noSplit).not.toHaveProperty('inputMediaIds');
 	});
 
-	it('sends replacesMessageId for a regenerate branch, omits it otherwise', () => {
+	it('flags an additive re-roll branch, omits the flag otherwise', () => {
 		const reroll = buildFanoutBranchBody({
 			parentMessageId: 'user-1',
 			modelId: 'bridge::sdxl',
 			modelKind: 'image',
-			replacesMessageId: 'old-sibling',
+			reroll: true,
 		});
-		expect(reroll.replacesMessageId).toBe('old-sibling');
+		expect(reroll.reroll).toBe(true);
 
-		const fresh = buildFanoutBranchBody({
+		const initial = buildFanoutBranchBody({
 			parentMessageId: 'user-1',
 			modelId: 'bridge::sdxl',
 			modelKind: 'image',
 		});
-		expect(fresh).not.toHaveProperty('replacesMessageId');
+		expect(initial).not.toHaveProperty('reroll');
 	});
 });

@@ -5,8 +5,9 @@
 	callbacks the parent passes:
 	  - text (onPick): "Continue with this" promotes one branch to the active
 	    thread, the rest stay as siblings.
-	  - media keep-many (onDiscard + onRegenerate): prune the duds + re-roll in
-	    place; every kept image/video stays a sibling.
+	  - media keep-many (onDiscard + onRegenerate): prune the duds + re-roll
+	    (additively — a new variation beside the original); every kept
+	    image/video stays a sibling.
 	Purely presentational — the page owns the streams, column state, and the
 	pick / discard / regenerate requests.
 -->
@@ -20,7 +21,7 @@
 		type RenderBlock,
 		type ToolResultEntry,
 	} from '$lib/chat-render';
-	import type { FanoutColumn } from '$lib/fanout';
+	import { MAX_FANOUT_BRANCHES_PER_CONVERSATION, type FanoutColumn } from '$lib/fanout';
 
 	interface Props {
 		columns: FanoutColumn[];
@@ -29,7 +30,8 @@
 		onPick?: (column: FanoutColumn) => void;
 		/** Discard (delete) a column. Wired for media fan-out (prune the duds). */
 		onDiscard?: (column: FanoutColumn) => void;
-		/** Re-roll a column in place with the same model/prompt (image). */
+		/** Re-roll a column: add a fresh variation with the same model/prompt
+		 *  beside it (additive, non-destructive). */
 		onRegenerate?: (column: FanoutColumn) => void;
 		onImageClick: (mediaId: string) => void;
 		/** A pick/discard/regenerate request is in flight — disables the controls. */
@@ -102,6 +104,14 @@
 	function canDiscard(c: FanoutColumn): boolean {
 		return isSettled(c) && !(c.persisted !== null && persistedCount <= 1);
 	}
+	// Re-roll is additive (a new sibling per click), so it's gated by the same
+	// per-conversation ceiling the server enforces — but on the ACTIVE branch
+	// count, matching the server's in-flight cap (finished variations don't
+	// count). At the cap, every Regenerate disables until something settles.
+	const activeCount = $derived(
+		columns.filter((c) => c.status === 'queued' || c.status === 'streaming').length,
+	);
+	const atActiveCapacity = $derived(activeCount >= MAX_FANOUT_BRANCHES_PER_CONVERSATION);
 </script>
 
 <section class="mt-2" aria-label="Model comparison">
@@ -192,8 +202,10 @@
 							<button
 								type="button"
 								onclick={() => onRegenerate(c)}
-								disabled={busy || !isSettled(c)}
-								title="Regenerate this variation"
+								disabled={busy || !isSettled(c) || atActiveCapacity}
+								title={atActiveCapacity
+									? 'Too many generating at once — wait for some to finish'
+									: 'Generate another variation with this model'}
 								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg-secondary transition hover:bg-surface-sunken disabled:opacity-30"
 							>
 								<RefreshCw size={13} strokeWidth={2.5} /> Regenerate

@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
-import type { FanoutColumn } from '$lib/fanout';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION, type FanoutColumn } from '$lib/fanout';
 import type { ChatMessage } from '$lib/types/api';
 
 function persisted(id: string, text: string): ChatMessage {
@@ -155,6 +155,25 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		await userEvent.click(screen.getAllByRole('button', { name: /regenerate/i })[1]);
 		expect(onRegenerate).toHaveBeenCalledTimes(1);
 		expect(onRegenerate.mock.calls[0][0].branchId).toBe('b1');
+	});
+
+	it('disables Regenerate everywhere once the active-branch cap is reached', () => {
+		// A settled column (normally re-rollable) alongside enough in-flight columns
+		// to hit the active ceiling — since re-roll is additive, the cap must block
+		// even the settled column's Regenerate until something finishes.
+		const active = Array.from({ length: MAX_FANOUT_BRANCHES_PER_CONVERSATION }, (_, i) =>
+			mediaCol(`gen-${i}`, 'streaming'),
+		);
+		render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('settled', 'done'), ...active],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		const regen = screen.getAllByRole('button', { name: /regenerate/i });
+		expect(regen.every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
 	});
 
 	it('disables discard on the last kept image (keep at least one)', () => {

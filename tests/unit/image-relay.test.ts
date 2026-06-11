@@ -141,7 +141,6 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
 		suppressNotify: over.suppressNotify ?? false,
-		replacesMessageId: over.replacesMessageId,
 		onStarted: over.onStarted,
 		onComplete: over.onComplete ?? vi.fn(),
 	} satisfies ImageRelayParams;
@@ -249,7 +248,7 @@ describe('startImageRelay — fan-out semantics', () => {
 		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(1);
 	});
 
-	it('replacesMessageId deletes the old sibling server-side once the re-roll lands', async () => {
+	it('an additive re-roll adds a sibling without touching the original', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		// An existing sibling (the image being re-rolled).
 		const old = appendMessage({
@@ -267,15 +266,16 @@ describe('startImageRelay — fan-out semantics', () => {
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
 					advanceActiveLeaf: false,
-					replacesMessageId: old.id,
 				}),
 			),
 		);
 		const newId = (events.find((e) => e.type === 'done') as { assistantMessage: ChatMessage })
 			.assistantMessage.id;
-		// Old gone, only the re-roll remains under the parent.
-		expect(getMessage(conv.id, old.id)).toBeNull();
-		expect(getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id)).toEqual([newId]);
+		// Non-destructive: the original survives, the re-roll lands beside it.
+		expect(getMessage(conv.id, old.id)).not.toBeNull();
+		const ids = getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id);
+		expect(ids).toHaveLength(2);
+		expect(ids).toEqual(expect.arrayContaining([old.id, newId]));
 	});
 
 	it('suppressTitleTask omits the per-branch title task (no title event)', async () => {

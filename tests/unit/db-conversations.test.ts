@@ -1910,16 +1910,17 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getFanoutRecoveryState(conv.id, 'some-other-leaf').parentMessageId).toBeNull();
 	});
 
-	it('getFanoutRecoveryState hides a sibling an in-flight re-roll is replacing', () => {
+	it('getFanoutRecoveryState shows all siblings during an additive re-roll', () => {
 		const { conv, user, a, b } = seedFanout();
 		setFanoutParent(conv.id, user.id);
 		resetInFlight();
-		// A regenerate on sibling A is in flight: the new branch records that it
-		// replaces A, while A still exists (deleted only once the re-roll lands).
-		registerInFlight(conv.id, fakeEndpoint, 'reroll', 'image', 'bridge::sdxl', a.id);
+		// An additive re-roll is in flight: it's a brand-new branch, not a
+		// replacement, so both existing siblings stay put and the re-roll shows
+		// as one more pending column.
+		registerInFlight(conv.id, fakeEndpoint, 'reroll', 'image', 'bridge::sdxl');
 		const state = getFanoutRecoveryState(conv.id, user.id);
-		// A is shadowed (it's the in-flight re-roll's slot); B remains.
-		expect(state.siblings.map((m) => m.id)).toEqual([b.id]);
+		expect(state.siblings.map((m) => m.id)).toEqual(expect.arrayContaining([a.id, b.id]));
+		expect(state.siblings).toHaveLength(2);
 		expect(state.pending).toBe(1);
 		resetInFlight();
 	});

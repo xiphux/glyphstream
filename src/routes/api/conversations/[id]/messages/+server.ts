@@ -22,7 +22,7 @@ import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
-import { resolveModelOverride, isValidReplaceTarget } from '$lib/server/messages/fanout-dispatch';
+import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { openaiToolDefinitions } from '$lib/server/tools';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
@@ -242,22 +242,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// every code path that talks to upstream. Fan-out branches each get a
 	// unique key so they coexist in the registry instead of cancelling one
 	// another; a plain send uses the default single-slot key.
-	// Regenerate (re-roll in place): the sibling this branch replaces. Recorded
-	// on the in-flight entry so recovery shadows the old-but-not-yet-deleted
-	// sibling while the re-roll runs, and the relay DELETES it server-side once
-	// the re-roll lands. Because that's a real destructive delete (the message +
-	// its subtree, plus media unlink), validate the id: honor it only when it's
-	// an assistant sibling under THIS fan-out's shared user message — a re-roll
-	// only ever replaces one of the comparison's own branches. A forged id would
-	// otherwise delete an arbitrary message of the caller's own when the re-roll
-	// finishes.
-	let replacesMessageId: string | null = null;
-	if (isFanout && typeof body.replacesMessageId === 'string') {
-		const target = getMessage(params.id, body.replacesMessageId);
-		if (isValidReplaceTarget(target, userMessage.id)) {
-			replacesMessageId = body.replacesMessageId;
-		}
-	}
+	// An additive re-roll (`reroll`) is a lone regenerate appended to an existing
+	// grid — non-destructive (it adds a sibling, deletes nothing), so it just
+	// keeps its own per-branch notify instead of folding into the group aggregate.
+	const isReroll = isFanout && body.reroll === true;
 	// Cap concurrent fan-out branches per conversation. Each branch holds an open
 	// SSE connection + an in-flight entry + (past the gate) a queued waiter, so an
 	// unbounded fan-out is a resource-exhaustion vector even though the
@@ -274,14 +262,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		isFanout ? generateId() : undefined,
 		meta.modelKind,
 		meta.modelId,
-		replacesMessageId,
 	);
 
-	// An INITIAL fan-out branch (not a regenerate) suppresses its own per-branch
+	// An INITIAL fan-out branch (not a re-roll) suppresses its own per-branch
 	// notification; the route fires a single aggregate "N ready" when the LAST
-	// branch settles. A regenerate (replacesMessageId set) is a lone re-roll and
-	// keeps its own notify, like any single generation.
-	const isInitialFanout = isFanout && !replacesMessageId;
+	// branch settles. An additive re-roll is a lone branch and keeps its own
+	// notify, like any single generation.
+	const isInitialFanout = isFanout && !isReroll;
 	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
 	// Every relay's onComplete: free the in-flight slot, then (for an initial
 	// fan-out branch) let the last-to-finish branch fire the one aggregate notify.
@@ -322,7 +309,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
 			suppressNotify: isInitialFanout,
-			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
@@ -360,7 +346,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
 			suppressNotify: isInitialFanout,
-			replacesMessageId,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},

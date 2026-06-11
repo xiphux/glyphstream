@@ -25,7 +25,6 @@
 
 import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
-import { deleteReplacedSibling } from '../messages/delete-replaced-sibling';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
@@ -65,9 +64,6 @@ export interface MediaRelayParams {
 	 *  passes true so the N branches don't each notify; the route fires one
 	 *  aggregate "N ready" when the last settles. A regenerate leaves it false. */
 	suppressNotify?: boolean;
-	/** Fan-out regenerate (re-roll in place): the old sibling this branch
-	 *  replaces, deleted server-side once the new one persists. */
-	replacesMessageId?: string | null;
 	/** Fires when generation actually begins (slot acquired) — the route stamps
 	 *  the in-flight entry so a recovered fan-out can show QUEUED vs timer. */
 	onStarted?: () => void;
@@ -164,19 +160,6 @@ export function startMediaRelay(
 					safeWrite({ type: 'error', message: errorMessage(e) } satisfies StreamErrorEvent);
 					safeClose();
 					return;
-				}
-
-				// Regenerate: now that the re-roll has landed, drop the old sibling it
-				// replaced + unlink its bytes (server-side, so it survives a client
-				// refresh mid-re-roll). Skipped on failure above (we returned), keeping
-				// the old media for restore-on-failure.
-				if (params.replacesMessageId) {
-					await deleteReplacedSibling(
-						params.conversationId,
-						params.replacesMessageId,
-						params.userId,
-						`${produced.modality}-relay.reroll`,
-					);
 				}
 
 				// A fan-out branch suppresses its own notify; the route fires one

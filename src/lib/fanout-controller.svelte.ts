@@ -110,7 +110,8 @@ export class FanoutController {
 
 	/** Live + settled comparison columns. Non-empty == the compare view is up. */
 	columns = $state<FanoutColumn[]>([]);
-	/** A pick/dismiss/discard/regenerate request is in flight. */
+	/** A pick/dismiss/discard request is in flight. Re-rolls deliberately don't
+	 *  take this lock — they're per-column + additive (see `regenerate`). */
 	picking = $state(false);
 	/** The shared user message of the live/parked fan-out — discard/regenerate
 	 *  reparent new branches to it. Null when no comparison is active. */
@@ -121,6 +122,9 @@ export class FanoutController {
 	live = $state(false);
 	/** Per-branch abort controllers, keyed by column branchId, for Stop. */
 	#aborts = new Map<string, AbortController>();
+	/** Monotonic suffix for additive re-roll branchIds, so each new variation
+	 *  column gets a stable, collision-free key for the grid's keyed `{#each}`. */
+	#nextRerollSeq = 0;
 
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
@@ -337,7 +341,7 @@ export class FanoutController {
 		turnConvId: string,
 		userMessageId: string,
 		col: FanoutColumn,
-		opts?: { replacesMessageId?: string | null; onEnqueued?: () => void; fanoutSize?: number },
+		opts?: { reroll?: boolean; onEnqueued?: () => void; fanoutSize?: number },
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
 		this.#aborts.set(col.branchId, abort);
@@ -358,7 +362,7 @@ export class FanoutController {
 					modelId: col.modelId,
 					modelKind: col.modelKind,
 					inputMediaId: col.inputMediaId,
-					replacesMessageId: opts?.replacesMessageId,
+					reroll: opts?.reroll,
 					fanoutSize: opts?.fanoutSize,
 				}),
 			);
@@ -535,58 +539,49 @@ export class FanoutController {
 		}
 	}
 
-	/** Re-roll one media variation in place: generate a fresh sibling with the
-	 *  same model/prompt, then delete the old one once the new one lands. */
+	/** Re-roll a media variation: spawn a FRESH sibling with the same model /
+	 *  prompt / input image as `col`, added to the grid right after it. Additive
+	 *  and non-destructive — the original stays put, so the user can compare the
+	 *  re-roll against it and keep whichever they prefer (trashing the other with
+	 *  the discard button). */
 	async regenerate(col: FanoutColumn): Promise<void> {
-		// Re-rolls are per-column, not grid-wide: deliberately do NOT take the
-		// shared `picking` lock for the (many-second) image/video generation, or
-		// every other column's controls would freeze for its whole duration — the
-		// bug where re-rolling one variation disabled Regenerate on all of them.
-		// Concurrent re-rolls are safe: each column owns its own state + branch
-		// fetch; the in-flight fetch keeps an entry in `#aborts`, which gates the
-		// recovery rehydration just as `picking` did; and the "keep at least one"
-		// guard is enforced per-render from the live persisted count (a re-rolling
-		// column reads as not-persisted, so it can't be the last kept one). We do
-		// still bail if a grid-restructuring op (pick/dismiss/discard) is mid-flight
-		// or if THIS column is already re-rolling (its status flips below).
+		// Per-column + additive, so — like discard — this never takes the grid-wide
+		// `picking` lock: the generation runs for many seconds and that lock would
+		// freeze every other column's controls for its whole duration. Concurrent
+		// re-rolls are safe (each new column owns its own state + branch fetch, and
+		// the in-flight fetch keeps an `#aborts` entry that gates the recovery
+		// rehydration). Bail only if there's no parked user message to reparent
+		// under, or a grid-restructuring op (pick/dismiss/discard) is mid-flight.
+		// The branch ceiling is enforced per-render in the grid (Regenerate
+		// disables at the active-branch cap) + server-side (429); a click slipping
+		// past is a harmless no-op rather than something to error on here.
 		if (!this.userMessageId || this.picking) return;
-		if (col.status === 'queued' || col.status === 'streaming') return;
 		const convId = this.#deps.convId();
-		const oldId = col.persisted?.id ?? null;
-		// Snapshot so a failed re-roll restores the original (mirrors pick/dismiss)
-		// instead of leaving the column stuck on "Failed".
-		const snapshot = {
-			persisted: col.persisted,
-			status: col.status,
-			segments: col.segments,
-			error: col.error,
-			progress: col.progress,
-			startedAt: col.startedAt,
+		const newColumn: FanoutColumn = {
+			branchId: `reroll:${this.userMessageId}:${this.#nextRerollSeq++}`,
+			modelId: col.modelId,
+			modelKind: col.modelKind,
+			label: col.label,
+			segments: [],
+			status: 'queued',
+			queuedAhead: 0,
+			progress: null,
+			startedAt: null,
+			inputMediaId: col.inputMediaId,
+			persisted: null,
+			error: null,
 		};
-		col.persisted = null;
-		col.error = null;
-		col.segments = [];
-		col.progress = null;
-		col.startedAt = null;
-		col.status = 'streaming';
-		// Tell the server this branch replaces `oldId`. The server (relay)
-		// deletes the old sibling once the re-roll persists — server-side so the
-		// swap completes even if the client refreshes mid-re-roll — and shadows
-		// it from recovery in the meantime (one in-place column, not the old
-		// image + the re-roll as two boxes). On failure it's NOT deleted, so the
-		// snapshot restore below brings the original back.
-		const fresh = await this.#runBranch(convId, this.userMessageId, col, {
-			replacesMessageId: oldId,
-		});
-		if (!fresh) {
-			// Re-roll failed / was cancelled — restore the original.
-			col.persisted = snapshot.persisted;
-			col.status = snapshot.status;
-			col.segments = snapshot.segments;
-			col.error = snapshot.error;
-			col.progress = snapshot.progress;
-			col.startedAt = snapshot.startedAt;
-		}
+		// Insert immediately after its source so the original and its re-roll read
+		// as a pair rather than scattering the re-roll to the end of a growing grid.
+		const at = this.columns.findIndex((c) => c.branchId === col.branchId);
+		const insertAt = at === -1 ? this.columns.length : at + 1;
+		this.columns = [...this.columns.slice(0, insertAt), newColumn, ...this.columns.slice(insertAt)];
+		// Drive the proxied element (not the raw `newColumn`) so the column's live
+		// state updates stay reactive. `reroll: true` keeps this lone re-roll's own
+		// per-branch notification, unlike an initial fan-out branch that defers to
+		// the aggregate "N ready" notify. A failed re-roll lands in 'error' (a
+		// discardable column) — nothing to restore, the original was never touched.
+		await this.#runBranch(convId, this.userMessageId, this.columns[insertAt], { reroll: true });
 	}
 
 	/** Stop a streaming fan-out: cancel every branch server-side + locally. */

@@ -115,9 +115,11 @@ export function buildFanoutBranchBody(input: {
 	/** Split-attachments: restrict this branch to one of the shared message's
 	 *  images. Omitted for a non-split branch (derives all attachments). */
 	inputMediaId?: string | null;
-	/** Regenerate (re-roll in place): the sibling this branch replaces, so
-	 *  recovery shadows the old-but-not-yet-deleted sibling during the re-roll. */
-	replacesMessageId?: string | null;
+	/** Additive re-roll: marks this branch as a lone regenerate (another variation
+	 *  added to an existing grid) rather than one of an initial fan-out group. The
+	 *  server uses it to keep this branch's own per-branch notification instead of
+	 *  folding it into the group's single aggregate notify. */
+	reroll?: boolean;
 	/** Total branch count of this fan-out — the server uses it only as the count
 	 *  in the single aggregate notification fired when the last branch settles.
 	 *  Omitted on a regenerate (a lone re-roll notifies on its own). */
@@ -129,7 +131,7 @@ export function buildFanoutBranchBody(input: {
 		modelId: input.modelId,
 		modelKind: input.modelKind,
 		...(input.inputMediaId ? { inputMediaIds: [input.inputMediaId] } : {}),
-		...(input.replacesMessageId ? { replacesMessageId: input.replacesMessageId } : {}),
+		...(input.reroll ? { reroll: true } : {}),
 		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
 	};
 }
