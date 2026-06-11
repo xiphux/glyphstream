@@ -66,8 +66,6 @@ export default defineConfig({
 				PORT: '3000',
 				DB_PATH: './tests/.e2e-data/test.db',
 				MEDIA_DIR: './tests/.e2e-data/media',
-				MEDIA_GRACE_PERIOD_DAYS: '7',
-				MEDIA_PURGE_INTERVAL_SECONDS: '3600',
 				AUTH_SECRET: 'e2e-test-secret-not-used-in-prod-32chars',
 				GITHUB_OAUTH_CLIENT_ID: 'e2e-stub',
 				GITHUB_OAUTH_CLIENT_SECRET: 'e2e-stub',

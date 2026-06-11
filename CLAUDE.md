@@ -55,8 +55,9 @@ tests/e2e/            # playwright (production-build webServer)
 - Custom models are saved presets of (base model + system prompt + params).
   Materialized onto the conversation at create time — editing the preset
   doesn't retroactively change existing chats.
-- Media is ref-counted via the `message_media` join table. The background
-  purger sweeps zero-ref rows past `MEDIA_GRACE_PERIOD_DAYS`.
+- Media is ref-counted via the `message_media` join table. Generated media
+  is kept indefinitely; the background purger only reaps abandoned uploads,
+  on a hardcoded cadence (see `src/lib/server/media/purger.ts`).
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
 - `await parent()` at the start of every `(app)` page server load. Without
