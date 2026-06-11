@@ -7,13 +7,17 @@
  *   3. pnpm build && <demo env> node build/index.js      (port 3010)
  *   4. pnpm exec tsx scripts/screenshots/capture.ts
  *
- * Output: docs/images/*.png at 2x device scale for crisp rendering on
- * retina displays (README displays them at ~820 CSS px wide).
+ * Output: docs/images/*.jpg. Captured at 2x device scale for crisp
+ * rendering on retina displays, then downscaled to 1640px wide (2x of the
+ * README's ~820 CSS px display width) and JPEG-encoded — the README loads
+ * noticeably faster than with full-resolution PNGs, and screenshots don't
+ * need lossless fidelity.
  */
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
+import sharp from 'sharp';
 
 const BASE = process.env.DEMO_BASE_URL ?? 'http://localhost:3010';
 const DATA_DIR = resolve('./scripts/screenshots/.demo-data');
@@ -30,6 +34,15 @@ async function settle(page: Page) {
 	await page.waitForTimeout(900);
 }
 
+async function shoot(page: Page, name: string) {
+	const raw = await page.screenshot();
+	await sharp(raw)
+		.resize({ width: 1640 })
+		.jpeg({ quality: 80, mozjpeg: true })
+		.toFile(resolve(OUT_DIR, `${name}.jpg`));
+	console.log(`captured ${name}.jpg`);
+}
+
 const browser = await chromium.launch();
 try {
 	const context = await browser.newContext({
@@ -43,26 +56,22 @@ try {
 	// Hero — the active chat conversation, light and dark.
 	await page.goto(`${BASE}/chat/${manifest.hero}`);
 	await settle(page);
-	await page.screenshot({ path: resolve(OUT_DIR, 'hero-light.png') });
-	console.log('captured hero-light.png');
+	await shoot(page, 'hero-light');
 
 	await page.emulateMedia({ colorScheme: 'dark' });
 	await settle(page);
-	await page.screenshot({ path: resolve(OUT_DIR, 'hero-dark.png') });
-	console.log('captured hero-dark.png');
+	await shoot(page, 'hero-dark');
 
 	// Fan-out compare grid (parked image fan-out). Dark scheme — it's the
 	// flattering one for media grids.
 	await page.goto(`${BASE}/chat/${manifest.fanout}`);
 	await settle(page);
-	await page.screenshot({ path: resolve(OUT_DIR, 'fanout.png') });
-	console.log('captured fanout.png');
+	await shoot(page, 'fanout');
 
 	// Gallery.
 	await page.goto(`${BASE}/gallery`);
 	await settle(page);
-	await page.screenshot({ path: resolve(OUT_DIR, 'gallery.png') });
-	console.log('captured gallery.png');
+	await shoot(page, 'gallery');
 } finally {
 	await browser.close();
 }

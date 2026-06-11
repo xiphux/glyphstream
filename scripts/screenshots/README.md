@@ -16,7 +16,8 @@ The pieces:
   image fan-out, procedural gradient-art media for the gallery, and a
   pre-authenticated session for Playwright.
 - `capture.ts` — drives Chromium over the seeded pages and writes
-  `docs/images/*.png` (2× scale).
+  `docs/images/*.jpg` (captured at 2× scale, downscaled to 1640px wide
+  and JPEG-encoded so the README loads fast).
 
 ## The dance
 
@@ -43,7 +44,7 @@ and serves stale data.
 
 ## Git LFS
 
-`docs/images/*.png` is tracked via **Git LFS** (see `.gitattributes`), so
+`docs/images/*` is tracked via **Git LFS** (see `.gitattributes`), so
 re-captures don't bloat the repo history. Two consequences:
 
 - **Fresh clones need `git-lfs` installed** (`brew install git-lfs` /

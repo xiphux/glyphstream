@@ -1,3 +1,4 @@
 # README / docs screenshots are binary — store them in Git LFS instead of
 # normal git history so re-captures don't bloat the repo.
 docs/images/*.png filter=lfs diff=lfs merge=lfs -text
+docs/images/*.jpg filter=lfs diff=lfs merge=lfs -text

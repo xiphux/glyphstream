@@ -9,8 +9,8 @@ them into a single fast chat UI with one model picker.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
-    <img src="docs/images/hero-light.png" alt="GlyphStream chat view" width="820">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.jpg">
+    <img src="docs/images/hero-light.jpg" alt="GlyphStream chat view" width="820">
   </picture>
 </p>
 
@@ -49,7 +49,7 @@ them into a single fast chat UI with one model picker.
 ### Multi-model
 
 <p align="center">
-  <img src="docs/images/fanout.png" alt="Multi-model fan-out comparison grid" width="820">
+  <img src="docs/images/fanout.jpg" alt="Multi-model fan-out comparison grid" width="820">
 </p>
 
 - Every endpoint's models in **one searchable picker**, grouped by provider,
@@ -66,7 +66,7 @@ them into a single fast chat UI with one model picker.
 ### Images & video
 
 <p align="center">
-  <img src="docs/images/gallery.png" alt="Media gallery" width="820">
+  <img src="docs/images/gallery.jpg" alt="Media gallery" width="820">
 </p>
 
 - Inline **image and video generation** through `/v1/images` / `/v1/videos`
