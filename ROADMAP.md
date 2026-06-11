@@ -286,6 +286,18 @@ what already shipped, for context).
   Saves a click for power users who reflexively want media gone — trivial to
   ship if demand shows up.
 
+- **Optional cap on accumulated fan-out variations.** Media regenerate is
+  additive (a re-roll adds a sibling beside the original rather than replacing
+  it — see the keep-many compare grid), so repeated Regenerate-and-keep grows
+  DB rows + stored media unbounded; the per-conversation cap only bounds
+  _concurrent_ (in-flight) branches, not accumulated kept ones, and the purger
+  only sweeps zero-ref media. This is deliberate ("keep whichever you prefer,
+  discard the rest" — consistent with the app's general accumulate-media-then-
+  prune model; the old destructive replace didn't bound total storage either).
+  If unbounded growth ever bites a small self-hosted box, the fix is a
+  total-sibling-per-fan-out cap (disable Regenerate past N kept variations) or
+  a bulk-cleanup sweep — neither worth the friction pre-emptively.
+
 - **Background sync / offline composition.** Service worker queues messages
   while offline, resends on reconnect. Low priority — chat apps generally
   don't need this.

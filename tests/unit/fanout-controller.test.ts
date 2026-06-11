@@ -275,6 +275,33 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('drops an interrupted re-roll on a parked grid (no dangling "Generating…")', async () => {
+		// A re-roll whose stream dies to a suspend/offline drop on an already-parked
+		// (non-live) grid must NOT park at 'streaming' — there's no in-grid control
+		// to clear a non-settled column, so it would dangle until the next return
+		// invalidate. It's dropped instead; server-truth recovery re-adds it.
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.includes('?stream=1')) throw new TypeError('Load failed');
+			return jsonResponse({});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		state.interrupted = true;
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
+			pending: 0,
+		});
+		expect(fc.live).toBe(false);
+		await fc.regenerate(fc.columns[0]);
+		// Back to the original settled grid — the interrupted re-roll column is gone.
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['a', 'b']);
+		expect(fc.columns.every((c) => c.status === 'done')).toBe(true);
+		vi.unstubAllGlobals();
+	});
+
 	it('regenerate adds a new sibling beside the source, flagged as an additive re-roll', async () => {
 		let branchBody: { reroll?: unknown; replacesMessageId?: unknown } = {};
 		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {

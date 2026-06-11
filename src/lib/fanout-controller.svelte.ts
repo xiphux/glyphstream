@@ -422,15 +422,27 @@ export class FanoutController {
 			else if (this.#deps.interrupted()) {
 				// This branch's stream died to a suspension / connectivity drop (the
 				// page was hidden/offline during the fetch) — not a real failure; the
-				// server keeps generating. On a whole-tab suspend the sibling streams
-				// died too, so hand the fan-out off to server-truth recovery (which
-				// the visibility handler deliberately no longer does eagerly, to keep
-				// a healthy desktop tab-switch from dropping the live grid). Idempotent
-				// + leaves a non-live grid untouched.
-				col.status = 'streaming';
+				// server keeps generating. How we reconcile depends on whether this
+				// client still drives the fan-out (the visibility handler deliberately
+				// doesn't hand off eagerly, to keep a healthy desktop tab-switch from
+				// dropping a live grid).
 				if (this.live) {
+					// Whole-tab suspend killed the sibling streams too, so park this one
+					// at 'streaming' and hand the live fan-out off to server-truth
+					// recovery to reconcile it.
+					col.status = 'streaming';
 					this.handoffToRecovery();
 					void invalidateAll();
+				} else {
+					// A re-roll on an ALREADY-parked grid: this client isn't driving
+					// recovery, so a 'streaming' column would dangle with no terminal
+					// state (every in-grid control needs a settled column, and neither
+					// recovery poll watches a `reroll:` branchId) until the page's
+					// return-transition invalidate rebuilds from server truth. Drop it
+					// for an immediate in-grid escape; that same server-truth rebuild
+					// re-adds the re-roll as a sibling once it lands. The source column
+					// remains, so the grid never empties here.
+					this.columns = this.columns.filter((c) => c.branchId !== col.branchId);
 				}
 			} else {
 				col.error = e instanceof Error ? e.message : String(e);
