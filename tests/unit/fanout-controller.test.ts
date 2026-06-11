@@ -301,6 +301,62 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('keeps the grid unlocked during a re-roll so other columns stay actionable', async () => {
+		// Hold the re-roll's branch stream open so we can inspect grid state while
+		// it's in flight — this is the regression guard for the bug where
+		// regenerating one variation disabled the controls on every variation.
+		let releaseStream!: () => void;
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.includes('?stream=1')) {
+				const body = new ReadableStream<Uint8Array>({
+					start(controller) {
+						const enc = new TextEncoder();
+						controller.enqueue(
+							enc.encode(
+								`data: ${JSON.stringify({ type: 'start', userMessage: imageSibling('u1', '', null), assistantMessageId: '' })}\n\n`,
+							),
+						);
+						releaseStream = () => {
+							controller.enqueue(
+								enc.encode(
+									`data: ${JSON.stringify({ type: 'done', assistantMessage: imageSibling('new-a', 'bridge::sdxl', null) })}\n\n`,
+								),
+							);
+							controller.close();
+						};
+					},
+				});
+				return { ok: true, body } as unknown as Response;
+			}
+			return jsonResponse({});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
+			pending: 0,
+		});
+
+		const reroll = fc.regenerate(fc.columns[0]);
+		await Promise.resolve();
+		// The grid-wide lock is NOT taken: the second column is settled and its
+		// own state untouched, so its Regenerate/Discard stay live.
+		expect(fc.picking).toBe(false);
+		expect(fc.columns[1].status).toBe('done');
+		expect(fc.columns[1].persisted?.id).toBe('b');
+		// The re-rolling column is the only one marked in-flight.
+		expect(fc.columns[0].status).toBe('streaming');
+
+		releaseStream();
+		await reroll;
+		expect(fc.columns[0].persisted?.id).toBe('new-a');
+		expect(fc.picking).toBe(false);
+		vi.unstubAllGlobals();
+	});
+
 	it('refuses an oversized fan-out without dispatching (mirrors the server cap)', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({}));
 		vi.stubGlobal('fetch', fetchMock);

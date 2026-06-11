@@ -538,11 +538,19 @@ export class FanoutController {
 	/** Re-roll one media variation in place: generate a fresh sibling with the
 	 *  same model/prompt, then delete the old one once the new one lands. */
 	async regenerate(col: FanoutColumn): Promise<void> {
-		// Serialize against the other grid mutations (pick/dismiss/discard) — an
-		// overlapping discard during an in-flight re-roll could otherwise drop the
-		// last kept variation past the "keep at least one" guard.
+		// Re-rolls are per-column, not grid-wide: deliberately do NOT take the
+		// shared `picking` lock for the (many-second) image/video generation, or
+		// every other column's controls would freeze for its whole duration — the
+		// bug where re-rolling one variation disabled Regenerate on all of them.
+		// Concurrent re-rolls are safe: each column owns its own state + branch
+		// fetch; the in-flight fetch keeps an entry in `#aborts`, which gates the
+		// recovery rehydration just as `picking` did; and the "keep at least one"
+		// guard is enforced per-render from the live persisted count (a re-rolling
+		// column reads as not-persisted, so it can't be the last kept one). We do
+		// still bail if a grid-restructuring op (pick/dismiss/discard) is mid-flight
+		// or if THIS column is already re-rolling (its status flips below).
 		if (!this.userMessageId || this.picking) return;
-		this.picking = true;
+		if (col.status === 'queued' || col.status === 'streaming') return;
 		const convId = this.#deps.convId();
 		const oldId = col.persisted?.id ?? null;
 		// Snapshot so a failed re-roll restores the original (mirrors pick/dismiss)
@@ -561,28 +569,23 @@ export class FanoutController {
 		col.progress = null;
 		col.startedAt = null;
 		col.status = 'streaming';
-		try {
-			// Tell the server this branch replaces `oldId`. The server (relay)
-			// deletes the old sibling once the re-roll persists — server-side so the
-			// swap completes even if the client refreshes mid-re-roll — and shadows
-			// it from recovery in the meantime (one in-place column, not the old
-			// image + the re-roll as two boxes). On failure it's NOT deleted, so the
-			// snapshot restore below brings the original back.
-			const fresh = await this.#runBranch(convId, this.userMessageId, col, {
-				replacesMessageId: oldId,
-			});
-			if (!fresh) {
-				// Re-roll failed / was cancelled — restore the original.
-				col.persisted = snapshot.persisted;
-				col.status = snapshot.status;
-				col.segments = snapshot.segments;
-				col.error = snapshot.error;
-				col.progress = snapshot.progress;
-				col.startedAt = snapshot.startedAt;
-				return;
-			}
-		} finally {
-			this.picking = false;
+		// Tell the server this branch replaces `oldId`. The server (relay)
+		// deletes the old sibling once the re-roll persists — server-side so the
+		// swap completes even if the client refreshes mid-re-roll — and shadows
+		// it from recovery in the meantime (one in-place column, not the old
+		// image + the re-roll as two boxes). On failure it's NOT deleted, so the
+		// snapshot restore below brings the original back.
+		const fresh = await this.#runBranch(convId, this.userMessageId, col, {
+			replacesMessageId: oldId,
+		});
+		if (!fresh) {
+			// Re-roll failed / was cancelled — restore the original.
+			col.persisted = snapshot.persisted;
+			col.status = snapshot.status;
+			col.segments = snapshot.segments;
+			col.error = snapshot.error;
+			col.progress = snapshot.progress;
+			col.startedAt = snapshot.startedAt;
 		}
 	}
 
