@@ -27,6 +27,8 @@ config.toml
 # Whitelist test fixtures — they live under tests/ and are required for
 # CI runs. Without this exception, the rule above silently blocks them.
 !tests/**/config.toml
+# Same for the README-screenshot pipeline's demo config.
+!scripts/screenshots/config.toml
 data/
 
 
@@ -50,3 +52,4 @@ test-results/
 /text-chat*.json
 /image-chat*.json
 /imports/
+scripts/screenshots/.demo-data/

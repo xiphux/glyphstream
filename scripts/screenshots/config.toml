@@ -1,0 +1,22 @@
+# Endpoint config for README screenshot capture — points every endpoint at
+# the demo mock upstream (scripts/screenshots/mock-upstream.mjs), which
+# serves realistic model catalogs per path prefix.
+
+[[endpoints]]
+id = "workstation"
+display_name = "Workstation"
+base_url = "http://localhost:3002/workstation/v1"
+supports_tools = true
+max_concurrent = 1
+
+[[endpoints]]
+id = "groq"
+display_name = "Groq"
+base_url = "http://localhost:3002/groq/v1"
+supports_tools = true
+
+[[endpoints]]
+id = "bridge"
+display_name = "NAS Bridge"
+base_url = "http://localhost:3002/bridge/v1"
+group_by = "owned_by"
