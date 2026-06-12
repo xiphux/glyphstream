@@ -27,7 +27,10 @@ jobs:
     name: Prune old commit images
     runs-on: ubuntu-latest
     steps:
-      - uses: dataaxiom/ghcr-cleanup-action@v1
+      # Pinned to a full commit SHA, not a floating tag: this action has
+      # destructive permissions (deletes registry packages), so a hijacked
+      # tag could nuke images or exfiltrate the token. Bump deliberately.
+      - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           packages: glyphstream
           # Releases + the rolling main tag are never touched, regardless
