@@ -75,7 +75,7 @@ jobs:
       # pass to populate OCI annotations (org.opencontainers.image.*).
       - name: Compute labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY_IMAGE }}
 
@@ -135,7 +135,7 @@ jobs:
       #   - vX.Y.Z tag pushes  ⇒ `X.Y.Z`, `X.Y`, `X`, `latest`
       - name: Compute Docker tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
