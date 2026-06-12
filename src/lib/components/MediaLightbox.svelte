@@ -35,7 +35,7 @@
 		 * Optional "conversations referencing this media" section.
 		 *  - `undefined`: don't render the section at all (chat-side use case).
 		 *  - `null`: render a "Loading…" placeholder (in-flight fetch).
-		 *  - `[]`: render "Not used in any conversation" (safe-to-delete signal).
+		 *  - `[]`: render "Not used in any conversation".
 		 *  - `MediaConversationRef[]`: render the list with click-through links.
 		 */
 		conversationsUsingThis?: MediaConversationRef[] | null;
@@ -553,11 +553,34 @@
 				{:else if conversationsError}
 					<p class="text-center text-red-300">{conversationsError}</p>
 				{:else if conversationsUsingThis.length === 0}
-					<p class="text-center opacity-60">Not used in any conversation — safe to delete.</p>
+					<p class="text-center opacity-60">Not used in any conversation.</p>
+				{:else if conversationsUsingThis.length === 1}
+					<!--
+						Common case: a generated asset lives in exactly one
+						conversation. Render it as a single inline link rather
+						than a "Used in 1 conversation:" header over a one-item
+						list — the header/list scaffolding only earns its keep
+						when there's more than one to enumerate. Multi-reference
+						is still reachable (the same media id reused as a
+						"starting image" in other chats), handled by the N>1
+						branch below.
+					-->
+					{@const c = conversationsUsingThis[0]}
+					<p class="text-center">
+						<span class="opacity-60">In conversation: </span>
+						<a
+							href="/chat/{c.id}"
+							class="inline-block max-w-full truncate align-bottom text-neutral-200 underline decoration-neutral-600 underline-offset-2 hover:decoration-neutral-300"
+						>
+							{c.title ?? 'Untitled'}
+						</a>
+						{#if c.archivedAt !== null}
+							<span class="ml-1 text-[10px] uppercase tracking-wide opacity-60">archived</span>
+						{/if}
+					</p>
 				{:else}
 					<div class="text-center opacity-60">
-						Used in {conversationsUsingThis.length}
-						{conversationsUsingThis.length === 1 ? 'conversation' : 'conversations'}:
+						Used in {conversationsUsingThis.length} conversations:
 					</div>
 					<ul class="mx-auto mt-1 flex max-h-32 flex-col gap-0.5 overflow-y-auto">
 						{#each conversationsUsingThis as c (c.id)}

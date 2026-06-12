@@ -437,7 +437,7 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 		expect(screen.getByText('Loading conversations…')).toBeInTheDocument();
 	});
 
-	it('shows the safe-to-delete signal on empty array', () => {
+	it('shows the "not used in any conversation" message on empty array', () => {
 		render(MediaLightbox, {
 			props: {
 				media: makeImage(),
@@ -445,7 +445,7 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 				conversationsUsingThis: [],
 			},
 		});
-		expect(screen.getByText('Not used in any conversation — safe to delete.')).toBeInTheDocument();
+		expect(screen.getByText('Not used in any conversation.')).toBeInTheDocument();
 	});
 
 	it('renders the conversation list when non-empty', () => {
@@ -467,11 +467,37 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 		expect(screen.getByText(/Used in 2 conversations:/)).toBeInTheDocument();
 	});
 
+	it('renders a single conversation as an inline link, not a "Used in 1" list', () => {
+		const refs: MediaConversationRef[] = [
+			{ id: 'c-9', title: 'Just this one', updatedAt: 0, archivedAt: null },
+		];
+		render(MediaLightbox, {
+			props: { media: makeImage(), onClose: vi.fn(), conversationsUsingThis: refs },
+		});
+		// Inline "In conversation: <link>" phrasing for the common case.
+		expect(screen.getByText('In conversation:')).toBeInTheDocument();
+		const link = screen.getByRole('link', { name: 'Just this one' });
+		expect(link).toHaveAttribute('href', '/chat/c-9');
+		// The plural-list scaffolding must NOT appear for a single conversation.
+		expect(screen.queryByText(/Used in/)).toBeNull();
+	});
+
+	it('shows the archived flag in the single-conversation case', () => {
+		const refs: MediaConversationRef[] = [
+			{ id: 'c-9', title: 'Archived chat', updatedAt: 0, archivedAt: 12345 },
+		];
+		render(MediaLightbox, {
+			props: { media: makeImage(), onClose: vi.fn(), conversationsUsingThis: refs },
+		});
+		expect(screen.getByText('In conversation:')).toBeInTheDocument();
+		expect(screen.getByText('archived')).toBeInTheDocument();
+	});
+
 	it('shows the conversationsError message when set', () => {
 		// The error branch only fires when conversationsUsingThis is a
 		// non-null array (the null state is the "loading" branch). Passing
 		// [] alongside the error lets the {:else if conversationsError}
-		// branch win over the empty-list "safe to delete" branch.
+		// branch win over the empty-list "not used in any conversation" branch.
 		render(MediaLightbox, {
 			props: {
 				media: makeImage(),
