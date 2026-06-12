@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Download, ImagePlus, RotateCcw, Share, Trash2, X } from '@lucide/svelte';
-	import type { MediaConversationRef, MediaListItem } from '$lib/server/db/queries/media';
+	import {
+		ChevronLeft,
+		ChevronRight,
+		Download,
+		ImagePlus,
+		RotateCcw,
+		Share,
+		Trash2,
+		X,
+	} from '@lucide/svelte';
+	import type {
+		MediaConversationRef,
+		MediaKind,
+		MediaListItem,
+	} from '$lib/server/db/queries/media';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 
 	interface Props {
@@ -38,6 +51,25 @@
 		 * so the default (false) keeps the concise wording.
 		 */
 		inConversation?: boolean;
+		/**
+		 * Ordered set the lightbox can navigate between (carousel mode).
+		 * Each entry is just `{ id, kind }` — enough to render every slide
+		 * (`/content` for the image/video, kind to pick the element) without
+		 * resolving full metadata for the whole set up front. `media` is the
+		 * currently-shown member; the caller swaps it in response to
+		 * `onNavigate`. Arrows / swipe / arrow-keys only appear when there
+		 * are 2+ entries; omit it (or pass a single-entry list) and the
+		 * lightbox renders exactly as the pre-carousel single-item view.
+		 */
+		siblings?: { id: string; kind: MediaKind }[];
+		/**
+		 * Called when the user swipes / clicks an arrow / presses an arrow
+		 * key to move to a different sibling. The caller resolves the id to
+		 * a full MediaListItem and feeds it back in via `media` (gallery has
+		 * it in memory; chat fetches it). Required for navigation to do
+		 * anything — without it the carousel is inert.
+		 */
+		onNavigate?: (id: string) => void;
 	}
 
 	let {
@@ -48,7 +80,73 @@
 		conversationsUsingThis = undefined,
 		conversationsError = null,
 		inConversation = false,
+		siblings = undefined,
+		onNavigate = undefined,
 	}: Props = $props();
+
+	// --- carousel navigation ---------------------------------------------
+	//
+	// Position of the open item within `siblings`. -1 when there's no set,
+	// no open item, or the open item isn't in the set — all of which fall
+	// back to the single-item layout below.
+	const currentIndex = $derived(
+		siblings && media ? siblings.findIndex((s) => s.id === media.id) : -1,
+	);
+	const showCarousel = $derived(!!siblings && siblings.length > 1 && currentIndex >= 0);
+
+	let trackEl = $state<HTMLDivElement | null>(null);
+
+	// True once we've performed the initial (instant) scroll-to-position
+	// for the current open session, so subsequent arrow/key moves animate.
+	// Reset whenever the lightbox closes (media → null).
+	let hasPositioned = false;
+	$effect(() => {
+		if (!media) hasPositioned = false;
+	});
+
+	// Jump the track to the opening slide once, instantly, when the
+	// lightbox opens. After that, scrolling is owned by the gesture (native
+	// swipe) and by `navigate()` (arrows/keys do their own smooth scroll) —
+	// re-running this on every `currentIndex` change would either fight an
+	// in-flight swipe or double up on the arrow scroll, so it early-returns
+	// once positioned. `snap-mandatory` keeps the right slide centered
+	// across viewport resizes / orientation changes on its own.
+	$effect(() => {
+		const el = trackEl;
+		const idx = currentIndex;
+		if (!el || idx < 0 || hasPositioned) return;
+		el.scrollTo({ left: idx * el.clientWidth, behavior: 'auto' });
+		hasPositioned = true;
+	});
+
+	// Swipe handler: after the scroll settles, snap the open item to
+	// whichever slide the user landed on. Debounced because `scroll` fires
+	// continuously during an inertial swipe — we only want the resting
+	// slide, and (for the chat caller) one resolve fetch, not one per slide
+	// flown past.
+	let scrollSettleTimer: ReturnType<typeof setTimeout> | undefined;
+	function onTrackScroll() {
+		const el = trackEl;
+		if (!el || !siblings) return;
+		clearTimeout(scrollSettleTimer);
+		scrollSettleTimer = setTimeout(() => {
+			const idx = Math.round(el.scrollLeft / el.clientWidth);
+			const landed = siblings[idx];
+			if (landed && landed.id !== media?.id) onNavigate?.(landed.id);
+		}, 90);
+	}
+
+	function navigate(delta: number) {
+		if (!siblings || currentIndex < 0) return;
+		const next = currentIndex + delta;
+		if (next < 0 || next >= siblings.length) return;
+		// Scroll immediately for instant feedback rather than waiting for the
+		// metadata fetch (chat) to round-trip through `media` → currentIndex →
+		// the positioning effect. The effect then no-ops (already centered).
+		const el = trackEl;
+		if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+		onNavigate?.(siblings[next].id);
+	}
 
 	function fmtBytes(n: number): string {
 		if (n < 1024) return `${n} B`;
@@ -65,9 +163,23 @@
 	// trap) so the Escape semantic needs to be global. Early-return when
 	// no media is open so unrelated keypresses don't reach onClose.
 	function onKey(e: KeyboardEvent) {
-		if (e.key !== 'Escape') return;
 		if (!media) return;
-		onClose();
+		if (e.key === 'Escape') {
+			onClose();
+			return;
+		}
+		// Arrow-key navigation, only meaningful in carousel mode. Guarded
+		// so a left/right press in (say) a focused download button doesn't
+		// also page the carousel — but the lightbox isn't a focus trap and
+		// has no text inputs, so a bare arrow press is unambiguous here.
+		if (!showCarousel) return;
+		if (e.key === 'ArrowLeft') {
+			e.preventDefault();
+			navigate(-1);
+		} else if (e.key === 'ArrowRight') {
+			e.preventDefault();
+			navigate(1);
+		}
 	}
 
 	function sourceModelIdFor(m: MediaListItem): string | null {
@@ -135,6 +247,11 @@
 	// scope) so SSR renders the Download icon and the client upgrades to
 	// Share without a hydration mismatch.
 	let useShareSheet = $state(false);
+	// Touch-primary devices already get swipe + scroll-snap; the on-image
+	// arrow buttons are a desktop (mouse/trackpad) affordance, so we hide
+	// them on coarse pointers to keep the image unobstructed there. Same
+	// `(pointer: coarse)` probe as the share-sheet decision.
+	let coarsePointer = $state(false);
 	$effect(() => {
 		const apiSupported =
 			typeof navigator !== 'undefined' &&
@@ -142,6 +259,7 @@
 			typeof navigator.share === 'function';
 		const touchPrimary = window.matchMedia?.('(pointer: coarse)').matches ?? false;
 		useShareSheet = apiSupported && touchPrimary;
+		coarsePointer = touchPrimary;
 	});
 
 	// id of the media whose content is currently being fetched, used to
@@ -244,7 +362,14 @@
 	>
 		<div class="flex shrink-0 items-center justify-between gap-3 pb-3 text-sm text-neutral-200">
 			<div class="flex flex-col text-xs">
-				<span class="font-medium">{m.sourceModel ?? 'Unknown model'}</span>
+				<span class="font-medium">
+					{m.sourceModel ?? 'Unknown model'}
+					{#if showCarousel}
+						<span class="ml-1 opacity-60 tabular-nums">
+							{currentIndex + 1} / {siblings!.length}
+						</span>
+					{/if}
+				</span>
 				<span class="opacity-70">
 					{fmtDate(m.createdAt)} · {fmtBytes(m.byteSize)} · {m.contentType}
 				</span>
@@ -287,24 +412,99 @@
 				</button>
 			</div>
 		</div>
-		<div class="flex flex-1 items-center justify-center overflow-hidden">
-			{#if m.kind === 'image'}
-				<img
-					src="/api/media/{m.id}/content"
-					alt={m.promptExcerpt ?? 'Generated image'}
-					class="max-h-full max-w-full rounded-lg object-contain"
-				/>
-			{:else}
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<video
-					src="/api/media/{m.id}/content"
-					controls
-					autoplay
-					playsinline
-					class="max-h-full max-w-full rounded-lg"
-				></video>
-			{/if}
-		</div>
+		{#if showCarousel}
+			<!--
+				Carousel mode. A horizontal scroll-snap track is the whole
+				gesture engine: native momentum swiping on touch, two-finger
+				swipe on a trackpad, zero drag-tracking JS. Each slide is
+				full-width and snap-centered; off-screen slides keep their
+				<img loading="lazy"> so a long set doesn't fetch every
+				original up front. `onTrackScroll` (debounced) reports the
+				rested slide back to the caller, which swaps `media`. Videos
+				render with controls but NOT autoplay here (unlike the
+				single-item view) — autoplaying the centered one as you swipe
+				past others is more jarring than useful.
+			-->
+			<div class="relative flex flex-1 overflow-hidden">
+				<div
+					bind:this={trackEl}
+					onscroll={onTrackScroll}
+					class="flex flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				>
+					{#each siblings! as s (s.id)}
+						<!--
+							`snap-always` (scroll-snap-stop: always) is what makes a
+							flick land on the *adjacent* slide and stop, instead of
+							gliding several slides on momentum — without it a quick
+							swipe coasts for ~a second before settling, which reads
+							as sluggish. One swipe = one image, Instagram-style.
+						-->
+						<div
+							class="flex w-full shrink-0 snap-center snap-always items-center justify-center px-1"
+						>
+							{#if s.kind === 'video'}
+								<!-- svelte-ignore a11y_media_has_caption -->
+								<video
+									src="/api/media/{s.id}/content"
+									controls
+									playsinline
+									preload="metadata"
+									class="max-h-full max-w-full rounded-lg"
+								></video>
+							{:else}
+								<img
+									src="/api/media/{s.id}/content"
+									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
+									loading="lazy"
+									class="max-h-full max-w-full rounded-lg object-contain"
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
+				{#if !coarsePointer}
+					<button
+						type="button"
+						onclick={() => navigate(-1)}
+						disabled={currentIndex <= 0}
+						aria-label="Previous"
+						title="Previous"
+						class="absolute left-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
+					>
+						<ChevronLeft size={22} strokeWidth={2.25} />
+					</button>
+					<button
+						type="button"
+						onclick={() => navigate(1)}
+						disabled={currentIndex >= siblings!.length - 1}
+						aria-label="Next"
+						title="Next"
+						class="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
+					>
+						<ChevronRight size={22} strokeWidth={2.25} />
+					</button>
+				{/if}
+			</div>
+		{:else}
+			<div class="flex flex-1 items-center justify-center overflow-hidden">
+				{#if m.kind === 'image'}
+					<img
+						src="/api/media/{m.id}/content"
+						alt={m.promptExcerpt ?? 'Generated image'}
+						class="max-h-full max-w-full rounded-lg object-contain"
+					/>
+				{:else}
+					<!-- svelte-ignore a11y_media_has_caption -->
+					<video
+						src="/api/media/{m.id}/content"
+						controls
+						autoplay
+						playsinline
+						class="max-h-full max-w-full rounded-lg"
+					></video>
+				{/if}
+			</div>
+		{/if}
 		{#if m.promptExcerpt}
 			<p class="mx-auto mt-3 max-w-3xl shrink-0 text-center text-xs text-neutral-300 line-clamp-3">
 				{m.promptExcerpt}

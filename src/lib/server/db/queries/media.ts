@@ -154,6 +154,56 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 	return row ?? null;
 }
 
+export interface ConversationMediaRef {
+	id: string;
+	kind: MediaKind;
+}
+
+/**
+ * All image/video media referenced anywhere in a conversation, oldest
+ * first — the navigation set for the in-chat lightbox carousel.
+ *
+ * Deliberately spans the *whole tree*, not just the active branch:
+ * multi-image batches, multi-model fan-out grids, and regenerate/follow-up
+ * revisions are all stored as sibling branches, only one of which sits on
+ * the active leaf path. Scoping to the active path (as the message-parts
+ * list does) would surface just one image per generation point and defeat
+ * the carousel. Joining through message_media → messages picks up every
+ * branch's media regardless of which leaf is currently active.
+ *
+ * Ownership is enforced via the conversations.user_id join, so a foreign
+ * or unknown conversation id returns `[]`. `selectDistinct` collapses a
+ * media row referenced by more than one message (e.g. a starting image
+ * reused downstream) to a single carousel entry.
+ */
+export function listConversationMediaRefs(
+	conversationId: string,
+	userId: string,
+): ConversationMediaRef[] {
+	const db = getDb();
+	return db
+		.selectDistinct({
+			id: media.id,
+			kind: media.kind,
+			createdAt: media.createdAt,
+		})
+		.from(messageMedia)
+		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
+		.innerJoin(conversations, eq(conversations.id, messages.conversationId))
+		.innerJoin(media, eq(media.id, messageMedia.mediaId))
+		.where(
+			and(
+				eq(messages.conversationId, conversationId),
+				eq(conversations.userId, userId),
+				inArray(media.kind, ['image', 'video']),
+				isNull(media.hardDeletedAt),
+			),
+		)
+		.orderBy(asc(media.createdAt), asc(media.id))
+		.all()
+		.map(({ id, kind }) => ({ id, kind }));
+}
+
 // --- Gallery listing -----------------------------------------------------
 
 export interface MediaListItem {

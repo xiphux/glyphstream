@@ -497,3 +497,118 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 		expect(screen.getByText('Untitled')).toBeInTheDocument();
 	});
 });
+
+describe('MediaLightbox — carousel navigation', () => {
+	const siblings = [
+		{ id: 'm-1', kind: 'image' as const },
+		{ id: 'm-2', kind: 'image' as const },
+		{ id: 'm-3', kind: 'video' as const },
+	];
+
+	it('shows no nav affordances without siblings', () => {
+		render(MediaLightbox, { props: { media: makeImage(), onClose: vi.fn() } });
+		expect(screen.queryByRole('button', { name: 'Previous' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+	});
+
+	it('shows no nav affordances for a single-entry sibling set', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1' }),
+				onClose: vi.fn(),
+				siblings: [{ id: 'm-1', kind: 'image' as const }],
+				onNavigate: vi.fn(),
+			},
+		});
+		expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+	});
+
+	it('renders arrows and a position counter when there are 2+ siblings', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-2' }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+			},
+		});
+		expect(screen.getByRole('button', { name: 'Previous' })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: 'Next' })).toBeInTheDocument();
+		// m-2 is index 1 of 3.
+		expect(screen.getByText('2 / 3')).toBeInTheDocument();
+	});
+
+	it('renders a slide per sibling, picking the element by kind', () => {
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-1' }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+			},
+		});
+		// Two image slides + one video slide.
+		expect(container.querySelectorAll('img')).toHaveLength(2);
+		const video = container.querySelector('video');
+		expect(video).toHaveAttribute('src', '/api/media/m-3/content');
+	});
+
+	it('Next/Previous call onNavigate with the adjacent id', async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-2' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		await user.click(screen.getByRole('button', { name: 'Next' }));
+		expect(onNavigate).toHaveBeenCalledWith('m-3');
+		await user.click(screen.getByRole('button', { name: 'Previous' }));
+		expect(onNavigate).toHaveBeenCalledWith('m-1');
+	});
+
+	it('disables Previous on the first item and Next on the last', () => {
+		const { rerender } = render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() },
+		});
+		expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
+
+		rerender({ media: makeVideo({ id: 'm-3' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() });
+		expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Previous' })).not.toBeDisabled();
+	});
+
+	it('ArrowRight / ArrowLeft keys navigate', async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-2' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		await user.keyboard('{ArrowRight}');
+		expect(onNavigate).toHaveBeenCalledWith('m-3');
+		await user.keyboard('{ArrowLeft}');
+		expect(onNavigate).toHaveBeenCalledWith('m-1');
+	});
+
+	it('does not navigate past the ends', async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'm-1' }), onClose: vi.fn(), siblings, onNavigate },
+		});
+		await user.keyboard('{ArrowLeft}');
+		expect(onNavigate).not.toHaveBeenCalled();
+	});
+
+	it('falls back to the single-item view when the open item is not in the set', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'not-in-set' }),
+				onClose: vi.fn(),
+				siblings,
+				onNavigate: vi.fn(),
+			},
+		});
+		// currentIndex === -1 → no carousel chrome.
+		expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+	});
+});

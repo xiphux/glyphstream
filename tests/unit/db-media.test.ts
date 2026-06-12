@@ -17,6 +17,7 @@ import {
 	hardDeleteMediaForUser,
 	insertMedia,
 	linkMessageMedia,
+	listConversationMediaRefs,
 	listConversationsForMedia,
 	listMediaForUser,
 	listMessageIdsForConversation,
@@ -738,5 +739,131 @@ describe('listConversationsForMedia', () => {
 		const result = listConversationsForMedia(mediaId, u.id);
 		expect(result).toHaveLength(1);
 		expect(result[0].archivedAt).not.toBeNull();
+	});
+});
+
+describe('listConversationMediaRefs', () => {
+	function makeConv(userId: string) {
+		return createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image',
+		});
+	}
+
+	function makeMsg(conversationId: string, parentMessageId: string | null = null) {
+		return appendMessage({
+			conversationId,
+			parentMessageId,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'placeholder' }],
+		});
+	}
+
+	it('returns [] for a conversation with no media', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		makeMsg(conv.id);
+		expect(listConversationMediaRefs(conv.id, u.id)).toEqual([]);
+	});
+
+	it('returns [] for a foreign user even when media exists', () => {
+		const owner = seedUser();
+		const intruder = seedUser();
+		const conv = makeConv(owner.id);
+		const msg = makeMsg(conv.id);
+		const { id } = makeMedia(owner.id);
+		linkMessageMedia(msg.id, id);
+		expect(listConversationMediaRefs(conv.id, intruder.id)).toEqual([]);
+	});
+
+	it('spans sibling branches, not just the active leaf path', async () => {
+		// The whole point: a multi-image batch / fan-out is N sibling
+		// assistant messages under one parent, only one of which is on the
+		// active path. All N images must surface.
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const parent = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'make four' }],
+		});
+		const ids: string[] = [];
+		for (let i = 0; i < 4; i++) {
+			// Siblings: same parent, only the last advances the active leaf.
+			const sib = appendMessage({
+				conversationId: conv.id,
+				parentMessageId: parent.id,
+				role: 'assistant',
+				parts: [{ type: 'text', text: `variant ${i}` }],
+				advanceActiveLeaf: i === 3,
+			});
+			await new Promise((r) => setTimeout(r, 2)); // strict createdAt order
+			const { id } = makeMedia(u.id);
+			linkMessageMedia(sib.id, id);
+			ids.push(id);
+		}
+
+		const result = listConversationMediaRefs(conv.id, u.id);
+		expect(result.map((r) => r.id)).toEqual(ids); // all four, oldest first
+		expect(result.every((r) => r.kind === 'image')).toBe(true);
+	});
+
+	it('dedupes a media referenced by more than one message', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg1 = makeMsg(conv.id);
+		const msg2 = makeMsg(conv.id, msg1.id);
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg1.id, id);
+		linkMessageMedia(msg2.id, id);
+		expect(listConversationMediaRefs(conv.id, u.id).map((r) => r.id)).toEqual([id]);
+	});
+
+	it('excludes file-kind media but keeps images and videos', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const img = makeMedia(u.id, { kind: 'image' });
+		await new Promise((r) => setTimeout(r, 2));
+		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		await new Promise((r) => setTimeout(r, 2));
+		const file = makeMedia(u.id, { kind: 'file', contentType: 'application/pdf' });
+		linkMessageMedia(msg.id, img.id);
+		linkMessageMedia(msg.id, vid.id);
+		linkMessageMedia(msg.id, file.id);
+
+		const result = listConversationMediaRefs(conv.id, u.id);
+		expect(result.map((r) => r.id)).toEqual([img.id, vid.id]);
+		expect(result.find((r) => r.id === vid.id)?.kind).toBe('video');
+	});
+
+	it('excludes hard-deleted media', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const live = makeMedia(u.id);
+		const gone = makeMedia(u.id);
+		linkMessageMedia(msg.id, live.id);
+		linkMessageMedia(msg.id, gone.id);
+		hardDeleteMediaForUser(gone.id, u.id);
+
+		expect(listConversationMediaRefs(conv.id, u.id).map((r) => r.id)).toEqual([live.id]);
+	});
+
+	it('scopes to the conversation, not the whole user library', () => {
+		const u = seedUser();
+		const convA = makeConv(u.id);
+		const convB = makeConv(u.id);
+		const msgA = makeMsg(convA.id);
+		const msgB = makeMsg(convB.id);
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		linkMessageMedia(msgA.id, a.id);
+		linkMessageMedia(msgB.id, b.id);
+
+		expect(listConversationMediaRefs(convA.id, u.id).map((r) => r.id)).toEqual([a.id]);
 	});
 });

@@ -50,7 +50,7 @@
 	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
-	import type { MediaListItem } from '$lib/server/db/queries/media';
+	import type { ConversationMediaRef, MediaListItem } from '$lib/server/db/queries/media';
 	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
 
 	let { data } = $props();
@@ -401,6 +401,9 @@
 		void data.conversation.id;
 		attachments.clear();
 		autoAttached = null;
+		// Stale set from the previous conversation — cleared so it can't
+		// briefly leak into a lightbox opened before the refetch lands.
+		conversationMedia = [];
 	});
 
 	$effect(() => {
@@ -461,8 +464,33 @@
 	let lightbox = $state<MediaListItem | null>(null);
 	let openingLightboxFor = $state<string | null>(null);
 
+	// Ordered set the lightbox swipes/arrows between: every image/video in
+	// the conversation, across ALL branches, oldest first. Fetched (not
+	// derived from `visibleMessages`) because multi-image batches,
+	// multi-model grids, and regenerate revisions are sibling branches —
+	// only one sits on the active leaf path, so the message list would
+	// surface just one image per generation point. `openImageInLightbox`
+	// doubles as the resolver, fetching each swiped-to row's metadata.
+	let conversationMedia = $state<ConversationMediaRef[]>([]);
+	async function loadConversationMedia() {
+		try {
+			const res = await fetch(`/api/conversations/${data.conversation.id}/media`);
+			if (!res.ok) return; // carousel just stays single-item; non-fatal
+			const body = (await res.json()) as { items: ConversationMediaRef[] };
+			conversationMedia = body.items;
+		} catch {
+			// Network blip — leave the set as-is; the lightbox still opens
+			// on the tapped image, just without sibling navigation.
+		}
+	}
+
 	async function openImageInLightbox(mediaId: string) {
 		if (openingLightboxFor === mediaId) return;
+		// Initial open (lightbox was closed) — also (re)load the carousel
+		// set so swipe/arrows have somewhere to go, and so just-generated
+		// images are included. A swipe-driven navigate calls this with the
+		// lightbox already open, so it skips the refetch.
+		if (!lightbox) void loadConversationMedia();
 		openingLightboxFor = mediaId;
 		try {
 			const res = await fetch(`/api/media/${mediaId}`);
@@ -2017,6 +2045,12 @@
 -->
 {#if lightbox}
 	{#await import('$lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
-		<MediaLightbox media={lightbox} onClose={() => (lightbox = null)} inConversation />
+		<MediaLightbox
+			media={lightbox}
+			onClose={() => (lightbox = null)}
+			inConversation
+			siblings={conversationMedia}
+			onNavigate={openImageInLightbox}
+		/>
 	{/await}
 {/if}

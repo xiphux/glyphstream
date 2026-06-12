@@ -49,7 +49,15 @@
 			conversationsError = null;
 			return;
 		}
-		lightboxConversations = null;
+		// Deliberately do NOT blank `lightboxConversations` here on navigate.
+		// Resetting to null flashes the one-line "Loading…" placeholder
+		// between every swipe, and that collapse-then-expand resizes the
+		// flex-1 image area — a visible jerk after each carousel move. The
+		// stale-id guard below already discards a late response, so keeping
+		// the previous item's list visible during the ~one-fetch window is
+		// safe; it's replaced atomically when the new list lands. On the
+		// very first open the prior value is already null (cleared on close),
+		// so the loading state still shows then, where it belongs.
 		conversationsError = null;
 		// Capture id so a stale response from a previous open can't clobber
 		// the current state if the user opens lightbox A, closes, then opens
@@ -379,4 +387,12 @@
 	{deletingId}
 	conversationsUsingThis={lightboxConversations}
 	{conversationsError}
+	siblings={items.map((m) => ({ id: m.id, kind: m.kind }))}
+	onNavigate={(id) => {
+		// All gallery items are already in memory, so navigation is an
+		// instant in-array swap — no fetch. The conversations effect
+		// (keyed on lightbox.id) refetches the new item's refs.
+		const found = items.find((m) => m.id === id);
+		if (found) lightbox = found;
+	}}
 />
