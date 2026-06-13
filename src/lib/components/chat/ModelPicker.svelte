@@ -148,10 +148,15 @@
 	function setTotal(set: SavedModelSet): number {
 		return set.models.reduce((n, m) => n + m.count, 0);
 	}
-	/** Modality a set locks to (its first resolvable model's kind). */
+	/** Modality a set locks to — the first *resolvable* model's kind (a leading
+	 *  stale id is skipped, matching applyModelSet, which can still apply the
+	 *  set off its surviving models). undefined if none resolve. */
 	function setKind(set: SavedModelSet): ModelKind | undefined {
-		const first = set.models[0];
-		return first ? models.find((m) => m.id === first.modelId)?.kind : undefined;
+		for (const s of set.models) {
+			const m = models.find((x) => x.id === s.modelId);
+			if (m) return m.kind;
+		}
+		return undefined;
 	}
 	/** A set is applicable when its kind is compare-eligible and either the
 	 *  cart is empty or already locked to that same kind (applying can never
@@ -169,19 +174,23 @@
 			return m && COMPARE_KINDS.includes(m.kind);
 		});
 		if (resolved.length === 0) return;
+		// A comparison is single-modality, so restrict to one kind: the cart's
+		// current lock, or — when the cart is empty (single-select apply) — the
+		// first resolved model's kind. This guards BOTH branches against a
+		// (defensively possible) mixed-kind set; there's no modality re-check
+		// downstream at send time, so a mixed cart would fan one prompt across
+		// modalities.
+		const lock = compareKind ?? models.find((x) => x.id === resolved[0].modelId)?.kind;
+		const restricted = resolved.filter(
+			(s) => models.find((x) => x.id === s.modelId)?.kind === lock,
+		);
+		if (restricted.length === 0) return;
 		if (compareMode) {
-			// Merge into the cart, restricted to the locked kind so a (defensively
-			// possible) mixed-kind set can't break the single-modality invariant.
-			const lock = compareKind ?? setKind(set);
-			const restricted = {
-				...set,
-				models: resolved.filter((s) => models.find((x) => x.id === s.modelId)?.kind === lock),
-			};
-			if (restricted.models.length === 0) return;
-			compareSelections = mergeModelSet(compareSelections, restricted);
+			// Merge into the existing cart, de-duped.
+			compareSelections = mergeModelSet(compareSelections, { ...set, models: restricted });
 		} else {
 			// Single mode: replace + enter compare mode.
-			compareSelections = resolved.map((s) => ({ modelId: s.modelId, count: s.count }));
+			compareSelections = restricted.map((s) => ({ modelId: s.modelId, count: s.count }));
 			compareMode = true;
 		}
 	}

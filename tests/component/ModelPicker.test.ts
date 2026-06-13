@@ -729,6 +729,42 @@ describe('ModelPicker — saved sets', () => {
 		expect(screen.getByText('2 models')).toBeInTheDocument();
 	});
 
+	it('applying a mixed-kind set in single mode keeps only the locked modality', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::a', displayName: 'Model A', kind: 'chat' }),
+					makeModel({ id: 'bridge::b', displayName: 'Model B', kind: 'chat' }),
+					makeModel({ id: 'bridge::img', displayName: 'Imager', kind: 'image' }),
+				],
+				value: 'bridge::a',
+				allowCompare: true,
+				// A (defensively possible) mixed-kind set: first model locks to chat,
+				// the image entry must be dropped — a comparison is single-modality.
+				modelSets: [
+					{
+						id: 'mixed',
+						name: 'Mixed',
+						models: [
+							{ modelId: 'bridge::a', count: 1 },
+							{ modelId: 'bridge::b', count: 1 },
+							{ modelId: 'bridge::img', count: 1 },
+						],
+					},
+				],
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Mixed'));
+		await tick();
+		await user.keyboard('{Escape}');
+		await tick();
+		// Only the two chat models applied; the image was filtered out (a bug that
+		// skipped the single-select restriction would show "3 models").
+		expect(screen.getByText('2 models')).toBeInTheDocument();
+	});
+
 	it('applying a set in compare mode merges into the cart, de-duped', async () => {
 		const user = userEvent.setup();
 		render(ModelPicker, {
