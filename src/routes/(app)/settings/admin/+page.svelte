@@ -279,7 +279,9 @@
 								{/if}
 							</div>
 							<div class="text-xs text-fg-muted">
-								{u.email ?? 'no email'} · last login {formatDate(u.lastLoginAt)}
+								{u.email ?? 'no email'} · joined {formatDate(u.createdAt)} · last login {formatDate(
+									u.lastLoginAt,
+								)}
 							</div>
 						</div>
 						{#if u.id !== data.me}
