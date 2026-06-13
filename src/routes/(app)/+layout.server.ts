@@ -4,6 +4,7 @@ import { listCustomModelsForUser } from '$lib/server/db/queries/custom-models';
 import { countUsers } from '$lib/server/db/queries/users';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
+import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
@@ -41,7 +42,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		prefs: getUserPreferences(locals.user.id),
 		models: await listAllModels(),
 		customModels: listCustomModelsForUser(locals.user.id),
-		featureCategories: getAllFeatureCategoryLabels(),
+		// Hide per-user MCP servers the user hasn't connected — an inert toggle
+		// is confusing; they connect in Settings → MCP servers. Global servers
+		// always show.
+		featureCategories: getAllFeatureCategoryLabels({
+			configuredPerUserServerIds: new Set(listConfiguredServerIds(locals.user.id)),
+		}),
 		// Enabled skills (name + description) for the composer's /skill-name
 		// autocomplete. Catalog-index shape only — bodies stay server-side.
 		enabledSkills: listEnabledSkillsForUser(locals.user.id).map((s) => ({
