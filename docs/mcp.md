@@ -66,6 +66,42 @@ popover, so the user can hide an entire server's toolset from one turn
 without revoking trust. Custom-model presets can default specific MCP
 categories off via the same per-category checkboxes on the model edit page.
 
+## Authentication
+
+Each server authenticates one of two ways, set by its `auth` field:
+
+- **`auth = "global"`** (the default) — one shared credential for the whole
+  instance, read from the env var named in `api_key_env` at boot and sent as
+  `Authorization: Bearer <token>`. Right for a server fronting a shared
+  resource (an internal service, a team Linear workspace).
+- **`auth = "per_user"`** — each user supplies their **own** token, so a
+  server fronting a personal account (email, calendar) works in a multi-user
+  deployment. HTTP transport only, and it must **not** set `api_key_env` (the
+  token is per user, not from the environment):
+
+```toml
+[[mcp_servers]]
+id = "email"
+display_name = "Email"
+transport = "http"
+url = "https://api.fastmail.com/mcp"
+auth = "per_user"
+```
+
+A per-user server appears to everyone in **Settings → MCP servers** with a
+**Your credential** field. Until a user saves a token there it shows as
+`needs credential` and **none of its tools are advertised to that user** — the
+model never sees them. Once saved, the connection is made lazily under that
+user's identity and its tools join their registry; clearing the token drops
+them again.
+
+Tokens are encrypted at rest with AES-256-GCM, keyed `(serverId, userId)`. The
+key is `MCP_SECRET_KEY`, which **defaults to `AUTH_SECRET`** — so per-user MCP
+needs no extra setup. Set it explicitly only to rotate MCP-credential
+encryption independently of session secrets; rotating whichever key is in
+effect invalidates every stored credential, and users re-enter their tokens.
+See the [`.env` reference](configuration.md#env-reference).
+
 ## Per-tool approval
 
 MCP tools default to **ask every time**. When the model first calls one, the
@@ -90,9 +126,11 @@ exotic.
 
 ## Deferred for later
 
-v1 is admin-defined with static auth only. Per-user OAuth (for Gmail /
-Calendar / Drive MCP servers that need a user-bound token), a browser-side
-bridge for MCP servers running only on the user's laptop, image/audio blocks
-in tool results, and argument-aware approval policies all live behind v1's
-seams — see the MCP entry in [`ROADMAP.md`](../ROADMAP.md) for the phase-2
-hook points.
+Servers are admin-defined in `config.toml`, and the per-user auth that shipped
+is a **static token** each user pastes in (see [Authentication](#authentication)
+above). Still deferred: per-user **OAuth** — the 3-legged flow for Gmail /
+Calendar / Drive servers, as opposed to the static token above — plus a
+browser-side bridge for MCP servers running only on the user's laptop,
+image/audio blocks in tool results, and argument-aware approval policies. All
+live behind v1's seams; see the MCP entry in [`ROADMAP.md`](../ROADMAP.md) for
+the phase-2 hook points.

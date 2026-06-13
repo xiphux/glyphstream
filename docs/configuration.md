@@ -154,6 +154,9 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
   grace) that isn't configurable.
 - `GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED` — toggle the sign-in
   methods (both default on; at least one must remain enabled).
+- `MCP_SECRET_KEY` — optional; encrypts per-user MCP credentials at rest.
+  Defaults to `AUTH_SECRET`, so per-user MCP needs no extra setup — set it
+  only to rotate that encryption independently ([MCP guide](mcp.md#authentication)).
 - `COMPRESS_DYNAMIC` — compress SSR HTML + API JSON in-process when the
   reverse proxy can't ([deployment guide](deployment.md)).
 

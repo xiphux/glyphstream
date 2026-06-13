@@ -11,16 +11,21 @@ Both can be toggled via `GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED` in
 `.env` (default: both on). At least one must remain enabled — the server
 refuses to boot otherwise.
 
-OAuth is **pure authentication against an existing binding** — never an
-account-creation path. The first-run setup wizard at `/setup` creates the
-operator account and binds the chosen first method (GitHub or passkey). From
-then on, additional OAuth providers are linked deliberately from
-**Settings → Security**. A GitHub callback for an `external_id` that isn't
-already in `oauth_accounts` is refused with `provider_not_bound`; there is
-no allowlist, no auto-create.
+Sign-in from the login page is **pure authentication against an existing
+binding** — never an account-creation path. A GitHub callback for an
+`external_id` that isn't already in `oauth_accounts` is refused with
+`provider_not_bound`; there is no open registration and no allowlist.
 
-Revocation is a single column: setting `users.disabled_at` invalidates every
-session and refuses every login method at the next request.
+Accounts are created in exactly two places: the first-run setup wizard at
+`/setup`, which creates the instance **admin**, and redemption of an
+admin-issued invite at `/join/<token>` — see
+[Multi-user & administration](multi-user.md). Both bind the chosen method
+(GitHub or passkey) at creation; afterward, a second method is linked
+deliberately from **Settings → Security**.
+
+Revocation is a single column: setting `users.disabled_at` (toggled from
+**Settings → Admin** — see [managing accounts](multi-user.md#managing-accounts))
+invalidates every session and refuses every login method at the next request.
 
 ## First-run setup
 
@@ -35,8 +40,11 @@ GitHub** or **Set up a passkey**:
   the user + binds the credential atomically (no orphans on abandon).
 
 `/setup` closes the moment the first user exists — direct visits land on
-`/login` instead. The operator can later add a second login method (passkey
-on a GitHub-bootstrapped account, or vice versa) from Settings → Security.
+`/login` instead. This first account is the instance **admin**; everyone else
+joins through an admin-issued invite (see
+[Multi-user & administration](multi-user.md)). The operator can later add a
+second login method (passkey on a GitHub-bootstrapped account, or vice versa)
+from Settings → Security.
 
 For deployments on a long-known subdomain that want defense in depth against
 a "first visitor claims the account" race, set `SETUP_TOKEN` in `.env` to a

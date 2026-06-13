@@ -87,6 +87,14 @@ tests/e2e/            # playwright (production-build webServer)
   default to `node`. See `tests/component/README.md` for the bits-ui
   Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
   silently missing portaled content.
+- **Docs track user-facing features + config, not fixes.** `README.md` is a
+  landing page + feature tour; `docs/<topic>.md` are the per-topic guides.
+  Shipping a user-facing feature → add a line to the README feature tour; if
+  it needs configuration → also add/update its `docs/` page and the
+  `config.toml.example` / `.env.example` annotations. Infra, CI, build, deps,
+  and bugfixes get no doc change. (Same rule applies to operator-facing
+  behavior changes — e.g. a new auth/onboarding flow updates the relevant
+  `docs/` page, not just `CLAUDE.md`.)
 
 ## Common commands
 

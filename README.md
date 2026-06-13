@@ -23,8 +23,9 @@ them into a single fast chat UI with one model picker.
   any compatible upstream works. Per-vendor streaming quirks (DeepSeek-R1
   reasoning, o-series, OpenRouter) are small opt-in normalizers, not forks.
 - **Safe to put on the public internet.** GitHub OAuth + passkey (WebAuthn)
-  login with a first-run setup wizard, CSP, SSRF-guarded tool egress,
-  same-origin enforcement on mutating APIs.
+  login, a first-run setup wizard, and invite-only multi-user accounts (admin
+  role + per-user data isolation); CSP, SSRF-guarded tool egress, same-origin
+  enforcement on mutating APIs.
 - **Multi-model is a first-class workflow.** Fan a prompt out to several
   models side by side — text, image, or video — and compare in one grid.
 - **Easy exit from Open WebUI.** A one-command importer migrates your full
@@ -60,6 +61,8 @@ them into a single fast chat UI with one model picker.
   queue states and timers. Keep the winner or keep them all.
 - **Split attachments**: fan N input images across M models for a full
   cross-product comparison grid.
+- **Saved model sets**: name a compare cart you reach for often (your go-to
+  image models, say) and re-apply it to a new prompt in one click.
 - Per-endpoint concurrency caps queue requests instead of OOMing your
   single-GPU box ([configuration](docs/configuration.md#limiting-concurrency-max_concurrent)).
 
@@ -93,7 +96,8 @@ them into a single fast chat UI with one model picker.
   to chat attachments ([guide](docs/code-interpreter.md)).
 - **MCP servers** — point `config.toml` at any Model Context Protocol server
   (stdio or HTTP) and its tools join the registry, gated by per-tool
-  Allow / Allow Always approval ([guide](docs/mcp.md)).
+  Allow / Allow Always approval; authenticate with a shared token or each
+  user's own credential ([guide](docs/mcp.md)).
 - **Agent skills** ([agentskills.io](https://agentskills.io) spec) — import
   skill bundles, activate them by model judgment or an explicit `/skill-name`
   slash command.
@@ -105,6 +109,10 @@ them into a single fast chat UI with one model picker.
 
 - **GitHub OAuth + passkeys**, together or alone; first-run setup wizard;
   one-flag account revocation ([guide](docs/authentication.md)).
+- **Invite-only multi-user** — the setup-wizard account is the admin; everyone
+  else joins via an admin-issued `/join` link (GitHub or passkey). Per-user
+  data isolation, plus an admin panel to invite, disable, or remove accounts
+  ([guide](docs/multi-user.md)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
   when long generations finish ([guide](docs/notifications.md)).
 - **Themes**: the Signature frosted-glass look, plus Claude and ChatGPT
@@ -150,6 +158,7 @@ pnpm dev                               # http://localhost:5173
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                 |
 | [Authentication](docs/authentication.md)         | GitHub OAuth setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                              |
+| [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts               |
 | [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools |
 | [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` block                                             |
 | [Code interpreter](docs/code-interpreter.md)     | The Pyodide sandbox, file round-trip, resource limits                                            |
