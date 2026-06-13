@@ -234,6 +234,18 @@ what already shipped, for context).
   scope/quotas separate from per-call approval (directory allowlist +
   writable-area boundary persisting across a turn's tool chain).
 
+- **Unpin `drizzle-orm` / `drizzle-kit` off the 1.0 RC once 1.0 GA ships.**
+  The node:sqlite migration pinned both to `1.0.0-rc.3` (exact, not a range)
+  because node:sqlite support only exists on the drizzle v1 line. _Why
+  pinned, not ranged:_ an RC can ship breaking changes between pre-releases,
+  so a caret range would be a silent footgun; the exact pin + committed
+  `pnpm-lock.yaml` (installed everywhere with `--frozen-lockfile`) keeps it
+  deterministic. When 1.0 GA lands, move both to a normal `^1` range, re-run
+  the suite + a toolchain-free docker boot, and revisit the better-sqlite3
+  inert-peer note in CLAUDE.md (the optional-peer situation may change at GA).
+  Tracking issue / changelog: drizzle-orm v1 release. Until then the RC must
+  not silently become the permanent baseline.
+
 ## Long-term / nice-to-have
 
 - **2FA (TOTP) on GitHub OAuth.** Passkey login already shipped as a peer
