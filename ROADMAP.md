@@ -6,83 +6,54 @@ check here before starting a "wouldn't it be nice if…", the rationale is
 probably already worked out. Listed roughly by priority within each tier, not
 time-bound.
 
-Completed work has been pruned. Where a shipped feature still has real
-follow-on work, only the remaining piece is listed (with a one-line note on
-what already shipped, for context).
+This file tracks what's _left to do_. Shipped features are condensed to a
+one-line "_Shipped:_" note for context only — the details live in the code and
+docs. Where a shipped feature has real follow-on work, the remaining pieces
+are listed in full.
 
 ## Mid-term (v2)
 
 - **Agent skills (agentskills.io spec).** _Shipped (MVP):_ per-user skill
-  bundles stored on disk verbatim (`SKILLS_DIR/<user>/<name>/`, a `SKILL.md`
-  plus arbitrary resources) with a lightweight catalog index in a `skills`
-  table — mirroring the media bytes-on-disk / metadata-in-DB split, not
-  inline-on-row, because skills are multi-file _packages_ and the spec ties
-  the directory name to the frontmatter `name`. Progressive disclosure per the
-  spec: a Tier-1 `<available_skills>` catalog injected into the system prompt
-  (gated by its own `skills` feature category, so it rides custom-model
-  conversations too), Tier-2 `activate_skill` returning the frontmatter-stripped
-  body + a resource manifest, Tier-3 `read_skill_file` reading any bundled file
-  path-jailed to the skill dir. Activation is model-driven (the spec's
-  recommendation over harness-side description-matching — the catalog + the
-  model's judgment _is_ the auto-trigger, sidestepping the false-positive
-  threshold). Both activation tools are per-user (enum of the caller's enabled
-  skill names, omitted when empty) via a register-for-execution +
-  advertise-dynamically split, since the static registry can't carry a per-user
-  enum. Import (paste a `SKILL.md` or upload a folder) + enable/delete UI at
-  `/settings/skills`. _Explicit activation_ via a `/skill-name` composer slash
-  command (+ skill autocomplete) that synthesizes a real `activate_skill` tool
-  exchange — identical to model-driven activation, replayed live over SSE. Skill
-  activations + file reads render with a bespoke compact affordance (chip +
-  instructions on expand) rather than the raw tool envelope. _Script execution:_
-  `run_skill_script` runs a skill's bundled `scripts/*.py` (+ same-folder `.py`
-  siblings) in the existing Pyodide `run_python` sandbox — Python-only, gated on
-  the code interpreter; richer / non-Python cases delegate to Open Terminal
-  (below). Remaining:
+  bundles (bytes-on-disk + catalog table), progressive disclosure (Tier-1
+  catalog → `activate_skill` → `read_skill_file`), import/enable/delete UI at
+  `/settings/skills`, `/skill-name` explicit activation, and `run_skill_script`
+  (Pyodide, Python-only, gated on the code interpreter). Remaining:
   - _Activation dedupe._ Re-activating a skill re-injects its body (wasteful,
-    harmless). The catalog header tells the model not to; true branch-aware
-    dedupe (scan persisted `activate_skill` tool messages via `conversationId`)
-    is the refinement.
+    harmless; the catalog header already asks the model not to). True
+    branch-aware dedupe scans persisted `activate_skill` tool messages via
+    `conversationId`.
   - _Discovery._ A browse/import affordance for community bundles, deferred
     until enough curated skills exist to anchor a library UI.
 
 - **MCP — per-user OAuth + phase-2.** _Shipped:_ admin-defined
-  `[[mcp_servers]]` with static auth (stdio + Streamable HTTP), tools
-  namespaced into the registry with per-conversation + per-custom-model
-  toggles, inline Allow/Always/Reject approval for untrusted tools, and
-  `/settings/mcp` + `/settings/permissions` surfaces. _Also shipped:_ per-user
-  static tokens — a server marked `auth = "per_user"` connects under each
-  user's own token (entered in `/settings/mcp`, stored AES-256-GCM-encrypted
-  via `MCP_SECRET_KEY` which defaults to `AUTH_SECRET`, registry keyed by
-  `(serverId, userId)`); tools are
-  advertised + executed only for users who've configured a credential.
-  HTTP-only for now. Remaining:
+  `[[mcp_servers]]` (stdio + Streamable HTTP), per-conversation +
+  per-custom-model tool toggles, inline Allow/Always/Reject approval,
+  `/settings/mcp` + `/settings/permissions`, and per-user static tokens
+  (`auth = "per_user"`, AES-256-GCM-encrypted, keyed `(serverId, userId)`).
+  HTTP-only. Remaining:
   - _OAuth per-user (v1b)._ The 3-legged OAuth flow (vs. the static token
-    shipped above). New `oauth_connections` table; multi-provider
-    abstraction in `src/lib/server/auth/providers/` mirroring how arctic is
-    wired for GitHub login; per-user `/settings/connections` UI with
-    "Connect Gmail"-style affordances; `AUTH_SECRET`-keyed AES-256-GCM
-    encryption-at-rest for refresh tokens (the env var is already defined in
-    `.env.example` but unused). Sits beside the static-key path in the
-    registry — no rework of v1.
+    shipped). New `oauth_connections` table; multi-provider abstraction in
+    `src/lib/server/auth/providers/` mirroring arctic's GitHub-login wiring;
+    per-user `/settings/connections` UI with "Connect Gmail"-style
+    affordances; `AUTH_SECRET`-keyed AES-256-GCM encryption-at-rest for refresh
+    tokens. Sits beside the static-key path in the registry — no rework of v1.
   - _Browser-side bridge for user-local MCP servers_ (the `mcp-remote`
-    pattern). The Node process can't reach a server on the user's laptop if
+    pattern). The Node process can't reach a server on the user's laptop when
     GlyphStream is hosted elsewhere; a server-relayed WebSocket-to-browser
     transport closes that gap.
-  - _Argument-aware approval._ v1 prompts per tool name; a policy engine
-    could let users say "allow `delete_message` but only when `sender`
-    matches X". The pending-approval row already persists args.
-  - _Resources + prompts._ MCP servers can expose URI-addressable data and
-    named prompt templates beyond tools — both out of scope for v1's
-    tools-only cut.
+  - _Argument-aware approval._ v1 prompts per tool name; a policy engine could
+    scope approval by argument ("allow `delete_message` but only when `sender`
+    matches X"). The pending-approval row already persists args.
+  - _Resources + prompts._ MCP's URI-addressable data + named prompt templates,
+    beyond v1's tools-only cut.
   - _Rich content blocks in tool results._ Image/audio blocks are currently
     dropped with a placeholder note; relevant once Open Terminal lands and
     screenshot-style outputs become useful.
 
 - **Memory — embedding-backed recall + phase-2.** _Shipped:_ browse-mode MVP
-  (per-user `memories` table, `save`/`update`/`forget_memory` tools under
-  `metadata.category: 'personalization'`, full-index injection into the
-  system prompt so the model always has every memory without a retrieval
-  round-trip, view+delete UI at `/settings/memories`). Remaining:
+  (per-user `memories` table, `save`/`update`/`forget_memory` tools, full-index
+  injection into the system prompt, view+delete UI at `/settings/memories`).
+  Remaining:
   - _Embedding-backed recall._ Schema already ships nullable `embedding` /
     `embedding_model` columns so backfill is a pure UPDATE. Adds a
     `recall_memory(query)` tool that activates when the endpoint advertises
@@ -92,87 +63,74 @@ what already shipped, for context).
     small-context-local-model blowup).
   - _Endpoint capability flag._ Add `supportsEmbeddings: boolean` to
     `LoadedEndpoint` (mirroring `supportsTools`), wired from `config.toml`.
-    Drives both the recall-tool `isAvailable()` and the injection-mode
-    switch.
+    Drives both the recall-tool `isAvailable()` and the injection-mode switch.
   - _Backfill worker._ Reads rows where `embedding IS NULL`, calls the
     embedding endpoint, writes vectors back. No schema migration.
-  - _Manual add/edit in UI._ If the AI-only feel grows limiting, add a
-    textarea modal + `POST`/`PATCH /api/user/memories`.
+  - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
+/api/user/memories`, if the AI-only feel grows limiting.
   - _Memory consolidation ("dreaming")._ A background pass that reorganizes
-    accumulated memories the way sleep consolidates short-term into long-term
-    — deduping, and rewriting an old memory that a later one revised (kept as
-    two or merged into one, depending on the revision). Gated on a
-    change-watermark so it only fires when memories were added/modified since
-    the last pass; re-consolidating an unchanged set is wasted work + churn.
+    accumulated memories the way sleep consolidates short- into long-term —
+    deduping, and rewriting an old memory a later one revised. Gated on a
+    change-watermark so it only fires when memories changed since the last pass.
     Reuses the existing `save`/`update`/`forget` primitives, driven by the
-    conversation's own model on a background cadence (mirroring the media
-    purger's hardcoded-cadence pattern). Pairs with embedding-backed recall:
-    consolidation is what keeps the full-index injection from growing
-    unboundedly as memory count × avg tokens climbs (the same budget threshold
-    the `composePersonaSystemPrompt` TODO above is watching).
+    conversation's own model on a background cadence (the media-purger pattern).
+    Pairs with embedding-backed recall: consolidation is what keeps full-index
+    injection from growing unboundedly as memory count × avg tokens climbs.
 
 - **Code interpreter — phase-2.** _Shipped:_ server-side Pyodide `run_python`
-  built-in (one `worker_threads` worker per conversation with a
-  ready/idle/failed lifecycle, idle-reap + LRU evict + wall-clock timeout;
-  network shimmed through the same SSRF + per-conversation `web` gate as
-  `fetch_url`; files round-trip with the conversation media store; worker
-  bundled standalone via esbuild). Remaining:
+  built-in (one `worker_threads` worker per conversation with idle-reap + LRU
+  evict + wall-clock timeout; network through the SSRF + per-conversation `web`
+  gate; files round-trip the conversation media store). Remaining:
   - _Streaming stdout._ Today's worker returns all stdout/stderr in one chunk
     at end of call, so a long-running cell feels frozen. The worker could
     `postMessage` per-line chunks → a new `tool_progress` SSE event → the
     in-flight tool block appends.
-  - _Variable persistence across worker reaps._ Variables live only as long
-    as the worker (lost on reap/timeout/OOM). Snapshot `globals()` via
-    dill-style pickling to `data/code-interpreter/{conversationId}.bin`,
-    restore on next call. Bounded by size + age, config-gated.
+  - _Variable persistence across worker reaps._ Variables live only as long as
+    the worker (lost on reap/timeout/OOM). Snapshot `globals()` via dill-style
+    pickling to `data/code-interpreter/{conversationId}.bin`, restore on next
+    call. Bounded by size + age, config-gated.
   - _Workspace UI._ A per-conversation files page/drawer surfacing everything
-    under `/workspace/` for browse/preview/download/delete. Today the user
-    only sees files via the chip on the producing tool block.
+    under `/workspace/` for browse/preview/download/delete. Today the user only
+    sees files via the chip on the producing tool block.
   - _micropip wheel cache._ A per-conversation/per-user override path under
     `data/code-interpreter/wheels/` so operators can pin a wheel set without
     round-tripping the CDN on cold start.
-  - _Pre-warm pool._ Config flag `prewarm_workers = N` to spin up idle
-    workers at boot so the first call doesn't pay the 2–5 s cold start.
+  - _Pre-warm pool._ Config flag `prewarm_workers = N` to spin up idle workers
+    at boot so the first call doesn't pay the 2–5 s cold start.
   - _Per-tool-call approval (optional)._ Even sandboxed by construction, some
-    users may want to see code before it runs — reuse the MCP approval
-    infrastructure with a per-user trust list.
+    users may want to see code before it runs — reuse the MCP approval infra
+    with a per-user trust list.
 
 - **Inline RAG with embeddings.** _Shipped (for web reads):_ `fetch_url` takes
-  an optional `find` and, on over-budget pages, replaces head-truncation with
-  hybrid relevance selection — structure-aware chunking with title›heading
-  breadcrumbs (`src/lib/server/retrieval/chunker.ts`), BM25 (`bm25.ts`) fused
-  with embedding cosine (`vector.ts`) via Reciprocal Rank Fusion (`select.ts`).
-  Gated on an optional top-level `[embeddings]` config block
-  (`loadEmbeddingsConfig`) + the `embeddings()` client; degrades to BM25-only
-  when absent or on any embedding failure. Embedding requests are batched and
-  per-input-truncated (`max_input_tokens`), with optional `query_prefix` /
-  `document_prefix` for nomic/e5/bge-style models.
+  an optional `find` and, on over-budget pages, does hybrid relevance selection
+  (structure-aware chunking with breadcrumbs + BM25 fused with embedding cosine
+  via Reciprocal Rank Fusion) instead of head-truncation. Gated on an optional
+  top-level `[embeddings]` config block; degrades to BM25-only when absent or
+  on any embedding failure.
 
   Framing to keep in mind (from an architecture review): this feature
   compensates for a fixed small context budget, so its value is _highest_ on
   the small-context local LLMs this project targets and _lowest_ on frontier
   cloud models (where "the answer is past 20 KB" is better solved by just
-  raising the budget — long-context beats RAG for a single doc that fits).
-  And it's tuned for **needle-finding, not whole-doc synthesis**: disjoint
-  chunks + ellipses give a fragmented view that's worse than contiguous
-  truncation for "summarize this page". The `find` description nudges toward
-  specific questions, but the limitation is inherent.
+  raising the budget — long-context beats RAG for a single doc that fits). And
+  it's tuned for **needle-finding, not whole-doc synthesis**: disjoint chunks +
+  ellipses give a fragmented view that's worse than contiguous truncation for
+  "summarize this page".
 
   Remaining, roughly in priority order:
   - _Context-aware budget (the real lever)._ `MAX_CONTENT_CHARS` (and the
     relevance-trigger threshold) is one hard-coded value serving two very
-    different regimes. Make it configurable — ideally per-endpoint/context —
-    so a 200 K-context user gets a large budget and rarely fragments, while a
-    local-8 K user gets aggressive selection. Caveat: doing this _per active
-    model_ means giving the web tools access to the conversation's endpoint,
-    which `ToolContext` deliberately does not carry today; a global config
-    override is the cheap partial version.
+    different regimes. Make it configurable — ideally per-endpoint/context — so
+    a 200 K-context user rarely fragments while a local-8 K user gets
+    aggressive selection. Caveat: doing this _per active model_ means giving
+    the web tools access to the conversation's endpoint, which `ToolContext`
+    deliberately doesn't carry today; a global config override is the cheap
+    partial version.
   - _Return selected section breadcrumbs so the model can re-`find`._ Today a
     re-fetch with a new `find` flies blind — the model never learns which
-    sections exist or what was elided. Surfacing the selected/elided
-    breadcrumbs turns single-shot lookup into intelligent multi-hop. Ranked
-    _above_ the embedding cache: it's an agency/quality lever, not just
-    efficiency.
+    sections exist or what was elided. Surfacing breadcrumbs turns single-shot
+    lookup into intelligent multi-hop. Ranked _above_ the embedding cache: it's
+    an agency/quality lever, not just efficiency.
   - _Reranker — the biggest deferred quality jump._ Hybrid retrieve →
     cross-encoder or LLM rerank of the top ~15-20 → pack. Reranking is the
     largest reported incremental gain after hybrid retrieval, and there's a
@@ -216,14 +174,11 @@ what already shipped, for context).
   handling when human + model edit concurrently; whether to diff-render edits
   in the pane.
 
-- **Multi-user.** _Shipped._ The data model was always multi-user-shaped
-  (every row has `user_id`); the v1 work added the operator surface: an `admin`
-  role (the setup-wizard user; the rest join by invite), admin-issued invites
-  redeemed at `/join/<token>` via OAuth or passkey, a `/settings/admin` UI
-  (list / invite / enable-disable / delete, with last-admin + self-action
-  guards), and the per-user data-isolation hardening (the previously-unscoped
-  `conversations.ts` reads now take `userId`). Remaining nice-to-haves: a
-  per-user storage-quota / usage view; bulk user import.
+- **Multi-user.** _Shipped:_ `admin` role + invite flow (`/join/<token>`,
+  OAuth or passkey), `/settings/admin` UI (list / invite / enable-disable /
+  delete with last-admin + self-action guards), and per-user data-isolation
+  hardening. Remaining nice-to-haves: a per-user storage-quota / usage view;
+  bulk user import.
 
 - **Virtualized message list.** Long conversations eventually overwhelm the
   DOM. `@tanstack/svelte-virtual` is the candidate; the hard part is the
@@ -302,14 +257,12 @@ what already shipped, for context).
 - **Conversation export** (JSON / Markdown). Useful as an exit ramp, but the
   priority is building features that make users not want to leave.
 
-- **Notification follow-ups.** _Shipped:_ Web Push (backgrounded
-  tab/OS notification), in-app toast for a different thread, silent on the
-  watched thread, native iOS Web Push (see `docs/notifications.md`).
-  Remaining polish:
+- **Notification follow-ups.** _Shipped:_ Web Push, in-app toast for a
+  different thread, silent on the watched thread, native iOS Web Push (see
+  `docs/notifications.md`). Remaining polish:
   - Optional completion sound, with volume control.
   - Per-modality config (e.g. "only sound for video"). The notify payload
-    already carries `modality`; the SW just needs a per-modality routing
-    pass.
+    already carries `modality`; the SW just needs a per-modality routing pass.
   - A "your devices" UI surfacing `push_subscriptions.user_agent` with
     per-device revoke.
 
