@@ -14,7 +14,13 @@ import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
-import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
+import type {
+	ColorScheme,
+	EnterBehavior,
+	SavedModelSet,
+	ThemeName,
+	UserPreferences,
+} from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 const THEME_NAMES: readonly ThemeName[] = ['glyphstream', 'claude', 'chatgpt'];
@@ -80,6 +86,36 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 			throw error(400, 'favoriteModels must be a string[]');
 		}
 		patch.favoriteModels = body.favoriteModels;
+	}
+	if (body.modelSets !== undefined) {
+		// Validate the shape only — model-id existence is intentionally not
+		// checked (a removed endpoint's id is still a valid string; it degrades
+		// at expand time, like favoriteModels). The query layer re-coerces on
+		// write (dedupe/trim/drop-empty), so this is the cheap first gate.
+		if (
+			!Array.isArray(body.modelSets) ||
+			!body.modelSets.every(
+				(s): s is SavedModelSet =>
+					typeof s === 'object' &&
+					s !== null &&
+					typeof (s as SavedModelSet).id === 'string' &&
+					typeof (s as SavedModelSet).name === 'string' &&
+					(s as SavedModelSet).name.trim() !== '' &&
+					Array.isArray((s as SavedModelSet).models) &&
+					(s as SavedModelSet).models.every(
+						(m) =>
+							typeof m === 'object' &&
+							m !== null &&
+							typeof m.modelId === 'string' &&
+							typeof m.count === 'number' &&
+							Number.isInteger(m.count) &&
+							m.count >= 1,
+					),
+			)
+		) {
+			throw error(400, 'modelSets must be { id, name, models: {modelId, count>=1}[] }[]');
+		}
+		patch.modelSets = body.modelSets;
 	}
 
 	const next = setUserPreferences(locals.user.id, patch);

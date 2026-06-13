@@ -1,5 +1,7 @@
 /** Shared types between server endpoints and client code. */
 
+import type { CompareSelection } from '../fanout';
+
 /**
  * The model modalities GlyphStream understands. MODEL_KINDS is the single
  * source of truth — ModelKind is derived from it and isModelKind is the
@@ -346,6 +348,26 @@ export type ThemeName = 'glyphstream' | 'claude' | 'chatgpt';
  *  'light' / 'dark' force that scheme regardless of the OS. */
 export type ColorScheme = 'system' | 'light' | 'dark';
 
+/**
+ * A user-saved, named group of models for the picker's compare / fan-out
+ * cart. Lets a user re-apply a frequently-used comparison (e.g. "Favorite
+ * Image Models" — ten image models at once) in one click instead of
+ * re-tapping each model. Stored per-user inside `UserPreferences.modelSets`.
+ *
+ * `models` mirrors the compare cart shape (`CompareSelection`, model id →
+ * count) so applying a set round-trips exactly. Unknown / stale model ids
+ * cost nothing: `expandCompareSelections` skips ids that no longer resolve,
+ * so saved sets are never gardened on config edits.
+ */
+export interface SavedModelSet {
+	/** Stable id, generated client-side via crypto.randomUUID(). */
+	id: string;
+	/** User-given label, e.g. "Favorite Anime Image Models". Non-empty. */
+	name: string;
+	/** The compare cart contents to restore. */
+	models: CompareSelection[];
+}
+
 export interface UserPreferences {
 	/**
 	 * The three personalization fields below are combined server-side
@@ -422,6 +444,16 @@ export interface UserPreferences {
 	 * cheaper than gardening the stored list on every config edit.
 	 */
 	favoriteModels: string[];
+	/**
+	 * Named groups of models saved from the picker's compare ("Multiple")
+	 * cart. Re-applying a set repopulates the compare selections in one
+	 * click — built for users who routinely fan one prompt out to the same
+	 * ~10 models (e.g. image-gen comparisons). Each set's `models` are
+	 * `CompareSelection[]` (model id → count); unknown ids are skipped at
+	 * expand time, so stale entries cost nothing and aren't pruned on config
+	 * edits. Default [].
+	 */
+	modelSets: SavedModelSet[];
 	/**
 	 * Namespaced MCP tool names (`mcp__<server>__<tool>`) the user has
 	 * granted "always allow" — bypasses the per-tool-call approval prompt

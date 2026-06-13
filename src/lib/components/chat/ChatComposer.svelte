@@ -23,6 +23,7 @@
 		FeatureCategoryEntry,
 		ModelEntry,
 		ModelKind,
+		SavedModelSet,
 	} from '$lib/types/api';
 
 	interface Props {
@@ -51,10 +52,15 @@
 		compareMode: boolean;
 		/** Split-attachments: fan the prompt out across the attached images. */
 		splitAttachments?: boolean;
+		/** The user's saved multi-model sets, surfaced in the picker's compare
+		 *  controls for one-click re-apply. */
+		modelSets: SavedModelSet[];
 		onSend: () => void;
 		onStop: () => void;
 		onFeaturesChange: (next: FeatureCategory[]) => void;
 		onToggleFavorite: (id: string) => void;
+		onSaveModelSet: (name: string, selections: CompareSelection[]) => void;
+		onDeleteModelSet: (id: string) => void;
 	}
 
 	let {
@@ -76,10 +82,13 @@
 		compareSelections = $bindable(),
 		compareMode = $bindable(),
 		splitAttachments = $bindable(false),
+		modelSets,
 		onSend,
 		onStop,
 		onFeaturesChange,
 		onToggleFavorite,
+		onSaveModelSet,
+		onDeleteModelSet,
 	}: Props = $props();
 
 	let coreRef = $state<{ focus: () => void } | null>(null);
@@ -189,6 +198,9 @@
 				allowCompare
 				bind:compareSelections
 				bind:compareMode
+				{modelSets}
+				{onSaveModelSet}
+				{onDeleteModelSet}
 			/>
 			{#if canStop}
 				<button

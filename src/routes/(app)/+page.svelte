@@ -19,6 +19,7 @@
 	} from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
+	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 
@@ -426,6 +427,10 @@
 					allowCompare
 					bind:compareSelections
 					bind:compareMode
+					modelSets={data.prefs?.modelSets ?? []}
+					onSaveModelSet={(name, sels) =>
+						void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
+					onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
 				/>
 				<button
 					type="submit"

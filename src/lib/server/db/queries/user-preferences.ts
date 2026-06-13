@@ -10,7 +10,8 @@
  */
 
 import { eq } from 'drizzle-orm';
-import type { UserPreferences } from '$lib/types/api';
+import type { CompareSelection } from '$lib/fanout';
+import type { SavedModelSet, UserPreferences } from '$lib/types/api';
 import { getDb } from '../client';
 import { users } from '../schema';
 import { composeMemorySection, type Memory } from './memories';
@@ -27,6 +28,7 @@ const DEFAULTS: UserPreferences = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [],
+	modelSets: [],
 	trustedMcpTools: [],
 };
 
@@ -46,6 +48,45 @@ function coerceFavoriteModels(input: unknown, fallback: string[]): string[] {
 		if (seen.has(v)) continue;
 		seen.add(v);
 		out.push(v);
+	}
+	return out;
+}
+
+/**
+ * Coerce a candidate modelSets value into a clean SavedModelSet[]. Unlike
+ * coerceFavoriteModels (which rejects a whole mixed array as a likely
+ * upstream bug), we drop malformed *entries* and keep the rest: a single
+ * corrupt set must not erase every other saved set a user has. Each kept set
+ * needs a non-empty string id (de-duped across sets), a non-empty trimmed
+ * name, and a `models` array of `{ modelId: non-empty string, count: integer
+ * >= 1 }` (de-duped by modelId within the set). Sets that end up with zero
+ * valid models, or are missing an id/name, are discarded. Unknown model ids
+ * are NOT rejected here — they're valid strings; they degrade at expand time.
+ */
+function coerceModelSets(input: unknown, fallback: SavedModelSet[]): SavedModelSet[] {
+	if (!Array.isArray(input)) return fallback;
+	const out: SavedModelSet[] = [];
+	const seenIds = new Set<string>();
+	for (const raw of input) {
+		if (typeof raw !== 'object' || raw === null) continue;
+		const r = raw as Record<string, unknown>;
+		if (typeof r.id !== 'string' || r.id === '' || seenIds.has(r.id)) continue;
+		if (typeof r.name !== 'string' || r.name.trim() === '') continue;
+		if (!Array.isArray(r.models)) continue;
+		const models: CompareSelection[] = [];
+		const seenModelIds = new Set<string>();
+		for (const m of r.models) {
+			if (typeof m !== 'object' || m === null) continue;
+			const mm = m as Record<string, unknown>;
+			if (typeof mm.modelId !== 'string' || mm.modelId === '') continue;
+			if (typeof mm.count !== 'number' || !Number.isInteger(mm.count) || mm.count < 1) continue;
+			if (seenModelIds.has(mm.modelId)) continue;
+			seenModelIds.add(mm.modelId);
+			models.push({ modelId: mm.modelId, count: mm.count });
+		}
+		if (models.length === 0) continue;
+		seenIds.add(r.id);
+		out.push({ id: r.id, name: r.name.trim(), models });
 	}
 	return out;
 }
@@ -101,6 +142,10 @@ function coerceUserPreferences(
 			input.favoriteModels === undefined
 				? fallback.favoriteModels
 				: coerceFavoriteModels(input.favoriteModels, fallback.favoriteModels),
+		modelSets:
+			input.modelSets === undefined
+				? fallback.modelSets
+				: coerceModelSets(input.modelSets, fallback.modelSets),
 		trustedMcpTools:
 			input.trustedMcpTools === undefined
 				? fallback.trustedMcpTools

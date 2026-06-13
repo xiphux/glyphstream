@@ -16,6 +16,7 @@
 	} from '$lib/approval-workflow';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
+	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
@@ -2013,10 +2014,14 @@
 					bind:compareSelections
 					bind:compareMode
 					bind:splitAttachments
+					modelSets={data.prefs?.modelSets ?? []}
 					onSend={() => void send()}
 					onStop={stop}
 					onFeaturesChange={(next) => void persistDisabledFeatures(next)}
 					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+					onSaveModelSet={(name, sels) =>
+						void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
+					onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
 				/>
 			{/if}
 		</div>

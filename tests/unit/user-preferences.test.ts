@@ -16,6 +16,7 @@ import {
 	setUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
 import { users } from '$lib/server/db/schema';
+import type { SavedModelSet } from '$lib/types/api';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -37,6 +38,7 @@ const EMPTY_PREFS = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [] as string[],
+	modelSets: [] as SavedModelSet[],
 	trustedMcpTools: [] as string[],
 };
 
@@ -126,6 +128,122 @@ describe('parseUserPreferences', () => {
 		expect(
 			parseUserPreferences(JSON.stringify({ favoriteModels: ['a', 'b', 'a', 'c', 'b'] })),
 		).toMatchObject({ favoriteModels: ['a', 'b', 'c'] });
+	});
+
+	it('parses a valid modelSets array', () => {
+		const sets = [
+			{
+				id: 'set-1',
+				name: 'Favorite Image Models',
+				models: [
+					{ modelId: 'openai::dall-e-3', count: 1 },
+					{ modelId: 'fal::flux', count: 2 },
+				],
+			},
+		];
+		expect(parseUserPreferences(JSON.stringify({ modelSets: sets }))).toMatchObject({
+			modelSets: sets,
+		});
+	});
+
+	it('trims the set name', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [{ id: 's', name: '  Anime  ', models: [{ modelId: 'a', count: 1 }] }],
+			}),
+		);
+		expect(parsed.modelSets[0].name).toBe('Anime');
+	});
+
+	it('drops a malformed set entry but keeps valid siblings', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [
+					{ id: 'ok', name: 'Good', models: [{ modelId: 'a', count: 1 }] },
+					{ id: 'bad', name: '', models: [{ modelId: 'b', count: 1 }] }, // empty name
+					42, // not an object
+					{ id: 'ok2', name: 'Also good', models: [{ modelId: 'c', count: 1 }] },
+				],
+			}),
+		);
+		expect(parsed.modelSets.map((s) => s.id)).toEqual(['ok', 'ok2']);
+	});
+
+	it('drops a set with no valid models', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [
+					{ id: 'empty', name: 'Empty', models: [] },
+					{ id: 'all-bad', name: 'Bad models', models: [{ modelId: 'a', count: 0 }] },
+				],
+			}),
+		);
+		expect(parsed.modelSets).toEqual([]);
+	});
+
+	it('drops sets missing an id or name', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [
+					{ name: 'No id', models: [{ modelId: 'a', count: 1 }] },
+					{ id: 'no-name', models: [{ modelId: 'a', count: 1 }] },
+				],
+			}),
+		);
+		expect(parsed.modelSets).toEqual([]);
+	});
+
+	it('rejects non-integer / non-number / sub-1 counts within a set', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [
+					{
+						id: 's',
+						name: 'Mixed',
+						models: [
+							{ modelId: 'keep', count: 3 },
+							{ modelId: 'frac', count: 1.5 },
+							{ modelId: 'zero', count: 0 },
+							{ modelId: 'str', count: '2' },
+						],
+					},
+				],
+			}),
+		);
+		expect(parsed.modelSets[0].models).toEqual([{ modelId: 'keep', count: 3 }]);
+	});
+
+	it('de-dupes modelIds within a set and ids across sets', () => {
+		const parsed = parseUserPreferences(
+			JSON.stringify({
+				modelSets: [
+					{
+						id: 'dup',
+						name: 'First',
+						models: [
+							{ modelId: 'a', count: 1 },
+							{ modelId: 'a', count: 5 },
+							{ modelId: 'b', count: 1 },
+						],
+					},
+					{ id: 'dup', name: 'Second (same id)', models: [{ modelId: 'c', count: 1 }] },
+				],
+			}),
+		);
+		expect(parsed.modelSets).toHaveLength(1);
+		expect(parsed.modelSets[0].models).toEqual([
+			{ modelId: 'a', count: 1 },
+			{ modelId: 'b', count: 1 },
+		]);
+	});
+
+	it('falls back to the default for a non-array modelSets', () => {
+		expect(parseUserPreferences(JSON.stringify({ modelSets: 'nope' }))).toMatchObject({
+			modelSets: [],
+		});
+		expect(parseUserPreferences(JSON.stringify({ modelSets: null }))).toMatchObject({
+			modelSets: [],
+		});
 	});
 
 	it('parses notification preference fields with type coercion', () => {
@@ -229,6 +347,7 @@ describe('setUserPreferences', () => {
 			'customInstructions',
 			'enterBehavior',
 			'favoriteModels',
+			'modelSets',
 			'name',
 			'notificationsEnabled',
 			'notificationsForegroundToast',
@@ -275,6 +394,24 @@ describe('setUserPreferences', () => {
 		expect(getUserPreferences(u.id)?.favoriteModels).toEqual(['openai::gpt-4', 'custom::abc']);
 		setUserPreferences(u.id, { favoriteModels: [] });
 		expect(getUserPreferences(u.id)?.favoriteModels).toEqual([]);
+	});
+
+	it('persists modelSets and accepts an empty array as a valid clear', () => {
+		const u = seedUser();
+		const sets = [{ id: 'a', name: 'Image set', models: [{ modelId: 'fal::flux', count: 2 }] }];
+		setUserPreferences(u.id, { modelSets: sets });
+		expect(getUserPreferences(u.id)?.modelSets).toEqual(sets);
+		setUserPreferences(u.id, { modelSets: [] });
+		expect(getUserPreferences(u.id)?.modelSets).toEqual([]);
+	});
+
+	it('leaves favoriteModels untouched when only modelSets is patched', () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { favoriteModels: ['openai::gpt-4'] });
+		setUserPreferences(u.id, {
+			modelSets: [{ id: 's', name: 'Set', models: [{ modelId: 'a', count: 1 }] }],
+		});
+		expect(getUserPreferences(u.id)?.favoriteModels).toEqual(['openai::gpt-4']);
 	});
 
 	it('persists showGreeting toggles', () => {

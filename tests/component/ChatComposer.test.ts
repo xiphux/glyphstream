@@ -71,10 +71,13 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 		enterBehavior: 'send' as const,
 		compareSelections: [],
 		compareMode: false,
+		modelSets: [],
 		onSend: vi.fn(),
 		onStop: vi.fn(),
 		onFeaturesChange: vi.fn(),
 		onToggleFavorite: vi.fn(),
+		onSaveModelSet: vi.fn(),
+		onDeleteModelSet: vi.fn(),
 		...overrides,
 	};
 }

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronDown, Minus, Plus, Search, Star, Layers } from '@lucide/svelte';
+	import { Check, ChevronDown, Minus, Plus, Search, Star, Layers, X } from '@lucide/svelte';
 	import type { CompareSelection } from '$lib/fanout';
-	import type { CustomModel, ModelEntry, ModelKind } from '$lib/types/api';
+	import { mergeModelSet } from '$lib/model-sets';
+	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '$lib/types/api';
 
 	interface Props {
 		models: ModelEntry[];
@@ -54,6 +55,22 @@
 		/** Whether compare mode is active. Bindable so the consumer can reflect
 		 *  it (e.g. relabel the Send button) and force it off. */
 		compareMode?: boolean;
+		/**
+		 * The user's saved multi-model sets. Rendered as quick-apply chips in
+		 * the compare controls (whenever there's at least one), so a frequently
+		 * compared group can be re-loaded in one click. Default []. Sets whose
+		 * first model no longer resolves, or whose modality doesn't match the
+		 * currently-locked compare kind, are shown disabled (see canApplySet).
+		 */
+		modelSets?: SavedModelSet[];
+		/**
+		 * Persist the current compare cart as a new named set. When provided, a
+		 * "Save as set…" affordance appears once 2+ models are in the cart. The
+		 * consumer owns the write + invalidate (like onToggleFavorite).
+		 */
+		onSaveModelSet?: (name: string, selections: CompareSelection[]) => void;
+		/** Delete a saved set by id. When provided, each set chip gets an × button. */
+		onDeleteModelSet?: (id: string) => void;
 	}
 
 	let {
@@ -69,6 +86,9 @@
 		allowCompare = false,
 		compareSelections = $bindable([]),
 		compareMode = $bindable(false),
+		modelSets = [],
+		onSaveModelSet,
+		onDeleteModelSet,
 	}: Props = $props();
 
 	// Kinds eligible for a comparison. A comparison must be single-modality
@@ -113,6 +133,90 @@
 			compareSelections = [];
 		}
 	}
+
+	// --- Saved model sets -------------------------------------------------
+	// A set is a named compare cart the user saved. Applying it is
+	// context-dependent: in single-select mode it *replaces* the cart and
+	// flips compare mode on (the set becomes the whole selection); in compare
+	// mode it *merges* into the existing cart (de-duped), so you can stack
+	// e.g. "Favorite Realistic" + one extra model.
+	let savingSet = $state(false);
+	let setName = $state('');
+	let setNameInput = $state<HTMLInputElement | null>(null);
+
+	/** Sum of per-model counts in a set — shown as a small badge on its chip. */
+	function setTotal(set: SavedModelSet): number {
+		return set.models.reduce((n, m) => n + m.count, 0);
+	}
+	/** Modality a set locks to (its first resolvable model's kind). */
+	function setKind(set: SavedModelSet): ModelKind | undefined {
+		const first = set.models[0];
+		return first ? models.find((m) => m.id === first.modelId)?.kind : undefined;
+	}
+	/** A set is applicable when its kind is compare-eligible and either the
+	 *  cart is empty or already locked to that same kind (applying can never
+	 *  create a mixed-modality comparison). */
+	function canApplySet(set: SavedModelSet): boolean {
+		const k = setKind(set);
+		if (!k || !COMPARE_KINDS.includes(k)) return false;
+		return !compareKind || compareKind === k;
+	}
+	function applyModelSet(set: SavedModelSet) {
+		// Resolve to models that still exist and are compare-eligible — a stale
+		// id in the saved set is skipped rather than poisoning the lock.
+		const resolved = set.models.filter((s) => {
+			const m = models.find((x) => x.id === s.modelId);
+			return m && COMPARE_KINDS.includes(m.kind);
+		});
+		if (resolved.length === 0) return;
+		if (compareMode) {
+			// Merge into the cart, restricted to the locked kind so a (defensively
+			// possible) mixed-kind set can't break the single-modality invariant.
+			const lock = compareKind ?? setKind(set);
+			const restricted = {
+				...set,
+				models: resolved.filter((s) => models.find((x) => x.id === s.modelId)?.kind === lock),
+			};
+			if (restricted.models.length === 0) return;
+			compareSelections = mergeModelSet(compareSelections, restricted);
+		} else {
+			// Single mode: replace + enter compare mode.
+			compareSelections = resolved.map((s) => ({ modelId: s.modelId, count: s.count }));
+			compareMode = true;
+		}
+	}
+
+	function startSaving() {
+		savingSet = true;
+		setName = '';
+	}
+	function confirmSave() {
+		const n = setName.trim();
+		if (!n) return;
+		onSaveModelSet?.(n, compareSelections);
+		savingSet = false;
+		setName = '';
+	}
+	function cancelSave() {
+		savingSet = false;
+		setName = '';
+	}
+	function onSetNameKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			confirmSave();
+		} else if (e.key === 'Escape') {
+			// Cancel the inline editor without letting the Popover swallow it
+			// (its native Escape handler would close the whole dropdown).
+			e.preventDefault();
+			e.stopPropagation();
+			cancelSave();
+		}
+	}
+	// Autofocus the name input when the editor opens.
+	$effect(() => {
+		if (savingSet) setNameInput?.focus();
+	});
 
 	function kindEmoji(kind: ModelKind): string {
 		switch (kind) {
@@ -333,6 +437,8 @@
 	$effect(() => {
 		if (open) return;
 		search = '';
+		savingSet = false;
+		setName = '';
 		untrack(() => {
 			if (compareMode && compareTotal <= 1) {
 				if (compareTotal === 1) {
@@ -545,6 +651,97 @@
 						{/if}
 					{/if}
 				</div>
+
+				{#if modelSets.length > 0 || (onSaveModelSet && compareMode && compareTotal >= 2)}
+					<!-- Saved sets: one-click re-apply of a named compare cart. Shown
+					     whenever the user has any set (even before toggling "Multiple",
+					     so applying a set can itself enter compare mode). -->
+					<div class="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+						{#if modelSets.length > 0}
+							<span class="mr-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+								Sets
+							</span>
+						{/if}
+						{#each modelSets as set (set.id)}
+							{@const applicable = canApplySet(set)}
+							<span
+								class="inline-flex items-center rounded-full border border-border bg-surface-raised text-xs {applicable
+									? ''
+									: 'opacity-40'}"
+							>
+								<button
+									type="button"
+									disabled={!applicable}
+									onclick={() => applyModelSet(set)}
+									title={applicable
+										? `Apply "${set.name}"`
+										: "Doesn't match the current comparison"}
+									class="flex items-center gap-1 py-0.5 pl-2 {onDeleteModelSet
+										? 'pr-1'
+										: 'pr-2'} transition hover:text-accent disabled:cursor-not-allowed disabled:hover:text-current"
+								>
+									<span class="max-w-[9rem] truncate">{set.name}</span>
+									<span class="tabular-nums text-fg-muted">{setTotal(set)}</span>
+								</button>
+								{#if onDeleteModelSet}
+									<button
+										type="button"
+										onclick={(e) => {
+											e.stopPropagation();
+											onDeleteModelSet?.(set.id);
+										}}
+										aria-label="Delete set {set.name}"
+										title="Delete set"
+										class="mr-1 flex h-4 w-4 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
+									>
+										<X size={11} strokeWidth={2.5} />
+									</button>
+								{/if}
+							</span>
+						{/each}
+
+						{#if onSaveModelSet && compareMode && compareTotal >= 2}
+							{#if savingSet}
+								<span
+									class="inline-flex items-center gap-1 rounded-full border border-border-focus bg-surface-raised py-0.5 pl-2 pr-1"
+								>
+									<input
+										bind:this={setNameInput}
+										bind:value={setName}
+										type="text"
+										placeholder="Set name…"
+										autocomplete="off"
+										autocorrect="off"
+										spellcheck="false"
+										maxlength="200"
+										onkeydown={onSetNameKeydown}
+										class="w-28 border-0 bg-transparent text-xs focus:outline-none"
+									/>
+									<button
+										type="button"
+										onclick={confirmSave}
+										disabled={setName.trim() === ''}
+										aria-label="Save set"
+										title="Save set"
+										class="flex h-4 w-4 items-center justify-center rounded-full text-accent transition hover:bg-surface-sunken disabled:opacity-40"
+									>
+										<Check size={12} strokeWidth={2.75} />
+									</button>
+								</span>
+							{:else}
+								<button
+									type="button"
+									onclick={startSaving}
+									title="Save the current models as a set"
+									class="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-fg-muted transition hover:border-border-strong hover:text-fg"
+								>
+									<Plus size={12} strokeWidth={2.5} />
+									Save as set…
+								</button>
+							{/if}
+						{/if}
+					</div>
+				{/if}
 			{/if}
 
 			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto overscroll-contain py-1">

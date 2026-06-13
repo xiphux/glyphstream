@@ -692,3 +692,146 @@ describe('ModelPicker — compare mode', () => {
 		expect(screen.getByText('2 variations')).toBeInTheDocument();
 	});
 });
+
+describe('ModelPicker — saved sets', () => {
+	const threeModels = [
+		makeModel({ id: 'bridge::a', displayName: 'Model A' }),
+		makeModel({ id: 'bridge::b', displayName: 'Model B' }),
+		makeModel({ id: 'bridge::c', displayName: 'Model C' }),
+	];
+
+	it('applying a set in single mode replaces the cart and enters compare mode', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: {
+				models: threeModels,
+				value: 'bridge::a',
+				allowCompare: true,
+				modelSets: [
+					{
+						id: 's1',
+						name: 'My Set',
+						models: [
+							{ modelId: 'bridge::b', count: 1 },
+							{ modelId: 'bridge::c', count: 1 },
+						],
+					},
+				],
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		// The set chip shows even before "Multiple" is toggled (discoverable).
+		await user.click(screen.getByText('My Set'));
+		await tick();
+		await user.keyboard('{Escape}');
+		await tick();
+		// Replaced the (single) selection with the set's 2 models + entered compare.
+		expect(screen.getByText('2 models')).toBeInTheDocument();
+	});
+
+	it('applying a set in compare mode merges into the cart, de-duped', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: {
+				models: threeModels,
+				value: 'bridge::a',
+				allowCompare: true,
+				compareMode: true,
+				// Two entries keep the cart in compare mode (a single-count cart
+				// collapses back to single-select when the popover starts closed).
+				compareSelections: [
+					{ modelId: 'bridge::a', count: 1 },
+					{ modelId: 'bridge::b', count: 1 },
+				],
+				modelSets: [
+					{
+						id: 's1',
+						name: 'My Set',
+						models: [
+							{ modelId: 'bridge::b', count: 1 }, // already in cart → not re-added
+							{ modelId: 'bridge::c', count: 1 }, // merged in
+						],
+					},
+				],
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('My Set'));
+		await tick();
+		await user.keyboard('{Escape}');
+		await tick();
+		// Merge: A + B (kept) + C = 3. A *replace* would show "2 models"; a
+		// re-added B can't happen (de-dupe), so 3 confirms merge-not-replace.
+		expect(screen.getByText('3 models')).toBeInTheDocument();
+	});
+
+	it('disables a set whose modality does not match the locked compare kind', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: {
+				models: [
+					makeModel({ id: 'bridge::a', displayName: 'Model A', kind: 'chat' }),
+					makeModel({ id: 'bridge::img', displayName: 'Imager', kind: 'image' }),
+				],
+				value: 'bridge::a',
+				allowCompare: true,
+				compareMode: true,
+				// count 2 keeps compare mode alive (single-count carts collapse on
+				// mount); the chat lock is what disables the image set.
+				compareSelections: [{ modelId: 'bridge::a', count: 2 }], // locks to chat
+				modelSets: [
+					{ id: 'img', name: 'Image Set', models: [{ modelId: 'bridge::img', count: 1 }] },
+				],
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		const applyBtn = screen.getByText('Image Set').closest('button');
+		expect(applyBtn).toBeDisabled();
+	});
+
+	it('"Save as set…" with 2+ models calls onSaveModelSet with the name + selections', async () => {
+		const user = userEvent.setup();
+		const onSaveModelSet = vi.fn();
+		const selections = [
+			{ modelId: 'bridge::a', count: 1 },
+			{ modelId: 'bridge::b', count: 1 },
+		];
+		render(ModelPicker, {
+			props: {
+				models: threeModels,
+				value: 'bridge::a',
+				allowCompare: true,
+				compareMode: true,
+				compareSelections: selections,
+				onSaveModelSet,
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByText('Save as set…'));
+		await tick();
+		await user.type(screen.getByPlaceholderText('Set name…'), 'Favorites');
+		await user.click(screen.getByLabelText('Save set'));
+		expect(onSaveModelSet).toHaveBeenCalledOnce();
+		expect(onSaveModelSet.mock.calls[0][0]).toBe('Favorites');
+		expect(onSaveModelSet.mock.calls[0][1]).toEqual(selections);
+	});
+
+	it('the × button calls onDeleteModelSet with the set id (and does not apply)', async () => {
+		const user = userEvent.setup();
+		const onDeleteModelSet = vi.fn();
+		render(ModelPicker, {
+			props: {
+				models: threeModels,
+				value: 'bridge::a',
+				allowCompare: true,
+				modelSets: [{ id: 's1', name: 'My Set', models: [{ modelId: 'bridge::b', count: 1 }] }],
+				onDeleteModelSet,
+			},
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		await user.click(screen.getByLabelText('Delete set My Set'));
+		expect(onDeleteModelSet).toHaveBeenCalledWith('s1');
+		// Apply didn't fire: still single-select (no "1 models"/compare label).
+		expect(screen.queryByText('Click models below to compare them…')).toBeNull();
+	});
+});
