@@ -91,6 +91,18 @@ what already shipped, for context).
     embedding endpoint, writes vectors back. No schema migration.
   - _Manual add/edit in UI._ If the AI-only feel grows limiting, add a
     textarea modal + `POST`/`PATCH /api/user/memories`.
+  - _Memory consolidation ("dreaming")._ A background pass that reorganizes
+    accumulated memories the way sleep consolidates short-term into long-term
+    — deduping, and rewriting an old memory that a later one revised (kept as
+    two or merged into one, depending on the revision). Gated on a
+    change-watermark so it only fires when memories were added/modified since
+    the last pass; re-consolidating an unchanged set is wasted work + churn.
+    Reuses the existing `save`/`update`/`forget` primitives, driven by the
+    conversation's own model on a background cadence (mirroring the media
+    purger's hardcoded-cadence pattern). Pairs with embedding-backed recall:
+    consolidation is what keeps the full-index injection from growing
+    unboundedly as memory count × avg tokens climbs (the same budget threshold
+    the `composePersonaSystemPrompt` TODO above is watching).
 
 - **Code interpreter — phase-2.** _Shipped:_ server-side Pyodide `run_python`
   built-in (one `worker_threads` worker per conversation with a
@@ -178,6 +190,24 @@ what already shipped, for context).
   and the tree-shaped schema preserves pre-compaction history (switch back
   via sibling-nav). Open question: user-triggered only, or auto-fire when a
   per-model context estimate crosses a threshold.
+
+- **Canvas / collaborative document mode.** A long-lived document the model
+  edits across multiple turns and the user can edit too — a side-by-side
+  artifact pane rather than inline chat messages — for work that needs several
+  revisions before a final product (prose, a spec, a config), where re-pasting
+  the whole document every turn is the friction. Distinct from the chat
+  stream: the canvas is a _mutable artifact_, not an append-only message, so
+  it wants its own entity + version chain rather than living on a message row.
+  Sketch: an `artifacts` table (per-user, `conversation_id`-scoped) holding
+  current content + a version history; the model edits via a diff/replace tool
+  (`update_canvas`) so turns apply targeted edits instead of regenerating the
+  whole doc; human edits append versions to the same chain so authorship
+  interleaves. Markdown-first to start (reuse the server-side
+  markdown-it + shiki pipeline). Open questions: reconcile with the
+  tree-shaped message schema — does a canvas version pin to the leaf that
+  produced it, so branch-nav restores the matching doc state?; conflict
+  handling when human + model edit concurrently; whether to diff-render edits
+  in the pane.
 
 - **Multi-user.** Data model is already multi-user-shaped (every row has
   `user_id`); needs invite/admin UI + per-user resource-isolation tests + an
@@ -309,6 +339,16 @@ what already shipped, for context).
   If unbounded growth ever bites a small self-hosted box, the fix is a
   total-sibling-per-fan-out cap (disable Regenerate past N kept variations) or
   a bulk-cleanup sweep — neither worth the friction pre-emptively.
+
+- **Saved multi-model sets.** Multi-model generation (select N models,
+  generate side-by-side) requires hand-picking the models every time. Let
+  users save a named set as a preference — e.g. "my image-gen models" — then
+  one selection pulls in the whole set. A named-list blob on
+  `UserPreferences` (model / custom-model ids) + a "save current selection" /
+  apply affordance in the multi-select; pure ergonomics over the existing
+  multi-model path, no schema beyond the preference. Edge: a saved set
+  referencing a model later removed from `config.toml` should degrade
+  gracefully (skip-and-note, not error).
 
 - **Background sync / offline composition.** Service worker queues messages
   while offline, resends on reconnect. Low priority — chat apps generally
