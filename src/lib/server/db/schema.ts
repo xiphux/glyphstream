@@ -36,6 +36,18 @@ export const users = sqliteTable('users', {
 	// revocation semantics: there's no list to maintain in sync with
 	// reality; toggling this column is the single source of truth.
 	disabledAt: integer('disabled_at'),
+	// Which admin's invite created this account (denormalized from the invite,
+	// which is deleted on redemption — see the `invites` table). The one bit of
+	// invite state worth keeping: it's the only thing not otherwise recoverable
+	// from this row (join time = created_at, granted role = role). Null for the
+	// setup-wizard admin and any user not created via an invite.
+	//
+	// Deliberately a plain text id, NOT a FK: it's added via ALTER TABLE ADD
+	// COLUMN, where SQLite/drizzle-kit can't emit an ON DELETE clause, so a real
+	// FK would default to NO ACTION and make deleting an inviter fail. It's a
+	// soft reference — resolved against the user list for display; a dangling
+	// value (inviter since deleted) simply renders without a name.
+	invitedByUserId: text('invited_by_user_id'),
 	// User-level preferences serialized as JSON. Null when the user has
 	// never touched preferences (the parser fills in defaults). Schemaless
 	// so adding new preferences isn't migration-gated; the parsing layer
@@ -81,13 +93,16 @@ export const oauthAccounts = sqliteTable(
 // Invite tokens for admin-controlled onboarding. An admin mints one (raw
 // token shown once, embedded in a /join/<token> URL); the invitee redeems it
 // by completing GitHub OAuth or passkey registration, which creates their
-// user row in the same transaction that marks the invite used.
+// user row in the same transaction that DELETES the invite.
 //
-// Only the SHA-256 `tokenHash` is stored — the raw token never touches the
-// DB, so a DB read can't reconstruct a usable invite (same reasoning as
-// session-token hashing). `usedAt`/`usedByUserId` make redemption single-use
-// and auditable; `expiresAt` bounds the window. Mirrors the session module's
-// "store the hash, compare the hash" pattern.
+// The row is transient: it exists only while the invite is outstanding. On
+// redemption it's deleted (single-use), and the one durable fact — which admin
+// issued it — is denormalized onto the new user's `invited_by_user_id`. So
+// every row here is a pending invite; there's no "used" state to track.
+//
+// Only the SHA-256 `tokenHash` is stored — the raw token never touches the DB,
+// so a DB read can't reconstruct a usable invite (same reasoning as
+// session-token hashing). `expiresAt` bounds the window.
 export const invites = sqliteTable(
 	'invites',
 	{
@@ -102,13 +117,6 @@ export const invites = sqliteTable(
 			.references(() => users.id, { onDelete: 'cascade' }),
 		createdAt: integer('created_at').notNull(),
 		expiresAt: integer('expires_at').notNull(),
-		// Non-null once redeemed — the validity check requires this be null.
-		usedAt: integer('used_at'),
-		// The user created by this invite. ON DELETE set null so deleting that
-		// user (admin "delete user") leaves the consumed-invite audit row.
-		usedByUserId: text('used_by_user_id').references(() => users.id, {
-			onDelete: 'set null',
-		}),
 	},
 	(t) => [
 		uniqueIndex('uq_invites_token_hash').on(t.tokenHash),

@@ -14,6 +14,7 @@
 		disabledAt: number | null;
 		createdAt: number;
 		lastLoginAt: number | null;
+		invitedByUserId: string | null;
 	}
 	interface InviteRow {
 		id: string;
@@ -21,11 +22,18 @@
 		createdByUserId: string;
 		createdAt: number;
 		expiresAt: number;
-		usedAt: number | null;
-		usedByUserId: string | null;
 	}
 
 	let { data } = $props<{ data: { me: string; users: UserRow[]; invites: InviteRow[] } }>();
+
+	// Resolve an inviter id to a display label from the loaded user list. A
+	// dangling id (inviter since deleted — invited_by is a soft reference) just
+	// yields null and the "invited by" line is omitted.
+	function inviterLabel(invitedByUserId: string | null): string | null {
+		if (!invitedByUserId) return null;
+		const u = data.users.find((x: UserRow) => x.id === invitedByUserId);
+		return u ? (u.displayName ?? u.email ?? u.id) : null;
+	}
 
 	let newInviteRole = $state<UserRole>('user');
 	let creating = $state(false);
@@ -281,7 +289,8 @@
 							<div class="text-xs text-fg-muted">
 								{u.email ?? 'no email'} · joined {formatDate(u.createdAt)} · last login {formatDate(
 									u.lastLoginAt,
-								)}
+								)}{#if inviterLabel(u.invitedByUserId)}
+									· invited by {inviterLabel(u.invitedByUserId)}{/if}
 							</div>
 						</div>
 						{#if u.id !== data.me}

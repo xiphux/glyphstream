@@ -24,6 +24,7 @@ import {
 	countAdmins,
 	ensureAdminBootstrap,
 	getUserRole,
+	listUsers,
 } from '$lib/server/db/queries/users';
 import {
 	createInvite,
@@ -91,10 +92,9 @@ describe('invites', () => {
 		const expired = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 1_000 });
 		expect(findValidInvite(expired.token, expired.expiresAt + 1)).toBeNull();
 
-		const used = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 60_000 });
-		const newUser = createUser({ displayName: 'N', email: null, role: 'user' });
-		expect(consumeInvite(used.id, newUser)).toBe(true);
-		expect(findValidInvite(used.token)).toBeNull();
+		const consumed = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 60_000 });
+		expect(consumeInvite(consumed.id)).toBe(true);
+		expect(findValidInvite(consumed.token)).toBeNull();
 	});
 
 	it('carries the granted role through to the validation result', () => {
@@ -106,11 +106,9 @@ describe('invites', () => {
 	it('consumeInvite is single-use: a double-redeem race yields one winner', () => {
 		const adminId = admin();
 		const inv = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 60_000 });
-		const u1 = createUser({ displayName: 'U1', email: null, role: 'user' });
-		const u2 = createUser({ displayName: 'U2', email: null, role: 'user' });
-		expect(consumeInvite(inv.id, u1)).toBe(true);
-		// Second attempt matches 0 rows (used_at already set) → false.
-		expect(consumeInvite(inv.id, u2)).toBe(false);
+		expect(consumeInvite(inv.id)).toBe(true);
+		// Second attempt matches 0 rows (the invite was deleted) → false.
+		expect(consumeInvite(inv.id)).toBe(false);
 	});
 
 	it('deleteInvite revokes an unredeemed invite', () => {
@@ -129,11 +127,12 @@ describe('join finalizers (atomic create + bind + consume)', () => {
 		return { adminId, inv };
 	}
 
-	it('finalizeOAuthJoin creates the user, binds GitHub, and consumes the invite', () => {
-		const { inv } = adminAndInvite('user');
+	it('finalizeOAuthJoin creates the user, binds GitHub, deletes the invite, and records the inviter', () => {
+		const { adminId, inv } = adminAndInvite('user');
 		const userId = finalizeOAuthJoin({
 			inviteId: inv.id,
 			role: 'user',
+			invitedByUserId: adminId,
 			displayName: 'Invitee',
 			email: 'invitee@x.test',
 			oauth: {
@@ -144,21 +143,24 @@ describe('join finalizers (atomic create + bind + consume)', () => {
 			},
 		});
 		expect(findUserByOAuth('github', '99887')?.userId).toBe(userId);
-		// Invite is now spent.
+		// Invite is gone (deleted on redemption), and the issuing admin is
+		// denormalized onto the new user.
 		expect(findValidInvite(inv.token)).toBeNull();
+		expect(listInvites()).toHaveLength(0);
+		expect(listUsers().find((u) => u.id === userId)?.invitedByUserId).toBe(adminId);
 	});
 
 	it('finalizeOAuthJoin rolls back fully when the invite was already consumed', () => {
-		const { inv } = adminAndInvite('user');
-		// Pre-consume the invite (simulating the race winner).
-		const winner = createUser({ displayName: 'W', email: null, role: 'user' });
-		expect(consumeInvite(inv.id, winner)).toBe(true);
+		const { adminId, inv } = adminAndInvite('user');
+		// Pre-consume the invite (simulating the race winner deleting it).
+		expect(consumeInvite(inv.id)).toBe(true);
 		const before = countUsers();
 
 		expect(() =>
 			finalizeOAuthJoin({
 				inviteId: inv.id,
 				role: 'user',
+				invitedByUserId: adminId,
 				displayName: 'Loser',
 				email: null,
 				oauth: {
@@ -176,11 +178,12 @@ describe('join finalizers (atomic create + bind + consume)', () => {
 	});
 
 	it('finalizePasskeyJoin creates the user with the prospective id + credential', () => {
-		const { inv } = adminAndInvite('user');
+		const { adminId, inv } = adminAndInvite('user');
 		const prospectiveId = 'pre-allocated-user-id';
 		const userId = finalizePasskeyJoin({
 			inviteId: inv.id,
 			role: 'user',
+			invitedByUserId: adminId,
 			userId: prospectiveId,
 			displayName: 'Passkey Invitee',
 			email: null,
@@ -200,10 +203,11 @@ describe('join finalizers (atomic create + bind + consume)', () => {
 	});
 
 	it('finalizePasskeyJoin honors the granted admin role', () => {
-		const { inv } = adminAndInvite('admin');
+		const { adminId, inv } = adminAndInvite('admin');
 		const userId = finalizePasskeyJoin({
 			inviteId: inv.id,
 			role: 'admin',
+			invitedByUserId: adminId,
 			userId: 'admin-invitee-id',
 			displayName: 'Second Admin',
 			email: null,

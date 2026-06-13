@@ -3,13 +3,15 @@
  * invite (the raw token is returned ONCE and embedded in a /join/<token>
  * URL); the invitee redeems it by completing GitHub OAuth or passkey
  * registration, which creates their user row in the same transaction that
- * consumes the invite.
+ * DELETES the invite. The one durable fact — which admin issued it — is
+ * denormalized onto the new user's `invited_by_user_id`, so the invite row
+ * itself is purely transient: every row here is an outstanding invite.
  *
  * Only the SHA-256 hash of the token is stored — the raw token never lands
  * in the DB, mirroring the session module's hash-the-token pattern. A DB
  * read therefore can't reconstruct a usable invite.
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
@@ -49,8 +51,6 @@ export function createInvite(input: {
 			createdByUserId: input.createdByUserId,
 			createdAt: now,
 			expiresAt,
-			usedAt: null,
-			usedByUserId: null,
 		})
 		.run();
 	return { id, token, expiresAt };
@@ -59,13 +59,15 @@ export function createInvite(input: {
 export interface ValidInvite {
 	id: string;
 	role: UserRole;
+	/** The admin who issued it — denormalized onto the redeeming user. */
+	createdByUserId: string;
 }
 
 /**
- * Resolve a raw token to an invite that is still redeemable — exists,
- * unused, and unexpired. Returns null otherwise (the join flow maps null to
- * a "this invite link is invalid or expired" page). `now` is injectable for
- * tests.
+ * Resolve a raw token to a redeemable invite — exists and unexpired. (There's
+ * no "used" state: a redeemed invite is deleted.) Returns null otherwise (the
+ * join flow maps null to a "this invite link is invalid or expired" page).
+ * `now` is injectable for tests.
  */
 export function findValidInvite(rawToken: string, now: number = Date.now()): ValidInvite | null {
 	if (!rawToken) return null;
@@ -74,32 +76,27 @@ export function findValidInvite(rawToken: string, now: number = Date.now()): Val
 		.select({
 			id: invites.id,
 			role: invites.role,
+			createdByUserId: invites.createdByUserId,
 			expiresAt: invites.expiresAt,
-			usedAt: invites.usedAt,
 		})
 		.from(invites)
 		.where(eq(invites.tokenHash, hashInviteToken(rawToken)))
 		.get();
 	if (!row) return null;
-	if (row.usedAt !== null) return null;
 	if (row.expiresAt <= now) return null;
-	return { id: row.id, role: row.role };
+	return { id: row.id, role: row.role, createdByUserId: row.createdByUserId };
 }
 
 /**
- * Mark an invite redeemed. The `WHERE used_at IS NULL` clause makes this a
- * single-use atomic claim: a double-submit race that both passed
- * `findValidInvite` will see exactly one UPDATE match a row — the loser gets
- * `false` and the caller rolls back its user insert. Pass `tx` so the
- * consume and the `createUser` insert commit together.
+ * Redeem (consume) an invite by deleting it. The DELETE is the single-use
+ * atomic claim: a double-submit race that both passed `findValidInvite` will
+ * see exactly one DELETE match a row — the loser gets `false` and the caller
+ * rolls back its user insert. Pass `tx` so the delete and the `createUser`
+ * insert commit together.
  */
-export function consumeInvite(inviteId: string, usedByUserId: string, tx?: Tx): boolean {
+export function consumeInvite(inviteId: string, tx?: Tx): boolean {
 	const exec = tx ?? getDb();
-	const res = exec
-		.update(invites)
-		.set({ usedAt: Date.now(), usedByUserId })
-		.where(and(eq(invites.id, inviteId), isNull(invites.usedAt)))
-		.run();
+	const res = exec.delete(invites).where(eq(invites.id, inviteId)).run();
 	return res.changes > 0;
 }
 
@@ -109,11 +106,10 @@ export interface InviteSummary {
 	createdByUserId: string;
 	createdAt: number;
 	expiresAt: number;
-	usedAt: number | null;
-	usedByUserId: string | null;
 }
 
-/** All invites, newest first — for the admin UI's invite list. */
+/** All outstanding invites, newest first — for the admin UI's invite list.
+ *  (Redeemed invites are deleted, so every row is pending.) */
 export function listInvites(): InviteSummary[] {
 	const db = getDb();
 	return db
@@ -123,15 +119,13 @@ export function listInvites(): InviteSummary[] {
 			createdByUserId: invites.createdByUserId,
 			createdAt: invites.createdAt,
 			expiresAt: invites.expiresAt,
-			usedAt: invites.usedAt,
-			usedByUserId: invites.usedByUserId,
 		})
 		.from(invites)
 		.orderBy(desc(invites.createdAt))
 		.all();
 }
 
-/** Delete an invite by id (admin revoke of an unredeemed invite). */
+/** Delete an invite by id (admin revoke of an outstanding invite). */
 export function deleteInvite(id: string): boolean {
 	const db = getDb();
 	const res = db.delete(invites).where(eq(invites.id, id)).run();

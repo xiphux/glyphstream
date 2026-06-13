@@ -227,6 +227,7 @@ async function handleJoin(args: {
 		userId = finalizeOAuthJoin({
 			inviteId: invite.id,
 			role: invite.role,
+			invitedByUserId: invite.createdByUserId,
 			displayName: carry.displayName,
 			email: carry.email ?? profile.email,
 			oauth: {

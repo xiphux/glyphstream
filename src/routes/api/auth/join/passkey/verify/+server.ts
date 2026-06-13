@@ -96,6 +96,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		userId = finalizePasskeyJoin({
 			inviteId: invite.id,
 			role: invite.role,
+			invitedByUserId: invite.createdByUserId,
 			userId: carry.userId,
 			displayName: carry.displayName,
 			email: carry.email,

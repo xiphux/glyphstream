@@ -35,13 +35,15 @@ export class InviteConsumedError extends Error {}
 
 /**
  * Create a user from a redeemed invite and bind a GitHub identity, marking
- * the invite used — all in one transaction. `consumeInvite`'s conditional
- * UPDATE is the single-use guard: if a parallel redemption already used the
+ * the invite (deleting it) — all in one transaction. `consumeInvite`'s DELETE
+ * is the single-use guard: if a parallel redemption already removed the
  * invite, it matches zero rows and we throw to roll the whole thing back.
+ * `invitedByUserId` (the issuing admin) is denormalized onto the new user.
  */
 export function finalizeOAuthJoin(args: {
 	inviteId: string;
 	role: UserRole;
+	invitedByUserId: string;
 	displayName: string;
 	email: string | null;
 	oauth: {
@@ -54,11 +56,16 @@ export function finalizeOAuthJoin(args: {
 	const db = getDb();
 	return db.transaction((tx) => {
 		const userId = createUser(
-			{ displayName: args.displayName, email: args.email, role: args.role },
+			{
+				displayName: args.displayName,
+				email: args.email,
+				role: args.role,
+				invitedByUserId: args.invitedByUserId,
+			},
 			tx,
 		);
 		addOAuthAccount({ userId, ...args.oauth }, tx);
-		if (!consumeInvite(args.inviteId, userId, tx)) {
+		if (!consumeInvite(args.inviteId, tx)) {
 			throw new InviteConsumedError('invite already redeemed');
 		}
 		return userId;
@@ -74,6 +81,7 @@ export function finalizeOAuthJoin(args: {
 export function finalizePasskeyJoin(args: {
 	inviteId: string;
 	role: UserRole;
+	invitedByUserId: string;
 	userId: string;
 	displayName: string;
 	email: string | null;
@@ -82,11 +90,17 @@ export function finalizePasskeyJoin(args: {
 	const db = getDb();
 	return db.transaction((tx) => {
 		const userId = createUser(
-			{ id: args.userId, displayName: args.displayName, email: args.email, role: args.role },
+			{
+				id: args.userId,
+				displayName: args.displayName,
+				email: args.email,
+				role: args.role,
+				invitedByUserId: args.invitedByUserId,
+			},
 			tx,
 		);
 		insertCredential({ userId, ...args.credential }, tx);
-		if (!consumeInvite(args.inviteId, userId, tx)) {
+		if (!consumeInvite(args.inviteId, tx)) {
 			throw new InviteConsumedError('invite already redeemed');
 		}
 		return userId;

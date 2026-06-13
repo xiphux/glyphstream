@@ -21,6 +21,10 @@ export interface CreateUserInput {
 	displayName: string;
 	email: string | null;
 	role: UserRole;
+	/** The admin whose invite created this account, denormalized off the
+	 *  (then-deleted) invite. Null for the setup-wizard admin / non-invited
+	 *  users. */
+	invitedByUserId?: string | null;
 }
 
 export interface CreateInitialUserInput {
@@ -48,6 +52,7 @@ export function createUser(input: CreateUserInput, tx?: Tx): string {
 			displayName: input.displayName,
 			email: input.email,
 			role: input.role,
+			invitedByUserId: input.invitedByUserId ?? null,
 			createdAt: now,
 			lastLoginAt: now,
 			disabledAt: null,
@@ -104,6 +109,7 @@ export interface UserSummary {
 	disabledAt: number | null;
 	createdAt: number;
 	lastLoginAt: number | null;
+	invitedByUserId: string | null;
 }
 
 /** All users, newest-first — for the admin user-management table. */
@@ -118,6 +124,7 @@ export function listUsers(): UserSummary[] {
 			disabledAt: users.disabledAt,
 			createdAt: users.createdAt,
 			lastLoginAt: users.lastLoginAt,
+			invitedByUserId: users.invitedByUserId,
 		})
 		.from(users)
 		.orderBy(desc(users.createdAt))
