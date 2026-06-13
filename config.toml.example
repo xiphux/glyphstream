@@ -193,6 +193,23 @@
 # transport = "http"
 # url = "https://mcp.linear.app/mcp"
 # api_key_env = "LINEAR_MCP_KEY"   # optional; sent as Authorization: Bearer
+#
+# Per-user authentication (multi-user). By default a server is `auth =
+# "global"`: one shared credential from `api_key_env`, resolved at boot. Set
+# `auth = "per_user"` when the token identifies an INDIVIDUAL account (e.g. a
+# personal email MCP) — then each user supplies their own token under
+# Settings -> MCP servers (stored encrypted, keyed per user), the connection
+# is made under their identity, and users without a token simply don't see the
+# server's tools. Per-user auth is HTTP-only and must NOT set `api_key_env`
+# (the token is per user, not from the environment). Stored credentials are
+# encrypted with MCP_SECRET_KEY, which defaults to AUTH_SECRET — so no extra
+# setup is needed unless you want to rotate it independently.
+# [[mcp_servers]]
+# id = "email"
+# display_name = "Email"
+# transport = "http"
+# url = "https://api.fastmail.com/mcp"
+# auth = "per_user"
 
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys

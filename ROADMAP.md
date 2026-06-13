@@ -49,8 +49,15 @@ what already shipped, for context).
   `[[mcp_servers]]` with static auth (stdio + Streamable HTTP), tools
   namespaced into the registry with per-conversation + per-custom-model
   toggles, inline Allow/Always/Reject approval for untrusted tools, and
-  `/settings/mcp` + `/settings/permissions` surfaces. Remaining:
-  - _OAuth per-user (v1b)._ New `oauth_connections` table; multi-provider
+  `/settings/mcp` + `/settings/permissions` surfaces. _Also shipped:_ per-user
+  static tokens — a server marked `auth = "per_user"` connects under each
+  user's own token (entered in `/settings/mcp`, stored AES-256-GCM-encrypted
+  via `MCP_SECRET_KEY` which defaults to `AUTH_SECRET`, registry keyed by
+  `(serverId, userId)`); tools are
+  advertised + executed only for users who've configured a credential.
+  HTTP-only for now. Remaining:
+  - _OAuth per-user (v1b)._ The 3-legged OAuth flow (vs. the static token
+    shipped above). New `oauth_connections` table; multi-provider
     abstraction in `src/lib/server/auth/providers/` mirroring how arctic is
     wired for GitHub login; per-user `/settings/connections` UI with
     "Connect Gmail"-style affordances; `AUTH_SECRET`-keyed AES-256-GCM
@@ -209,9 +216,14 @@ what already shipped, for context).
   handling when human + model edit concurrently; whether to diff-render edits
   in the pane.
 
-- **Multi-user.** Data model is already multi-user-shaped (every row has
-  `user_id`); needs invite/admin UI + per-user resource-isolation tests + an
-  admin role.
+- **Multi-user.** _Shipped._ The data model was always multi-user-shaped
+  (every row has `user_id`); the v1 work added the operator surface: an `admin`
+  role (the setup-wizard user; the rest join by invite), admin-issued invites
+  redeemed at `/join/<token>` via OAuth or passkey, a `/settings/admin` UI
+  (list / invite / enable-disable / delete, with last-admin + self-action
+  guards), and the per-user data-isolation hardening (the previously-unscoped
+  `conversations.ts` reads now take `userId`). Remaining nice-to-haves: a
+  per-user storage-quota / usage view; bulk user import.
 
 - **Virtualized message list.** Long conversations eventually overwhelm the
   DOM. `@tanstack/svelte-virtual` is the candidate; the hard part is the

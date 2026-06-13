@@ -7,8 +7,9 @@ mistake.
 ## What this is
 
 Lightweight chat frontend for OpenAI-compatible backends. Self-hosted,
-single-Node-process, SQLite. Solo-user UX with a multi-user-shaped data
-model.
+single-Node-process, SQLite. Officially multi-user: the setup-wizard user is
+an `admin`; everyone else joins by an admin-issued invite (`/join/<token>`).
+Still optimized for the small-team / household scale, not SaaS.
 
 ## Stack
 
@@ -45,12 +46,14 @@ tests/e2e/            # playwright (production-build webServer)
   `provider_quirk` in `config.toml`.
 - **Architecture-now-for-v2-later.** Schema is tree-shaped
   (`parent_message_id` + `active_leaf_message_id`) so branching UI lands in
-  v2 with no migration. Every row has `user_id` so multi-user adds an admin
-  UI in v2 without schema work. `MediaStore` interface so S3 swap is a
-  single new file.
-- **Self-hosted on the public internet is the deployment target.** GitHub
-  OAuth + numeric-ID allowlist (NOT username — usernames can be reassigned).
-  Reverse proxy in front for TLS + HTTP/2.
+  v2 with no migration. Every row carries `user_id` and queries scope by it
+  (the multi-user isolation invariant — don't add an unscoped read of a
+  user-owned table). `MediaStore` interface so S3 swap is a single new file.
+- **Self-hosted on the public internet is the deployment target.** Auth is
+  GitHub OAuth + passkeys; access is gated per-user by `users.disabled_at`
+  (toggled from `/settings/admin`), NOT a config allowlist. Account creation
+  is invite-only after the first (admin) user. Reverse proxy in front for
+  TLS + HTTP/2.
 
 ## Conventions
 
@@ -62,6 +65,15 @@ tests/e2e/            # playwright (production-build webServer)
   on a hardcoded cadence (see `src/lib/server/media/purger.ts`).
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
+- MCP servers are `auth = "global"` (one shared `api_key_env` token, the
+  default) or `auth = "per_user"` (each user enters their own token in
+  `/settings/mcp`, stored AES-256-GCM-encrypted, keyed `(serverId, userId)`).
+  The encryption key is `MCP_SECRET_KEY`, which defaults to `AUTH_SECRET`
+  (HKDF domain-separated, so reuse is safe) — set it only to rotate MCP
+  encryption independently. Per-user tools can't ride the static tool registry —
+  they register `isAvailable:false` and are appended per request by the
+  message / tool-approval handlers (the same trick `activate_skill` uses).
+  Per-user auth is HTTP-only.
 - `await parent()` at the start of every `(app)` page server load. Without
   it the page's `locals.user!.id` deref races with the layout's
   redirect-on-no-auth and surfaces a 500 instead of a 302.
