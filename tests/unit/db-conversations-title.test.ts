@@ -36,7 +36,7 @@ describe('title_source state machine', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 		});
-		expect(getConversationTitleSource(conv.id)).toBe('fallback');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('fallback');
 	});
 
 	it('setConversationTitle defaults source to fallback (preserves legacy callers)', () => {
@@ -47,8 +47,8 @@ describe('title_source state machine', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 		});
-		setConversationTitle(conv.id, 'first-line preview');
-		expect(getConversationTitleSource(conv.id)).toBe('fallback');
+		setConversationTitle(conv.id, u.id, 'first-line preview');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('fallback');
 	});
 
 	it('setConversationTitleIfFallback overwrites a fallback title', () => {
@@ -60,9 +60,9 @@ describe('title_source state machine', () => {
 			modelKind: 'chat',
 			title: 'preview…',
 		});
-		const ok = setConversationTitleIfFallback(conv.id, 'AI Generated Title');
+		const ok = setConversationTitleIfFallback(conv.id, u.id, 'AI Generated Title');
 		expect(ok).toBe(true);
-		expect(getConversationTitleSource(conv.id)).toBe('ai');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('ai');
 	});
 
 	it('setConversationTitleIfFallback is a no-op when source is already ai', () => {
@@ -74,10 +74,10 @@ describe('title_source state machine', () => {
 			modelKind: 'chat',
 		});
 		// First AI write succeeds
-		expect(setConversationTitleIfFallback(conv.id, 'First AI')).toBe(true);
+		expect(setConversationTitleIfFallback(conv.id, u.id, 'First AI')).toBe(true);
 		// Second write fails (already ai-sourced)
-		expect(setConversationTitleIfFallback(conv.id, 'Second AI')).toBe(false);
-		expect(getConversationTitleSource(conv.id)).toBe('ai');
+		expect(setConversationTitleIfFallback(conv.id, u.id, 'Second AI')).toBe(false);
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('ai');
 	});
 
 	it('setConversationTitleIfFallback is a no-op when source is user', () => {
@@ -89,11 +89,11 @@ describe('title_source state machine', () => {
 			modelKind: 'chat',
 		});
 		renameConversation(conv.id, u.id, 'My Manual Title');
-		expect(getConversationTitleSource(conv.id)).toBe('user');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('user');
 
-		const ok = setConversationTitleIfFallback(conv.id, 'AI Override');
+		const ok = setConversationTitleIfFallback(conv.id, u.id, 'AI Override');
 		expect(ok).toBe(false);
-		expect(getConversationTitleSource(conv.id)).toBe('user');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('user');
 	});
 });
 
@@ -108,7 +108,7 @@ describe('renameConversation', () => {
 		});
 		const ok = renameConversation(conv.id, u.id, '  New Title  ');
 		expect(ok).toBe(true);
-		expect(getConversationTitleSource(conv.id)).toBe('user');
+		expect(getConversationTitleSource(conv.id, u.id)).toBe('user');
 	});
 
 	it('rejects empty / whitespace-only titles', () => {
@@ -148,7 +148,7 @@ describe('renameConversation', () => {
 		});
 		const ok = renameConversation(conv.id, attacker.id, 'Hijacked');
 		expect(ok).toBe(false);
-		expect(getConversationTitleSource(conv.id)).toBe('fallback');
+		expect(getConversationTitleSource(conv.id, owner.id)).toBe('fallback');
 	});
 });
 
@@ -161,7 +161,7 @@ describe('getConversationFirstExchange', () => {
 			modelId: 'bridge::gpt-4o',
 			modelKind: 'chat',
 		});
-		expect(getConversationFirstExchange(conv.id)).toBeNull();
+		expect(getConversationFirstExchange(conv.id, u.id)).toBeNull();
 	});
 
 	it('returns user text without assistant when only user has sent', () => {
@@ -178,7 +178,7 @@ describe('getConversationFirstExchange', () => {
 			role: 'user',
 			parts: [{ type: 'text', text: 'Hello world' }],
 		});
-		const ex = getConversationFirstExchange(conv.id);
+		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex).not.toBeNull();
 		expect(ex!.userText).toBe('Hello world');
 		expect(ex!.assistantText).toBeNull();
@@ -206,7 +206,7 @@ describe('getConversationFirstExchange', () => {
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'X is …' }],
 		});
-		const ex = getConversationFirstExchange(conv.id);
+		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex!.userText).toBe('What is X?');
 		expect(ex!.assistantText).toBe('X is …');
 	});
@@ -228,7 +228,7 @@ describe('getConversationFirstExchange', () => {
 				{ type: 'image', mediaId: 'm-1' },
 			],
 		});
-		const ex = getConversationFirstExchange(conv.id);
+		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex!.userText).toBe('a cat in a hat');
 		expect(ex!.userMediaKinds).toEqual(['image']);
 	});
@@ -253,7 +253,7 @@ describe('getConversationFirstExchange', () => {
 			role: 'assistant',
 			parts: [{ type: 'image', mediaId: 'm-2' }],
 		});
-		const ex = getConversationFirstExchange(conv.id);
+		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex!.assistantText).toBe('');
 		expect(ex!.assistantHasMedia).toBe(true);
 	});
@@ -288,7 +288,53 @@ describe('getConversationFirstExchange', () => {
 			parts: [{ type: 'text', text: 'second answer' }],
 		});
 		setActiveLeafMessageId(conv.id, first.id);
-		const ex = getConversationFirstExchange(conv.id);
+		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex!.assistantText).toBe('first answer');
+	});
+});
+
+describe('cross-user scoping (data isolation)', () => {
+	function seedConvWithExchange() {
+		const owner = seedUser();
+		const conv = createConversation({
+			userId: owner.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::gpt-4o',
+			modelKind: 'chat',
+		});
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'secret prompt' }],
+		});
+		return { owner, conv };
+	}
+
+	it('getConversationTitleSource returns null for a non-owner', () => {
+		const { conv } = seedConvWithExchange();
+		const attacker = seedUser();
+		expect(getConversationTitleSource(conv.id, attacker.id)).toBeNull();
+	});
+
+	it('getConversationFirstExchange returns null for a non-owner (no message leak)', () => {
+		const { conv } = seedConvWithExchange();
+		const attacker = seedUser();
+		expect(getConversationFirstExchange(conv.id, attacker.id)).toBeNull();
+	});
+
+	it("setConversationTitle does not mutate another user's conversation", () => {
+		const { owner, conv } = seedConvWithExchange();
+		const attacker = seedUser();
+		setConversationTitle(conv.id, attacker.id, 'Hijacked', { source: 'user' });
+		// Owner's view is untouched — still the default fallback source.
+		expect(getConversationTitleSource(conv.id, owner.id)).toBe('fallback');
+	});
+
+	it('setConversationTitleIfFallback is a no-op for a non-owner', () => {
+		const { owner, conv } = seedConvWithExchange();
+		const attacker = seedUser();
+		expect(setConversationTitleIfFallback(conv.id, attacker.id, 'Hijacked')).toBe(false);
+		expect(getConversationTitleSource(conv.id, owner.id)).toBe('fallback');
 	});
 });

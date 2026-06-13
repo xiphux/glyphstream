@@ -685,6 +685,11 @@ export interface PurgeCandidate {
  * delete "also delete media" checkbox, branch-delete) hard-delete it.
  * The purger's sole remaining job is reaping uploads the user picked
  * but never sent.
+ *
+ * Deliberately NOT user-scoped: this (and `markHardDeleted` /
+ * `stampOrphanedZeroRefRows`) are trusted background-maintenance queries
+ * run by the purger over the whole media table, not request-driven paths.
+ * A user_id predicate here would be wrong — the purger sweeps every user.
  */
 export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCandidate[] {
 	const db = getDb();

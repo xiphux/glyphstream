@@ -22,9 +22,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	getTaskModel: vi.fn<() => { endpoint: unknown; upstreamId: string } | null>(),
-	getConversationTitleSource: vi.fn<(id: string) => 'fallback' | 'ai' | 'user' | null>(),
+	getConversationTitleSource:
+		vi.fn<(id: string, userId: string) => 'fallback' | 'ai' | 'user' | null>(),
 	generateConversationTitle:
-		vi.fn<(id: string) => Promise<{ title: string; persisted: boolean } | null>>(),
+		vi.fn<(id: string, userId: string) => Promise<{ title: string; persisted: boolean } | null>>(),
 }));
 
 vi.mock('$lib/server/tasks/task-model', () => ({
@@ -50,7 +51,7 @@ beforeEach(() => {
 describe('startTitleTaskIfFirstExchange — gating', () => {
 	it('resolves to null without calling the generator when no task model is configured', async () => {
 		mocks.getTaskModel.mockReturnValue(null);
-		const result = await startTitleTaskIfFirstExchange('c1');
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
 		expect(result).toBeNull();
 		expect(mocks.generateConversationTitle).not.toHaveBeenCalled();
 		// Don't even peek at title_source if there's no task model — saves
@@ -61,7 +62,7 @@ describe('startTitleTaskIfFirstExchange — gating', () => {
 	it('skips when title_source is already "ai" (subsequent assistant turns)', async () => {
 		mocks.getTaskModel.mockReturnValue({ endpoint: {}, upstreamId: 'qwen2.5:0.5b' });
 		mocks.getConversationTitleSource.mockReturnValue('ai');
-		const result = await startTitleTaskIfFirstExchange('c1');
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
 		expect(result).toBeNull();
 		expect(mocks.generateConversationTitle).not.toHaveBeenCalled();
 	});
@@ -69,7 +70,7 @@ describe('startTitleTaskIfFirstExchange — gating', () => {
 	it('skips when title_source is "user" (manual rename locks the title)', async () => {
 		mocks.getTaskModel.mockReturnValue({ endpoint: {}, upstreamId: 'qwen2.5:0.5b' });
 		mocks.getConversationTitleSource.mockReturnValue('user');
-		const result = await startTitleTaskIfFirstExchange('c1');
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
 		expect(result).toBeNull();
 		expect(mocks.generateConversationTitle).not.toHaveBeenCalled();
 	});
@@ -78,9 +79,9 @@ describe('startTitleTaskIfFirstExchange — gating', () => {
 		mocks.getTaskModel.mockReturnValue({ endpoint: {}, upstreamId: 'qwen2.5:0.5b' });
 		mocks.getConversationTitleSource.mockReturnValue('fallback');
 		mocks.generateConversationTitle.mockResolvedValue({ title: 'A Title', persisted: true });
-		const result = await startTitleTaskIfFirstExchange('c1');
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
 		expect(result).toBe('A Title');
-		expect(mocks.generateConversationTitle).toHaveBeenCalledWith('c1');
+		expect(mocks.generateConversationTitle).toHaveBeenCalledWith('c1', 'u1');
 	});
 });
 
@@ -92,7 +93,7 @@ describe('startTitleTaskIfFirstExchange — result shaping', () => {
 
 	it('returns the title when the conditional UPDATE persisted', async () => {
 		mocks.generateConversationTitle.mockResolvedValue({ title: 'Generated', persisted: true });
-		expect(await startTitleTaskIfFirstExchange('c1')).toBe('Generated');
+		expect(await startTitleTaskIfFirstExchange('c1', 'u1')).toBe('Generated');
 	});
 
 	it('returns null when the title was generated but lost to a user rename race', async () => {
@@ -104,12 +105,12 @@ describe('startTitleTaskIfFirstExchange — result shaping', () => {
 			title: 'Stale',
 			persisted: false,
 		});
-		expect(await startTitleTaskIfFirstExchange('c1')).toBeNull();
+		expect(await startTitleTaskIfFirstExchange('c1', 'u1')).toBeNull();
 	});
 
 	it('returns null when the generator returned null (no exchange / empty)', async () => {
 		mocks.generateConversationTitle.mockResolvedValue(null);
-		expect(await startTitleTaskIfFirstExchange('c1')).toBeNull();
+		expect(await startTitleTaskIfFirstExchange('c1', 'u1')).toBeNull();
 	});
 
 	it('returns null instead of throwing when the generator rejects', async () => {
@@ -120,7 +121,7 @@ describe('startTitleTaskIfFirstExchange — result shaping', () => {
 		mocks.generateConversationTitle.mockRejectedValue(new Error('task model died'));
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 		try {
-			expect(await startTitleTaskIfFirstExchange('c1')).toBeNull();
+			expect(await startTitleTaskIfFirstExchange('c1', 'u1')).toBeNull();
 			expect(warn).toHaveBeenCalled();
 		} finally {
 			warn.mockRestore();

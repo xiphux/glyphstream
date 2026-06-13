@@ -169,20 +169,24 @@ export function updateConversationModel(
  * rehydrate the compare grid after a reload. Cleared when the fan-out resolves
  * (selectBranch on a pick / dismiss / continue).
  */
-export function setFanoutParent(conversationId: string, parentMessageId: string): void {
+export function setFanoutParent(
+	conversationId: string,
+	userId: string,
+	parentMessageId: string,
+): void {
 	getDb()
 		.update(conversations)
 		.set({ fanoutParentMessageId: parentMessageId })
-		.where(eq(conversations.id, conversationId))
+		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
 		.run();
 }
 
-/** The parked fan-out's shared user-message id, or null when none. */
-export function getFanoutParent(conversationId: string): string | null {
+/** The parked fan-out's shared user-message id, or null when none / not owned. */
+export function getFanoutParent(conversationId: string, userId: string): string | null {
 	const row = getDb()
 		.select({ p: conversations.fanoutParentMessageId })
 		.from(conversations)
-		.where(eq(conversations.id, conversationId))
+		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
 		.get();
 	return row?.p ?? null;
 }
@@ -307,18 +311,19 @@ export function setDisabledFeatures(
  *   - 'user': manual rename
  *
  * Prefer the more specific helpers (`setConversationTitleIfFallback`,
- * `renameConversation`) when you need precedence semantics or ownership
- * scoping; this raw setter is intentionally unconditional and unscoped.
+ * `renameConversation`) when you need precedence semantics; this raw setter
+ * is unconditional (no title_source guard). Scoped by `userId` for ownership.
  */
 export function setConversationTitle(
 	id: string,
+	userId: string,
 	title: string,
 	opts: { source?: TitleSource } = {},
 ): void {
 	const db = getDb();
 	db.update(conversations)
 		.set({ title, titleSource: opts.source ?? 'fallback', updatedAt: Date.now() })
-		.where(eq(conversations.id, id))
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.run();
 }
 
@@ -330,12 +335,12 @@ export function setConversationTitle(
  * "don't run title gen again." Returns null when the conversation
  * doesn't exist.
  */
-export function getConversationTitleSource(id: string): TitleSource | null {
+export function getConversationTitleSource(id: string, userId: string): TitleSource | null {
 	const db = getDb();
 	const row = db
 		.select({ titleSource: conversations.titleSource })
 		.from(conversations)
-		.where(eq(conversations.id, id))
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.get();
 	return row ? row.titleSource : null;
 }
@@ -352,12 +357,22 @@ export function getConversationTitleSource(id: string): TitleSource | null {
  * Returns true when the row was updated, false otherwise (already AI,
  * already user-set, or conversation not found).
  */
-export function setConversationTitleIfFallback(id: string, aiTitle: string): boolean {
+export function setConversationTitleIfFallback(
+	id: string,
+	userId: string,
+	aiTitle: string,
+): boolean {
 	const db = getDb();
 	const res = db
 		.update(conversations)
 		.set({ title: aiTitle, titleSource: 'ai', updatedAt: Date.now() })
-		.where(and(eq(conversations.id, id), eq(conversations.titleSource, 'fallback')))
+		.where(
+			and(
+				eq(conversations.id, id),
+				eq(conversations.userId, userId),
+				eq(conversations.titleSource, 'fallback'),
+			),
+		)
 		.run();
 	return res.changes > 0;
 }
@@ -411,8 +426,18 @@ export interface FirstExchange {
 	assistantHasMedia: boolean;
 }
 
-export function getConversationFirstExchange(id: string): FirstExchange | null {
+export function getConversationFirstExchange(id: string, userId: string): FirstExchange | null {
 	const db = getDb();
+	// Ownership guard: this pivots on messages by conversation_id (messages
+	// carry no user_id of their own), so confirm the conversation belongs to
+	// `userId` before reading any of its messages.
+	const owned = db
+		.select({ id: conversations.id })
+		.from(conversations)
+		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+		.get();
+	if (!owned) return null;
+
 	const rootUser = db
 		.select()
 		.from(messages)

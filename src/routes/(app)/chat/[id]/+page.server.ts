@@ -39,7 +39,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 	// the completed images plus "generating" placeholders, and the poll fills
 	// the rest in as they land. The explicit marker means a retry/truncate
 	// parked on a user message can't masquerade as a fan-out.
-	const fanout = getFanoutRecoveryState(conversation.id, conversation.activeLeafMessageId);
+	const fanout = getFanoutRecoveryState(
+		conversation.id,
+		locals.user.id,
+		conversation.activeLeafMessageId,
+	);
 
 	return { conversation, assistantLabel, inFlightSince, fanout };
 };

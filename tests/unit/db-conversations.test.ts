@@ -1793,18 +1793,18 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 
 	it('set/get round-trips and selectBranch clears the marker', () => {
 		const { u, conv, user, a } = seedFanout();
-		setFanoutParent(conv.id, user.id);
-		expect(getFanoutParent(conv.id)).toBe(user.id);
+		setFanoutParent(conv.id, u.id, user.id);
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
 
 		// Picking a winner resolves the fan-out → marker cleared, leaf advanced.
 		selectBranch(conv.id, a.id);
-		expect(getFanoutParent(conv.id)).toBeNull();
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(a.id);
 	});
 
 	it('deleteBranch keeps the parked leaf when discarding an off-branch sibling', () => {
 		const { u, conv, user, a, b } = seedFanout();
-		setFanoutParent(conv.id, user.id);
+		setFanoutParent(conv.id, u.id, user.id);
 		// Leaf is parked at the user message (advanceActiveLeaf:false above).
 		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
 
@@ -1815,7 +1815,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
 		// B remains; the marker is untouched (still pruning).
 		expect(getMessage(conv.id, b.id)?.id).toBe(b.id);
-		expect(getFanoutParent(conv.id)).toBe(user.id);
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
 	});
 
 	it('deleteBranch clears the marker (no FK error) when the parked anchor is deleted', () => {
@@ -1830,12 +1830,12 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			parts: [{ type: 'text', text: 'other' }],
 			advanceActiveLeaf: false,
 		});
-		setFanoutParent(conv.id, user.id);
+		setFanoutParent(conv.id, u.id, user.id);
 		// Deleting the parked anchor must null the marker rather than FK-error on
 		// it (the live FK is NO ACTION — the app clears the reference itself).
 		const res = deleteBranch(conv.id, user.id, u.id);
 		expect(res && 'deletedIds' in res).toBe(true);
-		expect(getFanoutParent(conv.id)).toBeNull();
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 
 	it('deleteBranch still moves the leaf when you delete the branch you are on', () => {
@@ -1851,8 +1851,8 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 	});
 
 	it('a leaf-advancing append clears a stale marker', () => {
-		const { conv, user } = seedFanout();
-		setFanoutParent(conv.id, user.id);
+		const { u, conv, user } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
 		// A normal (leaf-advancing) message after the comparison resolves it.
 		appendMessage({
 			conversationId: conv.id,
@@ -1860,20 +1860,20 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'follow-up' }],
 		});
-		expect(getFanoutParent(conv.id)).toBeNull();
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 
 	it('truncateAtMessage clears the marker', () => {
-		const { conv, user, a } = seedFanout();
-		setFanoutParent(conv.id, user.id);
+		const { u, conv, user, a } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
 		truncateAtMessage(conv.id, a.id);
-		expect(getFanoutParent(conv.id)).toBeNull();
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 
 	it('getFanoutRecoveryState reports siblings + pending only for a parked fan-out', () => {
-		const { conv, user, a, b } = seedFanout();
+		const { u, conv, user, a, b } = seedFanout();
 		// Not parked yet (no marker) → nothing to recover.
-		expect(getFanoutRecoveryState(conv.id, user.id)).toEqual({
+		expect(getFanoutRecoveryState(conv.id, u.id, user.id)).toEqual({
 			parentMessageId: null,
 			kind: null,
 			siblings: [],
@@ -1882,9 +1882,9 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			pendingStartedAt: [],
 		});
 
-		setFanoutParent(conv.id, user.id);
+		setFanoutParent(conv.id, u.id, user.id);
 		resetInFlight();
-		const state = getFanoutRecoveryState(conv.id, user.id);
+		const state = getFanoutRecoveryState(conv.id, u.id, user.id);
 		expect(state.parentMessageId).toBe(user.id);
 		expect(new Set(state.siblings.map((m) => m.id))).toEqual(new Set([a.id, b.id]));
 		expect(state.pending).toBe(0);
@@ -1896,7 +1896,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		const e0 = registerInFlight(conv.id, fakeEndpoint, 'br0', 'image', 'bridge::sdxl');
 		registerInFlight(conv.id, fakeEndpoint, 'br1', 'image', 'bridge::flux');
 		e0.generationStartedAt = 1234;
-		const inflightState = getFanoutRecoveryState(conv.id, user.id);
+		const inflightState = getFanoutRecoveryState(conv.id, u.id, user.id);
 		expect(inflightState.pending).toBe(2);
 		expect(inflightState.kind).toBe('image');
 		const byModel = new Map(
@@ -1907,18 +1907,18 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		resetInFlight();
 
 		// Marker that no longer matches the active leaf isn't surfaced.
-		expect(getFanoutRecoveryState(conv.id, 'some-other-leaf').parentMessageId).toBeNull();
+		expect(getFanoutRecoveryState(conv.id, u.id, 'some-other-leaf').parentMessageId).toBeNull();
 	});
 
 	it('getFanoutRecoveryState shows all siblings during an additive re-roll', () => {
-		const { conv, user, a, b } = seedFanout();
-		setFanoutParent(conv.id, user.id);
+		const { u, conv, user, a, b } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
 		resetInFlight();
 		// An additive re-roll is in flight: it's a brand-new branch, not a
 		// replacement, so both existing siblings stay put and the re-roll shows
 		// as one more pending column.
 		registerInFlight(conv.id, fakeEndpoint, 'reroll', 'image', 'bridge::sdxl');
-		const state = getFanoutRecoveryState(conv.id, user.id);
+		const state = getFanoutRecoveryState(conv.id, u.id, user.id);
 		expect(state.siblings.map((m) => m.id)).toEqual(expect.arrayContaining([a.id, b.id]));
 		expect(state.siblings).toHaveLength(2);
 		expect(state.pending).toBe(1);
@@ -1926,8 +1926,8 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 	});
 
 	it('a fan-out branch append (advanceActiveLeaf:false) leaves the marker set', () => {
-		const { conv, user } = seedFanout();
-		setFanoutParent(conv.id, user.id);
+		const { u, conv, user } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
 		appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
@@ -1935,6 +1935,23 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			parts: [{ type: 'text', text: 'another branch' }],
 			advanceActiveLeaf: false,
 		});
-		expect(getFanoutParent(conv.id)).toBe(user.id);
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
+	});
+
+	it('getFanoutParent returns null for a non-owner', () => {
+		const { u, conv, user } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
+		const attacker = seedUser();
+		expect(getFanoutParent(conv.id, attacker.id)).toBeNull();
+		// Owner still sees the marker.
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
+	});
+
+	it("setFanoutParent does not mutate another user's conversation", () => {
+		const { u, conv, user } = seedFanout();
+		const attacker = seedUser();
+		setFanoutParent(conv.id, attacker.id, user.id);
+		// Marker was never set for the owner.
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 });

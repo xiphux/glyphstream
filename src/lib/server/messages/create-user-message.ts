@@ -108,7 +108,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 			input.text.length > TITLE_PREVIEW_MAX
 				? input.text.slice(0, TITLE_PREVIEW_MAX - 1) + '…'
 				: input.text;
-		setConversationTitle(input.conversationId, preview);
+		setConversationTitle(input.conversationId, input.userId, preview);
 	}
 	return userMessage;
 }

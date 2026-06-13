@@ -34,7 +34,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		);
 		return json({
 			inFlightSince: getInFlightSince(params.id),
-			fanout: getFanoutRecoveryState(params.id, meta.activeLeafMessageId),
+			fanout: getFanoutRecoveryState(params.id, locals.user.id, meta.activeLeafMessageId),
 		});
 	}
 
@@ -46,7 +46,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// without the heavyweight page reload — when a generation it's tracking has
 	// finished (it needs the message list to see the assistant row land).
 	const inFlightSince = getInFlightSince(params.id);
-	const fanout = getFanoutRecoveryState(params.id, conv.activeLeafMessageId);
+	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
 	return json({ conversation: conv, inFlightSince, fanout });
 };
 

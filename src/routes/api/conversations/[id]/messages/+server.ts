@@ -613,7 +613,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// (clients that don't pass `?stream=1`) get the title inline; the
 	// generator's conditional UPDATE handles "already AI/user-titled."
 	const syncTitle = await raceTitle(
-		startTitleTaskIfFirstExchange(params.id),
+		startTitleTaskIfFirstExchange(params.id, locals.user.id),
 		TITLE_DELIVERY_BUDGET_MS,
 	);
 

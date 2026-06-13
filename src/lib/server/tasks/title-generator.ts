@@ -64,6 +64,7 @@ export interface GenerateTitleResult {
  */
 export async function generateConversationTitle(
 	conversationId: string,
+	userId: string,
 	opts: { taskModel?: ResolvedTaskModel | null } = {},
 ): Promise<GenerateTitleResult | null> {
 	const taskModel = opts.taskModel === undefined ? getTaskModel() : opts.taskModel;
@@ -72,7 +73,7 @@ export async function generateConversationTitle(
 		return null;
 	}
 
-	const exchange = getConversationFirstExchange(conversationId);
+	const exchange = getConversationFirstExchange(conversationId, userId);
 	if (!exchange) {
 		if (DEBUG) console.debug(`[title-gen] no first exchange for ${conversationId}; skipping`);
 		return null;
@@ -100,7 +101,7 @@ export async function generateConversationTitle(
 		return null;
 	}
 
-	const persisted = setConversationTitleIfFallback(conversationId, title);
+	const persisted = setConversationTitleIfFallback(conversationId, userId, title);
 	if (DEBUG)
 		console.debug(
 			`[title-gen] ${conversationId} → "${title}" (${persisted ? 'persisted' : 'skipped: user/ai title already set'})`,

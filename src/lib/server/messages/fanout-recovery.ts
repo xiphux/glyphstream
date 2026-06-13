@@ -51,9 +51,10 @@ export interface FanoutRecoveryState {
 
 export function getFanoutRecoveryState(
 	conversationId: string,
+	userId: string,
 	activeLeafMessageId: string | null,
 ): FanoutRecoveryState {
-	const parent = getFanoutParent(conversationId);
+	const parent = getFanoutParent(conversationId, userId);
 	if (!parent || parent !== activeLeafMessageId) {
 		return {
 			parentMessageId: null,

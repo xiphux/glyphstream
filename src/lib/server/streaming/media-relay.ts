@@ -133,7 +133,7 @@ export function startMediaRelay(
 
 				const titlePromise = params.suppressTitleTask
 					? Promise.resolve<string | null>(null)
-					: startTitleTaskIfFirstExchange(params.conversationId);
+					: startTitleTaskIfFirstExchange(params.conversationId, params.userId);
 
 				// Modality-specific: produce + persist the media bytes. Returns null
 				// after emitting its own error/cancel — bail quietly.

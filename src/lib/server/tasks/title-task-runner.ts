@@ -23,10 +23,14 @@ import { getTaskModel } from './task-model';
  * promise that resolves to the persisted title or null. The promise
  * never rejects.
  */
-export function startTitleTaskIfFirstExchange(conversationId: string): Promise<string | null> {
+export function startTitleTaskIfFirstExchange(
+	conversationId: string,
+	userId: string,
+): Promise<string | null> {
 	if (!getTaskModel()) return Promise.resolve(null);
-	if (getConversationTitleSource(conversationId) !== 'fallback') return Promise.resolve(null);
-	return generateConversationTitle(conversationId).then(
+	if (getConversationTitleSource(conversationId, userId) !== 'fallback')
+		return Promise.resolve(null);
+	return generateConversationTitle(conversationId, userId).then(
 		(result) => (result && result.persisted ? result.title : null),
 		(e) => {
 			console.warn('[title-task] generator threw:', e);

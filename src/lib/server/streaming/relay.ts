@@ -320,7 +320,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			// N concurrent branches would each start a task against the same
 			// first exchange, so /prepare owns title generation once instead.
 			if (titlePromise === null && !params.suppressTitleTask) {
-				titlePromise = startTitleTaskIfFirstExchange(params.conversationId);
+				titlePromise = startTitleTaskIfFirstExchange(params.conversationId, params.userId);
 			}
 
 			const hasToolCalls =

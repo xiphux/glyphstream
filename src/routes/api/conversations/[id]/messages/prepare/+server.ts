@@ -58,12 +58,12 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// Mark the conversation as having an unresolved fan-out parked on this user
 	// message, so a reload mid-comparison can rehydrate the compare grid
 	// (cleared when the user picks / dismisses, via selectBranch).
-	setFanoutParent(params.id, userMessage.id);
+	setFanoutParent(params.id, locals.user.id, userMessage.id);
 
 	// Title generation runs once for the whole fan-out (branches suppress it).
 	// Fire-and-forget: the new title surfaces on the client's post-fan-out
 	// invalidate, not via this response.
-	void startTitleTaskIfFirstExchange(params.id);
+	void startTitleTaskIfFirstExchange(params.id, locals.user.id);
 
 	const response: PrepareFanoutResponse = { userMessage: userMessage as ChatMessage };
 	return json(response);
