@@ -56,7 +56,7 @@ export function resetData(): void {
 
 /**
  * Bulk-seed `count` generated image rows for the test user, straight into
- * the DB. The gallery's "load more" is page-size 60, so exercising infinite
+ * the DB. The gallery paginates at page-size 60, so exercising infinite
  * scroll needs more rows than any happy-path flow would realistically
  * generate through the app — seeding directly is the only practical way to
  * cross several pages. We don't write any bytes to disk: the gallery grid

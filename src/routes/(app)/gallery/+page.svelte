@@ -19,7 +19,19 @@
 	// svelte-ignore state_referenced_locally
 	let nextCursor = $state<string | null>(data.initial.nextCursor);
 	let loadingMore = $state(false);
+	// Two independent failure channels. `loadError` is pagination-only — it
+	// gates the auto-load $effect and the Retry button, so a failed page
+	// fetch stops the retry-loop without disabling anything else. `error` is
+	// for delete failures (single + bulk); keeping it separate means a failed
+	// delete shows its banner but does NOT wedge infinite scroll (which a
+	// single shared channel did — there's no "Load more" fallback anymore).
+	let loadError = $state<string | null>(null);
 	let error = $state<string | null>(null);
+	// Bumped every time SvelteKit re-runs `load` (i.e. a filter switch). A
+	// loadMore() response that lands after a bump belongs to the previous
+	// filter; it's discarded rather than concatenated onto — and clobbering
+	// the cursor of — the freshly-loaded list.
+	let loadGeneration = 0;
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
 
@@ -90,10 +102,17 @@
 	const kindFilter = $derived(data.kind);
 
 	// Re-sync local state when SvelteKit re-runs `load` (e.g. filter switch via
-	// query-string nav); the server gives us the new initial page.
+	// query-string nav); the server gives us the new initial page. Bumping
+	// loadGeneration supersedes any in-flight page fetch so its rows can't land
+	// on the new filter; clearing loadingMore/loadError gives the fresh list a
+	// clean slate (the in-flight fetch's finally won't touch them — it's gated
+	// on still being the current generation).
 	$effect(() => {
 		items = [...data.initial.items];
 		nextCursor = data.initial.nextCursor;
+		loadGeneration += 1;
+		loadingMore = false;
+		loadError = null;
 		error = null;
 	});
 
@@ -107,19 +126,36 @@
 	async function loadMore() {
 		if (!nextCursor || loadingMore) return;
 		loadingMore = true;
-		error = null;
+		loadError = null;
+		const gen = loadGeneration;
+		// Time the request out so a hung fetch can't strand loadingMore=true
+		// forever (which would silently kill both the auto-load and the Retry
+		// banner). An abort routes into the catch and surfaces Retry.
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), 15_000);
 		try {
 			const params = new URLSearchParams({ cursor: nextCursor });
 			if (kindFilter) params.set('kind', kindFilter);
-			const res = await fetch(`/api/media?${params.toString()}`);
+			const res = await fetch(`/api/media?${params.toString()}`, { signal: ctrl.signal });
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			const next = (await res.json()) as MediaListResult;
+			// A filter switched while this was in flight — discard, or we'd mix
+			// kinds into the new list and overwrite its cursor.
+			if (gen !== loadGeneration) return;
 			items = items.concat(next.items);
 			nextCursor = next.nextCursor;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load more';
+			if (gen !== loadGeneration) return;
+			loadError = ctrl.signal.aborted
+				? 'Request timed out'
+				: e instanceof Error
+					? e.message
+					: 'Failed to load more';
 		} finally {
-			loadingMore = false;
+			clearTimeout(timer);
+			// Only the current generation owns loadingMore; a filter switch
+			// already reset it for the fresh list, so a stale fetch must not.
+			if (gen === loadGeneration) loadingMore = false;
 		}
 	}
 
@@ -147,10 +183,11 @@
 	// and `nextCursor` makes this re-run when a load settles: if the freshly
 	// loaded page didn't push the sentinel out of the prefetch zone, it fires
 	// again, chaining until the viewport is filled or `nextCursor` is null.
-	// The `!error` guard stops a failed request from retrying in a tight loop —
-	// the error banner's Retry button is the only way back in.
+	// The `!loadError` guard stops a failed *page* request from retrying in a
+	// tight loop — the banner's Retry button is the only way back in. A failed
+	// delete sets `error`, not `loadError`, so it can't wedge scrolling.
 	$effect(() => {
-		if (sentinelVisible && nextCursor && !loadingMore && !error) {
+		if (sentinelVisible && nextCursor && !loadingMore && !loadError) {
 			loadMore();
 		}
 	});
@@ -163,6 +200,7 @@
 		});
 		if (!ok) return;
 		deletingId = id;
+		error = null;
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(`Server returned ${res.status}`);
@@ -414,23 +452,34 @@
 			{/if}
 		{/if}
 
-		{#if error}
+		{#if loadError}
+			<!--
+				Pagination failure. Retry re-runs loadMore (not whatever else may
+				have failed) and is always available here: loadError is only set
+				while a next page exists, so there's no last-page dead end.
+			-->
 			<div
 				class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
 			>
-				<span>{error}</span>
-				{#if nextCursor}
-					<button
-						type="button"
-						onclick={() => {
-							error = null;
-							loadMore();
-						}}
-						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
-					>
-						Retry
-					</button>
-				{/if}
+				<span>{loadError}</span>
+				<button
+					type="button"
+					onclick={() => {
+						loadError = null;
+						loadMore();
+					}}
+					class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
+				>
+					Retry
+				</button>
+			</div>
+		{/if}
+
+		{#if error}
+			<!-- Delete failure (single or bulk). Distinct from loadError so it
+				 never gates scrolling; re-attempting the delete clears it. -->
+			<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
+				{error}
 			</div>
 		{/if}
 	</div>
