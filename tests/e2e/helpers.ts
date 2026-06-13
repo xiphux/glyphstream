@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { expect, type Page } from '@playwright/test';
+import { TEST_USER } from './global-setup';
 
 /**
  * Shared actions for the flow specs. The pattern throughout: bootstrap a
@@ -47,6 +48,44 @@ export function resetData(): void {
 		).run();
 		for (const table of ['message_media', 'messages', 'media', 'conversations', 'custom_models']) {
 			db.prepare(`DELETE FROM ${table}`).run();
+		}
+	} finally {
+		db.close();
+	}
+}
+
+/**
+ * Bulk-seed `count` generated image rows for the test user, straight into
+ * the DB. The gallery's "load more" is page-size 60, so exercising infinite
+ * scroll needs more rows than any happy-path flow would realistically
+ * generate through the app — seeding directly is the only practical way to
+ * cross several pages. We don't write any bytes to disk: the gallery grid
+ * only renders <img> tags pointing at /api/media/<id>/thumbnail, and a
+ * broken thumbnail still produces the DOM node the scroll assertions count.
+ *
+ * Rows are dated with strictly-descending createdAt (newest = i 0) so the
+ * keyset cursor (createdAt:id, DESC) paginates deterministically with no
+ * same-millisecond ties. origin='generated' + kind='image' so they pass
+ * listMediaForUser's gallery filter. Mirrors resetData's standalone
+ * node:sqlite connection — safe because workers=1 means no request is in
+ * flight at seed time.
+ */
+export function seedMedia(count: number): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const stmt = db.prepare(
+			`INSERT INTO media
+			   (id, user_id, storage_path, content_type, byte_size, kind, origin,
+			    prompt_excerpt, prompt_full, created_at, ref_count)
+			 VALUES (?, ?, ?, ?, ?, 'image', 'generated', ?, ?, ?, 1)`,
+		);
+		const base = 1_700_000_000_000;
+		for (let i = 0; i < count; i++) {
+			const id = `e2e-media-${String(i).padStart(4, '0')}`;
+			const prompt = `Seeded gallery image ${i}`;
+			stmt.run(id, TEST_USER.id, `e2e/${id}.png`, 'image/png', 1024, prompt, prompt, base - i);
 		}
 	} finally {
 		db.close();

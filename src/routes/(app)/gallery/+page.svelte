@@ -23,6 +23,14 @@
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
 
+	// Infinite-scroll plumbing. `scrollContainer` is the scrollable region used
+	// as the IntersectionObserver root; `sentinel` is a zero-content marker
+	// rendered just past the grid. `sentinelVisible` is the observer's output —
+	// an $effect below turns it into auto-pagination.
+	let scrollContainer = $state<HTMLElement | null>(null);
+	let sentinel = $state<HTMLElement | null>(null);
+	let sentinelVisible = $state(false);
+
 	// Selection mode + selection set for bulk-delete. SvelteKit's reactivity
 	// on collections needs a fresh reference to fire, so toggle/clear rebuild
 	// the Set rather than mutating in place.
@@ -114,6 +122,38 @@
 			loadingMore = false;
 		}
 	}
+
+	// Watch the sentinel within the scroll container. The 400px bottom margin
+	// pre-fetches the next page before the user actually hits the end, so the
+	// grid grows ahead of the scroll rather than stalling at the bottom.
+	// IntersectionObserver only fires on intersection *changes*, so the
+	// auto-load below — not this callback — handles "still visible after a
+	// load" by re-running until the sentinel scrolls out or pages run out.
+	$effect(() => {
+		const root = scrollContainer;
+		const el = sentinel;
+		if (!root || !el) return;
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				sentinelVisible = entry.isIntersecting;
+			},
+			{ root, rootMargin: '0px 0px 400px 0px', threshold: 0 },
+		);
+		observer.observe(el);
+		return () => observer.disconnect();
+	});
+
+	// Auto-paginate while the sentinel is in view. Depending on `loadingMore`
+	// and `nextCursor` makes this re-run when a load settles: if the freshly
+	// loaded page didn't push the sentinel out of the prefetch zone, it fires
+	// again, chaining until the viewport is filled or `nextCursor` is null.
+	// The `!error` guard stops a failed request from retrying in a tight loop —
+	// the error banner's Retry button is the only way back in.
+	$effect(() => {
+		if (sentinelVisible && nextCursor && !loadingMore && !error) {
+			loadMore();
+		}
+	});
 
 	async function deleteOne(id: string) {
 		if (deletingId) return;
@@ -246,7 +286,7 @@
 		</div>
 	</header>
 
-	<div class="flex-1 overflow-y-auto px-4 py-4">
+	<div bind:this={scrollContainer} class="flex-1 overflow-y-auto px-4 py-4">
 		{#if items.length === 0}
 			<div class="flex h-full flex-col items-center justify-center text-center">
 				<p class="text-sm text-fg-muted">No media yet.</p>
@@ -359,22 +399,38 @@
 			</ul>
 
 			{#if nextCursor}
-				<div class="mt-6 flex justify-center">
-					<button
-						type="button"
-						onclick={loadMore}
-						disabled={loadingMore}
-						class="rounded-md border border-border-strong bg-surface-panel px-4 py-2 text-sm transition hover:bg-surface-raised disabled:opacity-50"
-					>
-						{loadingMore ? 'Loading…' : 'Load more'}
-					</button>
+				<!--
+					Infinite-scroll sentinel. The IntersectionObserver effect above
+					watches this marker and auto-loads the next page as it nears the
+					viewport — replacing the old manual "Load more" button. It only
+					exists while there's a next page, so the observer detaches on the
+					last page. While a fetch is in flight we show a quiet status line.
+				-->
+				<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
+					{#if loadingMore}
+						<span class="text-sm text-fg-muted">Loading…</span>
+					{/if}
 				</div>
 			{/if}
 		{/if}
 
 		{#if error}
-			<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
-				{error}
+			<div
+				class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
+			>
+				<span>{error}</span>
+				{#if nextCursor}
+					<button
+						type="button"
+						onclick={() => {
+							error = null;
+							loadMore();
+						}}
+						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
+					>
+						Retry
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
