@@ -54,7 +54,9 @@
 			if (body.state === 'connected') toast.success(`Connected to ${server.displayName}`);
 			else toast.error(`Saved, but couldn't connect: ${body.error ?? 'unknown error'}`);
 			tokenInput[server.id] = '';
-			await invalidate('settings:mcp');
+			// Refresh this page's server states AND the (app) layout's composer
+			// capability list, so the now-configured server appears as a toggle.
+			await Promise.all([invalidate('settings:mcp'), invalidate('app:mcp-credentials')]);
 		} finally {
 			credBusyId = null;
 		}
@@ -71,7 +73,9 @@
 				toast.error(await errorMessageFromResponse(res));
 				return;
 			}
-			await invalidate('settings:mcp');
+			// Removing the credential drops the server from the composer's
+			// capability list too — refresh both.
+			await Promise.all([invalidate('settings:mcp'), invalidate('app:mcp-credentials')]);
 		} finally {
 			credBusyId = null;
 		}

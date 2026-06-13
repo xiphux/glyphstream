@@ -36,6 +36,13 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// to refresh `enabledSkills` (the composer's /skill autocomplete) without a
 	// full reload — the layout load otherwise only re-runs on navigation.
 	depends('app:skills');
+	// Same pattern for per-user MCP credentials: saving/removing one in
+	// /settings/mcp `invalidate('app:mcp-credentials')`s so the composer's
+	// capability list (featureCategories) reflects the newly-connected (or
+	// removed) server right away. Kept separate from the page's own
+	// `settings:mcp` key so frequent trust toggles / retries DON'T re-run this
+	// layout — only the rare credential change does.
+	depends('app:mcp-credentials');
 	return {
 		user: locals.user,
 		conversations: listConversations(locals.user.id),
