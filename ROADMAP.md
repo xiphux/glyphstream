@@ -352,16 +352,6 @@ what already shipped, for context).
   total-sibling-per-fan-out cap (disable Regenerate past N kept variations) or
   a bulk-cleanup sweep — neither worth the friction pre-emptively.
 
-- **Saved multi-model sets.** Multi-model generation (select N models,
-  generate side-by-side) requires hand-picking the models every time. Let
-  users save a named set as a preference — e.g. "my image-gen models" — then
-  one selection pulls in the whole set. A named-list blob on
-  `UserPreferences` (model / custom-model ids) + a "save current selection" /
-  apply affordance in the multi-select; pure ergonomics over the existing
-  multi-model path, no schema beyond the preference. Edge: a saved set
-  referencing a model later removed from `config.toml` should degrade
-  gracefully (skip-and-note, not error).
-
 - **Background sync / offline composition.** Service worker queues messages
   while offline, resends on reconnect. Low priority — chat apps generally
   don't need this.
