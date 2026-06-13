@@ -25,6 +25,7 @@ import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { openaiToolDefinitions } from '$lib/server/tools';
+import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	composePersonaSystemPrompt,
@@ -474,6 +475,16 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		? openaiToolDefinitions({ excludeCategories: meta.disabledFeatures })
 		: [];
 	toolDefs.push(...skillsCtx.toolDefs);
+	// Per-user MCP servers (auth='per_user') can't ride the static registry —
+	// their availability is per user. Append the caller's connected per-user
+	// tools, honoring the same per-conversation category opt-outs.
+	if (supportsTools) {
+		toolDefs.push(
+			...(await buildUserMcpToolDefinitions(locals.user.id, {
+				excludeCategories: meta.disabledFeatures,
+			})),
+		);
+	}
 	if (toolDefs.length > 0) {
 		requestBody.tools = toolDefs;
 		requestBody.tool_choice = 'auto';

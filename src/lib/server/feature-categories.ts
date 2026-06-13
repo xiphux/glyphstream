@@ -14,7 +14,7 @@ import {
 	FEATURE_CATEGORY_LABELS,
 	type FeatureCategoryEntry,
 } from '$lib/types/api';
-import { listMcpServerStates } from './mcp/registry';
+import { listServerCatalog } from './mcp/registry';
 
 export type { FeatureCategoryEntry };
 
@@ -25,17 +25,21 @@ export function getAllFeatureCategoryLabels(): FeatureCategoryEntry[] {
 		description: FEATURE_CATEGORY_LABELS[id].description,
 		source: 'builtin',
 	}));
-	const mcp: FeatureCategoryEntry[] = listMcpServerStates()
-		.filter((s) => s.state !== 'failed')
+	// Catalog-based (not per-user): every configured server is a toggle for
+	// everyone. A per-user server's tools are only advertised/executed for
+	// users who've supplied a credential, so toggling it without one is a
+	// harmless no-op — and surfacing it hints the capability is available.
+	const mcp: FeatureCategoryEntry[] = listServerCatalog()
+		.filter((s) => s.available)
 		.map((s) => {
-			const toolCount = s.tools.length;
-			const noun = toolCount === 1 ? 'tool' : 'tools';
-			return {
-				id: `mcp:${s.id}`,
-				label: s.displayName,
-				description: `Tools from the "${s.displayName}" MCP server (${toolCount} ${noun}).`,
-				source: 'mcp',
-			};
+			const perUser = s.auth === 'per_user';
+			const noun = s.toolCount === 1 ? 'tool' : 'tools';
+			// Per-user servers may have no known tool count until the user
+			// connects, so describe them by capability rather than a stale 0.
+			const description = perUser
+				? `Tools from the "${s.displayName}" MCP server (connect your account in Settings → MCP servers).`
+				: `Tools from the "${s.displayName}" MCP server (${s.toolCount} ${noun}).`;
+			return { id: `mcp:${s.id}`, label: s.displayName, description, source: 'mcp' };
 		});
 	return [...builtin, ...mcp];
 }

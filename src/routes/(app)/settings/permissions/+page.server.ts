@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
-import { listMcpServerStates } from '$lib/server/mcp/registry';
+import { listServerCatalog } from '$lib/server/mcp/registry';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	await awaitMcpReady();
 	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];
-	const servers = listMcpServerStates();
+	const servers = listServerCatalog();
 	const groups = new Map<string, { displayName: string; tools: string[] }>();
 	for (const tool of trusted) {
 		const serverId = extractServerId(tool);

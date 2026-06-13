@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 		id: string;
 		displayName: string;
 		transport: 'stdio' | 'http';
+		auth: 'global' | 'per_user';
 		command?: string;
 		args?: string[];
 		env?: Record<string, string>;
@@ -26,7 +27,7 @@ vi.mock('$lib/server/mcp/client', () => ({
 
 import {
 	initializeMcpServers,
-	listMcpServerStates,
+	listGlobalServerStates,
 	getMcpServerTools,
 	resetMcpRegistryForTests,
 } from '$lib/server/mcp/registry';
@@ -70,6 +71,7 @@ describe('initializeMcpServers', () => {
 				id: 'fs',
 				displayName: 'fs',
 				transport: 'stdio',
+				auth: 'global',
 				command: 'x',
 				args: [],
 				env: {},
@@ -80,6 +82,7 @@ describe('initializeMcpServers', () => {
 				id: 'linear',
 				displayName: 'linear',
 				transport: 'http',
+				auth: 'global',
 				url: 'https://x',
 				apiKey: null,
 				timeoutSeconds: 30,
@@ -97,7 +100,7 @@ describe('initializeMcpServers', () => {
 
 		expect(getMcpServerTools('fs').map((t) => t.name)).toEqual(['read_file', 'list_directory']);
 		expect(getMcpServerTools('linear').map((t) => t.name)).toEqual(['create_issue']);
-		const states = listMcpServerStates();
+		const states = listGlobalServerStates();
 		expect(states.find((s) => s.id === 'fs')?.state).toBe('connected');
 		expect(states.find((s) => s.id === 'linear')?.state).toBe('connected');
 	});
@@ -108,6 +111,7 @@ describe('initializeMcpServers', () => {
 				id: 'broken',
 				displayName: 'broken',
 				transport: 'stdio',
+				auth: 'global',
 				command: 'nope',
 				args: [],
 				env: {},
@@ -118,6 +122,7 @@ describe('initializeMcpServers', () => {
 				id: 'ok',
 				displayName: 'ok',
 				transport: 'stdio',
+				auth: 'global',
 				command: 'x',
 				args: [],
 				env: {},
@@ -134,7 +139,7 @@ describe('initializeMcpServers', () => {
 
 		await initializeMcpServers();
 
-		const states = listMcpServerStates();
+		const states = listGlobalServerStates();
 		const broken = states.find((s) => s.id === 'broken');
 		expect(broken?.state).toBe('failed');
 		expect(broken?.error).toContain('ENOENT');
@@ -150,6 +155,7 @@ describe('initializeMcpServers', () => {
 				id: 'fs',
 				displayName: 'fs',
 				transport: 'stdio',
+				auth: 'global',
 				command: 'x',
 				args: [],
 				env: {},

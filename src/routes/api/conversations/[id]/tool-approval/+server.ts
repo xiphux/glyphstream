@@ -26,6 +26,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { openaiToolDefinitions } from '$lib/server/tools';
+import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	composePersonaSystemPrompt,
@@ -196,6 +197,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const toolDefs = openaiToolDefinitions({ excludeCategories: meta.disabledFeatures });
 	toolDefs.push(...skillsCtx.toolDefs);
+	// Per-user MCP tools (see the message-send handler) — keep them on resume so
+	// a turn that called a per-user MCP tool before pausing for approval can
+	// still see it afterward.
+	toolDefs.push(
+		...(await buildUserMcpToolDefinitions(userId, { excludeCategories: meta.disabledFeatures })),
+	);
 	const trustedSet = new Set(prefs?.trustedMcpTools ?? []);
 	const needsApproval = (toolName: string) =>
 		toolName.startsWith('mcp__') && !trustedSet.has(toolName);

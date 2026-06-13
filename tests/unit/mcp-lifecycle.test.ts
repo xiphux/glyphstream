@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 		id: string;
 		displayName: string;
 		transport: 'stdio' | 'http';
+		auth: 'global' | 'per_user';
 		command?: string;
 		args?: string[];
 		env?: Record<string, string>;
@@ -27,7 +28,7 @@ vi.mock('$lib/server/mcp/client', () => ({
 import {
 	initializeMcpServers,
 	callMcpTool,
-	listMcpServerStates,
+	listGlobalServerStates,
 	resetMcpRegistryForTests,
 	retryMcpServer,
 } from '$lib/server/mcp/registry';
@@ -60,6 +61,7 @@ function stdioServer(idleTimeoutSeconds: number) {
 		id: 'fs',
 		displayName: 'fs',
 		transport: 'stdio' as const,
+		auth: 'global' as const,
 		command: 'x',
 		args: [],
 		env: {},
@@ -86,13 +88,13 @@ describe('idle reaper', () => {
 		mocks.connectImpl.mockResolvedValue(conn);
 		await initializeMcpServers();
 
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 
 		// Advance past the idle window. The reaper fires, closes the
 		// connection, and transitions us to 'idle'.
 		await vi.advanceTimersByTimeAsync(61_000);
 		expect(conn.close).toHaveBeenCalledTimes(1);
-		expect(listMcpServerStates()[0].state).toBe('idle');
+		expect(listGlobalServerStates()[0].state).toBe('idle');
 	});
 
 	it('does not reap when idle_timeout_seconds = 0', async () => {
@@ -103,7 +105,7 @@ describe('idle reaper', () => {
 
 		await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
 		expect(conn.close).not.toHaveBeenCalled();
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 	});
 
 	it('does not reap http transports regardless of timeout', async () => {
@@ -112,6 +114,7 @@ describe('idle reaper', () => {
 				id: 'h',
 				displayName: 'h',
 				transport: 'http' as const,
+				auth: 'global' as const,
 				url: 'https://x',
 				apiKey: null,
 				timeoutSeconds: 30,
@@ -124,7 +127,7 @@ describe('idle reaper', () => {
 
 		await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
 		expect(conn.close).not.toHaveBeenCalled();
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 	});
 
 	it('transparently re-establishes after the connection has been reaped', async () => {
@@ -136,14 +139,14 @@ describe('idle reaper', () => {
 
 		// Reap the connection.
 		await vi.advanceTimersByTimeAsync(61_000);
-		expect(listMcpServerStates()[0].state).toBe('idle');
+		expect(listGlobalServerStates()[0].state).toBe('idle');
 
 		// Next call re-establishes; conn2.callTool runs.
 		const ac = new AbortController();
-		const result = await callMcpTool('fs', 'do_thing', {}, ac.signal);
+		const result = await callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal);
 		expect(result.isError).toBe(false);
 		expect(conn2.callTool).toHaveBeenCalledTimes(1);
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 	});
 });
 
@@ -157,7 +160,7 @@ describe('reconnect on call failure', () => {
 		await initializeMcpServers();
 
 		const ac = new AbortController();
-		const result = await callMcpTool('fs', 'do_thing', {}, ac.signal);
+		const result = await callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal);
 
 		expect(result.isError).toBe(false);
 		expect(conn1.callTool).toHaveBeenCalledTimes(1);
@@ -175,7 +178,7 @@ describe('reconnect on call failure', () => {
 		await initializeMcpServers();
 
 		const ac = new AbortController();
-		await expect(callMcpTool('fs', 'do_thing', {}, ac.signal)).rejects.toThrow();
+		await expect(callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal)).rejects.toThrow();
 	});
 
 	it('does not retry if the signal was aborted', async () => {
@@ -187,7 +190,7 @@ describe('reconnect on call failure', () => {
 
 		const ac = new AbortController();
 		ac.abort();
-		await expect(callMcpTool('fs', 'do_thing', {}, ac.signal)).rejects.toThrow();
+		await expect(callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal)).rejects.toThrow();
 		// Only the first attempt — no reconnect on abort.
 		expect(conn.callTool).toHaveBeenCalledTimes(1);
 	});
@@ -202,12 +205,12 @@ describe('idle reconnect', () => {
 			.mockResolvedValueOnce(fakeConnection());
 		await initializeMcpServers();
 
-		expect(listMcpServerStates()[0].state).toBe('failed');
+		expect(listGlobalServerStates()[0].state).toBe('failed');
 
 		const ac = new AbortController();
-		const result = await callMcpTool('fs', 'do_thing', {}, ac.signal);
+		const result = await callMcpTool('fs', 'user-1', 'do_thing', {}, ac.signal);
 		expect(result.isError).toBe(false);
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 	});
 });
 
@@ -218,11 +221,11 @@ describe('retryMcpServer', () => {
 			.mockRejectedValueOnce(new Error('initial boot failure'))
 			.mockResolvedValueOnce(fakeConnection());
 		await initializeMcpServers();
-		expect(listMcpServerStates()[0].state).toBe('failed');
+		expect(listGlobalServerStates()[0].state).toBe('failed');
 
-		const result = await retryMcpServer('fs');
+		const result = await retryMcpServer('fs', 'user-1');
 		expect(result).toEqual({ state: 'connected', error: null });
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 	});
 
 	it('reports the new error when the retry also fails', async () => {
@@ -231,11 +234,11 @@ describe('retryMcpServer', () => {
 			.mockRejectedValueOnce(new Error('first error'))
 			.mockRejectedValueOnce(new Error('second error'));
 		await initializeMcpServers();
-		expect(listMcpServerStates()[0].state).toBe('failed');
+		expect(listGlobalServerStates()[0].state).toBe('failed');
 
-		const result = await retryMcpServer('fs');
+		const result = await retryMcpServer('fs', 'user-1');
 		expect(result).toEqual({ state: 'failed', error: 'second error' });
-		expect(listMcpServerStates()[0].state).toBe('failed');
+		expect(listGlobalServerStates()[0].state).toBe('failed');
 	});
 
 	it('tears down a connected entry and reconnects from scratch', async () => {
@@ -244,9 +247,9 @@ describe('retryMcpServer', () => {
 		const conn2 = fakeConnection();
 		mocks.connectImpl.mockResolvedValueOnce(conn1).mockResolvedValueOnce(conn2);
 		await initializeMcpServers();
-		expect(listMcpServerStates()[0].state).toBe('connected');
+		expect(listGlobalServerStates()[0].state).toBe('connected');
 
-		const result = await retryMcpServer('fs');
+		const result = await retryMcpServer('fs', 'user-1');
 		expect(result.state).toBe('connected');
 		// Old client gets closed; new client is what's live.
 		expect(conn1.close).toHaveBeenCalledTimes(1);
@@ -254,6 +257,6 @@ describe('retryMcpServer', () => {
 	});
 
 	it('throws when the server id is unknown', async () => {
-		await expect(retryMcpServer('nope')).rejects.toThrow(/unknown server/);
+		await expect(retryMcpServer('nope', 'user-1')).rejects.toThrow(/unknown server/);
 	});
 });

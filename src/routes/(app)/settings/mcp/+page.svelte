@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { Switch } from 'bits-ui';
-	import { CircleCheck, CircleAlert, CircleSlash, Loader2 } from '@lucide/svelte';
+	import { CircleCheck, CircleAlert, CircleSlash, Loader2, KeyRound } from '@lucide/svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { errorMessageFromResponse } from '$lib/fetch-error';
 
 	interface ToolRow {
 		name: string;
@@ -15,7 +16,10 @@
 		id: string;
 		displayName: string;
 		transport: 'stdio' | 'http';
-		state: 'connected' | 'idle' | 'failed' | 'reconnecting';
+		auth: 'global' | 'per_user';
+		perUser: boolean;
+		configured: boolean;
+		state: 'connected' | 'idle' | 'failed' | 'reconnecting' | 'needs-credential';
 		error: string | null;
 		tools: ToolRow[];
 	}
@@ -24,6 +28,54 @@
 
 	let busyName = $state<string | null>(null);
 	let retryingId = $state<string | null>(null);
+	// Per-server token input + in-flight flag for the per-user credential form.
+	let tokenInput = $state<Record<string, string>>({});
+	let credBusyId = $state<string | null>(null);
+
+	async function saveCredential(server: ServerInfo): Promise<void> {
+		if (credBusyId) return;
+		const token = (tokenInput[server.id] ?? '').trim();
+		if (!token) {
+			toast.error('Enter a token first.');
+			return;
+		}
+		credBusyId = server.id;
+		try {
+			const res = await fetch(`/api/mcp/servers/${encodeURIComponent(server.id)}/credential`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ token }),
+			});
+			if (!res.ok) {
+				toast.error(await errorMessageFromResponse(res));
+				return;
+			}
+			const body = (await res.json()) as { state: string; error: string | null };
+			if (body.state === 'connected') toast.success(`Connected to ${server.displayName}`);
+			else toast.error(`Saved, but couldn't connect: ${body.error ?? 'unknown error'}`);
+			tokenInput[server.id] = '';
+			await invalidate('settings:mcp');
+		} finally {
+			credBusyId = null;
+		}
+	}
+
+	async function removeCredential(server: ServerInfo): Promise<void> {
+		if (credBusyId) return;
+		credBusyId = server.id;
+		try {
+			const res = await fetch(`/api/mcp/servers/${encodeURIComponent(server.id)}/credential`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) {
+				toast.error(await errorMessageFromResponse(res));
+				return;
+			}
+			await invalidate('settings:mcp');
+		} finally {
+			credBusyId = null;
+		}
+	}
 
 	async function retryServer(server: ServerInfo): Promise<void> {
 		if (retryingId) return;
@@ -77,6 +129,8 @@
 				return 'Reconnecting';
 			case 'failed':
 				return 'Failed';
+			case 'needs-credential':
+				return 'Not connected';
 		}
 	}
 
@@ -90,6 +144,8 @@
 				return 'text-warning';
 			case 'failed':
 				return 'text-danger';
+			case 'needs-credential':
+				return 'text-fg-muted';
 		}
 	}
 </script>
@@ -141,6 +197,52 @@
 								<span>{stateLabel(server.state)}</span>
 							</div>
 						</header>
+
+						{#if server.perUser}
+							<div class="mt-3 rounded-md border border-border bg-surface-sunken/40 p-3">
+								<div class="flex items-center gap-1.5 text-xs font-medium text-fg-muted">
+									<KeyRound size={13} strokeWidth={2.25} aria-hidden="true" />
+									<span>Your credential</span>
+								</div>
+								<p class="mt-1 text-xs text-fg-muted">
+									This server authenticates per user — connect it with your own token (e.g. your
+									account's API key). Stored encrypted; visible only to you.
+								</p>
+								<div class="mt-2 flex flex-wrap items-center gap-2">
+									<input
+										type="password"
+										autocomplete="off"
+										bind:value={tokenInput[server.id]}
+										placeholder={server.configured
+											? 'Enter a new token to replace'
+											: 'Paste your token'}
+										class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-fg"
+									/>
+									<button
+										type="button"
+										onclick={() => void saveCredential(server)}
+										disabled={credBusyId === server.id}
+										class="shrink-0 rounded-lg bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+									>
+										{credBusyId === server.id
+											? 'Saving…'
+											: server.configured
+												? 'Replace'
+												: 'Connect'}
+									</button>
+									{#if server.configured}
+										<button
+											type="button"
+											onclick={() => void removeCredential(server)}
+											disabled={credBusyId === server.id}
+											class="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+										>
+											Remove
+										</button>
+									{/if}
+								</div>
+							</div>
+						{/if}
 
 						{#if server.error}
 							<div
@@ -199,7 +301,7 @@
 									{/each}
 								</ul>
 							</div>
-						{:else if server.state !== 'failed'}
+						{:else if server.state !== 'failed' && server.state !== 'needs-credential'}
 							<p class="mt-3 text-xs text-fg-muted">No tools advertised.</p>
 						{/if}
 					</section>

@@ -1,6 +1,12 @@
-import type { Tool, ToolExecution } from '../tools/types';
+import type { OpenAIToolDefinition, Tool, ToolExecution } from '../tools/types';
 import { register } from '../tools/registry';
-import { callMcpTool, getMcpServerCfg, getMcpServerTools, listMcpServerStates } from './registry';
+import {
+	callMcpTool,
+	getMcpServerCfg,
+	getMcpServerTools,
+	getUserServerStates,
+	listGlobalServerIds,
+} from './registry';
 import type { McpCallResult, McpContentBlock, McpToolDescriptor } from './client';
 import type { LoadedMcpServer } from './config';
 
@@ -37,7 +43,11 @@ export function buildRegisteredName(serverId: string, toolName: string): string 
  * proxies through `callMcpTool` so the registry's reconnect / idle-reap
  * logic stays in one place.
  */
-export function mcpToolFor(server: LoadedMcpServer, mcpTool: McpToolDescriptor): Tool {
+export function mcpToolFor(
+	server: LoadedMcpServer,
+	mcpTool: McpToolDescriptor,
+	opts: { perUser?: boolean } = {},
+): Tool {
 	const registeredName = buildRegisteredName(server.id, mcpTool.name);
 	const categoryName = `mcp:${server.id}`;
 	const description = mcpTool.description?.trim()
@@ -57,9 +67,19 @@ export function mcpToolFor(server: LoadedMcpServer, mcpTool: McpToolDescriptor):
 			displayLabel: mcpTool.name,
 			category: categoryName,
 		},
+		// Per-user tools are never advertised via the static registry
+		// (`isAvailable: false`) — availability is per-user, so the message /
+		// tool-approval handlers append the definition per request for users
+		// who've configured the server. The registry entry still exists so the
+		// relay's `registry.get(name)` resolves it for EXECUTION, where
+		// `ctx.userId` selects the caller's connection. Global tools omit the
+		// predicate and stay always-on.
+		...(opts.perUser ? { isAvailable: () => false } : {}),
 		async execute(args, ctx): Promise<ToolExecution> {
 			try {
-				const result = await callMcpTool(server.id, mcpTool.name, args, ctx.signal);
+				// ctx.userId scopes per-user servers to the caller's own
+				// connection/credential; it's ignored for global servers.
+				const result = await callMcpTool(server.id, ctx.userId, mcpTool.name, args, ctx.signal);
 				return flattenMcpResult(result);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
@@ -116,19 +136,66 @@ function normalizeParameters(schema: unknown): Record<string, unknown> {
  * post-boot reconnect is safe.
  */
 export function registerAllMcpTools(): void {
-	for (const state of listMcpServerStates()) {
-		if (state.state === 'failed') continue;
-		registerMcpServerTools(state.id);
-	}
+	for (const serverId of listGlobalServerIds()) registerMcpServerTools(serverId);
 }
 
 /**
- * Register the currently-advertised tools for a single server. Used by
+ * Register the currently-advertised tools for a single GLOBAL server. Used by
  * the manual-reconnect path so a server that came up after boot can be
- * surfaced to the LLM without restarting the process.
+ * surfaced to the LLM without restarting the process. (Per-user servers go
+ * through `registerPerUserServerTools` — their availability is per request.)
  */
 export function registerMcpServerTools(serverId: string): void {
 	const cfg = getMcpServerCfg(serverId);
 	if (!cfg) return;
 	for (const t of getMcpServerTools(serverId)) register(mcpToolFor(cfg, t));
+}
+
+/**
+ * Register a per-user server's discovered tools so the relay's
+ * `registry.get(name)` can resolve them for EXECUTION. They register with
+ * `isAvailable: false` (never in the static advertisement); the request
+ * handlers append their definitions per request for users who've configured
+ * the server. Idempotent (registry is replace-semantics), so calling it each
+ * time a user's connection reports tools is fine.
+ */
+export function registerPerUserServerTools(
+	server: LoadedMcpServer,
+	tools: McpToolDescriptor[],
+): void {
+	for (const t of tools) register(mcpToolFor(server, t, { perUser: true }));
+}
+
+/**
+ * Build the per-request tool definitions for the caller's per-user MCP
+ * servers — the dynamic counterpart of the static `openaiToolDefinitions()`
+ * (which omits per-user tools via `isAvailable: false`). For each per-user
+ * server the user has connected, this also (re)registers its tools so the
+ * relay's `registry.get(name)` resolves them for execution. `excludeCategories`
+ * applies the same per-conversation opt-out the static path uses (the
+ * server's `mcp:<id>` category).
+ *
+ * Async because resolving a user's servers may lazily connect them. Append
+ * the result to the static `openaiToolDefinitions()` output in the message /
+ * tool-approval handlers.
+ */
+export async function buildUserMcpToolDefinitions(
+	userId: string,
+	opts: { excludeCategories?: readonly string[] } = {},
+): Promise<OpenAIToolDefinition[]> {
+	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
+	const states = await getUserServerStates(userId);
+	const defs: OpenAIToolDefinition[] = [];
+	for (const s of states) {
+		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
+		if (exclude?.has(`mcp:${s.id}`)) continue;
+		const cfg = getMcpServerCfg(s.id);
+		if (!cfg) continue;
+		for (const t of s.tools) {
+			const tool = mcpToolFor(cfg, t, { perUser: true });
+			register(tool); // ensure execution can resolve it via registry.get(name)
+			defs.push(tool.definition);
+		}
+	}
+	return defs;
 }

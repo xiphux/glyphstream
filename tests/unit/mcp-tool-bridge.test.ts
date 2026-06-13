@@ -21,6 +21,7 @@ const FAKE_SERVER: LoadedMcpServer = {
 	id: 'fs',
 	displayName: 'Filesystem',
 	transport: 'stdio',
+	auth: 'global',
 	command: 'x',
 	args: [],
 	env: {},
@@ -115,6 +116,7 @@ describe('mcpToolFor execute()', () => {
 		);
 		expect(mocks.callMcpTool).toHaveBeenCalledWith(
 			'fs',
+			'u1',
 			'read_file',
 			{ path: '/tmp/x' },
 			ac.signal,

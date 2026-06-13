@@ -16,6 +16,7 @@ interface RawMcpServer {
 	id?: unknown;
 	display_name?: unknown;
 	transport?: unknown;
+	auth?: unknown;
 	timeout_seconds?: unknown;
 	idle_timeout_seconds?: unknown;
 	command?: unknown;
@@ -25,9 +26,22 @@ interface RawMcpServer {
 	api_key_env?: unknown;
 }
 
+/**
+ * How a server authenticates:
+ *  - 'global'   (default): one shared credential resolved from env at boot
+ *    (the `api_key_env` / `env_from` convention) — the original behavior.
+ *  - 'per_user': each user supplies their own secret (stored encrypted per
+ *    user); the registry keys connections by (serverId, userId) and injects
+ *    that user's token at connect time. Supported for HTTP transport only —
+ *    the token is sent as the Authorization bearer.
+ */
+export type McpAuthMode = 'global' | 'per_user';
+const VALID_AUTH_MODES: readonly McpAuthMode[] = ['global', 'per_user'];
+
 interface LoadedMcpServerCommon {
 	id: string;
 	displayName: string;
+	auth: McpAuthMode;
 	/** Per-server connect + per-call timeout in seconds. */
 	timeoutSeconds: number;
 	/**
@@ -142,9 +156,29 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 			? DEFAULT_IDLE_TIMEOUT_SECONDS
 			: requireNumber(raw.idle_timeout_seconds, 'idle_timeout_seconds', at, { min: 0 });
 
-	const common: LoadedMcpServerCommon = { id, displayName, timeoutSeconds, idleTimeoutSeconds };
+	const authStr = raw.auth === undefined ? 'global' : requireString(raw.auth, 'auth', at);
+	if (!(VALID_AUTH_MODES as readonly string[]).includes(authStr)) {
+		throw new McpConfigError(
+			`${at}: auth "${authStr}" must be one of ${VALID_AUTH_MODES.join(', ')}`,
+		);
+	}
+	const auth = authStr as McpAuthMode;
+
+	const common: LoadedMcpServerCommon = {
+		id,
+		displayName,
+		auth,
+		timeoutSeconds,
+		idleTimeoutSeconds,
+	};
 
 	if (transport === 'stdio') {
+		// Per-user auth is HTTP-only for now: a per-user secret maps cleanly to
+		// an HTTP bearer header, but a stdio subprocess would need per-user env
+		// wiring we don't model yet. Fail loudly rather than silently sharing.
+		if (auth === 'per_user') {
+			throw new McpConfigError(`${at}: auth="per_user" is only supported for transport="http"`);
+		}
 		const command = requireString(raw.command, 'command', at);
 		const args = raw.args === undefined ? [] : requireStringArray(raw.args, 'args', at);
 		const envMap = raw.env_from === undefined ? {} : resolveEnvFrom(raw.env_from, at);
@@ -160,6 +194,15 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	const url = requireString(raw.url, 'url', at);
 	if (!/^https?:\/\//.test(url)) {
 		throw new McpConfigError(`${at}: url must start with http:// or https://`);
+	}
+
+	// Per-user servers carry no boot-time key — the token comes from each
+	// user's encrypted credential at connect time, so a global api_key_env is
+	// contradictory and rejected.
+	if (auth === 'per_user' && raw.api_key_env !== undefined) {
+		throw new McpConfigError(
+			`${at}: 'api_key_env' is not valid with auth="per_user" (the token is supplied per user)`,
+		);
 	}
 
 	let apiKey: string | null = null;

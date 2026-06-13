@@ -120,6 +120,24 @@ export function setupToken(): string {
 }
 
 /**
+ * Master key for encrypting per-user MCP credentials at rest (AES-256-GCM,
+ * HKDF-derived — see src/lib/server/crypto/secret-box.ts).
+ *
+ * Optional: defaults to AUTH_SECRET (which is always set), so per-user MCP
+ * needs no extra setup. That's safe because the crypto layer HKDF-derives with
+ * a distinct `info` label — the derived key is independent of AUTH_SECRET's
+ * other use (signed cookies), even when it's the same input.
+ *
+ * Set MCP_SECRET_KEY explicitly only to rotate MCP-credential encryption
+ * independently of session secrets: with it set, rotating AUTH_SECRET (e.g.
+ * after a cookie leak) leaves stored MCP tokens intact. Rotating whichever key
+ * is in effect invalidates every stored MCP credential — treat it as durable.
+ */
+export function mcpSecretKey(): string {
+	return readString('MCP_SECRET_KEY', '').trim() || authSecret();
+}
+
+/**
  * Refuse to start if no login method is enabled. Called from
  * hooks.server.ts at module load so a misconfig becomes a crash instead
  * of a dead instance. Also surfaces an early warning when passkeys are

@@ -515,3 +515,32 @@ export const messageMedia = sqliteTable(
 		index('idx_message_media_media_id').on(t.mediaId),
 	],
 );
+
+// --- per-user MCP credentials --------------------------------------------
+//
+// config.toml is the source of truth for WHICH MCP servers exist and whether
+// each authenticates per-user (`auth = "per_user"`). For per-user servers,
+// this table holds the individual user's secret (e.g. the bearer token for
+// their own Fastmail/email account) — so two users connect to the same MCP
+// server under their own identities instead of sharing one container-wide
+// token. `secret_ciphertext` is AES-256-GCM (iv ‖ tag ‖ ciphertext), the key
+// derived from the MCP_SECRET_KEY env var; see src/lib/server/crypto/
+// secret-box.ts. A DB read alone can't recover the token.
+//
+// `server_id` is the config-defined id (no FK — config, not the DB, owns the
+// server list; a removed server just leaves an inert row). One row per
+// (user, server); the registry keys per-user connections by that pair.
+export const mcpCredentials = sqliteTable(
+	'mcp_credentials',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		serverId: text('server_id').notNull(),
+		secretCiphertext: blob('secret_ciphertext').notNull(),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+	},
+	(t) => [uniqueIndex('uq_mcp_credentials_user_server').on(t.userId, t.serverId)],
+);
