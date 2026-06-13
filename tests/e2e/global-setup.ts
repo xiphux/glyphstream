@@ -30,11 +30,22 @@ const DATA_DIR = resolve('./tests/.e2e-data');
 const DB_PATH = resolve(DATA_DIR, 'test.db');
 const MEDIA_DIR = resolve(DATA_DIR, 'media');
 const STORAGE_STATE_PATH = resolve(DATA_DIR, 'auth.json');
+/** Storage-state for the second, NON-admin user — used by the multi-user
+ *  isolation + admin-gating e2e specs via `browser.newContext({ storageState })`. */
+export const STORAGE_STATE_USER2_PATH = resolve(DATA_DIR, 'auth-user2.json');
 
 export const TEST_USER = {
 	id: '00000000-0000-0000-0000-000000000001',
 	displayName: 'E2E Tester',
 	email: 'e2e@example.test',
+};
+
+/** A second account, role 'user' (not admin), for cross-user isolation +
+ *  requireAdmin-gating tests. */
+export const TEST_USER_2 = {
+	id: '00000000-0000-0000-0000-000000000003',
+	displayName: 'E2E Tester Two',
+	email: 'e2e-two@example.test',
 };
 
 const TEST_OAUTH_ACCOUNT = {
@@ -88,32 +99,49 @@ export default async function globalSetup() {
 		})
 		.run();
 
-	// Mint a session: random token in cookie, sha256 of token in DB.
-	// Same shape session.ts uses in production.
-	const token = randomBytes(20).toString('base64url');
-	const sessionId = createHash('sha256').update(token).digest('hex');
+	// Second user (role 'user', no admin) — for cross-user isolation +
+	// requireAdmin-gating tests. No OAuth binding needed: it's only ever
+	// authenticated via the injected session cookie.
+	db.insert(schema.users)
+		.values({
+			id: TEST_USER_2.id,
+			email: TEST_USER_2.email,
+			displayName: TEST_USER_2.displayName,
+			role: 'user',
+			createdAt: Date.now(),
+			lastLoginAt: Date.now(),
+			disabledAt: null,
+		})
+		.run();
+
+	// Mint a session per user (random token in cookie, sha256 in DB — the
+	// same shape session.ts uses) and write Playwright's storageState file
+	// for each, so hooks.server.ts resolves the cookie to locals.user.
 	const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
-	db.insert(schema.sessions).values({ id: sessionId, userId: TEST_USER.id, expiresAt }).run();
+	const mintSessionState = (userId: string, statePath: string) => {
+		const token = randomBytes(20).toString('base64url');
+		const sessionId = createHash('sha256').update(token).digest('hex');
+		db.insert(schema.sessions).values({ id: sessionId, userId, expiresAt }).run();
+		const storageState = {
+			cookies: [
+				{
+					name: 'glyphstream_session',
+					value: token,
+					domain: 'localhost',
+					path: '/',
+					expires: expiresAt / 1000, // Playwright wants seconds since epoch
+					httpOnly: true,
+					secure: false,
+					sameSite: 'Lax' as const,
+				},
+			],
+			origins: [],
+		};
+		writeFileSync(statePath, JSON.stringify(storageState, null, 2));
+	};
+
+	mintSessionState(TEST_USER.id, STORAGE_STATE_PATH);
+	mintSessionState(TEST_USER_2.id, STORAGE_STATE_USER2_PATH);
 
 	sqlite.close();
-
-	// Write Playwright's storageState file. The cookie matches the format
-	// readSessionCookie() expects, so the SvelteKit hooks.server.ts will
-	// resolve it to a populated locals.user on every request.
-	const storageState = {
-		cookies: [
-			{
-				name: 'glyphstream_session',
-				value: token,
-				domain: 'localhost',
-				path: '/',
-				expires: expiresAt / 1000, // Playwright wants seconds since epoch
-				httpOnly: true,
-				secure: false,
-				sameSite: 'Lax' as const,
-			},
-		],
-		origins: [],
-	};
-	writeFileSync(STORAGE_STATE_PATH, JSON.stringify(storageState, null, 2));
 }
