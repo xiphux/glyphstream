@@ -39,8 +39,7 @@
 		"@simplewebauthn/browser": "^13.3.0",
 		"@simplewebauthn/server": "^13.3.1",
 		"arctic": "^3.7.0",
-		"better-sqlite3": "^12.10.0",
-		"drizzle-orm": "^0.45.2",
+		"drizzle-orm": "1.0.0-rc.3",
 		"eventsource-parser": "^3.1.0",
 		"linkedom": "^0.18.12",
 		"markdown-it": "^14.2.0",
@@ -61,14 +60,13 @@
 		"@testing-library/jest-dom": "^6.9.1",
 		"@testing-library/svelte": "^5.3.1",
 		"@testing-library/user-event": "^14.6.1",
-		"@types/better-sqlite3": "^7.6.13",
 		"@types/markdown-it": "^14.1.2",
 		"@types/node": "^25.9.1",
 		"@types/web-push": "^3.6.4",
 		"@vite-pwa/sveltekit": "^1.1.0",
 		"@vitest/ui": "^4.1.7",
 		"bits-ui": "^2.18.1",
-		"drizzle-kit": "^0.31.10",
+		"drizzle-kit": "1.0.0-rc.3",
 		"esbuild": "^0.28.0",
 		"happy-dom": "^20.9.0",
 		"husky": "^9.1.7",
@@ -89,7 +87,6 @@
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
-			"better-sqlite3",
 			"esbuild",
 			"sharp"
 		]

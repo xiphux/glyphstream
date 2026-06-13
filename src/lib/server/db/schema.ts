@@ -123,7 +123,7 @@ export const pushSubscriptions = sqliteTable(
 		userId: text('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
-		endpoint: text('endpoint').notNull().unique(),
+		endpoint: text('endpoint').notNull(),
 		p256dh: text('p256dh').notNull(),
 		auth: text('auth').notNull(),
 		// User-agent string at subscribe time, kept purely for a future
@@ -133,7 +133,15 @@ export const pushSubscriptions = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		lastSeenAt: integer('last_seen_at').notNull(),
 	},
-	(t) => [index('idx_push_subscriptions_user_id').on(t.userId)],
+	(t) => [
+		// Explicit uniqueIndex (not column `.unique()`) so drizzle-kit v1 emits a
+		// standalone UNIQUE INDEX matching the existing DB object — column
+		// `.unique()` now generates an inline table constraint, which would
+		// force a no-op table rebuild on upgrade. Name pinned to the original
+		// auto-generated one.
+		uniqueIndex('push_subscriptions_endpoint_unique').on(t.endpoint),
+		index('idx_push_subscriptions_user_id').on(t.userId),
+	],
 );
 
 // --- conversations + messages (TREE-SHAPED) ------------------------------
@@ -357,7 +365,7 @@ export const media = sqliteTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		// Relative to MEDIA_DIR; e.g. "ab/cd/abcd1234.png"
-		storagePath: text('storage_path').notNull().unique(),
+		storagePath: text('storage_path').notNull(),
 		contentType: text('content_type').notNull(),
 		byteSize: integer('byte_size').notNull(),
 		// 'file' covers anything that isn't an image or video — xlsx, csv,
@@ -428,6 +436,9 @@ export const media = sqliteTable(
 		hardDeletedAt: integer('hard_deleted_at'),
 	},
 	(t) => [
+		// Explicit uniqueIndex (not column `.unique()`) — see the note on
+		// push_subscriptions.endpoint. Name pinned to the original auto-name.
+		uniqueIndex('media_storage_path_unique').on(t.storagePath),
 		index('idx_media_user_created').on(t.userId, t.createdAt),
 		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
 		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the

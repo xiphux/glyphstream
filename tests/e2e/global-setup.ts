@@ -21,9 +21,9 @@
 import { mkdirSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { DatabaseSync } from 'node:sqlite';
+import { drizzle } from 'drizzle-orm/node-sqlite';
+import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import * as schema from '../../src/lib/server/db/schema';
 
 const DATA_DIR = resolve('./tests/.e2e-data');
@@ -53,10 +53,10 @@ export default async function globalSetup() {
 	mkdirSync(MEDIA_DIR, { recursive: true });
 
 	// Open + migrate the same DB the dev server will subsequently open.
-	const sqlite = new Database(DB_PATH);
-	sqlite.pragma('journal_mode = WAL');
-	sqlite.pragma('foreign_keys = ON');
-	const db = drizzle(sqlite, { schema });
+	const sqlite = new DatabaseSync(DB_PATH);
+	sqlite.exec('PRAGMA journal_mode = WAL');
+	sqlite.exec('PRAGMA foreign_keys = ON');
+	const db = drizzle({ client: sqlite, schema });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 
 	// Seed the test user + the OAuth binding that mirrors the operator's

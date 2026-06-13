@@ -202,11 +202,11 @@ describe('media: insert + ref counting', () => {
 		linkMessageMedia(msg2.id, id);
 		expect(getRow(id)?.refCount).toBe(2);
 
-		decrementMediaForMessages([msg1.id]);
+		mocks.testDb.transaction((tx) => decrementMediaForMessages(tx, [msg1.id]));
 		expect(getRow(id)?.refCount).toBe(1);
 		expect(getRow(id)?.unreferencedSince).toBeNull();
 
-		decrementMediaForMessages([msg2.id]);
+		mocks.testDb.transaction((tx) => decrementMediaForMessages(tx, [msg2.id]));
 		const row = getRow(id);
 		expect(row?.refCount).toBe(0);
 		// crossed zero — clock starts.
@@ -232,7 +232,7 @@ describe('media: insert + ref counting', () => {
 		// Manually corrupt to refCount=0 to simulate inconsistency, then
 		// decrement. Should clamp at 0, not go negative.
 		mocks.testDb.update(media).set({ refCount: 0 }).where(eq(media.id, id)).run();
-		decrementMediaForMessages([msg.id]);
+		mocks.testDb.transaction((tx) => decrementMediaForMessages(tx, [msg.id]));
 		expect(getRow(id)?.refCount).toBe(0);
 	});
 });

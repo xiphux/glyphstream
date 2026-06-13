@@ -66,7 +66,8 @@ tests/e2e/            # playwright (production-build webServer)
 - `bits-ui` and `lucide-svelte` belong in `devDependencies` — Vite bundles
   them into the SSR build at compile time. Only packages that run
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
-  `arctic`, `better-sqlite3`, `smol-toml`) belong in `dependencies`.
+  `arctic`, `smol-toml`) belong in `dependencies`. (SQLite needs no entry
+  here — it's the built-in `node:sqlite`.)
 - Component tests live under `tests/component/` and require a per-file
   `/* @vitest-environment happy-dom */` header — pure-logic unit tests
   default to `node`. See `tests/component/README.md` for the bits-ui
@@ -86,10 +87,31 @@ pnpm analyze      # production build with rollup-plugin-visualizer
 
 ## Sharp edges
 
-- **pnpm 10 + native modules**: `pnpm install` blocks better-sqlite3's build
-  script in CI even with `pnpm.onlyBuiltDependencies` set. The dance is
-  `pnpm install --frozen-lockfile --ignore-scripts` then `pnpm rebuild
-better-sqlite3 esbuild`. Same in Docker; same in CI.
+- **SQLite is the built-in `node:sqlite`, not better-sqlite3.** No native
+  compile, so the Docker/CI stages need no C/C++ toolchain. Driver is
+  `drizzle-orm/node-sqlite` (requires drizzle-orm v1, currently an RC).
+  Pragmas are set via `db.exec('PRAGMA …')` (node:sqlite has no `.pragma()`
+  helper). better-sqlite3 still resolves as an _optional peer_ of
+  drizzle-orm and lands unbuilt in `node_modules` — inert (never imported),
+  not worth fighting pnpm's `auto-install-peers` to remove.
+- **pnpm 10 + native modules**: install runs with `--ignore-scripts`, then
+  the only package needing its build script run is esbuild (prebuilt Go
+  binary, fetched not compiled): `pnpm install --frozen-lockfile
+--ignore-scripts` then `pnpm rebuild esbuild`. sharp ships prebuilt musl
+  binaries, so it needs no rebuild. Same in Docker; same in CI.
+- **node:sqlite won't auto-promote a nested `db.transaction()` to a
+  SAVEPOINT** the way better-sqlite3 did. A helper that opens its own
+  `getDb().transaction()` while a caller already holds one throws "cannot
+  start a transaction within a transaction". Helpers that run inside another
+  transaction must take the caller's `tx` (`Tx` in `db/client.ts`) and
+  operate on it; only `tx.transaction()` (on the tx object) emits a savepoint.
+- **drizzle-kit v1 emits column `.unique()` as an inline table constraint**,
+  not a standalone `UNIQUE INDEX` like v0 did. On an existing DB that diff is
+  a destructive table rebuild for a no-op. Declare uniqueness as an explicit
+  `uniqueIndex('<existing_name>')` in the table's index callback instead, so
+  generate stays clean. Migration folders are now per-migration dirs
+  (`<ts>_<name>/migration.sql`), converted from the old flat layout by
+  `drizzle-kit up`.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import { getDb } from '../client';
+import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
 
 /** Union of valid `media.kind` values. 'file' covers anything that
@@ -568,43 +568,46 @@ export function countOrphanMediaInConversation(
  * Scope: generated media only — uploaded media follows the purger's
  * own auto-sweep path and is not affected by user-driven "also
  * delete media" on conversation delete or by branch-delete.
+ *
+ * Runs on the caller's transaction (`tx`): both call sites invoke it
+ * inside their own `db.transaction()`, so it participates in that atomic
+ * unit. (node:sqlite, unlike better-sqlite3, won't auto-promote a nested
+ * root-level `db.transaction()` to a SAVEPOINT.)
  */
 export function hardDeleteOrphanGeneratedMediaForMessages(
+	tx: Tx,
 	messageIds: string[],
 	userId: string,
 ): Array<{ id: string; storagePath: string }> {
 	if (messageIds.length === 0) return [];
 
-	const db = getDb();
-	return db.transaction((tx) => {
-		const rows = tx
-			.select({
-				mediaId: messageMedia.mediaId,
-				storagePath: media.storagePath,
-				refCount: media.refCount,
-				origin: media.origin,
-				hardDeletedAt: media.hardDeletedAt,
-			})
-			.from(messageMedia)
-			.innerJoin(media, eq(media.id, messageMedia.mediaId))
-			.where(and(inArray(messageMedia.messageId, messageIds), eq(media.userId, userId)))
-			.all();
+	const rows = tx
+		.select({
+			mediaId: messageMedia.mediaId,
+			storagePath: media.storagePath,
+			refCount: media.refCount,
+			origin: media.origin,
+			hardDeletedAt: media.hardDeletedAt,
+		})
+		.from(messageMedia)
+		.innerJoin(media, eq(media.id, messageMedia.mediaId))
+		.where(and(inArray(messageMedia.messageId, messageIds), eq(media.userId, userId)))
+		.all();
 
-		const orphans = collectOrphanGeneratedMediaIds(rows);
+	const orphans = collectOrphanGeneratedMediaIds(rows);
 
-		// First-seen storage path per media, for the unlink list.
-		const pathOf = new Map<string, string>();
-		for (const r of rows) {
-			if (!pathOf.has(r.mediaId)) pathOf.set(r.mediaId, r.storagePath);
-		}
-		const now = Date.now();
-		const toUnlink: Array<{ id: string; storagePath: string }> = [];
-		for (const mediaId of orphans) {
-			tx.update(media).set({ hardDeletedAt: now }).where(eq(media.id, mediaId)).run();
-			toUnlink.push({ id: mediaId, storagePath: pathOf.get(mediaId)! });
-		}
-		return toUnlink;
-	});
+	// First-seen storage path per media, for the unlink list.
+	const pathOf = new Map<string, string>();
+	for (const r of rows) {
+		if (!pathOf.has(r.mediaId)) pathOf.set(r.mediaId, r.storagePath);
+	}
+	const now = Date.now();
+	const toUnlink: Array<{ id: string; storagePath: string }> = [];
+	for (const mediaId of orphans) {
+		tx.update(media).set({ hardDeletedAt: now }).where(eq(media.id, mediaId)).run();
+		toUnlink.push({ id: mediaId, storagePath: pathOf.get(mediaId)! });
+	}
+	return toUnlink;
 }
 
 // --- Cascade-delete cleanup ----------------------------------------------
@@ -620,39 +623,39 @@ export function hardDeleteOrphanGeneratedMediaForMessages(
  * single `ref_count -= COUNT(*)` query because we also need to set
  * `unreferenced_since` when the count crosses zero, which is awkward to
  * express in a single SQL statement on SQLite.
+ *
+ * Runs on the caller's transaction (`tx`) — see the note on
+ * `hardDeleteOrphanGeneratedMediaForMessages`.
  */
-export function decrementMediaForMessages(messageIds: string[]): void {
+export function decrementMediaForMessages(tx: Tx, messageIds: string[]): void {
 	if (messageIds.length === 0) return;
-	const db = getDb();
-	db.transaction((tx) => {
-		const links = tx
-			.select({ mediaId: messageMedia.mediaId })
-			.from(messageMedia)
-			.where(inArray(messageMedia.messageId, messageIds))
-			.all();
-		if (links.length === 0) return;
+	const links = tx
+		.select({ mediaId: messageMedia.mediaId })
+		.from(messageMedia)
+		.where(inArray(messageMedia.messageId, messageIds))
+		.all();
+	if (links.length === 0) return;
 
-		// Tally per-media decrements (a single message can reference the
-		// same media id at most once thanks to the (message_id, media_id) PK,
-		// but a media id can appear across multiple messages).
-		const decBy = new Map<string, number>();
-		for (const { mediaId } of links) {
-			decBy.set(mediaId, (decBy.get(mediaId) ?? 0) + 1);
-		}
+	// Tally per-media decrements (a single message can reference the
+	// same media id at most once thanks to the (message_id, media_id) PK,
+	// but a media id can appear across multiple messages).
+	const decBy = new Map<string, number>();
+	for (const { mediaId } of links) {
+		decBy.set(mediaId, (decBy.get(mediaId) ?? 0) + 1);
+	}
 
-		const now = Date.now();
-		for (const [mediaId, dec] of decBy) {
-			// Clamp at zero to be defensive — we shouldn't ever go negative,
-			// but if we did the purger would never fire on the row.
-			tx.update(media)
-				.set({
-					refCount: sql`MAX(${media.refCount} - ${dec}, 0)`,
-					unreferencedSince: sql`CASE WHEN MAX(${media.refCount} - ${dec}, 0) = 0 THEN ${now} ELSE ${media.unreferencedSince} END`,
-				})
-				.where(eq(media.id, mediaId))
-				.run();
-		}
-	});
+	const now = Date.now();
+	for (const [mediaId, dec] of decBy) {
+		// Clamp at zero to be defensive — we shouldn't ever go negative,
+		// but if we did the purger would never fire on the row.
+		tx.update(media)
+			.set({
+				refCount: sql`MAX(${media.refCount} - ${dec}, 0)`,
+				unreferencedSince: sql`CASE WHEN MAX(${media.refCount} - ${dec}, 0) = 0 THEN ${now} ELSE ${media.unreferencedSince} END`,
+			})
+			.where(eq(media.id, mediaId))
+			.run();
+	}
 }
 
 /** All message ids belonging to a conversation — used by deleteConversation. */
@@ -731,5 +734,7 @@ export function stampOrphanedZeroRefRows(): number {
 			),
 		)
 		.run();
-	return r.changes;
+	// node:sqlite types `changes` as `number | bigint`; affected-row counts
+	// are always within safe-integer range, so narrowing to number is safe.
+	return Number(r.changes);
 }

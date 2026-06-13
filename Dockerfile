@@ -11,15 +11,15 @@
 #                  .pnpm/ that the runtime would still ship.
 #   3. runtime   — node + tini + just the artifacts. No compilers.
 #
-# better-sqlite3 doesn't ship a musl-compatible prebuilt binary, so
-# both builder + proddeps stages compile it from source. The runtime
-# stage only carries the resulting .node binary.
+# SQLite is the built-in `node:sqlite` (no native module to compile), and
+# sharp ships prebuilt musl binaries — so no stage needs a C/C++ toolchain.
+# The only remaining build-script package is esbuild (prebuilt Go binary,
+# fetched not compiled), rebuilt explicitly because install runs with
+# --ignore-scripts.
 # ----------------------------------------------------------------------
 
 # --- builder ----------------------------------------------------------
 FROM node:26-alpine AS builder
-
-RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -37,17 +37,16 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 
 COPY . .
 
-# Compile native modules now that scripts can run, sync svelte-kit's
-# generated files, then build the app.
-RUN pnpm rebuild better-sqlite3 esbuild \
+# Run esbuild's install script (skipped above by --ignore-scripts) to
+# fetch its prebuilt binary, sync svelte-kit's generated files, then
+# build the app.
+RUN pnpm rebuild esbuild \
  && pnpm svelte-kit sync \
  && pnpm build
 
 
 # --- proddeps ---------------------------------------------------------
 FROM node:26-alpine AS proddeps
-
-RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -58,9 +57,11 @@ WORKDIR /app
 # via kit, lightningcss via tailwind, etc). The result is a much
 # leaner /app/node_modules without needing a manual trim list.
 COPY package.json pnpm-lock.yaml ./
+# No --ignore-scripts follow-up rebuild needed: the only prod dep with a
+# native component is sharp, which ships prebuilt musl binaries (no build
+# script), and SQLite is the built-in node:sqlite.
 RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
- && pnpm install --frozen-lockfile --prod --ignore-scripts \
- && pnpm rebuild better-sqlite3
+ && pnpm install --frozen-lockfile --prod --ignore-scripts
 
 
 # --- runtime ----------------------------------------------------------

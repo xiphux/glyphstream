@@ -633,8 +633,8 @@ export function deleteBranch(
 			.run();
 
 		const deletedIds = [...toDelete];
-		const toUnlink = hardDeleteOrphanGeneratedMediaForMessages(deletedIds, userId);
-		decrementMediaForMessages(deletedIds);
+		const toUnlink = hardDeleteOrphanGeneratedMediaForMessages(tx, deletedIds, userId);
+		decrementMediaForMessages(tx, deletedIds);
 
 		tx.delete(messages)
 			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, deletedIds)))

@@ -19,22 +19,22 @@
  * work); synchronous=OFF is fine because there's no durability target.
  */
 
-import Database from 'better-sqlite3';
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { DatabaseSync } from 'node:sqlite';
+import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
+import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { resolve } from 'node:path';
 import * as schema from '../../../src/lib/server/db/schema';
 
-export type TestDB = BetterSQLite3Database<typeof schema>;
+export type TestDB = NodeSQLiteDatabase<typeof schema>;
 
-let active: { db: TestDB; sqlite: Database.Database } | null = null;
+let active: { db: TestDB; sqlite: DatabaseSync } | null = null;
 
 export function createTestDb(): TestDB {
 	closeTestDb();
-	const sqlite = new Database(':memory:');
-	sqlite.pragma('foreign_keys = ON');
-	sqlite.pragma('synchronous = OFF');
-	const db = drizzle(sqlite, { schema });
+	const sqlite = new DatabaseSync(':memory:');
+	sqlite.exec('PRAGMA foreign_keys = ON');
+	sqlite.exec('PRAGMA synchronous = OFF');
+	const db = drizzle({ client: sqlite, schema });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 	active = { db, sqlite };
 	return db;

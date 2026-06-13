@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { expect, type Page } from '@playwright/test';
 
 /**
@@ -27,15 +27,15 @@ const DB_PATH = resolve('./tests/.e2e-data/test.db');
  * both the desktop and mobile projects, and global-setup only wipes once.
  * Without a per-test reset, a flow's conversation/media leaks into a later
  * test (even across projects) and breaks "renders empty state" assertions
- * or produces duplicate-title matches. A separate better-sqlite3
+ * or produces duplicate-title matches. A separate node:sqlite
  * connection writing between tests is safe here: workers=1, so no server
  * request is in flight at reset time, and busy_timeout covers WAL
  * contention. Deletes run children-first to satisfy FK constraints.
  */
 export function resetData(): void {
-	const db = new Database(DB_PATH);
-	db.pragma('busy_timeout = 5000');
-	db.pragma('foreign_keys = ON');
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
 	try {
 		// Null the conversation→message pointers first. active_leaf_message_id is
 		// ON DELETE SET NULL, but fanout_parent_message_id (ALTER-added) is NO

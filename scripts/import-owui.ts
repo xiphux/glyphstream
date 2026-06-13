@@ -13,16 +13,16 @@
  * environment to point at the SQLite file (defaults to
  * `./data/glyphstream.db` to match the SvelteKit runtime default).
  *
- * The CLI sets up its own better-sqlite3 connection rather than going
+ * The CLI sets up its own node:sqlite connection rather than going
  * through `src/lib/server/db/client` because that module pulls in
  * SvelteKit's `$env/dynamic/private`, which doesn't resolve outside the
  * SvelteKit runtime — same reason `drizzle.config.ts` reads process.env
  * directly.
  */
 
-import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { DatabaseSync } from 'node:sqlite';
+import { drizzle } from 'drizzle-orm/node-sqlite';
+import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { eq } from 'drizzle-orm';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -88,12 +88,12 @@ if (typeof parsed === 'string') {
 
 const dbPath = resolve(env.DB_PATH ?? './data/glyphstream.db');
 mkdirSync(dirname(dbPath), { recursive: true });
-const sqlite = new Database(dbPath);
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('synchronous = NORMAL');
-sqlite.pragma('busy_timeout = 5000');
-sqlite.pragma('foreign_keys = ON');
-const db = drizzle(sqlite, { schema });
+const sqlite = new DatabaseSync(dbPath);
+sqlite.exec('PRAGMA journal_mode = WAL');
+sqlite.exec('PRAGMA synchronous = NORMAL');
+sqlite.exec('PRAGMA busy_timeout = 5000');
+sqlite.exec('PRAGMA foreign_keys = ON');
+const db = drizzle({ client: sqlite, schema });
 if (existsSync(resolve('./drizzle'))) {
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 }

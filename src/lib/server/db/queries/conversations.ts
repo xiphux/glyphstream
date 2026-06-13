@@ -505,9 +505,9 @@ export function deleteConversation(
 		// then cascade-delete the conversation.
 		const messageIds = listMessageIdsForConversation(id);
 		const toUnlink = opts.deleteMedia
-			? hardDeleteOrphanGeneratedMediaForMessages(messageIds, userId)
+			? hardDeleteOrphanGeneratedMediaForMessages(tx, messageIds, userId)
 			: [];
-		decrementMediaForMessages(messageIds);
+		decrementMediaForMessages(tx, messageIds);
 
 		tx.delete(conversations).where(eq(conversations.id, id)).run();
 		return { ok: true, toUnlink };

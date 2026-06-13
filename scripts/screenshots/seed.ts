@@ -17,10 +17,10 @@
 import { mkdirSync, existsSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { eq } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { drizzle } from 'drizzle-orm/node-sqlite';
+import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import sharp from 'sharp';
 import * as schema from '../../src/lib/server/db/schema';
 import { renderMarkdown } from '../../src/lib/server/markdown/render';
@@ -142,10 +142,10 @@ const sqliteExists = existsSync(DB_PATH);
 if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
 mkdirSync(MEDIA_DIR, { recursive: true });
 
-const sqlite = new Database(DB_PATH);
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('foreign_keys = ON');
-const db = drizzle(sqlite, { schema });
+const sqlite = new DatabaseSync(DB_PATH);
+sqlite.exec('PRAGMA journal_mode = WAL');
+sqlite.exec('PRAGMA foreign_keys = ON');
+const db = drizzle({ client: sqlite, schema });
 migrate(db, { migrationsFolder: resolve('./drizzle') });
 
 type MsgInput = {

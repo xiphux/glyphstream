@@ -22,14 +22,14 @@
  */
 
 import { eq } from 'drizzle-orm';
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import type { NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { conversations, messages } from '../db/schema';
 import { generateId } from '../util/id';
 import type * as schema from '../db/schema';
 import { renderMarkdown } from '../markdown/render';
 import type { MessagePart, ModelKind } from '$lib/types/api';
 
-export type ImportDb = BetterSQLite3Database<typeof schema>;
+export type ImportDb = NodeSQLiteDatabase<typeof schema>;
 
 export const IMPORTED_ENDPOINT_ID = 'imported-owui';
 
@@ -221,7 +221,7 @@ async function importOne(
 	// Pre-process assistant messages: split off OWUI's reasoning <details>
 	// block, then markdown-render what's left. Both happen before the
 	// transaction opens because renderMarkdown is async (shiki lazy-loads)
-	// and better-sqlite3 transactions don't allow awaiting inside the
+	// and node:sqlite transactions don't allow awaiting inside the
 	// callback. The first render warms shiki; subsequent ones share the
 	// cached singleton highlighter and are fast.
 	interface PreparedAssistant {

@@ -112,5 +112,7 @@ export function deletePushSubscriptionsByEndpoints(endpoints: string[]): number 
 		.delete(pushSubscriptions)
 		.where(inArray(pushSubscriptions.endpoint, endpoints))
 		.run();
-	return result.changes;
+	// node:sqlite types `changes` as `number | bigint`; affected-row counts
+	// are always within safe-integer range, so narrowing to number is safe.
+	return Number(result.changes);
 }

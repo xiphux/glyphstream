@@ -17,7 +17,7 @@
  * fallback state) and then re-execute the migration's SQL by hand.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
@@ -35,7 +35,12 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import { insertMedia, linkMessageMedia } from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 
-const RECOVERY_SQL = readFileSync(resolve('./drizzle/0006_recover_prompts.sql'), 'utf-8');
+// drizzle v1 stores each migration as `<timestamp>_<name>/migration.sql`
+// rather than the old flat `NNNN_<name>.sql`. Resolve by name suffix so the
+// test survives any future `drizzle-kit up` re-timestamping.
+const recoverDir = readdirSync(resolve('./drizzle')).find((d) => d.endsWith('_recover_prompts'));
+if (!recoverDir) throw new Error('recover_prompts migration directory not found');
+const RECOVERY_SQL = readFileSync(resolve(`./drizzle/${recoverDir}/migration.sql`), 'utf-8');
 
 function runRecovery() {
 	mocks.testDb.run(sql.raw(RECOVERY_SQL));
