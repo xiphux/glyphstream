@@ -237,11 +237,17 @@ async function handleJoin(args: {
 			},
 		});
 	} catch (e) {
-		// Lost the single-use race, or the GitHub id got bound between the
-		// pre-check and the insert (UNIQUE conflict). Either way, no account
-		// was created for this attempt.
+		// The transaction rolled back, so no account was created. Map the two
+		// expected races precisely and don't mislabel anything else:
+		//   - invite consumed by a parallel redemption -> invalid invite;
+		//   - the GitHub id got bound between the pre-check and the insert
+		//     (UNIQUE conflict) -> genuinely already-registered.
+		// Anything else is unexpected — log it and show a generic, retryable
+		// error rather than claiming "already registered".
 		if (e instanceof InviteConsumedError) joinError('invite_invalid');
-		joinError('already_registered');
+		if (e instanceof Error && /UNIQUE constraint/i.test(e.message)) joinError('already_registered');
+		console.error('[auth/join] unexpected error finalizing GitHub join:', e);
+		joinError('signup_failed');
 	}
 
 	const { token, expiresAt } = createSession(userId);

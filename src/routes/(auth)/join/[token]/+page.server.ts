@@ -9,6 +9,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 	upstream_failure: 'GitHub is unreachable right now. Please try again in a moment.',
 	invite_invalid: 'This invite link is no longer valid. Ask your administrator for a new one.',
 	already_registered: 'That account is already registered. Try signing in instead.',
+	signup_failed: 'Something went wrong creating your account. Please try again.',
 };
 
 /**

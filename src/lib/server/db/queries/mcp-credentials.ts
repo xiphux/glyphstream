@@ -22,10 +22,17 @@ export function getMcpCredential(userId: string, serverId: string): string | nul
 	if (!row) return null;
 	try {
 		return decryptSecret(row.ct as Uint8Array);
-	} catch {
+	} catch (e) {
 		// Key rotated, or the row predates a key change / is corrupt. Treat as
 		// "no usable credential" so the user is prompted to re-enter rather than
-		// the MCP connection hard-failing with a crypto error.
+		// the MCP connection hard-failing with a crypto error — but log it, since
+		// a wave of these after a deploy is the tell-tale sign MCP_SECRET_KEY (or
+		// the AUTH_SECRET it falls back to) changed.
+		console.warn(
+			`[mcp] could not decrypt credential for server "${serverId}" (user ${userId}) — ` +
+				`treating as not configured; likely the encryption key changed. ` +
+				`Cause: ${e instanceof Error ? e.message : String(e)}`,
+		);
 		return null;
 	}
 }
