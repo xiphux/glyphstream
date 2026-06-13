@@ -2,6 +2,7 @@ import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
 import { maybeCompressResponse } from '$lib/server/compression';
 import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
+import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger } from '$lib/server/media/purger';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 
@@ -10,6 +11,13 @@ import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 // buttons. Also catches the "passkeys on but EXTERNAL_BASE_URL not set in
 // prod" misconfig, since the RP ID is derived from it.
 validateAuthMethodsEnabled();
+
+// Upgrade recovery: a pre-multi-user single-user DB ends up with the new
+// `role` column defaulted to 'user' and therefore zero admins, with /setup
+// already closed — promote the original operator so they can reach the admin
+// UI. (Triggers getDb() → applies pending migrations first.) No-op on fresh
+// installs and any DB that already has an admin.
+ensureAdminBootstrap();
 
 // Resolve the COMPRESS_DYNAMIC env var once at module load — there's no
 // reason to re-read on every request, and a deploy that flips it

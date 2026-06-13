@@ -17,7 +17,14 @@ vi.mock('$lib/server/db/client', () => ({
 	closeDb: () => {},
 }));
 
-import { createUser, createInitialUser, countUsers } from '$lib/server/db/queries/users';
+import {
+	createUser,
+	createInitialUser,
+	countUsers,
+	countAdmins,
+	ensureAdminBootstrap,
+	getUserRole,
+} from '$lib/server/db/queries/users';
 import {
 	createInvite,
 	findValidInvite,
@@ -29,6 +36,7 @@ import {
 import { finalizeOAuthJoin, finalizePasskeyJoin, InviteConsumedError } from '$lib/server/auth/join';
 import { findUserByOAuth } from '$lib/server/db/queries/oauth-accounts';
 import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
+import { users } from '../../src/lib/server/db/schema';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -210,5 +218,48 @@ describe('join finalizers (atomic create + bind + consume)', () => {
 			},
 		});
 		expect(userId).toBe('admin-invitee-id');
+	});
+});
+
+describe('ensureAdminBootstrap (single-user -> multi-user upgrade recovery)', () => {
+	// Insert a user row directly with an explicit createdAt — mirrors what the
+	// role migration leaves behind (role defaults to 'user'), and lets us
+	// control ordering for the "earliest" case.
+	function seedLegacyUser(id: string, createdAt: number) {
+		mocks.testDb
+			.insert(users)
+			.values({ id, email: null, displayName: id, role: 'user', createdAt, lastLoginAt: null })
+			.run();
+	}
+
+	it('is a no-op on a fresh (empty) DB', () => {
+		expect(ensureAdminBootstrap()).toBeNull();
+		expect(countAdmins()).toBe(0);
+	});
+
+	it('promotes the lone existing user (the upgrade scenario)', () => {
+		seedLegacyUser('solo', 1000);
+		expect(countAdmins()).toBe(0);
+		expect(ensureAdminBootstrap()).toBe('solo');
+		expect(getUserRole('solo')).toBe('admin');
+		expect(countAdmins()).toBe(1);
+	});
+
+	it('is a no-op (and idempotent) when an admin already exists', () => {
+		createInitialUser({ displayName: 'Admin', email: null });
+		createUser({ displayName: 'Member', email: null, role: 'user' });
+		expect(ensureAdminBootstrap()).toBeNull();
+		expect(ensureAdminBootstrap()).toBeNull();
+		expect(countAdmins()).toBe(1);
+	});
+
+	it('promotes the earliest-created user when several exist with no admin', () => {
+		seedLegacyUser('later', 2000);
+		seedLegacyUser('earliest', 1000);
+		seedLegacyUser('middle', 1500);
+		expect(ensureAdminBootstrap()).toBe('earliest');
+		expect(getUserRole('earliest')).toBe('admin');
+		expect(getUserRole('later')).toBe('user');
+		expect(countAdmins()).toBe(1);
 	});
 });

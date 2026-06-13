@@ -6,7 +6,7 @@
  * `findUserByOAuth` (OAuth) or `findUserForCredential` (passkey) and
  * call `bumpUserLastLogin` if successful.
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { users } from '../schema';
@@ -137,6 +137,46 @@ export function countActiveAdmins(): number {
 		.from(users)
 		.where(and(eq(users.role, 'admin'), isNull(users.disabledAt)))
 		.all().length;
+}
+
+/** Count admins (regardless of disabled state). */
+export function countAdmins(): number {
+	const db = getDb();
+	return db.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).all().length;
+}
+
+/**
+ * Upgrade-recovery: an existing single-user DB predating the multi-user work
+ * gets the new `role` column defaulted to 'user' (the deliberate fail-safe so
+ * a migration can't silently mint admins), which leaves it with ZERO admins —
+ * and `/setup` is structurally closed once any user exists, so there'd be no
+ * in-app way to mint one. On boot, if there are users but no admin at all,
+ * promote the earliest-created user (the original operator).
+ *
+ * Idempotent and cheap (two counts): a no-op on fresh installs (no users yet —
+ * the setup wizard makes its user an admin) and on any DB that already has an
+ * admin. It can't misfire in normal multi-user operation either: the admin API
+ * refuses to remove the last admin, so a live zero-admin state is only
+ * reachable through this very migration. Returns the promoted user id, or null
+ * when nothing was done.
+ */
+export function ensureAdminBootstrap(): string | null {
+	if (countUsers() === 0) return null;
+	if (countAdmins() > 0) return null;
+	const db = getDb();
+	const earliest = db
+		.select({ id: users.id })
+		.from(users)
+		.orderBy(asc(users.createdAt))
+		.limit(1)
+		.get();
+	if (!earliest) return null;
+	db.update(users).set({ role: 'admin' }).where(eq(users.id, earliest.id)).run();
+	console.warn(
+		`[auth] No admin account found on boot; promoted earliest user (${earliest.id}) to admin ` +
+			`— single-user → multi-user upgrade recovery.`,
+	);
+	return earliest.id;
 }
 
 /** Read a user's role (used where the session context isn't to hand). */
