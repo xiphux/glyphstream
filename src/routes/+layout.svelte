@@ -35,6 +35,34 @@
 				// onOfflineReady intentionally omitted — we don't want a
 				// "ready offline" toast on the very first SW install; the
 				// app already works fine before then.
+				onRegisteredSW(_swUrl: string, registration: ServiceWorkerRegistration | undefined) {
+					// `immediate: true` only checks for a new SW once, at
+					// registration. After that the browser re-checks on a
+					// full in-scope navigation — which never happens in an
+					// SPA — or its own ~24h timer. On an iOS standalone PWA
+					// the process is suspended in the background, so neither
+					// fires during normal use: the only update check is a
+					// cold launch, i.e. force-quit + reopen. We add our own.
+					if (!registration) return;
+
+					const checkForUpdate = () => {
+						// The load-bearing trigger on iOS: visibilitychange
+						// fires the instant the user swipes back into the PWA,
+						// which is exactly when a waiting version should be
+						// detected. update() rejects when offline — swallow it
+						// and we'll retry on the next focus or interval tick.
+						if (document.visibilityState === 'visible') {
+							registration.update().catch(() => {});
+						}
+					};
+					document.addEventListener('visibilitychange', checkForUpdate);
+
+					// Belt-and-suspenders for long-lived foreground sessions
+					// (a desktop tab left open all day) where visibilitychange
+					// never fires. Suspended on iOS, so it can't be the only
+					// mechanism — the focus listener above carries that case.
+					setInterval(checkForUpdate, 60 * 60 * 1000); // hourly
+				},
 			});
 			// updateSW(true) activates the waiting SW and reloads. We pin
 			// it to a state slot so the banner's click handler can call it.
