@@ -42,7 +42,13 @@ COPY . .
 # build the app.
 RUN pnpm rebuild esbuild \
  && pnpm svelte-kit sync \
- && pnpm build
+ && pnpm build \
+ # Strip SSR source maps (~3 MB) from the shipped artifact. SvelteKit's
+ # adapter-node emits a `.map` per server chunk regardless of Vite's
+ # build.sourcemap; they're never served to a client and only map traces
+ # back to the (unminified) bundled output, so they're dead weight in the
+ # image. Done here, not in `pnpm build`, so local builds keep them.
+ && find build/server -name '*.map' -delete
 
 
 # --- proddeps ---------------------------------------------------------
