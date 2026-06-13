@@ -45,10 +45,10 @@
 		});
 	}
 
-	function inviteStatus(inv: InviteRow): 'used' | 'expired' | 'active' {
-		if (inv.usedAt !== null) return 'used';
-		if (inv.expiresAt <= Date.now()) return 'expired';
-		return 'active';
+	// Used invites are filtered out server-side (a redeemed invite is inert and
+	// its user shows in the Users list), so only outstanding ones reach here.
+	function inviteStatus(inv: InviteRow): 'expired' | 'active' {
+		return inv.expiresAt <= Date.now() ? 'expired' : 'active';
 	}
 
 	async function createInvite() {
@@ -213,9 +213,9 @@
 
 		<!-- Pending / past invites -->
 		<section>
-			<h2 class="mb-2 text-sm font-semibold">Invites</h2>
+			<h2 class="mb-2 text-sm font-semibold">Pending invites</h2>
 			{#if data.invites.length === 0}
-				<p class="text-xs text-fg-muted">No invites yet.</p>
+				<p class="text-xs text-fg-muted">No pending invites.</p>
 			{:else}
 				<ul class="divide-y divide-border rounded-lg border border-border">
 					{#each data.invites as inv (inv.id)}
@@ -226,9 +226,7 @@
 								<span class="text-fg-muted">
 									· {status === 'active'
 										? `expires ${formatDate(inv.expiresAt)}`
-										: status === 'used'
-											? `used ${formatDate(inv.usedAt)}`
-											: `expired ${formatDate(inv.expiresAt)}`}
+										: `expired ${formatDate(inv.expiresAt)}`}
 								</span>
 							</div>
 							<div class="flex items-center gap-3">

@@ -17,6 +17,11 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	return {
 		me: locals.user.id,
 		users: listUsers(),
-		invites: listInvites(),
+		// Only outstanding invites — a used invite is inert (single-use is
+		// enforced) and its redeemer already shows up in the Users list, so
+		// listing it just clutters. The row is kept in the DB as a latent
+		// audit record (who joined via which invite); `listInvites()` still
+		// returns all of them for any future audit view.
+		invites: listInvites().filter((i) => i.usedAt === null),
 	};
 };
