@@ -157,8 +157,9 @@ export function countAdmins(): number {
  * gets the new `role` column defaulted to 'user' (the deliberate fail-safe so
  * a migration can't silently mint admins), which leaves it with ZERO admins —
  * and `/setup` is structurally closed once any user exists, so there'd be no
- * in-app way to mint one. On boot, if there are users but no admin at all,
- * promote the earliest-created user (the original operator).
+ * in-app way to mint one. Run once on the first authenticated request (see
+ * hooks.server.ts): if there are users but no admin at all, promote the
+ * earliest-created user (the original operator).
  *
  * Idempotent and cheap (two counts): a no-op on fresh installs (no users yet —
  * the setup wizard makes its user an admin) and on any DB that already has an

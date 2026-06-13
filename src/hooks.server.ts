@@ -12,12 +12,14 @@ import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 // prod" misconfig, since the RP ID is derived from it.
 validateAuthMethodsEnabled();
 
-// Upgrade recovery: a pre-multi-user single-user DB ends up with the new
-// `role` column defaulted to 'user' and therefore zero admins, with /setup
-// already closed — promote the original operator so they can reach the admin
-// UI. (Triggers getDb() → applies pending migrations first.) No-op on fresh
-// installs and any DB that already has an admin.
-ensureAdminBootstrap();
+// Upgrade recovery (single-user → multi-user): a pre-multi-user DB gets the
+// new `role` column defaulted to 'user' and therefore zero admins, with
+// /setup already closed — so we promote the original operator. Run ONCE,
+// lazily, on the first authenticated request (see `handle`) rather than at
+// module load: it must not open the DB at boot, both to avoid doing DB work
+// before the connection is needed and so the e2e harness (which wipes +
+// recreates the DB in global-setup) can't race a boot-time connection.
+let adminBootstrapChecked = false;
 
 // Resolve the COMPRESS_DYNAMIC env var once at module load — there's no
 // reason to re-read on every request, and a deploy that flips it
@@ -128,6 +130,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	const token = readSessionCookie(event.cookies);
+	// First authenticated request of the process: run the admin-recovery check
+	// once (a token means we're about to hit the DB anyway). Gated on token so
+	// the unauthenticated readiness probe never triggers a DB open. Flag is set
+	// before the call so a throw can't make it re-run every request.
+	if (token && !adminBootstrapChecked) {
+		adminBootstrapChecked = true;
+		try {
+			ensureAdminBootstrap();
+		} catch (err) {
+			console.error('[auth] ensureAdminBootstrap failed:', err);
+		}
+	}
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
 
