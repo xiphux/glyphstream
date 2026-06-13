@@ -13,9 +13,18 @@
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
-	import { Brain, KeyRound, LogOut, Plug, Settings, ShieldCheck, Sparkles } from '@lucide/svelte';
+	import {
+		Brain,
+		KeyRound,
+		LogOut,
+		Plug,
+		Settings,
+		ShieldCheck,
+		Sparkles,
+		Users,
+	} from '@lucide/svelte';
 
-	let { goto }: { goto: (path: string) => unknown } = $props();
+	let { goto, isAdmin = false }: { goto: (path: string) => unknown; isAdmin?: boolean } = $props();
 </script>
 
 <DropdownMenu.Portal>
@@ -67,6 +76,15 @@
 			<KeyRound size={14} strokeWidth={2.25} />
 			<span>Security</span>
 		</DropdownMenu.Item>
+		{#if isAdmin}
+			<DropdownMenu.Item
+				onSelect={() => goto('/settings/admin')}
+				class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+			>
+				<Users size={14} strokeWidth={2.25} />
+				<span>Admin</span>
+			</DropdownMenu.Item>
+		{/if}
 		<DropdownMenu.Item
 			onSelect={() => {
 				// Form-submit semantics for logout: POST to the

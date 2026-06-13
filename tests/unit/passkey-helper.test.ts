@@ -80,6 +80,7 @@ describe('generateRegistrationOptionsForUser', () => {
 		id: 'abc-123',
 		displayName: 'The Octocat',
 		email: 'octo@example.test',
+		role: 'user',
 	};
 
 	function makeCredentialRow(over: Partial<PasskeyCredentialRow> = {}): PasskeyCredentialRow {

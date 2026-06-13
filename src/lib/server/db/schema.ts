@@ -21,6 +21,15 @@ export const users = sqliteTable('users', {
 	displayName: text('display_name'),
 	createdAt: integer('created_at').notNull(),
 	lastLoginAt: integer('last_login_at'),
+	// Access role. 'admin' (the very-first/setup-wizard user, plus anyone an
+	// admin promotes) gets the user-management UI — list/invite/disable/delete
+	// — and bypasses no data scoping (admins still only see their OWN
+	// conversations etc.; "admin" is operator capability, not data access).
+	// 'user' is a normal account created by redeeming an invite. Defaults to
+	// 'user' so a bad migration can't silently mint admins.
+	role: text('role', { enum: ['admin', 'user'] })
+		.notNull()
+		.default('user'),
 	// Operator-disabled flag — when non-null, this user's sessions are
 	// invalidated at the next request and new logins (via any method) are
 	// refused with 403. Replaces the GitHub-numeric-ID allowlist's
@@ -66,6 +75,44 @@ export const oauthAccounts = sqliteTable(
 	(t) => [
 		uniqueIndex('uq_oauth_accounts_provider_external').on(t.provider, t.externalId),
 		index('idx_oauth_accounts_user_id').on(t.userId),
+	],
+);
+
+// Invite tokens for admin-controlled onboarding. An admin mints one (raw
+// token shown once, embedded in a /join/<token> URL); the invitee redeems it
+// by completing GitHub OAuth or passkey registration, which creates their
+// user row in the same transaction that marks the invite used.
+//
+// Only the SHA-256 `tokenHash` is stored — the raw token never touches the
+// DB, so a DB read can't reconstruct a usable invite (same reasoning as
+// session-token hashing). `usedAt`/`usedByUserId` make redemption single-use
+// and auditable; `expiresAt` bounds the window. Mirrors the session module's
+// "store the hash, compare the hash" pattern.
+export const invites = sqliteTable(
+	'invites',
+	{
+		id: text('id').primaryKey(),
+		tokenHash: text('token_hash').notNull(),
+		// Role the redeeming user is created with (see users.role).
+		role: text('role', { enum: ['admin', 'user'] })
+			.notNull()
+			.default('user'),
+		createdByUserId: text('created_by_user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		createdAt: integer('created_at').notNull(),
+		expiresAt: integer('expires_at').notNull(),
+		// Non-null once redeemed — the validity check requires this be null.
+		usedAt: integer('used_at'),
+		// The user created by this invite. ON DELETE set null so deleting that
+		// user (admin "delete user") leaves the consumed-invite audit row.
+		usedByUserId: text('used_by_user_id').references(() => users.id, {
+			onDelete: 'set null',
+		}),
+	},
+	(t) => [
+		uniqueIndex('uq_invites_token_hash').on(t.tokenHash),
+		index('idx_invites_created_by').on(t.createdByUserId),
 	],
 );
 

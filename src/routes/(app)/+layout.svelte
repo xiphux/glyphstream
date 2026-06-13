@@ -641,7 +641,7 @@
 				-->
 				{#if accountMenuOpen}
 					{#await import('$lib/components/AccountMenuContent.svelte') then { default: AccountMenuContent }}
-						<AccountMenuContent {goto} />
+						<AccountMenuContent {goto} isAdmin={data.user.role === 'admin'} />
 					{/await}
 				{/if}
 			</DropdownMenu.Root>

@@ -20,6 +20,22 @@ export function requireUser(
 }
 
 /**
+ * Assert the request is authenticated AND the user is an admin, throwing
+ * 401 (no session) or 403 (signed in, not an admin) otherwise.
+ *
+ * Like `requireUser`, it's an assertion function: after `requireAdmin(locals)`
+ * the compiler narrows `locals.user` to non-null. Admin gates operator
+ * capability (the user-management UI), not data access — admins still only
+ * see their own conversations/media; nothing in the data layer keys off role.
+ */
+export function requireAdmin(
+	locals: App.Locals,
+): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
+	if (!locals.user) throw error(401, 'Authentication required');
+	if (locals.user.role !== 'admin') throw error(403, 'Administrator access required');
+}
+
+/**
  * Unwrap an ownership-scoped DB lookup result or throw a 404.
  *
  * Most route handlers follow the pattern:

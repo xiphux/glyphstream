@@ -67,6 +67,9 @@ export default async function globalSetup() {
 			id: TEST_USER.id,
 			email: TEST_USER.email,
 			displayName: TEST_USER.displayName,
+			// The bootstrap operator is an admin (the setup-wizard user's role),
+			// so authenticated e2e tests can reach the /settings/admin surface.
+			role: 'admin',
 			createdAt: Date.now(),
 			lastLoginAt: Date.now(),
 			disabledAt: null,

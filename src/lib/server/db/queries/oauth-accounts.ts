@@ -13,7 +13,7 @@
 
 import { and, asc, eq } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import { getDb } from '../client';
+import { getDb, type Tx } from '../client';
 import { oauthAccounts, users } from '../schema';
 
 export interface OAuthAccountRow {
@@ -83,9 +83,10 @@ export function listOAuthAccountsForUser(userId: string): OAuthAccountSummary[] 
 /** Bind a provider account to a user. Throws on UNIQUE conflict
  *  (provider already bound somewhere — possibly to this user, possibly
  *  to a different one); routes translate that to 409. */
-export function addOAuthAccount(input: AddOAuthAccountInput): void {
-	const db = getDb();
-	db.insert(oauthAccounts)
+export function addOAuthAccount(input: AddOAuthAccountInput, tx?: Tx): void {
+	const exec = tx ?? getDb();
+	exec
+		.insert(oauthAccounts)
 		.values({
 			id: generateId(),
 			userId: input.userId,

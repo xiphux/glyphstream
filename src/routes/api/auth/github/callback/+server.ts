@@ -29,12 +29,18 @@ import {
 	type GithubUserProfile,
 } from '$lib/server/auth/github';
 import { SETUP_GITHUB_CARRY_COOKIE } from '$lib/server/auth/setup';
+import {
+	JOIN_GITHUB_CARRY_COOKIE,
+	InviteConsumedError,
+	finalizeOAuthJoin,
+} from '$lib/server/auth/join';
 import { verify } from '$lib/server/auth/signed-cookies';
 import {
 	addOAuthAccount,
 	findUserByOAuth,
 	touchOAuthAccount,
 } from '$lib/server/db/queries/oauth-accounts';
+import { findValidInvite } from '$lib/server/db/queries/invites';
 import { bumpUserLastLogin, countUsers, createInitialUser } from '$lib/server/db/queries/users';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
 import type { RequestHandler } from './$types';
@@ -42,6 +48,12 @@ import type { RequestHandler } from './$types';
 interface SetupCarry {
 	displayName: string;
 	email: string | null;
+}
+
+interface JoinCarry {
+	displayName: string;
+	email: string | null;
+	inviteToken: string;
 }
 
 function loginError(reason: string): never {
@@ -63,9 +75,11 @@ export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 	// Read every flow-marker cookie up front so we can clear them all,
 	// then dispatch on which was set. Each ceremony is single-use.
 	const setupCarrySigned = cookies.get(SETUP_GITHUB_CARRY_COOKIE);
+	const joinCarrySigned = cookies.get(JOIN_GITHUB_CARRY_COOKIE);
 	const linkState = cookies.get(LINK_STATE_COOKIE);
 	const loginState = cookies.get(STATE_COOKIE);
 	cookies.delete(SETUP_GITHUB_CARRY_COOKIE, { path: '/' });
+	cookies.delete(JOIN_GITHUB_CARRY_COOKIE, { path: '/' });
 	cookies.delete(LINK_STATE_COOKIE, { path: '/' });
 	cookies.delete(STATE_COOKIE, { path: '/' });
 
@@ -78,6 +92,11 @@ export const GET: RequestHandler = async ({ url, cookies, locals }) => {
 			setupCarrySigned,
 		});
 		return new Response(); // unreachable — handleSetup always throws redirect
+	}
+
+	if (joinCarrySigned) {
+		await handleJoin({ cookies, code, state, loginState, joinCarrySigned });
+		return new Response(); // unreachable — handleJoin always throws redirect
 	}
 
 	if (linkState) {
@@ -152,6 +171,78 @@ async function handleSetup(args: {
 		externalUsername: profile.login,
 		externalEmail: profile.email,
 	});
+
+	const { token, expiresAt } = createSession(userId);
+	setSessionCookie(cookies, token, expiresAt);
+
+	throw redirect(302, '/');
+}
+
+async function handleJoin(args: {
+	cookies: import('@sveltejs/kit').Cookies;
+	code: string | null;
+	state: string | null;
+	loginState: string | undefined;
+	joinCarrySigned: string;
+}): Promise<never> {
+	const { cookies, code, state, loginState, joinCarrySigned } = args;
+
+	const carry = verify<JoinCarry>(joinCarrySigned);
+	// No valid carry → can't know which invite this was; bounce to login.
+	if (!carry) throw redirect(302, '/login?error=invalid_oauth_state');
+	const inviteToken = carry.inviteToken;
+
+	function joinError(reason: string): never {
+		throw redirect(
+			302,
+			`/join/${encodeURIComponent(inviteToken)}?error=${encodeURIComponent(reason)}`,
+		);
+	}
+
+	if (!code || !state || !loginState || state !== loginState) {
+		joinError('invalid_oauth_state');
+	}
+
+	// Re-validate the invite at consume time (it may have expired or been
+	// redeemed during the GitHub round-trip).
+	const invite = findValidInvite(carry.inviteToken);
+	if (!invite) joinError('invite_invalid');
+
+	const profile = await fetchProfileOr(
+		{
+			oauthError: () => joinError('oauth_exchange_failed'),
+			upstreamError: () => joinError('upstream_failure'),
+		},
+		code,
+	);
+
+	// This GitHub identity must not already belong to an account — a binding
+	// is globally unique, and a user can't join twice.
+	if (findUserByOAuth('github', String(profile.id))) {
+		joinError('already_registered');
+	}
+
+	let userId: string;
+	try {
+		userId = finalizeOAuthJoin({
+			inviteId: invite.id,
+			role: invite.role,
+			displayName: carry.displayName,
+			email: carry.email ?? profile.email,
+			oauth: {
+				provider: 'github',
+				externalId: String(profile.id),
+				externalUsername: profile.login,
+				externalEmail: profile.email,
+			},
+		});
+	} catch (e) {
+		// Lost the single-use race, or the GitHub id got bound between the
+		// pre-check and the insert (UNIQUE conflict). Either way, no account
+		// was created for this attempt.
+		if (e instanceof InviteConsumedError) joinError('invite_invalid');
+		joinError('already_registered');
+	}
 
 	const { token, expiresAt } = createSession(userId);
 	setSessionCookie(cookies, token, expiresAt);

@@ -26,6 +26,7 @@ export interface SessionUser {
 	id: string;
 	displayName: string | null;
 	email: string | null;
+	role: 'admin' | 'user';
 }
 
 export interface AuthContext {
@@ -90,6 +91,7 @@ export function validateSessionToken(token: string): AuthContext | null {
 			id: row.user.id,
 			displayName: row.user.displayName,
 			email: row.user.email,
+			role: row.user.role,
 		},
 	};
 }

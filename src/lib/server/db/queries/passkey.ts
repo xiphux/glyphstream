@@ -17,7 +17,7 @@
  */
 
 import { and, asc, eq } from 'drizzle-orm';
-import { getDb } from '../client';
+import { getDb, type Tx } from '../client';
 import { passkeyCredentials, users } from '../schema';
 
 export type AuthenticatorTransport = 'usb' | 'ble' | 'nfc' | 'internal' | 'hybrid';
@@ -185,9 +185,10 @@ export function findUserForCredential(credentialId: string): UserForCredential |
 	return row ?? null;
 }
 
-export function insertCredential(input: InsertPasskeyInput): void {
-	const db = getDb();
-	db.insert(passkeyCredentials)
+export function insertCredential(input: InsertPasskeyInput, tx?: Tx): void {
+	const exec = tx ?? getDb();
+	exec
+		.insert(passkeyCredentials)
 		.values({
 			id: input.id,
 			userId: input.userId,
