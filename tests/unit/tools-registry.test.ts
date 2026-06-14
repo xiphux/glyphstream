@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
 	_resetForTests,
+	deferredToolCatalog,
 	get,
 	list,
 	openaiToolDefinitions,
 	register,
+	resolveActivatedToolDefs,
 } from '$lib/server/tools/registry';
 import type { Tool } from '$lib/server/tools/types';
 
@@ -20,6 +22,19 @@ function mkTool(name: string, description = 'test tool'): Tool {
 		},
 		execute: () => ({ content: `ran ${name}` }),
 	};
+}
+
+/** A global deferred tool: metadata.deferred=true, no isAvailable override. */
+function mkDeferred(name: string, description = 'deferred tool', category?: string): Tool {
+	return {
+		...mkTool(name, description),
+		metadata: { deferred: true, category: category as never },
+	};
+}
+
+/** A per-user deferred tool: deferred AND isAvailable:false (loaded on demand). */
+function mkPerUserDeferred(name: string, category?: string): Tool {
+	return { ...mkDeferred(name, 'per-user deferred', category), isAvailable: () => false };
 }
 
 beforeEach(() => {
@@ -144,5 +159,57 @@ describe('tool registry', () => {
 		const names = openaiToolDefinitions({ excludeCategories: ['web'] }).map((d) => d.function.name);
 		// 'ok' excluded by category, 'gated-avail' excluded by both, 'other' survives.
 		expect(names).toEqual(['other']);
+	});
+
+	it('openaiToolDefinitions drops deferred tools', () => {
+		register(mkTool('visible'));
+		register(mkDeferred('hidden'));
+		expect(openaiToolDefinitions().map((d) => d.function.name)).toEqual(['visible']);
+	});
+});
+
+describe('deferredToolCatalog', () => {
+	it('returns only deferred tools, as {name, description, category}', () => {
+		register(mkTool('visible'));
+		register(mkDeferred('gh_create_issue', 'Create a GitHub issue', 'mcp:github'));
+		expect(deferredToolCatalog()).toEqual([
+			{ name: 'gh_create_issue', description: 'Create a GitHub issue', category: 'mcp:github' },
+		]);
+	});
+
+	it('respects excludeCategories (the per-conversation opt-out)', () => {
+		register(mkDeferred('gh_x', 'gh', 'mcp:github'));
+		register(mkDeferred('sl_x', 'slack', 'mcp:slack'));
+		const names = deferredToolCatalog({ excludeCategories: ['mcp:github'] }).map((t) => t.name);
+		expect(names).toEqual(['sl_x']);
+	});
+
+	it('excludes per-user deferred tools (isAvailable:false) — they come via the per-user path', () => {
+		register(mkDeferred('global_deferred'));
+		register(mkPerUserDeferred('peruser_deferred'));
+		expect(deferredToolCatalog().map((t) => t.name)).toEqual(['global_deferred']);
+	});
+});
+
+describe('resolveActivatedToolDefs', () => {
+	it('resolves names to full definitions, deduplicates, skips unknowns', () => {
+		const a = mkDeferred('a');
+		const b = mkDeferred('b');
+		register(a);
+		register(b);
+		const defs = resolveActivatedToolDefs(['a', 'b', 'a', 'gone']);
+		expect(defs).toEqual([a.definition, b.definition]);
+	});
+
+	it('loads per-user deferred tools despite isAvailable:false (loaded on demand)', () => {
+		const t = mkPerUserDeferred('peruser');
+		register(t);
+		expect(resolveActivatedToolDefs(['peruser'])).toEqual([t.definition]);
+	});
+
+	it('honors excludeCategories — a disabled category is not re-loaded', () => {
+		register(mkDeferred('gh_x', 'gh', 'mcp:github'));
+		const defs = resolveActivatedToolDefs(['gh_x'], { excludeCategories: ['mcp:github'] });
+		expect(defs).toEqual([]);
 	});
 });

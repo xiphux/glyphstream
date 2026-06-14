@@ -64,6 +64,18 @@ export interface ToolExecution {
 	 * don't generate media omit this field.
 	 */
 	attachedMediaIds?: string[];
+	/**
+	 * Tool names this call made callable for the rest of the turn (and,
+	 * once persisted, the rest of the conversation). `search_tools` returns
+	 * its matches here: the streaming relay accumulates them into a per-turn
+	 * set and re-includes their full definitions in the next iteration's
+	 * `tools[]`, and `executeToolCalls` persists them onto the tool_result
+	 * part so a later turn's branch scan can re-load them. Mirrors
+	 * `attachedMediaIds` — the tool signals data back to the relay via its
+	 * return value, not a side channel. Tools that don't surface tools omit
+	 * this field.
+	 */
+	activatedToolNames?: string[];
 }
 
 /**
@@ -82,6 +94,30 @@ export interface ToolExecution {
 export interface ToolMetadata {
 	displayLabel?: string;
 	icon?: string;
+	category?: import('$lib/types/api').FeatureCategory;
+	/**
+	 * Hidden from the default tool advertisement (`openaiToolDefinitions()` /
+	 * `buildUserMcpToolDefinitions()` drop it), discoverable only via the
+	 * `search_tools` built-in, which surfaces the full definition per-request
+	 * once a query matches. The MCP bridge sets this for servers configured
+	 * `defer_tools = true` so a high-tool-count server (e.g. GitHub MCP)
+	 * doesn't burn context on every request. The registry entry still exists
+	 * so `get(name)` resolves it for EXECUTION and so `deferredToolCatalog()`
+	 * can enumerate it for search. Always-on tools omit this field.
+	 */
+	deferred?: boolean;
+}
+
+/**
+ * One entry in the searchable catalog of deferred tools. Carries just the
+ * fields the `search_tools` hybrid ranker scores over (name + description) plus
+ * the `mcp:<id>` category, so the catalog can be re-filtered by a conversation's
+ * per-feature opt-outs at search time. The full definition lives on the registry
+ * entry, resolved by name via `resolveActivatedToolDefs()` once a tool is picked.
+ */
+export interface DeferredToolEntry {
+	name: string;
+	description: string;
 	category?: import('$lib/types/api').FeatureCategory;
 }
 

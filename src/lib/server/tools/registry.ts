@@ -6,7 +6,7 @@
  * the model emitted in a tool_call.
  */
 
-import type { OpenAIToolDefinition, Tool } from './types';
+import type { DeferredToolEntry, OpenAIToolDefinition, Tool } from './types';
 
 const tools = new Map<string, Tool>();
 
@@ -46,15 +46,68 @@ export function list(): Tool[] {
  *
  *  Tools that omit either signal default to always-on. Returns an empty
  *  array when nothing remains (callers should treat that as "omit tools
- *  from the request entirely" rather than send `tools: []`). */
+ *  from the request entirely" rather than send `tools: []`).
+ *
+ *  A third filter drops `metadata.deferred` tools: those are hidden from the
+ *  default advertisement and surfaced only via `search_tools` (which enumerates
+ *  them through `deferredToolCatalog()` and loads the chosen ones back via
+ *  `resolveActivatedToolDefs()`). */
 export function openaiToolDefinitions(opts?: {
 	excludeCategories?: readonly string[];
 }): OpenAIToolDefinition[] {
 	const exclude = opts?.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
 	return list()
+		.filter((t) => !t.metadata?.deferred)
 		.filter((t) => t.isAvailable?.() ?? true)
 		.filter((t) => !exclude || !t.metadata?.category || !exclude.has(t.metadata.category))
 		.map((t) => t.definition);
+}
+
+/** The searchable catalog of GLOBAL deferred tools, for `search_tools`. Same
+ *  two filter layers as the advertisement (`isAvailable()` + `excludeCategories`)
+ *  but inverted on `deferred`: only deferred tools are returned. Per-user
+ *  deferred tools carry `isAvailable:false`, so they're excluded here and
+ *  enumerated separately by `buildUserDeferredToolCatalog()` — symmetric with
+ *  how `buildUserMcpToolDefinitions()` complements `openaiToolDefinitions()`. */
+export function deferredToolCatalog(opts?: {
+	excludeCategories?: readonly string[];
+}): DeferredToolEntry[] {
+	const exclude = opts?.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
+	return list()
+		.filter((t) => t.metadata?.deferred)
+		.filter((t) => t.isAvailable?.() ?? true)
+		.filter((t) => !exclude || !t.metadata?.category || !exclude.has(t.metadata.category))
+		.map((t) => ({
+			name: t.definition.function.name,
+			description: t.definition.function.description,
+			category: t.metadata?.category,
+		}));
+}
+
+/** Resolve activated (searched-up) tool names to their full definitions, for
+ *  splicing into `tools[]` — used by both the turn-start branch-scan seed and
+ *  the relay's per-iteration rebuild. Deduplicates, skips names that no longer
+ *  resolve (server removed since the tool was activated), and honors the
+ *  `excludeCategories` opt-out (the security boundary — a conversation that
+ *  disabled `mcp:<id>` must not re-load that server's tools even if a past turn
+ *  loaded them). Deliberately does NOT apply `isAvailable()`: per-user deferred
+ *  tools report `isAvailable:false` by design and are loaded on demand. */
+export function resolveActivatedToolDefs(
+	names: Iterable<string>,
+	opts?: { excludeCategories?: readonly string[] },
+): OpenAIToolDefinition[] {
+	const exclude = opts?.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
+	const defs: OpenAIToolDefinition[] = [];
+	const seen = new Set<string>();
+	for (const name of names) {
+		if (seen.has(name)) continue;
+		seen.add(name);
+		const tool = tools.get(name);
+		if (!tool) continue;
+		if (exclude && tool.metadata?.category && exclude.has(tool.metadata.category)) continue;
+		defs.push(tool.definition);
+	}
+	return defs;
 }
 
 /** Test-only: wipe the registry. Production code never calls this. */

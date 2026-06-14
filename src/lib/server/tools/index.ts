@@ -14,7 +14,8 @@ import './fetch-url';
 import './memory';
 import './web-search';
 
-export { get, list, openaiToolDefinitions, register } from './registry';
+export { get, list, openaiToolDefinitions, register, resolveActivatedToolDefs } from './registry';
 export type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution, ToolMetadata } from './types';
 import './run-python';
 import './activate-skill';
+import './search-tools';

@@ -40,7 +40,7 @@ vi.mock('$lib/server/tasks/title-task-runner', () => ({
 
 import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
-import { _resetForTests, register } from '$lib/server/tools/registry';
+import { _resetForTests, register, resolveActivatedToolDefs } from '$lib/server/tools/registry';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import {
 	acquireEndpointSlot,
@@ -409,7 +409,7 @@ describe('multi-iteration tool loop', () => {
 
 		const { conv, user, userId } = seedConversationWithUserMessage();
 		// Every iteration keeps emitting tool_calls — never stops on its own.
-		for (let i = 0; i < 10; i++) {
+		for (let i = 0; i < 12; i++) {
 			mocks.upstreamResponses.push(() =>
 				sseResponse([
 					toolCallStartChunk({
@@ -445,13 +445,119 @@ describe('multi-iteration tool loop', () => {
 
 		const events = await drainEvents(stream);
 
-		// MAX_TOOL_LOOP_ITERATIONS = 5 in relay.ts
-		expect(mocks.upstreamCalls).toHaveLength(5);
+		// DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8 in relay.ts (no override passed).
+		expect(mocks.upstreamCalls).toHaveLength(8);
 		const errorEvent = events.find((e) => (e as { type: string }).type === 'error') as {
 			message: string;
 		};
 		expect(errorEvent).toBeDefined();
 		expect(errorEvent.message).toMatch(/safety bound/);
+	});
+});
+
+// --- deferred tool search: mid-turn activation -------------------------
+
+describe('deferred tool search activation', () => {
+	it('promotes a searched-up deferred tool into the next iteration tools[]', async () => {
+		// A deferred tool: hidden from the initial tools[], registered so the
+		// relay can resolve it once activated.
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'mcp__gh__create_issue',
+					description: 'Create a GitHub issue',
+					parameters: { type: 'object', properties: {} },
+				},
+			},
+			metadata: { deferred: true, category: 'mcp:gh' },
+			execute: () => ({ content: 'issue created' }),
+		});
+		// search_tools activates the deferred tool (as the real one does via its
+		// hybrid ranker + activatedToolNames return).
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'search_tools',
+					description: 'search',
+					parameters: { type: 'object', properties: { query: { type: 'string' } } },
+				},
+			},
+			isAvailable: () => false,
+			execute: () => ({
+				content: 'found mcp__gh__create_issue',
+				activatedToolNames: ['mcp__gh__create_issue'],
+			}),
+		});
+
+		const { conv, user, userId } = seedConversationWithUserMessage();
+
+		// Iteration 0: model calls search_tools.
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_s',
+					name: 'search_tools',
+					args: '{"query":"create issue"}',
+				}),
+				finishChunk('tool_calls'),
+			]),
+		);
+		// Iteration 1: model answers (the proof point is THIS call's tools[]).
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('Done.'), finishChunk('stop')]));
+
+		const initialBody: ChatCompletionRequest = {
+			model: 'bridge::test',
+			messages: [{ role: 'user', content: 'create an issue' }],
+			tools: [
+				{
+					type: 'function',
+					function: { name: 'search_tools', description: 'search', parameters: { type: 'object' } },
+				},
+			],
+			tool_choice: 'auto',
+		};
+
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint,
+			providerQuirk: 'passthrough',
+			requestBody: initialBody,
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			onComplete: () => {},
+			// Mirror the real endpoint closure: append the resolved activated defs.
+			rebuildRequestBody: async ({ activatedToolNames }) => ({
+				...initialBody,
+				messages: [...initialBody.messages, { role: 'user', content: 'continue' }],
+				tools: [...(initialBody.tools ?? []), ...resolveActivatedToolDefs(activatedToolNames)],
+			}),
+		});
+
+		await drainEvents(stream);
+
+		expect(mocks.upstreamCalls).toHaveLength(2);
+		const namesOf = (b: unknown) =>
+			((b as ChatCompletionRequest).tools ?? []).map((t) => t.function.name);
+		// Iteration 0 advertised ONLY search_tools — the deferred tool was hidden.
+		expect(namesOf(mocks.upstreamCalls[0])).toEqual(['search_tools']);
+		// Iteration 1 now carries the searched-up deferred tool's full definition.
+		expect(namesOf(mocks.upstreamCalls[1])).toContain('mcp__gh__create_issue');
+
+		// And the activation persisted on the search_tools result row, so a later
+		// turn's branch scan can re-load it (conversation-persistent loading).
+		const branch = walkActiveBranch(conv.id);
+		const toolMsg = branch.find((m) => m.role === 'tool')!;
+		const part = toolMsg.parts[0] as Extract<
+			import('$lib/types/api').MessagePart,
+			{ type: 'tool_result' }
+		>;
+		expect(part.activatedToolNames).toEqual(['mcp__gh__create_issue']);
 	});
 });
 
@@ -703,7 +809,7 @@ describe('per-endpoint concurrency gate', () => {
 		// Stop while queued: the relay abandons its place in line, never calls
 		// upstream, and closes without persisting an assistant row.
 		abort.abort();
-		const events = await drained;
+		await drained;
 		expect(mocks.upstreamCalls).toHaveLength(0);
 		expect(completed).toBe(true);
 		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user']);

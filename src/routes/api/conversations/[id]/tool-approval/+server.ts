@@ -25,9 +25,16 @@ import { getEndpoint } from '$lib/server/endpoints/registry';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { parseModelId } from '$lib/server/endpoints/model-id';
-import { openaiToolDefinitions } from '$lib/server/tools';
+import { openaiToolDefinitions, resolveActivatedToolDefs } from '$lib/server/tools';
+import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
+import {
+	appendToolSearchHint,
+	buildToolSearchRequestContext,
+	collectActivatedToolNames,
+	dedupeToolDefs,
+} from '$lib/server/chat/tool-search-context';
 import {
 	composePersonaSystemPrompt,
 	getUserPreferences,
@@ -195,19 +202,35 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const skillsCtx = buildSkillsRequestContext(userId, meta.disabledFeatures);
 	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
 
+	// Same deferred-tool wiring as the message-send handler: advertise
+	// search_tools + inject its hint, and seed the tools the model had already
+	// searched up before the pause so they survive the resume. Without this a
+	// turn that searched-then-paused would lose those tools on continuation.
+	const toolSearchCtx = await buildToolSearchRequestContext(userId, meta.disabledFeatures);
+	effectiveSystemPrompt = appendToolSearchHint(effectiveSystemPrompt, toolSearchCtx.hint);
+
 	const toolDefs = openaiToolDefinitions({ excludeCategories: meta.disabledFeatures });
 	toolDefs.push(...skillsCtx.toolDefs);
 	// Per-user MCP tools (see the message-send handler) — keep them on resume so
 	// a turn that called a per-user MCP tool before pausing for approval can
-	// still see it afterward.
+	// still see it afterward. (Also registers per-user deferred tools so the seed
+	// below can resolve them.)
 	toolDefs.push(
 		...(await buildUserMcpToolDefinitions(userId, { excludeCategories: meta.disabledFeatures })),
+	);
+	if (toolSearchCtx.def) toolDefs.push(toolSearchCtx.def);
+	toolDefs.push(
+		...resolveActivatedToolDefs(collectActivatedToolNames(walkActiveBranch(params.id)), {
+			excludeCategories: meta.disabledFeatures,
+		}),
 	);
 	const trustedSet = new Set(prefs?.trustedMcpTools ?? []);
 	const needsApproval = (toolName: string) =>
 		toolName.startsWith('mcp__') && !trustedSet.has(toolName);
 
-	const buildRequestBody = async (): Promise<ChatCompletionRequest> => {
+	const buildRequestBody = async ({
+		activatedToolNames = [],
+	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> => {
 		const nextBranch = walkActiveBranch(params.id);
 		const nextMessages = await serializeBranchForUpstream(
 			nextBranch,
@@ -220,8 +243,18 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			stream: true,
 			stream_options: { include_usage: true },
 		};
-		if (toolDefs.length > 0) {
-			requestBody.tools = toolDefs;
+		// Within-turn: promote tools searched up during this resumed turn.
+		const effectiveDefs =
+			activatedToolNames.length > 0
+				? dedupeToolDefs([
+						...toolDefs,
+						...resolveActivatedToolDefs(activatedToolNames, {
+							excludeCategories: meta.disabledFeatures,
+						}),
+					])
+				: toolDefs;
+		if (effectiveDefs.length > 0) {
+			requestBody.tools = effectiveDefs;
 			requestBody.tool_choice = 'auto';
 		}
 		if (meta.parameters?.temperature !== undefined) {
@@ -271,6 +304,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
 		disabledFeatures: meta.disabledFeatures,
+		maxToolLoopIterations: getMaxToolLoopIterations(),
 		rebuildRequestBody: buildRequestBody,
 		initialParentMessageId,
 	});

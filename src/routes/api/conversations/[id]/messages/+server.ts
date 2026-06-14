@@ -24,9 +24,16 @@ import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upst
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
-import { openaiToolDefinitions } from '$lib/server/tools';
+import { openaiToolDefinitions, resolveActivatedToolDefs } from '$lib/server/tools';
+import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
+import {
+	appendToolSearchHint,
+	buildToolSearchRequestContext,
+	collectActivatedToolNames,
+	dedupeToolDefs,
+} from '$lib/server/chat/tool-search-context';
 import {
 	composePersonaSystemPrompt,
 	getUserPreferences,
@@ -409,6 +416,22 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		: { catalog: null, toolDefs: [] };
 	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
 
+	// Block until MCP discovery finishes before we read the tool surface — both
+	// the search_tools hint (deferred-server counts) and the tool list below need
+	// an accurate picture, and a partially-populated surface would make the model
+	// refuse-to-use a tool later in the turn (flaky behavior). Resolved promise
+	// after the first call.
+	if (supportsTools) await awaitMcpReady();
+
+	// Deferred tool loading: when this user/conversation has servers configured
+	// `defer_tools`, advertise the `search_tools` built-in and inject a Tier-1
+	// hint into the system prompt. The hint must fold in BEFORE the branch is
+	// serialized below, so do it here alongside the skills catalog.
+	const toolSearchCtx = supportsTools
+		? await buildToolSearchRequestContext(locals.user.id, meta.disabledFeatures)
+		: { def: null, hint: null };
+	effectiveSystemPrompt = appendToolSearchHint(effectiveSystemPrompt, toolSearchCtx.hint);
+
 	// Explicit skill activation (the /skill-name composer command). Synthesize a
 	// real activate_skill tool exchange BEFORE the model generates, so the model
 	// receives the skill body exactly as a model-driven activation would. The
@@ -460,33 +483,43 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		messages: upstreamMessages,
 	};
 
-	// Block first request after a cold start until MCP discovery has
-	// finished — otherwise the model would see a partially-populated tool
-	// surface and refuse-to-use later in the turn would surface as flaky
-	// behavior. Subsequent calls hit a resolved promise immediately.
-	if (supportsTools) await awaitMcpReady();
 	// Per-conversation opt-outs filter out whole tool categories (e.g. 'web'
 	// closes both web_search and fetch_url so the model can't compose around
 	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category. The
 	// per-user skill activation tools are appended separately (they can't ride
 	// the static registry — their `name` enum is per-user) so activate_skill
 	// can be the only tool when skills are a user's sole enabled capability.
+	// Deferred (defer_tools) MCP tools are excluded here — surfaced via
+	// search_tools instead (below).
 	const toolDefs = supportsTools
 		? openaiToolDefinitions({ excludeCategories: meta.disabledFeatures })
 		: [];
 	toolDefs.push(...skillsCtx.toolDefs);
 	// Per-user MCP servers (auth='per_user') can't ride the static registry —
 	// their availability is per user. Append the caller's connected per-user
-	// tools, honoring the same per-conversation category opt-outs.
+	// tools, honoring the same per-conversation category opt-outs. (This also
+	// registers per-user deferred tools so the seed below can resolve them.)
 	if (supportsTools) {
 		toolDefs.push(
 			...(await buildUserMcpToolDefinitions(locals.user.id, {
 				excludeCategories: meta.disabledFeatures,
 			})),
 		);
+		// search_tools (only when deferred tools exist for this user/conversation).
+		if (toolSearchCtx.def) toolDefs.push(toolSearchCtx.def);
+		// Conversation-persistent loading: re-include the full definitions of any
+		// deferred tools the model searched up on earlier turns of this branch, so
+		// it needn't re-search. Category opt-out honored (a since-disabled server's
+		// tools are dropped). Within-turn activations are appended per-iteration by
+		// the rebuildRequestBody closure instead.
+		toolDefs.push(
+			...resolveActivatedToolDefs(collectActivatedToolNames(branch), {
+				excludeCategories: meta.disabledFeatures,
+			}),
+		);
 	}
 	if (toolDefs.length > 0) {
-		requestBody.tools = toolDefs;
+		requestBody.tools = dedupeToolDefs(toolDefs);
 		requestBody.tool_choice = 'auto';
 	}
 	// Materialized custom-model params, if any. Forward only the fields the
@@ -515,14 +548,31 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// advanced to the latest tool result, so re-walking the branch
 		// picks up the assistant's tool_calls + the tool messages
 		// without us having to track that state in the relay.
-		const rebuildRequestBody = async (): Promise<ChatCompletionRequest> => {
+		const rebuildRequestBody = async ({
+			activatedToolNames,
+		}: {
+			activatedToolNames: string[];
+		}): Promise<ChatCompletionRequest> => {
 			const nextBranch = walkActiveBranch(params.id);
 			const nextMessages = await serializeBranchForUpstream(
 				nextBranch,
 				(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
 				effectiveSystemPrompt,
 			);
-			return { ...requestBody, messages: nextMessages };
+			const next: ChatCompletionRequest = { ...requestBody, messages: nextMessages };
+			// Promote tools the model searched up this turn into tools[] so it can
+			// call them on the next iteration (within-turn activation). requestBody
+			// already carries the base set + the cross-turn seed, so we just append.
+			if (activatedToolNames.length > 0) {
+				const additions = resolveActivatedToolDefs(activatedToolNames, {
+					excludeCategories: meta.disabledFeatures,
+				});
+				if (additions.length > 0) {
+					next.tools = dedupeToolDefs([...(next.tools ?? []), ...additions]);
+					next.tool_choice = 'auto';
+				}
+			}
+			return next;
 		};
 
 		// Re-use the prefs loaded above to build the "always allow"
@@ -573,6 +623,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// in 'code_interpreter') can honor the conversation's
 			// disabled-features without a registry-level filter.
 			disabledFeatures: meta.disabledFeatures,
+			maxToolLoopIterations: getMaxToolLoopIterations(),
 			// Only enable the multi-iteration loop for endpoints whose
 			// models actually support tools. Endpoints without tools
 			// won't emit tool_calls anyway, but skipping the closure

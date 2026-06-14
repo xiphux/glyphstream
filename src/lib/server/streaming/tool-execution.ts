@@ -68,6 +68,11 @@ export interface ExecuteToolCallsResult {
 	 *  non-zero, the relay must halt rather than rebuilding the next
 	 *  upstream request body. */
 	pendingCount: number;
+	/** Union of tool names any completed tool made callable this iteration
+	 *  (today: `search_tools` matches). The relay accumulates these across the
+	 *  turn and re-includes their full definitions in the next iteration's
+	 *  `tools[]` so the model can call them. Empty for the common case. */
+	activatedToolNames: string[];
 }
 
 /**
@@ -90,7 +95,8 @@ export async function executeToolCalls(
 	const toolCallParts = params.assistantMessage.parts.filter(
 		(p): p is Extract<MessagePart, { type: 'tool_call' }> => p.type === 'tool_call',
 	);
-	if (toolCallParts.length === 0) return { toolMessages: [], pendingCount: 0 };
+	if (toolCallParts.length === 0)
+		return { toolMessages: [], pendingCount: 0, activatedToolNames: [] };
 
 	const signal = params.signal ?? new AbortController().signal;
 	const needsApproval = params.needsApproval ?? (() => false);
@@ -123,12 +129,16 @@ export async function executeToolCalls(
 	// tool-call order). The next iteration's upstream call parents to
 	// that same active_leaf when the loop continues.
 	const toolMessages: ChatMessage[] = [];
+	const activatedToolNames: string[] = [];
 	let pendingCount = 0;
 	for (const entry of settled) {
 		const part = entry.part;
 		// Pending rows carry `status: 'pending_approval'` + empty result;
 		// completed rows omit the status field to stay byte-identical with
 		// the pre-approval shape (read defenses default absent → completed).
+		// A completed search_tools result also persists `activatedToolNames` so
+		// a later turn's branch scan can re-load those tools (conversation-
+		// persistent loading).
 		const partPayload: Extract<MessagePart, { type: 'tool_result' }> =
 			entry.kind === 'pending'
 				? {
@@ -142,8 +152,14 @@ export async function executeToolCalls(
 						toolCallId: part.toolCallId,
 						result: entry.execution.content,
 						...(entry.execution.isError ? { isError: true } : {}),
+						...(entry.execution.activatedToolNames?.length
+							? { activatedToolNames: entry.execution.activatedToolNames }
+							: {}),
 					};
 		if (entry.kind === 'pending') pendingCount++;
+		if (entry.kind === 'completed' && entry.execution.activatedToolNames?.length) {
+			activatedToolNames.push(...entry.execution.activatedToolNames);
+		}
 		const toolMsg = appendMessage({
 			conversationId: params.conversationId,
 			parentMessageId: params.assistantMessage.id,
@@ -201,7 +217,7 @@ export async function executeToolCalls(
 		setActiveLeafMessageId(params.conversationId, toolMessages[toolMessages.length - 1].id);
 	}
 
-	return { toolMessages, pendingCount };
+	return { toolMessages, pendingCount, activatedToolNames };
 }
 
 interface SettledToolExecution {

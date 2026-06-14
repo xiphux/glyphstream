@@ -68,6 +68,52 @@ url = "https://mcp.linear.app/mcp"
 		});
 	});
 
+	it('defaults defer_tools to false', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "fs"
+transport = "stdio"
+command = "npx"
+		`);
+		expect(loadMcpServers(path)[0].deferTools).toBe(false);
+	});
+
+	it('parses defer_tools = true', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "github"
+transport = "http"
+url = "https://api.githubcopilot.com/mcp/"
+defer_tools = true
+		`);
+		expect(loadMcpServers(path)[0].deferTools).toBe(true);
+	});
+
+	it('rejects a non-boolean defer_tools', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "github"
+transport = "http"
+url = "https://x/mcp"
+defer_tools = "yes"
+		`);
+		expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+	});
+
+	it('allows defer_tools alongside auth = "per_user"', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "email"
+transport = "http"
+url = "https://api.fastmail.com/mcp"
+auth = "per_user"
+defer_tools = true
+		`);
+		const s = loadMcpServers(path)[0];
+		expect(s.deferTools).toBe(true);
+		expect(s.auth).toBe('per_user');
+	});
+
 	it('uses display_name when provided', () => {
 		const path = writeConfig(`
 [[mcp_servers]]

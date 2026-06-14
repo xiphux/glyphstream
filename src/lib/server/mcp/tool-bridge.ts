@@ -1,4 +1,4 @@
-import type { OpenAIToolDefinition, Tool, ToolExecution } from '../tools/types';
+import type { DeferredToolEntry, OpenAIToolDefinition, Tool, ToolExecution } from '../tools/types';
 import { register } from '../tools/registry';
 import {
 	callMcpTool,
@@ -66,6 +66,11 @@ export function mcpToolFor(
 		metadata: {
 			displayLabel: mcpTool.name,
 			category: categoryName,
+			// Servers flagged `defer_tools` are hidden from the default
+			// advertisement and surfaced only via `search_tools`. Global deferred
+			// tools stay resolvable + enumerable (no isAvailable override below);
+			// per-user deferred tools are additionally `isAvailable:false`.
+			...(server.deferTools ? { deferred: true } : {}),
 		},
 		// Per-user tools are never advertised via the static registry
 		// (`isAvailable: false`) — availability is per-user, so the message /
@@ -194,8 +199,48 @@ export async function buildUserMcpToolDefinitions(
 		for (const t of s.tools) {
 			const tool = mcpToolFor(cfg, t, { perUser: true });
 			register(tool); // ensure execution can resolve it via registry.get(name)
-			defs.push(tool.definition);
+			// Deferred per-user tools are registered (so execution + a later
+			// activation can resolve them) but NOT advertised — they surface via
+			// search_tools / buildUserDeferredToolCatalog instead.
+			if (!cfg.deferTools) defs.push(tool.definition);
 		}
 	}
 	return defs;
+}
+
+/**
+ * Build the searchable catalog of the caller's connected PER-USER deferred
+ * tools — the per-user counterpart of the static `deferredToolCatalog()` (which
+ * only sees global deferred tools, since per-user tools carry
+ * `isAvailable:false`). Registers each tool as a side effect (so the relay's
+ * `resolveActivatedToolDefs` / `registry.get(name)` can resolve it for
+ * activation + execution), mirroring `buildUserMcpToolDefinitions`. Honors the
+ * same per-conversation `excludeCategories` opt-out.
+ *
+ * Append the result to the global `deferredToolCatalog()` output when building
+ * the catalog `search_tools` searches over.
+ */
+export async function buildUserDeferredToolCatalog(
+	userId: string,
+	opts: { excludeCategories?: readonly string[] } = {},
+): Promise<DeferredToolEntry[]> {
+	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
+	const states = await getUserServerStates(userId);
+	const entries: DeferredToolEntry[] = [];
+	for (const s of states) {
+		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
+		const cfg = getMcpServerCfg(s.id);
+		if (!cfg || !cfg.deferTools) continue;
+		if (exclude?.has(`mcp:${s.id}`)) continue;
+		for (const t of s.tools) {
+			const tool = mcpToolFor(cfg, t, { perUser: true });
+			register(tool); // resolvable for activation + execution
+			entries.push({
+				name: tool.definition.function.name,
+				description: tool.definition.function.description,
+				category: tool.metadata?.category,
+			});
+		}
+	}
+	return entries;
 }

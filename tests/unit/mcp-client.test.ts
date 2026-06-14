@@ -64,6 +64,7 @@ function httpCfg(): LoadedHttpMcpServer {
 		apiKey: 'tok',
 		timeoutSeconds: 30,
 		idleTimeoutSeconds: 0,
+		deferTools: false,
 	};
 }
 
@@ -78,6 +79,7 @@ function stdioCfg(): LoadedStdioMcpServer {
 		env: {},
 		timeoutSeconds: 30,
 		idleTimeoutSeconds: 900,
+		deferTools: false,
 	};
 }
 

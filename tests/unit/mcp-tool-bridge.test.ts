@@ -27,6 +27,7 @@ const FAKE_SERVER: LoadedMcpServer = {
 	env: {},
 	timeoutSeconds: 30,
 	idleTimeoutSeconds: 900,
+	deferTools: false,
 };
 
 beforeEach(() => {
@@ -176,5 +177,35 @@ describe('mcpToolFor execute()', () => {
 			inputSchema: { type: 'object' },
 		});
 		expect(tool.definition.function.description).toContain('Filesystem');
+	});
+
+	it('leaves metadata.deferred unset for a non-deferred server', () => {
+		const tool = mcpToolFor(FAKE_SERVER, {
+			name: 'read_file',
+			description: 'Read a file',
+			inputSchema: { type: 'object' },
+		});
+		expect(tool.metadata?.deferred).toBeUndefined();
+	});
+
+	it('sets metadata.deferred for a defer_tools server, without an isAvailable override (global)', () => {
+		const tool = mcpToolFor(
+			{ ...FAKE_SERVER, deferTools: true },
+			{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } },
+		);
+		expect(tool.metadata?.deferred).toBe(true);
+		// Global deferred tools stay resolvable + enumerable; only per-user ones
+		// get isAvailable:false.
+		expect(tool.isAvailable).toBeUndefined();
+	});
+
+	it('a per-user deferred tool is both deferred and isAvailable:false', () => {
+		const tool = mcpToolFor(
+			{ ...FAKE_SERVER, transport: 'http', url: 'https://x', apiKey: null, deferTools: true },
+			{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } },
+			{ perUser: true },
+		);
+		expect(tool.metadata?.deferred).toBe(true);
+		expect(tool.isAvailable?.()).toBe(false);
 	});
 });

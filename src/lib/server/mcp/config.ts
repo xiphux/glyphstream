@@ -24,6 +24,7 @@ interface RawMcpServer {
 	env_from?: unknown;
 	url?: unknown;
 	api_key_env?: unknown;
+	defer_tools?: unknown;
 }
 
 /**
@@ -49,6 +50,14 @@ interface LoadedMcpServerCommon {
 	 * 0 disables reaping. Ignored for http (always 0).
 	 */
 	idleTimeoutSeconds: number;
+	/**
+	 * When true, this server's tools are hidden from the default `tools[]`
+	 * advertisement and surfaced only via the `search_tools` built-in. Trades a
+	 * search round-trip for not spending context on every request — meant for
+	 * high-tool-count servers (e.g. GitHub MCP) on small-context local models.
+	 * Default false.
+	 */
+	deferTools: boolean;
 }
 
 export interface LoadedStdioMcpServer extends LoadedMcpServerCommon {
@@ -164,12 +173,16 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 	}
 	const auth = authStr as McpAuthMode;
 
+	const deferTools =
+		raw.defer_tools === undefined ? false : requireBoolean(raw.defer_tools, 'defer_tools', at);
+
 	const common: LoadedMcpServerCommon = {
 		id,
 		displayName,
 		auth,
 		timeoutSeconds,
 		idleTimeoutSeconds,
+		deferTools,
 	};
 
 	if (transport === 'stdio') {
@@ -243,6 +256,13 @@ function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
 function requireString(v: unknown, field: string, at: string): string {
 	if (typeof v !== 'string' || v.length === 0) {
 		throw new McpConfigError(`${at}: required field '${field}' must be a non-empty string`);
+	}
+	return v;
+}
+
+function requireBoolean(v: unknown, field: string, at: string): boolean {
+	if (typeof v !== 'boolean') {
+		throw new McpConfigError(`${at}: '${field}' must be a boolean (true or false)`);
 	}
 	return v;
 }

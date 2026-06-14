@@ -215,6 +215,49 @@ export function loadTaskModel(path = configPath()): string | null {
 	return raw;
 }
 
+/** Default hard cap on upstream round-trips within a single turn's tool loop. */
+export const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
+
+/**
+ * Read `[tools] max_tool_loop_iterations` — the hard cap on upstream
+ * round-trips in one turn's tool loop (a runaway-`tool_calls` backstop, not a
+ * normal limit). Bumped from the original 5 because deferred-tool search adds a
+ * round-trip (search, then call). Defaults to {@link DEFAULT_MAX_TOOL_LOOP_ITERATIONS};
+ * must be a positive integer.
+ */
+export function loadMaxToolLoopIterations(path = configPath()): number {
+	const { parsed, absolutePath } = readAndParse(path);
+	const tools = parsed.tools;
+	if (tools === undefined || tools === null) return DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
+	if (typeof tools !== 'object' || Array.isArray(tools)) {
+		throw new ConfigError(`'[tools]' in ${absolutePath} must be a TOML table`);
+	}
+	const raw = (tools as Record<string, unknown>).max_tool_loop_iterations;
+	if (raw === undefined || raw === null) return DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
+	if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+		throw new ConfigError(
+			`'[tools] max_tool_loop_iterations' in ${absolutePath} must be a positive integer`,
+		);
+	}
+	return raw;
+}
+
+let maxToolLoopIterationsCache: number | undefined;
+
+/** Memoized {@link loadMaxToolLoopIterations} for the per-request hot path
+ *  (config.toml doesn't change at runtime). */
+export function getMaxToolLoopIterations(): number {
+	if (maxToolLoopIterationsCache === undefined) {
+		maxToolLoopIterationsCache = loadMaxToolLoopIterations();
+	}
+	return maxToolLoopIterationsCache;
+}
+
+/** Test hook: clear the memoized iteration cap so the next call re-reads. */
+export function _resetMaxToolLoopIterationsCacheForTests(): void {
+	maxToolLoopIterationsCache = undefined;
+}
+
 /**
  * Read the top-level `[search]` block from config.toml, if present.
  * Backs the `web_search` tool. Returns null when the section is absent,

@@ -52,10 +52,12 @@ import { CODE_ARG_TOOLS } from '$lib/chat-render';
 // after `done` has already settled the in-flight UI on the client.
 const TITLE_DELIVERY_BUDGET_MS = 20_000;
 
-/** Hard safety bound on tool-loop iterations. Higher than realistic
- *  reasoning chains; low enough that a runaway model can't pin the
- *  endpoint. Hit-the-bound surfaces as a user-visible error. */
-const MAX_TOOL_LOOP_ITERATIONS = 5;
+/** Hard safety bound on tool-loop iterations when the caller doesn't specify
+ *  one. Higher than realistic reasoning chains; low enough that a runaway model
+ *  can't pin the endpoint. Hit-the-bound surfaces as a user-visible error.
+ *  Overridable per turn via RelayParams.maxToolLoopIterations (config-driven in
+ *  the route handlers); kept here so the relay has no config dependency. */
+const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
 
 const DEBUG = logLevel() === 'debug';
 
@@ -137,8 +139,16 @@ export interface RelayParams {
 	 * route-handler concerns. When omitted, the relay runs at most
 	 * one upstream iteration even if the model emits tool_calls
 	 * (tools execute, results persist, the turn ends).
+	 *
+	 * `activatedToolNames` carries the deferred tools the model has searched
+	 * up so far this turn (via `search_tools`); the closure resolves them to
+	 * full definitions and appends them to `tools[]` so they're callable on the
+	 * next iteration. The relay owns this turn state but NOT tool assembly —
+	 * which lives in the route closure alongside the system prompt, per-user
+	 * MCP, skills, and category filters — so it passes the set in rather than
+	 * rebuilding `tools[]` itself.
 	 */
-	rebuildRequestBody?: () => Promise<ChatCompletionRequest>;
+	rebuildRequestBody?: (opts: { activatedToolNames: string[] }) => Promise<ChatCompletionRequest>;
 	/**
 	 * Predicate forwarded to executeToolCalls so MCP tools the user
 	 * hasn't granted "always allow" pause the turn for an explicit
@@ -157,6 +167,13 @@ export interface RelayParams {
 	 * time.
 	 */
 	disabledFeatures?: readonly import('$lib/types/api').FeatureCategory[];
+	/**
+	 * Hard cap on tool-loop iterations for this turn. The route handlers pass
+	 * the config-driven value (`[tools] max_tool_loop_iterations`); omitted →
+	 * `DEFAULT_MAX_TOOL_LOOP_ITERATIONS`. Passed in (not read here) to keep the
+	 * relay free of config I/O and tests deterministic.
+	 */
+	maxToolLoopIterations?: number;
 	/**
 	 * Override for iteration 0's parent message. For the standard
 	 * messages POST this stays undefined and the relay parents the
@@ -293,9 +310,15 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 	let stoppedFinal = false;
 	let currentRequestBody = params.requestBody;
 	let parentMessageId = params.initialParentMessageId ?? params.userMessage.id;
+	const maxIterations = params.maxToolLoopIterations ?? DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
+	// Deferred tools the model searches up this turn, accumulated so each
+	// rebuild re-includes ALL of them (a tool found in iteration 1 stays in
+	// tools[] for iterations 2..N). Persisted on the search_tools result rows
+	// too, so the next turn's branch scan seeds them again.
+	const activatedTools = new Set<string>();
 
 	try {
-		for (let iter = 0; iter < MAX_TOOL_LOOP_ITERATIONS; iter++) {
+		for (let iter = 0; iter < maxIterations; iter++) {
 			if (params.abortSignal?.aborted) {
 				stoppedFinal = true;
 				break;
@@ -332,7 +355,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			// Execute tools. The persisted role:'tool' children become the
 			// new active leaf — that's where the next iteration's upstream
 			// call gets parented.
-			const { toolMessages, pendingCount } = await executeToolCalls({
+			const { toolMessages, pendingCount, activatedToolNames } = await executeToolCalls({
 				assistantMessage: iterationResult.assistantMessage,
 				conversationId: params.conversationId,
 				userId: params.userId,
@@ -341,6 +364,7 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 				emit: write,
 				needsApproval: params.needsApproval,
 			});
+			for (const name of activatedToolNames) activatedTools.add(name);
 			parentMessageId =
 				toolMessages.length > 0
 					? toolMessages[toolMessages.length - 1].id
@@ -358,16 +382,18 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 			// Safety: if we've just executed tools on the LAST allowed
 			// iteration, surface an error rather than silently truncating
 			// the model's response.
-			if (iter === MAX_TOOL_LOOP_ITERATIONS - 1) {
+			if (iter === maxIterations - 1) {
 				write({
 					type: 'error',
-					message: `Tool loop exceeded the safety bound (${MAX_TOOL_LOOP_ITERATIONS} iterations). The model kept emitting tool_calls; results are persisted but the conversation may be incomplete.`,
+					message: `Tool loop exceeded the safety bound (${maxIterations} iterations). The model kept emitting tool_calls; results are persisted but the conversation may be incomplete.`,
 				});
 				break;
 			}
 
 			try {
-				currentRequestBody = await params.rebuildRequestBody();
+				currentRequestBody = await params.rebuildRequestBody({
+					activatedToolNames: [...activatedTools],
+				});
 			} catch (e) {
 				write({
 					type: 'error',

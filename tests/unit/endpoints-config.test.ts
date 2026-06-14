@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	ConfigError,
+	DEFAULT_MAX_TOOL_LOOP_ITERATIONS,
 	loadEmbeddingsConfig,
 	loadEndpoints,
+	loadMaxToolLoopIterations,
 	loadNotificationsConfig,
 	loadSearchConfig,
 } from '$lib/server/endpoints/config';
@@ -532,5 +534,38 @@ timeout_seconds = 0
 	it('rejects a non-table [embeddings] entry', () => {
 		const path = writeConfig(`embeddings = "nope"`);
 		expect(() => loadEmbeddingsConfig(path)).toThrow(ConfigError);
+	});
+});
+
+describe('loadMaxToolLoopIterations', () => {
+	it('defaults when [tools] is absent', () => {
+		const path = writeConfig(`task_model = "e::m"`);
+		expect(loadMaxToolLoopIterations(path)).toBe(DEFAULT_MAX_TOOL_LOOP_ITERATIONS);
+	});
+
+	it('defaults when [tools] omits max_tool_loop_iterations', () => {
+		const path = writeConfig(`[tools]\n`);
+		expect(loadMaxToolLoopIterations(path)).toBe(DEFAULT_MAX_TOOL_LOOP_ITERATIONS);
+	});
+
+	it('reads an explicit positive integer', () => {
+		const path = writeConfig(`[tools]\nmax_tool_loop_iterations = 12`);
+		expect(loadMaxToolLoopIterations(path)).toBe(12);
+	});
+
+	it('rejects a non-integer / non-positive value', () => {
+		expect(() =>
+			loadMaxToolLoopIterations(writeConfig(`[tools]\nmax_tool_loop_iterations = 0`)),
+		).toThrow(ConfigError);
+		expect(() =>
+			loadMaxToolLoopIterations(writeConfig(`[tools]\nmax_tool_loop_iterations = 2.5`)),
+		).toThrow(ConfigError);
+		expect(() =>
+			loadMaxToolLoopIterations(writeConfig(`[tools]\nmax_tool_loop_iterations = "lots"`)),
+		).toThrow(ConfigError);
+	});
+
+	it('rejects a non-table [tools] entry', () => {
+		expect(() => loadMaxToolLoopIterations(writeConfig(`tools = "nope"`))).toThrow(ConfigError);
 	});
 });

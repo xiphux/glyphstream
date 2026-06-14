@@ -239,6 +239,45 @@ describe('executeToolCalls', () => {
 		});
 	});
 
+	it('aggregates activatedToolNames from completed tools and persists them on the part', async () => {
+		register(
+			mkTool('search_tools', () => ({
+				content: 'found',
+				activatedToolNames: ['mcp__gh__create_issue', 'mcp__gh__view_issue'],
+			})),
+		);
+		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'search_tools', arguments: '{"query":"x"}' },
+		]);
+		const { toolMessages, activatedToolNames } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			emit: () => {},
+		});
+		expect(activatedToolNames).toEqual(['mcp__gh__create_issue', 'mcp__gh__view_issue']);
+		// Persisted on the tool_result part so the next turn's branch scan finds it.
+		const persisted = getMessage(conversationId, toolMessages[0].id)!;
+		const part = persisted.parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
+		expect(part.activatedToolNames).toEqual(['mcp__gh__create_issue', 'mcp__gh__view_issue']);
+	});
+
+	it('omits activatedToolNames on the part for tools that do not surface tools', async () => {
+		register(mkTool('echo', () => ({ content: 'ok' })));
+		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'c1', toolName: 'echo', arguments: '{}' },
+		]);
+		const { toolMessages, activatedToolNames } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			emit: () => {},
+		});
+		expect(activatedToolNames).toEqual([]);
+		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
+		expect('activatedToolNames' in part).toBe(false);
+	});
+
 	it('returns an empty array when the assistant has no tool_call parts', async () => {
 		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([]);
 		const events: StreamEvent[] = [];

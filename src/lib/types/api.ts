@@ -279,6 +279,14 @@ export type MessagePart =
 			 * fills it in and flips the status.
 			 */
 			status?: 'pending_approval' | 'completed';
+			/**
+			 * Tool names a `search_tools` call made callable. Persisted here so
+			 * the next turn's branch scan (`collectActivatedToolNames`) can
+			 * re-load them into `tools[]` — this is what makes tool loading
+			 * conversation-persistent rather than per-turn. Absent on all other
+			 * tool results and on rows that pre-date the feature.
+			 */
+			activatedToolNames?: string[];
 	  };
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
