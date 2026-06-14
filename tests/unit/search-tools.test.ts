@@ -31,7 +31,11 @@ vi.mock('$lib/server/mcp/tool-bridge', () => ({
 // tool-search-context's only mcp/registry surface.
 vi.mock('$lib/server/mcp/registry', () => mcpRegistryMock);
 
-import { searchToolsTool } from '$lib/server/tools/search-tools';
+import {
+	searchToolsTool,
+	toolSearchEmbeddingConfig,
+	TOOL_SEARCH_EMBED_TIMEOUT_SECONDS,
+} from '$lib/server/tools/search-tools';
 import { _resetEmbeddingsConfigCacheForTests } from '$lib/server/retrieval/embeddings-config';
 import {
 	appendToolSearchHint,
@@ -187,6 +191,35 @@ describe('buildToolSearchRequestContext', () => {
 		const r = await buildToolSearchRequestContext('u1', []);
 		expect(r.def?.function.name).toBe('search_tools');
 		expect(r.hint).toContain('Mail (3 tools)');
+	});
+});
+
+describe('toolSearchEmbeddingConfig', () => {
+	const embCfg = (timeoutSeconds: number) => ({
+		endpointId: 'e',
+		modelId: 'm',
+		timeoutSeconds,
+		queryPrefix: '',
+		documentPrefix: '',
+		maxInputTokens: 512,
+	});
+	const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null };
+
+	it('returns undefined when embeddings are not configured (BM25-only)', () => {
+		loadEmbeddingsConfigMock.mockReturnValue(null);
+		expect(toolSearchEmbeddingConfig()).toBeUndefined();
+	});
+
+	it('caps the embed timeout so a slow/down endpoint falls back to BM25 fast', () => {
+		loadEmbeddingsConfigMock.mockReturnValue(embCfg(30));
+		getEndpointMock.mockReturnValue(fakeEndpoint);
+		expect(toolSearchEmbeddingConfig()?.timeoutSeconds).toBe(TOOL_SEARCH_EMBED_TIMEOUT_SECONDS);
+	});
+
+	it('respects a configured timeout shorter than the cap', () => {
+		loadEmbeddingsConfigMock.mockReturnValue(embCfg(2));
+		getEndpointMock.mockReturnValue(fakeEndpoint);
+		expect(toolSearchEmbeddingConfig()?.timeoutSeconds).toBe(2);
 	});
 });
 

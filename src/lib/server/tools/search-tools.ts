@@ -28,10 +28,37 @@ import type {
 import { buildUserDeferredToolCatalog } from '../mcp/tool-bridge';
 import { searchToolCatalog } from '../retrieval/tool-search';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
+import type { RelevanceConfig } from '../retrieval/embed-rank';
 
 /** How many matches a single search returns + activates. Bounded so an
  *  over-broad query can't reload the whole catalog. */
 export const SEARCH_TOOLS_TOP_K = 5;
+
+/**
+ * Cap on how long the SEMANTIC leg may take before tool search gives up and
+ * returns BM25-only results. The dense leg is best-effort here: the catalog is
+ * tiny (a warm embed is sub-second) and BM25 over namespaced tool names is
+ * already a strong baseline, so a slow/cold/overloaded embeddings endpoint
+ * shouldn't make the user wait. Much shorter than the 30s `[embeddings]` default
+ * (right for fetch_url's large page batches, wrong for an interactive lookup).
+ * Applied as a min with the configured timeout, so lowering `timeout_seconds`
+ * also lowers this.
+ */
+export const TOOL_SEARCH_EMBED_TIMEOUT_SECONDS = 5;
+
+/**
+ * The embeddings RelevanceConfig for tool search — the shared resolver's, with
+ * the timeout capped (see {@link TOOL_SEARCH_EMBED_TIMEOUT_SECONDS}). Undefined
+ * when embeddings aren't configured (search runs BM25-only). Exported for tests.
+ */
+export function toolSearchEmbeddingConfig(): RelevanceConfig | undefined {
+	const cfg = resolveRelevanceConfig();
+	if (!cfg) return undefined;
+	return {
+		...cfg,
+		timeoutSeconds: Math.min(cfg.timeoutSeconds, TOOL_SEARCH_EMBED_TIMEOUT_SECONDS),
+	};
+}
 
 const SEARCH_TOOLS_DESCRIPTION =
 	'Find additional tools that are not currently loaded. To save context, some tools are hidden until needed. Write a SHORT natural-language query describing the capability you need (e.g. "create a github issue", "send a slack message") — not the user\'s whole request. Returns up to ' +
@@ -109,7 +136,7 @@ export const searchToolsTool: Tool = {
 		const ranked = await searchToolCatalog(
 			parsed.query,
 			catalog,
-			resolveRelevanceConfig(),
+			toolSearchEmbeddingConfig(),
 			ctx.signal,
 		);
 		const top = ranked.slice(0, SEARCH_TOOLS_TOP_K);

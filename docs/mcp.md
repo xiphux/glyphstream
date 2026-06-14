@@ -152,9 +152,13 @@ GlyphStream ranks the deferred catalog and returns the top few matches, which
 become callable in the same turn. Ranking is **hybrid** — keyword (BM25) always,
 fused with **semantic** similarity when an
 [`[embeddings]`](web-search.md#the-embeddings-block) block is configured (it
-degrades to keyword-only otherwise). The system prompt carries
-a one-line hint listing the deferred servers and their tool counts so the model
-knows what's searchable without paying the per-tool cost.
+degrades to keyword-only otherwise). The semantic leg is best-effort and runs on
+a short timeout (~5s): if the embeddings endpoint is slow, cold, or down, the
+search falls back to BM25 rather than making you wait — so a flaky embeddings
+server never blocks a lookup (BM25 over namespaced tool names is already a strong
+baseline). The system prompt carries a one-line hint listing the deferred servers
+and their tool counts so the model knows what's searchable without paying the
+per-tool cost.
 
 A tool the model searches up **stays loaded for the rest of the conversation**
 (recovered by scanning the active branch), so it doesn't re-search every turn.
