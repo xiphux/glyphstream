@@ -17,24 +17,14 @@
  * unbounded number of embedding inputs.
  */
 
-import type { LoadedEndpoint } from '../endpoints/config';
-import { embeddings } from '../endpoints/client';
-import { composeSignals } from '../util/abort';
 import { bm25Rank, type ScoredChunk } from './bm25';
-import { cosineRank, type Vec } from './vector';
+import { embedAndRank, type RelevanceConfig } from './embed-rank';
 import type { Chunk } from './chunker';
 
-export interface RelevanceConfig {
-	endpoint: LoadedEndpoint;
-	modelId: string;
-	timeoutSeconds: number;
-	embedCap: number;
-	/** Task prefixes for the query and each document (default ''). */
-	queryPrefix: string;
-	documentPrefix: string;
-	/** Model max input sequence length (tokens); drives per-input truncation. */
-	maxInputTokens: number;
-}
+// Re-exported so existing importers (`fetch-url.ts`, tests) keep their
+// `from '../retrieval/select'` paths; the type now lives in embed-rank.ts
+// alongside the dense-ranking it parameterizes.
+export type { RelevanceConfig };
 
 export interface SelectResult {
 	content: string;
@@ -47,23 +37,9 @@ export const RRF_K = 60;
 // How many BM25-top candidates get embedded. The BM25 prefilter already
 // narrows to the strongest lexical matches, so a few dozen is plenty to
 // rerank into the ~10-12 chunks that fit the output budget — and it bounds
-// embedding cost on large pages.
+// embedding cost on large pages. (The per-input truncation + request batching
+// that keeps embedding backends happy lives in embed-rank.ts.)
 export const EMBED_CAP = 64;
-
-// Embedding backends (notably llama-server) cap both per-input length and the
-// per-request batch: an input over the model's max sequence length 500s, and
-// large batches drop the connection. So we truncate each input (to a char
-// budget derived from the configured maxInputTokens) and split candidates
-// across several modestly-sized requests. The batch ceilings are conservative
-// to work across backends; on a roomier server they just mean a few extra
-// requests.
-//
-// Chars-per-token is deliberately a low estimate so the char cap UNDER-fills
-// the token limit (English averages ~4; under-estimating keeps us clear of a
-// 500 on token-dense inputs).
-const CHARS_PER_TOKEN = 3.5;
-const EMBED_BATCH_MAX_ITEMS = 8;
-const EMBED_BATCH_MAX_CHARS = 12000;
 
 export async function selectRelevant(
 	chunks: Chunk[],
@@ -85,7 +61,12 @@ export async function selectRelevant(
 			chunks.length > embedding.embedCap
 				? bm25.slice(0, embedding.embedCap).map((sc) => chunks[sc.index])
 				: chunks;
-		const dense = await denseRanking(query, candidates, embedding, signal);
+		const dense = await embedAndRank(
+			query,
+			candidates.map((c) => c.text),
+			embedding,
+			signal,
+		);
 		if (dense) {
 			ranking = fuseRrf(chunks, bm25, dense, candidates, embedding.embedCap);
 		}
@@ -94,83 +75,6 @@ export async function selectRelevant(
 	const selected = packToBudget(chunks, ranking, budgetChars);
 	selected.sort((a, b) => a.blockIndex - b.blockIndex);
 	return { content: render(selected), mode: 'relevance' };
-}
-
-/**
- * Embed [query, ...candidates] across one or more batched HTTP calls and rank
- * candidates by cosine to the query. Returns ScoredChunk indices relative to
- * `candidates`, or null on any failure (caller degrades to BM25).
- */
-async function denseRanking(
-	query: string,
-	candidates: Chunk[],
-	cfg: RelevanceConfig,
-	signal: AbortSignal,
-): Promise<ScoredChunk[] | null> {
-	try {
-		// Apply task prefixes (e.g. nomic/e5 "search_query:"/"search_document:")
-		// and cap each input so it stays under the model's max sequence length.
-		const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
-		const inputs = [
-			cfg.queryPrefix + truncate(query, inputCap),
-			...candidates.map((c) => cfg.documentPrefix + truncate(c.text, inputCap)),
-		];
-
-		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
-		const batches = batchInputs(inputs, EMBED_BATCH_MAX_ITEMS, EMBED_BATCH_MAX_CHARS);
-		const responses = await Promise.all(
-			batches.map((input) => embeddings(cfg.endpoint, { model: cfg.modelId, input }, sig)),
-		);
-
-		// Reassemble vectors in global input order: batches are issued in order
-		// and Promise.all preserves it; within each, sort by the response index.
-		const vecs: number[][] = [];
-		responses.forEach((resp, b) => {
-			const data = resp.data;
-			if (!Array.isArray(data) || data.length !== batches[b].length) {
-				throw new Error(
-					`batch ${b}: expected ${batches[b].length} embeddings, got ${data?.length ?? 0}`,
-				);
-			}
-			[...data]
-				.sort((x, y) => (x.index ?? 0) - (y.index ?? 0))
-				.forEach((d) => vecs.push(d.embedding as number[]));
-		});
-
-		if (vecs.length !== inputs.length) {
-			throw new Error(`expected ${inputs.length} embeddings, got ${vecs.length}`);
-		}
-		const dim = vecs[0]?.length ?? 0;
-		if (dim === 0 || vecs.some((v) => !Array.isArray(v) || v.length !== dim)) {
-			throw new Error('missing or non-uniform embedding dimensions');
-		}
-		return cosineRank(vecs[0] as Vec, vecs.slice(1) as Vec[]);
-	} catch (e) {
-		console.warn('[retrieval] embedding retrieval failed, falling back to BM25:', e);
-		return null;
-	}
-}
-
-function truncate(s: string, maxChars: number): string {
-	return s.length <= maxChars ? s : s.slice(0, maxChars);
-}
-
-/** Split inputs into requests bounded by item count and total chars. */
-function batchInputs(inputs: string[], maxItems: number, maxChars: number): string[][] {
-	const batches: string[][] = [];
-	let current: string[] = [];
-	let chars = 0;
-	for (const s of inputs) {
-		if (current.length > 0 && (current.length >= maxItems || chars + s.length > maxChars)) {
-			batches.push(current);
-			current = [];
-			chars = 0;
-		}
-		current.push(s);
-		chars += s.length;
-	}
-	if (current.length > 0) batches.push(current);
-	return batches;
 }
 
 /** Fuse BM25 + dense rankings via RRF over the full chunk set. */
