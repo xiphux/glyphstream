@@ -124,6 +124,56 @@ constrained to lowercase alphanumeric + dash; tool names are sanitized to
 fit OpenAI's `[a-zA-Z0-9_-]{1,64}` spec if the upstream advertises anything
 exotic.
 
+## Deferred tools (tool search)
+
+Every enabled tool's full definition — name, description, and complete
+JSON-Schema parameters — is sent on **every** request. A server with many tools
+(the GitHub MCP advertises ~45) can spend tens of thousands of tokens on
+definitions a given turn never uses. On the small-context local models this
+project targets — often pinned well under 100k tokens by VRAM — that alone can
+crowd out the conversation.
+
+Set `defer_tools = true` on a server to hide its tools from the default tool
+list:
+
+```toml
+[[mcp_servers]]
+id = "github"
+display_name = "GitHub"
+transport = "http"
+url = "https://api.githubcopilot.com/mcp/"
+api_key_env = "GITHUB_MCP_KEY"
+defer_tools = true   # optional; default false
+```
+
+The model then discovers them on demand through a built-in **`search_tools`**
+tool: it writes a short capability query (e.g. "create a github issue"), and
+GlyphStream ranks the deferred catalog and returns the top few matches, which
+become callable in the same turn. Ranking is **hybrid** — keyword (BM25) always,
+fused with **semantic** similarity when an
+[`[embeddings]`](web-search.md#the-embeddings-block) block is configured (it
+degrades to keyword-only otherwise). The system prompt carries
+a one-line hint listing the deferred servers and their tool counts so the model
+knows what's searchable without paying the per-tool cost.
+
+A tool the model searches up **stays loaded for the rest of the conversation**
+(recovered by scanning the active branch), so it doesn't re-search every turn.
+Switching to a different message branch scopes this naturally — only the tools
+that branch activated come back. Deferred tools still honor the per-conversation
+`mcp:<id>` toggle: disable a server for a chat and it disappears from the catalog
+(and any already-loaded tools drop) for that chat.
+
+Because tool search adds a round-trip (search, then call), the per-turn tool-loop
+cap is **8** by default (up from the original 5). Tune it with:
+
+```toml
+[tools]
+max_tool_loop_iterations = 8   # optional; positive integer
+```
+
+Off by default and worth turning on only for high-tool-count servers — for a
+server with a handful of tools, the search round-trip costs more than it saves.
+
 ## Deferred for later
 
 Servers are admin-defined in `config.toml`, and the per-user auth that shipped

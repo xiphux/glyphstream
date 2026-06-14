@@ -31,6 +31,17 @@
 #
 # task_model = "groq::llama-3.1-8b-instant"
 
+# ── Optional: [tools] ────────────────────────────────────────────────
+# max_tool_loop_iterations — the hard cap on upstream round-trips within a
+# single turn's tool loop (a runaway-tool_calls backstop, not a normal limit).
+# Default 8. Raise it if you use many high-tool-count or deferred (defer_tools)
+# servers and complex turns hit the cap; lower it to bound worst-case latency on
+# a small local model. Hitting the cap surfaces a visible error, not silent
+# truncation. (As a table header, this must sit ABOVE every [[endpoints]] block,
+# like [search]/[embeddings] below.)
+# [tools]
+# max_tool_loop_iterations = 8
+
 # Example: an openai-api-bridge instance running on the NAS — gives us
 # ComfyUI image/video, Venice, plus any openai-compat passthrough providers
 # the bridge fronts (e.g. local llama-server) under one endpoint.
@@ -193,6 +204,23 @@
 # transport = "http"
 # url = "https://mcp.linear.app/mcp"
 # api_key_env = "LINEAR_MCP_KEY"   # optional; sent as Authorization: Bearer
+#
+# Deferred tool loading ("tool search"). A server with many tools (e.g. the
+# GitHub MCP, ~45) sends its full tool schemas on EVERY request — tens of
+# thousands of tokens whether or not a turn uses them, which hurts on the
+# small-context local models this project targets. Set `defer_tools = true` to
+# hide this server's tools from the default tool list; the assistant finds them
+# on demand via the built-in `search_tools` tool, and a tool it searches up
+# stays loaded for the rest of that conversation. Hybrid search (keyword BM25 +
+# semantic, the latter only when an [embeddings] block is configured). Off by
+# default; recommended only for high-tool-count servers.
+# [[mcp_servers]]
+# id = "github"
+# display_name = "GitHub"
+# transport = "http"
+# url = "https://api.githubcopilot.com/mcp/"
+# api_key_env = "GITHUB_MCP_KEY"
+# defer_tools = true   # optional; default false
 #
 # Per-user authentication (multi-user). By default a server is `auth =
 # "global"`: one shared credential from `api_key_env`, resolved at boot. Set

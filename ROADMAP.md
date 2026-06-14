@@ -28,9 +28,10 @@ are listed in full.
 - **MCP — per-user OAuth + phase-2.** _Shipped:_ admin-defined
   `[[mcp_servers]]` (stdio + Streamable HTTP), per-conversation +
   per-custom-model tool toggles, inline Allow/Always/Reject approval,
-  `/settings/mcp` + `/settings/permissions`, and per-user static tokens
-  (`auth = "per_user"`, AES-256-GCM-encrypted, keyed `(serverId, userId)`).
-  HTTP-only. Remaining:
+  `/settings/mcp` + `/settings/permissions`, per-user static tokens
+  (`auth = "per_user"`, AES-256-GCM-encrypted, keyed `(serverId, userId)`), and
+  deferred tool loading (`defer_tools` → `search_tools`, hybrid BM25 + optional
+  embeddings, conversation-persistent activation). HTTP-only. Remaining:
   - _OAuth per-user (v1b)._ The 3-legged OAuth flow (vs. the static token
     shipped). New `oauth_connections` table; multi-provider abstraction in
     `src/lib/server/auth/providers/` mirroring arctic's GitHub-login wiring;
@@ -49,6 +50,11 @@ are listed in full.
   - _Rich content blocks in tool results._ Image/audio blocks are currently
     dropped with a placeholder note; relevant once Open Terminal lands and
     screenshot-style outputs become useful.
+  - _Tool-search follow-ons (deferred loading shipped)._ Cache catalog
+    embeddings across searches (stable catalog → embed only the query after
+    warmup); a global `auto_defer_tool_threshold` to auto-defer any server past N
+    tools; and surfacing the deferred catalog in `/settings/mcp` so operators see
+    which servers are hidden behind `search_tools`.
 
 - **Memory — embedding-backed recall + phase-2.** _Shipped:_ browse-mode MVP
   (per-user `memories` table, `save`/`update`/`forget_memory` tools, full-index

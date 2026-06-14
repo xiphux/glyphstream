@@ -131,13 +131,14 @@ race a running title task.
 Each optional feature gets its own capability-named block, documented in its
 own guide:
 
-| Block                | Feature                                 | Guide                                   |
-| -------------------- | --------------------------------------- | --------------------------------------- |
-| `[search]`           | `web_search` via SearxNG                | [Web search & RAG](web-search.md)       |
-| `[embeddings]`       | semantic retrieval for `fetch_url`      | [Web search & RAG](web-search.md)       |
-| `[code_interpreter]` | the sandboxed Python runtime            | [Code interpreter](code-interpreter.md) |
-| `[[mcp_servers]]`    | external Model Context Protocol servers | [MCP servers](mcp.md)                   |
-| `[notifications]`    | web push                                | [Push notifications](notifications.md)  |
+| Block                | Feature                                 | Guide                                            |
+| -------------------- | --------------------------------------- | ------------------------------------------------ |
+| `[search]`           | `web_search` via SearxNG                | [Web search & RAG](web-search.md)                |
+| `[embeddings]`       | semantic retrieval for `fetch_url`      | [Web search & RAG](web-search.md)                |
+| `[code_interpreter]` | the sandboxed Python runtime            | [Code interpreter](code-interpreter.md)          |
+| `[[mcp_servers]]`    | external Model Context Protocol servers | [MCP servers](mcp.md)                            |
+| `[tools]`            | tool-loop iteration cap                 | [MCP servers](mcp.md#deferred-tools-tool-search) |
+| `[notifications]`    | web push                                | [Push notifications](notifications.md)           |
 
 ## `.env` reference
 

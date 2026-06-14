@@ -97,7 +97,9 @@ them into a single fast chat UI with one model picker.
 - **MCP servers** — point `config.toml` at any Model Context Protocol server
   (stdio or HTTP) and its tools join the registry, gated by per-tool
   Allow / Allow Always approval; authenticate with a shared token or each
-  user's own credential ([guide](docs/mcp.md)).
+  user's own credential. High-tool-count servers can set `defer_tools` to hide
+  behind a `search_tools` lookup (hybrid keyword + embeddings) so they don't
+  spend context every request ([guide](docs/mcp.md)).
 - **Agent skills** ([agentskills.io](https://agentskills.io) spec) — import
   skill bundles, activate them by model judgment or an explicit `/skill-name`
   slash command.
