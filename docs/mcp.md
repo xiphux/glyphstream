@@ -146,19 +146,27 @@ api_key_env = "GITHUB_MCP_KEY"
 defer_tools = true   # optional; default false
 ```
 
-The model then discovers them on demand through a built-in **`search_tools`**
-tool: it writes a short capability query (e.g. "create a github issue"), and
-GlyphStream ranks the deferred catalog and returns the top few matches, which
-become callable in the same turn. Ranking is **hybrid** — keyword (BM25) always,
-fused with **semantic** similarity when an
+The system prompt carries a hint listing every deferred tool by **name**, grouped
+under its server (no descriptions, no parameter schemas) — so the model can see
+the full catalog and never searches blind. Names are cheap (roughly 5% of the
+token cost of the schemas they stand in for), which is what makes this affordable
+even for large servers; there is deliberately **no size threshold** (a count gate
+would hide exactly the biggest, most-needed catalogs).
+
+To actually call a deferred tool the model loads its schema on demand through a
+built-in **`search_tools`** tool: it writes a short capability query (e.g. "list
+tasks due today") — or copies a name straight from the hint — and GlyphStream
+ranks the deferred catalog and returns the top few matches, which become callable
+in the same turn. The result says it's the _top N of M_ and invites a refined
+re-search, so a weak first query doesn't end in a premature "capability
+unavailable". Ranking is **hybrid** — keyword (BM25) always, fused with
+**semantic** similarity when an
 [`[embeddings]`](web-search.md#the-embeddings-block) block is configured (it
 degrades to keyword-only otherwise). The semantic leg is best-effort and runs on
 a short timeout (~5s): if the embeddings endpoint is slow, cold, or down, the
 search falls back to BM25 rather than making you wait — so a flaky embeddings
 server never blocks a lookup (BM25 over namespaced tool names is already a strong
-baseline). The system prompt carries a one-line hint listing the deferred servers
-and their tool counts so the model knows what's searchable without paying the
-per-tool cost.
+baseline).
 
 A tool the model searches up **stays loaded for the rest of the conversation**
 (recovered by scanning the active branch), so it doesn't re-search every turn.

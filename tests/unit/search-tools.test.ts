@@ -46,7 +46,12 @@ import { _resetForTests, register } from '$lib/server/tools/registry';
 import type { ToolContext } from '$lib/server/tools/types';
 import type { ChatMessage } from '$lib/types/api';
 
-function registerDeferred(name: string, description: string, category: string): void {
+function registerDeferred(
+	name: string,
+	description: string,
+	category: string,
+	displayLabel?: string,
+): void {
 	register({
 		definition: {
 			type: 'function',
@@ -56,7 +61,7 @@ function registerDeferred(name: string, description: string, category: string): 
 				parameters: { type: 'object', properties: {}, additionalProperties: false },
 			},
 		},
-		metadata: { deferred: true, category: category as never },
+		metadata: { deferred: true, category: category as never, displayLabel },
 		execute: () => ({ content: `ran ${name}` }),
 	});
 }
@@ -131,66 +136,63 @@ describe('search_tools execute', () => {
 });
 
 describe('buildToolSearchRequestContext', () => {
-	function catalogEntry(over: Record<string, unknown>) {
-		return {
-			id: 'x',
-			displayName: 'X',
-			transport: 'http',
-			auth: 'global',
-			toolCount: 0,
-			available: true,
-			...over,
-		};
-	}
-
-	it('omits search_tools when there are no deferred servers', async () => {
-		mcpRegistryMock.listServerCatalog.mockReturnValue([
-			catalogEntry({ id: 'fs', displayName: 'Filesystem', toolCount: 3 }),
-		]);
-		mcpRegistryMock.getMcpServerCfg.mockReturnValue({ deferTools: false, auth: 'global' });
+	it('omits search_tools when there are no deferred tools', async () => {
+		// A non-deferred tool is registered, but deferredToolCatalog returns
+		// nothing and the per-user catalog is empty → omit-when-empty.
+		register({
+			definition: {
+				type: 'function',
+				function: { name: 'mcp__fs__read', description: 'Read', parameters: { type: 'object' } },
+			},
+			metadata: { category: 'mcp:fs' as never },
+			execute: () => ({ content: 'x' }),
+		});
 		const r = await buildToolSearchRequestContext('u1', []);
 		expect(r.def).toBeNull();
 		expect(r.hint).toBeNull();
 	});
 
-	it('advertises search_tools + a hint listing global deferred server counts', async () => {
-		mcpRegistryMock.listServerCatalog.mockReturnValue([
-			catalogEntry({ id: 'github', displayName: 'GitHub', toolCount: 45 }),
-		]);
+	it('advertises search_tools + a hint listing global deferred tool names by server', async () => {
+		registerDeferred('mcp__github__create_issue', 'Create an issue', 'mcp:github', 'create_issue');
+		registerDeferred('mcp__github__list_issues', 'List issues', 'mcp:github', 'list_issues');
 		mcpRegistryMock.getMcpServerCfg.mockImplementation((id: string) =>
-			id === 'github' ? { deferTools: true, auth: 'global' } : undefined,
+			id === 'github' ? { displayName: 'GitHub', deferTools: true, auth: 'global' } : undefined,
 		);
 		const r = await buildToolSearchRequestContext('u1', []);
 		expect(r.def?.function.name).toBe('search_tools');
-		expect(r.hint).toContain('GitHub (45 tools)');
+		// Names listed (no descriptions), grouped under the server display name.
+		expect(r.hint).toContain('GitHub: create_issue, list_issues');
+		expect(r.hint).not.toContain('Create an issue');
 	});
 
 	it('omits a deferred server whose category is disabled for the conversation', async () => {
-		mcpRegistryMock.listServerCatalog.mockReturnValue([
-			catalogEntry({ id: 'github', displayName: 'GitHub', toolCount: 45 }),
-		]);
-		mcpRegistryMock.getMcpServerCfg.mockReturnValue({ deferTools: true, auth: 'global' });
+		registerDeferred('mcp__github__create_issue', 'Create an issue', 'mcp:github', 'create_issue');
 		const r = await buildToolSearchRequestContext('u1', ['mcp:github']);
 		expect(r.def).toBeNull();
 	});
 
-	it('counts connected per-user deferred servers', async () => {
-		mcpRegistryMock.getUserServerStates.mockResolvedValue([
+	it("lists the caller's connected per-user deferred tools", async () => {
+		buildUserDeferredToolCatalogMock.mockResolvedValue([
 			{
-				id: 'mail',
-				displayName: 'Mail',
-				transport: 'http',
-				auth: 'per_user',
-				state: 'connected',
-				error: null,
-				configured: true,
-				tools: [{}, {}, {}],
+				name: 'mcp__mail__send_email',
+				description: 'Send an email',
+				category: 'mcp:mail',
+				displayLabel: 'send_email',
 			},
 		]);
-		mcpRegistryMock.getMcpServerCfg.mockReturnValue({ deferTools: true, auth: 'per_user' });
+		mcpRegistryMock.getMcpServerCfg.mockImplementation((id: string) =>
+			id === 'mail' ? { displayName: 'Mail', deferTools: true, auth: 'per_user' } : undefined,
+		);
 		const r = await buildToolSearchRequestContext('u1', []);
 		expect(r.def?.function.name).toBe('search_tools');
-		expect(r.hint).toContain('Mail (3 tools)');
+		expect(r.hint).toContain('Mail: send_email');
+	});
+
+	it('falls back to the server id when no display name is configured', async () => {
+		registerDeferred('mcp__gh__x', 'X', 'mcp:gh', 'x');
+		mcpRegistryMock.getMcpServerCfg.mockReturnValue(undefined);
+		const r = await buildToolSearchRequestContext('u1', []);
+		expect(r.hint).toContain('gh: x');
 	});
 });
 

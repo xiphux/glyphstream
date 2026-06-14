@@ -119,6 +119,14 @@ export interface DeferredToolEntry {
 	name: string;
 	description: string;
 	category?: import('$lib/types/api').FeatureCategory;
+	/**
+	 * The tool's bare (un-namespaced) name — `metadata.displayLabel`, e.g.
+	 * `list_undone_tasks_by_time_query` for `mcp__ticktick__list_undone_…`. Used
+	 * by the turn-start hint to list a server's tools by their short names (the
+	 * Tier-1 discovery list), so the model can see the full catalog without
+	 * paying for schemas. Falls back to `name` when no label was set.
+	 */
+	displayLabel?: string;
 }
 
 export interface Tool {

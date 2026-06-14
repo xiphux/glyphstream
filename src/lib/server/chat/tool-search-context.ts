@@ -7,14 +7,21 @@
  * tool keeps it after an approval pause and across later turns. Centralizing the
  * logic here is the anti-drift measure (the `skills-context.ts` precedent).
  *
- * The hint is bounded by the number of deferred SERVERS, not their tool count:
- * it lists "<server> (<n> tools)" so the model knows what's searchable without
- * paying the per-tool token cost deferral is meant to avoid.
+ * The hint lists every deferred tool by its short NAME, grouped under its server
+ * (no descriptions, no schemas) — the Tier-1 discovery list. Names are cheap
+ * (~5% of the schema cost they replace) but make the catalog fully visible, so
+ * the model never searches blind: it can see a capability exists and copy the
+ * name straight into `search_tools` to load the schema. This mirrors how Claude
+ * Code surfaces its own deferred tools — names always in context, schemas loaded
+ * on demand — and it's why there's no server-size threshold (a count gate would
+ * leave the largest, most-needed catalogs blind, the exact opposite of useful).
  */
 import type { ChatMessage, FeatureCategory } from '$lib/types/api';
-import type { OpenAIToolDefinition } from '../tools/types';
+import type { DeferredToolEntry, OpenAIToolDefinition } from '../tools/types';
 import { searchToolsDefinition } from '../tools/search-tools';
-import { getMcpServerCfg, getUserServerStates, listServerCatalog } from '../mcp/registry';
+import { deferredToolCatalog } from '../tools/registry';
+import { buildUserDeferredToolCatalog } from '../mcp/tool-bridge';
+import { getMcpServerCfg } from '../mcp/registry';
 
 export interface ToolSearchRequestContext {
 	/** The `search_tools` definition to append to the tool list, or null. */
@@ -27,7 +34,7 @@ const EMPTY: ToolSearchRequestContext = { def: null, hint: null };
 
 interface DeferredGroup {
 	displayName: string;
-	count: number;
+	toolNames: string[];
 }
 
 /**
@@ -36,48 +43,52 @@ interface DeferredGroup {
  * user/conversation — the omit-when-empty contract (mirrors
  * `buildSkillsRequestContext`). Async because per-user server state may lazily
  * connect.
+ *
+ * Built from the SAME catalog `search_tools` searches over (global
+ * `deferredToolCatalog` ∪ this user's `buildUserDeferredToolCatalog`), so the
+ * advertised tool list and the searchable set can't drift apart, and both honor
+ * the conversation's `excludeCategories` opt-out identically.
  */
 export async function buildToolSearchRequestContext(
 	userId: string,
 	disabledFeatures: readonly FeatureCategory[],
 ): Promise<ToolSearchRequestContext> {
-	const excluded = new Set(disabledFeatures);
-	const groups: DeferredGroup[] = [];
+	const catalog: DeferredToolEntry[] = [
+		...deferredToolCatalog({ excludeCategories: disabledFeatures }),
+		...(await buildUserDeferredToolCatalog(userId, { excludeCategories: disabledFeatures })),
+	];
+	if (catalog.length === 0) return EMPTY;
+	return { def: searchToolsDefinition(), hint: composeHint(groupByServer(catalog)) };
+}
 
-	// Global deferred servers (counts from the shared connection). listServerCatalog
-	// returns every configured server, so filter to global here — per-user servers
-	// are counted separately below (their tool count is per user).
-	for (const entry of listServerCatalog()) {
-		if (entry.auth !== 'global') continue;
-		const cfg = getMcpServerCfg(entry.id);
-		if (!cfg?.deferTools) continue;
-		if (excluded.has(`mcp:${entry.id}`)) continue;
-		if (entry.toolCount > 0)
-			groups.push({ displayName: entry.displayName, count: entry.toolCount });
+/**
+ * Group deferred catalog entries by their `mcp:<id>` category into per-server
+ * lists of short tool names, preserving first-seen order (global servers first,
+ * then per-user). The server's human display name comes from its config; the
+ * category id is the fallback.
+ */
+function groupByServer(catalog: DeferredToolEntry[]): DeferredGroup[] {
+	const byCategory = new Map<string, DeferredGroup>();
+	for (const entry of catalog) {
+		const category = entry.category ?? 'mcp:unknown';
+		let group = byCategory.get(category);
+		if (!group) {
+			const id = category.startsWith('mcp:') ? category.slice('mcp:'.length) : category;
+			group = { displayName: getMcpServerCfg(id)?.displayName ?? id, toolNames: [] };
+			byCategory.set(category, group);
+		}
+		group.toolNames.push(entry.displayLabel ?? entry.name);
 	}
-
-	// Per-user deferred servers this user has connected.
-	const states = await getUserServerStates(userId);
-	for (const s of states) {
-		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
-		const cfg = getMcpServerCfg(s.id);
-		if (!cfg?.deferTools) continue;
-		if (excluded.has(`mcp:${s.id}`)) continue;
-		if (s.tools.length > 0) groups.push({ displayName: s.displayName, count: s.tools.length });
-	}
-
-	if (groups.length === 0) return EMPTY;
-	return { def: searchToolsDefinition(), hint: composeHint(groups) };
+	return [...byCategory.values()];
 }
 
 function composeHint(groups: DeferredGroup[]): string {
-	const list = groups
-		.map((g) => `${g.displayName} (${g.count} tool${g.count === 1 ? '' : 's'})`)
-		.join(', ');
+	const list = groups.map((g) => `${g.displayName}: ${g.toolNames.join(', ')}`).join('\n');
 	return (
-		'Some tools are not loaded by default, to save space. Use the search_tools ' +
-		"tool to find and load them when you need a capability you don't already have. " +
-		`Available tool groups: ${list}.`
+		'Some tools are not loaded by default, to save context. To use one, call the ' +
+		'search_tools tool with a short query (the tool name from the list below works) ' +
+		'to load its schema, then call it. The available tools are:\n' +
+		list
 	);
 }
 

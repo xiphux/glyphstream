@@ -239,6 +239,7 @@ export async function buildUserDeferredToolCatalog(
 				name: tool.definition.function.name,
 				description: tool.definition.function.description,
 				category: tool.metadata?.category,
+				displayLabel: tool.metadata?.displayLabel,
 			});
 		}
 	}

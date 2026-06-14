@@ -61,9 +61,9 @@ export function toolSearchEmbeddingConfig(): RelevanceConfig | undefined {
 }
 
 const SEARCH_TOOLS_DESCRIPTION =
-	'Find additional tools that are not currently loaded. To save context, some tools are hidden until needed. Write a SHORT natural-language query describing the capability you need (e.g. "create a github issue", "send a slack message") — not the user\'s whole request. Returns up to ' +
+	'Load additional tools that are not currently loaded. To save context, some tools are listed by name (see the available-tools list) but their schemas are hidden until needed. Write a SHORT query describing the capability you need — lead with the ACTION verb, not the user\'s whole request (e.g. "list tasks due today", "find recent emails", "create a github issue", "send a slack message"). The exact tool name from the available-tools list also works as a query. Returns up to ' +
 	String(SEARCH_TOOLS_TOP_K) +
-	' matching tools, which then become callable (immediately and for the rest of this conversation). Call this BEFORE telling the user a capability is unavailable.';
+	" matching tools, which then become callable (immediately and for the rest of this conversation). If the results don't match what you need, call search_tools again with different or more specific words — do NOT tell the user a capability is unavailable until a search has failed to find it.";
 
 /** The advertised definition — static (the `query` is free text, no enum). */
 export function searchToolsDefinition(): OpenAIToolDefinition {
@@ -99,14 +99,24 @@ function parseQueryArg(args: unknown): { query: string } | { error: string } {
 	return { query: q.trim() };
 }
 
-function renderMatches(matches: DeferredToolEntry[]): string {
+function renderMatches(matches: DeferredToolEntry[], query: string, catalogSize: number): string {
 	const lines = matches.map((m) => {
 		// Keep the search RESULT cheap: one trimmed line of description per tool.
 		const desc = m.description.replace(/\s+/g, ' ').trim();
 		const short = desc.length > 160 ? `${desc.slice(0, 159)}…` : desc;
 		return `- ${m.name} — ${short}`;
 	});
-	return `Found ${matches.length} tool(s), now available to call:\n${lines.join('\n')}`;
+	// Report the truncation honestly: the model must know these are the TOP few
+	// of a larger catalog, ranked — not the complete set — so a weak first query
+	// prompts a refined re-search instead of a premature "capability unavailable".
+	const header =
+		`Top ${matches.length} of ${catalogSize} tools, ranked by relevance to "${query}". ` +
+		'These are now callable.';
+	const footer =
+		matches.length < catalogSize
+			? '\nIf none of these does what you need, call search_tools again with different or more specific words.'
+			: '';
+	return `${header}\n${lines.join('\n')}${footer}`;
 }
 
 export const searchToolsTool: Tool = {
@@ -146,7 +156,10 @@ export const searchToolsTool: Tool = {
 				activatedToolNames: [],
 			};
 		}
-		return { content: renderMatches(top), activatedToolNames: top.map((t) => t.name) };
+		return {
+			content: renderMatches(top, parsed.query, catalog.length),
+			activatedToolNames: top.map((t) => t.name),
+		};
 	},
 };
 

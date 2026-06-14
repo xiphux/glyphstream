@@ -81,6 +81,7 @@ export function deferredToolCatalog(opts?: {
 			name: t.definition.function.name,
 			description: t.definition.function.description,
 			category: t.metadata?.category,
+			displayLabel: t.metadata?.displayLabel,
 		}));
 }
 
