@@ -27,10 +27,7 @@ import type {
 } from './types';
 import { buildUserDeferredToolCatalog } from '../mcp/tool-bridge';
 import { searchToolCatalog } from '../retrieval/tool-search';
-import { EMBED_CAP } from '../retrieval/select';
-import type { RelevanceConfig } from '../retrieval/embed-rank';
-import { loadEmbeddingsConfig, type LoadedEmbeddingsConfig } from '../endpoints/config';
-import { getEndpoint } from '../endpoints/registry';
+import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 
 /** How many matches a single search returns + activates. Bounded so an
  *  over-broad query can't reload the whole catalog. */
@@ -73,41 +70,6 @@ function parseQueryArg(args: unknown): { query: string } | { error: string } {
 		return { error: 'Missing or empty `query` argument.' };
 	}
 	return { query: q.trim() };
-}
-
-let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
-
-/** Memoized embeddings-config read (config.toml doesn't change at runtime). */
-function getEmbeddingsConfig(): LoadedEmbeddingsConfig | null {
-	if (!embeddingsConfigCache) embeddingsConfigCache = { value: loadEmbeddingsConfig() };
-	return embeddingsConfigCache.value;
-}
-
-/** Test hook: clear the memoized embeddings config so the next call re-reads. */
-export function _resetConfigCacheForTests(): void {
-	embeddingsConfigCache = undefined;
-}
-
-/**
- * Resolve the embeddings config into a RelevanceConfig (the semantic leg), or
- * undefined when embeddings aren't configured / the endpoint no longer resolves
- * — search then degrades to BM25-only, never an error. Mirrors fetch_url's
- * resolver.
- */
-function resolveRelevanceConfig(): RelevanceConfig | undefined {
-	const cfg = getEmbeddingsConfig();
-	if (!cfg) return undefined;
-	const endpoint = getEndpoint(cfg.endpointId);
-	if (!endpoint) return undefined;
-	return {
-		endpoint,
-		modelId: cfg.modelId,
-		timeoutSeconds: cfg.timeoutSeconds,
-		embedCap: EMBED_CAP,
-		queryPrefix: cfg.queryPrefix,
-		documentPrefix: cfg.documentPrefix,
-		maxInputTokens: cfg.maxInputTokens,
-	};
 }
 
 function renderMatches(matches: DeferredToolEntry[]): string {

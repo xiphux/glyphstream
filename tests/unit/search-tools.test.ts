@@ -31,7 +31,8 @@ vi.mock('$lib/server/mcp/tool-bridge', () => ({
 // tool-search-context's only mcp/registry surface.
 vi.mock('$lib/server/mcp/registry', () => mcpRegistryMock);
 
-import { searchToolsTool, _resetConfigCacheForTests } from '$lib/server/tools/search-tools';
+import { searchToolsTool } from '$lib/server/tools/search-tools';
+import { _resetEmbeddingsConfigCacheForTests } from '$lib/server/retrieval/embeddings-config';
 import {
 	appendToolSearchHint,
 	buildToolSearchRequestContext,
@@ -67,7 +68,7 @@ function ctx(disabledFeatures: string[] = []): ToolContext {
 
 beforeEach(() => {
 	_resetForTests();
-	_resetConfigCacheForTests();
+	_resetEmbeddingsConfigCacheForTests();
 	loadEmbeddingsConfigMock.mockReturnValue(null);
 	getEndpointMock.mockReturnValue(undefined);
 	embeddingsMock.mockReset();

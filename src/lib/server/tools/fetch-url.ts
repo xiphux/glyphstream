@@ -24,10 +24,9 @@ import { parseHTML } from 'linkedom';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 import { composeSignals } from '../util/abort';
-import { loadEmbeddingsConfig, type LoadedEmbeddingsConfig } from '../endpoints/config';
-import { getEndpoint } from '../endpoints/registry';
 import { chunkArticleHtml, chunkPlainText } from '../retrieval/chunker';
-import { selectRelevant, EMBED_CAP, type RelevanceConfig } from '../retrieval/select';
+import { selectRelevant } from '../retrieval/select';
+import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 import {
 	assertHostnameRoutable,
 	assertHttpScheme,
@@ -98,39 +97,6 @@ function parseFindArg(args: unknown): string | undefined {
 	if (!args || typeof args !== 'object') return undefined;
 	const f = (args as { find?: unknown }).find;
 	return typeof f === 'string' && f.trim().length > 0 ? f : undefined;
-}
-
-let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
-
-function getEmbeddingsConfig(): LoadedEmbeddingsConfig | null {
-	if (!embeddingsConfigCache) embeddingsConfigCache = { value: loadEmbeddingsConfig() };
-	return embeddingsConfigCache.value;
-}
-
-/** Test hook: clear the memoized embeddings config so the next call re-reads. */
-export function _resetConfigCacheForTests(): void {
-	embeddingsConfigCache = undefined;
-}
-
-/**
- * Resolve the embeddings config into a usable RelevanceConfig, or undefined
- * when embeddings aren't configured / the named endpoint no longer resolves.
- * Undefined makes selection degrade to BM25-only — never an error.
- */
-function resolveRelevanceConfig(): RelevanceConfig | undefined {
-	const cfg = getEmbeddingsConfig();
-	if (!cfg) return undefined;
-	const endpoint = getEndpoint(cfg.endpointId);
-	if (!endpoint) return undefined;
-	return {
-		endpoint,
-		modelId: cfg.modelId,
-		timeoutSeconds: cfg.timeoutSeconds,
-		embedCap: EMBED_CAP,
-		queryPrefix: cfg.queryPrefix,
-		documentPrefix: cfg.documentPrefix,
-		maxInputTokens: cfg.maxInputTokens,
-	};
 }
 
 function errorResult(message: string): ToolExecution {

@@ -26,12 +26,8 @@ vi.mock('$lib/server/endpoints/client', async (orig) => ({
 	embeddings: embeddingsMock,
 }));
 
-import {
-	fetchUrlTool,
-	isPrivateIp,
-	extractTextFromHtml,
-	_resetConfigCacheForTests,
-} from '$lib/server/tools/fetch-url';
+import { fetchUrlTool, isPrivateIp, extractTextFromHtml } from '$lib/server/tools/fetch-url';
+import { _resetEmbeddingsConfigCacheForTests } from '$lib/server/retrieval/embeddings-config';
 import type { ToolContext } from '$lib/server/tools/types';
 
 function ctx(): ToolContext {
@@ -59,7 +55,7 @@ beforeEach(() => {
 	loadEmbeddingsConfigMock.mockReset().mockReturnValue(null);
 	getEndpointMock.mockReset();
 	embeddingsMock.mockReset();
-	_resetConfigCacheForTests();
+	_resetEmbeddingsConfigCacheForTests();
 });
 
 afterEach(() => {

@@ -19,6 +19,7 @@
 
 import { bm25Rank, type ScoredChunk } from './bm25';
 import { embedAndRank, type RelevanceConfig } from './embed-rank';
+import { RRF_K } from './fusion';
 import type { Chunk } from './chunker';
 
 // Re-exported so existing importers (`fetch-url.ts`, tests) keep their
@@ -32,7 +33,6 @@ export interface SelectResult {
 }
 
 export const ELLIPSIS_MARKER = '\n\n[…]\n\n';
-export const RRF_K = 60;
 
 // How many BM25-top candidates get embedded. The BM25 prefilter already
 // narrows to the strongest lexical matches, so a few dozen is plenty to
