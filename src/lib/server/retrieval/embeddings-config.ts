@@ -18,7 +18,20 @@ import type { RelevanceConfig } from './embed-rank';
 let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
 
 function getEmbeddingsConfig(): LoadedEmbeddingsConfig | null {
-	if (!embeddingsConfigCache) embeddingsConfigCache = { value: loadEmbeddingsConfig() };
+	if (!embeddingsConfigCache) {
+		let value: LoadedEmbeddingsConfig | null = null;
+		try {
+			value = loadEmbeddingsConfig();
+		} catch (e) {
+			// Embeddings are an optional upgrade, so a missing/unreadable config file
+			// or a malformed [embeddings] block disables semantic retrieval (recall
+			// degrades off, fetch_url falls back to BM25) rather than throwing into
+			// the calling tool — including tool-advertisement, where recall_memory's
+			// isAvailable() runs. Memoized, so this warns at most once.
+			console.warn('[retrieval] could not load [embeddings] config; embeddings disabled:', e);
+		}
+		embeddingsConfigCache = { value };
+	}
 	return embeddingsConfigCache.value;
 }
 
