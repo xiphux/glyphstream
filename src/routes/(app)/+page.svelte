@@ -261,9 +261,7 @@
 		if (!hash) return;
 		const q = new URLSearchParams(hash.slice(1)).get('q');
 		if (!q) return;
-		untrack(() => {
-			if (!text) text = q;
-		});
+		if (!text) text = q;
 		// Drop the fragment so a manual refresh won't re-prefill an
 		// already-sent message. Deferred a microtask because on the initial
 		// load afterNavigate fires just *before* SvelteKit flags the router
