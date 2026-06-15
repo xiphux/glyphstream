@@ -117,6 +117,10 @@ them into a single fast chat UI with one model picker.
   ([guide](docs/multi-user.md)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
   when long generations finish ([guide](docs/notifications.md)).
+- **Start a chat from a URL** — open the home page with a `#q=` fragment
+  (e.g. `https://your-host/#q=write%20a%20haiku`) to prefill the composer.
+  Handy for an iOS share-sheet Shortcut, since iOS won't let a PWA receive
+  shares directly; the fragment keeps even long prompts off the request line.
 - **Themes**: the Signature frosted-glass look, plus Claude and ChatGPT
   themes; light / dark / system, with per-theme motion personalities.
 - Personalization: structured persona fields (name, about you, custom

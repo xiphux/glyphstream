@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ArrowUp } from '@lucide/svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
@@ -243,6 +243,37 @@
 				text = intent.prompt;
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
+			}
+		});
+	});
+
+	// Prefill the composer from a `#q=` URL fragment so an external entry
+	// point (e.g. an iOS share-sheet Shortcut, which iOS won't let target a
+	// PWA via the Web Share Target API) can hand us a prompt to start from.
+	// A hash fragment — not a `?q=` query string — is deliberate: the fragment
+	// never reaches the server, so it sidesteps the reverse-proxy / Node
+	// request-line size limits a long image prompt would otherwise blow past,
+	// and it keeps the prompt out of server logs. Runs from afterNavigate (so
+	// it also catches client-side navs back to this page) and only fills an
+	// empty box, so it never clobbers a gallery-launch regenerate prompt.
+	afterNavigate(() => {
+		const hash = window.location.hash;
+		if (!hash) return;
+		const q = new URLSearchParams(hash.slice(1)).get('q');
+		if (!q) return;
+		untrack(() => {
+			if (!text) text = q;
+		});
+		// Drop the fragment so a manual refresh won't re-prefill an
+		// already-sent message. Deferred a microtask because on the initial
+		// load afterNavigate fires just *before* SvelteKit flags the router
+		// "started", and replaceState throws until then; by the next microtask
+		// it's safe. Best-effort — a lingering fragment is harmless.
+		queueMicrotask(() => {
+			try {
+				replaceState(window.location.pathname + window.location.search, page.state);
+			} catch {
+				/* router not ready / state unserializable — leave the fragment */
 			}
 		});
 	});
