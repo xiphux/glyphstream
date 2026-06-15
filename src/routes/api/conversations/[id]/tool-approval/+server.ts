@@ -40,7 +40,8 @@ import {
 	getUserPreferences,
 	setUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
-import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { listMemoriesForUser, memoryInlineBudgetExceeded } from '$lib/server/db/queries/memories';
+import { resolveRelevanceConfig } from '$lib/server/retrieval/embeddings-config';
 import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import { get as getTool } from '$lib/server/tools/registry';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
@@ -177,7 +178,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
 	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
 		const memories = listMemoriesForUser(userId);
-		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
+		// Mirror the messages handler: above the budget with an embedding model
+		// configured, swap inlined bodies for the recall_memory hint.
+		const recallMode =
+			resolveRelevanceConfig() !== undefined && memoryInlineBudgetExceeded(memories);
+		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories, { recallMode });
 	}
 
 	const parsed = parseModelId(meta.modelId);

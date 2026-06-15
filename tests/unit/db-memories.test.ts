@@ -14,8 +14,13 @@ import {
 	createMemory,
 	deleteMemory,
 	listMemoriesForUser,
+	listMemoriesNeedingEmbedding,
+	listMemoriesWithEmbeddings,
+	memoryInlineBudgetExceeded,
+	setMemoryEmbedding,
 	updateMemory,
 } from '$lib/server/db/queries/memories';
+import { encodeVector } from '$lib/server/retrieval/vector';
 import { users } from '$lib/server/db/schema';
 
 beforeEach(() => {
@@ -125,9 +130,91 @@ describe('deleteMemory', () => {
 	});
 });
 
+describe('embedding columns', () => {
+	const MODEL = 'embed-v1';
+
+	it('updateMemory nulls the stored embedding so it gets re-embedded', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'original');
+		setMemoryEmbedding(id, encodeVector([1, 2, 3]), MODEL);
+		expect(listMemoriesWithEmbeddings(u.id)[0].embedding).not.toBeNull();
+
+		updateMemory(u.id, id, 'revised');
+		const row = listMemoriesWithEmbeddings(u.id)[0];
+		expect(row.embedding).toBeNull();
+		expect(row.embeddingModel).toBeNull();
+	});
+
+	it('setMemoryEmbedding persists the vector + model without bumping updatedAt', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact');
+		const before = listMemoriesForUser(u.id)[0].updatedAt;
+		setMemoryEmbedding(id, encodeVector([0.5, 0.5]), MODEL);
+		const row = listMemoriesWithEmbeddings(u.id)[0];
+		expect(row.embeddingModel).toBe(MODEL);
+		expect(row.embedding).not.toBeNull();
+		expect(row.updatedAt).toBe(before);
+	});
+
+	it('listMemoriesNeedingEmbedding picks NULL and stale-model rows, cross-user', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const fresh = createMemory(u1.id, 'fresh — never embedded');
+		const stale = createMemory(u1.id, 'stale — old model');
+		const current = createMemory(u2.id, 'current — up to date');
+		setMemoryEmbedding(stale.id, encodeVector([1]), 'old-model');
+		setMemoryEmbedding(current.id, encodeVector([1]), MODEL);
+
+		const ids = listMemoriesNeedingEmbedding(MODEL, 100).map((r) => r.id);
+		expect(ids).toContain(fresh.id);
+		expect(ids).toContain(stale.id);
+		expect(ids).not.toContain(current.id);
+	});
+
+	it('listMemoriesNeedingEmbedding honors the limit', () => {
+		const u = seedUser();
+		createMemory(u.id, 'a');
+		createMemory(u.id, 'b');
+		createMemory(u.id, 'c');
+		expect(listMemoriesNeedingEmbedding(MODEL, 2)).toHaveLength(2);
+	});
+});
+
+describe('memoryInlineBudgetExceeded', () => {
+	it('is false for a small store, true once total content crosses the budget', () => {
+		const small = [{ id: 'a', content: 'x'.repeat(100), createdAt: 0, updatedAt: 0 }];
+		expect(memoryInlineBudgetExceeded(small)).toBe(false);
+
+		const big = Array.from({ length: 20 }, (_, i) => ({
+			id: `m${i}`,
+			content: 'x'.repeat(300),
+			createdAt: i,
+			updatedAt: i,
+		}));
+		expect(memoryInlineBudgetExceeded(big)).toBe(true);
+	});
+});
+
 describe('composeMemorySection', () => {
 	it('returns null for an empty list', () => {
 		expect(composeMemorySection([])).toBeNull();
+	});
+
+	it('returns null for an empty list even in recall mode', () => {
+		expect(composeMemorySection([], { recallMode: true })).toBeNull();
+	});
+
+	it('emits a recall hint (not bodies) under recallMode', () => {
+		const list = [
+			{ id: 'a1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
+			{ id: 'b2', content: 'works at Acme', createdAt: 1, updatedAt: 1 },
+		];
+		const out = composeMemorySection(list, { recallMode: true })!;
+		expect(out).toMatch(/recall_memory/);
+		expect(out).toContain('2 saved memories');
+		// The bodies must NOT be inlined in recall mode.
+		expect(out).not.toContain('prefers metric units');
+		expect(out).not.toContain('works at Acme');
 	});
 
 	it('renders each memory as `[id] content` on its own line', () => {

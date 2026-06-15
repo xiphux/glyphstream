@@ -1,11 +1,13 @@
 /**
  * Memory tools — the model's write path for the persistent per-user
- * memory store. The read path is implicit: every memory's content is
- * inlined into the system prompt via composeMemorySection so the model
- * always has the full index without calling a recall tool. (Phase 2
- * will add a recall_memory tool that activates when an embedding
- * endpoint is configured and the memory budget grows too large to
- * inline; the seam is the TODO marker in composePersonaSystemPrompt.)
+ * memory store, plus `recall_memory` for retrieval. The default read
+ * path is implicit: every memory's content is inlined into the system
+ * prompt via composeMemorySection so the model has the full index for
+ * free. Once that index would exceed the budget AND an embedding model
+ * is configured, the inlined bodies are swapped for a one-liner (see
+ * composeMemorySection's recallMode) and the model reaches them via
+ * `recall_memory` — hybrid BM25 + embedding-cosine over the stored
+ * vectors (populated by the backfill worker in ../memory/).
  *
  * All three tools carry `category: 'personalization'`. The existing
  * per-conversation toggle that gates the persona prompt also seals
@@ -19,11 +21,27 @@
  * pattern as web_search's transport errors, so the model gets a tool
  * message it can apologize over instead of an aborted turn.
  */
-import { createMemory, deleteMemory, updateMemory } from '../db/queries/memories';
+import {
+	createMemory,
+	deleteMemory,
+	listMemoriesWithEmbeddings,
+	updateMemory,
+	type MemoryWithEmbedding,
+} from '../db/queries/memories';
+import { embeddings } from '../endpoints/client';
+import { bm25Rank, type ScoredChunk } from '../retrieval/bm25';
+import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
+import type { RelevanceConfig } from '../retrieval/embed-rank';
+import { fuseRankings } from '../retrieval/fusion';
+import { cosineRank, decodeVector, type Vec } from '../retrieval/vector';
+import { composeSignals } from '../util/abort';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 
 const MAX_CONTENT_CHARS = 500;
+
+/** How many recalled memories to hand back to the model per query. */
+const RECALL_TOP_K = 8;
 
 export const saveMemoryTool: Tool = {
 	definition: {
@@ -120,6 +138,112 @@ export const forgetMemoryTool: Tool = {
 	},
 };
 
+export const recallMemoryTool: Tool = {
+	definition: {
+		type: 'function',
+		function: {
+			name: 'recall_memory',
+			description:
+				"Search the user's saved memories (durable facts about them, carried across conversations) for the ones relevant to the current topic. Use this when the full memory index is not already shown in the system prompt and a stored preference, fact, or detail about the user would help answer well. Returns the most relevant memories, each prefixed with its id in square brackets — pass that id to update_memory or forget_memory.",
+			parameters: {
+				type: 'object',
+				properties: {
+					query: {
+						type: 'string',
+						description:
+							'What to look for — a topic, question, or keywords describing the kind of saved fact you need.',
+					},
+				},
+				required: ['query'],
+				additionalProperties: false,
+			},
+		},
+	},
+	metadata: { displayLabel: 'Recall memory', icon: 'brain', category: 'personalization' },
+	// Advertised only when an embedding model is configured (the same `[embeddings]`
+	// signal fetch_url uses). The 'personalization' category gates it on the
+	// per-conversation toggle via openaiToolDefinitions().
+	isAvailable: () => resolveRelevanceConfig() !== undefined,
+	async execute(args, ctx): Promise<ToolExecution> {
+		const parsed = parseQueryArg(args);
+		if ('error' in parsed) return errorResult(parsed.error);
+		const cfg = resolveRelevanceConfig();
+		if (!cfg)
+			return errorResult('Memory recall is unavailable — no embedding model is configured.');
+
+		const rows = listMemoriesWithEmbeddings(ctx.userId);
+		if (rows.length === 0) return { content: JSON.stringify({ matches: [] }) };
+
+		// Lexical leg — always, over ALL rows so a freshly-saved memory the
+		// backfill worker hasn't embedded yet is still findable.
+		const rankings: ScoredChunk[][] = [
+			bm25Rank(
+				parsed.query,
+				rows.map((r) => r.content),
+			),
+		];
+		// Dense leg — embed the query and cosine against the matching-model
+		// vectors. Any failure degrades to BM25 alone (never errors the turn).
+		const dense = await denseRank(parsed.query, rows, cfg, ctx.signal);
+		if (dense) rankings.push(dense);
+
+		const fused = fuseRankings(rankings).slice(0, RECALL_TOP_K);
+		const matches = fused.map((sc) => ({ id: rows[sc.index].id, content: rows[sc.index].content }));
+		return { content: JSON.stringify({ matches }) };
+	},
+};
+
+/**
+ * Rank memory rows by cosine of the query embedding against each row's stored
+ * vector. Only rows whose `embeddingModel` matches the configured model are
+ * comparable (different models → different vector spaces/dims). Returns
+ * ScoredChunk indices in the full `rows` index space, or null on any failure so
+ * the caller keeps the BM25 ranking.
+ */
+async function denseRank(
+	query: string,
+	rows: MemoryWithEmbedding[],
+	cfg: RelevanceConfig,
+	signal: AbortSignal,
+): Promise<ScoredChunk[] | null> {
+	try {
+		const embedded = rows
+			.map((r, index) => ({ index, row: r }))
+			.filter((x) => x.row.embedding && x.row.embeddingModel === cfg.modelId);
+		if (embedded.length === 0) return null;
+
+		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
+		const resp = await embeddings(
+			cfg.endpoint,
+			{ model: cfg.modelId, input: [cfg.queryPrefix + query] },
+			sig,
+		);
+		const qvec = resp.data?.[0]?.embedding;
+		if (!Array.isArray(qvec) || qvec.length === 0) return null;
+
+		const vecs = embedded.map((x) => decodeVector(x.row.embedding as Buffer) as Vec);
+		// cosineRank indices are local to `embedded`; map them back to `rows`.
+		return cosineRank(qvec as Vec, vecs).map((sc) => ({
+			index: embedded[sc.index].index,
+			score: sc.score,
+		}));
+	} catch (e) {
+		console.warn('[memory] recall dense leg failed, falling back to BM25:', e);
+		return null;
+	}
+}
+
+function parseQueryArg(args: unknown): { query: string } | { error: string } {
+	if (!args || typeof args !== 'object') {
+		return { error: 'Expected an object argument with a `query` field.' };
+	}
+	const a = args as { query?: unknown };
+	if (typeof a.query !== 'string' || a.query.trim().length === 0) {
+		return { error: 'Missing or empty `query` argument.' };
+	}
+	return { query: a.query.trim() };
+}
+
 function parseContentArg(args: unknown): { content: string } | { error: string } {
 	if (!args || typeof args !== 'object') {
 		return { error: 'Expected an object argument with a `content` field.' };
@@ -164,3 +288,4 @@ function errorResult(message: string): ToolExecution {
 register(saveMemoryTool);
 register(updateMemoryTool);
 register(forgetMemoryTool);
+register(recallMemoryTool);

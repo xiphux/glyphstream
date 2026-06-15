@@ -119,8 +119,12 @@ model_id = "text-embedding-3-small"
 
 base_url and auth are inherited from the referenced endpoint. A bad
 `endpoint_id` quietly disables embeddings (degrades to BM25) rather than
-failing at boot. The same config also backs future embedding-based features,
-so it's capability-named rather than `fetch_url`-specific.
+failing at boot. The block is capability-named rather than `fetch_url`-specific:
+it also powers **`recall_memory`**, the semantic search over a user's saved
+memories. With it configured, a background worker embeds saved memories and the
+model retrieves the relevant ones on demand instead of carrying the whole index
+in every system prompt (see [Tools](tools.md)). Without it, memory falls back to
+inlining all saved facts, and `fetch_url` to BM25-only — both still work.
 
 > **Throughput matters.** Embedding dozens of chunks per long-page fetch is
 > only practical on a reasonably fast embedding endpoint (GPU-backed, or a

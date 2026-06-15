@@ -38,7 +38,8 @@ import {
 	composePersonaSystemPrompt,
 	getUserPreferences,
 } from '$lib/server/db/queries/user-preferences';
-import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { listMemoriesForUser, memoryInlineBudgetExceeded } from '$lib/server/db/queries/memories';
+import { resolveRelevanceConfig } from '$lib/server/retrieval/embeddings-config';
 import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import {
 	synthesizeSkillActivations,
@@ -386,7 +387,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
 	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
 		const memories = listMemoriesForUser(locals.user.id);
-		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories);
+		// Above the budget, with an embedding model configured, drop the inlined
+		// bodies for a recall_memory hint so a large store doesn't flood context.
+		const recallMode =
+			resolveRelevanceConfig() !== undefined && memoryInlineBudgetExceeded(memories);
+		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories, { recallMode });
 	}
 
 	// Resolve tool support up front — before serializing the system prompt —

@@ -15,6 +15,12 @@ folded back into the conversation. The built-in toolset:
   [Code interpreter](code-interpreter.md)).
 - `save_memory` / `update_memory` / `forget_memory` — persist user-scoped
   facts the model surfaces between sessions.
+- `recall_memory` — semantic search over saved memories. Only available when an
+  embedding model is configured (the `[embeddings]` block; see
+  [Web search & RAG](web-search.md)). Saved memories are normally inlined into
+  the system prompt in full; once they grow past a size budget the inlined
+  bodies are replaced with a pointer to this tool, so a large memory store
+  doesn't flood a small context window.
 
 The architecture is unbounded — adding more is a single file under
 `src/lib/server/tools/` (see [Adding more tools](#adding-more-tools)), and

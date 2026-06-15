@@ -54,3 +54,27 @@ export function cosineRank(query: Vec, docs: Vec[]): ScoredChunk[] {
 	scored.sort((x, y) => (y.score === x.score ? x.index - y.index : y.score - x.score));
 	return scored;
 }
+
+/**
+ * Pack a dense vector as little-endian Float32 bytes for storage in a SQLite
+ * BLOB column (`memories.embedding`). Float32 halves the size vs JSON and
+ * round-trips losslessly through cosine, which tolerates the f64→f32 precision
+ * drop. Pairs with `decodeVector`.
+ */
+export function encodeVector(v: number[]): Buffer {
+	const f32 = Float32Array.from(v);
+	return Buffer.from(f32.buffer, f32.byteOffset, f32.byteLength);
+}
+
+/**
+ * Unpack a `memories.embedding` BLOB back into a `Float32Array` (a `Vec`, so it
+ * feeds `cosine`/`cosineRank` directly). Accepts whatever the SQLite driver
+ * hands back for a BLOB (Buffer or Uint8Array). Copies into a fresh, 4-byte-
+ * aligned buffer first: a driver Buffer can be a view into a shared pool at an
+ * unaligned `byteOffset`, which `Float32Array`'s constructor rejects.
+ */
+export function decodeVector(b: Buffer | Uint8Array): Float32Array {
+	const copy = new Uint8Array(b.byteLength);
+	copy.set(b);
+	return new Float32Array(copy.buffer, 0, Math.floor(copy.byteLength / 4));
+}

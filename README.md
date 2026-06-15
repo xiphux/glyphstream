@@ -103,7 +103,9 @@ them into a single fast chat UI with one model picker.
 - **Agent skills** ([agentskills.io](https://agentskills.io) spec) — import
   skill bundles, activate them by model judgment or an explicit `/skill-name`
   slash command.
-- **Per-user memory** the model can save, update, and forget across sessions.
+- **Per-user memory** the model can save, update, and forget across sessions —
+  recalled semantically (and kept out of the context window when the store grows
+  large) when an embedding model is configured.
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
 

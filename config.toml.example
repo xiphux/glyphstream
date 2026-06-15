@@ -139,9 +139,13 @@
 # Optional: embedding model for hybrid retrieval. When present, the `fetch_url`
 # tool ranks the sections of an over-budget page with BM25 + embedding cosine
 # (fused via Reciprocal Rank Fusion) and returns the most relevant ones rather
-# than just the first ~20 KB. When absent, fetch_url falls back to BM25-only
-# selection (still far better than blind truncation), so this block is purely
-# an upgrade — omit it freely. See the README's "Web reading & RAG" section.
+# than just the first ~20 KB. It also powers the `recall_memory` tool: a
+# background worker embeds saved memories and, once the inlined index would
+# exceed a size budget, the model retrieves the relevant ones on demand instead
+# of carrying them all in the system prompt. When absent, fetch_url falls back
+# to BM25-only selection and memory falls back to inlining every saved fact, so
+# this block is purely an upgrade — omit it freely. See the README's "Web
+# reading & RAG" section.
 #
 # `endpoint_id` names one of the [[endpoints]] above (base_url + auth are
 # inherited from it); `model_id` is the upstream embedding model. A bad

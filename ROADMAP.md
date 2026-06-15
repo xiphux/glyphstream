@@ -58,20 +58,15 @@ are listed in full.
 
 - **Memory — embedding-backed recall + phase-2.** _Shipped:_ browse-mode MVP
   (per-user `memories` table, `save`/`update`/`forget_memory` tools, full-index
-  injection into the system prompt, view+delete UI at `/settings/memories`).
-  Remaining:
-  - _Embedding-backed recall._ Schema already ships nullable `embedding` /
-    `embedding_model` columns so backfill is a pure UPDATE. Adds a
-    `recall_memory(query)` tool that activates when the endpoint advertises
-    `supportsEmbeddings`. `composePersonaSystemPrompt` is marked
-    `TODO(phase-2)` — swap inlined bodies for a recall-tool hint once memory
-    count × avg tokens crosses a budget threshold (avoids the
-    small-context-local-model blowup).
-  - _Endpoint capability flag._ Add `supportsEmbeddings: boolean` to
-    `LoadedEndpoint` (mirroring `supportsTools`), wired from `config.toml`.
-    Drives both the recall-tool `isAvailable()` and the injection-mode switch.
-  - _Backfill worker._ Reads rows where `embedding IS NULL`, calls the
-    embedding endpoint, writes vectors back. No schema migration.
+  injection into the system prompt, view+delete UI at `/settings/memories`) and
+  embedding-backed recall — a `recall_memory(query)` tool (hybrid BM25 +
+  embedding-cosine over stored vectors) that activates when the `[embeddings]`
+  block resolves, a background backfill worker populating `memories.embedding`,
+  and the inline-bodies→recall-hint injection switch in
+  `composePersonaSystemPrompt` once the store crosses a size budget. (The
+  capability is keyed off the global `[embeddings]` block, not a per-endpoint
+  `supportsEmbeddings` flag — that block postdated this entry and is the natural
+  signal.) Remaining:
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
   - _Memory consolidation ("dreaming")._ A background pass that reorganizes
@@ -163,8 +158,8 @@ are listed in full.
     already ≤64, so an LLM-rerank is one extra call. Beats further RRF tuning.
   - _Apply to attached docs/URLs, not just `fetch_url`._ Embed-and-retrieve
     user-attached files / pasted notes and inject as system context.
-  - _Reuse in `recall_memory`._ The memory phase-2 recall tool can import
-    `vector.ts` + `embeddings()` + `loadEmbeddingsConfig()` directly.
+  - _Reuse in `recall_memory`._ _Done:_ the shipped recall tool imports
+    `vector.ts` + `embeddings()` + `resolveRelevanceConfig()` directly.
   - _Smaller niceties._ Per-(url, model) embedding cache; tune batch sizing
     per backend.
 
