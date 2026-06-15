@@ -417,8 +417,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
 
 	// Block until MCP discovery finishes before we read the tool surface — both
-	// the search_tools hint (deferred-server counts) and the tool list below need
-	// an accurate picture, and a partially-populated surface would make the model
+	// the search_tools hint (deferred tool names by server) and the tool list below
+	// need an accurate picture, and a partially-populated surface would make the model
 	// refuse-to-use a tool later in the turn (flaky behavior). Resolved promise
 	// after the first call.
 	if (supportsTools) await awaitMcpReady();
