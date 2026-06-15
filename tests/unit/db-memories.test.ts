@@ -136,7 +136,7 @@ describe('embedding columns', () => {
 	it('updateMemory nulls the stored embedding so it gets re-embedded', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'original');
-		setMemoryEmbedding(id, encodeVector([1, 2, 3]), MODEL);
+		setMemoryEmbedding(id, 'original', encodeVector([1, 2, 3]), MODEL);
 		expect(listMemoriesWithEmbeddings(u.id)[0].embedding).not.toBeNull();
 
 		updateMemory(u.id, id, 'revised');
@@ -149,11 +149,32 @@ describe('embedding columns', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'fact');
 		const before = listMemoriesForUser(u.id)[0].updatedAt;
-		setMemoryEmbedding(id, encodeVector([0.5, 0.5]), MODEL);
+		setMemoryEmbedding(id, 'fact', encodeVector([0.5, 0.5]), MODEL);
 		const row = listMemoriesWithEmbeddings(u.id)[0];
 		expect(row.embeddingModel).toBe(MODEL);
 		expect(row.embedding).not.toBeNull();
 		expect(row.updatedAt).toBe(before);
+	});
+
+	it('setMemoryEmbedding no-ops (returns false) when content changed since read', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'original');
+		// Simulate the worker's read→await→write race: content was edited (and the
+		// vector nulled) between the queue read and the write-back.
+		updateMemory(u.id, id, 'revised');
+		const matched = setMemoryEmbedding(id, 'original', encodeVector([1, 2, 3]), MODEL);
+		expect(matched).toBe(false);
+		// The stale write must NOT land — the row stays NULL so it re-queues.
+		const row = listMemoriesWithEmbeddings(u.id)[0];
+		expect(row.embedding).toBeNull();
+		expect(listMemoriesNeedingEmbedding(MODEL, 10).map((r) => r.id)).toContain(id);
+	});
+
+	it('setMemoryEmbedding returns true and writes when content is unchanged', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact');
+		expect(setMemoryEmbedding(id, 'fact', encodeVector([1, 0]), MODEL)).toBe(true);
+		expect(listMemoriesWithEmbeddings(u.id)[0].embedding).not.toBeNull();
 	});
 
 	it('listMemoriesNeedingEmbedding picks NULL and stale-model rows, cross-user', () => {
@@ -162,8 +183,8 @@ describe('embedding columns', () => {
 		const fresh = createMemory(u1.id, 'fresh — never embedded');
 		const stale = createMemory(u1.id, 'stale — old model');
 		const current = createMemory(u2.id, 'current — up to date');
-		setMemoryEmbedding(stale.id, encodeVector([1]), 'old-model');
-		setMemoryEmbedding(current.id, encodeVector([1]), MODEL);
+		setMemoryEmbedding(stale.id, 'stale — old model', encodeVector([1]), 'old-model');
+		setMemoryEmbedding(current.id, 'current — up to date', encodeVector([1]), MODEL);
 
 		const ids = listMemoriesNeedingEmbedding(MODEL, 100).map((r) => r.id);
 		expect(ids).toContain(fresh.id);

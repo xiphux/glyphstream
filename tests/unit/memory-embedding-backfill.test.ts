@@ -80,7 +80,7 @@ describe('runBackfillSweep', () => {
 	it('re-embeds a row whose stored vector came from a different model', async () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'fact');
-		setMemoryEmbedding(id, encodeVector([9, 9]), 'old-model');
+		setMemoryEmbedding(id, 'fact', encodeVector([9, 9]), 'old-model');
 
 		const { embedded } = await runBackfillSweep();
 		expect(embedded).toBe(1);
@@ -90,7 +90,7 @@ describe('runBackfillSweep', () => {
 	it('does nothing when every row is already current', async () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'fact');
-		setMemoryEmbedding(id, encodeVector([1, 0]), MODEL);
+		setMemoryEmbedding(id, 'fact', encodeVector([1, 0]), MODEL);
 		const { embedded } = await runBackfillSweep();
 		expect(embedded).toBe(0);
 		expect(embeddingsMock).not.toHaveBeenCalled();
@@ -103,5 +103,26 @@ describe('runBackfillSweep', () => {
 		const { embedded } = await runBackfillSweep();
 		expect(embedded).toBe(0);
 		expect(listMemoriesNeedingEmbedding(MODEL, 100)).toHaveLength(1);
+	});
+
+	it('writes the vectors that came back on a short response, not discarding the batch', async () => {
+		const u = seedUser();
+		createMemory(u.id, 'aaa');
+		createMemory(u.id, 'bbb');
+		createMemory(u.id, 'ccc');
+		// Backend always omits 'bbb' from its response. The batch must not be
+		// discarded for the count mismatch — 'aaa' and 'ccc' embed, 'bbb' re-queues
+		// (and the next loop's 1-row batch comes back empty, ending the sweep).
+		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
+			data: body.input
+				.map((s, index) => ({ s, index }))
+				.filter((x) => x.s !== 'bbb')
+				.map((x) => ({ index: x.index, embedding: [1, 0] })),
+		}));
+		const { embedded } = await runBackfillSweep();
+		expect(embedded).toBe(2);
+		const stillQueued = listMemoriesNeedingEmbedding(MODEL, 100);
+		expect(stillQueued).toHaveLength(1);
+		expect(stillQueued[0].content).toBe('bbb');
 	});
 });

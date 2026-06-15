@@ -1,14 +1,17 @@
 /**
  * Memory rows are the model-driven "remember this across conversations"
- * surface. All CRUD here scopes every WHERE by user_id so a tool call
- * that fabricates a foreign id can never reach another user's row — the
- * UPDATE/DELETE simply matches zero rows and the caller reports a
- * recoverable error to the model.
+ * surface. The model-facing CRUD (create/list/update/delete/recall) scopes
+ * every WHERE by user_id so a tool call that fabricates a foreign id can never
+ * reach another user's row — the UPDATE/DELETE simply matches zero rows and
+ * the caller reports a recoverable error to the model. The two exceptions are
+ * the embedding-backfill worker's helpers (`listMemoriesNeedingEmbedding`,
+ * `setMemoryEmbedding`), which run cross-user by design — see their own notes.
  *
- * Browse-mode MVP: every row's `content` is inlined into the system
- * prompt via composeMemorySection, so the model always has the full
- * index without a retrieval round-trip. `embedding` + `embeddingModel`
- * are the phase-2 hook — NULL until a future backfill populates them.
+ * Read paths: small stores inline every row's `content` into the system prompt
+ * via composeMemorySection (no retrieval round-trip); once the inlined index
+ * would exceed a char budget AND an embedding model is configured, the bodies
+ * are swapped for a `recall_memory` hint and the model retrieves on demand
+ * against `embedding` (populated asynchronously by the backfill worker).
  */
 import { and, asc, eq, isNull, ne, or } from 'drizzle-orm';
 import { generateId } from '../../util/id';
@@ -101,10 +104,29 @@ export function listMemoriesNeedingEmbedding(
  * Persist a computed embedding. Keyed by id alone (background worker, cross-
  * user) and does not bump `updatedAt` — an embedding refresh isn't a content
  * edit.
+ *
+ * Guarded on `expectedContent` to close a write-after-edit race: the worker
+ * reads the content, then awaits a network embedding call, during which a
+ * concurrent `update_memory` may change the content and null the vector (its
+ * "re-embed me" signal). Without the guard we'd write the OLD text's vector
+ * back under the NEW content AND stamp the current model — making the row
+ * un-requeue-able and corrupting recall permanently. With it, the stale write
+ * matches zero rows, the vector stays NULL, and the next sweep re-embeds the
+ * new content. Returns true iff a row matched (content unchanged since read).
  */
-export function setMemoryEmbedding(id: string, embedding: Buffer, embeddingModel: string): void {
+export function setMemoryEmbedding(
+	id: string,
+	expectedContent: string,
+	embedding: Buffer,
+	embeddingModel: string,
+): boolean {
 	const db = getDb();
-	db.update(memories).set({ embedding, embeddingModel }).where(eq(memories.id, id)).run();
+	const result = db
+		.update(memories)
+		.set({ embedding, embeddingModel })
+		.where(and(eq(memories.id, id), eq(memories.content, expectedContent)))
+		.run();
+	return result.changes > 0;
 }
 
 export function createMemory(userId: string, content: string): { id: string } {

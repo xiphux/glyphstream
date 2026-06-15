@@ -76,21 +76,33 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 			}
 
 			const data = resp.data;
-			if (!Array.isArray(data) || data.length !== rows.length) {
-				console.warn(
-					`[memory-backfill] expected ${rows.length} embeddings, got ${data?.length ?? 0}; skipping`,
-				);
+			if (!Array.isArray(data)) {
+				console.warn('[memory-backfill] non-array embeddings response; retrying next sweep');
 				break;
 			}
-			const sorted = [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+			// Pair returned vectors to rows by their response `index` (we sent one
+			// input per row, in row order). Write each valid one individually rather
+			// than discarding the whole batch on a count mismatch — a short or
+			// reordered response still persists the vectors that did come back, so a
+			// poison row can't starve the rows behind it.
+			const vecByIndex = new Map<number, number[]>();
+			for (const d of data) {
+				const v = d.embedding;
+				if (typeof d.index === 'number' && Array.isArray(v) && v.length > 0) {
+					vecByIndex.set(d.index, v as number[]);
+				}
+			}
 
 			let progressed = 0;
 			for (let i = 0; i < rows.length; i++) {
-				const vec = sorted[i]?.embedding;
-				if (!Array.isArray(vec) || vec.length === 0) continue;
-				setMemoryEmbedding(rows[i].id, encodeVector(vec), cfg.modelId);
-				embedded++;
-				progressed++;
+				const vec = vecByIndex.get(i);
+				if (!vec) continue;
+				// Guarded on the content we read above; a no-match means a concurrent
+				// edit nulled the vector mid-flight — leave it for the next sweep.
+				if (setMemoryEmbedding(rows[i].id, rows[i].content, encodeVector(vec), cfg.modelId)) {
+					embedded++;
+					progressed++;
+				}
 			}
 			// Nothing in this batch took — stop rather than re-query the same
 			// unembeddable rows forever within one sweep.

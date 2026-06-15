@@ -3,8 +3,9 @@
  * just dot/norm/cosine over float arrays, plus a ranking helper.
  *
  * Shared surface: `fetch_url`'s relevance selection uses this for the dense
- * leg of hybrid retrieval, and the planned `recall_memory` tool (memory
- * phase-2) reuses the same primitives against persisted memory embeddings.
+ * leg of hybrid retrieval, and the `recall_memory` tool reuses the same
+ * primitives (plus `encodeVector`/`decodeVector` below) against persisted
+ * memory embeddings.
  *
  * Accepts both `number[]` (the shape the OpenAI `/v1/embeddings` JSON decodes
  * to) and `Float32Array` (the shape memory blobs decode to), so callers on

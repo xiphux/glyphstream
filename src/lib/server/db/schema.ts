@@ -345,16 +345,18 @@ export const customModels = sqliteTable('custom_models', {
 // --- memories -------------------------------------------------------------
 //
 // Per-user standing facts the model has chosen to remember (preferences,
-// identity, durable interests). Browse-mode MVP: every row's `content` gets
-// inlined into the system prompt when the conversation's `personalization`
-// feature category is enabled, so the model always has the full index.
+// identity, durable interests). Each row's `content` is inlined into the
+// system prompt when the conversation's `personalization` feature category is
+// enabled, so the model has the full index for free at small sizes.
 // Write path is tool-calls (save_memory / update_memory / forget_memory);
 // the management UI is view + delete only.
 //
-// `embedding` + `embeddingModel` are the phase-2 hook: NULL means "not yet
-// embedded", a future backfill populates them, and the injection branch
-// then switches between body-inlining and a recall-tool hint based on
-// endpoint capability + memory count. No schema migration when that lands.
+// `embedding` + `embeddingModel` back semantic recall: NULL means "not yet
+// embedded", the background backfill worker populates them, and once the
+// inlined index would exceed a char budget (MEMORY_INLINE_BUDGET_CHARS) AND an
+// `[embeddings]` model is configured, the injection branch swaps the inlined
+// bodies for a recall_memory hint. embedding_model records which model produced
+// the vector so a model change re-queues the row.
 
 export const memories = sqliteTable(
 	'memories',

@@ -85,8 +85,8 @@ describe('recallMemoryTool.execute', () => {
 		ctx.userId = u.id;
 		const a = createMemory(u.id, 'alpha note');
 		const b = createMemory(u.id, 'beta note');
-		setMemoryEmbedding(a.id, encodeVector([1, 0]), MODEL);
-		setMemoryEmbedding(b.id, encodeVector([0, 1]), MODEL);
+		setMemoryEmbedding(a.id, 'alpha note', encodeVector([1, 0]), MODEL);
+		setMemoryEmbedding(b.id, 'beta note', encodeVector([0, 1]), MODEL);
 		// Query embeds near A's vector; lexically neutral so the dense leg drives.
 		mockQueryVec([0.9, 0.1]);
 
@@ -110,7 +110,7 @@ describe('recallMemoryTool.execute', () => {
 		const u = seedUser();
 		ctx.userId = u.id;
 		const a = createMemory(u.id, 'the quokka migration plan');
-		setMemoryEmbedding(a.id, encodeVector([1, 0]), MODEL);
+		setMemoryEmbedding(a.id, 'the quokka migration plan', encodeVector([1, 0]), MODEL);
 		embeddingsMock.mockRejectedValue(new Error('endpoint down'));
 
 		const { res, parsed } = await run('quokka');
@@ -122,7 +122,7 @@ describe('recallMemoryTool.execute', () => {
 		const u = seedUser();
 		ctx.userId = u.id;
 		const a = createMemory(u.id, 'stale model row');
-		setMemoryEmbedding(a.id, encodeVector([1, 0, 0]), 'old-model'); // wrong dim + model
+		setMemoryEmbedding(a.id, 'stale model row', encodeVector([1, 0, 0]), 'old-model'); // wrong dim + model
 		mockQueryVec([1, 0]); // current-model query vec (dim 2)
 
 		// Dense leg must skip the stale-model row rather than dimension-mismatch

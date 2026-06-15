@@ -34,12 +34,8 @@ import {
 	collectActivatedToolNames,
 	dedupeToolDefs,
 } from '$lib/server/chat/tool-search-context';
-import {
-	composePersonaSystemPrompt,
-	getUserPreferences,
-} from '$lib/server/db/queries/user-preferences';
-import { listMemoriesForUser, memoryInlineBudgetExceeded } from '$lib/server/db/queries/memories';
-import { resolveRelevanceConfig } from '$lib/server/retrieval/embeddings-config';
+import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
+import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import {
 	synthesizeSkillActivations,
@@ -385,13 +381,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// which MCP tools to bypass the approval prompt for.
 	const prefs = getUserPreferences(locals.user.id);
 	let effectiveSystemPrompt: string | null = meta.systemPrompt;
-	if (effectiveSystemPrompt === null && !meta.disabledFeatures.includes('personalization')) {
-		const memories = listMemoriesForUser(locals.user.id);
-		// Above the budget, with an embedding model configured, drop the inlined
-		// bodies for a recall_memory hint so a large store doesn't flood context.
-		const recallMode =
-			resolveRelevanceConfig() !== undefined && memoryInlineBudgetExceeded(memories);
-		if (prefs) effectiveSystemPrompt = composePersonaSystemPrompt(prefs, memories, { recallMode });
+	if (effectiveSystemPrompt === null) {
+		effectiveSystemPrompt = composePersonaPrompt(prefs, locals.user.id, meta.disabledFeatures);
 	}
 
 	// Resolve tool support up front — before serializing the system prompt —
