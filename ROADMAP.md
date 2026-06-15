@@ -83,6 +83,25 @@ are listed in full.
     Pairs with embedding-backed recall: consolidation is what keeps full-index
     injection from growing unboundedly as memory count × avg tokens climbs.
 
+- **Agent-callable cross-conversation search.** The user-facing search box over
+  the conversation list already ships (sidebar); what's missing is exposing the
+  same recall to the _model_ — a `search_conversations(query)` tool so it can
+  pull context from past chats mid-turn ("what did we decide about X last
+  week") without the user remembering which thread it lived in. Distinct from
+  the memory system: memory is a curated, model-authored store of durable
+  facts; this is full-fidelity search over the raw message history. Scoped by
+  `user_id` (the multi-user isolation invariant — no unscoped read of a
+  user-owned table). Sketch: SQLite FTS5 over `messages.content` for the
+  keyword layer (cheap, no embedding dep), optionally fused with embedding
+  cosine where the endpoint advertises `supportsEmbeddings` — reuses
+  `vector.ts` + the `[embeddings]` config block + the RRF fusion already built
+  for inline RAG, plus the same nullable-`embedding`-column backfill pattern as
+  memory phase-2. Open questions: whether the tool returns whole messages or
+  RAG-selected chunks; citation rendering (link back to the source message +
+  branch so a result restores the right leaf); indexing cost on a small box
+  (FTS5 is cheap, embeddings less so — gate the semantic layer behind the
+  capability flag).
+
 - **Code interpreter — phase-2.** _Shipped:_ server-side Pyodide `run_python`
   built-in (one `worker_threads` worker per conversation with idle-reap + LRU
   evict + wall-clock timeout; network through the SSRF + per-conversation `web`
@@ -148,6 +167,41 @@ are listed in full.
     `vector.ts` + `embeddings()` + `loadEmbeddingsConfig()` directly.
   - _Smaller niceties._ Per-(url, model) embedding cache; tune batch sizing
     per backend.
+
+- **Deep research.** A multi-step research mode (à la Claude/ChatGPT "deep
+  research"): the model decomposes a question into sub-queries, fans out web
+  searches, fetches and reads sources, and synthesizes a cited report — many
+  tool-calls + model turns for one user prompt, rather than the single-shot
+  `fetch_url` we have today. The pieces are mostly in hand: `web_search` +
+  `fetch_url` (with hybrid RAG selection), the SSRF + per-conversation `web`
+  gate, and the agentic tool loop. What's missing is the _orchestration_: a
+  planner that decomposes the query, a budget (max searches / fetches /
+  wall-clock), and a synthesis pass producing a structured, source-cited
+  answer. Open questions: run it inline in the normal tool loop (simplest, but
+  a long autonomous run wants progress UI — pairs with the code-interpreter
+  `tool_progress` SSE idea) or as a distinct mode with its own surface; how to
+  render citations (footnote-style links to the fetched sources); whether the
+  planner uses the conversation's main model or the task model. Effectively a
+  prereq for fusion below.
+
+- **Multi-model fusion (panel + judge).** Run one prompt through a _panel_ of
+  models in parallel, then a judge model reads every response — extracting
+  consensus, contradictions, partial coverage, unique insights, blind spots —
+  and a final model writes the answer grounded in that analysis. OpenRouter
+  shipped this as `openrouter/fusion` (panel models + an `analysis_models` set
+  - a coordinating model; see their "Fusion beats frontier" post). On our
+    side: let the user define the panel (a set of base models) and the
+    coordinating/judge model, materialized like a custom-model preset; dispatch
+    to the panel concurrently (we already hold multiple endpoints in the
+    registry), feed the responses to the judge, then stream the final synthesis.
+    _Why deferred / gated:_ it's overkill — and expensive (N+2 model calls per
+    prompt) — for simple queries, so the value really shows up paired with **deep
+    research** above (a panel of deep-researchers, judge synthesizes). Open
+    questions: surfacing per-panel-member cost/latency; whether panel members
+    each get web/tools (OpenRouter runs them with web search + fetch enabled) or
+    just the bare prompt; rendering the panel/judge breakdown (collapsible
+    per-model columns, like the keep-many compare grid) vs. only the final
+    answer; reusing the custom-model materialization path for the panel config.
 
 - **Context compaction.** Summarize the conversation so far and continue from
   that summary as the new history. Mostly relevant for local LLMs — cloud
