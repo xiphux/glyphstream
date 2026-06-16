@@ -616,8 +616,21 @@ export class FanoutController {
 	 *  conversation-switch into a parked fan-out. Skipped while THIS client drives
 	 *  the fan-out (live) or has a branch fetch in flight (a live regenerate), so
 	 *  it never clobbers the in-session grid. */
+	/** Safe to clobber the grid from server truth only when nothing client-driven
+	 *  owns it: not live-streaming, no in-flight aborts, not mid-pick, page idle.
+	 *  The single predicate, shared by syncFromServer + the recovery poll. */
+	#canRebuildFromServer(): boolean {
+		return !this.live && this.#aborts.size === 0 && !this.picking && !this.#deps.busy();
+	}
+
+	/** Replace the grid with the recovered columns for a parked fan-out. */
+	#rebuildFrom(f: FanoutRecoveryState): void {
+		this.userMessageId = f.parentMessageId;
+		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
+	}
+
 	syncFromServer(fanout: FanoutRecoveryState | null | undefined): void {
-		if (this.live || this.#aborts.size > 0 || this.#deps.busy() || this.picking) return;
+		if (!this.#canRebuildFromServer()) return;
 		if (!fanout?.parentMessageId || (fanout.siblings.length === 0 && fanout.pending === 0)) {
 			// No parked fan-out on the server — drop any recovered grid.
 			if (this.columns.length > 0) {
@@ -626,12 +639,7 @@ export class FanoutController {
 			}
 			return;
 		}
-		this.userMessageId = fanout.parentMessageId;
-		this.columns = this.#buildRecoveredColumns(
-			fanout.siblings,
-			pendingBranches(fanout),
-			fanout.kind,
-		);
+		this.#rebuildFrom(fanout);
 	}
 
 	/** True when the grid has server-driven "Generating…" placeholders the client
@@ -663,10 +671,7 @@ export class FanoutController {
 				}
 				// Rebuild from fresh server truth (more done, fewer pending) — unless
 				// a live interaction (regenerate) has since taken over.
-				if (!this.live && this.#aborts.size === 0 && !this.picking && !this.#deps.busy()) {
-					this.userMessageId = f.parentMessageId;
-					this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
-				}
+				if (this.#canRebuildFromServer()) this.#rebuildFrom(f);
 				if (f.pending === 0) {
 					stopped = true;
 					clearInterval(interval);
