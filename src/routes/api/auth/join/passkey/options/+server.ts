@@ -13,7 +13,9 @@ import { error, json } from '@sveltejs/kit';
 import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '$lib/server/auth/passkey';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { JOIN_PASSKEY_CARRY_COOKIE } from '$lib/server/auth/join';
-import { sign } from '$lib/server/auth/signed-cookies';
+import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
+import { parseIdentityInput } from '$lib/server/auth/identity-input';
+import { parseJsonBody } from '$lib/server/http';
 import { findValidInvite } from '$lib/server/db/queries/invites';
 import { generateId } from '$lib/server/util/id';
 import { passkeyLoginEnabled } from '$lib/server/env';
@@ -24,22 +26,17 @@ const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
 
-	let body: { displayName?: unknown; email?: unknown; inviteToken?: unknown };
-	try {
-		body = (await request.json()) as typeof body;
-	} catch {
-		throw error(400, 'Malformed JSON body');
-	}
+	const body = await parseJsonBody<{
+		displayName?: unknown;
+		email?: unknown;
+		inviteToken?: unknown;
+	}>(request);
 	const inviteToken = typeof body.inviteToken === 'string' ? body.inviteToken : '';
 	if (!findValidInvite(inviteToken)) {
 		throw error(403, 'This invite link is invalid or has expired');
 	}
 
-	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-	const email = typeof body.email === 'string' ? body.email.trim() : '';
-	if (displayName.length === 0) throw error(400, 'Display name is required');
-	if (displayName.length > 60) throw error(400, 'Display name too long');
-	if (email.length > 120) throw error(400, 'Email too long');
+	const { displayName, email } = parseIdentityInput(body);
 
 	const userId = generateId();
 	const userName = email || displayName;
@@ -59,16 +56,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	});
 
 	setRegistrationChallengeCookie(cookies, options.challenge);
-	cookies.set(
+	setCarryCookie(
+		cookies,
 		JOIN_PASSKEY_CARRY_COOKIE,
-		sign({ userId, displayName, email: email || null, inviteToken }, CARRY_TTL_MS),
-		{
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
-			maxAge: 300,
-		},
+		sign({ userId, displayName, email, inviteToken }, CARRY_TTL_MS),
+		CARRY_TTL_MS / 1000,
 	);
 
 	return json(options);

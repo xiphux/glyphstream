@@ -17,7 +17,9 @@ import { error, json } from '@sveltejs/kit';
 import { generateState } from 'arctic';
 import { getGithubClient, STATE_COOKIE, STATE_TTL_SECONDS } from '$lib/server/auth/github';
 import { SETUP_GITHUB_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
-import { sign } from '$lib/server/auth/signed-cookies';
+import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
+import { parseIdentityInput } from '$lib/server/auth/identity-input';
+import { parseJsonBody } from '$lib/server/http';
 import { githubLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
@@ -28,41 +30,21 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const verdict = setupGate(url);
 	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
 
-	let body: { displayName?: unknown; email?: unknown };
-	try {
-		body = (await request.json()) as { displayName?: unknown; email?: unknown };
-	} catch {
-		throw error(400, 'Malformed JSON body');
-	}
-	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-	const email = typeof body.email === 'string' ? body.email.trim() : '';
-	if (displayName.length === 0) throw error(400, 'Display name is required');
-	if (displayName.length > 60) throw error(400, 'Display name too long');
-	if (email.length > 120) throw error(400, 'Email too long');
+	const { displayName, email } = parseIdentityInput(
+		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),
+	);
 
 	const state = generateState();
 	const client = getGithubClient();
 	const oauthUrl = client.createAuthorizationURL(state, ['read:user', 'user:email']);
 
-	cookies.set(STATE_COOKIE, state, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
-		maxAge: STATE_TTL_SECONDS,
-	});
+	setCarryCookie(cookies, STATE_COOKIE, state, STATE_TTL_SECONDS);
 
 	// Carry the operator's typed display name / email through GitHub's
 	// round-trip. Signed so the callback can trust the values without a
 	// server-side stash; expires alongside the state cookie.
-	const carry = sign({ displayName, email: email || null }, CARRY_TTL_MS);
-	cookies.set(SETUP_GITHUB_CARRY_COOKIE, carry, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
-		maxAge: STATE_TTL_SECONDS,
-	});
+	const carry = sign({ displayName, email }, CARRY_TTL_MS);
+	setCarryCookie(cookies, SETUP_GITHUB_CARRY_COOKIE, carry, STATE_TTL_SECONDS);
 
 	return json({ url: oauthUrl.toString() });
 };

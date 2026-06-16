@@ -14,7 +14,9 @@ import { error, json } from '@sveltejs/kit';
 import { RP_NAME, getRpId, setRegistrationChallengeCookie } from '$lib/server/auth/passkey';
 import { generateRegistrationOptions } from '@simplewebauthn/server';
 import { SETUP_PASSKEY_CARRY_COOKIE, setupGate } from '$lib/server/auth/setup';
-import { sign } from '$lib/server/auth/signed-cookies';
+import { sign, setCarryCookie } from '$lib/server/auth/signed-cookies';
+import { parseIdentityInput } from '$lib/server/auth/identity-input';
+import { parseJsonBody } from '$lib/server/http';
 import { generateId } from '$lib/server/util/id';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
@@ -26,17 +28,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const verdict = setupGate(url);
 	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
 
-	let body: { displayName?: unknown; email?: unknown };
-	try {
-		body = (await request.json()) as { displayName?: unknown; email?: unknown };
-	} catch {
-		throw error(400, 'Malformed JSON body');
-	}
-	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
-	const email = typeof body.email === 'string' ? body.email.trim() : '';
-	if (displayName.length === 0) throw error(400, 'Display name is required');
-	if (displayName.length > 60) throw error(400, 'Display name too long');
-	if (email.length > 120) throw error(400, 'Email too long');
+	const { displayName, email } = parseIdentityInput(
+		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),
+	);
 
 	const userId = generateId();
 	const userName = email || displayName;
@@ -56,16 +50,11 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	});
 
 	setRegistrationChallengeCookie(cookies, options.challenge);
-	cookies.set(
+	setCarryCookie(
+		cookies,
 		SETUP_PASSKEY_CARRY_COOKIE,
-		sign({ userId, displayName, email: email || null }, CARRY_TTL_MS),
-		{
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
-			maxAge: 300,
-		},
+		sign({ userId, displayName, email }, CARRY_TTL_MS),
+		CARRY_TTL_MS / 1000,
 	);
 
 	return json(options);

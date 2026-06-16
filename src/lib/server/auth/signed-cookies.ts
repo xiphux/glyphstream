@@ -15,6 +15,7 @@
  * DB-sha256 split. These are stateless single-use markers tied to
  * one ceremony.
  */
+import type { Cookies } from '@sveltejs/kit';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { authSecret } from '../env';
 
@@ -58,4 +59,26 @@ export function verify<T>(signed: string | undefined | null): (T & { exp: number
 	if (typeof exp !== 'number' || exp < Date.now()) return null;
 
 	return parsed as T & { exp: number };
+}
+
+/**
+ * Write a short-lived flow-carry cookie with the standard hardening (httpOnly,
+ * SameSite=Lax, Secure in production). The single definition of these cookie
+ * attributes for the setup/join carry + OAuth-state cookies, so they can't drift
+ * apart. `maxAgeSeconds` should match the signed payload's TTL so the cookie and
+ * its signature expire together.
+ */
+export function setCarryCookie(
+	cookies: Cookies,
+	name: string,
+	value: string,
+	maxAgeSeconds: number,
+): void {
+	cookies.set(name, value, {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		secure: process.env.NODE_ENV === 'production',
+		maxAge: maxAgeSeconds,
+	});
 }
