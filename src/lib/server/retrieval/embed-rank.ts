@@ -39,8 +39,11 @@ export interface RelevanceConfig {
 //
 // Chars-per-token is deliberately a low estimate so the char cap UNDER-fills
 // the token limit (English averages ~4; under-estimating keeps us clear of a
-// 500 on token-dense inputs).
-const CHARS_PER_TOKEN = 3.5;
+// 500 on token-dense inputs). Exported (with `inputCharCap`/`truncate`) because
+// the memory-embedding backfill writes vectors that must be truncated
+// identically to how queries are truncated at recall time — a divergent cap
+// would embed write-side and read-side text differently and break cosine.
+export const CHARS_PER_TOKEN = 3.5;
 const EMBED_BATCH_MAX_ITEMS = 8;
 const EMBED_BATCH_MAX_CHARS = 12000;
 // Cap how many batch requests are in flight at once. The batch split above keeps
@@ -63,7 +66,7 @@ export async function embedAndRank(
 ): Promise<ScoredChunk[] | null> {
 	// Apply task prefixes (e.g. nomic/e5 "search_query:"/"search_document:")
 	// and cap each input so it stays under the model's max sequence length.
-	const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
+	const inputCap = inputCharCap(cfg.maxInputTokens);
 	const inputs = [
 		cfg.queryPrefix + truncate(query, inputCap),
 		...docs.map((d) => cfg.documentPrefix + truncate(d, inputCap)),
@@ -90,7 +93,7 @@ export async function embedAndRankCached(
 	cache: Map<string, Vec>,
 ): Promise<ScoredChunk[] | null> {
 	try {
-		const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
+		const inputCap = inputCharCap(cfg.maxInputTokens);
 		const queryInput = cfg.queryPrefix + truncate(query, inputCap);
 		const docInputs = docs.map((d) => cfg.documentPrefix + truncate(d, inputCap));
 		// Vectors live in the same space only within one model; key on it so a model
@@ -111,6 +114,33 @@ export async function embedAndRankCached(
 		return cosineRank(queryVec, docVecs);
 	} catch (e) {
 		console.warn('[retrieval] cached embedding ranking failed, falling back to BM25:', e);
+		return null;
+	}
+}
+
+/**
+ * Embed a SINGLE query string and return its vector, or null on ANY failure (so
+ * dense-leg callers degrade to BM25). Applies the query prefix + per-input
+ * truncation + the timeout/abort composition — the same request plumbing
+ * `embedAndRank` uses for its query, factored out for the memory-recall dense
+ * leg, which cosines this against PRE-STORED row vectors instead of re-embedding
+ * the corpus. Sharing the truncation here keeps recall queries capped exactly as
+ * the backfill capped the stored documents.
+ */
+export async function embedQuery(
+	query: string,
+	cfg: RelevanceConfig,
+	signal: AbortSignal,
+): Promise<Vec | null> {
+	try {
+		const input = cfg.queryPrefix + truncate(query, inputCharCap(cfg.maxInputTokens));
+		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
+		const resp = await embeddings(cfg.endpoint, { model: cfg.modelId, input: [input] }, sig);
+		const vec = resp.data?.[0]?.embedding;
+		if (!Array.isArray(vec) || vec.length === 0) return null;
+		return vec as Vec;
+	} catch (e) {
+		console.warn('[retrieval] query embedding failed, falling back to BM25:', e);
 		return null;
 	}
 }
@@ -186,7 +216,12 @@ async function mapBounded<T, R>(
 	return results;
 }
 
-function truncate(s: string, maxChars: number): string {
+/** Per-input character cap derived from the model's max sequence length. */
+export function inputCharCap(maxInputTokens: number): number {
+	return Math.max(1, Math.floor(maxInputTokens * CHARS_PER_TOKEN));
+}
+
+export function truncate(s: string, maxChars: number): string {
 	return s.length <= maxChars ? s : s.slice(0, maxChars);
 }
 

@@ -20,6 +20,7 @@
 
 import { embeddings } from '../endpoints/client';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
+import { inputCharCap, truncate } from '../retrieval/embed-rank';
 import { encodeVector } from '../retrieval/vector';
 import { listMemoriesNeedingEmbedding, setMemoryEmbedding } from '../db/queries/memories';
 
@@ -34,9 +35,6 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 // Long enough for the DB connection to warm after boot; short enough that a
 // fresh import gets embedded promptly.
 const INITIAL_DELAY_MS = 15_000;
-// Conservative chars-per-token underestimate (matches embed-rank.ts) so a tiny
-// configured maxInputTokens still truncates each content under the token limit.
-const CHARS_PER_TOKEN = 3.5;
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -53,7 +51,7 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 		const cfg = resolveRelevanceConfig();
 		if (!cfg) return { embedded: 0 };
 
-		const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
+		const inputCap = inputCharCap(cfg.maxInputTokens);
 		let embedded = 0;
 		for (let batch = 0; batch < MAX_BATCHES_PER_SWEEP; batch++) {
 			const rows = listMemoriesNeedingEmbedding(cfg.modelId, BATCH_SIZE);
@@ -141,8 +139,4 @@ export function stopMemoryEmbeddingBackfiller(): void {
 		clearTimeout(timer);
 		timer = null;
 	}
-}
-
-function truncate(s: string, maxChars: number): string {
-	return s.length <= maxChars ? s : s.slice(0, maxChars);
 }

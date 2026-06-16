@@ -8,6 +8,10 @@ vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 import {
 	embedAndRank,
 	embedAndRankCached,
+	embedQuery,
+	inputCharCap,
+	truncate,
+	CHARS_PER_TOKEN,
 	type RelevanceConfig,
 } from '$lib/server/retrieval/embed-rank';
 import type { Vec } from '$lib/server/retrieval/vector';
@@ -95,5 +99,45 @@ describe('embedAndRankCached', () => {
 		embeddingsMock.mockReset();
 		embeddingsMock.mockRejectedValue(new Error('endpoint down'));
 		expect(await embedAndRankCached('q', ['a'], cfg(), signal, new Map())).toBeNull();
+	});
+});
+
+describe('inputCharCap / truncate (shared write-side ↔ read-side caps)', () => {
+	it('derives the char cap from maxInputTokens × CHARS_PER_TOKEN, floored, min 1', () => {
+		expect(inputCharCap(512)).toBe(Math.floor(512 * CHARS_PER_TOKEN));
+		expect(inputCharCap(0)).toBe(1); // never zero — a 0-length cap would drop all input
+	});
+
+	it('truncates only when over the cap', () => {
+		expect(truncate('abcdef', 3)).toBe('abc');
+		expect(truncate('ab', 3)).toBe('ab');
+	});
+});
+
+describe('embedQuery', () => {
+	it('applies the query prefix + truncation and returns the single vector', async () => {
+		embeddingsMock.mockReset();
+		const seen: string[] = [];
+		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => {
+			seen.push(...body.input);
+			return { data: [{ index: 0, embedding: [1, 2, 3] }] };
+		});
+		const c = { ...cfg(), queryPrefix: 'search_query: ', maxInputTokens: 1 };
+		const vec = await embedQuery('a very long query string', c, signal);
+		expect(vec).toEqual([1, 2, 3]);
+		// prefix applied + truncated to inputCharCap(1) chars of the raw query.
+		expect(seen).toEqual(['search_query: ' + 'a very long query string'.slice(0, inputCharCap(1))]);
+	});
+
+	it('returns null on a malformed/empty response (BM25 fallback)', async () => {
+		embeddingsMock.mockReset();
+		embeddingsMock.mockResolvedValue({ data: [{ index: 0, embedding: [] }] });
+		expect(await embedQuery('q', cfg(), signal)).toBeNull();
+	});
+
+	it('returns null when the embedding call throws', async () => {
+		embeddingsMock.mockReset();
+		embeddingsMock.mockRejectedValue(new Error('endpoint down'));
+		expect(await embedQuery('q', cfg(), signal)).toBeNull();
 	});
 });

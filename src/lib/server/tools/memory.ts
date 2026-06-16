@@ -28,13 +28,11 @@ import {
 	updateMemory,
 	type MemoryWithEmbedding,
 } from '../db/queries/memories';
-import { embeddings } from '../endpoints/client';
 import { bm25Rank, type ScoredChunk } from '../retrieval/bm25';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
-import type { RelevanceConfig } from '../retrieval/embed-rank';
+import { embedQuery, type RelevanceConfig } from '../retrieval/embed-rank';
 import { fuseRankings } from '../retrieval/fusion';
 import { cosineRank, decodeVector, type Vec } from '../retrieval/vector';
-import { composeSignals } from '../util/abort';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 
@@ -212,18 +210,14 @@ async function denseRank(
 			.filter((x) => x.row.embedding && x.row.embeddingModel === cfg.modelId);
 		if (embedded.length === 0) return null;
 
-		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
-		const resp = await embeddings(
-			cfg.endpoint,
-			{ model: cfg.modelId, input: [cfg.queryPrefix + query] },
-			sig,
-		);
-		const qvec = resp.data?.[0]?.embedding;
-		if (!Array.isArray(qvec) || qvec.length === 0) return null;
+		// Shared query-embed plumbing (prefix + truncation + timeout/abort), so the
+		// recall query is capped exactly as the backfill capped the stored vectors.
+		const qvec = await embedQuery(query, cfg, signal);
+		if (!qvec) return null;
 
 		const vecs = embedded.map((x) => decodeVector(x.row.embedding as Buffer) as Vec);
 		// cosineRank indices are local to `embedded`; map them back to `rows`.
-		return cosineRank(qvec as Vec, vecs).map((sc) => ({
+		return cosineRank(qvec, vecs).map((sc) => ({
 			index: embedded[sc.index].index,
 			score: sc.score,
 		}));
