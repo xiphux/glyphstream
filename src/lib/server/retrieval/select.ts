@@ -19,7 +19,7 @@
 
 import { bm25Rank, type ScoredChunk } from './bm25';
 import { embedAndRank, type RelevanceConfig } from './embed-rank';
-import { RRF_K } from './fusion';
+import { fuseRankings } from './fusion';
 import type { Chunk } from './chunker';
 
 // Re-exported so existing importers (`fetch-url.ts`, tests) keep their
@@ -68,36 +68,25 @@ export async function selectRelevant(
 			signal,
 		);
 		if (dense) {
-			ranking = fuseRrf(chunks, bm25, dense, candidates, embedding.embedCap);
+			// bm25's sc.index is already the chunk's blockIndex (chunks are in
+			// document order). Remap the dense leg from candidate-subset space back
+			// onto blockIndex so both rankings share one index space, then fuse.
+			// bm25 covers every chunk, so its missingRank never fires; the dense leg
+			// only ranked the prefiltered candidates, so chunks it never saw get the
+			// `embedCap + 1` floor (preserving the prior hand-rolled fusion exactly).
+			const denseByBlock = dense.map((sc) => ({
+				index: candidates[sc.index].blockIndex,
+				score: sc.score,
+			}));
+			ranking = fuseRankings([bm25, denseByBlock], {
+				missingRanks: [chunks.length + 1, embedding.embedCap + 1],
+			});
 		}
 	}
 
 	const selected = packToBudget(chunks, ranking, budgetChars);
 	selected.sort((a, b) => a.blockIndex - b.blockIndex);
 	return { content: render(selected), mode: 'relevance' };
-}
-
-/** Fuse BM25 + dense rankings via RRF over the full chunk set. */
-function fuseRrf(
-	chunks: Chunk[],
-	bm25: ScoredChunk[],
-	dense: ScoredChunk[],
-	candidates: Chunk[],
-	embedCap: number,
-): ScoredChunk[] {
-	const bm25RankByBlock = new Map<number, number>();
-	bm25.forEach((sc, r) => bm25RankByBlock.set(sc.index, r + 1));
-
-	const denseRankByBlock = new Map<number, number>();
-	dense.forEach((sc, r) => denseRankByBlock.set(candidates[sc.index].blockIndex, r + 1));
-
-	const fused = chunks.map((c) => {
-		const rb = bm25RankByBlock.get(c.blockIndex) ?? chunks.length + 1;
-		const rd = denseRankByBlock.get(c.blockIndex) ?? embedCap + 1;
-		return { index: c.blockIndex, score: 1 / (RRF_K + rb) + 1 / (RRF_K + rd) };
-	});
-	fused.sort((x, y) => (y.score === x.score ? x.index - y.index : y.score - x.score));
-	return fused;
 }
 
 /**

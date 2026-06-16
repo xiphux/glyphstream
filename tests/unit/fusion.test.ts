@@ -46,4 +46,30 @@ describe('fuseRankings', () => {
 	it('returns [] for no rankings', () => {
 		expect(fuseRankings([])).toEqual([]);
 	});
+
+	describe('missingRanks (finite backfill for absent items)', () => {
+		it('gives a universe item absent from a leg that leg’s floor instead of zero', () => {
+			// idx1 is absent from the second leg. With a missingRank of 5 for that
+			// leg it gets 1/(k+5) from it (not 0), on top of its first-leg rank.
+			const fused = fuseRankings([ranking(0, 1), ranking(0)], { missingRanks: [undefined, 5] });
+			const byIndex = new Map(fused.map((s) => [s.index, s.score]));
+			expect(byIndex.get(0)).toBeCloseTo(2 / (RRF_K + 1), 10); // rank 1 in both
+			expect(byIndex.get(1)).toBeCloseTo(1 / (RRF_K + 2) + 1 / (RRF_K + 5), 10);
+		});
+
+		it('an undefined missingRank for a leg keeps standard "absent = 0" behavior', () => {
+			const withFloor = fuseRankings([ranking(0, 1), ranking(0)], { missingRanks: [undefined, 5] });
+			const plain = fuseRankings([ranking(0, 1), ranking(0)]);
+			const floorScore = new Map(withFloor.map((s) => [s.index, s.score])).get(1)!;
+			const plainScore = new Map(plain.map((s) => [s.index, s.score])).get(1)!;
+			// The floor only adds to idx1; without it idx1 scores strictly lower.
+			expect(floorScore).toBeGreaterThan(plainScore);
+		});
+
+		it('does not invent items: backfill only applies to the union of ranked items', () => {
+			// No item index 9 anywhere → it never appears, floor or not.
+			const fused = fuseRankings([ranking(0, 1)], { missingRanks: [3] });
+			expect(fused.map((s) => s.index).sort()).toEqual([0, 1]);
+		});
+	});
 });
