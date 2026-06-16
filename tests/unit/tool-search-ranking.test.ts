@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const embeddingsMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 
-import { searchToolCatalog } from '$lib/server/retrieval/tool-search';
+import { searchToolCatalog, clearToolDocVecCache } from '$lib/server/retrieval/tool-search';
 import type { RelevanceConfig } from '$lib/server/retrieval/embed-rank';
 import type { DeferredToolEntry } from '$lib/server/tools/types';
 
@@ -31,6 +31,9 @@ const CATALOG: DeferredToolEntry[] = [
 
 beforeEach(() => {
 	embeddingsMock.mockReset();
+	// The doc-vector cache is process-level module state; reset it so a warm entry
+	// from a prior case doesn't change which inputs the next case embeds.
+	clearToolDocVecCache();
 });
 
 describe('searchToolCatalog — BM25 only (no embeddings config)', () => {
@@ -92,5 +95,24 @@ describe('searchToolCatalog — hybrid (embeddings + RRF)', () => {
 		await searchToolCatalog('issue', CATALOG, cfg(1), signal);
 		const passedInput = embeddingsMock.mock.calls[0][1].input;
 		expect(passedInput).toHaveLength(1 + 1); // query + 1 candidate
+	});
+
+	it('reuses cached doc vectors across calls — only the query is re-embedded', async () => {
+		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
+			data: body.input.map((s, index) => ({ index, embedding: vectorFor(s) })),
+		}));
+		// First search embeds query + all 3 docs.
+		await searchToolCatalog('book a meeting', CATALOG, cfg(), signal);
+		const firstInputs = embeddingsMock.mock.calls.flatMap((c) => c[1].input);
+		expect(firstInputs).toHaveLength(1 + 3);
+
+		embeddingsMock.mockClear();
+		// Second search over the same catalog: docs are cached, so only the new
+		// query goes upstream.
+		const out = await searchToolCatalog('schedule something', CATALOG, cfg(), signal);
+		const secondInputs = embeddingsMock.mock.calls.flatMap((c) => c[1].input);
+		expect(secondInputs).toHaveLength(1); // query only
+		// Ranking still works off the cached vectors.
+		expect(out[0].name).toBe('mcp__cal__create_event');
 	});
 });

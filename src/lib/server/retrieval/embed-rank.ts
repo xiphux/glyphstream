@@ -43,6 +43,13 @@ export interface RelevanceConfig {
 const CHARS_PER_TOKEN = 3.5;
 const EMBED_BATCH_MAX_ITEMS = 8;
 const EMBED_BATCH_MAX_CHARS = 12000;
+// Cap how many batch requests are in flight at once. The batch split above keeps
+// each request under a backend's per-request ceiling; this keeps a large
+// candidate set from fanning out ALL its batches simultaneously at a single
+// self-hosted backend (e.g. llama-server), which reproduces the same overload
+// (connection drops) the batching was meant to avoid. A roomy backend still
+// parallelizes up to this many; a small one isn't flooded.
+const EMBED_MAX_CONCURRENCY = 3;
 
 /**
  * Embed [query, ...docs] and rank `docs` by cosine to the query. Returns
@@ -54,23 +61,80 @@ export async function embedAndRank(
 	cfg: RelevanceConfig,
 	signal: AbortSignal,
 ): Promise<ScoredChunk[] | null> {
-	try {
-		// Apply task prefixes (e.g. nomic/e5 "search_query:"/"search_document:")
-		// and cap each input so it stays under the model's max sequence length.
-		const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
-		const inputs = [
-			cfg.queryPrefix + truncate(query, inputCap),
-			...docs.map((d) => cfg.documentPrefix + truncate(d, inputCap)),
-		];
+	// Apply task prefixes (e.g. nomic/e5 "search_query:"/"search_document:")
+	// and cap each input so it stays under the model's max sequence length.
+	const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
+	const inputs = [
+		cfg.queryPrefix + truncate(query, inputCap),
+		...docs.map((d) => cfg.documentPrefix + truncate(d, inputCap)),
+	];
+	const vecs = await embedInputs(inputs, cfg, signal);
+	if (!vecs) return null;
+	return cosineRank(vecs[0] as Vec, vecs.slice(1) as Vec[]);
+}
 
+/**
+ * Like {@link embedAndRank}, but reuses cached document vectors across calls
+ * (keyed by model + prepared input) so a static corpus — e.g. the deferred-tool
+ * catalog — is embedded once, not on every search. The query is always
+ * re-embedded (it's different each call); only uncached docs are sent upstream,
+ * riding the same batched/bounded request as the query. The cache is the
+ * caller's, so it controls lifetime/eviction. Returns ScoredChunk indices
+ * relative to `docs`, or null on any failure.
+ */
+export async function embedAndRankCached(
+	query: string,
+	docs: string[],
+	cfg: RelevanceConfig,
+	signal: AbortSignal,
+	cache: Map<string, Vec>,
+): Promise<ScoredChunk[] | null> {
+	try {
+		const inputCap = Math.max(1, Math.floor(cfg.maxInputTokens * CHARS_PER_TOKEN));
+		const queryInput = cfg.queryPrefix + truncate(query, inputCap);
+		const docInputs = docs.map((d) => cfg.documentPrefix + truncate(d, inputCap));
+		// Vectors live in the same space only within one model; key on it so a model
+		// change can't serve stale-space vectors. The prepared input already carries
+		// the document prefix, so prefix changes key distinctly too.
+		const keyFor = (docInput: string) => `${cfg.modelId}\n${docInput}`;
+
+		const missIdx = docInputs.map((_, i) => i).filter((i) => !cache.has(keyFor(docInputs[i])));
+
+		// Embed the query (always) + any uncached docs in one batched request.
+		const inputs = [queryInput, ...missIdx.map((i) => docInputs[i])];
+		const vecs = await embedInputs(inputs, cfg, signal);
+		if (!vecs) return null;
+		missIdx.forEach((i, j) => cache.set(keyFor(docInputs[i]), vecs[j + 1] as Vec));
+
+		const queryVec = vecs[0] as Vec;
+		const docVecs = docInputs.map((d) => cache.get(keyFor(d)) as Vec);
+		return cosineRank(queryVec, docVecs);
+	} catch (e) {
+		console.warn('[retrieval] cached embedding ranking failed, falling back to BM25:', e);
+		return null;
+	}
+}
+
+/**
+ * Embed a list of already-prepared input strings (prefixes + truncation applied
+ * by the caller) and return their vectors in input order, or null on ANY
+ * failure (endpoint down, timeout, malformed/short response, non-uniform
+ * dimensions). Splits across bounded batches and caps in-flight concurrency.
+ */
+async function embedInputs(
+	inputs: string[],
+	cfg: RelevanceConfig,
+	signal: AbortSignal,
+): Promise<number[][] | null> {
+	try {
 		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
 		const batches = batchInputs(inputs, EMBED_BATCH_MAX_ITEMS, EMBED_BATCH_MAX_CHARS);
-		const responses = await Promise.all(
-			batches.map((input) => embeddings(cfg.endpoint, { model: cfg.modelId, input }, sig)),
+		const responses = await mapBounded(batches, EMBED_MAX_CONCURRENCY, (input) =>
+			embeddings(cfg.endpoint, { model: cfg.modelId, input }, sig),
 		);
 
-		// Reassemble vectors in global input order: batches are issued in order
-		// and Promise.all preserves it; within each, sort by the response index.
+		// Reassemble vectors in global input order: batches are issued in order and
+		// mapBounded preserves it; within each, sort by the response index.
 		const vecs: number[][] = [];
 		responses.forEach((resp, b) => {
 			const data = resp.data;
@@ -91,11 +155,35 @@ export async function embedAndRank(
 		if (dim === 0 || vecs.some((v) => !Array.isArray(v) || v.length !== dim)) {
 			throw new Error('missing or non-uniform embedding dimensions');
 		}
-		return cosineRank(vecs[0] as Vec, vecs.slice(1) as Vec[]);
+		return vecs;
 	} catch (e) {
-		console.warn('[retrieval] embedding ranking failed, falling back to BM25:', e);
+		console.warn('[retrieval] embedding request failed, falling back to BM25:', e);
 		return null;
 	}
+}
+
+/**
+ * Map `items` through `fn` with at most `limit` calls in flight at once,
+ * preserving input order in the result. A small worker pool drains a shared
+ * cursor.
+ */
+async function mapBounded<T, R>(
+	items: T[],
+	limit: number,
+	fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+	const results: R[] = new Array(items.length);
+	let cursor = 0;
+	async function worker(): Promise<void> {
+		while (cursor < items.length) {
+			const i = cursor++;
+			results[i] = await fn(items[i]);
+		}
+	}
+	const workers: Promise<void>[] = [];
+	for (let w = 0; w < Math.min(limit, items.length); w++) workers.push(worker());
+	await Promise.all(workers);
+	return results;
 }
 
 function truncate(s: string, maxChars: number): string {

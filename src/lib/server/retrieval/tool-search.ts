@@ -23,12 +23,33 @@
 
 import type { DeferredToolEntry } from '../tools/types';
 import { bm25Rank, type ScoredChunk } from './bm25';
-import { embedAndRank, type RelevanceConfig } from './embed-rank';
+import { embedAndRankCached, type RelevanceConfig } from './embed-rank';
 import { fuseRankings } from './fusion';
+import type { Vec } from './vector';
 
 /** Searchable text for one tool: name (lexical signal) + description (semantic). */
 function toolDoc(entry: DeferredToolEntry): string {
 	return `${entry.name}\n${entry.description}`;
+}
+
+/**
+ * Process-level cache of tool-document embeddings, shared across every
+ * `search_tools` call. The deferred catalog is essentially static per process
+ * (tool name + description), so without this the entire catalog is re-embedded
+ * on every search — and the model is told to re-search on weak results, so it
+ * compounds. Keyed by `(model, prepared-input)` inside embedAndRankCached, so a
+ * model swap or a changed description simply misses and re-embeds. Bounded: a
+ * tool description that churns leaves a stale entry, so clear wholesale past a
+ * generous cap (catalogs are small; the cache just re-warms). Safe as module
+ * state given the single-Node-process deployment.
+ */
+const TOOL_DOC_VEC_CACHE_MAX = 4096;
+const toolDocVecCache = new Map<string, Vec>();
+
+/** Drop all cached tool-document vectors. For tests (cache is module state that
+ *  would otherwise leak across cases); also a manual invalidation hook. */
+export function clearToolDocVecCache(): void {
+	toolDocVecCache.clear();
 }
 
 /**
@@ -63,11 +84,13 @@ export async function searchToolCatalog(
 			catalog.length > cfg.embedCap
 				? bm25.slice(0, cfg.embedCap).map((sc) => sc.index)
 				: docs.map((_, i) => i);
-		const dense = await embedAndRank(
+		if (toolDocVecCache.size > TOOL_DOC_VEC_CACHE_MAX) toolDocVecCache.clear();
+		const dense = await embedAndRankCached(
 			query,
 			candidateIdx.map((i) => docs[i]),
 			cfg,
 			signal,
+			toolDocVecCache,
 		);
 		if (dense) {
 			// Remap dense (candidate-subset index) → catalog-index space, then fuse.
