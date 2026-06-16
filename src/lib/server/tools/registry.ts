@@ -77,12 +77,19 @@ export function deferredToolCatalog(opts?: {
 		.filter((t) => t.metadata?.deferred)
 		.filter((t) => t.isAvailable?.() ?? true)
 		.filter((t) => !exclude || !t.metadata?.category || !exclude.has(t.metadata.category))
-		.map((t) => ({
-			name: t.definition.function.name,
-			description: t.definition.function.description,
-			category: t.metadata?.category,
-			displayLabel: t.metadata?.displayLabel,
-		}));
+		.map(toDeferredEntry);
+}
+
+/** Project a registered Tool into the Tier-1 search catalog entry (name +
+ *  description + category/label, no schema). Shared by the static catalog above
+ *  and the per-user catalog in tool-bridge.ts so the shape stays in sync. */
+export function toDeferredEntry(tool: Tool): DeferredToolEntry {
+	return {
+		name: tool.definition.function.name,
+		description: tool.definition.function.description,
+		category: tool.metadata?.category,
+		displayLabel: tool.metadata?.displayLabel,
+	};
 }
 
 /** Resolve activated (searched-up) tool names to their full definitions, for

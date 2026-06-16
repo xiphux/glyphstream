@@ -1,5 +1,5 @@
 import type { DeferredToolEntry, OpenAIToolDefinition, Tool, ToolExecution } from '../tools/types';
-import { register } from '../tools/registry';
+import { register, toDeferredEntry } from '../tools/registry';
 import {
 	callMcpTool,
 	getMcpServerCfg,
@@ -189,14 +189,36 @@ export async function buildUserMcpToolDefinitions(
 	userId: string,
 	opts: { excludeCategories?: readonly string[]; states?: UserServerState[] } = {},
 ): Promise<OpenAIToolDefinition[]> {
-	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
-	// During request setup a handler builds both the tool list (here) and the
-	// deferred catalog — resolving per-user state twice re-decrypts every
-	// credential. Callers pass one request-scoped snapshot so it's resolved once.
-	// (The search_tools execute path deliberately does NOT pass one — it re-
-	// resolves mid-turn to pick up servers that connected after setup.)
-	const states = opts.states ?? (await getUserServerStates(userId));
 	const defs: OpenAIToolDefinition[] = [];
+	for await (const { cfg, tool } of eachRegisteredPerUserTool(userId, opts)) {
+		// Deferred per-user tools are registered (so execution + a later activation
+		// can resolve them) but NOT advertised — they surface via search_tools /
+		// buildUserDeferredToolCatalog instead.
+		if (!cfg.deferTools) defs.push(tool.definition);
+	}
+	return defs;
+}
+
+/**
+ * Iterate the caller's connected per-user MCP tools, registering each (so the
+ * relay's `registry.get(name)` resolves it for execution) and yielding its
+ * server cfg + the registered Tool. The shared core of buildUserMcpToolDefinitions
+ * + buildUserDeferredToolCatalog — each just collects differently from the yield.
+ *
+ * Async because resolving a user's servers may lazily connect them. During
+ * request setup a handler builds both the tool list and the deferred catalog;
+ * resolving per-user state twice re-decrypts every credential, so callers pass one
+ * request-scoped `states` snapshot. (The search_tools execute path deliberately
+ * omits it — it re-resolves mid-turn to pick up servers that connected after
+ * setup.) `excludeCategories` applies the same per-conversation `mcp:<id>` opt-out
+ * the static path uses.
+ */
+async function* eachRegisteredPerUserTool(
+	userId: string,
+	opts: { excludeCategories?: readonly string[]; states?: UserServerState[] },
+): AsyncGenerator<{ cfg: LoadedMcpServer; tool: Tool }> {
+	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
+	const states = opts.states ?? (await getUserServerStates(userId));
 	for (const s of states) {
 		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
 		if (exclude?.has(`mcp:${s.id}`)) continue;
@@ -205,13 +227,9 @@ export async function buildUserMcpToolDefinitions(
 		for (const t of s.tools) {
 			const tool = mcpToolFor(cfg, t, { perUser: true });
 			register(tool); // ensure execution can resolve it via registry.get(name)
-			// Deferred per-user tools are registered (so execution + a later
-			// activation can resolve them) but NOT advertised — they surface via
-			// search_tools / buildUserDeferredToolCatalog instead.
-			if (!cfg.deferTools) defs.push(tool.definition);
+			yield { cfg, tool };
 		}
 	}
-	return defs;
 }
 
 /**
@@ -230,26 +248,11 @@ export async function buildUserDeferredToolCatalog(
 	userId: string,
 	opts: { excludeCategories?: readonly string[]; states?: UserServerState[] } = {},
 ): Promise<DeferredToolEntry[]> {
-	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
-	// See buildUserMcpToolDefinitions: accept a request-scoped state snapshot so
-	// the same request doesn't re-resolve (and re-decrypt) per-user servers twice.
-	const states = opts.states ?? (await getUserServerStates(userId));
 	const entries: DeferredToolEntry[] = [];
-	for (const s of states) {
-		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
-		const cfg = getMcpServerCfg(s.id);
-		if (!cfg || !cfg.deferTools) continue;
-		if (exclude?.has(`mcp:${s.id}`)) continue;
-		for (const t of s.tools) {
-			const tool = mcpToolFor(cfg, t, { perUser: true });
-			register(tool); // resolvable for activation + execution
-			entries.push({
-				name: tool.definition.function.name,
-				description: tool.definition.function.description,
-				category: tool.metadata?.category,
-				displayLabel: tool.metadata?.displayLabel,
-			});
-		}
+	for await (const { cfg, tool } of eachRegisteredPerUserTool(userId, opts)) {
+		// Only deferred servers' tools belong in the search catalog; non-deferred
+		// per-user tools are advertised directly by buildUserMcpToolDefinitions.
+		if (cfg.deferTools) entries.push(toDeferredEntry(tool));
 	}
 	return entries;
 }
