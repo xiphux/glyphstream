@@ -30,28 +30,12 @@ import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
 import type {
 	ChatMessage,
+	FanoutRecoveryState,
 	ModelEntry,
 	ModelKind,
 	PrepareFanoutRequest,
 	PrepareFanoutResponse,
 } from './types/api';
-
-/** Server-truth recovery state for a parked fan-out (mirrors the server's
- *  getFanoutRecoveryState payload, surfaced by the page load + GET poll). */
-export interface FanoutServerState {
-	parentMessageId: string | null;
-	kind: ModelKind | null;
-	siblings: ChatMessage[];
-	pending: number;
-	/** Model id per still-generating branch (aligned with `pending`), so the
-	 *  recovered grid labels each placeholder by model. Optional for back-compat
-	 *  with any caller that doesn't supply it. */
-	pendingModelIds?: string[];
-	/** When each pending branch began generating (aligned with `pendingModelIds`),
-	 *  or null while still QUEUED — drives the recovered grid's QUEUED badge vs.
-	 *  elapsed timer. */
-	pendingStartedAt?: (number | null)[];
-}
 
 /** Everything the controller needs from the host page. Getters for reactive
  *  reads; setters/callbacks for the shared state it must mutate. */
@@ -91,16 +75,12 @@ interface PendingBranch {
 	startedAt: number | null;
 }
 
-/** Per-pending-branch descriptors, normalized to the `pending` count. When the
- *  server reports per-branch start times, each branch is QUEUED (no start yet)
- *  or generating-with-a-timer. An older payload without that info falls back to
- *  plain "Generating…" placeholders (status 'streaming', no timer). */
-function pendingBranches(f: FanoutServerState): PendingBranch[] {
-	const ids = f.pendingModelIds ?? Array.from({ length: f.pending }, () => '');
-	const starts = f.pendingStartedAt;
-	return ids.map((modelId, i) => {
-		if (!starts) return { modelId, status: 'streaming', startedAt: null };
-		const startedAt = starts[i] ?? null;
+/** Per-pending-branch descriptors (aligned with `pendingModelIds`/`pending`):
+ *  each branch is QUEUED (no start time yet, waiting on the gate) or
+ *  generating-with-a-timer (start time set). */
+function pendingBranches(f: FanoutRecoveryState): PendingBranch[] {
+	return f.pendingModelIds.map((modelId, i) => {
+		const startedAt = f.pendingStartedAt[i] ?? null;
 		return { modelId, status: startedAt !== null ? 'streaming' : 'queued', startedAt };
 	});
 }
@@ -635,7 +615,7 @@ export class FanoutController {
 	 *  conversation-switch into a parked fan-out. Skipped while THIS client drives
 	 *  the fan-out (live) or has a branch fetch in flight (a live regenerate), so
 	 *  it never clobbers the in-session grid. */
-	syncFromServer(fanout: FanoutServerState | null | undefined): void {
+	syncFromServer(fanout: FanoutRecoveryState | null | undefined): void {
 		if (this.live || this.#aborts.size > 0 || this.#deps.busy() || this.picking) return;
 		if (!fanout?.parentMessageId || (fanout.siblings.length === 0 && fanout.pending === 0)) {
 			// No parked fan-out on the server — drop any recovered grid.
@@ -671,7 +651,7 @@ export class FanoutController {
 				// conversation's message walk this poll has no use for.
 				const res = await fetch(`/api/conversations/${id}?fanout=1`);
 				if (stopped || !res.ok || this.#deps.convId() !== id) return;
-				const body = (await res.json()) as { fanout?: FanoutServerState };
+				const body = (await res.json()) as { fanout?: FanoutRecoveryState };
 				const f = body.fanout;
 				if (!f?.parentMessageId) {
 					// Resolved/gone server-side — one full reload to reconcile.

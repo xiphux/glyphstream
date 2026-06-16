@@ -683,6 +683,39 @@ export interface PrepareFanoutResponse {
 	userMessage: ChatMessage;
 }
 
+/**
+ * Server-truth state for recovering a parked multi-model fan-out after the
+ * client disconnects (reload / iOS suspend). The single wire contract for both
+ * the server producer (`getFanoutRecoveryState`) and the client consumer
+ * (`FanoutController.syncFromServer`) — declared here, in client-safe code, so
+ * the two can't drift. Surfaced by the chat-route load and the lightweight GET
+ * recovery poll. All fields are always present; the empty state is
+ * parentMessageId=null with empty arrays / pending=0.
+ */
+export interface FanoutRecoveryState {
+	/** The shared user message the parked fan-out hangs off, or null when none. */
+	parentMessageId: string | null;
+	/** The fan-out's modality, from the still-generating branches — lets the
+	 *  client render the right (media vs chat) grid even when no branch has
+	 *  persisted yet. Null when none are in flight (the client then infers from
+	 *  the persisted siblings). */
+	kind: ModelKind | null;
+	/** Persisted branch responses so far (the "done" columns). */
+	siblings: ChatMessage[];
+	/** How many branches are still generating (placeholder columns), from the
+	 *  in-flight registry. May transiently over-count by one while a branch's row
+	 *  has persisted but its registry slot hasn't cleared; self-corrects next tick. */
+	pending: number;
+	/** Model id of each still-generating branch (aligned with `pending`; empty
+	 *  string when an entry didn't record one), so the recovered grid labels each
+	 *  placeholder by model. */
+	pendingModelIds: string[];
+	/** When each pending branch began generating (aligned with `pendingModelIds`),
+	 *  or null while still QUEUED behind the gate — drives the recovered grid's
+	 *  QUEUED badge vs. elapsed timer. */
+	pendingStartedAt: (number | null)[];
+}
+
 /** POST /api/conversations/:id/messages response (sync mode). */
 export interface SendMessageResponse {
 	userMessage: ChatMessage;

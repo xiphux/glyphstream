@@ -15,13 +15,9 @@ vi.mock('$lib/title-pending.svelte', () => ({
 	clearTitlePending: vi.fn(),
 }));
 
-import {
-	FanoutController,
-	type FanoutDeps,
-	type FanoutServerState,
-} from '$lib/fanout-controller.svelte';
+import { FanoutController, type FanoutDeps } from '$lib/fanout-controller.svelte';
 import { expandFanoutBranches, MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
-import type { ChatMessage, ModelEntry } from '$lib/types/api';
+import type { ChatMessage, FanoutRecoveryState, ModelEntry } from '$lib/types/api';
 
 const MODELS = [
 	{ id: 'bridge::sdxl', displayName: 'SDXL', kind: 'image' },
@@ -79,12 +75,15 @@ describe('FanoutController — server recovery', () => {
 	it('rebuilds the grid from server truth: done siblings + pending placeholders', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
-		const server: FanoutServerState = {
+		const server: FanoutRecoveryState = {
 			parentMessageId: 'u1',
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 'src-1')],
 			pending: 2,
 			pendingModelIds: ['bridge::sdxl', 'bridge::claude'],
+			// Both branches have acquired their slot (server always reports start
+			// times) → "streaming" placeholders with timers, labelled by model.
+			pendingStartedAt: [2000, 3000],
 		};
 		fc.syncFromServer(server);
 
@@ -125,7 +124,14 @@ describe('FanoutController — server recovery', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
 		fc.live = true;
-		fc.syncFromServer({ parentMessageId: 'u1', kind: 'image', siblings: [], pending: 3 });
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [],
+			pending: 3,
+			pendingModelIds: ['', '', ''],
+			pendingStartedAt: [1000, 1000, 1000],
+		});
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.hasRecoveredPending).toBe(false); // gated on !live
 	});
@@ -138,10 +144,19 @@ describe('FanoutController — server recovery', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null)],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 		expect(fc.columns).toHaveLength(1);
 		// Marker cleared server-side (pick/dismiss elsewhere) → grid clears.
-		fc.syncFromServer({ parentMessageId: null, kind: null, siblings: [], pending: 0 });
+		fc.syncFromServer({
+			parentMessageId: null,
+			kind: null,
+			siblings: [],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+		});
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.userMessageId).toBeNull();
 	});
@@ -158,6 +173,8 @@ describe('FanoutController — derived grid state', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's')],
 			pending: 1,
+			pendingModelIds: [''],
+			pendingStartedAt: [1000],
 		});
 		expect(fc.comparing).toBe(true);
 		expect(fc.streaming).toBe(true); // the pending placeholder
@@ -169,6 +186,8 @@ describe('FanoutController — derived grid state', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's')],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 		expect(fc.streaming).toBe(false);
 		expect(fc.columnsSettled).toBe(true);
@@ -179,7 +198,14 @@ describe('FanoutController — teardown + handoff', () => {
 	it('teardown clears the grid + live flag', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
-		fc.syncFromServer({ parentMessageId: 'u1', kind: 'image', siblings: [], pending: 2 });
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [],
+			pending: 2,
+			pendingModelIds: ['', ''],
+			pendingStartedAt: [1000, 1000],
+		});
 		fc.live = true;
 		fc.teardown();
 		expect(fc.columns).toHaveLength(0);
@@ -233,6 +259,8 @@ describe('FanoutController — actions', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's1'), imageSibling('b', 'bridge::sdxl', 's2')],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 		await fc.discard(fc.columns[0]);
 		expect(fetchMock).toHaveBeenCalledWith(
@@ -293,6 +321,8 @@ describe('FanoutController — actions', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 		expect(fc.live).toBe(false);
 		await fc.regenerate(fc.columns[0]);
@@ -322,6 +352,8 @@ describe('FanoutController — actions', () => {
 			kind: 'image',
 			siblings: [imageSibling('old', 'bridge::sdxl', null)],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 		await fc.regenerate(fc.columns[0]);
 		// Flagged as a re-roll (keeps its own notify), and NOT a destructive replace.
@@ -364,6 +396,8 @@ describe('FanoutController — actions', () => {
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
 			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
 		});
 
 		const reroll = fc.regenerate(fc.columns[0]);
