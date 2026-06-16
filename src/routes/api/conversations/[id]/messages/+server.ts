@@ -24,20 +24,12 @@ import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upst
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
-import { openaiToolDefinitions, resolveActivatedToolDefs } from '$lib/server/tools';
+import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
-import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
-import { getUserServerStates } from '$lib/server/mcp/registry';
-import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
-import {
-	appendToolSearchHint,
-	buildToolSearchRequestContext,
-	collectActivatedToolNames,
-	dedupeToolDefs,
-} from '$lib/server/chat/tool-search-context';
+import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
+import { buildChatToolContext } from '$lib/server/chat/tool-context';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
-import { appendSkillsCatalog, buildSkillsRequestContext } from '$lib/server/chat/skills-context';
 import {
 	synthesizeSkillActivations,
 	type SyntheticActivationEvent,
@@ -381,18 +373,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// independent of the persona-prompt branch — every turn needs to know
 	// which MCP tools to bypass the approval prompt for.
 	const prefs = getUserPreferences(locals.user.id);
-	let effectiveSystemPrompt: string | null = meta.systemPrompt;
-	if (effectiveSystemPrompt === null) {
-		effectiveSystemPrompt = composePersonaPrompt(prefs, locals.user.id, meta.disabledFeatures);
+	let baseSystemPrompt: string | null = meta.systemPrompt;
+	if (baseSystemPrompt === null) {
+		baseSystemPrompt = composePersonaPrompt(prefs, locals.user.id, meta.disabledFeatures);
 	}
 
-	// Resolve tool support up front — before serializing the system prompt —
-	// because agent skills inject BOTH a Tier-1 catalog into the prompt and
-	// activation tools, and the catalog tells the model to call activate_skill.
-	// Advertising the catalog with no activation tool (fan-out, or a non-tool
-	// model) would be misleading, so both are gated on supportsTools. Resolution
-	// prefers the per-model upstream signal (ModelEntry.supportsTools) and falls
-	// back to the endpoint config.
+	// Resolve tool support up front — before assembling the tool context — because
+	// agent skills inject BOTH a Tier-1 catalog into the prompt and activation
+	// tools, and the catalog tells the model to call activate_skill. Advertising
+	// the catalog with no activation tool (fan-out, or a non-tool model) would be
+	// misleading, so both are gated on supportsTools. Resolution prefers the
+	// per-model upstream signal (ModelEntry.supportsTools) and falls back to the
+	// endpoint config.
 	const allModels = await listAllModels();
 	const modelEntry = allModels.find(
 		(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
@@ -402,38 +394,6 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// result), so tools are disabled for them. Fan-out is for comparing model
 	// *responses*; tool-using comparison is a deliberate follow-up.
 	const supportsTools = (modelEntry?.supportsTools ?? endpoint.supportsTools ?? false) && !isFanout;
-
-	// Agent skills (Tier 1 + activation tools). Rides its own `skills`
-	// feature-category gate — NOT personalization — so the catalog reaches
-	// custom-model conversations with a snapshotted system prompt too. Folded
-	// into effectiveSystemPrompt here so both the initial serialize and the
-	// per-iteration rebuildRequestBody closure carry it.
-	const skillsCtx = supportsTools
-		? buildSkillsRequestContext(locals.user.id, meta.disabledFeatures)
-		: { catalog: null, toolDefs: [] };
-	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
-
-	// Block until MCP discovery finishes before we read the tool surface — both
-	// the search_tools hint (deferred tool names by server) and the tool list below
-	// need an accurate picture, and a partially-populated surface would make the model
-	// refuse-to-use a tool later in the turn (flaky behavior). Resolved promise
-	// after the first call.
-	if (supportsTools) await awaitMcpReady();
-
-	// Resolve the caller's per-user MCP server state ONCE for this request. Both
-	// the deferred-catalog build (search_tools hint) and the per-user tool-def
-	// build below need it, and each resolution re-decrypts every per-user
-	// credential — so we snapshot here and thread it through both.
-	const userServerStates = supportsTools ? await getUserServerStates(locals.user.id) : [];
-
-	// Deferred tool loading: when this user/conversation has servers configured
-	// `defer_tools`, advertise the `search_tools` built-in and inject a Tier-1
-	// hint into the system prompt. The hint must fold in BEFORE the branch is
-	// serialized below, so do it here alongside the skills catalog.
-	const toolSearchCtx = supportsTools
-		? await buildToolSearchRequestContext(locals.user.id, meta.disabledFeatures, userServerStates)
-		: { def: null, hint: null };
-	effectiveSystemPrompt = appendToolSearchHint(effectiveSystemPrompt, toolSearchCtx.hint);
 
 	// Explicit skill activation (the /skill-name composer command). Synthesize a
 	// real activate_skill tool exchange BEFORE the model generates, so the model
@@ -475,6 +435,22 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// and we don't want to assume it's reachable. tool_call / tool_result
 	// parts serialize to OpenAI's tool-calling shape.
 	const branch = walkActiveBranch(params.id);
+
+	// Assemble the system prompt + tool list + approval gate from this branch —
+	// shared verbatim with the tool-approval resume handler (buildChatToolContext)
+	// so the per-request tool surface can't drift between the two paths. The skills
+	// catalog + deferred-tool hint fold into the prompt here, so both the initial
+	// serialize and the per-iteration rebuildRequestBody closure carry them.
+	const toolCtx = await buildChatToolContext({
+		userId: locals.user.id,
+		disabledFeatures: meta.disabledFeatures,
+		supportsTools,
+		baseSystemPrompt,
+		branch,
+		trustedMcpTools: prefs?.trustedMcpTools ?? [],
+	});
+	const effectiveSystemPrompt = toolCtx.systemPrompt;
+
 	const upstreamMessages = await serializeBranchForUpstream(
 		branch,
 		(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
@@ -486,42 +462,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		messages: upstreamMessages,
 	};
 
-	// Per-conversation opt-outs filter out whole tool categories (e.g. 'web'
-	// closes both web_search and fetch_url so the model can't compose around
-	// partial gating). See FEATURE_CATEGORIES and ToolMetadata.category. The
-	// per-user skill activation tools are appended separately (they can't ride
-	// the static registry — their `name` enum is per-user) so activate_skill
-	// can be the only tool when skills are a user's sole enabled capability.
-	// Deferred (defer_tools) MCP tools are excluded here — surfaced via
-	// search_tools instead (below).
-	const toolDefs = supportsTools
-		? openaiToolDefinitions({ excludeCategories: meta.disabledFeatures })
-		: [];
-	toolDefs.push(...skillsCtx.toolDefs);
-	// Per-user MCP servers (auth='per_user') can't ride the static registry —
-	// their availability is per user. Append the caller's connected per-user
-	// tools, honoring the same per-conversation category opt-outs. (This also
-	// registers per-user deferred tools so the seed below can resolve them.)
-	if (supportsTools) {
-		toolDefs.push(
-			...(await buildUserMcpToolDefinitions(locals.user.id, {
-				excludeCategories: meta.disabledFeatures,
-				states: userServerStates,
-			})),
-		);
-		// search_tools (only when deferred tools exist for this user/conversation).
-		if (toolSearchCtx.def) toolDefs.push(toolSearchCtx.def);
-		// Conversation-persistent loading: re-include the full definitions of any
-		// deferred tools the model searched up on earlier turns of this branch, so
-		// it needn't re-search. Category opt-out honored (a since-disabled server's
-		// tools are dropped). Within-turn activations are appended per-iteration by
-		// the rebuildRequestBody closure instead.
-		toolDefs.push(
-			...resolveActivatedToolDefs(collectActivatedToolNames(branch), {
-				excludeCategories: meta.disabledFeatures,
-			}),
-		);
-	}
+	// The base tool list (built-ins ∪ skills ∪ per-user MCP ∪ search_tools ∪ the
+	// cross-turn activation seed) comes from the shared assembly above. Dedupe at
+	// assignment guards the rare activation-seed/base collision; within-turn
+	// activations are appended per-iteration by the rebuildRequestBody closure.
+	const toolDefs = toolCtx.toolDefs;
 	if (toolDefs.length > 0) {
 		requestBody.tools = dedupeToolDefs(toolDefs);
 		requestBody.tool_choice = 'auto';
@@ -579,15 +524,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			return next;
 		};
 
-		// Re-use the prefs loaded above to build the "always allow"
-		// allowlist consulted before each MCP tool runs. Built-in tools
-		// and user-trusted MCP tools execute inline; untrusted MCP tools
-		// halt the turn with an inline approval prompt.
-		const trustedSet = new Set(prefs?.trustedMcpTools ?? []);
-		const needsApproval = (toolName: string) => {
-			if (!toolName.startsWith('mcp__')) return false;
-			return !trustedSet.has(toolName);
-		};
+		// MCP approval gate from the shared assembly: built-in tools and
+		// user-trusted MCP tools execute inline; untrusted MCP tools halt the
+		// turn with an inline approval prompt.
+		const needsApproval = toolCtx.needsApproval;
 
 		const stream = await startStreamingRelay({
 			conversationId: params.id,
