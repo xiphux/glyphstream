@@ -248,15 +248,16 @@ export function setUserPreferences(
  *
  * When `recallMode` is set, the inlined memory bodies are swapped for a
  * one-liner pointing at the recall_memory tool (composeMemorySection handles
- * the rendering). The caller decides the mode — it's set when an embedding
- * model is configured and the inlined index would exceed the budget (see
- * memoryInlineBudgetExceeded) — because the budget check needs the loaded
- * memories and the embedding-config lookup, both of which live request-side.
+ * the rendering); pass `recallCount` so the hint can state the store size
+ * without loading the bodies. The caller decides the mode — `composePersonaPrompt`
+ * sets it when an embedding model is configured and the store exceeds
+ * `MEMORY_INLINE_BUDGET_CHARS` — because that check needs the embedding-config
+ * lookup and a size probe, both of which live request-side.
  */
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,
 	memories: Memory[] = [],
-	opts: { recallMode?: boolean } = {},
+	opts: { recallMode?: boolean; recallCount?: number } = {},
 ): string | null {
 	const parts: string[] = [];
 	const name = prefs.name.trim();
@@ -271,7 +272,10 @@ export function composePersonaSystemPrompt(
 	if (custom) {
 		parts.push(`Additional instructions:\n${custom}`);
 	}
-	const memorySection = composeMemorySection(memories, { recallMode: opts.recallMode });
+	const memorySection = composeMemorySection(memories, {
+		recallMode: opts.recallMode,
+		recallCount: opts.recallCount,
+	});
 	if (memorySection) {
 		parts.push(memorySection);
 	}

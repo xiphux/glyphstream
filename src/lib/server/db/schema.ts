@@ -7,6 +7,7 @@ import {
 	primaryKey,
 	uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 // Relative import (not the $lib alias) on purpose: schema.ts is loaded
 // outside the Vite build — by drizzle-kit, by the import-owui esbuild
 // bundle, and by Playwright's e2e global-setup — none of which resolve
@@ -371,7 +372,17 @@ export const memories = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 	},
-	(t) => [index('idx_memories_user_created').on(t.userId, t.createdAt)],
+	(t) => [
+		index('idx_memories_user_created').on(t.userId, t.createdAt),
+		// Partial index over the backfill work queue: the never-embedded rows the
+		// sweep drains. `listMemoriesNeedingEmbedding` queries `embedding IS NULL`
+		// against this so a backlog of fresh memories is fetched by index scan, not
+		// a full-table scan, and the index itself stays tiny (only NULL rows — near
+		// empty once the store is caught up).
+		index('idx_memories_unembedded')
+			.on(t.id)
+			.where(sql`${t.embedding} is null`),
+	],
 );
 
 // --- skills ---------------------------------------------------------------

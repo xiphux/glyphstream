@@ -14,7 +14,11 @@
  */
 import type { FeatureCategory, UserPreferences } from '$lib/types/api';
 import { composePersonaSystemPrompt } from '../db/queries/user-preferences';
-import { listMemoriesForUser, memoryInlineBudgetExceeded } from '../db/queries/memories';
+import {
+	listMemoriesForUser,
+	memoryStats,
+	MEMORY_INLINE_BUDGET_CHARS,
+} from '../db/queries/memories';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 
 /**
@@ -22,6 +26,11 @@ import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
  * inject (personalization disabled, or no prefs). Above the inline budget, with
  * an embedding model configured, the saved-memory bodies are swapped for a
  * `recall_memory` hint so a large store doesn't flood the context window.
+ *
+ * Runs every turn, so it avoids loading memory bodies it won't use: when an
+ * embedding model is configured (recall is possible) it first probes the store
+ * size with a cheap COUNT/SUM. Over budget → recall mode, which needs only the
+ * count (no bodies loaded). Otherwise → inline mode, which loads the bodies.
  */
 export function composePersonaPrompt(
 	prefs: UserPreferences | null,
@@ -29,7 +38,14 @@ export function composePersonaPrompt(
 	disabledFeatures: readonly FeatureCategory[],
 ): string | null {
 	if (!prefs || disabledFeatures.includes('personalization')) return null;
-	const memories = listMemoriesForUser(userId);
-	const recallMode = resolveRelevanceConfig() !== undefined && memoryInlineBudgetExceeded(memories);
-	return composePersonaSystemPrompt(prefs, memories, { recallMode });
+	if (resolveRelevanceConfig() !== undefined) {
+		const stats = memoryStats(userId);
+		if (stats.totalChars > MEMORY_INLINE_BUDGET_CHARS) {
+			return composePersonaSystemPrompt(prefs, [], {
+				recallMode: true,
+				recallCount: stats.count,
+			});
+		}
+	}
+	return composePersonaSystemPrompt(prefs, listMemoriesForUser(userId));
 }

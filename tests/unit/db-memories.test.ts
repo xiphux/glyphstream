@@ -16,7 +16,8 @@ import {
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesWithEmbeddings,
-	memoryInlineBudgetExceeded,
+	MEMORY_INLINE_BUDGET_CHARS,
+	memoryStats,
 	setMemoryEmbedding,
 	updateMemory,
 } from '$lib/server/db/queries/memories';
@@ -201,18 +202,33 @@ describe('embedding columns', () => {
 	});
 });
 
-describe('memoryInlineBudgetExceeded', () => {
-	it('is false for a small store, true once total content crosses the budget', () => {
-		const small = [{ id: 'a', content: 'x'.repeat(100), createdAt: 0, updatedAt: 0 }];
-		expect(memoryInlineBudgetExceeded(small)).toBe(false);
+describe('memoryStats', () => {
+	it('returns zeroes for a user with no memories', () => {
+		const u = seedUser();
+		expect(memoryStats(u.id)).toEqual({ count: 0, totalChars: 0 });
+	});
 
-		const big = Array.from({ length: 20 }, (_, i) => ({
-			id: `m${i}`,
-			content: 'x'.repeat(300),
-			createdAt: i,
-			updatedAt: i,
-		}));
-		expect(memoryInlineBudgetExceeded(big)).toBe(true);
+	it('counts rows and sums content length, scoped per user', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		createMemory(u1.id, 'abc'); // 3
+		createMemory(u1.id, 'de'); // 2
+		createMemory(u2.id, 'zzzzz'); // 5 — must not leak into u1's stats
+		expect(memoryStats(u1.id)).toEqual({ count: 2, totalChars: 5 });
+		expect(memoryStats(u2.id)).toEqual({ count: 1, totalChars: 5 });
+	});
+
+	it('totalChars drives the inline-vs-recall budget check', () => {
+		const u = seedUser();
+		// One small memory stays under budget (inline mode).
+		createMemory(u.id, 'x'.repeat(100));
+		expect(memoryStats(u.id).totalChars).toBeLessThanOrEqual(MEMORY_INLINE_BUDGET_CHARS);
+		// Enough bodies cross the budget → recall mode.
+		for (let i = 0; i < 20; i++) createMemory(u.id, 'x'.repeat(300));
+		const stats = memoryStats(u.id);
+		expect(stats.count).toBe(21);
+		expect(stats.totalChars).toBe(6100);
+		expect(stats.totalChars).toBeGreaterThan(MEMORY_INLINE_BUDGET_CHARS);
 	});
 });
 
@@ -236,6 +252,18 @@ describe('composeMemorySection', () => {
 		// The bodies must NOT be inlined in recall mode.
 		expect(out).not.toContain('prefers metric units');
 		expect(out).not.toContain('works at Acme');
+	});
+
+	it('uses recallCount for the hint when bodies are not loaded (recall mode)', () => {
+		// Recall mode passes an empty list + an explicit count, so the prompt builder
+		// never has to materialize every body just to size the store.
+		const out = composeMemorySection([], { recallMode: true, recallCount: 7 })!;
+		expect(out).toMatch(/recall_memory/);
+		expect(out).toContain('7 saved memories');
+	});
+
+	it('recallCount of 0 yields no section even in recall mode', () => {
+		expect(composeMemorySection([], { recallMode: true, recallCount: 0 })).toBeNull();
 	});
 
 	it('renders each memory as `[id] content` on its own line', () => {

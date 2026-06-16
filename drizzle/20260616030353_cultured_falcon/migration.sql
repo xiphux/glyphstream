@@ -1,0 +1,1 @@
+CREATE INDEX `idx_memories_unembedded` ON `memories` (`id`) WHERE "memories"."embedding" is null;
