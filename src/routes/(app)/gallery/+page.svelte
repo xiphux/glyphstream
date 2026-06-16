@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
+	import { observeSentinel } from '$lib/observe-sentinel';
 	import type {
 		MediaConversationRef,
 		MediaListItem,
@@ -165,19 +166,11 @@
 	// IntersectionObserver only fires on intersection *changes*, so the
 	// auto-load below — not this callback — handles "still visible after a
 	// load" by re-running until the sentinel scrolls out or pages run out.
-	$effect(() => {
-		const root = scrollContainer;
-		const el = sentinel;
-		if (!root || !el) return;
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				sentinelVisible = entry.isIntersecting;
-			},
-			{ root, rootMargin: '0px 0px 400px 0px', threshold: 0 },
-		);
-		observer.observe(el);
-		return () => observer.disconnect();
-	});
+	$effect(() =>
+		observeSentinel(scrollContainer, sentinel, (v) => (sentinelVisible = v), {
+			rootMargin: '0px 0px 400px 0px',
+		}),
+	);
 
 	// Auto-paginate while the sentinel is in view. Depending on `loadingMore`
 	// and `nextCursor` makes this re-run when a load settles: if the freshly

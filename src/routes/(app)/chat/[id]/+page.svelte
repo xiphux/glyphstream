@@ -4,6 +4,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { invalidateAll } from '$app/navigation';
 	import { isAbortError } from '$lib/abort';
+	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
 	import { preferredFirstName } from '$lib/greeting';
 	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
@@ -528,19 +529,11 @@
 	// observation off the main thread.
 	let isNearBottom = $state(true);
 	let bottomSentinel = $state<HTMLElement | null>(null);
-	$effect(() => {
-		const sentinel = bottomSentinel;
-		const root = scrollContainer;
-		if (!sentinel || !root) return;
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				isNearBottom = entry.isIntersecting;
-			},
-			{ root, rootMargin: '0px 0px 100px 0px', threshold: 0 },
-		);
-		observer.observe(sentinel);
-		return () => observer.disconnect();
-	});
+	$effect(() =>
+		observeSentinel(scrollContainer, bottomSentinel, (v) => (isNearBottom = v), {
+			rootMargin: '0px 0px 100px 0px',
+		}),
+	);
 
 	// Reference to the ChatComposer instance so the focus effect below
 	// can land focus in its textarea. The composer owns the ref + the
