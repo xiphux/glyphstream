@@ -18,13 +18,14 @@
  */
 
 import { bm25Rank, type ScoredChunk } from './bm25';
-import { embedAndRank, type RelevanceConfig } from './embed-rank';
+import { embedAndRank, EMBED_CAP, type RelevanceConfig } from './embed-rank';
 import { fuseRankings } from './fusion';
 import type { Chunk } from './chunker';
 
 // Re-exported so existing importers (`fetch-url.ts`, tests) keep their
-// `from '../retrieval/select'` paths; the type now lives in embed-rank.ts
-// alongside the dense-ranking it parameterizes.
+// `from '../retrieval/select'` paths; both now live in embed-rank.ts alongside
+// the dense-ranking they parameterize.
+export { EMBED_CAP };
 export type { RelevanceConfig };
 
 export interface SelectResult {
@@ -33,13 +34,6 @@ export interface SelectResult {
 }
 
 export const ELLIPSIS_MARKER = '\n\n[…]\n\n';
-
-// How many BM25-top candidates get embedded. The BM25 prefilter already
-// narrows to the strongest lexical matches, so a few dozen is plenty to
-// rerank into the ~10-12 chunks that fit the output budget — and it bounds
-// embedding cost on large pages. (The per-input truncation + request batching
-// that keeps embedding backends happy lives in embed-rank.ts.)
-export const EMBED_CAP = 64;
 
 export async function selectRelevant(
 	chunks: Chunk[],
@@ -58,9 +52,7 @@ export async function selectRelevant(
 
 	if (embedding) {
 		const candidates =
-			chunks.length > embedding.embedCap
-				? bm25.slice(0, embedding.embedCap).map((sc) => chunks[sc.index])
-				: chunks;
+			chunks.length > EMBED_CAP ? bm25.slice(0, EMBED_CAP).map((sc) => chunks[sc.index]) : chunks;
 		const dense = await embedAndRank(
 			query,
 			candidates.map((c) => c.text),
@@ -79,7 +71,7 @@ export async function selectRelevant(
 				score: sc.score,
 			}));
 			ranking = fuseRankings([bm25, denseByBlock], {
-				missingRanks: [chunks.length + 1, embedding.embedCap + 1],
+				missingRanks: [chunks.length + 1, EMBED_CAP + 1],
 			});
 		}
 	}

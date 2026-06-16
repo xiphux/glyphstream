@@ -30,7 +30,6 @@ const CFG = {
 	endpoint: { id: 'e', baseUrl: 'http://e', apiKey: null },
 	modelId: MODEL,
 	timeoutSeconds: 5,
-	embedCap: 64,
 	queryPrefix: '',
 	documentPrefix: '',
 	maxInputTokens: 512,

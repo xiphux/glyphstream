@@ -6,16 +6,15 @@ const embeddingsMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 
 import { searchToolCatalog, clearToolDocVecCache } from '$lib/server/retrieval/tool-search';
-import type { RelevanceConfig } from '$lib/server/retrieval/embed-rank';
+import { EMBED_CAP, type RelevanceConfig } from '$lib/server/retrieval/embed-rank';
 import type { DeferredToolEntry } from '$lib/server/tools/types';
 
 const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null } as never;
-function cfg(embedCap = 64): RelevanceConfig {
+function cfg(): RelevanceConfig {
 	return {
 		endpoint: fakeEndpoint,
 		modelId: 'm',
 		timeoutSeconds: 5,
-		embedCap,
 		queryPrefix: '',
 		documentPrefix: '',
 		maxInputTokens: 512,
@@ -87,14 +86,21 @@ describe('searchToolCatalog — hybrid (embeddings + RRF)', () => {
 		expect(out.map((t) => t.name)).not.toContain('mcp__cal__create_event');
 	});
 
-	it('BM25-prefilters to embedCap candidates before embedding', async () => {
+	it('BM25-prefilters to EMBED_CAP candidates before embedding', async () => {
 		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
 			data: body.input.map((s, index) => ({ index, embedding: vectorFor(s) })),
 		}));
-		// embedCap 1 → only the single top BM25 candidate is embedded (+ the query).
-		await searchToolCatalog('issue', CATALOG, cfg(1), signal);
-		const passedInput = embeddingsMock.mock.calls[0][1].input;
-		expect(passedInput).toHaveLength(1 + 1); // query + 1 candidate
+		// A catalog larger than the cap → only query + EMBED_CAP candidates embedded.
+		// The lone "issue" tool ranks #1 in BM25, so it survives the prefilter.
+		const bigCatalog: DeferredToolEntry[] = Array.from({ length: EMBED_CAP + 6 }, (_, i) =>
+			i === 0
+				? { name: 'mcp__gh__create_issue', description: 'Create an issue', category: 'mcp:gh' }
+				: { name: `mcp__x__tool_${i}`, description: `filler tool ${i}`, category: 'mcp:x' },
+		);
+		await searchToolCatalog('issue', bigCatalog, cfg(), signal);
+		// Inputs split across batched requests — flatten to count the total embedded.
+		const passedInput = embeddingsMock.mock.calls.flatMap((c) => c[1].input);
+		expect(passedInput).toHaveLength(EMBED_CAP + 1); // query + EMBED_CAP candidates
 	});
 
 	it('reuses cached doc vectors across calls — only the query is re-embedded', async () => {

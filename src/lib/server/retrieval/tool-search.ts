@@ -23,7 +23,7 @@
 
 import type { DeferredToolEntry } from '../tools/types';
 import { bm25Rank, type ScoredChunk } from './bm25';
-import { embedAndRankCached, type RelevanceConfig } from './embed-rank';
+import { embedAndRankCached, EMBED_CAP, type RelevanceConfig } from './embed-rank';
 import { fuseRankings } from './fusion';
 import type { Vec } from './vector';
 
@@ -81,8 +81,8 @@ export async function searchToolCatalog(
 		// Bound embedding cost: prefilter to the top BM25 candidates on a large
 		// catalog. Keep the catalog-index mapping so dense fuses in catalog space.
 		const candidateIdx =
-			catalog.length > cfg.embedCap
-				? bm25.slice(0, cfg.embedCap).map((sc) => sc.index)
+			catalog.length > EMBED_CAP
+				? bm25.slice(0, EMBED_CAP).map((sc) => sc.index)
 				: docs.map((_, i) => i);
 		if (toolDocVecCache.size > TOOL_DOC_VEC_CACHE_MAX) toolDocVecCache.clear();
 		const dense = await embedAndRankCached(

@@ -12,7 +12,6 @@
 
 import { loadEmbeddingsConfig, type LoadedEmbeddingsConfig } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
-import { EMBED_CAP } from './select';
 import type { RelevanceConfig } from './embed-rank';
 
 let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
@@ -54,7 +53,6 @@ export function resolveRelevanceConfig(): RelevanceConfig | undefined {
 		endpoint,
 		modelId: cfg.modelId,
 		timeoutSeconds: cfg.timeoutSeconds,
-		embedCap: EMBED_CAP,
 		queryPrefix: cfg.queryPrefix,
 		documentPrefix: cfg.documentPrefix,
 		maxInputTokens: cfg.maxInputTokens,

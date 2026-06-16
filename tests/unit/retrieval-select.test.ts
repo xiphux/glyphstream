@@ -8,6 +8,7 @@ vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 import {
 	selectRelevant,
 	ELLIPSIS_MARKER,
+	EMBED_CAP,
 	type RelevanceConfig,
 } from '$lib/server/retrieval/select';
 import type { Chunk } from '$lib/server/retrieval/chunker';
@@ -23,12 +24,11 @@ function mk(blockIndex: number, body: string, breadcrumb = '', overlapPrefixLen 
 }
 
 const fakeEndpoint = { id: 'e', baseUrl: 'http://e', apiKey: null } as never;
-function cfg(embedCap = 200): RelevanceConfig {
+function cfg(): RelevanceConfig {
 	return {
 		endpoint: fakeEndpoint,
 		modelId: 'm',
 		timeoutSeconds: 5,
-		embedCap,
 		queryPrefix: '',
 		documentPrefix: '',
 		maxInputTokens: 512,
@@ -143,17 +143,19 @@ describe('selectRelevant — hybrid (embeddings + RRF)', () => {
 		expect(calls[0][1].input[0]).toBe('quokka');
 	});
 
-	it('BM25-prefilters to embedCap candidates before embedding on large docs', async () => {
+	it('BM25-prefilters to EMBED_CAP candidates before embedding on large docs', async () => {
 		embeddingsMock.mockImplementation(async (_ep: unknown, body: { input: string[] }) => ({
 			data: body.input.map((s, index) => ({ index, embedding: vectorFor(s) })),
 		}));
-		// 10 chunks, embedCap 3 → only query + 3 candidates embedded.
-		const chunks = Array.from({ length: 10 }, (_, i) =>
+		// More chunks than the cap → only query + EMBED_CAP candidates embedded.
+		// The lone quokka match ranks #1 in BM25, so it survives the prefilter.
+		const chunks = Array.from({ length: EMBED_CAP + 6 }, (_, i) =>
 			mk(i, i === 7 ? 'the quokka section' : `filler block number ${i} of text`),
 		);
-		await selectRelevant(chunks, 'quokka', 1000, signal, cfg(3));
-		const passedInput = embeddingsMock.mock.calls[0][1].input;
-		expect(passedInput).toHaveLength(3 + 1); // embedCap + query
+		await selectRelevant(chunks, 'quokka', 1000, signal, cfg());
+		// Inputs split across batched requests — flatten to count the total embedded.
+		const passedInput = embeddingsMock.mock.calls.flatMap((c) => c[1].input);
+		expect(passedInput).toHaveLength(EMBED_CAP + 1); // EMBED_CAP candidates + query
 		// The quokka chunk must survive the BM25 prefilter into the candidate set.
 		expect(passedInput).toContain('the quokka section');
 	});

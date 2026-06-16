@@ -21,13 +21,21 @@ export interface RelevanceConfig {
 	endpoint: LoadedEndpoint;
 	modelId: string;
 	timeoutSeconds: number;
-	embedCap: number;
 	/** Task prefixes for the query and each document (default ''). */
 	queryPrefix: string;
 	documentPrefix: string;
 	/** Model max input sequence length (tokens); drives per-input truncation. */
 	maxInputTokens: number;
 }
+
+// How many BM25-top candidates a caller embeds before fusing. The BM25
+// prefilter already narrows to the strongest lexical matches, so a few dozen is
+// plenty to rerank into the slice that fits the output budget — and it bounds
+// embedding cost on large inputs. A retrieval-policy knob owned by the callers
+// that prefilter (`select.ts`, `tool-search.ts`), NOT part of RelevanceConfig:
+// the embed/rank functions here never read it (the caller has already capped the
+// candidate set before calling), and the memory-recall path ignores it entirely.
+export const EMBED_CAP = 64;
 
 // Embedding backends (notably llama-server) cap both per-input length and the
 // per-request batch: an input over the model's max sequence length 500s, and

@@ -14,7 +14,6 @@ const cfg: RelevanceConfig = {
 	endpoint: fakeEndpoint,
 	modelId: 'm',
 	timeoutSeconds: 5,
-	embedCap: 1000,
 	queryPrefix: '',
 	documentPrefix: '',
 	maxInputTokens: 512,
