@@ -10,29 +10,13 @@
  * so a stray client-only check can't bypass it.
  */
 import { error, json } from '@sveltejs/kit';
-import type { RegistrationResponseJSON } from '@simplewebauthn/server';
 import { requireUser } from '$lib/server/auth/guard';
-import {
-	clearRegistrationChallengeCookie,
-	readRegistrationChallengeCookie,
-	verifyRegistration,
-} from '$lib/server/auth/passkey';
-import {
-	type AuthenticatorTransport,
-	type PasskeySummary,
-	insertCredential,
-} from '$lib/server/db/queries/passkey';
+import { verifyRegistrationCeremony } from '$lib/server/auth/passkey';
+import { type PasskeySummary, insertCredential } from '$lib/server/db/queries/passkey';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
 const MAX_NAME_LENGTH = 60;
-const VALID_TRANSPORTS: ReadonlySet<AuthenticatorTransport> = new Set([
-	'usb',
-	'ble',
-	'nfc',
-	'internal',
-	'hybrid',
-]);
 
 function sanitizeName(raw: unknown): string | null {
 	if (typeof raw !== 'string') return null;
@@ -40,53 +24,20 @@ function sanitizeName(raw: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
-function pickKnownTransports(raw: unknown): AuthenticatorTransport[] | null {
-	if (!Array.isArray(raw) || raw.length === 0) return null;
-	const out: AuthenticatorTransport[] = [];
-	for (const t of raw) {
-		if (typeof t === 'string' && VALID_TRANSPORTS.has(t as AuthenticatorTransport)) {
-			out.push(t as AuthenticatorTransport);
-		}
-	}
-	return out.length > 0 ? out : null;
-}
-
 export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
 	requireUser(locals);
 
-	const challenge = readRegistrationChallengeCookie(cookies);
-	clearRegistrationChallengeCookie(cookies);
-	if (!challenge) throw error(400, 'Missing or expired registration challenge');
+	const { credential, backedUp, deviceType, transports, body } = await verifyRegistrationCeremony(
+		cookies,
+		request,
+	);
 
-	let body: { response?: RegistrationResponseJSON; name?: unknown };
-	try {
-		body = (await request.json()) as { response?: RegistrationResponseJSON; name?: unknown };
-	} catch {
-		throw error(400, 'Malformed JSON body');
-	}
-	if (!body.response || typeof body.response !== 'object') {
-		throw error(400, 'Missing registration response');
-	}
-
-	let verification;
-	try {
-		verification = await verifyRegistration(body.response, challenge);
-	} catch (e) {
-		const message = e instanceof Error ? e.message : 'Verification failed';
-		throw error(400, message);
-	}
-	if (!verification.verified || !verification.registrationInfo) {
-		throw error(400, 'Passkey verification failed');
-	}
-
-	const { credential, credentialBackedUp, credentialDeviceType } = verification.registrationInfo;
-
+	// Name is captured pre-ceremony in the UI (the WebAuthn prompt doesn't carry
+	// it); trim + length-cap server-side so a stray client-only check can't bypass
+	// it. Transports come from the browser's response.transports (the helper
+	// already filtered them) so the login picker can surface relevant authenticators.
 	const name = sanitizeName(body.name);
-	// The browser's RegistrationResponseJSON.response.transports is the
-	// authoritative source of transport hints — passing them back during
-	// login lets the picker UI surface only the relevant authenticators.
-	const transports = pickKnownTransports(body.response.response?.transports);
 
 	try {
 		insertCredential({
@@ -95,8 +46,8 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 			publicKey: credential.publicKey,
 			counter: credential.counter,
 			transports,
-			backedUp: credentialBackedUp,
-			deviceType: credentialDeviceType,
+			backedUp,
+			deviceType,
 			name,
 		});
 	} catch (e) {
@@ -114,8 +65,8 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	const summary: PasskeySummary = {
 		id: credential.id,
 		name,
-		backedUp: credentialBackedUp,
-		deviceType: credentialDeviceType,
+		backedUp,
+		deviceType,
 		createdAt: Date.now(),
 		lastUsedAt: null,
 	};

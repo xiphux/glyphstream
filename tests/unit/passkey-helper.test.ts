@@ -30,11 +30,14 @@ import {
 	getExpectedOrigin,
 	getRpId,
 	resetRpCache,
+	setRegistrationChallengeCookie,
 	verifyAuthentication,
 	verifyRegistration,
+	verifyRegistrationCeremony,
 } from '$lib/server/auth/passkey';
 import type { PasskeyCredentialRow } from '$lib/server/db/queries/passkey';
 import type { SessionUser } from '$lib/server/auth/session';
+import type { Cookies } from '@sveltejs/kit';
 
 beforeEach(() => {
 	resetRpCache();
@@ -191,6 +194,83 @@ describe('verifyAuthentication', () => {
 		expect(opts.expectedOrigin).toBe('https://chat.example.com');
 		expect(opts.requireUserVerification).toBe(true);
 		expect(opts.credential.id).toBe('c');
+	});
+});
+
+describe('verifyRegistrationCeremony', () => {
+	function fakeCookies() {
+		const store = new Map<string, string>();
+		const cookies = {
+			get: (k: string) => store.get(k),
+			set: (k: string, v: string) => store.set(k, v),
+			delete: (k: string) => store.delete(k),
+		} as unknown as Cookies;
+		return { cookies, store };
+	}
+	function fakeRequest(body: unknown): Request {
+		return { json: async () => body } as unknown as Request;
+	}
+	const registrationInfo = {
+		credential: { id: 'cred-1', publicKey: new Uint8Array([9, 9]), counter: 7 },
+		credentialBackedUp: true,
+		credentialDeviceType: 'multiDevice' as const,
+	};
+
+	it('verifies, clears the challenge, and projects credential + filtered transports', async () => {
+		verifyRegistrationResponseMock.mockResolvedValue({ verified: true, registrationInfo });
+		const { cookies, store } = fakeCookies();
+		setRegistrationChallengeCookie(cookies, 'the-challenge');
+		const req = fakeRequest({
+			response: { response: { transports: ['internal', 'bogus'] } },
+			name: '  My Key  ',
+		});
+
+		const result = await verifyRegistrationCeremony(cookies, req);
+
+		expect(result.credential.id).toBe('cred-1');
+		expect(result.backedUp).toBe(true);
+		expect(result.deviceType).toBe('multiDevice');
+		expect(result.transports).toEqual(['internal']); // 'bogus' filtered out
+		expect(result.body.name).toBe('  My Key  '); // raw, caller sanitizes
+		// Challenge cookie is single-use — cleared regardless of outcome.
+		expect(store.size).toBe(0);
+		// The verified challenge was passed through to the SDK.
+		expect(verifyRegistrationResponseMock.mock.calls[0][0].expectedChallenge).toBe('the-challenge');
+	});
+
+	it('throws 400 when the challenge cookie is missing', async () => {
+		const { cookies } = fakeCookies();
+		await expect(
+			verifyRegistrationCeremony(cookies, fakeRequest({ response: {} })),
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('throws 400 on a malformed JSON body', async () => {
+		const { cookies } = fakeCookies();
+		setRegistrationChallengeCookie(cookies, 'c');
+		const req = {
+			json: async () => {
+				throw new Error('bad json');
+			},
+		} as unknown as Request;
+		await expect(verifyRegistrationCeremony(cookies, req)).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('throws 400 when the registration response is missing', async () => {
+		const { cookies } = fakeCookies();
+		setRegistrationChallengeCookie(cookies, 'c');
+		await expect(
+			verifyRegistrationCeremony(cookies, fakeRequest({ name: 'x' })),
+		).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('throws 400 when SimpleWebAuthn reports unverified', async () => {
+		verifyRegistrationResponseMock.mockResolvedValue({ verified: false });
+		const { cookies } = fakeCookies();
+		setRegistrationChallengeCookie(cookies, 'c');
+		await expect(
+			verifyRegistrationCeremony(cookies, fakeRequest({ response: {} })),
+		).rejects.toMatchObject({ status: 400 });
 	});
 });
 

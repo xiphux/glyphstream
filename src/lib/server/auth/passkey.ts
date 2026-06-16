@@ -27,10 +27,15 @@ import type {
 	RegistrationResponseJSON,
 	WebAuthnCredential,
 } from '@simplewebauthn/server';
-import type { Cookies } from '@sveltejs/kit';
+import { type Cookies, error } from '@sveltejs/kit';
 import { publicBaseUrl } from '../env';
 import type { SessionUser } from './session';
-import type { PasskeyCredentialRow } from '../db/queries/passkey';
+import {
+	pickKnownTransports,
+	type AuthenticatorTransport,
+	type PasskeyCredentialRow,
+	type PasskeyDeviceType,
+} from '../db/queries/passkey';
 
 /** Short-lived httpOnly cookies that carry the challenge between the
  *  "options" and "verify" halves of each ceremony. Mirrors the shape of
@@ -120,6 +125,68 @@ export async function verifyRegistration(
 		expectedRPID: getRpId(),
 		requireUserVerification: true,
 	});
+}
+
+/** The verified credential + parsed body returned by a registration ceremony. */
+export interface RegistrationCeremonyResult {
+	credential: NonNullable<VerifiedRegistrationResponse['registrationInfo']>['credential'];
+	backedUp: boolean;
+	deviceType: PasskeyDeviceType;
+	transports: AuthenticatorTransport[] | null;
+	/** The raw parsed request body, for callers that read extra fields (e.g. `name`). */
+	body: { response: RegistrationResponseJSON; name?: unknown };
+}
+
+/**
+ * Run the shared half of every passkey *registration* verify endpoint: read +
+ * clear the challenge cookie, parse and validate the request body, verify the
+ * registration response, and project the credential + transports. Throws the
+ * appropriate SvelteKit `error()` (400) on any failure.
+ *
+ * The three callers (first-run setup, invited /join, authed add-a-passkey) wrap
+ * this with their own flow-specific gate (setupGate / invite / requireUser) and
+ * persistence (createInitialUser+insertCredential / finalizePasskeyJoin /
+ * insertCredential). Centralizing the ceremony is the anti-drift measure — a
+ * tightening of the WebAuthn verification lands in one place, not three. Callers
+ * that read the challenge alongside a carry cookie should read+clear the carry
+ * BEFORE calling this (it throws on a missing challenge first).
+ */
+export async function verifyRegistrationCeremony(
+	cookies: Cookies,
+	request: Request,
+): Promise<RegistrationCeremonyResult> {
+	const challenge = readRegistrationChallengeCookie(cookies);
+	clearRegistrationChallengeCookie(cookies);
+	if (!challenge) throw error(400, 'Missing or expired challenge');
+
+	let body: { response?: RegistrationResponseJSON; name?: unknown };
+	try {
+		body = (await request.json()) as { response?: RegistrationResponseJSON; name?: unknown };
+	} catch {
+		throw error(400, 'Malformed JSON body');
+	}
+	if (!body.response || typeof body.response !== 'object') {
+		throw error(400, 'Missing registration response');
+	}
+
+	let verification: VerifiedRegistrationResponse;
+	try {
+		verification = await verifyRegistration(body.response, challenge);
+	} catch (e) {
+		throw error(400, e instanceof Error ? e.message : 'Verification failed');
+	}
+	if (!verification.verified || !verification.registrationInfo) {
+		throw error(400, 'Passkey verification failed');
+	}
+
+	const { credential, credentialBackedUp, credentialDeviceType } = verification.registrationInfo;
+	return {
+		credential,
+		backedUp: credentialBackedUp,
+		deviceType: credentialDeviceType,
+		transports: pickKnownTransports(body.response.response?.transports),
+		body: { response: body.response, name: body.name },
+	};
 }
 
 /**

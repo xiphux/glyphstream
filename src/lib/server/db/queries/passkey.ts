@@ -77,18 +77,33 @@ const VALID_TRANSPORTS: ReadonlySet<AuthenticatorTransport> = new Set([
 	'hybrid',
 ]);
 
+/**
+ * Filter an already-parsed transports array down to the values we recognize,
+ * or null when none survive (empty/absent/all-unknown). The single source for
+ * transport validation, shared by the registration-verify endpoints (which
+ * filter the browser-supplied `response.transports` array) and `parseTransports`
+ * below (which JSON-parses the stored column first).
+ */
+export function pickKnownTransports(raw: unknown): AuthenticatorTransport[] | null {
+	if (!Array.isArray(raw) || raw.length === 0) return null;
+	const out: AuthenticatorTransport[] = [];
+	for (const t of raw) {
+		if (typeof t === 'string' && VALID_TRANSPORTS.has(t as AuthenticatorTransport)) {
+			out.push(t as AuthenticatorTransport);
+		}
+	}
+	return out.length > 0 ? out : null;
+}
+
 function parseTransports(raw: string | null): AuthenticatorTransport[] | null {
 	if (!raw) return null;
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!Array.isArray(parsed)) return null;
-		const out: AuthenticatorTransport[] = [];
-		for (const t of parsed) {
-			if (typeof t === 'string' && VALID_TRANSPORTS.has(t as AuthenticatorTransport)) {
-				out.push(t as AuthenticatorTransport);
-			}
-		}
-		return out;
+		// Preserve the "[] when no valid hints" shape this path has always
+		// returned (vs. pickKnownTransports' null) so the stored-column read is
+		// behavior-identical.
+		return pickKnownTransports(parsed) ?? [];
 	} catch {
 		// Malformed JSON in the DB shouldn't crash a login — drop to "no
 		// hints" and let the browser show every option. The row was

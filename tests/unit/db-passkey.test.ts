@@ -17,6 +17,7 @@ import {
 	insertCredential,
 	listCredentialSummariesForUser,
 	listCredentialsForUser,
+	pickKnownTransports,
 	renameCredential,
 	updateCredentialCounterAndLastUsed,
 	type InsertPasskeyInput,
@@ -49,6 +50,19 @@ function makeInsert(
 		name: 'name' in overrides ? overrides.name! : null,
 	};
 }
+
+describe('pickKnownTransports (shared transport filter)', () => {
+	it('keeps recognized transports and drops unknown ones', () => {
+		expect(pickKnownTransports(['internal', 'bogus', 'usb'])).toEqual(['internal', 'usb']);
+	});
+
+	it('returns null for empty, non-array, or all-unknown input', () => {
+		expect(pickKnownTransports([])).toBeNull();
+		expect(pickKnownTransports(undefined)).toBeNull();
+		expect(pickKnownTransports('internal')).toBeNull();
+		expect(pickKnownTransports(['nope', 42])).toBeNull();
+	});
+});
 
 describe('insertCredential + listCredentialsForUser', () => {
 	it('returns an empty array for a user with no credentials', () => {

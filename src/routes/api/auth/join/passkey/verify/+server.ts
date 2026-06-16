@@ -7,12 +7,7 @@
  * credential, and consumes the invite — all in one transaction. Signs in.
  */
 import { error, json } from '@sveltejs/kit';
-import type { RegistrationResponseJSON } from '@simplewebauthn/server';
-import {
-	clearRegistrationChallengeCookie,
-	readRegistrationChallengeCookie,
-	verifyRegistration,
-} from '$lib/server/auth/passkey';
+import { verifyRegistrationCeremony } from '$lib/server/auth/passkey';
 import {
 	JOIN_PASSKEY_CARRY_COOKIE,
 	InviteConsumedError,
@@ -20,7 +15,6 @@ import {
 } from '$lib/server/auth/join';
 import { verify } from '$lib/server/auth/signed-cookies';
 import { createSession, setSessionCookie } from '$lib/server/auth/session';
-import { type AuthenticatorTransport } from '$lib/server/db/queries/passkey';
 import { findValidInvite } from '$lib/server/db/queries/invites';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
@@ -32,33 +26,13 @@ interface CarryPayload {
 	inviteToken: string;
 }
 
-const VALID_TRANSPORTS: ReadonlySet<AuthenticatorTransport> = new Set([
-	'usb',
-	'ble',
-	'nfc',
-	'internal',
-	'hybrid',
-]);
-
-function pickKnownTransports(raw: unknown): AuthenticatorTransport[] | null {
-	if (!Array.isArray(raw) || raw.length === 0) return null;
-	const out: AuthenticatorTransport[] = [];
-	for (const t of raw) {
-		if (typeof t === 'string' && VALID_TRANSPORTS.has(t as AuthenticatorTransport)) {
-			out.push(t as AuthenticatorTransport);
-		}
-	}
-	return out.length > 0 ? out : null;
-}
-
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
 
-	const challenge = readRegistrationChallengeCookie(cookies);
-	clearRegistrationChallengeCookie(cookies);
+	// Read the carry state before the ceremony (which throws on a missing
+	// challenge first); both short-lived cookies are cleared either way.
 	const carrySigned = cookies.get(JOIN_PASSKEY_CARRY_COOKIE);
 	cookies.delete(JOIN_PASSKEY_CARRY_COOKIE, { path: '/' });
-	if (!challenge) throw error(400, 'Missing or expired challenge');
 	const carry = verify<CarryPayload>(carrySigned);
 	if (!carry) throw error(400, 'Missing or expired join state');
 
@@ -67,29 +41,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const invite = findValidInvite(carry.inviteToken);
 	if (!invite) throw error(403, 'This invite link is invalid or has expired');
 
-	let body: { response?: RegistrationResponseJSON };
-	try {
-		body = (await request.json()) as { response?: RegistrationResponseJSON };
-	} catch {
-		throw error(400, 'Malformed JSON body');
-	}
-	if (!body.response || typeof body.response !== 'object') {
-		throw error(400, 'Missing registration response');
-	}
-
-	let verification;
-	try {
-		verification = await verifyRegistration(body.response, challenge);
-	} catch (e) {
-		const message = e instanceof Error ? e.message : 'Verification failed';
-		throw error(400, message);
-	}
-	if (!verification.verified || !verification.registrationInfo) {
-		throw error(400, 'Passkey verification failed');
-	}
-
-	const { credential, credentialBackedUp, credentialDeviceType } = verification.registrationInfo;
-	const transports = pickKnownTransports(body.response.response?.transports);
+	const { credential, backedUp, deviceType, transports } = await verifyRegistrationCeremony(
+		cookies,
+		request,
+	);
 
 	let userId: string;
 	try {
@@ -105,8 +60,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				publicKey: credential.publicKey,
 				counter: credential.counter,
 				transports,
-				backedUp: credentialBackedUp,
-				deviceType: credentialDeviceType,
+				backedUp,
+				deviceType,
 				name: null,
 			},
 		});
