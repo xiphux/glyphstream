@@ -11,13 +11,17 @@ import { getDb } from '../client';
 import { mcpCredentials } from '../schema';
 import { decryptSecret, encryptSecret } from '../../crypto/secret-box';
 
+/** The table's natural key — `(userId, serverId)` — used by every lookup below. */
+const byUserServer = (userId: string, serverId: string) =>
+	and(eq(mcpCredentials.userId, userId), eq(mcpCredentials.serverId, serverId));
+
 /** The decrypted secret for (user, server), or null when none is stored. */
 export function getMcpCredential(userId: string, serverId: string): string | null {
 	const db = getDb();
 	const row = db
 		.select({ ct: mcpCredentials.secretCiphertext })
 		.from(mcpCredentials)
-		.where(and(eq(mcpCredentials.userId, userId), eq(mcpCredentials.serverId, serverId)))
+		.where(byUserServer(userId, serverId))
 		.get();
 	if (!row) return null;
 	try {
@@ -45,7 +49,7 @@ export function setMcpCredential(userId: string, serverId: string, secret: strin
 	const existing = db
 		.select({ id: mcpCredentials.id })
 		.from(mcpCredentials)
-		.where(and(eq(mcpCredentials.userId, userId), eq(mcpCredentials.serverId, serverId)))
+		.where(byUserServer(userId, serverId))
 		.get();
 	if (existing) {
 		db.update(mcpCredentials)
@@ -69,10 +73,7 @@ export function setMcpCredential(userId: string, serverId: string, secret: strin
 /** Remove a user's credential for a server. Returns false if none existed. */
 export function deleteMcpCredential(userId: string, serverId: string): boolean {
 	const db = getDb();
-	const res = db
-		.delete(mcpCredentials)
-		.where(and(eq(mcpCredentials.userId, userId), eq(mcpCredentials.serverId, serverId)))
-		.run();
+	const res = db.delete(mcpCredentials).where(byUserServer(userId, serverId)).run();
 	return res.changes > 0;
 }
 
@@ -82,7 +83,7 @@ export function hasMcpCredential(userId: string, serverId: string): boolean {
 	const row = db
 		.select({ id: mcpCredentials.id })
 		.from(mcpCredentials)
-		.where(and(eq(mcpCredentials.userId, userId), eq(mcpCredentials.serverId, serverId)))
+		.where(byUserServer(userId, serverId))
 		.get();
 	return row !== undefined;
 }
