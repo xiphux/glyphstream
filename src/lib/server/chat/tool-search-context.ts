@@ -21,7 +21,7 @@ import type { DeferredToolEntry, OpenAIToolDefinition } from '../tools/types';
 import { searchToolsDefinition } from '../tools/search-tools';
 import { deferredToolCatalog } from '../tools/registry';
 import { buildUserDeferredToolCatalog } from '../mcp/tool-bridge';
-import { getMcpServerCfg } from '../mcp/registry';
+import { getMcpServerCfg, type UserServerState } from '../mcp/registry';
 
 export interface ToolSearchRequestContext {
 	/** The `search_tools` definition to append to the tool list, or null. */
@@ -52,10 +52,14 @@ interface DeferredGroup {
 export async function buildToolSearchRequestContext(
 	userId: string,
 	disabledFeatures: readonly FeatureCategory[],
+	states?: UserServerState[],
 ): Promise<ToolSearchRequestContext> {
 	const catalog: DeferredToolEntry[] = [
 		...deferredToolCatalog({ excludeCategories: disabledFeatures }),
-		...(await buildUserDeferredToolCatalog(userId, { excludeCategories: disabledFeatures })),
+		...(await buildUserDeferredToolCatalog(userId, {
+			excludeCategories: disabledFeatures,
+			states,
+		})),
 	];
 	if (catalog.length === 0) return EMPTY;
 	return { def: searchToolsDefinition(), hint: composeHint(groupByServer(catalog)) };

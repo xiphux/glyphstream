@@ -27,6 +27,7 @@ import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
+import { getUserServerStates } from '$lib/server/mcp/registry';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	appendToolSearchHint,
@@ -419,12 +420,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// after the first call.
 	if (supportsTools) await awaitMcpReady();
 
+	// Resolve the caller's per-user MCP server state ONCE for this request. Both
+	// the deferred-catalog build (search_tools hint) and the per-user tool-def
+	// build below need it, and each resolution re-decrypts every per-user
+	// credential — so we snapshot here and thread it through both.
+	const userServerStates = supportsTools ? await getUserServerStates(locals.user.id) : [];
+
 	// Deferred tool loading: when this user/conversation has servers configured
 	// `defer_tools`, advertise the `search_tools` built-in and inject a Tier-1
 	// hint into the system prompt. The hint must fold in BEFORE the branch is
 	// serialized below, so do it here alongside the skills catalog.
 	const toolSearchCtx = supportsTools
-		? await buildToolSearchRequestContext(locals.user.id, meta.disabledFeatures)
+		? await buildToolSearchRequestContext(locals.user.id, meta.disabledFeatures, userServerStates)
 		: { def: null, hint: null };
 	effectiveSystemPrompt = appendToolSearchHint(effectiveSystemPrompt, toolSearchCtx.hint);
 
@@ -499,6 +506,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		toolDefs.push(
 			...(await buildUserMcpToolDefinitions(locals.user.id, {
 				excludeCategories: meta.disabledFeatures,
+				states: userServerStates,
 			})),
 		);
 		// search_tools (only when deferred tools exist for this user/conversation).

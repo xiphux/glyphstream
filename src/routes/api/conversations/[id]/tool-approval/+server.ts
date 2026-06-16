@@ -28,6 +28,7 @@ import { parseModelId } from '$lib/server/endpoints/model-id';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
+import { getUserServerStates } from '$lib/server/mcp/registry';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import {
 	appendToolSearchHint,
@@ -197,11 +198,20 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const skillsCtx = buildSkillsRequestContext(userId, meta.disabledFeatures);
 	effectiveSystemPrompt = appendSkillsCatalog(effectiveSystemPrompt, skillsCtx.catalog);
 
+	// Resolve the caller's per-user MCP server state once (re-decrypts every
+	// per-user credential), then thread it through both consumers below — mirrors
+	// the message-send handler.
+	const userServerStates = await getUserServerStates(userId);
+
 	// Same deferred-tool wiring as the message-send handler: advertise
 	// search_tools + inject its hint, and seed the tools the model had already
 	// searched up before the pause so they survive the resume. Without this a
 	// turn that searched-then-paused would lose those tools on continuation.
-	const toolSearchCtx = await buildToolSearchRequestContext(userId, meta.disabledFeatures);
+	const toolSearchCtx = await buildToolSearchRequestContext(
+		userId,
+		meta.disabledFeatures,
+		userServerStates,
+	);
 	effectiveSystemPrompt = appendToolSearchHint(effectiveSystemPrompt, toolSearchCtx.hint);
 
 	const toolDefs = openaiToolDefinitions({ excludeCategories: meta.disabledFeatures });
@@ -211,7 +221,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// still see it afterward. (Also registers per-user deferred tools so the seed
 	// below can resolve them.)
 	toolDefs.push(
-		...(await buildUserMcpToolDefinitions(userId, { excludeCategories: meta.disabledFeatures })),
+		...(await buildUserMcpToolDefinitions(userId, {
+			excludeCategories: meta.disabledFeatures,
+			states: userServerStates,
+		})),
 	);
 	if (toolSearchCtx.def) toolDefs.push(toolSearchCtx.def);
 	toolDefs.push(

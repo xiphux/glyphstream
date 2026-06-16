@@ -6,6 +6,7 @@ import {
 	getMcpServerTools,
 	getUserServerStates,
 	listGlobalServerIds,
+	type UserServerState,
 } from './registry';
 import type { McpCallResult, McpContentBlock, McpToolDescriptor } from './client';
 import type { LoadedMcpServer } from './config';
@@ -186,10 +187,15 @@ export function registerPerUserServerTools(
  */
 export async function buildUserMcpToolDefinitions(
 	userId: string,
-	opts: { excludeCategories?: readonly string[] } = {},
+	opts: { excludeCategories?: readonly string[]; states?: UserServerState[] } = {},
 ): Promise<OpenAIToolDefinition[]> {
 	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
-	const states = await getUserServerStates(userId);
+	// During request setup a handler builds both the tool list (here) and the
+	// deferred catalog — resolving per-user state twice re-decrypts every
+	// credential. Callers pass one request-scoped snapshot so it's resolved once.
+	// (The search_tools execute path deliberately does NOT pass one — it re-
+	// resolves mid-turn to pick up servers that connected after setup.)
+	const states = opts.states ?? (await getUserServerStates(userId));
 	const defs: OpenAIToolDefinition[] = [];
 	for (const s of states) {
 		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
@@ -222,10 +228,12 @@ export async function buildUserMcpToolDefinitions(
  */
 export async function buildUserDeferredToolCatalog(
 	userId: string,
-	opts: { excludeCategories?: readonly string[] } = {},
+	opts: { excludeCategories?: readonly string[]; states?: UserServerState[] } = {},
 ): Promise<DeferredToolEntry[]> {
 	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
-	const states = await getUserServerStates(userId);
+	// See buildUserMcpToolDefinitions: accept a request-scoped state snapshot so
+	// the same request doesn't re-resolve (and re-decrypt) per-user servers twice.
+	const states = opts.states ?? (await getUserServerStates(userId));
 	const entries: DeferredToolEntry[] = [];
 	for (const s of states) {
 		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;

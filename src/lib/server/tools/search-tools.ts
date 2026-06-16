@@ -133,6 +133,10 @@ export const searchToolsTool: Tool = {
 		// Build the searchable catalog, re-applying the conversation's category
 		// opt-outs at execute time (defends the advertise→call race, same as
 		// skills' dual gate). Global deferred tools + this user's per-user ones.
+		// This resolves per-user server state fresh (no request-setup snapshot is
+		// threaded down to tool execution) — deliberate: a turn can run for many
+		// seconds and iterations before/between search_tools calls, during which a
+		// per-user server may connect, so the freshest catalog is the correct one.
 		const catalog: DeferredToolEntry[] = [
 			...deferredToolCatalog({ excludeCategories: ctx.disabledFeatures }),
 			...(await buildUserDeferredToolCatalog(ctx.userId, {
