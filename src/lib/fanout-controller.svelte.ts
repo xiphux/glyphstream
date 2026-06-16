@@ -22,6 +22,7 @@ import { buildFanoutBranchBody } from './chat-send-body';
 import { consumeChatStream } from './consume-chat-stream';
 import {
 	allColumnsSettled,
+	isMediaKind,
 	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 	type FanoutBranchSpec,
 	type FanoutColumn,
@@ -110,7 +111,7 @@ export class FanoutController {
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
 	columnsSettled = $derived(this.columns.length > 0 && allColumnsSettled(this.columns));
 	/** Image/video fan-out is keep-many (prune + regenerate); chat is pick-one. */
-	isMedia = $derived(this.columns.some((c) => c.modelKind === 'image' || c.modelKind === 'video'));
+	isMedia = $derived(this.columns.some((c) => isMediaKind(c.modelKind)));
 
 	constructor(deps: FanoutDeps) {
 		this.#deps = deps;

@@ -1,15 +1,16 @@
 <!--
 	Multi-model fan-out compare view. Renders the N branch responses side by
 	side (horizontal scroll on narrow viewports) while they stream, then
-	surfaces per-column actions once settled. Two modes, driven by which
-	callbacks the parent passes:
-	  - text (onPick): "Continue with this" promotes one branch to the active
-	    thread, the rest stay as siblings.
-	  - media keep-many (onDiscard + onRegenerate): prune the duds + re-roll
-	    (additively — a new variation beside the original); every kept
-	    image/video stays a sibling.
-	Purely presentational — the page owns the streams, column state, and the
-	pick / discard / regenerate requests.
+	surfaces per-column actions once settled. Two modes:
+	  - text (chat/embedding): "Continue with this" (onPick) promotes one branch
+	    to the active thread, the rest stay as siblings.
+	  - media keep-many (image/video): prune the duds (onDiscard) + re-roll
+	    (onRegenerate, additively — a new variation beside the original); every
+	    kept image/video stays a sibling.
+	Which action buttons render is driven by which callbacks the parent wires;
+	the keep-many *layout* (media grid vs chat strip) is driven by the columns'
+	modality via isMediaKind. Purely presentational — the page owns the streams,
+	column state, and the pick / discard / regenerate requests.
 -->
 <script lang="ts">
 	import { Check, Trash2, RefreshCw, CircleAlert } from '@lucide/svelte';
@@ -21,7 +22,11 @@
 		type RenderBlock,
 		type ToolResultEntry,
 	} from '$lib/chat-render';
-	import { MAX_FANOUT_BRANCHES_PER_CONVERSATION, type FanoutColumn } from '$lib/fanout';
+	import {
+		isMediaKind,
+		MAX_FANOUT_BRANCHES_PER_CONVERSATION,
+		type FanoutColumn,
+	} from '$lib/fanout';
 
 	interface Props {
 		columns: FanoutColumn[];
@@ -60,8 +65,10 @@
 		return c.status === 'done' || c.status === 'error' || c.status === 'cancelled';
 	}
 
-	// Media (image/video) fan-out is keep-many (regenerate/discard, no single pick).
-	const isMedia = $derived(!onPick && (!!onDiscard || !!onRegenerate));
+	// Media (image/video) fan-out is keep-many: a media grid instead of the chat
+	// strip. Driven by the columns' modality (single-modality per fan-out), not by
+	// which callbacks happen to be wired.
+	const isMedia = $derived(columns.some((c) => isMediaKind(c.modelKind)));
 	const countNoun = $derived(isMedia ? 'variations' : 'models');
 
 	// Ticking clock for the per-column elapsed timer (a branch counts up from its

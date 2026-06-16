@@ -24,6 +24,17 @@ export const MAX_FANOUT_BRANCHES_PER_CONVERSATION = 32;
 
 export type FanoutColumnStatus = 'queued' | 'streaming' | 'done' | 'error' | 'cancelled';
 
+/**
+ * The pick-one vs keep-many policy split, by modality. Image and video fan-outs
+ * are keep-many (regenerate/discard, every kept result stays a sibling); chat
+ * (and embedding) are pick-one (promote one branch to the thread). The single
+ * predicate for that distinction — used by the controller's grid-state derivation
+ * and the compare view's layout.
+ */
+export function isMediaKind(kind: ModelKind | null | undefined): boolean {
+	return kind === 'image' || kind === 'video';
+}
+
 /** One model picked for a fan-out comparison. The same model may appear more
  *  than once (e.g. to sample variations); each entry becomes its own column. */
 export interface FanoutModel {

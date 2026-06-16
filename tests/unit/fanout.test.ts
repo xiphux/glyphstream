@@ -9,6 +9,7 @@ import {
 	allColumnsSettled,
 	expandCompareSelections,
 	expandFanoutBranches,
+	isMediaKind,
 	type CompareSelection,
 	type FanoutColumn,
 	type FanoutModel,
@@ -107,5 +108,19 @@ describe('allColumnsSettled', () => {
 
 	it('is true for an empty set (vacuous)', () => {
 		expect(allColumnsSettled([])).toBe(true);
+	});
+});
+
+describe('isMediaKind', () => {
+	it('is true for image and video (keep-many)', () => {
+		expect(isMediaKind('image')).toBe(true);
+		expect(isMediaKind('video')).toBe(true);
+	});
+
+	it('is false for chat, embedding, and absent kinds (pick-one / n/a)', () => {
+		expect(isMediaKind('chat')).toBe(false);
+		expect(isMediaKind('embedding')).toBe(false);
+		expect(isMediaKind(null)).toBe(false);
+		expect(isMediaKind(undefined)).toBe(false);
 	});
 });
