@@ -13,7 +13,7 @@
  * gets a small floor contribution from every leg — passes `missingRanks` (one
  * 1-based rank per ranking). `select.ts` uses this to fuse a full chunk set where
  * the dense leg only ranked a BM25-prefiltered subset: chunks the dense leg never
- * saw still get its `embedCap + 1` floor instead of zero.
+ * saw still get its `EMBED_CAP + 1` floor instead of zero.
  */
 
 import type { ScoredChunk } from './bm25';

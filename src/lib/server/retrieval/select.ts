@@ -65,7 +65,7 @@ export async function selectRelevant(
 			// onto blockIndex so both rankings share one index space, then fuse.
 			// bm25 covers every chunk, so its missingRank never fires; the dense leg
 			// only ranked the prefiltered candidates, so chunks it never saw get the
-			// `embedCap + 1` floor (preserving the prior hand-rolled fusion exactly).
+			// `EMBED_CAP + 1` floor (preserving the prior hand-rolled fusion exactly).
 			const denseByBlock = dense.map((sc) => ({
 				index: candidates[sc.index].blockIndex,
 				score: sc.score,
