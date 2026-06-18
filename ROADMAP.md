@@ -97,28 +97,20 @@ docs.
     it runs even though it's sandboxed — reuse the MCP approval infra with a
     per-user trust list.
 
-- **Web search — quality.** `web_search` proxies SearxNG and returns the raw
-  top-N `{title, url, snippet}`, discarding everything else the response
-  carries. Note the RAG read path (hybrid select on long `fetch_url` pages)
-  doesn't touch the search step at all — these items improve the result list
-  itself, roughly by priority:
-  - _Surface answers / infoboxes / corrections._ SearxNG returns `answers`
-    (instant-answer boxes), `infoboxes` (Wikidata-style summaries), and
-    `corrections`/`suggestions` alongside `results`; we drop all of it. Passing
-    them through lets the model resolve simple factual queries with zero
-    `fetch_url` round-trips. Cheap, pure-additive, no new deps — highest
-    value-to-effort.
-  - _Freshness + category controls._ The tool's mandate is "current events,
-    anything past your cutoff," yet it can't request recent results or scope by
-    topic. Expose SearxNG's `time_range` (day/week/month/year), `categories`
-    (news/science/…), and `language` as optional tool args so the model can ask
-    for "news, past week." Directly serves the stated purpose; small surface.
-  - _Rerank + near-duplicate dedupe of the result list._ Reuse the retrieval
-    stack (BM25 ⊕ embedding over `title + snippet`) to reorder and collapse
-    mirror/syndicated duplicates. Dedupe is the real win; reranking is
-    speculative — snippets are tiny and SearxNG already fuses engine rankings,
-    so the marginal gain may not beat the added latency. Lower priority; gate
-    the dense leg behind the `[embeddings]` capability flag like the read path.
+- **Web search — quality.** `web_search` originally proxied SearxNG and returned
+  only the raw top-N `{title, url, snippet}`, discarding everything else. Three
+  improvements have shipped: it now surfaces SearxNG's **answers / infoboxes /
+  corrections** (so simple queries resolve with no `fetch_url` round-trip),
+  accepts optional **`time_range` / `categories` / `language`** args (freshness +
+  scope), and **de-duplicates results** by a conservative normalized-URL key
+  before trimming to `max_results`. (The RAG read path — hybrid select on long
+  `fetch_url` pages — is separate and untouched by these.) Remaining:
+  - _Snippet reranking of the result list._ Reorder results with the cross-encoder
+    (now in hand via `[rerank]`) or BM25⊕embedding over `title + snippet`.
+    Deferred deliberately: snippets are tiny and SearxNG already fuses engine
+    rankings, so the marginal gain likely doesn't beat the added latency — the
+    dedupe half (shipped) was the real win. Revisit only if result quality
+    proves a problem in practice.
 
   (Search-and-read fusion — fan out searches, fetch, rank across sources — is
   the **deep research** item below, not duplicated here.)
