@@ -326,3 +326,222 @@ describe('web_search execute - auth + errors', () => {
 		expect(r.isError).toBe(true);
 	});
 });
+
+function jsonResponse(body: unknown): Response {
+	return new Response(JSON.stringify(body), {
+		status: 200,
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
+describe('web_search definition — freshness/category params', () => {
+	it('advertises time_range as an enum plus categories and language', () => {
+		const props = (webSearchTool.definition.function.parameters as any).properties;
+		expect(props.time_range).toMatchObject({
+			type: 'string',
+			enum: ['day', 'week', 'month', 'year'],
+		});
+		expect(props.categories).toMatchObject({ type: 'string' });
+		expect(props.language).toMatchObject({ type: 'string' });
+	});
+});
+
+describe('web_search execute — freshness/category controls (B)', () => {
+	beforeEach(() => {
+		loadSearchConfigMock.mockReturnValue({
+			url: 'http://searx.example.com',
+			apiKey: null,
+			timeoutSeconds: 10,
+		});
+	});
+
+	it('forwards time_range, categories, and language as query params when given', async () => {
+		let captured: URL | undefined;
+		globalThis.fetch = vi.fn(async (input: any) => {
+			captured = input instanceof URL ? input : new URL(String(input));
+			return jsonResponse({ results: [] });
+		}) as any;
+		await webSearchTool.execute(
+			{ query: 'x', time_range: 'week', categories: 'news,science', language: 'en-US' },
+			ctx(),
+		);
+		expect(captured?.searchParams.get('time_range')).toBe('week');
+		expect(captured?.searchParams.get('categories')).toBe('news,science');
+		expect(captured?.searchParams.get('language')).toBe('en-US');
+	});
+
+	it('omits the optional params entirely when not provided', async () => {
+		let captured: URL | undefined;
+		globalThis.fetch = vi.fn(async (input: any) => {
+			captured = input instanceof URL ? input : new URL(String(input));
+			return jsonResponse({ results: [] });
+		}) as any;
+		await webSearchTool.execute({ query: 'x' }, ctx());
+		expect(captured?.searchParams.has('time_range')).toBe(false);
+		expect(captured?.searchParams.has('categories')).toBe(false);
+		expect(captured?.searchParams.has('language')).toBe(false);
+	});
+
+	it('rejects an invalid time_range', async () => {
+		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] })) as any;
+		const r = await webSearchTool.execute({ query: 'x', time_range: 'fortnight' }, ctx());
+		expect(r.isError).toBe(true);
+		expect(JSON.parse(r.content).error).toMatch(/time_range/);
+	});
+
+	it('treats a blank categories/language as absent (no param set)', async () => {
+		let captured: URL | undefined;
+		globalThis.fetch = vi.fn(async (input: any) => {
+			captured = input instanceof URL ? input : new URL(String(input));
+			return jsonResponse({ results: [] });
+		}) as any;
+		await webSearchTool.execute({ query: 'x', categories: '   ', language: '' }, ctx());
+		expect(captured?.searchParams.has('categories')).toBe(false);
+		expect(captured?.searchParams.has('language')).toBe(false);
+	});
+
+	it('rejects a non-string categories', async () => {
+		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] })) as any;
+		const r = await webSearchTool.execute({ query: 'x', categories: 42 }, ctx());
+		expect(r.isError).toBe(true);
+		expect(JSON.parse(r.content).error).toMatch(/categories/);
+	});
+});
+
+describe('web_search execute — answers / infoboxes / corrections (A)', () => {
+	beforeEach(() => {
+		loadSearchConfigMock.mockReturnValue({
+			url: 'http://searx.example.com',
+			apiKey: null,
+			timeoutSeconds: 10,
+		});
+	});
+
+	it('surfaces answers (object + string shapes), infoboxes, and corrections', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [{ title: 't', url: 'https://e/', content: 'c' }],
+				answers: [
+					{ answer: '42', url: 'https://ans/' },
+					'plain string answer',
+					{ answer: '   ' }, // blank → dropped
+				],
+				infoboxes: [
+					{
+						infobox: 'Quokka',
+						content: 'A small marsupial.',
+						id: 'https://wikidata/Q123',
+						attributes: [{ label: 'noise', value: 'dropped' }],
+						urls: [{ title: 'x', url: 'y' }],
+					},
+				],
+				corrections: ['quokka', '  ', 42],
+			}),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'quoka' }, ctx())).content);
+		expect(parsed.answers).toEqual([
+			{ answer: '42', url: 'https://ans/' },
+			{ answer: 'plain string answer' },
+		]);
+		expect(parsed.infoboxes).toEqual([
+			{ title: 'Quokka', content: 'A small marsupial.', url: 'https://wikidata/Q123' },
+		]);
+		expect(parsed.corrections).toEqual(['quokka']);
+	});
+
+	it('omits the blocks entirely when SearxNG returns none', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({ results: [{ title: 't', url: 'https://e/', content: 'c' }] }),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed).not.toHaveProperty('answers');
+		expect(parsed).not.toHaveProperty('infoboxes');
+		expect(parsed).not.toHaveProperty('corrections');
+	});
+
+	it('tolerates malformed answer/infobox entries', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [],
+				answers: [null, 123, { noanswer: true }],
+				infoboxes: [null, 'nope', { id: 'https://x/' }], // no title/content → dropped
+			}),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed).not.toHaveProperty('answers');
+		expect(parsed).not.toHaveProperty('infoboxes');
+	});
+});
+
+describe('web_search execute — near-duplicate dedupe (C)', () => {
+	beforeEach(() => {
+		loadSearchConfigMock.mockReturnValue({
+			url: 'http://searx.example.com',
+			apiKey: null,
+			timeoutSeconds: 10,
+		});
+	});
+
+	it('collapses www / trailing-slash / tracking-param mirrors, keeping the first', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [
+					{ title: 'Canonical', url: 'https://example.com/post', content: 'first' },
+					{ title: 'Mirror www', url: 'https://www.example.com/post/', content: 'dupe' },
+					{
+						title: 'Mirror utm',
+						url: 'https://example.com/post?utm_source=twitter',
+						content: 'dupe',
+					},
+					{ title: 'Distinct', url: 'https://example.com/other', content: 'keep' },
+				],
+			}),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed.results.map((r: any) => r.title)).toEqual(['Canonical', 'Distinct']);
+	});
+
+	it('does NOT merge genuinely distinct pages that differ by a content query param', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [
+					{ title: 'Item 1', url: 'https://shop.example/item?id=1', content: 'a' },
+					{ title: 'Item 2', url: 'https://shop.example/item?id=2', content: 'b' },
+				],
+			}),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed.results).toHaveLength(2);
+	});
+
+	it('applies max_results AFTER dedupe, so the count is distinct hits', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [
+					{ title: 'A', url: 'https://a.example/', content: '1' },
+					{ title: 'A-mirror', url: 'https://www.a.example', content: '1' },
+					{ title: 'B', url: 'https://b.example/', content: '2' },
+					{ title: 'C', url: 'https://c.example/', content: '3' },
+				],
+			}),
+		) as any;
+		const parsed = JSON.parse(
+			(await webSearchTool.execute({ query: 'x', max_results: 2 }, ctx())).content,
+		);
+		// Without dedupe-before-slice this would be [A, A-mirror]; with it, [A, B].
+		expect(parsed.results.map((r: any) => r.title)).toEqual(['A', 'B']);
+	});
+
+	it('keeps multiple url-less rows rather than collapsing them', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [
+					{ title: 'no url one', content: 'a' },
+					{ title: 'no url two', content: 'b' },
+				],
+			}),
+		) as any;
+		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed.results).toHaveLength(2);
+	});
+});

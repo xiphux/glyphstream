@@ -53,6 +53,46 @@ toolset. The capability-named `[search]` section reserves the namespace for
 future backend swaps (Brave, Tavily, Kagi) without breaking existing
 configs.
 
+## What `web_search` returns
+
+The tool returns `{query, results}` where each result is `{title, url,
+snippet}`. When SearxNG surfaces them, three extra blocks are included so the
+model can often answer without a `fetch_url` round-trip:
+
+- **`answers`** — instant-answer boxes (`[{answer, url?}]`): unit conversions,
+  quick facts, calculator-style results.
+- **`infoboxes`** — encyclopedia-style summaries (`[{title, content, url?}]`),
+  typically from Wikidata/Wikipedia.
+- **`corrections`** — spelling / "did you mean" suggestions (`[string]`).
+
+Each block is omitted entirely when empty, so a plain query just returns
+`{query, results}`. What actually appears depends on which **engines your
+SearxNG instance has enabled** — infoboxes need Wikidata/Wikipedia, instant
+answers need the relevant answerers. If you never see them, check your
+instance's engine config rather than GlyphStream.
+
+Results are **de-duplicated** before the list is trimmed to `max_results`: a
+normalized-URL key collapses `www.`/trailing-slash/tracking-param mirrors and
+syndicated copies, keeping the highest-ranked of each group. The normalization
+is conservative — only known tracking params (`utm_*`, `fbclid`, `gclid`, …)
+are stripped, so genuinely distinct pages that differ by a real query param
+(`?id=…`) are never merged.
+
+### Freshness & category controls
+
+`web_search` takes three optional arguments the model can set per query, passed
+straight through to SearxNG:
+
+- **`time_range`** — `day` \| `week` \| `month` \| `year`; restricts results by
+  recency (great for "latest" / current-events queries).
+- **`categories`** — comma-separated SearxNG categories (e.g. `news`,
+  `news,science`) to scope the search.
+- **`language`** — a language/locale code (e.g. `en`, `en-US`, `de`).
+
+All three are optional and omitted from the upstream request when unset, so they
+don't change default behavior. `categories` and `language` accept whatever your
+SearxNG instance supports.
+
 ## `fetch_url` extraction
 
 HTML pages are extracted with Mozilla's

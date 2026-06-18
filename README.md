@@ -88,9 +88,10 @@ them into a single fast chat UI with one model picker.
 
 - **Native OpenAI tool calling** with a multi-step loop — the model chains
   tools until it's done ([guide](docs/tools.md)).
-- **Web search** via self-hosted SearxNG, and **`fetch_url`** page reading
-  with Mozilla Readability extraction plus hybrid BM25 + embeddings retrieval
-  for long pages, optionally sharpened by a cross-encoder **reranker**
+- **Web search** via self-hosted SearxNG — instant-answer/infobox blocks,
+  freshness & category filters, de-duplicated results — and **`fetch_url`**
+  page reading with Mozilla Readability extraction plus hybrid BM25 + embeddings
+  retrieval for long pages, optionally sharpened by a cross-encoder **reranker**
   ([guide](docs/web-search.md)).
 - **Python code interpreter** — a sandboxed Pyodide runtime with numpy /
   pandas / matplotlib, persistent per-conversation state, and file round-trip
