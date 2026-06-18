@@ -98,6 +98,15 @@ positional truncation. If the embedding endpoint is unreachable, slow, or
 returns something malformed, selection silently **falls back to BM25**; it
 never turns a fetch into an error.
 
+On the `relevance` path the result also carries two breadcrumb lists:
+`sections` (the section trails actually returned in `content`) and `outline`
+(every section in the full page). Together they turn a single lookup into
+**multi-hop reading**: the model sees what it got _and_ what else the page
+holds, so when the answer isn't in the returned sections it can re-fetch the
+same URL with a different `find` aimed at a section from `outline` — rather
+than flying blind. Both are omitted on the `full`/`truncated` paths and on
+pages with no heading structure.
+
 ## The `[embeddings]` block
 
 To enable the embedding leg, add an `[embeddings]` block naming an existing

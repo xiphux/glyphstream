@@ -33,6 +33,18 @@ export type { RerankConfig };
 export interface SelectResult {
 	content: string;
 	mode: 'relevance';
+	/**
+	 * Breadcrumb trails of the sections actually returned in `content`, in
+	 * document order (consecutive duplicates collapsed). Tells the model which
+	 * parts of the page it's reading.
+	 */
+	sections: string[];
+	/**
+	 * Breadcrumb trails of every section in the full document, in document order.
+	 * The superset of `sections` — tells the model what else exists so it can
+	 * re-`find` to pull a section selection didn't return (multi-hop).
+	 */
+	outline: string[];
 }
 
 export const ELLIPSIS_MARKER = '\n\n[…]\n\n';
@@ -85,7 +97,25 @@ export async function selectRelevant(
 
 	const selected = packToBudget(chunks, ranking, budgetChars);
 	selected.sort((a, b) => a.blockIndex - b.blockIndex);
-	return { content: render(selected), mode: 'relevance' };
+	return {
+		content: render(selected),
+		mode: 'relevance',
+		sections: distinctBreadcrumbs(selected),
+		outline: distinctBreadcrumbs(chunks),
+	};
+}
+
+/**
+ * Distinct, non-empty breadcrumb trails from document-ordered chunks, collapsing
+ * runs of the same trail (a multi-chunk section yields one entry). Inputs are
+ * already in document order, so the output is too.
+ */
+function distinctBreadcrumbs(chunks: Chunk[]): string[] {
+	const out: string[] = [];
+	for (const c of chunks) {
+		if (c.breadcrumb && c.breadcrumb !== out[out.length - 1]) out.push(c.breadcrumb);
+	}
+	return out;
 }
 
 /**

@@ -270,3 +270,34 @@ describe('selectRelevant — rerank leg', () => {
 		expect(body.documents).toHaveLength(3);
 	});
 });
+
+describe('selectRelevant — breadcrumbs (sections + outline)', () => {
+	it('returns the selected sections and the full-document outline', async () => {
+		const chunks = [
+			mk(0, 'intro text about gadgets', 'Doc › Intro'),
+			mk(1, 'the quokka plan pricing details', 'Doc › Pricing'),
+			mk(2, 'shipping logistics notes', 'Doc › Shipping'),
+		];
+		// Budget fits only the matching (Pricing) chunk.
+		const { sections, outline } = await selectRelevant(chunks, 'quokka pricing', 60, signal);
+		expect(outline).toEqual(['Doc › Intro', 'Doc › Pricing', 'Doc › Shipping']);
+		expect(sections).toEqual(['Doc › Pricing']);
+	});
+
+	it('collapses consecutive chunks of one section into a single outline entry', async () => {
+		const chunks = [
+			mk(0, 'part one of the section', 'Doc › A'),
+			mk(1, 'part two of the section', 'Doc › A'),
+			mk(2, 'a different section', 'Doc › B'),
+		];
+		const { outline } = await selectRelevant(chunks, 'section', 5000, signal);
+		expect(outline).toEqual(['Doc › A', 'Doc › B']);
+	});
+
+	it('omits empty breadcrumbs (untitled, headingless content)', async () => {
+		const chunks = [mk(0, 'just some text'), mk(1, 'more text here')];
+		const { sections, outline } = await selectRelevant(chunks, 'text', 5000, signal);
+		expect(outline).toEqual([]);
+		expect(sections).toEqual([]);
+	});
+});

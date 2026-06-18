@@ -469,6 +469,76 @@ describe('fetch_url relevance selection (find)', () => {
 		expect(parsed.mode).toBe('relevance');
 		expect(parsed.content).toContain('quokka');
 	});
+
+	// An over-budget, article-shaped HTML page with a title + many H2 sections,
+	// one of which holds the needle. Heading structure → non-empty breadcrumbs.
+	function cliffArticleHtml(): string {
+		const sections = Array.from({ length: 40 }, (_, i) => {
+			const body =
+				i === 17
+					? 'The rare quokka of Rottnest Island is a small marsupial famous for its accidental smile and gentle disposition.'
+					: `Warehouse throughput and logistics notes for region ${i}. ${'Pallet rotation and dock scheduling details. '.repeat(14)}`;
+			const heading = i === 17 ? 'Quokkas' : `Logistics ${i}`;
+			return `<h2>${heading}</h2><p>${body}</p>`;
+		}).join('\n');
+		return `<!doctype html><html><head><title>Field Notes</title><meta charset="utf-8"></head><body><article><h1>Field Notes</h1>${sections}</article></body></html>`;
+	}
+
+	it('returns sections + outline breadcrumbs on mode:relevance', async () => {
+		publicResolves();
+		const html = cliffArticleHtml();
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(html, {
+					status: 200,
+					headers: { 'content-type': 'text/html; charset=utf-8' },
+				}),
+		) as any;
+		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
+		const parsed = JSON.parse(r.content);
+		expect(parsed.mode).toBe('relevance');
+
+		expect(Array.isArray(parsed.outline)).toBe(true);
+		expect(Array.isArray(parsed.sections)).toBe(true);
+		// The full outline lists more sections than were returned (selection is partial).
+		expect(parsed.outline.length).toBeGreaterThan(parsed.sections.length);
+		// Every returned section appears in the outline (outline ⊇ sections).
+		for (const s of parsed.sections) expect(parsed.outline).toContain(s);
+		// Breadcrumbs carry the page title › heading path, and the Quokkas section
+		// (the needle) is both present in the doc and among what was returned.
+		expect(parsed.outline.some((b: string) => b.includes('Field Notes › Quokkas'))).toBe(true);
+		expect(parsed.sections.some((b: string) => b.includes('Quokkas'))).toBe(true);
+	});
+
+	it('omits sections/outline on the full and truncated paths', async () => {
+		publicResolves();
+		// Short page → mode:full, no breadcrumb fields.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response('a short plain page', {
+					status: 200,
+					headers: { 'content-type': 'text/plain' },
+				}),
+		) as any;
+		const full = JSON.parse(
+			(await fetchUrlTool.execute({ url: 'http://example.com/s' }, ctx())).content,
+		);
+		expect(full.mode).toBe('full');
+		expect(full.sections).toBeUndefined();
+		expect(full.outline).toBeUndefined();
+
+		// Over budget but no find → mode:truncated, still no breadcrumb fields.
+		globalThis.fetch = vi.fn(
+			async () =>
+				new Response(cliffDoc(), { status: 200, headers: { 'content-type': 'text/plain' } }),
+		) as any;
+		const trunc = JSON.parse(
+			(await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx())).content,
+		);
+		expect(trunc.mode).toBe('truncated');
+		expect(trunc.sections).toBeUndefined();
+		expect(trunc.outline).toBeUndefined();
+	});
 });
 
 describe('isPrivateIp', () => {

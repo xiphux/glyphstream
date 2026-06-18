@@ -52,7 +52,7 @@ export const fetchUrlTool: Tool = {
 		function: {
 			name: 'fetch_url',
 			description:
-				'Fetch a single web page or text resource by URL and return its readable contents. Use this after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content, mode} as JSON. Refuses non-http(s) URLs and private/loopback/metadata addresses.',
+				'Fetch a single web page or text resource by URL and return its readable contents. Use this after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content, mode} as JSON. When mode is "relevance" it also returns `sections` (the section headings actually returned) and `outline` (every section in the page) — if the answer wasn\'t in `content`, re-fetch the same URL with a different `find` aimed at a section from `outline`. Refuses non-http(s) URLs and private/loopback/metadata addresses.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -116,6 +116,15 @@ interface FetchResult {
 	 * - 'relevance'  — over budget, the sections most relevant to `find`.
 	 */
 	mode: 'full' | 'truncated' | 'relevance';
+	/**
+	 * On `mode: 'relevance'` only: the section breadcrumb trails actually returned
+	 * in `content` (`sections`) and every section in the full document
+	 * (`outline`). The model can re-fetch with a different `find` to pull a
+	 * section in `outline` that selection didn't return. Omitted on the
+	 * full/truncated paths, and when the page carries no heading structure.
+	 */
+	sections?: string[];
+	outline?: string[];
 }
 
 async function fetchAndExtract(
@@ -199,7 +208,12 @@ async function processResponse(
 		text = raw;
 	}
 
-	const { content, mode } = await selectOrTruncate(text, structured, find, ctxSignal);
+	const { content, mode, sections, outline } = await selectOrTruncate(
+		text,
+		structured,
+		find,
+		ctxSignal,
+	);
 
 	return {
 		url: finalUrl,
@@ -207,6 +221,8 @@ async function processResponse(
 		content_type: contentType || mime,
 		content,
 		mode,
+		...(sections && sections.length > 0 ? { sections } : {}),
+		...(outline && outline.length > 0 ? { outline } : {}),
 	};
 }
 
@@ -224,7 +240,12 @@ async function selectOrTruncate(
 	structured: ArticleStructured | null,
 	find: string | undefined,
 	signal: AbortSignal,
-): Promise<{ content: string; mode: FetchResult['mode'] }> {
+): Promise<{
+	content: string;
+	mode: FetchResult['mode'];
+	sections?: string[];
+	outline?: string[];
+}> {
 	if (text.length <= MAX_CONTENT_CHARS) {
 		return { content: text, mode: 'full' };
 	}
@@ -250,7 +271,12 @@ async function selectOrTruncate(
 		resolveRelevanceConfig(),
 		resolveRerankConfig(),
 	);
-	return { content: result.content, mode: result.mode };
+	return {
+		content: result.content,
+		mode: result.mode,
+		sections: result.sections,
+		outline: result.outline,
+	};
 }
 
 function parseCharset(contentType: string): string {
