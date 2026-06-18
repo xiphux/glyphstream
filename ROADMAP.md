@@ -126,12 +126,17 @@ docs.
 - **Inline RAG with embeddings — phase-2.** Hybrid relevance selection on
   over-budget `fetch_url` pages shipped (structure-aware chunking + BM25 fused
   with embedding cosine via RRF), gated on the optional `[embeddings]` block,
-  degrading to BM25-only when absent. Framing (from an architecture review):
-  the feature compensates for a fixed small context budget, so its value is
-  _highest_ on the small-context local LLMs this project targets and _lowest_ on
-  frontier cloud models; and it's tuned for **needle-finding, not whole-doc
-  synthesis** (disjoint chunks + ellipses fragment a "summarize this page"
-  read). Remaining, roughly by priority:
+  degrading to BM25-only when absent. Two of the deferred quality levers have
+  since landed: a **cross-encoder reranker** (optional `[rerank]` block — reorders
+  the top fused candidates before packing; degrades to the fused order on any
+  failure) and **section breadcrumbs** (`fetch_url` returns `sections` +
+  `outline` on the relevance path, turning single-shot lookup into multi-hop
+  re-`find`). Framing (from an architecture review): the feature compensates for
+  a fixed small context budget, so its value is _highest_ on the small-context
+  local LLMs this project targets and _lowest_ on frontier cloud models; and it's
+  tuned for **needle-finding, not whole-doc synthesis** (disjoint chunks +
+  ellipses fragment a "summarize this page" read). Remaining, roughly by
+  priority:
   - _Context-aware budget (the real lever)._ `MAX_CONTENT_CHARS` (and the
     relevance trigger) is one hard-coded value serving two regimes. Make it
     configurable — ideally per-endpoint/context — so a 200 K-context user rarely
@@ -139,19 +144,12 @@ docs.
     active model means giving the web tools the conversation's endpoint, which
     `ToolContext` doesn't carry today; a global config override is the cheap
     partial version.
-  - _Return selected section breadcrumbs so the model can re-`find`._ Today a
-    re-fetch with a new `find` flies blind. Surfacing breadcrumbs turns
-    single-shot lookup into intelligent multi-hop — an agency/quality lever, not
-    just efficiency.
-  - _Reranker — the biggest deferred quality jump._ Hybrid retrieve →
-    cross-encoder or LLM rerank of the top ~15-20 → pack. Largest reported
-    incremental gain after hybrid retrieval, and cheap here: an LLM endpoint is
-    in hand and candidates are already ≤64, so it's one extra call. Beats
-    further RRF tuning.
   - _Apply to attached docs/URLs, not just `fetch_url`._ Embed-and-retrieve
     user-attached files / pasted notes and inject as system context.
   - _Smaller niceties._ Per-(url, model) embedding cache; tune batch sizing per
-    backend.
+    backend; a follow-on to the reranker — a dedicated `rerank_model`-style LLM
+    listwise path for operators without a cross-encoder endpoint (today `[rerank]`
+    expects a `/rerank` cross-encoder).
 
 - **Deep research.** A multi-step research mode: the model decomposes a question
   into sub-queries, fans out web searches, fetches and reads sources, and
