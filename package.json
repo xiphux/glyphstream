@@ -25,6 +25,7 @@
 		"test:watch": "vitest",
 		"test:ui": "vitest --ui",
 		"test:e2e": "playwright test",
+		"eval": "vitest run --config vitest.eval.config.ts",
 		"import:owui": "tsx scripts/import-owui.ts"
 	},
 	"lint-staged": {
