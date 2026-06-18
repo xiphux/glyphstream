@@ -332,7 +332,14 @@ function normalizeInfoboxes(raw: unknown): InfoboxEntry[] {
 	return out;
 }
 
-/** SearxNG `corrections` — spelling/"did you mean" suggestions as plain strings. */
+/**
+ * SearxNG `corrections` — spelling/"did you mean" suggestions as plain strings.
+ *
+ * Unlike `answers` (whose `{answer, url}` object form is documented and seen
+ * live), no object-form correction shape is documented, so non-strings are
+ * intentionally dropped rather than parsed by guessing which field holds the
+ * text. Revisit if a real instance is found to emit object-form corrections.
+ */
 function normalizeCorrections(raw: unknown): string[] {
 	if (!Array.isArray(raw)) return [];
 	return raw
