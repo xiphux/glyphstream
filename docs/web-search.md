@@ -132,3 +132,48 @@ inlining all saved facts, and `fetch_url` to BM25-only — both still work.
 > `timeout_seconds` and fall back to BM25 — which is fine, just not the
 > hybrid path. BM25-only is the sensible mode when no fast embedder is
 > available.
+
+## The `[rerank]` block (optional reranker)
+
+Hybrid retrieval gets the right sections into the candidate set; a **reranker**
+reorders that set by judging each candidate's relevance _jointly_ with the
+query, which a bag-of-features retriever (BM25 ⊕ embedding cosine) can't. When a
+`[rerank]` block is configured, `fetch_url` reranks the top candidates of the
+fused ranking before packing them to the budget — so the sections that actually
+fit are the most relevant ones, not just the highest lexical/semantic hits. It's
+the largest quality gain after hybrid retrieval and is purely additive: without
+the block, selection uses the fused order as before.
+
+```toml
+[rerank]
+endpoint_id = "local-rerank"      # one of your [[endpoints]] ids
+model_id = "bge-reranker-v2-m3"
+# timeout_seconds = 30            # optional; default 30
+# top_n = 20                      # optional; default 20 — how many of the top
+#                                 # fused candidates to rerank (cost ceiling)
+# quirk = "tei"                   # optional; wire-shape variant (see below)
+```
+
+base_url and auth are inherited from the referenced endpoint. Like
+`[embeddings]`, a bad `endpoint_id` quietly disables reranking (selection keeps
+the fused order) rather than failing at boot, and any failure at request time —
+endpoint down, timeout, malformed response — **falls back to the fused order**;
+reranking never turns a fetch into an error.
+
+> **Use a cross-encoder, not a chat model.** This wants a purpose-trained
+> reranker (`/rerank`-style endpoint), not a general LLM. A small cross-encoder
+> like **bge-reranker-v2-m3 (~568M)** _outperforms a 7B general model_ at this
+> task while being far cheaper and faster — it's trained for exactly the
+> query-document scoring reranking needs. Stand one up on llama.cpp
+> (`--reranking`), Hugging Face TEI, Infinity, or vLLM. A general instruct model
+> can do listwise reranking, but only competently from ~7B up, so a dedicated
+> cross-encoder is both leaner and better here.
+
+### Wire shape & the `tei` quirk
+
+The default speaks the **Cohere/Jina** rerank shape — `POST {endpoint}/rerank`
+with `{ model, query, documents, top_n }`, returning
+`{ results: [{ index, relevance_score }] }` — which vLLM, llama.cpp, Infinity,
+Jina, and Cohere all implement. **Hugging Face TEI** diverges (sends `texts`,
+returns a bare `[{ index, score }]` array, and serves `/rerank` at the server
+root rather than under `/v1`); set `quirk = "tei"` to opt into that variant.

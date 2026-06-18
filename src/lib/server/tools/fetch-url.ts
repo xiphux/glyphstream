@@ -27,6 +27,7 @@ import { composeSignals } from '../util/abort';
 import { chunkArticleHtml, chunkPlainText } from '../retrieval/chunker';
 import { selectRelevant } from '../retrieval/select';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
+import { resolveRerankConfig } from '../retrieval/rerank-config';
 import {
 	assertHostnameRoutable,
 	assertHttpScheme,
@@ -247,6 +248,7 @@ async function selectOrTruncate(
 		MAX_CONTENT_CHARS,
 		signal,
 		resolveRelevanceConfig(),
+		resolveRerankConfig(),
 	);
 	return { content: result.content, mode: result.mode };
 }

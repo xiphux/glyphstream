@@ -635,3 +635,102 @@ export async function embeddings(
 		`Endpoint "${endpoint.id}" returned non-JSON /embeddings`,
 	);
 }
+
+export interface RerankRequest {
+	model: string;
+	query: string;
+	documents: string[];
+	topN: number;
+}
+
+/**
+ * One scored candidate, normalized to `{ index, score }` regardless of wire
+ * shape. `index` points back into the request's `documents` array.
+ */
+export interface RerankResult {
+	index: number;
+	score: number;
+}
+
+/**
+ * Wire-shape variant for the rerank endpoint. The Cohere/Jina shape is the
+ * default — `{ documents }` in, `{ results: [{ index, relevance_score }] }` out,
+ * served under the endpoint's `/v1` base — and is what vLLM, llama.cpp
+ * (`--reranking`), Infinity, Jina, and Cohere all speak. HF TEI diverges on all
+ * three axes (`texts` in, a bare `[{ index, score }]` array out, served at the
+ * server root rather than `/v1`), so it gets its own variant rather than a pile
+ * of conditionals. Mirrors the `provider_quirk` / normalizers.ts pattern.
+ */
+export type RerankQuirk = 'tei';
+
+/**
+ * POST a rerank request and return candidates scored by relevance to the query.
+ * Like `embeddings()`, the timeout lives in the caller's `signal` (from the
+ * `[rerank]` config block) rather than `endpoint.requestTimeoutSeconds`.
+ *
+ * Results are normalized to `{ index, score }` and returned in the upstream's
+ * order (descending relevance for every backend we target); the caller maps
+ * `index` back onto its candidate set.
+ */
+export async function rerank(
+	endpoint: LoadedEndpoint,
+	body: RerankRequest,
+	quirk: RerankQuirk | undefined,
+	signal?: AbortSignal,
+): Promise<RerankResult[]> {
+	// TEI is served at the server root and takes `texts`; the Cohere/Jina shape
+	// rides the endpoint's `/v1` base and takes `documents`. `baseUrl` already
+	// carries the `/v1` suffix, so strip it for the TEI variant.
+	const url =
+		quirk === 'tei'
+			? `${endpoint.baseUrl.replace(/\/v1\/?$/, '')}/rerank`
+			: `${endpoint.baseUrl}/rerank`;
+	const payload =
+		quirk === 'tei'
+			? { query: body.query, texts: body.documents }
+			: { model: body.model, query: body.query, documents: body.documents, top_n: body.topN };
+
+	const res = await doFetch(
+		url,
+		{
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				...authHeaders(endpoint),
+			},
+			body: JSON.stringify(payload),
+			signal,
+		},
+		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
+	);
+	await ensureOk(res, `Endpoint "${endpoint.id}" returned HTTP ${res.status} from /rerank`);
+	const parsed = await parseJson<unknown>(
+		res,
+		`Endpoint "${endpoint.id}" returned non-JSON /rerank`,
+	);
+	return normalizeRerankResponse(parsed);
+}
+
+/**
+ * Coerce either wire shape into `RerankResult[]`. Cohere/Jina nest the array
+ * under `results` with `relevance_score`; TEI returns a bare array with `score`.
+ * Rows missing a numeric `index` are dropped (the caller can't place them).
+ */
+function normalizeRerankResponse(parsed: unknown): RerankResult[] {
+	const rows = Array.isArray(parsed)
+		? parsed
+		: Array.isArray((parsed as { results?: unknown }).results)
+			? ((parsed as { results: unknown[] }).results as unknown[])
+			: [];
+	const out: RerankResult[] = [];
+	for (const r of rows) {
+		if (!r || typeof r !== 'object') continue;
+		const row = r as { index?: unknown; relevance_score?: unknown; score?: unknown };
+		const index = row.index;
+		const score = typeof row.relevance_score === 'number' ? row.relevance_score : row.score;
+		if (typeof index === 'number' && Number.isFinite(index) && typeof score === 'number') {
+			out.push({ index, score });
+		}
+	}
+	return out;
+}

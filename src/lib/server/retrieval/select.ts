@@ -19,6 +19,7 @@
 
 import { bm25Rank, type ScoredChunk } from './bm25';
 import { embedAndRank, EMBED_CAP, type RelevanceConfig } from './embed-rank';
+import { rerankDocs, type RerankConfig } from './rerank';
 import { fuseRankings } from './fusion';
 import type { Chunk } from './chunker';
 
@@ -27,6 +28,7 @@ import type { Chunk } from './chunker';
 // the dense-ranking they parameterize.
 export { EMBED_CAP };
 export type { RelevanceConfig };
+export type { RerankConfig };
 
 export interface SelectResult {
 	content: string;
@@ -41,6 +43,7 @@ export async function selectRelevant(
 	budgetChars: number,
 	signal: AbortSignal,
 	embedding?: RelevanceConfig,
+	rerank?: RerankConfig,
 ): Promise<SelectResult> {
 	// chunks are in document order, so a chunk's array index === blockIndex.
 	const bm25 = bm25Rank(
@@ -76,9 +79,49 @@ export async function selectRelevant(
 		}
 	}
 
+	if (rerank) {
+		ranking = await applyRerank(chunks, ranking, query, rerank, signal);
+	}
+
 	const selected = packToBudget(chunks, ranking, budgetChars);
 	selected.sort((a, b) => a.blockIndex - b.blockIndex);
 	return { content: render(selected), mode: 'relevance' };
+}
+
+/**
+ * Rerank the top `cfg.topN` of the fused ranking with a cross-encoder, then
+ * return a ranking with those candidates reordered to the front and the
+ * untouched tail (everything past topN, plus any candidate the reranker didn't
+ * place) kept in fused order behind them. On any rerank failure the fused
+ * ranking is returned unchanged — reranking only ever reorders, never drops.
+ */
+async function applyRerank(
+	chunks: Chunk[],
+	ranking: ScoredChunk[],
+	query: string,
+	cfg: RerankConfig,
+	signal: AbortSignal,
+): Promise<ScoredChunk[]> {
+	const head = ranking.slice(0, cfg.topN);
+	if (head.length <= 1) return ranking;
+
+	const reranked = await rerankDocs(
+		query,
+		head.map((sc) => chunks[sc.index].text),
+		cfg,
+		signal,
+	);
+	if (!reranked) return ranking;
+
+	// `reranked` indices are positions within `head`. Place the reranked head
+	// candidates first (in reranker order), then any head candidate the reranker
+	// didn't return (fused order), then the original tail (fused order).
+	const placed = new Set(reranked.map((sc) => sc.index));
+	const reorderedHead = [
+		...reranked.map((sc) => head[sc.index]),
+		...head.filter((_, i) => !placed.has(i)),
+	];
+	return [...reorderedHead, ...ranking.slice(cfg.topN)];
 }
 
 /**

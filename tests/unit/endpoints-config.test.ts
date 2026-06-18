@@ -9,6 +9,7 @@ import {
 	loadEndpoints,
 	loadMaxToolLoopIterations,
 	loadNotificationsConfig,
+	loadRerankConfig,
 	loadSearchConfig,
 } from '$lib/server/endpoints/config';
 
@@ -534,6 +535,100 @@ timeout_seconds = 0
 	it('rejects a non-table [embeddings] entry', () => {
 		const path = writeConfig(`embeddings = "nope"`);
 		expect(() => loadEmbeddingsConfig(path)).toThrow(ConfigError);
+	});
+});
+
+describe('loadRerankConfig', () => {
+	it('returns null when [rerank] is absent', () => {
+		const path = writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://x"
+		`);
+		expect(loadRerankConfig(path)).toBeNull();
+	});
+
+	it('parses a minimal [rerank] block with default timeout/top_n and no quirk', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "local-rerank"
+model_id = "bge-reranker-v2-m3"
+		`);
+		expect(loadRerankConfig(path)).toEqual({
+			endpointId: 'local-rerank',
+			modelId: 'bge-reranker-v2-m3',
+			timeoutSeconds: 30,
+			topN: 20,
+			quirk: undefined,
+		});
+	});
+
+	it('parses top_n, timeout_seconds, and the tei quirk when supplied', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "e"
+model_id = "m"
+timeout_seconds = 10
+top_n = 12
+quirk = "tei"
+		`);
+		expect(loadRerankConfig(path)).toEqual({
+			endpointId: 'e',
+			modelId: 'm',
+			timeoutSeconds: 10,
+			topN: 12,
+			quirk: 'tei',
+		});
+	});
+
+	it('does NOT throw when endpoint_id names an unknown endpoint (resolved at use-time)', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "does-not-exist"
+model_id = "m"
+		`);
+		expect(loadRerankConfig(path)?.endpointId).toBe('does-not-exist');
+	});
+
+	it('rejects a missing endpoint_id', () => {
+		const path = writeConfig(`
+[rerank]
+model_id = "m"
+		`);
+		expect(() => loadRerankConfig(path)).toThrow(/endpoint_id/);
+	});
+
+	it('rejects a missing model_id', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "e"
+		`);
+		expect(() => loadRerankConfig(path)).toThrow(/model_id/);
+	});
+
+	it('rejects top_n below 1', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "e"
+model_id = "m"
+top_n = 0
+		`);
+		expect(() => loadRerankConfig(path)).toThrow(/top_n/);
+	});
+
+	it('rejects an unknown quirk', () => {
+		const path = writeConfig(`
+[rerank]
+endpoint_id = "e"
+model_id = "m"
+quirk = "cohere"
+		`);
+		expect(() => loadRerankConfig(path)).toThrow(/quirk/);
+	});
+
+	it('rejects a non-table [rerank] entry', () => {
+		const path = writeConfig(`rerank = "nope"`);
+		expect(() => loadRerankConfig(path)).toThrow(ConfigError);
 	});
 });
 

@@ -165,6 +165,30 @@
 #                                 # ("search_query: " / "search_document: ");
 #                                 # OpenAI/Cohere-style models must NOT have them.
 
+# Optional: cross-encoder reranker for hybrid retrieval. When present, the
+# `fetch_url` tool reorders the top fused candidates (BM25 ⊕ embedding) of an
+# over-budget page with a reranker before packing them to the budget — the
+# largest quality gain after hybrid retrieval. Purely additive: without this
+# block, selection keeps the fused order. A bad endpoint_id, or any failure at
+# request time, silently falls back to the fused order (never an error). See the
+# README's "Web reading & RAG" section and docs/web-search.md.
+#
+# Use a PURPOSE-TRAINED cross-encoder, not a chat model: a ~568M bge-reranker
+# beats a 7B general LLM at this and is far cheaper. Serve one via llama.cpp
+# (--reranking), HF TEI, Infinity, or vLLM.
+#
+# [rerank]
+# endpoint_id = "local-rerank"    # one of the [[endpoints]] above
+# model_id = "bge-reranker-v2-m3"
+# timeout_seconds = 30            # optional; default 30
+# top_n = 20                      # optional; default 20 — how many of the top
+#                                 # fused candidates to rerank (cost ceiling).
+# quirk = "tei"                   # optional; wire-shape variant. Default speaks
+#                                 # the Cohere/Jina shape (vLLM, llama.cpp,
+#                                 # Infinity, Jina); set "tei" for Hugging Face
+#                                 # Text Embeddings Inference (different request
+#                                 # field, response shape, and root path).
+
 # Optional: MCP (Model Context Protocol) servers. Each [[mcp_servers]] block
 # defines an external tool server whose advertised tools get registered
 # alongside the built-in ones (web_search, fetch_url, memory, clock) and

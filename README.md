@@ -90,7 +90,8 @@ them into a single fast chat UI with one model picker.
   tools until it's done ([guide](docs/tools.md)).
 - **Web search** via self-hosted SearxNG, and **`fetch_url`** page reading
   with Mozilla Readability extraction plus hybrid BM25 + embeddings retrieval
-  for long pages ([guide](docs/web-search.md)).
+  for long pages, optionally sharpened by a cross-encoder **reranker**
+  ([guide](docs/web-search.md)).
 - **Python code interpreter** — a sandboxed Pyodide runtime with numpy /
   pandas / matplotlib, persistent per-conversation state, and file round-trip
   to chat attachments ([guide](docs/code-interpreter.md)).
@@ -168,7 +169,7 @@ pnpm dev                               # http://localhost:5173
 | [Authentication](docs/authentication.md)         | GitHub OAuth setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                              |
 | [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts               |
 | [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools |
-| [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` block                                             |
+| [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` and `[rerank]` blocks                             |
 | [Code interpreter](docs/code-interpreter.md)     | The Pyodide sandbox, file round-trip, resource limits                                            |
 | [MCP servers](docs/mcp.md)                       | stdio/HTTP transports, the approval model, examples                                              |
 | [Push notifications](docs/notifications.md)      | VAPID keys, multi-device behavior, iOS install requirement                                       |

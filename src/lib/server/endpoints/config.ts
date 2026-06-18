@@ -376,6 +376,57 @@ export function loadEmbeddingsConfig(path = configPath()): LoadedEmbeddingsConfi
 	return { endpointId, modelId, timeoutSeconds, queryPrefix, documentPrefix, maxInputTokens };
 }
 
+export interface LoadedRerankConfig {
+	/** id of the [[endpoints]] block that hosts the rerank model. */
+	endpointId: string;
+	/** upstream model id passed as `model` to /rerank. */
+	modelId: string;
+	timeoutSeconds: number;
+	/** How many of the top fused candidates to rerank (cost ceiling). */
+	topN: number;
+	/** Wire-shape variant; undefined = the Cohere/Jina default. */
+	quirk: 'tei' | undefined;
+}
+
+/**
+ * Parse the optional top-level `[rerank]` block — a cross-encoder rerank model
+ * that reorders the hybrid-retrieved chunks on over-budget `fetch_url` reads.
+ *
+ * Like `[embeddings]`, it carries no secret (baseUrl + apiKey come from the
+ * referenced endpoint) and does NOT verify the endpoint id at load time — a
+ * stale id silently disables reranking (the read falls back to the fused
+ * BM25/embedding order) rather than crashing boot.
+ */
+export function loadRerankConfig(path = configPath()): LoadedRerankConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.rerank;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[rerank]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[rerank] in ${absolutePath}`;
+
+	const endpointId = requireString(block.endpoint_id, 'endpoint_id', at);
+	const modelId = requireString(block.model_id, 'model_id', at);
+	const timeoutSeconds =
+		block.timeout_seconds === undefined
+			? 30
+			: requireNumber(block.timeout_seconds, 'timeout_seconds', at, { min: 1 });
+	const topN = block.top_n === undefined ? 20 : requireNumber(block.top_n, 'top_n', at, { min: 1 });
+
+	let quirk: 'tei' | undefined;
+	if (block.quirk !== undefined) {
+		const q = requireString(block.quirk, 'quirk', at);
+		if (q !== 'tei') {
+			throw new ConfigError(`${at}: quirk must be "tei" (the only variant) if present`);
+		}
+		quirk = q;
+	}
+
+	return { endpointId, modelId, timeoutSeconds, topN, quirk };
+}
+
 function validateEndpoint(raw: RawEndpoint, index: number, path: string): LoadedEndpoint {
 	const at = `[[endpoints]] #${index} in ${path}`;
 

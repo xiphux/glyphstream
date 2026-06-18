@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// select.ts is the only consumer of the embeddings client in this graph;
-// fully mock it so the dense leg is hermetic.
+// select.ts reaches the embeddings + rerank clients in this graph; fully mock
+// both so the dense and rerank legs are hermetic.
 const embeddingsMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
+const rerankMock = vi.hoisted(() => vi.fn());
+vi.mock('$lib/server/endpoints/client', () => ({
+	embeddings: embeddingsMock,
+	rerank: rerankMock,
+}));
 
 import {
 	selectRelevant,
 	ELLIPSIS_MARKER,
 	EMBED_CAP,
 	type RelevanceConfig,
+	type RerankConfig,
 } from '$lib/server/retrieval/select';
 import type { Chunk } from '$lib/server/retrieval/chunker';
 
@@ -34,10 +39,21 @@ function cfg(): RelevanceConfig {
 		maxInputTokens: 512,
 	};
 }
+function rerankCfg(overrides: Partial<RerankConfig> = {}): RerankConfig {
+	return {
+		endpoint: fakeEndpoint,
+		modelId: 'rr',
+		timeoutSeconds: 5,
+		topN: 20,
+		quirk: undefined,
+		...overrides,
+	};
+}
 const signal = new AbortController().signal;
 
 beforeEach(() => {
 	embeddingsMock.mockReset();
+	rerankMock.mockReset();
 });
 
 describe('selectRelevant — BM25 only (no embedding config)', () => {
@@ -158,5 +174,99 @@ describe('selectRelevant — hybrid (embeddings + RRF)', () => {
 		expect(passedInput).toHaveLength(EMBED_CAP + 1); // EMBED_CAP candidates + query
 		// The quokka chunk must survive the BM25 prefilter into the candidate set.
 		expect(passedInput).toContain('the quokka section');
+	});
+});
+
+describe('selectRelevant — rerank leg', () => {
+	it('reorders selection by the reranker score, overriding the fused order', async () => {
+		// BM25 ranks the "quokka" chunk first; the reranker promotes the other.
+		// Budget fits exactly one chunk, so the reranked winner is what's returned.
+		const chunks = [mk(0, 'quokka quokka quokka'), mk(1, 'marsupial habitat notes')];
+		rerankMock.mockImplementation(async (_ep: unknown, body: { documents: string[] }) => {
+			// Score the marsupial doc highest regardless of lexical match.
+			return body.documents.map((d, index) => ({
+				index,
+				score: /marsupial/.test(d) ? 0.99 : 0.01,
+			}));
+		});
+		const { content, mode } = await selectRelevant(
+			chunks,
+			'quokka',
+			30,
+			signal,
+			undefined,
+			rerankCfg(),
+		);
+		expect(mode).toBe('relevance');
+		expect(rerankMock).toHaveBeenCalledTimes(1);
+		expect(content).toContain('marsupial');
+		expect(content).not.toContain('quokka quokka');
+	});
+
+	it('passes the fused candidate texts and model to the reranker', async () => {
+		const chunks = [mk(0, 'quokka plan pricing'), mk(1, 'filler')];
+		rerankMock.mockResolvedValue([{ index: 0, score: 1 }]);
+		await selectRelevant(chunks, 'quokka', 1000, signal, undefined, rerankCfg());
+		const [, body] = rerankMock.mock.calls[0] as unknown as [
+			unknown,
+			{ model: string; query: string; documents: string[] },
+		];
+		expect(body.model).toBe('rr');
+		expect(body.query).toBe('quokka');
+		expect(body.documents).toContain('quokka plan pricing');
+	});
+
+	it('keeps the fused order when the reranker fails (never errors)', async () => {
+		rerankMock.mockImplementation(async () => {
+			throw new Error('rerank endpoint down');
+		});
+		const chunks = [mk(0, 'the quokka plan'), mk(1, 'irrelevant filler')];
+		const { content, mode } = await selectRelevant(
+			chunks,
+			'quokka',
+			1000,
+			signal,
+			undefined,
+			rerankCfg(),
+		);
+		expect(mode).toBe('relevance');
+		expect(content).toContain('quokka');
+	});
+
+	it('keeps the fused order when the reranker returns no usable rows', async () => {
+		rerankMock.mockResolvedValue([]);
+		const chunks = [mk(0, 'the quokka plan'), mk(1, 'filler')];
+		const { content } = await selectRelevant(
+			chunks,
+			'quokka',
+			1000,
+			signal,
+			undefined,
+			rerankCfg(),
+		);
+		expect(content).toContain('quokka');
+	});
+
+	it('does not call the reranker when only one candidate exists', async () => {
+		rerankMock.mockResolvedValue([{ index: 0, score: 1 }]);
+		await selectRelevant(
+			[mk(0, 'lone quokka chunk')],
+			'quokka',
+			1000,
+			signal,
+			undefined,
+			rerankCfg(),
+		);
+		expect(rerankMock).not.toHaveBeenCalled();
+	});
+
+	it('only reranks the top-N fused candidates', async () => {
+		const chunks = Array.from({ length: 5 }, (_, i) => mk(i, `quokka block ${i} text`));
+		rerankMock.mockImplementation(async (_ep: unknown, body: { documents: string[] }) =>
+			body.documents.map((_d, index) => ({ index, score: 1 - index * 0.1 })),
+		);
+		await selectRelevant(chunks, 'quokka', 5000, signal, undefined, rerankCfg({ topN: 3 }));
+		const [, body] = rerankMock.mock.calls[0] as unknown as [unknown, { documents: string[] }];
+		expect(body.documents).toHaveLength(3);
 	});
 });
