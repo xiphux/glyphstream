@@ -178,6 +178,41 @@ reranking never turns a fetch into an error.
 > can do listwise reranking, but only competently from ~7B up, so a dedicated
 > cross-encoder is both leaner and better here.
 
+### Model compatibility (a real gotcha)
+
+Not every model tagged "reranker" works with llama.cpp's `--reranking`. That
+flag implements **classification-head cross-encoders** — BGE (`bge-reranker-v2-m3`,
+`bge-reranker-base/large`) and Jina (`jina-reranker-v2-base-multilingual`) — which
+emit a single relevance logit per (query, document) pair. These work out of the box.
+
+**Causal-LM rerankers do not** — e.g. `Qwen3-Reranker`. Those score relevance via
+the logit of a "yes"/"no" token after a model-specific instruction template;
+served through llama.cpp's generic `--reranking` (which never applies that
+template) they return **degenerate, position-dominated scores** — the response is
+still HTTP 200 with a well-formed body, so the failure is silent. Enabling such a
+model reorders your candidates by noise and _hurts_ retrieval. Stick to a
+classification-head cross-encoder unless you're on a server that implements the
+model's own reranking format.
+
+Sanity-check any rerank endpoint before trusting it: send the same two documents
+in **both orders** and confirm the relevant one wins **regardless of position**.
+A healthy cross-encoder scores the document, not the slot:
+
+```sh
+# Swap the two documents and re-run — the quokka sentence should win both times.
+curl -s http://your-endpoint/v1/rerank -H 'Content-Type: application/json' -d '{
+  "model": "bge-reranker-v2-m3",
+  "query": "what is a quokka",
+  "documents": ["The quokka is a small marsupial.", "Pallet rotation logistics notes."]
+}'
+# Good: relevance_score is high for the quokka doc, low/negative for the other,
+# and the winner stays the quokka doc when you reverse the documents array.
+# Bad (e.g. Qwen3-Reranker on llama.cpp): index 0 always wins.
+```
+
+Scores are raw, unbounded logits (a strong match can be +7, an off-topic one −11);
+that's expected — selection uses only the **ordering**, not the magnitude.
+
 ### Wire shape & the `tei` quirk
 
 The default speaks the **Cohere/Jina** rerank shape — `POST {endpoint}/rerank`
