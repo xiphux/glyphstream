@@ -714,9 +714,11 @@ export async function rerank(
 /**
  * Coerce either wire shape into `RerankResult[]`. Cohere/Jina nest the array
  * under `results` with `relevance_score`; TEI returns a bare array with `score`.
- * Rows missing a numeric `index` are dropped (the caller can't place them).
+ * Rows without a finite numeric `index` and `score` are dropped — the caller
+ * can't place a row without an index, and a non-finite score (NaN/Infinity from
+ * a misbehaving backend) would scramble the downstream sort.
  */
-function normalizeRerankResponse(parsed: unknown): RerankResult[] {
+export function normalizeRerankResponse(parsed: unknown): RerankResult[] {
 	const rows = Array.isArray(parsed)
 		? parsed
 		: Array.isArray((parsed as { results?: unknown }).results)
@@ -728,7 +730,12 @@ function normalizeRerankResponse(parsed: unknown): RerankResult[] {
 		const row = r as { index?: unknown; relevance_score?: unknown; score?: unknown };
 		const index = row.index;
 		const score = typeof row.relevance_score === 'number' ? row.relevance_score : row.score;
-		if (typeof index === 'number' && Number.isFinite(index) && typeof score === 'number') {
+		if (
+			typeof index === 'number' &&
+			Number.isFinite(index) &&
+			typeof score === 'number' &&
+			Number.isFinite(score)
+		) {
 			out.push({ index, score });
 		}
 	}

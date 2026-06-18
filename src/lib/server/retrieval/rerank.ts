@@ -50,6 +50,10 @@ export async function rerankDocs(
 	if (docs.length === 0) return null;
 	try {
 		const sig = composeSignals(signal, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
+		// `docs` is already the cost-capped candidate set — the caller (applyRerank)
+		// sliced it to cfg.topN before calling. So the wire `top_n` is docs.length
+		// ("score and return all of these"), NOT cfg.topN; the ceiling is enforced
+		// by the slice, not by asking the backend to drop rows.
 		const results = await rerank(
 			cfg.endpoint,
 			{ model: cfg.modelId, query, documents: docs, topN: docs.length },

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rerank, UpstreamError } from '$lib/server/endpoints/client';
+import { normalizeRerankResponse, rerank, UpstreamError } from '$lib/server/endpoints/client';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 
 const realFetch = globalThis.fetch;
@@ -104,6 +104,23 @@ describe('rerank()', () => {
 		expect(out).toEqual([{ index: 0, score: 0.5 }]);
 	});
 
+	it('drops a row whose score is present-but-null over the wire', async () => {
+		globalThis.fetch = vi.fn(async () =>
+			jsonResponse({
+				results: [
+					{ index: 0, relevance_score: 0.5 },
+					{ index: 1, relevance_score: null }, // null → not a number, dropped
+				],
+			}),
+		) as never;
+		const out = await rerank(
+			endpoint(),
+			{ model: 'm', query: 'q', documents: ['a', 'b'], topN: 2 },
+			undefined,
+		);
+		expect(out).toEqual([{ index: 0, score: 0.5 }]);
+	});
+
 	it('sends an Authorization header when the endpoint has an apiKey', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({ results: [] }));
 		globalThis.fetch = fetchMock as never;
@@ -130,5 +147,30 @@ describe('rerank()', () => {
 		await expect(
 			rerank(endpoint(), { model: 'm', query: 'q', documents: ['x'], topN: 1 }, undefined),
 		).rejects.toBeInstanceOf(UpstreamError);
+	});
+});
+
+describe('normalizeRerankResponse', () => {
+	// JSON.parse can't produce NaN/Infinity, so these only reach the normalizer
+	// via a hypothetical non-JSON path — but the guard keeps a non-finite score
+	// out of the downstream sort regardless of how it arrived.
+	it('drops rows with a non-finite score (NaN / Infinity)', () => {
+		const out = normalizeRerankResponse({
+			results: [
+				{ index: 0, relevance_score: 0.4 },
+				{ index: 1, relevance_score: NaN },
+				{ index: 2, relevance_score: Infinity },
+				{ index: 3, relevance_score: -Infinity },
+			],
+		});
+		expect(out).toEqual([{ index: 0, score: 0.4 }]);
+	});
+
+	it('drops rows with a non-finite index', () => {
+		const out = normalizeRerankResponse([
+			{ index: NaN, score: 0.9 },
+			{ index: 1, score: 0.3 },
+		]);
+		expect(out).toEqual([{ index: 1, score: 0.3 }]);
 	});
 });
