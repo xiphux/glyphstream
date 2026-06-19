@@ -44,9 +44,15 @@ export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// Not the last branch — another is still generating; it will fire instead.
 	if (getInFlightEntries(input.conversationId).length > 0) return;
 
-	// Count what actually landed. Zero → the whole fan-out was stopped/cancelled
-	// or every branch failed; nothing to announce.
-	const produced = getSiblingAssistants(input.conversationId, input.userMessageId).length;
+	// Count what actually LANDED — successful results only. A failed branch now
+	// persists a durable error sibling (see the `error` MessagePart) so a
+	// disconnected fan-out can recover the failure; but it's not a result to
+	// announce. Filtering error siblings restores the invariant the zero-guard
+	// relies on: every branch failing → produced === 0 → stay silent (no false
+	// "N ready" push), and a partial failure announces the honest count.
+	const produced = getSiblingAssistants(input.conversationId, input.userMessageId).filter(
+		(m) => !m.parts.some((p) => p.type === 'error'),
+	).length;
 	if (produced === 0) return;
 
 	const count = input.fanoutSize ?? produced;

@@ -25,9 +25,20 @@ vi.mock('$lib/server/push/notify', () => ({
 
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 
-/** N stand-in sibling rows (only the id is read). */
+/** N stand-in successful sibling rows (id + non-error parts). */
 function siblings(n: number) {
-	return Array.from({ length: n }, (_, i) => ({ id: `a${i}` }));
+	return Array.from({ length: n }, (_, i) => ({
+		id: `a${i}`,
+		parts: [{ type: 'image', mediaId: `m${i}` }],
+	}));
+}
+
+/** N stand-in FAILED sibling rows — a persisted error sibling per branch. */
+function errorSiblings(n: number) {
+	return Array.from({ length: n }, (_, i) => ({
+		id: `e${i}`,
+		parts: [{ type: 'error', message: 'boom' }],
+	}));
 }
 
 const base = {
@@ -84,6 +95,25 @@ describe('notifyFanoutCompleteIfLast', () => {
 		notifyFanoutCompleteIfLast({ ...base, fanoutSize: 4 });
 		expect(notifyConversationComplete).toHaveBeenCalledWith(
 			expect.objectContaining({ summary: '4 images ready' }),
+		);
+	});
+
+	it('stays silent when EVERY branch failed (only error siblings persisted)', () => {
+		// Failed branches now persist durable error siblings, so the row count is
+		// non-zero — but they aren't results, so no false "N ready" push fires.
+		getInFlightEntries.mockReturnValue([]);
+		getSiblingAssistants.mockReturnValue(errorSiblings(4));
+		notifyFanoutCompleteIfLast({ ...base, fanoutSize: 4 });
+		expect(notifyConversationComplete).not.toHaveBeenCalled();
+	});
+
+	it('counts only successes when some branches failed and fanoutSize is absent', () => {
+		getInFlightEntries.mockReturnValue([]);
+		// 2 succeeded, 1 failed; no client-supplied size → count the real successes.
+		getSiblingAssistants.mockReturnValue([...siblings(2), ...errorSiblings(1)]);
+		notifyFanoutCompleteIfLast({ ...base }); // no fanoutSize
+		expect(notifyConversationComplete).toHaveBeenCalledWith(
+			expect.objectContaining({ summary: '2 images ready' }),
 		);
 	});
 

@@ -146,6 +146,12 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			bytes = fetched.bytes;
 			contentType = fetched.contentType;
 		} catch (e) {
+			// A Stop click mid-fetch is a cancellation, not a failure — bail quietly
+			// (null) so it leaves no durable error sibling, matching videoCreate.
+			if (isAbortError(e) || abortSignal?.aborted) {
+				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				return null;
+			}
 			const message = `Could not fetch video content: ${errorMessage(e)}`;
 			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };
@@ -163,6 +169,12 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				sourceMediaId: params.sourceMediaId ?? null,
 			});
 		} catch (e) {
+			// Same cancellation guard as the fetch step above — a Stop shouldn't
+			// leave a spurious "could not persist" error sibling behind.
+			if (isAbortError(e) || abortSignal?.aborted) {
+				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+				return null;
+			}
 			const message = `Could not persist video: ${errorMessage(e)}`;
 			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };

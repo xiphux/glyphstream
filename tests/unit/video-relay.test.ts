@@ -295,6 +295,31 @@ describe('startVideoRelay — backpressure + failure', () => {
 		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
 	});
 
+	it('treats a Stop during content fetch as Cancelled — no spurious error sibling', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		const ctrl = new AbortController();
+		// Job completes immediately, but the content fetch fails while the user has
+		// already clicked Stop → cancellation, not a durable failure.
+		mocks.videoFetchContent.mockImplementation(async () => {
+			ctrl.abort();
+			throw new Error('aborted');
+		});
+		const events = await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					abortSignal: ctrl.signal,
+					advanceActiveLeaf: false,
+				}),
+			),
+		);
+		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
+		expect(err?.message).toBe('Cancelled');
+		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
+	});
+
 	it('reports a pre-aborted job as Cancelled (no slot consumed past release)', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const ctrl = new AbortController();
