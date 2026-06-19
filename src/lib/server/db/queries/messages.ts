@@ -506,16 +506,20 @@ export function setActiveLeafMessageId(conversationId: string, messageId: string
  * created multiple branches via edit (or retry) and wants to discard one.
  *
  * Returns `null` if the message doesn't belong to the conversation, or
- * `{ refusedReason: 'no-siblings' }` if the message has no siblings (deleting
- * it would just truncate the conversation, which is a different operation
- * intentionally NOT exposed through this endpoint).
+ * `{ refusedReason: 'no-siblings' }` only when the delete would strand the
+ * active leaf — it sits inside the deleted subtree AND there's no sibling to
+ * reassign it to (deleting the sole child of its parent — a truncate, a
+ * different operation intentionally NOT exposed here). When the leaf lives
+ * elsewhere (e.g. a parked fan-out pinned on the shared user message),
+ * deleting a childless branch is allowed and the leaf is left untouched.
  *
- * On success, returns the deleted message ids and the new active_leaf.
- * The active_leaf is reassigned to a sibling's deepest descendant *before*
- * the delete fires, so the FK's ON DELETE SET NULL doesn't accidentally
- * orphan the conversation. Media refs for the deleted set are decremented
- * before the delete too, because message_media's ON DELETE CASCADE would
- * otherwise drop the join rows out from under our ref-counting.
+ * On success, returns the deleted message ids and the resulting active_leaf —
+ * reassigned to a sibling's deepest descendant *before* the delete fires (so
+ * the FK's ON DELETE SET NULL can't orphan the conversation) only in that
+ * leaf-in-subtree case; otherwise the leaf is unchanged. Media refs for the
+ * deleted set are decremented before the delete too, because message_media's
+ * ON DELETE CASCADE would otherwise drop the join rows out from under our
+ * ref-counting.
  */
 export function deleteBranch(
 	conversationId: string,

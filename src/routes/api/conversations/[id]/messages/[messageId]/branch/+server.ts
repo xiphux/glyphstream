@@ -2,16 +2,19 @@
  * DELETE /api/conversations/:id/messages/:messageId/branch
  *
  * Delete an alternate-branch sibling and its entire subtree of descendants.
- * Drives the "trash this branch" affordance in the chat action row, which
- * is gated to only render when the message has siblings.
+ * Drives both the "trash this branch" affordance in the chat action row
+ * (gated to render only when the message has siblings) and the media
+ * fan-out's per-column discard.
  *
- * Returns 204 on success. 400 if the message has no siblings (deleting it
- * would just truncate the conversation — a different operation, not
- * exposed here). 404 if the conversation or message can't be found under
- * the calling user.
+ * Returns 204 on success. 400 only when the delete would strand the active
+ * leaf — the leaf sits inside the deleted subtree and there's no sibling to
+ * reassign it to (a truncate, not exposed here); deleting a childless branch
+ * whose leaf lives elsewhere (a parked fan-out) is allowed. 404 if the
+ * conversation or message can't be found under the calling user.
  *
  * The DB query (`deleteBranch`) handles the order-sensitive bookkeeping:
- * reassign active_leaf to a sibling's deepest descendant, hard-delete
+ * reassign active_leaf to a sibling's deepest descendant (only when the leaf
+ * was inside the deleted subtree), hard-delete
  * generated media that exists only inside the deleted subtree, decrement
  * media refs for the remaining (still-referenced) media, then delete the
  * messages. This endpoint is responsible for unlinking the orphan-media
