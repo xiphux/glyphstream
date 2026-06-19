@@ -52,7 +52,7 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Slugify the platform string for filenames ("linux/amd64" → "linux-amd64").
       - name: Prepare platform pair
@@ -170,7 +170,7 @@ jobs:
       REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history so the auto-changelog has prior tags to diff against
 
