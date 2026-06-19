@@ -91,11 +91,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			}
 			const msg = errorMessage(e);
 			console.error(`[video-relay] videoCreate failed:`, msg);
-			write({
-				type: 'error',
-				message: `Could not start video job: ${msg}`,
-			} satisfies StreamErrorEvent);
-			return null;
+			const message = `Could not start video job: ${msg}`;
+			write({ type: 'error', message } satisfies StreamErrorEvent);
+			return { error: message };
 		}
 
 		// Initial state
@@ -114,11 +112,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				return null;
 			}
 			if (Date.now() - startedAt > MAX_WAIT_MS) {
-				write({
-					type: 'error',
-					message: `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`,
-				} satisfies StreamErrorEvent);
-				return null;
+				const message = `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`;
+				write({ type: 'error', message } satisfies StreamErrorEvent);
+				return { error: message };
 			}
 			await sleep(pollInterval);
 			pollInterval = Math.min(Math.floor(pollInterval * 1.5), MAX_POLL_INTERVAL_MS);
@@ -137,9 +133,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		}
 
 		if (job.status === 'failed') {
-			const msg = job.error?.message ?? 'Video generation failed';
-			write({ type: 'error', message: msg } satisfies StreamErrorEvent);
-			return null;
+			const message = job.error?.message ?? 'Video generation failed';
+			write({ type: 'error', message } satisfies StreamErrorEvent);
+			return { error: message };
 		}
 
 		// status === 'completed' — fetch + persist
@@ -150,11 +146,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			bytes = fetched.bytes;
 			contentType = fetched.contentType;
 		} catch (e) {
-			write({
-				type: 'error',
-				message: `Could not fetch video content: ${errorMessage(e)}`,
-			} satisfies StreamErrorEvent);
-			return null;
+			const message = `Could not fetch video content: ${errorMessage(e)}`;
+			write({ type: 'error', message } satisfies StreamErrorEvent);
+			return { error: message };
 		}
 
 		let mediaId: string;
@@ -169,11 +163,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				sourceMediaId: params.sourceMediaId ?? null,
 			});
 		} catch (e) {
-			write({
-				type: 'error',
-				message: `Could not persist video: ${errorMessage(e)}`,
-			} satisfies StreamErrorEvent);
-			return null;
+			const message = `Could not persist video: ${errorMessage(e)}`;
+			write({ type: 'error', message } satisfies StreamErrorEvent);
+			return { error: message };
 		}
 
 		return {

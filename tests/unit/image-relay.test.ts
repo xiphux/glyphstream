@@ -315,7 +315,7 @@ describe('startImageRelay — backpressure + failure', () => {
 		expect(types).toContain('done');
 	});
 
-	it('surfaces an upstream failure as an error event and persists nothing', async () => {
+	it('surfaces an upstream failure as an error event AND persists a durable error sibling', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		mocks.imageGeneration.mockRejectedValue(new Error('bridge exploded'));
 		const onComplete = vi.fn();
@@ -325,6 +325,7 @@ describe('startImageRelay — backpressure + failure', () => {
 					conversationId: conv.id,
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
+					advanceActiveLeaf: false,
 					onComplete,
 				}),
 			),
@@ -332,11 +333,18 @@ describe('startImageRelay — backpressure + failure', () => {
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toContain('bridge exploded');
 		expect(events.some((e) => e.type === 'done')).toBe(false);
-		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
+		// The failure is now durably recorded as an error sibling so a recovered
+		// fan-out can show it instead of silently dropping the column.
+		const sibs = getSiblingAssistants(conv.id, userMessage.id);
+		expect(sibs).toHaveLength(1);
+		expect(sibs[0].parts[0]).toMatchObject({ type: 'error' });
+		expect((sibs[0].parts[0] as { type: 'error'; message: string }).message).toContain(
+			'bridge exploded',
+		);
 		expect(onComplete).toHaveBeenCalledOnce(); // slot still released
 	});
 
-	it('reports a pre-aborted generation as Cancelled (not a failure)', async () => {
+	it('reports a pre-aborted generation as Cancelled (not a failure) and persists nothing', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const ctrl = new AbortController();
 		ctrl.abort();
@@ -347,10 +355,13 @@ describe('startImageRelay — backpressure + failure', () => {
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
 					abortSignal: ctrl.signal,
+					advanceActiveLeaf: false,
 				}),
 			),
 		);
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toBe('Cancelled');
+		// Cancellation bails quietly — no durable error record (unlike a failure).
+		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
 	});
 });

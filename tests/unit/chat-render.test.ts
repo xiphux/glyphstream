@@ -113,6 +113,14 @@ describe('messageToBlocks', () => {
 		]);
 	});
 
+	it('renders a failed media branch (error part) as an error block', () => {
+		const blocks = messageToBlocks(
+			msg('assistant', [{ type: 'error', message: 'render crashed' }]),
+			NO_TOOL_RESULTS,
+		);
+		expect(blocks).toEqual([{ type: 'error', message: 'render crashed' }]);
+	});
+
 	it('renders tool_call as executing when no matching result is in the map', () => {
 		const blocks = messageToBlocks(
 			msg('assistant', [

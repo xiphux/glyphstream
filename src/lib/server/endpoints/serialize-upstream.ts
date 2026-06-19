@@ -87,6 +87,18 @@ export async function serializeMessageForUpstream(
 		};
 	}
 
+	// A failed media branch persists as an assistant message carrying only an
+	// `error` part (see MessagePart 'error'). It exists so a recovered fan-out /
+	// reloaded thread can show the failure — but it has no upstream wire
+	// representation, so drop it from the request rather than send an empty
+	// assistant turn that would pollute the model's context.
+	if (
+		m.parts.some((p) => p.type === 'error') &&
+		!m.parts.some((p) => p.type === 'text' || p.type === 'image' || p.type === 'tool_call')
+	) {
+		return null;
+	}
+
 	const toolCalls = m.role === 'assistant' ? extractToolCalls(m.parts) : [];
 	const hasImages = m.parts.some((p) => p.type === 'image');
 	const fileNote = fileAttachmentNote(m.parts);

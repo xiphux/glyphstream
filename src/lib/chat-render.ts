@@ -84,7 +84,12 @@ export type RenderBlock =
 	 *  are denormalized off the media row at persist time so the
 	 *  renderer needs no lookup; the download link still points at
 	 *  /api/media/{id}/content. */
-	| { type: 'file'; mediaId: string; filename: string; byteSize: number };
+	| { type: 'file'; mediaId: string; filename: string; byteSize: number }
+	/** A failed media-generation branch (image/video) persisted as a durable
+	 *  record (see the `error` MessagePart). Rendered as an inline failure note
+	 *  so a recovered fan-out column / reloaded thread shows what went wrong
+	 *  instead of an empty bubble. */
+	| { type: 'error'; message: string };
 
 // --- in-flight segments -------------------------------------------------
 //
@@ -330,6 +335,8 @@ function partToBlock(
 			// tool_result parts live on role:'tool' messages — folded into
 			// matching tool_call blocks via the toolResults map
 			return null;
+		case 'error':
+			return { type: 'error', message: p.message };
 	}
 }
 

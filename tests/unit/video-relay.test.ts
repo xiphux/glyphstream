@@ -243,7 +243,7 @@ describe('startVideoRelay — backpressure + failure', () => {
 		expect(events.some((e) => e.type === 'done')).toBe(true);
 	});
 
-	it('surfaces a failed job as an error and persists nothing', async () => {
+	it('surfaces a failed job as an error AND persists a durable error sibling', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		mocks.videoCreate.mockResolvedValue({
 			id: 'job-x',
@@ -256,11 +256,42 @@ describe('startVideoRelay — backpressure + failure', () => {
 					conversationId: conv.id,
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
+					// Fan-out semantics: the failed branch persists as a pinned sibling
+					// so a grid recovered after a disconnect can show the failed column.
+					advanceActiveLeaf: false,
 				}),
 			),
 		);
+		// The live error frame still goes out (unchanged client UX)...
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toBe('render crashed');
+		// ...and a durable error sibling now records the failure for recovery.
+		const siblings = getSiblingAssistants(conv.id, userMessage.id);
+		expect(siblings).toHaveLength(1);
+		expect(siblings[0].parts).toEqual([{ type: 'error', message: 'render crashed' }]);
+		expect(siblings[0].modelUsed).toBe('bridge::sora');
+		// The failed branch produced no media, so nothing is linked.
+		expect(mocks.linkMessageMedia).not.toHaveBeenCalled();
+		// And it leaves the parked leaf pinned at the shared user message.
+		expect(getConversationDetail(conv.id, user.id)!.activeLeafMessageId).toBe(userMessage.id);
+	});
+
+	it('a user-cancelled (Stop) job persists nothing — no error sibling', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		const ctrl = new AbortController();
+		ctrl.abort();
+		await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					abortSignal: ctrl.signal,
+					advanceActiveLeaf: false,
+				}),
+			),
+		);
+		// Cancellation is a quiet bail: no durable record, unlike a genuine failure.
 		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
 	});
 

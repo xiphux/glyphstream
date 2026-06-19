@@ -32,6 +32,7 @@ import { clearTitlePending, markTitlePending } from './title-pending.svelte';
 import type {
 	ChatMessage,
 	FanoutRecoveryState,
+	MessagePart,
 	ModelEntry,
 	ModelKind,
 	PrepareFanoutRequest,
@@ -132,25 +133,49 @@ export class FanoutController {
 	): FanoutColumn[] {
 		const models = this.#deps.models();
 		const kindById = (id: string | null) => models.find((x) => x.id === id)?.kind ?? null;
+		// The modality a persisted sibling actually IS, read from its parts — a
+		// video/image part is ground truth even when the model id no longer
+		// resolves in the current models() list (endpoint dropped from config, or
+		// a renamed model). Falls through to the model lookup / fan-out kind below.
+		const kindFromParts = (m: ChatMessage): ModelKind | null =>
+			m.parts.some((p) => p.type === 'video')
+				? 'video'
+				: m.parts.some((p) => p.type === 'image')
+					? 'image'
+					: null;
 		// Prefer the kind reported by the in-flight branches (so an all-pending
 		// media recovery — long for video — renders the media grid immediately,
-		// not a brief chat strip); fall back to a persisted sibling's kind.
+		// not a brief chat strip); fall back to a persisted sibling's own modality.
 		const fallbackKind =
-			kind ?? (siblings.length > 0 ? (kindById(siblings[0].modelUsed) ?? 'chat') : 'chat');
-		const done: FanoutColumn[] = siblings.map((m) => ({
-			branchId: m.id,
-			modelId: m.modelUsed ?? '',
-			modelKind: kindById(m.modelUsed) ?? 'chat',
-			label: this.#modelDisplayName(m.modelUsed),
-			segments: [],
-			status: 'done',
-			queuedAhead: 0,
-			progress: null,
-			startedAt: null,
-			inputMediaId: m.sourceMediaId ?? null,
-			persisted: m,
-			error: null,
-		}));
+			kind ??
+			(siblings.length > 0
+				? (kindFromParts(siblings[0]) ?? kindById(siblings[0].modelUsed) ?? 'chat')
+				: 'chat');
+		const done: FanoutColumn[] = siblings.map((m) => {
+			// A failed branch persisted as an error sibling (see the `error`
+			// MessagePart): rebuild it as a settled error column so a fan-out
+			// recovered after a disconnect shows the failure instead of dropping it.
+			const errPart = m.parts.find(
+				(p): p is Extract<MessagePart, { type: 'error' }> => p.type === 'error',
+			);
+			return {
+				branchId: m.id,
+				modelId: m.modelUsed ?? '',
+				// Resolve the column's modality from the persisted parts first so a
+				// recovered video renders as video even if its model id no longer
+				// resolves; only then fall back to the model list / fan-out kind.
+				modelKind: kindFromParts(m) ?? kindById(m.modelUsed) ?? fallbackKind,
+				label: this.#modelDisplayName(m.modelUsed),
+				segments: [],
+				status: errPart ? 'error' : 'done',
+				queuedAhead: 0,
+				progress: null,
+				startedAt: null,
+				inputMediaId: m.sourceMediaId ?? null,
+				persisted: m,
+				error: errPart?.message ?? null,
+			};
+		});
 		const generating: FanoutColumn[] = pending.map((pb, i) => ({
 			branchId: `${RECOVERED_PENDING_PREFIX}${i}`,
 			modelId: pb.modelId,
@@ -481,7 +506,9 @@ export class FanoutController {
 		if (this.picking) return;
 		this.picking = true;
 		const convId = this.#deps.convId();
-		const firstPersisted = this.columns.find((c) => c.persisted);
+		// Promote the first real result — never an error column (it has a
+		// persisted row, but selecting it would make a failure the active thread).
+		const firstPersisted = this.columns.find((c) => c.status === 'done' && c.persisted);
 		// Clear optimistically but restore on failure (see pick).
 		const savedColumns = this.columns;
 		this.columns = [];

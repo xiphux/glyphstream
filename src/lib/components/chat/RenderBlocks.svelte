@@ -8,6 +8,7 @@
 	Add a new content type once here, get it in both.
 -->
 <script lang="ts">
+	import { CircleAlert } from '@lucide/svelte';
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
@@ -110,5 +111,10 @@
 				href={`/api/media/${block.mediaId}/content`}
 			/>
 		</div>
+	{:else if block.type === 'error'}
+		<p class="mt-1 flex items-start gap-1.5 text-sm text-danger">
+			<CircleAlert size={15} class="mt-0.5 shrink-0" />
+			<span class="break-words">{block.message}</span>
+		</p>
 	{/if}
 {/each}

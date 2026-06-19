@@ -45,6 +45,29 @@ describe('serializeMessageForUpstream', () => {
 		expect(out).toEqual({ role: 'user', content: 'one two' });
 	});
 
+	it('skips a failed media branch (error-only assistant message) entirely', async () => {
+		// A failed image/video branch persists as an assistant message carrying
+		// only an `error` part — kept for recovery/display, but it has no upstream
+		// wire form, so it must be dropped rather than sent as an empty turn.
+		const out = await serializeMessageForUpstream(
+			msg('assistant', [{ type: 'error', message: 'render crashed' }]),
+			noMedia,
+		);
+		expect(out).toBeNull();
+	});
+
+	it('serializeBranchForUpstream omits a failed branch from the request', async () => {
+		const out = await serializeBranchForUpstream(
+			[
+				msg('user', [{ type: 'text', text: 'make a video' }], 'u1'),
+				msg('assistant', [{ type: 'error', message: 'job timed out' }], 'a1'),
+			],
+			noMedia,
+			null,
+		);
+		expect(out).toEqual([{ role: 'user', content: 'make a video' }]);
+	});
+
 	it('drops reasoning parts when serializing for upstream', async () => {
 		// Reasoning is for display, not for echoing back to the model.
 		const out = await serializeMessageForUpstream(

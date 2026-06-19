@@ -13,7 +13,6 @@
  */
 
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
-import type { LoadedEndpoint } from '../endpoints/config';
 import { logLevel } from '../env';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
@@ -88,15 +87,18 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 			};
 		} catch (e) {
 			// A Stop click aborts the upstream fetch — treat as a cancellation (no
-			// noisy "failed" message), else surface it. Returning null bails.
+			// noisy "failed" message) and bail quietly (return null). A genuine
+			// failure emits the error event AND returns a MediaFailure so the
+			// scaffold persists a durable error sibling (recoverable after a
+			// disconnect, same as the video path).
 			if (isAbortError(e) || abortSignal?.aborted) {
 				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
-			} else {
-				const msg = errorMessage(e);
-				if (DEBUG) console.error('[image-relay] generation failed:', msg);
-				write({ type: 'error', message: msg } satisfies StreamErrorEvent);
+				return null;
 			}
-			return null;
+			const msg = errorMessage(e);
+			if (DEBUG) console.error('[image-relay] generation failed:', msg);
+			write({ type: 'error', message: msg } satisfies StreamErrorEvent);
+			return { error: msg };
 		}
 	});
 }

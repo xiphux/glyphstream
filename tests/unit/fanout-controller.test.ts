@@ -55,10 +55,21 @@ function makeDeps(overrides: Partial<FanoutDeps> = {}) {
 /** An assistant image sibling whose output media has `sourceMediaId` (the split
  *  input) surfaced on the ChatMessage by getSiblingAssistants. */
 function imageSibling(id: string, modelUsed: string, sourceMediaId: string | null): ChatMessage {
+	return mediaSibling(id, modelUsed, sourceMediaId, [{ type: 'image', mediaId: `${id}-out` }]);
+}
+
+/** A persisted assistant sibling carrying arbitrary parts (image / video /
+ *  error), as getSiblingAssistants would hand it to recovery. */
+function mediaSibling(
+	id: string,
+	modelUsed: string,
+	sourceMediaId: string | null,
+	parts: ChatMessage['parts'],
+): ChatMessage {
 	return {
 		id,
 		role: 'assistant',
-		parts: [{ type: 'image', mediaId: `${id}-out` }],
+		parts,
 		contentHtml: null,
 		reasoningText: null,
 		finishReason: null,
@@ -159,6 +170,56 @@ describe('FanoutController — server recovery', () => {
 		});
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.userMessageId).toBeNull();
+	});
+
+	it('rebuilds a failed branch (error sibling) as a settled error column', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		// One branch persisted a video, the other failed (error sibling). Both must
+		// surface — the failed one as an error column, not silently dropped.
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: null, // both branches settled → no in-flight kind reported
+			siblings: [
+				mediaSibling('ok', 'bridge::sora', null, [{ type: 'video', mediaId: 'ok-out' }]),
+				mediaSibling('bad', 'bridge::sora', null, [{ type: 'error', message: 'render crashed' }]),
+			],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+		});
+		expect(fc.columns).toHaveLength(2);
+		expect(fc.columns[0]).toMatchObject({
+			status: 'done',
+			modelKind: 'video',
+			persisted: { id: 'ok' },
+		});
+		expect(fc.columns[1]).toMatchObject({
+			status: 'error',
+			error: 'render crashed',
+			// Discardable server-side: it carries its persisted row.
+			persisted: { id: 'bad' },
+		});
+		// The grid has no still-generating placeholders, so the recovery poll stops.
+		expect(fc.hasRecoveredPending).toBe(false);
+	});
+
+	it('derives a recovered column kind from the persisted media when the model id no longer resolves', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		// 'bridge::sora' isn't in MODELS (endpoint dropped from config / renamed),
+		// but the persisted video part is ground truth — the column must render as
+		// video, not fall back to a blank chat strip.
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: null,
+			siblings: [mediaSibling('v', 'bridge::sora', null, [{ type: 'video', mediaId: 'v-out' }])],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+		});
+		expect(fc.columns[0]).toMatchObject({ status: 'done', modelKind: 'video' });
+		expect(fc.isMedia).toBe(true);
 	});
 });
 

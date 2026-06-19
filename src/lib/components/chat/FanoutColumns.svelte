@@ -104,12 +104,17 @@
 	const bodyClass = $derived(
 		isMedia ? 'px-3 py-2 text-sm' : 'min-h-[3rem] flex-1 overflow-y-auto px-3 py-2 text-sm',
 	);
-	// How many columns hold a real (persisted) result — the last one can't be
-	// discarded (deleteBranch needs a sibling to fall back to). Errored columns
-	// have no persisted row, so discarding them is a client-only cleanup.
-	const persistedCount = $derived(columns.filter((c) => c.persisted !== null).length);
+	// How many columns hold a real (successful) result — the last one can't be
+	// discarded (deleteBranch needs a sibling to fall back to). A recovered error
+	// column has a persisted row too (so its discard deletes it server-side), but
+	// it doesn't count as a result worth protecting — so it stays freely
+	// discardable even when it's the only thing besides one good result.
+	const persistedCount = $derived(
+		columns.filter((c) => c.status === 'done' && c.persisted !== null).length,
+	);
 	function canDiscard(c: FanoutColumn): boolean {
-		return isSettled(c) && !(c.persisted !== null && persistedCount <= 1);
+		const isResult = c.status === 'done' && c.persisted !== null;
+		return isSettled(c) && !(isResult && persistedCount <= 1);
 	}
 	// Re-roll is additive (a new sibling per click), so it's gated by the same
 	// per-conversation ceiling the server enforces — but on the ACTIVE branch

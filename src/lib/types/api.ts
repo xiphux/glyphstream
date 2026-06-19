@@ -246,6 +246,19 @@ export type MessagePart =
 	  }
 	| { type: 'reasoning'; text: string }
 	| {
+			// A media-generation branch (image/video) that settled WITHOUT
+			// producing media — upstream errored, the job timed out, or the
+			// fetch/persist failed. Recorded as a durable assistant sibling so a
+			// fan-out grid recovered after a client disconnect (iOS suspending the
+			// PWA) shows the branch as a failed column instead of silently dropping
+			// it, and a single send surfaces the failure in the thread on reload.
+			// `message` is the user-facing failure text (the same string emitted on
+			// the live `error` SSE frame). A user-initiated Stop never persists one
+			// — cancellation bails quietly.
+			type: 'error';
+			message: string;
+	  }
+	| {
 			type: 'tool_call';
 			toolCallId: string;
 			toolName: string;

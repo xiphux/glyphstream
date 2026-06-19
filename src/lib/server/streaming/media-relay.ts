@@ -72,8 +72,7 @@ export interface MediaRelayParams {
 }
 
 /** What a modality's generate step yields on success. The scaffold persists it
- *  as the assistant sibling. Returning null means the step already emitted its
- *  own error/cancel event and the relay should bail quietly. */
+ *  as the assistant sibling. */
 export interface GeneratedMedia {
 	part: MessagePart;
 	mediaId: string;
@@ -81,15 +80,26 @@ export interface GeneratedMedia {
 	modality: NotifyModality;
 }
 
+/** What a modality's generate step yields when it FAILED (as opposed to a
+ *  user-initiated cancel). The step has already emitted the live `error` SSE
+ *  frame; the scaffold additionally persists a durable error sibling so a
+ *  fan-out grid recovered after a disconnect can show the branch as a failed
+ *  column rather than dropping it. `message` matches the emitted frame's text. */
+export interface MediaFailure {
+	error: string;
+}
+
 /** The modality-specific core. Runs with the endpoint slot held and after
  *  `start` has been emitted: do the upstream generation (one-shot, or a poll
  *  loop emitting `progress` via `write`), persist the bytes through the
- *  MediaStore, and return the produced media — or emit an error/cancel event and
- *  return null. */
+ *  MediaStore, and return the produced media. On a genuine failure, emit the
+ *  `error` event and return a {@link MediaFailure} so the scaffold persists a
+ *  durable error sibling. On a user-initiated cancel (Stop), emit the cancel
+ *  event and return null to bail quietly without persisting anything. */
 export type MediaGenerate = (ctx: {
 	write: SseWriter['write'];
 	abortSignal?: AbortSignal;
-}) => Promise<GeneratedMedia | null>;
+}) => Promise<GeneratedMedia | MediaFailure | null>;
 
 export function startMediaRelay(
 	params: MediaRelayParams,
@@ -136,9 +146,38 @@ export function startMediaRelay(
 					: startTitleTaskIfFirstExchange(params.conversationId, params.userId);
 
 				// Modality-specific: produce + persist the media bytes. Returns null
-				// after emitting its own error/cancel — bail quietly.
+				// after emitting its own cancel event — bail quietly. Returns a
+				// MediaFailure after emitting its own error event — persist a durable
+				// error sibling (below) so a recovered fan-out can still show it.
 				const produced = await generate({ write: safeWrite, abortSignal: params.abortSignal });
 				if (!produced) {
+					safeClose();
+					return;
+				}
+				if ('error' in produced) {
+					// A genuine failure (not a Stop). The live `error` frame is already
+					// out; persist a durable record so the branch survives a client
+					// disconnect. Without this, the relay's `finally` clears the
+					// in-flight slot and the branch leaves no trace — a fan-out grid
+					// recovered after an iOS suspend would silently drop the column
+					// (and a lone branch's grid would evaporate to just the prompt).
+					// advanceActiveLeaf mirrors the success path: a fan-out branch stays
+					// a pinned sibling (recovery rebuilds the failed column); a single
+					// send advances the leaf so the failure shows in the thread.
+					try {
+						appendMessage({
+							conversationId: params.conversationId,
+							parentMessageId: params.userMessage.id,
+							role: 'assistant',
+							parts: [{ type: 'error', message: produced.error }],
+							modelUsed: params.storedModelId,
+							genMs: Date.now() - genStartedAt,
+							advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+						});
+					} catch (e) {
+						// Best-effort durability — the live client already saw the error.
+						console.warn('[media-relay] failed to persist error sibling:', errorMessage(e));
+					}
 					safeClose();
 					return;
 				}
