@@ -104,16 +104,17 @@
 	const bodyClass = $derived(
 		isMedia ? 'px-3 py-2 text-sm' : 'min-h-[3rem] flex-1 overflow-y-auto px-3 py-2 text-sm',
 	);
-	// How many columns hold a persisted branch row — successful results AND
-	// recovered error columns (both are real siblings server-side). The last such
-	// column can't be discarded: deleteBranch refuses a no-siblings delete (it
-	// needs a sibling to reassign the leaf to), so a DELETE on it always 400s.
-	// Disabling it here keeps the control honest instead of offering a guaranteed
-	// failure. A column with no persisted row (a live, not-yet-recovered error /
-	// cancel) is client-only cleanup and stays freely discardable.
-	const persistedCount = $derived(columns.filter((c) => c.persisted !== null).length);
+	// A settled column is discardable as long as at least one OTHER column would
+	// remain — discard prunes the grid, it never empties it (use "Done" / dismiss
+	// to leave). Gating on the TOTAL column count (not just persisted results) is
+	// what lets you drop a finished video while a sibling is still generating: the
+	// leaf is pinned at the shared user message, so the server deletes the lone
+	// finished sibling and the in-flight branch repopulates the grid. This grid is
+	// always a parked fan-out, so deleteBranch never strands the leaf (it only
+	// refuses when the leaf sits inside the deleted subtree, which can't happen
+	// while it's pinned on the parent).
 	function canDiscard(c: FanoutColumn): boolean {
-		return isSettled(c) && !(c.persisted !== null && persistedCount <= 1);
+		return isSettled(c) && columns.length > 1;
 	}
 	// Re-roll is additive (a new sibling per click), so it's gated by the same
 	// per-conversation ceiling the server enforces — but on the ACTIVE branch
@@ -228,9 +229,7 @@
 								onclick={() => onDiscard(c)}
 								disabled={busy || !canDiscard(c)}
 								aria-label="Discard this response"
-								title={c.persisted !== null && persistedCount <= 1
-									? 'Keep at least one'
-									: 'Discard'}
+								title={columns.length <= 1 ? 'Keep at least one' : 'Discard'}
 								class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-30"
 							>
 								<Trash2 size={14} />

@@ -524,7 +524,11 @@ export function deleteBranch(
 ):
 	| {
 			deletedIds: string[];
-			newActiveLeaf: string;
+			/** The active leaf after the delete. Unchanged (and null only for a
+			 *  leaf-less conversation) when the leaf was outside the deleted
+			 *  subtree — e.g. pruning a parked fan-out sibling leaves the leaf
+			 *  pinned at the shared user message. */
+			newActiveLeaf: string | null;
 			/** Generated media whose only references were in the deleted
 			 *  subtree. Caller unlinks the files post-commit; the rows
 			 *  are already `hardDeletedAt`-stamped in the DB. */
@@ -550,13 +554,9 @@ export function deleteBranch(
 		const target = all.find((r) => r.id === messageId);
 		if (!target) return null;
 
-		// Sibling check: messages sharing the same parent_message_id (including
-		// null for a root sibling). Refuse if there's no replacement — UI
-		// already gates this but defense-in-depth.
+		// Siblings sharing this message's parent_message_id (null parent = root
+		// siblings). Used both as the active-leaf replacement and in the refusal.
 		const siblings = all.filter((r) => r.parentId === target.parentId && r.id !== messageId);
-		if (siblings.length === 0) {
-			return { refusedReason: 'no-siblings' as const };
-		}
 
 		// Collect the subtree rooted at messageId (inclusive) via BFS.
 		const childrenByParent = buildChildrenByParent(all);
@@ -574,14 +574,6 @@ export function deleteBranch(
 			}
 		}
 
-		// Pick the replacement sibling and walk down to its deepest descendant
-		// — that becomes the new active_leaf ONLY IF the current leaf is inside
-		// the subtree we're deleting (the sibling-nav case: you deleted the
-		// branch you were viewing). If the leaf is elsewhere — e.g. an image
-		// fan-out parked on the user message while you discard an off-branch
-		// dud — leave it put so the parked grid stays intact.
-		const replacement = siblings[0];
-		const fallbackCursor = deepestDescendant(replacement.id, childrenByParent);
 		const convRow = tx
 			.select({
 				leaf: conversations.activeLeafMessageId,
@@ -590,9 +582,31 @@ export function deleteBranch(
 			.from(conversations)
 			.where(eq(conversations.id, conversationId))
 			.get();
-		const currentLeaf = convRow?.leaf;
+		const currentLeaf = convRow?.leaf ?? null;
 		const leafInDeleted = currentLeaf != null && toDelete.has(currentLeaf);
-		const cursor = leafInDeleted ? fallbackCursor : (currentLeaf ?? fallbackCursor);
+
+		// Refuse ONLY when the delete would strand the active leaf: it sits inside
+		// the deleted subtree AND there's no sibling to move it to (deleting the
+		// sole child of its parent — that's a truncate, intentionally not exposed
+		// here). When the leaf lives ELSEWHERE, deleting a childless sibling is
+		// safe even with no DB sibling yet. The case that matters: a parked media
+		// fan-out pinned at the shared user message where one branch has finished
+		// and another is still generating (not yet a persisted sibling) — the user
+		// prunes the finished dud while the leaf (and the marker) stay put, and the
+		// in-flight branch repopulates the grid. The old blanket "no siblings →
+		// refuse" wrongly blocked that, leaving a disabled delete button.
+		if (leafInDeleted && siblings.length === 0) {
+			return { refusedReason: 'no-siblings' as const };
+		}
+
+		// Reassign the leaf to a replacement sibling's deepest descendant ONLY when
+		// the leaf was inside the deleted subtree (the sibling-nav case: you deleted
+		// the branch you were viewing — guaranteed a sibling by the refusal above).
+		// Otherwise the leaf is elsewhere (e.g. parked on the fan-out's user
+		// message); leave it put so the grid survives the prune.
+		const cursor = leafInDeleted
+			? deepestDescendant(siblings[0].id, childrenByParent)
+			: currentLeaf;
 		// Clear the parked fan-out marker if its anchor user message is itself in
 		// the delete set — otherwise the conversation UPDATE below (and the row
 		// delete) would dangle / FK-error on it. The DB-level FK is NO ACTION

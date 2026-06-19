@@ -1818,6 +1818,45 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
 	});
 
+	it('deleteBranch prunes the only finished sibling while another branch is still generating', () => {
+		// The reported bug: a 2-model video fan-out where the first finished and
+		// the second is still running (NOT yet a persisted sibling). Discarding the
+		// finished dud must succeed even though it has no DB sibling yet — the leaf
+		// is parked on the user message, so the delete can't strand it.
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::base',
+			modelKind: 'video',
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'a dog running' }],
+		});
+		// Only the FIRST branch has persisted; the second is still generating.
+		const finished = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'video', mediaId: 'vid-1' }],
+			modelUsed: 'bridge::a',
+			advanceActiveLeaf: false,
+		});
+		setFanoutParent(conv.id, u.id, user.id);
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+
+		const res = deleteBranch(conv.id, finished.id, u.id);
+		// Not refused — the old blanket no-siblings guard wrongly blocked this.
+		expect(res && 'deletedIds' in res).toBe(true);
+		expect(getMessage(conv.id, finished.id)).toBeNull();
+		// Leaf + marker stay put so the in-flight branch repopulates the grid.
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(user.id);
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
+	});
+
 	it('deleteBranch clears the marker (no FK error) when the parked anchor is deleted', () => {
 		const { u, conv, user } = seedFanout();
 		// Give the parked user message a sibling (e.g. an earlier edit) so

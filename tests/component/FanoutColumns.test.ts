@@ -189,6 +189,26 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		expect((discard as HTMLButtonElement).disabled).toBe(true);
 	});
 
+	it('allows discarding a finished result while a sibling is still generating', () => {
+		// The reported bug: a 2-model video fan-out where the first finished and the
+		// second is still running. The finished one must be discardable — gated on
+		// total columns, not persisted count — since another column remains.
+		render(FanoutColumns, {
+			props: {
+				columns: [mediaCol('done-1'), mediaCol('gen-1', 'streaming')],
+				onDiscard: vi.fn(),
+				onRegenerate: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		// First column is the finished video; its discard must be enabled even
+		// though it's the only persisted result so far.
+		const discards = screen.getAllByRole('button', { name: /discard this response/i });
+		expect((discards[0] as HTMLButtonElement).disabled).toBe(false);
+		// The still-generating column isn't settled, so its discard stays disabled.
+		expect((discards[1] as HTMLButtonElement).disabled).toBe(true);
+	});
+
 	it('shows the split input-image thumbnail in the column header', () => {
 		const { container } = render(FanoutColumns, {
 			props: {
