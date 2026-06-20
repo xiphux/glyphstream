@@ -147,11 +147,13 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			createdAt: media.createdAt,
+			conversationId: assignedConversationId,
 		})
 		.from(media)
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
 		.get();
-	return row ?? null;
+	if (!row) return null;
+	return attachConversationTitles(userId, [{ ...row, conversationTitle: null }])[0];
 }
 
 export interface ConversationMediaRef {
@@ -220,6 +222,53 @@ export interface MediaListItem {
 	 *  untruncated prompt for anything generated post-migration. */
 	promptFull: string | null;
 	createdAt: number;
+	/** Conversation this asset is assigned to for gallery stacking — the
+	 *  earliest message that references it. Null for orphan media whose
+	 *  conversation was deleted (its message_media join rows cascaded away).
+	 *  Media can be referenced from several conversations; we pick one
+	 *  deterministically so grouping is stable. */
+	conversationId: string | null;
+	/** Title of `conversationId` (null when untitled or orphaned). */
+	conversationTitle: string | null;
+}
+
+/**
+ * Scalar subquery: the conversation of the *earliest* message referencing a
+ * media row — the deterministic owner used for gallery stacking. NULL when no
+ * message references it (orphan media kept after its conversation was deleted).
+ * Physical table/column names are used directly. The correlation references the
+ * outer row as the literal `media.id` rather than interpolating `${media.id}` —
+ * drizzle renders that column unqualified as `"id"`, which the subquery would
+ * resolve to `messages.id` instead of the outer media row.
+ */
+const assignedConversationId = sql<
+	string | null
+>`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
+
+/**
+ * Resolve `{ conversationId -> title }` for a set of items (scoped to the
+ * user), then stamp `conversationTitle` onto each. One batched lookup rather
+ * than a row-multiplying JOIN or a nested title subquery. Mutates and returns
+ * the same array for convenience.
+ */
+function attachConversationTitles<
+	T extends { conversationId: string | null; conversationTitle?: string | null },
+>(userId: string, items: T[]): T[] {
+	const ids = [...new Set(items.map((i) => i.conversationId).filter((id): id is string => !!id))];
+	if (ids.length === 0) {
+		for (const i of items) i.conversationTitle = null;
+		return items;
+	}
+	const rows = getDb()
+		.select({ id: conversations.id, title: conversations.title })
+		.from(conversations)
+		.where(and(inArray(conversations.id, ids), eq(conversations.userId, userId)))
+		.all();
+	const titleById = new Map(rows.map((r) => [r.id, r.title]));
+	for (const i of items) {
+		i.conversationTitle = i.conversationId ? (titleById.get(i.conversationId) ?? null) : null;
+	}
+	return items;
 }
 
 export interface MediaListResult {
@@ -301,6 +350,7 @@ export function listMediaForUser(
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
 			createdAt: media.createdAt,
+			conversationId: assignedConversationId,
 		})
 		.from(media)
 		.where(and(...conditions))
@@ -309,9 +359,13 @@ export function listMediaForUser(
 		.all();
 
 	const hasMore = rows.length > limit;
-	const items = hasMore ? rows.slice(0, limit) : rows;
-	const last = items[items.length - 1];
+	const sliced = hasMore ? rows.slice(0, limit) : rows;
+	const last = sliced[sliced.length - 1];
 	const nextCursor = hasMore && last ? `${last.createdAt}:${last.id}` : null;
+	const items: MediaListItem[] = attachConversationTitles(
+		userId,
+		sliced.map((r) => ({ ...r, conversationTitle: null })),
+	);
 	return { items, nextCursor };
 }
 

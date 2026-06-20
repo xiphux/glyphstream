@@ -29,7 +29,7 @@ import {
 	deleteConversation,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
-import { media } from '$lib/server/db/schema';
+import { conversations, media } from '$lib/server/db/schema';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -371,6 +371,78 @@ describe('listMediaForUser', () => {
 		});
 		const list = listMediaForUser(u.id, { kinds: ['file'] });
 		expect(list.items.map((i) => i.id)).toEqual([file.id]);
+	});
+});
+
+describe('listMediaForUser conversation assignment (gallery stacking)', () => {
+	function makeConv(userId: string, title: string | null = null) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image',
+		});
+		if (title !== null) {
+			mocks.testDb.update(conversations).set({ title }).where(eq(conversations.id, conv.id)).run();
+		}
+		return conv;
+	}
+
+	function makeMsg(conversationId: string) {
+		return appendMessage({
+			conversationId,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }],
+		});
+	}
+
+	it('assigns conversationId + title from the referencing message', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id, 'Logo ideas');
+		const msg = makeMsg(conv.id);
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+
+		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		expect(item.conversationId).toBe(conv.id);
+		expect(item.conversationTitle).toBe('Logo ideas');
+	});
+
+	it('leaves conversationId + title null for orphan media (no join rows)', () => {
+		const u = seedUser();
+		const { id } = makeMedia(u.id);
+		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		expect(item.conversationId).toBeNull();
+		expect(item.conversationTitle).toBeNull();
+	});
+
+	it('null title surfaces as null (untitled conversation)', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id, null);
+		const msg = makeMsg(conv.id);
+		const { id } = makeMedia(u.id);
+		linkMessageMedia(msg.id, id);
+		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		expect(item.conversationId).toBe(conv.id);
+		expect(item.conversationTitle).toBeNull();
+	});
+
+	it('picks the earliest referencing message when media spans conversations', async () => {
+		const u = seedUser();
+		const convA = makeConv(u.id, 'first');
+		const msgA = makeMsg(convA.id);
+		await new Promise((r) => setTimeout(r, 5));
+		const convB = makeConv(u.id, 'second');
+		const msgB = makeMsg(convB.id);
+		const { id } = makeMedia(u.id);
+		// Reused across two conversations; the earlier message's conversation wins.
+		linkMessageMedia(msgB.id, id);
+		linkMessageMedia(msgA.id, id);
+
+		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
+		expect(item.conversationId).toBe(convA.id);
+		expect(item.conversationTitle).toBe('first');
 	});
 });
 

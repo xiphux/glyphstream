@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { ChevronLeft } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
+	import { groupGalleryItems, type GalleryGroup } from '$lib/gallery-stacks';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import type {
 		MediaConversationRef,
@@ -35,6 +37,54 @@
 	let loadGeneration = 0;
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
+
+	// --- Stacking ("albums") ------------------------------------------------
+	// Related media (same conversation, or an orphaned same-prompt multi-model
+	// batch) collapse into one stack so a few fan-out sends don't bury the
+	// grid. Default ON (product decision); the toggle is per-session, not
+	// persisted. Grouping is a pure pass over the already-loaded `items`, so it
+	// recomputes for free on paginate / delete — see $lib/gallery-stacks.
+	let stacking = $state(true);
+	// Key of the stack the user has drilled into; null = top-level grid.
+	let openGroupKey = $state<string | null>(null);
+
+	const groups = $derived(stacking ? groupGalleryItems(items) : []);
+	const openGroup = $derived(
+		openGroupKey ? (groups.find((g) => g.key === openGroupKey) ?? null) : null,
+	);
+	// Members of the open stack (newest-first). Null when not drilled in.
+	const drillItems = $derived(openGroup?.items ?? null);
+
+	// The set the lightbox carousels over: just the drilled stack when one is
+	// open, otherwise the whole loaded gallery.
+	const lightboxList = $derived(drillItems ?? items);
+
+	// The last group can be a partially-loaded "trailing" run — its older
+	// members may still be on an unfetched page. Used to (a) mark its card as
+	// still filling and (b) keep loading when the user drills into it.
+	const trailingGroupKey = $derived(groups.length > 0 ? groups[groups.length - 1].key : null);
+
+	// Drop the drill-in if its group disappeared (all members deleted) or
+	// stacking was switched off — openGroup goes null and we pop back.
+	$effect(() => {
+		if (openGroupKey && !openGroup) openGroupKey = null;
+	});
+
+	// While drilled into the trailing (incomplete) group, keep paginating until
+	// it's fully assembled — otherwise a stack split across the load boundary
+	// would show truncated. Re-runs as each loadMore settles. The drill view has
+	// no scroll sentinel of its own, so this is the only driver there.
+	$effect(() => {
+		if (
+			openGroup &&
+			openGroup.key === trailingGroupKey &&
+			nextCursor &&
+			!loadingMore &&
+			!loadError
+		) {
+			loadMore();
+		}
+	});
 
 	// Infinite-scroll plumbing. `scrollContainer` is the scrollable region used
 	// as the IntersectionObserver root; `sentinel` is a zero-content marker
@@ -180,7 +230,11 @@
 	// tight loop — the banner's Retry button is the only way back in. A failed
 	// delete sets `error`, not `loadError`, so it can't wedge scrolling.
 	$effect(() => {
-		if (sentinelVisible && nextCursor && !loadingMore && !loadError) {
+		// `!openGroup`: while drilled into a stack the top-level sentinel is
+		// unmounted, but `sentinelVisible` can be left stale-true — don't let
+		// that quietly paginate the whole gallery behind the drill-in view.
+		// The trailing-group $effect handles loading needed to complete a stack.
+		if (sentinelVisible && nextCursor && !loadingMore && !loadError && !openGroup) {
 			loadMore();
 		}
 	});
@@ -258,6 +312,12 @@
 		}
 	}
 
+	// Human label for a stack: the conversation title, or the batch's prompt.
+	function groupLabel(g: GalleryGroup): string {
+		if (g.kind === 'conversation') return g.title ?? 'Untitled chat';
+		return g.items[0]?.promptExcerpt ?? 'Untitled';
+	}
+
 	// Formatting helpers + Escape handling now live inside MediaLightbox —
 	// see src/lib/components/MediaLightbox.svelte. The lightbox state is
 	// still owned here so the conversations-fetch $effect above (and the
@@ -267,7 +327,23 @@
 
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
+		<div class="flex min-w-0 items-center gap-2">
+			{#if openGroup}
+				<button
+					type="button"
+					onclick={() => (openGroupKey = null)}
+					class="-ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-sm transition hover:bg-surface-raised"
+					aria-label="Back to gallery"
+				>
+					<ChevronLeft size={18} />
+					Back
+				</button>
+				<h1 class="truncate text-lg font-semibold tracking-tight">{groupLabel(openGroup)}</h1>
+				<span class="shrink-0 text-xs text-fg-muted">{openGroup.items.length}</span>
+			{:else}
+				<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
+			{/if}
+		</div>
 		<div class="flex items-center gap-2 text-xs">
 			{#if selectMode}
 				<span class="text-fg-muted">
@@ -290,21 +366,34 @@
 					Cancel
 				</button>
 			{:else}
-				<div class="flex gap-1">
-					{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
-						{@const active = kindFilter === k}
-						<button
-							type="button"
-							onclick={() => setKind(k as 'image' | 'video' | null)}
-							class="rounded-md border px-3 py-1.5 transition {active
-								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
-						>
-							{label}
-						</button>
-					{/each}
-				</div>
-				{#if items.length > 0}
+				{#if !openGroup}
+					<div class="flex gap-1">
+						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
+							{@const active = kindFilter === k}
+							<button
+								type="button"
+								onclick={() => setKind(k as 'image' | 'video' | null)}
+								class="rounded-md border px-3 py-1.5 transition {active
+									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+									: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+							>
+								{label}
+							</button>
+						{/each}
+					</div>
+					<button
+						type="button"
+						onclick={() => (stacking = !stacking)}
+						aria-pressed={stacking}
+						title={stacking ? 'Stacking on' : 'Stacking off'}
+						class="rounded-md border px-3 py-1.5 transition {stacking
+							? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+							: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+					>
+						Stack
+					</button>
+				{/if}
+				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
 					<button
 						type="button"
 						onclick={enterSelectMode}
@@ -327,121 +416,201 @@
 			</div>
 		{:else}
 			<!--
-				CSS grid masonry with a fixed thumbnail row height. Simpler than a
-				JS masonry library and good enough for v1: thumbnails are uniform
-				cells; clicking opens the full asset in the lightbox at native
-				aspect ratio.
+				A single media tile. Shared by the flat grid, the drill-in grid, and
+				solo (size-1) stacks so the three render paths stay identical. Grid
+				tiles use the /thumbnail variant (server-side sharp resize to 512px
+				JPEG, disk-cached — see src/lib/server/media/thumbnail.ts), not the
+				full-resolution /content the lightbox pulls.
 			-->
-			<ul
-				class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-			>
-				{#each items as m (m.id)}
-					{@const isSelected = selectMode && selected.has(m.id)}
-					<li
-						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-							? 'border-surface-inverse ring-2 ring-surface-inverse'
-							: 'border-border hover:border-border-focus'}"
+			{#snippet mediaTile(m: MediaListItem)}
+				{@const isSelected = selectMode && selected.has(m.id)}
+				<li
+					class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
+						? 'border-surface-inverse ring-2 ring-surface-inverse'
+						: 'border-border hover:border-border-focus'}"
+				>
+					<button
+						type="button"
+						onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
+						class="block w-full"
+						aria-label={selectMode
+							? isSelected
+								? `Deselect ${m.kind}`
+								: `Select ${m.kind}`
+							: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
+						aria-pressed={selectMode ? isSelected : undefined}
 					>
+						<div class="relative aspect-square w-full overflow-hidden">
+							{#if m.kind === 'image'}
+								<img
+									src="/api/media/{m.id}/thumbnail"
+									alt={m.promptExcerpt ?? 'Generated image'}
+									loading="lazy"
+									class="h-full w-full object-cover"
+								/>
+							{:else}
+								<!--
+									#t=0.1 is a Media Fragment URI: tells the browser to seek
+									to 0.1s on load so it renders that frame as an inline poster.
+									Avoids needing a server-side ffmpeg poster pipeline. The 0.1
+									(vs 0) sidesteps encoders that begin with a black/blue frame.
+								-->
+								<!-- svelte-ignore a11y_media_has_caption -->
+								<video
+									src="/api/media/{m.id}/content#t=0.1"
+									preload="metadata"
+									muted
+									playsinline
+									class="h-full w-full object-cover"
+								></video>
+								<div
+									class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+								>
+									video
+								</div>
+							{/if}
+						</div>
+						{#if m.promptExcerpt}
+							<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
+								{m.promptExcerpt}
+							</div>
+						{/if}
+					</button>
+					{#if selectMode}
+						<!--
+							Checkbox badge for selection mode. Purely visual — the
+							whole tile is the toggle (the wrapping button handles
+							the click), so the badge is aria-hidden and not its
+							own focus target.
+						-->
+						<span
+							aria-hidden="true"
+							class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
+								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+								: 'border-white/80 bg-black/40 text-transparent'}"
+						>
+							✓
+						</span>
+					{:else}
 						<button
 							type="button"
-							onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
-							class="block w-full"
-							aria-label={selectMode
-								? isSelected
-									? `Deselect ${m.kind}`
-									: `Select ${m.kind}`
-								: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
-							aria-pressed={selectMode ? isSelected : undefined}
+							onclick={() => deleteOne(m.id)}
+							disabled={deletingId === m.id}
+							class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
+							aria-label="Delete this media"
+							title="Delete"
 						>
-							<div class="relative aspect-square w-full overflow-hidden">
-								{#if m.kind === 'image'}
-									<!--
-										Grid tiles use the /thumbnail variant, not /content.
-										See src/lib/server/media/thumbnail.ts — server-side
-										sharp resize to 512px JPEG q=75, lazy-generated and
-										disk-cached on first request. Roughly 20x bandwidth
-										reduction per tile vs. full-resolution originals.
-										Lightbox + chat-side rendering still pull /content
-										for full quality.
-									-->
-									<img
-										src="/api/media/{m.id}/thumbnail"
-										alt={m.promptExcerpt ?? 'Generated image'}
-										loading="lazy"
-										class="h-full w-full object-cover"
-									/>
-								{:else}
-									<!--
-										#t=0.1 is a Media Fragment URI: tells the browser to seek
-										to 0.1s on load so it renders that frame as an inline poster.
-										Avoids needing a server-side ffmpeg poster pipeline. The 0.1
-										(vs 0) sidesteps encoders that begin with a black/blue frame.
-									-->
-									<!-- svelte-ignore a11y_media_has_caption -->
-									<video
-										src="/api/media/{m.id}/content#t=0.1"
-										preload="metadata"
-										muted
-										playsinline
-										class="h-full w-full object-cover"
-									></video>
+							{deletingId === m.id ? '…' : '×'}
+						</button>
+					{/if}
+				</li>
+			{/snippet}
+
+			<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell
+			     for the rest. Clicking drills into the stack. -->
+			{#snippet stackCard(g: GalleryGroup)}
+				{@const previews = g.items.slice(0, g.items.length > 4 ? 3 : 4)}
+				{@const remaining = g.items.length - previews.length}
+				{@const incomplete = g.key === trailingGroupKey && !!nextCursor}
+				<li
+					class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus"
+				>
+					<button
+						type="button"
+						onclick={() => (openGroupKey = g.key)}
+						class="block w-full"
+						aria-label={`Open stack: ${groupLabel(g)} (${g.items.length} items)`}
+					>
+						<div class="relative aspect-square w-full overflow-hidden bg-surface-panel">
+							<div class="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
+								{#each previews as m (m.id)}
+									<div class="relative overflow-hidden bg-surface-panel">
+										{#if m.kind === 'image'}
+											<img
+												src="/api/media/{m.id}/thumbnail"
+												alt=""
+												loading="lazy"
+												class="h-full w-full object-cover"
+											/>
+										{:else}
+											<!-- svelte-ignore a11y_media_has_caption -->
+											<video
+												src="/api/media/{m.id}/content#t=0.1"
+												preload="metadata"
+												muted
+												playsinline
+												class="h-full w-full object-cover"
+											></video>
+										{/if}
+									</div>
+								{/each}
+								{#if remaining > 0}
 									<div
-										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+										class="flex items-center justify-center bg-surface-inverse/80 text-sm font-semibold text-fg-inverse"
 									>
-										video
+										+{remaining}
 									</div>
 								{/if}
 							</div>
-							{#if m.promptExcerpt}
-								<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
-									{m.promptExcerpt}
-								</div>
-							{/if}
-						</button>
-						{#if selectMode}
-							<!--
-								Checkbox badge for selection mode. Purely visual — the
-								whole tile is the toggle (the wrapping button handles
-								the click), so the badge is aria-hidden and not its
-								own focus target.
-							-->
-							<span
-								aria-hidden="true"
-								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
-									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-									: 'border-white/80 bg-black/40 text-transparent'}"
-							>
-								✓
-							</span>
-						{:else}
-							<button
-								type="button"
-								onclick={() => deleteOne(m.id)}
-								disabled={deletingId === m.id}
-								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
-								aria-label="Delete this media"
-								title="Delete"
-							>
-								{deletingId === m.id ? '…' : '×'}
-							</button>
-						{/if}
-					</li>
-				{/each}
-			</ul>
+						</div>
+						<div class="px-2 py-1.5">
+							<div class="truncate text-left text-xs text-fg-secondary">{groupLabel(g)}</div>
+							<div class="text-left text-[10px] text-fg-muted">
+								{g.items.length} item{g.items.length === 1 ? '' : 's'}{incomplete ? '…' : ''}
+							</div>
+						</div>
+					</button>
+				</li>
+			{/snippet}
 
-			{#if nextCursor}
-				<!--
-					Infinite-scroll sentinel. The IntersectionObserver effect above
-					watches this marker and auto-loads the next page as it nears the
-					viewport — replacing the old manual "Load more" button. It only
-					exists while there's a next page, so the observer detaches on the
-					last page. While a fetch is in flight we show a quiet status line.
-				-->
-				<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
-					{#if loadingMore}
-						<span class="text-sm text-fg-muted">Loading…</span>
-					{/if}
-				</div>
+			<!-- Sentinel: the IntersectionObserver effect auto-loads the next page
+			     as it nears the viewport. Only one of the branches below renders at
+			     a time, so the single `sentinel` bind is unambiguous; the drill-in
+			     view omits it (the trailing-group $effect drives its loading). -->
+			{#snippet scrollSentinel()}
+				{#if nextCursor}
+					<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
+						{#if loadingMore}
+							<span class="text-sm text-fg-muted">Loading…</span>
+						{/if}
+					</div>
+				{/if}
+			{/snippet}
+
+			{#if openGroup}
+				<!-- Drill-in: just this stack's members. -->
+				<ul
+					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+				>
+					{#each drillItems ?? [] as m (m.id)}
+						{@render mediaTile(m)}
+					{/each}
+				</ul>
+			{:else if stacking}
+				<!-- Stacked top level: related media collapse into cards; solos
+				     render as normal tiles, interleaved in true newest-first order. -->
+				<ul
+					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+				>
+					{#each groups as g (g.key)}
+						{#if g.kind === 'solo'}
+							{@render mediaTile(g.items[0])}
+						{:else}
+							{@render stackCard(g)}
+						{/if}
+					{/each}
+				</ul>
+				{@render scrollSentinel()}
+			{:else}
+				<!-- Flat firehose (stacking off): today's behavior. -->
+				<ul
+					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+				>
+					{#each items as m (m.id)}
+						{@render mediaTile(m)}
+					{/each}
+				</ul>
+				{@render scrollSentinel()}
 			{/if}
 		{/if}
 
@@ -485,12 +654,13 @@
 	{deletingId}
 	conversationsUsingThis={lightboxConversations}
 	{conversationsError}
-	siblings={items.map((m) => ({ id: m.id, kind: m.kind }))}
+	siblings={lightboxList.map((m) => ({ id: m.id, kind: m.kind }))}
 	onNavigate={(id) => {
-		// All gallery items are already in memory, so navigation is an
-		// instant in-array swap — no fetch. The conversations effect
-		// (keyed on lightbox.id) refetches the new item's refs.
-		const found = items.find((m) => m.id === id);
+		// All items are already in memory, so navigation is an instant in-array
+		// swap — no fetch. Inside a drilled stack the carousel spans just that
+		// stack; at the top level it spans the whole loaded gallery. The
+		// conversations effect (keyed on lightbox.id) refetches the new item's refs.
+		const found = lightboxList.find((m) => m.id === id);
 		if (found) lightbox = found;
 	}}
 />
