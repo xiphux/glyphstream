@@ -22,8 +22,9 @@ them into a single fast chat UI with one model picker.
 - **Spec-first, not vendor-first.** Developed against the OpenAI API spec, so
   any compatible upstream works. Per-vendor streaming quirks (DeepSeek-R1
   reasoning, o-series, OpenRouter) are small opt-in normalizers, not forks.
-- **Safe to put on the public internet.** GitHub OAuth + passkey (WebAuthn)
-  login, a first-run setup wizard, and invite-only multi-user accounts (admin
+- **Safe to put on the public internet.** OAuth (GitHub, Google, OIDC) +
+  passkey (WebAuthn) login, a first-run setup wizard, and invite-only
+  multi-user accounts (admin
   role + per-user data isolation); CSP, SSRF-guarded tool egress, same-origin
   enforcement on mutating APIs.
 - **Multi-model is a first-class workflow.** Fan a prompt out to several
@@ -116,10 +117,11 @@ them into a single fast chat UI with one model picker.
 
 ### Self-hosting & polish
 
-- **GitHub OAuth + passkeys**, together or alone; first-run setup wizard;
-  one-flag account revocation ([guide](docs/authentication.md)).
+- **OAuth (GitHub, Google, generic OIDC) + passkeys**, together or alone;
+  first-run setup wizard; one-flag account revocation
+  ([guide](docs/authentication.md)).
 - **Invite-only multi-user** — the setup-wizard account is the admin; everyone
-  else joins via an admin-issued `/join` link (GitHub or passkey). Per-user
+  else joins via an admin-issued `/join` link (any OAuth provider or passkey). Per-user
   data isolation, plus an admin panel to invite, disable, or remove accounts
   ([guide](docs/multi-user.md)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
@@ -153,7 +155,7 @@ curl http://localhost:3000/api/health
 ```
 
 Visit the app, and the first-run wizard at `/setup` creates your operator
-account (GitHub or passkey). Put a reverse proxy in front for TLS — see the
+account (any OAuth provider or passkey). Put a reverse proxy in front for TLS — see the
 [deployment guide](docs/deployment.md).
 
 ### Local development
@@ -170,7 +172,7 @@ pnpm dev                               # http://localhost:5173
 | Guide                                            | Covers                                                                                           |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
 | [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                 |
-| [Authentication](docs/authentication.md)         | GitHub OAuth setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                              |
+| [Authentication](docs/authentication.md)         | OAuth (GitHub, Google, OIDC) setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`              |
 | [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts               |
 | [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools |
 | [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` and `[rerank]` blocks                             |

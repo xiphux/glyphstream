@@ -115,8 +115,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// emit Fetch-Metadata headers (pre-2020 Chromium / pre-16.4 Safari).
 	//
 	// GET / HEAD are unaffected — no state change, and Origin isn't
-	// consistently sent on them. The /api/auth/github/callback flow is
-	// GET only and protected separately via its state cookie.
+	// consistently sent on them. The OAuth callback flows
+	// (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
+	// are GET only and protected separately via their state cookie.
 	if (STATE_MUTATING_METHODS.has(event.request.method) && event.url.pathname.startsWith('/api/')) {
 		const fetchSite = event.request.headers.get('sec-fetch-site');
 		if (fetchSite) {

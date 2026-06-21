@@ -212,8 +212,6 @@ docs.
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
 
-- **More OAuth providers** (Google, generic OIDC). `arctic` supports these.
-
 - **S3-compatible media storage.** `MediaStore` is already the abstraction;
   implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
 

@@ -1,12 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import { findValidInvite } from '$lib/server/db/queries/invites';
-import { githubLoginEnabled, passkeyLoginEnabled } from '$lib/server/env';
+import { passkeyLoginEnabled } from '$lib/server/env';
+import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {
 	invalid_oauth_state: 'Sign-up attempt failed (state mismatch). Please try again.',
-	oauth_exchange_failed: 'Could not complete sign-in with GitHub. Please try again.',
-	upstream_failure: 'GitHub is unreachable right now. Please try again in a moment.',
+	oauth_exchange_failed: 'Could not complete sign-in. Please try again.',
+	upstream_failure: 'The sign-in provider is unreachable right now. Please try again in a moment.',
 	invite_invalid: 'This invite link is no longer valid. Ask your administrator for a new one.',
 	already_registered: 'That account is already registered. Try signing in instead.',
 	signup_failed: 'Something went wrong creating your account. Please try again.',
@@ -34,6 +35,9 @@ export const load: PageServerLoad = ({ params, url, locals }) => {
 		valid: invite !== null,
 		token: params.token,
 		errorMessage,
-		methods: { github: githubLoginEnabled(), passkey: passkeyLoginEnabled() },
+		methods: {
+			providers: listEnabledProviders().map((p) => ({ id: p.id, label: p.label() })),
+			passkey: passkeyLoginEnabled(),
+		},
 	};
 };

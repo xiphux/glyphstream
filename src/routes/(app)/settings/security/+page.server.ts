@@ -1,7 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
 import { listCredentialSummariesForUser } from '$lib/server/db/queries/passkey';
-import { githubLoginEnabled, passkeyLoginEnabled } from '$lib/server/env';
+import { passkeyLoginEnabled } from '$lib/server/env';
+import { describeProviders } from '$lib/server/auth/oauth/registry';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -24,7 +25,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	return {
 		passkeys,
 		oauthAccounts,
-		githubEnabled: githubLoginEnabled(),
+		providers: describeProviders(),
 		passkeyEnabled: passkeyLoginEnabled(),
 	};
 };

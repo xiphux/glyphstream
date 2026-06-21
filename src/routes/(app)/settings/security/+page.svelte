@@ -2,17 +2,24 @@
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
 	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
 	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 
+	interface ProviderInfo {
+		id: string;
+		label: string;
+		enabled: boolean;
+	}
+
 	let { data } = $props<{
 		data: {
 			passkeys: PasskeySummary[];
 			oauthAccounts: OAuthAccountSummary[];
-			githubEnabled: boolean;
+			providers: ProviderInfo[];
 			passkeyEnabled: boolean;
 		};
 	}>();
@@ -26,8 +33,8 @@
 		if (result === 'success') toast.success('Provider linked.');
 		else if (result === 'already_linked') toast.error('That provider is already linked.');
 		else if (result === 'invalid_state') toast.error('Link attempt failed (state mismatch).');
-		else if (result === 'exchange_failed') toast.error('Could not complete sign-in with GitHub.');
-		else if (result === 'upstream_failure') toast.error('GitHub is unreachable right now.');
+		else if (result === 'exchange_failed') toast.error('Could not complete sign-in.');
+		else if (result === 'upstream_failure') toast.error('The provider is unreachable right now.');
 		else toast.error(`Link failed (${result}).`);
 		// Strip the query so a reload doesn't replay the toast.
 		const next = new URL(page.url);
@@ -38,13 +45,16 @@
 	const linkedProviders = $derived(
 		new Set(data.oauthAccounts.map((a: OAuthAccountSummary) => a.provider)),
 	);
-	const githubLinked = $derived(linkedProviders.has('github'));
+
+	// Enabled providers the user hasn't bound yet — the "Link …" buttons.
+	const linkableProviders = $derived(
+		data.providers.filter((p: ProviderInfo) => p.enabled && !linkedProviders.has(p.id)),
+	);
 
 	function providerLabel(provider: string): string {
-		// Friendly name for known providers; falls back to raw string for
-		// anything added later that doesn't have UI affordance yet.
-		if (provider === 'github') return 'GitHub';
-		return provider;
+		// Friendly name from the registry; falls back to the raw id for a
+		// provider that was bound and later disabled/removed from config.
+		return data.providers.find((p: ProviderInfo) => p.id === provider)?.label ?? provider;
 	}
 
 	let addBusy = $state(false);
@@ -108,11 +118,10 @@
 		}
 	}
 
-	// Plain navigation to the link-start endpoint. POST-via-form would
-	// trip the CSP's `form-action 'self'` since the endpoint ultimately
-	// redirects to github.com; top-level navigations aren't policed
-	// the same way. Same shape as the existing /login GitHub link.
-	const linkGithubHref = '/api/auth/oauth/github/link/start';
+	// The link-start endpoints are plain GET navigations (anchor hrefs):
+	// POST-via-form would trip the CSP's `form-action 'self'` since the
+	// endpoint ultimately redirects to the external IdP; top-level
+	// navigations aren't policed the same way.
 
 	async function addPasskey() {
 		if (addBusy) return;
@@ -252,10 +261,13 @@
 							<li
 								class="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5 text-sm"
 							>
-								<div class="min-w-0 flex-1">
-									<div class="font-medium">{providerLabel(a.provider)}</div>
-									<div class="text-xs text-fg-muted">
-										{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
+								<div class="flex min-w-0 flex-1 items-center gap-2.5">
+									<ProviderIcon provider={a.provider} size={18} />
+									<div class="min-w-0">
+										<div class="font-medium">{providerLabel(a.provider)}</div>
+										<div class="text-xs text-fg-muted">
+											{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
+										</div>
 									</div>
 								</div>
 								{#if canUnlinkOAuth()}
@@ -274,25 +286,29 @@
 					</ul>
 				{/if}
 
-				{#if data.githubEnabled && !githubLinked}
-					<div class="mt-4 border-t border-border pt-3">
-						<a
-							href={linkGithubHref}
-							class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken"
-						>
-							<Plus size={14} strokeWidth={2.25} />
-							Link GitHub
-						</a>
+				{#if linkableProviders.length > 0}
+					<div class="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+						{#each linkableProviders as provider (provider.id)}
+							<a
+								href="/api/auth/oauth/{provider.id}/link/start"
+								class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken"
+							>
+								<Plus size={14} strokeWidth={2.25} />
+								Link {provider.label}
+							</a>
+						{/each}
 					</div>
 				{/if}
 
 				<dl class="mt-4 flex flex-col gap-1 border-t border-border pt-3 text-xs text-fg-muted">
-					<div class="flex justify-between">
-						<dt>GitHub OAuth login</dt>
-						<dd class={data.githubEnabled ? 'text-fg' : 'text-fg-muted italic'}>
-							{data.githubEnabled ? 'Enabled' : 'Disabled'}
-						</dd>
-					</div>
+					{#each data.providers as provider (provider.id)}
+						<div class="flex justify-between">
+							<dt>{provider.label} OAuth login</dt>
+							<dd class={provider.enabled ? 'text-fg' : 'text-fg-muted italic'}>
+								{provider.enabled ? 'Enabled' : 'Disabled'}
+							</dd>
+						</div>
+					{/each}
 					<div class="flex justify-between">
 						<dt>Passkey login</dt>
 						<dd class={data.passkeyEnabled ? 'text-fg' : 'text-fg-muted italic'}>
@@ -310,7 +326,7 @@
 
 				{#if data.passkeys.length === 0}
 					<p class="mt-4 py-6 text-center text-sm text-fg-muted">
-						No passkeys yet. Add one to sign in without GitHub.
+						No passkeys yet. Add one to sign in without an OAuth provider.
 					</p>
 				{:else}
 					<ul class="mt-3 flex flex-col gap-2">

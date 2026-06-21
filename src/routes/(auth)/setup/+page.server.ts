@@ -1,12 +1,13 @@
 import { redirect } from '@sveltejs/kit';
 import { setupGate } from '$lib/server/auth/setup';
-import { githubLoginEnabled, passkeyLoginEnabled } from '$lib/server/env';
+import { passkeyLoginEnabled } from '$lib/server/env';
+import { listEnabledProviders } from '$lib/server/auth/oauth/registry';
 import type { PageServerLoad } from './$types';
 
 const ERROR_MESSAGES: Record<string, string> = {
 	invalid_oauth_state: 'Setup attempt failed (state mismatch). Please try again.',
-	oauth_exchange_failed: 'Could not complete sign-in with GitHub. Please try again.',
-	upstream_failure: 'GitHub is unreachable right now. Please try again in a moment.',
+	oauth_exchange_failed: 'Could not complete sign-in. Please try again.',
+	upstream_failure: 'The sign-in provider is unreachable right now. Please try again in a moment.',
 	setup_token_required: 'A setup token is required to continue.',
 };
 
@@ -39,6 +40,9 @@ export const load: PageServerLoad = ({ url }) => {
 		gated: verdict === 'needs-token',
 		token,
 		errorMessage,
-		methods: { github: githubLoginEnabled(), passkey: passkeyLoginEnabled() },
+		methods: {
+			providers: listEnabledProviders().map((p) => ({ id: p.id, label: p.label() })),
+			passkey: passkeyLoginEnabled(),
+		},
 	};
 };

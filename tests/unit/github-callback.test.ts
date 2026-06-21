@@ -1,27 +1,30 @@
 /**
- * Route-handler tests for /api/auth/github/callback — the single
- * landing point for every GitHub OAuth round-trip. Three flows fan
- * out from one entry point based on which cookies are present
- * (setup carry, link state, or just login state), each with several
- * refusal branches. A regression here breaks login, the bootstrap
- * path, AND the link-new flow simultaneously — high blast radius,
- * worth direct coverage.
+ * Route-handler tests for /api/auth/github/callback — the legacy GitHub
+ * OAuth landing point, which now delegates to the shared
+ * `handleOAuthCallback`. Three flows fan out from one entry point based on
+ * which cookies are present (setup carry, link state, or just login state),
+ * each with several refusal branches. A regression here breaks login, the
+ * bootstrap path, AND the link-new flow simultaneously — high blast radius,
+ * worth direct coverage. Because the github route shares the dispatcher with
+ * every other provider, these also cover the generic callback logic.
  *
- * Pattern: mock `$lib/server/db/client` to hand back an in-memory
- * test DB, mock `fetchGithubProfile` so the OAuth round-trip is
- * deterministic, construct a minimal fake event, call the handler,
- * and assert on the thrown redirect / DB side effects.
+ * Pattern: mock `$lib/server/db/client` to hand back an in-memory test DB,
+ * mock the provider registry so `getProvider('github')` returns a stub whose
+ * `fetchProfile` is deterministic, construct a minimal fake event, call the
+ * handler, and assert on the thrown redirect / DB side effects.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRedirect, type Cookies, type Redirect } from '@sveltejs/kit';
+import { OAuth2RequestError } from 'arctic';
 import { eq } from 'drizzle-orm';
+import type { OAuthProfile } from '$lib/server/auth/oauth/types';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedOAuthAccount, seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
-	profile: { id: 0, login: '', name: null as string | null, email: null as string | null },
+	profile: { externalId: '', username: '', name: null, email: null } as OAuthProfile,
 	profileError: null as Error | null,
 }));
 
@@ -30,28 +33,36 @@ vi.mock('$lib/server/db/client', () => ({
 	closeDb: () => {},
 }));
 
-vi.mock('$lib/server/auth/github', async () => {
-	const actual =
-		await vi.importActual<typeof import('$lib/server/auth/github')>('$lib/server/auth/github');
-	return {
-		...actual,
-		fetchGithubProfile: vi.fn(async () => {
+// Stub the registry so the route's getProvider('github') hands back a fake
+// github provider whose fetchProfile is deterministic — keeps the OAuth
+// round-trip out of the test without touching the dispatcher logic.
+vi.mock('$lib/server/auth/oauth/registry', () => ({
+	getProvider: (id: string) => ({
+		id,
+		label: () => id,
+		enabled: () => true,
+		callbackPath: '/api/auth/github/callback',
+		createAuthorizationURL: async () => ({
+			url: new URL('https://example.com/authorize'),
+			state: 's',
+			codeVerifier: null,
+		}),
+		fetchProfile: async () => {
 			if (mocks.profileError) throw mocks.profileError;
 			return mocks.profile;
-		}),
-	};
-});
+		},
+	}),
+}));
 
 vi.mock('$lib/server/env', () => ({
 	authSecret: () => 'test-secret-do-not-use-in-prod',
-	// Other env getters aren't called by the callback path — github.ts
-	// only reads them inside getGithubClient(), which we never invoke
-	// because fetchGithubProfile is mocked.
+	// Other env getters aren't called by the callback path — the provider's
+	// client construction is bypassed because the registry is mocked.
 }));
 
 import { GET } from '../../src/routes/api/auth/github/callback/+server';
-import { LINK_STATE_COOKIE, OAuth2RequestError, STATE_COOKIE } from '$lib/server/auth/github';
-import { SETUP_GITHUB_CARRY_COOKIE } from '$lib/server/auth/setup';
+import { LINK_STATE_COOKIE, STATE_COOKIE } from '$lib/server/auth/oauth/cookies';
+import { SETUP_OAUTH_CARRY_COOKIE } from '$lib/server/auth/setup';
 import { sign } from '$lib/server/auth/signed-cookies';
 import { oauthAccounts, users } from '$lib/server/db/schema';
 
@@ -90,9 +101,9 @@ function mkEvent(over: Partial<Event> = {}): Event {
 }
 
 /**
- * SvelteKit handlers can be sync or async; running the call inside
- * an async IIFE turns sync throws into rejected promises so a single
- * helper covers both shapes.
+ * SvelteKit handlers can be sync or async; running the call inside an async
+ * IIFE turns sync throws into rejected promises so a single helper covers
+ * both shapes.
  */
 async function expectRedirect(fn: () => unknown): Promise<Redirect> {
 	try {
@@ -106,7 +117,7 @@ async function expectRedirect(fn: () => unknown): Promise<Redirect> {
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
-	mocks.profile = { id: 1234, login: 'octocat', name: null, email: null };
+	mocks.profile = { externalId: '1234', username: 'octocat', name: null, email: null };
 	mocks.profileError = null;
 });
 
@@ -122,14 +133,14 @@ describe('GitHub callback — setup branch', () => {
 		const carry = over.carry ?? sign({ displayName: 'Operator', email: 'op@x' }, 600_000);
 		const { store, cookies } = fakeCookies({
 			[STATE_COOKIE]: state,
-			[SETUP_GITHUB_CARRY_COOKIE]: carry,
+			[SETUP_OAUTH_CARRY_COOKIE]: carry,
 		});
 		const url = fakeUrl({ code: over.code ?? 'authcode', state });
 		return { event: mkEvent({ url, cookies }), store };
 	}
 
 	it('creates user + binding + session and redirects to / on success', async () => {
-		mocks.profile = { id: 999, login: 'octocat', name: 'Octo', email: 'profile@x' };
+		mocks.profile = { externalId: '999', username: 'octocat', name: 'Octo', email: 'profile@x' };
 		const { event, store } = setupEvent();
 
 		const r = await expectRedirect(() => GET(event as never));
@@ -137,9 +148,9 @@ describe('GitHub callback — setup branch', () => {
 
 		const userRows = mocks.testDb.select().from(users).all();
 		expect(userRows).toHaveLength(1);
-		// Operator-typed display name wins over GitHub's profile.name.
+		// Operator-typed display name wins over the profile's name.
 		expect(userRows[0].displayName).toBe('Operator');
-		// Operator-typed email wins over GitHub's profile.email.
+		// Operator-typed email wins over the profile's email.
 		expect(userRows[0].email).toBe('op@x');
 
 		const accountRows = mocks.testDb.select().from(oauthAccounts).all();
@@ -152,7 +163,7 @@ describe('GitHub callback — setup branch', () => {
 	});
 
 	it('falls back to profile.email when the typed email is null', async () => {
-		mocks.profile = { id: 1, login: 'a', name: null, email: 'github@x' };
+		mocks.profile = { externalId: '1', username: 'a', name: null, email: 'github@x' };
 		const { event } = setupEvent({
 			carry: sign({ displayName: 'Op', email: null }, 600_000),
 		});
@@ -170,7 +181,7 @@ describe('GitHub callback — setup branch', () => {
 
 		await expectRedirect(() => GET(event as never));
 
-		expect(store.has(SETUP_GITHUB_CARRY_COOKIE)).toBe(false);
+		expect(store.has(SETUP_OAUTH_CARRY_COOKIE)).toBe(false);
 		expect(store.has(STATE_COOKIE)).toBe(false);
 	});
 
@@ -186,14 +197,14 @@ describe('GitHub callback — setup branch', () => {
 		const { store, cookies } = fakeCookies({
 			[STATE_COOKIE]: 'a',
 			// no carry — but a stale tab race could land here
-			[SETUP_GITHUB_CARRY_COOKIE]: 'malformed.signature',
+			[SETUP_OAUTH_CARRY_COOKIE]: 'malformed.signature',
 		});
 		const event = mkEvent({ url: fakeUrl({ code: 'c', state: 'a' }), cookies });
 
 		const r = await expectRedirect(() => GET(event as never));
 		expect(r.location).toBe('/setup?error=invalid_oauth_state');
 		// Belt-and-suspenders: cookies cleared.
-		expect(store.has(SETUP_GITHUB_CARRY_COOKIE)).toBe(false);
+		expect(store.has(SETUP_OAUTH_CARRY_COOKIE)).toBe(false);
 	});
 
 	it('refuses with invalid_oauth_state when carry is expired', async () => {
@@ -206,10 +217,10 @@ describe('GitHub callback — setup branch', () => {
 	});
 
 	it('redirects to /login when a parallel tab completed setup mid-flow', async () => {
-		// Someone else seeded a user while this OAuth round-trip was
-		// in flight — the gate is closed. SETUP_TOKEN re-validation is
-		// intentionally NOT re-run here (the carry already proves it);
-		// only the user-count check needs to fire.
+		// Someone else seeded a user while this OAuth round-trip was in
+		// flight — the gate is closed. SETUP_TOKEN re-validation is
+		// intentionally NOT re-run here (the carry already proves it); only
+		// the user-count check needs to fire.
 		seedUser();
 		const { event } = setupEvent();
 
@@ -217,13 +228,13 @@ describe('GitHub callback — setup branch', () => {
 		expect(r.location).toBe('/login');
 	});
 
-	it('does NOT re-check SETUP_TOKEN on the callback (gh redirect lacks it)', async () => {
+	it('does NOT re-check SETUP_TOKEN on the callback (idp redirect lacks it)', async () => {
 		// Regression guard: a previous version called setupGate(url) here,
 		// which spuriously failed when SETUP_TOKEN was configured because
-		// GitHub's redirect URI doesn't carry the operator's token. The
+		// the IdP's redirect URI doesn't carry the operator's token. The
 		// signed carry's existence is the proof we want.
 		const { event } = setupEvent();
-		// Token isn't in the URL — that's exactly what GitHub redirects to.
+		// Token isn't in the URL — that's exactly what the IdP redirects to.
 		// Success path should still complete.
 		await expectRedirect(() => GET(event as never));
 		expect(mocks.testDb.select().from(users).all()).toHaveLength(1);
@@ -270,7 +281,7 @@ describe('GitHub callback — link branch', () => {
 
 	it('adds the binding and redirects to ?link=success', async () => {
 		const u = seedUser();
-		mocks.profile = { id: 555, login: 'newhandle', name: null, email: 'np@x' };
+		mocks.profile = { externalId: '555', username: 'newhandle', name: null, email: 'np@x' };
 		const { event } = linkEvent({ userId: u.id });
 
 		const r = await expectRedirect(() => GET(event as never));
@@ -288,8 +299,8 @@ describe('GitHub callback — link branch', () => {
 	});
 
 	it('redirects to /login when the session is gone mid-flow', async () => {
-		// linkState present but locals.user is null — operator signed
-		// out in a different tab between start and callback.
+		// linkState present but locals.user is null — operator signed out in
+		// a different tab between start and callback.
 		const { store, cookies } = fakeCookies({ [LINK_STATE_COOKIE]: 's' });
 		const event = mkEvent({
 			url: fakeUrl({ code: 'c', state: 's' }),
@@ -315,7 +326,7 @@ describe('GitHub callback — link branch', () => {
 	it('refuses with ?link=already_linked when the binding exists', async () => {
 		const u = seedUser();
 		seedOAuthAccount(u.id, { provider: 'github', externalId: '777' });
-		mocks.profile = { id: 777, login: 'same', name: null, email: null };
+		mocks.profile = { externalId: '777', username: 'same', name: null, email: null };
 		const { event } = linkEvent({ userId: u.id });
 
 		const r = await expectRedirect(() => GET(event as never));
@@ -358,7 +369,7 @@ describe('GitHub callback — login branch', () => {
 	it('creates a session and redirects to / when binding exists and user is active', async () => {
 		const u = seedUser();
 		seedOAuthAccount(u.id, { provider: 'github', externalId: '42', externalUsername: 'old' });
-		mocks.profile = { id: 42, login: 'newname', name: null, email: 'fresh@x' };
+		mocks.profile = { externalId: '42', username: 'newname', name: null, email: 'fresh@x' };
 
 		const event = loginEvent();
 		const r = await expectRedirect(() => GET(event as never));
@@ -375,7 +386,7 @@ describe('GitHub callback — login branch', () => {
 	});
 
 	it('refuses with setup_required when no users exist at all', async () => {
-		mocks.profile = { id: 1, login: 'a', name: null, email: null };
+		mocks.profile = { externalId: '1', username: 'a', name: null, email: null };
 		const event = loginEvent();
 
 		const r = await expectRedirect(() => GET(event as never));
@@ -385,7 +396,7 @@ describe('GitHub callback — login branch', () => {
 	it('refuses with provider_not_bound when user exists but no binding matches', async () => {
 		const u = seedUser();
 		seedOAuthAccount(u.id, { provider: 'github', externalId: '111' });
-		mocks.profile = { id: 999, login: 'stranger', name: null, email: null };
+		mocks.profile = { externalId: '999', username: 'stranger', name: null, email: null };
 
 		const event = loginEvent();
 		const r = await expectRedirect(() => GET(event as never));
@@ -396,7 +407,7 @@ describe('GitHub callback — login branch', () => {
 		const u = seedUser();
 		seedOAuthAccount(u.id, { provider: 'github', externalId: '42' });
 		mocks.testDb.update(users).set({ disabledAt: 1 }).where(eq(users.id, u.id)).run();
-		mocks.profile = { id: 42, login: 'a', name: null, email: null };
+		mocks.profile = { externalId: '42', username: 'a', name: null, email: null };
 
 		const event = loginEvent();
 		const r = await expectRedirect(() => GET(event as never));
@@ -416,13 +427,13 @@ describe('GitHub callback — login branch', () => {
 
 describe('GitHub callback — branch detection precedence', () => {
 	it('treats setup-carry as winning over link-state when both are set', async () => {
-		// Setup-carry presence means we're mid-setup; if a link-state
-		// happens to also be lingering from an aborted earlier flow, it
-		// shouldn't divert. (The two are mutually exclusive in normal
-		// use; this nails down the precedence.)
+		// Setup-carry presence means we're mid-setup; if a link-state happens
+		// to also be lingering from an aborted earlier flow, it shouldn't
+		// divert. (The two are mutually exclusive in normal use; this nails
+		// down the precedence.)
 		const carry = sign({ displayName: 'Op', email: null }, 600_000);
 		const { cookies } = fakeCookies({
-			[SETUP_GITHUB_CARRY_COOKIE]: carry,
+			[SETUP_OAUTH_CARRY_COOKIE]: carry,
 			[LINK_STATE_COOKIE]: 'leftover',
 			[STATE_COOKIE]: 'setup-state',
 		});
@@ -430,7 +441,7 @@ describe('GitHub callback — branch detection precedence', () => {
 			url: fakeUrl({ code: 'c', state: 'setup-state' }),
 			cookies,
 		});
-		mocks.profile = { id: 1, login: 'a', name: null, email: null };
+		mocks.profile = { externalId: '1', username: 'a', name: null, email: null };
 
 		const r = await expectRedirect(() => GET(event as never));
 		// Setup branch redirects to / after creating the user.

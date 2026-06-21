@@ -41,7 +41,11 @@ const fetchMock = vi.fn();
 // affordances are visible because the user has another method to fall
 // back on. Tests that exercise the last-method guards override this.
 const baseData = {
-	githubEnabled: true,
+	providers: [{ id: 'github', label: 'GitHub', enabled: true }] as Array<{
+		id: string;
+		label: string;
+		enabled: boolean;
+	}>,
 	passkeyEnabled: true,
 	oauthAccounts: [
 		{
@@ -320,7 +324,7 @@ describe('Security settings page — Link GitHub', () => {
 			props: {
 				data: {
 					...baseData,
-					githubEnabled: false,
+					providers: [{ id: 'github', label: 'GitHub', enabled: false }],
 					oauthAccounts: [],
 					passkeys: [mkPasskey({ id: 'p' })],
 				},

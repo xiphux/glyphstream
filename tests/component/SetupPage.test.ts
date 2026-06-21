@@ -28,7 +28,10 @@ const baseData = {
 	gated: false,
 	token: '',
 	errorMessage: null as string | null,
-	methods: { github: true, passkey: true },
+	methods: {
+		providers: [{ id: 'github', label: 'GitHub' }] as Array<{ id: string; label: string }>,
+		passkey: true,
+	},
 };
 
 describe('SetupPage — happy path', () => {
@@ -40,17 +43,43 @@ describe('SetupPage — happy path', () => {
 		expect(screen.getByRole('button', { name: /Set up a passkey/ })).toBeInTheDocument();
 	});
 
-	it('hides the GitHub button when github is disabled', () => {
+	it('renders a button per enabled provider', () => {
 		render(SetupPage, {
-			props: { data: { ...baseData, methods: { github: false, passkey: true } } },
+			props: {
+				data: {
+					...baseData,
+					methods: {
+						providers: [
+							{ id: 'github', label: 'GitHub' },
+							{ id: 'google', label: 'Google' },
+							{ id: 'oidc', label: 'Company SSO' },
+						],
+						passkey: true,
+					},
+				},
+			},
 		});
-		expect(screen.queryByRole('button', { name: /Continue with GitHub/ })).toBeNull();
+		expect(screen.getByRole('button', { name: /Continue with GitHub/ })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: /Continue with Google/ })).toBeInTheDocument();
+		expect(screen.getByRole('button', { name: /Continue with Company SSO/ })).toBeInTheDocument();
+	});
+
+	it('hides all provider buttons when no providers are enabled', () => {
+		render(SetupPage, {
+			props: { data: { ...baseData, methods: { providers: [], passkey: true } } },
+		});
+		expect(screen.queryByRole('button', { name: /Continue with/ })).toBeNull();
 		expect(screen.getByRole('button', { name: /Set up a passkey/ })).toBeInTheDocument();
 	});
 
 	it('hides the passkey button when passkey is disabled', () => {
 		render(SetupPage, {
-			props: { data: { ...baseData, methods: { github: true, passkey: false } } },
+			props: {
+				data: {
+					...baseData,
+					methods: { providers: [{ id: 'github', label: 'GitHub' }], passkey: false },
+				},
+			},
 		});
 		expect(screen.queryByRole('button', { name: /Set up a passkey/ })).toBeNull();
 		expect(screen.getByRole('button', { name: /Continue with GitHub/ })).toBeInTheDocument();

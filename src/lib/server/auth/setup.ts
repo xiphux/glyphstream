@@ -26,7 +26,7 @@ import { setupToken } from '../env';
  * against a fixed list (HTTP method handlers + a few config slots) —
  * route files can't share named constants.
  */
-export const SETUP_GITHUB_CARRY_COOKIE = 'glyphstream_setup_github_carry';
+export const SETUP_OAUTH_CARRY_COOKIE = 'glyphstream_setup_oauth_carry';
 export const SETUP_PASSKEY_CARRY_COOKIE = 'glyphstream_setup_passkey_carry';
 
 export type SetupGateVerdict = 'allowed' | 'needs-token' | 'closed';

@@ -18,8 +18,10 @@ import { addOAuthAccount } from '../db/queries/oauth-accounts';
 import { insertCredential, type InsertPasskeyInput } from '../db/queries/passkey';
 
 /** Signed carry cookie holding the invite token + typed name/email across
- *  GitHub's OAuth round-trip (which lands on the shared callback). */
-export const JOIN_GITHUB_CARRY_COOKIE = 'glyphstream_join_github_carry';
+ *  the OAuth round-trip (which lands on the shared callback). Provider-
+ *  neutral — the callback route, not this cookie, determines which
+ *  provider's profile to fetch. */
+export const JOIN_OAUTH_CARRY_COOKIE = 'glyphstream_join_oauth_carry';
 
 /** Signed carry cookie holding the prospective userId + invite token +
  *  name/email across the passkey registration ceremony. */

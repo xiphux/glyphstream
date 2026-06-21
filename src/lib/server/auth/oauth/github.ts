@@ -1,34 +1,28 @@
-import { GitHub, OAuth2RequestError } from 'arctic';
-import { githubClientId, githubClientSecret, publicBaseUrl } from '../env';
+/**
+ * GitHub OAuth provider. Folds the former `src/lib/server/auth/github.ts`
+ * module into the registry shape. GitHub does NOT use PKCE, so
+ * `codeVerifier` is always null. Its callback stays at the legacy
+ * `/api/auth/github/callback` path so existing operators' registered
+ * OAuth-app callback URL keeps working with no reconfiguration.
+ */
+import { GitHub, generateState } from 'arctic';
+import {
+	githubClientId,
+	githubClientSecret,
+	githubLoginEnabled,
+	hasGithubCredentials,
+	publicBaseUrl,
+} from '../../env';
+import type { AuthorizationRequest, OAuthProfile, OAuthProvider } from './types';
 
 export const GITHUB_OAUTH_CALLBACK_PATH = '/api/auth/github/callback';
 const GITHUB_USER_API = 'https://api.github.com/user';
 const GITHUB_USER_EMAILS_API = 'https://api.github.com/user/emails';
-
-/**
- * Name of the cookie carrying the OAuth `state` value between the login
- * redirect and the callback. The login route writes it; the callback
- * reads it back to defend against CSRF — the two MUST agree, so the name
- * lives here and is imported by both rather than being two string
- * literals that a typo could silently desync.
- */
-export const STATE_COOKIE = 'glyphstream_oauth_state';
-
-/**
- * Distinct state cookie for the *link* flow (Settings → Security →
- * "Link GitHub"). Separating it from the login STATE_COOKIE means a
- * tab in the middle of a login flow can't be confused for a link
- * flow if the callback URLs are ever crossed.
- */
-export const LINK_STATE_COOKIE = 'glyphstream_oauth_link_state';
-
-/** How long the user has to complete the GitHub round-trip before the
- *  OAuth state cookie expires. */
-export const STATE_TTL_SECONDS = 600;
+const GITHUB_SCOPES = ['read:user', 'user:email'];
 
 let cached: GitHub | null = null;
 
-export function getGithubClient(): GitHub {
+function getClient(): GitHub {
 	if (!cached) {
 		const callbackUrl = `${publicBaseUrl()}${GITHUB_OAUTH_CALLBACK_PATH}`;
 		cached = new GitHub(githubClientId(), githubClientSecret(), callbackUrl);
@@ -36,20 +30,8 @@ export function getGithubClient(): GitHub {
 	return cached;
 }
 
-export interface GithubUserProfile {
-	id: number;
-	login: string;
-	name: string | null;
-	email: string | null;
-}
-
-/**
- * Exchange an authorization code for the GitHub user's profile. Throws on
- * any upstream failure (invalid code, network error, malformed user payload).
- */
-export async function fetchGithubProfile(code: string): Promise<GithubUserProfile> {
-	const client = getGithubClient();
-	const tokens = await client.validateAuthorizationCode(code);
+async function fetchProfile(code: string): Promise<OAuthProfile> {
+	const tokens = await getClient().validateAuthorizationCode(code);
 	const accessToken = tokens.accessToken();
 
 	const userRes = await fetch(GITHUB_USER_API, {
@@ -99,11 +81,22 @@ export async function fetchGithubProfile(code: string): Promise<GithubUserProfil
 	}
 
 	return {
-		id: user.id,
-		login: user.login,
+		externalId: String(user.id),
+		username: user.login,
 		name: typeof user.name === 'string' ? user.name : null,
 		email,
 	};
 }
 
-export { OAuth2RequestError };
+export const githubProvider: OAuthProvider = {
+	id: 'github',
+	label: () => 'GitHub',
+	enabled: () => githubLoginEnabled() && hasGithubCredentials(),
+	callbackPath: GITHUB_OAUTH_CALLBACK_PATH,
+	createAuthorizationURL(): Promise<AuthorizationRequest> {
+		const state = generateState();
+		const url = getClient().createAuthorizationURL(state, GITHUB_SCOPES);
+		return Promise.resolve({ url, state, codeVerifier: null });
+	},
+	fetchProfile,
+};

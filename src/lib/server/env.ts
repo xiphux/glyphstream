@@ -22,6 +22,16 @@ function requireString(name: string): string {
 	return v;
 }
 
+/** True when an env var is set to a non-empty value. Used by the OAuth
+ *  registry to decide whether a provider is *configured* (vs. merely
+ *  flagged on) — a provider only surfaces a button when both its
+ *  `*_LOGIN_ENABLED` flag is on AND its credentials are present, so a
+ *  half-configured provider never shows a button that would 500 on click. */
+function hasString(name: string): boolean {
+	const v = env[name];
+	return !!v && v.length > 0;
+}
+
 // --- storage / config paths ----------------------------------------------
 
 export function dbPath(): string {
@@ -65,6 +75,58 @@ export function githubClientSecret(): string {
 	return requireString('GITHUB_OAUTH_CLIENT_SECRET');
 }
 
+export function hasGithubCredentials(): boolean {
+	return hasString('GITHUB_OAUTH_CLIENT_ID') && hasString('GITHUB_OAUTH_CLIENT_SECRET');
+}
+
+export function googleClientId(): string {
+	return requireString('GOOGLE_OAUTH_CLIENT_ID');
+}
+
+export function googleClientSecret(): string {
+	return requireString('GOOGLE_OAUTH_CLIENT_SECRET');
+}
+
+export function hasGoogleCredentials(): boolean {
+	return hasString('GOOGLE_OAUTH_CLIENT_ID') && hasString('GOOGLE_OAUTH_CLIENT_SECRET');
+}
+
+/** Issuer base URL for the generic OIDC provider, e.g.
+ *  https://auth.example.com — discovery happens at
+ *  `<issuer>/.well-known/openid-configuration`. Trailing slash trimmed so
+ *  the well-known path is appended cleanly. */
+export function oidcIssuer(): string {
+	return requireString('OIDC_ISSUER').replace(/\/+$/, '');
+}
+
+export function oidcClientId(): string {
+	return requireString('OIDC_CLIENT_ID');
+}
+
+export function oidcClientSecret(): string {
+	return requireString('OIDC_CLIENT_SECRET');
+}
+
+export function hasOidcCredentials(): boolean {
+	return hasString('OIDC_ISSUER') && hasString('OIDC_CLIENT_ID') && hasString('OIDC_CLIENT_SECRET');
+}
+
+/** Button label for the generic OIDC provider. Defaults to "SSO" since the
+ *  issuer's brand name isn't discoverable. Operators set OIDC_DISPLAY_NAME
+ *  to match their IdP ("Authentik", "Keycloak", "Company SSO"). */
+export function oidcDisplayName(): string {
+	return readString('OIDC_DISPLAY_NAME', 'SSO').trim() || 'SSO';
+}
+
+/** Scopes requested from the OIDC issuer. `openid` is mandatory for an ID
+ *  token; `profile`+`email` populate the display name / email snapshot.
+ *  Space-separated, overridable for issuers with non-standard scope names. */
+export function oidcScopes(): string[] {
+	return readString('OIDC_SCOPES', 'openid profile email')
+		.split(/\s+/)
+		.filter((s) => s.length > 0);
+}
+
 export function publicBaseUrl(): string {
 	// EXTERNAL_BASE_URL is the URL by which this server is reached from
 	// outside (e.g. https://chat.example.com). Used to construct the
@@ -92,6 +154,26 @@ function readBool(name: string, fallback: boolean): boolean {
  */
 export function githubLoginEnabled(): boolean {
 	return readBool('GITHUB_LOGIN_ENABLED', true);
+}
+
+/**
+ * Whether the Google OAuth button is shown on the auth pages. Default
+ * off — unlike GitHub (on by default for continuity), a fresh install
+ * shouldn't surface a Google button until the operator opts in. The
+ * registry additionally requires credentials to be present before the
+ * button renders (see `hasGoogleCredentials`).
+ */
+export function googleLoginEnabled(): boolean {
+	return readBool('GOOGLE_LOGIN_ENABLED', false);
+}
+
+/**
+ * Whether the generic OIDC button is shown. Default off; requires
+ * OIDC_ISSUER + client credentials to actually surface (see
+ * `hasOidcCredentials`).
+ */
+export function oidcLoginEnabled(): boolean {
+	return readBool('OIDC_LOGIN_ENABLED', false);
 }
 
 /**
@@ -146,11 +228,16 @@ export function mcpSecretKey(): string {
  * registered credential.
  */
 export function validateAuthMethodsEnabled(): void {
-	const github = githubLoginEnabled();
+	// Flag-based gate: any enabled OAuth provider OR passkeys satisfies it.
+	// (The per-provider credentials check lives in the registry's
+	// `enabled()` — this boot gate only guards the "nothing turned on at
+	// all" misconfig, so an OIDC-only or Google-only deploy boots fine.)
+	const anyOAuth = githubLoginEnabled() || googleLoginEnabled() || oidcLoginEnabled();
 	const passkey = passkeyLoginEnabled();
-	if (!github && !passkey) {
+	if (!anyOAuth && !passkey) {
 		throw new Error(
-			'No login methods enabled. Set GITHUB_LOGIN_ENABLED=1 or PASSKEY_LOGIN_ENABLED=1.',
+			'No login methods enabled. Enable at least one: GITHUB_LOGIN_ENABLED, ' +
+				'GOOGLE_LOGIN_ENABLED, OIDC_LOGIN_ENABLED, or PASSKEY_LOGIN_ENABLED.',
 		);
 	}
 	if (
