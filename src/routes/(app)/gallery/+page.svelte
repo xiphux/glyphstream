@@ -129,9 +129,11 @@
 	}
 
 	// Apply the scrollTop change after the destination grid renders (a tick so
-	// it exists and is tall enough to accept the restored offset). `items` only
-	// ever grows, so the gallery is at least as tall on Back as it was on enter
-	// — the saved offset never clamps here.
+	// it exists and is tall enough to accept the restored offset). The gallery
+	// is normally as tall or taller on Back, so the saved offset survives;
+	// deleting stack members from within the drill-in can shrink it, in which
+	// case the browser harmlessly clamps the restore to the new bottom. Either
+	// way no synchronous capture is needed on Back — only on enter (above).
 	let prevOpenKey: string | null = null;
 	$effect(() => {
 		const key = openGroupKey;
