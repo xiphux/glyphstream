@@ -26,6 +26,13 @@ export default defineConfig({
 		// (toBeInTheDocument, toHaveAttribute, ...) so component tests can
 		// use them without per-file imports.
 		setupFiles: ['./tests/component/_setup.ts'],
+		// Point config loading at a path that never exists so unit tests can't
+		// read the developer's real ./config.toml. Without this, tests that
+		// don't fully mock the config layer (e.g. tools-memory, tools-fetch-url)
+		// behave differently on a dev machine (real config present) than in CI
+		// (no config.toml) — the loaders all degrade gracefully on ENOENT, so
+		// "config absent" is the deterministic, isolated baseline.
+		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },
 		// Run each test file in its own process so DB tests with global
 		// connection state don't cross-contaminate. Cheap because the
 		// suite is small.
