@@ -113,11 +113,25 @@
 	// The top-level grid and the drill-in grid share one scroll container, so
 	// `scrollTop` carries over between them unless we manage it: drilling in
 	// would start partway down the stack, and Back would land away from where
-	// the user left the gallery. On enter we stash the gallery's scroll and
-	// reset to the stack's top; on Back we restore the stashed position. The
-	// swap waits a tick so the destination grid has rendered (and is tall
-	// enough to accept the restored offset) before we set scrollTop.
+	// the user left the gallery. On enter we reset to the stack's top; on Back
+	// we restore the gallery scroll we stashed when drilling in.
+	//
+	// The gallery scroll MUST be captured synchronously, before openGroupKey
+	// flips — by the time the effect below runs (post-DOM-swap) the container
+	// already holds the shorter drill-in grid and the browser has clamped
+	// scrollTop down to it, so a capture there records a too-small value. That
+	// clamping is why an earlier effect-only version restored a compressed
+	// position. `openStack()` is the sole entry point, so it owns the capture.
 	let savedGalleryScroll = 0;
+	function openStack(key: string) {
+		if (scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
+		openGroupKey = key;
+	}
+
+	// Apply the scrollTop change after the destination grid renders (a tick so
+	// it exists and is tall enough to accept the restored offset). `items` only
+	// ever grows, so the gallery is at least as tall on Back as it was on enter
+	// — the saved offset never clamps here.
 	let prevOpenKey: string | null = null;
 	$effect(() => {
 		const key = openGroupKey;
@@ -125,8 +139,7 @@
 		const wasOpen = prevOpenKey !== null;
 		prevOpenKey = key;
 		if (!wasOpen && key !== null) {
-			// Entering a stack from the gallery: remember where we were, start at top.
-			if (scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
+			// Entering a stack from the gallery: start at the stack's top.
 			tick().then(() => {
 				if (scrollContainer) scrollContainer.scrollTop = 0;
 			});
@@ -629,7 +642,7 @@
 				>
 					<button
 						type="button"
-						onclick={() => (openGroupKey = g.key)}
+						onclick={() => openStack(g.key)}
 						class="block w-full"
 						aria-label={`Open stack: ${groupLabel(g)} (${g.items.length} items)`}
 					>
