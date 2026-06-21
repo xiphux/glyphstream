@@ -71,6 +71,19 @@
 		onSaveModelSet?: (name: string, selections: CompareSelection[]) => void;
 		/** Delete a saved set by id. When provided, each set chip gets an × button. */
 		onDeleteModelSet?: (id: string) => void;
+		/**
+		 * Display name of a custom-model preset the conversation was created from.
+		 * The in-thread picker intentionally doesn't list presets (persona is fixed
+		 * for the thread), but the conversation's persona still applies regardless
+		 * of the per-turn base model. So when the current `value` still equals the
+		 * preset's resolved base model (`presetModelId`), the collapsed trigger
+		 * shows this name instead of the bare base-model name — otherwise the first
+		 * follow-up looks like the model silently switched. Cleared as soon as the
+		 * user picks a different base. Both must be set to take effect.
+		 */
+		presetLabel?: string | null;
+		/** Resolved base model id (`endpointId::upstreamId`) of the preset above. */
+		presetModelId?: string | null;
 	}
 
 	let {
@@ -89,6 +102,8 @@
 		modelSets = [],
 		onSaveModelSet,
 		onDeleteModelSet,
+		presetLabel = null,
+		presetModelId = null,
 	}: Props = $props();
 
 	// Kinds eligible for a comparison. A comparison must be single-modality
@@ -421,6 +436,10 @@
 		}
 		if (!selected) return 'Choose a model…';
 		if (selected.isCustom) return selected.label;
+		// The conversation's persona preset still applies as long as its base
+		// model is the one selected — show the preset's name so the thread
+		// doesn't appear to have switched off it on the first follow-up.
+		if (presetLabel && presetModelId && value === presetModelId) return presetLabel;
 		return stripOwner(selected.label);
 	});
 

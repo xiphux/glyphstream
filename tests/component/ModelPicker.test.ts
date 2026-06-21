@@ -118,6 +118,50 @@ describe('ModelPicker — trigger', () => {
 	});
 });
 
+describe('ModelPicker — conversation preset label', () => {
+	// The in-thread picker doesn't list presets, but a conversation started
+	// from a preset keeps that persona for the whole thread. So while the
+	// preset's base model is the selected one, the trigger shows the preset's
+	// name instead of the bare base — otherwise the first follow-up reads as a
+	// silent switch off the persona.
+	const base = makeModel({ id: 'bridge::gpt-4o', displayName: 'gpt-4o' });
+
+	it('shows the preset name while its base model is selected', () => {
+		render(ModelPicker, {
+			props: {
+				models: [base],
+				value: 'bridge::gpt-4o',
+				presetLabel: 'My Coder',
+				presetModelId: 'bridge::gpt-4o',
+			},
+		});
+		expect(screen.getByText('My Coder')).toBeInTheDocument();
+		expect(screen.queryByText('gpt-4o')).toBeNull();
+	});
+
+	it('falls back to the base-model name once a different model is picked', () => {
+		const other = makeModel({ id: 'bridge::other', displayName: 'other-model' });
+		render(ModelPicker, {
+			props: {
+				models: [base, other],
+				// User switched away from the preset's base model mid-thread.
+				value: 'bridge::other',
+				presetLabel: 'My Coder',
+				presetModelId: 'bridge::gpt-4o',
+			},
+		});
+		expect(screen.getByText('other-model')).toBeInTheDocument();
+		expect(screen.queryByText('My Coder')).toBeNull();
+	});
+
+	it('shows the base-model name when no preset is supplied', () => {
+		render(ModelPicker, {
+			props: { models: [base], value: 'bridge::gpt-4o' },
+		});
+		expect(screen.getByText('gpt-4o')).toBeInTheDocument();
+	});
+});
+
 describe('ModelPicker — opening + listing', () => {
 	it('opens the popover when the trigger is clicked', async () => {
 		const user = userEvent.setup();

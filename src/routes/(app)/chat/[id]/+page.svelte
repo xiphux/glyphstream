@@ -85,6 +85,22 @@
 	// svelte-ignore state_referenced_locally
 	let disabledFeatures = $state<FeatureCategory[]>([...data.conversation.disabledFeatures]);
 
+	// The custom-model preset this conversation was materialized from (if any).
+	// Its system prompt + params are fixed for the thread server-side, so the
+	// per-turn picker keeps showing the preset's name while its base model is
+	// the one selected — otherwise the first follow-up reads as a silent switch
+	// to the bare base model. Resolved from the layout's customModels list so
+	// the preset's base is stable even after a per-turn switch mutates
+	// conversation.modelId.
+	const activePreset = $derived(
+		data.conversation.customModelId
+			? (data.customModels?.find((cm) => cm.id === data.conversation.customModelId) ?? null)
+			: null,
+	);
+	const activePresetModelId = $derived(
+		activePreset ? `${activePreset.baseEndpointId}::${activePreset.baseModelId}` : null,
+	);
+
 	async function persistDisabledFeatures(next: FeatureCategory[]) {
 		// Optimistic update — the toggle should feel instant. On error we
 		// revert + toast, so the visible state matches what the server has.
@@ -2008,6 +2024,8 @@
 					bind:compareMode
 					bind:splitAttachments
 					modelSets={data.prefs?.modelSets ?? []}
+					presetLabel={activePreset?.name ?? null}
+					presetModelId={activePresetModelId}
 					onSend={() => void send()}
 					onStop={stop}
 					onFeaturesChange={(next) => void persistDisabledFeatures(next)}

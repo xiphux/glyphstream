@@ -55,6 +55,13 @@
 		/** The user's saved multi-model sets, surfaced in the picker's compare
 		 *  controls for one-click re-apply. */
 		modelSets: SavedModelSet[];
+		/** Name of the custom-model preset this conversation was created from
+		 *  (null when started from a plain base model). Lets the per-turn picker
+		 *  keep showing the preset name while its base model is selected, instead
+		 *  of appearing to switch off the persona on the first follow-up. */
+		presetLabel?: string | null;
+		/** Resolved base model id of the preset above, for the value match. */
+		presetModelId?: string | null;
 		onSend: () => void;
 		onStop: () => void;
 		onFeaturesChange: (next: FeatureCategory[]) => void;
@@ -83,6 +90,8 @@
 		compareMode = $bindable(),
 		splitAttachments = $bindable(false),
 		modelSets,
+		presetLabel = null,
+		presetModelId = null,
 		onSend,
 		onStop,
 		onFeaturesChange,
@@ -201,6 +210,8 @@
 				{modelSets}
 				{onSaveModelSet}
 				{onDeleteModelSet}
+				{presetLabel}
+				{presetModelId}
 			/>
 			{#if canStop}
 				<button
