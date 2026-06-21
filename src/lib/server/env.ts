@@ -228,16 +228,22 @@ export function mcpSecretKey(): string {
  * registered credential.
  */
 export function validateAuthMethodsEnabled(): void {
-	// Flag-based gate: any enabled OAuth provider OR passkeys satisfies it.
-	// (The per-provider credentials check lives in the registry's
-	// `enabled()` — this boot gate only guards the "nothing turned on at
-	// all" misconfig, so an OIDC-only or Google-only deploy boots fine.)
-	const anyOAuth = githubLoginEnabled() || googleLoginEnabled() || oidcLoginEnabled();
+	// Gate on *actual availability*, mirroring exactly what the auth pages
+	// render: a provider is usable only when its flag is on AND its
+	// credentials are configured (same predicate as the registry's
+	// `enabled()`). A flag-only gate would let "GitHub on (default) but no
+	// credentials + passkeys off" boot to a login page with no actionable
+	// control. Computed inline rather than via the registry to avoid an
+	// env→registry→provider→env import cycle.
+	const anyOAuth =
+		(githubLoginEnabled() && hasGithubCredentials()) ||
+		(googleLoginEnabled() && hasGoogleCredentials()) ||
+		(oidcLoginEnabled() && hasOidcCredentials());
 	const passkey = passkeyLoginEnabled();
 	if (!anyOAuth && !passkey) {
 		throw new Error(
-			'No login methods enabled. Enable at least one: GITHUB_LOGIN_ENABLED, ' +
-				'GOOGLE_LOGIN_ENABLED, OIDC_LOGIN_ENABLED, or PASSKEY_LOGIN_ENABLED.',
+			'No usable login methods. Enable an OAuth provider WITH its credentials ' +
+				'configured (GitHub / Google / OIDC), or set PASSKEY_LOGIN_ENABLED=1.',
 		);
 	}
 	if (

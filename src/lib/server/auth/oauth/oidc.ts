@@ -52,7 +52,13 @@ function getClient(): OAuth2Client {
 async function getDiscovery(): Promise<Discovery> {
 	if (cachedDiscovery) return cachedDiscovery;
 	const wellKnown = `${oidcIssuer()}/.well-known/openid-configuration`;
-	const res = await fetch(wellKnown, { headers: { Accept: 'application/json' } });
+	// Bound the outbound fetch (house convention) so a black-holed issuer
+	// fails this login attempt in seconds rather than hanging on the OS TCP
+	// timeout. 10s mirrors the endpoint client's metadata-fetch budget.
+	const res = await fetch(wellKnown, {
+		headers: { Accept: 'application/json' },
+		signal: AbortSignal.timeout(10_000),
+	});
 	if (!res.ok) {
 		throw new Error(`OIDC discovery ${wellKnown} returned HTTP ${res.status}`);
 	}

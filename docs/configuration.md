@@ -153,8 +153,18 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
   Generated media is kept indefinitely; the background purger only reaps
   _abandoned uploads_, on a fixed cadence (15-minute sweep, 30-minute
   grace) that isn't configurable.
-- `GITHUB_LOGIN_ENABLED` / `PASSKEY_LOGIN_ENABLED` — toggle the sign-in
-  methods (both default on; at least one must remain enabled).
+- `GITHUB_LOGIN_ENABLED` / `GOOGLE_LOGIN_ENABLED` / `OIDC_LOGIN_ENABLED` /
+  `PASSKEY_LOGIN_ENABLED` — toggle the sign-in methods. GitHub + passkey
+  default on; Google + OIDC default off. At least one method must remain
+  _usable_ — an OAuth provider's button only appears when its flag is on AND
+  its credentials are set, and the server refuses to boot if nothing is
+  usable.
+- OAuth provider credentials — `GITHUB_OAUTH_CLIENT_ID` /
+  `GITHUB_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_CLIENT_ID` /
+  `GOOGLE_OAUTH_CLIENT_SECRET`, and for generic OIDC `OIDC_ISSUER` /
+  `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` (plus optional `OIDC_DISPLAY_NAME`
+  and `OIDC_SCOPES`). See the [authentication guide](authentication.md) for
+  the per-provider setup and exact callback URLs.
 - `MCP_SECRET_KEY` — optional; encrypts per-user MCP credentials at rest.
   Defaults to `AUTH_SECRET`, so per-user MCP needs no extra setup — set it
   only to rotate that encryption independently ([MCP guide](mcp.md#authentication)).

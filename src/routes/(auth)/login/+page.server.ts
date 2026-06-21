@@ -24,7 +24,8 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? 'Login failed.') : null;
 	// Expose which login methods are enabled so the page can render the
 	// right buttons. validateAuthMethodsEnabled() at boot guarantees at
-	// least one is true.
+	// least one usable method here — a provider with credentials, or
+	// passkeys — so the page can never render with zero controls.
 	return {
 		errorMessage,
 		methods: {
