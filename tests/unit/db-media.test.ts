@@ -19,6 +19,7 @@ import {
 	linkMessageMedia,
 	listConversationMediaRefs,
 	listConversationsForMedia,
+	listMediaForConversation,
 	listMediaForUser,
 	listMessageIdsForConversation,
 	stampOrphanedZeroRefRows,
@@ -443,6 +444,101 @@ describe('listMediaForUser conversation assignment (gallery stacking)', () => {
 		const item = listMediaForUser(u.id).items.find((i) => i.id === id)!;
 		expect(item.conversationId).toBe(convA.id);
 		expect(item.conversationTitle).toBe('first');
+	});
+});
+
+describe('listMediaForConversation (drill-in stack contents)', () => {
+	function makeConv(userId: string, title: string | null = null) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image',
+		});
+		if (title !== null) {
+			mocks.testDb.update(conversations).set({ title }).where(eq(conversations.id, conv.id)).run();
+		}
+		return conv;
+	}
+	function makeMsg(conversationId: string) {
+		return appendMessage({
+			conversationId,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'x' }],
+		});
+	}
+
+	it('returns all media assigned to a conversation, newest-first, with title', async () => {
+		const u = seedUser();
+		const conv = makeConv(u.id, 'Logo ideas');
+		const msg = makeMsg(conv.id);
+		const a = makeMedia(u.id);
+		await new Promise((r) => setTimeout(r, 5));
+		const b = makeMedia(u.id);
+		linkMessageMedia(msg.id, a.id);
+		linkMessageMedia(msg.id, b.id);
+
+		const items = listMediaForConversation(conv.id, u.id);
+		expect(items.map((i) => i.id)).toEqual([b.id, a.id]); // newest first
+		expect(items.every((i) => i.conversationId === conv.id)).toBe(true);
+		expect(items[0].conversationTitle).toBe('Logo ideas');
+	});
+
+	it('excludes media whose assigned (earliest) conversation is a different one', async () => {
+		const u = seedUser();
+		const convA = makeConv(u.id);
+		const msgA = makeMsg(convA.id);
+		await new Promise((r) => setTimeout(r, 5));
+		const convB = makeConv(u.id);
+		const msgB = makeMsg(convB.id);
+		const { id } = makeMedia(u.id);
+		// Reused across both; assigned to convA (earliest message).
+		linkMessageMedia(msgA.id, id);
+		linkMessageMedia(msgB.id, id);
+
+		// Belongs to convA's stack only — must not double-count under convB.
+		expect(listMediaForConversation(convA.id, u.id).map((i) => i.id)).toEqual([id]);
+		expect(listMediaForConversation(convB.id, u.id)).toEqual([]);
+	});
+
+	it('respects the kind filter', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const img = makeMedia(u.id, { kind: 'image' });
+		const vid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		linkMessageMedia(msg.id, img.id);
+		linkMessageMedia(msg.id, vid.id);
+
+		expect(listMediaForConversation(conv.id, u.id, { kind: 'video' }).map((i) => i.id)).toEqual([
+			vid.id,
+		]);
+	});
+
+	it('excludes hard-deleted and uploaded media', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const live = makeMedia(u.id);
+		const gone = makeMedia(u.id);
+		const upload = makeMedia(u.id, { origin: 'uploaded' });
+		linkMessageMedia(msg.id, live.id);
+		linkMessageMedia(msg.id, gone.id);
+		linkMessageMedia(msg.id, upload.id);
+		hardDeleteMediaForUser(gone.id, u.id);
+
+		expect(listMediaForConversation(conv.id, u.id).map((i) => i.id)).toEqual([live.id]);
+	});
+
+	it('returns [] for a foreign user', () => {
+		const owner = seedUser();
+		const intruder = seedUser();
+		const conv = makeConv(owner.id);
+		const msg = makeMsg(conv.id);
+		const { id } = makeMedia(owner.id);
+		linkMessageMedia(msg.id, id);
+		expect(listMediaForConversation(conv.id, intruder.id)).toEqual([]);
 	});
 });
 

@@ -378,6 +378,76 @@ export function listMediaForUser(
 	return { items, nextCursor };
 }
 
+/**
+ * Every gallery item *assigned* to a conversation, newest-first — the complete
+ * member set of one gallery stack. The gallery groups by `assignedConversationId`
+ * (the earliest-referencing message's conversation); a conversation's media is
+ * not contiguous in the time-ordered stream, so the client can't be sure it has
+ * loaded all of it from the paginated `listMediaForUser` feed. This is the
+ * authoritative "give me the whole stack" read used when a user drills into a
+ * conversation card.
+ *
+ * Filtered to exactly the same set the top-level bucket would contain:
+ *   - linked to this conversation (the `inArray` prefilter narrows the
+ *     correlated-subquery work to a handful of rows), AND
+ *   - whose *assigned* conversation is this one — so a media reused across
+ *     conversations still belongs to a single stack (its earliest), never two.
+ * Ownership is enforced by `media.user_id = userId` plus the user-scoped
+ * `assignedConversationId` join, so a foreign/unknown id returns `[]`.
+ */
+export function listMediaForConversation(
+	conversationId: string,
+	userId: string,
+	opts: { kind?: 'image' | 'video'; kinds?: readonly MediaKind[] } = {},
+): MediaListItem[] {
+	const db = getDb();
+	const allowedKinds: readonly MediaKind[] = opts.kind
+		? [opts.kind]
+		: (opts.kinds ?? ['image', 'video']);
+
+	// Media linked to any message in this conversation — the candidate set the
+	// per-row `assignedConversationId` subquery then runs over.
+	const linkedToConversation = db
+		.select({ id: messageMedia.mediaId })
+		.from(messageMedia)
+		.innerJoin(messages, eq(messages.id, messageMedia.messageId))
+		.where(eq(messages.conversationId, conversationId));
+
+	const rows = db
+		.select({
+			id: media.id,
+			kind: media.kind,
+			contentType: media.contentType,
+			byteSize: media.byteSize,
+			sourceEndpointId: media.sourceEndpointId,
+			sourceModel: media.sourceModel,
+			promptExcerpt: media.promptExcerpt,
+			promptFull: media.promptFull,
+			createdAt: media.createdAt,
+			conversationId: assignedConversationId,
+		})
+		.from(media)
+		.where(
+			and(
+				eq(media.userId, userId),
+				isNull(media.hardDeletedAt),
+				eq(media.origin, 'generated'),
+				allowedKinds.length === 1
+					? eq(media.kind, allowedKinds[0])
+					: inArray(media.kind, allowedKinds as MediaKind[]),
+				inArray(media.id, linkedToConversation),
+				sql`${assignedConversationId} = ${conversationId}`,
+			),
+		)
+		.orderBy(desc(media.createdAt), desc(media.id))
+		.all();
+
+	return attachConversationTitles(
+		userId,
+		rows.map((r) => ({ ...r, conversationTitle: null })),
+	);
+}
+
 // --- Reverse lookup: which conversations reference this media -------------
 
 export interface MediaConversationRef {

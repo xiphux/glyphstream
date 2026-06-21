@@ -70,13 +70,16 @@
 		if (openGroupKey && !openGroup) openGroupKey = null;
 	});
 
-	// While drilled into the trailing (incomplete) group, keep paginating until
-	// it's fully assembled — otherwise a stack split across the load boundary
-	// would show truncated. Re-runs as each loadMore settles. The drill view has
-	// no scroll sentinel of its own, so this is the only driver there.
+	// While drilled into the trailing (incomplete) prompt stack, keep paginating
+	// until it's fully assembled — otherwise a run split across the load boundary
+	// would show truncated. Re-runs as each loadMore settles; the drill view has
+	// no scroll sentinel of its own, so this is the only driver there. Limited to
+	// prompt/orphan stacks (`conversationId === null`); conversation stacks get
+	// their complete member set from the eager-load $effect below instead.
 	$effect(() => {
 		if (
 			openGroup &&
+			openGroup.conversationId === null &&
 			openGroup.key === trailingGroupKey &&
 			nextCursor &&
 			!loadingMore &&
@@ -177,6 +180,51 @@
 		loadingMore = false;
 		loadError = null;
 		error = null;
+		// The fresh page may be a different modality; any eager-loaded stack
+		// media is gone with the reset, so allow drill-ins to re-fetch.
+		eagerLoaded = new Set();
+		drillLoading = false;
+		drillError = null;
+	});
+
+	// Conversation stacks are global buckets whose members can be scattered
+	// across pages the gallery hasn't loaded yet, so the in-memory bucket may be
+	// incomplete. On drill-in, fetch the conversation's complete media set and
+	// merge it into `items` — the bucket (and its lightbox carousel) is then
+	// guaranteed whole. Prompt/orphan stacks are consecutive runs, already
+	// complete in memory, so they need no fetch.
+	let eagerLoaded = $state<Set<string>>(new Set()); // conversationIds already fetched
+	let drillLoading = $state(false);
+	let drillError = $state<string | null>(null);
+
+	$effect(() => {
+		const g = openGroup;
+		if (!g || g.conversationId === null) return;
+		const convId = g.conversationId;
+		if (eagerLoaded.has(convId)) return;
+		// Mark before fetching so the merge-driven re-run doesn't loop.
+		eagerLoaded = new Set(eagerLoaded).add(convId);
+		drillLoading = true;
+		drillError = null;
+		const params = new URLSearchParams();
+		if (kindFilter) params.set('kind', kindFilter);
+		const qs = params.toString();
+		fetch(`/api/media/by-conversation/${convId}${qs ? `?${qs}` : ''}`)
+			.then((r) => {
+				if (!r.ok) throw new Error(`Server returned ${r.status}`);
+				return r.json() as Promise<{ items: MediaListItem[] }>;
+			})
+			.then((body) => mergeMedia(body.items))
+			.catch((e) => {
+				drillError = e instanceof Error ? e.message : 'Failed to load the full stack';
+				// Let the next drill-in retry.
+				const next = new Set(eagerLoaded);
+				next.delete(convId);
+				eagerLoaded = next;
+			})
+			.finally(() => {
+				drillLoading = false;
+			});
 	});
 
 	function setKind(k: 'image' | 'video' | null) {
@@ -184,6 +232,21 @@
 		if (k) url.searchParams.set('kind', k);
 		else url.searchParams.delete('kind');
 		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	// Merge media into `items`, de-duped by id and kept globally newest-first
+	// (createdAt desc, id desc — same order listMediaForUser returns). Used by
+	// pagination (dedup guards against overlap with eager-loaded stack media)
+	// and by the conversation drill-in eager-load, which can insert items from
+	// below the current pagination frontier.
+	function mergeMedia(incoming: MediaListItem[]) {
+		if (incoming.length === 0) return;
+		const have = new Set(items.map((m) => m.id));
+		const additions = incoming.filter((m) => !have.has(m.id));
+		if (additions.length === 0) return;
+		items = items
+			.concat(additions)
+			.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 	}
 
 	async function loadMore() {
@@ -205,7 +268,7 @@
 			// A filter switched while this was in flight — discard, or we'd mix
 			// kinds into the new list and overwrite its cursor.
 			if (gen !== loadGeneration) return;
-			items = items.concat(next.items);
+			mergeMedia(next.items);
 			nextCursor = next.nextCursor;
 		} catch (e) {
 			if (gen !== loadGeneration) return;
@@ -354,6 +417,11 @@
 				</button>
 				<h1 class="truncate text-lg font-semibold tracking-tight">{groupLabel(openGroup)}</h1>
 				<span class="shrink-0 text-xs text-fg-muted">{openGroup.items.length}</span>
+				{#if drillLoading}
+					<span class="shrink-0 text-xs text-fg-subtle">updating…</span>
+				{:else if drillError}
+					<span class="shrink-0 text-xs text-danger-fg" title={drillError}>partial</span>
+				{/if}
 			{:else}
 				<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
 			{/if}
