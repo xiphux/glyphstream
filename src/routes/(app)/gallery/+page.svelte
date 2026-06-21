@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ChevronLeft } from '@lucide/svelte';
@@ -108,6 +109,35 @@
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let sentinel = $state<HTMLElement | null>(null);
 	let sentinelVisible = $state(false);
+
+	// The top-level grid and the drill-in grid share one scroll container, so
+	// `scrollTop` carries over between them unless we manage it: drilling in
+	// would start partway down the stack, and Back would land away from where
+	// the user left the gallery. On enter we stash the gallery's scroll and
+	// reset to the stack's top; on Back we restore the stashed position. The
+	// swap waits a tick so the destination grid has rendered (and is tall
+	// enough to accept the restored offset) before we set scrollTop.
+	let savedGalleryScroll = 0;
+	let prevOpenKey: string | null = null;
+	$effect(() => {
+		const key = openGroupKey;
+		if (key === prevOpenKey) return;
+		const wasOpen = prevOpenKey !== null;
+		prevOpenKey = key;
+		if (!wasOpen && key !== null) {
+			// Entering a stack from the gallery: remember where we were, start at top.
+			if (scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
+			tick().then(() => {
+				if (scrollContainer) scrollContainer.scrollTop = 0;
+			});
+		} else if (wasOpen && key === null) {
+			// Back to the gallery: restore the scroll position we left from.
+			tick().then(() => {
+				if (scrollContainer) scrollContainer.scrollTop = savedGalleryScroll;
+			});
+		}
+		// stack→stack (a re-anchor after deleting the leader) leaves scroll as-is.
+	});
 
 	// Selection mode + selection set for bulk-delete. SvelteKit's reactivity
 	// on collections needs a fresh reference to fire, so toggle/clear rebuild
