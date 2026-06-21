@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ORPHAN_GAP_MS, groupGalleryItems } from '$lib/gallery-stacks';
+import { ORPHAN_GAP_MS, groupGalleryItems, promptRunKey } from '$lib/gallery-stacks';
 import type { MediaListItem } from '$lib/server/db/queries/media';
 
 // Items are newest-first (descending createdAt), matching the gallery stream.
@@ -128,5 +128,57 @@ describe('groupGalleryItems', () => {
 	it('never groups orphans with no prompt', () => {
 		const items = [item('a', { promptFull: null }), item('b', { promptFull: null })];
 		expect(groupGalleryItems(items).map((g) => g.kind)).toEqual(['solo', 'solo']);
+	});
+
+	it('buckets a conversation globally even when interleaved with another (A-B-A)', () => {
+		// Generated in chat A, then B, then back in A → stream order A2, B1, A1.
+		// A consecutive-run grouping would emit two "A" groups with the same key
+		// and crash the keyed {#each}; global bucketing keeps A a single, complete
+		// stack.
+		const items = [
+			item('a2', { conversationId: 'convA', conversationTitle: 'Chat A', minutesAgo: 0 }),
+			item('b1', { conversationId: 'convB', conversationTitle: 'Chat B', minutesAgo: 1 }),
+			item('a1', { conversationId: 'convA', conversationTitle: 'Chat A', minutesAgo: 2 }),
+		];
+		const groups = groupGalleryItems(items);
+		expect(groups).toHaveLength(2);
+		// Group order follows each conversation's newest member.
+		expect(groups[0].conversationId).toBe('convA');
+		expect(groups[0].kind).toBe('conversation');
+		expect(groups[0].items.map((i) => i.id)).toEqual(['a2', 'a1']); // complete, not truncated
+		expect(groups[0].title).toBe('Chat A');
+		expect(groups[1].conversationId).toBe('convB');
+		expect(groups[1].kind).toBe('solo'); // single appearance
+		// No duplicate keys → the gallery {#each (g.key)} can't collide.
+		expect(new Set(groups.map((g) => g.key)).size).toBe(groups.length);
+	});
+
+	it('keeps keys unique for distinct single-appearance conversations', () => {
+		const items = [item('a', { conversationId: 'convA' }), item('b', { conversationId: 'convB' })];
+		const groups = groupGalleryItems(items);
+		expect(groups.map((g) => g.kind)).toEqual(['solo', 'solo']);
+		expect(new Set(groups.map((g) => g.key)).size).toBe(2);
+	});
+
+	it('a conversation item between two same-prompt orphans breaks the run', () => {
+		const items = [
+			item('o1', { promptFull: 'a cat' }),
+			item('c', { conversationId: 'convA', promptFull: 'a cat' }),
+			item('o2', { promptFull: 'a cat' }),
+		];
+		const groups = groupGalleryItems(items);
+		// o1 (solo), convA (solo), o2 (solo) — the orphans never merge across the
+		// conversation item.
+		expect(groups.map((g) => g.items[0].id)).toEqual(['o1', 'c', 'o2']);
+		expect(new Set(groups.map((g) => g.key)).size).toBe(3);
+	});
+
+	it('promptRunKey anchors to the leader id', () => {
+		expect(promptRunKey('xyz')).toBe('p:xyz');
+		const groups = groupGalleryItems([
+			item('a', { promptFull: 'p' }),
+			item('b', { promptFull: 'p' }),
+		]);
+		expect(groups[0].key).toBe(promptRunKey('a'));
 	});
 });

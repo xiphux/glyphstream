@@ -237,13 +237,22 @@ export interface MediaListItem {
  * media row — the deterministic owner used for gallery stacking. NULL when no
  * message references it (orphan media kept after its conversation was deleted).
  * Physical table/column names are used directly. The correlation references the
- * outer row as the literal `media.id` rather than interpolating `${media.id}` —
- * drizzle renders that column unqualified as `"id"`, which the subquery would
- * resolve to `messages.id` instead of the outer media row.
+ * outer row as the literal `media.id` / `media.user_id` rather than
+ * interpolating `${media.id}` — drizzle renders that column unqualified as
+ * `"id"`, which the subquery would resolve to `messages.id` instead of the
+ * outer media row.
+ *
+ * The `conversations c2` join with `c2.user_id = media.user_id` keeps this from
+ * being an unscoped read of a user-owned table (the multi-user isolation
+ * invariant): a media row is only ever assigned a conversation owned by the
+ * same user, matching how the sibling queries (listConversationsForMedia,
+ * listConversationMediaRefs) join + scope. Today every link site re-validates
+ * media ownership, so the assignment can't cross users — but enforcing it at
+ * the read survives a future cross-user sharing/forking feature.
  */
 const assignedConversationId = sql<
 	string | null
->`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
+>`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id JOIN conversations c2 ON c2.id = m2.conversation_id AND c2.user_id = media.user_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
 
 /**
  * Resolve `{ conversationId -> title }` for a set of items (scoped to the

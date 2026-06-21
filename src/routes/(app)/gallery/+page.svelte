@@ -4,7 +4,7 @@
 	import { ChevronLeft } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
-	import { groupGalleryItems, type GalleryGroup } from '$lib/gallery-stacks';
+	import { groupGalleryItems, promptRunKey, type GalleryGroup } from '$lib/gallery-stacks';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import type {
 		MediaConversationRef,
@@ -85,6 +85,18 @@
 			loadMore();
 		}
 	});
+
+	// A prompt (orphan) stack is keyed by its leader (newest) member's id, so
+	// deleting that leader changes the key and would pop the user out of a
+	// drill-in mid-curation. Re-anchor to the newest surviving member (or close
+	// if the whole stack went). Conversation stacks key off conversationId and
+	// stay stable, so they're left alone. Call BEFORE mutating `items`.
+	function reanchorDrillOnDelete(dropped: Set<string>) {
+		const g = openGroup;
+		if (!g || g.conversationId !== null || !dropped.has(g.items[0].id)) return;
+		const survivor = g.items.find((m) => !dropped.has(m.id));
+		openGroupKey = survivor ? promptRunKey(survivor.id) : null;
+	}
 
 	// Infinite-scroll plumbing. `scrollContainer` is the scrollable region used
 	// as the IntersectionObserver root; `sentinel` is a zero-content marker
@@ -251,6 +263,7 @@
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(`Server returned ${res.status}`);
+			reanchorDrillOnDelete(new Set([id]));
 			items = items.filter((m) => m.id !== id);
 			if (lightbox?.id === id) lightbox = null;
 		} catch (e) {
@@ -303,6 +316,7 @@
 			// weren't tombstoned were already gone, so they shouldn't be in
 			// the list anyway.
 			const dropped = new Set(ids);
+			reanchorDrillOnDelete(dropped);
 			items = items.filter((m) => !dropped.has(m.id));
 			exitSelectMode();
 		} catch (e) {

@@ -5,23 +5,28 @@ import type { MediaListItem } from '$lib/server/db/queries/media';
  * a whole conversation's worth of revisions collapses into one card instead of
  * flooding the flat grid.
  *
- * Grouping is a single left-to-right pass over the gallery's existing
- * newest-first item stream — a *consecutive run*, not a global GROUP BY. Two
- * rules, in priority order:
+ * A single left-to-right pass over the gallery's newest-first item stream, with
+ * two grouping rules, in priority order:
  *
  *   1. Same conversation. Items still linked to a conversation
- *      (`conversationId != null`) group with adjacent siblings sharing that id.
+ *      (`conversationId != null`) are bucketed by that id *globally* — one card
+ *      per conversation, regardless of where its media falls in the stream.
+ *      Conversation media is NOT contiguous in time: generating in chat A, then
+ *      B, then back in A yields A, B, A, so a consecutive-run approach would
+ *      emit two "A" groups (and two `{#each}` entries keyed alike → crash).
+ *      Bucketing keeps a conversation a single, complete stack.
  *   2. Same-prompt adjacency. The common case is media whose conversation was
  *      deleted (`conversationId == null`); a multi-model batch shares one exact
- *      prompt and lands back-to-back, so adjacent orphans with an identical
+ *      prompt and lands back-to-back, so *consecutive* orphans with an identical
  *      `promptFull` group together. A time-gap guard (`ORPHAN_GAP_MS`) keeps a
- *      much-later re-generation of the same prompt from merging in.
+ *      much-later re-generation of the same prompt from merging in, and any
+ *      conversation item between two orphans breaks the run.
  *
- * Anything matching neither rule (and any run of length 1) renders as a normal
+ * Anything matching neither rule (and any group of length 1) renders as a normal
  * solo tile, so the top level is a faithful, true-order mix of stacks and
- * singletons. Because it operates purely on the loaded `items` array, the
- * trailing group fills in live as more pages paginate in — items are only ever
- * appended to the correct run, never re-merged.
+ * singletons — each group sits at the position of its newest member. Because it
+ * operates purely on the loaded `items` array, a trailing group fills in live as
+ * more pages paginate in; items are only ever appended, never re-merged.
  */
 
 /** Same-prompt orphan runs break once consecutive items are more than this far
@@ -31,8 +36,8 @@ export const ORPHAN_GAP_MS = 60 * 60 * 1000; // 1 hour
 
 export interface GalleryGroup {
 	/** Stable identity for drill-in / keyed rendering. Conversation groups use
-	 *  the conversation id; prompt runs use `p:<first item id>`; solos use the
-	 *  item id. */
+	 *  the conversation id (one bucket per conversation); prompt/orphan runs use
+	 *  `p:<leader item id>`. Unique across groups either way. */
 	key: string;
 	kind: 'conversation' | 'prompt' | 'solo';
 	conversationId: string | null;
@@ -44,38 +49,22 @@ export interface GalleryGroup {
 
 type Run = GalleryGroup & { kind: 'conversation' | 'prompt' };
 
-/** Can `item` extend the current open run? */
-function canJoin(run: Run, item: MediaListItem): boolean {
-	if (item.conversationId != null) {
-		// Conversation items only join a conversation run with the same id.
-		return run.kind === 'conversation' && run.conversationId === item.conversationId;
-	}
-	// Orphan item: only joins a prompt run with the identical (non-empty)
-	// prompt whose previous (newer) member is within the time-gap window.
-	if (run.kind !== 'prompt') return false;
+/**
+ * The `key`/identity of a prompt (orphan) run, anchored to its leader (newest)
+ * member's id. Exported so the gallery can re-anchor a drilled-in stack when
+ * the leader is the item being deleted (see deleteOne / deleteSelected).
+ */
+export function promptRunKey(leaderId: string): string {
+	return `p:${leaderId}`;
+}
+
+/** Can `item` extend the open orphan (prompt) run? Identical non-empty prompt,
+ *  and the previous (newer) member within the time-gap window. */
+function canJoinPromptRun(run: Run, item: MediaListItem): boolean {
 	const prompt = item.promptFull;
 	if (!prompt || run.items[0]?.promptFull !== prompt) return false;
 	const prev = run.items[run.items.length - 1];
 	return prev.createdAt - item.createdAt <= ORPHAN_GAP_MS;
-}
-
-function startRun(item: MediaListItem): Run {
-	if (item.conversationId != null) {
-		return {
-			key: item.conversationId,
-			kind: 'conversation',
-			conversationId: item.conversationId,
-			title: item.conversationTitle,
-			items: [item],
-		};
-	}
-	return {
-		key: `p:${item.id}`,
-		kind: 'prompt',
-		conversationId: null,
-		title: null,
-		items: [item],
-	};
 }
 
 /**
@@ -84,11 +73,48 @@ function startRun(item: MediaListItem): Run {
  */
 export function groupGalleryItems(items: MediaListItem[]): GalleryGroup[] {
 	const groups: Run[] = [];
+	// Conversation buckets are global (one per id), so they're addressed by a
+	// map rather than only the tail of `groups`.
+	const convGroups = new Map<string, Run>();
+	// The orphan run the next orphan item could extend — only the one whose
+	// last member was the immediately-preceding stream item. Any conversation
+	// item resets it, breaking adjacency.
+	let openOrphanRun: Run | null = null;
+
 	for (const item of items) {
-		const open = groups[groups.length - 1];
-		if (open && canJoin(open, item)) open.items.push(item);
-		else groups.push(startRun(item));
+		if (item.conversationId != null) {
+			const existing = convGroups.get(item.conversationId);
+			if (existing) {
+				existing.items.push(item);
+			} else {
+				const run: Run = {
+					key: item.conversationId,
+					kind: 'conversation',
+					conversationId: item.conversationId,
+					title: item.conversationTitle,
+					items: [item],
+				};
+				convGroups.set(item.conversationId, run);
+				groups.push(run);
+			}
+			openOrphanRun = null;
+			continue;
+		}
+		// Orphan item: extend the open same-prompt run or start a new one.
+		if (openOrphanRun && canJoinPromptRun(openOrphanRun, item)) {
+			openOrphanRun.items.push(item);
+		} else {
+			openOrphanRun = {
+				key: promptRunKey(item.id),
+				kind: 'prompt',
+				conversationId: null,
+				title: null,
+				items: [item],
+			};
+			groups.push(openOrphanRun);
+		}
 	}
-	// A run of one isn't a stack — demote to a solo tile.
+	// A group of one isn't a stack — demote to a solo tile. Keys stay unique:
+	// conversation buckets are one-per-id; prompt runs key off their leader id.
 	return groups.map((g): GalleryGroup => (g.items.length === 1 ? { ...g, kind: 'solo' } : g));
 }
