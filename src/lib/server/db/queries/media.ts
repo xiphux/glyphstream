@@ -446,7 +446,7 @@ export function listDistinctSourceModelsForUser(
 export function listMediaForConversation(
 	conversationId: string,
 	userId: string,
-	opts: { kind?: 'image' | 'video'; kinds?: readonly MediaKind[] } = {},
+	opts: { kind?: 'image' | 'video'; kinds?: readonly MediaKind[]; model?: string } = {},
 ): MediaListItem[] {
 	const db = getDb();
 	const allowedKinds: readonly MediaKind[] = opts.kind
@@ -483,6 +483,7 @@ export function listMediaForConversation(
 				allowedKinds.length === 1
 					? eq(media.kind, allowedKinds[0])
 					: inArray(media.kind, allowedKinds as MediaKind[]),
+				opts.model ? eq(media.sourceModel, opts.model) : undefined,
 				inArray(media.id, linkedToConversation),
 				sql`${assignedConversationId} = ${conversationId}`,
 			),

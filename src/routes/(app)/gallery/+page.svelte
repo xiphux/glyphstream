@@ -270,6 +270,10 @@
 		drillError = null;
 		const params = new URLSearchParams();
 		if (kindFilter) params.set('kind', kindFilter);
+		// Mirror the active model filter — the fetched set is merged into the
+		// master `items` list, so an unfiltered drill-in would leak foreign-model
+		// media into a filtered gallery (and persist after navigating back).
+		if (data.model) params.set('model', data.model);
 		const qs = params.toString();
 		fetch(`/api/media/by-conversation/${convId}${qs ? `?${qs}` : ''}`)
 			.then((r) => {
@@ -331,6 +335,11 @@
 		try {
 			const params = new URLSearchParams({ cursor: nextCursor });
 			if (kindFilter) params.set('kind', kindFilter);
+			// Must mirror the SSR load's filters: the cursor is global
+			// (createdAt:id), so without the model filter the next page returns
+			// the globally-newest rows across all models and mergeMedia would
+			// interleave foreign-model media into a single-model view.
+			if (data.model) params.set('model', data.model);
 			const res = await fetch(`/api/media?${params.toString()}`, { signal: ctrl.signal });
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			const next = (await res.json()) as MediaListResult;

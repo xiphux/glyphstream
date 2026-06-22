@@ -583,6 +583,20 @@ describe('listMediaForConversation (drill-in stack contents)', () => {
 		]);
 	});
 
+	it('respects the model filter (drill-in stays consistent with an active facet)', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const msg = makeMsg(conv.id);
+		const sdxl = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		const flux = makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		linkMessageMedia(msg.id, sdxl.id);
+		linkMessageMedia(msg.id, flux.id);
+
+		expect(
+			listMediaForConversation(conv.id, u.id, { model: 'comfyui/sdxl' }).map((i) => i.id),
+		).toEqual([sdxl.id]);
+	});
+
 	it('excludes hard-deleted and uploaded media', () => {
 		const u = seedUser();
 		const conv = makeConv(u.id);
