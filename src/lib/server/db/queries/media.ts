@@ -1,8 +1,12 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
 import { buildFtsQuery } from './search';
+import { resolveRelevanceConfig } from '../../retrieval/embeddings-config';
+import { embedQuery } from '../../retrieval/embed-rank';
+import { cosineRank, decodeVector } from '../../retrieval/vector';
+import { fuseRankings } from '../../retrieval/fusion';
 
 /** Union of valid `media.kind` values. 'file' covers anything that
  *  isn't natively image/video (xlsx, csv, pdf, json, txt, ...) — used
@@ -396,27 +400,23 @@ export function listMediaForUser(
 /** Max relevance-ranked results a single prompt search returns. No pagination —
  *  refine the query if the top N isn't enough (cf. `searchConversations`). */
 const MEDIA_SEARCH_CAP = 150;
+/** Max stored prompt vectors the dense leg scans per query (bounds cosine/IO at
+ *  household scale; the most-recent rows win past it). */
+const DENSE_CORPUS_CAP = 5000;
+/** Semantic neighbours the dense leg contributes to the fusion. Bounded so a
+ *  query returns keyword hits + a modest set of synonym matches, not the whole
+ *  ranked corpus. */
+const DENSE_TOPK = 100;
 
-/**
- * Relevance-ranked prompt search over a user's gallery media. Keyword leg: the
- * `media_prompt_fts` FTS5 index (migration 20260622120000), ranked by bm25.
- * Returns up to {@link MEDIA_SEARCH_CAP} `MediaListItem`s, best-match-first, with
- * no cursor — search is a ranked mode, not the chronological browse.
- *
- * Visibility filters (hard_deleted / origin / kind / model) are applied on the
- * JOIN back to `media`, mirroring `listMediaForUser` and the conversation search.
- * `kind`/`model` compose so a user can search within an active facet. The
- * semantic (embedding) leg fuses in here in phase 2; this is the keyword path.
- */
-export function searchMediaForUser(
+type SearchOpts = { kind?: 'image' | 'video'; model?: string; limit?: number };
+
+/** Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached). */
+function ftsRankMedia(
 	userId: string,
-	rawQuery: string,
-	opts: { kind?: 'image' | 'video'; model?: string; limit?: number } = {},
+	match: string,
+	opts: SearchOpts,
+	limit: number,
 ): MediaListItem[] {
-	const match = buildFtsQuery(rawQuery);
-	if (!match) return [];
-	const limit = Math.max(1, Math.min(opts.limit ?? MEDIA_SEARCH_CAP, MEDIA_SEARCH_CAP));
-
 	const kindCond = opts.kind
 		? sql`AND media.kind = ${opts.kind}`
 		: sql`AND media.kind IN ('image', 'video')`;
@@ -477,6 +477,185 @@ export function searchMediaForUser(
 			conversationTitle: null,
 		})),
 	);
+}
+
+/** Fetch `MediaListItem`s for a set of ids (scoped + visible), titles attached.
+ *  Unordered — the caller re-orders. Used to materialize semantic-only hits. */
+function getMediaListItemsByIds(userId: string, ids: string[]): MediaListItem[] {
+	if (ids.length === 0) return [];
+	const rows = getDb()
+		.select({
+			id: media.id,
+			kind: media.kind,
+			contentType: media.contentType,
+			byteSize: media.byteSize,
+			sourceEndpointId: media.sourceEndpointId,
+			sourceModel: media.sourceModel,
+			promptExcerpt: media.promptExcerpt,
+			promptFull: media.promptFull,
+			createdAt: media.createdAt,
+			conversationId: assignedConversationId,
+		})
+		.from(media)
+		.where(
+			and(
+				eq(media.userId, userId),
+				isNull(media.hardDeletedAt),
+				eq(media.origin, 'generated'),
+				inArray(media.id, ids),
+			),
+		)
+		.all();
+	return attachConversationTitles(
+		userId,
+		rows.map((r) => ({ ...r, conversationTitle: null })),
+	);
+}
+
+/**
+ * Relevance-ranked prompt search over a user's gallery media. Keyword leg: the
+ * `media_prompt_fts` FTS5 index (migration 20260622120000), ranked by bm25.
+ * When an `[embeddings]` endpoint is configured, a semantic leg (cosine over
+ * stored `prompt_full` vectors) fuses in via RRF, surfacing synonym matches the
+ * keyword leg misses; it degrades to keyword-only on any failure (no config,
+ * endpoint down) — same as memory recall. Returns up to {@link MEDIA_SEARCH_CAP}
+ * `MediaListItem`s best-match-first, no cursor (a ranked mode, not the browse).
+ *
+ * Visibility (hard_deleted / origin) + kind/model compose on both legs. Note the
+ * semantic leg always has nearest neighbours, so with embeddings on a query
+ * returns its closest matches even with no keyword hit (capped at DENSE_TOPK);
+ * keyword-only mode gives true empty-on-no-match.
+ */
+export async function searchMediaForUser(
+	userId: string,
+	rawQuery: string,
+	opts: SearchOpts = {},
+): Promise<MediaListItem[]> {
+	const match = buildFtsQuery(rawQuery);
+	if (!match) return [];
+	const limit = Math.max(1, Math.min(opts.limit ?? MEDIA_SEARCH_CAP, MEDIA_SEARCH_CAP));
+
+	const ftsItems = ftsRankMedia(userId, match, opts, MEDIA_SEARCH_CAP);
+
+	const cfg = resolveRelevanceConfig();
+	if (!cfg) return ftsItems.slice(0, limit);
+
+	let qvec;
+	try {
+		qvec = await embedQuery(rawQuery, cfg, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
+	} catch {
+		qvec = null;
+	}
+	if (!qvec) return ftsItems.slice(0, limit);
+
+	const vecRows = listMediaEmbeddingsForUser(userId, {
+		kind: opts.kind,
+		model: opts.model,
+		embeddingModel: cfg.modelId,
+		limit: DENSE_CORPUS_CAP,
+	});
+	if (vecRows.length === 0) return ftsItems.slice(0, limit);
+
+	const denseRanked = cosineRank(
+		qvec,
+		vecRows.map((r) => decodeVector(r.embedding)),
+	).slice(0, DENSE_TOPK);
+	const denseIds = denseRanked.map((sc) => vecRows[sc.index].id);
+
+	// Fuse the two rankings over a shared id→index space (RRF ignores scores,
+	// uses rank position). The union includes semantic-only ids, so synonym
+	// matches surface; keyword hits get an extra contribution and rank higher.
+	const ftsIds = ftsItems.map((i) => i.id);
+	const idList = [...new Set([...ftsIds, ...denseIds])];
+	const idxOf = new Map(idList.map((id, i) => [id, i]));
+	const ftsRanking = ftsIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
+	const denseRanking = denseIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
+	const orderedIds = fuseRankings([ftsRanking, denseRanking])
+		.slice(0, limit)
+		.map((sc) => idList[sc.index]);
+
+	// Materialize: reuse the keyword rows we already have; fetch only the
+	// semantic-only ids.
+	const byId = new Map(ftsItems.map((i) => [i.id, i]));
+	const missing = orderedIds.filter((id) => !byId.has(id));
+	for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
+	return orderedIds.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
+}
+
+/**
+ * Backfill work queue: gallery prompts still needing an embedding (fresh, served
+ * by the partial index `idx_media_unembedded`), topped up with rows embedded by a
+ * superseded model. Mirrors `listMemoriesNeedingEmbedding` (two queries, not an
+ * `OR`, so the partial index isn't defeated). Cross-user — a background job.
+ */
+export function listMediaNeedingEmbedding(
+	model: string,
+	limit: number,
+): Array<{ id: string; promptFull: string }> {
+	const db = getDb();
+	const sel = { id: media.id, promptFull: media.promptFull };
+	const embeddable = and(isNotNull(media.promptFull), eq(media.origin, 'generated'));
+	const fresh = db
+		.select(sel)
+		.from(media)
+		.where(and(isNull(media.embedding), embeddable))
+		.limit(limit)
+		.all();
+	if (fresh.length >= limit) return fresh as Array<{ id: string; promptFull: string }>;
+	const stale = db
+		.select(sel)
+		.from(media)
+		.where(and(isNotNull(media.embedding), embeddable, ne(media.embeddingModel, model)))
+		.limit(limit - fresh.length)
+		.all();
+	return [...fresh, ...stale] as Array<{ id: string; promptFull: string }>;
+}
+
+/**
+ * Persist a computed prompt embedding. Keyed by id (background, cross-user) and
+ * guarded on `expectedPrompt` so a concurrent prompt change can't get the old
+ * text's vector written under it. Returns true iff a row matched.
+ */
+export function setMediaEmbedding(
+	id: string,
+	expectedPrompt: string,
+	embedding: Buffer,
+	embeddingModel: string,
+): boolean {
+	const result = getDb()
+		.update(media)
+		.set({ embedding, embeddingModel })
+		.where(and(eq(media.id, id), eq(media.promptFull, expectedPrompt)))
+		.run();
+	return result.changes > 0;
+}
+
+/**
+ * Candidate vectors for the semantic search leg: a user's embedded gallery media
+ * for the active embedding model, newest-first, capped. Composes with kind/model.
+ */
+export function listMediaEmbeddingsForUser(
+	userId: string,
+	opts: { kind?: 'image' | 'video'; model?: string; embeddingModel: string; limit?: number },
+): Array<{ id: string; embedding: Buffer }> {
+	const limit = Math.max(1, Math.min(opts.limit ?? DENSE_CORPUS_CAP, 20000));
+	const conditions = [
+		eq(media.userId, userId),
+		isNull(media.hardDeletedAt),
+		eq(media.origin, 'generated'),
+		isNotNull(media.embedding),
+		eq(media.embeddingModel, opts.embeddingModel),
+		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+	].filter(Boolean) as Parameters<typeof and>[number][];
+
+	return getDb()
+		.select({ id: media.id, embedding: media.embedding })
+		.from(media)
+		.where(and(...conditions))
+		.orderBy(desc(media.createdAt), desc(media.id))
+		.limit(limit)
+		.all() as Array<{ id: string; embedding: Buffer }>;
 }
 
 export interface ModelFacet {

@@ -502,6 +502,12 @@ export const media = sqliteTable(
 		unreferencedSince: integer('unreferenced_since'),
 		// Set after grace period; bytes removed from disk, row preserved.
 		hardDeletedAt: integer('hard_deleted_at'),
+		// Semantic prompt search: embedding of `prompt_full` (the same memories
+		// pattern). NULL = "not yet embedded"; the backfill sweep fills it.
+		// `embedding_model` records which model produced the vector (different
+		// models = different spaces, so search filters to the active one).
+		embedding: blob('embedding'),
+		embeddingModel: text('embedding_model'),
 	},
 	(t) => [
 		// Explicit uniqueIndex (not column `.unique()`) — see the note on
@@ -513,6 +519,15 @@ export const media = sqliteTable(
 		// range column last lets SQLite use index-only equality probes on
 		// origin + hardDeletedAt before walking unreferenced_since rows.
 		index('idx_media_unreferenced').on(t.origin, t.hardDeletedAt, t.unreferencedSince),
+		// Backfill work queue: only embeddable rows that still need a vector
+		// (generated, with a prompt, not yet embedded). Scoping the partial index
+		// this tightly keeps uploads / null-prompt rows out of the queue entirely
+		// and the index near-empty once caught up. Mirrors idx_memories_unembedded.
+		index('idx_media_unembedded')
+			.on(t.id)
+			.where(
+				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated'`,
+			),
 	],
 );
 

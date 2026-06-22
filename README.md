@@ -81,9 +81,10 @@ them into a single fast chat UI with one model picker.
   jump back to the source conversation, or launch a new one from any image.
   Related media (a whole conversation, or a multi-model batch sharing one
   prompt) **stack** into a single card you can expand — toggle it off for the
-  flat view. **Search your prompts** to find any generation, **filter by the
-  model** that made it, and browse by time with **sticky date headers** (day or
-  month) plus a right-edge **timeline rail** to jump to any month.
+  flat view. **Search your prompts** to find any generation (keyword, plus
+  semantic synonym matching when an embedding model is configured), **filter by
+  the model** that made it, and browse by time with **sticky date headers** (day
+  or month) plus a right-edge **timeline rail** to jump to any month.
 - **Permanent media storage** — assets are pulled from the upstream on
   generation, ref-counted, and purged only after a grace period with zero
   references.

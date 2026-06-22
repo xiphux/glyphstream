@@ -1,28 +1,31 @@
 /**
- * Background worker that populates `memories.embedding` so the `recall_memory`
- * tool has vectors to rank against.
+ * Background worker that populates `memories.embedding` (for `recall_memory`)
+ * and `media.embedding` (for semantic gallery prompt search) so both have
+ * vectors to rank against.
  *
- * Memory rows are saved without an embedding (the write path stays a single
- * fast INSERT, and the embedding endpoint may be down at write time); this
- * sweep fills them in asynchronously. It also re-embeds rows whose stored
+ * Rows are saved without an embedding (the write path stays a single fast
+ * INSERT, and the embedding endpoint may be down at write time); this sweep
+ * fills them in asynchronously. It also re-embeds rows whose stored
  * `embedding_model` no longer matches the configured one (operator changed the
- * model) and rows whose content was edited (updateMemory nulls the vector).
+ * model) and memory rows whose content was edited (updateMemory nulls the vector).
  *
  * Mirrors the media purger's shape: a recursive setTimeout tick with a `running`
  * re-entrancy guard, an idempotent start, and a directly-callable sweep for
  * tests. When no `[embeddings]` block is configured there's nothing to embed,
  * so the worker doesn't even mount a timer.
  *
- * Like `listMemoriesNeedingEmbedding`, the sweep reads across all users — it's a
+ * Like the `…NeedingEmbedding` queries, the sweep reads across all users — it's a
  * background job, not a request path, so the per-user read-isolation invariant
  * doesn't apply.
  */
 
 import { embeddings } from '../endpoints/client';
+import type { RelevanceConfig } from '../retrieval/embed-rank';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 import { inputCharCap, truncate } from '../retrieval/embed-rank';
 import { encodeVector } from '../retrieval/vector';
 import { listMemoriesNeedingEmbedding, setMemoryEmbedding } from '../db/queries/memories';
+import { listMediaNeedingEmbedding, setMediaEmbedding } from '../db/queries/media';
 
 // Rows per /embeddings request. Kept small to stay within the per-request batch
 // ceilings embedding backends (notably llama-server) enforce — memories are
@@ -40,9 +43,81 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 
 /**
- * Run one backfill pass. Returns the count embedded so tests can assert.
- * No-op (returns 0) when embeddings aren't configured or a sweep is already
- * running. Safe to call directly alongside the periodic timer.
+ * Drain one work queue (memories or media prompts) for a sweep. `fetchBatch`
+ * returns up to `n` rows as `{ id, text }`; `persist` writes a computed vector
+ * back (guarded on the text, returns true iff it took). Returns how many were
+ * embedded. Generic so the memory and media queues share the batch/pairing/
+ * poison-row logic.
+ */
+async function drainQueue(
+	cfg: RelevanceConfig,
+	label: string,
+	fetchBatch: (n: number) => Array<{ id: string; text: string }>,
+	persist: (id: string, text: string, blob: Buffer) => boolean,
+): Promise<number> {
+	const inputCap = inputCharCap(cfg.maxInputTokens);
+	let embedded = 0;
+	for (let batch = 0; batch < MAX_BATCHES_PER_SWEEP; batch++) {
+		const rows = fetchBatch(BATCH_SIZE);
+		if (rows.length === 0) break;
+
+		let resp;
+		try {
+			resp = await embeddings(
+				cfg.endpoint,
+				{
+					model: cfg.modelId,
+					input: rows.map((r) => cfg.documentPrefix + truncate(r.text, inputCap)),
+				},
+				AbortSignal.timeout(cfg.timeoutSeconds * 1000),
+			);
+		} catch (e) {
+			// Endpoint down / timeout — leave the rows for the next sweep.
+			console.warn(`[${label}-backfill] embedding request failed, retrying next sweep:`, e);
+			break;
+		}
+
+		const data = resp.data;
+		if (!Array.isArray(data)) {
+			console.warn(`[${label}-backfill] non-array embeddings response; retrying next sweep`);
+			break;
+		}
+		// Pair returned vectors to rows by their response `index` (we sent one
+		// input per row, in row order). Write each valid one individually rather
+		// than discarding the whole batch on a count mismatch — a short or
+		// reordered response still persists the vectors that did come back, so a
+		// poison row can't starve the rows behind it.
+		const vecByIndex = new Map<number, number[]>();
+		for (const d of data) {
+			const v = d.embedding;
+			if (typeof d.index === 'number' && Array.isArray(v) && v.length > 0) {
+				vecByIndex.set(d.index, v as number[]);
+			}
+		}
+
+		let progressed = 0;
+		for (let i = 0; i < rows.length; i++) {
+			const vec = vecByIndex.get(i);
+			if (!vec) continue;
+			// Guarded on the text we read above; a no-match means a concurrent edit
+			// nulled the vector mid-flight — leave it for the next sweep.
+			if (persist(rows[i].id, rows[i].text, encodeVector(vec))) {
+				embedded++;
+				progressed++;
+			}
+		}
+		// Nothing in this batch took — stop rather than re-query the same
+		// unembeddable rows forever within one sweep.
+		if (progressed === 0) break;
+	}
+	return embedded;
+}
+
+/**
+ * Run one backfill pass over both the memory and media-prompt queues. Returns
+ * the total embedded so tests can assert. No-op (returns 0) when embeddings
+ * aren't configured or a sweep is already running. Safe to call directly
+ * alongside the periodic timer.
  */
 export async function runBackfillSweep(): Promise<{ embedded: number }> {
 	if (running) return { embedded: 0 };
@@ -51,63 +126,23 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 		const cfg = resolveRelevanceConfig();
 		if (!cfg) return { embedded: 0 };
 
-		const inputCap = inputCharCap(cfg.maxInputTokens);
 		let embedded = 0;
-		for (let batch = 0; batch < MAX_BATCHES_PER_SWEEP; batch++) {
-			const rows = listMemoriesNeedingEmbedding(cfg.modelId, BATCH_SIZE);
-			if (rows.length === 0) break;
+		embedded += await drainQueue(
+			cfg,
+			'memory',
+			(n) =>
+				listMemoriesNeedingEmbedding(cfg.modelId, n).map((r) => ({ id: r.id, text: r.content })),
+			(id, text, blob) => setMemoryEmbedding(id, text, blob, cfg.modelId),
+		);
+		embedded += await drainQueue(
+			cfg,
+			'media',
+			(n) =>
+				listMediaNeedingEmbedding(cfg.modelId, n).map((r) => ({ id: r.id, text: r.promptFull })),
+			(id, text, blob) => setMediaEmbedding(id, text, blob, cfg.modelId),
+		);
 
-			let resp;
-			try {
-				resp = await embeddings(
-					cfg.endpoint,
-					{
-						model: cfg.modelId,
-						input: rows.map((r) => cfg.documentPrefix + truncate(r.content, inputCap)),
-					},
-					AbortSignal.timeout(cfg.timeoutSeconds * 1000),
-				);
-			} catch (e) {
-				// Endpoint down / timeout — leave the rows for the next sweep.
-				console.warn('[memory-backfill] embedding request failed, retrying next sweep:', e);
-				break;
-			}
-
-			const data = resp.data;
-			if (!Array.isArray(data)) {
-				console.warn('[memory-backfill] non-array embeddings response; retrying next sweep');
-				break;
-			}
-			// Pair returned vectors to rows by their response `index` (we sent one
-			// input per row, in row order). Write each valid one individually rather
-			// than discarding the whole batch on a count mismatch — a short or
-			// reordered response still persists the vectors that did come back, so a
-			// poison row can't starve the rows behind it.
-			const vecByIndex = new Map<number, number[]>();
-			for (const d of data) {
-				const v = d.embedding;
-				if (typeof d.index === 'number' && Array.isArray(v) && v.length > 0) {
-					vecByIndex.set(d.index, v as number[]);
-				}
-			}
-
-			let progressed = 0;
-			for (let i = 0; i < rows.length; i++) {
-				const vec = vecByIndex.get(i);
-				if (!vec) continue;
-				// Guarded on the content we read above; a no-match means a concurrent
-				// edit nulled the vector mid-flight — leave it for the next sweep.
-				if (setMemoryEmbedding(rows[i].id, rows[i].content, encodeVector(vec), cfg.modelId)) {
-					embedded++;
-					progressed++;
-				}
-			}
-			// Nothing in this batch took — stop rather than re-query the same
-			// unembeddable rows forever within one sweep.
-			if (progressed === 0) break;
-		}
-
-		if (embedded > 0) console.log(`[memory-backfill] sweep done: embedded=${embedded}`);
+		if (embedded > 0) console.log(`[embedding-backfill] sweep done: embedded=${embedded}`);
 		return { embedded };
 	} finally {
 		running = false;
@@ -115,26 +150,26 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 }
 
 /**
- * Mount the periodic backfiller. Idempotent. No-op when no embedding model is
- * configured — without one there are no vectors to compute and recall is off,
- * so a timer would just wake to do nothing. (A config change needs a restart,
- * which re-runs this.)
+ * Mount the periodic backfiller (memory + media-prompt embeddings). Idempotent.
+ * No-op when no embedding model is configured — without one there are no vectors
+ * to compute and recall/semantic-search are off, so a timer would just wake to
+ * do nothing. (A config change needs a restart, which re-runs this.)
  */
-export function startMemoryEmbeddingBackfiller(): void {
+export function startEmbeddingBackfiller(): void {
 	if (timer) return;
 	if (!resolveRelevanceConfig()) return;
 	timer = setTimeout(function tick() {
 		runBackfillSweep()
-			.catch((e) => console.error('[memory-backfill] sweep failed:', e))
+			.catch((e) => console.error('[embedding-backfill] sweep failed:', e))
 			.finally(() => {
 				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
 			});
 	}, INITIAL_DELAY_MS);
-	console.log(`[memory-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
+	console.log(`[embedding-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 
 /** Tear down the timer — for tests / clean shutdown. */
-export function stopMemoryEmbeddingBackfiller(): void {
+export function stopEmbeddingBackfiller(): void {
 	if (timer) {
 		clearTimeout(timer);
 		timer = null;

@@ -1,9 +1,9 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "21735d05-1034-4fc1-9e90-8fe23a7d0fff",
+  "id": "6cce456a-fe5f-4765-b5af-15d53352592d",
   "prevIds": [
-    "e290b9cf-9b44-4d44-869b-a31572f388dd"
+    "069e55df-e7f4-49fb-aaf7-3b12342a6895"
   ],
   "ddl": [
     {
@@ -619,6 +619,26 @@
       "default": null,
       "generated": null,
       "name": "hard_deleted_at",
+      "entityType": "columns",
+      "table": "media"
+    },
+    {
+      "type": "blob",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "embedding",
+      "entityType": "columns",
+      "table": "media"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "embedding_model",
       "entityType": "columns",
       "table": "media"
     },
@@ -1830,6 +1850,20 @@
     {
       "columns": [
         {
+          "value": "id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": "\"media\".\"embedding\" is null and \"media\".\"prompt_full\" is not null and \"media\".\"origin\" = 'generated'",
+      "origin": "manual",
+      "name": "idx_media_unembedded",
+      "entityType": "indexes",
+      "table": "media"
+    },
+    {
+      "columns": [
+        {
           "value": "user_id",
           "isExpression": false
         },
@@ -2020,6 +2054,5 @@
       "table": "skills"
     }
   ],
-  "renames": [],
-  "prevId": "069e55df-e7f4-49fb-aaf7-3b12342a6895"
+  "renames": []
 }

@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	// kind/model facets so search composes with them.
 	const initial = q
 		? {
-				items: searchMediaForUser(userId, q, {
+				items: await searchMediaForUser(userId, q, {
 					kind: kind ?? undefined,
 					model: model ?? undefined,
 				}),

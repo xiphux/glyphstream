@@ -4,7 +4,7 @@ import { maybeCompressResponse } from '$lib/server/compression';
 import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger } from '$lib/server/media/purger';
-import { startMemoryEmbeddingBackfiller } from '$lib/server/memory/embedding-backfill';
+import { startEmbeddingBackfiller } from '$lib/server/memory/embedding-backfill';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
@@ -32,10 +32,10 @@ const SHOULD_COMPRESS_DYNAMIC = compressDynamicResponses();
 // starts even if no user has hit the server yet (e.g. on a fresh redeploy).
 startMediaPurger();
 
-// Backfill embeddings for saved memories so `recall_memory` has vectors to
-// rank against. No-op when no `[embeddings]` block is configured. Same boot-
-// time rationale as the purger.
-startMemoryEmbeddingBackfiller();
+// Backfill embeddings for saved memories + gallery prompts (recall_memory and
+// semantic gallery search). No-op when no `[embeddings]` block is configured.
+// Same boot-time rationale as the purger.
+startEmbeddingBackfiller();
 
 // Kick off MCP server connections in parallel with whatever the first
 // request happens to need. The chat-completion handler awaits readiness

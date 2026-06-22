@@ -134,6 +134,16 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   generate stays clean. Migration folders are now per-migration dirs
   (`<ts>_<name>/migration.sql`), converted from the old flat layout by
   `drizzle-kit up`.
+- **Hand-authored migrations (FTS5 virtual tables, triggers, data backfills)
+  are SQL-only — a `<ts>_<name>/migration.sql` with NO `snapshot.json`.** The
+  runtime migrator (`drizzle-orm/node-sqlite/migrator`) reads only `migration.sql`,
+  sorted by dir name, so a snapshot-less dir applies fine and createTestDb picks
+  it up too. Do NOT copy a neighbouring `snapshot.json` into it: these v1
+  snapshots have no `prevId` chain and `drizzle-kit generate` keys off snapshot
+  _content_, so a duplicated snapshot reads as two siblings and aborts generate
+  with "Non-commutative migrations detected". Virtual tables aren't in `schema.ts`
+  anyway, so there's nothing for a snapshot to track. See
+  `drizzle/*_media_prompt_search` and `*_message_search_index`.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.
