@@ -921,7 +921,7 @@
 				{#snippet sectionHeader(label: string, key: string)}
 					<h2
 						use:registerHeader={key}
-						class="sticky top-0 z-10 -mx-4 mb-3 bg-surface-panel/90 px-4 py-2 text-sm font-semibold text-fg-secondary backdrop-blur"
+						class="sticky top-0 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
 					>
 						{label}
 					</h2>
