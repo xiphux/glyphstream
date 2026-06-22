@@ -253,6 +253,156 @@ docs.
   boot, and revisit the better-sqlite3 inert-peer note in CLAUDE.md (the
   optional-peer situation may change at GA).
 
+## Differentiation bets (exploratory)
+
+Most of the v2 list above is _the good version of a thing other chat UIs also
+have_. This section is the opposite: capabilities that lean on what a
+**self-hosted, always-on, multimodal, multi-person, permanently-accumulating,
+un-metered** box can do that a stateless cloud chat structurally can't. Less
+proven, deliberately speculative — captured so the framing isn't lost. Each
+names the asset it pulls on. Priority within the section is unranked; the
+proactivity and pipeline bets are the most identity-defining.
+
+- **Standing agents / "the morning brief"** (asset: always-on process).
+  Scheduled prompts that run _without the user present_ and produce a feed —
+  "every morning, deep-research these three topics and push me a digest", "summarize
+  what changed in my watched repos overnight". This is the most differentiated
+  bet in the file: it reframes the product from a request-response chat box into
+  an _ambient assistant that works while you sleep_, and it's only possible
+  because the architecture is a persistent Node process + SQLite + push
+  notifications (all shipped — see `docs/notifications.md`), not a serverless
+  function. Composes directly with **deep research** above (the digest _is_ a
+  scheduled deep-research run) and the code-interpreter `tool_progress` idea (a
+  long autonomous run wants progress UI). Sketch: a `scheduled_agents` table
+  (per-user, `user_id`-scoped — the isolation invariant) holding a prompt +
+  cron-ish cadence + target model + enabled tools; a background runner on the
+  media-purger pattern (single process, hardcoded tick that wakes due agents);
+  each run lands as a normal conversation (so history/branching/gallery all work
+  for free) and fires the existing push payload (which already carries
+  `modality`). Open questions: do runs accrete into one long thread or spawn a
+  fresh conversation each fire?; per-user run quotas / wall-clock budget so a
+  household can't peg the GPU; whether the scheduler is its own thing or the
+  generic primitive that **watchers** (below) also rides on; surfacing/editing
+  schedules (a `/settings/agents` page vs. a "make this recurring" action on an
+  existing chat).
+  - _Watchers / triggers._ The condition→notify sibling of the schedule→digest
+    agent: "ping me when this product drops below $X", "when this repo cuts a
+    release". Same background-runner + notification infra; the delta is a
+    persisted _last-seen state_ per watcher and a comparison each tick. Likely
+    the same `scheduled_agents` table with a `trigger` mode. Open question:
+    polling cadence vs. politeness to the watched source (and SSRF reuse —
+    watchers fetch arbitrary URLs, so they ride the same egress gate as the web
+    tools).
+
+- **Multimodal pipeline mode (storyboard / picture-book / comic)** (asset:
+  text + image + video in one process). One prompt → the model writes a script →
+  generates a panel image per beat → optionally animates each panel to video →
+  assembles the result. A _pipeline product_ no single-modality chat can ship,
+  and the most visible payoff of GlyphStream's most unusual asset (all three
+  modalities + a permanent gallery to hold the output, under one process).
+  Strong household fit: kids' stories, D&D session recaps, recipe cards, how-to
+  sequences. Sketch: this is an orchestration over capabilities already present
+  (chat for the script, `/v1/images` + `/v1/videos` upstreams, the fan-out
+  queue, the media gallery + stacks) — what's missing is the _planner_ that
+  decomposes a brief into beats and the _assembly_ step. Lands well as a
+  materialized preset like a custom model (a saved "comic" pipeline = layout +
+  panel count + image/video model choices). Open questions: render the pipeline
+  as one rich artifact (pairs with the **canvas** item) or as a stacked gallery
+  card?; how much user steering between stages (approve the script before
+  spending image generations) vs. one-shot; assembly target (a contact-sheet
+  image, an MP4, a flippable reader view).
+  - _Character / asset consistency._ The missing primitive that makes the
+    pipeline actually good: save a "character" (reference image + description)
+    and reuse it across generations so the same hero/dog/product appears in panel
+    1 and panel 7. Independently useful outside pipelines (any image-to-image
+    series). Sketch: a per-user `assets` table referencing a gallery media row +
+    a text descriptor; injected into prompts and/or attached as a reference image
+    where the upstream supports it. Open question: how much consistency is even
+    achievable is upstream-model-dependent — degrade gracefully where the
+    endpoint has no reference-image / IP-adapter support.
+
+- **Gallery search & large-library navigation** (asset: permanently-accumulating
+  multimodal corpus). Stacking (shipped) bought _display_ density; it didn't
+  help _findability_ as the gallery grows from a scroll into a library. The
+  missing capability is finding a specific asset fast — leaning on a key
+  property: for a _generated_ image the prompt is already a dense description of
+  its content (the `media` row stores `promptFull` + `promptExcerpt`), so
+  searching the prompt covers most of what pixel-level "visual search" promises,
+  with little or no new infra. Phased cheapest-first:
+  - _Prompt search — keyword, then semantic (the lead win)._ Start with SQLite
+    FTS5 over `promptFull` (optionally the conversation title + `sourceModel`):
+    no new infra, instant, fully offline, and it resolves "the red sunset ones"
+    whenever that phrasing was in the prompt — which for generated media it
+    nearly always was. Then add a semantic leg that **reuses the existing text
+    `[embeddings]` endpoint** — embed each _prompt_ (text, not pixels), so it
+    rides the whole `memories` pattern verbatim (`embedding` blob + `embeddingModel`
+    columns, the partial `WHERE embedding IS NULL` index, the backfill sweep in
+    `embedding-backfill.ts`, `vector.ts` cosine, RRF fusion). Crucially needs
+    **no new endpoint**, unlike CLIP below. Open questions: which fields join
+    the FTS index; degradation for _uploaded_ images, which have no prompt
+    (fall back to filename, or just exclude them from prompt search).
+
+  - _Faceted filters + date grouping._ The columns already exist (`sourceModel`,
+    `sourceEndpointId`, `kind`, `createdAt`) — filter the gallery by model /
+    endpoint / kind / date range with pure query work. The gallery is already
+    reverse-chronological with stacking, so a "timeline" isn't a re-sort: it's
+    **group headings** (Today / This week / by month) over the existing order
+    plus a **quick-jump** rail to those groupers. Open question: how a heading
+    reconciles with a stack that straddles a date boundary (date the stack by
+    its newest member, most likely).
+
+  - _Lineage view._ `sourceMediaId` already chains i2i / i2v derivations (this
+    image was edited / animated _from_ that one). Rather than a separate view,
+    likely a **logic extension of stacking**: stacks today group media from the
+    same conversation; lineage stacking would group a derivation chain. The
+    integration is the real work — an image can belong to _both_ a conversation
+    stack and a derivation chain, and lineage can cross conversations (regenerate
+    in a new chat from a gallery image) where conversation-stacking can't. Open
+    questions: do the two grouping axes nest or does one take precedence?; how to
+    render a multi-step chain inside the existing expand-a-stack affordance.
+
+  - _Original visual search (CLIP) — low priority._ The pixel-level version:
+    true text→image ("find more like this", content the prompt never mentioned)
+    needs a **shared text+image embedding space** (CLIP-style) — a _new
+    multimodal endpoint_ plus embedding every image once, stored as a blob on
+    the media row. Deferred to last precisely because prompt search above
+    already covers most of the need with existing infra; CLIP only adds value
+    for uploaded images, un-prompted content, and pure visual similarity. Gate
+    behind a capability flag the way text embeddings already degrade off; open
+    question of where the image-embedding model lives (another endpoint vs. a
+    bundled local model — the latter fights the lightweight constraint).
+
+  - _Style / prompt library._ Mine the user's own generation history for
+    recurring prompt patterns and surface them as reusable, auto-discovered
+    presets ("your styles") — distinct from hand-saved custom-model presets, and
+    from prompt _search_ (this clusters for reuse rather than retrieves). Cheap;
+    mostly a query + clustering over the prompt history the FTS work already
+    indexes. Open question: auto-cluster vs. just a "reuse this prompt"
+    affordance on a gallery item, which captures most of the value for far less.
+
+- **Multi-human + AI conversations** (asset: a real household of people).
+  A thread where two or more _people_ and the model all participate — group chat
+  with an AI member — vs. today's strictly single-user-per-conversation model.
+  Almost no one does this well, and the pieces are unusually close: real
+  multi-user identity ships, and the tree schema already carries `user_id` per
+  row, so "who authored this node" has a natural home. The hard part is _not_
+  the data model but the invariants: the multi-user isolation rule ("every query
+  scopes by `user_id`") is load-bearing for privacy, and a shared conversation
+  is a deliberate, scoped hole in it — needs an explicit membership table
+  (`conversation_members`) and every read/write re-checked against membership
+  rather than sole ownership. Open questions: real-time presence / typing (a
+  WebSocket layer the app doesn't have yet) vs. async turn-taking (cheaper,
+  fits the existing request model); how branching reconciles with multiple human
+  authors; per-message authorship attribution in the UI.
+  - _Shared household knowledge base._ A _shared_ (opt-in) memory the AI
+    maintains and answers from — recipes, the wifi password, the vet's number —
+    distinct from per-user memory, which is private by the isolation invariant.
+    Reuses the memory save/update/forget primitives + embedding recall, but
+    keyed to a household/group scope rather than `user_id`. Gated on the
+    multi-human work above (it needs a notion of "group" to scope to). Open
+    question: governance — who can write/delete shared facts, and how a private
+    memory gets promoted to shared.
+
 ## Long-term / nice-to-have
 
 - **2FA (TOTP) on GitHub OAuth.** Passkey login already shipped as a peer
@@ -305,6 +455,18 @@ docs.
   app's accumulate-then-prune model). If unbounded growth ever bites a small
   box, the fix is a total-sibling-per-fan-out cap or a bulk-cleanup sweep —
   neither worth the friction pre-emptively.
+
+- **Near-duplicate detection (perceptual hash).** A cheap (no-AI, no-endpoint)
+  pHash per image to cluster near-identical media and surface a "collapse / bulk
+  clean" affordance — pairs with the favorite/pin tier (protect favorites from
+  the sweep) and the fan-out cap above. _Low priority, and likely low yield:_
+  generation is stochastic, so even the same prompt on the same model produces a
+  _different_ image each run unless the seed is pinned. The multi-model grid's
+  duplication is intentional (different models, kept for comparison), not the
+  redundant kind. So _true_ duplicates are uncommon — they need a deliberately
+  fixed seed or an unlucky collision — which is exactly why this stays a
+  nice-to-have rather than a findability/storage lever. Build only if a real
+  library shows duplicate clutter in practice.
 
 - **Background sync / offline composition.** Service worker queues messages
   while offline, resends on reconnect. Low priority — chat apps generally don't
