@@ -93,6 +93,49 @@ export function seedMedia(count: number): void {
 }
 
 /**
+ * Seed generated image rows grouped into explicit time buckets, for the
+ * date-grouping / timeline-rail specs. Each bucket inserts `count` rows
+ * clustered at `createdAt` (spread back 1ms each so the keyset cursor is
+ * tie-free and the rows stay within the bucket's day). Pass buckets
+ * newest-first. Like `seedMedia`, writes no bytes — the grid only needs the
+ * <img>/heading DOM nodes. Use mid-month, clearly-past dates so local-tz
+ * bucketing can't shift the month and "Today"/"Yesterday" never apply.
+ */
+export function seedMediaInBuckets(buckets: { createdAt: number; count: number }[]): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const stmt = db.prepare(
+			`INSERT INTO media
+			   (id, user_id, storage_path, content_type, byte_size, kind, origin,
+			    prompt_excerpt, prompt_full, created_at, ref_count)
+			 VALUES (?, ?, ?, ?, ?, 'image', 'generated', ?, ?, ?, 1)`,
+		);
+		let n = 0;
+		for (const b of buckets) {
+			for (let i = 0; i < b.count; i++) {
+				const id = `e2e-media-${String(n).padStart(4, '0')}`;
+				const prompt = `Seeded ${id}`;
+				stmt.run(
+					id,
+					TEST_USER.id,
+					`e2e/${id}.png`,
+					'image/png',
+					1024,
+					prompt,
+					prompt,
+					b.createdAt - i,
+				);
+				n++;
+			}
+		}
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Open the model picker and pick a model by visible name. Works for both
  * the inline (composer) and full-width picker variants — the trigger's
  * aria-label is "Select model" in both.

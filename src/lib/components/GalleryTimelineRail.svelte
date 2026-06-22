@@ -19,10 +19,12 @@
 	} = $props();
 
 	let railEl = $state<HTMLElement | null>(null);
-	let dragging = $state(false);
+	let pressing = $state(false);
 	let dragMoved = $state(false);
+	let startY = 0;
 	let bubbleKey = $state<string | null>(null);
 	let bubbleY = $state(0);
+	const DRAG_THRESHOLD = 4; // px before a press becomes a scrub
 
 	const monthLabel = (key: string) => bucketLabel(monthStartMs(key), 'month' as Granularity);
 	const yearOf = (key: string) => key.slice(0, 4);
@@ -44,28 +46,35 @@
 		bubbleY = clientY - railEl.getBoundingClientRect().top;
 	}
 
+	// Press does NOT capture the pointer — capturing on pointerdown retargets the
+	// synthesized `click` to this container, so the tick <button>'s onclick (the
+	// tap + keyboard path) would never fire. We only capture once a real scrub
+	// starts (past a small threshold), so taps click normally and drags still get
+	// robust pointer tracking.
 	function onPointerDown(e: PointerEvent) {
-		dragging = true;
+		pressing = true;
 		dragMoved = false;
-		railEl?.setPointerCapture(e.pointerId);
-		updateBubble(e.clientY);
+		startY = e.clientY;
 	}
 
 	function onPointerMove(e: PointerEvent) {
-		if (!dragging) return;
-		dragMoved = true;
-		updateBubble(e.clientY);
+		if (!pressing) return;
+		if (!dragMoved && Math.abs(e.clientY - startY) > DRAG_THRESHOLD) {
+			dragMoved = true;
+			railEl?.setPointerCapture(e.pointerId);
+		}
+		if (dragMoved) updateBubble(e.clientY);
 	}
 
 	function onPointerUp(e: PointerEvent) {
-		if (!dragging) return;
-		dragging = false;
-		railEl?.releasePointerCapture(e.pointerId);
+		if (!pressing) return;
+		pressing = false;
 		if (dragMoved) {
+			if (railEl?.hasPointerCapture(e.pointerId)) railEl.releasePointerCapture(e.pointerId);
 			const key = periods[indexAt(e.clientY)]?.key;
 			if (key) onjump(key);
 			// Leave dragMoved=true so the synthetic click that follows a drag is
-			// swallowed by the button handler below; it resets it.
+			// swallowed by the tick handler below, which resets it.
 		}
 		bubbleKey = null;
 	}
@@ -112,7 +121,7 @@
 		{/each}
 	</div>
 
-	{#if dragging && bubbleKey}
+	{#if dragMoved && bubbleKey}
 		<div
 			class="pointer-events-none absolute right-8 z-20 -translate-y-1/2 rounded-md bg-surface-inverse px-2 py-1 text-xs whitespace-nowrap text-fg-inverse shadow-lg"
 			style="top: {bubbleY}px"
