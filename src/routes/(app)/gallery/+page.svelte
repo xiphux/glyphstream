@@ -5,6 +5,8 @@
 	import { ChevronLeft } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
+	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
+	import { groupIntoSections, nextMonthStartMs, type Granularity } from '$lib/gallery-date-buckets';
 	import { groupGalleryItems, promptRunKey, type GalleryGroup } from '$lib/gallery-stacks';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import type {
@@ -56,6 +58,12 @@
 	// Key of the stack the user has drilled into; null = top-level grid.
 	let openGroupKey = $state<string | null>(null);
 
+	// --- Date grouping ------------------------------------------------------
+	// Sticky time headers over the (already reverse-chron) feed. Granularity is
+	// per-session like `stacking`, not persisted. Bucketing is a pure local-time
+	// pass over the loaded units, recomputing for free on paginate/seek/delete.
+	let granularity = $state<Granularity>('month');
+
 	const groups = $derived(stacking ? groupGalleryItems(items) : []);
 	const openGroup = $derived(
 		openGroupKey ? (groups.find((g) => g.key === openGroupKey) ?? null) : null,
@@ -66,6 +74,15 @@
 	// The set the lightbox carousels over: just the drilled stack when one is
 	// open, otherwise the whole loaded gallery.
 	const lightboxList = $derived(drillItems ?? items);
+
+	// Top-level render units bucketed into sticky date sections: stacks (when
+	// stacking) or flat items. Drill-in is never sectioned.
+	const stackedSections = $derived(
+		stacking ? groupIntoSections(groups, granularity, (g) => g.items[0]?.createdAt ?? 0) : [],
+	);
+	const flatSections = $derived(
+		stacking ? [] : groupIntoSections(items, granularity, (i) => i.createdAt),
+	);
 
 	// The last group can be a partially-loaded "trailing" run — its older
 	// members may still be on an unfetched page. Used to (a) mark its card as
@@ -305,6 +322,117 @@
 		if (m) url.searchParams.set('model', m);
 		else url.searchParams.delete('model');
 		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	// --- Quick-jump (timeline rail) -----------------------------------------
+	// Full-history month list for the right-edge rail. Fetched (not SSR'd) so we
+	// can pass the viewer's tz offset for local-month bucketing; refetched when
+	// the kind/model filters change so the rail mirrors the filtered feed.
+	let monthPeriods = $state<{ key: string; count: number }[]>([]);
+	// The section key currently pinned at the top of the scroll viewport, so the
+	// rail can highlight "where am I".
+	let activeSectionKey = $state<string | null>(null);
+
+	$effect(() => {
+		const params = new URLSearchParams();
+		if (data.kind) params.set('kind', data.kind);
+		if (data.model) params.set('model', data.model);
+		params.set('tzOffset', String(-new Date().getTimezoneOffset()));
+		let cancelled = false;
+		fetch(`/api/media/periods?${params.toString()}`)
+			.then((r) => (r.ok ? r.json() : { periods: [] }))
+			.then((d) => {
+				if (!cancelled) monthPeriods = d.periods ?? [];
+			})
+			.catch(() => {
+				if (!cancelled) monthPeriods = [];
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// Re-anchor the feed at an instant (older-than), or to newest when omitted.
+	// Mirrors loadMore's generation-guard so a stale page can't land on the
+	// seeked list.
+	async function seekTo(before?: number) {
+		const gen = ++loadGeneration;
+		loadingMore = false;
+		loadError = null;
+		const params = new URLSearchParams();
+		if (data.kind) params.set('kind', data.kind);
+		if (data.model) params.set('model', data.model);
+		if (before != null) params.set('before', String(before));
+		try {
+			const res = await fetch(`/api/media?${params.toString()}`);
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			const next = (await res.json()) as MediaListResult;
+			if (gen !== loadGeneration) return;
+			items = next.items;
+			nextCursor = next.nextCursor;
+			if (scrollContainer) scrollContainer.scrollTop = 0;
+		} catch {
+			if (gen !== loadGeneration) return;
+			loadError = 'Failed to jump';
+		}
+	}
+
+	// Rail callback (key is a month 'YYYY-MM'): the newest month seeks to top; a
+	// month with a loaded section scrolls to it (no fetch); else seek to it. Day
+	// headers carry their month in their first 7 chars, so this works at either
+	// granularity.
+	function jumpToMonth(key: string) {
+		if (key === monthPeriods[0]?.key) {
+			seekTo(undefined);
+			return;
+		}
+		for (const [sectionKey, el] of sectionHeaders) {
+			if (sectionKey.slice(0, 7) === key && scrollContainer) {
+				scrollContainer.scrollTop +=
+					el.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+				return;
+			}
+		}
+		seekTo(nextMonthStartMs(key));
+	}
+
+	// Section header elements by section key (insertion order = newest-first DOM
+	// order), for scroll-to + active tracking.
+	const sectionHeaders = new Map<string, HTMLElement>();
+	function registerHeader(node: HTMLElement, key: string) {
+		sectionHeaders.set(key, node);
+		return {
+			update(newKey: string) {
+				sectionHeaders.delete(key);
+				key = newKey;
+				sectionHeaders.set(key, node);
+			},
+			destroy() {
+				sectionHeaders.delete(key);
+			},
+		};
+	}
+
+	// Active-month tracking: the topmost header at/above the container top wins;
+	// report its month so it matches the rail. rAF-coalesced so a fast scroll
+	// does at most one measure pass per frame.
+	let activeRaf = 0;
+	function scheduleActiveUpdate() {
+		if (activeRaf) return;
+		activeRaf = requestAnimationFrame(() => {
+			activeRaf = 0;
+			updateActiveSection();
+		});
+	}
+	function updateActiveSection() {
+		if (!scrollContainer) return;
+		const top = scrollContainer.getBoundingClientRect().top;
+		let best: { key: string; delta: number } | null = null;
+		for (const [key, el] of sectionHeaders) {
+			const delta = el.getBoundingClientRect().top - top;
+			if (delta <= 1 && (!best || delta > best.delta)) best = { key, delta };
+		}
+		activeSectionKey = (best?.key ?? monthPeriods[0]?.key ?? null)?.slice(0, 7) ?? null;
 	}
 
 	// Merge media into `items`, de-duped by id and kept globally newest-first
@@ -569,6 +697,21 @@
 					>
 						Stack
 					</button>
+					<div class="flex gap-1" role="group" aria-label="Date grouping granularity">
+						{#each [{ g: 'day', label: 'Day' }, { g: 'month', label: 'Month' }] as { g, label } (g)}
+							{@const active = granularity === g}
+							<button
+								type="button"
+								onclick={() => (granularity = g as Granularity)}
+								aria-pressed={active}
+								class="rounded-md border px-3 py-1.5 transition {active
+									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+									: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+							>
+								{label}
+							</button>
+						{/each}
+					</div>
 				{/if}
 				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
 					<button
@@ -583,243 +726,276 @@
 		</div>
 	</header>
 
-	<div bind:this={scrollContainer} class="flex-1 overflow-y-auto px-4 py-4">
-		{#if items.length === 0}
-			<div class="flex h-full flex-col items-center justify-center text-center">
-				<p class="text-sm text-fg-muted">No media yet.</p>
-				<p class="mt-1 text-xs text-fg-subtle">
-					Generated images and videos from your chats appear here.
-				</p>
-			</div>
-		{:else}
-			<!--
+	<div class="relative flex-1 overflow-hidden">
+		<div
+			bind:this={scrollContainer}
+			onscroll={scheduleActiveUpdate}
+			class="h-full overflow-y-auto pt-4 pb-4 pl-4 {!openGroup && monthPeriods.length > 1
+				? 'pr-9'
+				: 'pr-4'}"
+		>
+			{#if items.length === 0}
+				<div class="flex h-full flex-col items-center justify-center text-center">
+					<p class="text-sm text-fg-muted">No media yet.</p>
+					<p class="mt-1 text-xs text-fg-subtle">
+						Generated images and videos from your chats appear here.
+					</p>
+				</div>
+			{:else}
+				<!--
 				A single media tile. Shared by the flat grid, the drill-in grid, and
 				solo (size-1) stacks so the three render paths stay identical. Grid
 				tiles use the /thumbnail variant (server-side sharp resize to 512px
 				JPEG, disk-cached — see src/lib/server/media/thumbnail.ts), not the
 				full-resolution /content the lightbox pulls.
 			-->
-			{#snippet mediaTile(m: MediaListItem)}
-				{@const isSelected = selectMode && selected.has(m.id)}
-				<li
-					class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
-						? 'border-surface-inverse ring-2 ring-surface-inverse'
-						: 'border-border hover:border-border-focus'}"
-				>
-					<button
-						type="button"
-						onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
-						class="block w-full"
-						aria-label={selectMode
-							? isSelected
-								? `Deselect ${m.kind}`
-								: `Select ${m.kind}`
-							: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
-						aria-pressed={selectMode ? isSelected : undefined}
+				{#snippet mediaTile(m: MediaListItem)}
+					{@const isSelected = selectMode && selected.has(m.id)}
+					<li
+						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
+							? 'border-surface-inverse ring-2 ring-surface-inverse'
+							: 'border-border hover:border-border-focus'}"
 					>
-						<div class="relative aspect-square w-full overflow-hidden">
-							{#if m.kind === 'image'}
-								<img
-									src="/api/media/{m.id}/thumbnail"
-									alt={m.promptExcerpt ?? 'Generated image'}
-									loading="lazy"
-									class="h-full w-full object-cover"
-								/>
-							{:else}
-								<!--
+						<button
+							type="button"
+							onclick={() => (selectMode ? toggleSelected(m.id) : (lightbox = m))}
+							class="block w-full"
+							aria-label={selectMode
+								? isSelected
+									? `Deselect ${m.kind}`
+									: `Select ${m.kind}`
+								: `Open ${m.kind} ${m.promptExcerpt ?? ''}`}
+							aria-pressed={selectMode ? isSelected : undefined}
+						>
+							<div class="relative aspect-square w-full overflow-hidden">
+								{#if m.kind === 'image'}
+									<img
+										src="/api/media/{m.id}/thumbnail"
+										alt={m.promptExcerpt ?? 'Generated image'}
+										loading="lazy"
+										class="h-full w-full object-cover"
+									/>
+								{:else}
+									<!--
 									#t=0.1 is a Media Fragment URI: tells the browser to seek
 									to 0.1s on load so it renders that frame as an inline poster.
 									Avoids needing a server-side ffmpeg poster pipeline. The 0.1
 									(vs 0) sidesteps encoders that begin with a black/blue frame.
 								-->
-								<!-- svelte-ignore a11y_media_has_caption -->
-								<video
-									src="/api/media/{m.id}/content#t=0.1"
-									preload="metadata"
-									muted
-									playsinline
-									class="h-full w-full object-cover"
-								></video>
-								<div
-									class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
-								>
-									video
+									<!-- svelte-ignore a11y_media_has_caption -->
+									<video
+										src="/api/media/{m.id}/content#t=0.1"
+										preload="metadata"
+										muted
+										playsinline
+										class="h-full w-full object-cover"
+									></video>
+									<div
+										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+									>
+										video
+									</div>
+								{/if}
+							</div>
+							{#if m.promptExcerpt}
+								<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
+									{m.promptExcerpt}
 								</div>
 							{/if}
-						</div>
-						{#if m.promptExcerpt}
-							<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
-								{m.promptExcerpt}
-							</div>
-						{/if}
-					</button>
-					{#if selectMode}
-						<!--
+						</button>
+						{#if selectMode}
+							<!--
 							Checkbox badge for selection mode. Purely visual — the
 							whole tile is the toggle (the wrapping button handles
 							the click), so the badge is aria-hidden and not its
 							own focus target.
 						-->
-						<span
-							aria-hidden="true"
-							class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
-								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-								: 'border-white/80 bg-black/40 text-transparent'}"
-						>
-							✓
-						</span>
-					{:else}
+							<span
+								aria-hidden="true"
+								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
+									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+									: 'border-white/80 bg-black/40 text-transparent'}"
+							>
+								✓
+							</span>
+						{:else}
+							<button
+								type="button"
+								onclick={() => deleteOne(m.id)}
+								disabled={deletingId === m.id}
+								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
+								aria-label="Delete this media"
+								title="Delete"
+							>
+								{deletingId === m.id ? '…' : '×'}
+							</button>
+						{/if}
+					</li>
+				{/snippet}
+
+				<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell
+			     for the rest. Clicking drills into the stack. -->
+				{#snippet stackCard(g: GalleryGroup)}
+					{@const previews = g.items.slice(0, g.items.length > 4 ? 3 : 4)}
+					{@const remaining = g.items.length - previews.length}
+					{@const incomplete = g.key === trailingGroupKey && !!nextCursor}
+					<li
+						class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus"
+					>
 						<button
 							type="button"
-							onclick={() => deleteOne(m.id)}
-							disabled={deletingId === m.id}
-							class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
-							aria-label="Delete this media"
-							title="Delete"
+							onclick={() => openStack(g.key)}
+							class="block w-full"
+							aria-label={`Open stack: ${groupLabel(g)} (${g.items.length} items)`}
 						>
-							{deletingId === m.id ? '…' : '×'}
+							<div class="relative aspect-square w-full overflow-hidden bg-surface-panel">
+								<div class="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
+									{#each previews as m (m.id)}
+										<div class="relative overflow-hidden bg-surface-panel">
+											{#if m.kind === 'image'}
+												<img
+													src="/api/media/{m.id}/thumbnail"
+													alt=""
+													loading="lazy"
+													class="h-full w-full object-cover"
+												/>
+											{:else}
+												<!-- svelte-ignore a11y_media_has_caption -->
+												<video
+													src="/api/media/{m.id}/content#t=0.1"
+													preload="metadata"
+													muted
+													playsinline
+													class="h-full w-full object-cover"
+												></video>
+											{/if}
+										</div>
+									{/each}
+									{#if remaining > 0}
+										<div
+											class="flex items-center justify-center bg-surface-inverse/80 text-sm font-semibold text-fg-inverse"
+										>
+											+{remaining}
+										</div>
+									{/if}
+								</div>
+							</div>
+							<div class="px-2 py-1.5">
+								<div class="truncate text-left text-xs text-fg-secondary">{groupLabel(g)}</div>
+								<div class="text-left text-[10px] text-fg-muted">
+									{g.items.length} item{g.items.length === 1 ? '' : 's'}{incomplete ? '…' : ''}
+								</div>
+							</div>
 						</button>
-					{/if}
-				</li>
-			{/snippet}
+					</li>
+				{/snippet}
 
-			<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell
-			     for the rest. Clicking drills into the stack. -->
-			{#snippet stackCard(g: GalleryGroup)}
-				{@const previews = g.items.slice(0, g.items.length > 4 ? 3 : 4)}
-				{@const remaining = g.items.length - previews.length}
-				{@const incomplete = g.key === trailingGroupKey && !!nextCursor}
-				<li
-					class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus"
-				>
-					<button
-						type="button"
-						onclick={() => openStack(g.key)}
-						class="block w-full"
-						aria-label={`Open stack: ${groupLabel(g)} (${g.items.length} items)`}
-					>
-						<div class="relative aspect-square w-full overflow-hidden bg-surface-panel">
-							<div class="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
-								{#each previews as m (m.id)}
-									<div class="relative overflow-hidden bg-surface-panel">
-										{#if m.kind === 'image'}
-											<img
-												src="/api/media/{m.id}/thumbnail"
-												alt=""
-												loading="lazy"
-												class="h-full w-full object-cover"
-											/>
-										{:else}
-											<!-- svelte-ignore a11y_media_has_caption -->
-											<video
-												src="/api/media/{m.id}/content#t=0.1"
-												preload="metadata"
-												muted
-												playsinline
-												class="h-full w-full object-cover"
-											></video>
-										{/if}
-									</div>
-								{/each}
-								{#if remaining > 0}
-									<div
-										class="flex items-center justify-center bg-surface-inverse/80 text-sm font-semibold text-fg-inverse"
-									>
-										+{remaining}
-									</div>
-								{/if}
-							</div>
-						</div>
-						<div class="px-2 py-1.5">
-							<div class="truncate text-left text-xs text-fg-secondary">{groupLabel(g)}</div>
-							<div class="text-left text-[10px] text-fg-muted">
-								{g.items.length} item{g.items.length === 1 ? '' : 's'}{incomplete ? '…' : ''}
-							</div>
-						</div>
-					</button>
-				</li>
-			{/snippet}
-
-			<!-- Sentinel: the IntersectionObserver effect auto-loads the next page
+				<!-- Sentinel: the IntersectionObserver effect auto-loads the next page
 			     as it nears the viewport. Only one of the branches below renders at
 			     a time, so the single `sentinel` bind is unambiguous; the drill-in
 			     view omits it (the trailing-group $effect drives its loading). -->
-			{#snippet scrollSentinel()}
-				{#if nextCursor}
-					<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
-						{#if loadingMore}
-							<span class="text-sm text-fg-muted">Loading…</span>
-						{/if}
-					</div>
+				{#snippet scrollSentinel()}
+					{#if nextCursor}
+						<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
+							{#if loadingMore}
+								<span class="text-sm text-fg-muted">Loading…</span>
+							{/if}
+						</div>
+					{/if}
+				{/snippet}
+
+				<!-- A sticky time header; `registerHeader` tracks its element for
+				     quick-jump scroll-to + active-month highlighting. -->
+				{#snippet sectionHeader(label: string, key: string)}
+					<h2
+						use:registerHeader={key}
+						class="sticky top-0 z-10 -mx-4 mb-3 bg-surface-panel/90 px-4 py-2 text-sm font-semibold text-fg-secondary backdrop-blur"
+					>
+						{label}
+					</h2>
+				{/snippet}
+
+				{#if openGroup}
+					<!-- Drill-in: just this stack's members (no date sections). -->
+					<ul
+						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+					>
+						{#each drillItems ?? [] as m (m.id)}
+							{@render mediaTile(m)}
+						{/each}
+					</ul>
+				{:else if stacking}
+					<!-- Stacked top level, grouped into date sections; solos render as
+					     normal tiles, interleaved in true newest-first order. -->
+					{#each stackedSections as section (section.key)}
+						{@render sectionHeader(section.label, section.key)}
+						<ul
+							class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+						>
+							{#each section.units as g (g.key)}
+								{#if g.kind === 'solo'}
+									{@render mediaTile(g.items[0])}
+								{:else}
+									{@render stackCard(g)}
+								{/if}
+							{/each}
+						</ul>
+					{/each}
+					{@render scrollSentinel()}
+				{:else}
+					<!-- Flat firehose (stacking off), grouped into date sections. -->
+					{#each flatSections as section (section.key)}
+						{@render sectionHeader(section.label, section.key)}
+						<ul
+							class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+						>
+							{#each section.units as m (m.id)}
+								{@render mediaTile(m)}
+							{/each}
+						</ul>
+					{/each}
+					{@render scrollSentinel()}
 				{/if}
-			{/snippet}
-
-			{#if openGroup}
-				<!-- Drill-in: just this stack's members. -->
-				<ul
-					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-				>
-					{#each drillItems ?? [] as m (m.id)}
-						{@render mediaTile(m)}
-					{/each}
-				</ul>
-			{:else if stacking}
-				<!-- Stacked top level: related media collapse into cards; solos
-				     render as normal tiles, interleaved in true newest-first order. -->
-				<ul
-					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-				>
-					{#each groups as g (g.key)}
-						{#if g.kind === 'solo'}
-							{@render mediaTile(g.items[0])}
-						{:else}
-							{@render stackCard(g)}
-						{/if}
-					{/each}
-				</ul>
-				{@render scrollSentinel()}
-			{:else}
-				<!-- Flat firehose (stacking off): today's behavior. -->
-				<ul
-					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-				>
-					{#each items as m (m.id)}
-						{@render mediaTile(m)}
-					{/each}
-				</ul>
-				{@render scrollSentinel()}
 			{/if}
-		{/if}
 
-		{#if loadError}
-			<!--
+			{#if loadError}
+				<!--
 				Pagination failure. Retry re-runs loadMore (not whatever else may
 				have failed) and is always available here: loadError is only set
 				while a next page exists, so there's no last-page dead end.
 			-->
-			<div
-				class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
-			>
-				<span>{loadError}</span>
-				<button
-					type="button"
-					onclick={() => {
-						loadError = null;
-						loadMore();
-					}}
-					class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
+				<div
+					class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
 				>
-					Retry
-				</button>
-			</div>
-		{/if}
+					<span>{loadError}</span>
+					<button
+						type="button"
+						onclick={() => {
+							loadError = null;
+							loadMore();
+						}}
+						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
+					>
+						Retry
+					</button>
+				</div>
+			{/if}
 
-		{#if error}
-			<!-- Delete failure (single or bulk). Distinct from loadError so it
+			{#if error}
+				<!-- Delete failure (single or bulk). Distinct from loadError so it
 				 never gates scrolling; re-attempting the delete clears it. -->
-			<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
-				{error}
-			</div>
+				<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
+					{error}
+				</div>
+			{/if}
+		</div>
+		{#if !openGroup && monthPeriods.length > 1}
+			<GalleryTimelineRail
+				class="absolute inset-y-0 right-0 w-7"
+				periods={monthPeriods}
+				activeKey={activeSectionKey}
+				onjump={jumpToMonth}
+			/>
 		{/if}
 	</div>
 </div>

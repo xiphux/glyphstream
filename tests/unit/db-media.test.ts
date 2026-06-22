@@ -19,6 +19,7 @@ import {
 	linkMessageMedia,
 	listConversationMediaRefs,
 	listDistinctSourceModelsForUser,
+	listMediaMonthPeriodsForUser,
 	listConversationsForMedia,
 	listMediaForConversation,
 	listMediaForUser,
@@ -57,6 +58,12 @@ function makeMedia(userId: string, overrides: Partial<Parameters<typeof insertMe
 
 function getRow(mediaId: string) {
 	return mocks.testDb.select().from(media).where(eq(media.id, mediaId)).get();
+}
+
+// insertMedia stamps createdAt = Date.now(); override it for deterministic
+// time-ordering / period-bucketing assertions.
+function setCreatedAt(mediaId: string, createdAt: number) {
+	mocks.testDb.update(media).set({ createdAt }).where(eq(media.id, mediaId)).run();
 }
 
 describe('media: insert + ref counting', () => {
@@ -397,6 +404,105 @@ describe('listMediaForUser', () => {
 		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
 		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
 		expect(listMediaForUser(u.id).items).toHaveLength(2);
+	});
+
+	it('before seeks to rows strictly older than the anchor', () => {
+		const u = seedUser();
+		const older = makeMedia(u.id);
+		const newer = makeMedia(u.id);
+		setCreatedAt(older.id, 1000);
+		setCreatedAt(newer.id, 2000);
+		expect(listMediaForUser(u.id, { before: 2000 }).items.map((i) => i.id)).toEqual([older.id]);
+		expect(listMediaForUser(u.id, { before: 3000 }).items.map((i) => i.id)).toEqual([
+			newer.id,
+			older.id,
+		]);
+	});
+
+	it('before composes with model', () => {
+		const u = seedUser();
+		const a = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		const b = makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		setCreatedAt(a.id, 1000);
+		setCreatedAt(b.id, 1500);
+		expect(
+			listMediaForUser(u.id, { before: 2000, model: 'comfyui/sdxl' }).items.map((i) => i.id),
+		).toEqual([a.id]);
+	});
+});
+
+describe('listMediaMonthPeriodsForUser (quick-jump timeline)', () => {
+	// June 1 2026 00:30 UTC — straddles the May/June boundary under a negative
+	// (west-of-UTC) offset, so we can prove local-time bucketing.
+	const juneBoundaryUtc = Date.UTC(2026, 5, 1, 0, 30);
+	const midJuneUtc = Date.UTC(2026, 5, 15, 12);
+	const midMayUtc = Date.UTC(2026, 4, 15, 12);
+
+	it('returns months with counts, newest-first (UTC buckets at offset 0)', () => {
+		const u = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		const c = makeMedia(u.id);
+		setCreatedAt(a.id, midJuneUtc);
+		setCreatedAt(b.id, midJuneUtc + 1000);
+		setCreatedAt(c.id, midMayUtc);
+		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
+			{ key: '2026-06', count: 2 },
+			{ key: '2026-05', count: 1 },
+		]);
+	});
+
+	it('buckets in local time per tzOffsetMinutes', () => {
+		const u = seedUser();
+		const m = makeMedia(u.id);
+		setCreatedAt(m.id, juneBoundaryUtc);
+		// UTC → June; shifted back 2h → May 31 22:30 local → May.
+		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
+			{ key: '2026-06', count: 1 },
+		]);
+		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: -120 })).toEqual([
+			{ key: '2026-05', count: 1 },
+		]);
+	});
+
+	it('excludes uploaded, file-kind, and hard-deleted rows', () => {
+		const u = seedUser();
+		const keep = makeMedia(u.id);
+		setCreatedAt(keep.id, midJuneUtc);
+		makeMedia(u.id, { origin: 'uploaded' });
+		makeMedia(u.id, { kind: 'file', contentType: 'text/csv', sourceModel: 'run_python' });
+		const del = makeMedia(u.id);
+		setCreatedAt(del.id, midMayUtc);
+		hardDeleteMediaForUser(del.id, u.id);
+		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0 })).toEqual([
+			{ key: '2026-06', count: 1 },
+		]);
+	});
+
+	it('respects kind and model filters', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/sdxl' });
+		const vid = makeMedia(u.id, {
+			kind: 'video',
+			contentType: 'video/mp4',
+			sourceModel: 'comfyui/svd',
+		});
+		setCreatedAt(img.id, midJuneUtc);
+		setCreatedAt(vid.id, midJuneUtc);
+		expect(listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0, kind: 'video' })).toEqual([
+			{ key: '2026-06', count: 1 },
+		]);
+		expect(
+			listMediaMonthPeriodsForUser(u.id, { tzOffsetMinutes: 0, model: 'comfyui/sdxl' }),
+		).toEqual([{ key: '2026-06', count: 1 }]);
+	});
+
+	it('does not leak across users', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const m = makeMedia(u1.id);
+		setCreatedAt(m.id, midJuneUtc);
+		expect(listMediaMonthPeriodsForUser(u2.id, { tzOffsetMinutes: 0 })).toEqual([]);
 	});
 });
 

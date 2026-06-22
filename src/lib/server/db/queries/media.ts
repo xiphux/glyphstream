@@ -314,6 +314,12 @@ export function listMediaForUser(
 		 * Facet values come from `listDistinctSourceModelsForUser`.
 		 */
 		model?: string;
+		/**
+		 * Quick-jump seek anchor: only rows strictly older than this instant
+		 * (epoch ms). Used to re-anchor the gallery feed at a chosen month
+		 * without a cursor; composes with the cursor for subsequent pages.
+		 */
+		before?: number;
 		cursor?: string | null;
 		limit?: number;
 	} = {},
@@ -351,6 +357,7 @@ export function listMediaForUser(
 			? eq(media.kind, allowedKinds[0])
 			: inArray(media.kind, allowedKinds as MediaKind[]),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+		opts.before != null ? lt(media.createdAt, opts.before) : undefined,
 		cursorWhere,
 	].filter(Boolean) as Parameters<typeof and>[number][];
 
@@ -424,6 +431,52 @@ export function listDistinctSourceModelsForUser(
 
 	// `sourceModel` is non-null here (isNotNull filter), so the cast is safe.
 	return rows.map((r) => ({ value: r.value as string, count: r.count }));
+}
+
+export interface MonthPeriod {
+	/** Local-time month bucket, `YYYY-MM`. */
+	key: string;
+	/** How many of the user's gallery items fall in this month. */
+	count: number;
+}
+
+/**
+ * The gallery's quick-jump timeline: every local-time month a user has gallery
+ * media in, newest-first, with counts. Scoped to the same set the gallery shows
+ * (generated, non-deleted, image/video), optionally narrowed by `kind`/`model`
+ * to match active filters.
+ *
+ * Buckets in the viewer's local time by shifting the stored UTC ms by
+ * `tzOffsetMinutes` (`-new Date().getTimezoneOffset()` from the client) before
+ * `strftime`. A single current offset is applied to all historical rows, so a
+ * row within ~1h of a month boundary in the other DST phase can land in the
+ * adjacent month — cosmetic, affecting only this list's counts. The actual seek
+ * boundary is computed client-side (`nextMonthStartMs`), so jumps stay correct.
+ */
+export function listMediaMonthPeriodsForUser(
+	userId: string,
+	opts: { kind?: 'image' | 'video'; model?: string; tzOffsetMinutes?: number } = {},
+): MonthPeriod[] {
+	const db = getDb();
+	const offsetMin = Number.isFinite(opts.tzOffsetMinutes) ? (opts.tzOffsetMinutes as number) : 0;
+	const offsetModifier = `${offsetMin >= 0 ? '+' : ''}${offsetMin} minutes`;
+	const monthExpr = sql<string>`strftime('%Y-%m', ${media.createdAt} / 1000, 'unixepoch', ${offsetModifier})`;
+
+	const conditions = [
+		eq(media.userId, userId),
+		isNull(media.hardDeletedAt),
+		eq(media.origin, 'generated'),
+		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+	].filter(Boolean) as Parameters<typeof and>[number][];
+
+	return db
+		.select({ key: monthExpr, count: sql<number>`count(*)` })
+		.from(media)
+		.where(and(...conditions))
+		.groupBy(monthExpr)
+		.orderBy(sql`${monthExpr} desc`)
+		.all();
 }
 
 /**
