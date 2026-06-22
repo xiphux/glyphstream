@@ -40,10 +40,11 @@
 	// single shared channel did — there's no "Load more" fallback anymore).
 	let loadError = $state<string | null>(null);
 	let error = $state<string | null>(null);
-	// Bumped every time SvelteKit re-runs `load` (i.e. a filter switch). A
+	// Bumped every time SvelteKit re-runs `load` (i.e. a filter switch) AND on
+	// every timeline quick-jump (seekTo(), a purely client-side fetch). A
 	// loadMore() response that lands after a bump belongs to the previous
-	// filter; it's discarded rather than concatenated onto — and clobbering
-	// the cursor of — the freshly-loaded list.
+	// filter/anchor; it's discarded rather than concatenated onto — and
+	// clobbering the cursor of — the freshly-loaded list.
 	let loadGeneration = 0;
 	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
@@ -354,26 +355,37 @@
 
 	// Re-anchor the feed at an instant (older-than), or to newest when omitted.
 	// Mirrors loadMore's generation-guard so a stale page can't land on the
-	// seeked list.
+	// seeked list, and its AbortController + timeout so a hung seek can't await
+	// forever with no feedback (the user can re-click a tick to retry).
 	async function seekTo(before?: number) {
 		const gen = ++loadGeneration;
 		loadingMore = false;
 		loadError = null;
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), 15_000);
 		const params = new URLSearchParams();
 		if (data.kind) params.set('kind', data.kind);
 		if (data.model) params.set('model', data.model);
 		if (before != null) params.set('before', String(before));
 		try {
-			const res = await fetch(`/api/media?${params.toString()}`);
+			const res = await fetch(`/api/media?${params.toString()}`, { signal: ctrl.signal });
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			const next = (await res.json()) as MediaListResult;
 			if (gen !== loadGeneration) return;
+			// Wholesale items replacement: mirror the filter-resync invariant so
+			// drill-ins re-fetch complete conversation sets rather than skipping on
+			// a now-stale eagerLoaded entry (see the resync $effect).
 			items = next.items;
 			nextCursor = next.nextCursor;
+			eagerLoaded = new Set();
+			drillLoading = false;
+			drillError = null;
 			if (scrollContainer) scrollContainer.scrollTop = 0;
 		} catch {
 			if (gen !== loadGeneration) return;
-			loadError = 'Failed to jump';
+			loadError = ctrl.signal.aborted ? 'Jump timed out' : 'Failed to jump';
+		} finally {
+			clearTimeout(timer);
 		}
 	}
 
