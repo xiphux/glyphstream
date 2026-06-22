@@ -21,8 +21,14 @@
 			kind: 'image' | 'video' | null;
 			model: string | null;
 			modelFacets: { value: string; label: string; count: number }[];
+			q: string | null;
 		};
 	}>();
+
+	// Search is a relevance-ranked mode: when active, the chronological chrome
+	// (date headers, timeline rail, stacking) is suspended and results come
+	// pre-ranked + cursorless from the server.
+	const searching = $derived(!!data.q);
 
 	// We seed local state from the SSR initial page, then mutate as the user
 	// paginates / filters / deletes. The $effect below resyncs whenever
@@ -325,6 +331,34 @@
 		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
 	}
 
+	// --- Prompt search ------------------------------------------------------
+	// The input is bound to local state and debounced into a `?q=` nav (which
+	// re-runs `load` → ranked results). replaceState so each keystroke doesn't
+	// stack a history entry. Initialized from the URL so a shared/reloaded
+	// search link populates the box.
+	// svelte-ignore state_referenced_locally
+	let queryText = $state(data.q ?? '');
+	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
+
+	function commitQuery(q: string) {
+		const url = new URL(page.url);
+		const trimmed = q.trim();
+		if (trimmed) url.searchParams.set('q', trimmed);
+		else url.searchParams.delete('q');
+		goto(url, { keepFocus: true, noScroll: true, replaceState: true });
+	}
+
+	function onQueryInput() {
+		if (queryDebounce) clearTimeout(queryDebounce);
+		queryDebounce = setTimeout(() => commitQuery(queryText), 250);
+	}
+
+	function clearQuery() {
+		if (queryDebounce) clearTimeout(queryDebounce);
+		queryText = '';
+		commitQuery('');
+	}
+
 	// --- Quick-jump (timeline rail) -----------------------------------------
 	// Full-history month list for the right-edge rail. Fetched (not SSR'd) so we
 	// can pass the viewer's tz offset for local-month bucketing; refetched when
@@ -335,6 +369,12 @@
 	let activeSectionKey = $state<string | null>(null);
 
 	$effect(() => {
+		// The rail is hidden during search (ranked, not chronological) — skip the
+		// timeline fetch entirely.
+		if (searching) {
+			monthPeriods = [];
+			return;
+		}
 		const params = new URLSearchParams();
 		if (data.kind) params.set('kind', data.kind);
 		if (data.model) params.set('model', data.model);
@@ -667,6 +707,26 @@
 				</button>
 			{:else}
 				{#if !openGroup}
+					<div class="relative">
+						<input
+							type="search"
+							bind:value={queryText}
+							oninput={onQueryInput}
+							placeholder="Search prompts…"
+							aria-label="Search prompts"
+							class="w-36 rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 pr-7 transition focus:border-border-focus focus:outline-none sm:w-52"
+						/>
+						{#if queryText}
+							<button
+								type="button"
+								onclick={clearQuery}
+								aria-label="Clear search"
+								class="absolute top-1/2 right-1.5 -translate-y-1/2 px-1 text-fg-muted transition hover:text-fg-default"
+							>
+								×
+							</button>
+						{/if}
+					</div>
 					<div class="flex gap-1">
 						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
 							{@const active = kindFilter === k}
@@ -698,32 +758,34 @@
 							{/each}
 						</select>
 					{/if}
-					<button
-						type="button"
-						onclick={() => (stacking = !stacking)}
-						aria-pressed={stacking}
-						title={stacking ? 'Stacking on' : 'Stacking off'}
-						class="rounded-md border px-3 py-1.5 transition {stacking
-							? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-							: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
-					>
-						Stack
-					</button>
-					<div class="flex gap-1" role="group" aria-label="Date grouping granularity">
-						{#each [{ g: 'day', label: 'Day' }, { g: 'month', label: 'Month' }] as { g, label } (g)}
-							{@const active = granularity === g}
-							<button
-								type="button"
-								onclick={() => (granularity = g as Granularity)}
-								aria-pressed={active}
-								class="rounded-md border px-3 py-1.5 transition {active
-									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-									: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
-							>
-								{label}
-							</button>
-						{/each}
-					</div>
+					{#if !searching}
+						<button
+							type="button"
+							onclick={() => (stacking = !stacking)}
+							aria-pressed={stacking}
+							title={stacking ? 'Stacking on' : 'Stacking off'}
+							class="rounded-md border px-3 py-1.5 transition {stacking
+								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						>
+							Stack
+						</button>
+						<div class="flex gap-1" role="group" aria-label="Date grouping granularity">
+							{#each [{ g: 'day', label: 'Day' }, { g: 'month', label: 'Month' }] as { g, label } (g)}
+								{@const active = granularity === g}
+								<button
+									type="button"
+									onclick={() => (granularity = g as Granularity)}
+									aria-pressed={active}
+									class="rounded-md border px-3 py-1.5 transition {active
+										? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+										: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+								>
+									{label}
+								</button>
+							{/each}
+						</div>
+					{/if}
 				{/if}
 				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
 					<button
@@ -748,10 +810,15 @@
 		>
 			{#if items.length === 0}
 				<div class="flex h-full flex-col items-center justify-center text-center">
-					<p class="text-sm text-fg-muted">No media yet.</p>
-					<p class="mt-1 text-xs text-fg-subtle">
-						Generated images and videos from your chats appear here.
-					</p>
+					{#if searching}
+						<p class="text-sm text-fg-muted">No results for "{data.q}".</p>
+						<p class="mt-1 text-xs text-fg-subtle">Try different or fewer words.</p>
+					{:else}
+						<p class="text-sm text-fg-muted">No media yet.</p>
+						<p class="mt-1 text-xs text-fg-subtle">
+							Generated images and videos from your chats appear here.
+						</p>
+					{/if}
 				</div>
 			{:else}
 				<!--
@@ -927,7 +994,20 @@
 					</h2>
 				{/snippet}
 
-				{#if openGroup}
+				{#if searching}
+					<!-- Search: a flat relevance-ranked grid (no date sections, rail,
+					     or stacking — those assume chronological order). -->
+					<p class="mb-3 text-xs text-fg-muted">
+						{items.length} result{items.length === 1 ? '' : 's'} for "{data.q}"
+					</p>
+					<ul
+						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+					>
+						{#each items as m (m.id)}
+							{@render mediaTile(m)}
+						{/each}
+					</ul>
+				{:else if openGroup}
 					<!-- Drill-in: just this stack's members (no date sections). -->
 					<ul
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"

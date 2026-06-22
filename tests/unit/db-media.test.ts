@@ -20,6 +20,7 @@ import {
 	listConversationMediaRefs,
 	listDistinctSourceModelsForUser,
 	listMediaMonthPeriodsForUser,
+	searchMediaForUser,
 	listConversationsForMedia,
 	listMediaForConversation,
 	listMediaForUser,
@@ -503,6 +504,94 @@ describe('listMediaMonthPeriodsForUser (quick-jump timeline)', () => {
 		const m = makeMedia(u1.id);
 		setCreatedAt(m.id, midJuneUtc);
 		expect(listMediaMonthPeriodsForUser(u2.id, { tzOffsetMinutes: 0 })).toEqual([]);
+	});
+});
+
+describe('searchMediaForUser (keyword prompt search)', () => {
+	it('matches prompt tokens and excludes non-matches', () => {
+		const u = seedUser();
+		const sunset = makeMedia(u.id, { promptFull: 'a sunset over the ocean' });
+		makeMedia(u.id, { promptFull: 'a fluffy cat on a sofa' });
+		const hits = searchMediaForUser(u.id, 'sunset');
+		expect(hits.map((h) => h.id)).toEqual([sunset.id]);
+	});
+
+	it('empty / whitespace query returns nothing', () => {
+		const u = seedUser();
+		makeMedia(u.id, { promptFull: 'anything' });
+		expect(searchMediaForUser(u.id, '   ')).toEqual([]);
+	});
+
+	it('ranks higher term frequency first (bm25)', () => {
+		const u = seedUser();
+		const once = makeMedia(u.id, { promptFull: 'blue sky' });
+		const twice = makeMedia(u.id, { promptFull: 'blue blue ocean' });
+		const hits = searchMediaForUser(u.id, 'blue');
+		expect(hits.map((h) => h.id)).toContain(once.id);
+		expect(hits[0].id).toBe(twice.id); // more "blue" → better bm25
+	});
+
+	it('AND-joins multiple tokens (all must be present)', () => {
+		const u = seedUser();
+		const both = makeMedia(u.id, { promptFull: 'a red barn in a field' });
+		makeMedia(u.id, { promptFull: 'a red car' });
+		expect(searchMediaForUser(u.id, 'red barn').map((h) => h.id)).toEqual([both.id]);
+	});
+
+	it('composes with kind and model filters', () => {
+		const u = seedUser();
+		const img = makeMedia(u.id, {
+			kind: 'image',
+			sourceModel: 'comfyui/sdxl',
+			promptFull: 'a dragon',
+		});
+		makeMedia(u.id, {
+			kind: 'video',
+			contentType: 'video/mp4',
+			sourceModel: 'comfyui/svd',
+			promptFull: 'a dragon',
+		});
+		expect(searchMediaForUser(u.id, 'dragon', { kind: 'image' }).map((h) => h.id)).toEqual([
+			img.id,
+		]);
+		expect(searchMediaForUser(u.id, 'dragon', { model: 'comfyui/sdxl' }).map((h) => h.id)).toEqual([
+			img.id,
+		]);
+	});
+
+	it('excludes uploaded and hard-deleted rows', () => {
+		const u = seedUser();
+		const keep = makeMedia(u.id, { promptFull: 'a castle' });
+		makeMedia(u.id, { origin: 'uploaded', promptFull: 'a castle' });
+		const del = makeMedia(u.id, { promptFull: 'a castle' });
+		hardDeleteMediaForUser(del.id, u.id);
+		expect(searchMediaForUser(u.id, 'castle').map((h) => h.id)).toEqual([keep.id]);
+	});
+
+	it('reflects prompt_full updates (trigger keeps the index in sync)', () => {
+		const u = seedUser();
+		const m = makeMedia(u.id, { promptFull: 'original mountains' });
+		expect(searchMediaForUser(u.id, 'mountains').map((h) => h.id)).toEqual([m.id]);
+		mocks.testDb
+			.update(media)
+			.set({ promptFull: 'replaced deserts' })
+			.where(eq(media.id, m.id))
+			.run();
+		expect(searchMediaForUser(u.id, 'mountains')).toEqual([]);
+		expect(searchMediaForUser(u.id, 'deserts').map((h) => h.id)).toEqual([m.id]);
+	});
+
+	it('does not leak across users', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		makeMedia(u1.id, { promptFull: 'a secret garden' });
+		expect(searchMediaForUser(u2.id, 'garden')).toEqual([]);
+	});
+
+	it('honours the limit cap', () => {
+		const u = seedUser();
+		for (let i = 0; i < 5; i++) makeMedia(u.id, { promptFull: `a tower number ${i}` });
+		expect(searchMediaForUser(u.id, 'tower', { limit: 3 })).toHaveLength(3);
 	});
 });
 

@@ -136,6 +136,33 @@ export function seedMediaInBuckets(buckets: { createdAt: number; count: number }
 }
 
 /**
+ * Seed one generated image per given prompt string (newest = first), for the
+ * prompt-search specs. The prompt is stored in both `prompt_full` (what search
+ * indexes) and `prompt_excerpt` (the tile caption). Like the other seeders,
+ * writes no bytes — the grid only needs the heading/<img> DOM nodes.
+ */
+export function seedMediaPrompts(prompts: string[]): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const stmt = db.prepare(
+			`INSERT INTO media
+			   (id, user_id, storage_path, content_type, byte_size, kind, origin,
+			    prompt_excerpt, prompt_full, created_at, ref_count)
+			 VALUES (?, ?, ?, ?, ?, 'image', 'generated', ?, ?, ?, 1)`,
+		);
+		const base = 1_700_000_000_000;
+		prompts.forEach((p, i) => {
+			const id = `e2e-media-${String(i).padStart(4, '0')}`;
+			stmt.run(id, TEST_USER.id, `e2e/${id}.png`, 'image/png', 1024, p, p, base - i);
+		});
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Open the model picker and pick a model by visible name. Works for both
  * the inline (composer) and full-width picker variants — the trigger's
  * aria-label is "Select model" in both.

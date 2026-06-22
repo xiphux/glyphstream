@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, lte, or, sql } from
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
+import { buildFtsQuery } from './search';
 
 /** Union of valid `media.kind` values. 'file' covers anything that
  *  isn't natively image/video (xlsx, csv, pdf, json, txt, ...) — used
@@ -390,6 +391,92 @@ export function listMediaForUser(
 		sliced.map((r) => ({ ...r, conversationTitle: null })),
 	);
 	return { items, nextCursor };
+}
+
+/** Max relevance-ranked results a single prompt search returns. No pagination —
+ *  refine the query if the top N isn't enough (cf. `searchConversations`). */
+const MEDIA_SEARCH_CAP = 150;
+
+/**
+ * Relevance-ranked prompt search over a user's gallery media. Keyword leg: the
+ * `media_prompt_fts` FTS5 index (migration 20260622120000), ranked by bm25.
+ * Returns up to {@link MEDIA_SEARCH_CAP} `MediaListItem`s, best-match-first, with
+ * no cursor — search is a ranked mode, not the chronological browse.
+ *
+ * Visibility filters (hard_deleted / origin / kind / model) are applied on the
+ * JOIN back to `media`, mirroring `listMediaForUser` and the conversation search.
+ * `kind`/`model` compose so a user can search within an active facet. The
+ * semantic (embedding) leg fuses in here in phase 2; this is the keyword path.
+ */
+export function searchMediaForUser(
+	userId: string,
+	rawQuery: string,
+	opts: { kind?: 'image' | 'video'; model?: string; limit?: number } = {},
+): MediaListItem[] {
+	const match = buildFtsQuery(rawQuery);
+	if (!match) return [];
+	const limit = Math.max(1, Math.min(opts.limit ?? MEDIA_SEARCH_CAP, MEDIA_SEARCH_CAP));
+
+	const kindCond = opts.kind
+		? sql`AND media.kind = ${opts.kind}`
+		: sql`AND media.kind IN ('image', 'video')`;
+	const modelCond = opts.model ? sql`AND media.source_model = ${opts.model}` : sql``;
+
+	// Raw SQL: drizzle doesn't model FTS5 virtual tables, and bm25()/MATCH must
+	// share one SELECT. Params are bound (no injection). The media table keeps
+	// its real name so the `assignedConversationId` fragment's `media.*`
+	// correlation resolves to the outer row.
+	const rows = getDb().all<{
+		id: string;
+		kind: MediaKind;
+		content_type: string;
+		byte_size: number;
+		source_endpoint_id: string | null;
+		source_model: string | null;
+		prompt_excerpt: string | null;
+		prompt_full: string | null;
+		created_at: number;
+		conversation_id: string | null;
+	}>(sql`
+		SELECT
+			media.id AS id,
+			media.kind AS kind,
+			media.content_type AS content_type,
+			media.byte_size AS byte_size,
+			media.source_endpoint_id AS source_endpoint_id,
+			media.source_model AS source_model,
+			media.prompt_excerpt AS prompt_excerpt,
+			media.prompt_full AS prompt_full,
+			media.created_at AS created_at,
+			${assignedConversationId} AS conversation_id
+		FROM media_prompt_fts f
+		JOIN media ON media.id = f.media_id
+		WHERE f.user_id = ${userId}
+			AND media_prompt_fts MATCH ${match}
+			AND media.hard_deleted_at IS NULL
+			AND media.origin = 'generated'
+			${kindCond}
+			${modelCond}
+		ORDER BY bm25(media_prompt_fts) ASC
+		LIMIT ${limit}
+	`);
+
+	return attachConversationTitles(
+		userId,
+		rows.map((r) => ({
+			id: r.id,
+			kind: r.kind,
+			contentType: r.content_type,
+			byteSize: r.byte_size,
+			sourceEndpointId: r.source_endpoint_id,
+			sourceModel: r.source_model,
+			promptExcerpt: r.prompt_excerpt,
+			promptFull: r.prompt_full,
+			createdAt: r.created_at,
+			conversationId: r.conversation_id,
+			conversationTitle: null,
+		})),
+	);
 }
 
 export interface ModelFacet {

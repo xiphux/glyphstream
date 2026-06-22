@@ -1,4 +1,8 @@
-import { listDistinctSourceModelsForUser, listMediaForUser } from '$lib/server/db/queries/media';
+import {
+	listDistinctSourceModelsForUser,
+	listMediaForUser,
+	searchMediaForUser,
+} from '$lib/server/db/queries/media';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import type { PageServerLoad } from './$types';
 
@@ -14,12 +18,24 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : null;
 	const model = url.searchParams.get('model') ?? null;
+	const q = url.searchParams.get('q')?.trim() || null;
 	const userId = locals.user!.id;
 
-	const initial = listMediaForUser(userId, {
-		kind: kind ?? undefined,
-		model: model ?? undefined,
-	});
+	// Search is a relevance-ranked mode (best-match-first, no cursor); the
+	// chronological browse uses the keyset-paginated listing. Both apply the
+	// kind/model facets so search composes with them.
+	const initial = q
+		? {
+				items: searchMediaForUser(userId, q, {
+					kind: kind ?? undefined,
+					model: model ?? undefined,
+				}),
+				nextCursor: null,
+			}
+		: listMediaForUser(userId, {
+				kind: kind ?? undefined,
+				model: model ?? undefined,
+			});
 
 	// Facet options for the Model dropdown. Labels are derived with the pure
 	// `friendlyModelName` (no upstream fetch) so the load stays light; the
@@ -28,5 +44,5 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 		kind: kind ?? undefined,
 	}).map((f) => ({ ...f, label: friendlyModelName(f.value) }));
 
-	return { initial, kind, model, modelFacets };
+	return { initial, kind, model, q, modelFacets };
 };
