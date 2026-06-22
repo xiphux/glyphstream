@@ -1,4 +1,5 @@
-import { listMediaForUser } from '$lib/server/db/queries/media';
+import { listDistinctSourceModelsForUser, listMediaForUser } from '$lib/server/db/queries/media';
+import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -12,6 +13,20 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	await parent();
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : null;
-	const initial = listMediaForUser(locals.user!.id, { kind: kind ?? undefined });
-	return { initial, kind };
+	const model = url.searchParams.get('model') ?? null;
+	const userId = locals.user!.id;
+
+	const initial = listMediaForUser(userId, {
+		kind: kind ?? undefined,
+		model: model ?? undefined,
+	});
+
+	// Facet options for the Model dropdown. Labels are derived with the pure
+	// `friendlyModelName` (no upstream fetch) so the load stays light; the
+	// raw `value` is what `?model=` filters on.
+	const modelFacets = listDistinctSourceModelsForUser(userId, {
+		kind: kind ?? undefined,
+	}).map((f) => ({ ...f, label: friendlyModelName(f.value) }));
+
+	return { initial, kind, model, modelFacets };
 };

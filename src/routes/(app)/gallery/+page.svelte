@@ -13,7 +13,14 @@
 		MediaListResult,
 	} from '$lib/server/db/queries/media';
 
-	let { data } = $props<{ data: { initial: MediaListResult; kind: 'image' | 'video' | null } }>();
+	let { data } = $props<{
+		data: {
+			initial: MediaListResult;
+			kind: 'image' | 'video' | null;
+			model: string | null;
+			modelFacets: { value: string; label: string; count: number }[];
+		};
+	}>();
 
 	// We seed local state from the SSR initial page, then mutate as the user
 	// paginates / filters / deletes. The $effect below resyncs whenever
@@ -212,6 +219,16 @@
 
 	const kindFilter = $derived(data.kind);
 
+	// Options for the Model facet dropdown. If a model is selected but absent
+	// from the facet list (e.g. it produced no media of the current kind, so
+	// the distinct query dropped it) we still append it, so the active filter
+	// always has a visible option to switch away from rather than stranding.
+	const modelOptions = $derived(
+		data.model != null && !data.modelFacets.some((f: { value: string }) => f.value === data.model)
+			? [...data.modelFacets, { value: data.model, label: data.model, count: 0 }]
+			: data.modelFacets,
+	);
+
 	// Re-sync local state when SvelteKit re-runs `load` (e.g. filter switch via
 	// query-string nav); the server gives us the new initial page. Bumping
 	// loadGeneration supersedes any in-flight page fetch so its rows can't land
@@ -276,6 +293,13 @@
 		const url = new URL(page.url);
 		if (k) url.searchParams.set('kind', k);
 		else url.searchParams.delete('kind');
+		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	function setModel(m: string | null) {
+		const url = new URL(page.url);
+		if (m) url.searchParams.set('model', m);
+		else url.searchParams.delete('model');
 		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
 	}
 
@@ -508,6 +532,23 @@
 							</button>
 						{/each}
 					</div>
+					{#if modelOptions.length >= 2 || data.model != null}
+						{@const modelActive = data.model != null}
+						<select
+							value={data.model ?? ''}
+							onchange={(e) => setModel(e.currentTarget.value || null)}
+							title="Filter by model"
+							aria-label="Filter by model"
+							class="rounded-md border px-3 py-1.5 transition {modelActive
+								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						>
+							<option value="">All models</option>
+							{#each modelOptions as f (f.value)}
+								<option value={f.value}>{f.label} ({f.count})</option>
+							{/each}
+						</select>
+					{/if}
 					<button
 						type="button"
 						onclick={() => (stacking = !stacking)}

@@ -18,6 +18,7 @@ import {
 	insertMedia,
 	linkMessageMedia,
 	listConversationMediaRefs,
+	listDistinctSourceModelsForUser,
 	listConversationsForMedia,
 	listMediaForConversation,
 	listMediaForUser,
@@ -372,6 +373,72 @@ describe('listMediaForUser', () => {
 		});
 		const list = listMediaForUser(u.id, { kinds: ['file'] });
 		expect(list.items.map((i) => i.id)).toEqual([file.id]);
+	});
+
+	it('filters by model (source_model) when provided', () => {
+		const u = seedUser();
+		const a = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		const list = listMediaForUser(u.id, { model: 'comfyui/sdxl' });
+		expect(list.items.map((i) => i.id)).toEqual([a.id]);
+	});
+
+	it('model + kind AND together', () => {
+		const u = seedUser();
+		const sdxlImg = makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { kind: 'video', contentType: 'video/mp4', sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/flux' });
+		const list = listMediaForUser(u.id, { kind: 'image', model: 'comfyui/sdxl' });
+		expect(list.items.map((i) => i.id)).toEqual([sdxlImg.id]);
+	});
+
+	it('absent model is unchanged (returns all)', () => {
+		const u = seedUser();
+		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		expect(listMediaForUser(u.id).items).toHaveLength(2);
+	});
+});
+
+describe('listDistinctSourceModelsForUser (model facet)', () => {
+	it('returns distinct models with counts, most-used first', () => {
+		const u = seedUser();
+		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		const facets = listDistinctSourceModelsForUser(u.id);
+		expect(facets).toEqual([
+			{ value: 'comfyui/sdxl', count: 2 },
+			{ value: 'comfyui/flux', count: 1 },
+		]);
+	});
+
+	it('excludes uploaded, hard-deleted, file-kind, and null-model rows', () => {
+		const u = seedUser();
+		makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { origin: 'uploaded', sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { kind: 'file', contentType: 'text/csv', sourceModel: 'run_python' });
+		makeMedia(u.id, { sourceModel: null });
+		const del = makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		hardDeleteMediaForUser(del.id, u.id);
+		const facets = listDistinctSourceModelsForUser(u.id);
+		expect(facets).toEqual([{ value: 'comfyui/sdxl', count: 1 }]);
+	});
+
+	it('respects the kind option', () => {
+		const u = seedUser();
+		makeMedia(u.id, { kind: 'image', sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { kind: 'video', contentType: 'video/mp4', sourceModel: 'comfyui/svd' });
+		expect(listDistinctSourceModelsForUser(u.id, { kind: 'video' })).toEqual([
+			{ value: 'comfyui/svd', count: 1 },
+		]);
+	});
+
+	it('does not leak across users', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		makeMedia(u1.id, { sourceModel: 'comfyui/sdxl' });
+		expect(listDistinctSourceModelsForUser(u2.id)).toEqual([]);
 	});
 });
 
