@@ -315,6 +315,10 @@ export function loadSearchConfig(path = configPath()): LoadedSearchConfig | null
 	return { url, apiKey, timeoutSeconds };
 }
 
+/** Default cosine floor for the gallery search semantic leg. Single source of
+ *  truth so the loader default and any in-code fallback can't diverge. */
+export const DEFAULT_GALLERY_SEARCH_MIN_SIMILARITY = 0.5;
+
 export interface LoadedEmbeddingsConfig {
 	/** id of the [[endpoints]] block that hosts the embedding model. */
 	endpointId: string;
@@ -343,7 +347,7 @@ export interface LoadedEmbeddingsConfig {
 	 * synonyms appear but unrelated prompts don't pad the results. Model-
 	 * dependent (cosine scales differ per model + prefix) — raise it for fewer,
 	 * tighter matches, lower it for more recall. Default 0.5. Only gallery search
-	 * uses it; fetch_url/recall rank bounded candidate sets and aren't affected.
+	 * reads it; the other embedding consumers (fetch_url, recall_memory) ignore it.
 	 */
 	gallerySearchMinSimilarity: number;
 }
@@ -383,7 +387,7 @@ export function loadEmbeddingsConfig(path = configPath()): LoadedEmbeddingsConfi
 			: requireNumber(block.max_input_tokens, 'max_input_tokens', at, { min: 1 });
 	const gallerySearchMinSimilarity =
 		block.gallery_search_min_similarity === undefined
-			? 0.5
+			? DEFAULT_GALLERY_SEARCH_MIN_SIMILARITY
 			: requireNumber(block.gallery_search_min_similarity, 'gallery_search_min_similarity', at, {
 					min: 0,
 					max: 1,

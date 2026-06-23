@@ -3,6 +3,7 @@ import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, media, messageMedia, messages } from '../schema';
 import { buildFtsQuery } from './search';
+import { DEFAULT_GALLERY_SEARCH_MIN_SIMILARITY } from '../../endpoints/config';
 import { resolveRelevanceConfig } from '../../retrieval/embeddings-config';
 import { embedQuery } from '../../retrieval/embed-rank';
 import { cosineRank, decodeVector } from '../../retrieval/vector';
@@ -521,10 +522,11 @@ function getMediaListItemsByIds(userId: string, ids: string[]): MediaListItem[] 
  * endpoint down) — same as memory recall. Returns up to {@link MEDIA_SEARCH_CAP}
  * `MediaListItem`s best-match-first, no cursor (a ranked mode, not the browse).
  *
- * Visibility (hard_deleted / origin) + kind/model compose on both legs. Note the
- * semantic leg always has nearest neighbours, so with embeddings on a query
- * returns its closest matches even with no keyword hit (capped at DENSE_TOPK);
- * keyword-only mode gives true empty-on-no-match.
+ * Visibility (hard_deleted / origin) + kind/model compose on both legs. A dense
+ * neighbour must clear the configurable cosine floor
+ * (`gallery_search_min_similarity`, default 0.5) to surface, so noise doesn't pad
+ * the results — which means an embeddings-on query with no keyword hit and no
+ * above-floor neighbour can also return empty, same as keyword-only mode.
  */
 export async function searchMediaForUser(
 	userId: string,
@@ -557,10 +559,11 @@ export async function searchMediaForUser(
 		if (vecRows.length === 0) return ftsItems.slice(0, limit);
 
 		// Apply a cosine floor BEFORE taking the top-K: cosineRank ranks the whole
-		// corpus, so without a floor the dense leg pads results with arbitrary
-		// nearest-neighbours (unrelated prompts) — only genuine synonyms should
-		// surface. Threshold is config-tunable (model-dependent cosine scales).
-		const minSim = cfg.gallerySearchMinSimilarity ?? 0.5;
+		// loaded candidate set (up to DENSE_CORPUS_CAP), so without a floor the
+		// dense leg pads results with arbitrary nearest-neighbours (unrelated
+		// prompts) — only genuine synonyms should surface. Threshold is
+		// config-tunable (model-dependent cosine scales).
+		const minSim = cfg.gallerySearchMinSimilarity ?? DEFAULT_GALLERY_SEARCH_MIN_SIMILARITY;
 		const denseRanked = cosineRank(
 			qvec,
 			vecRows.map((r) => decodeVector(r.embedding)),
