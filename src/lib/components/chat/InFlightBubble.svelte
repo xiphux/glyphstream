@@ -11,6 +11,7 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import type { RenderBlock } from '$lib/chat-render';
 	import type { ApprovalAction } from '$lib/approval-workflow';
+	import type { McpUnavailableServer } from '$lib/types/api';
 
 	interface Props {
 		blocks: RenderBlock[];
@@ -40,7 +41,7 @@
 		/** Conversation-enabled per-user MCP servers that were down this turn.
 		 *  Renders an inline notice above the response so skipped tools aren't
 		 *  silent. Empty = no notice. */
-		mcpUnavailable?: { id: string; displayName: string; error: string | null }[];
+		mcpUnavailable?: McpUnavailableServer[];
 	}
 
 	let {

@@ -870,9 +870,21 @@ export interface StreamToolPendingApprovalEvent {
  * without them. The client shows an inline notice on the in-flight bubble.
  * Absent entirely when every enabled server is usable.
  */
+/**
+ * A per-user MCP server enabled for a conversation but currently down
+ * (circuit-broken `failed` state) — its tools were skipped this turn. Shared by
+ * the request-assembly handlers, the relay, the stream event, and the client
+ * notice so the shape can't drift across them.
+ */
+export interface McpUnavailableServer {
+	id: string;
+	displayName: string;
+	error: string | null;
+}
+
 export interface StreamMcpUnavailableEvent {
 	type: 'mcp_unavailable';
-	servers: { id: string; displayName: string; error: string | null }[];
+	servers: McpUnavailableServer[];
 }
 
 export type StreamEvent =

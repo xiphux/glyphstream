@@ -22,6 +22,7 @@
 
 import type {
 	ChatMessage,
+	McpUnavailableServer,
 	MessagePart,
 	ModelKind,
 	StreamErrorEvent,
@@ -229,7 +230,7 @@ export interface RelayParams {
 	 * the turn ran without those servers' tools. Empty/undefined for the
 	 * normal case (every enabled server usable, or no per-user MCP at all).
 	 */
-	unavailableMcpServers?: { id: string; displayName: string; error: string | null }[];
+	unavailableMcpServers?: McpUnavailableServer[];
 }
 
 interface IterationResult {

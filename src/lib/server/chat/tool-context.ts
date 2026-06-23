@@ -13,7 +13,7 @@
  * narrower `tool-search-context.ts` / `skills-context.ts` helpers — it owns the
  * orchestration that calls them in the right order with the right gating.
  */
-import type { ChatMessage, FeatureCategory } from '$lib/types/api';
+import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '$lib/types/api';
 import type { OpenAIToolDefinition } from '../tools/types';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
 import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
@@ -74,7 +74,7 @@ export interface ChatToolContext {
 	/** Per-user MCP servers enabled for this conversation but currently down
 	 *  (circuit-broken `failed` state). Surfaced to the client as an inline
 	 *  "unavailable" notice. Empty when every enabled server is usable. */
-	unavailableMcpServers: { id: string; displayName: string; error: string | null }[];
+	unavailableMcpServers: McpUnavailableServer[];
 }
 
 /**

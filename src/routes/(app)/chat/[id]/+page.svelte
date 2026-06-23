@@ -53,7 +53,13 @@
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { ConversationMediaRef, MediaListItem } from '$lib/server/db/queries/media';
-	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
+	import type {
+		ChatMessage,
+		FeatureCategory,
+		McpUnavailableServer,
+		MessagePart,
+		ModelKind,
+	} from '$lib/types/api';
 
 	let { data } = $props();
 
@@ -783,9 +789,7 @@
 	// enabled per-user MCP server is down and its tools were skipped this turn).
 	// Cleared at turn boundaries by resetInFlightSegments; drives the inline
 	// "unavailable" notice on the in-flight bubble.
-	let inFlightMcpUnavailable = $state<{ id: string; displayName: string; error: string | null }[]>(
-		[],
-	);
+	let inFlightMcpUnavailable = $state<McpUnavailableServer[]>([]);
 
 	// --- Multi-model fan-out -------------------------------------------------
 	// The model picker's compare "cart" (model id → count) + whether compare

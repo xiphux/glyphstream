@@ -18,7 +18,7 @@
  */
 
 import { readSSE } from './sse-client';
-import type { ChatMessage, StreamEvent } from './types/api';
+import type { ChatMessage, McpUnavailableServer, StreamEvent } from './types/api';
 
 export interface ConsumeChatStreamCallbacks {
 	/**
@@ -50,7 +50,7 @@ export interface ConsumeChatStreamCallbacks {
 	onQueued?(ahead: number): void;
 	/** One or more per-user MCP servers enabled for this conversation are down;
 	 *  their tools were skipped this turn. Fires at most once, near the start. */
-	onMcpUnavailable?(servers: { id: string; displayName: string; error: string | null }[]): void;
+	onMcpUnavailable?(servers: McpUnavailableServer[]): void;
 	onTitle?(title: string): void;
 	/** Fires on the canonical `done` frame. `sawToolCalls` is true when the
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
