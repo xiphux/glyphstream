@@ -779,6 +779,13 @@
 	// boundaries and by the first real generation event below. Drives the
 	// "Queued…" placeholder in the in-flight bubble.
 	let inFlightQueued = $state<{ ahead: number } | null>(null);
+	// Set when the server emits an `mcp_unavailable` event (a conversation-
+	// enabled per-user MCP server is down and its tools were skipped this turn).
+	// Cleared at turn boundaries by resetInFlightSegments; drives the inline
+	// "unavailable" notice on the in-flight bubble.
+	let inFlightMcpUnavailable = $state<{ id: string; displayName: string; error: string | null }[]>(
+		[],
+	);
 
 	// --- Multi-model fan-out -------------------------------------------------
 	// The model picker's compare "cart" (model id → count) + whether compare
@@ -812,6 +819,7 @@
 	function resetInFlightSegments() {
 		inFlightSegments = [];
 		inFlightQueued = null;
+		inFlightMcpUnavailable = [];
 	}
 	function appendInFlightText(chunk: string) {
 		inFlightSegments = inFlightAppendText(inFlightSegments, chunk);
@@ -1093,6 +1101,11 @@
 				// Waiting on a per-endpoint concurrency slot. Show "Queued…"
 				// until the slot is granted and the first real event lands.
 				inFlightQueued = { ahead };
+			},
+			onMcpUnavailable(servers) {
+				// A conversation-enabled per-user MCP server is down; its tools
+				// were skipped this turn. Surface the inline notice on the bubble.
+				inFlightMcpUnavailable = servers;
 			},
 			async onStart(userMessage) {
 				inFlightQueued = null;
@@ -1932,6 +1945,7 @@
 						approvalBusy={approvalSubmitting}
 						{onApprovalSelect}
 						mergeWithPrev={fuseWithPrevAssistant}
+						mcpUnavailable={inFlightMcpUnavailable}
 					/>
 				</div>
 			{/if}

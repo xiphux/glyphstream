@@ -222,6 +222,14 @@ export interface RelayParams {
 	 * leaves this false and notifies like any single generation.
 	 */
 	suppressNotify?: boolean;
+	/**
+	 * Per-user MCP servers enabled for this conversation but currently down
+	 * (circuit-broken `failed` state). Emitted once as an `mcp_unavailable`
+	 * event right after `start`, so the client can show an inline notice that
+	 * the turn ran without those servers' tools. Empty/undefined for the
+	 * normal case (every enabled server usable, or no per-user MCP at all).
+	 */
+	unavailableMcpServers?: { id: string; displayName: string; error: string | null }[];
 }
 
 interface IterationResult {
@@ -303,6 +311,14 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 		assistantMessageId: '',
 	};
 	write(startEvent);
+
+	// Tell the client up front if any conversation-enabled per-user MCP server
+	// is down — its tools were circuit-broken out of this turn, so the inline
+	// notice explains why those tools aren't available rather than failing
+	// silently. Emitted once, right after `start`.
+	if (params.unavailableMcpServers && params.unavailableMcpServers.length > 0) {
+		write({ type: 'mcp_unavailable', servers: params.unavailableMcpServers });
+	}
 
 	let titlePromise: Promise<string | null> | null = null;
 	let finalAssistantMessage: ChatMessage | null = null;

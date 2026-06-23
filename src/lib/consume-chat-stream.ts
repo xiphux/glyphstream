@@ -48,6 +48,9 @@ export interface ConsumeChatStreamCallbacks {
 	 *  most once, before any generation events; the next real event signals
 	 *  the slot was granted. `ahead` is how many generations are in line first. */
 	onQueued?(ahead: number): void;
+	/** One or more per-user MCP servers enabled for this conversation are down;
+	 *  their tools were skipped this turn. Fires at most once, near the start. */
+	onMcpUnavailable?(servers: { id: string; displayName: string; error: string | null }[]): void;
 	onTitle?(title: string): void;
 	/** Fires on the canonical `done` frame. `sawToolCalls` is true when the
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
@@ -118,6 +121,9 @@ export async function consumeChatStream(
 				break;
 			case 'queued':
 				cb.onQueued?.(event.ahead);
+				break;
+			case 'mcp_unavailable':
+				cb.onMcpUnavailable?.(event.servers);
 				break;
 			case 'title':
 				cb.onTitle?.(event.title);

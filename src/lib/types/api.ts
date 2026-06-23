@@ -863,6 +863,18 @@ export interface StreamToolPendingApprovalEvent {
 	args: string;
 }
 
+/**
+ * Sent once at the start of a turn (right after `start`) when one or more
+ * per-user MCP servers ENABLED for this conversation are currently down —
+ * their tools were skipped this turn rather than retried, so the model ran
+ * without them. The client shows an inline notice on the in-flight bubble.
+ * Absent entirely when every enabled server is usable.
+ */
+export interface StreamMcpUnavailableEvent {
+	type: 'mcp_unavailable';
+	servers: { id: string; displayName: string; error: string | null }[];
+}
+
 export type StreamEvent =
 	| StreamStartEvent
 	| StreamTextEvent
@@ -872,6 +884,7 @@ export type StreamEvent =
 	| StreamDoneEvent
 	| StreamErrorEvent
 	| StreamQueuedEvent
+	| StreamMcpUnavailableEvent
 	| StreamToolCallStartEvent
 	| StreamToolCallArgsDeltaEvent
 	| StreamToolCallExecutingEvent

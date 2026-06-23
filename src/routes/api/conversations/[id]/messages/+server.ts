@@ -561,6 +561,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// recovery indicator stays accurate after an iOS PWA suspend.
 			onComplete: onBranchComplete,
 			needsApproval,
+			// Surface any conversation-enabled per-user MCP server that's down so
+			// the client can show an inline "tools skipped" notice for this turn.
+			...(toolCtx.unavailableMcpServers.length
+				? { unavailableMcpServers: toolCtx.unavailableMcpServers }
+				: {}),
 			// Threaded into each tool's ToolContext so behavior-only
 			// consumers (e.g. run_python's Python network shim, which
 			// blocks egress when 'web' is off even though run_python is
