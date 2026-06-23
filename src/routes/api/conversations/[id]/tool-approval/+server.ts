@@ -277,6 +277,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		abortSignal: inFlight.controller.signal,
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
+		// Carry the same enabled-but-down MCP notice the send path emits — the
+		// condition persists across an approval resume, so the resumed turn's
+		// bubble must re-show it (the client cleared it at the turn boundary).
+		...(toolCtx.unavailableMcpServers.length
+			? { unavailableMcpServers: toolCtx.unavailableMcpServers }
+			: {}),
 		disabledFeatures: meta.disabledFeatures,
 		maxToolLoopIterations: getMaxToolLoopIterations(),
 		rebuildRequestBody: buildRequestBody,
