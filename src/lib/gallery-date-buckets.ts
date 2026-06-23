@@ -63,9 +63,17 @@ export interface DateSection<T> {
 }
 
 /**
- * Group an already-newest-first list into contiguous date sections. `getDate`
- * maps a unit (a gallery stack or a flat item) to its representative instant
- * (epoch ms) — for a stack, its newest member's `createdAt`.
+ * Group a newest-first list into date sections, one per bucket in first-seen
+ * order. `getDate` maps a unit (a gallery stack or a flat item) to its
+ * representative instant (epoch ms) — for a stack, its newest member's
+ * `createdAt`.
+ *
+ * Accumulates by key (a Map) rather than contiguous runs: for the normal
+ * chronologically-sorted input the result is identical, but it can never emit
+ * two sections with the same key. That matters because the gallery briefly
+ * renders this over a *relevance-ordered* search list during the search→browse
+ * transition (items reset one frame after `searching` flips), and contiguous-run
+ * grouping would produce duplicate keys there → a fatal `each_key_duplicate`.
  */
 export function groupIntoSections<T>(
 	units: readonly T[],
@@ -73,18 +81,18 @@ export function groupIntoSections<T>(
 	getDate: (u: T) => number,
 	now: number = Date.now(),
 ): DateSection<T>[] {
-	const sections: DateSection<T>[] = [];
-	let current: DateSection<T> | null = null;
+	const byKey = new Map<string, DateSection<T>>();
 	for (const u of units) {
 		const ms = getDate(u);
 		const key = bucketKey(ms, gran);
-		if (!current || current.key !== key) {
-			current = { key, label: bucketLabel(ms, gran, now), units: [] };
-			sections.push(current);
+		let section = byKey.get(key);
+		if (!section) {
+			section = { key, label: bucketLabel(ms, gran, now), units: [] };
+			byKey.set(key, section);
 		}
-		current.units.push(u);
+		section.units.push(u);
 	}
-	return sections;
+	return [...byKey.values()];
 }
 
 function parseMonthKey(key: string): { year: number; month: number } {

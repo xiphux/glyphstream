@@ -73,6 +73,17 @@ describe('groupIntoSections', () => {
 	it('empty input → no sections', () => {
 		expect(groupIntoSections([], 'month', (u: number) => u, now)).toEqual([]);
 	});
+
+	it('coalesces non-contiguous same-bucket items into one section (no duplicate keys)', () => {
+		// Relevance-ordered (not chronological) input — June, May, June — as the
+		// gallery briefly renders during the search→browse transition. Must yield
+		// one section per month, never a duplicate key.
+		const scrambled = [at(2026, 6, 16), at(2026, 5, 10), at(2026, 6, 2)];
+		const sections = groupIntoSections(scrambled, 'month', (u) => u, now);
+		expect(sections.map((s) => s.key)).toEqual(['2026-06', '2026-05']);
+		expect(sections[0].units).toHaveLength(2); // both June items
+		expect(sections[1].units).toHaveLength(1);
+	});
 });
 
 describe('month bounds', () => {
