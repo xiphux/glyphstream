@@ -26,6 +26,15 @@ import {
 	collectActivatedToolNames,
 } from './tool-search-context';
 
+/**
+ * Hot-path budget for connecting a per-user MCP server during request
+ * assembly. A server that doesn't finish its handshake within this window is
+ * left to connect in the background (its tools appear next turn) rather than
+ * holding up the send. Short on purpose — a healthy HTTP MCP handshake is well
+ * under this; anything slower shouldn't be allowed to block the chat.
+ */
+const MCP_HOTPATH_CONNECT_BUDGET_MS = 2500;
+
 export interface ChatToolContextInput {
 	userId: string;
 	disabledFeatures: readonly FeatureCategory[];
@@ -62,6 +71,10 @@ export interface ChatToolContext {
 	toolDefs: OpenAIToolDefinition[];
 	/** Approval gate: MCP tools not on the user's trust list halt for approval. */
 	needsApproval: (toolName: string) => boolean;
+	/** Per-user MCP servers enabled for this conversation but currently down
+	 *  (circuit-broken `failed` state). Surfaced to the client as an inline
+	 *  "unavailable" notice. Empty when every enabled server is usable. */
+	unavailableMcpServers: { id: string; displayName: string; error: string | null }[];
 }
 
 /**
@@ -86,8 +99,18 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	if (supportsTools) await awaitMcpReady();
 
 	// Resolve the caller's per-user MCP server state ONCE, then thread it through
-	// both consumers below.
-	const userServerStates = supportsTools ? await getUserServerStates(userId) : [];
+	// both consumers below. On the send path we connect ONLY the servers enabled
+	// for this conversation (disabled `mcp:<id>` servers are skipped — no point
+	// handshaking tools we'd filter out anyway), circuit-break servers already
+	// `failed` (don't re-eat their connect timeout every message), and bound each
+	// connect so one slow server can't stall the turn.
+	const userServerStates = supportsTools
+		? await getUserServerStates(userId, {
+				excludeCategories: disabledFeatures,
+				skipFailed: true,
+				connectBudgetMs: MCP_HOTPATH_CONNECT_BUDGET_MS,
+			})
+		: [];
 
 	// Deferred tool loading: advertise `search_tools` + inject the Tier-1 hint
 	// when this user/conversation has deferred tools.
@@ -128,5 +151,20 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	const needsApproval = (toolName: string) =>
 		toolName.startsWith('mcp__') && !trustedSet.has(toolName);
 
-	return { systemPrompt, toolDefs, needsApproval };
+	// Per-user MCP servers ENABLED for this conversation but currently `failed`
+	// — surfaced so a circuit-broken server doesn't silently drop its tools with
+	// no signal. Servers disabled for this chat are intentionally omitted (the
+	// user turned them off); so are servers still (re)connecting — only a
+	// settled failure warns, to avoid a flash of "down" on first connect.
+	const unavailableMcpServers = userServerStates
+		.filter(
+			(s) =>
+				s.auth === 'per_user' &&
+				s.configured &&
+				s.state === 'failed' &&
+				!disabledFeatures.includes(`mcp:${s.id}`),
+		)
+		.map((s) => ({ id: s.id, displayName: s.displayName, error: s.error }));
+
+	return { systemPrompt, toolDefs, needsApproval, unavailableMcpServers };
 }
