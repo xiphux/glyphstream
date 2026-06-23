@@ -83,6 +83,29 @@ function isSessionLostError(err: unknown): boolean {
 	return /session not found/i.test(err.message);
 }
 
+/**
+ * A `fetch` for the StreamableHTTP transport that declines the OPTIONAL
+ * server→client GET SSE stream: it answers that GET with a synthetic 405, which
+ * the SDK reads as "server offers no GET stream" (`_startOrAuthSse`) and then
+ * operates POST-only. GlyphStream never consumes server-initiated messages, so
+ * this loses nothing functionally. Used for HTTP servers configured `post_only`
+ * — notably Fastmail, whose long-lived GET stream the runtime can't always drain
+ * (some Node/undici + egress combinations), and which routes tool responses INTO
+ * that stream, so leaving it open hangs every call to the request timeout.
+ *
+ * Exported for unit testing; not part of the module's public surface.
+ */
+export function postOnlyFetch(input: string | URL, init?: RequestInit): Promise<Response> {
+	const method = (init?.method ?? 'GET').toUpperCase();
+	const accept = new Headers(init?.headers).get('accept') ?? '';
+	if (method === 'GET' && accept.includes('text/event-stream')) {
+		return Promise.resolve(
+			new Response(null, { status: 405, statusText: 'SSE stream disabled (post_only)' }),
+		);
+	}
+	return fetch(input, init);
+}
+
 async function openMcpConnection(
 	cfg: LoadedMcpServer,
 	connectTimeoutMs: number,
@@ -107,6 +130,9 @@ async function openMcpConnection(
 					requestInit: cfg.apiKey
 						? { headers: { Authorization: `Bearer ${cfg.apiKey}` } }
 						: undefined,
+					// post_only servers decline the server→client GET SSE stream — see
+					// postOnlyFetch. Default keeps the SDK's normal (stream-enabled) fetch.
+					...(cfg.postOnly ? { fetch: postOnlyFetch } : {}),
 				});
 
 	const ac = new AbortController();

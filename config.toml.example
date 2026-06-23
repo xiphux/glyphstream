@@ -272,6 +272,17 @@
 # transport = "http"
 # url = "https://api.fastmail.com/mcp"
 # auth = "per_user"
+#
+# `post_only = true` (HTTP only, default false) tells GlyphStream to skip the
+# OPTIONAL MCP server->client GET SSE stream and talk to the server POST-only.
+# GlyphStream never consumes server-initiated messages, so this changes nothing
+# functionally. Set it for servers whose long-lived GET stream your runtime
+# can't drain — Fastmail's MCP is the known case: under some Node/undici + egress
+# combinations it routes tool responses INTO that stream, so with it open every
+# tool call hangs until the request timeout. POST-only makes responses come back
+# on the POST (where they return in ~40ms). If a server's tools mysteriously time
+# out while a plain curl to it works, try this.
+# post_only = true
 
 # Optional: Web Push notifications for assistant-message completions.
 # Generate the keypair once with:  npx web-push generate-vapid-keys

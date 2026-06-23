@@ -65,7 +65,41 @@ url = "https://mcp.linear.app/mcp"
 			transport: 'http',
 			url: 'https://mcp.linear.app/mcp',
 			apiKey: null,
+			postOnly: false,
 		});
+	});
+
+	it('parses post_only on an http server', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "fastmail"
+transport = "http"
+url = "https://api.fastmail.com/mcp"
+post_only = true
+		`);
+		expect(loadMcpServers(path)[0]).toMatchObject({ id: 'fastmail', postOnly: true });
+	});
+
+	it('rejects post_only on a stdio server', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "fs"
+transport = "stdio"
+command = "npx"
+post_only = true
+		`);
+		expect(() => loadMcpServers(path)).toThrow(/post_only.*only valid for transport="http"/);
+	});
+
+	it('rejects a non-boolean post_only', () => {
+		const path = writeConfig(`
+[[mcp_servers]]
+id = "fastmail"
+transport = "http"
+url = "https://api.fastmail.com/mcp"
+post_only = "yes"
+		`);
+		expect(() => loadMcpServers(path)).toThrow(McpConfigError);
 	});
 
 	it('defaults defer_tools to false', () => {

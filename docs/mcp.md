@@ -102,6 +102,34 @@ encryption independently of session secrets; rotating whichever key is in
 effect invalidates every stored credential, and users re-enter their tokens.
 See the [`.env` reference](configuration.md#env-reference).
 
+## POST-only HTTP servers (`post_only`)
+
+The Streamable HTTP transport optionally opens a long-lived **server→client GET
+SSE stream** alongside the request/response POSTs. GlyphStream never consumes
+server-initiated messages, so it doesn't need that stream — and some
+environments can't reliably drain it. The clearest case is **Fastmail's MCP**:
+under some Node/undici + network-egress combinations it routes tool responses
+_into_ that stream, so while it's open every `tools/list` / tool call hangs until
+the request timeout, even though plain POSTs to the same server return in
+milliseconds. The symptom is a server that connects but whose tools all time
+out, while a direct `curl` to its URL works.
+
+Set `post_only = true` on the HTTP server to skip the GET stream and talk
+POST-only:
+
+```toml
+[[mcp_servers]]
+id = "email"
+display_name = "Email"
+transport = "http"
+url = "https://api.fastmail.com/mcp"
+auth = "per_user"
+post_only = true
+```
+
+It's HTTP-only (stdio has no such stream) and defaults to `false`, so leave it
+off unless you hit the hang. Responses then come back on the POST as normal.
+
 ## Per-tool approval
 
 MCP tools default to **ask every time**. When the model first calls one, the

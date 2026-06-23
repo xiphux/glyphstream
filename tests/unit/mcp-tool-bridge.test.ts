@@ -201,7 +201,14 @@ describe('mcpToolFor execute()', () => {
 
 	it('a per-user deferred tool is both deferred and isAvailable:false', () => {
 		const tool = mcpToolFor(
-			{ ...FAKE_SERVER, transport: 'http', url: 'https://x', apiKey: null, deferTools: true },
+			{
+				...FAKE_SERVER,
+				transport: 'http',
+				url: 'https://x',
+				apiKey: null,
+				deferTools: true,
+				postOnly: false,
+			},
 			{ name: 'read_file', description: 'Read a file', inputSchema: { type: 'object' } },
 			{ perUser: true },
 		);

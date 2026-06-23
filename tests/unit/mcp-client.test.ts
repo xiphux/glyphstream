@@ -65,6 +65,7 @@ function httpCfg(): LoadedHttpMcpServer {
 		timeoutSeconds: 30,
 		idleTimeoutSeconds: 0,
 		deferTools: false,
+		postOnly: false,
 	};
 }
 

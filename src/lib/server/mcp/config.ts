@@ -25,6 +25,7 @@ interface RawMcpServer {
 	url?: unknown;
 	api_key_env?: unknown;
 	defer_tools?: unknown;
+	post_only?: unknown;
 }
 
 /**
@@ -76,6 +77,15 @@ export interface LoadedHttpMcpServer extends LoadedMcpServerCommon {
 	transport: 'http';
 	url: string;
 	apiKey: string | null;
+	/**
+	 * Skip the OPTIONAL MCP server→client GET SSE stream and operate POST-only.
+	 * GlyphStream never consumes server-initiated messages, so this loses nothing
+	 * functionally. Set it for HTTP servers whose long-lived GET stream the
+	 * runtime can't drain — notably Fastmail's, which (under some Node/undici +
+	 * egress combinations) routes tool responses INTO that stream, so with it open
+	 * every `tools/list` / tool call hangs to the request timeout. Default false.
+	 */
+	postOnly: boolean;
 }
 
 export type LoadedMcpServer = LoadedStdioMcpServer | LoadedHttpMcpServer;
@@ -192,6 +202,9 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 		if (auth === 'per_user') {
 			throw new McpConfigError(`${at}: auth="per_user" is only supported for transport="http"`);
 		}
+		if (raw.post_only !== undefined) {
+			throw new McpConfigError(`${at}: 'post_only' is only valid for transport="http"`);
+		}
 		const command = requireString(raw.command, 'command', at);
 		const args = raw.args === undefined ? [] : requireStringArray(raw.args, 'args', at);
 		const envMap = raw.env_from === undefined ? {} : resolveEnvFrom(raw.env_from, at);
@@ -230,7 +243,10 @@ function validateMcpServer(raw: RawMcpServer, index: number, path: string): Load
 		apiKey = envValue;
 	}
 
-	return { ...common, transport: 'http', url, apiKey };
+	const postOnly =
+		raw.post_only === undefined ? false : requireBoolean(raw.post_only, 'post_only', at);
+
+	return { ...common, transport: 'http', url, apiKey, postOnly };
 }
 
 function resolveEnvFrom(raw: unknown, at: string): Record<string, string> {
