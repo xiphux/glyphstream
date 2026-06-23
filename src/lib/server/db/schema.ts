@@ -520,13 +520,15 @@ export const media = sqliteTable(
 		// origin + hardDeletedAt before walking unreferenced_since rows.
 		index('idx_media_unreferenced').on(t.origin, t.hardDeletedAt, t.unreferencedSince),
 		// Backfill work queue: only embeddable rows that still need a vector
-		// (generated, with a prompt, not yet embedded). Scoping the partial index
-		// this tightly keeps uploads / null-prompt rows out of the queue entirely
-		// and the index near-empty once caught up. Mirrors idx_memories_unembedded.
+		// (generated, with a prompt, not soft-deleted, not yet embedded). Scoping
+		// the partial index this tightly keeps uploads / null-prompt / tombstoned
+		// rows out of the queue and the index near-empty once caught up. The WHERE
+		// must match listMediaNeedingEmbedding's predicate so it serves the query.
+		// Mirrors idx_memories_unembedded.
 		index('idx_media_unembedded')
 			.on(t.id)
 			.where(
-				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated'`,
+				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated' and ${t.hardDeletedAt} is null`,
 			),
 	],
 );

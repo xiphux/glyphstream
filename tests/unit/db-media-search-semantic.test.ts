@@ -98,6 +98,19 @@ describe('searchMediaForUser (semantic fusion)', () => {
 		expect(hits.map((h) => h.id)).toEqual([apple]); // only the lexical hit
 	});
 
+	it('degrades to keyword-only if a stored vector is malformed (no throw)', async () => {
+		resolveMock.mockReturnValue(CFG);
+		const u = seedUser();
+		const apple = addMedia(u.id, 'a red apple');
+		// 1-dim stored vector vs a 2-dim query → cosineRank→dot would throw on the
+		// dimension mismatch; the dense leg must swallow it, not 500 the page.
+		setMediaEmbedding(apple, 'a red apple', encodeVector([1]), MODEL);
+		embedQueryMock.mockResolvedValue([1, 0]);
+
+		const hits = await searchMediaForUser(u.id, 'apple');
+		expect(hits.map((h) => h.id)).toEqual([apple]); // keyword result survives
+	});
+
 	it('ignores vectors from a superseded embedding model', async () => {
 		resolveMock.mockReturnValue(CFG);
 		const u = seedUser();

@@ -20,6 +20,7 @@ import {
 	listConversationMediaRefs,
 	listDistinctSourceModelsForUser,
 	listMediaMonthPeriodsForUser,
+	listMediaNeedingEmbedding,
 	searchMediaForUser,
 	listConversationsForMedia,
 	listMediaForConversation,
@@ -594,6 +595,27 @@ describe('searchMediaForUser (keyword prompt search)', () => {
 		const u = seedUser();
 		for (let i = 0; i < 5; i++) makeMedia(u.id, { promptFull: `a tower number ${i}` });
 		expect(await searchMediaForUser(u.id, 'tower', { limit: 3 })).toHaveLength(3);
+	});
+});
+
+describe('listMediaNeedingEmbedding (backfill queue)', () => {
+	it('queues generated, prompted, un-embedded rows; skips uploads + null-prompt', () => {
+		const u = seedUser();
+		const want = makeMedia(u.id, { promptFull: 'a prompt' });
+		makeMedia(u.id, { promptFull: null }); // no prompt to embed
+		makeMedia(u.id, { origin: 'uploaded', promptFull: 'an upload' });
+		const ids = listMediaNeedingEmbedding('embed-v1', 100).map((r) => r.id);
+		expect(ids).toEqual([want.id]);
+	});
+
+	it('excludes hard-deleted media (no embed call spent on a tombstone)', () => {
+		const u = seedUser();
+		const keep = makeMedia(u.id, { promptFull: 'a keeper' });
+		const del = makeMedia(u.id, { promptFull: 'a goner' });
+		hardDeleteMediaForUser(del.id, u.id);
+		const ids = listMediaNeedingEmbedding('embed-v1', 100).map((r) => r.id);
+		expect(ids).toContain(keep.id);
+		expect(ids).not.toContain(del.id);
 	});
 });
 

@@ -143,7 +143,9 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   _content_, so a duplicated snapshot reads as two siblings and aborts generate
   with "Non-commutative migrations detected". Virtual tables aren't in `schema.ts`
   anyway, so there's nothing for a snapshot to track. See
-  `drizzle/*_media_prompt_search` and `*_message_search_index`.
+  `drizzle/*_media_prompt_search` for the clean pattern. (The older
+  `*_message_search_index` does carry a `snapshot.json` — added by the
+  `drizzle-kit up` flat→per-dir conversion — so it's not an example of this.)
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.

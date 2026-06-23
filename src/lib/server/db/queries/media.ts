@@ -540,46 +540,50 @@ export async function searchMediaForUser(
 	const cfg = resolveRelevanceConfig();
 	if (!cfg) return ftsItems.slice(0, limit);
 
-	let qvec;
+	// The whole dense leg degrades to keyword-only on any failure — not just the
+	// embed call: a corrupt/truncated stored blob or a provider silently changing
+	// a model's output dimension would make cosineRank→dot throw, and there's no
+	// gallery +error.svelte to catch a 500. Mirrors denseRank in tools/memory.ts.
 	try {
-		qvec = await embedQuery(rawQuery, cfg, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
-	} catch {
-		qvec = null;
+		const qvec = await embedQuery(rawQuery, cfg, AbortSignal.timeout(cfg.timeoutSeconds * 1000));
+		if (!qvec) return ftsItems.slice(0, limit);
+
+		const vecRows = listMediaEmbeddingsForUser(userId, {
+			kind: opts.kind,
+			model: opts.model,
+			embeddingModel: cfg.modelId,
+			limit: DENSE_CORPUS_CAP,
+		});
+		if (vecRows.length === 0) return ftsItems.slice(0, limit);
+
+		const denseRanked = cosineRank(
+			qvec,
+			vecRows.map((r) => decodeVector(r.embedding)),
+		).slice(0, DENSE_TOPK);
+		const denseIds = denseRanked.map((sc) => vecRows[sc.index].id);
+
+		// Fuse the two rankings over a shared id→index space (RRF ignores scores,
+		// uses rank position). The union includes semantic-only ids, so synonym
+		// matches surface; keyword hits get an extra contribution and rank higher.
+		const ftsIds = ftsItems.map((i) => i.id);
+		const idList = [...new Set([...ftsIds, ...denseIds])];
+		const idxOf = new Map(idList.map((id, i) => [id, i]));
+		const ftsRanking = ftsIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
+		const denseRanking = denseIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
+		const orderedIds = fuseRankings([ftsRanking, denseRanking])
+			.slice(0, limit)
+			.map((sc) => idList[sc.index]);
+
+		// Materialize: reuse the keyword rows we already have; fetch only the
+		// semantic-only ids.
+		const byId = new Map(ftsItems.map((i) => [i.id, i]));
+		const missing = orderedIds.filter((id) => !byId.has(id));
+		for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
+		return orderedIds.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
+	} catch (e) {
+		console.warn('[gallery-search] dense leg failed; keyword-only:', e);
+		return ftsItems.slice(0, limit);
 	}
-	if (!qvec) return ftsItems.slice(0, limit);
-
-	const vecRows = listMediaEmbeddingsForUser(userId, {
-		kind: opts.kind,
-		model: opts.model,
-		embeddingModel: cfg.modelId,
-		limit: DENSE_CORPUS_CAP,
-	});
-	if (vecRows.length === 0) return ftsItems.slice(0, limit);
-
-	const denseRanked = cosineRank(
-		qvec,
-		vecRows.map((r) => decodeVector(r.embedding)),
-	).slice(0, DENSE_TOPK);
-	const denseIds = denseRanked.map((sc) => vecRows[sc.index].id);
-
-	// Fuse the two rankings over a shared id→index space (RRF ignores scores,
-	// uses rank position). The union includes semantic-only ids, so synonym
-	// matches surface; keyword hits get an extra contribution and rank higher.
-	const ftsIds = ftsItems.map((i) => i.id);
-	const idList = [...new Set([...ftsIds, ...denseIds])];
-	const idxOf = new Map(idList.map((id, i) => [id, i]));
-	const ftsRanking = ftsIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
-	const denseRanking = denseIds.map((id) => ({ index: idxOf.get(id)!, score: 0 }));
-	const orderedIds = fuseRankings([ftsRanking, denseRanking])
-		.slice(0, limit)
-		.map((sc) => idList[sc.index]);
-
-	// Materialize: reuse the keyword rows we already have; fetch only the
-	// semantic-only ids.
-	const byId = new Map(ftsItems.map((i) => [i.id, i]));
-	const missing = orderedIds.filter((id) => !byId.has(id));
-	for (const it of getMediaListItemsByIds(userId, missing)) byId.set(it.id, it);
-	return orderedIds.map((id) => byId.get(id)).filter((x): x is MediaListItem => !!x);
 }
 
 /**
@@ -594,7 +598,14 @@ export function listMediaNeedingEmbedding(
 ): Array<{ id: string; promptFull: string }> {
 	const db = getDb();
 	const sel = { id: media.id, promptFull: media.promptFull };
-	const embeddable = and(isNotNull(media.promptFull), eq(media.origin, 'generated'));
+	// Excludes soft-deleted media (hard_deleted_at set, prompt_full intact) so a
+	// tombstoned-before-embedding row doesn't spend an embed call. Must stay in
+	// lockstep with idx_media_unembedded's WHERE so the index serves this query.
+	const embeddable = and(
+		isNull(media.hardDeletedAt),
+		isNotNull(media.promptFull),
+		eq(media.origin, 'generated'),
+	);
 	const fresh = db
 		.select(sel)
 		.from(media)

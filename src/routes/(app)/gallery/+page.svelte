@@ -271,6 +271,10 @@
 		eagerLoaded = new Set();
 		drillLoading = false;
 		drillError = null;
+		// Keep the search box in sync with the URL — otherwise a back-nav from a
+		// search to a no-q state leaves stale text in the input (the component
+		// instance, and its $state, persist across same-route navs).
+		queryText = data.q ?? '';
 	});
 
 	// Conversation stacks are global buckets whose members can be scattered

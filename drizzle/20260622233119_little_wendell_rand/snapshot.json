@@ -1855,7 +1855,7 @@
         }
       ],
       "isUnique": false,
-      "where": "\"media\".\"embedding\" is null and \"media\".\"prompt_full\" is not null and \"media\".\"origin\" = 'generated'",
+      "where": "\"media\".\"embedding\" is null and \"media\".\"prompt_full\" is not null and \"media\".\"origin\" = 'generated' and \"media\".\"hard_deleted_at\" is null",
       "origin": "manual",
       "name": "idx_media_unembedded",
       "entityType": "indexes",
