@@ -164,6 +164,12 @@
 # document_prefix = ""            # e5, bge, gte) need asymmetric task prefixes
 #                                 # ("search_query: " / "search_document: ");
 #                                 # OpenAI/Cohere-style models must NOT have them.
+# gallery_search_min_similarity = 0.5  # optional; default 0.5; range 0–1. Cosine
+#                                 # floor for the gallery prompt search's semantic
+#                                 # leg — a dense neighbour must score at least this
+#                                 # to surface, so genuine synonyms appear but
+#                                 # unrelated prompts don't. Model-dependent: raise
+#                                 # for tighter matches, lower for more recall.
 
 # Optional: cross-encoder reranker for hybrid retrieval. When present, the
 # `fetch_url` tool reorders the top fused candidates (BM25 ⊕ embedding) of an

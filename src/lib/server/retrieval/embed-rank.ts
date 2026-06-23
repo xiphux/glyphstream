@@ -26,6 +26,9 @@ export interface RelevanceConfig {
 	documentPrefix: string;
 	/** Model max input sequence length (tokens); drives per-input truncation. */
 	maxInputTokens: number;
+	/** Cosine floor for the gallery search semantic leg (see LoadedEmbeddingsConfig).
+	 *  Only that path reads it (defaulting when absent); other consumers ignore it. */
+	gallerySearchMinSimilarity?: number;
 }
 
 // How many BM25-top candidates a caller embeds before fusing. The BM25

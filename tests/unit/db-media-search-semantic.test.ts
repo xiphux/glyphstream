@@ -52,16 +52,17 @@ function addMedia(userId: string, promptFull: string, vec?: number[], model = MO
 }
 
 describe('searchMediaForUser (semantic fusion)', () => {
-	it('surfaces a synonym match the keyword leg misses', async () => {
+	it('surfaces a synonym match the keyword leg misses, and floors out noise', async () => {
 		resolveMock.mockReturnValue(CFG);
 		const u = seedUser();
 		const puppy = addMedia(u.id, 'a golden retriever puppy', [1, 0]);
 		addMedia(u.id, 'a sunny meadow', [0, 1]);
-		// "dog" shares no token with either prompt, but embeds nearest the puppy.
+		// "dog" shares no token with either prompt; it embeds onto the puppy
+		// (cosine 1) and orthogonal to the meadow (cosine 0, below the floor).
 		embedQueryMock.mockResolvedValue([1, 0]);
 
 		const hits = await searchMediaForUser(u.id, 'dog');
-		expect(hits[0].id).toBe(puppy); // dense nearest-neighbour first
+		expect(hits.map((h) => h.id)).toEqual([puppy]); // synonym in, unrelated out
 		expect(embedQueryMock).toHaveBeenCalledOnce();
 	});
 
@@ -73,7 +74,21 @@ describe('searchMediaForUser (semantic fusion)', () => {
 		embedQueryMock.mockResolvedValue([1, 0]);
 
 		const hits = await searchMediaForUser(u.id, 'apple');
-		expect(hits[0].id).toBe(apple); // lexical + dense both favour it
+		expect(hits.map((h) => h.id)).toEqual([apple]); // lexical hit; car floored out
+	});
+
+	it('respects the configurable cosine floor', async () => {
+		const u = seedUser();
+		// A moderate neighbour: cosine([1,0], [0.6,0.8]) = 0.6. No keyword overlap
+		// with the query, so it surfaces only via the dense leg.
+		const wolf = addMedia(u.id, 'a lone wolf in snow', [0.6, 0.8]);
+		embedQueryMock.mockResolvedValue([1, 0]);
+
+		resolveMock.mockReturnValue(CFG); // default floor 0.5 → 0.6 passes
+		expect((await searchMediaForUser(u.id, 'canine')).map((h) => h.id)).toEqual([wolf]);
+
+		resolveMock.mockReturnValue({ ...CFG, gallerySearchMinSimilarity: 0.7 }); // 0.6 < 0.7
+		expect(await searchMediaForUser(u.id, 'canine')).toEqual([]);
 	});
 
 	it('degrades to keyword-only when embeddings are not configured', async () => {

@@ -164,6 +164,9 @@ model_id = "text-embedding-3-small"
 # query_prefix = ""               # optional; default "". nomic/e5/bge/gte
 # document_prefix = ""            # need "search_query: "/"search_document: ";
 #                                 # OpenAI/Cohere-style models must NOT.
+# gallery_search_min_similarity = 0.5  # optional; default 0.5; range 0–1.
+#                                 # Cosine floor for gallery prompt search's
+#                                 # semantic leg (below). Model-dependent.
 ```
 
 base_url and auth are inherited from the referenced endpoint. A bad
@@ -172,8 +175,13 @@ failing at boot. The block is capability-named rather than `fetch_url`-specific:
 it also powers **`recall_memory`**, the semantic search over a user's saved
 memories. With it configured, a background worker embeds saved memories and the
 model retrieves the relevant ones on demand instead of carrying the whole index
-in every system prompt (see [Tools](tools.md)). Without it, memory falls back to
-inlining all saved facts, and `fetch_url` to BM25-only — both still work.
+in every system prompt (see [Tools](tools.md)). It also adds a **semantic leg to
+the gallery's prompt search** — a background worker embeds generated-media
+prompts so a search surfaces synonym matches (e.g. "dog" finding a "puppy"
+prompt) on top of the keyword hits, gated by `gallery_search_min_similarity` so
+unrelated prompts don't pad the results. Without the block, memory falls back to
+inlining all saved facts, `fetch_url` to BM25-only, and gallery search to
+keyword-only — all still work.
 
 > **Throughput matters.** Embedding dozens of chunks per long-page fetch is
 > only practical on a reasonably fast embedding endpoint (GPU-backed, or a

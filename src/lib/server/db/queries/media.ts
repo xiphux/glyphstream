@@ -556,10 +556,17 @@ export async function searchMediaForUser(
 		});
 		if (vecRows.length === 0) return ftsItems.slice(0, limit);
 
+		// Apply a cosine floor BEFORE taking the top-K: cosineRank ranks the whole
+		// corpus, so without a floor the dense leg pads results with arbitrary
+		// nearest-neighbours (unrelated prompts) — only genuine synonyms should
+		// surface. Threshold is config-tunable (model-dependent cosine scales).
+		const minSim = cfg.gallerySearchMinSimilarity ?? 0.5;
 		const denseRanked = cosineRank(
 			qvec,
 			vecRows.map((r) => decodeVector(r.embedding)),
-		).slice(0, DENSE_TOPK);
+		)
+			.filter((sc) => sc.score >= minSim)
+			.slice(0, DENSE_TOPK);
 		const denseIds = denseRanked.map((sc) => vecRows[sc.index].id);
 
 		// Fuse the two rankings over a shared id→index space (RRF ignores scores,

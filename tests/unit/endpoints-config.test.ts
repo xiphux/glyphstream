@@ -461,7 +461,26 @@ model_id = "nomic-embed-text"
 			queryPrefix: '',
 			documentPrefix: '',
 			maxInputTokens: 512,
+			gallerySearchMinSimilarity: 0.5,
 		});
+	});
+
+	it('parses gallery_search_min_similarity, rejecting out-of-range values', () => {
+		const ok = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+gallery_search_min_similarity = 0.7
+		`);
+		expect(loadEmbeddingsConfig(ok)?.gallerySearchMinSimilarity).toBe(0.7);
+
+		const bad = writeConfig(`
+[embeddings]
+endpoint_id = "e"
+model_id = "m"
+gallery_search_min_similarity = 1.5
+		`);
+		expect(() => loadEmbeddingsConfig(bad)).toThrow(/gallery_search_min_similarity/);
 	});
 
 	it('parses max_input_tokens when supplied', () => {

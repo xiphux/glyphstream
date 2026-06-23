@@ -337,6 +337,15 @@ export interface LoadedEmbeddingsConfig {
 	 * chunks embed whole instead of being clipped.
 	 */
 	maxInputTokens: number;
+	/**
+	 * Cosine-similarity floor for the gallery prompt search's semantic leg: a
+	 * dense neighbour must score at least this to be surfaced, so genuine
+	 * synonyms appear but unrelated prompts don't pad the results. Model-
+	 * dependent (cosine scales differ per model + prefix) — raise it for fewer,
+	 * tighter matches, lower it for more recall. Default 0.5. Only gallery search
+	 * uses it; fetch_url/recall rank bounded candidate sets and aren't affected.
+	 */
+	gallerySearchMinSimilarity: number;
 }
 
 /**
@@ -372,8 +381,23 @@ export function loadEmbeddingsConfig(path = configPath()): LoadedEmbeddingsConfi
 		block.max_input_tokens === undefined
 			? 512
 			: requireNumber(block.max_input_tokens, 'max_input_tokens', at, { min: 1 });
+	const gallerySearchMinSimilarity =
+		block.gallery_search_min_similarity === undefined
+			? 0.5
+			: requireNumber(block.gallery_search_min_similarity, 'gallery_search_min_similarity', at, {
+					min: 0,
+					max: 1,
+				});
 
-	return { endpointId, modelId, timeoutSeconds, queryPrefix, documentPrefix, maxInputTokens };
+	return {
+		endpointId,
+		modelId,
+		timeoutSeconds,
+		queryPrefix,
+		documentPrefix,
+		maxInputTokens,
+		gallerySearchMinSimilarity,
+	};
 }
 
 export interface LoadedRerankConfig {

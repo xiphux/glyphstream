@@ -56,5 +56,6 @@ export function resolveRelevanceConfig(): RelevanceConfig | undefined {
 		queryPrefix: cfg.queryPrefix,
 		documentPrefix: cfg.documentPrefix,
 		maxInputTokens: cfg.maxInputTokens,
+		gallerySearchMinSimilarity: cfg.gallerySearchMinSimilarity,
 	};
 }
