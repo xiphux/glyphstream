@@ -1225,7 +1225,7 @@
 		</div>
 		{#if !openGroup && monthPeriods.length > 1}
 			<GalleryTimelineRail
-				class="absolute inset-y-0 right-0 w-7"
+				class="absolute inset-y-0 right-0 z-20 w-7"
 				periods={monthPeriods}
 				activeKey={activeSectionKey}
 				onjump={jumpToMonth}
