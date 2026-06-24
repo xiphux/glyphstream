@@ -104,8 +104,12 @@ async function handlePush(event: PushEvent): Promise<void> {
 		body: payload.summary ?? payload.preview ?? 'New message',
 		tag: payload.conversationId,
 		data: { conversationId: payload.conversationId },
-		icon: '/icon.svg',
-		badge: '/icon.svg',
+		// Raster, not SVG: Android won't reliably render an SVG notification
+		// icon. `badge` is the monochrome status-bar glyph — Android tints it
+		// from the alpha channel, so it needs the transparent glyph-only asset
+		// (the full-bleed icon would render as a solid blob).
+		icon: '/icon-192.png',
+		badge: '/badge-96.png',
 		renotify: true,
 	} as NotificationOptions);
 }

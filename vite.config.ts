@@ -100,7 +100,7 @@ export default defineConfig({
 				// inside the SW, so /api/* and SSE streams pass through to
 				// the network unintercepted — no need for the generateSW-only
 				// runtimeCaching/navigateFallback opt-outs.
-				globPatterns: ['client/**/*.{js,css,html,ico,svg,woff2}'],
+				globPatterns: ['client/**/*.{js,css,html,ico,png,svg,woff2}'],
 			},
 		}),
 		analyze &&
