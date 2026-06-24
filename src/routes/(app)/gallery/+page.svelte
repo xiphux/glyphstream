@@ -386,6 +386,10 @@
 	// collapsed View popover shows a dot rather than hiding a changed setting.
 	const viewNonDefault = $derived(!stacking || granularity !== 'month');
 
+	// Filters live in the View popover on mobile, so reflect an active filter on
+	// the trigger dot too — otherwise a hidden filter has no visible cue there.
+	const filterActive = $derived(kindFilter !== null || data.model != null);
+
 	// --- Quick-jump (timeline rail) -----------------------------------------
 	// Full-history month list for the right-edge rail. Fetched (not SSR'd) so we
 	// can pass the viewer's tz offset for local-month bucketing; refetched when
@@ -735,6 +739,46 @@
 					Cancel
 				</button>
 			{:else}
+				{#snippet kindFacet()}
+					<div
+						class="inline-flex overflow-hidden rounded-md border border-border-strong"
+						role="group"
+						aria-label="Filter by media kind"
+					>
+						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label }, i (label)}
+							{@const active = kindFilter === k}
+							<button
+								type="button"
+								onclick={() => setKind(k as 'image' | 'video' | null)}
+								aria-pressed={active}
+								class="px-3 py-1.5 transition {i > 0 ? 'border-l border-border-strong' : ''} {active
+									? 'bg-surface-inverse text-fg-inverse'
+									: 'bg-surface-panel hover:bg-surface-raised'}"
+							>
+								{label}
+							</button>
+						{/each}
+					</div>
+				{/snippet}
+				{#snippet modelFacet()}
+					{#if modelOptions.length >= 2 || data.model != null}
+						{@const modelActive = data.model != null}
+						<select
+							value={data.model ?? ''}
+							onchange={(e) => setModel(e.currentTarget.value || null)}
+							title="Filter by model"
+							aria-label="Filter by model"
+							class="max-w-[12rem] rounded-md border px-3 py-1.5 transition {modelActive
+								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						>
+							<option value="">All models</option>
+							{#each modelOptions as f (f.value)}
+								<option value={f.value}>{f.label} ({f.count})</option>
+							{/each}
+						</select>
+					{/if}
+				{/snippet}
 				{#if !openGroup}
 					{#if searchExpanded}
 						<div class="relative">
@@ -770,49 +814,17 @@
 							<Search size={16} />
 						</button>
 					{/if}
-					<!-- Kind facet: a segmented control (shared border, no inter-button
-					     gaps) so the related options read as one group. -->
-					<div
-						class="inline-flex overflow-hidden rounded-md border border-border-strong"
-						role="group"
-						aria-label="Filter by media kind"
-					>
-						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label }, i (label)}
-							{@const active = kindFilter === k}
-							<button
-								type="button"
-								onclick={() => setKind(k as 'image' | 'video' | null)}
-								aria-pressed={active}
-								class="px-3 py-1.5 transition {i > 0 ? 'border-l border-border-strong' : ''} {active
-									? 'bg-surface-inverse text-fg-inverse'
-									: 'bg-surface-panel hover:bg-surface-raised'}"
-							>
-								{label}
-							</button>
-						{/each}
+					<!-- Kind + model facets: inline in the toolbar on desktop; on mobile they
+					     move into the View popover below to keep the bar to a single row. -->
+					<div class="hidden sm:contents">
+						{@render kindFacet()}
+						{@render modelFacet()}
 					</div>
-					{#if modelOptions.length >= 2 || data.model != null}
-						{@const modelActive = data.model != null}
-						<select
-							value={data.model ?? ''}
-							onchange={(e) => setModel(e.currentTarget.value || null)}
-							title="Filter by model"
-							aria-label="Filter by model"
-							class="rounded-md border px-3 py-1.5 transition {modelActive
-								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
-						>
-							<option value="">All models</option>
-							{#each modelOptions as f (f.value)}
-								<option value={f.value}>{f.label} ({f.count})</option>
-							{/each}
-						</select>
-					{/if}
 					{#if !searching}
-						<!-- View options (Stack + date granularity) live in a popover: both
-						     are set-and-forget view prefs, so collapsing them reclaims a
-						     whole toolbar row. A corner dot flags any non-default state
-						     while the popover is closed. -->
+						<!-- View popover. On mobile it also hosts the kind/model filters (a
+						     "Filter" section); on desktop those live inline above, so only the
+						     "View" prefs show here. The trigger dot flags a non-default view, or
+						     (mobile only) an active-but-hidden filter. -->
 						<Popover.Root>
 							<Popover.Trigger
 								aria-label="View options"
@@ -825,6 +837,11 @@
 										class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
 										aria-hidden="true"
 									></span>
+								{:else if filterActive}
+									<span
+										class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel sm:hidden"
+										aria-hidden="true"
+									></span>
 								{/if}
 							</Popover.Trigger>
 							<Popover.Portal>
@@ -833,8 +850,32 @@
 									align="end"
 									avoidCollisions
 									collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-									class="z-50 flex w-56 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
+									class="z-50 flex w-72 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
 								>
+									<!-- Filter section: mobile only (desktop shows these inline). -->
+									<div class="flex flex-col gap-1 sm:hidden">
+										<div
+											class="px-2 pt-1 text-xs font-medium tracking-wide text-fg-muted uppercase"
+										>
+											Filter
+										</div>
+										<div class="flex items-center justify-between gap-3 p-2">
+											<span class="font-medium text-fg">Type</span>
+											{@render kindFacet()}
+										</div>
+										{#if modelOptions.length >= 2 || data.model != null}
+											<div class="flex items-center justify-between gap-3 p-2">
+												<span class="font-medium text-fg">Model</span>
+												{@render modelFacet()}
+											</div>
+										{/if}
+										<div class="mt-1 border-t border-border"></div>
+										<div
+											class="px-2 pt-1 text-xs font-medium tracking-wide text-fg-muted uppercase"
+										>
+											View
+										</div>
+									</div>
 									<label
 										class="flex cursor-pointer items-center justify-between gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
 									>
