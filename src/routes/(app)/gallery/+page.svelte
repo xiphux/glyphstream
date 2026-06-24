@@ -692,9 +692,7 @@
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
-	<header
-		class="flex shrink-0 flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-	>
+	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
 		<div class="flex min-w-0 items-center gap-2">
 			{#if openGroup}
 				<button
