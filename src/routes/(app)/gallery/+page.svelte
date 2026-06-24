@@ -2,7 +2,8 @@
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { ChevronLeft } from '@lucide/svelte';
+	import { Popover, Switch } from 'bits-ui';
+	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
@@ -344,6 +345,23 @@
 	let queryText = $state(data.q ?? '');
 	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
 
+	// The search box is collapsed to an icon by default and expands on click, so
+	// it only costs toolbar space when in use. An active query (data.q) forces it
+	// open so a reloaded/shared search link shows its box; otherwise an empty box
+	// collapses again on blur.
+	let searchOpen = $state(false);
+	let searchInput = $state<HTMLInputElement | null>(null);
+	const searchExpanded = $derived(searchOpen || !!data.q);
+
+	function openSearch() {
+		searchOpen = true;
+		tick().then(() => searchInput?.focus());
+	}
+
+	function onSearchBlur() {
+		if (!queryText.trim() && !data.q) searchOpen = false;
+	}
+
 	function commitQuery(q: string) {
 		const url = new URL(page.url);
 		const trimmed = q.trim();
@@ -360,8 +378,13 @@
 	function clearQuery() {
 		if (queryDebounce) clearTimeout(queryDebounce);
 		queryText = '';
+		searchOpen = false;
 		commitQuery('');
 	}
+
+	// Stack on + Month granularity is the default view; flag any deviation so the
+	// collapsed View popover shows a dot rather than hiding a changed setting.
+	const viewNonDefault = $derived(!stacking || granularity !== 'month');
 
 	// --- Quick-jump (timeline rail) -----------------------------------------
 	// Full-history month list for the right-edge rail. Fetched (not SSR'd) so we
@@ -713,35 +736,56 @@
 				</button>
 			{:else}
 				{#if !openGroup}
-					<div class="relative">
-						<input
-							type="search"
-							bind:value={queryText}
-							oninput={onQueryInput}
-							placeholder="Search prompts…"
+					{#if searchExpanded}
+						<div class="relative">
+							<input
+								type="search"
+								bind:this={searchInput}
+								bind:value={queryText}
+								oninput={onQueryInput}
+								onblur={onSearchBlur}
+								placeholder="Search prompts…"
+								aria-label="Search prompts"
+								class="w-40 rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 pr-7 transition focus:border-border-focus focus:outline-none sm:w-52"
+							/>
+							{#if queryText}
+								<button
+									type="button"
+									onclick={clearQuery}
+									aria-label="Clear search"
+									class="absolute top-1/2 right-1.5 -translate-y-1/2 px-1 text-fg-muted transition hover:text-fg-default"
+								>
+									×
+								</button>
+							{/if}
+						</div>
+					{:else}
+						<button
+							type="button"
+							onclick={openSearch}
 							aria-label="Search prompts"
-							class="w-36 rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 pr-7 transition focus:border-border-focus focus:outline-none sm:w-52"
-						/>
-						{#if queryText}
-							<button
-								type="button"
-								onclick={clearQuery}
-								aria-label="Clear search"
-								class="absolute top-1/2 right-1.5 -translate-y-1/2 px-1 text-fg-muted transition hover:text-fg-default"
-							>
-								×
-							</button>
-						{/if}
-					</div>
-					<div class="flex gap-1">
-						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label } (label)}
+							title="Search prompts"
+							class="flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
+						>
+							<Search size={16} />
+						</button>
+					{/if}
+					<!-- Kind facet: a segmented control (shared border, no inter-button
+					     gaps) so the related options read as one group. -->
+					<div
+						class="inline-flex overflow-hidden rounded-md border border-border-strong"
+						role="group"
+						aria-label="Filter by media kind"
+					>
+						{#each [{ k: null, label: 'All' }, { k: 'image', label: 'Images' }, { k: 'video', label: 'Videos' }] as { k, label }, i (label)}
 							{@const active = kindFilter === k}
 							<button
 								type="button"
 								onclick={() => setKind(k as 'image' | 'video' | null)}
-								class="rounded-md border px-3 py-1.5 transition {active
-									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-									: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+								aria-pressed={active}
+								class="px-3 py-1.5 transition {i > 0 ? 'border-l border-border-strong' : ''} {active
+									? 'bg-surface-inverse text-fg-inverse'
+									: 'bg-surface-panel hover:bg-surface-raised'}"
 							>
 								{label}
 							</button>
@@ -765,41 +809,87 @@
 						</select>
 					{/if}
 					{#if !searching}
-						<button
-							type="button"
-							onclick={() => (stacking = !stacking)}
-							aria-pressed={stacking}
-							title={stacking ? 'Stacking on' : 'Stacking off'}
-							class="rounded-md border px-3 py-1.5 transition {stacking
-								? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-								: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
-						>
-							Stack
-						</button>
-						<div class="flex gap-1" role="group" aria-label="Date grouping granularity">
-							{#each [{ g: 'day', label: 'Day' }, { g: 'month', label: 'Month' }] as { g, label } (g)}
-								{@const active = granularity === g}
-								<button
-									type="button"
-									onclick={() => (granularity = g as Granularity)}
-									aria-pressed={active}
-									class="rounded-md border px-3 py-1.5 transition {active
-										? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
-										: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+						<!-- View options (Stack + date granularity) live in a popover: both
+						     are set-and-forget view prefs, so collapsing them reclaims a
+						     whole toolbar row. A corner dot flags any non-default state
+						     while the popover is closed. -->
+						<Popover.Root>
+							<Popover.Trigger
+								aria-label="View options"
+								title="View options"
+								class="relative flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
+							>
+								<SlidersHorizontal size={16} />
+								{#if viewNonDefault}
+									<span
+										class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
+										aria-hidden="true"
+									></span>
+								{/if}
+							</Popover.Trigger>
+							<Popover.Portal>
+								<Popover.Content
+									sideOffset={6}
+									align="end"
+									avoidCollisions
+									collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
+									class="z-50 flex w-56 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
 								>
-									{label}
-								</button>
-							{/each}
-						</div>
+									<label
+										class="flex cursor-pointer items-center justify-between gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+									>
+										<span class="font-medium text-fg">Stack related media</span>
+										<Switch.Root
+											checked={stacking}
+											onCheckedChange={(c) => (stacking = c)}
+											aria-label="Stack"
+											class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel focus-visible:outline-none"
+										>
+											<Switch.Thumb
+												class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
+											/>
+										</Switch.Root>
+									</label>
+									<div
+										class="flex items-center justify-between gap-3 p-2"
+										role="group"
+										aria-label="Date grouping granularity"
+									>
+										<span class="font-medium text-fg">Group by</span>
+										<div
+											class="inline-flex overflow-hidden rounded-md border border-border-strong text-xs"
+										>
+											{#each [{ g: 'day', label: 'Day' }, { g: 'month', label: 'Month' }] as { g, label }, i (g)}
+												{@const active = granularity === g}
+												<button
+													type="button"
+													onclick={() => (granularity = g as Granularity)}
+													aria-pressed={active}
+													class="px-3 py-1.5 transition {i > 0
+														? 'border-l border-border-strong'
+														: ''} {active
+														? 'bg-surface-inverse text-fg-inverse'
+														: 'bg-surface-panel hover:bg-surface-raised'}"
+												>
+													{label}
+												</button>
+											{/each}
+										</div>
+									</div>
+								</Popover.Content>
+							</Popover.Portal>
+						</Popover.Root>
 					{/if}
 				{/if}
 				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
 					<button
 						type="button"
 						onclick={enterSelectMode}
-						class="rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 transition hover:bg-surface-raised"
+						aria-label="Select items"
+						title="Select"
+						class="flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
 					>
-						Select
+						<SquareCheck size={16} />
 					</button>
 				{/if}
 			{/if}

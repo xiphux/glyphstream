@@ -52,7 +52,10 @@ test.describe('gallery: date grouping + timeline rail', () => {
 		// Month view collapses both days into one header.
 		await expect(page.getByRole('heading', { name: 'March 2024' })).toBeVisible();
 
+		// Granularity now lives in the View options popover.
+		await page.getByRole('button', { name: 'View options' }).click();
 		await page.getByRole('button', { name: 'Day', exact: true }).click();
+		await page.keyboard.press('Escape'); // close the popover before asserting on the grid
 
 		// Now two distinct day headers, and the month header is gone.
 		await expect(page.getByRole('heading', { name: 'March 2024' })).toHaveCount(0);

@@ -23,6 +23,8 @@ test.describe('gallery: prompt search', () => {
 		await page.goto('/gallery');
 		await expect(page.locator(TILE)).toHaveCount(3);
 
+		// Search is collapsed to an icon until clicked, then expands into the box.
+		await page.getByRole('button', { name: 'Search prompts' }).click();
 		const box = page.getByRole('searchbox', { name: 'Search prompts' });
 		await box.fill('sunset');
 
@@ -41,19 +43,21 @@ test.describe('gallery: prompt search', () => {
 
 	test('hides the chronological chrome while searching', async ({ page }) => {
 		await page.goto('/gallery');
-		// The Day/Month + Stack toggles are present in the normal browse…
-		await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible();
+		// The View options control (Stack + Day/Month live inside it) is present in
+		// the normal browse…
+		await expect(page.getByRole('button', { name: 'View options' })).toBeVisible();
 
+		await page.getByRole('button', { name: 'Search prompts' }).click();
 		await page.getByRole('searchbox', { name: 'Search prompts' }).fill('sunset');
 		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
 
 		// …and gone in search mode (ranked, not chronological).
-		await expect(page.getByRole('button', { name: 'Month', exact: true })).toHaveCount(0);
-		await expect(page.getByRole('button', { name: 'Stack', exact: true })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'View options' })).toHaveCount(0);
 	});
 
 	test('shows an empty state for a no-match query', async ({ page }) => {
 		await page.goto('/gallery');
+		await page.getByRole('button', { name: 'Search prompts' }).click();
 		await page.getByRole('searchbox', { name: 'Search prompts' }).fill('zzzznomatch');
 		await expect(page.getByText('No results for "zzzznomatch".')).toBeVisible();
 		await expect(page.locator(TILE)).toHaveCount(0);
