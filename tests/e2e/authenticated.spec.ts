@@ -53,12 +53,17 @@ test.describe('authenticated app shell', () => {
 		await expect(page.getByText(/no archived conversations/i)).toBeVisible();
 	});
 
-	test('gallery page renders empty state + filter pills', async ({ page }) => {
+	test('gallery page renders empty state + filter pills', async ({ page, isMobile }) => {
 		await page.goto('/gallery');
 		await expect(page.getByRole('heading', { name: 'Gallery' })).toBeVisible();
 		await expect(page.getByText(/no media yet/i)).toBeVisible();
-		// Filter pills are present (clickable behavior is exercised via the
-		// unit tests on listMediaForUser; here we just want the UI surface).
+		// The kind pills live inline on desktop but collapse into the View
+		// options popover on mobile — open it there first. (Clickable behavior is
+		// exercised via the unit tests on listMediaForUser; here we just want the
+		// UI surface.)
+		if (isMobile) {
+			await page.getByRole('button', { name: 'View options' }).click();
+		}
 		await expect(page.getByRole('button', { name: 'All' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Images' })).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Videos' })).toBeVisible();
