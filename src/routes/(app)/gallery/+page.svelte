@@ -990,11 +990,18 @@
 				{/snippet}
 
 				<!-- A sticky time header; `registerHeader` tracks its element for
-				     quick-jump scroll-to + active-month highlighting. -->
+				     quick-jump scroll-to + active-month highlighting.
+				     `-top-4` (not top-0) cancels the scroll container's `pt-4`: a
+				     sticky element's constraint rect is the container's *content*
+				     box, so top-0 would pin it 16px below the scrollport's top edge,
+				     leaving a gap that images scroll through above the header. The
+				     negative offset pins it flush to the top while the padding still
+				     gives the first header its at-rest breathing room. Keep these two
+				     in sync. -->
 				{#snippet sectionHeader(label: string, key: string)}
 					<h2
 						use:registerHeader={key}
-						class="sticky top-0 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
+						class="sticky -top-4 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
 					>
 						{label}
 					</h2>
