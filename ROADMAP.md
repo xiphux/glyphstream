@@ -196,6 +196,46 @@ docs.
   leaf that produced it, so branch-nav restores the matching doc state?;
   concurrent human + model edit conflicts; whether to diff-render edits.
 
+- **Text-to-speech (read a reply aloud).** A per-message "read aloud" action on
+  a text reply (plus an optional auto-read toggle). _Why this ranks above its
+  input sibling (**Voice input**, deferred to long-term):_ most devices already
+  ship reasonable voice typing (the iOS keyboard dictation, etc.), so input is a
+  solved problem users carry with them — whereas good _expressive, realistic_
+  on-device speech output is still scarce, which makes it the higher-value half to
+  build. Pairs with the creative-writing use case where a flat read undersells the
+  text. Fits the spec-first stance cleanly: OpenAI's `/v1/audio/speech` is widely
+  implemented (OpenAI itself, plus local servers like Kokoro-FastAPI /
+  openedai-speech), so this rides the existing endpoint registry + `*_env` secret
+  convention rather than bundling a model — point it at whatever the operator
+  runs. _Where it runs is the core tradeoff (size vs. latency vs. quality):_
+  - _On an endpoint_ (the `/v1/audio/speech` path) — no new infra, quality scales
+    with the configured upstream, and the natural default given the spec-first
+    stance. Best emotion if pointed at a strong upstream.
+  - _On the server_ (Node hosts a local model) — fights the lightweight
+    constraint; an expressive model wants the GPU (shared with ComfyUI on the
+    target box), a tiny one (Piper/Kokoro) is fast but flat. Only the small end
+    is viable in-process.
+  - _On the user's machine_ — the browser Web Speech API is free + zero-infra but
+    robotic and platform-dependent; a WASM model (Kokoro, ~80 MB) sounds better
+    but is a real download against the route-budget ceiling, so route-lazy at
+    minimum.
+
+  _Emotion is the model axis that matters here_, since creative writing is a core
+  use case and most fast/small models read flat. The expressive tier is where the
+  interesting options live: **Hume Octave** (LLM-based, explicitly emotion-first),
+  **ElevenLabs v3** (audio-tag emotion control, paid), **OpenAI gpt-4o-mini-tts**
+  (steerable by instruction — "read this wistfully"), and on the open/self-hostable
+  side **Orpheus** and **Dia** (emotion tags + nonverbals like laughs/sighs) and
+  **Chatterbox** (exaggeration control); **Kokoro**/**Piper** are the latency-first
+  fallback. Likely punts the actual choice to the operator's endpoint rather than
+  picking one. A narrated-storyboard / audiobook step also pairs with the
+  **multimodal pipeline** bet. Open questions: stream audio sentence-chunked as it
+  generates (pairs with the streaming-text path) vs. synthesize-then-play; cache
+  the rendered audio on the message row the way `content_html` is (re-listen for
+  free) vs. regenerate; voice/persona selection, including a per-custom-model
+  default voice (a "storyteller" preset reads in a fitting voice); and how the
+  markdown→speech reduction strips code blocks / tables / links before synthesis.
+
 - **Multi-user — nice-to-haves.** Role + invite flow, admin UI, and data
   isolation shipped. Remaining: a per-user storage-quota / usage view; bulk user
   import.
