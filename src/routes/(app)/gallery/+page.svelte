@@ -818,62 +818,66 @@
 						{@render kindFacet()}
 						{@render modelFacet()}
 					</div>
-					{#if !searching}
-						<!-- View popover. On mobile it also hosts the kind/model filters (a
-						     "Filter" section); on desktop those live inline above, so only the
-						     "View" prefs show here. The trigger dot flags a non-default view, or
-						     (mobile only) an active-but-hidden filter. -->
-						<Popover.Root>
-							<Popover.Trigger
-								aria-label="View options"
-								title="View options"
-								class="relative flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
+					<!-- Options popover. Holds the kind/model filters (mobile only — desktop
+					     shows them inline above) plus the chronological view prefs. The view
+					     prefs don't apply to ranked search, so they're gated by !searching; the
+					     filters DO compose with search, so they stay reachable. During search
+					     the desktop filters are inline, leaving nothing for the popover there,
+					     so the trigger hides on desktop (sm:hidden). -->
+					<Popover.Root>
+						<Popover.Trigger
+							aria-label="View options"
+							title="View options"
+							class="relative flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised {searching
+								? 'sm:hidden'
+								: ''}"
+						>
+							<SlidersHorizontal size={16} />
+							{#if !searching && viewNonDefault}
+								<span
+									class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
+									aria-hidden="true"
+								></span>
+							{:else if filterActive}
+								<span
+									class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel sm:hidden"
+									aria-hidden="true"
+								></span>
+							{/if}
+						</Popover.Trigger>
+						<Popover.Portal>
+							<Popover.Content
+								sideOffset={6}
+								align="end"
+								avoidCollisions
+								collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
+								class="z-50 flex w-72 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
 							>
-								<SlidersHorizontal size={16} />
-								{#if viewNonDefault}
-									<span
-										class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
-										aria-hidden="true"
-									></span>
-								{:else if filterActive}
-									<span
-										class="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel sm:hidden"
-										aria-hidden="true"
-									></span>
-								{/if}
-							</Popover.Trigger>
-							<Popover.Portal>
-								<Popover.Content
-									sideOffset={6}
-									align="end"
-									avoidCollisions
-									collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-									class="z-50 flex w-72 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
-								>
-									<!-- Filter section: mobile only (desktop shows these inline). -->
-									<div class="flex flex-col gap-1 sm:hidden">
-										<div
-											class="px-2 pt-1 text-xs font-medium tracking-wide text-fg-muted uppercase"
-										>
-											Filter
-										</div>
+								<!-- Filter section: mobile only (desktop shows these inline). -->
+								<div class="flex flex-col gap-1 sm:hidden">
+									<div class="px-2 pt-1 text-xs font-medium tracking-wide text-fg-muted uppercase">
+										Filter
+									</div>
+									<div class="flex items-center justify-between gap-3 p-2">
+										<span class="font-medium text-fg">Type</span>
+										{@render kindFacet()}
+									</div>
+									{#if modelOptions.length >= 2 || data.model != null}
 										<div class="flex items-center justify-between gap-3 p-2">
-											<span class="font-medium text-fg">Type</span>
-											{@render kindFacet()}
+											<span class="font-medium text-fg">Model</span>
+											{@render modelFacet()}
 										</div>
-										{#if modelOptions.length >= 2 || data.model != null}
-											<div class="flex items-center justify-between gap-3 p-2">
-												<span class="font-medium text-fg">Model</span>
-												{@render modelFacet()}
-											</div>
-										{/if}
+									{/if}
+									{#if !searching}
 										<div class="mt-1 border-t border-border"></div>
 										<div
 											class="px-2 pt-1 text-xs font-medium tracking-wide text-fg-muted uppercase"
 										>
 											View
 										</div>
-									</div>
+									{/if}
+								</div>
+								{#if !searching}
 									<label
 										class="flex cursor-pointer items-center justify-between gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
 									>
@@ -915,10 +919,10 @@
 											{/each}
 										</div>
 									</div>
-								</Popover.Content>
-							</Popover.Portal>
-						</Popover.Root>
-					{/if}
+								{/if}
+							</Popover.Content>
+						</Popover.Portal>
+					</Popover.Root>
 				{/if}
 				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
 					<button

@@ -41,18 +41,27 @@ test.describe('gallery: prompt search', () => {
 		await expect(page.locator(TILE)).toHaveCount(3);
 	});
 
-	test('hides the chronological chrome while searching', async ({ page }) => {
+	test('hides the chronological chrome while searching', async ({ page, isMobile }) => {
 		await page.goto('/gallery');
-		// The View options control (Stack + Day/Month live inside it) is present in
-		// the normal browse…
+		// The View options control is present in the normal browse…
 		await expect(page.getByRole('button', { name: 'View options' })).toBeVisible();
 
 		await page.getByRole('button', { name: 'Search prompts' }).click();
 		await page.getByRole('searchbox', { name: 'Search prompts' }).fill('sunset');
 		await expect(page.getByText('2 results for "sunset"')).toBeVisible();
 
-		// …and gone in search mode (ranked, not chronological).
-		await expect(page.getByRole('button', { name: 'View options' })).toHaveCount(0);
+		// …and the chronological view prefs (Stack + Day/Month) are gone in ranked
+		// search. On desktop the filters are inline, so the view-only popover
+		// disappears entirely; on mobile the popover persists to host the filters
+		// (which compose with search), but its view section is gone — open it and
+		// confirm Stack/Month are absent.
+		if (isMobile) {
+			await page.getByRole('button', { name: 'View options' }).click();
+			await expect(page.getByRole('switch', { name: 'Stack' })).toHaveCount(0);
+			await expect(page.getByRole('button', { name: 'Month', exact: true })).toHaveCount(0);
+		} else {
+			await expect(page.getByRole('button', { name: 'View options' })).toHaveCount(0);
+		}
 	});
 
 	test('shows an empty state for a no-match query', async ({ page }) => {
