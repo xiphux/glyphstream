@@ -59,8 +59,12 @@
 			 Cold-load default (Signature light); syncThemeColorMeta() updates
 			 it to the active theme + scheme's surface once the app mounts. -->
 		<meta name="theme-color" content="#fafafa" />
-		<!-- iOS PWA-specific hints. apple-touch-icon is the home-screen icon
-			 because iOS still doesn't honor SVG icons in the web manifest. -->
+		<!-- iOS PWA-specific hints. iOS doesn't honor SVG for apple-touch-icon
+			 OR the manifest icons, so the home-screen icon AND the
+			 auto-generated launch splash (icon centered on background_color)
+			 both need a raster PNG — without one iOS falls back to a page
+			 screenshot for the icon and a blank dark splash. Full-bleed
+			 (no rounded corners); iOS applies its own squircle mask. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
@@ -71,7 +75,7 @@
 			 is a separate mechanism (iOS home-screen install icon), not a
 			 substitute for this. -->
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="apple-touch-icon" href="/icon.svg" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		%sveltekit.head%
 	</head>

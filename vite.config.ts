@@ -67,11 +67,31 @@ export default defineConfig({
 				start_url: '/',
 				scope: '/',
 				icons: [
+					// SVG is the "any" form — Android/Chrome honor it and it
+					// stays crisp at any size. (iOS ignores manifest icons
+					// entirely; its home-screen icon + launch splash come from
+					// the apple-touch-icon PNG declared in app.html.)
 					{
 						src: '/icon.svg',
 						sizes: 'any',
 						type: 'image/svg+xml',
-						purpose: 'any maskable',
+						purpose: 'any',
+					},
+					// Maskable PNGs are full-bleed (no rounded corners) so the
+					// Android adaptive-icon mask crops them cleanly. The old
+					// setup marked the rounded SVG 'any maskable', which let the
+					// OS mask clip its corners.
+					{
+						src: '/icon-192.png',
+						sizes: '192x192',
+						type: 'image/png',
+						purpose: 'maskable',
+					},
+					{
+						src: '/icon-512.png',
+						sizes: '512x512',
+						type: 'image/png',
+						purpose: 'maskable',
 					},
 				],
 			},

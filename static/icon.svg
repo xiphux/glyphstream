@@ -6,10 +6,22 @@
     the upper bow is the "letter" half (Glyph), the trailing line is the
     "stream" half. Bold strokes with rounded caps so it scales cleanly
     from favicon to home-screen icon to splash screen.
+
+    Stroke is a vertical gradient in the Signature theme's sky-blue accent
+    (hue 242): brighter at the spine top, deepening toward the trailing
+    stream line so the glyph reads as "flowing" downward. This is the
+    rounded-tile ("any") form — the maskable PNGs (icon-192/512,
+    apple-touch-icon) are generated full-bleed from the same geometry.
   -->
+  <defs>
+    <linearGradient id="stroke" x1="0" y1="120" x2="0" y2="392" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#48B6FF" />
+      <stop offset="1" stop-color="#0B74BD" />
+    </linearGradient>
+  </defs>
   <rect width="512" height="512" rx="96" fill="#0f172a" />
   <g
-    stroke="#f8fafc"
+    stroke="url(#stroke)"
     stroke-width="44"
     stroke-linecap="round"
     stroke-linejoin="round"

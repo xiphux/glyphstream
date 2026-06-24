@@ -1,7 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="stroke" x1="0" y1="7.5" x2="0" y2="24.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#48B6FF" />
+      <stop offset="1" stop-color="#0B74BD" />
+    </linearGradient>
+  </defs>
   <rect width="32" height="32" rx="6" fill="#0f172a" />
   <g
-    stroke="#f8fafc"
+    stroke="url(#stroke)"
     stroke-width="2.75"
     stroke-linecap="round"
     stroke-linejoin="round"
