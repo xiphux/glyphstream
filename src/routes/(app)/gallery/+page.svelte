@@ -665,7 +665,9 @@
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
-	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
+	<header
+		class="flex shrink-0 flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+	>
 		<div class="flex min-w-0 items-center gap-2">
 			{#if openGroup}
 				<button
@@ -688,7 +690,7 @@
 				<h1 class="text-lg font-semibold tracking-tight">Gallery</h1>
 			{/if}
 		</div>
-		<div class="flex items-center gap-2 text-xs">
+		<div class="flex flex-wrap items-center gap-2 text-xs sm:justify-end">
 			{#if selectMode}
 				<span class="text-fg-muted">
 					{selectedCount === 0 ? 'Select items' : `${selectedCount} selected`}
