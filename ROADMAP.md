@@ -199,42 +199,64 @@ docs.
 - **Text-to-speech (read a reply aloud).** A per-message "read aloud" action on
   a text reply (plus an optional auto-read toggle). _Why this ranks above its
   input sibling (**Voice input**, deferred to long-term):_ most devices already
-  ship reasonable voice typing (the iOS keyboard dictation, etc.), so input is a
-  solved problem users carry with them — whereas good _expressive, realistic_
-  on-device speech output is still scarce, which makes it the higher-value half to
-  build. Pairs with the creative-writing use case where a flat read undersells the
-  text. Fits the spec-first stance cleanly: OpenAI's `/v1/audio/speech` is widely
-  implemented (OpenAI itself, plus local servers like Kokoro-FastAPI /
-  openedai-speech), so this rides the existing endpoint registry + `*_env` secret
-  convention rather than bundling a model — point it at whatever the operator
-  runs. _Where it runs is the core tradeoff (size vs. latency vs. quality):_
-  - _On an endpoint_ (the `/v1/audio/speech` path) — no new infra, quality scales
-    with the configured upstream, and the natural default given the spec-first
-    stance. Best emotion if pointed at a strong upstream.
-  - _On the server_ (Node hosts a local model) — fights the lightweight
-    constraint; an expressive model wants the GPU (shared with ComfyUI on the
-    target box), a tiny one (Piper/Kokoro) is fast but flat. Only the small end
-    is viable in-process.
-  - _On the user's machine_ — the browser Web Speech API is free + zero-infra but
-    robotic and platform-dependent; a WASM model (Kokoro, ~80 MB) sounds better
-    but is a real download against the route-budget ceiling, so route-lazy at
-    minimum.
+  ship reasonable voice typing (iOS keyboard dictation, etc.), so input is a
+  solved problem users carry with them — whereas good _expressive_ speech output
+  is still scarce. Pairs with the creative-writing use case, where a flat read
+  undersells the text.
 
-  _Emotion is the model axis that matters here_, since creative writing is a core
-  use case and most fast/small models read flat. The expressive tier is where the
-  interesting options live: **Hume Octave** (LLM-based, explicitly emotion-first),
-  **ElevenLabs v3** (audio-tag emotion control, paid), **OpenAI gpt-4o-mini-tts**
-  (steerable by instruction — "read this wistfully"), and on the open/self-hostable
-  side **Orpheus** and **Dia** (emotion tags + nonverbals like laughs/sighs) and
-  **Chatterbox** (exaggeration control); **Kokoro**/**Piper** are the latency-first
-  fallback. Likely punts the actual choice to the operator's endpoint rather than
-  picking one. A narrated-storyboard / audiobook step also pairs with the
-  **multimodal pipeline** bet. Open questions: stream audio sentence-chunked as it
-  generates (pairs with the streaming-text path) vs. synthesize-then-play; cache
-  the rendered audio on the message row the way `content_html` is (re-listen for
-  free) vs. regenerate; voice/persona selection, including a per-custom-model
-  default voice (a "storyteller" preset reads in a fitting voice); and how the
-  markdown→speech reduction strips code blocks / tables / links before synthesis.
+  _Like image/video, TTS is a separate modality that rides its own upstream, not
+  the chat endpoint_ — so the chat LLM lacking `/v1/audio/speech` (e.g. llama.cpp)
+  is a non-issue; you'd no more route TTS through the text model than image gen.
+  It becomes its own registry entry (global or per-user), decoupled from which
+  model wrote the text.
+
+  _The decisive axis is expressiveness, not naturalness — and it collapses the
+  tiers to two._ Split "quality" in two: **naturalness** (clean human diction)
+  vs. **expressiveness** (acting — sadness, tension, sarcasm, nonverbals). On
+  naturalness, modern OS voices (Apple neural, Google WaveNet, Windows online) are
+  already a tie with small local models — so a lightweight in-process model
+  (Kokoro/Piper) is **dominated by the free OS voices and dropped**: it's flat
+  _and_ no better-sounding. The whole feature only earns its infra on the
+  expressiveness axis, where OS voices have a hard ceiling (competent newsreader,
+  emotionally flat) and the expressive open models genuinely act. So:
+  - _Floor — OS voices via the browser Web Speech API._ Free, zero infra, ships
+    day one, fine for utility reading. Caveat: not always on-device — Chrome's good
+    voices are Google cloud, Windows' are Microsoft online (only Apple's are local),
+    so the "free" floor can ship reply text to a third party — itself an argument
+    for the self-hosted tier on privacy grounds, independent of quality.
+  - _Primary bet — a self-hosted expressive endpoint_ (**Orpheus**, **Dia**, or
+    **Chatterbox**). The only self-hosted tier that beats the OS floor, and it
+    keeps synthesis local. **Orpheus** is a natural fit for an existing llama.cpp
+    deployment: its Llama-3B backbone can run on llama.cpp itself (plus a small
+    SNAC decoder sidecar), reusing the inference stack already in place. Cost: real
+    VRAM contention with a co-located image/video model, and expressive models
+    trade some stability (artifacts, slower-than-realtime) for emotion — hence
+    opt-in, not default.
+  - _Optional max-expressive cloud_ (**Hume Octave** — LLM-based, emotion-first;
+    **ElevenLabs v3** — audio-tag control) for those who'll pay and lack GPU
+    headroom. Against the self-hosted ethos, but already a supported endpoint kind.
+
+  _Inferred vs. tag-driven emotion — the constraint that picks the model._ We feed
+  the model raw LLM prose: emotional _content_ but no _markup_. Models that infer
+  emotion from text semantics (Hume Octave, ElevenLabs v3, and the autoregressive
+  open ones — Orpheus, Dia) "just work" on it; tag/instruction-driven ones
+  (OpenAI gpt-4o-mini-tts's `instructions` field, Chatterbox's exaggeration knob,
+  reference-audio models like XTTS/F5) read flat unless fed a signal. That signal
+  is the fork: pick an inference-native model and skip it, or add an "emotion
+  director" pre-pass (the chat model annotates its own output with tags / an
+  instruction string) — broader model support at the cost of a call + latency +
+  mis-tag risk, but it gains author-steerable emotion vs. letting the model decide.
+
+  A narrated-storyboard / audiobook step also pairs with the **multimodal
+  pipeline** bet. Open questions: standardize strictly on the `/v1/audio/speech`
+  contract (simplest, but excludes Hume/ElevenLabs/Cartesia, which have their own
+  wire formats) vs. a thin TTS-provider adapter like `MediaStore`; stream audio
+  sentence-chunked as it generates (pairs with the streaming-text path) vs.
+  synthesize-then-play; cache rendered audio on the message row the way
+  `content_html` is (re-listen for free) vs. regenerate; voice/persona selection,
+  including a per-custom-model default voice (a "storyteller" preset reads in a
+  fitting voice); and how the markdown→speech reduction strips code blocks /
+  tables / links before synthesis.
 
 - **Multi-user — nice-to-haves.** Role + invite flow, admin UI, and data
   isolation shipped. Remaining: a per-user storage-quota / usage view; bulk user
