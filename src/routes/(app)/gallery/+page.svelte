@@ -724,7 +724,7 @@
 					type="button"
 					onclick={deleteSelected}
 					disabled={bulkDeleting || selectedCount === 0}
-					class="rounded-md btn-danger px-3 py-1.5 transition disabled:opacity-40"
+					class="inline-flex h-8 items-center rounded-md btn-danger px-3 transition disabled:opacity-40"
 				>
 					{bulkDeleting ? 'Deleting…' : 'Delete'}
 				</button>
@@ -732,7 +732,7 @@
 					type="button"
 					onclick={exitSelectMode}
 					disabled={bulkDeleting}
-					class="rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 transition hover:bg-surface-raised disabled:opacity-40"
+					class="inline-flex h-8 items-center rounded-md border border-border-strong bg-surface-panel px-3 transition hover:bg-surface-raised disabled:opacity-40"
 				>
 					Cancel
 				</button>
@@ -788,7 +788,7 @@
 								onblur={onSearchBlur}
 								placeholder="Search prompts…"
 								aria-label="Search prompts"
-								class="w-40 rounded-md border border-border-strong bg-surface-panel px-3 py-1.5 pr-7 transition focus:border-border-focus focus:outline-none sm:w-52"
+								class="h-8 w-40 rounded-md border border-border-strong bg-surface-panel px-3 pr-7 text-base leading-4 transition focus:border-border-focus focus:outline-none sm:w-52 sm:text-xs"
 							/>
 							{#if queryText}
 								<button
@@ -807,7 +807,7 @@
 							onclick={openSearch}
 							aria-label="Search prompts"
 							title="Search prompts"
-							class="flex items-center justify-center rounded-md border border-border-strong bg-surface-panel p-1.5 text-fg-secondary transition hover:bg-surface-raised"
+							class="flex h-8 items-center justify-center rounded-md border border-border-strong bg-surface-panel px-1.5 text-fg-secondary transition hover:bg-surface-raised"
 						>
 							<Search size={16} />
 						</button>
