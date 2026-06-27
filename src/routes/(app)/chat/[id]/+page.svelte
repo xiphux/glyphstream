@@ -1952,7 +1952,7 @@
 </script>
 
 <div class="relative flex h-full flex-col">
-	<ChatHeader {title} {assistantLabel} />
+	<ChatHeader {title} />
 
 	<!--
 		Scroll area fills the full height *behind* the floating composer

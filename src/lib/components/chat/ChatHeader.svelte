@@ -1,22 +1,18 @@
 <!--
-	Chat page header: conversation title + the assistant/model label. Pure
-	identity — the context-budget readout and the Compact action moved down to
-	`ContextBudgetBar`, right above the composer where they're actually used.
+	Chat page header: just the conversation title, on one row. The model name
+	lives in each assistant bubble and in the composer's model picker, so it isn't
+	repeated here — and a single header model name would be misleading in a
+	multi-model thread anyway. The context-budget readout + Compact action are in
+	`ContextBudgetBar`, above the composer.
 -->
 <script lang="ts">
 	interface Props {
 		title: string | null;
-		assistantLabel: string;
 	}
 
-	let { title, assistantLabel }: Props = $props();
+	let { title }: Props = $props();
 </script>
 
-<header class="flex items-center justify-between gap-3 px-4 py-3">
-	<div class="min-w-0 flex-1">
-		<h1 class="truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
-		<div class="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
-			<span class="truncate">{assistantLabel}</span>
-		</div>
-	</div>
+<header class="flex items-center gap-3 px-4 py-3">
+	<h1 class="min-w-0 flex-1 truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
 </header>

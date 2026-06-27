@@ -28,7 +28,7 @@ test.beforeEach(() => {
  * auto-compaction firing on a send before the reply.
  */
 
-const COMPACT = /compact|summariz/i; // header button: text on desktop, title on mobile
+const COMPACT = /compact|summariz/i; // icon-only button in the budget bar (aria-label/title)
 const SUMMARY_DIVIDER = /Context summary/;
 
 test.describe('manual compaction', () => {
