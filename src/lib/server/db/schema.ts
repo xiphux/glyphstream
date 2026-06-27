@@ -308,6 +308,13 @@ export const messages = sqliteTable(
 		genMs: integer('gen_ms'),
 		// Full upstream response (debug / troubleshoot).
 		rawResponseJson: text('raw_response_json'),
+		// Compaction summary marker. Non-null ONLY on an assistant message that
+		// IS a generated context summary; stores the id of the first message kept
+		// verbatim *after* the summary (the "resume from" point). The summary
+		// stands in for everything before that id when serializing upstream, while
+		// the real messages stay in the tree (non-lossy). Null on every ordinary
+		// message. See src/lib/chat-compaction.ts.
+		compactionResumeFromMessageId: text('compaction_resume_from_message_id'),
 		createdAt: integer('created_at').notNull(),
 	},
 	(t) => [

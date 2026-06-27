@@ -8,6 +8,7 @@
  */
 
 import type { ChatMessage, MessagePart, ModelEntry } from './types/api';
+import { arrangeForDisplay, isCompactionSummary } from './chat-compaction';
 
 /**
  * The model-name label to show above an assistant bubble. Defaults to the
@@ -482,7 +483,10 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	const visibleMessages: ChatMessage[] = [];
 	const toolResultsByCallId = new Map<string, ToolResultEntry>();
 	const pendingApprovals: string[] = [];
-	for (const msg of messages) {
+	// Reposition any compaction summaries to their logical spot (just before the
+	// turn they resume from). Real messages stay visible inline; the summary
+	// renders as a collapsed divider. No-op when the thread has no summary.
+	for (const msg of arrangeForDisplay(messages)) {
 		if (msg.role !== 'tool') {
 			visibleMessages.push(msg);
 			continue;
@@ -542,17 +546,18 @@ export function computeMergeFlags(
 	mergeIntoInFlight = false,
 ): { mergeWithPrev: boolean; mergeWithNext: boolean } {
 	const m = visibleMessages[index];
-	if (!m || m.role !== 'assistant' || m.id === editingMessageId) {
+	// A compaction summary renders as its own divider, never fused into a bubble.
+	if (!m || m.role !== 'assistant' || m.id === editingMessageId || isCompactionSummary(m)) {
 		return { mergeWithPrev: false, mergeWithNext: false };
 	}
 	const prev = index > 0 ? visibleMessages[index - 1] : null;
 	const next = index < visibleMessages.length - 1 ? visibleMessages[index + 1] : null;
 	const isLastVisible = index === visibleMessages.length - 1;
+	const mergeable = (x: ChatMessage | null): boolean =>
+		!!x && x.role === 'assistant' && x.id !== editingMessageId && !isCompactionSummary(x);
 	return {
-		mergeWithPrev: !!prev && prev.role === 'assistant' && prev.id !== editingMessageId,
-		mergeWithNext:
-			(!!next && next.role === 'assistant' && next.id !== editingMessageId) ||
-			(mergeIntoInFlight && isLastVisible),
+		mergeWithPrev: mergeable(prev),
+		mergeWithNext: mergeable(next) || (mergeIntoInFlight && isLastVisible),
 	};
 }
 

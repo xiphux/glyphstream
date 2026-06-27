@@ -30,6 +30,8 @@ const DEFAULTS: UserPreferences = {
 	favoriteModels: [],
 	modelSets: [],
 	trustedMcpTools: [],
+	autoCompactionEnabled: false,
+	autoCompactionThreshold: 80,
 };
 
 /**
@@ -150,6 +152,17 @@ function coerceUserPreferences(
 			input.trustedMcpTools === undefined
 				? fallback.trustedMcpTools
 				: coerceStringArray(input.trustedMcpTools, fallback.trustedMcpTools),
+		autoCompactionEnabled:
+			typeof input.autoCompactionEnabled === 'boolean'
+				? input.autoCompactionEnabled
+				: fallback.autoCompactionEnabled,
+		autoCompactionThreshold:
+			typeof input.autoCompactionThreshold === 'number' &&
+			Number.isFinite(input.autoCompactionThreshold) &&
+			input.autoCompactionThreshold >= 1 &&
+			input.autoCompactionThreshold <= 100
+				? Math.round(input.autoCompactionThreshold)
+				: fallback.autoCompactionThreshold,
 	};
 }
 

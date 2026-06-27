@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `compaction_resume_from_message_id` text;

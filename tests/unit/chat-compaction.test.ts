@@ -1,0 +1,314 @@
+import { describe, expect, it } from 'vitest';
+import type { ChatMessage, MessageRole } from '$lib/types/api';
+import {
+	arrangeForDisplay,
+	canCompact,
+	computeCompactionCut,
+	currentContextTokens,
+	displayContextTokens,
+	isCompactionSummary,
+	shouldAutoCompact,
+	splitAtCompaction,
+	upstreamBranch,
+} from '$lib/chat-compaction';
+
+let seq = 0;
+function msg(
+	role: MessageRole,
+	overrides: Partial<ChatMessage> & { id?: string } = {},
+): ChatMessage {
+	seq += 1;
+	return {
+		id: overrides.id ?? `m${seq}`,
+		role,
+		parts: [{ type: 'text', text: overrides.id ?? `m${seq}` }],
+		contentHtml: null,
+		reasoningText: null,
+		finishReason: null,
+		modelUsed: null,
+		tokensIn: null,
+		tokensOut: null,
+		genMs: null,
+		createdAt: seq,
+		compactionResumeFromMessageId: null,
+		...overrides,
+	};
+}
+
+/** A summary message resuming from `resumeId`, created after the branch. */
+function summary(id: string, resumeId: string, createdAt: number): ChatMessage {
+	return msg('assistant', { id, compactionResumeFromMessageId: resumeId, createdAt });
+}
+
+/** Build u0/a0/u1/a1/... — `n` user+assistant turns. */
+function turns(n: number): ChatMessage[] {
+	const out: ChatMessage[] = [];
+	for (let i = 0; i < n; i++) {
+		out.push(msg('user', { id: `u${i}`, createdAt: i * 2 + 1 }));
+		out.push(msg('assistant', { id: `a${i}`, createdAt: i * 2 + 2 }));
+	}
+	return out;
+}
+
+describe('computeCompactionCut', () => {
+	it('returns null when there are not more than keepTurns turns', () => {
+		expect(computeCompactionCut(turns(2), 2)).toBeNull();
+		expect(computeCompactionCut(turns(1), 2)).toBeNull();
+	});
+
+	it('keeps the last keepTurns turns verbatim, cutting at the right user message', () => {
+		// 4 turns, keep 2 → resume at u2 (the 3rd user message).
+		const branch = turns(4);
+		const cut = computeCompactionCut(branch, 2);
+		expect(cut).not.toBeNull();
+		expect(cut!.resumeMessageId).toBe('u2');
+		expect(cut!.cutIndex).toBe(branch.findIndex((m) => m.id === 'u2'));
+	});
+
+	it('honors keepTurns = 1', () => {
+		const cut = computeCompactionCut(turns(3), 1);
+		expect(cut!.resumeMessageId).toBe('u2');
+	});
+
+	it('returns null when the summarized slice would hold only a prior summary', () => {
+		// [S, u0, a0, u1, a1] — keep 2 turns → resume at u0, summarized = [S] only.
+		const branch = [summary('S', 'u0', 100), ...turns(2)];
+		expect(computeCompactionCut(branch, 2)).toBeNull();
+	});
+
+	it('compacts again once new turns accumulate past a prior summary', () => {
+		// [S, u0,a0, u1,a1, u2,a2] keep 2 → resume u1, summarized = [S, u0, a0] (real material).
+		const branch = [summary('S', 'u0', 100), ...turns(3)];
+		const cut = computeCompactionCut(branch, 2);
+		expect(cut!.resumeMessageId).toBe('u1');
+	});
+});
+
+describe('splitAtCompaction', () => {
+	it('passes through a branch with no summary', () => {
+		const branch = turns(3);
+		const split = splitAtCompaction(branch);
+		expect(split.summary).toBeNull();
+		expect(split.summarized).toEqual([]);
+		expect(split.live).toBe(branch);
+	});
+
+	it('partitions around the summary appended at the leaf', () => {
+		// branch order: u0 a0 u1 a1 u2 a2 S(resume=u1)
+		const base = turns(3);
+		const s = summary('S', 'u1', 100);
+		const branch = [...base, s];
+		const split = splitAtCompaction(branch);
+		expect(split.summary).toBe(s);
+		expect(split.summarized.map((m) => m.id)).toEqual(['u0', 'a0']);
+		expect(split.live.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+	});
+
+	it('includes post-summary turns in live, after the verbatim tail', () => {
+		const base = turns(3);
+		const s = summary('S', 'u1', 100);
+		const post = [
+			msg('user', { id: 'u3', createdAt: 200 }),
+			msg('assistant', { id: 'a3', createdAt: 201 }),
+		];
+		const branch = [...base, s, ...post];
+		const split = splitAtCompaction(branch);
+		expect(split.live.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2', 'u3', 'a3']);
+	});
+
+	it('uses the latest of multiple summaries', () => {
+		const branch = [
+			...turns(2), // u0 a0 u1 a1
+			summary('S1', 'u0', 50),
+			msg('user', { id: 'u2', createdAt: 60 }),
+			msg('assistant', { id: 'a2', createdAt: 61 }),
+			summary('S2', 'u1', 100),
+		];
+		const split = splitAtCompaction(branch);
+		expect(split.summary!.id).toBe('S2');
+		// Everything before u1 (incl. S1) is summarized-away upstream.
+		expect(split.summarized.map((m) => m.id)).toEqual(['u0', 'a0']);
+		expect(split.live.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
+	});
+
+	it('degrades a dangling resume pointer to no verbatim tail', () => {
+		const branch = [...turns(2), summary('S', 'gone', 100)];
+		const split = splitAtCompaction(branch);
+		expect(split.summarized.map((m) => m.id)).toEqual(['u0', 'a0', 'u1', 'a1']);
+		expect(split.live).toEqual([]);
+	});
+});
+
+describe('upstreamBranch', () => {
+	it('leads with the summary then the live tail', () => {
+		const branch = [...turns(3), summary('S', 'u1', 100)];
+		expect(upstreamBranch(branch).map((m) => m.id)).toEqual(['S', 'u1', 'a1', 'u2', 'a2']);
+	});
+
+	it('is the untouched branch without a summary', () => {
+		const branch = turns(2);
+		expect(upstreamBranch(branch)).toBe(branch);
+	});
+});
+
+describe('arrangeForDisplay', () => {
+	it('is identity without a summary', () => {
+		const branch = turns(2);
+		expect(arrangeForDisplay(branch)).toBe(branch);
+	});
+
+	it('moves a leaf-appended summary to just before its resume target', () => {
+		const branch = [...turns(3), summary('S', 'u1', 100)];
+		expect(arrangeForDisplay(branch).map((m) => m.id)).toEqual([
+			'u0',
+			'a0',
+			'S',
+			'u1',
+			'a1',
+			'u2',
+			'a2',
+		]);
+	});
+
+	it('places each of multiple summaries before its own target', () => {
+		const branch = [
+			...turns(2),
+			summary('S1', 'u0', 50),
+			msg('user', { id: 'u2', createdAt: 60 }),
+			msg('assistant', { id: 'a2', createdAt: 61 }),
+			summary('S2', 'u1', 100),
+		];
+		expect(arrangeForDisplay(branch).map((m) => m.id)).toEqual([
+			'S1',
+			'u0',
+			'a0',
+			'S2',
+			'u1',
+			'a1',
+			'u2',
+			'a2',
+		]);
+	});
+
+	it('appends a summary whose target is missing', () => {
+		const branch = [...turns(2), summary('S', 'gone', 100)];
+		const ids = arrangeForDisplay(branch).map((m) => m.id);
+		expect(ids).toEqual(['u0', 'a0', 'u1', 'a1', 'S']);
+	});
+});
+
+describe('canCompact', () => {
+	it('is true for a long-enough branch', () => {
+		expect(canCompact(turns(4), 2)).toBe(true);
+	});
+	it('is false when too short', () => {
+		expect(canCompact(turns(2), 2)).toBe(false);
+	});
+});
+
+describe('isCompactionSummary', () => {
+	it('detects the resume marker', () => {
+		expect(isCompactionSummary(summary('S', 'u0', 1))).toBe(true);
+		expect(isCompactionSummary(msg('assistant'))).toBe(false);
+	});
+});
+
+describe('displayContextTokens', () => {
+	it('reads the most recent assistant usage', () => {
+		const branch = [
+			msg('user', { id: 'u0', createdAt: 1 }),
+			msg('assistant', { id: 'a0', createdAt: 2, tokensIn: 1000, tokensOut: 200 }),
+		];
+		expect(displayContextTokens(branch)).toBe(1200);
+	});
+
+	it('reads 0 right after a compaction (pre-summary usage is stale)', () => {
+		const branch = [
+			msg('user', { id: 'u0', createdAt: 1 }),
+			msg('assistant', { id: 'a0', createdAt: 2, tokensIn: 6000, tokensOut: 400 }),
+			summary('S', 'u0', 3),
+		];
+		expect(displayContextTokens(branch)).toBe(0);
+	});
+
+	it('reads the post-compaction turn once it has usage', () => {
+		const branch = [
+			msg('user', { id: 'u0', createdAt: 1 }),
+			msg('assistant', { id: 'a0', createdAt: 2, tokensIn: 6000, tokensOut: 400 }),
+			summary('S', 'u0', 3),
+			msg('user', { id: 'u1', createdAt: 4 }),
+			msg('assistant', { id: 'a1', createdAt: 5, tokensIn: 800, tokensOut: 150 }),
+		];
+		expect(displayContextTokens(branch)).toBe(950);
+	});
+});
+
+describe('currentContextTokens', () => {
+	it('reads the latest real assistant usage, ignoring summaries', () => {
+		const branch = [
+			msg('user', { id: 'u0', createdAt: 1 }),
+			msg('assistant', { id: 'a0', createdAt: 2, tokensIn: 6000, tokensOut: 400 }),
+			summary('S', 'u0', 3),
+		];
+		expect(currentContextTokens(branch)).toBe(6400);
+	});
+});
+
+describe('shouldAutoCompact', () => {
+	const longBranch = () => {
+		const b = turns(4);
+		// latest assistant carries near-window usage
+		b[b.length - 1] = msg('assistant', { id: 'a3', createdAt: 99, tokensIn: 7000, tokensOut: 200 });
+		return b;
+	};
+
+	it('fires when enabled, over threshold, and compactable', () => {
+		expect(
+			shouldAutoCompact({
+				branch: longBranch(),
+				enabled: true,
+				contextWindow: 8192,
+				threshold: 80,
+			}),
+		).toBe(true);
+	});
+
+	it('does not fire when disabled', () => {
+		expect(
+			shouldAutoCompact({
+				branch: longBranch(),
+				enabled: false,
+				contextWindow: 8192,
+				threshold: 80,
+			}),
+		).toBe(false);
+	});
+
+	it('does not fire when under threshold', () => {
+		const b = turns(4);
+		b[b.length - 1] = msg('assistant', { id: 'a3', createdAt: 99, tokensIn: 1000, tokensOut: 50 });
+		expect(
+			shouldAutoCompact({ branch: b, enabled: true, contextWindow: 8192, threshold: 80 }),
+		).toBe(false);
+	});
+
+	it('does not fire when the window is unknown', () => {
+		expect(
+			shouldAutoCompact({
+				branch: longBranch(),
+				enabled: true,
+				contextWindow: null,
+				threshold: 80,
+			}),
+		).toBe(false);
+	});
+
+	it('does not fire when there is nothing to compact even if over threshold', () => {
+		// 2 turns, latest near window, but too short to compact.
+		const b = turns(2);
+		b[b.length - 1] = msg('assistant', { id: 'a1', createdAt: 99, tokensIn: 7000, tokensOut: 200 });
+		expect(
+			shouldAutoCompact({ branch: b, enabled: true, contextWindow: 8192, threshold: 80 }),
+		).toBe(false);
+	});
+});

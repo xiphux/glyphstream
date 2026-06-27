@@ -117,6 +117,16 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 		patch.modelSets = body.modelSets;
 	}
+	if (typeof body.autoCompactionEnabled === 'boolean') {
+		patch.autoCompactionEnabled = body.autoCompactionEnabled;
+	}
+	if (body.autoCompactionThreshold !== undefined) {
+		const t = body.autoCompactionThreshold;
+		if (typeof t !== 'number' || !Number.isFinite(t) || t < 1 || t > 100) {
+			throw error(400, 'autoCompactionThreshold must be a number between 1 and 100');
+		}
+		patch.autoCompactionThreshold = Math.round(t);
+	}
 
 	const next = setUserPreferences(locals.user.id, patch);
 	// Mirror the theme into a non-httpOnly cookie so hooks.server.ts can

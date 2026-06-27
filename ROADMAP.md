@@ -170,18 +170,6 @@ docs.
   rendering the breakdown (collapsible per-model columns) vs. only the final
   answer; reusing the custom-model materialization path for the panel config.
 
-- **Context compaction.** Summarize the conversation so far and continue from
-  that summary as the new history. Mostly relevant for local LLMs pinned at
-  8k–32k; cloud providers ship 100k–1M. The manual workaround already works
-  ("ask for a summary, paste into a new chat"), so this is ergonomics, not a
-  missing capability. Sketch: a "Compact conversation" header action that runs
-  summarization through the conversation's _own_ main model (not the task model,
-  which may lose fidelity); output branches off the active leaf with the summary
-  as a new root user message, and the tree-shaped schema preserves
-  pre-compaction history (switch back via sibling-nav). Open question:
-  user-triggered only, or auto-fire when a per-model context estimate crosses a
-  threshold.
-
 - **Canvas / collaborative document mode.** A long-lived document the model
   edits across turns and the user can edit too — a side-by-side artifact pane
   rather than inline chat messages — for work that needs several revisions

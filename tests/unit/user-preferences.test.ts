@@ -40,6 +40,8 @@ const EMPTY_PREFS = {
 	favoriteModels: [] as string[],
 	modelSets: [] as SavedModelSet[],
 	trustedMcpTools: [] as string[],
+	autoCompactionEnabled: false,
+	autoCompactionThreshold: 80,
 };
 
 describe('parseUserPreferences', () => {
@@ -343,6 +345,8 @@ describe('setUserPreferences', () => {
 		// Exactly the known fields, no extras leaking through.
 		expect(Object.keys(parsed).sort()).toEqual([
 			'aboutYou',
+			'autoCompactionEnabled',
+			'autoCompactionThreshold',
 			'colorScheme',
 			'customInstructions',
 			'enterBehavior',
@@ -459,6 +463,36 @@ describe('setUserPreferences', () => {
 			'mcp__fs__read_file',
 			'mcp__linear__create_issue',
 		]);
+	});
+});
+
+describe('autoCompaction preferences', () => {
+	it('defaults to disabled at 80%', () => {
+		expect(parseUserPreferences(null).autoCompactionEnabled).toBe(false);
+		expect(parseUserPreferences(null).autoCompactionThreshold).toBe(80);
+	});
+
+	it('accepts a valid enabled flag + threshold', () => {
+		const p = parseUserPreferences(
+			JSON.stringify({ autoCompactionEnabled: true, autoCompactionThreshold: 60 }),
+		);
+		expect(p.autoCompactionEnabled).toBe(true);
+		expect(p.autoCompactionThreshold).toBe(60);
+	});
+
+	it('rounds and clamps the threshold, falling back on out-of-range / non-numeric', () => {
+		const th = (v: unknown) =>
+			parseUserPreferences(JSON.stringify({ autoCompactionThreshold: v })).autoCompactionThreshold;
+		expect(th(72.6)).toBe(73); // rounded
+		expect(th(0)).toBe(80); // below 1 → default
+		expect(th(150)).toBe(80); // above 100 → default
+		expect(th('x')).toBe(80); // non-numeric → default
+	});
+
+	it('ignores a non-boolean enabled flag', () => {
+		expect(
+			parseUserPreferences(JSON.stringify({ autoCompactionEnabled: 'yes' })).autoCompactionEnabled,
+		).toBe(false);
 	});
 });
 

@@ -28,6 +28,21 @@
 	// svelte-ignore state_referenced_locally
 	let showGreeting = $state(data.prefs.showGreeting);
 
+	// svelte-ignore state_referenced_locally
+	let autoCompactionEnabled = $state(data.prefs.autoCompactionEnabled);
+	// svelte-ignore state_referenced_locally
+	let autoCompactionThreshold = $state(data.prefs.autoCompactionThreshold);
+
+	// Threshold saves on change, clamped to 1–100. Reverts the input to the
+	// last-saved value if the PATCH is rejected.
+	async function saveThreshold(raw: number) {
+		const next = Math.min(100, Math.max(1, Math.round(raw || 0)));
+		autoCompactionThreshold = next;
+		if (next === saved.autoCompactionThreshold) return;
+		await saveField({ autoCompactionThreshold: next });
+		autoCompactionThreshold = saved.autoCompactionThreshold;
+	}
+
 	// Theme has a live DOM side effect (the data-theme attribute + cookie),
 	// so it applies immediately on select via selectTheme rather than the
 	// shared saveField path.
@@ -385,6 +400,50 @@
 						</span>
 					</span>
 				</label>
+			</section>
+
+			<div class="border-t border-border"></div>
+
+			<section class="flex flex-col gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">Context compaction</h2>
+					<p class="mt-0.5 text-xs text-fg-muted">
+						When a conversation fills up the model's context window, GlyphStream can summarize the
+						older messages so the chat keeps going. The real messages stay in the thread (the
+						summary is collapsed); only what's sent to the model is trimmed. You can always compact
+						a conversation by hand from its header.
+					</p>
+				</div>
+				<label class="flex cursor-pointer items-start gap-2 text-sm">
+					<input
+						type="checkbox"
+						bind:checked={autoCompactionEnabled}
+						onchange={() => void saveField({ autoCompactionEnabled })}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">Compact automatically</span>
+						<span class="text-fg-muted">
+							— before your next message, if the conversation has crossed the threshold below. Only
+							applies when the model's context window is known.
+						</span>
+					</span>
+				</label>
+				<div class="flex items-center gap-2 text-sm" class:opacity-50={!autoCompactionEnabled}>
+					<label for="pref-compact-threshold">Compact at</label>
+					<input
+						id="pref-compact-threshold"
+						type="number"
+						min="1"
+						max="100"
+						step="5"
+						bind:value={autoCompactionThreshold}
+						disabled={!autoCompactionEnabled}
+						onchange={() => void saveThreshold(autoCompactionThreshold)}
+						class="w-20 rounded-md border border-border bg-surface-panel px-2 py-1 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+					/>
+					<span class="text-fg-muted">% of the context window</span>
+				</div>
 			</section>
 
 			<div class="border-t border-border"></div>

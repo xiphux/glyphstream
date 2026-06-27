@@ -28,6 +28,8 @@ import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { runCompaction } from '$lib/server/chat/compaction';
+import { shouldAutoCompact } from '$lib/chat-compaction';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import {
@@ -138,6 +140,47 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		);
 	}
 	const endpoint = getEndpoint(parsed.endpointId)!;
+
+	// Just-in-time auto-compaction. If the PRIOR turn pushed the conversation
+	// past the user's threshold of the model's window, summarize older history
+	// NOW — before this message is added — so the model continues with reclaimed
+	// space. Doing it here (rather than at end-of-turn) means a conversation the
+	// user simply walks away from never pays for a compaction it won't use.
+	// Normal text sends only: retry/fan-out have their own leaf semantics, and
+	// image/video turns carry no chat context to compact. Non-fatal — any failure
+	// logs and proceeds uncompacted.
+	if (!isRetry && !isFanout && meta.modelKind !== 'image' && meta.modelKind !== 'video') {
+		try {
+			const autoPrefs = getUserPreferences(locals.user.id);
+			if (autoPrefs?.autoCompactionEnabled) {
+				const models = await listAllModels();
+				const entry = models.find(
+					(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
+				);
+				if (
+					shouldAutoCompact({
+						branch: walkActiveBranch(params.id),
+						enabled: true,
+						contextWindow: entry?.contextWindow ?? null,
+						threshold: autoPrefs.autoCompactionThreshold,
+					})
+				) {
+					const result = await runCompaction(params.id, locals.user.id);
+					if (result.status === 'compacted') {
+						// The leaf advanced to the summary; the new user message must hang
+						// off it so we continue from the trimmed history.
+						meta.activeLeafMessageId = result.summaryMessageId;
+						if (DEBUG) console.debug(`[compaction] auto-compacted ${params.id}`);
+					}
+				}
+			}
+		} catch (e) {
+			if (DEBUG)
+				console.debug(
+					`[compaction] auto-compaction skipped: ${e instanceof Error ? e.message : String(e)}`,
+				);
+		}
+	}
 
 	// `userMessage` is the anchor that the assistant message hangs off of.
 	// For a regular send it's a freshly-persisted row; for a retry it's

@@ -40,6 +40,8 @@
 		updateToolCallResult as inFlightUpdateToolCallResult,
 		type InFlightSegment,
 	} from '$lib/chat-render';
+	import { canCompact, displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
+	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { stripSkillCommand } from '$lib/skill-command';
@@ -363,16 +365,11 @@
 	// right now?" without needing a tokenizer on the client. Old
 	// conversations and providers that don't report usage simply yield
 	// 0, which we hide.
-	const contextTokenCount = $derived.by(() => {
-		for (let i = messages.length - 1; i >= 0; i--) {
-			const m = messages[i];
-			if (m.role !== 'assistant') continue;
-			const tin = m.tokensIn ?? 0;
-			const tout = m.tokensOut ?? 0;
-			if (tin > 0 || tout > 0) return tin + tout;
-		}
-		return 0;
-	});
+	// Scoped to the latest compaction boundary: usage from before a summary is
+	// stale (it reflects the pre-compaction prompt), so right after a Compact
+	// this reads 0 and the header drops to a bare count, self-correcting to the
+	// real, smaller number on the next turn. See displayContextTokens.
+	const contextTokenCount = $derived(displayContextTokens(messages));
 
 	// The active model's total context window, when we know it. Read from the
 	// model list rather than snapshotted onto the conversation, so a server
@@ -384,6 +381,37 @@
 		data.models.find((m) => m.id === modelId)?.contextWindow ?? null,
 	);
 
+	// --- manual compaction -------------------------------------------------
+	// Summarize older history through the conversation's own model, then refetch.
+	// Auto-compaction (the preference) reuses the same server engine just-in-time
+	// on the next send. Disabled while a turn is in flight or there's too little
+	// history to fold.
+	let compacting = $state(false);
+	const compactable = $derived(!busy && !compacting && canCompact(messages));
+
+	async function compactConversation() {
+		if (compacting || busy) return;
+		compacting = true;
+		try {
+			const res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
+				method: 'POST',
+			});
+			if (res.ok) {
+				await invalidateAll();
+			} else {
+				toast.error(
+					res.status === 409
+						? 'Not enough conversation history to compact yet.'
+						: "Couldn't compact this conversation.",
+				);
+			}
+		} catch {
+			toast.error("Couldn't compact this conversation.");
+		} finally {
+			compacting = false;
+		}
+	}
+
 	// Per-user-message "tokens we sent up to and including this turn":
 	// the prompt_tokens of the next assistant message whose backend
 	// reported usage. Computed once per `messages` change with a single
@@ -391,17 +419,18 @@
 	// the previous per-row lookup made the message list render O(N²).
 	// Null when no downstream assistant reported usage (in-flight or
 	// cancelled turn, or backend doesn't return usage).
+	// Keyed by message id (not array index): visibleMessages drops tool rows and
+	// repositions compaction summaries, so it no longer aligns 1:1 with the raw
+	// `messages` branch this sweep walks.
 	const userSentTokens = $derived.by(() => {
-		const out = new Array<number | null>(messages.length);
+		const out = new Map<string, number | null>();
 		let next: number | null = null;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const m = messages[i];
 			if (m.role === 'assistant') {
 				if (m.tokensIn != null) next = m.tokensIn;
 			} else if (m.role === 'user') {
-				out[i] = next;
-			} else {
-				out[i] = null;
+				out.set(m.id, next);
 			}
 		}
 		return out;
@@ -1836,7 +1865,15 @@
 </script>
 
 <div class="relative flex h-full flex-col">
-	<ChatHeader {title} {assistantLabel} {contextTokenCount} contextWindow={modelContextWindow} />
+	<ChatHeader
+		{title}
+		{assistantLabel}
+		{contextTokenCount}
+		contextWindow={modelContextWindow}
+		onCompact={modelKind === 'image' || modelKind === 'video' ? undefined : compactConversation}
+		canCompact={compactable}
+		{compacting}
+	/>
 
 	<!--
 		Scroll area fills the full height *behind* the floating composer
@@ -1850,8 +1887,13 @@
 			class="mx-auto min-w-0 max-w-3xl space-y-4"
 			style="padding-bottom: {composerHeight + 24}px"
 		>
-			{#each visibleMessages as m, i (m.id)}
-				<!--
+			{#each visibleMessages as m (m.id)}
+				{#if isCompactionSummary(m)}
+					<!-- A compaction summary: collapsed divider, not a bubble. The
+						 real messages it stands in for stay visible above/below it. -->
+					<CompactionSummary message={m} />
+				{:else}
+					<!--
 					Message + action-bar group. The actions row sits directly
 					below the bubble, aligned to the same side (right for user
 					messages, left for assistant), and reveals on hover at sm+.
@@ -1865,10 +1907,13 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-				{@const merge = mergeFlagsById.get(m.id) ?? { mergeWithPrev: false, mergeWithNext: false }}
-				{@const mergeWithPrev = merge.mergeWithPrev}
-				{@const mergeWithNext = merge.mergeWithNext}
-				<!--
+					{@const merge = mergeFlagsById.get(m.id) ?? {
+						mergeWithPrev: false,
+						mergeWithNext: false,
+					}}
+					{@const mergeWithPrev = merge.mergeWithPrev}
+					{@const mergeWithNext = merge.mergeWithNext}
+					<!--
 					Bubble-merge gap close. Tailwind v4's `space-y-4` sets
 					`margin-block-end: 1rem` on EVERY child (not the v3 pattern
 					of margin-top on subsequent siblings) — so the gap is the
@@ -1879,62 +1924,63 @@
 					Tailwind v4 important syntax is the `!` SUFFIX (`mb-0!`),
 					not the v3 prefix (`!mb-0`).
 				-->
-				<div
-					id="msg-{m.id}"
-					in:messageIntro={{ streamed: m.id === streamedMessageId }}
-					class={[
-						'group rounded-lg transition-colors duration-1000',
-						mergeWithPrev && 'mt-0!',
-						mergeWithNext && 'mb-0!',
-						m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
-					]}
-				>
-					{#if m.id === editingMessageId}
-						<!--
+					<div
+						id="msg-{m.id}"
+						in:messageIntro={{ streamed: m.id === streamedMessageId }}
+						class={[
+							'group rounded-lg transition-colors duration-1000',
+							mergeWithPrev && 'mt-0!',
+							mergeWithNext && 'mb-0!',
+							m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
+						]}
+					>
+						{#if m.id === editingMessageId}
+							<!--
 						Inline editor: replaces the static bubble with an
 						editable surface in the same position so it's
 						unambiguous WHICH message is being edited. Save creates
 						a sibling under the original's parent (preserving the
 						original as a branch); Cancel discards.
 					-->
-						<EditMessageForm
-							bind:editText
-							attachments={editAttachments}
-							{allowAttachments}
-							enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-							onSave={() => void saveEdit()}
-							onCancel={cancelEdit}
-						/>
-					{:else}
-						<MessageBubble
-							message={m}
-							{toolResultsByCallId}
-							{userLabel}
-							assistantLabel={assistantLabelFor(m)}
-							{mergeWithPrev}
-							{mergeWithNext}
-							onImageClick={openImageInLightbox}
-							{openingLightboxFor}
-							{approvalDecisions}
-							approvalBusy={approvalSubmitting}
-							{onApprovalSelect}
-						/>
-					{/if}
-					{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
-						<MessageActions
-							message={m}
-							{generating}
-							recentlyCopied={recentlyCopiedId === m.id}
-							canCopy={hasCopyableText(m)}
-							userSentTokens={m.role === 'user' ? userSentTokens[i] : null}
-							onCopy={() => copyMessage(m)}
-							onEdit={() => beginEdit(m)}
-							onRetry={() => retryAssistant(m)}
-							onSelectSibling={(id, dir) => selectSibling(id, dir)}
-							onDeleteBranch={() => deleteBranch(m)}
-						/>
-					{/if}
-				</div>
+							<EditMessageForm
+								bind:editText
+								attachments={editAttachments}
+								{allowAttachments}
+								enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+								onSave={() => void saveEdit()}
+								onCancel={cancelEdit}
+							/>
+						{:else}
+							<MessageBubble
+								message={m}
+								{toolResultsByCallId}
+								{userLabel}
+								assistantLabel={assistantLabelFor(m)}
+								{mergeWithPrev}
+								{mergeWithNext}
+								onImageClick={openImageInLightbox}
+								{openingLightboxFor}
+								{approvalDecisions}
+								approvalBusy={approvalSubmitting}
+								{onApprovalSelect}
+							/>
+						{/if}
+						{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
+							<MessageActions
+								message={m}
+								{generating}
+								recentlyCopied={recentlyCopiedId === m.id}
+								canCopy={hasCopyableText(m)}
+								userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
+								onCopy={() => copyMessage(m)}
+								onEdit={() => beginEdit(m)}
+								onRetry={() => retryAssistant(m)}
+								onSelectSibling={(id, dir) => selectSibling(id, dir)}
+								onDeleteBranch={() => deleteBranch(m)}
+							/>
+						{/if}
+					</div>
+				{/if}
 			{/each}
 
 			{#if showInFlight}

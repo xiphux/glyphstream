@@ -20,6 +20,10 @@ interface AppendInput {
 	/** Generation wall-time in ms; see `messages.gen_ms` in schema.ts. */
 	genMs?: number | null;
 	rawResponseJson?: string | null;
+	/** Set ONLY when appending a compaction summary: the id of the first
+	 *  message kept verbatim after the summary. See messages.ts schema +
+	 *  src/lib/chat-compaction.ts. Null/absent on ordinary appends. */
+	compactionResumeFromMessageId?: string | null;
 	/**
 	 * Whether to point the conversation's active_leaf_message_id at the new
 	 * message (default true). A multi-model fan-out sets this false: its N
@@ -59,6 +63,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				tokensOut: input.tokensOut ?? null,
 				genMs: input.genMs ?? null,
 				rawResponseJson: input.rawResponseJson ?? null,
+				compactionResumeFromMessageId: input.compactionResumeFromMessageId ?? null,
 				createdAt: now,
 			})
 			.run();
@@ -94,6 +99,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 		tokensIn: input.tokensIn ?? null,
 		tokensOut: input.tokensOut ?? null,
 		genMs: input.genMs ?? null,
+		compactionResumeFromMessageId: input.compactionResumeFromMessageId ?? null,
 		createdAt: now,
 	};
 }
@@ -697,6 +703,7 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		tokensIn: row.tokensIn,
 		tokensOut: row.tokensOut,
 		genMs: row.genMs,
+		compactionResumeFromMessageId: row.compactionResumeFromMessageId,
 		createdAt: row.createdAt,
 	};
 }

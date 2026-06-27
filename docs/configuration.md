@@ -142,6 +142,13 @@ A `model_context_windows` override is static until you edit it. The running
 count itself is the upstream-reported `prompt_tokens + completion_tokens` of
 the latest response, so it reflects the real tokenizer, not an estimate.
 
+The known window also powers **context compaction**: each user picks, in
+Preferences ▸ Context compaction, whether GlyphStream should automatically
+summarize older history once a thread crosses a percentage of this window
+(default 80%). Without a known window, automatic compaction can't fire — but
+the manual "Compact" button in the chat header still works. (This is a user
+preference, not a server config setting.)
+
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
 ## Auto-titling (`task_model`)

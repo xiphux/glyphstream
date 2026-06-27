@@ -325,4 +325,27 @@ describe('serializeBranchForUpstream', () => {
 		expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'a' });
 		expect(out[3]).toMatchObject({ role: 'tool', tool_call_id: 'b' });
 	});
+
+	it('trims a compacted branch: leads with the summary, drops summarized turns, keeps the verbatim tail', async () => {
+		// u0 a0 u1 a1 u2 a2 S(resume=u2) — the summary stands in for u0..a1.
+		const branch: ChatMessage[] = [
+			msg('user', [{ type: 'text', text: 'q0' }], 'u0'),
+			msg('assistant', [{ type: 'text', text: 'r0' }], 'a0'),
+			msg('user', [{ type: 'text', text: 'q1' }], 'u1'),
+			msg('assistant', [{ type: 'text', text: 'r1' }], 'a1'),
+			msg('user', [{ type: 'text', text: 'q2' }], 'u2'),
+			msg('assistant', [{ type: 'text', text: 'r2' }], 'a2'),
+			{
+				...msg('assistant', [{ type: 'text', text: 'SUMMARY of q0..r1' }], 'S'),
+				compactionResumeFromMessageId: 'u2',
+			},
+		];
+		const out = await serializeBranchForUpstream(branch, noMedia, 'sys');
+		expect(out).toEqual([
+			{ role: 'system', content: 'sys' },
+			{ role: 'assistant', content: 'SUMMARY of q0..r1' },
+			{ role: 'user', content: 'q2' },
+			{ role: 'assistant', content: 'r2' },
+		]);
+	});
 });

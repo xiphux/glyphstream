@@ -69,4 +69,55 @@ describe('ChatHeader', () => {
 		expect(screen.getByText(/27,725 tokens/)).toBeInTheDocument();
 		expect(screen.queryByText(/\//)).toBeNull();
 	});
+
+	describe('Compact action', () => {
+		it('renders no Compact button when onCompact is omitted', () => {
+			render(ChatHeader, {
+				props: { title: 'x', assistantLabel: 'gpt-4o', contextTokenCount: 0 },
+			});
+			expect(screen.queryByRole('button', { name: /compact/i })).toBeNull();
+		});
+
+		it('enables the Compact button when canCompact is true', () => {
+			render(ChatHeader, {
+				props: {
+					title: 'x',
+					assistantLabel: 'gpt-4o',
+					contextTokenCount: 100,
+					onCompact: () => {},
+					canCompact: true,
+				},
+			});
+			const btn = screen.getByRole('button', { name: /compact/i });
+			expect(btn).not.toBeDisabled();
+		});
+
+		it('disables the Compact button when canCompact is false', () => {
+			render(ChatHeader, {
+				props: {
+					title: 'x',
+					assistantLabel: 'gpt-4o',
+					contextTokenCount: 100,
+					onCompact: () => {},
+					canCompact: false,
+				},
+			});
+			expect(screen.getByRole('button', { name: /compact/i })).toBeDisabled();
+		});
+
+		it('shows a "Compacting…" state and stays disabled while compacting', () => {
+			render(ChatHeader, {
+				props: {
+					title: 'x',
+					assistantLabel: 'gpt-4o',
+					contextTokenCount: 100,
+					onCompact: () => {},
+					canCompact: true,
+					compacting: true,
+				},
+			});
+			const btn = screen.getByRole('button', { name: /compacting/i });
+			expect(btn).toBeDisabled();
+		});
+	});
 });

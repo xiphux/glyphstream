@@ -378,6 +378,14 @@ export interface ChatMessage {
 	siblingPosition?: number;
 	siblingIds?: string[];
 	/**
+	 * Compaction summary marker. Non-null ONLY when this assistant message is a
+	 * generated context summary; holds the id of the first message kept verbatim
+	 * after it (the "resume from" point). Drives both the upstream trim
+	 * (`serializeBranchForUpstream`) and the collapsed-summary rendering — the
+	 * row is a summary iff this is set. Undefined/null on ordinary messages.
+	 */
+	compactionResumeFromMessageId?: string | null;
+	/**
 	 * Input image this message's generated media was edited / animated from
 	 * (i2i edit, i2v) — the provenance recorded on the output media row.
 	 * Populated by `getSiblingAssistants` for the split-attachments grid, so a
@@ -524,6 +532,21 @@ export interface UserPreferences {
 	 * `/settings/permissions` page.
 	 */
 	trustedMcpTools: string[];
+	/**
+	 * Auto-compaction: when a turn pushes the conversation past
+	 * `autoCompactionThreshold` percent of the model's context window, the
+	 * NEXT send first summarizes the older history (just-in-time, through the
+	 * conversation's own model) so it continues with reclaimed space. Default
+	 * false — opt-in, and only effective when the model's window is known.
+	 * Manual "Compact" works regardless of this flag.
+	 */
+	autoCompactionEnabled: boolean;
+	/**
+	 * Percent of the context window (1–100) at which auto-compaction fires.
+	 * Default 80 — leaves room for the summarization round-trip itself (whose
+	 * prompt is roughly the current full history) and for continued chat.
+	 */
+	autoCompactionThreshold: number;
 }
 
 export interface ConversationSummary {

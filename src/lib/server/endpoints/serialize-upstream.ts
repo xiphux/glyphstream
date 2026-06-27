@@ -9,6 +9,7 @@
  */
 
 import type { ChatMessage, MessagePart } from '$lib/types/api';
+import { upstreamBranch } from '$lib/chat-compaction';
 import type {
 	ChatCompletionContentPart,
 	ChatCompletionRequest,
@@ -146,6 +147,14 @@ export async function serializeMessageForUpstream(
  * Serialize an entire branch (root → active leaf) into the upstream
  * messages array, prepending the optional system prompt. Filters out
  * any messages that serialize to null (defensive).
+ *
+ * If the branch has been compacted, `upstreamBranch` trims it to
+ * `[latest summary, ...verbatim tail + later turns]` — the summary stands in
+ * for the older history that's still kept in the DB but not resent. This is
+ * the single choke point through which every send path (initial send, mid-turn
+ * tool rebuild, tool-approval resume) inherits the trim. (The compaction engine
+ * itself does NOT go through here — it serializes its own slice per-message so
+ * it can summarize the very history this would drop.)
  */
 export async function serializeBranchForUpstream(
 	branch: ChatMessage[],
@@ -156,7 +165,7 @@ export async function serializeBranchForUpstream(
 	if (systemPrompt) {
 		out.push({ role: 'system', content: systemPrompt });
 	}
-	for (const m of branch) {
+	for (const m of upstreamBranch(branch)) {
 		const serialized = await serializeMessageForUpstream(m, resolveMediaUrl);
 		if (serialized) out.push(serialized);
 	}

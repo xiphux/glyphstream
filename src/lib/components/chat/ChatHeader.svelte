@@ -1,9 +1,11 @@
 <!--
-	Chat page header: conversation title, the assistant/model label, and
-	an approximate context-token count after the most recent response.
-	Read-only — purely informational, no interactivity.
+	Chat page header: conversation title, the assistant/model label, an
+	approximate context-token count after the most recent response, and a
+	"Compact" action that summarizes older history to free up context.
 -->
 <script lang="ts">
+	import { FoldVertical } from '@lucide/svelte';
+
 	interface Props {
 		title: string | null;
 		assistantLabel: string;
@@ -13,9 +15,24 @@
 		/** The active model's total context window, when known. When set we
 		 *  render "N / max tokens (P%)"; when null, just "N tokens". */
 		contextWindow?: number | null;
+		/** Manual-compaction handler. When omitted, no Compact button renders
+		 *  (e.g. image/video conversations). */
+		onCompact?: () => void;
+		/** Disable the Compact button when there isn't enough history to fold. */
+		canCompact?: boolean;
+		/** True while a compaction is in flight — shows a "Compacting…" state. */
+		compacting?: boolean;
 	}
 
-	let { title, assistantLabel, contextTokenCount, contextWindow = null }: Props = $props();
+	let {
+		title,
+		assistantLabel,
+		contextTokenCount,
+		contextWindow = null,
+		onCompact,
+		canCompact = false,
+		compacting = false,
+	}: Props = $props();
 
 	const tokenFmt = new Intl.NumberFormat();
 
@@ -60,4 +77,18 @@
 			{/if}
 		</div>
 	</div>
+	{#if onCompact}
+		<button
+			type="button"
+			onclick={onCompact}
+			disabled={!canCompact || compacting}
+			title={canCompact
+				? 'Summarize earlier messages to free up context. The originals stay in the thread.'
+				: 'Not enough conversation history to compact yet.'}
+			class="flex flex-shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised disabled:opacity-40 disabled:hover:bg-transparent"
+		>
+			<FoldVertical class="h-3.5 w-3.5 {compacting ? 'animate-pulse' : ''}" />
+			<span class="hidden sm:inline">{compacting ? 'Compacting…' : 'Compact'}</span>
+		</button>
+	{/if}
 </header>
