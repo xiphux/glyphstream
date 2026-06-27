@@ -172,6 +172,43 @@ export async function selectModel(page: Page, name: string | RegExp): Promise<vo
 	await page.getByRole('option', { name }).click();
 }
 
+/**
+ * Enable (or disable) auto-compaction for the test user by writing the
+ * preferences JSON blob directly — the defensive parser fills the rest, and the
+ * page's load reads it, so call this BEFORE navigating. Mirrors resetData's
+ * standalone node:sqlite connection (safe under workers=1).
+ */
+export function setAutoCompaction(enabled: boolean, thresholdPct: number): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		const prefs = JSON.stringify({
+			autoCompactionEnabled: enabled,
+			autoCompactionThreshold: thresholdPct,
+		});
+		db.prepare(`UPDATE users SET preferences_json = ? WHERE id = ?`).run(prefs, TEST_USER.id);
+	} finally {
+		db.close();
+	}
+}
+
+/**
+ * Send a follow-up message in an already-open chat and wait for the turn to
+ * settle. Counts real message bubbles (`#msg-*`, which excludes the compaction
+ * summary divider) and waits for the user+assistant pair to land + the composer
+ * to flip Stop → Send.
+ */
+export async function sendFollowup(page: Page, text: string): Promise<void> {
+	const bubbles = page.locator('[id^="msg-"]');
+	const before = await bubbles.count();
+	await page.locator('textarea').first().fill(text);
+	const send = page.getByRole('button', { name: 'Send message' });
+	await expect(send).toBeEnabled();
+	await send.click();
+	await expect(bubbles).toHaveCount(before + 2);
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+}
+
 /** Mobile starts with the sidebar behind a hamburger; desktop is static.
  *  No-op on desktop. */
 export async function openSidebar(page: Page, isMobile: boolean): Promise<void> {

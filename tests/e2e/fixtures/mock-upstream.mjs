@@ -28,6 +28,19 @@ const PORT = Number(process.env.MOCK_UPSTREAM_PORT ?? 3001);
  *  multi-chunk SSE path. Specs assert on this exact string. */
 const REPLY_TEXT = 'Hello from the mock upstream.';
 
+/** Fixed summary returned for a compaction request (detected by the
+ *  summarizer system prompt). The compaction specs assert on this string. */
+const SUMMARY_TEXT = 'MOCK SUMMARY: the earlier turns were condensed.';
+
+/** True when this chat-completion request is GlyphStream asking the model to
+ *  compact — its first system message is the summarizer framing (see
+ *  SUMMARY_SYSTEM in src/lib/server/chat/compaction.ts). Lets the mock return a
+ *  deterministic summary for compaction while normal turns get REPLY_TEXT. */
+function isSummarizationRequest(body) {
+	const first = Array.isArray(body?.messages) ? body.messages[0] : null;
+	return typeof first?.content === 'string' && first.content.includes('compacting a conversation');
+}
+
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
  *  bytes. */
@@ -55,6 +68,20 @@ const MODELS = {
 			display_name: 'Mock Chat Slow',
 			owned_by: 'mock',
 			supports_tools: false,
+		},
+		{
+			// A chat model that advertises a *tiny* context window, so the
+			// compaction specs can drive auto-compaction deterministically: any
+			// real reply's usage (18 tokens) sits well past a low threshold of
+			// this 50-token window. `meta.n_ctx` is the llama.cpp convention
+			// GlyphStream's extractContextWindow reads.
+			id: 'mock-chat-tiny',
+			object: 'model',
+			kind: 'chat',
+			display_name: 'Mock Chat Tiny',
+			owned_by: 'mock',
+			supports_tools: false,
+			meta: { n_ctx: 50 },
 		},
 		{
 			id: 'mock-image',
@@ -94,7 +121,7 @@ const FAST_CHUNK_DELAY_MS = 5;
 /** Emit the fixed reply as OpenAI chat-completion SSE chunks: a role
  *  chunk, one chunk per word, a finish chunk, a usage chunk, then
  *  [DONE]. Matches what PassthroughNormalizer expects. */
-function streamChatCompletion(res, model) {
+function streamChatCompletion(res, model, text = REPLY_TEXT) {
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache, no-store',
@@ -109,7 +136,7 @@ function streamChatCompletion(res, model) {
 		...base,
 		choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
 	});
-	for (const word of REPLY_TEXT.split(' ')) {
+	for (const word of text.split(' ')) {
 		// Re-attach the space the split removed (except it lands as a
 		// leading space on each word after the first, which renders fine).
 		const piece = chunks.length === 1 ? word : ` ${word}`;
@@ -139,7 +166,7 @@ function streamChatCompletion(res, model) {
 	tick();
 }
 
-function syncChatCompletion(res) {
+function syncChatCompletion(res, text = REPLY_TEXT) {
 	sendJson(res, 200, {
 		id: 'chatcmpl-mock',
 		object: 'chat.completion',
@@ -147,7 +174,7 @@ function syncChatCompletion(res) {
 		choices: [
 			{
 				index: 0,
-				message: { role: 'assistant', content: REPLY_TEXT },
+				message: { role: 'assistant', content: text },
 				finish_reason: 'stop',
 			},
 		],
@@ -167,14 +194,18 @@ const server = createServer(async (req, res) => {
 		const raw = await readBody(req);
 		let wantsStream = false;
 		let model = 'mock-chat';
+		let text = REPLY_TEXT;
 		try {
 			const body = JSON.parse(raw || '{}');
 			wantsStream = body.stream === true;
 			if (typeof body.model === 'string') model = body.model;
+			// A compaction request gets the deterministic summary; everything
+			// else gets the normal reply.
+			if (isSummarizationRequest(body)) text = SUMMARY_TEXT;
 		} catch {
-			/* default to sync, default model */
+			/* default to sync, default model, normal reply */
 		}
-		return wantsStream ? streamChatCompletion(res, model) : syncChatCompletion(res);
+		return wantsStream ? streamChatCompletion(res, model, text) : syncChatCompletion(res, text);
 	}
 
 	if (req.method === 'POST' && path === '/v1/images/generations') {

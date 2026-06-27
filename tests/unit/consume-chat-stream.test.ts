@@ -229,4 +229,42 @@ describe('consumeChatStream', () => {
 
 		expect(order).toEqual(['start-resolved', 'text:after']);
 	});
+
+	it('dispatches the compaction events (start → text → done)', async () => {
+		const order: string[] = [];
+		const onCompactionDone = vi.fn();
+		const body = streamFromEvents([
+			{ type: 'compaction_start' },
+			{ type: 'compaction_text', chunk: 'Earlier ' },
+			{ type: 'compaction_text', chunk: 'context.' },
+			{ type: 'compaction_done', summaryMessage: ASSISTANT_MSG },
+		]);
+
+		await consumeChatStream(body, {
+			onCompactionStart: () => order.push('start'),
+			onCompactionText: (c) => order.push(`text:${c}`),
+			onCompactionDone: onCompactionDone,
+		});
+
+		expect(order).toEqual(['start', 'text:Earlier ', 'text:context.']);
+		expect(onCompactionDone).toHaveBeenCalledWith(ASSISTANT_MSG);
+	});
+
+	it('awaits async onCompactionDone before resolving', async () => {
+		const order: string[] = [];
+		const body = streamFromEvents([
+			{ type: 'compaction_text', chunk: 'x' },
+			{ type: 'compaction_done', summaryMessage: ASSISTANT_MSG },
+		]);
+
+		await consumeChatStream(body, {
+			onCompactionText: (c) => order.push(`text:${c}`),
+			onCompactionDone: async () => {
+				await Promise.resolve();
+				order.push('done-resolved');
+			},
+		});
+
+		expect(order).toEqual(['text:x', 'done-resolved']);
+	});
 });
