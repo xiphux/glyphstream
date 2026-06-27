@@ -115,6 +115,27 @@
 #    concurrency and you want more parallelism.
 # max_concurrent = 1
 
+# Optional: the model's context-window size, in tokens. Powers the
+# "27,725 / 40,960 tokens" budget readout in the chat header (and, later,
+# compaction). The OpenAI /v1/models row has no context-size field, so when
+# the upstream surfaces one per model — llama.cpp's `n_ctx` (a loaded model)
+# or router `--ctx-size`, vLLM's `max_model_len`, or a bridge-normalized
+# `context_window` — GlyphStream uses that automatically and you can leave
+# this unset. Set it as a blanket fallback for endpoints that advertise
+# nothing (raw OpenAI, Groq, …); the per-model upstream value still wins
+# when present. Omit for "unknown" (the header then shows just the running
+# token count, no ceiling).
+# context_window = 32768
+
+# Optional: per-model context-window overrides, keyed by the upstream model
+# id. A llama-server in router mode gives each model its own --ctx-size, so a
+# single endpoint-wide `context_window` is too coarse — set the size per model
+# here. An entry wins over auto-detection (use it when auto-detect can't see
+# the value — e.g. behind the bridge before redeploy — or to pin a deliberate
+# value). Inline form shown; the sub-table form
+# `[endpoints.model_context_windows]` works too (see docs/configuration.md).
+# model_context_windows = { "Gemma4-26B" = 40960, "GLM-4.7-Flash" = 65536 }
+
 # Optional: web search via SearxNG. Backs the `web_search` tool, which
 # the assistant calls on its own when a query needs current information.
 # When this block is absent, `web_search` is hidden from the model

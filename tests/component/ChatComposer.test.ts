@@ -37,6 +37,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		group: 'Bridge',
 		groupKey: 'bridge',
 		supportsTools: false,
+		contextWindow: overrides.contextWindow ?? null,
 	};
 }
 

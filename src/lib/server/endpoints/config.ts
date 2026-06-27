@@ -40,6 +40,8 @@ interface RawEndpoint {
 	group_by?: unknown;
 	supports_tools?: unknown;
 	max_concurrent?: unknown;
+	context_window?: unknown;
+	model_context_windows?: unknown;
 }
 
 /** After validation + env-var resolution. */
@@ -73,6 +75,28 @@ export interface LoadedEndpoint {
 	 * endpoint that handles its own concurrency.
 	 */
 	maxConcurrent: number;
+	/**
+	 * Endpoint-level fallback for a model's context-window size, in tokens.
+	 * The OpenAI `/v1/models` row carries no context-size field, so for
+	 * vendors that surface nothing per-model (raw OpenAI, Groq, …) operators
+	 * can state a blanket value here. The actual decision prefers the
+	 * upstream-reported per-model size when present (llama.cpp's `meta.n_ctx`
+	 * / router `--ctx-size`, vLLM's `max_model_len`, a bridge-normalized
+	 * `context_window`) — see `extractContextWindow`. Null when absent.
+	 */
+	contextWindow: number | null;
+	/**
+	 * Per-model context-window overrides, keyed by the *upstream* model id —
+	 * the id as the upstream's `/v1/models` reports it, before GlyphStream's
+	 * `endpoint::` prefix (for an aggregating bridge that's the provider-
+	 * prefixed id, e.g. `llama/Gemma4-26B`). For a llama-server in router mode each
+	 * model can carry its own `--ctx-size`, so a single endpoint-level
+	 * {@link contextWindow} is too coarse; this lets operators state the size
+	 * per model. An entry here is the operator's explicit per-model statement
+	 * and wins over auto-detection (see `normalizeUpstreamModel`). Empty `{}`
+	 * when the `model_context_windows` table is absent.
+	 */
+	modelContextWindows: Record<string, number>;
 }
 
 /**
@@ -526,6 +550,32 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		}
 	}
 
+	let contextWindow: number | null = null;
+	if (raw.context_window !== undefined) {
+		contextWindow = requireNumber(raw.context_window, 'context_window', at, { min: 1 });
+		if (!Number.isInteger(contextWindow)) {
+			throw new ConfigError(`${at}: 'context_window' must be a whole number`);
+		}
+	}
+
+	const modelContextWindows: Record<string, number> = {};
+	if (raw.model_context_windows !== undefined) {
+		const tbl = raw.model_context_windows;
+		if (typeof tbl !== 'object' || tbl === null || Array.isArray(tbl)) {
+			throw new ConfigError(
+				`${at}: 'model_context_windows' must be a table of "model-id" = context-size pairs`,
+			);
+		}
+		for (const [modelId, v] of Object.entries(tbl)) {
+			const field = `model_context_windows."${modelId}"`;
+			const n = requireNumber(v, field, at, { min: 1 });
+			if (!Number.isInteger(n)) {
+				throw new ConfigError(`${at}: '${field}' must be a whole number`);
+			}
+			modelContextWindows[modelId] = n;
+		}
+	}
+
 	return {
 		id,
 		displayName,
@@ -536,6 +586,8 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		groupBy,
 		supportsTools,
 		maxConcurrent,
+		contextWindow,
+		modelContextWindows,
 	};
 }
 

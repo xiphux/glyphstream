@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { detectKind, normalizeUpstreamModel } from '$lib/server/endpoints/models';
+import {
+	detectKind,
+	extractContextWindow,
+	normalizeUpstreamModel,
+} from '$lib/server/endpoints/models';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 
 // (supportsTools fallback tests appended at the bottom)
@@ -15,6 +19,8 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		groupBy: 'endpoint',
 		supportsTools: false,
 		maxConcurrent: Infinity,
+		contextWindow: null,
+		modelContextWindows: {},
 		...overrides,
 	};
 }
@@ -180,5 +186,96 @@ describe('normalizeUpstreamModel', () => {
 				}).supportsTools,
 			).toBe(true);
 		});
+	});
+
+	describe('contextWindow resolution', () => {
+		// Order: per-model config override > per-model upstream signal >
+		// endpoint config default > null.
+		it('is null when no layer supplies one', () => {
+			expect(normalizeUpstreamModel(ep(), { id: 'x' }).contextWindow).toBeNull();
+		});
+
+		it('uses endpoint.contextWindow when upstream exposes nothing', () => {
+			expect(normalizeUpstreamModel(ep({ contextWindow: 8192 }), { id: 'x' }).contextWindow).toBe(
+				8192,
+			);
+		});
+
+		it('prefers the per-model upstream signal over the endpoint default', () => {
+			expect(
+				normalizeUpstreamModel(ep({ contextWindow: 8192 }), {
+					id: 'x',
+					meta: { n_ctx: 40960 },
+				}).contextWindow,
+			).toBe(40960);
+		});
+
+		it('a per-model config override wins over auto-detect and the endpoint default', () => {
+			expect(
+				normalizeUpstreamModel(
+					ep({ contextWindow: 8192, modelContextWindows: { 'Gemma4-26B': 32768 } }),
+					// Auto-detect would say 40960, but the operator pinned this model.
+					{ id: 'Gemma4-26B', meta: { n_ctx: 40960 } },
+				).contextWindow,
+			).toBe(32768);
+		});
+
+		it('keys the per-model override by the bare upstream id', () => {
+			// Only the matching model gets the override; others fall through.
+			const e = ep({ modelContextWindows: { 'Gemma4-26B': 32768 } });
+			expect(normalizeUpstreamModel(e, { id: 'Gemma4-26B' }).contextWindow).toBe(32768);
+			expect(normalizeUpstreamModel(e, { id: 'GLM-4.7-Flash' }).contextWindow).toBeNull();
+		});
+	});
+});
+
+describe('extractContextWindow', () => {
+	it('reads a normalized context_window first', () => {
+		expect(extractContextWindow({ id: 'x', context_window: 32768 })).toBe(32768);
+	});
+
+	it('reads llama.cpp meta.n_ctx (loaded model)', () => {
+		expect(extractContextWindow({ id: 'x', meta: { n_ctx: 40960 } })).toBe(40960);
+	});
+
+	it('ignores meta.n_ctx_train (trained ceiling, not the real window)', () => {
+		// n_ctx_train is often many times the configured --ctx-size; using it
+		// would badly overstate the budget. With only n_ctx_train present and
+		// no n_ctx, there is no usable signal.
+		expect(extractContextWindow({ id: 'x', meta: { n_ctx_train: 262144 } })).toBeNull();
+	});
+
+	it('reads vLLM max_model_len', () => {
+		expect(extractContextWindow({ id: 'x', max_model_len: 16384 })).toBe(16384);
+	});
+
+	it('parses --ctx-size from a llama.cpp router status.args (cold model)', () => {
+		expect(
+			extractContextWindow({
+				id: 'x',
+				status: { args: ['/usr/bin/llama-server', '--alias', 'x', '--ctx-size', '65536'] },
+			}),
+		).toBe(65536);
+	});
+
+	it('parses the -c alias and the =value form', () => {
+		expect(extractContextWindow({ id: 'x', status: { args: ['-c', '8192'] } })).toBe(8192);
+		expect(extractContextWindow({ id: 'x', status: { args: ['--ctx-size=4096'] } })).toBe(4096);
+	});
+
+	it('prefers a clean numeric field over the argv parse', () => {
+		expect(
+			extractContextWindow({
+				id: 'x',
+				meta: { n_ctx: 40960 },
+				status: { args: ['--ctx-size', '65536'] },
+			}),
+		).toBe(40960);
+	});
+
+	it('rejects non-positive / non-numeric values', () => {
+		expect(extractContextWindow({ id: 'x', meta: { n_ctx: 0 } })).toBeNull();
+		expect(extractContextWindow({ id: 'x', status: { args: ['--ctx-size', 'nope'] } })).toBeNull();
+		expect(extractContextWindow({ id: 'x' })).toBeNull();
 	});
 });

@@ -81,6 +81,8 @@ const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	groupBy: 'endpoint',
 	supportsTools: true,
 	maxConcurrent,
+	contextWindow: null,
+	modelContextWindows: {},
 });
 
 /** Drain an SSE ReadableStream into the parsed event objects. */

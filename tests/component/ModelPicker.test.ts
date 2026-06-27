@@ -38,6 +38,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		group: overrides.group ?? 'Bridge',
 		groupKey: overrides.groupKey ?? endpointId,
 		supportsTools: overrides.supportsTools ?? false,
+		contextWindow: overrides.contextWindow ?? null,
 	};
 }
 

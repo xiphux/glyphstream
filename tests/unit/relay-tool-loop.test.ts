@@ -74,6 +74,8 @@ const endpoint: LoadedEndpoint = {
 	groupBy: 'endpoint',
 	supportsTools: true,
 	maxConcurrent: Infinity,
+	contextWindow: null,
+	modelContextWindows: {},
 };
 
 /** Build a Response whose body is the given SSE lines, terminated by [DONE]. */

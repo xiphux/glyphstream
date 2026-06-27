@@ -84,6 +84,8 @@ const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	groupBy: 'endpoint',
 	supportsTools: true,
 	maxConcurrent,
+	contextWindow: null,
+	modelContextWindows: {},
 });
 
 async function drain(stream: ReadableStream<Uint8Array>): Promise<StreamEvent[]> {

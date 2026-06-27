@@ -43,6 +43,8 @@ base_url = "http://192.168.1.20:8080/v1"
 # request_timeout_seconds = 600
 # supports_tools = true               # see the tool-calling guide
 # max_concurrent = 1                  # see "Limiting concurrency" below
+# context_window = 32768              # fallback token budget; see "Context window" below
+# model_context_windows = { "Gemma4-26B" = 40960 }  # per-model override; see "Context window"
 # provider_quirk = "deepseek-r1"      # passthrough | deepseek-r1 | openai-o-series | openrouter
 # group_by = "owned_by"               # bucket picker entries by the model's owned_by
 ```
@@ -81,6 +83,64 @@ endpoints** — one for the local providers with `max_concurrent = 1`, one for
 the cloud providers left uncapped — so the VRAM limit applies only where
 it's needed. The bridge is a thin proxy (no model weights live in it), so
 running a second container for this is cheap.
+
+## Context window (`context_window`)
+
+The chat header shows a thread's running size against the model's context
+window — `27,725 / 40,960 tokens`, turning amber as it nears the limit — so
+you can see how much room is left. It needs to know the window size, and the
+OpenAI `/v1/models` row has no field for it, so GlyphStream resolves it in
+this order (most specific first):
+
+1. **`model_context_windows`** from the endpoint config — a per-model override
+   keyed by the upstream model id (the id as it appears in the picker, _before_
+   GlyphStream's `endpoint::` prefix; for an aggregating bridge that's the
+   provider-prefixed id, e.g. `llama/Gemma4-26B`, not the bare `Gemma4-26B`).
+   This is the operator's explicit statement and wins over everything below, so
+   reach for it when auto-detect can't see the value (e.g. behind the bridge
+   before you redeploy it, or a backend that advertises nothing) or when you
+   want to pin a deliberate value. Both TOML forms work — inline:
+
+   ```toml
+   [[endpoints]]
+   id = "llama"
+   base_url = "http://192.168.1.20:8081/v1"
+   model_context_windows = { "Gemma4-26B" = 40960, "GLM-4.7-Flash" = 65536 }
+   ```
+
+   …or a sub-table (binds to the `[[endpoints]]` block above it), nicer when
+   you have many models:
+
+   ```toml
+   [endpoints.model_context_windows]
+   "Gemma4-26B" = 40960
+   "GLM-4.7-Flash" = 65536
+   ```
+
+2. **Auto-detected per model**, when the upstream surfaces it. Covered today:
+   - **llama.cpp** — `meta.n_ctx` on a model that's currently loaded, and
+     (router/model-swap builds) the child's `--ctx-size` launch arg, which is
+     readable even while the model is idle. So in router mode each model gets
+     its own window automatically — you only need `model_context_windows` to
+     override or when the value can't be read.
+   - **vLLM** — `max_model_len`.
+   - **[openai-api-bridge][bridge]** — normalizes the above into a single
+     `context_window` field (the bridge otherwise strips the `meta`/`status`
+     blocks that carry it, so without this the budget would be lost behind the
+     bridge).
+3. **`context_window`** from the endpoint config — a blanket per-endpoint
+   fallback for upstreams that advertise nothing per model (raw OpenAI, Groq,
+   …). The per-model layers above win when present.
+4. **Unknown** — the header falls back to showing just the running token
+   count, with no ceiling.
+
+The auto-detected value is looked up live (not frozen onto the conversation),
+so if you restart `llama-server` with a different `--ctx-size`, the budget
+follows; a `model_context_windows` override is static until you edit it. The
+running count itself is the upstream-reported `prompt_tokens + completion_tokens`
+of the latest response, so it reflects the real tokenizer, not an estimate.
+
+[bridge]: https://github.com/xiphux/openai-api-bridge
 
 ## Auto-titling (`task_model`)
 

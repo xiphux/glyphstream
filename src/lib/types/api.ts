@@ -179,6 +179,25 @@ export interface ModelEntry {
 	 * per-endpoint config flag as a fallback for vendors that don't.
 	 */
 	supportsTools: boolean;
+	/**
+	 * Maximum context window in tokens (prompt + completion), when known.
+	 * Powers the "N / max tokens" budget readout and, later, compaction
+	 * triggers. Null when neither the upstream nor the endpoint config
+	 * supplies one.
+	 *
+	 * Resolution order (in `normalizeUpstreamModel`):
+	 *   endpoint per-model override (config `model_context_windows`)  →
+	 *   upstream-detected (see {@link extractContextWindow})  →
+	 *   endpoint.contextWindow (config blanket default)  →  null
+	 *
+	 * The OpenAI spec's `/v1/models` row has no context-size field, so the
+	 * detected value comes from vendor extensions — llama.cpp's
+	 * `meta.n_ctx` (only present while the model is loaded) or its router
+	 * `status.args` `--ctx-size`, vLLM's `max_model_len`, or a bridge-
+	 * normalized `context_window`. Looked up live (not snapshotted onto the
+	 * conversation) so it tracks a server `--ctx-size` change.
+	 */
+	contextWindow: number | null;
 }
 
 /**
@@ -214,6 +233,26 @@ export interface UpstreamModel {
 	 * endpoint config.
 	 */
 	supports_tools?: boolean | null;
+	/**
+	 * Context-window signals, in order of preference (see
+	 * `extractContextWindow` in src/lib/server/endpoints/models.ts). None
+	 * are part of the OpenAI spec; which (if any) is present depends on the
+	 * upstream:
+	 *  - `context_window`: bridge-normalized field (openai-api-bridge
+	 *    collapses the others into this).
+	 *  - `meta.n_ctx`: llama.cpp's configured context — only present while
+	 *    the model is loaded. `n_ctx_train` is the model's *trained* max
+	 *    (often far larger than the server's `--ctx-size`) so it is NOT used
+	 *    for the budget.
+	 *  - `max_model_len`: vLLM convention.
+	 *  - `status.args`: llama.cpp router mode lists the child's launch argv,
+	 *    which carries `--ctx-size` even when the model is unloaded — the
+	 *    only cold-available source on that build.
+	 */
+	context_window?: number;
+	meta?: { n_ctx?: number; n_ctx_train?: number };
+	max_model_len?: number;
+	status?: { args?: string[] };
 }
 
 // --- messages -----------------------------------------------------------

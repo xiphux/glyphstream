@@ -374,6 +374,14 @@
 		return 0;
 	});
 
+	// The active model's total context window, when we know it. Looked up
+	// live from the model list (not snapshotted onto the conversation) so it
+	// tracks a server `--ctx-size` change. Null → ChatHeader shows just the
+	// raw token count, as before. See extractContextWindow (server side).
+	const modelContextWindow = $derived(
+		data.models.find((m) => m.id === modelId)?.contextWindow ?? null,
+	);
+
 	// Per-user-message "tokens we sent up to and including this turn":
 	// the prompt_tokens of the next assistant message whose backend
 	// reported usage. Computed once per `messages` change with a single
@@ -1826,7 +1834,7 @@
 </script>
 
 <div class="relative flex h-full flex-col">
-	<ChatHeader {title} {assistantLabel} {contextTokenCount} />
+	<ChatHeader {title} {assistantLabel} {contextTokenCount} contextWindow={modelContextWindow} />
 
 	<!--
 		Scroll area fills the full height *behind* the floating composer

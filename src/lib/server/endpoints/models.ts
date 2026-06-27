@@ -72,6 +72,48 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 	return null;
 }
 
+/**
+ * Pull a context-window size (in tokens) out of whatever vendor extension the
+ * upstream happens to use. Returns null when no source gives a positive value.
+ *
+ * Order: explicit/normalized fields beat the argv parse. The OpenAI spec has
+ * no context-size field, so every source here is a vendor extension:
+ *  1. `context_window` — already-normalized (openai-api-bridge emits this).
+ *  2. `meta.n_ctx` — llama.cpp's *configured* context (= `--ctx-size`), only
+ *     present while the model is loaded. We deliberately ignore
+ *     `meta.n_ctx_train` (the model's trained ceiling, often many times the
+ *     server's real window — using it would badly overstate the budget).
+ *  3. `max_model_len` — vLLM.
+ *  4. `status.args` `--ctx-size`/`-c` — llama.cpp router mode, the only source
+ *     available while the model is cold (it lists the child's launch argv).
+ */
+export function extractContextWindow(m: UpstreamModel): number | null {
+	const positive = (v: unknown): number | null =>
+		typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
+
+	const direct = positive(m.context_window) ?? positive(m.meta?.n_ctx) ?? positive(m.max_model_len);
+	if (direct !== null) return direct;
+
+	const args = m.status?.args;
+	if (Array.isArray(args)) {
+		for (let i = 0; i < args.length; i++) {
+			const a = args[i];
+			if (typeof a !== 'string') continue;
+			// `--ctx-size N` / `-c N` (separate token) or `--ctx-size=N`.
+			if (a === '--ctx-size' || a === '-c') {
+				const n = positive(Number(args[i + 1]));
+				if (n !== null) return n;
+			}
+			const eq = /^(?:--ctx-size|-c)=(\d+)$/.exec(a);
+			if (eq) {
+				const n = positive(Number(eq[1]));
+				if (n !== null) return n;
+			}
+		}
+	}
+	return null;
+}
+
 export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamModel): ModelEntry {
 	const detected = detectKind(m);
 	const owner = typeof m.owned_by === 'string' && m.owned_by.length > 0 ? m.owned_by : null;
@@ -92,6 +134,18 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	const supportsTools =
 		typeof m.supports_tools === 'boolean' ? m.supports_tools : endpoint.supportsTools;
 
+	// Context window, most-specific source first:
+	//   1. per-model config override (operator's explicit statement — wins
+	//      even over auto-detect, e.g. when auto-detect can't fire behind the
+	//      bridge or the operator wants a deliberate value);
+	//   2. the per-model upstream signal (llama.cpp meta.n_ctx / router
+	//      --ctx-size, vLLM max_model_len, bridge context_window);
+	//   3. the endpoint-level blanket default for vendors that expose nothing
+	//      (raw OpenAI, Groq, …);
+	//   4. null when nobody knows.
+	const contextWindow =
+		endpoint.modelContextWindows[m.id] ?? extractContextWindow(m) ?? endpoint.contextWindow ?? null;
+
 	return {
 		id: formatModelId(endpoint.id, m.id),
 		endpointId: endpoint.id,
@@ -103,5 +157,6 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		group,
 		groupKey,
 		supportsTools,
+		contextWindow,
 	};
 }

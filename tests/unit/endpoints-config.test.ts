@@ -54,7 +54,126 @@ base_url = "http://localhost:8080/v1"
 			providerQuirk: 'passthrough',
 			// Friendly default cap so a large fan-out trickles (not unlimited).
 			maxConcurrent: 4,
+			// No blanket context window unless the operator states one.
+			contextWindow: null,
 		});
+	});
+
+	it('honors an explicit context_window and validates it', () => {
+		expect(
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+context_window = 32768
+			`),
+			)[0].contextWindow,
+		).toBe(32768);
+
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+context_window = 0
+			`),
+			),
+		).toThrow(ConfigError);
+
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+context_window = 1.5
+			`),
+			),
+		).toThrow(/whole number/);
+	});
+
+	it('defaults model_context_windows to an empty table', () => {
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "local"
+base_url = "http://localhost:8081/v1"
+		`),
+		)[0];
+		expect(ep.modelContextWindows).toEqual({});
+	});
+
+	it('parses per-model context_window overrides keyed by model id', () => {
+		// Sub-table form binds to the preceding [[endpoints]] element.
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+context_window = 8192
+
+[endpoints.model_context_windows]
+"Gemma4-26B" = 40960
+"GLM-4.7-Flash" = 65536
+		`),
+		)[0];
+		expect(ep.contextWindow).toBe(8192);
+		expect(ep.modelContextWindows).toEqual({ 'Gemma4-26B': 40960, 'GLM-4.7-Flash': 65536 });
+	});
+
+	it('also accepts the inline-table form', () => {
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+model_context_windows = { "Gemma4-26B" = 40960 }
+		`),
+		)[0];
+		expect(ep.modelContextWindows).toEqual({ 'Gemma4-26B': 40960 });
+	});
+
+	it('rejects a non-positive or non-integer per-model context window', () => {
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+
+[endpoints.model_context_windows]
+"Gemma4-26B" = 0
+			`),
+			),
+		).toThrow(/model_context_windows/);
+
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+
+[endpoints.model_context_windows]
+"Gemma4-26B" = 1.5
+			`),
+			),
+		).toThrow(/whole number/);
+	});
+
+	it('rejects model_context_windows that is not a table', () => {
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+model_context_windows = 40960
+		`),
+			),
+		).toThrow(/must be a table/);
 	});
 
 	it('honors an explicit max_concurrent and validates its bounds', () => {

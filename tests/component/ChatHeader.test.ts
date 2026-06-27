@@ -44,4 +44,29 @@ describe('ChatHeader', () => {
 		// Intl.NumberFormat default locale groups thousands.
 		expect(screen.getByText(/12,345 tokens/)).toBeInTheDocument();
 	});
+
+	it('shows "N / max tokens" when the context window is known', () => {
+		render(ChatHeader, {
+			props: {
+				title: 'x',
+				assistantLabel: 'gpt-4o',
+				contextTokenCount: 27725,
+				contextWindow: 40960,
+			},
+		});
+		expect(screen.getByText(/27,725 \/ 40,960 tokens/)).toBeInTheDocument();
+	});
+
+	it('falls back to the bare count when no context window', () => {
+		render(ChatHeader, {
+			props: {
+				title: 'x',
+				assistantLabel: 'gpt-4o',
+				contextTokenCount: 27725,
+				contextWindow: null,
+			},
+		});
+		expect(screen.getByText(/27,725 tokens/)).toBeInTheDocument();
+		expect(screen.queryByText(/\//)).toBeNull();
+	});
 });

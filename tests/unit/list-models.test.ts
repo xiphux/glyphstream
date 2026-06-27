@@ -49,6 +49,7 @@ function endpoint(id: string, overrides: Partial<LoadedEndpoint> = {}): LoadedEn
 		groupBy: 'endpoint',
 		providerQuirk: 'passthrough',
 		requestTimeoutSeconds: 30,
+		modelContextWindows: {},
 		...overrides,
 	} as LoadedEndpoint;
 }
