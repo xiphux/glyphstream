@@ -1,7 +1,9 @@
 /* @vitest-environment happy-dom */
 
 /**
- * Component test for ChatHeader — read-only conversation header.
+ * Component test for ChatHeader — pure conversation identity (title + model).
+ * The context-budget readout and Compact action live in ContextBudgetBar now
+ * (tested there).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -10,114 +12,23 @@ import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 
 describe('ChatHeader', () => {
 	it('renders the conversation title', () => {
-		render(ChatHeader, {
-			props: { title: 'My chat', assistantLabel: 'gpt-4o', contextTokenCount: 0 },
-		});
+		render(ChatHeader, { props: { title: 'My chat', assistantLabel: 'gpt-4o' } });
 		expect(screen.getByRole('heading', { name: 'My chat' })).toBeInTheDocument();
 	});
 
 	it('falls back to "Untitled chat" when title is null', () => {
-		render(ChatHeader, {
-			props: { title: null, assistantLabel: 'gpt-4o', contextTokenCount: 0 },
-		});
+		render(ChatHeader, { props: { title: null, assistantLabel: 'gpt-4o' } });
 		expect(screen.getByRole('heading', { name: 'Untitled chat' })).toBeInTheDocument();
 	});
 
 	it('renders the assistant label', () => {
-		render(ChatHeader, {
-			props: { title: 'x', assistantLabel: 'Claude Opus', contextTokenCount: 0 },
-		});
+		render(ChatHeader, { props: { title: 'x', assistantLabel: 'Claude Opus' } });
 		expect(screen.getByText('Claude Opus')).toBeInTheDocument();
 	});
 
-	it('hides the token count when zero', () => {
-		render(ChatHeader, {
-			props: { title: 'x', assistantLabel: 'gpt-4o', contextTokenCount: 0 },
-		});
+	it('no longer carries the token readout or Compact button', () => {
+		render(ChatHeader, { props: { title: 'x', assistantLabel: 'gpt-4o' } });
 		expect(screen.queryByText(/tokens/)).toBeNull();
-	});
-
-	it('shows the formatted token count when positive', () => {
-		render(ChatHeader, {
-			props: { title: 'x', assistantLabel: 'gpt-4o', contextTokenCount: 12345 },
-		});
-		// Intl.NumberFormat default locale groups thousands.
-		expect(screen.getByText(/12,345 tokens/)).toBeInTheDocument();
-	});
-
-	it('shows "N / max tokens" when the context window is known', () => {
-		render(ChatHeader, {
-			props: {
-				title: 'x',
-				assistantLabel: 'gpt-4o',
-				contextTokenCount: 27725,
-				contextWindow: 40960,
-			},
-		});
-		expect(screen.getByText(/27,725 \/ 40,960 tokens/)).toBeInTheDocument();
-	});
-
-	it('falls back to the bare count when no context window', () => {
-		render(ChatHeader, {
-			props: {
-				title: 'x',
-				assistantLabel: 'gpt-4o',
-				contextTokenCount: 27725,
-				contextWindow: null,
-			},
-		});
-		expect(screen.getByText(/27,725 tokens/)).toBeInTheDocument();
-		expect(screen.queryByText(/\//)).toBeNull();
-	});
-
-	describe('Compact action', () => {
-		it('renders no Compact button when onCompact is omitted', () => {
-			render(ChatHeader, {
-				props: { title: 'x', assistantLabel: 'gpt-4o', contextTokenCount: 0 },
-			});
-			expect(screen.queryByRole('button', { name: /compact/i })).toBeNull();
-		});
-
-		it('enables the Compact button when canCompact is true', () => {
-			render(ChatHeader, {
-				props: {
-					title: 'x',
-					assistantLabel: 'gpt-4o',
-					contextTokenCount: 100,
-					onCompact: () => {},
-					canCompact: true,
-				},
-			});
-			const btn = screen.getByRole('button', { name: /compact/i });
-			expect(btn).not.toBeDisabled();
-		});
-
-		it('disables the Compact button when canCompact is false', () => {
-			render(ChatHeader, {
-				props: {
-					title: 'x',
-					assistantLabel: 'gpt-4o',
-					contextTokenCount: 100,
-					onCompact: () => {},
-					canCompact: false,
-				},
-			});
-			expect(screen.getByRole('button', { name: /compact/i })).toBeDisabled();
-		});
-
-		it('shows a "Compacting…" state and stays disabled while compacting', () => {
-			render(ChatHeader, {
-				props: {
-					title: 'x',
-					assistantLabel: 'gpt-4o',
-					contextTokenCount: 100,
-					onCompact: () => {},
-					canCompact: true,
-					compacting: true,
-				},
-			});
-			const btn = screen.getByRole('button', { name: /compacting/i });
-			expect(btn).toBeDisabled();
-		});
+		expect(screen.queryByRole('button', { name: /compact/i })).toBeNull();
 	});
 });

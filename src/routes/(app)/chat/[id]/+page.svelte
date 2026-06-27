@@ -48,6 +48,7 @@
 	} from '$lib/chat-compaction';
 	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
 	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
+	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { stripSkillCommand } from '$lib/skill-command';
@@ -402,6 +403,20 @@
 	// would be a use-before-declaration.
 	const compactable = $derived.by(
 		() => !busy && !compacting && !fanout.comparing && canCompact(messages),
+	);
+
+	// The context-budget bar (readout + Compact) lives just above the composer.
+	// Show it once the conversation is actually doing something worth measuring —
+	// a known size, something foldable, or an existing summary — so a fresh chat
+	// stays clean. Hidden for non-chat kinds and during a fan-out comparison
+	// (where a single budget number isn't meaningful and compaction is blocked).
+	// `$derived.by` for the `fanout` forward-reference, as with `compactable`.
+	const showBudgetBar = $derived.by(
+		() =>
+			modelKind !== 'image' &&
+			modelKind !== 'video' &&
+			!fanout.comparing &&
+			(contextTokenCount > 0 || canCompact(messages) || messages.some(isCompactionSummary)),
 	);
 
 	// Live summary text while a manual compaction streams. `compactionStreaming`
@@ -1937,15 +1952,7 @@
 </script>
 
 <div class="relative flex h-full flex-col">
-	<ChatHeader
-		{title}
-		{assistantLabel}
-		{contextTokenCount}
-		contextWindow={modelContextWindow}
-		onCompact={modelKind === 'image' || modelKind === 'video' ? undefined : compactConversation}
-		canCompact={compactable}
-		{compacting}
-	/>
+	<ChatHeader {title} {assistantLabel} />
 
 	<!--
 		Scroll area fills the full height *behind* the floating composer
@@ -2151,6 +2158,15 @@
 					that can be aborted — meaning the user can always halt a
 					runaway resumed generation, not just an initial one.
 				-->
+				{#if showBudgetBar}
+					<ContextBudgetBar
+						{contextTokenCount}
+						contextWindow={modelContextWindow}
+						onCompact={compactConversation}
+						canCompact={compactable}
+						{compacting}
+					/>
+				{/if}
 				<ChatComposer
 					bind:this={composerRef}
 					bind:composerText
