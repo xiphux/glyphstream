@@ -146,10 +146,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// NOW — before this message is added — so the model continues with reclaimed
 	// space. Doing it here (rather than at end-of-turn) means a conversation the
 	// user simply walks away from never pays for a compaction it won't use.
-	// Normal text sends only: retry/fan-out have their own leaf semantics, and
-	// image/video turns carry no chat context to compact. Non-fatal — any failure
-	// logs and proceeds uncompacted.
-	if (!isRetry && !isFanout && meta.modelKind !== 'image' && meta.modelKind !== 'video') {
+	// Plain continuation sends only: retry/fan-out have their own leaf semantics,
+	// an edit/branch resend parents off an earlier message (a summary appended at
+	// the current leaf would orphan onto the wrong branch), and image/video turns
+	// carry no chat context to compact. Non-fatal — any failure logs and proceeds.
+	const isPlainSend =
+		!isRetry &&
+		!isFanout &&
+		!body.editedMessageId &&
+		!body.parentMessageId &&
+		meta.modelKind !== 'image' &&
+		meta.modelKind !== 'video';
+	if (isPlainSend) {
 		try {
 			const autoPrefs = getUserPreferences(locals.user.id);
 			if (autoPrefs?.autoCompactionEnabled) {
