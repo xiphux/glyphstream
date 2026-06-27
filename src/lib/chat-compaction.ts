@@ -180,14 +180,25 @@ export function canCompact(branch: ChatMessage[], keepTurns: number = DEFAULT_KE
 	return computeCompactionCut(upstreamBranch(branch), keepTurns) !== null;
 }
 
-/** Rough token estimate from message text (chars / 4). There's no tokenizer on
- *  the client; this is only used to gate "is there enough history to bother
- *  compacting?", where an approximation is fine. */
-export function estimateTextTokens(messages: ChatMessage[]): number {
+/**
+ * Rough token estimate (chars / 4) of what these messages contribute to the
+ * upstream payload. There's no tokenizer on the client; this only gates "is
+ * there enough history to bother compacting?", where an approximation is fine.
+ *
+ * Counts ALL the text-bearing content compaction would fold — not just `text`
+ * parts. Tool-heavy turns (code execution, PDF/file ops) carry their bulk in
+ * `tool_call` arguments and `tool_result` outputs; counting text alone badly
+ * undercounts them and wrongly reports a large conversation as not worth
+ * compacting. (Reasoning isn't sent upstream, and images/files have no
+ * char-countable token cost, so both are skipped.)
+ */
+export function estimateContentTokens(messages: ChatMessage[]): number {
 	let chars = 0;
 	for (const m of messages) {
 		for (const p of m.parts) {
 			if (p.type === 'text') chars += p.text.length;
+			else if (p.type === 'tool_call') chars += p.toolName.length + p.arguments.length;
+			else if (p.type === 'tool_result') chars += p.result.length;
 		}
 	}
 	return Math.ceil(chars / 4);
@@ -221,7 +232,7 @@ export function compactionWorthwhile(
 	// The messages that would be folded into the summary = everything before the
 	// verbatim tail. (For a repeat compaction this includes the prior summary,
 	// which is correctly re-folded.)
-	return estimateTextTokens(view.slice(0, cut.cutIndex)) >= minTokens;
+	return estimateContentTokens(view.slice(0, cut.cutIndex)) >= minTokens;
 }
 
 /** Sum of an assistant message's reported prompt + completion tokens, or 0. */

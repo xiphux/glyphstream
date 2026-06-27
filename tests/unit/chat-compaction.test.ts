@@ -7,7 +7,7 @@ import {
 	computeCompactionCut,
 	currentContextTokens,
 	displayContextTokens,
-	estimateTextTokens,
+	estimateContentTokens,
 	isCompactionSummary,
 	MIN_COMPACTIBLE_TOKENS,
 	shouldAutoCompact,
@@ -223,11 +223,29 @@ describe('canCompact', () => {
 	});
 });
 
-describe('estimateTextTokens', () => {
+describe('estimateContentTokens', () => {
 	it('estimates ~chars/4 across text parts', () => {
 		expect(
-			estimateTextTokens([msg('user', { parts: [{ type: 'text', text: 'x'.repeat(400) }] })]),
+			estimateContentTokens([msg('user', { parts: [{ type: 'text', text: 'x'.repeat(400) }] })]),
 		).toBe(100);
+	});
+
+	it('counts tool-call arguments and tool-result output, not just text', () => {
+		// Tool-heavy turns (code/PDF ops) carry their bulk here — a text-only
+		// estimate would wrongly report them as tiny.
+		const branch = [
+			msg('assistant', {
+				parts: [
+					{ type: 'text', text: '' },
+					{ type: 'tool_call', toolCallId: 'c1', toolName: 'run', arguments: 'a'.repeat(200) },
+				],
+			}),
+			msg('tool', {
+				parts: [{ type: 'tool_result', toolCallId: 'c1', result: 'r'.repeat(8000) }],
+			}),
+		];
+		// (200 + 3 ['run']) + 8000 = 8203 chars → ~2051 tokens.
+		expect(estimateContentTokens(branch)).toBe(Math.ceil((200 + 3 + 8000) / 4));
 	});
 });
 

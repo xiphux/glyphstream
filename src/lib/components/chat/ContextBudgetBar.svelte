@@ -59,7 +59,7 @@
 				? 'Compaction in progress…'
 				: canCompact
 					? 'Summarize earlier messages to free up context. The originals stay in the thread.'
-					: 'Not enough conversation history to compact yet.'}
+					: 'Not enough conversation to compact yet — summarizing it wouldn’t free up much.'}
 			class="flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-surface-raised disabled:opacity-40 disabled:hover:bg-transparent"
 		>
 			<FoldVertical class="h-3.5 w-3.5 {compacting ? 'animate-pulse' : ''}" />
