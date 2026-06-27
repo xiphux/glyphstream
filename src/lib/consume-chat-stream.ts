@@ -52,6 +52,12 @@ export interface ConsumeChatStreamCallbacks {
 	 *  their tools were skipped this turn. Fires at most once, near the start. */
 	onMcpUnavailable?(servers: McpUnavailableServer[]): void;
 	onTitle?(title: string): void;
+	/** Compaction summarization started — show the in-flight summary block. */
+	onCompactionStart?(): void;
+	/** A chunk of the streaming summary text. */
+	onCompactionText?(chunk: string): void;
+	/** The summary was persisted; `summaryMessage` is the canonical row. */
+	onCompactionDone?(summaryMessage: ChatMessage): void | Promise<void>;
 	/** Fires on the canonical `done` frame. `sawToolCalls` is true when the
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
 	 *  just the LAST iteration's row (intermediate rows arrive via invalidate). */
@@ -127,6 +133,15 @@ export async function consumeChatStream(
 				break;
 			case 'title':
 				cb.onTitle?.(event.title);
+				break;
+			case 'compaction_start':
+				cb.onCompactionStart?.();
+				break;
+			case 'compaction_text':
+				cb.onCompactionText?.(event.chunk);
+				break;
+			case 'compaction_done':
+				await cb.onCompactionDone?.(event.summaryMessage);
 				break;
 			case 'done':
 				cb.onDone?.({ assistantMessage: event.assistantMessage, sawToolCalls });

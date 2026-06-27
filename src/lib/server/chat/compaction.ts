@@ -13,12 +13,14 @@
 import { getConversationMeta } from '../db/queries/conversations';
 import { appendMessage, walkActiveBranch } from '../db/queries/messages';
 import { chatCompletionSync, type ChatCompletionRequest } from '../endpoints/client';
+import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
 import { serializeMessageForUpstream } from '../endpoints/serialize-upstream';
 import { mediaIdToDataUrl } from '../media/data-url';
 import { renderMarkdown } from '../markdown/render';
 import { computeCompactionCut, DEFAULT_KEEP_TURNS, upstreamBranch } from '$lib/chat-compaction';
+import type { ChatMessage } from '$lib/types/api';
 
 // Task framing for the summarizer. Kept separate from the conversation's own
 // system prompt so the persona doesn't pull the model into "staying in
@@ -42,39 +44,57 @@ const SUMMARY_INSTRUCTION =
 // and helps the summarization call fit alongside the near-full history.
 const SUMMARY_MAX_TOKENS = 1024;
 
-export type CompactionResult =
-	| { status: 'compacted'; summaryMessageId: string }
-	| { status: 'noop' };
+const SUMMARY_TEMPERATURE = 0.3;
 
 /**
- * Compact the active branch of `conversationId`. Returns `{status:'noop'}` when
- * there's nothing worth compacting (too short, or only a prior summary to fold)
- * or the conversation's model can't be resolved. Throws `UpstreamError` if the
- * summarization call to the model fails — callers decide whether that's fatal
- * (manual endpoint surfaces it) or swallowed (auto path proceeds uncompacted).
+ * Everything needed to run a compaction's summarization call and persist the
+ * result, computed without contacting the model. Lets the sync engine
+ * (`runCompaction`) and the streaming relay (`streamCompaction`) share the same
+ * preparation and persistence while differing only in how they call the model.
  */
-export async function runCompaction(
+export interface CompactionPlan {
+	endpoint: LoadedEndpoint;
+	upstreamId: string;
+	providerQuirk: ProviderQuirk;
+	/** The conversation's stored model id, recorded on the summary's `modelUsed`. */
+	storedModelId: string;
+	/** Ready-to-send summarization request messages. */
+	messages: ChatCompletionRequest['messages'];
+	/** First message kept verbatim — stored on the summary as its resume point. */
+	resumeMessageId: string;
+	/** The active leaf the summary is appended under. */
+	parentLeafId: string;
+	maxTokens: number;
+	temperature: number;
+}
+
+/**
+ * Plan a compaction without calling the model. Returns null when there's
+ * nothing worth compacting (too short, only a prior summary to fold) or the
+ * conversation's model can't be resolved. Cheap: no upstream request.
+ */
+export async function prepareCompaction(
 	conversationId: string,
 	userId: string,
 	opts: { keepTurns?: number } = {},
-): Promise<CompactionResult> {
+): Promise<CompactionPlan | null> {
 	const keepTurns = opts.keepTurns ?? DEFAULT_KEEP_TURNS;
 
 	const meta = getConversationMeta(conversationId, userId);
-	if (!meta) return { status: 'noop' };
+	if (!meta) return null;
 
 	const parsed = parseModelId(meta.modelId);
 	const endpoint = parsed ? getEndpoint(parsed.endpointId) : null;
-	if (!parsed || !endpoint) return { status: 'noop' };
+	if (!parsed || !endpoint) return null;
 
 	const branch = walkActiveBranch(conversationId);
-	if (branch.length === 0) return { status: 'noop' };
+	if (branch.length === 0) return null;
 
 	// Compact the current *model-visible* view, so an earlier summary folds into
 	// the new one rather than being summarized twice or dropped.
 	const view = upstreamBranch(branch);
 	const cut = computeCompactionCut(view, keepTurns);
-	if (!cut) return { status: 'noop' };
+	if (!cut) return null;
 
 	// Serialize the slice to summarize per-message — NOT via
 	// serializeBranchForUpstream, which would re-trim around the very summary
@@ -92,30 +112,73 @@ export async function runCompaction(
 		{ role: 'user', content: SUMMARY_INSTRUCTION },
 	];
 
-	const resp = await chatCompletionSync(endpoint, {
-		model: parsed.upstreamId,
+	// Append at the active leaf so the summary sits physically at the tip;
+	// `splitAtCompaction` repositions it logically via the resume pointer.
+	const leaf = branch[branch.length - 1];
+
+	return {
+		endpoint,
+		upstreamId: parsed.upstreamId,
+		providerQuirk: endpoint.providerQuirk,
+		storedModelId: meta.modelId,
 		messages,
-		temperature: 0.3,
-		max_tokens: SUMMARY_MAX_TOKENS,
+		resumeMessageId: cut.resumeMessageId,
+		parentLeafId: leaf.id,
+		maxTokens: SUMMARY_MAX_TOKENS,
+		temperature: SUMMARY_TEMPERATURE,
+	};
+}
+
+/**
+ * Persist a generated summary as the compaction-anchor message. Shared by the
+ * sync and streaming paths so the row shape (marker, content_html, leaf
+ * advance) can't drift between them. Returns the persisted message.
+ */
+export async function persistCompactionSummary(
+	conversationId: string,
+	plan: CompactionPlan,
+	summaryText: string,
+): Promise<ChatMessage> {
+	const contentHtml = await renderMarkdown(summaryText);
+	return appendMessage({
+		conversationId,
+		parentMessageId: plan.parentLeafId,
+		role: 'assistant',
+		parts: [{ type: 'text', text: summaryText }],
+		contentHtml,
+		modelUsed: plan.storedModelId,
+		compactionResumeFromMessageId: plan.resumeMessageId,
+		advanceActiveLeaf: true,
+	});
+}
+
+export type CompactionResult =
+	| { status: 'compacted'; summaryMessageId: string }
+	| { status: 'noop' };
+
+/**
+ * Synchronous compaction — plan, call the model once (blocking), persist.
+ * Used by the just-in-time auto path in the send handler. Returns
+ * `{status:'noop'}` when there's nothing to compact; throws `UpstreamError` if
+ * the summarization call fails (callers decide fatal vs. swallowed).
+ */
+export async function runCompaction(
+	conversationId: string,
+	userId: string,
+	opts: { keepTurns?: number } = {},
+): Promise<CompactionResult> {
+	const plan = await prepareCompaction(conversationId, userId, opts);
+	if (!plan) return { status: 'noop' };
+
+	const resp = await chatCompletionSync(plan.endpoint, {
+		model: plan.upstreamId,
+		messages: plan.messages,
+		temperature: plan.temperature,
+		max_tokens: plan.maxTokens,
 	});
 	const summaryText = (resp.choices?.[0]?.message?.content ?? '').trim();
 	if (!summaryText) return { status: 'noop' };
 
-	const contentHtml = await renderMarkdown(summaryText);
-
-	// Append at the active leaf so the summary sits physically at the tip;
-	// `splitAtCompaction` repositions it logically via the resume pointer.
-	const leaf = branch[branch.length - 1];
-	const summaryMsg = appendMessage({
-		conversationId,
-		parentMessageId: leaf.id,
-		role: 'assistant',
-		parts: [{ type: 'text', text: summaryText }],
-		contentHtml,
-		modelUsed: meta.modelId,
-		compactionResumeFromMessageId: cut.resumeMessageId,
-		advanceActiveLeaf: true,
-	});
-
+	const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
 	return { status: 'compacted', summaryMessageId: summaryMsg.id };
 }

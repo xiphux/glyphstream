@@ -42,6 +42,7 @@
 	} from '$lib/chat-render';
 	import { canCompact, displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
 	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
+	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { stripSkillCommand } from '$lib/skill-command';
@@ -389,26 +390,52 @@
 	let compacting = $state(false);
 	const compactable = $derived(!busy && !compacting && canCompact(messages));
 
+	// Live summary text while a manual compaction streams. `compactionStreaming`
+	// gates the in-flight summary block; it settles back to false once the
+	// persisted collapsed divider lands (or on error/cancel).
+	let compactionStreaming = $state(false);
+	let compactionStreamText = $state('');
+
 	async function compactConversation() {
 		if (compacting || busy) return;
 		compacting = true;
+		compactionStreaming = false;
+		compactionStreamText = '';
+		let errored: string | null = null;
 		try {
-			const res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
+			const res = await fetch(`/api/conversations/${data.conversation.id}/compact?stream=1`, {
 				method: 'POST',
+				headers: { Accept: 'text/event-stream' },
 			});
-			if (res.ok) {
-				await invalidateAll();
-			} else {
+			if (!res.ok || !res.body) {
 				toast.error(
 					res.status === 409
 						? 'Not enough conversation history to compact yet.'
 						: "Couldn't compact this conversation.",
 				);
+				return;
 			}
+			await consumeChatStream(res.body, {
+				onCompactionStart: () => {
+					compactionStreaming = true;
+				},
+				onCompactionText: (chunk) => {
+					compactionStreamText += chunk;
+				},
+				onCompactionDone: async () => {
+					await invalidateAll();
+				},
+				onError: (msg) => {
+					errored = msg;
+				},
+			});
+			if (errored) toast.error(errored);
 		} catch {
 			toast.error("Couldn't compact this conversation.");
 		} finally {
 			compacting = false;
+			compactionStreaming = false;
+			compactionStreamText = '';
 		}
 	}
 
@@ -1982,6 +2009,10 @@
 					</div>
 				{/if}
 			{/each}
+
+			{#if compactionStreaming}
+				<CompactionSummaryStreaming text={compactionStreamText} />
+			{/if}
 
 			{#if showInFlight}
 				{@const last = visibleMessages[visibleMessages.length - 1]}

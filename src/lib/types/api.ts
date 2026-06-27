@@ -951,6 +951,31 @@ export interface StreamMcpUnavailableEvent {
 	servers: McpUnavailableServer[];
 }
 
+// --- compaction streaming events ----------------------------------------
+//
+// Emitted by the compaction relay (the manual /compact?stream=1 endpoint, and
+// later the just-in-time auto path inside a normal turn). The client renders
+// the streaming text into an expandable "Summarizing context…" block that
+// settles into the collapsed summary divider once `compaction_done` lands.
+
+/** The summarization stream is starting — show the in-flight summary block. */
+export interface StreamCompactionStartEvent {
+	type: 'compaction_start';
+}
+
+/** A chunk of the summary text as the model produces it. */
+export interface StreamCompactionTextEvent {
+	type: 'compaction_text';
+	chunk: string;
+}
+
+/** The summary was persisted. Carries the canonical summary message so the
+ *  client can swap the in-flight block for the persisted collapsed divider. */
+export interface StreamCompactionDoneEvent {
+	type: 'compaction_done';
+	summaryMessage: ChatMessage;
+}
+
 export type StreamEvent =
 	| StreamStartEvent
 	| StreamTextEvent
@@ -965,7 +990,10 @@ export type StreamEvent =
 	| StreamToolCallArgsDeltaEvent
 	| StreamToolCallExecutingEvent
 	| StreamToolCallResultEvent
-	| StreamToolPendingApprovalEvent;
+	| StreamToolPendingApprovalEvent
+	| StreamCompactionStartEvent
+	| StreamCompactionTextEvent
+	| StreamCompactionDoneEvent;
 
 /** A saved per-user memory, as returned by `GET /api/user/memories` and
  *  injected into the persona system prompt. Body shape matches the
