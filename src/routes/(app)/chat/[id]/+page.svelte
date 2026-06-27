@@ -393,7 +393,16 @@
 	// on the next send. Disabled while a turn is in flight or there's too little
 	// history to fold.
 	let compacting = $state(false);
-	const compactable = $derived(!busy && !compacting && canCompact(messages));
+	// Not while a fan-out comparison is parked: compaction advances the active
+	// leaf, which resolves/abandons the parked fan-out (appendMessage nulls
+	// fanoutParentMessageId), silently dropping the compare grid. The sibling
+	// branches survive in the tree, but the comparison view would be lost.
+	// `$derived.by` (not a bare expression) so the `fanout` reference sits in a
+	// closure — `fanout` is constructed further down, and a direct expression
+	// would be a use-before-declaration.
+	const compactable = $derived.by(
+		() => !busy && !compacting && !fanout.comparing && canCompact(messages),
+	);
 
 	// Live summary text while a manual compaction streams. `compactionStreaming`
 	// gates the in-flight summary block; it settles back to false once the
@@ -401,8 +410,11 @@
 	let compactionStreaming = $state(false);
 	let compactionStreamText = $state('');
 
-	async function compactConversation() {
-		if (compacting || busy) return;
+	// `silent` suppresses error toasts — used by the auto path, where the user
+	// never asked for a compaction, so a failure should just fall through to the
+	// (uncompacted) send rather than surfacing an error they can't act on.
+	async function compactConversation(opts: { silent?: boolean } = {}) {
+		if (compacting || busy || fanout.comparing) return;
 		compacting = true;
 		compactionStreaming = false;
 		compactionStreamText = '';
@@ -413,11 +425,13 @@
 				headers: { Accept: 'text/event-stream' },
 			});
 			if (!res.ok || !res.body) {
-				toast.error(
-					res.status === 409
-						? 'Not enough conversation history to compact yet.'
-						: "Couldn't compact this conversation.",
-				);
+				if (!opts.silent) {
+					toast.error(
+						res.status === 409
+							? 'Not enough conversation history to compact yet.'
+							: "Couldn't compact this conversation.",
+					);
+				}
 				return;
 			}
 			await consumeChatStream(res.body, {
@@ -434,9 +448,9 @@
 					errored = msg;
 				},
 			});
-			if (errored) toast.error(errored);
+			if (errored && !opts.silent) toast.error(errored);
 		} catch {
-			toast.error("Couldn't compact this conversation.");
+			if (!opts.silent) toast.error("Couldn't compact this conversation.");
 		} finally {
 			compacting = false;
 			compactionStreaming = false;
@@ -452,7 +466,7 @@
 	// blocking the user. Triggering here (vs. server-side mid-send) is what lets
 	// the summary stream instead of the send hanging on a spinner.
 	async function maybeAutoCompact() {
-		if (!data.prefs?.autoCompactionEnabled || compacting || busy) return;
+		if (!data.prefs?.autoCompactionEnabled || compacting || busy || fanout.comparing) return;
 		if (
 			!shouldAutoCompact({
 				branch: messages,
@@ -463,7 +477,7 @@
 		) {
 			return;
 		}
-		await compactConversation();
+		await compactConversation({ silent: true });
 	}
 
 	// Per-user-message "tokens we sent up to and including this turn":

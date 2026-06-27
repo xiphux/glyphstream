@@ -86,10 +86,20 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 				}
 
 				const summaryText = textBuf.trim();
-				// Discard a cancelled or empty summary — never persist a partial
-				// anchor, which would drop real history from later requests.
-				if (aborted || !summaryText) {
+				// Never persist a partial/empty anchor — it would drop real history
+				// from later requests. Cancelled (user/browser aborted) and empty
+				// (model completed but produced nothing) are distinct outcomes with
+				// distinct messages, so an auto-path user who never asked for a
+				// compaction doesn't see "cancelled".
+				if (aborted) {
 					write({ type: 'error', message: 'Compaction was cancelled.' });
+					return;
+				}
+				if (!summaryText) {
+					write({
+						type: 'error',
+						message: 'The model returned an empty summary; nothing was compacted.',
+					});
 					return;
 				}
 

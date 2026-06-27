@@ -6,8 +6,11 @@
  * trims the upstream payload to `[summary, ...verbatim tail]` while the real
  * turns stay in the tree (non-lossy).
  *
- * Shared by the manual `POST /compact` endpoint and the just-in-time auto path
- * in the send handler.
+ * Both manual and auto-compaction go through `POST /compact` (auto-compaction
+ * is client-driven — see `maybeAutoCompact` in the chat page); there is no
+ * server-side auto path in the send handler. `prepareCompaction` +
+ * `persistCompactionSummary` are shared by the sync engine here and the
+ * streaming relay (`streamCompaction`).
  */
 
 import { getConversationMeta } from '../db/queries/conversations';
@@ -158,7 +161,8 @@ export type CompactionResult =
 
 /**
  * Synchronous compaction — plan, call the model once (blocking), persist.
- * Used by the just-in-time auto path in the send handler. Returns
+ * Used by the non-streaming branch of `POST /api/conversations/[id]/compact`
+ * (the streaming branch uses `streamCompaction` instead). Returns
  * `{status:'noop'}` when there's nothing to compact; throws `UpstreamError` if
  * the summarization call fails (callers decide fatal vs. swallowed).
  */
