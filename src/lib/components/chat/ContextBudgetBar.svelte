@@ -7,8 +7,8 @@
 	conversation, so the readout needs its own (glass) background to stay legible,
 	and keeping it to the right leaves the space above where you're typing clear.
 	The numbers sit at the far right (informational, not critical), with the
-	icon-only Compact button just to their left. Rendered (and hidden) by the chat
-	page; see `showBudgetBar` there.
+	Compact button just to their left (label hidden on mobile to save width).
+	Conditionally rendered by the chat page via `showBudgetBar`.
 -->
 <script lang="ts">
 	import { FoldVertical } from '@lucide/svelte';
@@ -55,12 +55,17 @@
 			onclick={onCompact}
 			disabled={!canCompact || compacting}
 			aria-label={compacting ? 'Compacting…' : 'Compact conversation'}
-			title={canCompact
-				? 'Summarize earlier messages to free up context. The originals stay in the thread.'
-				: 'Not enough conversation history to compact yet.'}
-			class="flex items-center rounded p-0.5 transition hover:bg-surface-raised disabled:opacity-40 disabled:hover:bg-transparent"
+			title={compacting
+				? 'Compaction in progress…'
+				: canCompact
+					? 'Summarize earlier messages to free up context. The originals stay in the thread.'
+					: 'Not enough conversation history to compact yet.'}
+			class="flex items-center gap-1 rounded px-1 py-0.5 transition hover:bg-surface-raised disabled:opacity-40 disabled:hover:bg-transparent"
 		>
 			<FoldVertical class="h-3.5 w-3.5 {compacting ? 'animate-pulse' : ''}" />
+			<!-- Label hidden on mobile (icon-only there to save width); shown sm+
+				 so sighted keyboard users get a real affordance, not just a tooltip. -->
+			<span class="hidden sm:inline">{compacting ? 'Compacting…' : 'Compact'}</span>
 		</button>
 		{#if contextTokenCount > 0}
 			{#if budget !== null}

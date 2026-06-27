@@ -44,15 +44,15 @@ them into a single fast chat UI with one model picker.
 - **Full-text search** across every conversation.
 - **Auto-titling** via a small, fast task model of your choice.
 - Token usage and generation speed (tok/s) per message; Stop button wired
-  across chat, image, and video generations. The chat header shows the
+  across chat, image, and video generations. A bar above the composer shows the
   thread's running context size against the model's window (`27,725 / 40,960
 tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
 - **Context compaction** — when a thread fills a small window, summarize the
   older turns through the conversation's own model and keep going. The real
   messages stay in the thread (the summary is a collapsed divider); only what's
-  sent to the model is trimmed. Compact by hand from the header, or opt into
-  automatic just-in-time compaction in Preferences.
+  sent to the model is trimmed. Compact by hand from the bar above the composer,
+  or opt into automatic just-in-time compaction in Preferences.
 - In-flight generations **survive disconnects and iOS PWA suspends** — leave
   and come back; the stream recovers.
 

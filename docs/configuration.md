@@ -86,9 +86,9 @@ running a second container for this is cheap.
 
 ## Context window (`context_window`)
 
-The chat header shows a thread's running size against the model's context
-window — `27,725 / 40,960 tokens`, turning amber as it nears the limit — so
-you can see how much room is left. It needs to know the window size, and the
+A bar above the message composer shows a thread's running size against the
+model's context window — `27,725 / 40,960 tokens`, turning amber as it nears the
+limit — so you can see how much room is left as you type. It needs to know the window size, and the
 OpenAI `/v1/models` row has no field for it, so GlyphStream resolves it in
 this order (most specific first):
 
@@ -146,8 +146,8 @@ The known window also powers **context compaction**: each user picks, in
 Preferences ▸ Context compaction, whether GlyphStream should automatically
 summarize older history once a thread crosses a percentage of this window
 (default 80%). Without a known window, automatic compaction can't fire — but
-the manual "Compact" button in the chat header still works. (This is a user
-preference, not a server config setting.)
+the manual "Compact" button (in the bar above the composer) still works. (This
+is a user preference, not a server config setting.)
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
