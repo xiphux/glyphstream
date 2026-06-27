@@ -3,10 +3,13 @@ import type { ChatMessage, MessageRole } from '$lib/types/api';
 import {
 	arrangeForDisplay,
 	canCompact,
+	compactionWorthwhile,
 	computeCompactionCut,
 	currentContextTokens,
 	displayContextTokens,
+	estimateTextTokens,
 	isCompactionSummary,
+	MIN_COMPACTIBLE_TOKENS,
 	shouldAutoCompact,
 	splitAtCompaction,
 	upstreamBranch,
@@ -40,11 +43,25 @@ function summary(id: string, resumeId: string, createdAt: number): ChatMessage {
 	return msg('assistant', { id, compactionResumeFromMessageId: resumeId, createdAt });
 }
 
-/** Build u0/a0/u1/a1/... — `n` user+assistant turns. */
+/** Build u0/a0/u1/a1/... — `n` user+assistant turns (tiny text). */
 function turns(n: number): ChatMessage[] {
 	const out: ChatMessage[] = [];
 	for (let i = 0; i < n; i++) {
 		out.push(msg('user', { id: `u${i}`, createdAt: i * 2 + 1 }));
+		out.push(msg('assistant', { id: `a${i}`, createdAt: i * 2 + 2 }));
+	}
+	return out;
+}
+
+/** `n` turns whose user messages carry substantial text (~600 tokens each), so
+ *  the foldable history clears `MIN_COMPACTIBLE_TOKENS`. */
+const BIG_TEXT = 'x'.repeat(2400);
+function bigTurns(n: number): ChatMessage[] {
+	const out: ChatMessage[] = [];
+	for (let i = 0; i < n; i++) {
+		out.push(
+			msg('user', { id: `u${i}`, createdAt: i * 2 + 1, parts: [{ type: 'text', text: BIG_TEXT }] }),
+		);
 		out.push(msg('assistant', { id: `a${i}`, createdAt: i * 2 + 2 }));
 	}
 	return out;
@@ -198,11 +215,44 @@ describe('arrangeForDisplay', () => {
 });
 
 describe('canCompact', () => {
-	it('is true for a long-enough branch', () => {
+	it('is true for a structurally long-enough branch (regardless of size)', () => {
 		expect(canCompact(turns(4), 2)).toBe(true);
 	});
 	it('is false when too short', () => {
 		expect(canCompact(turns(2), 2)).toBe(false);
+	});
+});
+
+describe('estimateTextTokens', () => {
+	it('estimates ~chars/4 across text parts', () => {
+		expect(
+			estimateTextTokens([msg('user', { parts: [{ type: 'text', text: 'x'.repeat(400) }] })]),
+		).toBe(100);
+	});
+});
+
+describe('compactionWorthwhile', () => {
+	it('is false when structurally too short', () => {
+		expect(compactionWorthwhile(turns(2), 2)).toBe(false);
+	});
+
+	it('is false when there are enough turns but the foldable history is tiny', () => {
+		// 4 one-word turns — canCompact is true, but folding them saves nothing.
+		expect(canCompact(turns(4), 2)).toBe(true);
+		expect(compactionWorthwhile(turns(4), 2)).toBe(false);
+	});
+
+	it('is true once the foldable history clears the floor', () => {
+		// 4 big turns, keep 2 → folds 2 (~1200 tokens) > MIN_COMPACTIBLE_TOKENS.
+		expect(compactionWorthwhile(bigTurns(4), 2)).toBe(true);
+	});
+
+	it('respects an explicit minTokens override', () => {
+		expect(compactionWorthwhile(turns(4), 2, 1)).toBe(true); // tiny floor → worthwhile
+	});
+
+	it('uses a 1000-token default floor', () => {
+		expect(MIN_COMPACTIBLE_TOKENS).toBe(1000);
 	});
 });
 
@@ -255,9 +305,10 @@ describe('currentContextTokens', () => {
 });
 
 describe('shouldAutoCompact', () => {
+	// Substantial turns (so the worthwhile floor is met) with the latest assistant
+	// carrying near-window usage.
 	const longBranch = () => {
-		const b = turns(4);
-		// latest assistant carries near-window usage
+		const b = bigTurns(4);
 		b[b.length - 1] = msg('assistant', { id: 'a3', createdAt: 99, tokensIn: 7000, tokensOut: 200 });
 		return b;
 	};
@@ -285,11 +336,23 @@ describe('shouldAutoCompact', () => {
 	});
 
 	it('does not fire when under threshold', () => {
-		const b = turns(4);
+		const b = bigTurns(4);
 		b[b.length - 1] = msg('assistant', { id: 'a3', createdAt: 99, tokensIn: 1000, tokensOut: 50 });
 		expect(
 			shouldAutoCompact({ branch: b, enabled: true, contextWindow: 8192, threshold: 80 }),
 		).toBe(false);
+	});
+
+	it('does not fire when over threshold but the foldable history is tiny (not worthwhile)', () => {
+		// The system-prompt/tool/memory-heavy case: total is over threshold, there
+		// are enough turns to be structurally compactable, but the history itself
+		// is trivially small — compacting would churn for ~nothing.
+		const b = turns(4); // tiny one-word turns
+		b[b.length - 1] = msg('assistant', { id: 'a3', createdAt: 99, tokensIn: 7000, tokensOut: 200 });
+		expect(canCompact(b, 2)).toBe(true); // structurally yes
+		expect(
+			shouldAutoCompact({ branch: b, enabled: true, contextWindow: 8192, threshold: 80 }),
+		).toBe(false); // but not worthwhile → hold off
 	});
 
 	it('does not fire when the window is unknown', () => {

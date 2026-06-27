@@ -174,9 +174,54 @@ export function arrangeForDisplay(branch: ChatMessage[]): ChatMessage[] {
 	return out;
 }
 
-/** Whether a manual/auto compaction would do anything for this branch. */
+/** Whether a manual/auto compaction is structurally possible (enough turns to
+ *  fold). Says nothing about whether it's *worth it* — see `compactionWorthwhile`. */
 export function canCompact(branch: ChatMessage[], keepTurns: number = DEFAULT_KEEP_TURNS): boolean {
 	return computeCompactionCut(upstreamBranch(branch), keepTurns) !== null;
+}
+
+/** Rough token estimate from message text (chars / 4). There's no tokenizer on
+ *  the client; this is only used to gate "is there enough history to bother
+ *  compacting?", where an approximation is fine. */
+export function estimateTextTokens(messages: ChatMessage[]): number {
+	let chars = 0;
+	for (const m of messages) {
+		for (const p of m.parts) {
+			if (p.type === 'text') chars += p.text.length;
+		}
+	}
+	return Math.ceil(chars / 4);
+}
+
+/**
+ * Minimum estimated tokens of foldable history for compaction to be worth
+ * offering/firing. Compaction only shrinks the message history — not the system
+ * prompt, tool definitions, or saved memories, which are re-sent every turn — so
+ * when the history is tiny (a few short turns) a summary saves little or even
+ * costs more than it folds. Below this floor we leave the button disabled and
+ * hold auto-compaction off, even when the *total* prompt (overhead + history)
+ * is over the user's threshold.
+ */
+export const MIN_COMPACTIBLE_TOKENS = 1000;
+
+/**
+ * Whether compaction would meaningfully shrink the payload: structurally
+ * possible AND the history it would fold is large enough to be worth it. This is
+ * the gate the manual button and auto-compaction actually use (vs. the purely
+ * structural `canCompact`).
+ */
+export function compactionWorthwhile(
+	branch: ChatMessage[],
+	keepTurns: number = DEFAULT_KEEP_TURNS,
+	minTokens: number = MIN_COMPACTIBLE_TOKENS,
+): boolean {
+	const view = upstreamBranch(branch);
+	const cut = computeCompactionCut(view, keepTurns);
+	if (!cut) return false;
+	// The messages that would be folded into the summary = everything before the
+	// verbatim tail. (For a repeat compaction this includes the prior summary,
+	// which is correctly re-folded.)
+	return estimateTextTokens(view.slice(0, cut.cutIndex)) >= minTokens;
 }
 
 /** Sum of an assistant message's reported prompt + completion tokens, or 0. */
@@ -225,8 +270,9 @@ export function currentContextTokens(branch: ChatMessage[]): number {
 /**
  * Should auto-compaction fire just-in-time before processing the next message?
  * True only when enabled, the window is known, the latest turn already sits at
- * or past the threshold, AND there's actually something to compact (the cut
- * guard prevents a redundant no-op call right after a prior compaction).
+ * or past the threshold, AND compaction is actually worthwhile (enough foldable
+ * history — which also stops it churning on memory/tool-heavy threads where the
+ * total is over threshold but the history itself is tiny).
  */
 export function shouldAutoCompact(opts: {
 	branch: ChatMessage[];
@@ -242,5 +288,5 @@ export function shouldAutoCompact(opts: {
 	if (threshold <= 0) return false;
 	const used = currentContextTokens(branch);
 	if (used < (contextWindow * threshold) / 100) return false;
-	return canCompact(branch, opts.keepTurns ?? DEFAULT_KEEP_TURNS);
+	return compactionWorthwhile(branch, opts.keepTurns ?? DEFAULT_KEEP_TURNS);
 }

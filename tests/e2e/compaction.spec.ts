@@ -22,42 +22,47 @@ test.beforeEach(() => {
  * a tiny-window model (Mock Chat Tiny, 50-token n_ctx) so auto-compaction's
  * threshold crossing is deterministic.
  *
- * The pure token math / cut logic is unit-tested; these specs pin the browser
- * wiring the unit layer can't: the Compact button gating, the streamed summary
- * settling into a collapsed divider with the real messages still inline, and
- * auto-compaction firing on a send before the reply.
+ * The pure token math / cut / worthwhile logic is unit-tested; these specs pin
+ * the browser wiring the unit layer can't: the Compact button gating, the
+ * streamed summary settling into a collapsed divider with the real messages
+ * still inline, and auto-compaction firing on a send before the reply.
+ *
+ * Messages are deliberately large: the worthwhile guard only enables/fires
+ * compaction once the *foldable history* clears ~1000 tokens, so a handful of
+ * one-word turns would (correctly) never become compactable. `big(marker)`
+ * gives ~1.3k tokens per turn with a findable marker.
  */
 
 const COMPACT = /compact|summariz/i; // icon-only button in the budget bar (aria-label/title)
 const SUMMARY_DIVIDER = /Context summary/;
+const big = (marker: string) => `${marker}: ` + 'lorem ipsum dolor sit amet '.repeat(200);
 
 test.describe('manual compaction', () => {
-	test('Compact is gated until there is history, then folds older turns into a summary', async ({
+	test('Compact is gated until the history is worth folding, then folds it into a summary', async ({
 		page,
 	}) => {
-		await sendChatFromHome(page, 'first question'); // turn 1 (Mock Chat)
+		await sendChatFromHome(page, big('alpha')); // turn 1 (Mock Chat)
 
-		// Too little history to compact yet.
+		// Structurally too short AND not worth it yet.
 		const compact = page.getByRole('button', { name: COMPACT });
 		await expect(compact).toBeDisabled();
 
-		await sendFollowup(page, 'second question'); // turn 2
-		await sendFollowup(page, 'third question'); // turn 3 → now compactable
+		await sendFollowup(page, big('beta')); // turn 2
+		await sendFollowup(page, big('gamma')); // turn 3 → folds turn 1 (~1.3k tokens)
 
 		await expect(compact).toBeEnabled();
 		await compact.click();
 
 		// The summary lands as a collapsed divider, the real turns stay inline.
-		// Scope text to the message body (the prompt also appears as the title /
+		// Scope marker text to the message body (it also appears as the title /
 		// sidebar link, which would be a strict-mode multi-match).
 		const divider = page.getByRole('button', { name: SUMMARY_DIVIDER });
 		await expect(divider).toBeVisible();
-		await expect(
-			page.locator('div.whitespace-pre-wrap', { hasText: 'first question' }),
-		).toBeVisible();
-		await expect(
-			page.locator('div.whitespace-pre-wrap', { hasText: 'third question' }),
-		).toBeVisible();
+		await expect(page.locator('div.whitespace-pre-wrap', { hasText: 'alpha' })).toBeVisible();
+		await expect(page.locator('div.whitespace-pre-wrap', { hasText: 'gamma' })).toBeVisible();
+
+		// A success toast confirms the action even though the divider lands up-thread.
+		await expect(page.getByText('Conversation compacted')).toBeVisible();
 
 		// Collapsed by default; expands to reveal the generated summary.
 		await expect(page.getByText('MOCK SUMMARY')).toBeHidden();
@@ -71,14 +76,14 @@ test.describe('auto-compaction', () => {
 		page,
 	}) => {
 		// 10% of the tiny model's 50-token window = 5 tokens; every real reply
-		// reports 18, so any thread with enough turns is over the line.
+		// reports 18, so any thread that's also worth compacting is over the line.
 		setAutoCompaction(true, 10);
 
 		await page.goto('/');
 		await selectModel(page, 'Mock Chat Tiny');
 
 		// Turn 1 from the home composer.
-		await page.locator('textarea').first().fill('one');
+		await page.locator('textarea').first().fill(big('one'));
 		const send = page.getByRole('button', { name: 'Send message' });
 		await expect(send).toBeEnabled();
 		await send.click();
@@ -86,14 +91,14 @@ test.describe('auto-compaction', () => {
 		await expect(page.getByText(MOCK_REPLY).first()).toBeVisible();
 		await expect(send).toBeVisible();
 
-		await sendFollowup(page, 'two');
-		await sendFollowup(page, 'three');
+		await sendFollowup(page, big('two'));
+		await sendFollowup(page, big('three'));
 
-		// No compaction yet — under the turn count, nobody clicked Compact.
+		// No compaction yet — nobody clicked Compact.
 		await expect(page.getByRole('button', { name: SUMMARY_DIVIDER })).toHaveCount(0);
 
 		// The next send auto-compacts first (no Compact click), then replies.
-		await sendFollowup(page, 'four');
+		await sendFollowup(page, big('four'));
 		await expect(page.getByRole('button', { name: SUMMARY_DIVIDER })).toHaveCount(1);
 		// The reply still arrived after the summary.
 		await expect(page.getByText(MOCK_REPLY).first()).toBeVisible();

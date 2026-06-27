@@ -41,7 +41,7 @@
 		type InFlightSegment,
 	} from '$lib/chat-render';
 	import {
-		canCompact,
+		compactionWorthwhile,
 		displayContextTokens,
 		isCompactionSummary,
 		shouldAutoCompact,
@@ -401,22 +401,26 @@
 	// `$derived.by` (not a bare expression) so the `fanout` reference sits in a
 	// closure — `fanout` is constructed further down, and a direct expression
 	// would be a use-before-declaration.
+	// `compactable` gates the Compact button on `compactionWorthwhile`, not just
+	// the structural `canCompact`: compaction only shrinks history, so when the
+	// foldable history is tiny (the dominant cost being system prompt + tools +
+	// memories) the button stays disabled rather than running for ~no benefit.
 	const compactable = $derived.by(
-		() => !busy && !compacting && !fanout.comparing && canCompact(messages),
+		() => !busy && !compacting && !fanout.comparing && compactionWorthwhile(messages),
 	);
 
 	// The context-budget bar (readout + Compact) lives just above the composer.
 	// Show it once the conversation is actually doing something worth measuring —
-	// a known size, something foldable, or an existing summary — so a fresh chat
-	// stays clean. Hidden for non-chat kinds and during a fan-out comparison
-	// (where a single budget number isn't meaningful and compaction is blocked).
-	// `$derived.by` for the `fanout` forward-reference, as with `compactable`.
+	// a known size or an existing summary — so a fresh chat stays clean. Hidden
+	// for non-chat kinds and during a fan-out comparison (where a single budget
+	// number isn't meaningful and compaction is blocked). `$derived.by` for the
+	// `fanout` forward-reference, as with `compactable`.
 	const showBudgetBar = $derived.by(
 		() =>
 			modelKind !== 'image' &&
 			modelKind !== 'video' &&
 			!fanout.comparing &&
-			(contextTokenCount > 0 || canCompact(messages) || messages.some(isCompactionSummary)),
+			(contextTokenCount > 0 || messages.some(isCompactionSummary)),
 	);
 
 	// Live summary text while a manual compaction streams. `compactionStreaming`
@@ -425,15 +429,18 @@
 	let compactionStreaming = $state(false);
 	let compactionStreamText = $state('');
 
-	// `silent` suppresses error toasts — used by the auto path, where the user
-	// never asked for a compaction, so a failure should just fall through to the
-	// (uncompacted) send rather than surfacing an error they can't act on.
+	// `silent` (the auto path) suppresses ALL user-facing feedback — error toasts
+	// AND the success toast/scroll below. The user never asked for an auto
+	// compaction and we immediately proceed to the message they actually sent, so
+	// yanking the view up to the new summary would be disorienting; a manual
+	// click, by contrast, gets confirmation + a scroll to where the summary landed.
 	async function compactConversation(opts: { silent?: boolean } = {}) {
 		if (compacting || busy || fanout.comparing) return;
 		compacting = true;
 		compactionStreaming = false;
 		compactionStreamText = '';
 		let errored: string | null = null;
+		let doneSummaryId: string | null = null;
 		try {
 			const res = await fetch(`/api/conversations/${data.conversation.id}/compact?stream=1`, {
 				method: 'POST',
@@ -456,7 +463,8 @@
 				onCompactionText: (chunk) => {
 					compactionStreamText += chunk;
 				},
-				onCompactionDone: async () => {
+				onCompactionDone: async (summaryMessage) => {
+					doneSummaryId = summaryMessage.id;
 					await invalidateAll();
 				},
 				onError: (msg) => {
@@ -464,6 +472,21 @@
 				},
 			});
 			if (errored && !opts.silent) toast.error(errored);
+			else if (doneSummaryId && !opts.silent) {
+				// Confirm the (manual) action: it succeeded even though the token
+				// number barely moves and the divider lands up-thread. Scroll to +
+				// briefly highlight the new summary so the result is visible.
+				toast.success('Conversation compacted');
+				await tick();
+				const el = document.getElementById(`summary-${doneSummaryId}`);
+				if (el) {
+					el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+					highlightedMessageId = doneSummaryId;
+					setTimeout(() => {
+						if (highlightedMessageId === doneSummaryId) highlightedMessageId = null;
+					}, 1500);
+				}
+			}
 		} catch {
 			if (!opts.silent) toast.error("Couldn't compact this conversation.");
 		} finally {
@@ -1969,8 +1992,19 @@
 			{#each visibleMessages as m (m.id)}
 				{#if isCompactionSummary(m)}
 					<!-- A compaction summary: collapsed divider, not a bubble. The
-						 real messages it stands in for stay visible above/below it. -->
-					<CompactionSummary message={m} />
+						 real messages it stands in for stay visible above/below it.
+						 `summary-<id>` (not `msg-<id>`) is the scroll/highlight target a
+						 manual compaction jumps to — kept off the `msg-` namespace so
+						 bubble-counting logic still skips it. -->
+					<div
+						id="summary-{m.id}"
+						class={[
+							'rounded-lg transition-colors duration-1000',
+							m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
+						]}
+					>
+						<CompactionSummary message={m} />
+					</div>
 				{:else}
 					<!--
 					Message + action-bar group. The actions row sits directly
