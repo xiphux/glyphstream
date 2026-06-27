@@ -40,7 +40,12 @@
 		updateToolCallResult as inFlightUpdateToolCallResult,
 		type InFlightSegment,
 	} from '$lib/chat-render';
-	import { canCompact, displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
+	import {
+		canCompact,
+		displayContextTokens,
+		isCompactionSummary,
+		shouldAutoCompact,
+	} from '$lib/chat-compaction';
 	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
 	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
@@ -437,6 +442,28 @@
 			compactionStreaming = false;
 			compactionStreamText = '';
 		}
+	}
+
+	// Just-in-time auto-compaction, run on the client right before a plain send:
+	// if the conversation has crossed the user's threshold of the model's window,
+	// compact first (streaming the summary for live feedback) so the next message
+	// continues with reclaimed space. Reuses compactConversation, so a failure is
+	// surfaced + non-fatal — we proceed with the send regardless rather than
+	// blocking the user. Triggering here (vs. server-side mid-send) is what lets
+	// the summary stream instead of the send hanging on a spinner.
+	async function maybeAutoCompact() {
+		if (!data.prefs?.autoCompactionEnabled || compacting || busy) return;
+		if (
+			!shouldAutoCompact({
+				branch: messages,
+				enabled: true,
+				contextWindow: modelContextWindow,
+				threshold: data.prefs.autoCompactionThreshold ?? 80,
+			})
+		) {
+			return;
+		}
+		await compactConversation();
 	}
 
 	// Per-user-message "tokens we sent up to and including this turn":
@@ -1541,7 +1568,7 @@
 		const { text, activatedSkillNames } = skillsActive
 			? stripSkillCommand(composerText.trim(), data.enabledSkills)
 			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
-		if ((!text && attachments.items.length === 0) || generating) return;
+		if ((!text && attachments.items.length === 0) || generating || compacting) return;
 		if (attachments.isBusy) return;
 		const attachedMediaIds = attachments.readyMediaIds();
 		// Split-attachments image set (one branch per image) captured before the
@@ -1577,6 +1604,10 @@
 			resetCompare();
 		}
 		splitAttachments = false;
+		// Plain continuation sends only: an edit resend (editParent) parents off an
+		// earlier message, so compacting at the leaf would orphan onto the wrong
+		// branch. Fan-out already returned above.
+		if (!editParent) await maybeAutoCompact();
 		await sendStreaming(text, attachedMediaIds, {
 			...(editParent ? { parentMessageId: editParent } : {}),
 			...(activatedSkillNames.length ? { activatedSkillNames } : {}),

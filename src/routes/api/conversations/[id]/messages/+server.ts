@@ -28,8 +28,6 @@ import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
-import { runCompaction } from '$lib/server/chat/compaction';
-import { shouldAutoCompact } from '$lib/chat-compaction';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import {
@@ -141,54 +139,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	}
 	const endpoint = getEndpoint(parsed.endpointId)!;
 
-	// Just-in-time auto-compaction. If the PRIOR turn pushed the conversation
-	// past the user's threshold of the model's window, summarize older history
-	// NOW — before this message is added — so the model continues with reclaimed
-	// space. Doing it here (rather than at end-of-turn) means a conversation the
-	// user simply walks away from never pays for a compaction it won't use.
-	// Plain continuation sends only: retry/fan-out have their own leaf semantics,
-	// an edit/branch resend parents off an earlier message (a summary appended at
-	// the current leaf would orphan onto the wrong branch), and image/video turns
-	// carry no chat context to compact. Non-fatal — any failure logs and proceeds.
-	const isPlainSend =
-		!isRetry &&
-		!isFanout &&
-		!body.editedMessageId &&
-		!body.parentMessageId &&
-		meta.modelKind !== 'image' &&
-		meta.modelKind !== 'video';
-	if (isPlainSend) {
-		try {
-			const autoPrefs = getUserPreferences(locals.user.id);
-			if (autoPrefs?.autoCompactionEnabled) {
-				const models = await listAllModels();
-				const entry = models.find(
-					(m) => m.endpointId === parsed.endpointId && m.upstreamId === parsed.upstreamId,
-				);
-				if (
-					shouldAutoCompact({
-						branch: walkActiveBranch(params.id),
-						enabled: true,
-						contextWindow: entry?.contextWindow ?? null,
-						threshold: autoPrefs.autoCompactionThreshold,
-					})
-				) {
-					const result = await runCompaction(params.id, locals.user.id);
-					if (result.status === 'compacted') {
-						// The leaf advanced to the summary; the new user message must hang
-						// off it so we continue from the trimmed history.
-						meta.activeLeafMessageId = result.summaryMessageId;
-						if (DEBUG) console.debug(`[compaction] auto-compacted ${params.id}`);
-					}
-				}
-			}
-		} catch (e) {
-			if (DEBUG)
-				console.debug(
-					`[compaction] auto-compaction skipped: ${e instanceof Error ? e.message : String(e)}`,
-				);
-		}
-	}
+	// Auto-compaction runs just-in-time on the CLIENT right before a plain send
+	// (it has the branch, the model's window, and the user's prefs), so it can
+	// stream the summary through the same /compact?stream=1 endpoint and give the
+	// user live feedback instead of a hung send. By the time this handler runs,
+	// any compaction has already persisted and advanced the leaf, so the new user
+	// message parents off the summary with no special-casing here. See
+	// `maybeAutoCompact` in the chat page.
 
 	// `userMessage` is the anchor that the assistant message hangs off of.
 	// For a regular send it's a freshly-persisted row; for a retry it's
