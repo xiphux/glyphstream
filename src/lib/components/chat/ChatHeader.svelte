@@ -19,12 +19,16 @@
 
 	const tokenFmt = new Intl.NumberFormat();
 
-	// Percent of the window used, when we have both numbers. Clamped at 100
-	// (a thread can edge past the reported window via system prompt / tool
-	// scaffolding the count doesn't capture).
-	const pctUsed = $derived(
+	// The budget readout, when we know the window — bundled so `max` is a
+	// proven number at the use site (no `?? 0` papering over a null that can't
+	// occur here). `pct` is clamped at 100: a thread can edge past the reported
+	// window via system prompt / tool scaffolding the count doesn't capture.
+	const budget = $derived(
 		contextWindow && contextWindow > 0
-			? Math.min(100, Math.round((contextTokenCount / contextWindow) * 100))
+			? {
+					max: contextWindow,
+					pct: Math.min(100, Math.round((contextTokenCount / contextWindow) * 100)),
+				}
 			: null,
 	);
 </script>
@@ -35,15 +39,15 @@
 		<div class="flex min-w-0 items-center gap-2 text-xs text-fg-muted">
 			<span class="truncate">{assistantLabel}</span>
 			{#if contextTokenCount > 0}
-				{#if pctUsed !== null}
+				{#if budget !== null}
 					<span
 						class="flex-shrink-0 tabular-nums"
-						class:text-warning={pctUsed >= 90}
-						title="Approximate context used after the last response ({pctUsed}% of the model's {tokenFmt.format(
-							contextWindow ?? 0,
+						class:text-warning={budget.pct >= 90}
+						title="Approximate context used after the last response ({budget.pct}% of the model's {tokenFmt.format(
+							budget.max,
 						)}-token window)"
 					>
-						· {tokenFmt.format(contextTokenCount)} / {tokenFmt.format(contextWindow ?? 0)} tokens
+						· {tokenFmt.format(contextTokenCount)} / {tokenFmt.format(budget.max)} tokens
 					</span>
 				{:else}
 					<span

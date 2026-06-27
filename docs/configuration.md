@@ -134,11 +134,13 @@ this order (most specific first):
 4. **Unknown** — the header falls back to showing just the running token
    count, with no ceiling.
 
-The auto-detected value is looked up live (not frozen onto the conversation),
-so if you restart `llama-server` with a different `--ctx-size`, the budget
-follows; a `model_context_windows` override is static until you edit it. The
-running count itself is the upstream-reported `prompt_tokens + completion_tokens`
-of the latest response, so it reflects the real tokenizer, not an estimate.
+The auto-detected value is resolved from the model list rather than frozen
+onto the conversation, so if you restart `llama-server` with a different
+`--ctx-size`, the budget follows — on the next models-list load (opening a
+chat, or the 60s stale-while-revalidate refresh), not instantly mid-session.
+A `model_context_windows` override is static until you edit it. The running
+count itself is the upstream-reported `prompt_tokens + completion_tokens` of
+the latest response, so it reflects the real tokenizer, not an estimate.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 

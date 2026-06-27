@@ -374,10 +374,12 @@
 		return 0;
 	});
 
-	// The active model's total context window, when we know it. Looked up
-	// live from the model list (not snapshotted onto the conversation) so it
-	// tracks a server `--ctx-size` change. Null → ChatHeader shows just the
-	// raw token count, as before. See extractContextWindow (server side).
+	// The active model's total context window, when we know it. Read from the
+	// model list rather than snapshotted onto the conversation, so a server
+	// `--ctx-size` change is picked up on the next models-list load (navigation
+	// or the 60s stale-while-revalidate refresh), not mid-session. Null →
+	// ChatHeader shows just the raw token count, as before. See
+	// extractContextWindow (server side).
 	const modelContextWindow = $derived(
 		data.models.find((m) => m.id === modelId)?.contextWindow ?? null,
 	);

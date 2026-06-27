@@ -194,8 +194,10 @@ export interface ModelEntry {
 	 * detected value comes from vendor extensions — llama.cpp's
 	 * `meta.n_ctx` (only present while the model is loaded) or its router
 	 * `status.args` `--ctx-size`, vLLM's `max_model_len`, or a bridge-
-	 * normalized `context_window`. Looked up live (not snapshotted onto the
-	 * conversation) so it tracks a server `--ctx-size` change.
+	 * normalized `context_window`. Resolved per models-list fetch (not
+	 * snapshotted onto the conversation), so a server `--ctx-size` change is
+	 * reflected on the next list load — navigation or the 60s
+	 * stale-while-revalidate refresh — rather than instantly mid-session.
 	 */
 	contextWindow: number | null;
 }
