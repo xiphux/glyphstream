@@ -112,6 +112,11 @@ export interface FanoutColumn {
 	/** Generation progress 0–100 for the poll-based video path, or null when
 	 *  unknown / not a video branch. */
 	progress: number | null;
+	/** Transient phase label from a `progress` event's `status` (e.g.
+	 *  "Enhancing prompt…" during the pre-generation prompt-enhancement pass),
+	 *  shown in the column body in place of "Generating…". Null when there's no
+	 *  active sub-phase. */
+	statusLabel: string | null;
 	/** Unix ms when this branch actually began generating (the SSE `start`
 	 *  event, i.e. it acquired its concurrency slot), for the elapsed timer.
 	 *  Null while queued / not yet started. */

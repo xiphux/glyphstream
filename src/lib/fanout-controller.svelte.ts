@@ -170,6 +170,7 @@ export class FanoutController {
 				status: errPart ? 'error' : 'done',
 				queuedAhead: 0,
 				progress: null,
+				statusLabel: null,
 				startedAt: null,
 				inputMediaId: m.sourceMediaId ?? null,
 				persisted: m,
@@ -189,6 +190,7 @@ export class FanoutController {
 			status: pb.status,
 			queuedAhead: 0,
 			progress: null,
+			statusLabel: null,
 			startedAt: pb.startedAt,
 			inputMediaId: null,
 			persisted: null,
@@ -267,6 +269,7 @@ export class FanoutController {
 			status: 'queued' as const,
 			queuedAhead: 0,
 			progress: null,
+			statusLabel: null,
 			startedAt: null,
 			inputMediaId: b.inputMediaId,
 			persisted: null,
@@ -406,10 +409,14 @@ export class FanoutController {
 					col.status = 'streaming';
 					col.segments = appendReasoning(col.segments, chunk);
 				},
-				onProgress(percent) {
-					// Video poll-relay progress (0–100), shown in the column header.
+				onProgress(percent, status) {
+					// Video poll-relay progress (0–100), shown in the column header;
+					// and the transient phase label (e.g. "Enhancing prompt…"), shown
+					// in the column body. A clearing event (both null) reverts to the
+					// normal generating state.
 					col.status = 'streaming';
 					col.progress = percent;
+					col.statusLabel = status;
 				},
 				onDone({ assistantMessage }) {
 					col.persisted = assistantMessage;
@@ -586,6 +593,7 @@ export class FanoutController {
 			status: 'queued',
 			queuedAhead: 0,
 			progress: null,
+			statusLabel: null,
 			startedAt: null,
 			inputMediaId: col.inputMediaId,
 			persisted: null,

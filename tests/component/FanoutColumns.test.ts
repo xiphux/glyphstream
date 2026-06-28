@@ -35,6 +35,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		status: overrides.status ?? 'streaming',
 		queuedAhead: overrides.queuedAhead ?? 0,
 		progress: overrides.progress ?? null,
+		statusLabel: overrides.statusLabel ?? null,
 		startedAt: overrides.startedAt ?? null,
 		inputMediaId: overrides.inputMediaId ?? null,
 		persisted: overrides.persisted ?? null,

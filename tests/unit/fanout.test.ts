@@ -91,6 +91,7 @@ describe('allColumnsSettled', () => {
 		status,
 		queuedAhead: 0,
 		progress: null,
+		statusLabel: null,
 		startedAt: null,
 		inputMediaId: null,
 		persisted: null,

@@ -75,6 +75,10 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 						effectivePrompt = enhanced;
 						originalPrompt = params.prompt;
 					}
+					// Clear the transient "Enhancing prompt…" status so the in-flight
+					// bubble / fan-out column reverts to the normal generating state for
+					// the (longer) image call. Without this the badge sticks until `done`.
+					write({ type: 'progress', percent: null } satisfies StreamProgressEvent);
 				}
 			}
 

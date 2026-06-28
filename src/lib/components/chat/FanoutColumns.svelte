@@ -188,9 +188,10 @@
 					{:else}
 						<!-- Actively generating: count up from when this branch acquired
 						     its slot (the live one of a serialized fan-out), like single
-						     image generation. -->
+						     image generation. `statusLabel` surfaces a transient sub-phase
+						     (e.g. "Enhancing prompt…") in place of "Generating…". -->
 						<p class="flex items-center gap-2 text-xs text-fg-muted">
-							<span>Generating…</span>
+							<span>{c.statusLabel ?? 'Generating…'}</span>
 							{#if c.startedAt !== null && elapsed(c) >= 0.3}
 								<span class="font-mono tabular-nums">{elapsed(c).toFixed(1)}s</span>
 							{/if}
