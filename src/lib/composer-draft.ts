@@ -14,9 +14,10 @@
  * resurface days later.
  *
  * Drafts are session-scoped so they can't leak to the next person on a shared
- * device: clearAllDrafts() wipes every stored draft and is called from the
- * login page — the chokepoint every session exit funnels through (an explicit
- * logout and a silent session expiry/revocation both land the user there).
+ * device: sign-out wipes them along with the rest of the `glyphstream:`
+ * localStorage namespace (see clearSessionScopedClientState in
+ * client-session-state.ts, called from the login page — the chokepoint every
+ * explicit logout and every silent session expiry/revocation lands on).
  */
 
 import { browser } from '$app/environment';
@@ -93,27 +94,6 @@ export function clearDraft(conversationId: string | null): void {
 		localStorage.removeItem(draftKey(conversationId));
 	} catch {
 		/* ignore */
-	}
-}
-
-/**
- * Remove every stored composer draft. Called from the login page so a logout —
- * or an expired/revoked session that bounced the user there — can't leave one
- * person's drafts in localStorage for whoever signs in next on the same
- * browser. This is what makes drafts session-scoped rather than device-durable.
- */
-export function clearAllDrafts(): void {
-	if (!browser) return;
-	try {
-		// Collect first: removeItem() during iteration shifts the index.
-		const keys: string[] = [];
-		for (let i = 0; i < localStorage.length; i++) {
-			const k = localStorage.key(i);
-			if (k?.startsWith(PREFIX)) keys.push(k);
-		}
-		for (const k of keys) localStorage.removeItem(k);
-	} catch {
-		/* storage disabled — nothing to clear */
 	}
 }
 

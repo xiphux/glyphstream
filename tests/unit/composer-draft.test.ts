@@ -19,13 +19,7 @@ const localStorageShim: Storage = {
 };
 vi.stubGlobal('localStorage', localStorageShim);
 
-import {
-	loadDraft,
-	saveDraft,
-	clearDraft,
-	clearAllDrafts,
-	createDraftWriter,
-} from '$lib/composer-draft';
+import { loadDraft, saveDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 
 const key = (conv: string | null) => `glyphstream:composerDraft:${conv ?? 'new'}`;
 
@@ -94,33 +88,6 @@ describe('saveDraft / loadDraft / clearDraft', () => {
 		localStorage.setItem(key('conv-1'), 'not json');
 		expect(loadDraft('conv-1')).toBe('');
 		expect(localStorage.getItem(key('conv-1'))).toBeNull();
-	});
-});
-
-describe('clearAllDrafts', () => {
-	it('removes every stored draft (new-chat + all conversations)', () => {
-		saveDraft(null, 'new chat draft');
-		saveDraft('conv-1', 'draft one');
-		saveDraft('conv-2', 'draft two');
-
-		clearAllDrafts();
-
-		expect(loadDraft(null)).toBe('');
-		expect(loadDraft('conv-1')).toBe('');
-		expect(loadDraft('conv-2')).toBe('');
-		expect(localStorage.length).toBe(0);
-	});
-
-	it('leaves unrelated localStorage keys untouched', () => {
-		localStorage.setItem('glyphstream:sidebarCollapsed', '1');
-		localStorage.setItem('some-other-app:key', 'value');
-		saveDraft('conv-1', 'draft');
-
-		clearAllDrafts();
-
-		expect(loadDraft('conv-1')).toBe('');
-		expect(localStorage.getItem('glyphstream:sidebarCollapsed')).toBe('1');
-		expect(localStorage.getItem('some-other-app:key')).toBe('value');
 	});
 });
 

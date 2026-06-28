@@ -2,18 +2,19 @@
 	import { KeyRound } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
-	import { clearAllDrafts } from '$lib/composer-draft';
+	import { clearSessionScopedClientState } from '$lib/client-session-state';
 
 	let { data } = $props();
 
 	// Reaching the login page means there's no live session — an explicit
-	// logout, or an expired/revoked one bounced here by the (app) layout.
-	// Wipe any composer drafts so they can't leak to the next person who signs
-	// in on this browser. The page's server load redirects authenticated users
-	// to '/', so this only runs while genuinely signed out. $effect (not
-	// onMount) so it runs purely client-side without SSR ceremony.
+	// logout, or an expired/revoked one bounced here by the (app) layout. Wipe
+	// device-local client state (composer drafts, sidebar-collapsed) so it can't
+	// leak to the next person who signs in on this browser. The page's server
+	// load redirects authenticated users to '/', so this only runs while
+	// genuinely signed out. $effect (not onMount) so it runs purely client-side
+	// without SSR ceremony.
 	$effect(() => {
-		clearAllDrafts();
+		clearSessionScopedClientState();
 	});
 
 	let passkeyBusy = $state(false);
