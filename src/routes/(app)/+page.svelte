@@ -378,8 +378,10 @@
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
-			// The prompt is now handed off — drop its saved draft (and any pending
-			// debounced write) so it can't be restored into a fresh new-chat box.
+			// The prompt is now handed off — drop its saved draft so it can't be
+			// restored into a fresh new-chat box. cancel() drops the pending write;
+			// clearDraft() removes the stored key now (load-bearing: the writer
+			// would otherwise only clear it on the next debounced commit).
 			draftWriter.cancel();
 			clearDraft(null);
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });

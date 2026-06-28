@@ -19,7 +19,15 @@ const localStorageShim: Storage = {
 };
 vi.stubGlobal('localStorage', localStorageShim);
 
-import { loadDraft, saveDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
+import {
+	loadDraft,
+	saveDraft,
+	clearDraft,
+	clearAllDrafts,
+	createDraftWriter,
+} from '$lib/composer-draft';
+
+const key = (conv: string | null) => `glyphstream:composerDraft:${conv ?? 'new'}`;
 
 beforeEach(() => {
 	localStorage.clear();
@@ -53,7 +61,7 @@ describe('saveDraft / loadDraft / clearDraft', () => {
 		saveDraft('conv-1', '   ');
 		expect(loadDraft('conv-1')).toBe('');
 		// And the key is actually gone, not just blanked.
-		expect(localStorage.getItem('glyphstream:composerDraft:conv-1')).toBeNull();
+		expect(localStorage.getItem(key('conv-1'))).toBeNull();
 	});
 
 	it('drops and removes a draft older than the max age on load', () => {
@@ -64,7 +72,7 @@ describe('saveDraft / loadDraft / clearDraft', () => {
 			// Jump 8 days forward — past the 7-day TTL.
 			vi.setSystemTime(new Date('2026-01-09T00:00:00Z'));
 			expect(loadDraft('conv-1')).toBe('');
-			expect(localStorage.getItem('glyphstream:composerDraft:conv-1')).toBeNull();
+			expect(localStorage.getItem(key('conv-1'))).toBeNull();
 		} finally {
 			vi.useRealTimers();
 		}
@@ -83,9 +91,36 @@ describe('saveDraft / loadDraft / clearDraft', () => {
 	});
 
 	it('treats a malformed entry as absent and removes it', () => {
-		localStorage.setItem('glyphstream:composerDraft:conv-1', 'not json');
+		localStorage.setItem(key('conv-1'), 'not json');
 		expect(loadDraft('conv-1')).toBe('');
-		expect(localStorage.getItem('glyphstream:composerDraft:conv-1')).toBeNull();
+		expect(localStorage.getItem(key('conv-1'))).toBeNull();
+	});
+});
+
+describe('clearAllDrafts', () => {
+	it('removes every stored draft (new-chat + all conversations)', () => {
+		saveDraft(null, 'new chat draft');
+		saveDraft('conv-1', 'draft one');
+		saveDraft('conv-2', 'draft two');
+
+		clearAllDrafts();
+
+		expect(loadDraft(null)).toBe('');
+		expect(loadDraft('conv-1')).toBe('');
+		expect(loadDraft('conv-2')).toBe('');
+		expect(localStorage.length).toBe(0);
+	});
+
+	it('leaves unrelated localStorage keys untouched', () => {
+		localStorage.setItem('glyphstream:sidebarCollapsed', '1');
+		localStorage.setItem('some-other-app:key', 'value');
+		saveDraft('conv-1', 'draft');
+
+		clearAllDrafts();
+
+		expect(loadDraft('conv-1')).toBe('');
+		expect(localStorage.getItem('glyphstream:sidebarCollapsed')).toBe('1');
+		expect(localStorage.getItem('some-other-app:key')).toBe('value');
 	});
 });
 

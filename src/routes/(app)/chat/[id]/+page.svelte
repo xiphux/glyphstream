@@ -1631,8 +1631,11 @@
 		// as the original. The original stays in the DB as an alt branch.
 		const editParent = editingParentId;
 		composerText = '';
-		// The message is committed — drop the saved draft (and any pending
-		// debounced write) so it isn't restored after a reload.
+		// The message is committed — drop the saved draft so it isn't restored
+		// after a reload. cancel() drops the pending write; clearDraft() removes
+		// the stored key now (load-bearing: setting composerText='' above re-fires
+		// the autosave $effect, but that only re-clears on the next debounced
+		// commit, so the explicit clear is what removes it immediately).
 		draftWriter.cancel();
 		clearDraft(data.conversation.id);
 		attachments.clear();

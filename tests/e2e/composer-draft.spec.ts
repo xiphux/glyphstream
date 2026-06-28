@@ -118,3 +118,40 @@ test.describe('composer draft: per-conversation isolation', () => {
 		await expect(composer).toHaveValue(draftA);
 	});
 });
+
+test.describe('composer draft: session scoping', () => {
+	// Unauthenticated context: a real logout would invalidate the shared
+	// session in auth.json and break sibling specs, so instead we land on
+	// /login signed-out (the same page every logout / expired session reaches)
+	// and assert it wipes leftover drafts on mount — the leak-prevention seam.
+	test.use({ storageState: { cookies: [], origins: [] } });
+
+	test('the login page wipes any leftover drafts on mount', async ({ page }) => {
+		// Signed out, /login renders (it only redirects authenticated users).
+		await page.goto('/login');
+		await expect(page).toHaveURL(/\/login$/);
+
+		// Simulate drafts left in localStorage by a prior session.
+		await page.evaluate(() => {
+			const entry = JSON.stringify({ text: 'leftover', savedAt: Date.now() });
+			localStorage.setItem('glyphstream:composerDraft:new', entry);
+			localStorage.setItem('glyphstream:composerDraft:some-conv-id', entry);
+			localStorage.setItem('glyphstream:sidebarCollapsed', '1'); // unrelated key
+		});
+
+		// Revisiting /login (as the post-logout redirect does) runs the wipe.
+		await page.goto('/login');
+		await expect
+			.poll(() =>
+				page.evaluate(() =>
+					Object.keys(localStorage).filter((k) => k.startsWith('glyphstream:composerDraft:')),
+				),
+			)
+			.toEqual([]);
+
+		// Non-draft keys are left alone.
+		expect(await page.evaluate(() => localStorage.getItem('glyphstream:sidebarCollapsed'))).toBe(
+			'1',
+		);
+	});
+});
