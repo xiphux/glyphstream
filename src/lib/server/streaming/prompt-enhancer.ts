@@ -102,13 +102,31 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		return { enhanced: original, changed: false };
 	}
 
-	const changed = enhanced !== trimmed;
+	// "Changed" decides whether we store the original alongside the enhanced (the
+	// lightbox's enhanced-vs-original split). Ignore generation-irrelevant
+	// trivia so a clarify-only pass that only appends a full stop (or fiddles
+	// surrounding whitespace) doesn't surface a spurious split — when the only
+	// diff is that noise, we treat it as unchanged and keep the user's prompt.
+	const changed = trivialNormalize(enhanced) !== trivialNormalize(trimmed);
 	if (DEBUG && changed) {
 		console.debug(
 			`[prompt-enhancer] style=${input.style ?? 'clarify-only'} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
 		);
 	}
 	return { enhanced, changed };
+}
+
+/**
+ * Normalize away differences that don't matter to an image model when deciding
+ * whether the enhancer actually changed the prompt: surrounding whitespace and
+ * trailing periods/whitespace (a weak clarify-only pass often just appends a
+ * full stop). Used only for the changed/unchanged comparison — the real
+ * enhanced text is stored verbatim when a genuine change survives this. Note
+ * `!`/`?` are deliberately preserved, as those read as intentional emphasis.
+ * Exported for testing.
+ */
+export function trivialNormalize(s: string): string {
+	return s.trim().replace(/[.\s]+$/, '');
 }
 
 /**

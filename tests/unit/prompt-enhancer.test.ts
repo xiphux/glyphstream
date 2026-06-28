@@ -12,7 +12,11 @@ vi.mock('$lib/server/endpoints/client', () => ({
 	UpstreamError: FakeUpstreamError,
 }));
 
-import { enhancePrompt, sanitizeEnhanced } from '$lib/server/streaming/prompt-enhancer';
+import {
+	enhancePrompt,
+	sanitizeEnhanced,
+	trivialNormalize,
+} from '$lib/server/streaming/prompt-enhancer';
 import type { ResolvedImageEnhancerModel } from '$lib/server/tasks/image-enhancer-model';
 
 const model: ResolvedImageEnhancerModel = {
@@ -80,6 +84,44 @@ describe('enhancePrompt', () => {
 		reply('a cat');
 		const res = await enhancePrompt({ prompt: 'a cat', style: 'natural-language', model });
 		expect(res.changed).toBe(false);
+	});
+
+	it('treats a trailing-period-only difference as unchanged', async () => {
+		// Clarify-only often just appends a full stop — not a real enhancement,
+		// so it must NOT surface the enhanced-vs-original split.
+		reply('A cat sleeping in the sun.');
+		const res = await enhancePrompt({
+			prompt: 'A cat sleeping in the sun',
+			style: null,
+			model,
+		});
+		expect(res.changed).toBe(false);
+	});
+
+	it('treats a surrounding-whitespace-only difference as unchanged', async () => {
+		reply('  a cat  ');
+		const res = await enhancePrompt({ prompt: 'a cat', style: null, model });
+		expect(res.changed).toBe(false);
+	});
+
+	it('still reports a genuine change that merely also adds a period', async () => {
+		reply('A fluffy cat napping in warm sunlight.');
+		const res = await enhancePrompt({
+			prompt: 'A cat sleeping in the sun',
+			style: 'natural-language',
+			model,
+		});
+		expect(res.changed).toBe(true);
+	});
+});
+
+describe('trivialNormalize', () => {
+	it('strips trailing periods and surrounding whitespace, keeps ! and ?', () => {
+		expect(trivialNormalize('a cat.')).toBe('a cat');
+		expect(trivialNormalize('  a cat .  ')).toBe('a cat');
+		expect(trivialNormalize('a cat...')).toBe('a cat');
+		expect(trivialNormalize('a cat!')).toBe('a cat!');
+		expect(trivialNormalize('a cat?')).toBe('a cat?');
 	});
 });
 
