@@ -19,6 +19,7 @@
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
+	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
@@ -1630,6 +1631,10 @@
 		// as the original. The original stays in the DB as an alt branch.
 		const editParent = editingParentId;
 		composerText = '';
+		// The message is committed — drop the saved draft (and any pending
+		// debounced write) so it isn't restored after a reload.
+		draftWriter.cancel();
+		clearDraft(data.conversation.id);
 		attachments.clear();
 		editingMessageId = null;
 		editingParentId = null;
@@ -1818,26 +1823,37 @@
 	const editAttachments = new AttachmentStore();
 	onDestroy(() => editAttachments.destroy());
 
-	// Drop the composer draft and any open inline-edit session when
-	// navigating to a different conversation. Like the in-flight turn
-	// state, these are component-local and the /chat/[id] component is
-	// reused across conversation switches, so without this a half-typed
-	// draft reappears in the next conversation — and worse, a stale
+	// Restore this conversation's saved composer draft, and close any open
+	// inline-edit session, when navigating to a different conversation. Like
+	// the in-flight turn state, these are component-local and the /chat/[id]
+	// component is reused across conversation switches: without this the
+	// previous chat's half-typed text would bleed into the next, and a stale
 	// `editingMessageId` (whose target message doesn't exist in the new
-	// conversation) hides the composer with no inline editor to replace
-	// it, leaving no way to type. Guarded on a real id change so a
-	// same-conversation invalidateAll() can't wipe a draft mid-compose.
+	// conversation) would hide the composer with no inline editor to replace
+	// it, leaving no way to type. Drafts are per-conversation, so each switch
+	// loads its own (usually empty); see $lib/composer-draft. Guarded on a real
+	// id change so a same-conversation invalidateAll() can't wipe a draft
+	// mid-compose.
 	let composerResetConvId: string | undefined;
 	$effect(() => {
 		const id = data.conversation.id;
 		if (id === composerResetConvId) return;
 		composerResetConvId = id;
-		composerText = '';
+		composerText = loadDraft(id);
 		editingMessageId = null;
 		editingParentId = null;
 		editText = '';
 		editAttachments.clear();
 	});
+
+	// Autosave the in-progress follow-up so it survives a reload (e.g. an iOS
+	// PWA frozen in the background). Per-conversation key; debounced with a
+	// force-flush on page-hide. Cleared when a message is actually sent.
+	const draftWriter = createDraftWriter();
+	$effect(() => {
+		draftWriter.save(data.conversation.id, composerText);
+	});
+	onDestroy(() => draftWriter.dispose());
 
 	function beginEdit(m: ChatMessage) {
 		if (generating) return;

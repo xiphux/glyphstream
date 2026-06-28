@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
+	import { browser } from '$app/environment';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { ArrowUp } from '@lucide/svelte';
@@ -22,6 +23,7 @@
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
+	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 
 	let { data } = $props();
 
@@ -182,7 +184,10 @@
 				: 'How can I help you today?',
 	);
 
-	let text = $state('');
+	// Restore a half-typed prompt left over from a previous visit (e.g. an iOS
+	// PWA that was frozen in the background and reloaded). The new-chat box uses
+	// the `null` draft slot. SSR returns '' so there's no hydration mismatch.
+	let text = $state(browser ? loadDraft(null) : '');
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 
@@ -203,6 +208,15 @@
 		if (!canSplit && splitAttachments) splitAttachments = false;
 	});
 	onDestroy(() => attachments.destroy());
+
+	// Autosave the in-progress prompt so it survives a reload. Debounced, with a
+	// force-flush on page-hide (see createDraftWriter) for the iOS-PWA-killed
+	// case. Cleared explicitly once the chat actually starts.
+	const draftWriter = createDraftWriter();
+	$effect(() => {
+		draftWriter.save(null, text);
+	});
+	onDestroy(() => draftWriter.dispose());
 
 	// Pick up any pending gallery-launch intent stashed by MediaLightbox.
 	// Consume-and-clear: the key is removed on first read so a back-
@@ -364,6 +378,10 @@
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
+			// The prompt is now handed off — drop its saved draft (and any pending
+			// debounced write) so it can't be restored into a fresh new-chat box.
+			draftWriter.cancel();
+			clearDraft(null);
 			await goto(`/chat/${conversation.id}`, { invalidateAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);

@@ -55,6 +55,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   or opt into automatic just-in-time compaction in Preferences.
 - In-flight generations **survive disconnects and iOS PWA suspends** — leave
   and come back; the stream recovers.
+- **Draft autosave** — a half-typed prompt is kept per-conversation in local
+  storage and restored after a reload, so an interrupted message (e.g. an iOS
+  PWA frozen in the background) isn't lost.
 
 ### Multi-model
 
