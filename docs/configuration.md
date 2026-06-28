@@ -229,6 +229,19 @@ Pick a **capable** model — prompt rewriting benefits from a stronger model tha
 auto-titling, so this is a separate slot from `task_model`. Misconfiguration
 (typo'd endpoint, removed endpoint) silently disables enhancement.
 
+Enhancement runs **off** the image endpoint's generation slot, acquiring the
+_enhancer_ endpoint's own concurrency slot instead — so an enhancer on a
+separate endpoint runs in parallel with image generation, while one that shares
+the image endpoint serializes against it. If your enhancer is a local model
+that can't handle many simultaneous requests (e.g. a single llama.cpp instance),
+**bound it with `max_concurrent` on its GlyphStream endpoint** rather than with
+the server's own parallelism flag (llama.cpp `--parallel`). Both prevent the
+backend from thrashing on a multi-model fan-out, but GlyphStream's queue runs
+**in the grid's order**, whereas the server's internal parallelism completes
+requests in roughly arbitrary order — which scrambles the order results land in
+the compare grid. (`max_concurrent = 1` on the enhancer endpoint gives the
+cleanest, in-order behavior for a single-instance CPU model.)
+
 ### Telling GlyphStream which model wants which style
 
 The enhancer needs to know each image model's preferred format. Two sources,
