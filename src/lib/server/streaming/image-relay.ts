@@ -69,6 +69,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 						style: normalizeStyle(params.promptStyle),
 						hint: params.promptHint,
 						model: enhancerModel,
+						signal: abortSignal,
 					});
 					if (changed) {
 						effectivePrompt = enhanced;

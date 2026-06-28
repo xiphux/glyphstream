@@ -33,6 +33,9 @@ export interface EnhancePromptInput {
 	/** Optional per-model freeform nudge appended after the style instruction. */
 	hint?: string | null;
 	model: ResolvedImageEnhancerModel;
+	/** The relay's abort signal — lets a user "Stop" during the (inline)
+	 *  enhancing phase abort the call instead of waiting out its timeout. */
+	signal?: AbortSignal;
 }
 
 export interface EnhancePromptResult {
@@ -72,15 +75,19 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 
 	let content: string;
 	try {
-		const resp = await chatCompletionSync(input.model.endpoint, {
-			model: input.model.upstreamId,
-			messages: [
-				{ role: 'system', content: system },
-				{ role: 'user', content: user },
-			],
-			max_tokens: input.model.maxTokens,
-			temperature: input.model.temperature,
-		});
+		const resp = await chatCompletionSync(
+			input.model.endpoint,
+			{
+				model: input.model.upstreamId,
+				messages: [
+					{ role: 'system', content: system },
+					{ role: 'user', content: user },
+				],
+				max_tokens: input.model.maxTokens,
+				temperature: input.model.temperature,
+			},
+			input.signal,
+		);
 		content = resp.choices?.[0]?.message?.content ?? '';
 	} catch (e) {
 		const cause =

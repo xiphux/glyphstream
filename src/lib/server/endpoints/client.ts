@@ -568,10 +568,16 @@ export async function fetchUpstreamBytes(
 /**
  * POST /v1/chat/completions against `endpoint`. Non-streaming only — used
  * for the JSON-mode response path (no `?stream=1`).
+ *
+ * `signal` is composed with the per-request timeout (same pattern as
+ * `imageGeneration`), so a caller on an interruptible path — e.g. the image
+ * prompt-enhancer, which runs inline before generation — can abort the call on
+ * a user "Stop" instead of waiting out the full request timeout.
  */
 export async function chatCompletionSync(
 	endpoint: LoadedEndpoint,
 	body: ChatCompletionRequest,
+	signal?: AbortSignal,
 ): Promise<ChatCompletionResponse> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
 	const res = await doFetch(
@@ -583,7 +589,7 @@ export async function chatCompletionSync(
 				...authHeaders(endpoint),
 			},
 			body: JSON.stringify({ ...body, stream: false }),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+			signal: composeSignals(AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000), signal),
 		},
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);

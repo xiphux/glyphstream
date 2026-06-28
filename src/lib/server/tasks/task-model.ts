@@ -12,7 +12,7 @@
  * user-visible errors when the task model is gone.
  */
 
-import { ConfigError, loadTaskModel, type LoadedEndpoint } from '../endpoints/config';
+import { loadTaskModel, type LoadedEndpoint } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
 
@@ -32,16 +32,11 @@ let cached: { resolved: ResolvedTaskModel | null } | null = null;
 export function getTaskModel(): ResolvedTaskModel | null {
 	if (cached) return cached.resolved;
 
-	let rawId: string | null;
-	try {
-		rawId = loadTaskModel();
-	} catch (e) {
-		// Malformed task_model (wrong shape / wrong type) IS surfaceable —
-		// it's a config syntax error the operator should see. Re-throw so
-		// the standard ConfigError pipeline reports it at boot.
-		if (e instanceof ConfigError) throw e;
-		throw e;
-	}
+	// A malformed task_model (the only thing loadTaskModel throws is
+	// ConfigError) is intentionally left to propagate, so the operator sees the
+	// syntax error at boot/use. Only an *unset* — or a well-formed but
+	// unresolvable — value disables titling (the null/registry checks below).
+	const rawId = loadTaskModel();
 
 	if (!rawId) {
 		cached = { resolved: null };

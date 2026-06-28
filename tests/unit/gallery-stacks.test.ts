@@ -10,6 +10,7 @@ function item(
 		conversationId?: string | null;
 		conversationTitle?: string | null;
 		promptFull?: string | null;
+		originalPrompt?: string | null;
 		minutesAgo?: number;
 	} = {},
 ): MediaListItem {
@@ -22,7 +23,7 @@ function item(
 		sourceModel: null,
 		promptExcerpt: opts.promptFull ?? null,
 		promptFull: opts.promptFull ?? null,
-		originalPrompt: null,
+		originalPrompt: opts.originalPrompt ?? null,
 		createdAt: -((opts.minutesAgo ?? 0) * 60_000),
 		conversationId: opts.conversationId ?? null,
 		conversationTitle: opts.conversationTitle ?? null,
@@ -45,6 +46,31 @@ describe('groupGalleryItems', () => {
 		expect(groups[0].kind).toBe('prompt');
 		expect(groups[0].items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
 		expect(groups[0].key).toBe('p:a');
+	});
+
+	it('stacks an enhanced fan-out by the shared original prompt despite divergent promptFull', () => {
+		// Prompt enhancement rewrites each branch differently, so promptFull
+		// diverges per model — but they share the user's originalPrompt and must
+		// still stack once the conversation is gone. The non-enhanced branch
+		// (originalPrompt null) falls back to its promptFull, which equals the
+		// user's prompt, so it joins too.
+		const items = [
+			item('a', {
+				promptFull: '1girl, solo, forest',
+				originalPrompt: 'a girl in a forest',
+				minutesAgo: 0,
+			}),
+			item('b', {
+				promptFull: 'a girl standing in a sunlit forest, cinematic',
+				originalPrompt: 'a girl in a forest',
+				minutesAgo: 0,
+			}),
+			item('c', { promptFull: 'a girl in a forest', minutesAgo: 1 }),
+		];
+		const groups = groupGalleryItems(items);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].kind).toBe('prompt');
+		expect(groups[0].items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
 	});
 
 	it('groups items sharing a conversation, carrying its title', () => {

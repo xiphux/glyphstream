@@ -10,12 +10,7 @@
  * errors when the enhancer model is gone.
  */
 
-import {
-	ConfigError,
-	loadImageEnhancementConfig,
-	type LoadedEndpoint,
-	type LoadedImageEnhancementConfig,
-} from '../endpoints/config';
+import { loadImageEnhancementConfig, type LoadedEndpoint } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
 
@@ -38,15 +33,12 @@ let cached: { resolved: ResolvedImageEnhancerModel | null } | null = null;
 export function getImageEnhancerModel(): ResolvedImageEnhancerModel | null {
 	if (cached) return cached.resolved;
 
-	let cfg: LoadedImageEnhancementConfig | null;
-	try {
-		cfg = loadImageEnhancementConfig();
-	} catch (e) {
-		// Malformed config IS surfaceable — a syntax error the operator should
-		// see. Re-throw so the standard ConfigError pipeline reports it at boot.
-		if (e instanceof ConfigError) throw e;
-		throw e;
-	}
+	// A malformed [image_enhancement] block (the only thing
+	// loadImageEnhancementConfig throws is ConfigError) is intentionally left to
+	// propagate, so the operator sees the syntax error at boot/use. Only an
+	// *unset* — or a well-formed but unresolvable — value disables enhancement
+	// (the null/registry checks below).
+	const cfg = loadImageEnhancementConfig();
 
 	if (!cfg) {
 		cached = { resolved: null };

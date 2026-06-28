@@ -18,7 +18,12 @@ import type { MediaListItem } from '$lib/server/db/queries/media';
  *   2. Same-prompt adjacency. The common case is media whose conversation was
  *      deleted (`conversationId == null`); a multi-model batch shares one exact
  *      prompt and lands back-to-back, so *consecutive* orphans with an identical
- *      `promptFull` group together. A time-gap guard (`ORPHAN_GAP_MS`) keeps a
+ *      grouping prompt group together. The grouping prompt is the user's
+ *      ORIGINAL prompt (`originalPrompt`) when prompt enhancement rewrote it —
+ *      each fan-out branch gets a model-specific enhanced `promptFull`, but they
+ *      share the one `originalPrompt`, so grouping on the raw `promptFull` would
+ *      stop a fan-out from stacking. Non-enhanced rows fall back to `promptFull`
+ *      (which IS the user's prompt). A time-gap guard (`ORPHAN_GAP_MS`) keeps a
  *      much-later re-generation of the same prompt from merging in, and any
  *      conversation item between two orphans breaks the run.
  *
@@ -58,11 +63,21 @@ export function promptRunKey(leaderId: string): string {
 	return `p:${leaderId}`;
 }
 
-/** Can `item` extend the open orphan (prompt) run? Identical non-empty prompt,
- *  and the previous (newer) member within the time-gap window. */
+/** The prompt an orphan run groups on: the user's original (pre-enhancement)
+ *  prompt when present, else the (verbatim) full prompt. Keeps a fan-out's
+ *  branches — which share one `originalPrompt` but each carry a model-specific
+ *  enhanced `promptFull` — in a single stack, while non-enhanced rows
+ *  (originalPrompt = null) still group on their `promptFull`. */
+function groupingPrompt(item: MediaListItem): string | null {
+	return item.originalPrompt ?? item.promptFull;
+}
+
+/** Can `item` extend the open orphan (prompt) run? Identical non-empty grouping
+ *  prompt, and the previous (newer) member within the time-gap window. */
 function canJoinPromptRun(run: Run, item: MediaListItem): boolean {
-	const prompt = item.promptFull;
-	if (!prompt || run.items[0]?.promptFull !== prompt) return false;
+	const prompt = groupingPrompt(item);
+	const leader = run.items[0];
+	if (!prompt || !leader || groupingPrompt(leader) !== prompt) return false;
 	const prev = run.items[run.items.length - 1];
 	return prev.createdAt - item.createdAt <= ORPHAN_GAP_MS;
 }
