@@ -104,6 +104,14 @@
 		if (!media) hasPositioned = false;
 	});
 
+	// "Enhanced — show original" toggle for the prompt strip. Reset whenever the
+	// shown media changes (carousel navigation) so each image starts collapsed.
+	let showOriginal = $state(false);
+	$effect(() => {
+		void media?.id;
+		showOriginal = false;
+	});
+
 	// Jump the track to the opening slide once, instantly, when the
 	// lightbox opens. After that, scrolling is owned by the gesture (native
 	// swipe) and by `navigate()` (arrows/keys do their own smooth scroll) —
@@ -506,9 +514,27 @@
 			</div>
 		{/if}
 		{#if m.promptExcerpt}
-			<p class="mx-auto mt-3 max-w-3xl shrink-0 text-center text-xs text-neutral-300 line-clamp-3">
-				{m.promptExcerpt}
-			</p>
+			<div class="mx-auto mt-3 max-w-3xl shrink-0 text-center">
+				<p class="text-xs text-neutral-300 line-clamp-3">
+					{m.promptExcerpt}
+				</p>
+				{#if m.originalPrompt}
+					<!-- The shown prompt is the enhanced one (what generated the image).
+					     Offer the user's original behind a toggle. -->
+					<button
+						type="button"
+						class="mt-1 text-[11px] text-neutral-400 underline decoration-dotted underline-offset-2 hover:text-neutral-200"
+						onclick={() => (showOriginal = !showOriginal)}
+					>
+						{showOriginal ? 'Hide original' : 'Enhanced — show original'}
+					</button>
+					{#if showOriginal}
+						<p class="mt-1 text-xs text-neutral-400 italic line-clamp-4">
+							{m.originalPrompt}
+						</p>
+					{/if}
+				{/if}
+			</div>
 		{/if}
 		{#if hasPrompt || canUseAsStarting}
 			<!--

@@ -1,0 +1,135 @@
+/**
+ * The image-prompt enhancement call. Given a raw image prompt and the target
+ * model's preferred style, asks the configured enhancer LLM to rewrite the
+ * prompt into that style (or, when the style is unknown, to clarify-only while
+ * preserving the user's format). Returns the rewritten prompt.
+ *
+ * Strictly non-fatal: any upstream error, timeout, or empty/garbage response
+ * returns the ORIGINAL prompt with `changed: false`. Enhancement is an
+ * optimization, never a gate — it must never block or fail a generation.
+ *
+ * The auxiliary call mirrors the title task (`title-generator.ts`): a single
+ * `chatCompletionSync` against a resolved utility model, prompt wrapped in
+ * tags so a weak model reads it as data to transform rather than a turn to
+ * continue.
+ */
+
+import { logLevel } from '../env';
+import { chatCompletionSync, UpstreamError } from '../endpoints/client';
+import type { ResolvedImageEnhancerModel } from '../tasks/image-enhancer-model';
+import {
+	CLARIFY_ONLY_INSTRUCTION,
+	ENHANCER_BASE,
+	STYLE_INSTRUCTIONS,
+	type PromptStyle,
+} from './prompt-styles';
+
+const DEBUG = logLevel() === 'debug';
+
+export interface EnhancePromptInput {
+	prompt: string;
+	/** The target model's style, or null to run the format-preserving clarify-only pass. */
+	style: PromptStyle | null;
+	/** Optional per-model freeform nudge appended after the style instruction. */
+	hint?: string | null;
+	model: ResolvedImageEnhancerModel;
+}
+
+export interface EnhancePromptResult {
+	enhanced: string;
+	/** True when the enhancer actually rewrote the prompt (trimmed result differs). */
+	changed: boolean;
+}
+
+/** Compose the enhancer system prompt: shared base + style (or clarify-only) +
+ *  per-model hint + any operator override of the style instruction. */
+function buildSystemPrompt(
+	style: PromptStyle | null,
+	hint: string | null | undefined,
+	overrides: Record<string, string>,
+): string {
+	const styleInstruction =
+		style === null ? CLARIFY_ONLY_INSTRUCTION : (overrides[style] ?? STYLE_INSTRUCTIONS[style]);
+	const parts = [ENHANCER_BASE, styleInstruction];
+	if (hint && hint.trim()) {
+		parts.push(`Additional guidance for this specific model:\n${hint.trim()}`);
+	}
+	return parts.join('\n\n');
+}
+
+export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhancePromptResult> {
+	const original = input.prompt;
+	const trimmed = original.trim();
+	// Nothing to enhance — an empty prompt (e.g. an image-only edit that slipped
+	// through) is passed through untouched.
+	if (!trimmed) return { enhanced: original, changed: false };
+
+	const system = buildSystemPrompt(input.style, input.hint, input.model.styleInstructionOverrides);
+	// Wrap the prompt in tags so a weak enhancer reads it as data to rewrite,
+	// not a conversation to continue (same trick as the title task's
+	// <conversation> wrap).
+	const user = `Rewrite this image prompt:\n\n<prompt>\n${trimmed}\n</prompt>`;
+
+	let content: string;
+	try {
+		const resp = await chatCompletionSync(input.model.endpoint, {
+			model: input.model.upstreamId,
+			messages: [
+				{ role: 'system', content: system },
+				{ role: 'user', content: user },
+			],
+			max_tokens: input.model.maxTokens,
+			temperature: input.model.temperature,
+		});
+		content = resp.choices?.[0]?.message?.content ?? '';
+	} catch (e) {
+		const cause =
+			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
+		if (DEBUG) console.debug(`[prompt-enhancer] call failed, using original: ${cause}`);
+		return { enhanced: original, changed: false };
+	}
+
+	const enhanced = sanitizeEnhanced(content);
+	if (!enhanced) {
+		if (DEBUG) console.debug('[prompt-enhancer] empty/garbage response, using original');
+		return { enhanced: original, changed: false };
+	}
+
+	const changed = enhanced !== trimmed;
+	if (DEBUG && changed) {
+		console.debug(
+			`[prompt-enhancer] style=${input.style ?? 'clarify-only'} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
+		);
+	}
+	return { enhanced, changed };
+}
+
+/**
+ * Strip the decorations a chat model habitually wraps around a single-block
+ * output even when told not to: surrounding code fences, a leading
+ * "Prompt:"/"Enhanced prompt:" label, and surrounding quotes. Exported for
+ * testing.
+ */
+export function sanitizeEnhanced(raw: string): string {
+	let s = raw.trim();
+	// Strip a ```/```lang fenced block if the whole response is one.
+	const fence = /^```[a-z]*\n([\s\S]*?)\n```$/i.exec(s);
+	if (fence) s = fence[1].trim();
+	// Strip a leading "Prompt:" / "Enhanced prompt -" style label.
+	s = s.replace(/^\s*(?:enhanced\s+)?prompt\s*[:\-]\s*/i, '');
+	// Strip a single surrounding pair of quotes.
+	if (s.length >= 2) {
+		const pairs: Array<[string, string]> = [
+			['"', '"'],
+			["'", "'"],
+			['“', '”'],
+		];
+		for (const [open, close] of pairs) {
+			if (s.startsWith(open) && s.endsWith(close)) {
+				s = s.slice(open.length, s.length - close.length).trim();
+				break;
+			}
+		}
+	}
+	return s.trim();
+}

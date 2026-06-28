@@ -64,6 +64,8 @@ const endpoint: LoadedEndpoint = {
 	maxConcurrent: Infinity,
 	contextWindow: null,
 	modelContextWindows: {},
+	modelPromptStyles: {},
+	modelPromptHints: {},
 };
 
 function textChunk(text: string): string {

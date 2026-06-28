@@ -76,6 +76,8 @@ const endpoint: LoadedEndpoint = {
 	maxConcurrent: Infinity,
 	contextWindow: null,
 	modelContextWindows: {},
+	modelPromptStyles: {},
+	modelPromptHints: {},
 };
 
 /** Build a Response whose body is the given SSE lines, terminated by [DONE]. */

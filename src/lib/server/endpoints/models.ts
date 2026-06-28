@@ -11,6 +11,7 @@ import { isModelKind } from '$lib/types/api';
 import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
 import type { LoadedEndpoint } from './config';
 import { formatModelId } from './model-id';
+import { normalizeStyle } from '../streaming/prompt-styles';
 
 /**
  * Try multiple conventions to determine a model's kind. Returns null when
@@ -146,6 +147,16 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	const contextWindow =
 		endpoint.modelContextWindows[m.id] ?? extractContextWindow(m) ?? endpoint.contextWindow ?? null;
 
+	// Prompt style + hint for image enhancement, most-specific source first:
+	//   1. per-model config override (operator's explicit statement);
+	//   2. the upstream-reported field (bridge meta.json `prompt_style` /
+	//      `prompt_hint`);
+	//   3. null.
+	// The config value is already normalized to a canonical key at load time;
+	// the upstream value is normalized here (it may be a loose alias).
+	const promptStyle = endpoint.modelPromptStyles[m.id] ?? normalizeStyle(m.prompt_style) ?? null;
+	const promptHint = endpoint.modelPromptHints[m.id] ?? (m.prompt_hint || null);
+
 	return {
 		id: formatModelId(endpoint.id, m.id),
 		endpointId: endpoint.id,
@@ -158,5 +169,7 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		groupKey,
 		supportsTools,
 		contextWindow,
+		promptStyle,
+		promptHint,
 	};
 }

@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 import { parseModelId } from './model-id';
+import { normalizeStyle, PROMPT_STYLES } from '../streaming/prompt-styles';
 
 export type ProviderQuirk = 'passthrough' | 'deepseek-r1' | 'openai-o-series' | 'openrouter';
 
@@ -42,6 +43,8 @@ interface RawEndpoint {
 	max_concurrent?: unknown;
 	context_window?: unknown;
 	model_context_windows?: unknown;
+	model_prompt_styles?: unknown;
+	model_prompt_hints?: unknown;
 }
 
 /** After validation + env-var resolution. */
@@ -97,6 +100,24 @@ export interface LoadedEndpoint {
 	 * when the `model_context_windows` table is absent.
 	 */
 	modelContextWindows: Record<string, number>;
+	/**
+	 * Per-model prompt-style overrides for image models, keyed by the
+	 * **upstream** model id (same convention as {@link modelContextWindows}).
+	 * Each value is a canonical {@link PromptStyle} key — the prompt FORMAT the
+	 * enhancer should rewrite into for that model. Wins over the upstream
+	 * `prompt_style` field (see `normalizeUpstreamModel`). Empty `{}` when the
+	 * `model_prompt_styles` table is absent. Values are validated against the
+	 * known style set at load time.
+	 */
+	modelPromptStyles: Record<string, string>;
+	/**
+	 * Per-model freeform prompt hints for image models, keyed by upstream model
+	 * id. Appended to the enhancer's style instruction to carry per-model nuance
+	 * (a quality-tag prefix, a length cap, `@artist` conventions, …). Wins over
+	 * the upstream `prompt_hint` field. Empty `{}` when the `model_prompt_hints`
+	 * table is absent.
+	 */
+	modelPromptHints: Record<string, string>;
 }
 
 /**
@@ -237,6 +258,90 @@ export function loadTaskModel(path = configPath()): string | null {
 		);
 	}
 	return raw;
+}
+
+/** Default token cap for one enhancement call — generous enough for a long
+ *  booru tag list or a detailed paragraph, bounded so a chatty enhancer can't
+ *  run away. */
+export const DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS = 400;
+/** Default sampling temperature for the enhancer — some creative latitude for
+ *  expanding a vague prompt, but not so high it drifts off the subject. */
+export const DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE = 0.7;
+
+/**
+ * The optional `[image_enhancement]` block — the model + knobs for the
+ * image-prompt-enhancement pass (rewrites an image prompt into the target
+ * model's preferred style before generation). Returns null when the section is
+ * absent, in which case enhancement is disabled (the relay passes prompts
+ * through verbatim).
+ *
+ * - `model`: required, `"endpoint_id::model_id"`. Like `task_model` and
+ *   `[embeddings]`, the referenced endpoint is NOT verified at load time — a
+ *   typo/removed endpoint silently disables enhancement at use-time rather than
+ *   crashing boot (see `getImageEnhancerModel`).
+ * - `max_tokens` / `temperature`: optional sampling overrides.
+ * - `[image_enhancement.style_instructions]`: optional per-style instruction
+ *   overrides, keyed by canonical style key, letting an operator retune the
+ *   built-in `STYLE_INSTRUCTIONS` wording without a code change. Unknown style
+ *   keys are rejected.
+ */
+export interface LoadedImageEnhancementConfig {
+	model: string;
+	maxTokens: number;
+	temperature: number;
+	styleInstructionOverrides: Record<string, string>;
+}
+
+export function loadImageEnhancementConfig(
+	path = configPath(),
+): LoadedImageEnhancementConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.image_enhancement;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[image_enhancement]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[image_enhancement] in ${absolutePath}`;
+
+	const model = requireString(block.model, 'model', at);
+	if (parseModelId(model) === null) {
+		throw new ConfigError(`${at}: model "${model}" must be of the form "endpoint_id::model_id"`);
+	}
+
+	const maxTokens =
+		block.max_tokens === undefined
+			? DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS
+			: requireNumber(block.max_tokens, 'max_tokens', at, { min: 1 });
+	if (!Number.isInteger(maxTokens)) {
+		throw new ConfigError(`${at}: 'max_tokens' must be a whole number`);
+	}
+
+	const temperature =
+		block.temperature === undefined
+			? DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE
+			: requireNumber(block.temperature, 'temperature', at, { min: 0, max: 2 });
+
+	const styleInstructionOverrides: Record<string, string> = {};
+	if (block.style_instructions !== undefined) {
+		const tbl = block.style_instructions;
+		if (typeof tbl !== 'object' || tbl === null || Array.isArray(tbl)) {
+			throw new ConfigError(
+				`${at}: 'style_instructions' must be a table of "style" = instruction pairs`,
+			);
+		}
+		for (const [style, v] of Object.entries(tbl)) {
+			const canonical = normalizeStyle(style);
+			if (canonical === null) {
+				throw new ConfigError(
+					`${at}: style_instructions."${style}" is not a known prompt style (one of ${PROMPT_STYLES.join(', ')})`,
+				);
+			}
+			styleInstructionOverrides[canonical] = requireString(v, `style_instructions."${style}"`, at);
+		}
+	}
+
+	return { model, maxTokens, temperature, styleInstructionOverrides };
 }
 
 /** Default hard cap on upstream round-trips within a single turn's tool loop. */
@@ -576,6 +681,44 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		}
 	}
 
+	const modelPromptStyles: Record<string, string> = {};
+	if (raw.model_prompt_styles !== undefined) {
+		const tbl = raw.model_prompt_styles;
+		if (typeof tbl !== 'object' || tbl === null || Array.isArray(tbl)) {
+			throw new ConfigError(
+				`${at}: 'model_prompt_styles' must be a table of "model-id" = prompt-style pairs`,
+			);
+		}
+		for (const [modelId, v] of Object.entries(tbl)) {
+			const field = `model_prompt_styles."${modelId}"`;
+			const s = requireString(v, field, at);
+			// Normalize loose aliases so config and metadata accept the same
+			// inputs, but require the result to be a known style — an unrecognized
+			// value is an operator typo, surface it at boot.
+			const canonical = normalizeStyle(s);
+			if (canonical === null) {
+				throw new ConfigError(
+					`${at}: '${field}' = "${s}" is not a known prompt style (one of ${PROMPT_STYLES.join(', ')})`,
+				);
+			}
+			modelPromptStyles[modelId] = canonical;
+		}
+	}
+
+	const modelPromptHints: Record<string, string> = {};
+	if (raw.model_prompt_hints !== undefined) {
+		const tbl = raw.model_prompt_hints;
+		if (typeof tbl !== 'object' || tbl === null || Array.isArray(tbl)) {
+			throw new ConfigError(
+				`${at}: 'model_prompt_hints' must be a table of "model-id" = hint-string pairs`,
+			);
+		}
+		for (const [modelId, v] of Object.entries(tbl)) {
+			const field = `model_prompt_hints."${modelId}"`;
+			modelPromptHints[modelId] = requireString(v, field, at);
+		}
+	}
+
 	return {
 		id,
 		displayName,
@@ -588,6 +731,8 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		maxConcurrent,
 		contextWindow,
 		modelContextWindows,
+		modelPromptStyles,
+		modelPromptHints,
 	};
 }
 

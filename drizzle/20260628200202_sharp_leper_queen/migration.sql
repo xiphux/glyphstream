@@ -1,0 +1,1 @@
+ALTER TABLE `media` ADD `original_prompt` text;

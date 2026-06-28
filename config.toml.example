@@ -42,6 +42,24 @@
 # [tools]
 # max_tool_loop_iterations = 8
 
+# ── Optional: [image_enhancement] ────────────────────────────────────
+# Rewrites image prompts into the target image model's preferred format
+# (natural-language narrative, booru tags, keyword soup, or hybrid) before
+# generating — and expands them when they're vague. Off when this block is
+# absent (prompts pass through verbatim); non-fatal if the model errors. Runs
+# per generation (each fan-out branch enhances for its own model), is skipped
+# for image-to-image edits, and is toggleable per-conversation. Pick a CAPABLE
+# model — this is a separate slot from the small `task_model`. Which model wants
+# which style is set per-model via [endpoints.model_prompt_styles] (below) or the
+# bridge's meta.json. See docs/configuration.md#image-prompt-enhancement-image_enhancement.
+# (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
+# [image_enhancement]
+# model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
+# max_tokens = 400
+# temperature = 0.7
+# [image_enhancement.style_instructions]    # optional: override built-in wording
+#   "booru-tags" = "Write strictly comma-separated Danbooru tags ..."
+
 # Example: an openai-api-bridge instance running on the NAS — gives us
 # ComfyUI image/video, Venice, plus any openai-compat passthrough providers
 # the bridge fronts (e.g. local llama-server) under one endpoint.
@@ -135,6 +153,19 @@
 # value). Inline form shown; the sub-table form
 # `[endpoints.model_context_windows]` works too (see docs/configuration.md).
 # model_context_windows = { "Gemma4-26B" = 40960, "GLM-4.7-Flash" = 65536 }
+
+# Optional: per-model prompt-style + hint for image-prompt enhancement (see the
+# top-level [image_enhancement] block above). Keyed by the upstream model id,
+# like model_context_windows. `prompt_style` is one of natural-language |
+# booru-tags | keyword-soup | hybrid; `prompt_hint` is freeform per-model nuance
+# appended to the enhancer instructions. These win over any prompt_style/
+# prompt_hint the bridge advertises in /v1/models. Sub-table form shown.
+# [endpoints.model_prompt_styles]
+#   "illustrious-xl" = "booru-tags"
+#   "flux-2-klein"   = "natural-language"
+# [endpoints.model_prompt_hints]
+#   "illustrious-xl" = "prefix: masterpiece, best quality, amazing quality; no score_N tags"
+#   "z-image-turbo"  = "keep under ~60 words, front-load the subject"
 
 # Optional: web search via SearxNG. Backs the `web_search` tool, which
 # the assistant calls on its own when a query needs current information.

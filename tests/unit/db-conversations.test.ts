@@ -1757,6 +1757,8 @@ const fakeEndpoint = {
 	maxConcurrent: 4,
 	contextWindow: null,
 	modelContextWindows: {},
+	modelPromptStyles: {},
+	modelPromptHints: {},
 } satisfies LoadedEndpoint;
 
 describe('fan-out marker (parked-fan-out rehydration)', () => {

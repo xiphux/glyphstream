@@ -503,6 +503,13 @@ export const media = sqliteTable(
 		// excerpt as the best record we have.
 		promptExcerpt: text('prompt_excerpt'),
 		promptFull: text('prompt_full'),
+		// The user's ORIGINAL prompt, when the image-prompt enhancer rewrote it
+		// before generation. `prompt_full`/`prompt_excerpt` hold the ENHANCED
+		// prompt (what actually generated the image; what gallery search and
+		// "Regenerate with this prompt" should use); this preserves what the
+		// user typed so the UI can surface "Enhanced — show original". NULL when
+		// no enhancement happened (verbatim prompt) or for uploads.
+		originalPrompt: text('original_prompt'),
 		createdAt: integer('created_at').notNull(),
 		refCount: integer('ref_count').notNull().default(0),
 		// Set when ref_count drops to 0; used to compute grace-period expiry.

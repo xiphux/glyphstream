@@ -54,6 +54,7 @@ export const BUILTIN_FEATURE_CATEGORIES = [
 	'personalization',
 	'code_interpreter',
 	'skills',
+	'image_prompt_enhancement',
 ] as const;
 export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
 
@@ -95,6 +96,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		label: 'Agent skills',
 		description:
 			'Lets the assistant load reusable skill instructions you’ve authored. The catalog of your enabled skills is offered to the assistant, which loads a skill’s full instructions on demand when a task matches.',
+	},
+	image_prompt_enhancement: {
+		label: 'Image prompt enhancement',
+		description:
+			'Before generating an image, rewrites your prompt with an LLM into the format the target image model prefers (natural language, booru tags, etc.). Only affects image models; the original prompt is kept and shown alongside the result.',
 	},
 };
 
@@ -200,6 +206,32 @@ export interface ModelEntry {
 	 * stale-while-revalidate refresh — rather than instantly mid-session.
 	 */
 	contextWindow: number | null;
+	/**
+	 * For an image-generation model: the prompt FORMAT this model prefers,
+	 * driving the optional prompt-enhancement pass (see
+	 * `src/lib/server/streaming/prompt-styles.ts`). One of the canonical
+	 * `PromptStyle` keys (`natural-language` | `booru-tags` | `keyword-soup`
+	 * | `hybrid`) or null when unknown.
+	 *
+	 * Resolution order (in `normalizeUpstreamModel`):
+	 *   endpoint per-model override (config `model_prompt_styles`)  →
+	 *   upstream `prompt_style` field (bridge meta.json)  →  null
+	 *
+	 * Not part of the OpenAI spec — an additive extension the bridge emits per
+	 * ComfyUI workflow, with the config table as the override/fallback for
+	 * every other model. Null on chat/video/embedding models (and on image
+	 * models nobody has tagged), in which case enhancement falls back to a
+	 * format-preserving clarify-only pass.
+	 */
+	promptStyle: string | null;
+	/**
+	 * For an image-generation model: an optional freeform per-model nudge
+	 * appended to the enhancer's instructions, carrying nuance the four
+	 * styles can't (e.g. a quality-tag prefix, a length cap, `@artist`
+	 * conventions). Same resolution order as {@link promptStyle}
+	 * (config `model_prompt_hints` → upstream `prompt_hint` → null).
+	 */
+	promptHint: string | null;
 }
 
 /**
@@ -235,6 +267,20 @@ export interface UpstreamModel {
 	 * endpoint config.
 	 */
 	supports_tools?: boolean | null;
+	/**
+	 * Additive extension (openai-api-bridge convention): the prompt FORMAT an
+	 * image model prefers, used to drive prompt enhancement. One of the
+	 * canonical `PromptStyle` keys (or a loose alias `normalizeStyle` accepts).
+	 * Resolved against the per-endpoint `model_prompt_styles` config override
+	 * in `normalizeUpstreamModel`. Absent on vendors that don't set it.
+	 */
+	prompt_style?: string | null;
+	/**
+	 * Additive extension: a freeform per-model hint appended to the enhancer
+	 * instructions (quality-tag prefix, length cap, etc.). Resolved against the
+	 * per-endpoint `model_prompt_hints` config override.
+	 */
+	prompt_hint?: string | null;
 	/**
 	 * Context-window signals, in order of preference (see
 	 * `extractContextWindow` in src/lib/server/endpoints/models.ts). None

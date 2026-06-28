@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	ConfigError,
+	DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS,
+	DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE,
 	DEFAULT_MAX_TOOL_LOOP_ITERATIONS,
 	loadEmbeddingsConfig,
 	loadEndpoints,
+	loadImageEnhancementConfig,
 	loadMaxToolLoopIterations,
 	loadNotificationsConfig,
 	loadRerankConfig,
@@ -800,5 +803,120 @@ describe('loadMaxToolLoopIterations', () => {
 
 	it('rejects a non-table [tools] entry', () => {
 		expect(() => loadMaxToolLoopIterations(writeConfig(`tools = "nope"`))).toThrow(ConfigError);
+	});
+});
+
+describe('model_prompt_styles / model_prompt_hints', () => {
+	it('parses per-model styles, normalizing loose aliases to canonical keys', () => {
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "comfy"
+base_url = "http://localhost:8188/v1"
+[endpoints.model_prompt_styles]
+  "illustrious-xl" = "danbooru"
+  "flux-2-klein" = "natural-language"
+[endpoints.model_prompt_hints]
+  "illustrious-xl" = "prefix: masterpiece, best quality"
+			`),
+		)[0];
+		// "danbooru" alias normalizes to the canonical "booru-tags".
+		expect(ep.modelPromptStyles).toEqual({
+			'illustrious-xl': 'booru-tags',
+			'flux-2-klein': 'natural-language',
+		});
+		expect(ep.modelPromptHints).toEqual({
+			'illustrious-xl': 'prefix: masterpiece, best quality',
+		});
+	});
+
+	it('defaults both to empty objects when absent', () => {
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://localhost:9/v1"
+			`),
+		)[0];
+		expect(ep.modelPromptStyles).toEqual({});
+		expect(ep.modelPromptHints).toEqual({});
+	});
+
+	it('rejects an unknown style value', () => {
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://localhost:9/v1"
+[endpoints.model_prompt_styles]
+  "m" = "photorealistic"
+				`),
+			),
+		).toThrow(ConfigError);
+	});
+
+	it('rejects a non-table model_prompt_styles', () => {
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "x"
+base_url = "http://localhost:9/v1"
+model_prompt_styles = "nope"
+				`),
+			),
+		).toThrow(ConfigError);
+	});
+});
+
+describe('loadImageEnhancementConfig', () => {
+	it('returns null when the block is absent', () => {
+		expect(loadImageEnhancementConfig(writeConfig(``))).toBeNull();
+	});
+
+	it('parses model + defaults', () => {
+		const cfg = loadImageEnhancementConfig(
+			writeConfig(`
+[image_enhancement]
+model = "groq::llama-3.3-70b"
+			`),
+		);
+		expect(cfg).toEqual({
+			model: 'groq::llama-3.3-70b',
+			maxTokens: DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS,
+			temperature: DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE,
+			styleInstructionOverrides: {},
+		});
+	});
+
+	it('honors max_tokens / temperature / style_instructions overrides', () => {
+		const cfg = loadImageEnhancementConfig(
+			writeConfig(`
+[image_enhancement]
+model = "groq::m"
+max_tokens = 200
+temperature = 0.3
+[image_enhancement.style_instructions]
+  "booru" = "custom booru wording"
+			`),
+		);
+		expect(cfg?.maxTokens).toBe(200);
+		expect(cfg?.temperature).toBe(0.3);
+		// Override key normalized from the "booru" alias to canonical "booru-tags".
+		expect(cfg?.styleInstructionOverrides).toEqual({ 'booru-tags': 'custom booru wording' });
+	});
+
+	it('rejects a malformed model and an unknown override style', () => {
+		expect(() =>
+			loadImageEnhancementConfig(writeConfig(`[image_enhancement]\nmodel = "no-separator"`)),
+		).toThrow(ConfigError);
+		expect(() =>
+			loadImageEnhancementConfig(
+				writeConfig(
+					`[image_enhancement]\nmodel = "g::m"\n[image_enhancement.style_instructions]\n  "bogus" = "x"`,
+				),
+			),
+		).toThrow(ConfigError);
 	});
 });

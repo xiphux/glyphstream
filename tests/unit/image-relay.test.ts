@@ -83,6 +83,8 @@ const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	maxConcurrent,
 	contextWindow: null,
 	modelContextWindows: {},
+	modelPromptStyles: {},
+	modelPromptHints: {},
 });
 
 /** Drain an SSE ReadableStream into the parsed event objects. */

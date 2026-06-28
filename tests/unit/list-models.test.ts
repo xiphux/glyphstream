@@ -50,6 +50,8 @@ function endpoint(id: string, overrides: Partial<LoadedEndpoint> = {}): LoadedEn
 		providerQuirk: 'passthrough',
 		requestTimeoutSeconds: 30,
 		modelContextWindows: {},
+		modelPromptStyles: {},
+		modelPromptHints: {},
 		...overrides,
 	} as LoadedEndpoint;
 }

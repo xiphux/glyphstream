@@ -195,19 +195,102 @@ race a running title task.
 > and title generation reads a top-level `task_model` that isn't there — so
 > titling silently stays in fallback mode with no error at boot.
 
+## Image prompt enhancement (`[image_enhancement]`)
+
+Different image models want their prompts in very different shapes — a
+plain-English narrative for Flux/Qwen/Krea, strict Danbooru tags for
+Illustrious/WAI, "keyword soup" for SDXL fine-tunes, or a hybrid. When this is
+configured, GlyphStream sends an image prompt to an LLM first, which rewrites it
+into the **target model's preferred format** (and expands it if it's vague),
+then generates from the rewritten prompt. Your original message is kept
+verbatim; the gallery lightbox shows the enhanced prompt with an
+**"Enhanced — show original"** toggle.
+
+It's opt-in and entirely non-fatal: with no `[image_enhancement]` block, prompts
+pass through unchanged; if the enhancer model errors or times out, the original
+prompt is used. It runs **per generation**, so a multi-model fan-out enhances
+each branch for its own target model. It is **skipped for image-to-image edits**
+(an edit instruction isn't a scene description) and can be turned off
+per-conversation from the composer's feature menu ("Image prompt enhancement").
+
+Add the block at the **top of `config.toml`** (above the first `[[endpoints]]`,
+same scoping rule as `task_model`):
+
+```toml
+[image_enhancement]
+model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
+# max_tokens = 400                         # optional cap per rewrite
+# temperature = 0.7                        # optional
+# [image_enhancement.style_instructions]   # optional: override the built-in
+#   "booru-tags" = "..."                   #   wording for a given style
+```
+
+Pick a **capable** model — prompt rewriting benefits from a stronger model than
+auto-titling, so this is a separate slot from `task_model`. Misconfiguration
+(typo'd endpoint, removed endpoint) silently disables enhancement.
+
+### Telling GlyphStream which model wants which style
+
+The enhancer needs to know each image model's preferred format. Two sources,
+checked in order (config wins):
+
+1. **Per-endpoint config override** — keyed by the _upstream_ model id, exactly
+   like `model_context_windows`:
+
+   ```toml
+   [[endpoints]]
+   id = "comfy"
+   # ...
+   [endpoints.model_prompt_styles]
+     "illustrious-xl" = "booru-tags"
+     "flux-2-klein"   = "natural-language"
+   [endpoints.model_prompt_hints]
+     "illustrious-xl" = "prefix with: masterpiece, best quality, amazing quality; never use score_N tags"
+     "z-image-turbo"  = "keep it under ~60 words, front-load the subject"
+   ```
+
+2. **Upstream metadata** — an [openai-api-bridge](https://github.com/xiphux/openai-api-bridge)
+   ComfyUI workflow can declare `prompt_style` / `prompt_hint` in its
+   `meta.json`, and GlyphStream reads them from `/v1/models`. The config override
+   above always wins over this.
+
+Styles are one of `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`
+(loose aliases like `narrative`, `danbooru`, `tags` are accepted). A model with
+**no** style resolved still gets a gentler **clarify-only** pass that expands a
+vague prompt while preserving the format you wrote — it never restyles blindly.
+The optional `prompt_hint` is freeform text appended to the enhancer's
+instructions, for nuance the four styles can't carry.
+
+#### Recommended styles for common models
+
+| Model(s)                      | `prompt_style`     | hint highlights                                                |
+| ----------------------------- | ------------------ | -------------------------------------------------------------- |
+| Flux 2 Klein, Krea 2          | `natural-language` | concrete camera/film terms, not "8k/masterpiece"               |
+| Qwen Image, ERNIE Image Turbo | `natural-language` | explicit layout; ERNIE/Qwen have their own enhancer — see note |
+| Z-Image Turbo                 | `natural-language` | short (~40–70 words), front-load subject                       |
+| Illustrious, WAI              | `booru-tags`       | quality-tag prefix; **no `score_N` tags**                      |
+| Lustify, ChromaHD             | `keyword-soup`     | cinematic/photography phrases, camera + film                   |
+| Anima                         | `hybrid`           | tags→prose; spaces not underscores; `@artist`                  |
+
+> **Double-enhancement caveat:** some upstreams run their _own_ prompt enhancer
+> (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`), both default-
+> on. Stacking GlyphStream's enhancer on top double-expands and dilutes intent —
+> disable the upstream one, or turn GlyphStream enhancement off for those models.
+
 ## Feature blocks
 
 Each optional feature gets its own capability-named block, documented in its
 own guide:
 
-| Block                | Feature                                                                  | Guide                                            |
-| -------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `[search]`           | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                |
-| `[embeddings]`       | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                |
-| `[code_interpreter]` | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)          |
-| `[[mcp_servers]]`    | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                            |
-| `[tools]`            | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search) |
-| `[notifications]`    | web push                                                                 | [Push notifications](notifications.md)           |
+| Block                 | Feature                                                                  | Guide                                                |
+| --------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                    |
+| `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                    |
+| `[image_enhancement]` | LLM prompt rewriting for image models                                    | [above](#image-prompt-enhancement-image_enhancement) |
+| `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)              |
+| `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                                |
+| `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search)     |
+| `[notifications]`     | web push                                                                 | [Push notifications](notifications.md)               |
 
 ## `.env` reference
 

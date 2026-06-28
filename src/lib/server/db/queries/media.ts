@@ -31,6 +31,10 @@ export interface MediaInsertInput {
 	 *  share a value with `promptExcerpt` on legacy rows backfilled by
 	 *  the 0005 migration. Null for uploads (no prompt). */
 	promptFull?: string | null;
+	/** The user's pre-enhancement prompt, when the enhancer rewrote it before
+	 *  generation (`promptFull`/`promptExcerpt` then hold the ENHANCED prompt).
+	 *  Null when no enhancement happened or for uploads. */
+	originalPrompt?: string | null;
 	/**
 	 * Defaults to 'generated' (produced by an upstream model). Use 'uploaded'
 	 * for user-supplied chat attachments — those get `unreferenced_since` set
@@ -67,6 +71,7 @@ export function insertMedia(input: MediaInsertInput): { id: string } {
 			sourceMediaId: input.sourceMediaId ?? null,
 			promptExcerpt: input.promptExcerpt,
 			promptFull: input.promptFull ?? null,
+			originalPrompt: input.originalPrompt ?? null,
 			originalFilename: input.originalFilename ?? null,
 			createdAt: now,
 			refCount: 0,
@@ -152,6 +157,7 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
+			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
 			conversationId: assignedConversationId,
 		})
@@ -225,8 +231,14 @@ export interface MediaListItem {
 	promptExcerpt: string | null;
 	/** Full prompt for "Regenerate with this prompt" / inspect flows.
 	 *  May equal `promptExcerpt` for legacy rows; equals the original
-	 *  untruncated prompt for anything generated post-migration. */
+	 *  untruncated prompt for anything generated post-migration. When the
+	 *  prompt was enhanced, this is the ENHANCED prompt (what generated the
+	 *  image); see `originalPrompt` for the user's text. */
 	promptFull: string | null;
+	/** The user's pre-enhancement prompt, when the image-prompt enhancer
+	 *  rewrote it. Null when no enhancement happened. Lets the UI surface
+	 *  "Enhanced — show original". */
+	originalPrompt: string | null;
 	createdAt: number;
 	/** Conversation this asset is assigned to for gallery stacking — the
 	 *  earliest message that references it. Null for orphan media whose
@@ -378,6 +390,7 @@ export function listMediaForUser(
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
+			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
 			conversationId: assignedConversationId,
 		})
@@ -436,6 +449,7 @@ function ftsRankMedia(
 		source_model: string | null;
 		prompt_excerpt: string | null;
 		prompt_full: string | null;
+		original_prompt: string | null;
 		created_at: number;
 		conversation_id: string | null;
 	}>(sql`
@@ -448,6 +462,7 @@ function ftsRankMedia(
 			media.source_model AS source_model,
 			media.prompt_excerpt AS prompt_excerpt,
 			media.prompt_full AS prompt_full,
+			media.original_prompt AS original_prompt,
 			media.created_at AS created_at,
 			${assignedConversationId} AS conversation_id
 		FROM media_prompt_fts f
@@ -473,6 +488,7 @@ function ftsRankMedia(
 			sourceModel: r.source_model,
 			promptExcerpt: r.prompt_excerpt,
 			promptFull: r.prompt_full,
+			originalPrompt: r.original_prompt,
 			createdAt: r.created_at,
 			conversationId: r.conversation_id,
 			conversationTitle: null,
@@ -494,6 +510,7 @@ function getMediaListItemsByIds(userId: string, ids: string[]): MediaListItem[] 
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
+			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
 			conversationId: assignedConversationId,
 		})
@@ -811,6 +828,7 @@ export function listMediaForConversation(
 			sourceModel: media.sourceModel,
 			promptExcerpt: media.promptExcerpt,
 			promptFull: media.promptFull,
+			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
 			conversationId: assignedConversationId,
 		})

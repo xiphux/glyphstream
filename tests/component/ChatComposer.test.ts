@@ -38,6 +38,8 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		groupKey: 'bridge',
 		supportsTools: false,
 		contextWindow: overrides.contextWindow ?? null,
+		promptStyle: overrides.promptStyle ?? null,
+		promptHint: overrides.promptHint ?? null,
 	};
 }
 

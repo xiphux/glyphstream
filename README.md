@@ -88,6 +88,11 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   upstreams, with job-status progress for long video renders.
 - **Image-to-image follow-ups** auto-attach the last generated image;
   re-rolls are additive, never destructive.
+- **Prompt enhancement** (optional) — before generating, an LLM rewrites your
+  prompt into the format the target model prefers (natural-language narrative,
+  booru tags, keyword soup, hybrid). Per-model, fans out per-branch in a
+  multi-model compare, and the original prompt is kept and shown alongside the
+  result ([configuration](docs/configuration.md#image-prompt-enhancement-image_enhancement)).
 - A **gallery** of everything ever generated: lightbox, bulk operations,
   jump back to the source conversation, or launch a new one from any image.
   Related media (a whole conversation, or a multi-model batch sharing one

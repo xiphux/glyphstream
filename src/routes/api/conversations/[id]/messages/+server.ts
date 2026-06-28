@@ -300,6 +300,17 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// `start` on acquire → `done` with the persisted image, so a busy endpoint
 	// surfaces a "Queued…" state + an honest timer instead of a blocking POST.
 	if (meta.modelKind === 'image') {
+		// Resolve the target model's prompt-style metadata (live, cached) so the
+		// relay can rewrite the prompt into the model's preferred format. Skip the
+		// lookup entirely when the feature is toggled off for this conversation.
+		const enhancementEnabled = !meta.disabledFeatures.includes('image_prompt_enhancement');
+		let promptStyle: string | null = null;
+		let promptHint: string | null = null;
+		if (enhancementEnabled) {
+			const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
+			promptStyle = modelEntry?.promptStyle ?? null;
+			promptHint = modelEntry?.promptHint ?? null;
+		}
 		const stream = startImageRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
@@ -311,6 +322,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			dispatchMediaIds,
 			sourceMediaId,
+			promptStyle,
+			promptHint,
+			enhancementEnabled,
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,

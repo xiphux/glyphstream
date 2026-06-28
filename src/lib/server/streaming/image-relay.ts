@@ -16,9 +16,12 @@ import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoint
 import { logLevel } from '../env';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
+import { getImageEnhancerModel } from '../tasks/image-enhancer-model';
+import { enhancePrompt } from './prompt-enhancer';
+import { normalizeStyle } from './prompt-styles';
 import { startMediaRelay, type MediaRelayParams } from './media-relay';
 import { errorMessage, isAbortError } from './sse-transport';
-import type { StreamErrorEvent } from '$lib/types/api';
+import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
 
 const DEBUG = logLevel() === 'debug';
 
@@ -30,11 +33,50 @@ export interface ImageRelayParams extends MediaRelayParams {
 	dispatchMediaIds: string[];
 	/** Provenance: the (first) input image, for the split grid. Null for t2i. */
 	sourceMediaId: string | null;
+	/** Target model's preferred prompt style (canonical key) or null when
+	 *  unknown — null runs the enhancer's format-preserving clarify-only pass. */
+	promptStyle?: string | null;
+	/** Per-model freeform enhancer hint, or null. */
+	promptHint?: string | null;
+	/** Whether image-prompt enhancement is enabled for this send (the feature
+	 *  category is not in the conversation's disabledFeatures). */
+	enhancementEnabled?: boolean;
 }
 
 export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8Array> {
 	return startMediaRelay(params, async ({ write, abortSignal }) => {
 		try {
+			// Optional prompt enhancement (text-to-image only — an i2i prompt is an
+			// edit instruction, not a scene description, so reformatting it into a
+			// model's style is wrong). Gated on the feature toggle + a configured
+			// enhancer model. Strictly non-fatal: enhancePrompt swallows its own
+			// failures and returns the original, so a down enhancer never blocks
+			// generation. `promptFull` ends up holding what actually generated the
+			// image; `originalPrompt` preserves the user's text only when it changed.
+			let effectivePrompt = params.prompt;
+			let originalPrompt: string | null = null;
+			const isT2I = params.dispatchMediaIds.length === 0;
+			if (isT2I && params.enhancementEnabled) {
+				const enhancerModel = getImageEnhancerModel();
+				if (enhancerModel) {
+					write({
+						type: 'progress',
+						percent: null,
+						status: 'Enhancing prompt…',
+					} satisfies StreamProgressEvent);
+					const { enhanced, changed } = await enhancePrompt({
+						prompt: params.prompt,
+						style: normalizeStyle(params.promptStyle),
+						hint: params.promptHint,
+						model: enhancerModel,
+					});
+					if (changed) {
+						effectivePrompt = enhanced;
+						originalPrompt = params.prompt;
+					}
+				}
+			}
+
 			// I2I when input images are attached, else T2I. The bridge consumes
 			// repeated `image` fields in order for multi-input ComfyUI workflows.
 			let upstream;
@@ -48,7 +90,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 					params.endpoint,
 					{
 						model: params.upstreamModelId,
-						prompt: params.prompt,
+						prompt: effectivePrompt,
 						images,
 						n: 1,
 						response_format: 'url',
@@ -60,7 +102,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 					params.endpoint,
 					{
 						model: params.upstreamModelId,
-						prompt: params.prompt,
+						prompt: effectivePrompt,
 						n: 1,
 						response_format: 'url',
 					},
@@ -75,7 +117,8 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 				userId: params.userId,
 				endpoint: params.endpoint,
 				sourceModel: params.storedModelId,
-				prompt: params.prompt,
+				prompt: effectivePrompt,
+				originalPrompt,
 				urlOrB64: { url: result.url, b64_json: result.b64_json },
 				sourceMediaId: params.sourceMediaId,
 			});

@@ -21,6 +21,8 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		maxConcurrent: Infinity,
 		contextWindow: null,
 		modelContextWindows: {},
+		modelPromptStyles: {},
+		modelPromptHints: {},
 		...overrides,
 	};
 }
@@ -225,6 +227,43 @@ describe('normalizeUpstreamModel', () => {
 			const e = ep({ modelContextWindows: { 'Gemma4-26B': 32768 } });
 			expect(normalizeUpstreamModel(e, { id: 'Gemma4-26B' }).contextWindow).toBe(32768);
 			expect(normalizeUpstreamModel(e, { id: 'GLM-4.7-Flash' }).contextWindow).toBeNull();
+		});
+	});
+
+	describe('promptStyle / promptHint resolution', () => {
+		// Order: per-model config override > upstream field > null.
+		it('is null when no layer supplies them', () => {
+			const e = normalizeUpstreamModel(ep(), { id: 'x' });
+			expect(e.promptStyle).toBeNull();
+			expect(e.promptHint).toBeNull();
+		});
+
+		it('reads + normalizes the upstream prompt_style/prompt_hint fields', () => {
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'x',
+				prompt_style: 'danbooru', // loose alias
+				prompt_hint: 'masterpiece, best quality',
+			});
+			expect(e.promptStyle).toBe('booru-tags');
+			expect(e.promptHint).toBe('masterpiece, best quality');
+		});
+
+		it('drops an unknown upstream prompt_style to null', () => {
+			expect(
+				normalizeUpstreamModel(ep(), { id: 'x', prompt_style: 'photoreal' }).promptStyle,
+			).toBeNull();
+		});
+
+		it('a per-model config override wins over the upstream field', () => {
+			const e = normalizeUpstreamModel(
+				ep({
+					modelPromptStyles: { 'illustrious-xl': 'booru-tags' },
+					modelPromptHints: { 'illustrious-xl': 'no score_N tags' },
+				}),
+				{ id: 'illustrious-xl', prompt_style: 'natural-language', prompt_hint: 'be verbose' },
+			);
+			expect(e.promptStyle).toBe('booru-tags');
+			expect(e.promptHint).toBe('no score_N tags');
 		});
 	});
 });

@@ -39,6 +39,8 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		groupKey: overrides.groupKey ?? endpointId,
 		supportsTools: overrides.supportsTools ?? false,
 		contextWindow: overrides.contextWindow ?? null,
+		promptStyle: overrides.promptStyle ?? null,
+		promptHint: overrides.promptHint ?? null,
 	};
 }
 

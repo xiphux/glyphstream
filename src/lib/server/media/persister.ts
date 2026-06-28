@@ -35,7 +35,12 @@ interface PersistImageInput {
 	userId: string;
 	endpoint: LoadedEndpoint;
 	sourceModel: string;
+	/** The prompt that actually generated the image — the ENHANCED prompt when
+	 *  enhancement ran, else the verbatim user prompt. Stored as promptFull. */
 	prompt: string;
+	/** The user's pre-enhancement prompt, when the enhancer rewrote `prompt`.
+	 *  Null when no enhancement happened. */
+	originalPrompt?: string | null;
 	urlOrB64: { url?: string; b64_json?: string };
 	/** Input image this edit was produced from (i2i), for provenance + the
 	 *  split-attachments grid. Null for text-to-image. */
@@ -55,6 +60,7 @@ export async function persistGeneratedImage(input: PersistImageInput): Promise<s
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
 		sourceMediaId: input.sourceMediaId ?? null,
+		originalPrompt: input.originalPrompt ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;

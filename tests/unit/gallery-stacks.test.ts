@@ -22,6 +22,7 @@ function item(
 		sourceModel: null,
 		promptExcerpt: opts.promptFull ?? null,
 		promptFull: opts.promptFull ?? null,
+		originalPrompt: null,
 		createdAt: -((opts.minutesAgo ?? 0) * 60_000),
 		conversationId: opts.conversationId ?? null,
 		conversationTitle: opts.conversationTitle ?? null,
