@@ -209,13 +209,17 @@
 		}
 	}
 
-	async function regenerateWithPrompt(m: MediaListItem) {
-		// promptFull is the primary source; falls back to promptExcerpt
-		// for legacy rows whose source conversation was already gone
-		// when the 0006 recovery migration ran. Skip silently if there
-		// is genuinely no prompt — the button shouldn't render in that
-		// case but defense-in-depth.
-		const prompt = m.promptFull ?? m.promptExcerpt;
+	/** The prompt that generated this image — the ENHANCED prompt when the
+	 *  enhancer rewrote it (promptFull holds the enhanced text), else the
+	 *  verbatim prompt. Falls back to promptExcerpt for legacy rows whose
+	 *  source conversation was gone when the 0006 recovery migration ran. */
+	function enhancedPromptOf(m: MediaListItem): string | null {
+		return m.promptFull ?? m.promptExcerpt;
+	}
+
+	async function regenerateWith(m: MediaListItem, prompt: string | null) {
+		// Skip silently if there is genuinely no prompt — the button shouldn't
+		// render in that case, but defense-in-depth.
 		if (!prompt) return;
 		stashIntent({
 			kind: 'regenerate',
@@ -549,15 +553,39 @@
 			-->
 			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
 				{#if hasPrompt}
-					<button
-						type="button"
-						onclick={() => regenerateWithPrompt(m)}
-						title="Start a new conversation pre-filled with this prompt"
-						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
-					>
-						<RotateCcw size={13} strokeWidth={2.25} />
-						{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
-					</button>
+					{#if m.originalPrompt}
+						<!-- The prompt was enhanced, so offer both: regenerate from the
+						     user's ORIGINAL (re-enhances fresh) or from the EXACT enhanced
+						     prompt that made this image. -->
+						<button
+							type="button"
+							onclick={() => regenerateWith(m, m.originalPrompt)}
+							title="Start a new conversation from your original prompt (it will be enhanced again)"
+							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+						>
+							<RotateCcw size={13} strokeWidth={2.25} />
+							Regenerate (original)
+						</button>
+						<button
+							type="button"
+							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
+							title="Start a new conversation from the exact enhanced prompt that made this image"
+							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+						>
+							<RotateCcw size={13} strokeWidth={2.25} />
+							Regenerate (enhanced)
+						</button>
+					{:else}
+						<button
+							type="button"
+							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
+							title="Start a new conversation pre-filled with this prompt"
+							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+						>
+							<RotateCcw size={13} strokeWidth={2.25} />
+							{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
+						</button>
+					{/if}
 				{/if}
 				{#if canUseAsStarting}
 					<button
