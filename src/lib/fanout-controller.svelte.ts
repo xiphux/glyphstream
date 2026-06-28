@@ -392,6 +392,8 @@ export class FanoutController {
 					markEnqueued();
 					col.status = 'queued';
 					col.queuedAhead = ahead;
+					// Past the (pre-slot) enhancement phase — drop its transient label.
+					col.statusLabel = null;
 				},
 				onStart() {
 					// First event when a slot was free immediately — release the next
@@ -400,6 +402,8 @@ export class FanoutController {
 					col.status = 'streaming';
 					// Generation began (slot acquired) — start the per-column timer.
 					col.startedAt = Date.now();
+					// Past the (pre-slot) enhancement phase — drop its transient label.
+					col.statusLabel = null;
 				},
 				onText(chunk) {
 					col.status = 'streaming';
@@ -410,10 +414,12 @@ export class FanoutController {
 					col.segments = appendReasoning(col.segments, chunk);
 				},
 				onProgress(percent, status) {
-					// Video poll-relay progress (0–100), shown in the column header;
-					// and the transient phase label (e.g. "Enhancing prompt…"), shown
-					// in the column body. A clearing event (both null) reverts to the
-					// normal generating state.
+					// For an enhanced branch the pre-slot "Enhancing prompt…" status is
+					// the first sign of life, so release the next branch's dispatch here
+					// too (idempotent) — otherwise dispatch would serialize behind each
+					// branch's enhancement. Carries video poll progress (0–100) and the
+					// transient phase label; onQueued/onStart clear the label at the gate.
+					markEnqueued();
 					col.status = 'streaming';
 					col.progress = percent;
 					col.statusLabel = status;

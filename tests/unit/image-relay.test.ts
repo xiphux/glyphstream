@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
 	loadMediaBytes: vi.fn(),
 	unlinkMediaFiles: vi.fn(async () => {}),
 	notify: vi.fn(async () => {}),
+	getImageEnhancerModel: vi.fn(),
+	enhancePrompt: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
@@ -46,6 +48,12 @@ vi.mock('$lib/server/tasks/title-task-runner', () => ({
 	startTitleTaskIfFirstExchange: vi.fn(() => Promise.resolve(null)),
 	raceTitle: vi.fn(async (p: Promise<string | null>) => p),
 }));
+vi.mock('$lib/server/tasks/image-enhancer-model', () => ({
+	getImageEnhancerModel: mocks.getImageEnhancerModel,
+}));
+vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
+	enhancePrompt: mocks.enhancePrompt,
+}));
 
 import { createConversation, getConversationDetail } from '$lib/server/db/queries/conversations';
 import { appendMessage, getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
@@ -64,6 +72,10 @@ beforeEach(() => {
 	mocks.unlinkMediaFiles.mockReset().mockResolvedValue(undefined);
 	mocks.notify.mockReset().mockResolvedValue(undefined);
 	mocks.imageGeneration.mockResolvedValue({ data: [{ url: 'http://img/out.png' }] });
+	// Enhancement off by default — resolves to null so non-enhancement tests are
+	// unaffected (the relay's prepare step no-ops without a configured enhancer).
+	mocks.getImageEnhancerModel.mockReset().mockReturnValue(null);
+	mocks.enhancePrompt.mockReset();
 });
 
 afterEach(() => {
@@ -141,6 +153,9 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		userMessage,
 		dispatchMediaIds: over.dispatchMediaIds ?? [],
 		sourceMediaId: over.sourceMediaId ?? null,
+		promptStyle: over.promptStyle,
+		promptHint: over.promptHint,
+		enhancementEnabled: over.enhancementEnabled,
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
@@ -367,5 +382,124 @@ describe('startImageRelay — backpressure + failure', () => {
 		expect(err?.message).toBe('Cancelled');
 		// Cancellation bails quietly — no durable error record (unlike a failure).
 		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
+	});
+});
+
+describe('startImageRelay — prompt enhancement', () => {
+	// The enhancer lives on its OWN endpoint (separate from the image 'bridge'),
+	// so its slot is independent — the parallel case.
+	const enhancerEndpoint = (): LoadedEndpoint => ({ ...endpoint(), id: 'enhancer' });
+	function enableEnhancer(maxConcurrent = Infinity) {
+		mocks.getImageEnhancerModel.mockReturnValue({
+			endpoint: { ...enhancerEndpoint(), maxConcurrent },
+			upstreamId: 'qwen',
+			maxTokens: 200,
+			temperature: 0.7,
+			styleInstructionOverrides: {},
+		});
+	}
+
+	it('enhances in the pre-slot phase: generates with the enhanced prompt + records the original', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		mocks.enhancePrompt.mockResolvedValue({ enhanced: '1cat, fluffy, sleeping', changed: true });
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'booru-tags',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		// Emitted the transient "Enhancing prompt…" status.
+		expect(
+			events.some(
+				(e) => e.type === 'progress' && (e as { status?: string }).status === 'Enhancing prompt…',
+			),
+		).toBe(true);
+		// Generated with the ENHANCED prompt, and recorded the user's original.
+		expect(mocks.imageGeneration.mock.calls[0][1]).toMatchObject({
+			prompt: '1cat, fluffy, sleeping',
+		});
+		expect(mocks.persistGeneratedImage).toHaveBeenCalledWith(
+			expect.objectContaining({ prompt: '1cat, fluffy, sleeping', originalPrompt: 'a cat' }),
+		);
+	});
+
+	it('does NOT hold the image endpoint slot during enhancement', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		// Block enhancement until we release it, to observe ordering against the slot.
+		let releaseEnhance!: () => void;
+		mocks.enhancePrompt.mockImplementation(
+			() =>
+				new Promise((res) => {
+					releaseEnhance = () => res({ enhanced: 'enhanced cat', changed: true });
+				}),
+		);
+		// Occupy the single IMAGE slot ('bridge').
+		const held = await acquireEndpointSlot('bridge', 1, {});
+		const drained = drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'natural-language',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		// Enhancement runs even though the image slot is held → it is NOT gated by it.
+		await vi.waitFor(() => expect(mocks.enhancePrompt).toHaveBeenCalled());
+		expect(mocks.imageGeneration).not.toHaveBeenCalled();
+		// Finish enhancing; generation still blocks on the held image slot.
+		releaseEnhance();
+		await Promise.resolve();
+		expect(mocks.imageGeneration).not.toHaveBeenCalled();
+		// Free the image slot → generation proceeds with the enhanced prompt.
+		held.release();
+		await drained;
+		expect(mocks.imageGeneration.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced cat' });
+	});
+
+	it('serializes when the enhancer shares the image endpoint at max_concurrent=1', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		// Enhancer on the SAME endpoint as the image model ('bridge'), cap 1.
+		mocks.getImageEnhancerModel.mockReturnValue({
+			endpoint: endpoint(1), // id 'bridge', maxConcurrent 1
+			upstreamId: 'qwen',
+			maxTokens: 200,
+			temperature: 0.7,
+			styleInstructionOverrides: {},
+		});
+		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'enhanced cat', changed: true });
+		// Hold the single shared slot; the relay must wait for it before it can
+		// even enhance (enhancement + generation share the one slot → serial).
+		const held = await acquireEndpointSlot('bridge', 1, {});
+		const drained = drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'natural-language',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		// Shared slot is held → enhancement can't even start.
+		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
+		held.release();
+		await drained;
+		expect(mocks.enhancePrompt).toHaveBeenCalled();
+		expect(mocks.imageGeneration.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced cat' });
 	});
 });

@@ -64,6 +64,15 @@ export interface MediaRelayParams {
 	 *  passes true so the N branches don't each notify; the route fires one
 	 *  aggregate "N ready" when the last settles. A regenerate leaves it false. */
 	suppressNotify?: boolean;
+	/** Optional pre-slot step (e.g. image prompt enhancement) that runs BEFORE
+	 *  the endpoint concurrency slot is acquired, so a slow / different-endpoint
+	 *  CPU step doesn't hold the generation slot (and can pipeline with another
+	 *  branch's generation). Gets the SSE writer (to emit a transient status,
+	 *  which a fan-out also uses to release the next branch's dispatch) and the
+	 *  abort signal. A throw is treated as a Stop; a normal return proceeds to
+	 *  slot acquisition. Its own non-abort failures must be swallowed internally
+	 *  (best-effort) — the relay only special-cases abort. */
+	prepare?: (ctx: { write: SseWriter['write']; abortSignal?: AbortSignal }) => Promise<void>;
 	/** Fires when generation actually begins (slot acquired) — the route stamps
 	 *  the in-flight entry so a recovered fan-out can show QUEUED vs timer. */
 	onStarted?: () => void;
@@ -110,6 +119,26 @@ export function startMediaRelay(
 			const { write: safeWrite, close: safeClose } = sseWriter(controller);
 			let slot: EndpointSlot | null = null;
 			try {
+				// Pre-slot prepare phase (e.g. prompt enhancement). Runs OFF this
+				// endpoint's slot so a slow / cross-endpoint CPU step doesn't hold the
+				// generation slot — it manages its own concurrency (and serializes
+				// against generation only when they share an endpoint). A Stop during
+				// it surfaces as a cancellation (no slot held yet); any other failure
+				// is swallowed by the prepare itself and we proceed with what we have.
+				if (params.prepare) {
+					try {
+						await params.prepare({ write: safeWrite, abortSignal: params.abortSignal });
+					} catch (e) {
+						if (isAbortError(e) || params.abortSignal?.aborted) {
+							safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
+							safeClose();
+							return;
+						}
+						// Non-abort: best-effort — log and proceed to generation.
+						console.warn('[media-relay] prepare step failed (continuing):', errorMessage(e));
+					}
+				}
+
 				// Hold a per-endpoint slot across the whole generation so a
 				// single-GPU backend serializes; emit `queued` while waiting.
 				try {

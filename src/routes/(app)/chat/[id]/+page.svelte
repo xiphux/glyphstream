@@ -1251,6 +1251,8 @@
 				// Waiting on a per-endpoint concurrency slot. Show "Queued…"
 				// until the slot is granted and the first real event lands.
 				inFlightQueued = { ahead };
+				// Past the (pre-slot) enhancement phase — drop its transient status.
+				inFlightStatus = null;
 			},
 			onMcpUnavailable(servers) {
 				// A conversation-enabled per-user MCP server is down; its tools
@@ -1259,6 +1261,8 @@
 			},
 			async onStart(userMessage) {
 				inFlightQueued = null;
+				// Past the (pre-slot) enhancement phase — drop its transient status.
+				inFlightStatus = null;
 				// Send / edit: replace the optimistic placeholder with
 				// the canonical persisted user message. Retry +
 				// resume: no optimistic id (resume's start event
