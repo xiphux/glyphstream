@@ -55,21 +55,24 @@ export interface CompareSelection {
  *  each model's display name + kind via `resolve` (skips ones that no longer
  *  resolve — e.g. an endpoint removed from config since selection). */
 /**
- * The model kind the per-conversation feature toggles should reflect. A compare
- * SET fans out to several models at once and doesn't update the single picked
- * model, so the toggles can't key off one kind: image-prompt enhancement is
- * relevant if ANY model in the active cart is an image model (it enhances each
- * image branch), so surface 'image' then. Falls back to `singleKind` when no
- * compare set is active (or the cart is empty). Null `singleKind` (unknown
- * kind) passes through, so the menu's "unknown → show everything" default holds.
+ * The model kind that's actually "active" for every kind-dependent piece of
+ * composer UI — the placeholder, skill autocomplete, attachment/split
+ * eligibility, and the feature toggles. The composer has two selection sources
+ * (a single picked model and a multi-model compare cart) and they must not drift
+ * the UI apart, so this is the one place that reconciles them: when a compare
+ * SET is active it's the cart's kind, otherwise the single picked kind.
+ *
+ * Compare carts are kind-homogeneous — ModelPicker locks the cart to its first
+ * model's kind ("you can't compare a chat reply with an image") — so the first
+ * cart entry represents the whole cart. A null single kind (unknown) passes
+ * through unchanged.
  */
-export function resolveFeatureToggleKind(
+export function resolveActiveModelKind(
 	compareActive: boolean,
-	fanoutKinds: readonly ModelKind[],
+	cartKinds: readonly ModelKind[],
 	singleKind: ModelKind | null,
 ): ModelKind | null {
-	const kinds = compareActive && fanoutKinds.length > 0 ? fanoutKinds : [singleKind];
-	return kinds.includes('image') ? 'image' : (kinds[0] ?? singleKind);
+	return compareActive && cartKinds.length > 0 ? cartKinds[0] : singleKind;
 }
 
 export function expandCompareSelections(

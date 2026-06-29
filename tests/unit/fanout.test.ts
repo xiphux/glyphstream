@@ -10,7 +10,7 @@ import {
 	expandCompareSelections,
 	expandFanoutBranches,
 	isMediaKind,
-	resolveFeatureToggleKind,
+	resolveActiveModelKind,
 	type CompareSelection,
 	type FanoutColumn,
 	type FanoutModel,
@@ -113,29 +113,24 @@ describe('allColumnsSettled', () => {
 	});
 });
 
-describe('resolveFeatureToggleKind', () => {
+describe('resolveActiveModelKind', () => {
 	it('uses the single kind when no compare set is active', () => {
-		expect(resolveFeatureToggleKind(false, [], 'chat')).toBe('chat');
-		expect(resolveFeatureToggleKind(false, [], 'image')).toBe('image');
+		expect(resolveActiveModelKind(false, [], 'chat')).toBe('chat');
+		expect(resolveActiveModelKind(false, [], 'image')).toBe('image');
 		// Compare mode but an empty cart still falls back to the single kind.
-		expect(resolveFeatureToggleKind(true, [], 'chat')).toBe('chat');
+		expect(resolveActiveModelKind(true, [], 'chat')).toBe('chat');
 	});
 
-	it('surfaces image when ANY model in the active cart is an image model', () => {
-		// Text single model + a set of image models → image (the bug: was staying chat).
-		expect(resolveFeatureToggleKind(true, ['image', 'image'], 'chat')).toBe('image');
-		// Mixed set with at least one image still counts.
-		expect(resolveFeatureToggleKind(true, ['chat', 'image'], 'chat')).toBe('image');
+	it('uses the compare cart kind when a set is active (overriding the single kind)', () => {
+		// Text single model + an image set → image (the placeholder/toggle bug).
+		expect(resolveActiveModelKind(true, ['image', 'image'], 'chat')).toBe('image');
+		// Image single model + a text set → chat (the inverse bug).
+		expect(resolveActiveModelKind(true, ['chat', 'chat'], 'image')).toBe('chat');
+		expect(resolveActiveModelKind(true, ['video'], 'image')).toBe('video');
 	});
 
-	it('hides image (non-image kind) when the active cart has no image models', () => {
-		// Image single model + a set of text models → chat (the inverse bug).
-		expect(resolveFeatureToggleKind(true, ['chat', 'chat'], 'image')).toBe('chat');
-		expect(resolveFeatureToggleKind(true, ['video'], 'image')).toBe('video');
-	});
-
-	it('passes a null single kind through (unknown → menu shows everything)', () => {
-		expect(resolveFeatureToggleKind(false, [], null)).toBeNull();
+	it('passes a null single kind through (unknown)', () => {
+		expect(resolveActiveModelKind(false, [], null)).toBeNull();
 	});
 });
 

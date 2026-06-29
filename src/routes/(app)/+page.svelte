@@ -12,7 +12,7 @@
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 	import {
 		expandCompareSelections,
-		resolveFeatureToggleKind,
+		resolveActiveModelKind,
 		type CompareSelection,
 		type FanoutModel,
 	} from '$lib/fanout';
@@ -175,10 +175,12 @@
 		});
 	});
 	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');
-	// Kind the feature toggles reflect — accounts for a compare SET (which doesn't
-	// update the single-model `pickedKind`). See resolveFeatureToggleKind.
-	const toggleModelKind = $derived(
-		resolveFeatureToggleKind(
+	// The ONE kind every kind-dependent control reads, so the single-model picker
+	// and the compare cart can't drift the UI apart (placeholder, skills,
+	// attachments, split, feature toggles). Reflects the compare cart's kind when
+	// a set is active, else the single picked kind. See resolveActiveModelKind.
+	const activeKind = $derived(
+		resolveActiveModelKind(
 			compareMode,
 			fanoutFirstModels.map((m) => m.modelKind),
 			pickedKind,
@@ -188,12 +190,12 @@
 	// `skills` category enabled; the chat page's first send forwards the
 	// activation. Undefined → ComposerCore shows no menu.
 	const skillCommands = $derived(
-		pickedKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
+		activeKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
 	);
 	const composerPlaceholder = $derived(
-		pickedKind === 'image'
+		activeKind === 'image'
 			? 'Describe an image to generate…'
-			: pickedKind === 'video'
+			: activeKind === 'video'
 				? 'Describe a video to generate…'
 				: 'How can I help you today?',
 	);
@@ -210,10 +212,10 @@
 	// then forwards them to the message-send call.
 	const attachments = new AttachmentStore();
 	let coreRef = $state<{ focus: () => void } | null>(null);
-	const allowAttachments = $derived(attachmentsAllowedFor(pickedKind));
+	const allowAttachments = $derived(attachmentsAllowedFor(activeKind));
 	// Split-attachments availability + cross-product count (mirrors ChatComposer).
 	const canSplit = $derived(
-		(pickedKind === 'image' || pickedKind === 'video') && attachments.readyImageCount >= 2,
+		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,
 	);
 	const splitModelCount = $derived(
 		compareMode && fanoutFirstModels.length >= 2 ? fanoutFirstModels.length : 1,
@@ -328,7 +330,7 @@
 		// chat with skills enabled; forwarded on the first send via the pending-
 		// message handoff. Gated so a disabled-skills / non-chat start sends `/foo`
 		// literally.
-		const skillsActive = pickedKind === 'chat' && !disabledFeatures.includes('skills');
+		const skillsActive = activeKind === 'chat' && !disabledFeatures.includes('skills');
 		const { text: cleanText, activatedSkillNames } = skillsActive
 			? stripSkillCommand(text.trim(), data.enabledSkills)
 			: { text: text.trim(), activatedSkillNames: [] as string[] };
@@ -348,7 +350,7 @@
 			if (fanout) {
 				createBody = { modelId: fanout[0].modelId, modelKind: fanout[0].modelKind };
 			} else if (singleCompareModel) {
-				createBody = { modelId: singleCompareModel, modelKind: 'chat' };
+				createBody = { modelId: singleCompareModel, modelKind: fanoutFirstModels[0].modelKind };
 			} else if (modelId.startsWith('custom::')) {
 				createBody = {
 					customModelId: modelId.slice('custom::'.length),
@@ -468,7 +470,7 @@
 				<FeatureTogglesMenu
 					{disabledFeatures}
 					categories={data.featureCategories}
-					modelKind={toggleModelKind}
+					modelKind={activeKind}
 					disabled={busy}
 					onChange={(next) => (disabledFeatures = next)}
 				/>

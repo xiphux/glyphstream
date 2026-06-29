@@ -18,7 +18,7 @@
 	import type { AttachmentStore } from '$lib/attachments.svelte';
 	import {
 		expandCompareSelections,
-		resolveFeatureToggleKind,
+		resolveActiveModelKind,
 		type CompareSelection,
 	} from '$lib/fanout';
 	import type {
@@ -112,15 +112,33 @@
 		coreRef?.focus();
 	}
 
+	// The ONE kind every kind-dependent control reads, so the single `modelKind`
+	// prop and the compare cart can't drift the UI apart (placeholder, skills,
+	// split, feature toggles). Reflects the compare cart's kind when a set is
+	// active, else the conversation's `modelKind`. See resolveActiveModelKind.
+	const fanoutModels = $derived(
+		expandCompareSelections(compareSelections, (id) => {
+			const m = models.find((x) => x.id === id);
+			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
+		}),
+	);
+	const activeKind = $derived(
+		resolveActiveModelKind(
+			compareMode,
+			fanoutModels.map((m) => m.modelKind),
+			modelKind,
+		),
+	);
+
 	const placeholder = $derived(
-		modelKind === 'image' ? 'Describe an image to generate…' : 'Write a message…',
+		activeKind === 'image' ? 'Describe an image to generate…' : 'Write a message…',
 	);
 
 	// `/skill-name` autocomplete is offered only on chat models with the `skills`
 	// category enabled for this conversation. Undefined → ComposerCore shows no
 	// menu. The server re-validates regardless (model tool support, enabled set).
 	const skillCommands = $derived(
-		modelKind === 'chat' && !disabledFeatures.includes('skills') ? enabledSkills : undefined,
+		activeKind === 'chat' && !disabledFeatures.includes('skills') ? enabledSkills : undefined,
 	);
 
 	// The effective message after a leading `/skill-name` is stripped (when the
@@ -144,27 +162,11 @@
 	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
 	const fanoutActive = $derived(compareMode && compareTotal >= 2);
 
-	// Kind the feature toggles reflect — accounts for a compare SET (which doesn't
-	// change the single `modelKind` prop). See resolveFeatureToggleKind.
-	const fanoutModels = $derived(
-		expandCompareSelections(compareSelections, (id) => {
-			const m = models.find((x) => x.id === id);
-			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
-		}),
-	);
-	const toggleModelKind = $derived(
-		resolveFeatureToggleKind(
-			compareMode,
-			fanoutModels.map((m) => m.modelKind),
-			modelKind,
-		),
-	);
-
 	// Split-attachments is offered only for image/video models (which consume an
 	// input image) with 2+ image attachments to fan across. Effective model
 	// count feeds the cross-product total shown on the toggle.
 	const canSplit = $derived(
-		(modelKind === 'image' || modelKind === 'video') && attachments.readyImageCount >= 2,
+		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,
 	);
 	const splitModelCount = $derived(fanoutActive ? compareTotal : 1);
 	// Drop the flag the moment splitting stops being applicable, so a stale
@@ -205,7 +207,7 @@
 			<FeatureTogglesMenu
 				{disabledFeatures}
 				categories={featureCategories}
-				modelKind={toggleModelKind}
+				modelKind={activeKind}
 				disabled={generating}
 				onChange={onFeaturesChange}
 			/>
