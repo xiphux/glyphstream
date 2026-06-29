@@ -250,6 +250,32 @@ docs.
   isolation shipped. Remaining: a per-user storage-quota / usage view; bulk user
   import.
 
+- **Server-driven multi-model fan-out dispatch.** Today the client drives a
+  fan-out by holding one long-lived SSE connection per branch. Fine over HTTP/2
+  (the deployment target — a reverse proxy multiplexes every stream over one
+  connection), but on **HTTP/1.1 the browser's ~6-connections-per-host cap**
+  means only the first ~6 branches dispatch and the rest stall client-side; a
+  mid-run reload then drops the never-dispatched branches (the server never knew
+  about them), and finished images compete with live branch streams for the same
+  connection slots. The pieces are half-built: branch relays already run
+  **decoupled from the client connection** (they keep generating + persisting
+  after a disconnect — the iOS-suspend recovery design), and a
+  **recovery-poll endpoint already rebuilds the grid from server truth**. The
+  fix: have the server kick off all N branch relays itself when the fan-out
+  starts (record the intended branch set in `/prepare`, spawn the relays
+  server-side like the existing decoupled path), and have the client watch via
+  the single recovery-poll channel instead of N SSE streams — making a branch's
+  lifecycle independent of how many connections the client can hold. _Why
+  deferred:_ HTTP/2 (the documented deployment) eliminates the symptom entirely,
+  so this only earns its cost if HTTP/1.1 large-fan-out becomes a real use case
+  rather than a hypothetical; and it's a transport rework with known
+  live-vs-recovery race hazards (the blank-column bug came from exactly that
+  live/poll interplay). Open questions: live-token streaming for **chat**
+  fan-out (media only needs queued/progress/done, which polling covers, but chat
+  wants live tokens — multiplex over one stream vs. keep chat on the per-branch
+  path); poll cadence vs. responsiveness; whether the in-flight registry becomes
+  the single source of truth the grid renders from.
+
 - **Virtualized message list.** Long conversations eventually overwhelm the DOM.
   `@tanstack/svelte-virtual` is the candidate; the hard part is the streaming
   case — the bottom message's height grows mid-stream, so the virtualizer
