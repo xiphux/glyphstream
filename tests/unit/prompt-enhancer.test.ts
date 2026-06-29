@@ -68,6 +68,25 @@ describe('enhancePrompt', () => {
 		expect(res).toEqual({ enhanced: 'a cat', changed: false });
 	});
 
+	it('re-throws a user Stop (AbortError) instead of falling back to the original', async () => {
+		// A Stop must cancel the whole generation, not silently use the original —
+		// so the abort propagates out (the relay's prepare step turns it into a
+		// Cancelled), unlike a genuine failure which is swallowed above.
+		syncMock.mockRejectedValue(new DOMException('aborted', 'AbortError'));
+		await expect(
+			enhancePrompt({ prompt: 'a cat', style: 'natural-language', model }),
+		).rejects.toThrow();
+	});
+
+	it('re-throws when the abort signal fired, even if the surfaced error is generic', async () => {
+		const ctrl = new AbortController();
+		ctrl.abort();
+		syncMock.mockRejectedValue(new Error('socket hang up'));
+		await expect(
+			enhancePrompt({ prompt: 'a cat', style: 'natural-language', model, signal: ctrl.signal }),
+		).rejects.toThrow();
+	});
+
 	it('is non-fatal: returns the original on an empty response', async () => {
 		reply('   ');
 		const res = await enhancePrompt({ prompt: 'a cat', style: 'natural-language', model });

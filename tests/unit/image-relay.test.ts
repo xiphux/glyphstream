@@ -467,6 +467,36 @@ describe('startImageRelay — prompt enhancement', () => {
 		expect(mocks.imageGeneration.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced cat' });
 	});
 
+	it('cancels the whole generation when enhancement is aborted (Stop mid-enhance)', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		const onComplete = vi.fn();
+		// The user hit Stop during the enhancement call: enhancePrompt propagates
+		// the abort (it no longer swallows it), so the relay's pre-slot prepare
+		// step must cancel — not fall through to generation.
+		mocks.enhancePrompt.mockRejectedValue(new DOMException('aborted', 'AbortError'));
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'natural-language',
+					enhancementEnabled: true,
+					onComplete,
+				}),
+			),
+		);
+		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
+		expect(err?.message).toBe('Cancelled');
+		expect(mocks.imageGeneration).not.toHaveBeenCalled();
+		expect(events.some((e) => e.type === 'done')).toBe(false);
+		// Cancellation bails quietly — no durable sibling — but the slot/in-flight
+		// is still released via onComplete.
+		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
+		expect(onComplete).toHaveBeenCalledOnce();
+	});
+
 	it('serializes when the enhancer shares the image endpoint at max_concurrent=1', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		// Enhancer on the SAME endpoint as the image model ('bridge'), cap 1.

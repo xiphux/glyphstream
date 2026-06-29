@@ -69,9 +69,9 @@ export interface MediaRelayParams {
 	 *  CPU step doesn't hold the generation slot (and can pipeline with another
 	 *  branch's generation). Gets the SSE writer (to emit a transient status,
 	 *  which a fan-out also uses to release the next branch's dispatch) and the
-	 *  abort signal. A throw is treated as a Stop; a normal return proceeds to
-	 *  slot acquisition. Its own non-abort failures must be swallowed internally
-	 *  (best-effort) — the relay only special-cases abort. */
+	 *  abort signal. An ABORT throw is treated as a Stop (the relay emits Cancelled
+	 *  and closes); any OTHER throw is logged and generation proceeds with whatever
+	 *  the prepare left in place. A normal return proceeds to slot acquisition. */
 	prepare?: (ctx: { write: SseWriter['write']; abortSignal?: AbortSignal }) => Promise<void>;
 	/** Fires when generation actually begins (slot acquired) — the route stamps
 	 *  the in-flight entry so a recovered fan-out can show QUEUED vs timer. */

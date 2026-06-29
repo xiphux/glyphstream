@@ -4,9 +4,11 @@
  * prompt into that style (or, when the style is unknown, to clarify-only while
  * preserving the user's format). Returns the rewritten prompt.
  *
- * Strictly non-fatal: any upstream error, timeout, or empty/garbage response
- * returns the ORIGINAL prompt with `changed: false`. Enhancement is an
- * optimization, never a gate — it must never block or fail a generation.
+ * Non-fatal for FAILURES: any upstream error, timeout, or empty/garbage
+ * response returns the ORIGINAL prompt with `changed: false` — enhancement is
+ * an optimization, never a gate. The ONE exception is a user Stop (the abort
+ * signal): that RE-THROWS so the relay's prepare step cancels the whole
+ * generation, rather than quietly proceeding to generate from the original.
  *
  * The auxiliary call mirrors the title task (`title-generator.ts`): a single
  * `chatCompletionSync` against a resolved utility model, prompt wrapped in
@@ -16,6 +18,7 @@
 
 import { logLevel } from '../env';
 import { chatCompletionSync, UpstreamError } from '../endpoints/client';
+import { isAbortError } from './sse-transport';
 import type { ResolvedImageEnhancerModel } from '../tasks/image-enhancer-model';
 import {
 	CLARIFY_ONLY_INSTRUCTION,
@@ -40,7 +43,10 @@ export interface EnhancePromptInput {
 
 export interface EnhancePromptResult {
 	enhanced: string;
-	/** True when the enhancer actually rewrote the prompt (trimmed result differs). */
+	/** True when the enhancer MEANINGFULLY rewrote the prompt. Differences that are
+	 *  only a trailing period or surrounding whitespace don't count (see
+	 *  {@link trivialNormalize}) — a clarify-only pass that just appends a full
+	 *  stop shouldn't surface the enhanced-vs-original split. */
 	changed: boolean;
 }
 
@@ -90,6 +96,12 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		);
 		content = resp.choices?.[0]?.message?.content ?? '';
 	} catch (e) {
+		// A user Stop (the relay's abort signal firing mid-call) must cancel the
+		// WHOLE generation, not silently fall back to the original prompt — so
+		// re-throw it and let the relay's prepare step emit Cancelled + close.
+		// Everything else (timeout, 5xx, network, garbage) is a genuine failure
+		// and stays non-fatal: use the original prompt.
+		if (isAbortError(e) || input.signal?.aborted) throw e;
 		const cause =
 			e instanceof UpstreamError ? e.message : e instanceof Error ? e.message : String(e);
 		if (DEBUG) console.debug(`[prompt-enhancer] call failed, using original: ${cause}`);
