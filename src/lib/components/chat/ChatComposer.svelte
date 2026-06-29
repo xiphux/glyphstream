@@ -185,6 +185,7 @@
 			<FeatureTogglesMenu
 				{disabledFeatures}
 				categories={featureCategories}
+				{modelKind}
 				disabled={generating}
 				onChange={onFeaturesChange}
 			/>

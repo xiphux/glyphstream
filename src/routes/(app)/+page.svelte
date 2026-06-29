@@ -454,6 +454,7 @@
 				<FeatureTogglesMenu
 					{disabledFeatures}
 					categories={data.featureCategories}
+					modelKind={pickedKind}
 					disabled={busy}
 					onChange={(next) => (disabledFeatures = next)}
 				/>

@@ -14,11 +14,16 @@
 	the gate (e.g. fetch_url-ing a search-engine URL directly). Both
 	web-touching tools share the 'web' category so a single switch
 	closes the whole egress path.
+
+	Each row shows just the toggle name to keep the popover short (it grows
+	with built-ins + every connected MCP server); the help text lives in an
+	(i) hover/focus tooltip, and the list scrolls within the viewport rather
+	than clipping off the top.
 -->
 <script lang="ts">
-	import { Popover, Switch } from 'bits-ui';
-	import { Sliders } from '@lucide/svelte';
-	import type { FeatureCategory, FeatureCategoryEntry } from '$lib/types/api';
+	import { Popover, Switch, Tooltip } from 'bits-ui';
+	import { Sliders, Info } from '@lucide/svelte';
+	import type { FeatureCategory, FeatureCategoryEntry, ModelKind } from '$lib/types/api';
 
 	interface Props {
 		disabledFeatures: readonly FeatureCategory[];
@@ -28,11 +33,33 @@
 		 * paint already has the right toggle set.
 		 */
 		categories: readonly FeatureCategoryEntry[];
+		/**
+		 * The active model's kind, used to hide toggles that don't apply to it —
+		 * `image_prompt_enhancement` only runs on image generations, so it's
+		 * pointless on a chat/video model. Null/undefined (unknown) shows
+		 * everything, so a parent that can't supply it doesn't hide anything.
+		 */
+		modelKind?: ModelKind | null;
 		onChange: (next: FeatureCategory[]) => void;
 		disabled?: boolean;
 	}
 
-	let { disabledFeatures, categories, onChange, disabled = false }: Props = $props();
+	let {
+		disabledFeatures,
+		categories,
+		modelKind = null,
+		onChange,
+		disabled = false,
+	}: Props = $props();
+
+	// Drop category toggles that don't apply to the current model. Only hide a
+	// toggle when the model kind is KNOWN and a mismatch — an unknown kind shows
+	// everything (safe default).
+	const visibleCategories = $derived(
+		categories.filter(
+			(c) => c.id !== 'image_prompt_enhancement' || modelKind == null || modelKind === 'image',
+		),
+	);
 
 	function isEnabled(category: FeatureCategory): boolean {
 		return !disabledFeatures.includes(category);
@@ -76,34 +103,62 @@
 			align="start"
 			avoidCollisions
 			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			class="z-50 flex w-[min(320px,calc(100vw-1.5rem))] flex-col gap-2 rounded-lg border border-border surface-glass gs-pop p-3 shadow-lg"
+			onOpenAutoFocus={(e) => e.preventDefault()}
+			class="z-50 flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
 		>
-			<div class="text-xs font-medium uppercase tracking-wide text-fg-muted">This conversation</div>
-			{#each categories as meta (meta.id)}
-				{@const enabled = isEnabled(meta.id)}
-				<label
-					class="flex cursor-pointer items-start gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+			<Tooltip.Provider delayDuration={150} disableHoverableContent>
+				<div
+					class="shrink-0 px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted"
 				>
-					<div class="flex-1">
-						<div class="text-sm font-medium text-fg">
-							{meta.label}
-						</div>
-						<div class="mt-0.5 text-xs text-fg-muted">
-							{meta.description}
-						</div>
-					</div>
-					<Switch.Root
-						checked={enabled}
-						onCheckedChange={(checked) => toggle(meta.id, checked)}
-						aria-label={meta.label}
-						class="relative mt-1 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
-					>
-						<Switch.Thumb
-							class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
-						/>
-					</Switch.Root>
-				</label>
-			{/each}
+					This conversation
+				</div>
+				<!-- Scrolls instead of clipping when the list outgrows the viewport
+				     (many built-ins + connected MCP servers). -->
+				<div class="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pb-2">
+					{#each visibleCategories as meta (meta.id)}
+						{@const enabled = isEnabled(meta.id)}
+						<!-- A <label> so a tap anywhere on the row toggles the switch — a
+						     much bigger touch target than the switch alone (matters on
+						     mobile). The Switch is FIRST in DOM so it's the label's
+						     forwarded control; `order-last ml-auto` puts it back on the
+						     right. The (i) tooltip trigger sits AFTER it in DOM, so a row
+						     tap forwards to the switch, never the info button. -->
+						<label
+							class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+						>
+							<Switch.Root
+								checked={enabled}
+								onCheckedChange={(checked) => toggle(meta.id, checked)}
+								aria-label={meta.label}
+								class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
+							>
+								<Switch.Thumb
+									class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
+								/>
+							</Switch.Root>
+							<span class="text-sm font-medium text-fg">{meta.label}</span>
+							<Tooltip.Root>
+								<Tooltip.Trigger
+									aria-label={`About ${meta.label}`}
+									class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+								>
+									<Info size={13} strokeWidth={2.25} />
+								</Tooltip.Trigger>
+								<Tooltip.Portal>
+									<Tooltip.Content
+										side="top"
+										sideOffset={6}
+										collisionPadding={12}
+										class="z-[60] max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
+									>
+										{meta.description}
+									</Tooltip.Content>
+								</Tooltip.Portal>
+							</Tooltip.Root>
+						</label>
+					{/each}
+				</div>
+			</Tooltip.Provider>
 		</Popover.Content>
 	</Popover.Portal>
 </Popover.Root>

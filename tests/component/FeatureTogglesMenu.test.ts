@@ -47,6 +47,17 @@ const CATEGORIES_WITH_MCP: FeatureCategoryEntry[] = [
 	},
 ];
 
+/** Built-ins including the image-only enhancement toggle. */
+const CATEGORIES_WITH_IMG: FeatureCategoryEntry[] = [
+	...CATEGORIES,
+	{
+		id: 'image_prompt_enhancement',
+		label: 'Image prompt enhancement',
+		description: 'Rewrites your prompt for the target image model.',
+		source: 'builtin',
+	},
+];
+
 describe('FeatureTogglesMenu — trigger button', () => {
 	it('renders with the expected aria-label', () => {
 		render(FeatureTogglesMenu, {
@@ -91,7 +102,9 @@ describe('FeatureTogglesMenu — popover content', () => {
 		await user.click(screen.getByLabelText('Feature toggles'));
 		for (const meta of CATEGORIES) {
 			expect(screen.getByText(meta.label)).toBeInTheDocument();
-			expect(screen.getByText(meta.description)).toBeInTheDocument();
+			// The description now lives in an (i) hover/focus tooltip rather than
+			// inline, so the row carries a labelled tooltip trigger, not the text.
+			expect(screen.getByLabelText(`About ${meta.label}`)).toBeInTheDocument();
 		}
 	});
 
@@ -132,6 +145,46 @@ describe('FeatureTogglesMenu — popover content', () => {
 		await user.click(screen.getByLabelText('Feature toggles'));
 		const sw = screen.getByRole('switch', { name: 'Web access' });
 		expect(sw).toHaveAttribute('data-state', 'unchecked');
+	});
+});
+
+describe('FeatureTogglesMenu — model-kind filtering', () => {
+	it('hides image_prompt_enhancement for a chat model, keeps the rest', async () => {
+		const user = userEvent.setup();
+		render(FeatureTogglesMenu, {
+			props: {
+				disabledFeatures: [],
+				categories: CATEGORIES_WITH_IMG,
+				modelKind: 'chat',
+				onChange: vi.fn(),
+			},
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		expect(screen.queryByText('Image prompt enhancement')).toBeNull();
+		expect(screen.getByText('Web access')).toBeInTheDocument();
+	});
+
+	it('shows image_prompt_enhancement for an image model', async () => {
+		const user = userEvent.setup();
+		render(FeatureTogglesMenu, {
+			props: {
+				disabledFeatures: [],
+				categories: CATEGORIES_WITH_IMG,
+				modelKind: 'image',
+				onChange: vi.fn(),
+			},
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
+	});
+
+	it('shows everything when the model kind is unknown (prop omitted)', async () => {
+		const user = userEvent.setup();
+		render(FeatureTogglesMenu, {
+			props: { disabledFeatures: [], categories: CATEGORIES_WITH_IMG, onChange: vi.fn() },
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
 	});
 });
 
