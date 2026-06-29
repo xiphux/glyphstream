@@ -10,7 +10,12 @@
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
-	import { expandCompareSelections, type CompareSelection, type FanoutModel } from '$lib/fanout';
+	import {
+		expandCompareSelections,
+		resolveFeatureToggleKind,
+		type CompareSelection,
+		type FanoutModel,
+	} from '$lib/fanout';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
 	import {
 		composeGreeting,
@@ -170,6 +175,15 @@
 		});
 	});
 	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');
+	// Kind the feature toggles reflect — accounts for a compare SET (which doesn't
+	// update the single-model `pickedKind`). See resolveFeatureToggleKind.
+	const toggleModelKind = $derived(
+		resolveFeatureToggleKind(
+			compareMode,
+			fanoutFirstModels.map((m) => m.modelKind),
+			pickedKind,
+		),
+	);
 	// `/skill-name` autocomplete is offered only when starting a CHAT with the
 	// `skills` category enabled; the chat page's first send forwards the
 	// activation. Undefined → ComposerCore shows no menu.
@@ -454,7 +468,7 @@
 				<FeatureTogglesMenu
 					{disabledFeatures}
 					categories={data.featureCategories}
-					modelKind={pickedKind}
+					modelKind={toggleModelKind}
 					disabled={busy}
 					onChange={(next) => (disabledFeatures = next)}
 				/>

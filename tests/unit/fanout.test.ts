@@ -10,6 +10,7 @@ import {
 	expandCompareSelections,
 	expandFanoutBranches,
 	isMediaKind,
+	resolveFeatureToggleKind,
 	type CompareSelection,
 	type FanoutColumn,
 	type FanoutModel,
@@ -109,6 +110,32 @@ describe('allColumnsSettled', () => {
 
 	it('is true for an empty set (vacuous)', () => {
 		expect(allColumnsSettled([])).toBe(true);
+	});
+});
+
+describe('resolveFeatureToggleKind', () => {
+	it('uses the single kind when no compare set is active', () => {
+		expect(resolveFeatureToggleKind(false, [], 'chat')).toBe('chat');
+		expect(resolveFeatureToggleKind(false, [], 'image')).toBe('image');
+		// Compare mode but an empty cart still falls back to the single kind.
+		expect(resolveFeatureToggleKind(true, [], 'chat')).toBe('chat');
+	});
+
+	it('surfaces image when ANY model in the active cart is an image model', () => {
+		// Text single model + a set of image models → image (the bug: was staying chat).
+		expect(resolveFeatureToggleKind(true, ['image', 'image'], 'chat')).toBe('image');
+		// Mixed set with at least one image still counts.
+		expect(resolveFeatureToggleKind(true, ['chat', 'image'], 'chat')).toBe('image');
+	});
+
+	it('hides image (non-image kind) when the active cart has no image models', () => {
+		// Image single model + a set of text models → chat (the inverse bug).
+		expect(resolveFeatureToggleKind(true, ['chat', 'chat'], 'image')).toBe('chat');
+		expect(resolveFeatureToggleKind(true, ['video'], 'image')).toBe('video');
+	});
+
+	it('passes a null single kind through (unknown → menu shows everything)', () => {
+		expect(resolveFeatureToggleKind(false, [], null)).toBeNull();
 	});
 });
 

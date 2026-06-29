@@ -54,6 +54,24 @@ export interface CompareSelection {
 /** Expand `{ modelId, count }[]` into one FanoutModel per count, resolving
  *  each model's display name + kind via `resolve` (skips ones that no longer
  *  resolve — e.g. an endpoint removed from config since selection). */
+/**
+ * The model kind the per-conversation feature toggles should reflect. A compare
+ * SET fans out to several models at once and doesn't update the single picked
+ * model, so the toggles can't key off one kind: image-prompt enhancement is
+ * relevant if ANY model in the active cart is an image model (it enhances each
+ * image branch), so surface 'image' then. Falls back to `singleKind` when no
+ * compare set is active (or the cart is empty). Null `singleKind` (unknown
+ * kind) passes through, so the menu's "unknown → show everything" default holds.
+ */
+export function resolveFeatureToggleKind(
+	compareActive: boolean,
+	fanoutKinds: readonly ModelKind[],
+	singleKind: ModelKind | null,
+): ModelKind | null {
+	const kinds = compareActive && fanoutKinds.length > 0 ? fanoutKinds : [singleKind];
+	return kinds.includes('image') ? 'image' : (kinds[0] ?? singleKind);
+}
+
 export function expandCompareSelections(
 	selections: readonly CompareSelection[],
 	resolve: (modelId: string) => { displayName: string; modelKind: ModelKind } | undefined,

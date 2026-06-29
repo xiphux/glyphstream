@@ -16,7 +16,11 @@
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
-	import type { CompareSelection } from '$lib/fanout';
+	import {
+		expandCompareSelections,
+		resolveFeatureToggleKind,
+		type CompareSelection,
+	} from '$lib/fanout';
 	import type {
 		EnterBehavior,
 		FeatureCategory,
@@ -140,6 +144,22 @@
 	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
 	const fanoutActive = $derived(compareMode && compareTotal >= 2);
 
+	// Kind the feature toggles reflect — accounts for a compare SET (which doesn't
+	// change the single `modelKind` prop). See resolveFeatureToggleKind.
+	const fanoutModels = $derived(
+		expandCompareSelections(compareSelections, (id) => {
+			const m = models.find((x) => x.id === id);
+			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
+		}),
+	);
+	const toggleModelKind = $derived(
+		resolveFeatureToggleKind(
+			compareMode,
+			fanoutModels.map((m) => m.modelKind),
+			modelKind,
+		),
+	);
+
 	// Split-attachments is offered only for image/video models (which consume an
 	// input image) with 2+ image attachments to fan across. Effective model
 	// count feeds the cross-product total shown on the toggle.
@@ -185,7 +205,7 @@
 			<FeatureTogglesMenu
 				{disabledFeatures}
 				categories={featureCategories}
-				{modelKind}
+				modelKind={toggleModelKind}
 				disabled={generating}
 				onChange={onFeaturesChange}
 			/>
