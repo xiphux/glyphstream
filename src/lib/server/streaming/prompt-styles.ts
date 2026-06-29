@@ -3,8 +3,8 @@
  *
  * The metadata layer (a model's `prompt_style` from config or the bridge) says
  * *which* of these styles a target image model wants; this module says what
- * each style *means* to the enhancer LLM. The four styles map to the four
- * real prompt-formatting regimes image models use:
+ * each style *means* to the enhancer LLM. The styles map to the real
+ * prompt-formatting regimes image models use:
  *
  *   - natural-language — flowing descriptive prose (Flux 2 Klein, Krea 2,
  *     ERNIE, Qwen-Image, Z-Image Turbo).
@@ -13,11 +13,14 @@
  *     (Lustify; ChromaHD if the operator opts it here).
  *   - hybrid           — booru tags for the subject, prose for the environment
  *     (Anima; ChromaHD also fits).
+ *   - json             — a structured JSON object with a fixed key schema
+ *     (Ideogram 4, trained exclusively on JSON captions). The exact schema is
+ *     model-specific, so it rides on the per-model hint (see below).
  *
- * Per-model nuance the four templates can't carry (Illustrious vs WAI quality
- * prefix, Z-Image brevity, Anima's `@artist`/spaces) rides on the freeform
- * per-model `prompt_hint`, appended after the style template. See
- * `prompt-enhancer.ts` for the composition.
+ * Per-model nuance the templates can't carry (Illustrious vs WAI quality
+ * prefix, Z-Image brevity, Anima's `@artist`/spaces, the exact JSON field
+ * schema) rides on the freeform per-model `prompt_hint`, appended after the
+ * style template. See `prompt-enhancer.ts` for the composition.
  *
  * Server-only (it lives under `$lib/server`, and the instruction templates are
  * enhancer internals). The taxonomy itself — `PROMPT_STYLES` / `PromptStyle` /
@@ -26,7 +29,13 @@
  * here rather than importing this module from the browser bundle.
  */
 
-export const PROMPT_STYLES = ['natural-language', 'booru-tags', 'keyword-soup', 'hybrid'] as const;
+export const PROMPT_STYLES = [
+	'natural-language',
+	'booru-tags',
+	'keyword-soup',
+	'hybrid',
+	'json',
+] as const;
 
 export type PromptStyle = (typeof PROMPT_STYLES)[number];
 
@@ -76,6 +85,11 @@ export function normalizeStyle(raw: unknown): PromptStyle | null {
 		case 'hybrid-tags':
 		case 'tags-and-prose':
 			return 'hybrid';
+		case 'structured':
+		case 'structured-json':
+		case 'json-prompt':
+		case 'ideogram':
+			return 'json';
 		default:
 			return null;
 	}
@@ -115,6 +129,9 @@ Write short, comma-separated descriptive PHRASES — not strict single-word anim
 
 	hybrid: `Target style: HYBRID (TAGS + NATURAL LANGUAGE).
 Lead with comma-separated booru-style tags for the subject/character (e.g. 1girl, blue hair, detailed armor), then switch into one or more natural-language sentences describing the environment and atmosphere. Tags carry the character; prose carries the scene.`,
+
+	json: `Target style: STRUCTURED JSON.
+Output a single valid JSON object describing the image — and NOTHING else: no prose around it, no markdown code fences, no commentary. Follow the exact field schema given in the model-specific guidance below when one is provided. If no schema is given, use these top-level fields: "high_level_description" (a one-to-two-sentence summary of the whole image), "style_description" (medium, lighting, mood, and color palette), and "compositional_deconstruction" (an array describing each element — the background first, then foreground subjects; order matters). Keep the keys and structure exactly as specified and put the descriptive detail in the values.`,
 };
 
 /**

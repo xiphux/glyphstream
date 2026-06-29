@@ -260,10 +260,13 @@ export function loadTaskModel(path = configPath()): string | null {
 	return raw;
 }
 
-/** Default token cap for one enhancement call — generous enough for a long
- *  booru tag list or a detailed paragraph, bounded so a chatty enhancer can't
- *  run away. */
-export const DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS = 400;
+/** Default token cap for one enhancement call. Sized to fit a *structured JSON*
+ *  prompt (Ideogram-style: a description + a per-element compositional array +
+ *  a color palette), which is far longer than a booru tag list or a paragraph —
+ *  the shorter styles stop well before this, so the higher cap costs them
+ *  nothing (it's a ceiling, not a target). Still bounded so a runaway enhancer
+ *  can't generate endlessly; the per-request timeout backstops it too. */
+export const DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS = 1000;
 /** Default sampling temperature for the enhancer — some creative latitude for
  *  expanding a vague prompt, but not so high it drifts off the subject. */
 export const DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE = 0.7;

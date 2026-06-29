@@ -90,7 +90,7 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   re-rolls are additive, never destructive.
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers (natural-language narrative,
-  booru tags, keyword soup, hybrid). Per-model, fans out per-branch in a
+  booru tags, keyword soup, hybrid, or structured JSON). Per-model, fans out per-branch in a
   multi-model compare, and the original prompt is kept and shown alongside the
   result ([configuration](docs/configuration.md#image-prompt-enhancement-image_enhancement)).
 - A **gallery** of everything ever generated: lightbox, bulk operations,

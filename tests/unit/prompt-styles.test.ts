@@ -24,6 +24,10 @@ describe('normalizeStyle', () => {
 		expect(normalizeStyle('keywords')).toBe('keyword-soup');
 		expect(normalizeStyle('soup')).toBe('keyword-soup');
 		expect(normalizeStyle('mixed')).toBe('hybrid');
+		expect(normalizeStyle('json')).toBe('json');
+		expect(normalizeStyle('structured')).toBe('json');
+		expect(normalizeStyle('structured-json')).toBe('json');
+		expect(normalizeStyle('ideogram')).toBe('json');
 	});
 
 	it('is tolerant of case and separator noise', () => {
@@ -64,5 +68,11 @@ describe('STYLE_INSTRUCTIONS', () => {
 
 	it('clarify-only template tells the model to preserve the format', () => {
 		expect(CLARIFY_ONLY_INSTRUCTION.toLowerCase()).toContain('keep');
+	});
+
+	it('json template asks for a JSON object and defers the schema to the hint', () => {
+		const t = STYLE_INSTRUCTIONS['json'].toLowerCase();
+		expect(t).toContain('json');
+		expect(t).toContain('schema'); // points at the per-model hint for exact fields
 	});
 });

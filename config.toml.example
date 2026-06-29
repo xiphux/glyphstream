@@ -55,7 +55,7 @@
 # (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
 # [image_enhancement]
 # model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
-# max_tokens = 400
+# max_tokens = 1000                          # cap per rewrite (default fits a JSON prompt)
 # temperature = 0.7
 # [image_enhancement.style_instructions]    # optional: override built-in wording
 #   "booru-tags" = "Write strictly comma-separated Danbooru tags ..."
@@ -157,12 +157,14 @@
 # Optional: per-model prompt-style + hint for image-prompt enhancement (see the
 # top-level [image_enhancement] block above). Keyed by the upstream model id,
 # like model_context_windows. `prompt_style` is one of natural-language |
-# booru-tags | keyword-soup | hybrid; `prompt_hint` is freeform per-model nuance
-# appended to the enhancer instructions. These win over any prompt_style/
+# booru-tags | keyword-soup | hybrid | json; `prompt_hint` is freeform per-model
+# nuance appended to the enhancer instructions (and for `json`, where the exact
+# field schema goes — e.g. Ideogram 4). These win over any prompt_style/
 # prompt_hint the bridge advertises in /v1/models. Sub-table form shown.
 # [endpoints.model_prompt_styles]
 #   "illustrious-xl" = "booru-tags"
 #   "flux-2-klein"   = "natural-language"
+#   "ideogram-4"     = "json"
 # [endpoints.model_prompt_hints]
 #   "illustrious-xl" = "prefix: masterpiece, best quality, amazing quality; no score_N tags"
 #   "z-image-turbo"  = "keep under ~60 words, front-load the subject"

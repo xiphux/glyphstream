@@ -267,12 +267,14 @@ checked in order (config wins):
    `meta.json`, and GlyphStream reads them from `/v1/models`. The config override
    above always wins over this.
 
-Styles are one of `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`
-(loose aliases like `narrative`, `danbooru`, `tags` are accepted). A model with
-**no** style resolved still gets a gentler **clarify-only** pass that expands a
-vague prompt while preserving the format you wrote — it never restyles blindly.
-The optional `prompt_hint` is freeform text appended to the enhancer's
-instructions, for nuance the four styles can't carry.
+Styles are one of `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`,
+`json` (loose aliases like `narrative`, `danbooru`, `tags`, `structured` are
+accepted). A model with **no** style resolved still gets a gentler
+**clarify-only** pass that expands a vague prompt while preserving the format you
+wrote — it never restyles blindly. The optional `prompt_hint` is freeform text
+appended to the enhancer's instructions, for nuance the styles can't carry — and
+for `json` it's where the **exact field schema** goes, since the JSON shape is
+model-specific.
 
 #### Recommended styles for common models
 
@@ -284,6 +286,22 @@ instructions, for nuance the four styles can't carry.
 | Illustrious, WAI              | `booru-tags`       | quality-tag prefix; **no `score_N` tags**                      |
 | Lustify, ChromaHD             | `keyword-soup`     | cinematic/photography phrases, camera + film                   |
 | Anima                         | `hybrid`           | tags→prose; spaces not underscores; `@artist`                  |
+| Ideogram 4                    | `json`             | the JSON field schema (see below)                              |
+
+`json` (e.g. **Ideogram 4**, trained exclusively on JSON captions): the style
+emits a JSON object, but the schema is the model's — put it in the hint. For
+Ideogram 4, something like:
+
+```toml
+[endpoints.model_prompt_hints]
+  "ideogram-4" = "JSON fields: high_level_description (1-2 sentences); style_description (medium, lighting, and a colour_palette array of hex colors); compositional_deconstruction (background element first, then each foreground object, with a short description and optional bbox [x,y,w,h]). Output only the JSON."
+```
+
+One gotcha for `json`: make sure the model's workflow actually accepts JSON in
+its prompt field (Ideogram's ComfyUI node does) — the enhancer just produces the
+JSON string; the downstream has to consume it. (The default `max_tokens` is
+sized to fit a structured prompt, so you only need to raise it for unusually
+complex JSON scenes.)
 
 > **Double-enhancement caveat:** some upstreams run their _own_ prompt enhancer
 > (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`), both default-
