@@ -681,7 +681,12 @@
 	// Human label for a stack: the conversation title, or the batch's prompt.
 	function groupLabel(g: GalleryGroup): string {
 		if (g.kind === 'conversation') return g.title ?? 'Untitled chat';
-		return g.items[0]?.promptExcerpt ?? 'Untitled';
+		// A prompt stack groups by the user's ORIGINAL (pre-enhancement) prompt, so
+		// label it with that — it's the one prompt all members share. The leader's
+		// promptExcerpt is its ENHANCED prompt, which only describes one image.
+		// Falls back to the excerpt for an unenhanced batch (originalPrompt null).
+		const leader = g.items[0];
+		return leader?.originalPrompt ?? leader?.promptExcerpt ?? 'Untitled';
 	}
 
 	// Formatting helpers + Escape handling now live inside MediaLightbox —
