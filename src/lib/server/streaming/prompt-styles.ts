@@ -131,7 +131,7 @@ Write short, comma-separated descriptive PHRASES — not strict single-word anim
 Lead with comma-separated booru-style tags for the subject/character (e.g. 1girl, blue hair, detailed armor), then switch into one or more natural-language sentences describing the environment and atmosphere. Tags carry the character; prose carries the scene.`,
 
 	json: `Target style: STRUCTURED JSON.
-Output a single valid JSON object describing the image — and NOTHING else: no prose around it, no markdown code fences, no commentary. Follow the exact field schema given in the model-specific guidance below when one is provided. If no schema is given, use these top-level fields: "high_level_description" (a one-to-two-sentence summary of the whole image), "style_description" (medium, lighting, mood, and color palette), and "compositional_deconstruction" (an array describing each element — the background first, then foreground subjects; order matters). Keep the keys and structure exactly as specified and put the descriptive detail in the values.`,
+Output a single valid JSON object describing the image — and NOTHING else: no prose around it, no markdown code fences, no commentary. Follow the exact field schema given in the model-specific guidance below when one is provided, keeping its keys and structure precisely and putting the descriptive detail in the values. If no schema is given, default to: "high_level_description" (a one-to-two-sentence summary of the whole image), "style_description" (an object: medium, lighting, mood, and a color_palette array of hex colors), and "compositional_deconstruction" (an object with a "background" string and an "elements" array, each element carrying a type, a description, and an optional bounding box).`,
 };
 
 /**

@@ -294,7 +294,7 @@ Ideogram 4, something like:
 
 ```toml
 [endpoints.model_prompt_hints]
-  "ideogram-4" = "JSON fields: high_level_description (1-2 sentences); style_description (medium, lighting, and a colour_palette array of hex colors); compositional_deconstruction (background element first, then each foreground object, with a short description and optional bbox [x,y,w,h]). Output only the JSON."
+  "ideogram-4" = "Use Ideogram 4's exact JSON schema. Top-level keys: high_level_description (a 1-2 sentence summary string); style_description (an object with aesthetics, lighting, medium, photo, and color_palette = an array of up to 16 uppercase #RRGGBB hex strings); compositional_deconstruction (an object with background = a string describing the environment, and elements = an array of element objects). Each element object: type ('obj' or 'text'), desc (description), optional bbox, and optional per-element color_palette (up to 5 hex). For a text element add a text field = the literal string to render. bbox is [y_min, x_min, y_max, x_max] in 0-1000 normalized coordinates, origin top-left. Output only the JSON object."
 ```
 
 One gotcha for `json`: make sure the model's workflow actually accepts JSON in
