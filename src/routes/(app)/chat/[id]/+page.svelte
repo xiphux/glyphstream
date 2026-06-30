@@ -430,13 +430,23 @@
 	let compactionStreaming = $state(false);
 	let compactionStreamText = $state('');
 
+	// Outcome of a compaction attempt, so the auto path can tell "freed up space /
+	// nothing to free" (proceed) from "the summarization failed" (ask the user
+	// before sending the full context). `error` carries the upstream message.
+	type CompactionOutcome =
+		| { status: 'compacted' }
+		| { status: 'noop' }
+		| { status: 'error'; error: string };
+
 	// `silent` (the auto path) suppresses ALL user-facing feedback — error toasts
 	// AND the success toast/scroll below. The user never asked for an auto
 	// compaction and we immediately proceed to the message they actually sent, so
 	// yanking the view up to the new summary would be disorienting; a manual
 	// click, by contrast, gets confirmation + a scroll to where the summary landed.
-	async function compactConversation(opts: { silent?: boolean } = {}) {
-		if (compacting || busy || fanout.comparing) return;
+	// The auto path handles failure itself (a confirm dialog in maybeAutoCompact)
+	// off the returned outcome instead.
+	async function compactConversation(opts: { silent?: boolean } = {}): Promise<CompactionOutcome> {
+		if (compacting || busy || fanout.comparing) return { status: 'noop' };
 		compacting = true;
 		compactionStreaming = false;
 		compactionStreamText = '';
@@ -448,14 +458,13 @@
 				headers: { Accept: 'text/event-stream' },
 			});
 			if (!res.ok || !res.body) {
-				if (!opts.silent) {
-					toast.error(
-						res.status === 409
-							? 'Not enough conversation history to compact yet.'
-							: "Couldn't compact this conversation.",
-					);
+				// 409 = nothing worth compacting yet — not a failure on the auto path.
+				if (res.status === 409) {
+					if (!opts.silent) toast.error('Not enough conversation history to compact yet.');
+					return { status: 'noop' };
 				}
-				return;
+				if (!opts.silent) toast.error("Couldn't compact this conversation.");
+				return { status: 'error', error: "Couldn't reach the model to compact." };
 			}
 			await consumeChatStream(res.body, {
 				onCompactionStart: () => {
@@ -472,8 +481,11 @@
 					errored = msg;
 				},
 			});
-			if (errored && !opts.silent) toast.error(errored);
-			else if (doneSummaryId && !opts.silent) {
+			if (errored) {
+				if (!opts.silent) toast.error(errored);
+				return { status: 'error', error: errored };
+			}
+			if (doneSummaryId && !opts.silent) {
 				// Confirm the (manual) action: it succeeded even though the token
 				// number barely moves and the divider lands up-thread. Scroll to +
 				// briefly highlight the new summary so the result is visible.
@@ -488,8 +500,10 @@
 					}, 1500);
 				}
 			}
+			return doneSummaryId ? { status: 'compacted' } : { status: 'noop' };
 		} catch {
 			if (!opts.silent) toast.error("Couldn't compact this conversation.");
+			return { status: 'error', error: "Couldn't compact this conversation." };
 		} finally {
 			compacting = false;
 			compactionStreaming = false;
@@ -500,12 +514,16 @@
 	// Just-in-time auto-compaction, run on the client right before a plain send:
 	// if the conversation has crossed the user's threshold of the model's window,
 	// compact first (streaming the summary for live feedback) so the next message
-	// continues with reclaimed space. Reuses compactConversation, so a failure is
-	// surfaced + non-fatal — we proceed with the send regardless rather than
-	// blocking the user. Triggering here (vs. server-side mid-send) is what lets
-	// the summary stream instead of the send hanging on a spinner.
-	async function maybeAutoCompact() {
-		if (!data.prefs?.autoCompactionEnabled || compacting || busy || fanout.comparing) return;
+	// continues with reclaimed space. Triggering here (vs. server-side mid-send) is
+	// what lets the summary stream instead of the send hanging on a spinner.
+	//
+	// Returns whether the caller should go ahead with the send. A success or a
+	// no-op (nothing worth compacting) → true. A *failure*, though, isn't silently
+	// swallowed: sending the full un-compacted context can push the conversation
+	// past the window, so we ask the user whether to send anyway or hold off and
+	// deal with it (e.g. retry, or compact manually) — false means they backed out.
+	async function maybeAutoCompact(): Promise<boolean> {
+		if (!data.prefs?.autoCompactionEnabled || compacting || busy || fanout.comparing) return true;
 		if (
 			!shouldAutoCompact({
 				branch: messages,
@@ -514,9 +532,17 @@
 				threshold: data.prefs.autoCompactionThreshold ?? 80,
 			})
 		) {
-			return;
+			return true;
 		}
-		await compactConversation({ silent: true });
+		const result = await compactConversation({ silent: true });
+		if (result.status !== 'error') return true;
+		return confirmDialog.ask({
+			title: 'Context could not be compacted',
+			message:
+				`Automatic compaction failed: ${result.error} Send your message anyway with the ` +
+				'full conversation? That may exceed the model’s context limit.',
+			confirmLabel: 'Send anyway',
+		});
 	}
 
 	// Per-user-message "tokens we sent up to and including this turn":
@@ -1634,6 +1660,28 @@
 		// Editing: send the new message as a sibling under the same parent
 		// as the original. The original stays in the DB as an alt branch.
 		const editParent = editingParentId;
+		// Fan-out (multi-model and/or split-attachments) takes precedence over a
+		// single send (and over an in-progress edit — comparing is a fresh turn).
+		// Branches = the picked models (or the current single model) crossed with
+		// the split images; 2+ branches fans out, exactly one collapses to a
+		// normal send with that model.
+		const baseModels: FanoutModel[] =
+			fanoutModels.length > 0
+				? fanoutModels
+				: [{ modelId, modelKind: modelKind ?? 'chat', displayName: modelDisplayName(modelId) }];
+		const branches = expandFanoutBranches(baseModels, splitImageIds);
+		const willFanOut = branches.length >= 2;
+
+		// Plain continuation sends only: an edit resend (editParent) parents off an
+		// earlier message, so compacting at the leaf would orphan onto the wrong
+		// branch; fan-out is a fresh comparison turn. Run BEFORE the composer is
+		// cleared so that if compaction fails and the user backs out, their typed
+		// message + attachments are still intact rather than discarded.
+		if (!editParent && !willFanOut) {
+			const proceed = await maybeAutoCompact();
+			if (!proceed) return;
+		}
+
 		composerText = '';
 		// The message is committed — drop the saved draft so it isn't restored
 		// after a reload. cancel() drops the pending write; clearDraft() removes
@@ -1645,17 +1693,7 @@
 		attachments.clear();
 		editingMessageId = null;
 		editingParentId = null;
-		// Fan-out (multi-model and/or split-attachments) takes precedence over a
-		// single send (and over an in-progress edit — comparing is a fresh turn).
-		// Branches = the picked models (or the current single model) crossed with
-		// the split images; 2+ branches fans out, exactly one collapses to a
-		// normal send with that model.
-		const baseModels: FanoutModel[] =
-			fanoutModels.length > 0
-				? fanoutModels
-				: [{ modelId, modelKind: modelKind ?? 'chat', displayName: modelDisplayName(modelId) }];
-		const branches = expandFanoutBranches(baseModels, splitImageIds);
-		if (branches.length >= 2) {
+		if (willFanOut) {
 			resetCompare();
 			splitAttachments = false;
 			await fanout.send(text, attachedMediaIds, branches);
@@ -1668,10 +1706,6 @@
 			resetCompare();
 		}
 		splitAttachments = false;
-		// Plain continuation sends only: an edit resend (editParent) parents off an
-		// earlier message, so compacting at the leaf would orphan onto the wrong
-		// branch. Fan-out already returned above.
-		if (!editParent) await maybeAutoCompact();
 		await sendStreaming(text, attachedMediaIds, {
 			...(editParent ? { parentMessageId: editParent } : {}),
 			...(activatedSkillNames.length ? { activatedSkillNames } : {}),

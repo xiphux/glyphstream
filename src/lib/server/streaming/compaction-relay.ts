@@ -62,6 +62,12 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 				const norm = createNormalizer(plan.providerQuirk);
 				let textBuf = '';
 				let aborted = false;
+				// Last finish_reason seen. `length` with no text is the telltale of a
+				// reasoning model that spent its whole `max_tokens` budget on hidden
+				// reasoning (dropped below) before emitting any summary — the most
+				// common cause of an "empty summary", and intermittent because the
+				// amount of reasoning varies run to run.
+				let finishReason: string | null = null;
 				const take = (chunk: string) => {
 					if (!chunk) return;
 					textBuf += chunk;
@@ -74,9 +80,12 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 						// Only the summary text matters; reasoning deltas (if the
 						// summarizer is a thinking model) are dropped.
 						for (const d of result.deltas) if (d.type === 'text') take(d.text);
+						if (result.finishReason) finishReason = result.finishReason;
 						if (result.done) break;
 					}
-					for (const d of norm.flush().deltas) if (d.type === 'text') take(d.text);
+					const flushed = norm.flush();
+					for (const d of flushed.deltas) if (d.type === 'text') take(d.text);
+					if (flushed.finishReason) finishReason = flushed.finishReason;
 				} catch (e) {
 					if (isAbortError(e) || abortSignal?.aborted) aborted = true;
 					else {
@@ -96,9 +105,17 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 					return;
 				}
 				if (!summaryText) {
+					// `length` → the model ran out of its output budget before writing
+					// any summary (typically a thinking model whose reasoning ate the
+					// whole allowance, or a near-full window leaving no room). Surface
+					// that distinctly from a model that simply produced nothing, so the
+					// failure is actionable rather than a bare "empty summary".
 					write({
 						type: 'error',
-						message: 'The model returned an empty summary; nothing was compacted.',
+						message:
+							finishReason === 'length'
+								? 'The model hit its output limit before writing a summary (it likely spent the budget on reasoning). Nothing was compacted — try again.'
+								: 'The model returned an empty summary; nothing was compacted.',
 					});
 					return;
 				}

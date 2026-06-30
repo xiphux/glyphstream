@@ -248,6 +248,31 @@ describe('streamCompaction', () => {
 		expect(branch[branch.length - 1].id).toBe(leaf.id);
 	});
 
+	it('reports an output-limit (length) empty completion distinctly from a bare empty one', async () => {
+		const { conversationId, userMsg, leaf } = seedBranch();
+		const before = walkActiveBranch(conversationId).length;
+		// No text deltas, finishes on `length` — the reasoning-ate-the-budget case.
+		mocks.upstreamResponses = [() => sseResponse([finishChunk('length')])];
+
+		const events = await drainEvents(
+			streamCompaction({
+				conversationId,
+				plan: planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
+			}),
+		);
+
+		const err = events.find(
+			(e): e is Extract<StreamEvent, { type: 'error' }> => e.type === 'error',
+		);
+		expect(err?.message).toMatch(/output limit/i);
+		expect(err?.message).not.toMatch(/empty summary/i);
+		expect(events.some((e) => e.type === 'compaction_done')).toBe(false);
+		// Still discarded — nothing persisted, leaf unchanged.
+		const branch = walkActiveBranch(conversationId);
+		expect(branch.length).toBe(before);
+		expect(branch[branch.length - 1].id).toBe(leaf.id);
+	});
+
 	it('discards a cancelled stream — distinct message, persists nothing', async () => {
 		const { conversationId, userMsg, leaf } = seedBranch();
 		const before = walkActiveBranch(conversationId).length;
