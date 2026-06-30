@@ -29,8 +29,12 @@
 		class="flex w-full items-center gap-2 px-3 py-2 text-fg-muted transition hover:bg-surface-raised"
 	>
 		<FoldVertical class="h-3.5 w-3.5 flex-shrink-0" />
-		<span class="font-medium text-fg">Context summary</span>
-		<span class="truncate text-fg-muted">— earlier messages condensed to free up context</span>
+		<span class="font-medium whitespace-nowrap text-fg">Context summary</span>
+		<!-- The descriptor is supplementary; drop it on narrow screens (where it
+		     only truncated anyway) so the label stays on one line. -->
+		<span class="hidden truncate text-fg-muted sm:inline"
+			>— earlier messages condensed to free up context</span
+		>
 		<ChevronRight
 			class="ml-auto h-3.5 w-3.5 flex-shrink-0 transition-transform {open ? 'rotate-90' : ''}"
 		/>
