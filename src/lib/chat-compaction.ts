@@ -216,6 +216,59 @@ export function estimateContentTokens(messages: ChatMessage[]): number {
 export const MIN_COMPACTIBLE_TOKENS = 1000;
 
 /**
+ * Output-token budget for a summarization call when the model's context window
+ * is unknown, and the lower bound when it's known. A faithful brief needs room;
+ * a thinking model needs even more (its reasoning is spent from the same
+ * allowance), so this floor is generous on purpose. Bumped from the original
+ * 1024 after blank summaries traced to reasoning exhausting too small a budget.
+ */
+export const SUMMARY_MIN_TOKENS = 2048;
+
+/**
+ * Upper bound on a summary's output budget, regardless of how much window is
+ * free. A summary rides every later turn, so letting it balloon would eat back
+ * the space compaction just reclaimed — and fidelity gains taper off well
+ * before then. ~4k tokens is a detailed brief.
+ */
+export const SUMMARY_MAX_TOKENS_CAP = 4096;
+
+/**
+ * Hard minimum on a known but near-full window: when not even the floor fits, we
+ * still ask for at least this much (small enough not to overflow badly, large
+ * enough to be a usable summary; the upstream caps it to the real remaining
+ * space). Below the floor only this degenerate, tiny-window case applies.
+ */
+const SUMMARY_TIGHT_FLOOR = 512;
+
+/**
+ * Tokens held back from n_ctx when sizing the call, so the summarization prompt
+ * plus the requested output don't butt right against the window edge (which
+ * makes some upstreams truncate or reject). Also absorbs the small system +
+ * instruction framing not included in the prompt estimate.
+ */
+const SUMMARY_WINDOW_RESERVE = 256;
+
+/**
+ * Size the summarization call's `max_tokens` to the room actually available.
+ *
+ * Compaction *replaces* the older history with the summary, so the window space
+ * that history occupies is ours to spend on a higher-fidelity brief instead of
+ * leaving on the table. Prefer the floor, grow toward the cap as free room
+ * allows, but never request more than fits (strict upstreams reject prompt +
+ * max_tokens over n_ctx; llama.cpp would truncate). `promptTokens` is the
+ * estimated size of the slice being summarized; `contextWindow` is the model's
+ * n_ctx (null when unknown → the floor, optimistically assuming room).
+ */
+export function summaryMaxTokens(promptTokens: number, contextWindow: number | null): number {
+	if (!contextWindow || contextWindow <= 0) return SUMMARY_MIN_TOKENS;
+	const headroom = contextWindow - promptTokens - SUMMARY_WINDOW_RESERVE;
+	// Tight window: take what's left (never below the hard floor). Otherwise grow
+	// with the free room, capped at the fidelity ceiling.
+	if (headroom <= SUMMARY_MIN_TOKENS) return Math.max(headroom, SUMMARY_TIGHT_FLOOR);
+	return Math.min(headroom, SUMMARY_MAX_TOKENS_CAP);
+}
+
+/**
  * Whether compaction would meaningfully shrink the payload: structurally
  * possible AND the history it would fold is large enough to be worth it. This is
  * the gate the manual button and auto-compaction actually use (vs. the purely

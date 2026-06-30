@@ -22,7 +22,14 @@ import { parseModelId } from '../endpoints/model-id';
 import { serializeMessageForUpstream } from '../endpoints/serialize-upstream';
 import { mediaIdToDataUrl } from '../media/data-url';
 import { renderMarkdown } from '../markdown/render';
-import { computeCompactionCut, DEFAULT_KEEP_TURNS, upstreamBranch } from '$lib/chat-compaction';
+import { listAllModels } from '../endpoints/list-models';
+import {
+	computeCompactionCut,
+	DEFAULT_KEEP_TURNS,
+	estimateContentTokens,
+	summaryMaxTokens,
+	upstreamBranch,
+} from '$lib/chat-compaction';
 import type { ChatMessage } from '$lib/types/api';
 
 // Task framing for the summarizer. Kept separate from the conversation's own
@@ -42,10 +49,6 @@ const SUMMARY_SYSTEM =
 const SUMMARY_INSTRUCTION =
 	'Summarize the conversation above into a concise but complete brief, following ' +
 	'the system instructions. Output only the summary.';
-
-// Generous cap: a faithful brief needs room, but this bounds a runaway model
-// and helps the summarization call fit alongside the near-full history.
-const SUMMARY_MAX_TOKENS = 1024;
 
 const SUMMARY_TEMPERATURE = 0.3;
 
@@ -115,6 +118,15 @@ export async function prepareCompaction(
 		{ role: 'user', content: SUMMARY_INSTRUCTION },
 	];
 
+	// Size the output budget to the room this conversation actually has. The
+	// summary replaces the folded history, so the window it occupies is free to
+	// spend on a fuller brief — and a too-small budget is what starves a thinking
+	// summarizer into an empty completion. Resolve n_ctx the same way the client
+	// does (listAllModels is cached); null when the model doesn't report one.
+	const contextWindow =
+		(await listAllModels()).find((m) => m.id === meta.modelId)?.contextWindow ?? null;
+	const promptTokens = estimateContentTokens(view.slice(0, cut.cutIndex));
+
 	// Append at the active leaf so the summary sits physically at the tip;
 	// `splitAtCompaction` repositions it logically via the resume pointer.
 	const leaf = branch[branch.length - 1];
@@ -127,7 +139,7 @@ export async function prepareCompaction(
 		messages,
 		resumeMessageId: cut.resumeMessageId,
 		parentLeafId: leaf.id,
-		maxTokens: SUMMARY_MAX_TOKENS,
+		maxTokens: summaryMaxTokens(promptTokens, contextWindow),
 		temperature: SUMMARY_TEMPERATURE,
 	};
 }

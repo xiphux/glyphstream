@@ -12,6 +12,9 @@ import {
 	MIN_COMPACTIBLE_TOKENS,
 	shouldAutoCompact,
 	splitAtCompaction,
+	SUMMARY_MAX_TOKENS_CAP,
+	SUMMARY_MIN_TOKENS,
+	summaryMaxTokens,
 	upstreamBranch,
 } from '$lib/chat-compaction';
 
@@ -271,6 +274,38 @@ describe('compactionWorthwhile', () => {
 
 	it('uses a 1000-token default floor', () => {
 		expect(MIN_COMPACTIBLE_TOKENS).toBe(1000);
+	});
+});
+
+describe('summaryMaxTokens', () => {
+	it('falls back to the floor when the window is unknown', () => {
+		expect(summaryMaxTokens(5000, null)).toBe(SUMMARY_MIN_TOKENS);
+		expect(summaryMaxTokens(5000, 0)).toBe(SUMMARY_MIN_TOKENS);
+	});
+
+	it('grows toward the cap on a large window with lots of free room', () => {
+		// 40960 ctx, ~32k prompt → ~8.7k headroom, capped at the ceiling.
+		expect(summaryMaxTokens(32000, 40960)).toBe(SUMMARY_MAX_TOKENS_CAP);
+	});
+
+	it('never exceeds what fits on a tighter window', () => {
+		// 8192 ctx, ~6500 prompt → 8192-6500-256 = 1436 of room, below the floor.
+		expect(summaryMaxTokens(6500, 8192)).toBe(1436);
+	});
+
+	it('scales between floor and cap with mid-range headroom', () => {
+		// 16384 ctx, ~13k prompt → 16384-13000-256 = 3128, between floor and cap.
+		expect(summaryMaxTokens(13000, 16384)).toBe(3128);
+	});
+
+	it('takes the hard floor when even the room is gone (degenerate near-full)', () => {
+		// 2048 ctx, ~1900 prompt → negative-ish headroom → clamps up to 512.
+		expect(summaryMaxTokens(1900, 2048)).toBe(512);
+	});
+
+	it('caps a large window with a huge prompt at what remains, not the ceiling', () => {
+		// 40960 ctx, ~39k prompt → only ~1704 left, under the floor.
+		expect(summaryMaxTokens(39000, 40960)).toBe(40960 - 39000 - 256);
 	});
 });
 
