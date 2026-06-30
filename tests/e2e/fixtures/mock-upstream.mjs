@@ -41,6 +41,19 @@ function isSummarizationRequest(body) {
 	return typeof first?.content === 'string' && first.content.includes('compacting a conversation');
 }
 
+/** Sentinel a spec can plant in an early (foldable) turn to force a *blank*
+ *  summary, so the compaction-failure → confirm-dialog path is deterministic.
+ *  When it rides along in a summarization request, the mock streams no text. */
+const EMPTY_SUMMARY_MARKER = 'FORCE_EMPTY_SUMMARY';
+function wantsEmptySummary(body) {
+	return (
+		Array.isArray(body?.messages) &&
+		body.messages.some(
+			(m) => typeof m.content === 'string' && m.content.includes(EMPTY_SUMMARY_MARKER),
+		)
+	);
+}
+
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
  *  bytes. */
@@ -200,8 +213,9 @@ const server = createServer(async (req, res) => {
 			wantsStream = body.stream === true;
 			if (typeof body.model === 'string') model = body.model;
 			// A compaction request gets the deterministic summary; everything
-			// else gets the normal reply.
-			if (isSummarizationRequest(body)) text = SUMMARY_TEXT;
+			// else gets the normal reply. The empty-summary sentinel (planted in a
+			// folded turn) forces a blank summary to exercise the failure path.
+			if (isSummarizationRequest(body)) text = wantsEmptySummary(body) ? '' : SUMMARY_TEXT;
 		} catch {
 			/* default to sync, default model, normal reply */
 		}

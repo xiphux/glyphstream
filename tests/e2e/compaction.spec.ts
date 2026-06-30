@@ -103,4 +103,57 @@ test.describe('auto-compaction', () => {
 		// The reply still arrived after the summary.
 		await expect(page.getByText(MOCK_REPLY).first()).toBeVisible();
 	});
+
+	test('a failed auto-compaction asks before sending — Cancel keeps the draft, Send anyway proceeds', async ({
+		page,
+	}) => {
+		setAutoCompaction(true, 10);
+
+		await page.goto('/');
+		await selectModel(page, 'Mock Chat Tiny');
+
+		// Turn 1 carries the sentinel that forces a blank summary; it's an early
+		// turn, so it lands in the folded slice the summarizer sees.
+		await page
+			.locator('textarea')
+			.first()
+			.fill(big('one') + ' FORCE_EMPTY_SUMMARY');
+		const send = page.getByRole('button', { name: 'Send message' });
+		await expect(send).toBeEnabled();
+		await send.click();
+		await page.waitForURL(/\/chat\/[^/]+$/);
+		await expect(page.getByText(MOCK_REPLY).first()).toBeVisible();
+
+		await sendFollowup(page, big('two'));
+		await sendFollowup(page, big('three'));
+
+		const bubbles = page.locator('[id^="msg-"]');
+		const beforeCount = await bubbles.count();
+
+		// The triggering send auto-compacts first, which fails (blank summary).
+		// sendFollowup can't be used — the message is held behind the dialog, so
+		// the bubble count doesn't advance yet.
+		const draft = big('four');
+		await page.locator('textarea').first().fill(draft);
+		await send.click();
+
+		const dialog = page.getByRole('alertdialog');
+		await expect(dialog.getByRole('button', { name: 'Send anyway' })).toBeVisible();
+
+		// Cancel: nothing was sent, the summary never landed, and — the fix — the
+		// typed message is still in the composer rather than silently eaten.
+		await dialog.getByRole('button', { name: 'Cancel' }).click();
+		await expect(dialog).toBeHidden();
+		await expect(page.locator('textarea').first()).toHaveValue(draft);
+		await expect(bubbles).toHaveCount(beforeCount);
+		await expect(page.getByRole('button', { name: SUMMARY_DIVIDER })).toHaveCount(0);
+
+		// Retry from the preserved draft and choose Send anyway: it goes out with
+		// the full (un-compacted) context — reply arrives, still no summary.
+		await send.click();
+		await expect(dialog.getByRole('button', { name: 'Send anyway' })).toBeVisible();
+		await dialog.getByRole('button', { name: 'Send anyway' }).click();
+		await expect(bubbles).toHaveCount(beforeCount + 2);
+		await expect(page.getByRole('button', { name: SUMMARY_DIVIDER })).toHaveCount(0);
+	});
 });
