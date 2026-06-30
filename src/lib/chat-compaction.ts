@@ -254,10 +254,16 @@ const SUMMARY_WINDOW_RESERVE = 256;
  * Compaction *replaces* the older history with the summary, so the window space
  * that history occupies is ours to spend on a higher-fidelity brief instead of
  * leaving on the table. Prefer the floor, grow toward the cap as free room
- * allows, but never request more than fits (strict upstreams reject prompt +
- * max_tokens over n_ctx; llama.cpp would truncate). `promptTokens` is the
- * estimated size of the slice being summarized; `contextWindow` is the model's
- * n_ctx (null when unknown → the floor, optimistically assuming room).
+ * allows, and avoid requesting more than fits whenever there's meaningful
+ * headroom (strict upstreams reject prompt + max_tokens over n_ctx; llama.cpp
+ * would truncate). The one exception is the degenerate near-full-window case:
+ * once headroom drops below SUMMARY_TIGHT_FLOOR we ask for that floor anyway and
+ * rely on the upstream to cap generation to the real remaining space — so this
+ * is not a hard budget guarantee, and `promptTokens` being approximate
+ * (chars/4, which undercounts tool/JSON-heavy slices) can push the real call
+ * over a small window. `promptTokens` is the estimated size of the slice being
+ * summarized; `contextWindow` is the model's n_ctx (null when unknown → the
+ * floor, optimistically assuming room).
  */
 export function summaryMaxTokens(promptTokens: number, contextWindow: number | null): number {
 	if (!contextWindow || contextWindow <= 0) return SUMMARY_MIN_TOKENS;

@@ -521,22 +521,36 @@
 	// full history serializes again — the summary row stays in the tree.
 	async function undoCompaction() {
 		if (compacting || busy || fanout.comparing) return;
+		let res: Response;
 		try {
-			const res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
+			res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
 				method: 'DELETE',
 			});
-			if (!res.ok) {
-				toast.error(
-					res.status === 409
-						? 'Too late to undo — a message was sent after the summary.'
-						: "Couldn't undo the compaction.",
-				);
-				return;
-			}
+		} catch {
+			toast.error("Couldn't undo the compaction.");
+			return;
+		}
+		if (!res.ok) {
+			// 409 = the summary is no longer the active leaf: either a later turn was
+			// sent, or a prior undo already landed (e.g. its refresh failed and this
+			// is a retry). Either way there's nothing to revert — stay neutral rather
+			// than asserting a message was sent.
+			toast.error(
+				res.status === 409
+					? 'Nothing to undo — the summary is no longer the latest message.'
+					: "Couldn't undo the compaction.",
+			);
+			return;
+		}
+		// The server commits the revert before replying, so by here the undo has
+		// durably succeeded. Report success independently of the view refresh: if
+		// invalidateAll fails (a transient load re-fetch error), the undo still
+		// happened — ask for a reload instead of falsely claiming it failed.
+		try {
 			await invalidateAll();
 			toast.success('Compaction undone');
 		} catch {
-			toast.error("Couldn't undo the compaction.");
+			toast.info('Compaction undone — reload to refresh the view.');
 		}
 	}
 
