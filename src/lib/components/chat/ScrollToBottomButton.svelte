@@ -16,8 +16,14 @@
 	let { visible, onClick }: Props = $props();
 </script>
 
+<!--
+	Extra top clearance on mobile (-top-8) so this doesn't crowd the right-aligned
+	context-budget pill / Compact button that sits at the top of the composer
+	stack on narrow screens; desktop keeps the tighter -top-4 (the pill is far
+	right there, clear of this centered button).
+-->
 <div
-	class="pointer-events-none absolute -top-4 left-1/2 -translate-x-1/2 -translate-y-full transition-opacity {visible
+	class="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 -translate-y-full transition-opacity sm:-top-4 {visible
 		? 'opacity-100'
 		: 'opacity-0'}"
 >
