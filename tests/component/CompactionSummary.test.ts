@@ -5,7 +5,7 @@
  * that stands in for summarized history.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
@@ -52,5 +52,26 @@ describe('CompactionSummary', () => {
 		});
 		await user.click(screen.getByRole('button'));
 		expect(screen.getByText('brief')).toBeInTheDocument();
+	});
+
+	it('shows the Undo control only when canUndo, and only once expanded', async () => {
+		const user = userEvent.setup();
+		const onUndo = vi.fn();
+		render(CompactionSummary, { props: { message: summaryMessage(), canUndo: true, onUndo } });
+
+		// Hidden while collapsed (it lives in the expanded body).
+		expect(screen.queryByRole('button', { name: /undo compaction/i })).toBeNull();
+
+		await user.click(screen.getByRole('button', { name: /Context summary/ }));
+		const undo = screen.getByRole('button', { name: /undo compaction/i });
+		await user.click(undo);
+		expect(onUndo).toHaveBeenCalledOnce();
+	});
+
+	it('omits the Undo control when canUndo is false', async () => {
+		const user = userEvent.setup();
+		render(CompactionSummary, { props: { message: summaryMessage(), canUndo: false } });
+		await user.click(screen.getByRole('button', { name: /Context summary/ }));
+		expect(screen.queryByRole('button', { name: /undo compaction/i })).toBeNull();
 	});
 });

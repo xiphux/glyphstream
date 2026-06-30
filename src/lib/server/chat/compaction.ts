@@ -14,7 +14,7 @@
  */
 
 import { getConversationMeta } from '../db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '../db/queries/messages';
+import { appendMessage, truncateAtMessage, walkActiveBranch } from '../db/queries/messages';
 import { chatCompletionSync, type ChatCompletionRequest } from '../endpoints/client';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
@@ -27,6 +27,7 @@ import {
 	computeCompactionCut,
 	DEFAULT_KEEP_TURNS,
 	estimateContentTokens,
+	isCompactionSummary,
 	summaryMaxTokens,
 	upstreamBranch,
 } from '$lib/chat-compaction';
@@ -197,4 +198,30 @@ export async function runCompaction(
 
 	const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
 	return { status: 'compacted', summaryMessageId: summaryMsg.id };
+}
+
+export type UncompactionResult = { status: 'reverted' } | { status: 'noop' };
+
+/**
+ * Undo the most recent compaction: if the active leaf is a compaction summary
+ * (i.e. nothing has been sent since it was created), move the active leaf back
+ * to the message it was appended under, so the conversation reverts to its
+ * pre-compaction view. Non-destructive — like every other leaf move in this
+ * app, the summary row stays in the tree as an inactive sibling rather than
+ * being deleted, so it serializes out of the upstream payload but isn't lost.
+ *
+ * Gated to the active-leaf case on purpose: once a later turn parents off the
+ * summary, un-compacting would mean re-homing that tail, a different operation
+ * we deliberately don't do here. Returns `noop` when there's nothing to revert.
+ */
+export function undoCompaction(conversationId: string, userId: string): UncompactionResult {
+	const meta = getConversationMeta(conversationId, userId);
+	if (!meta) return { status: 'noop' };
+
+	const branch = walkActiveBranch(conversationId);
+	const leaf = branch[branch.length - 1];
+	if (!leaf || !isCompactionSummary(leaf)) return { status: 'noop' };
+
+	truncateAtMessage(conversationId, leaf.id);
+	return { status: 'reverted' };
 }

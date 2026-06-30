@@ -6,10 +6,20 @@
 	to read what was condensed.
 -->
 <script lang="ts">
-	import { ChevronRight, FoldVertical } from '@lucide/svelte';
+	import { ChevronRight, FoldVertical, Undo2 } from '@lucide/svelte';
 	import type { ChatMessage } from '$lib/types/api';
 
-	let { message }: { message: ChatMessage } = $props();
+	let {
+		message,
+		canUndo = false,
+		onUndo,
+	}: {
+		message: ChatMessage;
+		/** Show the restore control — true only while this summary is still the
+		 *  active leaf (nothing sent after it), so reverting is unambiguous. */
+		canUndo?: boolean;
+		onUndo?: () => void;
+	} = $props();
 
 	let open = $state(false);
 
@@ -46,6 +56,21 @@
 				<div class="gs-prose">{@html message.contentHtml}</div>
 			{:else}
 				<div class="whitespace-pre-wrap">{text}</div>
+			{/if}
+			{#if canUndo}
+				<!-- Restore lives in the expanded body, not the header — keeps the
+					 collapsed row uncluttered (it's tight on mobile) and puts "undo"
+					 right where you've opened up to see what was condensed. -->
+				<div class="mt-2 flex justify-end border-t border-border pt-2">
+					<button
+						type="button"
+						onclick={() => onUndo?.()}
+						class="flex items-center gap-1 rounded px-1.5 py-0.5 text-fg-muted transition hover:bg-surface-raised hover:text-fg"
+					>
+						<Undo2 class="h-3.5 w-3.5" />
+						Undo compaction
+					</button>
+				</div>
 			{/if}
 		</div>
 	{/if}

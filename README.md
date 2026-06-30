@@ -52,7 +52,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   older turns through the conversation's own model and keep going. The real
   messages stay in the thread (the summary is a collapsed divider); only what's
   sent to the model is trimmed. Compact by hand from the bar above the composer,
-  or opt into automatic just-in-time compaction in Preferences.
+  or opt into automatic just-in-time compaction in Preferences. A compaction is
+  reversible — undo it from the toast or the summary divider until you send the
+  next message.
 - In-flight generations **survive disconnects and iOS PWA suspends** — leave
   and come back; the stream recovers.
 - **Draft autosave** — a half-typed prompt is kept per-conversation in local

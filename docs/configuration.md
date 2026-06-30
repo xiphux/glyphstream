@@ -146,8 +146,10 @@ The known window also powers **context compaction**: each user picks, in
 Preferences ▸ Context compaction, whether GlyphStream should automatically
 summarize older history once a thread crosses a percentage of this window
 (default 80%). Without a known window, automatic compaction can't fire — but
-the manual "Compact" button (in the bar above the composer) still works. (This
-is a user preference, not a server config setting.)
+the manual "Compact" button (in the bar above the composer) still works. A
+compaction can be undone (from the success toast, or by expanding the summary
+divider) as long as no message has been sent after it. (This is a user
+preference, not a server config setting.)
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 

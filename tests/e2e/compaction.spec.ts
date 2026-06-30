@@ -69,6 +69,34 @@ test.describe('manual compaction', () => {
 		await divider.click();
 		await expect(page.getByText('MOCK SUMMARY')).toBeVisible();
 	});
+
+	test('a compaction can be undone — from the toast, and from the divider', async ({ page }) => {
+		await sendChatFromHome(page, big('alpha'));
+		await sendFollowup(page, big('beta'));
+		await sendFollowup(page, big('gamma'));
+
+		const compact = page.getByRole('button', { name: COMPACT });
+		const divider = page.getByRole('button', { name: SUMMARY_DIVIDER });
+
+		// Compact, then Undo straight from the success toast (the accidental-tap
+		// path): the divider vanishes and the originals are all back inline.
+		await expect(compact).toBeEnabled();
+		await compact.click();
+		await expect(divider).toBeVisible();
+		await page.getByRole('button', { name: 'Undo', exact: true }).click();
+		await expect(divider).toHaveCount(0);
+		await expect(page.locator('div.whitespace-pre-wrap', { hasText: 'alpha' })).toBeVisible();
+
+		// Re-compact, then Undo from the divider's own control (expand → restore).
+		await expect(compact).toBeEnabled();
+		await compact.click();
+		await expect(divider).toBeVisible();
+		// Dismiss/await past the toast so its Undo can't be the one we click.
+		await page.getByText('Conversation compacted').waitFor({ state: 'hidden' });
+		await divider.click();
+		await page.getByRole('button', { name: /undo compaction/i }).click();
+		await expect(divider).toHaveCount(0);
+	});
 });
 
 test.describe('auto-compaction', () => {

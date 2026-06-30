@@ -488,8 +488,12 @@
 			if (doneSummaryId && !opts.silent) {
 				// Confirm the (manual) action: it succeeded even though the token
 				// number barely moves and the divider lands up-thread. Scroll to +
-				// briefly highlight the new summary so the result is visible.
-				toast.success('Conversation compacted');
+				// briefly highlight the new summary so the result is visible. The
+				// Undo action covers an accidental tap — it's reversible while the
+				// summary is still the leaf.
+				toast.success('Conversation compacted', {
+					action: { label: 'Undo', handler: undoCompaction },
+				});
 				await tick();
 				const el = document.getElementById(`summary-${doneSummaryId}`);
 				if (el) {
@@ -510,6 +514,39 @@
 			compactionStreamText = '';
 		}
 	}
+
+	// Undo the most recent compaction (the "Undo" toast action + the divider's
+	// restore control). Valid only while the summary is still the active leaf;
+	// the server 409s once a later turn has been sent. Reverts the leaf so the
+	// full history serializes again — the summary row stays in the tree.
+	async function undoCompaction() {
+		if (compacting || busy || fanout.comparing) return;
+		try {
+			const res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
+				method: 'DELETE',
+			});
+			if (!res.ok) {
+				toast.error(
+					res.status === 409
+						? 'Too late to undo — a message was sent after the summary.'
+						: "Couldn't undo the compaction.",
+				);
+				return;
+			}
+			await invalidateAll();
+			toast.success('Compaction undone');
+		} catch {
+			toast.error("Couldn't undo the compaction.");
+		}
+	}
+
+	// The active-leaf compaction summary, if any — i.e. a summary with nothing
+	// sent after it, so it can still be undone. Drives the divider's restore
+	// control (`canUndo`). Null once a later turn advances the leaf past it.
+	const activeLeafSummaryId = $derived.by(() => {
+		const leaf = messages[messages.length - 1];
+		return leaf && isCompactionSummary(leaf) ? leaf.id : null;
+	});
 
 	// Just-in-time auto-compaction, run on the client right before a plain send:
 	// if the conversation has crossed the user's threshold of the model's window,
@@ -2060,7 +2097,11 @@
 							m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
 						]}
 					>
-						<CompactionSummary message={m} />
+						<CompactionSummary
+							message={m}
+							canUndo={m.id === activeLeafSummaryId && !busy && !compacting}
+							onUndo={undoCompaction}
+						/>
 					</div>
 				{:else}
 					<!--

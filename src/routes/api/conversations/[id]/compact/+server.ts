@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
 import { getConversationMeta, getFanoutParent } from '$lib/server/db/queries/conversations';
-import { prepareCompaction, runCompaction } from '$lib/server/chat/compaction';
+import { prepareCompaction, runCompaction, undoCompaction } from '$lib/server/chat/compaction';
 import { streamCompaction } from '$lib/server/streaming/compaction-relay';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { formatUpstreamError, UpstreamError } from '$lib/server/endpoints/client';
@@ -51,4 +51,21 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		}
 		throw e;
 	}
+};
+
+/**
+ * Undo the most recent compaction — revert the active leaf to its
+ * pre-compaction position. Only valid while the summary is still the active
+ * leaf (nothing sent after it); a 409 otherwise. Drives both the "Undo" toast
+ * action right after a manual compaction and the divider's restore control.
+ */
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+	requireUser(locals);
+	requireFound(getConversationMeta(params.id, locals.user.id), 'Conversation not found');
+
+	const result = undoCompaction(params.id, locals.user.id);
+	if (result.status === 'noop') {
+		throw error(409, 'Nothing to undo — messages were added after the summary.');
+	}
+	return json({ ok: true });
 };
