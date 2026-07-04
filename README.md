@@ -134,7 +134,10 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   once the store grows large the most relevant facts (recently or often recalled,
   or freshly saved) stay inlined in full while the rest collapse to a compact
   topic index, and the model reads those bodies back on demand by id or search
-  (semantic search is added when an embedding model is configured).
+  (semantic search is added when an embedding model is configured). With an
+  optional `[memory_model]` configured, a scheduled background "dreaming" pass
+  periodically tidies the store — merging duplicates, folding superseded facts,
+  and distilling stale notes — with soft-delete reversibility.
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
 

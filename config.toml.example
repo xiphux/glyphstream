@@ -63,6 +63,27 @@
 # [image_enhancement.style_instructions]    # optional: override built-in wording
 #   "booru-tags" = "Write strictly comma-separated Danbooru tags ..."
 
+# ── Optional: [memory_model] ─────────────────────────────────────────
+# The capable model for the background memory-consolidation ("dreaming") pass:
+# it periodically tidies each user's saved memories — merging duplicates, folding
+# superseded facts into a current+previous phrasing, distilling stale notes to
+# their durable residue, and (last resort) pruning. Off when this block is absent.
+# Pick a CAPABLE model (a separate slot from the small `task_model`): merging
+# facts without dropping them is not a job for a weak model. Removals are
+# soft-deleted (recoverable for a retention window), never hard-deleted.
+#
+# Runs on the GPU, so schedule it out of the way: `active_hours` restricts it to a
+# quiet window (24-hour, interpreted in `timezone`; overnight ranges like
+# "22:00-06:00" are fine), and it also queues behind live chats on the endpoint.
+# See docs/configuration.md#memory-consolidation-memory_model.
+# (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
+# [memory_model]
+# model = "dirac::qwen3-32b"          # endpoint_id::upstream_model_id
+# max_tokens = 2000                    # cap per consolidation call
+# temperature = 0.2                    # low — careful bookkeeping, not creative writing
+# active_hours = "02:00-06:00"         # optional; omit to run any time
+# timezone = "America/New_York"        # optional; default "UTC"
+
 # Example: an openai-api-bridge instance running on the NAS — gives us
 # ComfyUI image/video, Venice, plus any openai-compat passthrough providers
 # the bridge fronts (e.g. local llama-server) under one endpoint.

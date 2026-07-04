@@ -318,6 +318,49 @@ complex JSON scenes.)
 > on. Stacking GlyphStream's enhancer on top double-expands and dilutes intent —
 > disable the upstream one, or turn GlyphStream enhancement off for those models.
 
+## Memory consolidation (`[memory_model]`)
+
+Saved memories only ever accumulate — `save_memory` appends, nothing reconciles.
+Over time a user's store collects near-duplicates, superseded facts ("at Acme"
+_and_ "at Globex"), and stale notes. The optional `[memory_model]` block enables a
+background **"dreaming"** pass that periodically tidies the store:
+
+- **merges** duplicate/subsuming memories into one,
+- folds a **superseded** fact into a current+previous phrasing (keeps the
+  history rather than dropping it),
+- **distills** an ephemeral note into its durable residue (a past "planning a
+  trip to Japan" → "has researched Japan travel"), and
+- **prunes** only as a genuine last resort, when nothing durable can be salvaged.
+
+```toml
+# top of config.toml — like [image_enhancement], above every [[endpoints]] block
+[memory_model]
+model = "dirac::qwen3-32b"      # endpoint_id::upstream_model_id
+max_tokens = 2000               # optional; cap per consolidation call
+temperature = 0.2               # optional; low — careful bookkeeping
+active_hours = "02:00-06:00"    # optional; a quiet-hours window (omit to run any time)
+timezone = "America/New_York"   # optional; default "UTC"
+```
+
+**Pick a capable model.** This is a separate slot from the small `task_model` —
+merging facts without dropping one is not a job for a weak model. Unset or a
+typo'd endpoint simply disables the feature (the worker doesn't mount); nothing
+crashes at boot.
+
+**Safety.** Removals are **soft-deleted**, not hard-deleted: a merged or pruned
+memory is tombstoned (with a link to the survivor) and kept for a retention
+window (~30 days) before it's reaped, so a bad consolidation is recoverable and
+auditable. Explicit user deletes (the model's `forget_memory`, the settings
+**Forget** button) stay permanent. The pass only re-examines a user whose
+memories changed since its last run.
+
+**Scheduling.** Consolidation runs on the GPU. `active_hours` restricts it to a
+quiet window — the only way to keep it clear of _other_ GPU users the app can't
+see (e.g. a co-located image generator). The window is read in `timezone`;
+overnight ranges like `"22:00-06:00"` are handled. Even inside the window, each
+call queues behind live chats on the endpoint (respecting its `max_concurrent`),
+so a late-night chat is never blocked by a dream.
+
 ## Feature blocks
 
 Each optional feature gets its own capability-named block, documented in its
@@ -328,6 +371,7 @@ own guide:
 | `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                    |
 | `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                    |
 | `[image_enhancement]` | LLM prompt rewriting for image models                                    | [above](#image-prompt-enhancement-image_enhancement) |
+| `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)          |
 | `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)              |
 | `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                                |
 | `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search)     |
