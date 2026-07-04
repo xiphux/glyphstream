@@ -19,11 +19,16 @@ import {
 	listMemoriesWithEmbeddings,
 	listMemoryBodies,
 	listMemoryTierRows,
+	listUsersNeedingDreaming,
 	MEMORY_INLINE_BUDGET_CHARS,
 	memoryStats,
+	purgeSoftDeletedMemories,
 	recordMemoryRecall,
+	renameMemoryTopic,
 	setMemoryEmbedding,
 	setMemoryTopic,
+	setUserDreamedAt,
+	softDeleteMemory,
 	updateMemory,
 } from '$lib/server/db/queries/memories';
 import { encodeVector } from '$lib/server/retrieval/vector';
@@ -498,6 +503,115 @@ describe('composeMemorySection', () => {
 		expect(out).toMatch(/forget_memory/);
 		expect(out).toMatch(/update_memory/);
 		expect(out).toMatch(/save_memory/);
+	});
+});
+
+describe('phase-4 soft-delete', () => {
+	it('softDeleteMemory hides the row from every reader', () => {
+		const u = seedUser();
+		const live = createMemory(u.id, 'live fact', 'Live');
+		const dead = createMemory(u.id, 'dead fact', 'Dead');
+		expect(softDeleteMemory(u.id, dead.id, live.id)).toBe(true);
+
+		// listMemoriesForUser / tier rows / bodies / with-embeddings all exclude it.
+		expect(listMemoriesForUser(u.id).map((m) => m.id)).toEqual([live.id]);
+		expect(listMemoryTierRows(u.id).map((m) => m.id)).toEqual([live.id]);
+		expect(listMemoryBodies(u.id, [live.id, dead.id]).map((m) => m.id)).toEqual([live.id]);
+		expect(listMemoriesWithEmbeddings(u.id).map((m) => m.id)).toEqual([live.id]);
+		// memoryStats must not count the tombstone's row or its chars.
+		expect(memoryStats(u.id)).toEqual({ count: 1, totalChars: 'live fact'.length });
+	});
+
+	it('excludes tombstones from the backfill work queues', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'needs topic'); // null topic, null embedding → in both queues
+		expect(listMemoriesNeedingTopic(100).map((r) => r.id)).toContain(id);
+		expect(listMemoriesNeedingEmbedding('m', 100).map((r) => r.id)).toContain(id);
+		softDeleteMemory(u.id, id, null);
+		expect(listMemoriesNeedingTopic(100)).toHaveLength(0);
+		expect(listMemoriesNeedingEmbedding('m', 100)).toHaveLength(0);
+	});
+
+	it('softDeleteMemory sets lineage, no-ops on an already-tombstoned row, is user-scoped', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const m = createMemory(u1.id, 'fact', 'T');
+		expect(softDeleteMemory(u2.id, m.id, null)).toBe(false); // foreign user
+		expect(softDeleteMemory(u1.id, m.id, 'survivor-id')).toBe(true);
+		const row = mocks.testDb
+			.select({ deletedAt: memories.deletedAt, superseded: memories.supersededByMemoryId })
+			.from(memories)
+			.where(eq(memories.id, m.id))
+			.get()!;
+		expect(row.deletedAt).not.toBeNull();
+		expect(row.superseded).toBe('survivor-id');
+		expect(softDeleteMemory(u1.id, m.id, null)).toBe(false); // already tombstoned
+	});
+
+	it('updateMemory / recordMemoryRecall / renameMemoryTopic skip a tombstone', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact', 'T');
+		softDeleteMemory(u.id, id, null);
+		expect(updateMemory(u.id, id, 'revived', 'T')).toBe(false);
+		expect(renameMemoryTopic(u.id, id, 'New')).toBe(false);
+		recordMemoryRecall(u.id, [id]); // no throw, no effect
+		expect(readMemoryCounters(id).recallCount).toBe(0);
+	});
+
+	it('renameMemoryTopic rewrites the topic without touching content/embedding/updatedAt', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact', 'Old');
+		setMemoryEmbedding(id, 'fact', encodeVector([1, 0]), 'm');
+		const before = listMemoriesForUser(u.id)[0].updatedAt;
+		expect(renameMemoryTopic(u.id, id, 'New topic')).toBe(true);
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('New topic');
+		const row = listMemoriesWithEmbeddings(u.id)[0];
+		expect(row.embedding).not.toBeNull(); // not re-embedded
+		expect(row.updatedAt).toBe(before); // not bumped
+	});
+
+	it('purgeSoftDeletedMemories hard-deletes only past-cutoff tombstones', () => {
+		const u = seedUser();
+		const keep = createMemory(u.id, 'live', 'L');
+		const old = createMemory(u.id, 'old tombstone', 'O');
+		const recent = createMemory(u.id, 'recent tombstone', 'R');
+		softDeleteMemory(u.id, old.id, null);
+		softDeleteMemory(u.id, recent.id, null);
+		// Backdate the "old" tombstone well before the cutoff.
+		mocks.testDb.update(memories).set({ deletedAt: 1000 }).where(eq(memories.id, old.id)).run();
+
+		const purged = purgeSoftDeletedMemories(500_000);
+		expect(purged).toBe(1);
+		const remaining = mocks.testDb.select({ id: memories.id }).from(memories).all();
+		expect(remaining.map((r) => r.id).sort()).toEqual([keep.id, recent.id].sort());
+	});
+});
+
+describe('listUsersNeedingDreaming', () => {
+	it('returns changed users only, skips settled + empty stores', async () => {
+		const u = seedUser();
+		const empty = seedUser();
+		const { id } = createMemory(u.id, 'fact', 'T');
+
+		// Never dreamed → due. Empty-store user never appears.
+		expect(listUsersNeedingDreaming()).toContain(u.id);
+		expect(listUsersNeedingDreaming()).not.toContain(empty.id);
+
+		// Stamp the watermark to now → settled.
+		setUserDreamedAt(u.id, Date.now());
+		expect(listUsersNeedingDreaming()).not.toContain(u.id);
+
+		// A later edit bumps updated_at past the watermark → due again.
+		await new Promise((r) => setTimeout(r, 2));
+		updateMemory(u.id, id, 'fact revised', 'T');
+		expect(listUsersNeedingDreaming()).toContain(u.id);
+	});
+
+	it('a user whose only memory is tombstoned is not due', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact', 'T');
+		softDeleteMemory(u.id, id, null);
+		expect(listUsersNeedingDreaming()).not.toContain(u.id);
 	});
 });
 

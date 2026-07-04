@@ -7,6 +7,15 @@
  * the embedding-backfill worker's helpers (`listMemoriesNeedingEmbedding`,
  * `setMemoryEmbedding`), which run cross-user by design — see their own notes.
  *
+ * Soft-delete invariant (phase 4): the dreaming consolidation pass never
+ * hard-deletes — it tombstones a merged/pruned row via `softDeleteMemory`
+ * (`deleted_at` set, `superseded_by_memory_id` = the survivor). **Every reader
+ * here filters `deleted_at IS NULL`** so a tombstone is invisible everywhere
+ * until the retention purge (`purgeSoftDeletedMemories`) reaps it; writers gate
+ * the same so an edit/recall can't touch a tombstone. User-initiated deletes
+ * (`deleteMemory`, from forget_memory / the settings UI) stay HARD — explicit
+ * intent is permanent.
+ *
  * Read paths: small stores inline every row's `content` into the system prompt
  * via composeMemorySection (no retrieval round-trip); once the bodies would
  * exceed a char budget the store is split into tiers (`selectMemoryTiers` in
@@ -16,11 +25,11 @@
  * back on demand via `recall_memory` — by id (no embeddings needed) or by query
  * (BM25 lexical, fused with `embedding`-cosine when a model is configured).
  */
-import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { Memory } from '$lib/types/api';
 import { getDb } from '../client';
-import { memories } from '../schema';
+import { memories, users } from '../schema';
 
 export type { Memory };
 
@@ -76,7 +85,7 @@ export function listMemoriesForUser(userId: string): Memory[] {
 			updatedAt: memories.updatedAt,
 		})
 		.from(memories)
-		.where(eq(memories.userId, userId))
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
 		.orderBy(asc(memories.createdAt))
 		.all();
 }
@@ -96,7 +105,7 @@ export function memoryStats(userId: string): { count: number; totalChars: number
 			totalChars: sql<number>`coalesce(sum(length(${memories.content})), 0)`,
 		})
 		.from(memories)
-		.where(eq(memories.userId, userId))
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
 		.get();
 	return { count: row?.count ?? 0, totalChars: row?.totalChars ?? 0 };
 }
@@ -127,7 +136,7 @@ export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 			updatedAt: memories.updatedAt,
 		})
 		.from(memories)
-		.where(eq(memories.userId, userId))
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
 		.orderBy(asc(memories.createdAt))
 		.all();
 }
@@ -150,7 +159,7 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
 			updatedAt: memories.updatedAt,
 		})
 		.from(memories)
-		.where(and(eq(memories.userId, userId), inArray(memories.id, ids)))
+		.where(and(eq(memories.userId, userId), inArray(memories.id, ids), isNull(memories.deletedAt)))
 		.orderBy(asc(memories.createdAt))
 		.all();
 }
@@ -175,7 +184,7 @@ export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[
 				embeddingModel: memories.embeddingModel,
 			})
 			.from(memories)
-			.where(eq(memories.userId, userId))
+			.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
 			.orderBy(asc(memories.createdAt))
 			// `blob()` infers as `unknown` on this drizzle RC; node:sqlite hands back
 			// a Buffer for a BLOB at runtime, so the narrow is sound.
@@ -210,7 +219,7 @@ export function listMemoriesNeedingEmbedding(
 	const fresh = db
 		.select({ id: memories.id, content: memories.content })
 		.from(memories)
-		.where(isNull(memories.embedding))
+		.where(and(isNull(memories.embedding), isNull(memories.deletedAt)))
 		.limit(limit)
 		.all();
 	if (fresh.length >= limit) return fresh;
@@ -220,7 +229,13 @@ export function listMemoriesNeedingEmbedding(
 	const stale = db
 		.select({ id: memories.id, content: memories.content })
 		.from(memories)
-		.where(and(isNotNull(memories.embedding), ne(memories.embeddingModel, model)))
+		.where(
+			and(
+				isNotNull(memories.embedding),
+				ne(memories.embeddingModel, model),
+				isNull(memories.deletedAt),
+			),
+		)
 		.limit(limit - fresh.length)
 		.all();
 	return [...fresh, ...stale];
@@ -250,7 +265,9 @@ export function setMemoryEmbedding(
 	const result = db
 		.update(memories)
 		.set({ embedding, embeddingModel })
-		.where(and(eq(memories.id, id), eq(memories.content, expectedContent)))
+		.where(
+			and(eq(memories.id, id), eq(memories.content, expectedContent), isNull(memories.deletedAt)),
+		)
 		.run();
 	return result.changes > 0;
 }
@@ -268,7 +285,7 @@ export function listMemoriesNeedingTopic(limit: number): Array<{ id: string; con
 	return db
 		.select({ id: memories.id, content: memories.content })
 		.from(memories)
-		.where(isNull(memories.topic))
+		.where(and(isNull(memories.topic), isNull(memories.deletedAt)))
 		.limit(limit)
 		.all();
 }
@@ -290,7 +307,14 @@ export function setMemoryTopic(id: string, expectedContent: string, topic: strin
 	const result = db
 		.update(memories)
 		.set({ topic })
-		.where(and(eq(memories.id, id), eq(memories.content, expectedContent), isNull(memories.topic)))
+		.where(
+			and(
+				eq(memories.id, id),
+				eq(memories.content, expectedContent),
+				isNull(memories.topic),
+				isNull(memories.deletedAt),
+			),
+		)
 		.run();
 	return result.changes > 0;
 }
@@ -356,7 +380,7 @@ export function updateMemory(
 	const result = db
 		.update(memories)
 		.set(set)
-		.where(and(eq(memories.userId, userId), eq(memories.id, id)))
+		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNull(memories.deletedAt)))
 		.run();
 	return result.changes > 0;
 }
@@ -376,11 +400,15 @@ export function recordMemoryRecall(userId: string, ids: string[]): void {
 	const db = getDb();
 	db.update(memories)
 		.set({ recallCount: sql`${memories.recallCount} + 1`, lastRecalledAt: Date.now() })
-		.where(and(eq(memories.userId, userId), inArray(memories.id, ids)))
+		.where(and(eq(memories.userId, userId), inArray(memories.id, ids), isNull(memories.deletedAt)))
 		.run();
 }
 
-/** Returns true iff a row matched (id existed for this user). */
+/**
+ * Hard delete — the USER path (forget_memory tool, settings "Forget" button).
+ * Explicit intent is permanent, so this really removes the row. The dreaming
+ * pass uses `softDeleteMemory` instead. Returns true iff a row matched.
+ */
 export function deleteMemory(userId: string, id: string): boolean {
 	const db = getDb();
 	const result = db
@@ -388,6 +416,122 @@ export function deleteMemory(userId: string, id: string): boolean {
 		.where(and(eq(memories.userId, userId), eq(memories.id, id)))
 		.run();
 	return result.changes > 0;
+}
+
+/**
+ * Soft delete — the dreaming pass's removal. Tombstones the row (`deleted_at` +
+ * `superseded_by_memory_id` lineage) rather than dropping it, so a bad merge/
+ * prune is recoverable/auditable until `purgeSoftDeletedMemories` reaps it. Every
+ * reader filters `deleted_at IS NULL`, so the row vanishes from the store on
+ * write. `supersededByMemoryId` is the survivor a merge folded this row into
+ * (null for a plain prune). No-ops on an already-tombstoned row. User-scoped.
+ * Returns true iff a live row matched.
+ */
+export function softDeleteMemory(
+	userId: string,
+	id: string,
+	supersededByMemoryId: string | null,
+): boolean {
+	const db = getDb();
+	const result = db
+		.update(memories)
+		.set({ deletedAt: Date.now(), supersededByMemoryId })
+		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNull(memories.deletedAt)))
+		.run();
+	return result.changes > 0;
+}
+
+/**
+ * Rewrite a live memory's `topic` in place — the dreaming pass's topic
+ * normalization. Unlike `updateMemory` it does NOT touch `content`, null the
+ * embedding, or bump `updatedAt` (a relabel doesn't change the vector or the
+ * freshness signal); unlike `setMemoryTopic` it isn't null-guarded (it
+ * deliberately overwrites an existing label). User-scoped, live-only. Returns
+ * true iff a live row matched.
+ */
+export function renameMemoryTopic(userId: string, id: string, topic: string): boolean {
+	const db = getDb();
+	const result = db
+		.update(memories)
+		.set({ topic })
+		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNull(memories.deletedAt)))
+		.run();
+	return result.changes > 0;
+}
+
+/**
+ * Users the dreaming worker should process this pass: those with at least one
+ * live memory whose store has changed since the last pass (`last_dreamed_at` is
+ * null, or a live memory's `updated_at` is newer). A settled store returns
+ * nothing, so the worker skips it. Cross-user (background job).
+ */
+export function listUsersNeedingDreaming(): string[] {
+	const db = getDb();
+	const rows = db
+		.select({ userId: memories.userId })
+		.from(memories)
+		.innerJoin(users, eq(users.id, memories.userId))
+		.where(isNull(memories.deletedAt))
+		.groupBy(memories.userId)
+		.having(
+			sql`${users.lastDreamedAt} is null or max(${memories.updatedAt}) > ${users.lastDreamedAt}`,
+		)
+		.all();
+	return rows.map((r) => r.userId);
+}
+
+/** A live memory with the fields the dreaming pass needs: the consolidation
+ *  input (id/content/topic) plus the recency/recall inputs used to pick a merge
+ *  survivor. */
+export interface MemoryForDreaming {
+	id: string;
+	content: string;
+	topic: string | null;
+	recallCount: number;
+	lastRecalledAt: number | null;
+	createdAt: number;
+}
+
+/**
+ * All of a user's live memories, full content + topic + scoring inputs, for the
+ * dreaming pass. Unlike `listMemoriesForUser` it carries `topic` and the recall
+ * counters (so a merge can keep the highest-scored source as the survivor).
+ */
+export function listMemoriesForDreaming(userId: string): MemoryForDreaming[] {
+	const db = getDb();
+	return db
+		.select({
+			id: memories.id,
+			content: memories.content,
+			topic: memories.topic,
+			recallCount: memories.recallCount,
+			lastRecalledAt: memories.lastRecalledAt,
+			createdAt: memories.createdAt,
+		})
+		.from(memories)
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
+		.orderBy(asc(memories.createdAt))
+		.all();
+}
+
+/** Stamp the dreaming watermark for a user (called after a pass completes). */
+export function setUserDreamedAt(userId: string, ts: number): void {
+	const db = getDb();
+	db.update(users).set({ lastDreamedAt: ts }).where(eq(users.id, userId)).run();
+}
+
+/**
+ * Reap tombstones past the retention cutoff — the dreaming worker's purge (a
+ * bad consolidation stays recoverable until here). Hard-deletes `WHERE
+ * deleted_at < cutoff`. Cross-user (background job). Returns rows removed.
+ */
+export function purgeSoftDeletedMemories(cutoff: number): number {
+	const db = getDb();
+	const result = db
+		.delete(memories)
+		.where(and(isNotNull(memories.deletedAt), lt(memories.deletedAt, cutoff)))
+		.run();
+	return Number(result.changes);
 }
 
 /**

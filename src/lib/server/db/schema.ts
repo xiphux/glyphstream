@@ -54,6 +54,11 @@ export const users = sqliteTable('users', {
 	// so adding new preferences isn't migration-gated; the parsing layer
 	// validates each field defensively with fallbacks.
 	preferencesJson: text('preferences_json'),
+	// Watermark for the phase-4 memory-consolidation ("dreaming") worker: when it
+	// last processed this user's memories. Null = never dreamed. The worker only
+	// re-processes a user whose live memories have a `updated_at` newer than this,
+	// so a settled store isn't re-consolidated every window.
+	lastDreamedAt: integer('last_dreamed_at'),
 });
 
 // OAuth provider bindings. 1-to-many off `users` — a single user can
@@ -388,6 +393,16 @@ export const memories = sqliteTable(
 		embeddingModel: text('embedding_model'),
 		recallCount: integer('recall_count').notNull().default(0),
 		lastRecalledAt: integer('last_recalled_at'),
+		// Phase-4 soft-delete: the dreaming pass never hard-deletes. `deleted_at`
+		// (null = live) tombstones a merged/pruned row so a bad consolidation is
+		// recoverable/auditable until a retention purge reaps it; every request-path
+		// reader filters `deleted_at IS NULL`. `superseded_by_memory_id` is the
+		// survivor a merged/pruned row folded into (null for a plain prune) — merge
+		// lineage. A soft self-reference (like `invited_by_user_id`), not a FK: it's
+		// added via ALTER TABLE ADD COLUMN where SQLite can't emit ON DELETE. (User
+		// deletes via forget_memory / the settings UI stay HARD deletes.)
+		deletedAt: integer('deleted_at'),
+		supersededByMemoryId: text('superseded_by_memory_id'),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 	},
@@ -397,15 +412,17 @@ export const memories = sqliteTable(
 		// sweep drains. `listMemoriesNeedingEmbedding` queries `embedding IS NULL`
 		// against this so a backlog of fresh memories is fetched by index scan, not
 		// a full-table scan, and the index itself stays tiny (only NULL rows — near
-		// empty once the store is caught up).
+		// empty once the store is caught up). The query also filters
+		// `deleted_at IS NULL`; a soft-deleted row still carries its embedding, so
+		// it isn't in this partial index anyway, and SQLite still uses the index for
+		// the compound query.
 		index('idx_memories_unembedded')
 			.on(t.id)
 			.where(sql`${t.embedding} is null`),
 		// Partial index over the topic-backfill work queue: the null-topic rows the
 		// phase-3 worker drains (pre-topic-field rows — save_memory/update_memory now
 		// always supply a topic, so this is a fixed, shrinking historical backlog).
-		// Same rationale as idx_memories_unembedded: index scan, and near-empty once
-		// caught up.
+		// Same rationale as idx_memories_unembedded (incl. the deleted_at note).
 		index('idx_memories_untopiced')
 			.on(t.id)
 			.where(sql`${t.topic} is null`),
