@@ -354,12 +354,16 @@ auditable. Explicit user deletes (the model's `forget_memory`, the settings
 **Forget** button) stay permanent. The pass only re-examines a user whose
 memories changed since its last run.
 
-**Scheduling.** Consolidation runs on the GPU. `active_hours` restricts it to a
-quiet window — the only way to keep it clear of _other_ GPU users the app can't
-see (e.g. a co-located image generator). The window is read in `timezone`;
-overnight ranges like `"22:00-06:00"` are handled. Even inside the window, each
-call queues behind live chats on the endpoint (respecting its `max_concurrent`),
-so a late-night chat is never blocked by a dream.
+**Scheduling.** Consolidation runs on the GPU, so `active_hours` is the real
+safeguard — it's the only way to keep it clear of _other_ GPU users the app can't
+see (e.g. a co-located image generator), and to steer it away from when your
+people are actually chatting. The window is read in `timezone`; overnight ranges
+like `"22:00-06:00"` are handled. Inside the window, each call takes a slot on the
+same per-endpoint FIFO gate live chats use, so a dream never preempts or cuts
+ahead of a chat — but the gate has no priority lane: if a dream generation is
+already in flight when a chat arrives, the chat waits for it (bounded by the
+endpoint's `max_concurrent`). On a single-GPU endpoint (`max_concurrent = 1`)
+that's exactly why the window matters.
 
 ## Feature blocks
 

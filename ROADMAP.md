@@ -56,19 +56,17 @@ docs.
   recall hits) — the highest-scored memories stay inlined in full up to the
   budget, the rest collapse to the `[id] topic` index. Scored at read time, so
   promotion is self-erasing (an inlined memory stops being recalled → its term
-  decays → it sinks back). Remaining:
+  decays → it sinks back). Topic backfill (phase 3) and consolidation/"dreaming"
+  (phase 4) also shipped: the optional `[memory_model]` runs a scheduled
+  background pass that merges duplicates, folds superseded facts, distills stale
+  notes, and prunes as a last resort — change-watermark-gated, quiet-hours
+  scheduled, with soft-delete reversibility. Remaining:
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
-  - _Memory consolidation ("dreaming")._ A background pass that reorganizes
-    accumulated memories the way sleep consolidates short- into long-term —
-    deduping, rewriting an old memory a later one revised, and backfilling/
-    normalizing topics for rows that lack them. Gated on a change-watermark so it
-    only fires when memories changed since the last pass. Reuses the
-    `save`/`update`/`forget` primitives on a background cadence (the media-purger
-    pattern), driven by a dedicated, more-capable _memory model_ (separate from
-    `task_model` — a weak utility model can't be trusted to manage memories
-    without dropping facts). Pairs with recall: consolidation is what keeps the
-    index from growing unboundedly as memory count × avg tokens climbs.
+  - _Recover UI for consolidated memories._ The dreaming pass soft-deletes
+    (tombstone + `superseded_by` lineage, retained ~30 days) but there's no
+    user-facing "recently tidied / restore" affordance yet — recovery is
+    retention + DB lineage only.
 
 - **Agent-callable cross-conversation search.** A `search_conversations(query)`
   tool so the model can pull context from past chats mid-turn ("what did we
