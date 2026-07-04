@@ -22,6 +22,7 @@
  */
 
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
+import { UpstreamError } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import { isWithinWindow } from './dream-window';
 import {
@@ -80,12 +81,17 @@ export async function runDreamSweep(
 				opsApplied += await dreamUser(model, userId);
 				usersProcessed++;
 			} catch (e) {
-				// A failure here is most likely the shared endpoint (down / timeout),
-				// so end the sweep rather than hammer it once per remaining user — the
-				// watermark is unadvanced, so they all retry next window. (Mirrors the
-				// topic backfiller's break-on-upstream-error.)
-				console.warn(`[dreaming] user ${userId} failed; ending sweep, retry next window:`, e);
-				break;
+				if (e instanceof UpstreamError) {
+					// Endpoint-level failure (shared — down / timeout): end the sweep
+					// rather than hammer it once per remaining user. Watermark unadvanced,
+					// so everyone retries next window.
+					console.warn(`[dreaming] endpoint error; ending sweep, retry next window:`, e);
+					break;
+				}
+				// A per-user failure (rare — the parse is defensive and apply is simple):
+				// skip just this user so one deterministic error can't starve those
+				// ordered after it; their watermark is unadvanced, so they retry.
+				console.warn(`[dreaming] user ${userId} failed, skipping:`, e);
 			}
 		}
 		if (opsApplied > 0 || purged > 0) {

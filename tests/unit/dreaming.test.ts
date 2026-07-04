@@ -7,7 +7,11 @@ const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 const chatMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({ chatCompletionSync: chatMock }));
+const FakeUpstreamError = vi.hoisted(() => class UpstreamError extends Error {});
+vi.mock('$lib/server/endpoints/client', () => ({
+	chatCompletionSync: chatMock,
+	UpstreamError: FakeUpstreamError,
+}));
 
 const memModelMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/tasks/memory-model', () => ({ getMemoryModel: memModelMock }));
@@ -203,6 +207,41 @@ describe('runDreamSweep', () => {
 		const second = await runDreamSweep();
 		expect(second.usersProcessed).toBe(0); // settled → skipped
 		expect(chatMock).not.toHaveBeenCalled();
+	});
+
+	it('ends the sweep on an endpoint (UpstreamError) failure', async () => {
+		const u1 = seedUser();
+		createMemory(u1.id, 'a1', 'T');
+		createMemory(u1.id, 'b1', 'T');
+		const u2 = seedUser();
+		createMemory(u2.id, 'a2', 'T');
+		createMemory(u2.id, 'b2', 'T');
+		chatMock.mockImplementation(async () => {
+			throw new FakeUpstreamError('endpoint down');
+		});
+		const r = await runDreamSweep();
+		expect(chatMock).toHaveBeenCalledTimes(1); // broke after the first user, didn't hammer
+		expect(r.usersProcessed).toBe(0);
+	});
+
+	it('skips a per-user (non-endpoint) failure and continues to the next user', async () => {
+		const u1 = seedUser();
+		createMemory(u1.id, 'a1', 'T');
+		createMemory(u1.id, 'b1', 'T');
+		const u2 = seedUser();
+		createMemory(u2.id, 'a2', 'T');
+		createMemory(u2.id, 'b2', 'T');
+		// First user throws a non-endpoint error; the second still gets processed.
+		chatMock
+			.mockImplementationOnce(async () => {
+				throw new Error('per-user bug');
+			})
+			.mockResolvedValue({
+				choices: [{ message: { content: JSON.stringify({ operations: [] }) } }],
+			});
+		const r = await runDreamSweep();
+		expect(chatMock).toHaveBeenCalledTimes(2); // did not break — continued past the failure
+		expect(r.usersProcessed).toBe(1);
 	});
 
 	it('purges tombstones past the retention cutoff', async () => {
