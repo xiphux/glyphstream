@@ -386,6 +386,40 @@ export function updateMemory(
 }
 
 /**
+ * Like `updateMemory`, but only writes when `content` still matches
+ * `expectedContent` — the optimistic-concurrency guard the dreaming apply path
+ * needs. Dreaming snapshots a user's memories, makes a slow (queued) LLM call,
+ * then writes back; a concurrent `update_memory` during that window must WIN, not
+ * be clobbered by the stale-snapshot content. Because this is a destructive
+ * in-place content UPDATE (no tombstone), an unguarded write would lose the
+ * user's edit unrecoverably. A no-op (returns false) means the row changed since
+ * the snapshot — the op is skipped and re-consolidated next pass. Same guard the
+ * `setMemoryEmbedding` / `setMemoryTopic` backfill writers use.
+ */
+export function updateMemoryGuarded(
+	userId: string,
+	id: string,
+	expectedContent: string,
+	content: string,
+	topic: string,
+): boolean {
+	const db = getDb();
+	const result = db
+		.update(memories)
+		.set({ content, topic, updatedAt: Date.now(), embedding: null, embeddingModel: null })
+		.where(
+			and(
+				eq(memories.userId, userId),
+				eq(memories.id, id),
+				eq(memories.content, expectedContent),
+				isNull(memories.deletedAt),
+			),
+		)
+		.run();
+	return result.changes > 0;
+}
+
+/**
  * Record that these memories were surfaced by a `recall_memory` call: bump each
  * row's hit count and stamp the recall time. These two columns feed
  * `scoreMemory` (`../../memory/tiering`): the recency-decayed recall term is what
@@ -424,19 +458,29 @@ export function deleteMemory(userId: string, id: string): boolean {
  * prune is recoverable/auditable until `purgeSoftDeletedMemories` reaps it. Every
  * reader filters `deleted_at IS NULL`, so the row vanishes from the store on
  * write. `supersededByMemoryId` is the survivor a merge folded this row into
- * (null for a plain prune). No-ops on an already-tombstoned row. User-scoped.
- * Returns true iff a live row matched.
+ * (null for a plain prune). Guarded on `expectedContent` (the dreaming snapshot)
+ * so a memory the user edited mid-pass isn't pruned/merged-away out from under
+ * their fresh edit. No-ops on an already-tombstoned or since-edited row.
+ * User-scoped. Returns true iff a matching live row was tombstoned.
  */
 export function softDeleteMemory(
 	userId: string,
 	id: string,
 	supersededByMemoryId: string | null,
+	expectedContent: string,
 ): boolean {
 	const db = getDb();
 	const result = db
 		.update(memories)
 		.set({ deletedAt: Date.now(), supersededByMemoryId })
-		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNull(memories.deletedAt)))
+		.where(
+			and(
+				eq(memories.userId, userId),
+				eq(memories.id, id),
+				eq(memories.content, expectedContent),
+				isNull(memories.deletedAt),
+			),
+		)
 		.run();
 	return result.changes > 0;
 }
@@ -446,15 +490,29 @@ export function softDeleteMemory(
  * normalization. Unlike `updateMemory` it does NOT touch `content`, null the
  * embedding, or bump `updatedAt` (a relabel doesn't change the vector or the
  * freshness signal); unlike `setMemoryTopic` it isn't null-guarded (it
- * deliberately overwrites an existing label). User-scoped, live-only. Returns
- * true iff a live row matched.
+ * deliberately overwrites an existing label). Guarded on `expectedContent` (the
+ * dreaming snapshot) so a stale relabel can't overwrite a topic the user just
+ * set via `update_memory` mid-pass (which also changes the content). User-scoped,
+ * live-only. Returns true iff a matching live row was relabelled.
  */
-export function renameMemoryTopic(userId: string, id: string, topic: string): boolean {
+export function renameMemoryTopic(
+	userId: string,
+	id: string,
+	topic: string,
+	expectedContent: string,
+): boolean {
 	const db = getDb();
 	const result = db
 		.update(memories)
 		.set({ topic })
-		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNull(memories.deletedAt)))
+		.where(
+			and(
+				eq(memories.userId, userId),
+				eq(memories.id, id),
+				eq(memories.content, expectedContent),
+				isNull(memories.deletedAt),
+			),
+		)
 		.run();
 	return result.changes > 0;
 }

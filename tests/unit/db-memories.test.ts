@@ -30,6 +30,7 @@ import {
 	setUserDreamedAt,
 	softDeleteMemory,
 	updateMemory,
+	updateMemoryGuarded,
 } from '$lib/server/db/queries/memories';
 import { encodeVector } from '$lib/server/retrieval/vector';
 import { memories, users } from '$lib/server/db/schema';
@@ -511,7 +512,7 @@ describe('phase-4 soft-delete', () => {
 		const u = seedUser();
 		const live = createMemory(u.id, 'live fact', 'Live');
 		const dead = createMemory(u.id, 'dead fact', 'Dead');
-		expect(softDeleteMemory(u.id, dead.id, live.id)).toBe(true);
+		expect(softDeleteMemory(u.id, dead.id, live.id, 'dead fact')).toBe(true);
 
 		// listMemoriesForUser / tier rows / bodies / with-embeddings all exclude it.
 		expect(listMemoriesForUser(u.id).map((m) => m.id)).toEqual([live.id]);
@@ -527,7 +528,7 @@ describe('phase-4 soft-delete', () => {
 		const { id } = createMemory(u.id, 'needs topic'); // null topic, null embedding → in both queues
 		expect(listMemoriesNeedingTopic(100).map((r) => r.id)).toContain(id);
 		expect(listMemoriesNeedingEmbedding('m', 100).map((r) => r.id)).toContain(id);
-		softDeleteMemory(u.id, id, null);
+		softDeleteMemory(u.id, id, null, 'needs topic');
 		expect(listMemoriesNeedingTopic(100)).toHaveLength(0);
 		expect(listMemoriesNeedingEmbedding('m', 100)).toHaveLength(0);
 	});
@@ -536,8 +537,8 @@ describe('phase-4 soft-delete', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		const m = createMemory(u1.id, 'fact', 'T');
-		expect(softDeleteMemory(u2.id, m.id, null)).toBe(false); // foreign user
-		expect(softDeleteMemory(u1.id, m.id, 'survivor-id')).toBe(true);
+		expect(softDeleteMemory(u2.id, m.id, null, 'fact')).toBe(false); // foreign user
+		expect(softDeleteMemory(u1.id, m.id, 'survivor-id', 'fact')).toBe(true);
 		const row = mocks.testDb
 			.select({ deletedAt: memories.deletedAt, superseded: memories.supersededByMemoryId })
 			.from(memories)
@@ -545,15 +546,38 @@ describe('phase-4 soft-delete', () => {
 			.get()!;
 		expect(row.deletedAt).not.toBeNull();
 		expect(row.superseded).toBe('survivor-id');
-		expect(softDeleteMemory(u1.id, m.id, null)).toBe(false); // already tombstoned
+		expect(softDeleteMemory(u1.id, m.id, null, 'fact')).toBe(false); // already tombstoned
+	});
+
+	it('the dream writers no-op when the content changed since the snapshot (concurrency guard)', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'original', 'T');
+		// A concurrent update_memory changed the row after the dream snapshot.
+		updateMemory(u.id, id, 'user edit', 'User topic');
+		// Every dream write, guarded on the stale snapshot content, must skip.
+		expect(updateMemoryGuarded(u.id, id, 'original', 'stale merge', 'X')).toBe(false);
+		expect(renameMemoryTopic(u.id, id, 'stale label', 'original')).toBe(false);
+		expect(softDeleteMemory(u.id, id, null, 'original')).toBe(false);
+		// The user's edit is intact — nothing was clobbered or pruned.
+		const row = listMemoryTierRows(u.id)[0];
+		expect(row.topic).toBe('User topic');
+		expect(listMemoriesForUser(u.id)[0].content).toBe('user edit');
+	});
+
+	it('updateMemoryGuarded writes when the content still matches the snapshot', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'snap', 'T');
+		expect(updateMemoryGuarded(u.id, id, 'snap', 'merged content', 'Merged')).toBe(true);
+		expect(listMemoriesForUser(u.id)[0].content).toBe('merged content');
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Merged');
 	});
 
 	it('updateMemory / recordMemoryRecall / renameMemoryTopic skip a tombstone', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'fact', 'T');
-		softDeleteMemory(u.id, id, null);
+		softDeleteMemory(u.id, id, null, 'fact');
 		expect(updateMemory(u.id, id, 'revived', 'T')).toBe(false);
-		expect(renameMemoryTopic(u.id, id, 'New')).toBe(false);
+		expect(renameMemoryTopic(u.id, id, 'New', 'fact')).toBe(false);
 		recordMemoryRecall(u.id, [id]); // no throw, no effect
 		expect(readMemoryCounters(id).recallCount).toBe(0);
 	});
@@ -563,7 +587,7 @@ describe('phase-4 soft-delete', () => {
 		const { id } = createMemory(u.id, 'fact', 'Old');
 		setMemoryEmbedding(id, 'fact', encodeVector([1, 0]), 'm');
 		const before = listMemoriesForUser(u.id)[0].updatedAt;
-		expect(renameMemoryTopic(u.id, id, 'New topic')).toBe(true);
+		expect(renameMemoryTopic(u.id, id, 'New topic', 'fact')).toBe(true);
 		expect(listMemoryTierRows(u.id)[0].topic).toBe('New topic');
 		const row = listMemoriesWithEmbeddings(u.id)[0];
 		expect(row.embedding).not.toBeNull(); // not re-embedded
@@ -575,8 +599,8 @@ describe('phase-4 soft-delete', () => {
 		const keep = createMemory(u.id, 'live', 'L');
 		const old = createMemory(u.id, 'old tombstone', 'O');
 		const recent = createMemory(u.id, 'recent tombstone', 'R');
-		softDeleteMemory(u.id, old.id, null);
-		softDeleteMemory(u.id, recent.id, null);
+		softDeleteMemory(u.id, old.id, null, 'old tombstone');
+		softDeleteMemory(u.id, recent.id, null, 'recent tombstone');
 		// Backdate the "old" tombstone well before the cutoff.
 		mocks.testDb.update(memories).set({ deletedAt: 1000 }).where(eq(memories.id, old.id)).run();
 
@@ -610,7 +634,7 @@ describe('listUsersNeedingDreaming', () => {
 	it('a user whose only memory is tombstoned is not due', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'fact', 'T');
-		softDeleteMemory(u.id, id, null);
+		softDeleteMemory(u.id, id, null, 'fact');
 		expect(listUsersNeedingDreaming()).not.toContain(u.id);
 	});
 });

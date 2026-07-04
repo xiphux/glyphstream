@@ -11,10 +11,14 @@
  * crash mid-merge leaves benign duplicates (re-consolidated next pass), never
  * information loss.
  *
- * GPU-contention safety: gated by the tz-aware window, and every model call goes
- * through `acquireEndpointSlot` so it FIFO-queues behind live chats on that
- * endpoint. Worker skeleton mirrors the other background workers (recursive tick,
- * `running` guard, generation-token stop, no-op when no model is configured).
+ * GPU-contention safety: gated by the tz-aware window (the real safeguard for a
+ * busy endpoint), and every model call takes a slot on the same per-endpoint FIFO
+ * gate live chats use (`acquireEndpointSlot`) — so a dream never preempts or cuts
+ * ahead of a chat. It is a fair peer, not a low-priority lane: if a dream call is
+ * already in flight when a chat arrives, the chat waits for it (bounded by the
+ * endpoint's `max_concurrent`). Worker skeleton mirrors the other background
+ * workers (recursive tick, `running` guard, generation-token stop, no-op when no
+ * model is configured).
  */
 
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
@@ -32,7 +36,7 @@ import {
 	renameMemoryTopic,
 	setUserDreamedAt,
 	softDeleteMemory,
-	updateMemory,
+	updateMemoryGuarded,
 	type MemoryForDreaming,
 } from '../db/queries/memories';
 
@@ -76,8 +80,12 @@ export async function runDreamSweep(
 				opsApplied += await dreamUser(model, userId);
 				usersProcessed++;
 			} catch (e) {
-				// Skip this user, leave the watermark unadvanced so they retry next window.
-				console.warn(`[dreaming] user ${userId} failed, skipping:`, e);
+				// A failure here is most likely the shared endpoint (down / timeout),
+				// so end the sweep rather than hammer it once per remaining user — the
+				// watermark is unadvanced, so they all retry next window. (Mirrors the
+				// topic backfiller's break-on-upstream-error.)
+				console.warn(`[dreaming] user ${userId} failed; ending sweep, retry next window:`, e);
+				break;
 			}
 		}
 		if (opsApplied > 0 || purged > 0) {
@@ -91,11 +99,16 @@ export async function runDreamSweep(
 
 /** Consolidate one user's memories and advance their watermark. Returns ops applied. */
 async function dreamUser(model: ResolvedMemoryModel, userId: string): Promise<number> {
+	// Capture the watermark BEFORE the snapshot: anything the user saves/edits
+	// during the (queued, slow) pass has an updated_at ≥ this, so it re-flags the
+	// user next window rather than being skipped. (The pass's own writes also
+	// re-flag once, but the re-run finds a settled store and does nothing.)
+	const startedAt = Date.now();
 	const rows = listMemoriesForDreaming(userId);
 	// Nothing to consolidate against, but still stamp the watermark so a settled
 	// store isn't re-examined every window.
 	if (rows.length < 2) {
-		setUserDreamedAt(userId, Date.now());
+		setUserDreamedAt(userId, startedAt);
 		return 0;
 	}
 
@@ -115,19 +128,19 @@ async function dreamUser(model: ResolvedMemoryModel, userId: string): Promise<nu
 	}
 
 	const applied = applyConsolidation(userId, ops, rows);
-	// Stamp AFTER the writes (updateMemory bumps updated_at) so the fresh survivor
-	// rows don't re-flag the user as "changed" next tick.
-	setUserDreamedAt(userId, Date.now());
+	setUserDreamedAt(userId, startedAt);
 	return applied;
 }
 
 /**
- * Apply validated ops to a user's store. Each merge updates the survivor (highest
- * recall score among its ids) with the merged content FIRST, then soft-deletes
- * the other sources pointing `superseded_by` at the survivor — so a crash between
- * the two leaves duplicates, not a gap. reword → update; retopic → rename;
- * prune → soft-delete. Returns the number of ops that took effect. Exported for
- * testing.
+ * Apply validated ops to a user's store. Every write is guarded on the SNAPSHOT
+ * content (`updateMemoryGuarded` / `softDeleteMemory` / `renameMemoryTopic` all
+ * take `expectedContent`): if the user edited a target row during the in-flight
+ * pass, that op no-ops and re-consolidates next pass rather than clobbering the
+ * fresh edit. Each merge updates the survivor (highest recall score) FIRST, then
+ * soft-deletes the other sources pointing `superseded_by` at it — so a crash
+ * between the two leaves duplicates, not a gap. Returns the number of ops that
+ * took effect. Exported for testing.
  */
 export function applyConsolidation(
 	userId: string,
@@ -140,24 +153,35 @@ export function applyConsolidation(
 		switch (op.type) {
 			case 'merge': {
 				const survivor = pickSurvivor(op.ids, byId);
-				if (!survivor) break;
-				if (updateMemory(userId, survivor, op.content, op.topic)) {
+				const snap = survivor ? byId.get(survivor) : undefined;
+				if (!survivor || !snap) break;
+				if (updateMemoryGuarded(userId, survivor, snap.content, op.content, op.topic)) {
 					for (const id of op.ids) {
-						if (id !== survivor) softDeleteMemory(userId, id, survivor);
+						if (id === survivor) continue;
+						const srcContent = byId.get(id)?.content;
+						if (srcContent !== undefined) softDeleteMemory(userId, id, survivor, srcContent);
 					}
 					applied++;
 				}
 				break;
 			}
-			case 'reword':
-				if (updateMemory(userId, op.id, op.content, op.topic)) applied++;
+			case 'reword': {
+				const snap = byId.get(op.id);
+				if (snap && updateMemoryGuarded(userId, op.id, snap.content, op.content, op.topic)) {
+					applied++;
+				}
 				break;
-			case 'retopic':
-				if (renameMemoryTopic(userId, op.id, op.topic)) applied++;
+			}
+			case 'retopic': {
+				const snap = byId.get(op.id);
+				if (snap && renameMemoryTopic(userId, op.id, op.topic, snap.content)) applied++;
 				break;
-			case 'prune':
-				if (softDeleteMemory(userId, op.id, null)) applied++;
+			}
+			case 'prune': {
+				const snap = byId.get(op.id);
+				if (snap && softDeleteMemory(userId, op.id, null, snap.content)) applied++;
 				break;
+			}
 		}
 	}
 	return applied;

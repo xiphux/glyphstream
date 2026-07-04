@@ -22,6 +22,7 @@ import {
 	listMemoryTierRows,
 	recordMemoryRecall,
 	softDeleteMemory,
+	updateMemory,
 } from '$lib/server/db/queries/memories';
 import { memories } from '$lib/server/db/schema';
 
@@ -153,6 +154,33 @@ describe('runDreamSweep', () => {
 		expect(rowOf(c.id).deletedAt).not.toBeNull();
 	});
 
+	it('does not clobber a user edit made during the in-flight pass', async () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'original content', 'T');
+		createMemory(u.id, 'other', 'T');
+		// The model proposes rewording `a`, but the user edits `a` mid-call — the
+		// guarded write must skip so the fresh edit wins (and isn't lost, since the
+		// reword is a destructive in-place update, not a recoverable soft-delete).
+		chatMock.mockImplementation(async () => {
+			updateMemory(u.id, a.id, 'USER EDIT wins', 'User topic');
+			return {
+				choices: [
+					{
+						message: {
+							content: JSON.stringify({
+								operations: [{ type: 'reword', id: a.id, content: 'stale reword', topic: 'Stale' }],
+							}),
+						},
+					},
+				],
+			};
+		});
+
+		const r = await runDreamSweep();
+		expect(r.opsApplied).toBe(0); // reword skipped by the snapshot guard
+		expect(listMemoriesForUser(u.id).find((m) => m.id === a.id)?.content).toBe('USER EDIT wins');
+	});
+
 	it('skips ops referencing unknown ids (nothing applied)', async () => {
 		const u = seedUser();
 		createMemory(u.id, 'a', 'A');
@@ -181,7 +209,7 @@ describe('runDreamSweep', () => {
 		const u = seedUser();
 		const a = createMemory(u.id, 'a', 'A');
 		createMemory(u.id, 'b', 'B');
-		softDeleteMemory(u.id, a.id, null);
+		softDeleteMemory(u.id, a.id, null, 'a');
 		// Backdate the tombstone to the distant past.
 		mocks.testDb.update(memories).set({ deletedAt: 1000 }).where(eq(memories.id, a.id)).run();
 		chatReply({ operations: [] });
