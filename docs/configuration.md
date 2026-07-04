@@ -182,6 +182,14 @@ the title lands while the user is still watching the message finish. Slower
 task models keep running in the background; the title appears on the next
 sidebar refetch.
 
+The task model also does one background maintenance job: **backfilling topic
+labels** for saved memories that predate the memory system's `topic` field
+(the labels shown in the compact memory index once a user's store grows large;
+see [Tools](tools.md)). New memories are labelled by the chat model at save
+time, so this is a one-time sweep over the historical backlog that stops once
+it's caught up. It needs no extra configuration — if a `task_model` is set it
+runs, and generating a few-word label is well within a small model's reach.
+
 Misconfiguration (typo'd endpoint id, removed endpoint, upstream failure) is
 non-fatal: titling silently reverts to the first-N-chars preview and the
 rest of the response is unaffected. Users can also rename any conversation

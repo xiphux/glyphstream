@@ -5,6 +5,7 @@ import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/serve
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger } from '$lib/server/media/purger';
 import { startEmbeddingBackfiller } from '$lib/server/memory/embedding-backfill';
+import { startTopicBackfiller } from '$lib/server/memory/topic-backfill';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
@@ -36,6 +37,12 @@ startMediaPurger();
 // semantic gallery search). No-op when no `[embeddings]` block is configured.
 // Same boot-time rationale as the purger.
 startEmbeddingBackfiller();
+
+// Backfill topic labels for saved memories created before the `topic` field
+// (the over-budget index shows a content snippet until then). Uses the task
+// model; no-op when no `task_model` is configured, and self-stops once the
+// historical backlog is drained.
+startTopicBackfiller();
 
 // Kick off MCP server connections in parallel with whatever the first
 // request happens to need. The chat-completion handler awaits readiness

@@ -401,6 +401,14 @@ export const memories = sqliteTable(
 		index('idx_memories_unembedded')
 			.on(t.id)
 			.where(sql`${t.embedding} is null`),
+		// Partial index over the topic-backfill work queue: the null-topic rows the
+		// phase-3 worker drains (pre-topic-field rows — save_memory/update_memory now
+		// always supply a topic, so this is a fixed, shrinking historical backlog).
+		// Same rationale as idx_memories_unembedded: index scan, and near-empty once
+		// caught up.
+		index('idx_memories_untopiced')
+			.on(t.id)
+			.where(sql`${t.topic} is null`),
 	],
 );
 

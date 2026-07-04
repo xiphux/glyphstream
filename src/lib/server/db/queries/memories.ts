@@ -256,6 +256,46 @@ export function setMemoryEmbedding(
 }
 
 /**
+ * Null-topic rows — the phase-3 topic-backfill worker's queue. Served by the
+ * partial index `idx_memories_untopiced`, so draining the historical backlog is
+ * an index scan. Cross-user by design (background worker, not a request path —
+ * same read-isolation exemption as `listMemoriesNeedingEmbedding`). Since
+ * save_memory / update_memory always supply a topic, this queue only ever holds
+ * pre-topic-field rows and drains to empty.
+ */
+export function listMemoriesNeedingTopic(limit: number): Array<{ id: string; content: string }> {
+	const db = getDb();
+	return db
+		.select({ id: memories.id, content: memories.content })
+		.from(memories)
+		.where(isNull(memories.topic))
+		.limit(limit)
+		.all();
+}
+
+/**
+ * Persist a backfilled topic. Non-destructive: writes only the `topic` column,
+ * never `content`, and does not bump `updatedAt` — a backfill isn't a content
+ * edit. Two guards, both required:
+ *   - `content = expectedContent` closes the read→generate→write race (a
+ *     concurrent `update_memory` changed the body mid-generation → the stale
+ *     label is dropped, the row re-queues on the next sweep).
+ *   - `topic IS NULL` means a concurrent `update_memory` that set a real topic
+ *     always wins over the backfill's guess.
+ * Returns true iff a row matched. Cross-user (keyed by id alone), like
+ * `setMemoryEmbedding`.
+ */
+export function setMemoryTopic(id: string, expectedContent: string, topic: string): boolean {
+	const db = getDb();
+	const result = db
+		.update(memories)
+		.set({ topic })
+		.where(and(eq(memories.id, id), eq(memories.content, expectedContent), isNull(memories.topic)))
+		.run();
+	return result.changes > 0;
+}
+
+/**
  * `topic` is the model-authored index label. The `save_memory` tool always
  * supplies one; it defaults to null here so internal/back-office callers (and
  * setup in tests) can create a row without one — those render via the snippet

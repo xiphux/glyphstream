@@ -1,0 +1,1 @@
+CREATE INDEX `idx_memories_untopiced` ON `memories` (`id`) WHERE "memories"."topic" is null;

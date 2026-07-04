@@ -15,6 +15,7 @@ import {
 	deleteMemory,
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
+	listMemoriesNeedingTopic,
 	listMemoriesWithEmbeddings,
 	listMemoryBodies,
 	listMemoryTierRows,
@@ -22,6 +23,7 @@ import {
 	memoryStats,
 	recordMemoryRecall,
 	setMemoryEmbedding,
+	setMemoryTopic,
 	updateMemory,
 } from '$lib/server/db/queries/memories';
 import { encodeVector } from '$lib/server/retrieval/vector';
@@ -315,6 +317,53 @@ describe('listMemoryBodies', () => {
 		const theirs = createMemory(u2.id, 'theirs', 'Theirs');
 		const bodies = listMemoryBodies(u1.id, [mine.id, theirs.id]);
 		expect(bodies.map((m) => m.id)).toEqual([mine.id]);
+	});
+});
+
+describe('topic backfill queue (listMemoriesNeedingTopic / setMemoryTopic)', () => {
+	it('lists only null-topic rows, honors the limit, across users', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const nullA = createMemory(u1.id, 'no topic a'); // topic defaults null
+		createMemory(u1.id, 'has topic', 'Labelled'); // excluded
+		const nullB = createMemory(u2.id, 'no topic b'); // other user, still queued
+
+		const ids = listMemoriesNeedingTopic(100).map((r) => r.id);
+		expect(ids.sort()).toEqual([nullA.id, nullB.id].sort());
+		expect(listMemoriesNeedingTopic(1)).toHaveLength(1);
+	});
+
+	it('setMemoryTopic writes the topic and removes the row from the queue', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'works at Acme');
+		expect(setMemoryTopic(id, 'works at Acme', 'Employer')).toBe(true);
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Employer');
+		expect(listMemoriesNeedingTopic(100)).toHaveLength(0);
+	});
+
+	it('setMemoryTopic does not bump updatedAt (a backfill is not a content edit)', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact');
+		const before = listMemoriesForUser(u.id)[0].updatedAt;
+		setMemoryTopic(id, 'fact', 'Topic');
+		expect(listMemoriesForUser(u.id)[0].updatedAt).toBe(before);
+	});
+
+	it('setMemoryTopic no-ops when the content changed since it was read', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'original');
+		// A concurrent update_memory changed the body (and supplied its own topic)
+		// between the worker's read and write.
+		updateMemory(u.id, id, 'revised', 'Real topic');
+		expect(setMemoryTopic(id, 'original', 'stale label')).toBe(false);
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Real topic');
+	});
+
+	it('setMemoryTopic no-ops when a topic is already set (concurrent label wins)', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'fact', 'Already labelled');
+		expect(setMemoryTopic(id, 'fact', 'backfill guess')).toBe(false);
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Already labelled');
 	});
 });
 

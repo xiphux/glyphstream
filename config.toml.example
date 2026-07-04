@@ -10,9 +10,12 @@
 # to commit to a private repo.
 
 # ── Optional top-level setting: task_model ───────────────────────────
-# Auto-generates conversation titles. After the first user+assistant
-# exchange in a new chat, GlyphStream calls this model once to produce a
-# short title, replacing the default first-N-chars-of-prompt preview.
+# The small utility model for lightweight background text tasks. Today it
+# (1) auto-generates conversation titles — after the first user+assistant
+# exchange in a new chat, GlyphStream calls it once to produce a short
+# title, replacing the default first-N-chars-of-prompt preview — and
+# (2) backfills topic labels for saved memories created before memories
+# carried a topic (a one-time sweep; new memories are labelled at save time).
 #
 # Format: "endpoint_id::upstream_model_id" — the same namespaced shape
 # the model picker uses. The endpoint it names is one defined further
