@@ -347,6 +347,95 @@ export function loadImageEnhancementConfig(
 	return { model, maxTokens, temperature, styleInstructionOverrides };
 }
 
+/** Default token cap for one memory-consolidation call — a few merge/reword ops
+ *  with rewritten content fit well under this; it's a ceiling, and the
+ *  per-request timeout backstops a runaway. */
+export const DEFAULT_MEMORY_MODEL_MAX_TOKENS = 2000;
+/** Low temperature — consolidation is careful bookkeeping, not creative writing. */
+export const DEFAULT_MEMORY_MODEL_TEMPERATURE = 0.2;
+
+/**
+ * The optional `[memory_model]` block — the capable model + schedule for the
+ * phase-4 memory-consolidation ("dreaming") worker. Returns null when absent, in
+ * which case dreaming is disabled (`getMemoryModel` → null → the worker no-ops).
+ *
+ * - `model`: required, `"endpoint_id::model_id"`. Like the other model slots the
+ *   endpoint is NOT verified at load time — a typo silently disables dreaming at
+ *   use-time rather than crashing boot (see `getMemoryModel`).
+ * - `max_tokens` / `temperature`: optional sampling overrides.
+ * - `active_hours`: optional `"HH:MM-HH:MM"` quiet-hours window (24-hour;
+ *   overnight wrap allowed, e.g. `"22:00-06:00"`). Empty = always open.
+ * - `timezone`: optional IANA zone the window is read in (default `"UTC"`).
+ */
+export interface LoadedMemoryModelConfig {
+	model: string;
+	maxTokens: number;
+	temperature: number;
+	activeHours: string;
+	timezone: string;
+}
+
+export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelConfig | null {
+	const { parsed, absolutePath } = readAndParse(path);
+	const raw = parsed.memory_model;
+	if (raw === undefined || raw === null) return null;
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
+		throw new ConfigError(`'[memory_model]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = raw as Record<string, unknown>;
+	const at = `[memory_model] in ${absolutePath}`;
+
+	const model = requireString(block.model, 'model', at);
+	if (parseModelId(model) === null) {
+		throw new ConfigError(`${at}: model "${model}" must be of the form "endpoint_id::model_id"`);
+	}
+
+	const maxTokens =
+		block.max_tokens === undefined
+			? DEFAULT_MEMORY_MODEL_MAX_TOKENS
+			: requireNumber(block.max_tokens, 'max_tokens', at, { min: 1 });
+	if (!Number.isInteger(maxTokens)) {
+		throw new ConfigError(`${at}: 'max_tokens' must be a whole number`);
+	}
+
+	const temperature =
+		block.temperature === undefined
+			? DEFAULT_MEMORY_MODEL_TEMPERATURE
+			: requireNumber(block.temperature, 'temperature', at, { min: 0, max: 2 });
+
+	let activeHours = '';
+	if (block.active_hours !== undefined) {
+		activeHours = requireString(block.active_hours, 'active_hours', at);
+		if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(activeHours)) {
+			throw new ConfigError(
+				`${at}: 'active_hours' must be "HH:MM-HH:MM" (24-hour), e.g. "02:00-06:00"`,
+			);
+		}
+		for (const hhmm of activeHours.split('-')) {
+			const [h, m] = hhmm.split(':').map(Number);
+			if (h > 23 || m > 59) {
+				throw new ConfigError(`${at}: 'active_hours' has an out-of-range time "${hhmm}"`);
+			}
+		}
+	}
+
+	let timezone = 'UTC';
+	if (block.timezone !== undefined) {
+		timezone = requireString(block.timezone, 'timezone', at);
+		try {
+			// Intl.DateTimeFormat throws RangeError on an unknown zone — the same
+			// zero-dependency validation the clock tool uses.
+			new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+		} catch {
+			throw new ConfigError(
+				`${at}: 'timezone' "${timezone}" is not a known IANA timezone (e.g. "America/New_York" or "UTC")`,
+			);
+		}
+	}
+
+	return { model, maxTokens, temperature, activeHours, timezone };
+}
+
 /** Default hard cap on upstream round-trips within a single turn's tool loop. */
 export const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
 

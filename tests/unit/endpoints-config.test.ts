@@ -11,9 +11,12 @@ import {
 	loadEndpoints,
 	loadImageEnhancementConfig,
 	loadMaxToolLoopIterations,
+	loadMemoryModelConfig,
 	loadNotificationsConfig,
 	loadRerankConfig,
 	loadSearchConfig,
+	DEFAULT_MEMORY_MODEL_MAX_TOKENS,
+	DEFAULT_MEMORY_MODEL_TEMPERATURE,
 } from '$lib/server/endpoints/config';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
@@ -916,6 +919,62 @@ temperature = 0.3
 				writeConfig(
 					`[image_enhancement]\nmodel = "g::m"\n[image_enhancement.style_instructions]\n  "bogus" = "x"`,
 				),
+			),
+		).toThrow(ConfigError);
+	});
+});
+
+describe('loadMemoryModelConfig', () => {
+	it('returns null when the block is absent', () => {
+		expect(loadMemoryModelConfig(writeConfig(``))).toBeNull();
+	});
+
+	it('parses model + defaults (no window)', () => {
+		const cfg = loadMemoryModelConfig(writeConfig(`\n[memory_model]\nmodel = "gpu::qwen-32b"\n`));
+		expect(cfg).toEqual({
+			model: 'gpu::qwen-32b',
+			maxTokens: DEFAULT_MEMORY_MODEL_MAX_TOKENS,
+			temperature: DEFAULT_MEMORY_MODEL_TEMPERATURE,
+			activeHours: '',
+			timezone: 'UTC',
+		});
+	});
+
+	it('honors max_tokens / temperature / active_hours / timezone', () => {
+		const cfg = loadMemoryModelConfig(
+			writeConfig(`
+[memory_model]
+model = "gpu::m"
+max_tokens = 1500
+temperature = 0.1
+active_hours = "02:00-06:00"
+timezone = "America/New_York"
+			`),
+		);
+		expect(cfg).toEqual({
+			model: 'gpu::m',
+			maxTokens: 1500,
+			temperature: 0.1,
+			activeHours: '02:00-06:00',
+			timezone: 'America/New_York',
+		});
+	});
+
+	it('rejects a malformed model, a bad active_hours, and an unknown timezone', () => {
+		expect(() => loadMemoryModelConfig(writeConfig(`[memory_model]\nmodel = "no-sep"`))).toThrow(
+			ConfigError,
+		);
+		expect(() =>
+			loadMemoryModelConfig(writeConfig(`[memory_model]\nmodel = "g::m"\nactive_hours = "2-6"`)),
+		).toThrow(ConfigError);
+		expect(() =>
+			loadMemoryModelConfig(
+				writeConfig(`[memory_model]\nmodel = "g::m"\nactive_hours = "25:00-06:00"`),
+			),
+		).toThrow(ConfigError);
+		expect(() =>
+			loadMemoryModelConfig(
+				writeConfig(`[memory_model]\nmodel = "g::m"\ntimezone = "Mars/Phobos"`),
 			),
 		).toThrow(ConfigError);
 	});
