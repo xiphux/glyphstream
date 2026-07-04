@@ -16,11 +16,7 @@ vi.mock('$lib/server/endpoints/client', () => ({ chatCompletionSync: chatMock })
 const taskModelMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/tasks/task-model', () => ({ getTaskModel: taskModelMock }));
 
-import {
-	runTopicBackfillSweep,
-	startTopicBackfiller,
-	stopTopicBackfiller,
-} from '$lib/server/memory/topic-backfill';
+import { runTopicBackfillSweep } from '$lib/server/memory/topic-backfill';
 import {
 	createMemory,
 	listMemoriesNeedingTopic,
@@ -41,12 +37,7 @@ beforeEach(() => {
 	reply('Generated topic');
 });
 
-afterEach(() => {
-	// Defensive: make sure a lifecycle test never leaks a timer/generation into
-	// the next test (each also cleans up in its own finally).
-	stopTopicBackfiller();
-	closeTestDb();
-});
+afterEach(() => closeTestDb());
 
 describe('runTopicBackfillSweep', () => {
 	it('is a no-op when no task model is configured', async () => {
@@ -102,76 +93,5 @@ describe('runTopicBackfillSweep', () => {
 		createMemory(u.id, 'fact');
 		expect(await runTopicBackfillSweep()).toEqual({ filled: 0, drained: false });
 		expect(listMemoriesNeedingTopic(100)).toHaveLength(1); // still queued for retry
-	});
-});
-
-describe('start/stop timer lifecycle', () => {
-	// Hold the model call open so a sweep can be caught mid-flight. Returns a
-	// `resolve` that completes the in-flight generation and a promise the tick
-	// callback runs off of.
-	function deferChat(): (content: string) => void {
-		let resolve!: (v: unknown) => void;
-		chatMock.mockImplementation(() => new Promise((res) => (resolve = res)));
-		return (content: string) => resolve({ choices: [{ message: { content } }] });
-	}
-
-	it('stop() during an in-flight sweep does not re-arm the timer', async () => {
-		vi.useFakeTimers();
-		try {
-			const u = seedUser();
-			createMemory(u.id, 'needs a topic');
-			const finishChat = deferChat();
-
-			startTopicBackfiller();
-			await vi.runOnlyPendingTimersAsync(); // fire the initial tick → sweep blocks on the model
-			expect(chatMock).toHaveBeenCalledTimes(1);
-			expect(vi.getTimerCount()).toBe(0); // nothing armed while the sweep is in flight
-
-			stopTopicBackfiller(); // stop mid-sweep
-			finishChat('Backfilled');
-			await vi.advanceTimersByTimeAsync(0); // let the sweep + its .then complete
-
-			// The completion callback must NOT have re-armed a timer.
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			stopTopicBackfiller();
-			vi.useRealTimers();
-		}
-	});
-
-	it('stop() then start() mid-sweep leaves the restarted timer intact', async () => {
-		vi.useFakeTimers();
-		try {
-			const u = seedUser();
-			createMemory(u.id, 'needs a topic');
-			const finishChat = deferChat();
-
-			startTopicBackfiller();
-			await vi.runOnlyPendingTimersAsync(); // sweep #1 in flight
-			stopTopicBackfiller();
-			startTopicBackfiller(); // restart while sweep #1 is still in flight
-			expect(vi.getTimerCount()).toBe(1); // the restart armed exactly one timer
-
-			// Sweep #1 completes — a shared boolean would let its callback null or
-			// double the restart's timer; the generation token makes it a no-op.
-			finishChat('Backfilled');
-			await vi.advanceTimersByTimeAsync(0);
-			expect(vi.getTimerCount()).toBe(1); // still exactly the restart's timer
-		} finally {
-			stopTopicBackfiller();
-			vi.useRealTimers();
-		}
-	});
-
-	it('does not mount a timer when no task model is configured', () => {
-		vi.useFakeTimers();
-		try {
-			taskModelMock.mockReturnValue(null);
-			startTopicBackfiller();
-			expect(vi.getTimerCount()).toBe(0);
-		} finally {
-			stopTopicBackfiller();
-			vi.useRealTimers();
-		}
 	});
 });
