@@ -6,6 +6,7 @@ import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger } from '$lib/server/media/purger';
 import { startEmbeddingBackfiller } from '$lib/server/memory/embedding-backfill';
 import { startTopicBackfiller } from '$lib/server/memory/topic-backfill';
+import { startDreamingWorker } from '$lib/server/memory/dreaming';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
@@ -43,6 +44,11 @@ startEmbeddingBackfiller();
 // model; no-op when no `task_model` is configured, and self-stops once the
 // historical backlog is drained.
 startTopicBackfiller();
+
+// Memory consolidation ("dreaming"): during a configured quiet-hours window, a
+// capable memory model merges/rewords/prunes each user's saved memories (with
+// soft-delete reversibility). No-op when no `[memory_model]` block is configured.
+startDreamingWorker();
 
 // Kick off MCP server connections in parallel with whatever the first
 // request happens to need. The chat-completion handler awaits readiness

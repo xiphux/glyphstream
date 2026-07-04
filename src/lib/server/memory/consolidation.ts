@@ -1,8 +1,8 @@
 /**
  * The memory-consolidation LLM step for the dreaming worker: hand the memory
  * model a user's live memories, get back a set of structured operations, and
- * validate them. Applying the ops (soft-delete/update in a transaction) is the
- * worker's job — this module is prompt + parse + validate only.
+ * validate them. Applying the ops (soft-delete/update) is the worker's job —
+ * this module is prompt + parse + validate only.
  *
  * There is no JSON-mode / `response_format` in the client, so (like every other
  * utility task) we prompt for a JSON object and parse-and-validate the freeform
