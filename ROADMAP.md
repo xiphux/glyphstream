@@ -47,18 +47,16 @@ docs.
     the deferred catalog in `/settings/mcp` so operators see what's hidden
     behind `search_tools`.
 
-- **Memory — phase-2.** Browse-mode MVP shipped. Recall shipped and is now
-  budget-driven, not embeddings-gated: once saved bodies exceed a size budget the
-  system prompt carries a compact `[id] topic` index (model-authored topic per
-  memory) and the model reads bodies back via `recall_memory` by id (pure SQLite)
-  or by query — the `[embeddings]` block only adds a semantic leg to the query,
-  it's no longer a prerequisite for recall. The `recall_count` / `last_recalled_at`
-  columns are recorded but not yet consumed. Remaining:
-  - _Frequency/recency tiering._ Sort the index by a recency-decayed recall score
-    (from the columns already recorded), promote hot memories back to
-    always-inline, and demote the cold tail. Use a decayed score from the start —
-    a promoted/inlined memory stops generating recall events, so a raw counter
-    freezes.
+- **Memory — phase-2.** Browse-mode MVP shipped. Recall shipped and is
+  budget-driven, not embeddings-gated: over budget the model reads bodies back via
+  `recall_memory` by id (pure SQLite) or by query — the `[embeddings]` block only
+  adds a semantic leg to the query, no longer a prerequisite. Frequency/recency
+  tiering also shipped: over budget the store is split by a recency-decayed score
+  (recall usage + creation freshness, `recall_count` / `last_recalled_at` from
+  recall hits) — the highest-scored memories stay inlined in full up to the
+  budget, the rest collapse to the `[id] topic` index. Scored at read time, so
+  promotion is self-erasing (an inlined memory stops being recalled → its term
+  decays → it sinks back). Remaining:
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
   - _Memory consolidation ("dreaming")._ A background pass that reorganizes

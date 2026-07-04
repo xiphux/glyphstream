@@ -3,14 +3,15 @@
  * memory store, plus `recall_memory` for retrieval. The default read
  * path is implicit: every memory's content is inlined into the system
  * prompt via composeMemorySection so the model has the full index for
- * free. Once those bodies would exceed the budget, they're swapped for a
- * compact `[id] topic` index — one line per memory (see
- * composeMemorySection's recallMode) — and the model reaches full bodies
- * via `recall_memory`: by id (pure SQLite, no embeddings) or by search
- * query (BM25 lexical, fused with embedding-cosine over the stored
- * vectors only when an `[embeddings]` model is configured). The switch is
- * budget-driven and embeddings-independent; embeddings are a semantic
- * enhancement to the query path, not a prerequisite for recall.
+ * free. Once those bodies would exceed the budget the store is split into
+ * tiers (see composeMemorySection's recallMode + selectMemoryTiers): the
+ * highest-scored memories stay inlined in full, the rest become a compact
+ * `[id] topic` index, and the model reaches an indexed body via
+ * `recall_memory`: by id (pure SQLite, no embeddings) or by search query
+ * (BM25 lexical, fused with embedding-cosine over the stored vectors only
+ * when an `[embeddings]` model is configured). The split is budget-driven
+ * and embeddings-independent; embeddings are a semantic enhancement to the
+ * query path, not a prerequisite for recall.
  *
  * All three tools carry `category: 'personalization'`. The existing
  * per-conversation toggle that gates the persona prompt also seals
@@ -158,7 +159,7 @@ export const recallMemoryTool: Tool = {
 		function: {
 			name: 'recall_memory',
 			description:
-				"Read the user's saved memories (durable facts about them, carried across conversations) that aren't fully shown in the system prompt. When the store is large, the system prompt shows a `[id] topic` index instead of full bodies — pass the ids of relevant-looking entries in `ids` to read their full text, or pass a `query` to search by meaning/keywords. Returns matching memories, each with its id (pass it to update_memory or forget_memory) and topic.",
+				"Read the user's saved memories (durable facts about them, carried across conversations) that aren't fully shown in the system prompt. When the store is large, only the highest-scored memories are shown in full; the rest appear as a `[id] topic` index — pass the ids of relevant-looking indexed entries in `ids` to read their full text, or pass a `query` to search by meaning/keywords. Returns matching memories, each with its id (pass it to update_memory or forget_memory) and topic.",
 			parameters: {
 				type: 'object',
 				properties: {

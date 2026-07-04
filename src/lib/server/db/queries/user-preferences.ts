@@ -259,12 +259,13 @@ export function setUserPreferences(
  * natural-language section headers prime it better than a structured
  * envelope that the model has to parse.
  *
- * When `recallMode` is set, the inlined memory bodies are swapped for the
- * compact `[id] topic` index (composeMemorySection handles the rendering); pass
- * `index` — the id/topic/snippet rows — so the section can be built without
- * loading the full bodies. The caller decides the mode — `composePersonaPrompt`
- * sets it when the store exceeds `MEMORY_INLINE_BUDGET_CHARS` — because that
- * check needs a size probe that lives request-side.
+ * When `recallMode` is set (the store is over budget), the memory section is
+ * tiered: `memories` carries the hot rows inlined in full and `index` the cold
+ * tail rendered as the compact `[id] topic` list (composeMemorySection handles
+ * the rendering). The caller decides the mode and does the split —
+ * `composePersonaPrompt` sets it when the store exceeds
+ * `MEMORY_INLINE_BUDGET_CHARS` — because that check needs a size probe that lives
+ * request-side.
  */
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,

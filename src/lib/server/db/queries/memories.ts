@@ -8,11 +8,13 @@
  * `setMemoryEmbedding`), which run cross-user by design — see their own notes.
  *
  * Read paths: small stores inline every row's `content` into the system prompt
- * via composeMemorySection (no retrieval round-trip); once the inlined bodies
- * would exceed a char budget the section is swapped for a compact `[id] topic`
- * index (still every row, just the topic not the body) and the model reads full
- * bodies back on demand via `recall_memory` — by id (no embeddings needed) or by
- * query (BM25 lexical, fused with `embedding`-cosine when a model is configured).
+ * via composeMemorySection (no retrieval round-trip); once the bodies would
+ * exceed a char budget the store is split into tiers (`selectMemoryTiers` in
+ * `../../memory/tiering`, scored by recency-decayed recall + freshness) — the
+ * highest-scored memories stay inlined in full up to the budget, the rest are
+ * shown as a compact `[id] topic` index, and the model reads an indexed body
+ * back on demand via `recall_memory` — by id (no embeddings needed) or by query
+ * (BM25 lexical, fused with `embedding`-cosine when a model is configured).
  */
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
@@ -321,11 +323,13 @@ export function updateMemory(
 
 /**
  * Record that these memories were surfaced by a `recall_memory` call: bump each
- * row's hit count and stamp the recall time. Data-only for now — phase-2
- * frequency tiering reads `recall_count` / `last_recalled_at` to decide which
- * memories to promote into the always-inline set. User-scoped like the rest of
- * the model-facing path (a foreign id simply matches zero rows). Does not touch
- * `updatedAt` — a recall isn't a content edit.
+ * row's hit count and stamp the recall time. These two columns feed
+ * `scoreMemory` (`../../memory/tiering`): the recency-decayed recall term is what
+ * keeps a frequently-referenced memory in the always-inline (hot) tier. Recall
+ * of an already-inlined memory doesn't happen (it's already in the prompt), so
+ * its term decays and it sinks back to the index — the self-erasing property.
+ * User-scoped like the rest of the model-facing path (a foreign id simply
+ * matches zero rows). Does not touch `updatedAt` — a recall isn't a content edit.
  */
 export function recordMemoryRecall(userId: string, ids: string[]): void {
 	if (ids.length === 0) return;
@@ -404,13 +408,12 @@ export function composeMemorySection(
 }
 
 /**
- * Total chars of all memory bodies above which the inlined bodies are swapped
- * for the compact `[id] topic` index — the budget signal for the
- * inline-vs-index switch. `composePersonaPrompt` compares it against
- * `memoryStats().totalChars` and flips `recallMode` so the model carries only
- * topics (and reads bodies back via recall_memory) instead of the whole store
- * every turn. Independent of embeddings — recall-by-id needs none. ~4000 chars ≈
- * ~1k tokens: well under even an 8k local-model context, with room for the rest
- * of the prompt.
+ * The char budget for inlined memory bodies, serving two roles in
+ * `composePersonaPrompt`: (1) the fast-path gate — when `memoryStats().totalChars`
+ * is at or under it, the whole store inlines with no scoring; (2) over budget,
+ * the capacity `selectMemoryTiers` greedy-fills the hot (inline-in-full) tier
+ * against, the remainder spilling to the `[id] topic` index. Independent of
+ * embeddings — recall-by-id needs none. ~4000 chars ≈ ~1k tokens: well under even
+ * an 8k local-model context, with room for the rest of the prompt.
  */
 export const MEMORY_INLINE_BUDGET_CHARS = 4000;
