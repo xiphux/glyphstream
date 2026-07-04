@@ -34,6 +34,10 @@ const INITIAL_DELAY_MS = 20_000;
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
+// Set by stopTopicBackfiller so a sweep already in flight when stop is called
+// doesn't re-arm the timer from its completion callback (clearTimeout can't
+// cancel the pending `.then`). Cleared by startTopicBackfiller.
+let stopping = false;
 
 /**
  * Run one topic-backfill pass. Returns how many rows were filled and whether the
@@ -89,12 +93,21 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 /**
  * Mount the periodic topic backfiller. Idempotent. No-op when no `task_model` is
  * configured — without one there's no way to generate labels, so a timer would
- * just wake to do nothing. Self-terminates once a sweep finds the queue empty
- * (nothing reintroduces null topics); a restart re-runs this and re-checks.
+ * just wake to do nothing. Self-terminates once a sweep finds the queue empty:
+ * nothing reintroduces null topics today (save_memory / update_memory always
+ * supply one). A future feature that creates topic-less rows (e.g. phase-4
+ * consolidation writing new memories) must call this again to re-arm — a plain
+ * restart also re-runs it and re-checks.
  */
 export function startTopicBackfiller(): void {
 	if (timer) return;
 	if (!getTaskModel()) return;
+	stopping = false;
+	function rearm() {
+		// Don't reschedule if stop was called during the in-flight sweep.
+		if (stopping) return;
+		timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+	}
 	function tick() {
 		runTopicBackfillSweep().then(
 			(r) => {
@@ -103,11 +116,11 @@ export function startTopicBackfiller(): void {
 					console.log('[topic-backfill] backlog drained; worker stopped');
 					return;
 				}
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				rearm();
 			},
 			(e) => {
 				console.error('[topic-backfill] sweep failed:', e);
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				rearm();
 			},
 		);
 	}
@@ -115,8 +128,13 @@ export function startTopicBackfiller(): void {
 	console.log(`[topic-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 
-/** Tear down the timer — for tests / clean shutdown. */
+/**
+ * Tear down the timer — for tests / clean shutdown. Also sets a flag so a sweep
+ * already in flight doesn't re-arm the timer from its completion callback
+ * (`clearTimeout` can't cancel the pending promise continuation).
+ */
 export function stopTopicBackfiller(): void {
+	stopping = true;
 	if (timer) {
 		clearTimeout(timer);
 		timer = null;
