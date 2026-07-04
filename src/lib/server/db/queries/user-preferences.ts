@@ -14,7 +14,7 @@ import type { CompareSelection } from '$lib/fanout';
 import type { SavedModelSet, UserPreferences } from '$lib/types/api';
 import { getDb } from '../client';
 import { users } from '../schema';
-import { composeMemorySection, type Memory } from './memories';
+import { composeMemorySection, type Memory, type MemoryIndexRow } from './memories';
 
 const DEFAULTS: UserPreferences = {
 	name: '',
@@ -259,18 +259,17 @@ export function setUserPreferences(
  * natural-language section headers prime it better than a structured
  * envelope that the model has to parse.
  *
- * When `recallMode` is set, the inlined memory bodies are swapped for a
- * one-liner pointing at the recall_memory tool (composeMemorySection handles
- * the rendering); pass `recallCount` so the hint can state the store size
- * without loading the bodies. The caller decides the mode — `composePersonaPrompt`
- * sets it when an embedding model is configured and the store exceeds
- * `MEMORY_INLINE_BUDGET_CHARS` — because that check needs the embedding-config
- * lookup and a size probe, both of which live request-side.
+ * When `recallMode` is set, the inlined memory bodies are swapped for the
+ * compact `[id] topic` index (composeMemorySection handles the rendering); pass
+ * `index` — the id/topic/snippet rows — so the section can be built without
+ * loading the full bodies. The caller decides the mode — `composePersonaPrompt`
+ * sets it when the store exceeds `MEMORY_INLINE_BUDGET_CHARS` — because that
+ * check needs a size probe that lives request-side.
  */
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,
 	memories: Memory[] = [],
-	opts: { recallMode?: boolean; recallCount?: number } = {},
+	opts: { recallMode?: boolean; index?: MemoryIndexRow[] } = {},
 ): string | null {
 	const parts: string[] = [];
 	const name = prefs.name.trim();
@@ -287,7 +286,7 @@ export function composePersonaSystemPrompt(
 	}
 	const memorySection = composeMemorySection(memories, {
 		recallMode: opts.recallMode,
-		recallCount: opts.recallCount,
+		index: opts.index,
 	});
 	if (memorySection) {
 		parts.push(memorySection);

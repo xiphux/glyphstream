@@ -1047,6 +1047,9 @@ export type StreamEvent =
 export interface Memory {
 	id: string;
 	content: string;
+	/** Short model-authored label shown in the over-budget memory index in place
+	 *  of the full body. Null on rows saved before the field existed. */
+	topic?: string | null;
 	createdAt: number;
 	updatedAt: number;
 }

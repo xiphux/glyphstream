@@ -47,6 +47,11 @@ async function run(query: unknown) {
 	return { res, parsed: res.isError ? null : JSON.parse(res.content) };
 }
 
+async function runArgs(args: unknown) {
+	const res = await recallMemoryTool.execute(args, ctx);
+	return { res, parsed: res.isError ? null : JSON.parse(res.content) };
+}
+
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	embeddingsMock.mockReset();
@@ -56,15 +61,11 @@ beforeEach(() => {
 
 afterEach(() => closeTestDb());
 
-describe('recallMemoryTool.isAvailable', () => {
-	it('is true when an embedding model resolves', () => {
-		resolveMock.mockReturnValue(CFG);
-		expect(recallMemoryTool.isAvailable?.()).toBe(true);
-	});
-
-	it('is false when no embedding model is configured', () => {
-		resolveMock.mockReturnValue(undefined);
-		expect(recallMemoryTool.isAvailable?.()).toBe(false);
+describe('recallMemoryTool availability', () => {
+	it('is always advertised (no embeddings gate) — the ids path needs no model', () => {
+		// isAvailable is intentionally undefined: recall is gated only by the
+		// 'personalization' category, so recall-by-id works without embeddings.
+		expect(recallMemoryTool.isAvailable).toBeUndefined();
 	});
 });
 
@@ -131,7 +132,69 @@ describe('recallMemoryTool.execute', () => {
 		expect(parsed.matches.map((m: { id: string }) => m.id)).toContain(a.id);
 	});
 
-	it('returns a recoverable error for a missing query argument', async () => {
+	it('runs the BM25 query path (no error) when no embedding model is configured', async () => {
+		resolveMock.mockReturnValue(undefined); // no [embeddings] configured
+		const u = seedUser();
+		ctx.userId = u.id;
+		createMemory(u.id, 'the quokka migration plan', 'Quokka');
+
+		const { res, parsed } = await run('quokka');
+		expect(res.isError).toBeFalsy();
+		expect(parsed.matches.map((m: { content: string }) => m.content)).toContain(
+			'the quokka migration plan',
+		);
+		// The dense leg must not be attempted without a model.
+		expect(embeddingsMock).not.toHaveBeenCalled();
+	});
+
+	it('includes each match’s topic in the result', async () => {
+		const u = seedUser();
+		ctx.userId = u.id;
+		createMemory(u.id, 'the quokka migration plan', 'Quokka');
+		mockQueryVec([1, 0]);
+		const { parsed } = await run('quokka');
+		expect(parsed.matches[0].topic).toBe('Quokka');
+	});
+
+	describe('ids path', () => {
+		it('returns exactly the requested rows, no ranking, no embedding call', async () => {
+			resolveMock.mockReturnValue(undefined); // works without embeddings
+			const u = seedUser();
+			ctx.userId = u.id;
+			const a = createMemory(u.id, 'alpha note', 'Alpha');
+			createMemory(u.id, 'beta note', 'Beta');
+			const c = createMemory(u.id, 'gamma note', 'Gamma');
+
+			const { res, parsed } = await runArgs({ ids: [a.id, c.id] });
+			expect(res.isError).toBeFalsy();
+			expect(parsed.matches.map((m: { id: string }) => m.id).sort()).toEqual([a.id, c.id].sort());
+			expect(embeddingsMock).not.toHaveBeenCalled();
+		});
+
+		it('silently drops foreign / fabricated ids (user-scoped)', async () => {
+			const u1 = seedUser();
+			const u2 = seedUser();
+			ctx.userId = u1.id;
+			const mine = createMemory(u1.id, 'mine', 'Mine');
+			const theirs = createMemory(u2.id, 'theirs', 'Theirs');
+
+			const { parsed } = await runArgs({ ids: [mine.id, theirs.id, 'fabricated'] });
+			expect(parsed.matches.map((m: { id: string }) => m.id)).toEqual([mine.id]);
+		});
+
+		it('takes precedence over a query when both are supplied', async () => {
+			const u = seedUser();
+			ctx.userId = u.id;
+			const a = createMemory(u.id, 'alpha note', 'Alpha');
+			createMemory(u.id, 'beta note', 'Beta');
+
+			const { parsed } = await runArgs({ ids: [a.id], query: 'beta' });
+			expect(parsed.matches.map((m: { id: string }) => m.id)).toEqual([a.id]);
+			expect(embeddingsMock).not.toHaveBeenCalled();
+		});
+	});
+
+	it('returns a recoverable error when neither query nor ids is provided', async () => {
 		const u = seedUser();
 		ctx.userId = u.id;
 		const res = await recallMemoryTool.execute({}, ctx);

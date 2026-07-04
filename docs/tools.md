@@ -14,13 +14,17 @@ folded back into the conversation. The built-in toolset:
   file round-trip to the conversation's attachments (see
   [Code interpreter](code-interpreter.md)).
 - `save_memory` / `update_memory` / `forget_memory` — persist user-scoped
-  facts the model surfaces between sessions.
-- `recall_memory` — semantic search over saved memories. Only available when an
-  embedding model is configured (the `[embeddings]` block; see
-  [Web search & RAG](web-search.md)). Saved memories are normally inlined into
-  the system prompt in full; once they grow past a size budget the inlined
-  bodies are replaced with a pointer to this tool, so a large memory store
-  doesn't flood a small context window.
+  facts the model surfaces between sessions. Each memory also carries a short
+  model-authored topic label.
+- `recall_memory` — read saved memories that aren't fully shown in the system
+  prompt, by id or by search. Saved memories are normally inlined into the
+  system prompt in full; once they grow past a size budget the bodies are
+  replaced with a compact `[id] topic` index (every memory, just its topic),
+  and the model reads full bodies back through this tool — either by passing
+  the ids of relevant-looking entries, or a search query. Recall-by-id needs no
+  embedding model; a search query runs keyword (BM25) matching, additionally
+  fused with semantic similarity when an embedding model is configured (the
+  `[embeddings]` block; see [Web search & RAG](web-search.md)).
 
 The architecture is unbounded — adding more is a single file under
 `src/lib/server/tools/` (see [Adding more tools](#adding-more-tools)), and

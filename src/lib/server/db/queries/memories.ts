@@ -8,12 +8,13 @@
  * `setMemoryEmbedding`), which run cross-user by design — see their own notes.
  *
  * Read paths: small stores inline every row's `content` into the system prompt
- * via composeMemorySection (no retrieval round-trip); once the inlined index
- * would exceed a char budget AND an embedding model is configured, the bodies
- * are swapped for a `recall_memory` hint and the model retrieves on demand
- * against `embedding` (populated asynchronously by the backfill worker).
+ * via composeMemorySection (no retrieval round-trip); once the inlined bodies
+ * would exceed a char budget the section is swapped for a compact `[id] topic`
+ * index (still every row, just the topic not the body) and the model reads full
+ * bodies back on demand via `recall_memory` — by id (no embeddings needed) or by
+ * query (BM25 lexical, fused with `embedding`-cosine when a model is configured).
  */
-import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { Memory } from '$lib/types/api';
 import { getDb } from '../client';
@@ -25,6 +26,18 @@ export type { Memory };
 export interface MemoryWithEmbedding extends Memory {
 	embedding: Buffer | null;
 	embeddingModel: string | null;
+}
+
+/**
+ * A single line of the over-budget memory index: the id, the model-authored
+ * `topic` (null on rows predating the field), and a body `snippet` used as the
+ * fallback label when `topic` is null. Deliberately omits the full body — the
+ * index is what we inject *instead of* bodies once the store is over budget.
+ */
+export interface MemoryIndexRow {
+	id: string;
+	topic: string | null;
+	snippet: string;
 }
 
 /**
@@ -69,6 +82,28 @@ export function memoryStats(userId: string): { count: number; totalChars: number
 }
 
 /**
+ * The over-budget memory index: one row per memory with its `topic` and a body
+ * `snippet`, oldest-first (same stable ordering rationale as
+ * `listMemoriesForUser`). Selects only id/topic/snippet — not the full body —
+ * so composing the index doesn't materialize the bodies the recall switch is
+ * there to avoid. The `substr(...)` snippet is the fallback label for rows whose
+ * `topic` is still null (pre-topic rows, until phase-3 backfill).
+ */
+export function listMemoryIndexForUser(userId: string): MemoryIndexRow[] {
+	const db = getDb();
+	return db
+		.select({
+			id: memories.id,
+			topic: memories.topic,
+			snippet: sql<string>`substr(${memories.content}, 1, 80)`,
+		})
+		.from(memories)
+		.where(eq(memories.userId, userId))
+		.orderBy(asc(memories.createdAt))
+		.all();
+}
+
+/**
  * Like `listMemoriesForUser` but also returns the persisted embedding + the
  * model that produced it. The recall tool ranks the rows whose `embeddingModel`
  * matches the currently-configured model (different models = different vector
@@ -81,6 +116,7 @@ export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[
 			.select({
 				id: memories.id,
 				content: memories.content,
+				topic: memories.topic,
 				createdAt: memories.createdAt,
 				updatedAt: memories.updatedAt,
 				embedding: memories.embedding,
@@ -167,7 +203,17 @@ export function setMemoryEmbedding(
 	return result.changes > 0;
 }
 
-export function createMemory(userId: string, content: string): { id: string } {
+/**
+ * `topic` is the model-authored index label. The `save_memory` tool always
+ * supplies one; it defaults to null here so internal/back-office callers (and
+ * setup in tests) can create a row without one — those render via the snippet
+ * fallback until the phase-3 dreaming pass backfills a real topic.
+ */
+export function createMemory(
+	userId: string,
+	content: string,
+	topic: string | null = null,
+): { id: string } {
 	const db = getDb();
 	const id = generateId();
 	const now = Date.now();
@@ -176,6 +222,7 @@ export function createMemory(userId: string, content: string): { id: string } {
 			id,
 			userId,
 			content,
+			topic,
 			embedding: null,
 			embeddingModel: null,
 			createdAt: now,
@@ -185,17 +232,58 @@ export function createMemory(userId: string, content: string): { id: string } {
 	return { id };
 }
 
-/** Returns true iff a row matched (id existed for this user). */
-export function updateMemory(userId: string, id: string, content: string): boolean {
+/**
+ * Returns true iff a row matched (id existed for this user).
+ *
+ * `topic` is only written when provided: the `update_memory` tool re-supplies it
+ * (renaming the index entry in the same edit), but a caller that omits it leaves
+ * the existing topic untouched rather than clobbering it to null.
+ */
+export function updateMemory(
+	userId: string,
+	id: string,
+	content: string,
+	topic?: string | null,
+): boolean {
 	const db = getDb();
-	const result = db
-		.update(memories)
+	const set: {
+		content: string;
+		updatedAt: number;
+		embedding: null;
+		embeddingModel: null;
+		topic?: string | null;
+	} = {
+		content,
 		// Null the stored vector so the backfill worker re-embeds the new
 		// content — a stale embedding would recall the memory by its old text.
-		.set({ content, updatedAt: Date.now(), embedding: null, embeddingModel: null })
+		updatedAt: Date.now(),
+		embedding: null,
+		embeddingModel: null,
+	};
+	if (topic !== undefined) set.topic = topic;
+	const result = db
+		.update(memories)
+		.set(set)
 		.where(and(eq(memories.userId, userId), eq(memories.id, id)))
 		.run();
 	return result.changes > 0;
+}
+
+/**
+ * Record that these memories were surfaced by a `recall_memory` call: bump each
+ * row's hit count and stamp the recall time. Data-only for now — phase-2
+ * frequency tiering reads `recall_count` / `last_recalled_at` to decide which
+ * memories to promote into the always-inline set. User-scoped like the rest of
+ * the model-facing path (a foreign id simply matches zero rows). Does not touch
+ * `updatedAt` — a recall isn't a content edit.
+ */
+export function recordMemoryRecall(userId: string, ids: string[]): void {
+	if (ids.length === 0) return;
+	const db = getDb();
+	db.update(memories)
+		.set({ recallCount: sql`${memories.recallCount} + 1`, lastRecalledAt: Date.now() })
+		.where(and(eq(memories.userId, userId), inArray(memories.id, ids)))
+		.run();
 }
 
 /** Returns true iff a row matched (id existed for this user). */
@@ -210,33 +298,35 @@ export function deleteMemory(userId: string, id: string): boolean {
 
 /**
  * Compose the "Saved memories" section appended to the persona system
- * prompt. Returns null when the list is empty so the caller can omit
+ * prompt. Returns null when there's nothing to show so the caller can omit
  * the section header entirely — a "(no memories yet)" line would just
  * be noise; the tool descriptions already teach the model that
  * save_memory exists.
  *
- * Each row is rendered as `[<id>] <content>` so the model can pass the
- * id back to update_memory / forget_memory. The header text describes
- * what the index is and how to write to it.
+ * Two renderings, chosen by `composePersonaPrompt`:
  *
- * When `recallMode` is set (an embedding endpoint is configured and the inlined
- * bodies would exceed `MEMORY_INLINE_BUDGET_CHARS` — the check lives in
- * `composePersonaPrompt`), the bodies are replaced with a one-liner pointing at
- * the `recall_memory` tool, so a large memory store doesn't blow a small context
- * window. The caller decides the mode; this just renders it.
+ * - **Inline** (default, small stores): every row as `[<id>] <content>`, the
+ *   full body in the prompt so nothing has to be recalled.
+ * - **Index** (`recallMode`, over `MEMORY_INLINE_BUDGET_CHARS`): every row as
+ *   `[<id>] <topic>`, just the topic not the body, so a large store still fits.
+ *   The model reads full bodies back via `recall_memory` (by id, or by query).
+ *   Falls back to a content snippet for rows whose `topic` is still null. Unlike
+ *   inline mode this needs no embedding model — recall-by-id is pure SQLite.
+ *
+ * In both cases the bracketed id is what the model passes to
+ * update_memory / forget_memory (and, in index mode, recall_memory).
  */
 export function composeMemorySection(
 	list: Memory[],
-	opts: { recallMode?: boolean; recallCount?: number } = {},
+	opts: { recallMode?: boolean; index?: MemoryIndexRow[] } = {},
 ): string | null {
-	// In recall mode the bodies aren't inlined, so the caller can pass `recallCount`
-	// (a cheap COUNT) instead of materializing every row just to size the store.
-	// Falls back to the list length when no explicit count is given.
-	const count = opts.recallCount ?? list.length;
-	if (count === 0) return null;
 	if (opts.recallMode) {
-		const noun = count === 1 ? 'memory' : 'memories';
-		return `The user has ${count} saved ${noun} (durable facts about them, carried across conversations). They are not all shown here — call recall_memory with a query to retrieve the ones relevant to the current topic. Each result is prefixed with its id in square brackets; pass that id to update_memory or forget_memory. To add a new memory, call save_memory.`;
+		const index = opts.index ?? [];
+		if (index.length === 0) return null;
+		const header =
+			'Saved memory index (durable facts about the user, carried across conversations). Only a short topic for each memory is shown here — the full text is not loaded. Call recall_memory with a list of ids to read the full text of specific entries, or with a query to find entries by meaning. Each line is prefixed with its id in square brackets — pass that id to recall_memory, update_memory, or forget_memory. To add a new memory, call save_memory.';
+		const lines = index.map((m) => `[${m.id}] ${m.topic ?? m.snippet}`);
+		return `${header}\n\n${lines.join('\n')}`;
 	}
 	if (list.length === 0) return null;
 	const header =
@@ -246,12 +336,13 @@ export function composeMemorySection(
 }
 
 /**
- * Total chars of all memory bodies above which the inline index is swapped for a
- * `recall_memory` hint — the budget signal for the inline-vs-recall switch.
- * `composePersonaPrompt` compares it against `memoryStats().totalChars` (with an
- * embedding model configured) and flips `recallMode` so the model retrieves on
- * demand instead of carrying the whole index every turn. ~4000 chars ≈ ~1k
- * tokens: well under even an 8k local-model context, with room for the rest of
- * the prompt.
+ * Total chars of all memory bodies above which the inlined bodies are swapped
+ * for the compact `[id] topic` index — the budget signal for the
+ * inline-vs-index switch. `composePersonaPrompt` compares it against
+ * `memoryStats().totalChars` and flips `recallMode` so the model carries only
+ * topics (and reads bodies back via recall_memory) instead of the whole store
+ * every turn. Independent of embeddings — recall-by-id needs none. ~4000 chars ≈
+ * ~1k tokens: well under even an 8k local-model context, with room for the rest
+ * of the prompt.
  */
 export const MEMORY_INLINE_BUDGET_CHARS = 4000;

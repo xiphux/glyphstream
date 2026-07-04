@@ -25,6 +25,7 @@ import {
 	createMemory,
 	deleteMemory,
 	listMemoriesWithEmbeddings,
+	recordMemoryRecall,
 	updateMemory,
 	type MemoryWithEmbedding,
 } from '../db/queries/memories';
@@ -37,6 +38,10 @@ import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 
 const MAX_CONTENT_CHARS = 500;
+
+/** Max length of a memory's short `topic` label — matches the index snippet
+ *  width so a topic and a fallback snippet render at the same scale. */
+const MAX_TOPIC_CHARS = 80;
 
 /** How many recalled memories to hand back to the model per query. */
 const RECALL_TOP_K = 8;
@@ -55,17 +60,21 @@ export const saveMemoryTool: Tool = {
 						type: 'string',
 						description: `The memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
 					},
+					topic: {
+						type: 'string',
+						description: `A short label naming what this memory is about — a few words, at most ${MAX_TOPIC_CHARS} characters (e.g. "Dietary preferences", "Employer", "Kids' names"). Shown as the index entry when the store is too large to inline in full.`,
+					},
 				},
-				required: ['content'],
+				required: ['content', 'topic'],
 				additionalProperties: false,
 			},
 		},
 	},
 	metadata: { displayLabel: 'Save memory', icon: 'brain', category: 'personalization' },
 	execute(args, ctx): ToolExecution {
-		const parsed = parseContentArg(args);
+		const parsed = parseSaveArgs(args);
 		if ('error' in parsed) return errorResult(parsed.error);
-		const { id } = createMemory(ctx.userId, parsed.content);
+		const { id } = createMemory(ctx.userId, parsed.content, parsed.topic);
 		return { content: JSON.stringify({ id, saved: true }) };
 	},
 };
@@ -89,17 +98,21 @@ export const updateMemoryTool: Tool = {
 						type: 'string',
 						description: `The new memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
 					},
+					topic: {
+						type: 'string',
+						description: `A short label naming what this memory is about — a few words, at most ${MAX_TOPIC_CHARS} characters. Re-supply it (adjusted if the edit changes the subject) so the index entry stays accurate.`,
+					},
 				},
-				required: ['id', 'content'],
+				required: ['id', 'content', 'topic'],
 				additionalProperties: false,
 			},
 		},
 	},
 	metadata: { displayLabel: 'Update memory', icon: 'brain', category: 'personalization' },
 	execute(args, ctx): ToolExecution {
-		const parsed = parseIdAndContentArgs(args);
+		const parsed = parseUpdateArgs(args);
 		if ('error' in parsed) return errorResult(parsed.error);
-		const matched = updateMemory(ctx.userId, parsed.id, parsed.content);
+		const matched = updateMemory(ctx.userId, parsed.id, parsed.content, parsed.topic);
 		if (!matched) return errorResult(`No memory with id "${parsed.id}".`);
 		return { content: JSON.stringify({ id: parsed.id, updated: true }) };
 	},
@@ -142,54 +155,89 @@ export const recallMemoryTool: Tool = {
 		function: {
 			name: 'recall_memory',
 			description:
-				"Search the user's saved memories (durable facts about them, carried across conversations) for the ones relevant to the current topic. Use this when the full memory index is not already shown in the system prompt and a stored preference, fact, or detail about the user would help answer well. Returns the most relevant memories, each prefixed with its id in square brackets — pass that id to update_memory or forget_memory.",
+				"Read the user's saved memories (durable facts about them, carried across conversations) that aren't fully shown in the system prompt. When the store is large, the system prompt shows a `[id] topic` index instead of full bodies — pass the ids of relevant-looking entries in `ids` to read their full text, or pass a `query` to search by meaning/keywords. Returns matching memories, each with its id (pass it to update_memory or forget_memory) and topic.",
 			parameters: {
 				type: 'object',
 				properties: {
 					query: {
 						type: 'string',
 						description:
-							'What to look for — a topic, question, or keywords describing the kind of saved fact you need.',
+							"What to look for — a topic, question, or keywords describing the kind of saved fact you need. Use when you don't already know which entries you want.",
+					},
+					ids: {
+						type: 'array',
+						items: { type: 'string' },
+						description:
+							'Specific memory ids to read in full — the bracketed values from the saved-memory index. Use this to expand entries whose topic looks relevant. Takes precedence over `query`.',
 					},
 				},
-				required: ['query'],
 				additionalProperties: false,
 			},
 		},
 	},
 	metadata: { displayLabel: 'Recall memory', icon: 'brain', category: 'personalization' },
-	// Advertised only when an embedding model is configured (the same `[embeddings]`
-	// signal fetch_url uses). The 'personalization' category gates it on the
-	// per-conversation toggle via openaiToolDefinitions().
-	isAvailable: () => resolveRelevanceConfig() !== undefined,
+	// Always advertised within the 'personalization' category (gated on the
+	// per-conversation toggle via openaiToolDefinitions()). Not tied to
+	// `[embeddings]`: the ids path is pure SQLite and the query path degrades to
+	// BM25-only, so recall works without an embedding model — and the over-budget
+	// index in the system prompt points the model here regardless.
 	async execute(args, ctx): Promise<ToolExecution> {
-		const parsed = parseQueryArg(args);
+		const parsed = parseRecallArgs(args);
 		if ('error' in parsed) return errorResult(parsed.error);
-		const cfg = resolveRelevanceConfig();
-		if (!cfg)
-			return errorResult('Memory recall is unavailable — no embedding model is configured.');
 
 		const rows = listMemoriesWithEmbeddings(ctx.userId);
 		if (rows.length === 0) return { content: JSON.stringify({ matches: [] }) };
 
+		// ids path — return exactly the requested rows in full, no ranking. A
+		// foreign or fabricated id simply isn't in `rows` (query is user-scoped).
+		if ('ids' in parsed) {
+			const wanted = new Set(parsed.ids);
+			return finishRecall(
+				ctx.userId,
+				rows.filter((r) => wanted.has(r.id)),
+			);
+		}
+
 		// Lexical leg — always, over ALL rows so a freshly-saved memory the
-		// backfill worker hasn't embedded yet is still findable.
+		// backfill worker hasn't embedded yet is still findable. Needs no vectors.
 		const rankings: ScoredChunk[][] = [
 			bm25Rank(
 				parsed.query,
 				rows.map((r) => r.content),
 			),
 		];
-		// Dense leg — embed the query and cosine against the matching-model
-		// vectors. Any failure degrades to BM25 alone (never errors the turn).
-		const dense = await denseRank(parsed.query, rows, cfg, ctx.signal);
-		if (dense) rankings.push(dense);
+		// Dense leg — only when an embedding model is configured. Embeds the query
+		// and cosines against the matching-model vectors; any failure (or no model)
+		// degrades to BM25 alone, never errors the turn.
+		const cfg = resolveRelevanceConfig();
+		if (cfg) {
+			const dense = await denseRank(parsed.query, rows, cfg, ctx.signal);
+			if (dense) rankings.push(dense);
+		}
 
 		const fused = fuseRankings(rankings).slice(0, RECALL_TOP_K);
-		const matches = fused.map((sc) => ({ id: rows[sc.index].id, content: rows[sc.index].content }));
-		return { content: JSON.stringify({ matches }) };
+		return finishRecall(
+			ctx.userId,
+			fused.map((sc) => rows[sc.index]),
+		);
 	},
 };
+
+/**
+ * Shape a set of resolved memory rows into the recall tool result and record the
+ * hit. Both recall paths (ids and query) funnel through here so the
+ * recall-frequency signal (`recordMemoryRecall`) is captured identically. Emits
+ * id + topic + content — the topic lets the model correlate a result back to the
+ * index line it expanded.
+ */
+function finishRecall(userId: string, rows: MemoryWithEmbedding[]): ToolExecution {
+	const matches = rows.map((r) => ({ id: r.id, topic: r.topic ?? null, content: r.content }));
+	recordMemoryRecall(
+		userId,
+		matches.map((m) => m.id),
+	);
+	return { content: JSON.stringify({ matches }) };
+}
 
 /**
  * Rank memory rows by cosine of the query embedding against each row's stored
@@ -227,13 +275,26 @@ async function denseRank(
 	}
 }
 
-function parseQueryArg(args: unknown): { query: string } | { error: string } {
+/**
+ * Recall accepts either `ids` (read specific entries) or `query` (search).
+ * `ids` wins when both are present. Returns a discriminated union so the handler
+ * can branch on `'ids' in parsed`.
+ */
+function parseRecallArgs(args: unknown): { ids: string[] } | { query: string } | { error: string } {
 	if (!args || typeof args !== 'object') {
-		return { error: 'Expected an object argument with a `query` field.' };
+		return { error: 'Expected an object argument with a `query` or `ids` field.' };
 	}
-	const a = args as { query?: unknown };
+	const a = args as { query?: unknown; ids?: unknown };
+	if (a.ids !== undefined) {
+		if (!Array.isArray(a.ids) || a.ids.some((x) => typeof x !== 'string')) {
+			return { error: '`ids` must be an array of memory id strings.' };
+		}
+		const ids = (a.ids as string[]).map((s) => s.trim()).filter((s) => s.length > 0);
+		if (ids.length === 0) return { error: '`ids` must contain at least one memory id.' };
+		return { ids };
+	}
 	if (typeof a.query !== 'string' || a.query.trim().length === 0) {
-		return { error: 'Missing or empty `query` argument.' };
+		return { error: 'Provide either `ids` (specific entries to read) or a non-empty `query`.' };
 	}
 	return { query: a.query.trim() };
 }
@@ -256,6 +317,24 @@ function parseContentArg(args: unknown): { content: string } | { error: string }
 	return { content: trimmed };
 }
 
+function parseTopicArg(args: unknown): { topic: string } | { error: string } {
+	if (!args || typeof args !== 'object') {
+		return { error: 'Expected an object argument with a `topic` field.' };
+	}
+	const a = args as { topic?: unknown };
+	if (typeof a.topic !== 'string') {
+		return { error: 'Missing or non-string `topic` argument.' };
+	}
+	const trimmed = a.topic.trim();
+	if (trimmed.length === 0) return { error: '`topic` must be non-empty.' };
+	if (trimmed.length > MAX_TOPIC_CHARS) {
+		return {
+			error: `\`topic\` exceeds ${MAX_TOPIC_CHARS} characters — keep it to a few words.`,
+		};
+	}
+	return { topic: trimmed };
+}
+
 function parseIdArg(args: unknown): { id: string } | { error: string } {
 	if (!args || typeof args !== 'object') {
 		return { error: 'Expected an object argument with an `id` field.' };
@@ -267,12 +346,22 @@ function parseIdArg(args: unknown): { id: string } | { error: string } {
 	return { id: a.id };
 }
 
-function parseIdAndContentArgs(args: unknown): { id: string; content: string } | { error: string } {
-	const idResult = parseIdArg(args);
-	if ('error' in idResult) return idResult;
+function parseSaveArgs(args: unknown): { content: string; topic: string } | { error: string } {
 	const contentResult = parseContentArg(args);
 	if ('error' in contentResult) return contentResult;
-	return { id: idResult.id, content: contentResult.content };
+	const topicResult = parseTopicArg(args);
+	if ('error' in topicResult) return topicResult;
+	return { content: contentResult.content, topic: topicResult.topic };
+}
+
+function parseUpdateArgs(
+	args: unknown,
+): { id: string; content: string; topic: string } | { error: string } {
+	const idResult = parseIdArg(args);
+	if ('error' in idResult) return idResult;
+	const rest = parseSaveArgs(args);
+	if ('error' in rest) return rest;
+	return { id: idResult.id, content: rest.content, topic: rest.topic };
 }
 
 function errorResult(message: string): ToolExecution {

@@ -361,10 +361,17 @@ export const customModels = sqliteTable('custom_models', {
 //
 // `embedding` + `embeddingModel` back semantic recall: NULL means "not yet
 // embedded", the background backfill worker populates them, and once the
-// inlined index would exceed a char budget (MEMORY_INLINE_BUDGET_CHARS) AND an
-// `[embeddings]` model is configured, the injection branch swaps the inlined
-// bodies for a recall_memory hint. embedding_model records which model produced
-// the vector so a model change re-queues the row.
+// inlined index would exceed a char budget (MEMORY_INLINE_BUDGET_CHARS) the
+// injection branch swaps the inlined bodies for a compact `[id] topic` index
+// (the model reads full bodies back via recall_memory). embedding_model records
+// which model produced the vector so a model change re-queues the row.
+//
+// `topic` is a short model-authored label (set as a tool parameter on
+// save_memory / update_memory) shown in the over-budget index in place of the
+// full body. NULL on rows that predate the field; the index falls back to a
+// content snippet for those until the phase-3 dreaming pass backfills them.
+// `recallCount` / `lastRecalledAt` record recall hits (bumped by recall_memory)
+// — data-only for now; phase-2 frequency tiering sorts the index by them.
 
 export const memories = sqliteTable(
 	'memories',
@@ -374,8 +381,11 @@ export const memories = sqliteTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		content: text('content').notNull(),
+		topic: text('topic'),
 		embedding: blob('embedding'),
 		embeddingModel: text('embedding_model'),
+		recallCount: integer('recall_count').notNull().default(0),
+		lastRecalledAt: integer('last_recalled_at'),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 	},

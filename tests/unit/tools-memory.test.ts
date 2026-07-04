@@ -52,15 +52,15 @@ describe('memory tool definitions + metadata', () => {
 		expect(forgetMemoryTool.definition.function.name).toBe('forget_memory');
 	});
 
-	it('save_memory requires a content arg', () => {
+	it('save_memory requires content + topic', () => {
 		expect(saveMemoryTool.definition.function.parameters).toMatchObject({
-			required: ['content'],
+			required: ['content', 'topic'],
 		});
 	});
 
-	it('update_memory requires id + content', () => {
+	it('update_memory requires id + content + topic', () => {
 		expect(updateMemoryTool.definition.function.parameters).toMatchObject({
-			required: ['id', 'content'],
+			required: ['id', 'content', 'topic'],
 		});
 	});
 
@@ -72,9 +72,9 @@ describe('memory tool definitions + metadata', () => {
 });
 
 describe('save_memory.execute', () => {
-	it('persists the memory and returns its id', () => {
+	it('persists the memory + topic and returns its id', () => {
 		const u = seedUser();
-		const r = run(saveMemoryTool, { content: 'prefers metric units' }, ctx(u.id));
+		const r = run(saveMemoryTool, { content: 'prefers metric units', topic: 'Units' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
 		const parsed = JSON.parse(r.content);
 		expect(parsed.saved).toBe(true);
@@ -85,31 +85,39 @@ describe('save_memory.execute', () => {
 		expect(list[0].content).toBe('prefers metric units');
 	});
 
-	it('trims whitespace from content', () => {
+	it('trims whitespace from content and topic', () => {
 		const u = seedUser();
-		run(saveMemoryTool, { content: '   padded   ' }, ctx(u.id));
+		run(saveMemoryTool, { content: '   padded   ', topic: '  Units  ' }, ctx(u.id));
 		expect(listMemoriesForUser(u.id)[0].content).toBe('padded');
 	});
 
 	it('returns isError for missing / non-string content', () => {
 		const u = seedUser();
-		expect(run(saveMemoryTool, {}, ctx(u.id)).isError).toBe(true);
-		expect(run(saveMemoryTool, { content: 42 }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { topic: 'T' }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { content: 42, topic: 'T' }, ctx(u.id)).isError).toBe(true);
 		expect(run(saveMemoryTool, null, ctx(u.id)).isError).toBe(true);
 		// Nothing was saved across the error cases.
 		expect(listMemoriesForUser(u.id)).toEqual([]);
 	});
 
+	it('returns isError for a missing / empty topic', () => {
+		const u = seedUser();
+		expect(run(saveMemoryTool, { content: 'fact' }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { content: 'fact', topic: '' }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { content: 'fact', topic: '   ' }, ctx(u.id)).isError).toBe(true);
+		expect(listMemoriesForUser(u.id)).toEqual([]);
+	});
+
 	it('returns isError for empty content', () => {
 		const u = seedUser();
-		expect(run(saveMemoryTool, { content: '' }, ctx(u.id)).isError).toBe(true);
-		expect(run(saveMemoryTool, { content: '   ' }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { content: '', topic: 'T' }, ctx(u.id)).isError).toBe(true);
+		expect(run(saveMemoryTool, { content: '   ', topic: 'T' }, ctx(u.id)).isError).toBe(true);
 	});
 
 	it('returns isError for over-long content', () => {
 		const u = seedUser();
 		const tooLong = 'x'.repeat(501);
-		const r = run(saveMemoryTool, { content: tooLong }, ctx(u.id));
+		const r = run(saveMemoryTool, { content: tooLong, topic: 'T' }, ctx(u.id));
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/exceeds/);
 	});
@@ -118,8 +126,10 @@ describe('save_memory.execute', () => {
 describe('update_memory.execute', () => {
 	it('replaces content for a valid id', () => {
 		const u = seedUser();
-		const saved = JSON.parse(run(saveMemoryTool, { content: 'original' }, ctx(u.id)).content);
-		const r = run(updateMemoryTool, { id: saved.id, content: 'revised' }, ctx(u.id));
+		const saved = JSON.parse(
+			run(saveMemoryTool, { content: 'original', topic: 'T' }, ctx(u.id)).content,
+		);
+		const r = run(updateMemoryTool, { id: saved.id, content: 'revised', topic: 'T2' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
 		expect(JSON.parse(r.content)).toMatchObject({ id: saved.id, updated: true });
 		expect(listMemoriesForUser(u.id)[0].content).toBe('revised');
@@ -127,7 +137,7 @@ describe('update_memory.execute', () => {
 
 	it('returns isError for an unknown id without throwing', () => {
 		const u = seedUser();
-		const r = run(updateMemoryTool, { id: 'nope', content: 'x' }, ctx(u.id));
+		const r = run(updateMemoryTool, { id: 'nope', content: 'x', topic: 'T' }, ctx(u.id));
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/No memory with id/);
 	});
@@ -135,18 +145,21 @@ describe('update_memory.execute', () => {
 	it('returns isError when the id belongs to another user', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
-		const saved = JSON.parse(run(saveMemoryTool, { content: 'u1 fact' }, ctx(u1.id)).content);
+		const saved = JSON.parse(
+			run(saveMemoryTool, { content: 'u1 fact', topic: 'T' }, ctx(u1.id)).content,
+		);
 		// u2 tries to update u1's memory — must surface as a tool error
 		// and leave u1's row untouched.
-		const r = run(updateMemoryTool, { id: saved.id, content: 'pwn' }, ctx(u2.id));
+		const r = run(updateMemoryTool, { id: saved.id, content: 'pwn', topic: 'T' }, ctx(u2.id));
 		expect(r.isError).toBe(true);
 		expect(listMemoriesForUser(u1.id)[0].content).toBe('u1 fact');
 	});
 
-	it('returns isError when id is missing or content is missing', () => {
+	it('returns isError when id, content, or topic is missing', () => {
 		const u = seedUser();
-		expect(run(updateMemoryTool, { content: 'x' }, ctx(u.id)).isError).toBe(true);
-		expect(run(updateMemoryTool, { id: 'x' }, ctx(u.id)).isError).toBe(true);
+		expect(run(updateMemoryTool, { content: 'x', topic: 'T' }, ctx(u.id)).isError).toBe(true);
+		expect(run(updateMemoryTool, { id: 'x', topic: 'T' }, ctx(u.id)).isError).toBe(true);
+		expect(run(updateMemoryTool, { id: 'x', content: 'y' }, ctx(u.id)).isError).toBe(true);
 	});
 });
 
@@ -184,7 +197,9 @@ describe('personalization category gate', () => {
 describe('forget_memory.execute', () => {
 	it('removes the row for a valid id', () => {
 		const u = seedUser();
-		const saved = JSON.parse(run(saveMemoryTool, { content: 'fact' }, ctx(u.id)).content);
+		const saved = JSON.parse(
+			run(saveMemoryTool, { content: 'fact', topic: 'T' }, ctx(u.id)).content,
+		);
 		const r = run(forgetMemoryTool, { id: saved.id }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
 		expect(JSON.parse(r.content)).toMatchObject({ id: saved.id, forgotten: true });
@@ -200,7 +215,9 @@ describe('forget_memory.execute', () => {
 	it('returns isError when the id belongs to another user', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
-		const saved = JSON.parse(run(saveMemoryTool, { content: 'u1 fact' }, ctx(u1.id)).content);
+		const saved = JSON.parse(
+			run(saveMemoryTool, { content: 'u1 fact', topic: 'T' }, ctx(u1.id)).content,
+		);
 		const r = run(forgetMemoryTool, { id: saved.id }, ctx(u2.id));
 		expect(r.isError).toBe(true);
 		expect(listMemoriesForUser(u1.id)).toHaveLength(1);

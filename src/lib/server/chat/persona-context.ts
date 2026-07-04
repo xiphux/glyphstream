@@ -16,21 +16,22 @@ import type { FeatureCategory, UserPreferences } from '$lib/types/api';
 import { composePersonaSystemPrompt } from '../db/queries/user-preferences';
 import {
 	listMemoriesForUser,
+	listMemoryIndexForUser,
 	memoryStats,
 	MEMORY_INLINE_BUDGET_CHARS,
 } from '../db/queries/memories';
-import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 
 /**
  * Compose the persona system prompt for a user, or null when there's nothing to
- * inject (personalization disabled, or no prefs). Above the inline budget, with
- * an embedding model configured, the saved-memory bodies are swapped for a
- * `recall_memory` hint so a large store doesn't flood the context window.
+ * inject (personalization disabled, or no prefs). Above the inline budget the
+ * saved-memory bodies are swapped for the compact `[id] topic` index so a large
+ * store doesn't flood the context window; the model reads bodies back via
+ * `recall_memory`. Independent of embeddings — recall-by-id needs none.
  *
- * Runs every turn, so it avoids loading memory bodies it won't use: when an
- * embedding model is configured (recall is possible) it first probes the store
- * size with a cheap COUNT/SUM. Over budget → recall mode, which needs only the
- * count (no bodies loaded). Otherwise → inline mode, which loads the bodies.
+ * Runs every turn, so it avoids loading memory bodies it won't use: it first
+ * probes the store size with a cheap COUNT/SUM. Over budget → index mode, which
+ * loads only id/topic/snippet (no bodies). Otherwise → inline mode, which loads
+ * the full bodies.
  */
 export function composePersonaPrompt(
 	prefs: UserPreferences | null,
@@ -38,14 +39,12 @@ export function composePersonaPrompt(
 	disabledFeatures: readonly FeatureCategory[],
 ): string | null {
 	if (!prefs || disabledFeatures.includes('personalization')) return null;
-	if (resolveRelevanceConfig() !== undefined) {
-		const stats = memoryStats(userId);
-		if (stats.totalChars > MEMORY_INLINE_BUDGET_CHARS) {
-			return composePersonaSystemPrompt(prefs, [], {
-				recallMode: true,
-				recallCount: stats.count,
-			});
-		}
+	const stats = memoryStats(userId);
+	if (stats.totalChars > MEMORY_INLINE_BUDGET_CHARS) {
+		return composePersonaSystemPrompt(prefs, [], {
+			recallMode: true,
+			index: listMemoryIndexForUser(userId),
+		});
 	}
 	return composePersonaSystemPrompt(prefs, listMemoriesForUser(userId));
 }

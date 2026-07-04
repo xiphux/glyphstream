@@ -16,13 +16,15 @@ import {
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesWithEmbeddings,
+	listMemoryIndexForUser,
 	MEMORY_INLINE_BUDGET_CHARS,
 	memoryStats,
+	recordMemoryRecall,
 	setMemoryEmbedding,
 	updateMemory,
 } from '$lib/server/db/queries/memories';
 import { encodeVector } from '$lib/server/retrieval/vector';
-import { users } from '$lib/server/db/schema';
+import { memories, users } from '$lib/server/db/schema';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -232,41 +234,138 @@ describe('memoryStats', () => {
 	});
 });
 
+describe('createMemory + updateMemory topic', () => {
+	it('persists a topic supplied at creation', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'has a golden retriever named Max', 'Pet');
+		const row = listMemoryIndexForUser(u.id).find((r) => r.id === id)!;
+		expect(row.topic).toBe('Pet');
+	});
+
+	it('defaults topic to null when omitted', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'some fact');
+		expect(listMemoryIndexForUser(u.id).find((r) => r.id === id)!.topic).toBeNull();
+	});
+
+	it('updateMemory overwrites the topic when provided', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
+		updateMemory(u.id, id, 'works at Globex', 'Employer (updated)');
+		expect(listMemoryIndexForUser(u.id)[0].topic).toBe('Employer (updated)');
+	});
+
+	it('updateMemory leaves the topic untouched when omitted', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
+		updateMemory(u.id, id, 'works at Acme Corp');
+		expect(listMemoryIndexForUser(u.id)[0].topic).toBe('Employer');
+	});
+});
+
+describe('listMemoryIndexForUser', () => {
+	it('returns id + topic + an <=80-char snippet, oldest-first, scoped per user', async () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const a = createMemory(u1.id, 'a'.repeat(200), 'Long one');
+		await new Promise((r) => setTimeout(r, 2));
+		const b = createMemory(u1.id, 'short body', 'Short one');
+		createMemory(u2.id, 'other user', 'Nope');
+		const index = listMemoryIndexForUser(u1.id);
+		expect(index.map((r) => r.id)).toEqual([a.id, b.id]);
+		expect(index[0].topic).toBe('Long one');
+		// Snippet is the leading 80 chars of the body (fallback label for null topics).
+		expect(index[0].snippet).toBe('a'.repeat(80));
+		expect(index[1].snippet).toBe('short body');
+	});
+});
+
+describe('recordMemoryRecall', () => {
+	it('bumps recall_count and stamps last_recalled_at for the given ids', () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'fact a', 'A');
+		const b = createMemory(u.id, 'fact b', 'B');
+		const before = Date.now();
+		recordMemoryRecall(u.id, [a.id]);
+		const rowA = readMemoryCounters(a.id);
+		const rowB = readMemoryCounters(b.id);
+		expect(rowA.recallCount).toBe(1);
+		expect(rowA.lastRecalledAt).toBeGreaterThanOrEqual(before);
+		// The un-recalled row is untouched.
+		expect(rowB.recallCount).toBe(0);
+		expect(rowB.lastRecalledAt).toBeNull();
+	});
+
+	it('accumulates across calls', () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'fact a', 'A');
+		recordMemoryRecall(u.id, [a.id]);
+		recordMemoryRecall(u.id, [a.id]);
+		expect(readMemoryCounters(a.id).recallCount).toBe(2);
+	});
+
+	it('is a no-op for an empty id list', () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'fact a', 'A');
+		recordMemoryRecall(u.id, []);
+		expect(readMemoryCounters(a.id).recallCount).toBe(0);
+	});
+
+	it('does not touch another user’s rows', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const a = createMemory(u1.id, 'u1 fact', 'A');
+		recordMemoryRecall(u2.id, [a.id]);
+		expect(readMemoryCounters(a.id).recallCount).toBe(0);
+	});
+});
+
 describe('composeMemorySection', () => {
 	it('returns null for an empty list', () => {
 		expect(composeMemorySection([])).toBeNull();
 	});
 
-	it('returns null for an empty list even in recall mode', () => {
+	it('returns null in recall mode with no index rows', () => {
 		expect(composeMemorySection([], { recallMode: true })).toBeNull();
+		expect(composeMemorySection([], { recallMode: true, index: [] })).toBeNull();
 	});
 
-	it('emits a recall hint (not bodies) under recallMode', () => {
-		const list = [
-			{ id: 'a1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
-			{ id: 'b2', content: 'works at Acme', createdAt: 1, updatedAt: 1 },
-		];
-		const out = composeMemorySection(list, { recallMode: true })!;
-		expect(out).toMatch(/recall_memory/);
-		expect(out).toContain('2 saved memories');
-		// The bodies must NOT be inlined in recall mode.
+	it('renders `[id] topic` (not bodies) under recallMode', () => {
+		const out = composeMemorySection([], {
+			recallMode: true,
+			index: [
+				{ id: 'a1', topic: 'Units', snippet: 'prefers metric units' },
+				{ id: 'b2', topic: 'Employer', snippet: 'works at Acme' },
+			],
+		})!;
+		expect(out).toContain('[a1] Units');
+		expect(out).toContain('[b2] Employer');
+		// The bodies (snippets) must NOT be inlined when a topic exists.
 		expect(out).not.toContain('prefers metric units');
 		expect(out).not.toContain('works at Acme');
 	});
 
-	it('uses recallCount for the hint when bodies are not loaded (recall mode)', () => {
-		// Recall mode passes an empty list + an explicit count, so the prompt builder
-		// never has to materialize every body just to size the store.
-		const out = composeMemorySection([], { recallMode: true, recallCount: 7 })!;
+	it('falls back to the snippet when a topic is null', () => {
+		const out = composeMemorySection([], {
+			recallMode: true,
+			index: [{ id: 'a1', topic: null, snippet: 'works at Acme as a staff eng' }],
+		})!;
+		expect(out).toContain('[a1] works at Acme as a staff eng');
+	});
+
+	it('recall-mode header points at recall_memory (ids + query) and the write tools', () => {
+		const out = composeMemorySection([], {
+			recallMode: true,
+			index: [{ id: 'a1', topic: 'Units', snippet: 's' }],
+		})!;
 		expect(out).toMatch(/recall_memory/);
-		expect(out).toContain('7 saved memories');
+		expect(out).toMatch(/ids/);
+		expect(out).toMatch(/update_memory/);
+		expect(out).toMatch(/forget_memory/);
+		expect(out).toMatch(/save_memory/);
 	});
 
-	it('recallCount of 0 yields no section even in recall mode', () => {
-		expect(composeMemorySection([], { recallMode: true, recallCount: 0 })).toBeNull();
-	});
-
-	it('renders each memory as `[id] content` on its own line', () => {
+	it('renders each memory as `[id] content` inline (under budget)', () => {
 		const out = composeMemorySection([
 			{ id: 'a1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
 			{ id: 'b2', content: 'works at Acme', createdAt: 1, updatedAt: 1 },
@@ -275,13 +374,22 @@ describe('composeMemorySection', () => {
 		expect(out).toContain('[b2] works at Acme');
 	});
 
-	it('includes the header explaining the index and the write tools', () => {
+	it('includes the inline header explaining the index and the write tools', () => {
 		const out = composeMemorySection([{ id: 'a', content: 'fact', createdAt: 0, updatedAt: 0 }])!;
 		expect(out).toMatch(/Saved memories/);
-		// The header must teach the model the id-bracketed convention and the
-		// names of the write tools — otherwise it can't act on the index.
 		expect(out).toMatch(/forget_memory/);
 		expect(out).toMatch(/update_memory/);
 		expect(out).toMatch(/save_memory/);
 	});
 });
+
+/** Read the raw recall-frequency counters for a memory row (not exposed by the
+ *  query layer yet — phase 2 will surface them). */
+function readMemoryCounters(id: string): { recallCount: number; lastRecalledAt: number | null } {
+	const row = mocks.testDb
+		.select({ recallCount: memories.recallCount, lastRecalledAt: memories.lastRecalledAt })
+		.from(memories)
+		.where(eq(memories.id, id))
+		.get()!;
+	return row;
+}
