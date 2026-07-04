@@ -35,12 +35,16 @@ beforeEach(() => {
 });
 afterEach(() => closeTestDb());
 
-/** Push the store just over the inline budget with topic-labelled rows. */
-function seedOverBudget(userId: string) {
+/** Push the store over the inline budget with topic-labelled rows, created
+ *  oldest→newest with strictly increasing timestamps so tiering is deterministic:
+ *  the freshest rows are hottest (inlined), the oldest overflow to the index.
+ *  ~15 rows of ~310 chars ⇒ ~12 hot, ~3 cold against the 4000-char budget. */
+async function seedOverBudget(userId: string) {
 	const per = 300;
 	const rows = Math.ceil(MEMORY_INLINE_BUDGET_CHARS / per) + 1;
 	for (let i = 0; i < rows; i++) {
 		createMemory(userId, `body-${i} ` + 'x'.repeat(per), `Topic ${i}`);
+		await new Promise((r) => setTimeout(r, 2));
 	}
 }
 
@@ -59,33 +63,49 @@ describe('composePersonaPrompt', () => {
 		expect(out).toMatch(/Saved memories/);
 	});
 
-	it('switches to the `[id] topic` index over budget (no bodies)', () => {
+	it('over budget: inlines the hot (freshest) tier in full and indexes the cold tail', async () => {
 		const u = seedUser();
-		seedOverBudget(u.id);
+		await seedOverBudget(u.id);
 		const out = composePersonaPrompt(PREFS, u.id, [])!;
-		// Topics are shown...
+		// The freshest memory is inlined in full...
+		expect(out).toContain('body-14');
+		// ...the oldest overflow to a topic-only index (topic shown, body absent)...
 		expect(out).toContain('Topic 0');
+		expect(out).not.toContain('body-0 ');
+		// ...under the tiered header, which points at recall_memory for the tail.
+		expect(out).toMatch(/shown in full/);
+		expect(out).toMatch(/topic only/);
 		expect(out).toMatch(/recall_memory/);
-		// ...but the full bodies are not inlined.
-		expect(out).not.toContain('x'.repeat(300));
 	});
 
-	it('enters index mode regardless of embeddings (recall-by-id needs none)', () => {
-		// composePersonaPrompt no longer consults the embeddings config at all —
-		// the budget alone drives the switch. This test documents that decoupling:
-		// with no embeddings mocked, an over-budget store still indexes.
+	it('inlines a brand-new memory (freshness) even in an over-budget store', async () => {
 		const u = seedUser();
-		seedOverBudget(u.id);
+		await seedOverBudget(u.id);
+		await new Promise((r) => setTimeout(r, 2));
+		createMemory(u.id, 'JUST_SAVED distinctive body', 'Brand new');
 		const out = composePersonaPrompt(PREFS, u.id, [])!;
-		expect(out).toMatch(/Saved memory index/);
+		// The just-saved memory ranks top on freshness → inlined in full, not just its topic.
+		expect(out).toContain('JUST_SAVED distinctive body');
 	});
 
-	it('falls back to a content snippet for a topic-less row in the index', () => {
+	it('renders the section without an embedding model configured (decoupled)', async () => {
+		// composePersonaPrompt no longer consults the embeddings config; the budget
+		// alone drives tiering. No embeddings mocked here — the section still renders.
 		const u = seedUser();
-		seedOverBudget(u.id);
-		// A legacy row with no topic — its index line should show the body snippet.
-		createMemory(u.id, 'legacy fact without a topic label');
+		await seedOverBudget(u.id);
 		const out = composePersonaPrompt(PREFS, u.id, [])!;
-		expect(out).toContain('legacy fact without a topic label');
+		expect(out).toMatch(/recall_memory/);
+		expect(out).toMatch(/shown in full/);
+	});
+
+	it('falls back to a content snippet (not the full body) for a topic-less cold row', async () => {
+		const u = seedUser();
+		// Oldest row, no topic, long body → cold tail → index line shows the 80-char snippet.
+		createMemory(u.id, 'legacy ' + 'y'.repeat(200));
+		await new Promise((r) => setTimeout(r, 2));
+		await seedOverBudget(u.id);
+		const out = composePersonaPrompt(PREFS, u.id, [])!;
+		expect(out).toContain('legacy ' + 'y'.repeat(73)); // 7 + 73 = the 80-char snippet
+		expect(out).not.toContain('y'.repeat(200)); // the full body is NOT inlined
 	});
 });

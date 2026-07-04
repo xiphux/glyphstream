@@ -16,7 +16,8 @@ import {
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesWithEmbeddings,
-	listMemoryIndexForUser,
+	listMemoryBodies,
+	listMemoryTierRows,
 	MEMORY_INLINE_BUDGET_CHARS,
 	memoryStats,
 	recordMemoryRecall,
@@ -238,45 +239,82 @@ describe('createMemory + updateMemory topic', () => {
 	it('persists a topic supplied at creation', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'has a golden retriever named Max', 'Pet');
-		const row = listMemoryIndexForUser(u.id).find((r) => r.id === id)!;
+		const row = listMemoryTierRows(u.id).find((r) => r.id === id)!;
 		expect(row.topic).toBe('Pet');
 	});
 
 	it('defaults topic to null when omitted', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'some fact');
-		expect(listMemoryIndexForUser(u.id).find((r) => r.id === id)!.topic).toBeNull();
+		expect(listMemoryTierRows(u.id).find((r) => r.id === id)!.topic).toBeNull();
 	});
 
 	it('updateMemory overwrites the topic when provided', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
 		updateMemory(u.id, id, 'works at Globex', 'Employer (updated)');
-		expect(listMemoryIndexForUser(u.id)[0].topic).toBe('Employer (updated)');
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Employer (updated)');
 	});
 
 	it('updateMemory leaves the topic untouched when omitted', () => {
 		const u = seedUser();
 		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
 		updateMemory(u.id, id, 'works at Acme Corp');
-		expect(listMemoryIndexForUser(u.id)[0].topic).toBe('Employer');
+		expect(listMemoryTierRows(u.id)[0].topic).toBe('Employer');
 	});
 });
 
-describe('listMemoryIndexForUser', () => {
-	it('returns id + topic + an <=80-char snippet, oldest-first, scoped per user', async () => {
+describe('listMemoryTierRows', () => {
+	it('returns id/topic/snippet + len + counters, oldest-first, scoped per user', async () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		const a = createMemory(u1.id, 'a'.repeat(200), 'Long one');
 		await new Promise((r) => setTimeout(r, 2));
 		const b = createMemory(u1.id, 'short body', 'Short one');
 		createMemory(u2.id, 'other user', 'Nope');
-		const index = listMemoryIndexForUser(u1.id);
-		expect(index.map((r) => r.id)).toEqual([a.id, b.id]);
-		expect(index[0].topic).toBe('Long one');
-		// Snippet is the leading 80 chars of the body (fallback label for null topics).
-		expect(index[0].snippet).toBe('a'.repeat(80));
-		expect(index[1].snippet).toBe('short body');
+		recordMemoryRecall(u1.id, [b.id]);
+
+		const rows = listMemoryTierRows(u1.id);
+		expect(rows.map((r) => r.id)).toEqual([a.id, b.id]);
+		expect(rows[0].topic).toBe('Long one');
+		// Snippet is the leading 80 chars (fallback label for null topics); len is
+		// the FULL body length, not the snippet length.
+		expect(rows[0].snippet).toBe('a'.repeat(80));
+		expect(rows[0].len).toBe(200);
+		expect(rows[1].snippet).toBe('short body');
+		// Recall counters ride along for scoring.
+		expect(rows[0].recallCount).toBe(0);
+		expect(rows[0].lastRecalledAt).toBeNull();
+		expect(rows[1].recallCount).toBe(1);
+		expect(rows[1].lastRecalledAt).not.toBeNull();
+	});
+});
+
+describe('listMemoryBodies', () => {
+	it('returns full bodies for only the requested ids, oldest-first', async () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'body a', 'A');
+		await new Promise((r) => setTimeout(r, 2));
+		const b = createMemory(u.id, 'body b', 'B');
+		createMemory(u.id, 'body c', 'C');
+		const bodies = listMemoryBodies(u.id, [b.id, a.id]);
+		expect(bodies.map((m) => m.id)).toEqual([a.id, b.id]); // createdAt order
+		expect(bodies.map((m) => m.content)).toEqual(['body a', 'body b']);
+	});
+
+	it('returns [] for an empty id list without a query', () => {
+		const u = seedUser();
+		createMemory(u.id, 'body', 'T');
+		expect(listMemoryBodies(u.id, [])).toEqual([]);
+	});
+
+	it('does not return another user’s rows', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const mine = createMemory(u1.id, 'mine', 'Mine');
+		const theirs = createMemory(u2.id, 'theirs', 'Theirs');
+		const bodies = listMemoryBodies(u1.id, [mine.id, theirs.id]);
+		expect(bodies.map((m) => m.id)).toEqual([mine.id]);
 	});
 });
 
@@ -365,6 +403,37 @@ describe('composeMemorySection', () => {
 		expect(out).toMatch(/save_memory/);
 	});
 
+	it('tiered mode renders hot bodies in full above the cold topic index', () => {
+		const out = composeMemorySection(
+			[{ id: 'h1', content: 'full hot body one', createdAt: 0, updatedAt: 0 }],
+			{
+				recallMode: true,
+				index: [{ id: 'c1', topic: 'Cold topic', snippet: 'cold snippet' }],
+			},
+		)!;
+		// Hot body inlined in full...
+		expect(out).toContain('[h1] full hot body one');
+		// ...cold entry as topic only (not its snippet/body)...
+		expect(out).toContain('[c1] Cold topic');
+		expect(out).not.toContain('cold snippet');
+		// ...header explains the split and points at recall_memory for the tail.
+		expect(out).toMatch(/shown in full/);
+		expect(out).toMatch(/recall_memory/);
+	});
+
+	it('tiered mode with an empty cold tail renders only the hot bodies', () => {
+		const out = composeMemorySection(
+			[{ id: 'h1', content: 'hot body', createdAt: 0, updatedAt: 0 }],
+			{
+				recallMode: true,
+				index: [],
+			},
+		)!;
+		expect(out).toContain('[h1] hot body');
+		// No cold divider block when there's no tail.
+		expect(out).not.toMatch(/More saved memories/);
+	});
+
 	it('renders each memory as `[id] content` inline (under budget)', () => {
 		const out = composeMemorySection([
 			{ id: 'a1', content: 'prefers metric units', createdAt: 0, updatedAt: 0 },
@@ -383,8 +452,9 @@ describe('composeMemorySection', () => {
 	});
 });
 
-/** Read the raw recall-frequency counters for a memory row (not exposed by the
- *  query layer yet — phase 2 will surface them). */
+/** Read the raw recall-frequency counters for a memory row straight from the
+ *  table — a tight check for the recordMemoryRecall tests (listMemoryTierRows
+ *  also surfaces these, but going direct keeps these assertions column-exact). */
 function readMemoryCounters(id: string): { recallCount: number; lastRecalledAt: number | null } {
 	const row = mocks.testDb
 		.select({ recallCount: memories.recallCount, lastRecalledAt: memories.lastRecalledAt })

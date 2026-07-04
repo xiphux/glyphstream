@@ -41,6 +41,24 @@ export interface MemoryIndexRow {
 }
 
 /**
+ * A memory's ranking inputs for phase-2 tiering: the index fields plus the body
+ * length and the recall/recency counters. Carries `len` (a `length(content)`)
+ * rather than the body so ranking never materializes cold bodies. A structural
+ * superset of `MemoryIndexRow`, so a cold-tier row is usable directly as an
+ * index line. Scored by `selectMemoryTiers` in `../../memory/tiering`.
+ */
+export interface MemoryTierRow {
+	id: string;
+	topic: string | null;
+	snippet: string;
+	len: number;
+	recallCount: number;
+	lastRecalledAt: number | null;
+	createdAt: number;
+	updatedAt: number;
+}
+
+/**
  * List a user's memories oldest-first. The stable ordering matters
  * because the bracketed-id index injected into the system prompt
  * anchors the model — if turn-to-turn ordering drifts, the model can
@@ -82,23 +100,55 @@ export function memoryStats(userId: string): { count: number; totalChars: number
 }
 
 /**
- * The over-budget memory index: one row per memory with its `topic` and a body
- * `snippet`, oldest-first (same stable ordering rationale as
- * `listMemoriesForUser`). Selects only id/topic/snippet — not the full body —
- * so composing the index doesn't materialize the bodies the recall switch is
- * there to avoid. The `substr(...)` snippet is the fallback label for rows whose
- * `topic` is still null (pre-topic rows, until phase-3 backfill).
+ * The ranking rows for phase-2 tiering: one row per memory with its `topic`, a
+ * body `snippet`, the body length `len`, and the recall/recency counters —
+ * oldest-first (same stable-ordering rationale as `listMemoriesForUser`).
+ * Selects `length(content)` and `substr(content,1,80)` but NOT the full body, so
+ * ranking the store never materializes the cold bodies the tier split avoids.
+ * `selectMemoryTiers` (`../../memory/tiering`) scores these; the cold subset is
+ * rendered directly as the topic index (`MemoryTierRow` ⊃ `MemoryIndexRow`), and
+ * the hot ids are re-fetched in full via `listMemoryBodies`. The `snippet` is
+ * the fallback index label for rows whose `topic` is still null (pre-topic rows,
+ * until phase-3 backfill).
  */
-export function listMemoryIndexForUser(userId: string): MemoryIndexRow[] {
+export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 	const db = getDb();
 	return db
 		.select({
 			id: memories.id,
 			topic: memories.topic,
 			snippet: sql<string>`substr(${memories.content}, 1, 80)`,
+			len: sql<number>`length(${memories.content})`,
+			recallCount: memories.recallCount,
+			lastRecalledAt: memories.lastRecalledAt,
+			createdAt: memories.createdAt,
+			updatedAt: memories.updatedAt,
 		})
 		.from(memories)
 		.where(eq(memories.userId, userId))
+		.orderBy(asc(memories.createdAt))
+		.all();
+}
+
+/**
+ * Full bodies for a specific set of the user's memories — the hot tier's ids,
+ * resolved after `selectMemoryTiers` has ranked on metadata alone. Empty `ids` →
+ * no query (`IN ()` is invalid). User-scoped per the isolation invariant (a
+ * foreign id simply isn't returned); ordered createdAt for a stable inline
+ * rendering.
+ */
+export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
+	if (ids.length === 0) return [];
+	const db = getDb();
+	return db
+		.select({
+			id: memories.id,
+			content: memories.content,
+			createdAt: memories.createdAt,
+			updatedAt: memories.updatedAt,
+		})
+		.from(memories)
+		.where(and(eq(memories.userId, userId), inArray(memories.id, ids)))
 		.orderBy(asc(memories.createdAt))
 		.all();
 }
@@ -307,26 +357,44 @@ export function deleteMemory(userId: string, id: string): boolean {
  *
  * - **Inline** (default, small stores): every row as `[<id>] <content>`, the
  *   full body in the prompt so nothing has to be recalled.
- * - **Index** (`recallMode`, over `MEMORY_INLINE_BUDGET_CHARS`): every row as
- *   `[<id>] <topic>`, just the topic not the body, so a large store still fits.
- *   The model reads full bodies back via `recall_memory` (by id, or by query).
- *   Falls back to a content snippet for rows whose `topic` is still null. Unlike
- *   inline mode this needs no embedding model — recall-by-id is pure SQLite.
+ * - **Tiered** (`recallMode`, over `MEMORY_INLINE_BUDGET_CHARS`): the hot tier
+ *   (`list`, ranked by `selectMemoryTiers`) is inlined in full as
+ *   `[<id>] <content>`, and the cold tail (`opts.index`) follows as
+ *   `[<id>] <topic>` — topic only, so a large store still fits. The model reads a
+ *   cold entry's full body back via `recall_memory` (by id, or by query). Cold
+ *   rows with a null `topic` fall back to a content snippet. Needs no embedding
+ *   model — recall-by-id is pure SQLite.
  *
  * In both cases the bracketed id is what the model passes to
- * update_memory / forget_memory (and, in index mode, recall_memory).
+ * update_memory / forget_memory (and, for a cold entry, recall_memory).
  */
 export function composeMemorySection(
 	list: Memory[],
 	opts: { recallMode?: boolean; index?: MemoryIndexRow[] } = {},
 ): string | null {
 	if (opts.recallMode) {
-		const index = opts.index ?? [];
-		if (index.length === 0) return null;
+		const cold = opts.index ?? [];
+		if (list.length === 0 && cold.length === 0) return null;
+
+		// Defensive: no hot tier (nothing fit the budget) — pure topic index, the
+		// phase-1 rendering. In practice a single body (≤500 chars) always fits a
+		// 4000-char budget, so this branch is a safety net, not the common path.
+		if (list.length === 0) {
+			const header =
+				'Saved memory index (durable facts about the user, carried across conversations). Only a short topic for each memory is shown here — the full text is not loaded. Call recall_memory with a list of ids to read the full text of specific entries, or with a query to find entries by meaning. Each line is prefixed with its id in square brackets — pass that id to recall_memory, update_memory, or forget_memory. To add a new memory, call save_memory.';
+			const lines = cold.map((m) => `[${m.id}] ${m.topic ?? m.snippet}`);
+			return `${header}\n\n${lines.join('\n')}`;
+		}
+
+		// Over budget: the highest-scored memories inline in full, the rest by topic.
 		const header =
-			'Saved memory index (durable facts about the user, carried across conversations). Only a short topic for each memory is shown here — the full text is not loaded. Call recall_memory with a list of ids to read the full text of specific entries, or with a query to find entries by meaning. Each line is prefixed with its id in square brackets — pass that id to recall_memory, update_memory, or forget_memory. To add a new memory, call save_memory.';
-		const lines = index.map((m) => `[${m.id}] ${m.topic ?? m.snippet}`);
-		return `${header}\n\n${lines.join('\n')}`;
+			'Saved memories (durable facts about the user, carried across conversations). The most relevant are shown in full first; any remaining ones are listed below by topic only. Each line is prefixed with its id in square brackets — pass that id to update_memory or forget_memory. To read the full text of a topic-only entry, call recall_memory with its id (or with a query to search by meaning). To add a new memory, call save_memory.';
+		const hotBlock = list.map((m) => `[${m.id}] ${m.content}`).join('\n');
+		if (cold.length === 0) return `${header}\n\n${hotBlock}`;
+		const coldBlock =
+			'More saved memories (topic only — call recall_memory with the id for the full text):\n' +
+			cold.map((m) => `[${m.id}] ${m.topic ?? m.snippet}`).join('\n');
+		return `${header}\n\n${hotBlock}\n\n${coldBlock}`;
 	}
 	if (list.length === 0) return null;
 	const header =

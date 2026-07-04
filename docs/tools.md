@@ -18,13 +18,15 @@ folded back into the conversation. The built-in toolset:
   model-authored topic label.
 - `recall_memory` — read saved memories that aren't fully shown in the system
   prompt, by id or by search. Saved memories are normally inlined into the
-  system prompt in full; once they grow past a size budget the bodies are
-  replaced with a compact `[id] topic` index (every memory, just its topic),
-  and the model reads full bodies back through this tool — either by passing
-  the ids of relevant-looking entries, or a search query. Recall-by-id needs no
-  embedding model; a search query runs keyword (BM25) matching, additionally
-  fused with semantic similarity when an embedding model is configured (the
-  `[embeddings]` block; see [Web search & RAG](web-search.md)).
+  system prompt in full; once they grow past a size budget the store is split by
+  a recency-decayed score — the highest-scored memories (recently or often
+  recalled, or freshly saved) stay inlined in full up to the budget, and the
+  rest are shown as a compact `[id] topic` index. The model reads an indexed
+  entry's full body back through this tool — either by passing the ids of
+  relevant-looking entries, or a search query. Recall-by-id needs no embedding
+  model; a search query runs keyword (BM25) matching, additionally fused with
+  semantic similarity when an embedding model is configured (the `[embeddings]`
+  block; see [Web search & RAG](web-search.md)).
 
 The architecture is unbounded — adding more is a single file under
 `src/lib/server/tools/` (see [Adding more tools](#adding-more-tools)), and
