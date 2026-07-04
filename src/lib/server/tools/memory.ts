@@ -3,11 +3,14 @@
  * memory store, plus `recall_memory` for retrieval. The default read
  * path is implicit: every memory's content is inlined into the system
  * prompt via composeMemorySection so the model has the full index for
- * free. Once that index would exceed the budget AND an embedding model
- * is configured, the inlined bodies are swapped for a one-liner (see
- * composeMemorySection's recallMode) and the model reaches them via
- * `recall_memory` — hybrid BM25 + embedding-cosine over the stored
- * vectors (populated by the backfill worker in ../memory/).
+ * free. Once those bodies would exceed the budget, they're swapped for a
+ * compact `[id] topic` index — one line per memory (see
+ * composeMemorySection's recallMode) — and the model reaches full bodies
+ * via `recall_memory`: by id (pure SQLite, no embeddings) or by search
+ * query (BM25 lexical, fused with embedding-cosine over the stored
+ * vectors only when an `[embeddings]` model is configured). The switch is
+ * budget-driven and embeddings-independent; embeddings are a semantic
+ * enhancement to the query path, not a prerequisite for recall.
  *
  * All three tools carry `category: 'personalization'`. The existing
  * per-conversation toggle that gates the persona prompt also seals
@@ -229,13 +232,22 @@ export const recallMemoryTool: Tool = {
  * recall-frequency signal (`recordMemoryRecall`) is captured identically. Emits
  * id + topic + content — the topic lets the model correlate a result back to the
  * index line it expanded.
+ *
+ * The frequency bump is a non-essential side effect (phase-2 telemetry), so a
+ * failing UPDATE must never sink the successful read the model actually asked
+ * for — catch and log, mirroring the dense leg's "degrade, never error the turn"
+ * stance rather than the write tools' (where the write IS the point).
  */
 function finishRecall(userId: string, rows: MemoryWithEmbedding[]): ToolExecution {
 	const matches = rows.map((r) => ({ id: r.id, topic: r.topic ?? null, content: r.content }));
-	recordMemoryRecall(
-		userId,
-		matches.map((m) => m.id),
-	);
+	try {
+		recordMemoryRecall(
+			userId,
+			matches.map((m) => m.id),
+		);
+	} catch (e) {
+		console.warn('[memory] recording recall frequency failed (returning matches anyway):', e);
+	}
 	return { content: JSON.stringify({ matches }) };
 }
 

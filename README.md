@@ -131,8 +131,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   skill bundles, activate them by model judgment or an explicit `/skill-name`
   slash command.
 - **Per-user memory** the model can save, update, and forget across sessions —
-  recalled semantically (and kept out of the context window when the store grows
-  large) when an embedding model is configured.
+  once the store grows large the system prompt carries a compact topic index
+  instead of every fact, and the model reads bodies back on demand by id or
+  search (semantic search is added when an embedding model is configured).
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
 

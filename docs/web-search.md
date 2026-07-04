@@ -172,16 +172,19 @@ model_id = "text-embedding-3-small"
 base_url and auth are inherited from the referenced endpoint. A bad
 `endpoint_id` quietly disables embeddings (degrades to BM25) rather than
 failing at boot. The block is capability-named rather than `fetch_url`-specific:
-it also powers **`recall_memory`**, the semantic search over a user's saved
-memories. With it configured, a background worker embeds saved memories and the
-model retrieves the relevant ones on demand instead of carrying the whole index
-in every system prompt (see [Tools](tools.md)). It also adds a **semantic leg to
-the gallery's prompt search** — a background worker embeds generated-media
-prompts so a search surfaces synonym matches (e.g. "dog" finding a "puppy"
-prompt) on top of the keyword hits, gated by `gallery_search_min_similarity` so
-unrelated prompts don't pad the results. Without the block, memory falls back to
-inlining all saved facts, `fetch_url` to BM25-only, and gallery search to
-keyword-only — all still work.
+it also adds a **semantic leg to `recall_memory`**, the tool that reads a user's
+saved memories. Memory recall does not require this block: once the saved
+memories outgrow a size budget the system prompt swaps the full bodies for a
+compact `[id] topic` index and the model reads bodies back on demand — by id
+(pure SQLite) or by BM25 keyword query — regardless of embeddings (see
+[Tools](tools.md)). With the block configured, a background worker embeds saved
+memories so a recall _query_ additionally matches by meaning, not just keywords.
+It also adds a **semantic leg to the gallery's prompt search** — a background
+worker embeds generated-media prompts so a search surfaces synonym matches (e.g.
+"dog" finding a "puppy" prompt) on top of the keyword hits, gated by
+`gallery_search_min_similarity` so unrelated prompts don't pad the results.
+Without the block, recall queries fall back to keyword-only, `fetch_url` to
+BM25-only, and gallery search to keyword-only — all still work.
 
 > **Throughput matters.** Embedding dozens of chunks per long-page fetch is
 > only practical on a reasonably fast embedding endpoint (GPU-backed, or a

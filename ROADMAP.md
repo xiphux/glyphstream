@@ -47,18 +47,30 @@ docs.
     the deferred catalog in `/settings/mcp` so operators see what's hidden
     behind `search_tools`.
 
-- **Memory — phase-2.** Browse-mode MVP and embedding-backed recall both
-  shipped (keyed off the global `[embeddings]` block). Remaining:
+- **Memory — phase-2.** Browse-mode MVP shipped. Recall shipped and is now
+  budget-driven, not embeddings-gated: once saved bodies exceed a size budget the
+  system prompt carries a compact `[id] topic` index (model-authored topic per
+  memory) and the model reads bodies back via `recall_memory` by id (pure SQLite)
+  or by query — the `[embeddings]` block only adds a semantic leg to the query,
+  it's no longer a prerequisite for recall. The `recall_count` / `last_recalled_at`
+  columns are recorded but not yet consumed. Remaining:
+  - _Frequency/recency tiering._ Sort the index by a recency-decayed recall score
+    (from the columns already recorded), promote hot memories back to
+    always-inline, and demote the cold tail. Use a decayed score from the start —
+    a promoted/inlined memory stops generating recall events, so a raw counter
+    freezes.
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
   - _Memory consolidation ("dreaming")._ A background pass that reorganizes
     accumulated memories the way sleep consolidates short- into long-term —
-    deduping, rewriting an old memory a later one revised. Gated on a
-    change-watermark so it only fires when memories changed since the last pass.
-    Reuses the `save`/`update`/`forget` primitives, driven by the conversation's
-    own model on a background cadence (the media-purger pattern). Pairs with
-    recall: consolidation is what keeps full-index injection from growing
-    unboundedly as memory count × avg tokens climbs.
+    deduping, rewriting an old memory a later one revised, and backfilling/
+    normalizing topics for rows that lack them. Gated on a change-watermark so it
+    only fires when memories changed since the last pass. Reuses the
+    `save`/`update`/`forget` primitives on a background cadence (the media-purger
+    pattern), driven by a dedicated, more-capable _memory model_ (separate from
+    `task_model` — a weak utility model can't be trusted to manage memories
+    without dropping facts). Pairs with recall: consolidation is what keeps the
+    index from growing unboundedly as memory count × avg tokens climbs.
 
 - **Agent-callable cross-conversation search.** A `search_conversations(query)`
   tool so the model can pull context from past chats mid-turn ("what did we
