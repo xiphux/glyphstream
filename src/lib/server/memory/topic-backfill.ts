@@ -34,10 +34,13 @@ const INITIAL_DELAY_MS = 20_000;
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
-// Set by stopTopicBackfiller so a sweep already in flight when stop is called
-// doesn't re-arm the timer from its completion callback (clearTimeout can't
-// cancel the pending `.then`). Cleared by startTopicBackfiller.
-let stopping = false;
+// Monotonic token identifying the current worker "generation". start() claims a
+// fresh one; stop() bumps it (and a later start() bumps it again). A sweep
+// already in flight captured its generation, so its completion callback — which
+// clearTimeout can't cancel — can tell it's been superseded and leave the timer
+// alone, rather than re-arming after a stop or clobbering a restart's timer. A
+// shared boolean can't distinguish "stopped" from "stopped then restarted".
+let generation = 0;
 
 /**
  * Run one topic-backfill pass. Returns how many rows were filled and whether the
@@ -102,25 +105,22 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 export function startTopicBackfiller(): void {
 	if (timer) return;
 	if (!getTaskModel()) return;
-	stopping = false;
-	function rearm() {
-		// Don't reschedule if stop was called during the in-flight sweep.
-		if (stopping) return;
-		timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-	}
+	const myGen = ++generation;
 	function tick() {
 		runTopicBackfillSweep().then(
 			(r) => {
+				if (generation !== myGen) return; // superseded by stop()/restart
 				if (r.drained) {
 					timer = null;
 					console.log('[topic-backfill] backlog drained; worker stopped');
 					return;
 				}
-				rearm();
+				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
 			},
 			(e) => {
 				console.error('[topic-backfill] sweep failed:', e);
-				rearm();
+				if (generation !== myGen) return; // superseded — don't re-arm
+				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
 			},
 		);
 	}
@@ -129,12 +129,12 @@ export function startTopicBackfiller(): void {
 }
 
 /**
- * Tear down the timer — for tests / clean shutdown. Also sets a flag so a sweep
- * already in flight doesn't re-arm the timer from its completion callback
+ * Tear down the timer — for tests / clean shutdown. Bumps the generation so a
+ * sweep already in flight won't re-arm the timer from its completion callback
  * (`clearTimeout` can't cancel the pending promise continuation).
  */
 export function stopTopicBackfiller(): void {
-	stopping = true;
+	generation++;
 	if (timer) {
 		clearTimeout(timer);
 		timer = null;
