@@ -24,10 +24,15 @@ import { parse as parseYaml } from 'yaml';
 export const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 export const MAX_SKILL_NAME_CHARS = 64;
 export const MAX_SKILL_DESCRIPTION_CHARS = 1024;
-/** Tier-2 body ceiling. A skill body is injected wholesale on activation, so
- *  an unbounded one could blow the context budget; the spec recommends keeping
- *  instructions under ~5k tokens. 16 KiB is a generous ceiling above that. */
-export const MAX_SKILL_BODY_BYTES = 16 * 1024;
+/** Body ceiling. A skill body is injected wholesale on activation, so an
+ *  unbounded one could blow the context budget — but only on a *deliberate*
+ *  `activate_skill` call, not persistently (the always-in-context `description`
+ *  is capped separately). The spec's ~5k-token guidance is advisory for authors;
+ *  as a hard ceiling it's too tight for real third-party skills (Anthropic's own
+ *  docx/pptx SKILL.md exceed 16 KiB), which the importer can't restructure. 64
+ *  KiB (~16k tokens worst case, only when activated) covers them with headroom
+ *  while still bounding a runaway. */
+export const MAX_SKILL_BODY_BYTES = 64 * 1024;
 
 export interface ParsedSkill {
 	name: string;
