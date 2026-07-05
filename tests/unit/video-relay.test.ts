@@ -301,6 +301,109 @@ describe('startVideoRelay — prompt enhancement', () => {
 		);
 		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
 	});
+
+	it('does NOT hold the video endpoint slot during enhancement', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer(); // enhancer on its OWN endpoint ('enhancer'), independent slot
+		// Block enhancement until we release it, to observe ordering against the slot.
+		let releaseEnhance!: () => void;
+		mocks.enhancePrompt.mockImplementation(
+			() =>
+				new Promise((res) => {
+					releaseEnhance = () => res({ enhanced: 'enhanced dog', changed: true });
+				}),
+		);
+		// Occupy the single VIDEO slot ('bridge').
+		const held = await acquireEndpointSlot('bridge', 1, {});
+		const drained = drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		// Enhancement runs even though the video slot is held → NOT gated by it.
+		await vi.waitFor(() => expect(mocks.enhancePrompt).toHaveBeenCalled());
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		// Finish enhancing; job creation still blocks on the held video slot.
+		releaseEnhance();
+		await Promise.resolve();
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		// Free the video slot → job creation proceeds with the enhanced prompt.
+		held.release();
+		await drained;
+		expect(mocks.videoCreate.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced dog' });
+	});
+
+	it('cancels the whole generation when enhancement is aborted (Stop mid-enhance)', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		const onComplete = vi.fn();
+		// Stop during enhancement: enhancePrompt propagates the abort, so the
+		// relay's pre-slot prepare must cancel — not fall through to job creation.
+		mocks.enhancePrompt.mockRejectedValue(new DOMException('aborted', 'AbortError'));
+		const events = await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+					onComplete,
+				}),
+			),
+		);
+		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
+		expect(err?.message).toBe('Cancelled');
+		expect(mocks.videoCreate).not.toHaveBeenCalled();
+		expect(events.some((e) => e.type === 'done')).toBe(false);
+		// Cancellation bails quietly — no durable sibling — but the slot/in-flight
+		// is still released via onComplete.
+		expect(getSiblingAssistants(conv.id, userMessage.id)).toHaveLength(0);
+		expect(onComplete).toHaveBeenCalledOnce();
+	});
+
+	it('serializes when the enhancer shares the video endpoint at max_concurrent=1', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		// Enhancer on the SAME endpoint as the video model ('bridge'), cap 1.
+		mocks.getImageEnhancerModel.mockReturnValue({
+			endpoint: endpoint(1), // id 'bridge', maxConcurrent 1
+			upstreamId: 'qwen',
+			maxTokens: 200,
+			temperature: 0.7,
+			styleInstructionOverrides: {},
+		});
+		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'enhanced dog', changed: true });
+		// Hold the single shared slot; the relay must wait for it before it can
+		// even enhance (enhancement + generation share the one slot → serial).
+		const held = await acquireEndpointSlot('bridge', 1, {});
+		const drained = drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		await Promise.resolve();
+		await Promise.resolve();
+		// Shared slot is held → enhancement can't even start.
+		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
+		held.release();
+		await drained;
+		expect(mocks.enhancePrompt).toHaveBeenCalled();
+		expect(mocks.videoCreate.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced dog' });
+	});
 });
 
 describe('startVideoRelay — fan-out semantics', () => {
@@ -362,7 +465,10 @@ describe('startVideoRelay — backpressure + failure', () => {
 				endpoint: endpoint(1),
 			}),
 		);
-		queueMicrotask(() => held.release());
+		// Release on a macrotask so the relay reaches its slot-wait (past the
+		// pre-slot prepare step's async hops) and emits `queued` before the slot
+		// frees — a microtask release could win the race and skip the queued state.
+		setTimeout(() => held.release(), 0);
 		const events = await drain(stream);
 		expect(events.map((e) => e.type)[0]).toBe('queued');
 		expect(events.some((e) => e.type === 'done')).toBe(true);

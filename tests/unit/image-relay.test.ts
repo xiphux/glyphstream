@@ -326,8 +326,11 @@ describe('startImageRelay — backpressure + failure', () => {
 				endpoint: endpoint(1),
 			}),
 		);
-		// Let the relay queue (onQueued fires synchronously at construction), then free it.
-		queueMicrotask(() => held.release());
+		// Let the relay reach its slot-wait (past the pre-slot prepare step's async
+		// hops) and emit `queued`, THEN free it. A macrotask, not queueMicrotask —
+		// the relay takes a few microtasks to get there, so releasing on a
+		// microtask could win the race and free the slot before it's contended.
+		setTimeout(() => held.release(), 0);
 		const events = await drain(stream);
 		const types = events.map((e) => e.type);
 		expect(types[0]).toBe('queued');

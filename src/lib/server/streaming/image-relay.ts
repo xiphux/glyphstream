@@ -13,13 +13,10 @@
  */
 
 import { imageEdit, imageGeneration, type ImageEditInputFile } from '../endpoints/client';
-import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import { logLevel } from '../env';
 import { loadMediaBytes } from '../media/data-url';
 import { persistGeneratedImage } from '../media/persister';
-import { getImageEnhancerModel } from '../tasks/image-enhancer-model';
-import { enhancePrompt } from './prompt-enhancer';
-import { normalizeStyle } from './prompt-styles';
+import { runPromptEnhancement } from './media-enhance';
 import { startMediaRelay, type MediaRelayParams } from './media-relay';
 import { errorMessage, isAbortError } from './sse-transport';
 import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
@@ -52,55 +49,26 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 	let effectivePrompt = params.prompt;
 	let originalPrompt: string | null = null;
 
-	// Prompt enhancement runs as the relay's PRE-SLOT prepare step so it does NOT
-	// hold the (single-GPU) image endpoint slot while doing a CPU LLM call — it
-	// can pipeline with another branch's generation. It acquires the ENHANCER
-	// endpoint's own slot, so if that's the SAME endpoint as the image model
-	// (e.g. one max_concurrent=1 box), enhancement and generation serialize;
-	// separate endpoints run in parallel. Strictly non-fatal: enhancePrompt
-	// swallows its own failures and returns the original.
-	const prepare = async ({
-		write,
-		abortSignal,
-	}: {
+	// Prompt enhancement runs as the relay's PRE-SLOT prepare step (shared with
+	// the video relay — see `media-enhance.ts`). Text-to-image only: an i2i
+	// prompt is an edit instruction, not a scene to rewrite.
+	const prepare = async (ctx: {
 		write: (e: StreamProgressEvent) => void;
 		abortSignal?: AbortSignal;
 	}) => {
-		// Text-to-image only (an i2i prompt is an edit instruction, not a scene),
-		// gated on the feature toggle + a configured enhancer model.
-		const isT2I = params.dispatchMediaIds.length === 0;
-		if (!isT2I || !params.enhancementEnabled) return;
-		const enhancerModel = getImageEnhancerModel();
-		if (!enhancerModel) return;
-
-		// The status also doubles as the fan-out dispatch-release signal, so emit
-		// it before waiting on the enhancer slot (a busy enhancer just shows
-		// "Enhancing prompt…" until its turn).
-		write({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
-		let enhSlot: EndpointSlot | null = null;
-		try {
-			enhSlot = await acquireEndpointSlot(
-				enhancerModel.endpoint.id,
-				enhancerModel.endpoint.maxConcurrent,
-				{ signal: abortSignal },
-			);
-			const { enhanced, changed } = await enhancePrompt({
+		const r = await runPromptEnhancement(
+			{
 				prompt: params.prompt,
-				style: normalizeStyle(params.promptStyle),
-				hint: params.promptHint,
-				model: enhancerModel,
-				signal: abortSignal,
-			});
-			if (changed) {
-				effectivePrompt = enhanced;
-				originalPrompt = params.prompt;
-			}
-		} finally {
-			enhSlot?.release();
-		}
-		// No explicit "clear" event: the branch next acquires the image slot and
-		// emits `queued`/`start`, and both clients clear the enhancing status on
-		// those — so the status doesn't stick into the generating phase.
+				medium: 'image',
+				isTextToMedia: params.dispatchMediaIds.length === 0,
+				enabled: params.enhancementEnabled,
+				promptStyle: params.promptStyle,
+				promptHint: params.promptHint,
+			},
+			ctx,
+		);
+		effectivePrompt = r.effectivePrompt;
+		originalPrompt = r.originalPrompt;
 	};
 
 	return startMediaRelay({ ...params, prepare }, async ({ write, abortSignal }) => {
