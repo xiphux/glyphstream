@@ -13,10 +13,12 @@ docs.
 
 - **Agent skills (agentskills.io spec).** The MVP shipped (per-user bundles,
   progressive disclosure, import/enable/delete UI, `run_skill_script` on
-  Pyodide). Remaining:
-  - _Activation dedupe._ Re-activating a skill re-injects its body (wasteful,
-    harmless). True branch-aware dedupe scans persisted `activate_skill` tool
-    messages via `conversationId`.
+  Pyodide). Activation dedupe also shipped —
+  `collapseSupersededSkillActivations` in `serialize-upstream.ts` keeps only the
+  most recent full `<skill_content>` copy per skill in the model-visible view
+  and stubs earlier ones. It keys on the post-`upstreamBranch` wire array, NOT
+  persisted rows, so it's compaction-safe (an activation summarized away is
+  correctly re-injected on the next call) and branch-aware for free. Remaining:
   - _Discovery._ A browse/import affordance for community bundles — deferred
     until enough curated skills exist to anchor a library UI.
 

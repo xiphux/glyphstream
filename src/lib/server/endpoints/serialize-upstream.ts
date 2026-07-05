@@ -143,10 +143,76 @@ export async function serializeMessageForUpstream(
 	};
 }
 
+/** Opening marker of an `activate_skill` tool result — see `wrapSkillContent`
+ *  in tools/activate-skill.ts. The captured group is the skill name. Requires
+ *  the immediate `">` so it matches a full activation but NOT the superseded
+ *  placeholder below (whose tag carries an extra attribute first). */
+const SKILL_CONTENT_OPEN = /^<skill_content name="([^"]*)">/;
+
+/** Compact stand-in for a superseded skill activation. Names the skill and
+ *  points forward, so the model knows the instructions still exist (in full,
+ *  later) rather than reading a silent gap. */
+function supersededSkillPlaceholder(name: string): string {
+	return (
+		`<skill_content name="${name}" superseded="true">\n` +
+		`These instructions were reloaded later in this conversation — see the ` +
+		`most recent activation of "${name}" below for the current version.\n` +
+		`</skill_content>`
+	);
+}
+
+/**
+ * Collapse duplicate skill activations in an already-serialized upstream
+ * payload. When the same skill's full `<skill_content>` body appears more than
+ * once in the model-visible view — the model re-activated it, or an explicit
+ * `/skill-name` re-issued it — keep only the most recent full copy and replace
+ * each earlier one with `supersededSkillPlaceholder`. A skill body (now up to
+ * 64 KiB) duplicated across a long thread is otherwise dead weight resent on
+ * every subsequent request.
+ *
+ * Operates on the post-`upstreamBranch` wire array, which makes it inherently:
+ *   - branch-aware — a sibling branch's activation isn't in this view;
+ *   - compaction-safe — an activation folded into a summary is no longer here,
+ *     so a later re-activation is correctly kept in full (the model lost the
+ *     original instructions when they were summarized away);
+ *   - edit-safe — keep-last retains an edited skill's newer body and collapses
+ *     the stale earlier copy.
+ *
+ * Persisted rows are untouched; this is a send-time transform recomputed each
+ * request, so it's idempotent (placeholders don't match `SKILL_CONTENT_OPEN`).
+ */
+export function collapseSupersededSkillActivations(
+	messages: ChatCompletionRequest['messages'],
+): ChatCompletionRequest['messages'] {
+	const skillName = (m: ChatCompletionRequest['messages'][number]): string | null =>
+		m.role === 'tool' && typeof m.content === 'string'
+			? (SKILL_CONTENT_OPEN.exec(m.content)?.[1] ?? null)
+			: null;
+
+	// Last position each skill name appears as a full activation.
+	const lastIndexByName = new Map<string, number>();
+	messages.forEach((m, i) => {
+		const name = skillName(m);
+		if (name !== null) lastIndexByName.set(name, i);
+	});
+
+	// Nothing duplicated → return the array untouched (no allocation).
+	if (lastIndexByName.size === messages.filter((m) => skillName(m) !== null).length) {
+		return messages;
+	}
+
+	return messages.map((m, i) => {
+		const name = skillName(m);
+		if (name === null || lastIndexByName.get(name) === i) return m;
+		return { ...m, content: supersededSkillPlaceholder(name) };
+	});
+}
+
 /**
  * Serialize an entire branch (root → active leaf) into the upstream
  * messages array, prepending the optional system prompt. Filters out
- * any messages that serialize to null (defensive).
+ * any messages that serialize to null (defensive), then collapses superseded
+ * skill activations (`collapseSupersededSkillActivations`).
  *
  * If the branch has been compacted, `upstreamBranch` trims it to
  * `[latest summary, ...verbatim tail + later turns]` — the summary stands in
@@ -169,5 +235,5 @@ export async function serializeBranchForUpstream(
 		const serialized = await serializeMessageForUpstream(m, resolveMediaUrl);
 		if (serialized) out.push(serialized);
 	}
-	return out;
+	return collapseSupersededSkillActivations(out);
 }

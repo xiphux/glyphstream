@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+	collapseSupersededSkillActivations,
 	serializeBranchForUpstream,
 	serializeMessageForUpstream,
 } from '$lib/server/endpoints/serialize-upstream';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
+
+/** A full `activate_skill` tool result as `wrapSkillContent` persists it — the
+ *  first line is the marker the collapse pass keys on. */
+function skillResult(name: string, body = 'do the thing'): string {
+	return `<skill_content name="${name}">\n\n${body}\n\n</skill_content>`;
+}
 
 function msg(role: ChatMessage['role'], parts: MessagePart[], id = 'm1'): ChatMessage {
 	return {
@@ -347,5 +354,100 @@ describe('serializeBranchForUpstream', () => {
 			{ role: 'user', content: 'q2' },
 			{ role: 'assistant', content: 'r2' },
 		]);
+	});
+});
+
+describe('collapseSupersededSkillActivations', () => {
+	const toolMsg = (name: string, callId: string) => ({
+		role: 'tool' as const,
+		content: skillResult(name),
+		tool_call_id: callId,
+	});
+
+	it('keeps a lone activation untouched (same array reference, no allocation)', () => {
+		const messages = [{ role: 'user' as const, content: 'hi' }, toolMsg('docx', 'c1')];
+		expect(collapseSupersededSkillActivations(messages)).toBe(messages);
+	});
+
+	it('collapses the earlier of two same-skill activations, keeps the latest full', () => {
+		const messages = [
+			toolMsg('docx', 'c1'),
+			{ role: 'user' as const, content: 'more' },
+			toolMsg('docx', 'c2'),
+		];
+		const out = collapseSupersededSkillActivations(messages);
+
+		// Earlier copy → placeholder, but the tool_call_id is preserved so the
+		// assistant's tool_call still pairs to a tool result.
+		expect(out[0]).toMatchObject({
+			role: 'tool',
+			tool_call_id: 'c1',
+			content: expect.stringContaining('superseded="true"'),
+		});
+		expect(out[0].content).not.toContain('do the thing');
+		// Latest copy → full, unchanged.
+		expect(out[2]).toEqual(toolMsg('docx', 'c2'));
+	});
+
+	it('leaves distinct skills alone — only same-name duplicates collapse', () => {
+		const messages = [toolMsg('docx', 'c1'), toolMsg('pdf', 'c2'), toolMsg('docx', 'c3')];
+		const out = collapseSupersededSkillActivations(messages);
+
+		expect(out[0].content).toContain('superseded="true"'); // first docx
+		expect(out[1]).toEqual(toolMsg('pdf', 'c2')); // lone pdf untouched
+		expect(out[2]).toEqual(toolMsg('docx', 'c3')); // latest docx full
+	});
+
+	it('ignores non-skill tool results (regular tools are never collapsed)', () => {
+		const messages = [
+			{ role: 'tool' as const, content: '{"weather":"sunny"}', tool_call_id: 'c1' },
+			{ role: 'tool' as const, content: '{"weather":"rainy"}', tool_call_id: 'c2' },
+		];
+		expect(collapseSupersededSkillActivations(messages)).toBe(messages);
+	});
+
+	it('is idempotent — placeholders are not re-detected as activations', () => {
+		const messages = [toolMsg('docx', 'c1'), toolMsg('docx', 'c2')];
+		const once = collapseSupersededSkillActivations(messages);
+		const twice = collapseSupersededSkillActivations(once);
+		expect(twice).toEqual(once);
+	});
+
+	it('collapses through the full branch serializer (send-time choke point)', async () => {
+		// user → a(tool_call) → tool(docx) → a(tool_call) → tool(docx again)
+		const branch: ChatMessage[] = [
+			msg('user', [{ type: 'text', text: 'edit my doc' }], 'u0'),
+			msg(
+				'assistant',
+				[
+					{
+						type: 'tool_call',
+						toolCallId: 'c1',
+						toolName: 'activate_skill',
+						arguments: '{"name":"docx"}',
+					},
+				],
+				'a0',
+			),
+			msg('tool', [{ type: 'tool_result', toolCallId: 'c1', result: skillResult('docx') }], 't0'),
+			msg(
+				'assistant',
+				[
+					{
+						type: 'tool_call',
+						toolCallId: 'c2',
+						toolName: 'activate_skill',
+						arguments: '{"name":"docx"}',
+					},
+				],
+				'a1',
+			),
+			msg('tool', [{ type: 'tool_result', toolCallId: 'c2', result: skillResult('docx') }], 't1'),
+		];
+		const out = await serializeBranchForUpstream(branch, noMedia, null);
+
+		const toolResults = out.filter((m) => m.role === 'tool');
+		expect(toolResults[0].content).toContain('superseded="true"');
+		expect(toolResults[1].content).toBe(skillResult('docx'));
 	});
 });
