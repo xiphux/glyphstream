@@ -177,41 +177,48 @@ export function decideReconcile(input: {
 export async function reconcileSubscription(enabled: boolean): Promise<void> {
 	if (!enabled || !isPushSupported() || Notification.permission !== 'granted') return;
 
-	const cfg = await loadPushConfig();
-	if (!cfg?.enabled || !cfg.vapidPublicKey) return;
+	// One try guards the whole body so the "never throws" contract holds against
+	// every browser-API rejection — getSubscription(), a malformed key throwing
+	// synchronously in subscriptionMatchesKey (atob), or the push service
+	// refusing subscribe() mid-rotation. Any of them stays a silent no-op; the
+	// next cold load reconciles again. The call site is a bare `void …` with no
+	// unhandledrejection handler behind it, so an escape would be an unhandled
+	// rejection rather than the promised no-op.
+	try {
+		const cfg = await loadPushConfig();
+		if (!cfg?.enabled || !cfg.vapidPublicKey) return;
 
-	const reg = await navigator.serviceWorker.ready.catch(() => null);
-	if (!reg) return;
+		const reg = await navigator.serviceWorker.ready.catch(() => null);
+		if (!reg) return;
 
-	const existing = await reg.pushManager.getSubscription();
-	const action = decideReconcile({
-		enabled,
-		pushSupported: true,
-		permission: Notification.permission,
-		serverConfigured: true,
-		hasSubscription: existing !== null,
-		keyMatches: existing !== null && subscriptionMatchesKey(existing, cfg.vapidPublicKey),
-	});
-	if (action === 'skip') return;
+		const existing = await reg.pushManager.getSubscription();
+		const action = decideReconcile({
+			enabled,
+			pushSupported: true,
+			permission: Notification.permission,
+			serverConfigured: true,
+			hasSubscription: existing !== null,
+			keyMatches: existing !== null && subscriptionMatchesKey(existing, cfg.vapidPublicKey),
+		});
+		if (action === 'skip') return;
 
-	let subscription = existing;
-	if (action === 'resubscribe') {
-		await subscription?.unsubscribe().catch(() => {});
-		subscription = null;
-	}
-	if (!subscription) {
-		try {
+		let subscription = existing;
+		if (action === 'resubscribe') {
+			// Tolerate an unsubscribe failure (inline catch) so a stale-key sub
+			// that won't revoke still can't block creating the fresh one.
+			await subscription?.unsubscribe().catch(() => {});
+			subscription = null;
+		}
+		if (!subscription) {
 			subscription = await reg.pushManager.subscribe({
 				userVisibleOnly: true,
 				applicationServerKey: urlBase64ToUint8Array(cfg.vapidPublicKey),
 			});
-		} catch {
-			// Browser/push service refused (e.g. key mismatch mid-rotation) —
-			// nothing more we can do silently; the next load reconciles again.
-			return;
 		}
+		await registerWithServer(subscription);
+	} catch {
+		// Silent by contract — see the note above.
 	}
-	await registerWithServer(subscription);
 }
 
 /**
