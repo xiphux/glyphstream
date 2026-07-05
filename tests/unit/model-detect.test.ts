@@ -231,16 +231,19 @@ describe('normalizeUpstreamModel', () => {
 	});
 
 	describe('promptStyle / promptHint resolution', () => {
-		// Order: per-model config override > upstream field > null.
-		it('is null when no layer supplies them', () => {
-			const e = normalizeUpstreamModel(ep(), { id: 'x' });
+		// Order: per-model config override > upstream field > null. Resolution is
+		// KIND-AWARE: image models normalize against the image style set, video
+		// models against the video set, everything else gets no style/hint.
+		it('is null when no layer supplies them (image model)', () => {
+			const e = normalizeUpstreamModel(ep(), { id: 'x', kind: 'image' });
 			expect(e.promptStyle).toBeNull();
 			expect(e.promptHint).toBeNull();
 		});
 
-		it('reads + normalizes the upstream prompt_style/prompt_hint fields', () => {
+		it('reads + normalizes the upstream prompt_style/prompt_hint fields (image)', () => {
 			const e = normalizeUpstreamModel(ep(), {
 				id: 'x',
+				kind: 'image',
 				prompt_style: 'danbooru', // loose alias
 				prompt_hint: 'masterpiece, best quality',
 			});
@@ -248,9 +251,43 @@ describe('normalizeUpstreamModel', () => {
 			expect(e.promptHint).toBe('masterpiece, best quality');
 		});
 
+		it('reads + normalizes a VIDEO style against the video set', () => {
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'ltx',
+				kind: 'video',
+				prompt_style: 'cinematic', // loose alias
+				prompt_hint: 'end with an ambient sound cue',
+			});
+			expect(e.promptStyle).toBe('cinematic-prose');
+			expect(e.promptHint).toBe('end with an ambient sound cue');
+		});
+
+		it('drops a style from the WRONG medium to null (image style on a video model)', () => {
+			// The value validated at config load (image∪video), but the medium is
+			// only known here — a mismatched style falls back to clarify-only.
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'x',
+				kind: 'video',
+				prompt_style: 'booru-tags',
+			});
+			expect(e.promptStyle).toBeNull();
+		});
+
+		it('gives a chat model no style/hint even if upstream supplies them', () => {
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'x',
+				kind: 'chat',
+				prompt_style: 'natural-language',
+				prompt_hint: 'be verbose',
+			});
+			expect(e.promptStyle).toBeNull();
+			expect(e.promptHint).toBeNull();
+		});
+
 		it('drops an unknown upstream prompt_style to null', () => {
 			expect(
-				normalizeUpstreamModel(ep(), { id: 'x', prompt_style: 'photoreal' }).promptStyle,
+				normalizeUpstreamModel(ep(), { id: 'x', kind: 'image', prompt_style: 'photoreal' })
+					.promptStyle,
 			).toBeNull();
 		});
 
@@ -260,7 +297,12 @@ describe('normalizeUpstreamModel', () => {
 					modelPromptStyles: { 'illustrious-xl': 'booru-tags' },
 					modelPromptHints: { 'illustrious-xl': 'no score_N tags' },
 				}),
-				{ id: 'illustrious-xl', prompt_style: 'natural-language', prompt_hint: 'be verbose' },
+				{
+					id: 'illustrious-xl',
+					kind: 'image',
+					prompt_style: 'natural-language',
+					prompt_hint: 'be verbose',
+				},
 			);
 			expect(e.promptStyle).toBe('booru-tags');
 			expect(e.promptHint).toBe('no score_N tags');

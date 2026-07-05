@@ -70,7 +70,12 @@ interface PersistVideoInput {
 	userId: string;
 	endpoint: LoadedEndpoint;
 	sourceModel: string;
+	/** The prompt that actually generated the video — the ENHANCED prompt when
+	 *  enhancement ran, else the verbatim user prompt. Stored as promptFull. */
 	prompt: string;
+	/** The user's pre-enhancement prompt, when the enhancer rewrote `prompt`.
+	 *  Null when no enhancement happened. */
+	originalPrompt?: string | null;
 	bytes: Buffer;
 	contentType: string;
 	/** Input image this video was animated from (i2v). Null for text-to-video. */
@@ -94,6 +99,7 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
 		sourceMediaId: input.sourceMediaId ?? null,
+		originalPrompt: input.originalPrompt ?? null,
 		...promptFields(input.prompt),
 	});
 	return id;

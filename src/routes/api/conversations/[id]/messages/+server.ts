@@ -352,6 +352,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				);
 			}
 		}
+		// Resolve the target model's prompt-style metadata (live, cached) so the
+		// relay can rewrite the prompt into the model's preferred video format.
+		// Skip the lookup entirely when the feature is toggled off. Mirrors the
+		// image branch above.
+		const enhancementEnabled = !meta.disabledFeatures.includes('video_prompt_enhancement');
+		let promptStyle: string | null = null;
+		let promptHint: string | null = null;
+		if (enhancementEnabled) {
+			const modelEntry = (await listAllModels()).find((m) => m.id === meta.modelId);
+			promptStyle = modelEntry?.promptStyle ?? null;
+			promptHint = modelEntry?.promptHint ?? null;
+		}
 		const stream = startVideoRelay({
 			conversationId: params.id,
 			userId: locals.user.id,
@@ -362,6 +374,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userMessage: userMessage as ChatMessage,
 			inputReference,
 			sourceMediaId,
+			promptStyle,
+			promptHint,
+			enhancementEnabled,
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,

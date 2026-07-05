@@ -58,6 +58,18 @@ const CATEGORIES_WITH_IMG: FeatureCategoryEntry[] = [
 	},
 ];
 
+/** Built-ins including BOTH media-only enhancement toggles, as the layout now
+ *  ships them to every conversation (the menu filters by model kind). */
+const CATEGORIES_WITH_MEDIA: FeatureCategoryEntry[] = [
+	...CATEGORIES_WITH_IMG,
+	{
+		id: 'video_prompt_enhancement',
+		label: 'Video prompt enhancement',
+		description: 'Rewrites your prompt for the target video model.',
+		source: 'builtin',
+	},
+];
+
 describe('FeatureTogglesMenu — trigger button', () => {
 	it('renders with the expected aria-label', () => {
 		render(FeatureTogglesMenu, {
@@ -164,24 +176,43 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 		expect(screen.getByText('Web access')).toBeInTheDocument();
 	});
 
-	it('shows only image_prompt_enhancement for an image model, hides the text toggles', async () => {
+	it('shows only image_prompt_enhancement for an image model, hides the text + video toggles', async () => {
 		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
 			props: {
 				disabledFeatures: [],
-				categories: CATEGORIES_WITH_IMG,
+				categories: CATEGORIES_WITH_MEDIA,
 				modelKind: 'image',
 				onChange: vi.fn(),
 			},
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
+		expect(screen.queryByText('Video prompt enhancement')).toBeNull();
 		expect(screen.queryByText('Web access')).toBeNull();
 		expect(screen.queryByText('Personalization')).toBeNull();
 	});
 
-	it('hides the whole trigger for a video model (no applicable toggles)', () => {
+	it('shows only video_prompt_enhancement for a video model, hides the text + image toggles', async () => {
+		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
+			props: {
+				disabledFeatures: [],
+				categories: CATEGORIES_WITH_MEDIA,
+				modelKind: 'video',
+				onChange: vi.fn(),
+			},
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		expect(screen.getByText('Video prompt enhancement')).toBeInTheDocument();
+		expect(screen.queryByText('Image prompt enhancement')).toBeNull();
+		expect(screen.queryByText('Web access')).toBeNull();
+		expect(screen.queryByText('Personalization')).toBeNull();
+	});
+
+	it('hides the whole trigger for a video model with no video enhancer category', () => {
+		render(FeatureTogglesMenu, {
+			// Only image + text categories available → a video model has nothing.
 			props: {
 				disabledFeatures: [],
 				categories: CATEGORIES_WITH_IMG,

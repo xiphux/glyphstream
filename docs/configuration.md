@@ -205,23 +205,30 @@ race a running title task.
 > and title generation reads a top-level `task_model` that isn't there — so
 > titling silently stays in fallback mode with no error at boot.
 
-## Image prompt enhancement (`[image_enhancement]`)
+## Prompt enhancement (`[image_enhancement]`)
 
-Different image models want their prompts in very different shapes — a
+Different generation models want their prompts in very different shapes — a
 plain-English narrative for Flux/Qwen/Krea, strict Danbooru tags for
-Illustrious/WAI, "keyword soup" for SDXL fine-tunes, or a hybrid. When this is
-configured, GlyphStream sends an image prompt to an LLM first, which rewrites it
-into the **target model's preferred format** (and expands it if it's vague),
-then generates from the rewritten prompt. Your original message is kept
-verbatim; the gallery lightbox shows the enhanced prompt with an
-**"Enhanced — show original"** toggle.
+Illustrious/WAI, "keyword soup" for SDXL fine-tunes, or a hybrid on the image
+side; cinematic prose for LTX/Sulphur or a structured shot formula for WAN on
+the video side. When this is configured, GlyphStream sends the prompt to an LLM
+first, which rewrites it into the **target model's preferred format** (and
+expands it if it's vague), then generates from the rewritten prompt. Your
+original message is kept verbatim; the gallery lightbox shows the enhanced
+prompt with an **"Enhanced — show original"** toggle.
+
+The same `[image_enhancement]` block (and its enhancer LLM) drives both image
+and video — the block keeps its historical name, but a capable model handles
+either medium. What differs is the **style vocabulary** per medium (see below).
 
 It's opt-in and entirely non-fatal: with no `[image_enhancement]` block, prompts
 pass through unchanged; if the enhancer model errors or times out, the original
 prompt is used. It runs **per generation**, so a multi-model fan-out enhances
-each branch for its own target model. It is **skipped for image-to-image edits**
-(an edit instruction isn't a scene description) and can be turned off
-per-conversation from the composer's feature menu ("Image prompt enhancement").
+each branch for its own target model. It is **skipped for image-to-image and
+image-to-video** (an edit instruction / a reference frame isn't a fresh scene
+description) and can be turned off per-conversation from the composer's feature
+menu ("Image prompt enhancement" on an image model, "Video prompt enhancement"
+on a video model).
 
 Add the block at the **top of `config.toml`** (above the first `[[endpoints]]`,
 same scoping rule as `task_model`):
@@ -254,8 +261,8 @@ cleanest, in-order behavior for a single-instance CPU model.)
 
 ### Telling GlyphStream which model wants which style
 
-The enhancer needs to know each image model's preferred format. Two sources,
-checked in order (config wins):
+The enhancer needs to know each image or video model's preferred format. Two
+sources, checked in order (config wins):
 
 1. **Per-endpoint config override** — keyed by the _upstream_ model id, exactly
    like `model_context_windows`:
@@ -277,14 +284,18 @@ checked in order (config wins):
    `meta.json`, and GlyphStream reads them from `/v1/models`. The config override
    above always wins over this.
 
-Styles are one of `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`,
-`json` (loose aliases like `narrative`, `danbooru`, `tags`, `structured` are
-accepted). A model with **no** style resolved still gets a gentler
-**clarify-only** pass that expands a vague prompt while preserving the format you
-wrote — it never restyles blindly. The optional `prompt_hint` is freeform text
-appended to the enhancer's instructions, for nuance the styles can't carry — and
-for `json` it's where the **exact field schema** goes, since the JSON shape is
-model-specific.
+The set of valid styles depends on the model's **kind**. Image models use one of
+`natural-language`, `booru-tags`, `keyword-soup`, `hybrid`, `json`; video models
+use one of `cinematic-prose`, `structured-cinematic` (loose aliases like
+`narrative`, `danbooru`, `tags`, `structured`, `cinematic`, `wan` are accepted).
+Config is validated against both sets at load, but a style is only applied when
+it matches the model's medium — a video style on an image model (or vice versa)
+falls back to the clarify-only pass rather than misfiring. A model with **no**
+style resolved gets that same gentler **clarify-only** pass, which expands a
+vague prompt while preserving the format you wrote — it never restyles blindly.
+The optional `prompt_hint` is freeform text appended to the enhancer's
+instructions, for nuance the styles can't carry — and for `json` it's where the
+**exact field schema** goes, since the JSON shape is model-specific.
 
 #### Recommended styles for common models
 
@@ -312,6 +323,40 @@ its prompt field (Ideogram's ComfyUI node does) — the enhancer just produces t
 JSON string; the downstream has to consume it. (The default `max_tokens` is
 sized to fit a structured prompt, so you only need to raise it for unusually
 complex JSON scenes.)
+
+#### Video styles
+
+Video prompting adds a temporal axis image styles don't model — camera
+_movement_ (dolly/pan/track/orbit) with speed, present-tense action over time,
+and length that scales with clip duration — so video has its own two styles:
+
+- **`cinematic-prose`** — one flowing present-tense paragraph, a single clean
+  camera move, concrete physical detail. This is the sweet spot for **LTX 2.3**
+  and its fine-tunes (e.g. **Sulphur 2**). Rejects shot-lists and tags.
+- **`structured-cinematic`** — chronological shot-order formula written as prose
+  (`entity → scene → motion+pacing → aesthetic[light/lens/shot] → stylization`),
+  ~80–120 words. This is what **WAN 2.2** rewards.
+
+| Model(s)  | `prompt_style`         | hint highlights                                                                                             |
+| --------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| LTX 2.3   | `cinematic-prose`      | generates synchronized audio — end with a brief ambient-sound / SFX cue                                     |
+| Sulphur 2 | `cinematic-prose`      | photoreal human focus; concrete/anatomical description, avoid metaphor & over-complex scenes (motion smear) |
+| WAN 2.2   | `structured-cinematic` | emphasize chronological progression ("begins… then…"); amplitude + speed of motion                          |
+
+```toml
+[endpoints.model_prompt_styles]
+  "ltx-2.3"   = "cinematic-prose"
+  "sulphur-2" = "cinematic-prose"
+  "wan-2.2"   = "structured-cinematic"
+[endpoints.model_prompt_hints]
+  "ltx-2.3"   = "This model generates synchronized audio — end with a brief explicit ambient-sound or SFX cue."
+  "sulphur-2" = "Photoreal human focus. Concrete, literal, anatomical description; avoid abstract metaphor; keep the scene simple to avoid motion smearing."
+```
+
+For an [openai-api-bridge](https://github.com/xiphux/openai-api-bridge) ComfyUI
+video model you can equivalently declare `prompt_style` / `prompt_hint` in the
+workflow's `meta.json` — the bridge surfaces them in `/v1/models` for image and
+video models alike, and the config override above still wins.
 
 > **Double-enhancement caveat:** some upstreams run their _own_ prompt enhancer
 > (Qwen on DashScope via `prompt_extend`, ERNIE-Image via `use_pe`), both default-
@@ -370,16 +415,16 @@ that's exactly why the window matters.
 Each optional feature gets its own capability-named block, documented in its
 own guide:
 
-| Block                 | Feature                                                                  | Guide                                                |
-| --------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
-| `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                    |
-| `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                    |
-| `[image_enhancement]` | LLM prompt rewriting for image models                                    | [above](#image-prompt-enhancement-image_enhancement) |
-| `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)          |
-| `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)              |
-| `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                                |
-| `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search)     |
-| `[notifications]`     | web push                                                                 | [Push notifications](notifications.md)               |
+| Block                 | Feature                                                                  | Guide                                            |
+| --------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `[search]`            | `web_search` via SearxNG                                                 | [Web search & RAG](web-search.md)                |
+| `[embeddings]`        | semantic retrieval (`fetch_url`, `recall_memory`, gallery prompt search) | [Web search & RAG](web-search.md)                |
+| `[image_enhancement]` | LLM prompt rewriting for image + video models                            | [above](#prompt-enhancement-image_enhancement)   |
+| `[memory_model]`      | background memory consolidation ("dreaming")                             | [above](#memory-consolidation-memory_model)      |
+| `[code_interpreter]`  | the sandboxed Python runtime                                             | [Code interpreter](code-interpreter.md)          |
+| `[[mcp_servers]]`     | external Model Context Protocol servers                                  | [MCP servers](mcp.md)                            |
+| `[tools]`             | tool-loop iteration cap                                                  | [MCP servers](mcp.md#deferred-tools-tool-search) |
+| `[notifications]`     | web push                                                                 | [Push notifications](notifications.md)           |
 
 ## `.env` reference
 

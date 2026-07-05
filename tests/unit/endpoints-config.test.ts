@@ -845,6 +845,27 @@ base_url = "http://localhost:9/v1"
 		expect(ep.modelPromptHints).toEqual({});
 	});
 
+	it('accepts video style keys + aliases (config is kind-blind at load)', () => {
+		// model_prompt_styles is keyed by upstream id and can't know a model's
+		// kind at load, so it must accept image OR video styles. Kind-appropriate
+		// selection happens later in models.ts.
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "comfy"
+base_url = "http://localhost:8188/v1"
+[endpoints.model_prompt_styles]
+  "ltx-2.3" = "cinematic-prose"
+  "wan-2.2" = "wan"
+			`),
+		)[0];
+		// "wan" alias normalizes to the canonical "structured-cinematic".
+		expect(ep.modelPromptStyles).toEqual({
+			'ltx-2.3': 'cinematic-prose',
+			'wan-2.2': 'structured-cinematic',
+		});
+	});
+
 	it('rejects an unknown style value', () => {
 		expect(() =>
 			loadEndpoints(

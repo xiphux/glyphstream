@@ -55,6 +55,7 @@ export const BUILTIN_FEATURE_CATEGORIES = [
 	'code_interpreter',
 	'skills',
 	'image_prompt_enhancement',
+	'video_prompt_enhancement',
 ] as const;
 export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
 
@@ -102,6 +103,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		description:
 			'Before generating an image, rewrites your prompt with an LLM into the format the target image model prefers (natural language, booru tags, etc.). Only affects image models; the original prompt is kept and shown alongside the result.',
 	},
+	video_prompt_enhancement: {
+		label: 'Video prompt enhancement',
+		description:
+			'Before generating a video, rewrites your prompt with an LLM into the format the target video model prefers (cinematic prose, structured shot description, etc.), adding camera motion and pacing. Only affects video models; the original prompt is kept and shown alongside the result.',
+	},
 };
 
 /**
@@ -126,12 +132,14 @@ export function isFeatureCategoryString(v: unknown): v is FeatureCategory {
  * Whether a feature category is meaningful for a given model kind — used to
  * hide toggles that the active model physically can't act on.
  *
- * The split is by what runs the feature: `image_prompt_enhancement` only fires
- * on the image-generation path (see `streaming/image-relay.ts`), so it's image-
- * only. Every other category (`web`, `personalization`, `code_interpreter`,
+ * The split is by what runs the feature: the prompt-enhancement categories fire
+ * only on their own media path — `image_prompt_enhancement` on the image relay,
+ * `video_prompt_enhancement` on the video relay — so each is scoped to that
+ * kind. Every other category (`web`, `personalization`, `code_interpreter`,
  * `skills`, and MCP tool servers) drives tool-calls or injected system context
- * that only a `chat` model reaches — an image/video/embedding model has no
- * turn loop to invoke them. So a video/embedding model matches nothing here.
+ * that only a `chat` model reaches — a media/embedding model has no turn loop
+ * to invoke them. So an embedding model (and an image model with no enhancer
+ * category, etc.) matches nothing here.
  *
  * A null/undefined (unknown) kind matches EVERYTHING: a caller that can't say
  * what the model is shouldn't hide toggles on a guess.
@@ -142,6 +150,7 @@ export function featureCategoryAppliesToModelKind(
 ): boolean {
 	if (kind == null) return true;
 	if (id === 'image_prompt_enhancement') return kind === 'image';
+	if (id === 'video_prompt_enhancement') return kind === 'video';
 	return kind === 'chat';
 }
 

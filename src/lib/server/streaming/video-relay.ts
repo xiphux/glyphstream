@@ -26,6 +26,10 @@ import { errorMessage, isAbortError, type SseWriter } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
 import { logLevel } from '../env';
 import { persistGeneratedVideo } from '../media/persister';
+import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
+import { getImageEnhancerModel } from '../tasks/image-enhancer-model';
+import { enhancePrompt } from './prompt-enhancer';
+import { normalizeVideoStyle } from './prompt-styles-video';
 import { startMediaRelay, type MediaRelayParams } from './media-relay';
 import type { StreamErrorEvent, StreamProgressEvent } from '$lib/types/api';
 
@@ -58,15 +62,76 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 * registry's keying — the route owns which entry to update.
 	 */
 	onJobId?: (jobId: string) => void;
+	/** Target model's preferred prompt style (canonical video-style key) or null
+	 *  when unknown — null runs the enhancer's format-preserving clarify-only pass. */
+	promptStyle?: string | null;
+	/** Per-model freeform enhancer hint, or null. */
+	promptHint?: string | null;
+	/** Whether video-prompt enhancement is enabled for this send (the feature
+	 *  category is not in the conversation's disabledFeatures). */
+	enhancementEnabled?: boolean;
 }
 
 export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8Array> {
-	return startMediaRelay(params, async ({ write, abortSignal }) => {
+	// `effectivePrompt` is what actually generates the video (the enhanced prompt
+	// when enhancement changed it, else the verbatim prompt); `originalPrompt`
+	// preserves the user's text only when it changed. Both are populated by the
+	// prepare step below and read by the generate step. Mirrors image-relay.
+	let effectivePrompt = params.prompt;
+	let originalPrompt: string | null = null;
+
+	// Prompt enhancement runs as the relay's PRE-SLOT prepare step so it does NOT
+	// hold the (single-GPU) video endpoint slot while doing the LLM rewrite — it
+	// acquires the ENHANCER endpoint's own slot instead. Text-to-video only (an
+	// i2v prompt rides alongside a reference frame; leave it verbatim for v1),
+	// gated on the feature toggle + a configured enhancer model. Strictly
+	// non-fatal: enhancePrompt swallows its own failures and returns the original.
+	const prepare = async ({
+		write,
+		abortSignal,
+	}: {
+		write: (e: StreamProgressEvent) => void;
+		abortSignal?: AbortSignal;
+	}) => {
+		const isT2V = !params.inputReference;
+		if (!isT2V || !params.enhancementEnabled) return;
+		const enhancerModel = getImageEnhancerModel();
+		if (!enhancerModel) return;
+
+		// Doubles as the fan-out dispatch-release signal, so emit it before
+		// waiting on the enhancer slot (a busy enhancer just shows "Enhancing
+		// prompt…" until its turn).
+		write({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
+		let enhSlot: EndpointSlot | null = null;
+		try {
+			enhSlot = await acquireEndpointSlot(
+				enhancerModel.endpoint.id,
+				enhancerModel.endpoint.maxConcurrent,
+				{ signal: abortSignal },
+			);
+			const { enhanced, changed } = await enhancePrompt({
+				prompt: params.prompt,
+				medium: 'video',
+				style: normalizeVideoStyle(params.promptStyle),
+				hint: params.promptHint,
+				model: enhancerModel,
+				signal: abortSignal,
+			});
+			if (changed) {
+				effectivePrompt = enhanced;
+				originalPrompt = params.prompt;
+			}
+		} finally {
+			enhSlot?.release();
+		}
+	};
+
+	return startMediaRelay({ ...params, prepare }, async ({ write, abortSignal }) => {
 		let job: VideoJob;
 		try {
 			const req: VideoCreateRequest = {
 				model: parseModelId(params.storedModelId)?.upstreamId ?? params.storedModelId,
-				prompt: params.prompt,
+				prompt: effectivePrompt,
 			};
 			if (params.inputReference) {
 				req.inputReference = params.inputReference;
@@ -163,7 +228,8 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				userId: params.userId,
 				endpoint: params.endpoint,
 				sourceModel: params.storedModelId,
-				prompt: params.prompt,
+				prompt: effectivePrompt,
+				originalPrompt,
 				bytes,
 				contentType,
 				sourceMediaId: params.sourceMediaId ?? null,

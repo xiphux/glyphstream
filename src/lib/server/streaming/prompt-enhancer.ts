@@ -26,13 +26,52 @@ import {
 	STYLE_INSTRUCTIONS,
 	type PromptStyle,
 } from './prompt-styles';
+import {
+	VIDEO_CLARIFY_ONLY_INSTRUCTION,
+	VIDEO_ENHANCER_BASE,
+	VIDEO_STYLE_INSTRUCTIONS,
+	type VideoPromptStyle,
+} from './prompt-styles-video';
 
 const DEBUG = logLevel() === 'debug';
 
+/** Which medium's template pack the enhancer rewrites into. Image and video
+ *  keep separate taxonomies + base prompts (see `prompt-styles*.ts`). */
+export type EnhancerMedium = 'image' | 'video';
+
+/** Resolve the base prompt + per-style instruction map + clarify-only fallback
+ *  for a medium. `instructions` is widened to a string map so the (already
+ *  medium-normalized) canonical style key indexes cleanly regardless of medium.
+ *  `noun` fills the user-message wrap ("Rewrite this image/video prompt"). */
+function templatesForMedium(medium: EnhancerMedium): {
+	base: string;
+	instructions: Record<string, string>;
+	clarify: string;
+	noun: string;
+} {
+	return medium === 'video'
+		? {
+				base: VIDEO_ENHANCER_BASE,
+				instructions: VIDEO_STYLE_INSTRUCTIONS,
+				clarify: VIDEO_CLARIFY_ONLY_INSTRUCTION,
+				noun: 'video',
+			}
+		: {
+				base: ENHANCER_BASE,
+				instructions: STYLE_INSTRUCTIONS,
+				clarify: CLARIFY_ONLY_INSTRUCTION,
+				noun: 'image',
+			};
+}
+
 export interface EnhancePromptInput {
 	prompt: string;
-	/** The target model's style, or null to run the format-preserving clarify-only pass. */
-	style: PromptStyle | null;
+	/** Which medium's style pack to rewrite into. Defaults to 'image' for the
+	 *  original image-enhancement call sites. */
+	medium?: EnhancerMedium;
+	/** The target model's canonical style key (for `medium`), or null to run the
+	 *  format-preserving clarify-only pass. Callers normalize to the medium. */
+	style: PromptStyle | VideoPromptStyle | null;
 	/** Optional per-model freeform nudge appended after the style instruction. */
 	hint?: string | null;
 	model: ResolvedImageEnhancerModel;
@@ -50,16 +89,19 @@ export interface EnhancePromptResult {
 	changed: boolean;
 }
 
-/** Compose the enhancer system prompt: shared base + style (or clarify-only) +
- *  per-model hint + any operator override of the style instruction. */
+/** Compose the enhancer system prompt: the medium's base + style (or
+ *  clarify-only) + per-model hint + any operator override of the style
+ *  instruction. An unknown/mismatched style key falls back to clarify-only. */
 function buildSystemPrompt(
-	style: PromptStyle | null,
+	medium: EnhancerMedium,
+	style: PromptStyle | VideoPromptStyle | null,
 	hint: string | null | undefined,
 	overrides: Record<string, string>,
 ): string {
+	const t = templatesForMedium(medium);
 	const styleInstruction =
-		style === null ? CLARIFY_ONLY_INSTRUCTION : (overrides[style] ?? STYLE_INSTRUCTIONS[style]);
-	const parts = [ENHANCER_BASE, styleInstruction];
+		style === null ? t.clarify : (overrides[style] ?? t.instructions[style] ?? t.clarify);
+	const parts = [t.base, styleInstruction];
 	if (hint && hint.trim()) {
 		parts.push(`Additional guidance for this specific model:\n${hint.trim()}`);
 	}
@@ -73,11 +115,17 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 	// through) is passed through untouched.
 	if (!trimmed) return { enhanced: original, changed: false };
 
-	const system = buildSystemPrompt(input.style, input.hint, input.model.styleInstructionOverrides);
+	const medium = input.medium ?? 'image';
+	const system = buildSystemPrompt(
+		medium,
+		input.style,
+		input.hint,
+		input.model.styleInstructionOverrides,
+	);
 	// Wrap the prompt in tags so a weak enhancer reads it as data to rewrite,
 	// not a conversation to continue (same trick as the title task's
 	// <conversation> wrap).
-	const user = `Rewrite this image prompt:\n\n<prompt>\n${trimmed}\n</prompt>`;
+	const user = `Rewrite this ${medium} prompt:\n\n<prompt>\n${trimmed}\n</prompt>`;
 
 	let content: string;
 	try {

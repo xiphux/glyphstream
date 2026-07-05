@@ -5,6 +5,22 @@ import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 import { parseModelId } from './model-id';
 import { normalizeStyle, PROMPT_STYLES } from '../streaming/prompt-styles';
+import { normalizeVideoStyle, VIDEO_PROMPT_STYLES } from '../streaming/prompt-styles-video';
+
+/**
+ * Canonicalize a prompt-style string against BOTH the image and video style
+ * sets — config is keyed by upstream model id and can't know the model's kind
+ * at load time, so a value is valid if it names a known style in either medium.
+ * Kind-aware selection happens later at model resolution (`models.ts`): a style
+ * from the wrong medium normalizes to null there and falls back to clarify-only.
+ * Returns the canonical key (image or video) or null when it matches neither.
+ */
+function normalizeAnyStyle(raw: unknown): string | null {
+	return normalizeStyle(raw) ?? normalizeVideoStyle(raw);
+}
+
+/** All known style keys, for operator-facing "one of …" error messages. */
+const ALL_PROMPT_STYLES = [...PROMPT_STYLES, ...VIDEO_PROMPT_STYLES];
 
 export type ProviderQuirk = 'passthrough' | 'deepseek-r1' | 'openai-o-series' | 'openrouter';
 
@@ -101,21 +117,22 @@ export interface LoadedEndpoint {
 	 */
 	modelContextWindows: Record<string, number>;
 	/**
-	 * Per-model prompt-style overrides for image models, keyed by the
+	 * Per-model prompt-style overrides for image/video models, keyed by the
 	 * **upstream** model id (same convention as {@link modelContextWindows}).
-	 * Each value is a canonical {@link PromptStyle} key — the prompt FORMAT the
-	 * enhancer should rewrite into for that model. Wins over the upstream
-	 * `prompt_style` field (see `normalizeUpstreamModel`). Empty `{}` when the
-	 * `model_prompt_styles` table is absent. Values are validated against the
-	 * known style set at load time.
+	 * Each value is a canonical style key — an image {@link PromptStyle} or a
+	 * video style — the prompt FORMAT the enhancer should rewrite into for that
+	 * model. Wins over the upstream `prompt_style` field (see
+	 * `normalizeUpstreamModel`). Empty `{}` when the `model_prompt_styles` table
+	 * is absent. Values are validated against the known style sets at load time;
+	 * the kind-appropriate set is enforced at model resolution.
 	 */
 	modelPromptStyles: Record<string, string>;
 	/**
-	 * Per-model freeform prompt hints for image models, keyed by upstream model
-	 * id. Appended to the enhancer's style instruction to carry per-model nuance
-	 * (a quality-tag prefix, a length cap, `@artist` conventions, …). Wins over
-	 * the upstream `prompt_hint` field. Empty `{}` when the `model_prompt_hints`
-	 * table is absent.
+	 * Per-model freeform prompt hints for image/video models, keyed by upstream
+	 * model id. Appended to the enhancer's style instruction to carry per-model
+	 * nuance (a quality-tag prefix, a length cap, an audio-cue reminder, …). Wins
+	 * over the upstream `prompt_hint` field. Empty `{}` when the
+	 * `model_prompt_hints` table is absent.
 	 */
 	modelPromptHints: Record<string, string>;
 }
@@ -334,10 +351,10 @@ export function loadImageEnhancementConfig(
 			);
 		}
 		for (const [style, v] of Object.entries(tbl)) {
-			const canonical = normalizeStyle(style);
+			const canonical = normalizeAnyStyle(style);
 			if (canonical === null) {
 				throw new ConfigError(
-					`${at}: style_instructions."${style}" is not a known prompt style (one of ${PROMPT_STYLES.join(', ')})`,
+					`${at}: style_instructions."${style}" is not a known prompt style (one of ${ALL_PROMPT_STYLES.join(', ')})`,
 				);
 			}
 			styleInstructionOverrides[canonical] = requireString(v, `style_instructions."${style}"`, at);
@@ -785,12 +802,13 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 			const field = `model_prompt_styles."${modelId}"`;
 			const s = requireString(v, field, at);
 			// Normalize loose aliases so config and metadata accept the same
-			// inputs, but require the result to be a known style — an unrecognized
-			// value is an operator typo, surface it at boot.
-			const canonical = normalizeStyle(s);
+			// inputs, but require the result to be a known image OR video style —
+			// an unrecognized value is an operator typo, surface it at boot. The
+			// kind-appropriate set is enforced later at model resolution.
+			const canonical = normalizeAnyStyle(s);
 			if (canonical === null) {
 				throw new ConfigError(
-					`${at}: '${field}' = "${s}" is not a known prompt style (one of ${PROMPT_STYLES.join(', ')})`,
+					`${at}: '${field}' = "${s}" is not a known prompt style (one of ${ALL_PROMPT_STYLES.join(', ')})`,
 				);
 			}
 			modelPromptStyles[modelId] = canonical;

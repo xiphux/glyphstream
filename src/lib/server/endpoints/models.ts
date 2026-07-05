@@ -12,6 +12,7 @@ import type { ModelEntry, ModelKind, UpstreamModel } from '$lib/types/api';
 import type { LoadedEndpoint } from './config';
 import { formatModelId } from './model-id';
 import { normalizeStyle } from '../streaming/prompt-styles';
+import { normalizeVideoStyle } from '../streaming/prompt-styles-video';
 
 /**
  * Try multiple conventions to determine a model's kind. Returns null when
@@ -147,15 +148,29 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	const contextWindow =
 		endpoint.modelContextWindows[m.id] ?? extractContextWindow(m) ?? endpoint.contextWindow ?? null;
 
-	// Prompt style + hint for image enhancement, most-specific source first:
+	// Prompt style + hint for media prompt enhancement, most-specific source
+	// first:
 	//   1. per-model config override (operator's explicit statement);
 	//   2. the upstream-reported field (bridge meta.json `prompt_style` /
 	//      `prompt_hint`);
 	//   3. null.
-	// The config value is already normalized to a canonical key at load time;
-	// the upstream value is normalized here (it may be a loose alias).
-	const promptStyle = endpoint.modelPromptStyles[m.id] ?? normalizeStyle(m.prompt_style) ?? null;
-	const promptHint = endpoint.modelPromptHints[m.id] ?? (m.prompt_hint || null);
+	// Normalization is KIND-AWARE: an image model resolves against the image
+	// style set, a video model against the video set, and any other kind gets no
+	// style. This is where the medium is finally known (config validated the
+	// value against image∪video at load, without knowing the kind), so a style
+	// from the wrong medium normalizes to null → the enhancer's clarify-only
+	// pass. The hint is freeform, so it passes through for both media kinds.
+	const rawStyle = endpoint.modelPromptStyles[m.id] ?? m.prompt_style;
+	const promptStyle =
+		detected === 'image'
+			? normalizeStyle(rawStyle)
+			: detected === 'video'
+				? normalizeVideoStyle(rawStyle)
+				: null;
+	const promptHint =
+		detected === 'image' || detected === 'video'
+			? (endpoint.modelPromptHints[m.id] ?? (m.prompt_hint || null))
+			: null;
 
 	return {
 		id: formatModelId(endpoint.id, m.id),

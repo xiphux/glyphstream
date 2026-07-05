@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 	persistGeneratedVideo: vi.fn(),
 	linkMessageMedia: vi.fn(),
 	unlinkMediaFiles: vi.fn(async () => {}),
+	getImageEnhancerModel: vi.fn(() => null as unknown),
+	enhancePrompt: vi.fn(),
 }));
 
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
@@ -40,6 +42,12 @@ vi.mock('$lib/server/db/queries/media', async (orig) => ({
 }));
 vi.mock('$lib/server/media/disk-store', () => ({
 	unlinkMediaFiles: mocks.unlinkMediaFiles,
+}));
+vi.mock('$lib/server/tasks/image-enhancer-model', () => ({
+	getImageEnhancerModel: mocks.getImageEnhancerModel,
+}));
+vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
+	enhancePrompt: mocks.enhancePrompt,
 }));
 vi.mock('$lib/server/push/notify', () => ({ notifyConversationComplete: vi.fn(async () => {}) }));
 vi.mock('$lib/server/tasks/title-task-runner', () => ({
@@ -67,6 +75,10 @@ beforeEach(() => {
 	mocks.persistGeneratedVideo.mockReset().mockResolvedValue('media-vid');
 	mocks.linkMessageMedia.mockReset();
 	mocks.unlinkMediaFiles.mockReset().mockResolvedValue(undefined);
+	// Enhancement off by default — no configured enhancer, so the prepare step
+	// no-ops and non-enhancement tests are unaffected.
+	mocks.getImageEnhancerModel.mockReset().mockReturnValue(null);
+	mocks.enhancePrompt.mockReset();
 });
 
 afterEach(() => {
@@ -138,7 +150,11 @@ function baseParams(over: Partial<VideoRelayParams> & Pick<VideoRelayParams, 'us
 		storedModelId: 'bridge::sora',
 		prompt: 'a dog running',
 		userMessage: over.userMessage,
+		inputReference: over.inputReference,
 		sourceMediaId: over.sourceMediaId ?? null,
+		promptStyle: over.promptStyle,
+		promptHint: over.promptHint,
+		enhancementEnabled: over.enhancementEnabled,
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
@@ -179,6 +195,111 @@ describe('startVideoRelay — happy path', () => {
 			.assistantMessage.id;
 		expect(getSiblingAssistants(conv.id, userMessage.id).map((s) => s.id)).toEqual([newId]);
 		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(newId, 'media-vid');
+	});
+});
+
+describe('startVideoRelay — prompt enhancement', () => {
+	const enhancerEndpoint = (): LoadedEndpoint => ({ ...endpoint(), id: 'enhancer' });
+	function enableEnhancer(maxConcurrent = Infinity) {
+		mocks.getImageEnhancerModel.mockReturnValue({
+			endpoint: { ...enhancerEndpoint(), maxConcurrent },
+			upstreamId: 'qwen',
+			maxTokens: 200,
+			temperature: 0.7,
+			styleInstructionOverrides: {},
+		});
+	}
+
+	it('enhances a T2V send: generates with the enhanced prompt + records the original', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		mocks.enhancePrompt.mockResolvedValue({
+			enhanced: 'A dog runs across a field as the camera tracks alongside, warm dusk light.',
+			changed: true,
+		});
+		const events = await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		// Emitted the transient "Enhancing prompt…" status.
+		expect(
+			events.some(
+				(e) => e.type === 'progress' && (e as { status?: string }).status === 'Enhancing prompt…',
+			),
+		).toBe(true);
+		// enhancePrompt was asked to rewrite for the VIDEO medium.
+		expect(mocks.enhancePrompt.mock.calls[0][0]).toMatchObject({ medium: 'video' });
+		// Created the job with the ENHANCED prompt, and recorded the user's original.
+		expect(mocks.videoCreate.mock.calls[0][1]).toMatchObject({
+			prompt: 'A dog runs across a field as the camera tracks alongside, warm dusk light.',
+		});
+		expect(mocks.persistGeneratedVideo).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: 'A dog runs across a field as the camera tracks alongside, warm dusk light.',
+				originalPrompt: 'a dog running',
+			}),
+		);
+	});
+
+	it('skips enhancement for an I2V send (reference frame present)', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'nope', changed: true });
+		await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					inputReference: { bytes: Buffer.from([9]), contentType: 'image/png' },
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
+		expect(mocks.videoCreate.mock.calls[0][1]).toMatchObject({ prompt: 'a dog running' });
+	});
+
+	it('does not enhance when the feature is toggled off', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: false,
+				}),
+			),
+		);
+		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
+	});
+
+	it('does not enhance when no enhancer model is configured', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		// getImageEnhancerModel stays null (default) → prepare no-ops.
+		await drain(
+			startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					promptStyle: 'cinematic-prose',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		expect(mocks.enhancePrompt).not.toHaveBeenCalled();
 	});
 });
 

@@ -134,6 +134,54 @@ describe('enhancePrompt', () => {
 	});
 });
 
+describe('enhancePrompt — video medium', () => {
+	it('uses the video (cinematographer) base + video style template', async () => {
+		reply(
+			'A lone astronaut walks across red dunes as the camera slowly dollies in, cold blue dusk light.',
+		);
+		await enhancePrompt({
+			prompt: 'astronaut on mars',
+			medium: 'video',
+			style: 'cinematic-prose',
+			model,
+		});
+		const sentSystem = syncMock.mock.calls[0][1].messages[0].content as string;
+		// Video base prompt, not the image "image-generation prompt engineer" one.
+		expect(sentSystem).toContain('cinematographer');
+		expect(sentSystem.toLowerCase()).toContain('present tense');
+		// The cinematic-prose style instruction.
+		expect(sentSystem.toUpperCase()).toContain('CINEMATIC NATURAL-LANGUAGE PROSE');
+	});
+
+	it('wraps the user message as a video prompt', async () => {
+		reply('something cinematic');
+		await enhancePrompt({
+			prompt: 'a dog running',
+			medium: 'video',
+			style: 'structured-cinematic',
+			model,
+		});
+		const sentUser = syncMock.mock.calls[0][1].messages[1].content as string;
+		expect(sentUser).toContain('Rewrite this video prompt');
+	});
+
+	it('uses the video clarify-only template when style is null', async () => {
+		reply('a dog runs across a field, camera tracking alongside');
+		await enhancePrompt({ prompt: 'a dog running', medium: 'video', style: null, model });
+		const sentSystem = syncMock.mock.calls[0][1].messages[0].content as string;
+		expect(sentSystem.toLowerCase()).toContain("preserve the user's format");
+		// Video clarify-only nudges toward adding motion/camera when absent.
+		expect(sentSystem.toLowerCase()).toContain('motion');
+	});
+
+	it('defaults to the image medium when none is given', async () => {
+		reply('1girl, solo');
+		await enhancePrompt({ prompt: 'a girl', style: 'booru-tags', model });
+		const sentUser = syncMock.mock.calls[0][1].messages[1].content as string;
+		expect(sentUser).toContain('Rewrite this image prompt');
+	});
+});
+
 describe('trivialNormalize', () => {
 	it('strips trailing periods and surrounding whitespace, keeps ! and ?', () => {
 		expect(trivialNormalize('a cat.')).toBe('a cat');
