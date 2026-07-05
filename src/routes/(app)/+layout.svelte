@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
+	import { reconcileSubscription } from '$lib/push-subscribe';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { goto, invalidateAll } from '$app/navigation';
@@ -37,6 +38,16 @@
 	import type { ModelKind } from '$lib/types/api';
 
 	let { data, children } = $props();
+
+	// Heal a lapsed push subscription on load. The settings toggle is the only
+	// thing that *creates* a subscription, so once the OS/push service drops it
+	// (iOS eviction, PWA re-add, a server-side 404/410 prune) it stays dead while
+	// the pref still reads "on" — notifications silently stop. Reconciling here,
+	// on every cold app load, re-registers it. No-op (and no permission prompt)
+	// unless the user has opted in and already granted permission.
+	onMount(() => {
+		void reconcileSubscription(data.prefs?.notificationsEnabled ?? false);
+	});
 
 	// Shared FLIP config for the sidebar lists. When a conversation gets new
 	// activity it jumps to the top of Recents, and a favorites drag reorders

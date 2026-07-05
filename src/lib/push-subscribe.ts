@@ -97,6 +97,18 @@ export async function subscribe(vapidPublicKey: string): Promise<SubscribeResult
 			applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
 		}));
 
+	if (!(await registerWithServer(subscription))) return { ok: false, reason: 'network' };
+	return { ok: true };
+}
+
+/**
+ * POST a subscription to the server (upsert keyed on endpoint). Shared by the
+ * settings toggle's `subscribe()` and the on-load `reconcileSubscription()`.
+ * Returns false on a non-OK response or network error; the callers decide how
+ * to surface that (the toggle reports `network`, reconcile silently retries on
+ * the next load).
+ */
+async function registerWithServer(subscription: PushSubscription): Promise<boolean> {
 	const body = subscription.toJSON();
 	try {
 		const res = await fetch('/api/push/subscribe', {
@@ -109,11 +121,114 @@ export async function subscribe(vapidPublicKey: string): Promise<SubscribeResult
 				userAgent: navigator.userAgent,
 			}),
 		});
-		if (!res.ok) return { ok: false, reason: 'network' };
+		return res.ok;
 	} catch {
-		return { ok: false, reason: 'network' };
+		return false;
 	}
-	return { ok: true };
+}
+
+/**
+ * What `reconcileSubscription` should do given the observable state. Pure so the
+ * decision matrix is unit-testable without stubbing the four browser APIs (same
+ * split as `sw-arbiter`'s `pickAction`).
+ *
+ *  - `skip`              — not opted in / can't or shouldn't act. Never prompts.
+ *  - `subscribe-new`     — opted in but no browser subscription exists (it was
+ *                          evicted by the OS, or the server row was pruned and
+ *                          the browser sub lapsed): create one + register it.
+ *  - `resubscribe`       — a subscription exists but is bound to a DIFFERENT
+ *                          VAPID key than the server now advertises (operator
+ *                          rotated keys): drop it, then create + register a new
+ *                          one against the current key.
+ *  - `register-existing` — a valid subscription exists; (re-)POST it to heal a
+ *                          server row that was pruned (404/410) while the
+ *                          browser kept its subscription.
+ */
+export type ReconcileAction = 'skip' | 'subscribe-new' | 'resubscribe' | 'register-existing';
+
+export function decideReconcile(input: {
+	enabled: boolean;
+	pushSupported: boolean;
+	permission: NotificationPermission;
+	serverConfigured: boolean;
+	hasSubscription: boolean;
+	keyMatches: boolean;
+}): ReconcileAction {
+	// Only ever act for a user who has opted in AND already granted permission —
+	// reconciliation must never surface a permission prompt on load.
+	if (!input.enabled || !input.pushSupported || input.permission !== 'granted') return 'skip';
+	// Server push disabled/unconfigured — nothing to register against.
+	if (!input.serverConfigured) return 'skip';
+	if (!input.hasSubscription) return 'subscribe-new';
+	if (!input.keyMatches) return 'resubscribe';
+	return 'register-existing';
+}
+
+/**
+ * Reconcile the push subscription on app load. The settings toggle is the only
+ * place that *creates* a subscription, so once the browser or push service
+ * drops it (iOS eviction, PWA re-add, a 404/410 server-side prune), it stays
+ * dead: the pref still reads "on", permission still reads "granted", the toggle
+ * still shows ON — but there's no endpoint to send to, silently. Called from the
+ * (app) layout's onMount, this re-establishes the subscription so any one-time
+ * invalidation self-heals on the next visit instead of staying broken until the
+ * user manually toggles off/on. Fire-and-forget; never throws.
+ */
+export async function reconcileSubscription(enabled: boolean): Promise<void> {
+	if (!enabled || !isPushSupported() || Notification.permission !== 'granted') return;
+
+	const cfg = await loadPushConfig();
+	if (!cfg?.enabled || !cfg.vapidPublicKey) return;
+
+	const reg = await navigator.serviceWorker.ready.catch(() => null);
+	if (!reg) return;
+
+	const existing = await reg.pushManager.getSubscription();
+	const action = decideReconcile({
+		enabled,
+		pushSupported: true,
+		permission: Notification.permission,
+		serverConfigured: true,
+		hasSubscription: existing !== null,
+		keyMatches: existing !== null && subscriptionMatchesKey(existing, cfg.vapidPublicKey),
+	});
+	if (action === 'skip') return;
+
+	let subscription = existing;
+	if (action === 'resubscribe') {
+		await subscription?.unsubscribe().catch(() => {});
+		subscription = null;
+	}
+	if (!subscription) {
+		try {
+			subscription = await reg.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey: urlBase64ToUint8Array(cfg.vapidPublicKey),
+			});
+		} catch {
+			// Browser/push service refused (e.g. key mismatch mid-rotation) —
+			// nothing more we can do silently; the next load reconciles again.
+			return;
+		}
+	}
+	await registerWithServer(subscription);
+}
+
+/**
+ * Whether an existing subscription was created against the VAPID public key the
+ * server currently advertises. A mismatch means the operator rotated keys and
+ * the subscription can never receive our sends. When the browser doesn't expose
+ * the key (`options.applicationServerKey` is null), assume a match rather than
+ * force a needless churn.
+ */
+function subscriptionMatchesKey(subscription: PushSubscription, vapidPublicKey: string): boolean {
+	const raw = subscription.options?.applicationServerKey;
+	if (!raw) return true;
+	const have = new Uint8Array(raw);
+	const want = urlBase64ToUint8Array(vapidPublicKey);
+	if (have.length !== want.length) return false;
+	for (let i = 0; i < have.length; i++) if (have[i] !== want[i]) return false;
+	return true;
 }
 
 /**
