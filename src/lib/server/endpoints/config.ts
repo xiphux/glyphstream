@@ -9,11 +9,19 @@ import { normalizeVideoStyle, VIDEO_PROMPT_STYLES } from '../streaming/prompt-st
 
 /**
  * Canonicalize a prompt-style string against BOTH the image and video style
- * sets — config is keyed by upstream model id and can't know the model's kind
- * at load time, so a value is valid if it names a known style in either medium.
- * Kind-aware selection happens later at model resolution (`models.ts`): a style
- * from the wrong medium normalizes to null there and falls back to clarify-only.
- * Returns the canonical key (image or video) or null when it matches neither.
+ * sets, image-first. Config is keyed by upstream model id and can't know the
+ * model's kind at load time, so this is used to VALIDATE a value (non-null =
+ * a known style in some medium), not to pick the final key for `model_prompt_styles`.
+ *
+ * Do NOT store this result for a per-model style: a few loose aliases (`structured`,
+ * `narrative`, `prose`) are valid in both mediums but canonicalize DIFFERENTLY
+ * (image `json`/`natural-language` vs video `structured-cinematic`/`cinematic-prose`),
+ * and image wins here — so canonicalizing at load would silently downgrade a video
+ * model's `structured` to `json`, which then resolves to null (clarify-only) at
+ * kind-time. Store the raw alias instead and let `models.ts` normalize it against
+ * the model's own kind. This function's canonical output is only safe where the key
+ * is medium-unambiguous — the `style_instructions` override table, whose keys the
+ * enhancer looks up by the already-resolved canonical style.
  */
 function normalizeAnyStyle(raw: unknown): string | null {
 	return normalizeStyle(raw) ?? normalizeVideoStyle(raw);
@@ -119,12 +127,14 @@ export interface LoadedEndpoint {
 	/**
 	 * Per-model prompt-style overrides for image/video models, keyed by the
 	 * **upstream** model id (same convention as {@link modelContextWindows}).
-	 * Each value is a canonical style key — an image {@link PromptStyle} or a
-	 * video style — the prompt FORMAT the enhancer should rewrite into for that
-	 * model. Wins over the upstream `prompt_style` field (see
-	 * `normalizeUpstreamModel`). Empty `{}` when the `model_prompt_styles` table
-	 * is absent. Values are validated against the known style sets at load time;
-	 * the kind-appropriate set is enforced at model resolution.
+	 * Each value is the operator's RAW style string (an image {@link PromptStyle}
+	 * or a video style, or a loose alias of either) — the prompt FORMAT the
+	 * enhancer should rewrite into for that model. Stored un-canonicalized on
+	 * purpose: `normalizeUpstreamModel` normalizes it against the model's own
+	 * kind, so a cross-medium alias resolves correctly there (canonicalizing at
+	 * load can't see the kind and would mis-pick — see `normalizeAnyStyle`).
+	 * Wins over the upstream `prompt_style` field. Empty `{}` when the
+	 * `model_prompt_styles` table is absent. Validated as a known style at load.
 	 */
 	modelPromptStyles: Record<string, string>;
 	/**
@@ -801,17 +811,20 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		for (const [modelId, v] of Object.entries(tbl)) {
 			const field = `model_prompt_styles."${modelId}"`;
 			const s = requireString(v, field, at);
-			// Normalize loose aliases so config and metadata accept the same
-			// inputs, but require the result to be a known image OR video style —
-			// an unrecognized value is an operator typo, surface it at boot. The
-			// kind-appropriate set is enforced later at model resolution.
-			const canonical = normalizeAnyStyle(s);
-			if (canonical === null) {
+			// Validate the value is a known image OR video style so an operator
+			// typo surfaces at boot — but store the RAW string, NOT the canonical.
+			// A few aliases (structured/narrative/prose) canonicalize differently
+			// per medium, and this loader can't see the model's kind; `models.ts`
+			// normalizes against the model's own kind, which resolves the alias
+			// correctly (e.g. `structured` → structured-cinematic for a video
+			// model). Canonicalizing here would collapse it to the image key and
+			// silently downgrade the video model to clarify-only.
+			if (normalizeAnyStyle(s) === null) {
 				throw new ConfigError(
 					`${at}: '${field}' = "${s}" is not a known prompt style (one of ${ALL_PROMPT_STYLES.join(', ')})`,
 				);
 			}
-			modelPromptStyles[modelId] = canonical;
+			modelPromptStyles[modelId] = s;
 		}
 	}
 

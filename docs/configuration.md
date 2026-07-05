@@ -284,15 +284,24 @@ sources, checked in order (config wins):
    `meta.json`, and GlyphStream reads them from `/v1/models`. The config override
    above always wins over this.
 
-The set of valid styles depends on the model's **kind**. Image models use one of
-`natural-language`, `booru-tags`, `keyword-soup`, `hybrid`, `json`; video models
-use one of `cinematic-prose`, `structured-cinematic` (loose aliases like
-`narrative`, `danbooru`, `tags`, `structured`, `cinematic`, `wan` are accepted).
-Config is validated against both sets at load, but a style is only applied when
-it matches the model's medium — a video style on an image model (or vice versa)
-falls back to the clarify-only pass rather than misfiring. A model with **no**
-style resolved gets that same gentler **clarify-only** pass, which expands a
-vague prompt while preserving the format you wrote — it never restyles blindly.
+The set of valid styles depends on the model's **kind**:
+
+- **Image** — `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`, `json`
+  (aliases like `narrative`/`prose`, `danbooru`/`tags`, `keywords`, `structured`
+  are accepted).
+- **Video** — `cinematic-prose`, `structured-cinematic` (aliases like `cinematic`,
+  `narrative`/`prose`, `ltx`, `sulphur`; `structured`, `formula`, `wan` are
+  accepted).
+
+A style is resolved against the model's **own kind**, so an alias that means
+different things per medium (`structured` → image `json` but video
+`structured-cinematic`; `narrative`/`prose` → image `natural-language` but video
+`cinematic-prose`) still lands correctly — a video model's `structured` becomes
+`structured-cinematic`, not the image `json`. A style from the wrong medium (a
+`booru-tags` on a video model, say) doesn't misfire — it just falls back to the
+clarify-only pass. A model with **no** style resolved gets that same gentler
+**clarify-only** pass, which expands a vague prompt while preserving the format
+you wrote — it never restyles blindly.
 The optional `prompt_hint` is freeform text appended to the enhancer's
 instructions, for nuance the styles can't carry — and for `json` it's where the
 **exact field schema** goes, since the JSON shape is model-specific.

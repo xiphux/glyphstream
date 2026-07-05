@@ -291,6 +291,34 @@ describe('normalizeUpstreamModel', () => {
 			).toBeNull();
 		});
 
+		it('resolves a cross-medium alias against the model kind, not image-first', () => {
+			// `structured`/`narrative`/`prose` are valid aliases in BOTH mediums but
+			// canonicalize differently. Config stores the raw alias; normalization
+			// here uses the model's kind, so a video model gets the VIDEO key — not
+			// the image key an image-first canonicalization would have picked.
+			expect(
+				normalizeUpstreamModel(ep(), { id: 'wan', kind: 'video', prompt_style: 'structured' })
+					.promptStyle,
+			).toBe('structured-cinematic');
+			expect(
+				normalizeUpstreamModel(ep(), { id: 'ltx', kind: 'video', prompt_style: 'narrative' })
+					.promptStyle,
+			).toBe('cinematic-prose');
+			// Same alias on an image model still resolves to the image key.
+			expect(
+				normalizeUpstreamModel(ep(), { id: 'ideo', kind: 'image', prompt_style: 'structured' })
+					.promptStyle,
+			).toBe('json');
+		});
+
+		it('resolves a raw config-override alias per-kind too (stored un-canonicalized)', () => {
+			const e = normalizeUpstreamModel(ep({ modelPromptStyles: { 'wan-2.2': 'structured' } }), {
+				id: 'wan-2.2',
+				kind: 'video',
+			});
+			expect(e.promptStyle).toBe('structured-cinematic');
+		});
+
 		it('a per-model config override wins over the upstream field', () => {
 			const e = normalizeUpstreamModel(
 				ep({

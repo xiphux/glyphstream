@@ -48,6 +48,25 @@ describe('image vs video style sets are disjoint', () => {
 			expect(normalizeStyle(s)).toBeNull();
 		}
 	});
+
+	// Some LOOSE aliases ARE valid in both mediums but map to different canonical
+	// keys. This collision is exactly why config stores per-model styles raw and
+	// normalizes per-kind (see config.ts normalizeAnyStyle / model_prompt_styles):
+	// canonicalizing image-first at load would silently downgrade a video model.
+	// Documented here so a change to either alias map that alters a collision is
+	// caught. `normalizeStyle` wins image-first in normalizeAnyStyle.
+	it('cross-medium aliases resolve to DIFFERENT keys per medium', () => {
+		const collisions: Array<[string, string, string]> = [
+			// alias, image key, video key
+			['structured', 'json', 'structured-cinematic'],
+			['narrative', 'natural-language', 'cinematic-prose'],
+			['prose', 'natural-language', 'cinematic-prose'],
+		];
+		for (const [alias, imageKey, videoKey] of collisions) {
+			expect(normalizeStyle(alias)).toBe(imageKey);
+			expect(normalizeVideoStyle(alias)).toBe(videoKey);
+		}
+	});
 });
 
 describe('isVideoPromptStyle', () => {

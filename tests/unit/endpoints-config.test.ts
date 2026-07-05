@@ -810,7 +810,7 @@ describe('loadMaxToolLoopIterations', () => {
 });
 
 describe('model_prompt_styles / model_prompt_hints', () => {
-	it('parses per-model styles, normalizing loose aliases to canonical keys', () => {
+	it('validates per-model styles but stores them RAW (kind-aware normalization is deferred)', () => {
 		const ep = loadEndpoints(
 			writeConfig(`
 [[endpoints]]
@@ -823,14 +823,33 @@ base_url = "http://localhost:8188/v1"
   "illustrious-xl" = "prefix: masterpiece, best quality"
 			`),
 		)[0];
-		// "danbooru" alias normalizes to the canonical "booru-tags".
+		// The "danbooru" alias is accepted but NOT canonicalized here — the raw
+		// value is kept so models.ts can normalize it against the model's kind.
 		expect(ep.modelPromptStyles).toEqual({
-			'illustrious-xl': 'booru-tags',
+			'illustrious-xl': 'danbooru',
 			'flux-2-klein': 'natural-language',
 		});
 		expect(ep.modelPromptHints).toEqual({
 			'illustrious-xl': 'prefix: masterpiece, best quality',
 		});
+	});
+
+	it('accepts a cross-medium alias verbatim (resolved per-kind later, not at load)', () => {
+		// `structured` is a valid alias in BOTH mediums (image json / video
+		// structured-cinematic). It must be stored raw so a video model resolves
+		// it to structured-cinematic — canonicalizing at load would lock it to the
+		// image `json` and silently downgrade the video model. Regression guard for
+		// the colliding-alias bug.
+		const ep = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "comfy"
+base_url = "http://localhost:8188/v1"
+[endpoints.model_prompt_styles]
+  "wan-2.2" = "structured"
+			`),
+		)[0];
+		expect(ep.modelPromptStyles).toEqual({ 'wan-2.2': 'structured' });
 	});
 
 	it('defaults both to empty objects when absent', () => {
@@ -848,7 +867,7 @@ base_url = "http://localhost:9/v1"
 	it('accepts video style keys + aliases (config is kind-blind at load)', () => {
 		// model_prompt_styles is keyed by upstream id and can't know a model's
 		// kind at load, so it must accept image OR video styles. Kind-appropriate
-		// selection happens later in models.ts.
+		// selection happens later in models.ts; values are kept raw.
 		const ep = loadEndpoints(
 			writeConfig(`
 [[endpoints]]
@@ -859,10 +878,9 @@ base_url = "http://localhost:8188/v1"
   "wan-2.2" = "wan"
 			`),
 		)[0];
-		// "wan" alias normalizes to the canonical "structured-cinematic".
 		expect(ep.modelPromptStyles).toEqual({
 			'ltx-2.3': 'cinematic-prose',
-			'wan-2.2': 'structured-cinematic',
+			'wan-2.2': 'wan',
 		});
 	});
 

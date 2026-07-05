@@ -239,29 +239,33 @@ export interface ModelEntry {
 	 */
 	contextWindow: number | null;
 	/**
-	 * For an image-generation model: the prompt FORMAT this model prefers,
-	 * driving the optional prompt-enhancement pass (see
-	 * `src/lib/server/streaming/prompt-styles.ts`). One of the canonical
-	 * `PromptStyle` keys (`natural-language` | `booru-tags` | `keyword-soup`
-	 * | `hybrid`) or null when unknown.
+	 * For an image- or video-generation model: the prompt FORMAT this model
+	 * prefers, driving the optional prompt-enhancement pass. One of the canonical
+	 * image `PromptStyle` keys (`natural-language` | `booru-tags` | `keyword-soup`
+	 * | `hybrid` | `json`, see `prompt-styles.ts`) for an image model, or a video
+	 * style key (`cinematic-prose` | `structured-cinematic`, see
+	 * `prompt-styles-video.ts`) for a video model, or null when unknown.
 	 *
-	 * Resolution order (in `normalizeUpstreamModel`):
+	 * Resolution order (in `normalizeUpstreamModel`, KIND-AWARE):
 	 *   endpoint per-model override (config `model_prompt_styles`)  →
-	 *   upstream `prompt_style` field (bridge meta.json)  →  null
+	 *   upstream `prompt_style` field (bridge meta.json)  →  null,
+	 * with the raw value normalized against the model's own kind (image styles
+	 * for an image model, video styles for a video model).
 	 *
 	 * Not part of the OpenAI spec — an additive extension the bridge emits per
-	 * ComfyUI workflow, with the config table as the override/fallback for
-	 * every other model. Null on chat/video/embedding models (and on image
-	 * models nobody has tagged), in which case enhancement falls back to a
-	 * format-preserving clarify-only pass.
+	 * ComfyUI workflow, with the config table as the override/fallback for every
+	 * other model. Null on chat/embedding models, on media models nobody has
+	 * tagged, and when a tagged style belongs to the other medium — in which case
+	 * enhancement falls back to a format-preserving clarify-only pass.
 	 */
 	promptStyle: string | null;
 	/**
-	 * For an image-generation model: an optional freeform per-model nudge
-	 * appended to the enhancer's instructions, carrying nuance the four
-	 * styles can't (e.g. a quality-tag prefix, a length cap, `@artist`
-	 * conventions). Same resolution order as {@link promptStyle}
-	 * (config `model_prompt_hints` → upstream `prompt_hint` → null).
+	 * For an image- or video-generation model: an optional freeform per-model
+	 * nudge appended to the enhancer's instructions, carrying nuance the styles
+	 * can't (e.g. a quality-tag prefix, a length cap, `@artist` conventions, or a
+	 * video model's audio-cue reminder). Same resolution order as {@link promptStyle}
+	 * (config `model_prompt_hints` → upstream `prompt_hint` → null); null on
+	 * chat/embedding models.
 	 */
 	promptHint: string | null;
 }

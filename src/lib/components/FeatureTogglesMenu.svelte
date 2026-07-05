@@ -40,13 +40,14 @@
 		categories: readonly FeatureCategoryEntry[];
 		/**
 		 * The active model's kind, used to hide toggles that don't apply to it.
-		 * `image_prompt_enhancement` only runs on image generations; every other
-		 * category is a tool-call / system-context feature only a chat model can
-		 * reach. So an image model shows just the enhancer, a chat model shows
-		 * everything else, and a video/embedding model shows nothing (see
-		 * `featureCategoryAppliesToModelKind`) — in which case the whole trigger
-		 * is hidden. Null/undefined (unknown) shows everything, so a parent that
-		 * can't supply it doesn't hide anything.
+		 * The prompt-enhancement categories are kind-scoped — `image_prompt_enhancement`
+		 * to image, `video_prompt_enhancement` to video; every other category is a
+		 * tool-call / system-context feature only a chat model can reach. So an
+		 * image model shows just the image enhancer, a video model just the video
+		 * enhancer, a chat model everything else, and an embedding model nothing
+		 * (see `featureCategoryAppliesToModelKind`) — when nothing applies the whole
+		 * trigger is hidden. Null/undefined (unknown) shows everything, so a parent
+		 * that can't supply it doesn't hide anything.
 		 */
 		modelKind?: ModelKind | null;
 		onChange: (next: FeatureCategory[]) => void;
@@ -62,8 +63,9 @@
 	}: Props = $props();
 
 	// Drop category toggles that don't apply to the current model (image models
-	// keep only the prompt enhancer; chat models drop it; video/embedding models
-	// drop everything). An unknown kind keeps everything — the safe default.
+	// keep only the image enhancer, video models only the video enhancer; chat
+	// models drop both enhancers; embedding models keep nothing). An unknown kind
+	// keeps everything — the safe default.
 	const visibleCategories = $derived(
 		categories.filter((c) => featureCategoryAppliesToModelKind(c.id, modelKind)),
 	);
@@ -88,8 +90,9 @@
 	const anyDisabled = $derived(visibleCategories.some((c) => !isEnabled(c.id)));
 </script>
 
-<!-- No applicable toggles for this model (e.g. a video/embedding model) → hide
-     the whole control rather than open an empty popover. -->
+<!-- No applicable toggles for this model (e.g. an embedding model, or a media
+     model whose enhancer category isn't configured) → hide the whole control
+     rather than open an empty popover. -->
 {#if visibleCategories.length > 0}
 	<Popover.Root>
 		<Popover.Trigger
