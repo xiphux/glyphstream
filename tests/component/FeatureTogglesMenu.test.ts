@@ -164,7 +164,7 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 		expect(screen.getByText('Web access')).toBeInTheDocument();
 	});
 
-	it('shows image_prompt_enhancement for an image model', async () => {
+	it('shows only image_prompt_enhancement for an image model, hides the text toggles', async () => {
 		const user = userEvent.setup();
 		render(FeatureTogglesMenu, {
 			props: {
@@ -176,6 +176,33 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
+		expect(screen.queryByText('Web access')).toBeNull();
+		expect(screen.queryByText('Personalization')).toBeNull();
+	});
+
+	it('hides the whole trigger for a video model (no applicable toggles)', () => {
+		render(FeatureTogglesMenu, {
+			props: {
+				disabledFeatures: [],
+				categories: CATEGORIES_WITH_IMG,
+				modelKind: 'video',
+				onChange: vi.fn(),
+			},
+		});
+		expect(screen.queryByLabelText('Feature toggles')).toBeNull();
+	});
+
+	it('hides the whole trigger for an image model with no enhancer category', () => {
+		render(FeatureTogglesMenu, {
+			// Only text categories available → an image model has nothing to show.
+			props: {
+				disabledFeatures: [],
+				categories: CATEGORIES,
+				modelKind: 'image',
+				onChange: vi.fn(),
+			},
+		});
+		expect(screen.queryByLabelText('Feature toggles')).toBeNull();
 	});
 
 	it('shows everything when the model kind is unknown (prop omitted)', async () => {
@@ -185,6 +212,21 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 		});
 		await user.click(screen.getByLabelText('Feature toggles'));
 		expect(screen.getByText('Image prompt enhancement')).toBeInTheDocument();
+		expect(screen.getByText('Web access')).toBeInTheDocument();
+	});
+
+	it('off-state dot ignores hidden categories (web off on an image model)', () => {
+		const { container } = render(FeatureTogglesMenu, {
+			// `web` is disabled but hidden for an image model — the dot should not
+			// show, since the only visible toggle (the enhancer) is still enabled.
+			props: {
+				disabledFeatures: ['web'],
+				categories: CATEGORIES_WITH_IMG,
+				modelKind: 'image',
+				onChange: vi.fn(),
+			},
+		});
+		expect(container.querySelector('.bg-warning')).toBeNull();
 	});
 });
 

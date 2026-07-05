@@ -123,6 +123,29 @@ export function isFeatureCategoryString(v: unknown): v is FeatureCategory {
 }
 
 /**
+ * Whether a feature category is meaningful for a given model kind — used to
+ * hide toggles that the active model physically can't act on.
+ *
+ * The split is by what runs the feature: `image_prompt_enhancement` only fires
+ * on the image-generation path (see `streaming/image-relay.ts`), so it's image-
+ * only. Every other category (`web`, `personalization`, `code_interpreter`,
+ * `skills`, and MCP tool servers) drives tool-calls or injected system context
+ * that only a `chat` model reaches — an image/video/embedding model has no
+ * turn loop to invoke them. So a video/embedding model matches nothing here.
+ *
+ * A null/undefined (unknown) kind matches EVERYTHING: a caller that can't say
+ * what the model is shouldn't hide toggles on a guess.
+ */
+export function featureCategoryAppliesToModelKind(
+	id: FeatureCategory,
+	kind: ModelKind | null | undefined,
+): boolean {
+	if (kind == null) return true;
+	if (id === 'image_prompt_enhancement') return kind === 'image';
+	return kind === 'chat';
+}
+
+/**
  * One entry in the dynamic category list assembled by
  * `$lib/server/feature-categories.getAllFeatureCategoryLabels()`. Plain
  * data; built once per layout load and shipped to the client.

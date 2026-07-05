@@ -23,7 +23,12 @@
 <script lang="ts">
 	import { Popover, Switch, Tooltip } from 'bits-ui';
 	import { Sliders, Info } from '@lucide/svelte';
-	import type { FeatureCategory, FeatureCategoryEntry, ModelKind } from '$lib/types/api';
+	import {
+		featureCategoryAppliesToModelKind,
+		type FeatureCategory,
+		type FeatureCategoryEntry,
+		type ModelKind,
+	} from '$lib/types/api';
 
 	interface Props {
 		disabledFeatures: readonly FeatureCategory[];
@@ -34,10 +39,14 @@
 		 */
 		categories: readonly FeatureCategoryEntry[];
 		/**
-		 * The active model's kind, used to hide toggles that don't apply to it —
-		 * `image_prompt_enhancement` only runs on image generations, so it's
-		 * pointless on a chat/video model. Null/undefined (unknown) shows
-		 * everything, so a parent that can't supply it doesn't hide anything.
+		 * The active model's kind, used to hide toggles that don't apply to it.
+		 * `image_prompt_enhancement` only runs on image generations; every other
+		 * category is a tool-call / system-context feature only a chat model can
+		 * reach. So an image model shows just the enhancer, a chat model shows
+		 * everything else, and a video/embedding model shows nothing (see
+		 * `featureCategoryAppliesToModelKind`) — in which case the whole trigger
+		 * is hidden. Null/undefined (unknown) shows everything, so a parent that
+		 * can't supply it doesn't hide anything.
 		 */
 		modelKind?: ModelKind | null;
 		onChange: (next: FeatureCategory[]) => void;
@@ -52,13 +61,11 @@
 		disabled = false,
 	}: Props = $props();
 
-	// Drop category toggles that don't apply to the current model. Only hide a
-	// toggle when the model kind is KNOWN and a mismatch — an unknown kind shows
-	// everything (safe default).
+	// Drop category toggles that don't apply to the current model (image models
+	// keep only the prompt enhancer; chat models drop it; video/embedding models
+	// drop everything). An unknown kind keeps everything — the safe default.
 	const visibleCategories = $derived(
-		categories.filter(
-			(c) => c.id !== 'image_prompt_enhancement' || modelKind == null || modelKind === 'image',
-		),
+		categories.filter((c) => featureCategoryAppliesToModelKind(c.id, modelKind)),
 	);
 
 	function isEnabled(category: FeatureCategory): boolean {
@@ -74,91 +81,96 @@
 		onChange(next);
 	}
 
-	// True when ANY category is disabled — used to indicate the toggle is
-	// in a non-default state, since the closed popover hides the actual
-	// state from the user otherwise.
-	const anyDisabled = $derived(disabledFeatures.length > 0);
+	// True when any *visible* category is disabled — used to indicate the toggle
+	// is in a non-default state, since the closed popover hides the actual state
+	// from the user otherwise. Scoped to visible categories so the dot never
+	// points at a hidden toggle (e.g. `web` off on an image model).
+	const anyDisabled = $derived(visibleCategories.some((c) => !isEnabled(c.id)));
 </script>
 
-<Popover.Root>
-	<Popover.Trigger
-		{disabled}
-		aria-label="Feature toggles"
-		title={anyDisabled ? 'Feature toggles (some features off)' : 'Feature toggles'}
-		class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
-	>
-		<Sliders size={18} strokeWidth={2.25} />
-		{#if anyDisabled}
-			<!-- Small dot in the corner so the closed-state user knows a
-			     toggle is off without having to open the popover. -->
-			<span
-				class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
-				aria-hidden="true"
-			></span>
-		{/if}
-	</Popover.Trigger>
-	<Popover.Portal>
-		<Popover.Content
-			sideOffset={6}
-			align="start"
-			avoidCollisions
-			collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-			onOpenAutoFocus={(e) => e.preventDefault()}
-			class="z-50 flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
+<!-- No applicable toggles for this model (e.g. a video/embedding model) → hide
+     the whole control rather than open an empty popover. -->
+{#if visibleCategories.length > 0}
+	<Popover.Root>
+		<Popover.Trigger
+			{disabled}
+			aria-label="Feature toggles"
+			title={anyDisabled ? 'Feature toggles (some features off)' : 'Feature toggles'}
+			class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 		>
-			<Tooltip.Provider delayDuration={150} disableHoverableContent>
-				<div
-					class="shrink-0 px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted"
-				>
-					This conversation
-				</div>
-				<!-- Scrolls instead of clipping when the list outgrows the viewport
+			<Sliders size={18} strokeWidth={2.25} />
+			{#if anyDisabled}
+				<!-- Small dot in the corner so the closed-state user knows a
+			     toggle is off without having to open the popover. -->
+				<span
+					class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-warning ring-2 ring-surface-panel"
+					aria-hidden="true"
+				></span>
+			{/if}
+		</Popover.Trigger>
+		<Popover.Portal>
+			<Popover.Content
+				sideOffset={6}
+				align="start"
+				avoidCollisions
+				collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
+				onOpenAutoFocus={(e) => e.preventDefault()}
+				class="z-50 flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
+			>
+				<Tooltip.Provider delayDuration={150} disableHoverableContent>
+					<div
+						class="shrink-0 px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted"
+					>
+						This conversation
+					</div>
+					<!-- Scrolls instead of clipping when the list outgrows the viewport
 				     (many built-ins + connected MCP servers). -->
-				<div class="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pb-2">
-					{#each visibleCategories as meta (meta.id)}
-						{@const enabled = isEnabled(meta.id)}
-						<!-- A <label> so a tap anywhere on the row toggles the switch — a
+					<div class="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pb-2">
+						{#each visibleCategories as meta (meta.id)}
+							{@const enabled = isEnabled(meta.id)}
+							<!-- A <label> so a tap anywhere on the row toggles the switch — a
 						     much bigger touch target than the switch alone (matters on
 						     mobile). The Switch is FIRST in DOM so it's the label's
 						     forwarded control; `order-last ml-auto` puts it back on the
 						     right. The (i) tooltip trigger sits AFTER it in DOM, so a row
 						     tap forwards to the switch, never the info button. -->
-						<label
-							class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
-						>
-							<Switch.Root
-								checked={enabled}
-								onCheckedChange={(checked) => toggle(meta.id, checked)}
-								aria-label={meta.label}
-								class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
+							<label
+								class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
 							>
-								<Switch.Thumb
-									class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
-								/>
-							</Switch.Root>
-							<span class="text-sm font-medium text-fg">{meta.label}</span>
-							<Tooltip.Root>
-								<Tooltip.Trigger
-									aria-label={`About ${meta.label}`}
-									class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
+								<Switch.Root
+									checked={enabled}
+									onCheckedChange={(checked) => toggle(meta.id, checked)}
+									aria-label={meta.label}
+									class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
 								>
-									<Info size={13} strokeWidth={2.25} />
-								</Tooltip.Trigger>
-								<Tooltip.Portal>
-									<Tooltip.Content
-										side="top"
-										sideOffset={6}
-										collisionPadding={12}
-										class="z-[60] max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
+									<Switch.Thumb
+										class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
+									/>
+								</Switch.Root>
+								<span class="text-sm font-medium text-fg">{meta.label}</span>
+								<Tooltip.Root>
+									<Tooltip.Trigger
+										aria-label={`About ${meta.label}`}
+										class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-fg-muted transition hover:text-fg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus"
 									>
-										{meta.description}
-									</Tooltip.Content>
-								</Tooltip.Portal>
-							</Tooltip.Root>
-						</label>
-					{/each}
-				</div>
-			</Tooltip.Provider>
-		</Popover.Content>
-	</Popover.Portal>
-</Popover.Root>
+										<Info size={13} strokeWidth={2.25} />
+									</Tooltip.Trigger>
+									<Tooltip.Portal>
+										<Tooltip.Content
+											side="top"
+											sideOffset={6}
+											collisionPadding={12}
+											class="z-[60] max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
+										>
+											{meta.description}
+										</Tooltip.Content>
+									</Tooltip.Portal>
+								</Tooltip.Root>
+							</label>
+						{/each}
+					</div>
+				</Tooltip.Provider>
+			</Popover.Content>
+		</Popover.Portal>
+	</Popover.Root>
+{/if}
