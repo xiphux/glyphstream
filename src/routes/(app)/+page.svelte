@@ -409,7 +409,7 @@
 	}
 </script>
 
-<div class="relative flex h-full flex-col items-center justify-center overflow-hidden px-4 py-8">
+<div class="zero-state relative flex h-full flex-col items-center overflow-hidden">
 	<!--
 		Accent aura: a soft radial bloom anchored behind the greeting +
 		composer. Drawn from --color-accent via color-mix, so it tints to
@@ -419,40 +419,58 @@
 		is inert to pointer/AT. Frames the composer rather than competing.
 	-->
 	<div class="aura" aria-hidden="true"></div>
-	<div class="relative z-10 w-full max-w-2xl">
-		<!--
-			Greeting block: glyph mark inside a soft circular badge, then
-			"Good evening, Chris" line. The badge wrapper grounds the mark
-			against the page bg the same way the composer below does, with
-			a subtle ring + slightly raised bg shade. Mark is inlined (not
-			<img>) so its strokes use currentColor and adapt to dark mode.
-		-->
-		<div class="mb-6 flex flex-col items-center gap-4">
-			<div
-				class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border"
-			>
-				<svg
-					viewBox="0 0 32 32"
-					class="h-8 w-8 text-accent"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2.5"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
-				>
-					<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
-					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
-					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
-				</svg>
-			</div>
-			{#if data.prefs?.showGreeting ?? true}
-				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-					<span class="text-fg">{composedGreeting}</span>
-				</h1>
-			{/if}
-		</div>
 
+	<!--
+		Zero-state reflows by form factor with flexible spacers (no JS
+		breakpoint): on desktop (sm+) the top + bottom spacers both grow
+		and center the greeting + composer together as one group; on mobile
+		the middle spacer grows instead, dropping the composer to the bottom
+		for thumb reach while the greeting stays centered in the space above
+		— the Gemini / Claude / ChatGPT mobile pattern.
+	-->
+	<div class="flex-1"></div>
+
+	<!--
+		Greeting block: glyph mark inside a soft circular badge, then
+		"Good evening, Chris" line. The badge wrapper grounds the mark
+		against the page bg the same way the composer below does, with
+		a subtle ring + slightly raised bg shade. Mark is inlined (not
+		<img>) so its strokes use currentColor and adapt to dark mode.
+	-->
+	<div class="relative z-10 mb-6 flex w-full max-w-2xl flex-col items-center gap-4">
+		<div
+			class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border"
+		>
+			<svg
+				viewBox="0 0 32 32"
+				class="h-8 w-8 text-accent"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
+				<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
+				<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
+			</svg>
+		</div>
+		{#if data.prefs?.showGreeting ?? true}
+			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+				<span class="text-fg">{composedGreeting}</span>
+			</h1>
+		{/if}
+	</div>
+
+	<!--
+			Middle spacer: grows on mobile to drop the composer to the bottom
+			edge; collapses on desktop so it sits right under the greeting.
+		-->
+	<div class="flex-1 sm:hidden"></div>
+
+	<!-- Composer, plus any inline notices below it. -->
+	<div class="relative z-10 w-full max-w-2xl">
 		<ComposerCore
 			bind:this={coreRef}
 			bind:text
@@ -538,9 +556,28 @@
 			</div>
 		{/if}
 	</div>
+
+	<!--
+		Bottom spacer: desktop only, balances the top spacer so the
+		greeting + composer group stays vertically centered.
+	-->
+	<div class="hidden flex-1 sm:block"></div>
 </div>
 
 <style>
+	/* Zero-state page padding. Kept in the scoped block (not Tailwind
+	   utilities) so the mobile bottom padding can fold in the iOS
+	   home-indicator safe area via env() — the composer sits near the
+	   bottom edge on small screens, so it must clear the inset. */
+	.zero-state {
+		padding: 2rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+	}
+	@media (min-width: 640px) {
+		.zero-state {
+			padding: 2rem 1rem;
+		}
+	}
+
 	.aura {
 		position: absolute;
 		inset: 0;
