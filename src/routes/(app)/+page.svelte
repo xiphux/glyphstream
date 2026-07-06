@@ -583,13 +583,23 @@
 		inset: 0;
 		z-index: 0;
 		pointer-events: none;
-		/* Soft, diffuse ellipse centered a touch above the vertical middle,
-		   where the greeting + composer sit. Fades cleanly to the page bg. */
+		/* Soft, diffuse ellipse that tracks the composer — the element the
+		   bloom is meant to highlight. Mobile-first: low + wide, sitting
+		   behind the bottom-anchored composer and fading up toward the
+		   greeting; the sm+ override below recenters it once the composer
+		   moves back to the middle. Fades cleanly to the page bg. */
 		background: radial-gradient(
-			72% 58% at 50% 45%,
+			var(--aura-size, 118% 60%) at 50% var(--aura-y, 82%),
 			color-mix(in oklch, var(--color-accent) var(--aura-strength, 13%), transparent),
 			transparent 70%
 		);
+	}
+
+	@media (min-width: 640px) {
+		.aura {
+			--aura-size: 72% 58%;
+			--aura-y: 45%;
+		}
 	}
 
 	/* Accent runs brighter in dark, and a faint tint on a near-white surface
