@@ -409,8 +409,17 @@
 	}
 </script>
 
-<div class="flex h-full flex-col items-center justify-center px-4 py-8">
-	<div class="w-full max-w-2xl">
+<div class="relative flex h-full flex-col items-center justify-center overflow-hidden px-4 py-8">
+	<!--
+		Accent aura: a soft radial bloom anchored behind the greeting +
+		composer. Drawn from --color-accent via color-mix, so it tints to
+		each theme (sky / clay / green) and adapts to dark mode for free
+		(strength bumped under [data-scheme='dark'] where the accent reads
+		brighter). Pure CSS, no assets — sits behind the stack (z-0) and
+		is inert to pointer/AT. Frames the composer rather than competing.
+	-->
+	<div class="aura" aria-hidden="true"></div>
+	<div class="relative z-10 w-full max-w-2xl">
 		<!--
 			Greeting block: glyph mark inside a soft circular badge, then
 			"Good evening, Chris" line. The badge wrapper grounds the mark
@@ -530,3 +539,40 @@
 		{/if}
 	</div>
 </div>
+
+<style>
+	.aura {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+		/* Soft, diffuse ellipse centered a touch above the vertical middle,
+		   where the greeting + composer sit. Fades cleanly to the page bg. */
+		background: radial-gradient(
+			72% 58% at 50% 45%,
+			color-mix(in oklch, var(--color-accent) var(--aura-strength, 13%), transparent),
+			transparent 70%
+		);
+	}
+
+	/* Accent runs brighter in dark, and a faint tint on a near-white surface
+	   needs less punch than a glow on a dark one — so lift the mix in dark. */
+	:global([data-scheme='dark']) .aura {
+		--aura-strength: 22%;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.aura {
+			animation: aura-in 0.6s ease-out both;
+		}
+	}
+
+	@keyframes aura-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+</style>
