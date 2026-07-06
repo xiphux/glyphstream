@@ -200,7 +200,7 @@
 				</div>
 
 				{#if onPick || onRegenerate || onDiscard}
-					<footer class="flex items-center gap-2 border-t border-border px-2 py-2">
+					<footer class="mt-auto flex items-center gap-2 border-t border-border px-2 py-2">
 						{#if onPick}
 							<button
 								type="button"
