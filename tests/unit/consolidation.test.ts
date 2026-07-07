@@ -115,6 +115,20 @@ describe('parseConsolidation', () => {
 		).toEqual([{ type: 'reword', id: 'a', content: rich, topic: 'Employer' }]);
 	});
 
+	it('normalizes internal newlines/whitespace in content and topic (matches the author path)', () => {
+		// A consolidated "short paragraph" the model wrote with line breaks must be
+		// stored single-line, same as save_memory — otherwise it injects a spurious
+		// un-prefixed line into the "Saved memories" block.
+		expect(
+			parseConsolidation(
+				json([
+					{ type: 'reword', id: 'a', content: 'First.\nSecond.\n\n  Third.', topic: 'Two\nwords' },
+				]),
+				IDS,
+			),
+		).toEqual([{ type: 'reword', id: 'a', content: 'First. Second. Third.', topic: 'Two words' }]);
+	});
+
 	it('ignores unknown op types', () => {
 		expect(parseConsolidation(json([{ type: 'explode', id: 'a' }]), IDS)).toEqual([]);
 	});

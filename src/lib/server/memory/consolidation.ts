@@ -19,7 +19,7 @@ import { chatCompletionSync } from '../endpoints/client';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 // Same caps the save_memory tool enforces, so a consolidated memory renders at
 // the same scale as a model-authored one.
-import { MEMORY_MAX_CONTENT_CHARS, MEMORY_MAX_TOPIC_CHARS } from './limits';
+import { MEMORY_MAX_CONTENT_CHARS, MEMORY_MAX_TOPIC_CHARS, normalizeMemoryText } from './limits';
 
 export interface MemoryForConsolidation {
 	id: string;
@@ -152,10 +152,12 @@ function opIds(op: ConsolidationOp): string[] {
 	return op.type === 'merge' ? op.ids : [op.id];
 }
 
-/** Trim + cap a string field; returns '' when missing/blank (an invalid value). */
+/** Normalize (trim + collapse internal whitespace, shared with the author path)
+ *  + cap a string field; returns '' when missing/blank (an invalid value). So a
+ *  consolidated memory is stored single-line just like a model-authored one. */
 function capped(v: unknown, max: number): string {
 	if (typeof v !== 'string') return '';
-	const t = v.trim();
+	const t = normalizeMemoryText(v);
 	return t.length === 0 || t.length > max ? '' : t;
 }
 

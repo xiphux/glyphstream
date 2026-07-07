@@ -693,7 +693,7 @@ export function composeMemorySection(
 		if (list.length === 0 && cold.length === 0) return null;
 
 		// Defensive: no hot tier (nothing fit the budget) — pure topic index, the
-		// phase-1 rendering. In practice a single body (≤500 chars) always fits a
+		// phase-1 rendering. In practice a single body (≤800 chars) always fits a
 		// 4000-char budget, so this branch is a safety net, not the common path.
 		if (list.length === 0) {
 			const header =

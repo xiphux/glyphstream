@@ -38,7 +38,11 @@ import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 import { embedQuery, type RelevanceConfig } from '../retrieval/embed-rank';
 import { fuseRankings } from '../retrieval/fusion';
 import { cosineRank, decodeVector, type Vec } from '../retrieval/vector';
-import { MEMORY_MAX_CONTENT_CHARS, MEMORY_MAX_TOPIC_CHARS } from '../memory/limits';
+import {
+	MEMORY_MAX_CONTENT_CHARS,
+	MEMORY_MAX_TOPIC_CHARS,
+	normalizeMemoryText,
+} from '../memory/limits';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
 
@@ -315,11 +319,9 @@ function parseContentArg(args: unknown): { content: string } | { error: string }
 	if (typeof a.content !== 'string') {
 		return { error: 'Missing or non-string `content` argument.' };
 	}
-	// Collapse internal whitespace (incl. any hard line breaks a "short paragraph"
-	// might carry) to single spaces: composeMemorySection / renderMemories emit one
-	// `[id] content` line per memory, so a mid-body newline would break that
-	// contract. Normalize before the length check so the cap counts real chars.
-	const trimmed = a.content.trim().replace(/\s+/g, ' ');
+	// Normalize to the stored single-line form before the length check so the cap
+	// counts real chars (shared with the dreaming pass — see normalizeMemoryText).
+	const trimmed = normalizeMemoryText(a.content);
 	if (trimmed.length === 0) return { error: '`content` must be non-empty.' };
 	if (trimmed.length > MEMORY_MAX_CONTENT_CHARS) {
 		return {
@@ -337,7 +339,7 @@ function parseTopicArg(args: unknown): { topic: string } | { error: string } {
 	if (typeof a.topic !== 'string') {
 		return { error: 'Missing or non-string `topic` argument.' };
 	}
-	const trimmed = a.topic.trim();
+	const trimmed = normalizeMemoryText(a.topic);
 	if (trimmed.length === 0) return { error: '`topic` must be non-empty.' };
 	if (trimmed.length > MEMORY_MAX_TOPIC_CHARS) {
 		return {
