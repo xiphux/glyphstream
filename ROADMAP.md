@@ -65,10 +65,6 @@ docs.
   scheduled, with soft-delete reversibility. Remaining:
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
-  - _Recover UI for consolidated memories._ The dreaming pass soft-deletes
-    (tombstone + `superseded_by` lineage, retained ~30 days) but there's no
-    user-facing "recently tidied / restore" affordance yet — recovery is
-    retention + DB lineage only.
 
 - **Agent-callable cross-conversation search.** A `search_conversations(query)`
   tool so the model can pull context from past chats mid-turn ("what did we

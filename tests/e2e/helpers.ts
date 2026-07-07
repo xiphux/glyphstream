@@ -46,7 +46,18 @@ export function resetData(): void {
 		db.prepare(
 			`UPDATE conversations SET active_leaf_message_id = NULL, fanout_parent_message_id = NULL`,
 		).run();
-		for (const table of ['message_media', 'messages', 'media', 'conversations', 'custom_models']) {
+		for (const table of [
+			'message_media',
+			'messages',
+			'media',
+			'conversations',
+			'custom_models',
+			// `memories` has no incoming FKs and its user_id cascades from the kept
+			// user, so order is irrelevant — but it MUST be cleared, or a tombstone
+			// seeded by the settings/memories specs (seedMemory) leaks into a sibling
+			// test's deterministic list assertions.
+			'memories',
+		]) {
 			db.prepare(`DELETE FROM ${table}`).run();
 		}
 	} finally {
@@ -116,6 +127,54 @@ export function seedConversation(title: string): string {
 			 VALUES (?, ?, ?, 'fallback', 'mock', 'mock::mock-chat', ?, ?)`,
 		).run(id, TEST_USER.id, title, now, now);
 		return id;
+	} finally {
+		db.close();
+	}
+}
+
+/**
+ * Insert a memory row straight into the DB for the settings/memories specs.
+ * Defaults to a live row; pass `deletedAt` (and optionally `supersededByMemoryId`)
+ * to seed a dreaming-pass *tombstone* — the post-consolidation state the recover
+ * UI surfaces. The app only reaches that state by running the LLM-backed,
+ * window-gated dreaming pass, so seeding the tombstone directly is the only way
+ * to test the recover UI deterministically. `superseded_by_memory_id` is a soft
+ * self-reference (no FK), so a survivor row need not exist — but seed one if you
+ * want the "Merged into…" lineage to render its snippet. Safe standalone
+ * connection for the same reason as resetData/seedConversation — workers=1, no
+ * request in flight.
+ */
+export function seedMemory(opts: {
+	id: string;
+	content: string;
+	topic?: string | null;
+	deletedAt?: number | null;
+	supersededByMemoryId?: string | null;
+	createdAt?: number;
+	updatedAt?: number;
+}): string {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const now = Date.now();
+		db.prepare(
+			`INSERT INTO memories
+			   (id, user_id, content, topic, embedding, embedding_model,
+			    recall_count, last_recalled_at, deleted_at, superseded_by_memory_id,
+			    created_at, updated_at)
+			 VALUES (?, ?, ?, ?, NULL, NULL, 0, NULL, ?, ?, ?, ?)`,
+		).run(
+			opts.id,
+			TEST_USER.id,
+			opts.content,
+			opts.topic ?? null,
+			opts.deletedAt ?? null,
+			opts.supersededByMemoryId ?? null,
+			opts.createdAt ?? now,
+			opts.updatedAt ?? now,
+		);
+		return opts.id;
 	} finally {
 		db.close();
 	}

@@ -25,9 +25,9 @@
  * back on demand via `recall_memory` — by id (no embeddings needed) or by query
  * (BM25 lexical, fused with `embedding`-cosine when a model is configured).
  */
-import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import type { Memory } from '$lib/types/api';
+import type { Memory, DeletedMemory } from '$lib/types/api';
 import { getDb } from '../client';
 import { memories, users } from '../schema';
 
@@ -481,6 +481,76 @@ export function softDeleteMemory(
 				isNull(memories.deletedAt),
 			),
 		)
+		.run();
+	return result.changes > 0;
+}
+
+/**
+ * The user's soft-deleted (dreaming-tombstoned) memories, most-recently-tidied
+ * first — the data behind the settings "Recently tidied" recovery list. Only the
+ * dreaming pass creates tombstones (user forgets are hard deletes), so this is
+ * empty unless `[memory_model]` is configured. For a merge, `supersededByContent`
+ * carries a snippet of the survivor the row was folded into; null for a plain
+ * prune or a survivor that has itself since been purged. User-scoped.
+ */
+export function listDeletedMemoriesForUser(userId: string): DeletedMemory[] {
+	const db = getDb();
+	const rows = db
+		.select({
+			id: memories.id,
+			content: memories.content,
+			topic: memories.topic,
+			deletedAt: memories.deletedAt,
+			supersededByMemoryId: memories.supersededByMemoryId,
+		})
+		.from(memories)
+		.where(and(eq(memories.userId, userId), isNotNull(memories.deletedAt)))
+		.orderBy(desc(memories.deletedAt))
+		.all();
+
+	// Resolve the merge-survivor snippet in one extra keyed lookup rather than a
+	// drizzle self-alias join (no precedent in this file). A survivor that was
+	// itself since hard-purged simply won't be in the map → null snippet.
+	const survivorIds = [
+		...new Set(rows.map((r) => r.supersededByMemoryId).filter((v): v is string => v !== null)),
+	];
+	const survivors = survivorIds.length
+		? db
+				.select({ id: memories.id, content: memories.content })
+				.from(memories)
+				.where(and(eq(memories.userId, userId), inArray(memories.id, survivorIds)))
+				.all()
+		: [];
+	const survivorContent = new Map(survivors.map((s) => [s.id, s.content]));
+
+	return rows.map((r) => ({
+		id: r.id,
+		content: r.content,
+		topic: r.topic,
+		// isNotNull filter above guarantees a non-null deletedAt; TS can't narrow it.
+		deletedAt: r.deletedAt!,
+		supersededByContent: r.supersededByMemoryId
+			? (survivorContent.get(r.supersededByMemoryId) ?? null)
+			: null,
+	}));
+}
+
+/**
+ * Restore a soft-deleted memory to the live store — the recover UI's un-delete.
+ * Clears the tombstone (`deleted_at` + `superseded_by_memory_id`). Deliberately
+ * does NOT touch `updatedAt`: the dreaming change-watermark
+ * (`listUsersNeedingDreaming`) only re-processes a user when a live memory's
+ * `updated_at` exceeds `last_dreamed_at`, so leaving the timestamp untouched
+ * means the restored row isn't immediately re-dreamed (and re-merged) — it
+ * survives until the store next genuinely changes. User-scoped; no-ops on a live
+ * or foreign row. Returns true iff a tombstoned row was restored.
+ */
+export function restoreMemory(userId: string, id: string): boolean {
+	const db = getDb();
+	const result = db
+		.update(memories)
+		.set({ deletedAt: null, supersededByMemoryId: null })
+		.where(and(eq(memories.userId, userId), eq(memories.id, id), isNotNull(memories.deletedAt)))
 		.run();
 	return result.changes > 0;
 }

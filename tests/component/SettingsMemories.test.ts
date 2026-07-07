@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import type { Memory } from '$lib/types/api';
+import type { Memory, DeletedMemory } from '$lib/types/api';
 
 const invalidateMock = vi.fn();
 vi.mock('$app/navigation', () => ({
@@ -48,6 +48,15 @@ function mkMemory(over: Partial<Memory> = {}): Memory {
 		content: over.content ?? 'prefers metric units',
 		createdAt: over.createdAt ?? Date.now(),
 		updatedAt: over.updatedAt ?? Date.now(),
+	};
+}
+
+function mkDeleted(over: Partial<DeletedMemory> = {}): DeletedMemory {
+	return {
+		id: over.id ?? 'd1',
+		content: over.content ?? 'works at Acme',
+		deletedAt: over.deletedAt ?? Date.now(),
+		supersededByContent: 'supersededByContent' in over ? (over.supersededByContent ?? null) : null,
 	};
 }
 
@@ -147,5 +156,65 @@ describe('Memories settings page — delete flow', () => {
 
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(invalidateMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('Memories settings page — Recently tidied section', () => {
+	it('is absent when there are no tidied memories', () => {
+		render(MemoriesPage, { props: { data: { memories: [mkMemory()], deletedMemories: [] } } });
+		expect(screen.queryByText(/Recently tidied/)).toBeNull();
+		expect(screen.queryByLabelText('Restore memory')).toBeNull();
+	});
+
+	it('is absent when the load omits deletedMemories entirely', () => {
+		// Older loads / other call sites may not carry the field — the page
+		// defaults it to [] rather than crashing.
+		render(MemoriesPage, { props: { data: { memories: [mkMemory()] } } });
+		expect(screen.queryByText(/Recently tidied/)).toBeNull();
+	});
+
+	it('renders a Restore button and the lineage line per tidied memory', async () => {
+		const user = userEvent.setup();
+		render(MemoriesPage, {
+			props: {
+				data: {
+					memories: [],
+					deletedMemories: [
+						mkDeleted({
+							id: 'd1',
+							content: 'works at Acme',
+							supersededByContent: 'now at Globex; previously at Acme',
+						}),
+						mkDeleted({ id: 'd2', content: 'trip to Japan', supersededByContent: null }),
+					],
+				},
+			},
+		});
+		// Collapsed by default — expand it (the realistic user flow).
+		await user.click(screen.getByText(/Recently tidied \(2\)/));
+		expect(screen.getAllByLabelText('Restore memory')).toHaveLength(2);
+		// Merge shows the survivor snippet; a plain prune shows "Removed".
+		expect(screen.getByText(/Merged into: now at Globex/)).toBeInTheDocument();
+		expect(screen.getByText('Removed')).toBeInTheDocument();
+	});
+
+	it('POSTs to the restore endpoint and invalidates the memories key — no confirm', async () => {
+		const user = userEvent.setup();
+		fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+		render(MemoriesPage, {
+			props: { data: { memories: [], deletedMemories: [mkDeleted({ id: 'd1' })] } },
+		});
+		render(ConfirmDialog);
+
+		await user.click(screen.getByText(/Recently tidied \(1\)/));
+		await user.click(screen.getByLabelText('Restore memory'));
+
+		// Restore is non-destructive → no ConfirmDialog is opened.
+		expect(screen.queryByRole('alertdialog')).toBeNull();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('/api/user/memories/d1/restore');
+		expect((init as RequestInit | undefined)?.method).toBe('POST');
+		expect(invalidateMock).toHaveBeenCalledWith('settings:memories');
 	});
 });

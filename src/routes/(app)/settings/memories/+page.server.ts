@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { listMemoriesForUser } from '$lib/server/db/queries/memories';
+import { listMemoriesForUser, listDeletedMemoriesForUser } from '$lib/server/db/queries/memories';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -18,5 +18,8 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// touch).
 	depends('settings:memories');
 	const memories = listMemoriesForUser(locals.user.id);
-	return { memories };
+	// Dreaming-tombstoned rows for the "Recently tidied" recovery list. Empty
+	// unless a [memory_model] is configured (only the dreaming pass soft-deletes).
+	const deletedMemories = listDeletedMemoriesForUser(locals.user.id);
+	return { memories, deletedMemories };
 };

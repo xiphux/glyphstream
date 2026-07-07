@@ -1092,6 +1092,21 @@ export interface Memory {
 	updatedAt: number;
 }
 
+/** A soft-deleted (dreaming-tombstoned) memory, as surfaced in the settings
+ *  "Recently tidied" recovery list. Only the dreaming pass creates these — user
+ *  forgets are hard deletes — so the list is empty unless `[memory_model]` is
+ *  configured. */
+export interface DeletedMemory {
+	id: string;
+	content: string;
+	topic?: string | null;
+	/** When the dreaming pass tombstoned this row. */
+	deletedAt: number;
+	/** Snippet of the survivor a merge folded this row into; null for a plain
+	 *  prune or a since-purged survivor. */
+	supersededByContent?: string | null;
+}
+
 /** A per-user agent skill, as returned by `GET /api/user/skills` and rendered
  *  in the settings management UI. The `name` + `description` mirror the
  *  SKILL.md frontmatter; the body and bundled resources live on disk and are

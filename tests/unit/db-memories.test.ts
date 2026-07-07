@@ -13,6 +13,7 @@ import {
 	composeMemorySection,
 	createMemory,
 	deleteMemory,
+	listDeletedMemoriesForUser,
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesNeedingTopic,
@@ -25,6 +26,7 @@ import {
 	purgeSoftDeletedMemories,
 	recordMemoryRecall,
 	renameMemoryTopic,
+	restoreMemory,
 	setMemoryEmbedding,
 	setMemoryTopic,
 	setUserDreamedAt,
@@ -608,6 +610,88 @@ describe('phase-4 soft-delete', () => {
 		expect(purged).toBe(1);
 		const remaining = mocks.testDb.select({ id: memories.id }).from(memories).all();
 		expect(remaining.map((r) => r.id).sort()).toEqual([keep.id, recent.id].sort());
+	});
+});
+
+describe('recover UI: listDeletedMemoriesForUser + restoreMemory', () => {
+	it('lists only tombstones, newest-tidied first, with the merge-survivor snippet', async () => {
+		const u = seedUser();
+		const survivor = createMemory(u.id, 'now at Globex; previously at Acme', 'Employer');
+		const merged = createMemory(u.id, 'works at Acme', 'Employer');
+		const pruned = createMemory(u.id, 'planning a trip to Japan next month', 'Travel');
+		createMemory(u.id, 'a live fact', 'Live'); // stays out of the tidied list
+
+		// Tidy the merged one first, then (later) the pruned one → pruned is newest.
+		softDeleteMemory(u.id, merged.id, survivor.id, 'works at Acme');
+		await new Promise((r) => setTimeout(r, 2));
+		softDeleteMemory(u.id, pruned.id, null, 'planning a trip to Japan next month');
+
+		const deleted = listDeletedMemoriesForUser(u.id);
+		expect(deleted.map((m) => m.id)).toEqual([pruned.id, merged.id]); // deletedAt DESC
+		// Merge carries the survivor snippet; a plain prune carries null.
+		const mergedRow = deleted.find((m) => m.id === merged.id)!;
+		expect(mergedRow.supersededByContent).toBe('now at Globex; previously at Acme');
+		expect(deleted.find((m) => m.id === pruned.id)!.supersededByContent).toBeNull();
+	});
+
+	it('null snippet when the survivor was itself since purged; is user-scoped', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const merged = createMemory(u1.id, 'works at Acme', 'Employer');
+		// superseded_by points at an id that no longer exists (purged survivor).
+		softDeleteMemory(u1.id, merged.id, 'gone-survivor-id', 'works at Acme');
+
+		const deleted = listDeletedMemoriesForUser(u1.id);
+		expect(deleted).toHaveLength(1);
+		expect(deleted[0].supersededByContent).toBeNull();
+		// u2 sees none of u1's tombstones.
+		expect(listDeletedMemoriesForUser(u2.id)).toHaveLength(0);
+	});
+
+	it('restoreMemory clears the tombstone and returns the row to the live store', () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
+		softDeleteMemory(u.id, id, 'survivor-id', 'works at Acme');
+		expect(listMemoriesForUser(u.id)).toHaveLength(0);
+
+		expect(restoreMemory(u.id, id)).toBe(true);
+		expect(listMemoriesForUser(u.id).map((m) => m.id)).toEqual([id]);
+		expect(listDeletedMemoriesForUser(u.id)).toHaveLength(0);
+		// Lineage cleared too, not just deleted_at.
+		const row = mocks.testDb
+			.select({ deletedAt: memories.deletedAt, superseded: memories.supersededByMemoryId })
+			.from(memories)
+			.where(eq(memories.id, id))
+			.get()!;
+		expect(row.deletedAt).toBeNull();
+		expect(row.superseded).toBeNull();
+	});
+
+	it('restoreMemory does NOT bump updatedAt (so the watermark won’t re-dream it)', async () => {
+		const u = seedUser();
+		const { id } = createMemory(u.id, 'works at Acme', 'Employer');
+		const before = listMemoriesForUser(u.id)[0].updatedAt;
+		softDeleteMemory(u.id, id, null, 'works at Acme');
+		await new Promise((r) => setTimeout(r, 3));
+
+		expect(restoreMemory(u.id, id)).toBe(true);
+		expect(listMemoriesForUser(u.id)[0].updatedAt).toBe(before);
+		// And the change-watermark stays satisfied: a settled user isn't re-due.
+		setUserDreamedAt(u.id, before + 1);
+		expect(listUsersNeedingDreaming()).not.toContain(u.id);
+	});
+
+	it('restoreMemory no-ops on a live row and on a foreign/unknown id', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const live = createMemory(u1.id, 'live fact', 'Live');
+		expect(restoreMemory(u1.id, live.id)).toBe(false); // not tombstoned
+
+		const { id } = createMemory(u1.id, 'fact', 'T');
+		softDeleteMemory(u1.id, id, null, 'fact');
+		expect(restoreMemory(u2.id, id)).toBe(false); // foreign user
+		expect(restoreMemory(u1.id, 'nope')).toBe(false); // unknown id
+		expect(listDeletedMemoriesForUser(u1.id).map((m) => m.id)).toEqual([id]); // still tidied
 	});
 });
 

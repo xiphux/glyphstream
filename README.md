@@ -139,7 +139,8 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   (semantic search is added when an embedding model is configured). With an
   optional `[memory_model]` configured, a scheduled background "dreaming" pass
   periodically tidies the store — merging duplicates, folding superseded facts,
-  and distilling stale notes — with soft-delete reversibility.
+  and distilling stale notes — with soft-delete reversibility, so anything it
+  changes stays reviewable and restorable from settings for ~30 days.
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
 
