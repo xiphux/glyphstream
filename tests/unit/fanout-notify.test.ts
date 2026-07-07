@@ -1,8 +1,9 @@
 /**
  * Unit tests for the fan-out aggregate-notification coordinator. The decision
  * logic — fire only on the LAST branch (empty in-flight registry), skip when
- * nothing was produced, count by the client's fan-out size with a produced-count
- * fallback, and the per-modality noun — is the valuable part, so its three
+ * nothing was produced, count as the greater of the client's fan-out size and
+ * the produced count, and the per-modality noun — is the valuable part, so its
+ * three
  * collaborators (in-flight registry, sibling query, push) are mocked and the
  * coordinator is driven directly.
  */
