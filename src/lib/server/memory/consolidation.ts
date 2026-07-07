@@ -17,11 +17,9 @@
 
 import { chatCompletionSync } from '../endpoints/client';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
-
-// Match the caps the save_memory tool enforces, so a consolidated memory renders
-// at the same scale as a model-authored one.
-const MAX_CONTENT_CHARS = 500;
-const MAX_TOPIC_CHARS = 80;
+// Same caps the save_memory tool enforces, so a consolidated memory renders at
+// the same scale as a model-authored one.
+import { MEMORY_MAX_CONTENT_CHARS, MEMORY_MAX_TOPIC_CHARS } from './limits';
 
 export interface MemoryForConsolidation {
 	id: string;
@@ -46,7 +44,7 @@ Operations, in order of preference:
 
 Rules:
 - Only reference the memory ids given below. Use each memory id in at most ONE operation.
-- Keep merged/reworded "content" to one self-contained sentence (max ${MAX_CONTENT_CHARS} chars) and "topic" to a few words (max ${MAX_TOPIC_CHARS} chars).
+- Keep merged/reworded "content" self-contained — a sentence up to a short paragraph (max ${MEMORY_MAX_CONTENT_CHARS} chars) — retaining the useful detail and texture rather than compressing to a bare fact; keep "topic" to a few words (max ${MEMORY_MAX_TOPIC_CHARS} chars).
 - When in doubt, do nothing — an empty operations list is a perfectly good answer.
 - Output ONLY the JSON object, no prose, no code fences.
 
@@ -125,8 +123,8 @@ function validateOp(
 	const o = item as Record<string, unknown>;
 	const known = (id: unknown): id is string =>
 		typeof id === 'string' && validIds.has(id) && !used.has(id);
-	const content = capped(o.content, MAX_CONTENT_CHARS);
-	const topic = capped(o.topic, MAX_TOPIC_CHARS);
+	const content = capped(o.content, MEMORY_MAX_CONTENT_CHARS);
+	const topic = capped(o.topic, MEMORY_MAX_TOPIC_CHARS);
 
 	switch (o.type) {
 		case 'merge': {

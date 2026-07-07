@@ -12,6 +12,7 @@ vi.mock('$lib/server/db/client', () => ({
 // registry, AND the per-tool exports we want to invoke directly.
 import { saveMemoryTool, updateMemoryTool, forgetMemoryTool } from '$lib/server/tools/memory';
 import { openaiToolDefinitions } from '$lib/server/tools/registry';
+import { MEMORY_MAX_CONTENT_CHARS } from '$lib/server/memory/limits';
 import { listMemoriesForUser } from '$lib/server/db/queries/memories';
 import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
 
@@ -116,10 +117,35 @@ describe('save_memory.execute', () => {
 
 	it('returns isError for over-long content', () => {
 		const u = seedUser();
-		const tooLong = 'x'.repeat(501);
+		const tooLong = 'x'.repeat(MEMORY_MAX_CONTENT_CHARS + 1);
 		const r = run(saveMemoryTool, { content: tooLong, topic: 'T' }, ctx(u.id));
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/exceeds/);
+	});
+
+	it('accepts a richer multi-sentence body within the cap', () => {
+		const u = seedUser();
+		const rich =
+			'Prefers metric units, and gets frustrated when technical docs use imperial. ' +
+			'Worth converting proactively in any engineering context.';
+		expect(rich.length).toBeLessThanOrEqual(MEMORY_MAX_CONTENT_CHARS);
+		const r = run(saveMemoryTool, { content: rich, topic: 'Units' }, ctx(u.id));
+		expect(r.isError).toBeUndefined();
+		expect(listMemoriesForUser(u.id)[0].content).toBe(rich);
+	});
+
+	it('normalizes internal newlines/whitespace so a paragraph stays single-line', () => {
+		const u = seedUser();
+		// A "short paragraph" the model might write with hard line breaks — stored
+		// collapsed to single spaces so the [id] content render stays one line.
+		run(
+			saveMemoryTool,
+			{ content: 'First sentence.\nSecond sentence.\n\n  Third.', topic: 'T' },
+			ctx(u.id),
+		);
+		const stored = listMemoriesForUser(u.id)[0].content;
+		expect(stored).toBe('First sentence. Second sentence. Third.');
+		expect(stored).not.toContain('\n');
 	});
 });
 

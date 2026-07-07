@@ -38,14 +38,9 @@ import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
 import { embedQuery, type RelevanceConfig } from '../retrieval/embed-rank';
 import { fuseRankings } from '../retrieval/fusion';
 import { cosineRank, decodeVector, type Vec } from '../retrieval/vector';
+import { MEMORY_MAX_CONTENT_CHARS, MEMORY_MAX_TOPIC_CHARS } from '../memory/limits';
 import { register } from './registry';
 import type { Tool, ToolExecution } from './types';
-
-const MAX_CONTENT_CHARS = 500;
-
-/** Max length of a memory's short `topic` label — matches the index snippet
- *  width so a topic and a fallback snippet render at the same scale. */
-const MAX_TOPIC_CHARS = 80;
 
 /** How many recalled memories to hand back to the model per query. */
 const RECALL_TOP_K = 8;
@@ -56,17 +51,17 @@ export const saveMemoryTool: Tool = {
 		function: {
 			name: 'save_memory',
 			description:
-				'Save a standing fact about the user that should persist across conversations. Use sparingly. Good: stable preferences ("prefers metric units"), persistent identity ("works as a backend engineer at Acme"), durable interests, opinions the user has stated as their own. Bad: anything tied to a single conversation, anything re-derivable from earlier in this thread, temporary state ("is currently debugging X"), or things the user has not actually told you. Keep each memory one self-contained sentence — it is read in isolation, with no surrounding context. Prefer updating an existing memory over saving a near-duplicate.',
+				'Save a durable fact about the user that should persist across conversations. Use sparingly. Capture the useful texture around a fact, not just the bare fact — a preference and the reasoning behind it, working or communication style, standing context, durable interests or opinions the user has stated as their own. Good: "Prefers metric units, and gets frustrated when technical docs use imperial — worth converting proactively in engineering contexts"; "Backend engineer at Acme; works mostly in Go and dislikes heavy frameworks". Bad: anything tied to a single conversation, anything re-derivable from earlier in this thread, temporary state ("is currently debugging X"), or things the user has not actually told you. Write each memory as a self-contained note — a sentence up to a short paragraph — that reads correctly in isolation, with no surrounding context, and keep it to a single coherent topic so it stays easy to update. Prefer updating an existing memory over saving a near-duplicate.',
 			parameters: {
 				type: 'object',
 				properties: {
 					content: {
 						type: 'string',
-						description: `The memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
+						description: `The memory text — a self-contained note, a sentence up to a short paragraph, capturing the fact and any useful nuance. It is read in isolation, so don't rely on surrounding context. At most ${MEMORY_MAX_CONTENT_CHARS} characters.`,
 					},
 					topic: {
 						type: 'string',
-						description: `A short label naming what this memory is about — a few words, at most ${MAX_TOPIC_CHARS} characters (e.g. "Dietary preferences", "Employer", "Kids' names"). Shown as the index entry when the store is too large to inline in full.`,
+						description: `A short label naming what this memory is about — a few words, at most ${MEMORY_MAX_TOPIC_CHARS} characters (e.g. "Dietary preferences", "Employer", "Kids' names"). Shown as the index entry when the store is too large to inline in full.`,
 					},
 				},
 				required: ['content', 'topic'],
@@ -100,11 +95,11 @@ export const updateMemoryTool: Tool = {
 					},
 					content: {
 						type: 'string',
-						description: `The new memory text. One self-contained sentence, at most ${MAX_CONTENT_CHARS} characters.`,
+						description: `The new memory text — a self-contained note, a sentence up to a short paragraph, capturing the fact and any useful nuance. It is read in isolation, so don't rely on surrounding context. At most ${MEMORY_MAX_CONTENT_CHARS} characters.`,
 					},
 					topic: {
 						type: 'string',
-						description: `A short label naming what this memory is about — a few words, at most ${MAX_TOPIC_CHARS} characters. Re-supply it (adjusted if the edit changes the subject) so the index entry stays accurate.`,
+						description: `A short label naming what this memory is about — a few words, at most ${MEMORY_MAX_TOPIC_CHARS} characters. Re-supply it (adjusted if the edit changes the subject) so the index entry stays accurate.`,
 					},
 				},
 				required: ['id', 'content', 'topic'],
@@ -320,11 +315,15 @@ function parseContentArg(args: unknown): { content: string } | { error: string }
 	if (typeof a.content !== 'string') {
 		return { error: 'Missing or non-string `content` argument.' };
 	}
-	const trimmed = a.content.trim();
+	// Collapse internal whitespace (incl. any hard line breaks a "short paragraph"
+	// might carry) to single spaces: composeMemorySection / renderMemories emit one
+	// `[id] content` line per memory, so a mid-body newline would break that
+	// contract. Normalize before the length check so the cap counts real chars.
+	const trimmed = a.content.trim().replace(/\s+/g, ' ');
 	if (trimmed.length === 0) return { error: '`content` must be non-empty.' };
-	if (trimmed.length > MAX_CONTENT_CHARS) {
+	if (trimmed.length > MEMORY_MAX_CONTENT_CHARS) {
 		return {
-			error: `\`content\` exceeds ${MAX_CONTENT_CHARS} characters — keep memories to one sentence.`,
+			error: `\`content\` exceeds ${MEMORY_MAX_CONTENT_CHARS} characters — keep each memory to a single focused fact or theme.`,
 		};
 	}
 	return { content: trimmed };
@@ -340,9 +339,9 @@ function parseTopicArg(args: unknown): { topic: string } | { error: string } {
 	}
 	const trimmed = a.topic.trim();
 	if (trimmed.length === 0) return { error: '`topic` must be non-empty.' };
-	if (trimmed.length > MAX_TOPIC_CHARS) {
+	if (trimmed.length > MEMORY_MAX_TOPIC_CHARS) {
 		return {
-			error: `\`topic\` exceeds ${MAX_TOPIC_CHARS} characters — keep it to a few words.`,
+			error: `\`topic\` exceeds ${MEMORY_MAX_TOPIC_CHARS} characters — keep it to a few words.`,
 		};
 	}
 	return { topic: trimmed };

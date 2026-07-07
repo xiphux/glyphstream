@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseConsolidation, renderMemories } from '$lib/server/memory/consolidation';
+import { MEMORY_MAX_CONTENT_CHARS } from '$lib/server/memory/limits';
 
 const IDS = new Set(['a', 'b', 'c']);
 
@@ -83,13 +84,35 @@ describe('parseConsolidation', () => {
 		).toEqual([]);
 		expect(
 			parseConsolidation(
-				json([{ type: 'reword', id: 'a', content: 'x'.repeat(501), topic: 't' }]),
+				json([
+					{
+						type: 'reword',
+						id: 'a',
+						content: 'x'.repeat(MEMORY_MAX_CONTENT_CHARS + 1),
+						topic: 't',
+					},
+				]),
 				IDS,
 			),
 		).toEqual([]);
 		expect(
 			parseConsolidation(json([{ type: 'retopic', id: 'a', topic: 'x'.repeat(81) }]), IDS),
 		).toEqual([]);
+	});
+
+	it('keeps a richer multi-sentence reword within the content cap', () => {
+		// The loosened prompt lets the pass distill to a short paragraph, not just a
+		// bare sentence — such an op must survive validation.
+		const rich =
+			'Works at Globex; previously at Acme. Moved for the shift to backend Go work, ' +
+			'which they prefer over the frontend role they held before.';
+		expect(rich.length).toBeLessThanOrEqual(MEMORY_MAX_CONTENT_CHARS);
+		expect(
+			parseConsolidation(
+				json([{ type: 'reword', id: 'a', content: rich, topic: 'Employer' }]),
+				IDS,
+			),
+		).toEqual([{ type: 'reword', id: 'a', content: rich, topic: 'Employer' }]);
 	});
 
 	it('ignores unknown op types', () => {
