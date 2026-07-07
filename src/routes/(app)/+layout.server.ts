@@ -46,8 +46,10 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// Tagged so a client that resumes from background (visibilitychange /
 	// focus / pageshow in the (app) layout) can `invalidate('app:conversations')`
 	// to pull in conversations created on *other* clients since it last loaded.
-	// Targeted key rather than invalidateAll() so an in-flight chat page load /
-	// stream stays untouched — only this layout load (sidebar list) re-runs.
+	// Targeted key rather than invalidateAll() so the chat page's own load +
+	// in-flight stream stay untouched — only this layout load re-runs. (That
+	// re-runs the whole load body, not just listConversations, but it's cheap:
+	// cached models + local SQLite.)
 	depends('app:conversations');
 	return {
 		user: locals.user,

@@ -65,9 +65,11 @@
 			// Coalesce the visibilitychange + focus pair a single resume fires.
 			if (inFlight) return;
 			inFlight = true;
-			void invalidate('app:conversations').finally(() => {
-				inFlight = false;
-			});
+			void invalidate('app:conversations')
+				.catch(() => {})
+				.finally(() => {
+					inFlight = false;
+				});
 		};
 		const onVisibility = () => {
 			if (document.visibilityState === 'visible') refresh();
