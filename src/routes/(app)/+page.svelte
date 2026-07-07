@@ -608,18 +608,27 @@
 		--aura-strength: 22%;
 	}
 
+	/* Bloom in on load: the color grows outward from a small point at the
+	   composer, then fades up to full — so it reads as blooming from behind
+	   the box, not just a flat fade. transform-origin tracks --aura-y, so it
+	   expands from the composer's center in both layouts. Pure CSS/compositor
+	   (opacity + transform), plays once. Skipped under reduced-motion, where
+	   the aura is simply present. */
 	@media (prefers-reduced-motion: no-preference) {
 		.aura {
-			animation: aura-in 0.6s ease-out both;
+			transform-origin: 50% var(--aura-y, 82%);
+			animation: aura-bloom 0.9s var(--ease-emphasized, cubic-bezier(0.3, 0, 0, 1)) both;
 		}
 	}
 
-	@keyframes aura-in {
+	@keyframes aura-bloom {
 		from {
 			opacity: 0;
+			transform: scale(0.2);
 		}
 		to {
 			opacity: 1;
+			transform: scale(1);
 		}
 	}
 </style>
