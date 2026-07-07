@@ -608,16 +608,35 @@
 		--aura-strength: 22%;
 	}
 
-	/* Bloom in on load: the color grows outward from a small point at the
-	   composer, then fades up to full — so it reads as blooming from behind
-	   the box, not just a flat fade. transform-origin tracks --aura-y, so it
-	   expands from the composer's center in both layouts. Pure CSS/compositor
-	   (opacity + transform), plays once. Skipped under reduced-motion, where
-	   the aura is simply present. */
+	/* Bloom in on load. Base (mobile) is opacity-only: the mobile bloom is
+	   bottom-anchored, so its gradient is still colored where it meets the
+	   bottom edge and gets clipped there. iOS Safari (esp. standalone PWA)
+	   rasterizes the animating layer to a texture clipped to the viewport,
+	   then scales it — so that hard bottom edge reads as a square growing to
+	   the edges. Fading opacity without a transform sidesteps it entirely. */
 	@media (prefers-reduced-motion: no-preference) {
 		.aura {
-			transform-origin: 50% var(--aura-y, 82%);
-			animation: aura-bloom 0.9s var(--ease-emphasized, cubic-bezier(0.3, 0, 0, 1)) both;
+			animation: aura-fade 0.9s var(--ease-emphasized, cubic-bezier(0.3, 0, 0, 1)) both;
+		}
+	}
+
+	/* Desktop: the bloom is centered and fully fades to transparent inside
+	   its box on all edges, so there's no clipped edge to rasterize — the
+	   scale bloom (grow from a small point at the composer) renders cleanly.
+	   transform-origin tracks --aura-y so it expands from the composer. */
+	@media (prefers-reduced-motion: no-preference) and (min-width: 640px) {
+		.aura {
+			transform-origin: 50% var(--aura-y, 45%);
+			animation-name: aura-bloom;
+		}
+	}
+
+	@keyframes aura-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
 		}
 	}
 
