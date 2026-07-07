@@ -4,7 +4,7 @@
 	import { reconcileSubscription } from '$lib/push-subscribe';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { goto, invalidate, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '$lib/components/Toaster.svelte';
@@ -47,6 +47,43 @@
 	// unless the user has opted in and already granted permission.
 	onMount(() => {
 		void reconcileSubscription(data.prefs?.notificationsEnabled ?? false);
+	});
+
+	// Pull the conversation list forward when the app resumes from the
+	// background. The sidebar is SSR load data (see +layout.server.ts), so a
+	// conversation started on another client (desktop → this phone's PWA) stays
+	// invisible until something re-runs the layout load. `visibilitychange`
+	// covers tab/app switches, window `focus` covers desktop refocus, and
+	// `pageshow` catches iOS PWA / bfcache restores where visibilitychange
+	// doesn't fire. Targeted `invalidate` re-runs only this layout load — an
+	// in-flight chat page load / stream stays untouched. Skipped while hidden or
+	// offline; the resume event fires again once we're actually foregrounded.
+	onMount(() => {
+		let inFlight = false;
+		const refresh = () => {
+			if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+			// Coalesce the visibilitychange + focus pair a single resume fires.
+			if (inFlight) return;
+			inFlight = true;
+			void invalidate('app:conversations').finally(() => {
+				inFlight = false;
+			});
+		};
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') refresh();
+		};
+		// Only bfcache restores — a fresh load's pageshow already has current data.
+		const onPageShow = (e: PageTransitionEvent) => {
+			if (e.persisted) refresh();
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		window.addEventListener('focus', refresh);
+		window.addEventListener('pageshow', onPageShow);
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibility);
+			window.removeEventListener('focus', refresh);
+			window.removeEventListener('pageshow', onPageShow);
+		};
 	});
 
 	// Shared FLIP config for the sidebar lists. When a conversation gets new

@@ -554,6 +554,27 @@ proactivity and pipeline bets are the most identity-defining.
   nice-to-have rather than a findability/storage lever. Build only if a real
   library shows duplicate clutter in practice.
 
+- **Live cross-client sync (conversation list & mutations).** A standing
+  per-user channel so a second open client learns about changes made elsewhere —
+  a conversation started on another device, a rename / archive / delete —
+  without waiting to be re-foregrounded. _Why deferred:_ the reported gap (a PWA
+  left in the background misses a conversation created on the desktop) is already
+  closed by the cheap half — the `(app)` layout `invalidate('app:conversations')`s
+  on `visibilitychange` / `focus` / `pageshow` (the `app:conversations` depends
+  key in `(app)/+layout.server.ts`), so the sidebar is current the moment you
+  pick the phone back up. A live channel only adds updates while a client sits
+  _foregrounded but idle_, which isn't the reported need and costs real infra.
+  Sketch: there's no standing per-user push channel today — the only SSE is
+  request-scoped to an active generation, and the in-flight registry is
+  explicitly single-process — so this wants either a shared pub/sub the server
+  publishes list-mutation events onto (over the same recovery-poll channel the
+  **server-driven fan-out dispatch** item sketches) or extending the existing Web
+  Push apparatus beyond its current `message_complete`-only trigger. Open
+  questions: SSE/EventSource vs. reuse Web Push (the latter needs notification
+  permission — wrong gate for a silent list sync); coalescing bursts of small
+  mutations; and reconciling a live update against the resume-refresh so the two
+  don't double-fetch.
+
 - **Background sync / offline composition.** Service worker queues messages
   while offline, resends on reconnect. Low priority — chat apps generally don't
   need this.

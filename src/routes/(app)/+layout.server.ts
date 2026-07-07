@@ -43,6 +43,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// `settings:mcp` key so frequent trust toggles / retries DON'T re-run this
 	// layout — only the rare credential change does.
 	depends('app:mcp-credentials');
+	// Tagged so a client that resumes from background (visibilitychange /
+	// focus / pageshow in the (app) layout) can `invalidate('app:conversations')`
+	// to pull in conversations created on *other* clients since it last loaded.
+	// Targeted key rather than invalidateAll() so an in-flight chat page load /
+	// stream stays untouched — only this layout load (sidebar list) re-runs.
+	depends('app:conversations');
 	return {
 		user: locals.user,
 		conversations: listConversations(locals.user.id),

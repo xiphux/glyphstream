@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { MOCK_REPLY, generateImageFromHome, resetData, selectModel } from './helpers';
+import {
+	MOCK_REPLY,
+	generateImageFromHome,
+	resetData,
+	seedConversation,
+	selectModel,
+} from './helpers';
 
 /**
  * Browser-event tranche — the recovery / state-machine cases the roadmap
@@ -230,5 +236,44 @@ test.describe('event: autoattach state machine on branch switches', () => {
 		await expect(prev).toBeEnabled();
 		await prev.click();
 		await expect.poll(attachedMediaId, { timeout: 10_000 }).toBe(branchAMediaId);
+	});
+});
+
+test.describe('event: conversation list refreshes when the app returns to the foreground', () => {
+	test('a conversation created on another client appears after hidden→visible', async ({
+		page,
+	}) => {
+		const title = 'Seeded on another client';
+		await page.goto('/');
+
+		// Baseline: the (app) layout loaded its sidebar before the row existed,
+		// so Recents doesn't have it.
+		const row = page.getByRole('link', { name: title });
+		await expect(row).toHaveCount(0);
+
+		// Emulate a sibling client creating a conversation: the server now has
+		// the row, but this page's SSR sidebar data doesn't — and nothing on
+		// this client has re-run the layout load, so it stays invisible.
+		seedConversation(title);
+		await expect(row).toHaveCount(0);
+
+		// Resume from background. hidden→visible fires the (app) layout's
+		// visibilitychange handler, which invalidate('app:conversations')s and
+		// re-runs listConversations — the fix under test. (A bare focus /
+		// pageshow-persisted event drives the same refresh path.)
+		await page.evaluate(() => {
+			Object.defineProperty(document, 'visibilityState', {
+				configurable: true,
+				get: () => 'hidden',
+			});
+			document.dispatchEvent(new Event('visibilitychange'));
+			Object.defineProperty(document, 'visibilityState', {
+				configurable: true,
+				get: () => 'visible',
+			});
+			document.dispatchEvent(new Event('visibilitychange'));
+		});
+
+		await expect(row).toBeVisible({ timeout: 5_000 });
 	});
 });

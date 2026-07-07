@@ -93,6 +93,35 @@ export function seedMedia(count: number): void {
 }
 
 /**
+ * Insert a bare conversation row straight into the DB, returning its id.
+ * Emulates a conversation created on *another* client — one the server has
+ * but the current page's SSR sidebar data never saw. The app's
+ * create→navigate flow always runs on the client under test, so it can't
+ * reproduce "a sibling client added a row this sidebar doesn't know about";
+ * a direct insert (same approach as seedMedia) is the only way. Only the
+ * columns listConversations reads need to be real; the distinctive title
+ * makes the row assertable in Recents. Safe standalone connection for the
+ * same reason as resetData/seedMedia — workers=1, no request in flight.
+ */
+export function seedConversation(title: string): string {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const id = `e2e-conv-${title.replace(/\W+/g, '-').toLowerCase()}`;
+		const now = Date.now();
+		db.prepare(
+			`INSERT INTO conversations
+			   (id, user_id, title, title_source, endpoint_id, model_id, created_at, updated_at)
+			 VALUES (?, ?, ?, 'fallback', 'mock', 'mock::mock-chat', ?, ?)`,
+		).run(id, TEST_USER.id, title, now, now);
+		return id;
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Seed generated image rows grouped into explicit time buckets, for the
  * date-grouping / timeline-rail specs. Each bucket inserts `count` rows
  * clustered at `createdAt` (spread back 1ms each so the keyset cursor is
