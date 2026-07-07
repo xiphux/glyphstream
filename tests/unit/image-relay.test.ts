@@ -235,7 +235,7 @@ describe('startImageRelay — fan-out semantics', () => {
 		expect(mocks.notify).not.toHaveBeenCalled();
 	});
 
-	it('notifies per-branch when suppressNotify is false (single send / regenerate)', async () => {
+	it('notifies per-branch when suppressNotify is false (plain single send)', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		await drain(
 			startImageRelay(

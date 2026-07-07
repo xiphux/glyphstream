@@ -16,8 +16,12 @@
  * branch sees an empty registry and fires. No total-counting, so a branch that
  * errors before registering can't wedge the count.
  *
- * Regenerate (a lone re-roll) is deliberately NOT routed here — it keeps its own
- * single per-branch notification, the same as any one-shot generation.
+ * Re-rolls (Regenerate) route here too: an initial branch and a re-roll are the
+ * same kind of fan-out branch, so a re-roll enqueued mid-flight folds into the
+ * same aggregate — the notification waits for it instead of firing when the
+ * original batch drains — and a re-roll that lands last still fires it. A lone
+ * re-roll on a settled grid is a fan-out of one: it registers alone, so it's
+ * immediately "last" and fires its own aggregate when it lands.
  */
 
 import { getSiblingAssistants } from '../db/queries/messages';
@@ -32,8 +36,10 @@ export interface FanoutNotifyInput {
 	userMessageId: string;
 	conversationTitle: string | null;
 	modality: NotifyModality;
-	/** The fan-out's branch count (from the client), used as the displayed "N" in
-	 *  the summary. Falls back to the produced-sibling count when absent. */
+	/** The initial fan-out's branch count (from the client), used as the displayed
+	 *  "N" in the summary. Re-roll branches omit it, so a settled grid that grew
+	 *  via mid-flight re-rolls is counted by its produced-sibling total instead —
+	 *  which is also the fallback whenever this is absent. */
 	fanoutSize?: number;
 }
 

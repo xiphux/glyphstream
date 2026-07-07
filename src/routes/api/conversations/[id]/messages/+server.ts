@@ -248,10 +248,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// every code path that talks to upstream. Fan-out branches each get a
 	// unique key so they coexist in the registry instead of cancelling one
 	// another; a plain send uses the default single-slot key.
-	// An additive re-roll (`reroll`) is a lone regenerate appended to an existing
-	// grid — non-destructive (it adds a sibling, deletes nothing), so it just
-	// keeps its own per-branch notify instead of folding into the group aggregate.
-	const isReroll = isFanout && body.reroll === true;
+	//
 	// Cap concurrent fan-out branches per conversation. Each branch holds an open
 	// SSE connection + an in-flight entry + (past the gate) a queued waiter, so an
 	// unbounded fan-out is a resource-exhaustion vector even though the
@@ -270,18 +267,21 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		meta.modelId,
 	);
 
-	// An INITIAL fan-out branch (not a re-roll) suppresses its own per-branch
-	// notification; the route fires a single aggregate "N ready" when the LAST
-	// branch settles. An additive re-roll is a lone branch and keeps its own
-	// notify, like any single generation.
-	const isInitialFanout = isFanout && !isReroll;
+	// Every fan-out branch — the initial dispatch AND any additive re-roll
+	// (Regenerate) — suppresses its own per-branch notification and defers to a
+	// single aggregate "N ready" that fires when the LAST branch settles. Folding
+	// re-rolls in is what makes a mid-flight Regenerate behave: the aggregate now
+	// waits for it instead of firing when the original batch happens to drain, and
+	// a re-roll that finishes last still fires it (rather than being lost). A lone
+	// re-roll on an already-settled grid is just a fan-out of one — it registers
+	// alone, so it's immediately "last" and fires its own aggregate.
 	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
-	// Every relay's onComplete: free the in-flight slot, then (for an initial
-	// fan-out branch) let the last-to-finish branch fire the one aggregate notify.
-	// clearInFlight must run first so the last branch sees an empty registry.
+	// Every relay's onComplete: free the in-flight slot, then let the
+	// last-to-finish branch fire the one aggregate notify. clearInFlight must run
+	// first so the last branch sees an empty registry.
 	const onBranchComplete = () => {
 		clearInFlight(params.id, inFlight);
-		if (isInitialFanout) {
+		if (isFanout) {
 			notifyFanoutCompleteIfLast({
 				conversationId: params.id,
 				userId: locals.user.id,
@@ -328,7 +328,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
-			suppressNotify: isInitialFanout,
+			suppressNotify: isFanout,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
@@ -380,7 +380,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			abortSignal: inFlight.controller.signal,
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
-			suppressNotify: isInitialFanout,
+			suppressNotify: isFanout,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
@@ -588,7 +588,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// and don't start a per-branch title task (/prepare owns it once).
 			advanceActiveLeaf: !isFanout,
 			suppressTitleTask: isFanout,
-			suppressNotify: isInitialFanout,
+			suppressNotify: isFanout,
 			onStarted: () => {
 				inFlight.generationStartedAt = Date.now();
 			},
