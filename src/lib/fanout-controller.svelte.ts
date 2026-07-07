@@ -611,9 +611,10 @@ export class FanoutController {
 		const insertAt = at === -1 ? this.columns.length : at + 1;
 		this.columns = [...this.columns.slice(0, insertAt), newColumn, ...this.columns.slice(insertAt)];
 		// Drive the proxied element (not the raw `newColumn`) so the column's live
-		// state updates stay reactive. `reroll: true` keeps this lone re-roll's own
-		// per-branch notification, unlike an initial fan-out branch that defers to
-		// the aggregate "N ready" notify. A failed re-roll lands in 'error' (a
+		// state updates stay reactive. `reroll: true` marks this branch a re-roll on
+		// the wire; like any fan-out branch it defers to the single aggregate
+		// "N ready" notify, which now waits for a mid-flight re-roll instead of
+		// firing when the original batch drains. A failed re-roll lands in 'error' (a
 		// discardable column) — nothing to restore, the original was never touched.
 		await this.#runBranch(convId, this.userMessageId, this.columns[insertAt], { reroll: true });
 	}

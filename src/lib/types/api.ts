@@ -797,17 +797,19 @@ export interface SendMessageRequest {
 	 * Additive re-roll: marks this branch as a lone regenerate (another variation
 	 * appended to an existing grid) rather than one of an initial fan-out group.
 	 * Image/video re-rolls are non-destructive — the new sibling is added next to
-	 * the original, which the user keeps or discards. The server uses this only to
-	 * keep the branch's own per-branch notification instead of folding it into the
-	 * group's single aggregate notify. Ignored unless `fanoutBranch`.
+	 * the original, which the user keeps or discards. The server no longer branches
+	 * on this — a re-roll folds into the same aggregate "N ready" as any fan-out
+	 * branch — so it rides along only as an explicit wire marker. Ignored unless
+	 * `fanoutBranch`.
 	 */
 	reroll?: boolean;
 	/**
 	 * Total number of branches in this fan-out (the grid size). Every initial
-	 * branch carries the same value; the server uses it only as the count in the
-	 * single aggregate "N ready" notification fired when the last branch settles.
-	 * Omitted on a regenerate (a lone re-roll keeps its own per-branch notify).
-	 * Ignored unless `fanoutBranch`.
+	 * branch carries the same value; the server uses it as the count in the single
+	 * aggregate "N ready" notification fired when the last branch settles (bounded
+	 * below by the produced-sibling total, so it never undercounts). Omitted on a
+	 * re-roll, whose grid growth the produced count reflects instead. Ignored
+	 * unless `fanoutBranch`.
 	 */
 	fanoutSize?: number;
 	/**

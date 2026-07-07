@@ -117,12 +117,12 @@ export function buildFanoutBranchBody(input: {
 	inputMediaId?: string | null;
 	/** Additive re-roll: marks this branch as a lone regenerate (another variation
 	 *  added to an existing grid) rather than one of an initial fan-out group. The
-	 *  server uses it to keep this branch's own per-branch notification instead of
-	 *  folding it into the group's single aggregate notify. */
+	 *  server no longer branches on it (a re-roll folds into the same aggregate as
+	 *  any fan-out branch); it rides along as an explicit wire marker. */
 	reroll?: boolean;
-	/** Total branch count of this fan-out — the server uses it only as the count
-	 *  in the single aggregate notification fired when the last branch settles.
-	 *  Omitted on a regenerate (a lone re-roll notifies on its own). */
+	/** Total branch count of this fan-out — the server uses it as the count in the
+	 *  single aggregate notification (bounded below by the produced-sibling total).
+	 *  Omitted on a re-roll, whose grid growth the produced count reflects. */
 	fanoutSize?: number;
 }): Record<string, unknown> {
 	return {

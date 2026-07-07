@@ -98,6 +98,18 @@ describe('notifyFanoutCompleteIfLast', () => {
 		);
 	});
 
+	it('counts the produced total when re-rolls grew the grid past the dispatched size', () => {
+		getInFlightEntries.mockReturnValue([]);
+		// Initial fan-out of 4, then 2 mid-flight re-rolls landed → 6 siblings. An
+		// original branch (carrying the stale fanoutSize=4) settles last; the
+		// produced total wins so the count doesn't undercount the re-roll results.
+		getSiblingAssistants.mockReturnValue(siblings(6));
+		notifyFanoutCompleteIfLast({ ...base, fanoutSize: 4 });
+		expect(notifyConversationComplete).toHaveBeenCalledWith(
+			expect.objectContaining({ summary: '6 images ready' }),
+		);
+	});
+
 	it('stays silent when EVERY branch failed (only error siblings persisted)', () => {
 		// Failed branches now persist durable error siblings, so the row count is
 		// non-zero — but they aren't results, so no false "N ready" push fires.

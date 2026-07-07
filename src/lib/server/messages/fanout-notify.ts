@@ -36,10 +36,11 @@ export interface FanoutNotifyInput {
 	userMessageId: string;
 	conversationTitle: string | null;
 	modality: NotifyModality;
-	/** The initial fan-out's branch count (from the client), used as the displayed
-	 *  "N" in the summary. Re-roll branches omit it, so a settled grid that grew
-	 *  via mid-flight re-rolls is counted by its produced-sibling total instead —
-	 *  which is also the fallback whenever this is absent. */
+	/** The initial fan-out's branch count (from the client). The displayed "N" is
+	 *  max(this, produced non-error siblings): this keeps a partial failure showing
+	 *  the dispatched size, while the produced total covers a grid grown by
+	 *  mid-flight re-rolls (which omit this). Absent → the produced total stands
+	 *  alone. */
 	fanoutSize?: number;
 }
 
@@ -55,13 +56,19 @@ export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// disconnected fan-out can recover the failure; but it's not a result to
 	// announce. Filtering error siblings restores the invariant the zero-guard
 	// relies on: every branch failing → produced === 0 → stay silent (no false
-	// "N ready" push), and a partial failure announces the honest count.
+	// "N ready" push). It also feeds the count below whenever the client size is
+	// absent or has been outgrown.
 	const produced = getSiblingAssistants(input.conversationId, input.userMessageId).filter(
 		(m) => !m.parts.some((p) => p.type === 'error'),
 	).length;
 	if (produced === 0) return;
 
-	const count = input.fanoutSize ?? produced;
+	// Upper-bound the two counts so neither undercounts whichever branch settles
+	// last: the dispatched fan-out size (shown even when a branch failed, so a
+	// partial failure still reads as the size the user launched) and the
+	// produced-sibling total (the only one that reflects a grid grown by mid-flight
+	// re-rolls, which carry no fanoutSize).
+	const count = Math.max(input.fanoutSize ?? 0, produced);
 	void notifyConversationComplete({
 		userId: input.userId,
 		conversationId: input.conversationId,
