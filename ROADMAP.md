@@ -66,20 +66,28 @@ docs.
   - _Manual add/edit in UI._ A textarea modal + `POST`/`PATCH
 /api/user/memories`, if the AI-only feel grows limiting.
 
-- **Agent-callable cross-conversation search.** A `search_conversations(query)`
-  tool so the model can pull context from past chats mid-turn ("what did we
-  decide about X last week") without the user remembering which thread it lived
-  in. The user-facing sidebar search already ships; this exposes the same recall
-  to the model. Distinct from memory: memory is a curated, model-authored store
-  of durable facts; this is full-fidelity search over raw message history.
-  Scoped by `user_id` (the multi-user isolation invariant). Sketch: SQLite FTS5
-  over `messages.content` for the keyword layer, optionally fused with embedding
-  cosine where the endpoint advertises it — reuses `vector.ts` + the
-  `[embeddings]` block + the RRF fusion + the nullable-`embedding`-column
-  backfill pattern already built. Open questions: return whole messages or
-  RAG-selected chunks; citation rendering (link back to source message + branch
-  so a result restores the right leaf); indexing cost on a small box (gate the
-  semantic layer behind the capability flag).
+- **Agent-callable cross-conversation search.** The `search_conversations` tool
+  shipped: the model searches the user's past chats mid-turn ("what did we decide
+  about X last week") over the live, owner-scoped FTS5 index (the same one the
+  sidebar uses), with an optional `time_range` filter, the current conversation
+  excluded. Distinct from memory: memory is a curated, model-authored store of
+  durable facts; this is full-fidelity search over raw message history. Remaining:
+  - _Per-conversation summary pass._ A background pass (on the `[memory_model]`,
+    watermark-gated like dreaming) that writes a short denoised summary per
+    conversation and indexes it into search — so recall isn't purely keyword and
+    a thread surfaces by gist. Handles over-window transcripts by summarizing the
+    compacted view / hierarchical map-reduce.
+  - _Orientation overview._ A bounded, LLM-maintained "themes we've discussed"
+    block (folds new conversation summaries in, hard length cap) so the model has
+    passive awareness of what's worth searching for — scales with thematic
+    breadth, not conversation count. Added only if pure-search discovery proves
+    weak in practice.
+  - _Embedding fusion._ Fuse the keyword layer with embedding cosine where the
+    endpoint advertises it — reuses `vector.ts` + `[embeddings]` + RRF fusion +
+    the nullable-`embedding` backfill; gate behind the capability flag.
+  - _Citation rendering + full-thread read._ A chat-visible "sources" affordance
+    that restores the cited branch leaf, and a `read_conversation` tool for when a
+    snippet isn't enough. Today the tool returns ids + matched text only.
 
 - **Code interpreter — phase-2.** The server-side Pyodide `run_python` built-in
   shipped (per-conversation worker, idle-reap + LRU evict + timeout, SSRF-gated

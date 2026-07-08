@@ -27,6 +27,10 @@ export interface SearchResult {
 interface SearchOptions {
 	/** Hard cap on returned rows. Default 30, max 100. */
 	limit?: number;
+	/** Optional freshness floor: only conversations whose `updated_at` is at or
+	 *  after this epoch-ms cutoff. Omitted by the sidebar (no time filter); set by
+	 *  the `search_conversations` agent tool's `time_range` param. */
+	since?: number;
 }
 
 const DEFAULT_LIMIT = 30;
@@ -86,6 +90,11 @@ export function searchConversations(
 	if (!match) return [];
 
 	const limit = Math.min(Math.max(1, opts.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
+	// Optional freshness floor. A separate bound because it filters the JOINed
+	// conversation row (c.updated_at), not the FTS MATCH — appended to the WHERE
+	// below only when set, so the sidebar's unfiltered search is byte-for-byte
+	// unchanged.
+	const sinceClause = opts.since != null ? sql`AND c.updated_at >= ${opts.since}` : sql``;
 
 	// One pass through the FTS table; snippet() and bm25() must be
 	// invoked in the same SELECT as the MATCH (FTS5's auxiliary functions
@@ -117,7 +126,7 @@ export function searchConversations(
 			c.updated_at
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
-		WHERE s.user_id = ${userId} AND search_index MATCH ${match}
+		WHERE s.user_id = ${userId} AND search_index MATCH ${match} ${sinceClause}
 		ORDER BY bm25(search_index) ASC, c.updated_at DESC
 		LIMIT ${limit * 3}
 	`);

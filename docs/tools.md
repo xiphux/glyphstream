@@ -16,6 +16,14 @@ folded back into the conversation. The built-in toolset:
 - `save_memory` / `update_memory` / `forget_memory` — persist user-scoped
   facts the model surfaces between sessions. Each memory also carries a short
   model-authored topic label.
+- `search_conversations` — search the user's own past conversations (full
+  message history across every thread) so the model can pull context it doesn't
+  have in the current chat when the user refers back to something ("like we
+  discussed", "the project I mentioned"). Runs the same owner-scoped full-text
+  search as the sidebar, with an optional `time_range` recency filter; the current
+  conversation is excluded. Distinct from `recall_memory`, which reads the curated
+  fact store — this searches raw history. Gated by the same **Personalization**
+  toggle as the memory tools.
 - `recall_memory` — read saved memories that aren't fully shown in the system
   prompt, by id or by search. Saved memories are normally inlined into the
   system prompt in full; once they grow past a size budget the store is split by
@@ -109,8 +117,10 @@ button) with one switch per opt-out _category_:
 - **Personalization** suppresses the prefs-derived persona (your Name /
   About you / Custom instructions) that would otherwise be injected as the
   system message AND turns off the memory tools (`save_memory` /
-  `update_memory` / `forget_memory`) so a privacy-sensitive turn can't grow
-  the saved memory store. Has no effect on conversations that carry an
+  `update_memory` / `forget_memory` / `recall_memory`) and
+  `search_conversations` so a privacy-sensitive turn can't grow the saved
+  memory store or read personal context out of past chats. Has no effect on
+  conversations that carry an
   explicit system prompt or were started from a custom-model preset — those
   already snapshot whatever prompt _they_ declared.
 - **Code interpreter** disables `run_python` for the turn. The web toggle

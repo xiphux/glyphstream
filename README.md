@@ -141,6 +141,10 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   periodically tidies the store — merging duplicates, folding superseded facts,
   and distilling stale notes — with soft-delete reversibility, so anything it
   changes stays reviewable and restorable from settings for ~30 days.
+- **Conversation recall** — a `search_conversations` tool lets the model search
+  your past chats (full message history, owner-scoped, with an optional recency
+  filter) when you refer back to something discussed before, instead of guessing.
+  Gated by the same Personalization toggle as memory ([guide](docs/tools.md)).
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
 

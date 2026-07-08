@@ -19,3 +19,4 @@ export type { OpenAIToolDefinition, Tool, ToolContext, ToolExecution, ToolMetada
 import './run-python';
 import './activate-skill';
 import './search-tools';
+import './conversation-search';
