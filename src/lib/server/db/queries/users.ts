@@ -6,7 +6,7 @@
  * `findUserByOAuth` (OAuth) or `findUserForCredential` (passkey) and
  * call `bumpUserLastLogin` if successful.
  */
-import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { conversations, users } from '../schema';
@@ -229,6 +229,37 @@ export function setConversationOverview(userId: string, overview: string, update
 		.set({ conversationOverview: overview, overviewUpdatedAt: updatedAt })
 		.where(eq(users.id, userId))
 		.run();
+}
+
+/**
+ * Reconcile a user's overview after one of their conversations is deleted. The
+ * overview is rebuilt-from-all only when a summary changes, and a hard delete
+ * doesn't touch any remaining `summarized_at` — so without this a deleted
+ * conversation's topics would linger in the injected overview until some unrelated
+ * re-summarization (or forever, once the last summarized conversation is gone).
+ *
+ * If no summarized conversations remain → clear the overview (it describes only
+ * gone content, and the watermark query would never re-select the user). Otherwise
+ * keep the current text but null the watermark so the next sweep rebuilds it
+ * without the deleted conversation. Caller passes its `tx` (this runs inside
+ * `deleteConversation`'s transaction). Only call when the deleted conversation
+ * actually had a summary — an unsummarized one never affected the overview.
+ */
+export function reconcileOverviewAfterConversationDelete(userId: string, tx?: Tx): void {
+	const db = tx ?? getDb();
+	const remaining = db
+		.select({ n: count() })
+		.from(conversations)
+		.where(and(eq(conversations.userId, userId), isNotNull(conversations.summary)))
+		.get();
+	if (!remaining || remaining.n === 0) {
+		db.update(users)
+			.set({ conversationOverview: null, overviewUpdatedAt: null })
+			.where(eq(users.id, userId))
+			.run();
+	} else {
+		db.update(users).set({ overviewUpdatedAt: null }).where(eq(users.id, userId)).run();
+	}
 }
 
 /**

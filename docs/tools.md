@@ -116,15 +116,21 @@ button) with one switch per opt-out _category_:
   model can't compose around partial gating by `fetch_url`-ing a
   search-engine URL directly. The two web-touching tools share a `web`
   category and the single switch closes the whole egress path.
-- **Personalization** suppresses the prefs-derived persona (your Name /
-  About you / Custom instructions) that would otherwise be injected as the
-  system message AND turns off the memory tools (`save_memory` /
-  `update_memory` / `forget_memory` / `recall_memory`) and
-  `search_conversations` so a privacy-sensitive turn can't grow the saved
-  memory store or read personal context out of past chats. Has no effect on
-  conversations that carry an
-  explicit system prompt or were started from a custom-model preset — those
-  already snapshot whatever prompt _they_ declared.
+- **Personalization** is a _consumption_ gate — "don't tailor this response to
+  me." It suppresses the prefs-derived persona (your Name / About you / Custom
+  instructions) that would otherwise be injected as the system message, plus the
+  injected memories and the conversation-topics overview, and it turns off the
+  memory tools (`save_memory` / `update_memory` / `forget_memory` /
+  `recall_memory`) and `search_conversations` — so this turn neither uses your
+  stored context nor reads your past chats. It is **not** a content seal: a
+  personalization-off conversation still _contributes_ to your searchable history
+  and topic overview (which are only ever read by personalization-**on**
+  conversations, so nothing surfaces anywhere you didn't consent to). `save_memory`
+  is additionally blocked from writing here — a conservative carry-over; a proper
+  "keep this chat's content out of my cross-conversation stores" seal is the
+  planned **Private chat** flag (see `ROADMAP.md`). Has no effect on conversations
+  that carry an explicit system prompt or were started from a custom-model preset —
+  those already snapshot whatever prompt _they_ declared.
 - **Code interpreter** disables `run_python` for the turn. The web toggle
   above still independently controls Python's network egress (so a
   code-allowed but web-blocked turn runs pure compute with no outbound

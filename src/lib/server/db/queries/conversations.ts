@@ -10,6 +10,7 @@ import type {
 } from '$lib/types/api';
 import { getDb } from '../client';
 import { conversations, messages } from '../schema';
+import { reconcileOverviewAfterConversationDelete } from './users';
 import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch } from './messages';
 import {
@@ -335,6 +336,15 @@ export function setConversationTitle(
  * messages; a lone user message has no gist worth indexing). Oldest-activity
  * first so the longest-stale get caught up first. Cross-user (background job);
  * includes archived conversations, matching what search already surfaces.
+ *
+ * Deliberately NOT filtered by the per-conversation `personalization` opt-out.
+ * That toggle is a *consumption* gate (don't inject persona/memory/overview into
+ * THIS chat, don't offer the personalization tools) — not a content seal: a
+ * personalization-off chat still contributes to the user's own searchable history
+ * + topic overview, which are only ever consumed by personalization-ON chats. A
+ * true "this chat's content stays out of my cross-conversation stores" seal is the
+ * planned per-conversation "Private chat" flag (see ROADMAP); when it lands, gate
+ * this query (and `searchConversations`' tool path) on it.
  */
 export function listConversationsNeedingSummary(
 	now: number,
@@ -584,8 +594,10 @@ export function deleteConversation(
 	const db = getDb();
 	return db.transaction((tx) => {
 		// Ownership check first so we don't decrement on someone else's media.
+		// Grab `summary` too: if this conversation contributed to the user's topic
+		// overview, we reconcile it after the delete.
 		const owned = tx
-			.select({ id: conversations.id })
+			.select({ id: conversations.id, summary: conversations.summary })
 			.from(conversations)
 			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 			.get();
@@ -602,6 +614,9 @@ export function deleteConversation(
 		decrementMediaForMessages(tx, messageIds);
 
 		tx.delete(conversations).where(eq(conversations.id, id)).run();
+		// A summarized conversation fed the topic overview — drop its topics from it
+		// (clear if it was the last summarized one, else re-flag for rebuild).
+		if (owned.summary !== null) reconcileOverviewAfterConversationDelete(userId, tx);
 		return { ok: true, toUnlink };
 	});
 }

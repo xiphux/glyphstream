@@ -8,12 +8,14 @@ vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: ()
 
 import {
 	createConversation,
+	deleteConversation,
 	listConversationsNeedingSummary,
 	listConversationSummariesForOverview,
 	setConversationSummary,
 } from '$lib/server/db/queries/conversations';
 import {
 	getConversationOverview,
+	getConversationOverviewMeta,
 	listUsersNeedingOverview,
 	setConversationOverview,
 } from '$lib/server/db/queries/users';
@@ -162,6 +164,47 @@ describe('overview queries', () => {
 		// b left unsummarized (null) → excluded.
 		expect(listConversationSummariesForOverview(u.id)).toEqual(['first gist', 'third gist']);
 		expect(b).toBeTruthy();
+	});
+
+	it('re-flags the overview when a summarized conversation is deleted but others remain', () => {
+		const u = seedUser();
+		const a = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		const b = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		setConversationSummary(a, 'gist a', NOW);
+		setConversationSummary(b, 'gist b', NOW);
+		setConversationOverview(u.id, 'the map', NOW);
+
+		deleteConversation(a, u.id);
+		const meta = getConversationOverviewMeta(u.id);
+		expect(meta.overview).toBe('the map'); // kept (b still supports a rebuild)
+		expect(meta.updatedAt).toBeNull(); // but re-flagged so the next sweep drops a's topics
+		expect(listUsersNeedingOverview()).toContain(u.id);
+	});
+
+	it('clears the overview when the last summarized conversation is deleted', () => {
+		const u = seedUser();
+		const a = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		setConversationSummary(a, 'only gist', NOW);
+		setConversationOverview(u.id, 'the map', NOW);
+
+		deleteConversation(a, u.id);
+		const meta = getConversationOverviewMeta(u.id);
+		expect(meta.overview).toBeNull(); // nothing left to describe → cleared
+		expect(meta.updatedAt).toBeNull();
+		expect(listUsersNeedingOverview()).not.toContain(u.id);
+	});
+
+	it('leaves the overview untouched when an unsummarized conversation is deleted', () => {
+		const u = seedUser();
+		const a = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		setConversationSummary(a, 'gist a', NOW);
+		const b = seedConv(u.id, { messages: 2, updatedAt: NOW }); // never summarized
+		setConversationOverview(u.id, 'the map', NOW);
+
+		deleteConversation(b, u.id);
+		const meta = getConversationOverviewMeta(u.id);
+		expect(meta.overview).toBe('the map');
+		expect(meta.updatedAt).toBe(NOW); // not re-flagged — b never contributed
 	});
 
 	it('listUsersNeedingOverview picks changed users and skips settled/summary-less ones', () => {

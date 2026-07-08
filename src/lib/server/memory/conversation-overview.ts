@@ -46,7 +46,11 @@ function renderSummaries(summaries: string[]): string {
 /**
  * Rebuild the overview from all of a user's conversation summaries (deterministic
  * order — caller sorts). `previousOverview` anchors structure only. Returns the
- * capped map, or '' if there's nothing to build from.
+ * capped map; with no summaries it falls back to the previous overview (trimmed —
+ * already capped when it was built), or '' if there is none either. In practice
+ * the no-summaries case is defensive: the worker only calls this for users the
+ * watermark query found with ≥1 summary, and an overview whose conversations are
+ * all deleted is cleared at delete time (see reconcileOverviewAfterConversationDelete).
  */
 export async function buildOverview(
 	model: ResolvedMemoryModel,

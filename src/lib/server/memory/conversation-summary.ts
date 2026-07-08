@@ -113,7 +113,9 @@ export async function runSummarySweep(
 }
 
 /** Rebuild one user's overview from all their conversation summaries and stamp the
- *  watermark. A user with no summaries left (all deleted) has the overview cleared. */
+ *  watermark. Only reached for users the watermark query found with ≥1 summary; the
+ *  "all summarized conversations deleted" case is handled at delete time
+ *  (`reconcileOverviewAfterConversationDelete`), not here. */
 async function rebuildOverview(
 	model: ResolvedMemoryModel,
 	userId: string,

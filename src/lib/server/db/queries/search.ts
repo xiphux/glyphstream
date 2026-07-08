@@ -85,6 +85,17 @@ function safeSnippet(raw: string): string {
 		.replace(new RegExp(MARK_CLOSE, 'g'), '</mark>');
 }
 
+/**
+ * Owner-scoped FTS over the user's messages/titles/summaries. Serves BOTH the
+ * sidebar (the user searching their own history — always allowed) and the
+ * `search_conversations` model tool. It intentionally does NOT filter by the
+ * per-conversation `personalization` opt-out: that's a consumption gate on the
+ * *reading* conversation (the tool is category-gated out of a personalization-off
+ * chat), not a seal on the *source*. If a future "Private chat" flag adds a
+ * source-side content seal, apply it on the *tool* path only (a new opt) — never
+ * here globally, or it would also hide private chats from the user's own sidebar
+ * search, which should always show them all their history.
+ */
 export function searchConversations(
 	userId: string,
 	rawQuery: string,
