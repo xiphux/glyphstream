@@ -51,11 +51,13 @@ startTopicBackfiller();
 // soft-delete reversibility). No-op when no `[memory_model]` block is configured.
 startDreamingWorker();
 
-// Per-conversation summaries: during the same quiet-hours window, the memory
-// model writes a short gist per settled conversation, indexed into search so the
-// `search_conversations` tool surfaces threads by meaning. No-op without a
-// `[memory_model]` block. Separate worker from dreaming; the shared endpoint slot
-// keeps them within `max_concurrent`.
+// Per-conversation summaries + the orientation overview: during the same
+// quiet-hours window, the memory model writes a short gist per settled
+// conversation (indexed into search so `search_conversations` surfaces threads by
+// meaning) and rebuilds each user's bounded "topics we've discussed" overview
+// (injected into the persona prompt). No-op without a `[memory_model]` block.
+// Separate worker from dreaming; the shared endpoint slot keeps them within
+// `max_concurrent`.
 startConversationSummaryWorker();
 
 // Kick off MCP server connections in parallel with whatever the first

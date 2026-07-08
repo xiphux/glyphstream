@@ -6,10 +6,10 @@
  * `findUserByOAuth` (OAuth) or `findUserForCredential` (passkey) and
  * call `bumpUserLastLogin` if successful.
  */
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
-import { users } from '../schema';
+import { conversations, users } from '../schema';
 
 export type UserRole = 'admin' | 'user';
 
@@ -192,6 +192,65 @@ export function getUserRole(userId: string): UserRole | null {
 	const db = getDb();
 	const row = db.select({ role: users.role }).from(users).where(eq(users.id, userId)).get();
 	return row?.role ?? null;
+}
+
+/** The user's stored conversation-topics overview (the map injected into the
+ *  persona prompt), or null if never built. */
+export function getConversationOverview(userId: string): string | null {
+	const db = getDb();
+	const row = db
+		.select({ overview: users.conversationOverview })
+		.from(users)
+		.where(eq(users.id, userId))
+		.get();
+	return row?.overview ?? null;
+}
+
+/** The overview plus its last-built timestamp, for the settings transparency view.
+ *  (The persona path uses `getConversationOverview` — it only needs the text.) */
+export function getConversationOverviewMeta(userId: string): {
+	overview: string | null;
+	updatedAt: number | null;
+} {
+	const db = getDb();
+	const row = db
+		.select({ overview: users.conversationOverview, updatedAt: users.overviewUpdatedAt })
+		.from(users)
+		.where(eq(users.id, userId))
+		.get();
+	return { overview: row?.overview ?? null, updatedAt: row?.updatedAt ?? null };
+}
+
+/** Store a rebuilt overview + advance its watermark (the summary worker's overview
+ *  phase). */
+export function setConversationOverview(userId: string, overview: string, updatedAt: number): void {
+	const db = getDb();
+	db.update(users)
+		.set({ conversationOverview: overview, overviewUpdatedAt: updatedAt })
+		.where(eq(users.id, userId))
+		.run();
+}
+
+/**
+ * Users whose conversation overview should be rebuilt this sweep: those with at
+ * least one summarized conversation whose store changed since the overview was
+ * last built (`overview_updated_at` null, or a conversation `summarized_at` is
+ * newer). A settled user returns nothing. Cross-user (background job); mirrors
+ * `listUsersNeedingDreaming`.
+ */
+export function listUsersNeedingOverview(): string[] {
+	const db = getDb();
+	const rows = db
+		.select({ userId: conversations.userId })
+		.from(conversations)
+		.innerJoin(users, eq(users.id, conversations.userId))
+		.where(isNotNull(conversations.summary))
+		.groupBy(conversations.userId)
+		.having(
+			sql`${users.overviewUpdatedAt} is null or max(${conversations.summarizedAt}) > ${users.overviewUpdatedAt}`,
+		)
+		.all();
+	return rows.map((r) => r.userId);
 }
 
 /**

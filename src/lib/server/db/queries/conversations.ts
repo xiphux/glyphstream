@@ -361,6 +361,22 @@ export function listConversationsNeedingSummary(
 }
 
 /**
+ * Every non-null conversation summary for a user, ordered `created_at ASC` — the
+ * input to an overview rebuild. Creation order (stable across re-summarization,
+ * unlike `summarized_at`) keeps the rebuilt overview from reshuffling each pass.
+ */
+export function listConversationSummariesForOverview(userId: string): string[] {
+	const db = getDb();
+	return db
+		.select({ summary: conversations.summary })
+		.from(conversations)
+		.where(and(eq(conversations.userId, userId), isNotNull(conversations.summary)))
+		.orderBy(asc(conversations.createdAt))
+		.all()
+		.map((r) => r.summary as string);
+}
+
+/**
  * Write a conversation's summary + advance its watermark. Deliberately does NOT
  * touch `updated_at`: the summary pass compares `updated_at > summarized_at` to
  * decide re-summarization, so bumping `updated_at` here would make every

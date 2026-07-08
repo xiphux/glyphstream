@@ -24,6 +24,7 @@ vi.mock('$lib/server/endpoints/list-models', () => ({ listAllModels: listModelsM
 
 import { runSummarySweep } from '$lib/server/memory/conversation-summary';
 import { createConversation } from '$lib/server/db/queries/conversations';
+import { getConversationOverview } from '$lib/server/db/queries/users';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { conversations } from '$lib/server/db/schema';
 
@@ -91,36 +92,39 @@ describe('runSummarySweep', () => {
 	it('no-ops when no memory model is configured', async () => {
 		memModelMock.mockReturnValue(null);
 		seedConv(seedUser().id);
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0 });
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
 		expect(chatMock).not.toHaveBeenCalled();
 	});
 
 	it('no-ops outside the active-hours window', async () => {
 		memModelMock.mockReturnValue({ ...MODEL, activeHours: '02:00-03:00', timezone: 'UTC' });
 		seedConv(seedUser().id);
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0 }); // NOW is noon UTC, outside 02-03
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 }); // NOW is noon UTC, outside 02-03
 		expect(chatMock).not.toHaveBeenCalled();
 	});
 
-	it('summarizes a due conversation, stamps the watermark, and does not re-summarize it', async () => {
+	it('summarizes a due conversation + rebuilds the overview, and re-does neither next sweep', async () => {
 		const u = seedUser();
 		const c = seedConv(u.id);
 
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1 });
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1, overviewsUpdated: 1 });
 		const row = summaryOf(c);
 		expect(row.summary).toBe('A gist of the chat.');
 		expect(row.summarizedAt).toBe(NOW);
+		// Overview built for the user + watermark advanced.
+		expect(getConversationOverview(u.id)).toBe('A gist of the chat.');
 
-		// Settled + summarized → a second sweep finds nothing due.
+		// Settled + summarized + overview current → a second sweep is a full no-op.
 		chatMock.mockClear();
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0 });
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
 		expect(chatMock).not.toHaveBeenCalled();
 	});
 
 	it('stamps a null summary (not re-picked) when there is nothing to summarize', async () => {
 		const u = seedUser();
 		const c = seedConv(u.id, false); // empty text → empty transcript
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0 });
+		// No non-null summary → no overview either.
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
 		expect(chatMock).not.toHaveBeenCalled(); // short-circuited before the model
 		const row = summaryOf(c);
 		expect(row.summary).toBeNull();
@@ -131,7 +135,7 @@ describe('runSummarySweep', () => {
 		const u = seedUser();
 		const c = seedConv(u.id);
 		chatMock.mockRejectedValue(new FakeUpstreamError('endpoint down'));
-		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0 });
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
 		const row = summaryOf(c);
 		expect(row.summary).toBeNull();
 		expect(row.summarizedAt).toBeNull(); // unadvanced → retried next window

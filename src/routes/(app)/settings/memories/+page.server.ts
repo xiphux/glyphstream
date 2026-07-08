@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { listMemoriesForUser, listDeletedMemoriesForUser } from '$lib/server/db/queries/memories';
+import { getConversationOverviewMeta } from '$lib/server/db/queries/users';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -21,5 +22,8 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// Dreaming-tombstoned rows for the "Recently tidied" recovery list. Empty
 	// unless a [memory_model] is configured (only the dreaming pass soft-deletes).
 	const deletedMemories = listDeletedMemoriesForUser(locals.user.id);
-	return { memories, deletedMemories };
+	// The conversation-topics overview (view-only) — the map injected into the
+	// persona prompt. Null until the background pass has built one.
+	const conversationOverview = getConversationOverviewMeta(locals.user.id);
+	return { memories, deletedMemories, conversationOverview };
 };

@@ -59,6 +59,16 @@ export const users = sqliteTable('users', {
 	// re-processes a user whose live memories have a `updated_at` newer than this,
 	// so a settled store isn't re-consolidated every window.
 	lastDreamedAt: integer('last_dreamed_at'),
+	// A bounded, structured map of the topics this user has discussed across
+	// conversations — rebuilt by the summary worker's overview phase from their
+	// per-conversation summaries, and injected into the persona system prompt so
+	// the model knows what past threads exist to `search_conversations`. Null until
+	// first built; a derived artifact (view-only in settings, never hand-edited).
+	conversationOverview: text('conversation_overview'),
+	// Watermark for the overview rebuild: compared against the user's conversation
+	// `summarized_at`s, so the overview is rebuilt only when a summary changed since
+	// it was last generated. Null = never built.
+	overviewUpdatedAt: integer('overview_updated_at'),
 });
 
 // OAuth provider bindings. 1-to-many off `users` — a single user can

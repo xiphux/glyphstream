@@ -270,7 +270,11 @@ export function setUserPreferences(
 export function composePersonaSystemPrompt(
 	prefs: UserPreferences,
 	memories: Memory[] = [],
-	opts: { recallMode?: boolean; index?: MemoryIndexRow[] } = {},
+	opts: {
+		recallMode?: boolean;
+		index?: MemoryIndexRow[];
+		conversationOverview?: string | null;
+	} = {},
 ): string | null {
 	const parts: string[] = [];
 	const name = prefs.name.trim();
@@ -291,6 +295,16 @@ export function composePersonaSystemPrompt(
 	});
 	if (memorySection) {
 		parts.push(memorySection);
+	}
+	const overview = opts.conversationOverview?.trim();
+	if (overview) {
+		parts.push(
+			'Topics from earlier conversations with this user — a rough map of what has been ' +
+				'discussed, so you know what past threads exist. Call search_conversations to pull the ' +
+				'actual details of any of these; treat it as an index of what you could search, not as ' +
+				'facts you were told, and separate from the saved memories above.\n\n' +
+				overview,
+		);
 	}
 	return parts.length === 0 ? null : parts.join('\n\n');
 }

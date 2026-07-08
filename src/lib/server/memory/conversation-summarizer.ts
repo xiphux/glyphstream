@@ -14,9 +14,8 @@
  * model's window therefore never limits what we can summarize.
  */
 
-import { chatCompletionSync } from '../endpoints/client';
-import { acquireEndpointSlot } from '../endpoints/concurrency';
 import { estimateContentTokens } from '$lib/chat-compaction';
+import { approxTokens, callMemoryModel, chunkStrings } from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 import type { ChatMessage } from '$lib/types/api';
 
@@ -65,11 +64,6 @@ function capSummary(s: string): string {
 		: clean.slice(0, SUMMARY_MAX_CHARS - 1).trimEnd() + '…';
 }
 
-/** char/4, matching `estimateContentTokens`, for budgeting plain strings. */
-function approxTokens(s: string): number {
-	return Math.ceil(s.length / 4);
-}
-
 /**
  * Summarize a conversation branch into a capped gist. Returns '' if the model
  * yields nothing (the worker then skips the write and retries next sweep).
@@ -98,11 +92,11 @@ async function summarizeMessages(
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (estimateContentTokens(messages) <= budget) {
-		return callModel(model, SYSTEM_PROMPT, buildTranscript(messages), signal);
+		return callMemoryModel(model, SYSTEM_PROMPT, buildTranscript(messages), signal);
 	}
 	const partials: string[] = [];
 	for (const chunk of chunkMessages(messages, budget)) {
-		partials.push(await callModel(model, SYSTEM_PROMPT, buildTranscript(chunk), signal));
+		partials.push(await callMemoryModel(model, SYSTEM_PROMPT, buildTranscript(chunk), signal));
 	}
 	return reduceSummaries(model, partials, budget, signal);
 }
@@ -118,11 +112,11 @@ async function reduceSummaries(
 	if (partials.length <= 1) return partials[0] ?? '';
 	const render = (ps: string[]) => ps.map((p, i) => `Part ${i + 1}: ${p}`).join('\n\n');
 	if (approxTokens(render(partials)) <= budget) {
-		return callModel(model, REDUCE_PROMPT, render(partials), signal);
+		return callMemoryModel(model, REDUCE_PROMPT, render(partials), signal);
 	}
 	const reduced: string[] = [];
 	for (const group of chunkStrings(partials, budget)) {
-		reduced.push(await callModel(model, REDUCE_PROMPT, render(group), signal));
+		reduced.push(await callMemoryModel(model, REDUCE_PROMPT, render(group), signal));
 	}
 	return reduceSummaries(model, reduced, budget, signal);
 }
@@ -143,56 +137,4 @@ function chunkMessages(messages: ChatMessage[], budget: number): ChatMessage[][]
 	}
 	if (cur.length > 0) groups.push(cur);
 	return groups;
-}
-
-/** Same greedy grouping for the reduce step's partial-summary strings. */
-function chunkStrings(items: string[], budget: number): string[][] {
-	const groups: string[][] = [];
-	let cur: string[] = [];
-	let curTokens = 0;
-	for (const s of items) {
-		const t = approxTokens(s);
-		if (cur.length > 0 && curTokens + t > budget) {
-			groups.push(cur);
-			cur = [];
-			curTokens = 0;
-		}
-		cur.push(s);
-		curTokens += t;
-	}
-	if (cur.length > 0) groups.push(cur);
-	return groups;
-}
-
-async function callModel(
-	model: ResolvedMemoryModel,
-	systemPrompt: string,
-	userContent: string,
-	signal?: AbortSignal,
-): Promise<string> {
-	// Queue each call on the shared per-endpoint slot (release even on error). A
-	// map-reduce makes several calls, so slotting PER CALL rather than around the
-	// whole summarization lets a waiting live chat slip in between chunks — a dream
-	// or a summary is a fair peer, never a preempting or endpoint-hogging one.
-	const slot = await acquireEndpointSlot(model.endpoint.id, model.endpoint.maxConcurrent, {
-		signal,
-	});
-	try {
-		const resp = await chatCompletionSync(
-			model.endpoint,
-			{
-				model: model.upstreamId,
-				messages: [
-					{ role: 'system', content: systemPrompt },
-					{ role: 'user', content: userContent },
-				],
-				max_tokens: model.maxTokens,
-				temperature: model.temperature,
-			},
-			signal,
-		);
-		return (resp.choices?.[0]?.message?.content ?? '').trim();
-	} finally {
-		slot.release();
-	}
 }

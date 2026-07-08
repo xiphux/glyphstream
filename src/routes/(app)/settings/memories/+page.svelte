@@ -5,13 +5,25 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
 
-	let { data } = $props<{ data: { memories: Memory[]; deletedMemories?: DeletedMemory[] } }>();
+	let { data } = $props<{
+		data: {
+			memories: Memory[];
+			deletedMemories?: DeletedMemory[];
+			conversationOverview?: { overview: string | null; updatedAt: number | null };
+		};
+	}>();
 
 	let busyId = $state<string | null>(null);
 
 	// Empty on installs without a [memory_model] — only the dreaming pass
 	// soft-deletes, so there's nothing to recover there.
 	let deletedMemories = $derived(data.deletedMemories ?? []);
+
+	// The conversation-topics map injected into the persona prompt (view-only —
+	// it's regenerated from conversations, so hand-edits wouldn't stick). Null
+	// until the background pass has built one.
+	let overview = $derived(data.conversationOverview?.overview ?? null);
+	let overviewUpdatedAt = $derived(data.conversationOverview?.updatedAt ?? null);
 
 	function formatDate(ms: number): string {
 		const d = new Date(ms);
@@ -160,6 +172,25 @@
 					{/each}
 				</ul>
 			</details>
+		{/if}
+
+		{#if overview}
+			<section class="mx-auto mt-4 max-w-2xl rounded-lg border border-border bg-surface-panel p-4">
+				<h2 class="text-sm font-semibold tracking-tight">Conversation topics</h2>
+				<p class="mt-1 text-xs text-fg-muted">
+					An automatically generated map of what you've discussed across conversations, injected so
+					the assistant knows what past chats it can search. It's rebuilt from your conversations
+					periodically, so it isn't edited here — to change it, manage the underlying conversations.
+					{#if overviewUpdatedAt}
+						<span class="whitespace-nowrap">Updated {formatDate(overviewUpdatedAt)}.</span>
+					{/if}
+				</p>
+				<div
+					class="mt-3 whitespace-pre-wrap break-words rounded-md bg-surface-sunken/50 p-3 text-sm text-fg"
+				>
+					{overview}
+				</div>
+			</section>
 		{/if}
 	</div>
 </div>

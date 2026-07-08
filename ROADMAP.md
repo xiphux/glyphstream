@@ -77,12 +77,13 @@ docs.
   `updated_at` watermark) writes a short denoised gist per settled conversation and
   indexes it into `search_index` (kind='summary'), so a thread surfaces by gist and
   `search_conversations` results carry the gist; over-window transcripts are handled
-  by hierarchical map-reduce. Remaining:
-  - _Orientation overview._ A bounded, LLM-maintained "themes we've discussed"
-    block (folds new conversation summaries in, hard length cap) so the model has
-    passive awareness of what's worth searching for — scales with thematic
-    breadth, not conversation count. Added only if pure-search discovery proves
-    weak in practice.
+  by hierarchical map-reduce.
+  The **orientation overview** also shipped: the same worker rebuilds a bounded,
+  structured "topics you've discussed" map per user from those summaries
+  (rebuild-from-all on change, hard char cap, stable ordering) and injects it into
+  the persona prompt so the model has passive awareness of what's worth searching
+  for — scales with thematic breadth, not conversation count. View-only in the
+  memories settings page. Remaining:
   - _Embedding fusion._ Fuse the keyword layer with embedding cosine where the
     endpoint advertises it — reuses `vector.ts` + `[embeddings]` + RRF fusion +
     the nullable-`embedding` backfill; gate behind the capability flag.

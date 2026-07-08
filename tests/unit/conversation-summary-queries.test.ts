@@ -9,8 +9,14 @@ vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: ()
 import {
 	createConversation,
 	listConversationsNeedingSummary,
+	listConversationSummariesForOverview,
 	setConversationSummary,
 } from '$lib/server/db/queries/conversations';
+import {
+	getConversationOverview,
+	listUsersNeedingOverview,
+	setConversationOverview,
+} from '$lib/server/db/queries/users';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { searchConversations } from '$lib/server/db/queries/search';
 import { conversations } from '$lib/server/db/schema';
@@ -134,5 +140,47 @@ describe('searchConversations + summary FTS integration', () => {
 		expect(searchConversations(u.id, 'pineapple').map((r) => r.conversationId)).toContain(c);
 		setConversationSummary(c, null, NOW);
 		expect(searchConversations(u.id, 'pineapple')).toEqual([]);
+	});
+});
+
+describe('overview queries', () => {
+	it('get/set round-trips the overview', () => {
+		const u = seedUser();
+		expect(getConversationOverview(u.id)).toBeNull();
+		setConversationOverview(u.id, '## Topics\n- deploys', NOW);
+		expect(getConversationOverview(u.id)).toBe('## Topics\n- deploys');
+	});
+
+	it('listConversationSummariesForOverview returns non-null summaries in created_at order', () => {
+		const u = seedUser();
+		// Seeded oldest-first; created_at is monotonic in seed order.
+		const a = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		const b = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		const c = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		setConversationSummary(a, 'first gist', NOW);
+		setConversationSummary(c, 'third gist', NOW);
+		// b left unsummarized (null) → excluded.
+		expect(listConversationSummariesForOverview(u.id)).toEqual(['first gist', 'third gist']);
+		expect(b).toBeTruthy();
+	});
+
+	it('listUsersNeedingOverview picks changed users and skips settled/summary-less ones', () => {
+		const u = seedUser();
+		const noSummaries = seedUser();
+		seedConv(noSummaries.id, { messages: 2, updatedAt: NOW }); // no summary → never due
+		const conv = seedConv(u.id, { messages: 2, updatedAt: NOW });
+		setConversationSummary(conv, 'a gist', NOW);
+
+		// Has a summary, never built an overview → due; the summary-less user isn't.
+		expect(listUsersNeedingOverview()).toContain(u.id);
+		expect(listUsersNeedingOverview()).not.toContain(noSummaries.id);
+
+		// Build the overview at/after the summary → settled.
+		setConversationOverview(u.id, 'map', NOW);
+		expect(listUsersNeedingOverview()).not.toContain(u.id);
+
+		// A newer summary (re-summarized) re-flags the user.
+		setConversationSummary(conv, 'a fresher gist', NOW + 1000);
+		expect(listUsersNeedingOverview()).toContain(u.id);
 	});
 });

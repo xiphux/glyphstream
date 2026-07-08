@@ -10,6 +10,7 @@ vi.mock('$lib/server/db/client', () => ({
 
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import { createMemory, MEMORY_INLINE_BUDGET_CHARS } from '$lib/server/db/queries/memories';
+import { setConversationOverview } from '$lib/server/db/queries/users';
 import type { UserPreferences } from '$lib/types/api';
 
 const PREFS: UserPreferences = {
@@ -96,6 +97,27 @@ describe('composePersonaPrompt', () => {
 		const out = composePersonaPrompt(PREFS, u.id, [])!;
 		expect(out).toMatch(/recall_memory/);
 		expect(out).toMatch(/shown in full/);
+	});
+
+	it('injects the conversation-topics overview when one is set', () => {
+		const u = seedUser();
+		setConversationOverview(u.id, '## Work\n- deploy pipeline', Date.now());
+		const out = composePersonaPrompt(PREFS, u.id, [])!;
+		expect(out).toContain('deploy pipeline');
+		expect(out).toContain('search_conversations'); // points the model at the tool
+	});
+
+	it('omits the overview section when none is set', () => {
+		const u = seedUser();
+		createMemory(u.id, 'a fact', 'Fact');
+		const out = composePersonaPrompt(PREFS, u.id, [])!;
+		expect(out).not.toContain('search_conversations');
+	});
+
+	it('omits the overview when personalization is disabled', () => {
+		const u = seedUser();
+		setConversationOverview(u.id, 'topics map', Date.now());
+		expect(composePersonaPrompt(PREFS, u.id, ['personalization'])).toBeNull();
 	});
 
 	it('falls back to a content snippet (not the full body) for a topic-less cold row', async () => {

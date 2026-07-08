@@ -419,14 +419,19 @@ already in flight when a chat arrives, the chat waits for it (bounded by the
 endpoint's `max_concurrent`). On a single-GPU endpoint (`max_concurrent = 1`)
 that's exactly why the window matters.
 
-**Two jobs, one model.** The same `[memory_model]`, window, and endpoint slot also
-drive a **per-conversation summary pass**: it writes a short gist of each settled
-conversation and indexes it into search, so the `search_conversations` tool can
-surface a past thread by what it was about — not only by literal keyword overlap —
-and hand the model that gist. It's a separate background job on the same schedule
-(the shared endpoint slot keeps the two within `max_concurrent`); a conversation
-longer than the memory model's own context window is summarized via map-reduce, so
-the window size doesn't limit what it can cover.
+**More than dreaming.** The same `[memory_model]`, window, and endpoint slot also
+drive the conversation-recall passes (a separate background job on the same
+schedule; the shared slot keeps them within `max_concurrent`):
+
+- a **per-conversation summary pass** writes a short gist of each settled
+  conversation and indexes it into search, so `search_conversations` can surface a
+  past thread by what it was about — not only literal keyword overlap — and hand
+  the model that gist. A conversation longer than the memory model's own context
+  window is summarized via map-reduce, so the window size doesn't limit coverage.
+- an **orientation overview** rebuilds a bounded, structured "topics you've
+  discussed" map per user from those summaries and injects it into the assistant's
+  context, so it knows what past conversations exist to search. It's view-only in
+  **Settings → Memories** (regenerated from your conversations, so not hand-edited).
 
 ## Feature blocks
 

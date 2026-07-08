@@ -218,3 +218,35 @@ describe('Memories settings page — Recently tidied section', () => {
 		expect(invalidateMock).toHaveBeenCalledWith('settings:memories');
 	});
 });
+
+describe('Memories settings page — Conversation topics', () => {
+	it('renders the overview (view-only) when present', () => {
+		render(MemoriesPage, {
+			props: {
+				data: {
+					memories: [],
+					deletedMemories: [],
+					conversationOverview: { overview: '## Work\n- deploy pipeline', updatedAt: Date.now() },
+				},
+			},
+		});
+		expect(screen.getByText('Conversation topics')).toBeInTheDocument();
+		expect(screen.getByText(/deploy pipeline/)).toBeInTheDocument();
+		// View-only — no edit/save affordance in this section.
+		expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
+		expect(screen.queryByRole('textbox')).toBeNull();
+	});
+
+	it('is absent when there is no overview', () => {
+		render(MemoriesPage, {
+			props: {
+				data: {
+					memories: [],
+					deletedMemories: [],
+					conversationOverview: { overview: null, updatedAt: null },
+				},
+			},
+		});
+		expect(screen.queryByText('Conversation topics')).toBeNull();
+	});
+});

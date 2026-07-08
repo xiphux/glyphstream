@@ -21,6 +21,7 @@ import {
 	memoryStats,
 	MEMORY_INLINE_BUDGET_CHARS,
 } from '../db/queries/memories';
+import { getConversationOverview } from '../db/queries/users';
 import { selectMemoryTiers } from '../memory/tiering';
 
 /**
@@ -44,9 +45,13 @@ export function composePersonaPrompt(
 	disabledFeatures: readonly FeatureCategory[],
 ): string | null {
 	if (!prefs || disabledFeatures.includes('personalization')) return null;
+	// The conversation-topics map — injected the same for both the inline and the
+	// over-budget memory renderings, and gated by the personalization check above
+	// (same seal as the memory tools + search_conversations).
+	const conversationOverview = getConversationOverview(userId);
 	const stats = memoryStats(userId);
 	if (stats.totalChars <= MEMORY_INLINE_BUDGET_CHARS) {
-		return composePersonaSystemPrompt(prefs, listMemoriesForUser(userId));
+		return composePersonaSystemPrompt(prefs, listMemoriesForUser(userId), { conversationOverview });
 	}
 	const { hotIds, cold } = selectMemoryTiers(
 		listMemoryTierRows(userId),
@@ -54,5 +59,9 @@ export function composePersonaPrompt(
 		Date.now(),
 	);
 	const hot = listMemoryBodies(userId, hotIds);
-	return composePersonaSystemPrompt(prefs, hot, { recallMode: true, index: cold });
+	return composePersonaSystemPrompt(prefs, hot, {
+		recallMode: true,
+		index: cold,
+		conversationOverview,
+	});
 }

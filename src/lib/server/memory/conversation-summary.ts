@@ -18,10 +18,17 @@ import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model'
 import { UpstreamError } from '../endpoints/client';
 import { isWithinWindow } from './dream-window';
 import { summarizeConversation, buildTranscript } from './conversation-summarizer';
+import { buildOverview } from './conversation-overview';
 import {
 	listConversationsNeedingSummary,
+	listConversationSummariesForOverview,
 	setConversationSummary,
 } from '../db/queries/conversations';
+import {
+	getConversationOverview,
+	listUsersNeedingOverview,
+	setConversationOverview,
+} from '../db/queries/users';
 import { walkActiveBranch } from '../db/queries/messages';
 import { listAllModels } from '../endpoints/list-models';
 import { formatModelId } from '../endpoints/model-id';
@@ -35,27 +42,35 @@ const INITIAL_DELAY_MS = 90_000;
 const SETTLE_MS = 60 * 60 * 1000;
 // Bound per sweep so a large backlog spreads across ticks.
 const MAX_CONVERSATIONS_PER_SWEEP = 20;
+const MAX_USERS_PER_SWEEP = 20;
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
 let generation = 0;
 
 /**
- * One summary pass. No-op outside the window / when no memory model is configured
- * / when a sweep is already running. `now` injected for deterministic tests.
- * Directly callable. Returns how many conversations were summarized.
+ * One sweep, two phases: (1) summarize each due conversation, then (2) rebuild the
+ * orientation overview for each user whose summaries changed. Phase 2 runs after
+ * phase 1 so a conversation summarized this sweep is already reflected in the
+ * overview. No-op outside the window / when no memory model is configured / when a
+ * sweep is already running. `now` injected for deterministic tests. Directly
+ * callable.
  */
-export async function runSummarySweep(now: number = Date.now()): Promise<{ summarized: number }> {
-	if (running) return { summarized: 0 };
+export async function runSummarySweep(
+	now: number = Date.now(),
+): Promise<{ summarized: number; overviewsUpdated: number }> {
+	if (running) return { summarized: 0, overviewsUpdated: 0 };
 	running = true;
 	try {
 		const model = getMemoryModel();
-		if (!model) return { summarized: 0 };
+		if (!model) return { summarized: 0, overviewsUpdated: 0 };
 		if (!isWithinWindow(new Date(now), model.activeHours, model.timezone)) {
-			return { summarized: 0 };
+			return { summarized: 0, overviewsUpdated: 0 };
 		}
 
 		const contextWindow = await resolveContextWindow(model);
+
+		// Phase 1 — per-conversation summaries.
 		const due = listConversationsNeedingSummary(now, SETTLE_MS, MAX_CONVERSATIONS_PER_SWEEP);
 		let summarized = 0;
 		for (const { id } of due) {
@@ -63,21 +78,56 @@ export async function runSummarySweep(now: number = Date.now()): Promise<{ summa
 				if (await summarizeOne(model, id, contextWindow, now)) summarized++;
 			} catch (e) {
 				if (e instanceof UpstreamError) {
-					// Shared endpoint down/timeout: end the sweep rather than hammer it
-					// once per remaining conversation. Watermarks unadvanced → retry next window.
 					console.warn('[conversation-summary] endpoint error; ending sweep:', e);
-					break;
+					return { summarized, overviewsUpdated: 0 };
 				}
-				// Per-conversation failure: skip it (watermark unadvanced → retries) so one
-				// bad conversation can't starve those ordered after it.
 				console.warn(`[conversation-summary] conversation ${id} failed, skipping:`, e);
 			}
 		}
-		if (summarized > 0) console.log(`[conversation-summary] sweep: summarized=${summarized}`);
-		return { summarized };
+
+		// Phase 2 — rebuild overviews for users whose summaries changed.
+		const users = listUsersNeedingOverview().slice(0, MAX_USERS_PER_SWEEP);
+		let overviewsUpdated = 0;
+		for (const userId of users) {
+			try {
+				await rebuildOverview(model, userId, contextWindow, now);
+				overviewsUpdated++;
+			} catch (e) {
+				if (e instanceof UpstreamError) {
+					console.warn('[conversation-summary] endpoint error during overviews; ending:', e);
+					break;
+				}
+				console.warn(`[conversation-summary] overview for user ${userId} failed, skipping:`, e);
+			}
+		}
+
+		if (summarized > 0 || overviewsUpdated > 0) {
+			console.log(
+				`[conversation-summary] sweep: summarized=${summarized} overviews=${overviewsUpdated}`,
+			);
+		}
+		return { summarized, overviewsUpdated };
 	} finally {
 		running = false;
 	}
+}
+
+/** Rebuild one user's overview from all their conversation summaries and stamp the
+ *  watermark. A user with no summaries left (all deleted) has the overview cleared. */
+async function rebuildOverview(
+	model: ResolvedMemoryModel,
+	userId: string,
+	contextWindow: number | null,
+	now: number,
+): Promise<void> {
+	const summaries = listConversationSummariesForOverview(userId);
+	const overview = await buildOverview(
+		model,
+		getConversationOverview(userId),
+		summaries,
+		contextWindow,
+	);
+	setConversationOverview(userId, overview, now);
 }
 
 /**
