@@ -71,12 +71,13 @@ docs.
   about X last week") over the live, owner-scoped FTS5 index (the same one the
   sidebar uses), with an optional `time_range` filter, the current conversation
   excluded. Distinct from memory: memory is a curated, model-authored store of
-  durable facts; this is full-fidelity search over raw message history. Remaining:
-  - _Per-conversation summary pass._ A background pass (on the `[memory_model]`,
-    watermark-gated like dreaming) that writes a short denoised summary per
-    conversation and indexes it into search — so recall isn't purely keyword and
-    a thread surfaces by gist. Handles over-window transcripts by summarizing the
-    compacted view / hierarchical map-reduce.
+  durable facts; this is full-fidelity search over raw message history.
+  The **per-conversation summary pass** also shipped: a background job on the
+  `[memory_model]` (window-gated + slot-queued like dreaming, `summarized_at` vs
+  `updated_at` watermark) writes a short denoised gist per settled conversation and
+  indexes it into `search_index` (kind='summary'), so a thread surfaces by gist and
+  `search_conversations` results carry the gist; over-window transcripts are handled
+  by hierarchical map-reduce. Remaining:
   - _Orientation overview._ A bounded, LLM-maintained "themes we've discussed"
     block (folds new conversation summaries in, hard length cap) so the model has
     passive awareness of what's worth searching for — scales with thematic

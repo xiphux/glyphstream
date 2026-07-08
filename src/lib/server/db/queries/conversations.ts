@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 import type {
@@ -325,6 +325,57 @@ export function setConversationTitle(
 		.set({ title, titleSource: opts.source ?? 'fallback', updatedAt: Date.now() })
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 		.run();
+}
+
+/**
+ * Conversations the background summary pass should (re)summarize this sweep:
+ * never-summarized OR changed since their last summary (`updated_at >
+ * summarized_at`), AND *settled* — no activity for `settleMs`, so we never
+ * summarize a conversation mid-exchange — AND carrying a real exchange (≥2
+ * messages; a lone user message has no gist worth indexing). Oldest-activity
+ * first so the longest-stale get caught up first. Cross-user (background job);
+ * includes archived conversations, matching what search already surfaces.
+ */
+export function listConversationsNeedingSummary(
+	now: number,
+	settleMs: number,
+	limit: number,
+): Array<{ id: string }> {
+	const db = getDb();
+	return db
+		.select({ id: conversations.id })
+		.from(conversations)
+		.where(
+			and(
+				or(
+					isNull(conversations.summarizedAt),
+					gt(conversations.updatedAt, conversations.summarizedAt),
+				),
+				lt(conversations.updatedAt, now - settleMs),
+				sql`(select count(*) from ${messages} where ${messages.conversationId} = ${conversations.id}) >= 2`,
+			),
+		)
+		.orderBy(asc(conversations.updatedAt))
+		.limit(limit)
+		.all();
+}
+
+/**
+ * Write a conversation's summary + advance its watermark. Deliberately does NOT
+ * touch `updated_at`: the summary pass compares `updated_at > summarized_at` to
+ * decide re-summarization, so bumping `updated_at` here would make every
+ * conversation perpetually due (the same watermark trap as `restoreMemory`).
+ * Cross-user (background job, keyed by the PK). `summary` may be null to stamp
+ * the watermark for a conversation with nothing summarizable (e.g. image-only),
+ * so it isn't reconsidered every sweep.
+ */
+export function setConversationSummary(
+	id: string,
+	summary: string | null,
+	summarizedAt: number,
+): void {
+	const db = getDb();
+	db.update(conversations).set({ summary, summarizedAt }).where(eq(conversations.id, id)).run();
 }
 
 /**

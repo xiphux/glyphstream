@@ -48,7 +48,7 @@ export const searchConversationsTool: Tool = {
 		function: {
 			name: 'search_conversations',
 			description:
-				'Search this user\'s PAST conversations with you (full message history across all their threads) for something discussed before. Use when the user refers to earlier context you don\'t have in the current thread — "like we discussed", "the project I mentioned", "what did we decide about X" — instead of guessing. Returns {query, results} where each result is {conversationId, title, updatedAt, text} — `text` is the matching message (or a match-centered excerpt of a long one). Distinct from recall_memory: that reads curated durable facts about the user; this searches raw conversation history. The current conversation is excluded (you already have it).',
+				'Search this user\'s PAST conversations with you (full message history across all their threads) for something discussed before. Use when the user refers to earlier context you don\'t have in the current thread — "like we discussed", "the project I mentioned", "what did we decide about X" — instead of guessing. Returns {query, results} where each result is {conversationId, title, updatedAt, summary, text} — `summary` is a short gist of the whole conversation (may be null) and `text` is the matching message (or a match-centered excerpt of a long one). Distinct from recall_memory: that reads curated durable facts about the user; this searches raw conversation history. The current conversation is excluded (you already have it).',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -97,7 +97,12 @@ export const searchConversationsTool: Tool = {
 				conversationId: h.conversationId,
 				title: h.conversationTitle,
 				updatedAt: h.updatedAt,
-				// Title-only hits carry no message body — the title IS the content.
+				// The background-generated gist of the whole conversation (may be null
+				// until the summary pass has run), so the model sees what it was about
+				// alongside the specific matched excerpt.
+				summary: h.summary,
+				// Title/summary-only hits carry no message body — the title/summary IS
+				// the content.
 				text: h.messageId
 					? excerptAround(messageText(h.conversationId, h.messageId), tokens)
 					: null,

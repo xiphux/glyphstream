@@ -17,7 +17,7 @@ import {
 	excerptAround,
 } from '$lib/server/tools/conversation-search';
 import { openaiToolDefinitions } from '$lib/server/tools/registry';
-import { createConversation } from '$lib/server/db/queries/conversations';
+import { createConversation, setConversationSummary } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { conversations } from '$lib/server/db/schema';
 import type { Tool, ToolContext, ToolExecution } from '$lib/server/tools/types';
@@ -124,6 +124,17 @@ describe('search_conversations.execute', () => {
 		expect(ids).not.toContain(currentId);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Older thread');
+	});
+
+	it('carries the conversation gist (summary) in each result', () => {
+		const u = seedUser();
+		const c = seedConv(u.id, 'Deploy planning', 'We shipped the API.');
+		setConversationSummary(c, 'Planned and shipped the API deploy.', Date.now());
+		const r = run(searchConversationsTool, { query: 'API' }, ctx(u.id));
+		const { results } = JSON.parse(r.content);
+		expect(results.find((x: { conversationId: string }) => x.conversationId === c).summary).toBe(
+			'Planned and shipped the API deploy.',
+		);
 	});
 
 	it('respects the time_range recency filter', () => {

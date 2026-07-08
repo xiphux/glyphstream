@@ -280,6 +280,16 @@ export const conversations = sqliteTable(
 		// means all features ON. Stored as a JSON array (not a column per
 		// feature) so adding categories doesn't require a migration each time.
 		disabledFeaturesJson: text('disabled_features'),
+		// A short model-authored gist of what the conversation was about, written
+		// by the background summary pass (memory/conversation-summary.ts) and
+		// indexed into `search_index` (kind='summary') so a thread surfaces by
+		// meaning, not just literal token overlap. Null until first summarized.
+		summary: text('summary'),
+		// Watermark for the summary pass: when the summary was last written.
+		// Compared against `updated_at` to decide re-summarization — so
+		// setConversationSummary must NOT bump updated_at (or it would re-summarize
+		// on every sweep). Null until first summarized.
+		summarizedAt: integer('summarized_at'),
 	},
 	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)],
 );

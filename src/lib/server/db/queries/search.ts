@@ -16,12 +16,16 @@ export interface SearchResult {
 	conversationId: string;
 	conversationTitle: string | null;
 	updatedAt: number;
-	/** `'message'` for body hits (with `messageId` set), `'title'` for title hits. */
-	kind: 'message' | 'title';
-	/** NULL for title hits — the row identifies the whole conversation, not a specific message. */
+	/** `'message'` for body hits (with `messageId` set), `'title'` for title hits,
+	 *  `'summary'` for a hit on the conversation's background-generated gist. */
+	kind: 'message' | 'title' | 'summary';
+	/** NULL for title/summary hits — the row identifies the whole conversation, not a specific message. */
 	messageId: string | null;
 	/** FTS5 snippet with `<mark>...</mark>` wrapping the matched tokens. */
 	snippet: string;
+	/** The conversation's stored summary gist (background summary pass), or null.
+	 *  Carried on every result regardless of which row kind matched. */
+	summary: string | null;
 }
 
 interface SearchOptions {
@@ -112,8 +116,9 @@ export function searchConversations(
 	const rows = db.all<{
 		conversation_id: string;
 		conversation_title: string | null;
+		conversation_summary: string | null;
 		updated_at: number;
-		kind: 'message' | 'title';
+		kind: 'message' | 'title' | 'summary';
 		message_id: string | null;
 		snippet: string;
 	}>(sql`
@@ -123,6 +128,7 @@ export function searchConversations(
 			s.kind,
 			snippet(search_index, 0, ${MARK_OPEN}, ${MARK_CLOSE}, '…', 32) AS snippet,
 			c.title AS conversation_title,
+			c.summary AS conversation_summary,
 			c.updated_at
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
@@ -143,6 +149,7 @@ export function searchConversations(
 			kind: r.kind,
 			messageId: r.message_id,
 			snippet: safeSnippet(r.snippet),
+			summary: r.conversation_summary,
 		});
 		if (out.length >= limit) break;
 	}

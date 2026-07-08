@@ -21,9 +21,11 @@ folded back into the conversation. The built-in toolset:
   have in the current chat when the user refers back to something ("like we
   discussed", "the project I mentioned"). Runs the same owner-scoped full-text
   search as the sidebar, with an optional `time_range` recency filter; the current
-  conversation is excluded. Distinct from `recall_memory`, which reads the curated
-  fact store — this searches raw history. Gated by the same **Personalization**
-  toggle as the memory tools.
+  conversation is excluded. When the `[memory_model]` summary pass has run, each
+  result also carries a short **gist** of the conversation and threads surface by
+  meaning (the gist is indexed too), not only literal token overlap. Distinct from
+  `recall_memory`, which reads the curated fact store — this searches raw history.
+  Gated by the same **Personalization** toggle as the memory tools.
 - `recall_memory` — read saved memories that aren't fully shown in the system
   prompt, by id or by search. Saved memories are normally inlined into the
   system prompt in full; once they grow past a size budget the store is split by

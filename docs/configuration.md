@@ -419,6 +419,15 @@ already in flight when a chat arrives, the chat waits for it (bounded by the
 endpoint's `max_concurrent`). On a single-GPU endpoint (`max_concurrent = 1`)
 that's exactly why the window matters.
 
+**Two jobs, one model.** The same `[memory_model]`, window, and endpoint slot also
+drive a **per-conversation summary pass**: it writes a short gist of each settled
+conversation and indexes it into search, so the `search_conversations` tool can
+surface a past thread by what it was about — not only by literal keyword overlap —
+and hand the model that gist. It's a separate background job on the same schedule
+(the shared endpoint slot keeps the two within `max_concurrent`); a conversation
+longer than the memory model's own context window is summarized via map-reduce, so
+the window size doesn't limit what it can cover.
+
 ## Feature blocks
 
 Each optional feature gets its own capability-named block, documented in its
