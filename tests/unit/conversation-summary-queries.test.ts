@@ -35,7 +35,7 @@ afterEach(() => closeTestDb());
  *  updated_at (appendMessage's bump is overwritten so the test controls settle). */
 function seedConv(
 	userId: string,
-	opts: { messages: number; updatedAt: number; title?: string },
+	opts: { messages: number; updatedAt: number; title?: string; private?: boolean },
 ): string {
 	const conv = createConversation({
 		userId,
@@ -43,6 +43,7 @@ function seedConv(
 		modelId: 'bridge::x',
 		modelKind: 'chat',
 		title: opts.title ?? 'T',
+		private: opts.private,
 	});
 	let parent: string | null = null;
 	for (let i = 0; i < opts.messages; i++) {
@@ -83,6 +84,16 @@ describe('listConversationsNeedingSummary', () => {
 		const u = seedUser();
 		const lonely = seedConv(u.id, { messages: 1, updatedAt: NOW - 2 * SETTLE });
 		expect(dueIds()).not.toContain(lonely);
+	});
+
+	it('excludes private conversations (the content seal — never summarized)', () => {
+		const u = seedUser();
+		// Otherwise-due (settled, ≥2 messages, never summarized) but private.
+		const priv = seedConv(u.id, { messages: 2, updatedAt: NOW - 2 * SETTLE, private: true });
+		const normal = seedConv(u.id, { messages: 2, updatedAt: NOW - 2 * SETTLE });
+		const ids = dueIds();
+		expect(ids).not.toContain(priv);
+		expect(ids).toContain(normal);
 	});
 
 	it('excludes a summarized + unchanged conversation, re-includes it after a change', () => {

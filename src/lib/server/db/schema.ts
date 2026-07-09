@@ -300,6 +300,16 @@ export const conversations = sqliteTable(
 		// setConversationSummary must NOT bump updated_at (or it would re-summarize
 		// on every sweep). Null until first summarized.
 		summarizedAt: integer('summarized_at'),
+		// "Private chat": a content SEAL, distinct from `disabled_features` (which
+		// is a per-response *consumption* gate). When true, this conversation is
+		// airgapped from the shared cross-conversation stores — the content-out
+		// invariant is enforced in the summary query (listConversationsNeedingSummary
+		// skips it, so it's never summarized/indexed as a search target) and the
+		// search TOOL path (searchConversations({excludePrivate:true}) omits it). Set
+		// once at create time and never mutated. At request time the message/
+		// tool-approval handlers additionally derive an effective disabled-feature set
+		// (sealPrivateFeatures) so personalization/web/mcp/prompt-enhancement are off.
+		private: integer('private', { mode: 'boolean' }).notNull().default(false),
 	},
 	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)],
 );

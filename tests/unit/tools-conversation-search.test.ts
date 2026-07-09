@@ -32,19 +32,20 @@ function run(t: Tool, args: unknown, c: ToolContext): ToolExecution {
 	return r;
 }
 
-function newConv(userId: string, title: string) {
+function newConv(userId: string, title: string, isPrivate = false) {
 	return createConversation({
 		userId,
 		endpointId: 'bridge',
 		modelId: 'bridge::x',
 		modelKind: 'chat',
 		title,
+		private: isPrivate,
 	});
 }
 
 /** Seed a conversation with one user message so the FTS triggers index its body. */
-function seedConv(userId: string, title: string, text: string): string {
-	const conv = newConv(userId, title);
+function seedConv(userId: string, title: string, text: string, isPrivate = false): string {
+	const conv = newConv(userId, title, isPrivate);
 	appendMessage({
 		conversationId: conv.id,
 		parentMessageId: null,
@@ -148,6 +149,20 @@ describe('search_conversations.execute', () => {
 		const { results } = JSON.parse(r.content);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Recent');
+	});
+
+	it('never returns a private conversation’s content (the content seal)', () => {
+		const u = seedUser();
+		// A private chat matching the query, plus a normal one that also matches.
+		seedConv(u.id, 'Secret roleplay', 'the dragon guards the pineapple hoard', true);
+		const normal = seedConv(u.id, 'Trip notes', 'we ate pineapple in Hawaii');
+
+		const r = run(searchConversationsTool, { query: 'pineapple' }, ctx(u.id));
+		const { results } = JSON.parse(r.content);
+		// Only the normal conversation — the private one is sealed even though it
+		// matches and belongs to the same user (the tool passes excludePrivate).
+		expect(results).toHaveLength(1);
+		expect(results[0].conversationId).toBe(normal);
 	});
 
 	it('never returns another user’s conversations (user scoping)', () => {

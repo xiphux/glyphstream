@@ -31,6 +31,9 @@ interface CreateInput {
 	parameters?: CustomModelParameters | null;
 	title?: string | null;
 	disabledFeatures?: FeatureCategory[] | null;
+	// "Private chat" content seal (see schema.ts). Set once at create time,
+	// never mutated. Airgaps the conversation from the cross-conversation stores.
+	private?: boolean;
 }
 
 export function createConversation(input: CreateInput): ConversationDetail {
@@ -38,6 +41,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 	const id = generateId();
 	const now = Date.now();
 	const disabledFeatures = input.disabledFeatures ?? [];
+	const isPrivate = input.private ?? false;
 	db.insert(conversations)
 		.values({
 			id,
@@ -54,6 +58,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 			updatedAt: now,
 			archivedAt: null,
 			disabledFeaturesJson: disabledFeatures.length ? JSON.stringify(disabledFeatures) : null,
+			private: isPrivate,
 		})
 		.run();
 	return {
@@ -70,6 +75,7 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		updatedAt: now,
 		messages: [],
 		disabledFeatures,
+		private: isPrivate,
 	};
 }
 
@@ -82,6 +88,7 @@ export function listConversations(userId: string): ConversationSummary[] {
 			modelId: conversations.modelId,
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
+			private: conversations.private,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
@@ -98,6 +105,7 @@ export function listArchivedConversations(userId: string): ConversationSummary[]
 			modelId: conversations.modelId,
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
+			private: conversations.private,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
@@ -209,6 +217,7 @@ export function getConversationDetail(id: string, userId: string): ConversationD
 			createdAt: conversations.createdAt,
 			updatedAt: conversations.updatedAt,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
+			private: conversations.private,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -229,6 +238,7 @@ export function getConversationDetail(id: string, userId: string): ConversationD
 		updatedAt: row.updatedAt,
 		messages: walkActiveBranch(id),
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
+		private: row.private,
 	};
 }
 
@@ -246,6 +256,7 @@ export function getConversationMeta(
 	title: string | null;
 	activeLeafMessageId: string | null;
 	disabledFeatures: FeatureCategory[];
+	private: boolean;
 } | null {
 	const db = getDb();
 	const row = db
@@ -259,6 +270,7 @@ export function getConversationMeta(
 			title: conversations.title,
 			activeLeafMessageId: conversations.activeLeafMessageId,
 			disabledFeaturesJson: conversations.disabledFeaturesJson,
+			private: conversations.private,
 		})
 		.from(conversations)
 		.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
@@ -274,6 +286,7 @@ export function getConversationMeta(
 		title: row.title,
 		activeLeafMessageId: row.activeLeafMessageId,
 		disabledFeatures: parseDisabledFeatures(row.disabledFeaturesJson),
+		private: row.private,
 	};
 }
 
@@ -341,10 +354,12 @@ export function setConversationTitle(
  * That toggle is a *consumption* gate (don't inject persona/memory/overview into
  * THIS chat, don't offer the personalization tools) — not a content seal: a
  * personalization-off chat still contributes to the user's own searchable history
- * + topic overview, which are only ever consumed by personalization-ON chats. A
- * true "this chat's content stays out of my cross-conversation stores" seal is the
- * planned per-conversation "Private chat" flag (see ROADMAP); when it lands, gate
- * this query (and `searchConversations`' tool path) on it.
+ * + topic overview, which are only ever consumed by personalization-ON chats.
+ *
+ * It IS filtered by the per-conversation `private` flag — the content seal. A
+ * private chat never gets summarized, so it produces no `summary` (no topic-overview
+ * contribution, no kind='summary' FTS row). The paired seal on the read side is
+ * `searchConversations({excludePrivate:true})` on the tool path (search.ts).
  */
 export function listConversationsNeedingSummary(
 	now: number,
@@ -357,6 +372,7 @@ export function listConversationsNeedingSummary(
 		.from(conversations)
 		.where(
 			and(
+				eq(conversations.private, false),
 				or(
 					isNull(conversations.summarizedAt),
 					gt(conversations.updatedAt, conversations.summarizedAt),

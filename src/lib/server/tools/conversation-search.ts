@@ -9,7 +9,9 @@
  * persona prompt + memory tools also seals this: past-conversation content is
  * personal context, so one switch closes every avenue that ships it to the model.
  * Always advertised within the category (no config to gate on, like
- * `recall_memory`); the registry-level category filter does the gating.
+ * `recall_memory`); the registry-level category filter does the gating. Passes
+ * `excludePrivate: true` so a "Private chat"'s raw messages are never returned to
+ * the model here (the source-side content seal, paired with the summary gate).
  *
  * Bad-args return `isError: true` (recoverable) rather than throwing — same
  * pattern as the other tools. An empty query or zero matches is NOT an error: it
@@ -84,7 +86,13 @@ export const searchConversationsTool: Tool = {
 		const since = timeRange ? timeRangeToCutoff(timeRange, Date.now()) : undefined;
 		// Over-fetch by one so excluding the current conversation can't shrink a full
 		// page below the cap when the current chat happens to match.
-		const hits = searchConversations(ctx.userId, query, { since, limit: maxResults + 1 });
+		// `excludePrivate` is the content seal: a private chat's raw messages must
+		// never surface to the model here, even from a personalization-on chat.
+		const hits = searchConversations(ctx.userId, query, {
+			since,
+			limit: maxResults + 1,
+			excludePrivate: true,
+		});
 
 		const tokens = query
 			.trim()

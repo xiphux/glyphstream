@@ -637,6 +637,13 @@ export interface ConversationSummary {
 	modelId: string;
 	createdAt: number;
 	updatedAt: number;
+	/**
+	 * "Private chat" content seal — airgapped from the cross-conversation
+	 * stores (never summarized, excluded from the search_conversations tool).
+	 * Set once at create time, immutable. Drives the sidebar's private
+	 * indicator + the incognito re-tint. Distinct from `disabledFeatures`.
+	 */
+	private: boolean;
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -675,6 +682,12 @@ export interface CreateConversationRequest {
 	 * Unknown category strings are rejected with 400.
 	 */
 	disabledFeatures?: FeatureCategory[];
+	/**
+	 * Start the conversation as a "Private chat" — a content seal that airgaps
+	 * it from the cross-conversation stores (memories, summaries, topic overview,
+	 * search). Immutable after creation; only settable here. Defaults to false.
+	 */
+	private?: boolean;
 }
 
 // --- custom models -----------------------------------------------------

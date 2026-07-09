@@ -93,6 +93,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		customModelId: resolvedCustomModelId,
 		title: body.title?.trim() || null,
 		disabledFeatures,
+		// "Private chat" content seal — create-time only, never mutable via PATCH.
+		private: body.private === true,
 	});
 	return json({ conversation: conv }, { status: 201 });
 };

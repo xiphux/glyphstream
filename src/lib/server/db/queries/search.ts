@@ -35,6 +35,12 @@ interface SearchOptions {
 	 *  after this epoch-ms cutoff. Omitted by the sidebar (no time filter); set by
 	 *  the `search_conversations` agent tool's `time_range` param. */
 	since?: number;
+	/** Content seal for the model-facing tool path: when true, omit rows from
+	 *  conversations marked `private`. Set by the `search_conversations` tool so a
+	 *  private chat's content never surfaces to the model in another conversation.
+	 *  Left false (default) by the sidebar — the user still finds private chats in
+	 *  their own history search. */
+	excludePrivate?: boolean;
 }
 
 const DEFAULT_LIMIT = 30;
@@ -91,10 +97,10 @@ function safeSnippet(raw: string): string {
  * `search_conversations` model tool. It intentionally does NOT filter by the
  * per-conversation `personalization` opt-out: that's a consumption gate on the
  * *reading* conversation (the tool is category-gated out of a personalization-off
- * chat), not a seal on the *source*. If a future "Private chat" flag adds a
- * source-side content seal, apply it on the *tool* path only (a new opt) — never
- * here globally, or it would also hide private chats from the user's own sidebar
- * search, which should always show them all their history.
+ * chat), not a seal on the *source*. The "Private chat" content seal IS a
+ * source-side seal, but it's applied on the *tool* path only via `excludePrivate`
+ * — never here globally, or it would also hide private chats from the user's own
+ * sidebar search, which should always show them all their history.
  */
 export function searchConversations(
 	userId: string,
@@ -110,6 +116,10 @@ export function searchConversations(
 	// below only when set, so the sidebar's unfiltered search is byte-for-byte
 	// unchanged.
 	const sinceClause = opts.since != null ? sql`AND c.updated_at >= ${opts.since}` : sql``;
+	// Content seal (tool path only): drop rows from private conversations. Same
+	// JOINed-row filter shape as `sinceClause` — appended only when set, so the
+	// sidebar's unfiltered search stays byte-for-byte unchanged.
+	const privateClause = opts.excludePrivate ? sql`AND c.private = 0` : sql``;
 
 	// One pass through the FTS table; snippet() and bm25() must be
 	// invoked in the same SELECT as the MATCH (FTS5's auxiliary functions
@@ -143,7 +153,7 @@ export function searchConversations(
 			c.updated_at
 		FROM search_index s
 		JOIN conversations c ON c.id = s.conversation_id
-		WHERE s.user_id = ${userId} AND search_index MATCH ${match} ${sinceClause}
+		WHERE s.user_id = ${userId} AND search_index MATCH ${match} ${sinceClause} ${privateClause}
 		ORDER BY bm25(search_index) ASC, c.updated_at DESC
 		LIMIT ${limit * 3}
 	`);

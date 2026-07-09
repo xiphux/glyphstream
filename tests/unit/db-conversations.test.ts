@@ -178,6 +178,35 @@ describe('conversations CRUD', () => {
 	});
 });
 
+describe('private chat flag', () => {
+	it('defaults to false on a new conversation and round-trips through reads', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		expect(conv.private).toBe(false);
+		expect(getConversationMeta(conv.id, u.id)?.private).toBe(false);
+		expect(getConversationDetail(conv.id, u.id)?.private).toBe(false);
+	});
+
+	it('persists private:true supplied at create time', () => {
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			private: true,
+		});
+		expect(conv.private).toBe(true);
+		expect(getConversationMeta(conv.id, u.id)?.private).toBe(true);
+		expect(getConversationDetail(conv.id, u.id)?.private).toBe(true);
+	});
+});
+
 describe('per-conversation feature opt-outs', () => {
 	it('defaults to empty disabledFeatures on a new conversation', () => {
 		const u = seedUser();

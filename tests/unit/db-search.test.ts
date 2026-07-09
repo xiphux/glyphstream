@@ -24,13 +24,14 @@ afterEach(() => {
 	closeTestDb();
 });
 
-function newConv(userId: string, title?: string) {
+function newConv(userId: string, title?: string, opts: { private?: boolean } = {}) {
 	return createConversation({
 		userId,
 		endpointId: 'bridge',
 		modelId: 'bridge::x',
 		modelKind: 'chat',
 		title: title ?? null,
+		private: opts.private,
 	});
 }
 
@@ -187,6 +188,38 @@ describe('searchConversations', () => {
 		expect(results).toHaveLength(1);
 		expect(results[0].snippet).not.toContain('<img');
 		expect(results[0].snippet).toContain('&lt;img');
+	});
+
+	it('includes private conversations by default (the sidebar sees all your history)', () => {
+		const u = seedUser();
+		const conv = newConv(u.id, 'Secret roleplay', { private: true });
+		userText(conv.id, 'a private mention of quokkas');
+		// No excludePrivate → the sidebar search still finds it.
+		const results = searchConversations(u.id, 'quokkas');
+		expect(results).toHaveLength(1);
+		expect(results[0].conversationId).toBe(conv.id);
+	});
+
+	it('omits private conversations when excludePrivate is set (the tool path seal)', () => {
+		const u = seedUser();
+		const priv = newConv(u.id, 'Secret roleplay', { private: true });
+		userText(priv.id, 'a private mention of narwhals');
+		const normal = newConv(u.id, 'Normal chat');
+		userText(normal.id, 'a public mention of narwhals');
+		// The model-facing tool passes excludePrivate: the private chat's content
+		// must not surface, but the normal one still does.
+		const results = searchConversations(u.id, 'narwhals', { excludePrivate: true });
+		expect(results).toHaveLength(1);
+		expect(results[0].conversationId).toBe(normal.id);
+	});
+
+	it('excludePrivate also seals a private conversation’s TITLE hit', () => {
+		const u = seedUser();
+		newConv(u.id, 'platypus grooming diary', { private: true });
+		// Title-only hit — still excluded on the tool path.
+		expect(searchConversations(u.id, 'platypus', { excludePrivate: true })).toEqual([]);
+		// ...but visible to the user's own sidebar search.
+		expect(searchConversations(u.id, 'platypus')).toHaveLength(1);
 	});
 
 	it('ignores non-text message parts (image-only message has empty index row)', () => {
