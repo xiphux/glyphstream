@@ -7,6 +7,7 @@
  */
 
 import { errorMessageFromResponse } from '$lib/fetch-error';
+import { dismissConversationNotifications } from '$lib/notification-dismiss';
 
 /** Archive or unarchive a conversation. */
 export async function setArchived(id: string, archived: boolean): Promise<void> {
@@ -23,6 +24,10 @@ export async function setArchived(id: string, archived: boolean): Promise<void> 
 /**
  * Permanently delete a conversation. When `deleteMedia` is true, generated
  * images/videos that would orphan are purged from the gallery alongside it.
+ *
+ * Also retracts any OS notification still sitting in this device's tray for
+ * the conversation — otherwise tapping it later opens the app onto a thread
+ * that no longer exists.
  */
 export async function deleteConversation(id: string, deleteMedia: boolean): Promise<void> {
 	const url = deleteMedia
@@ -32,6 +37,7 @@ export async function deleteConversation(id: string, deleteMedia: boolean): Prom
 	if (!res.ok && res.status !== 404) {
 		throw new Error(`Server returned ${res.status}`);
 	}
+	await dismissConversationNotifications(id);
 }
 
 /**

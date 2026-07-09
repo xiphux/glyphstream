@@ -1,4 +1,5 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+import { CONVERSATION_MISSING_NOTICE } from '$lib/notices';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
@@ -13,7 +14,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 	await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
 	const conversation = getConversationDetail(params.id, locals.user.id);
-	if (!conversation) throw error(404, 'Conversation not found');
+	// Send the user home rather than 404, and let the new-chat page raise a
+	// toast. A 404 here is a dead end in the standalone PWA — no back button,
+	// no chrome, nothing to tap — and the most common way to reach one is a
+	// stale OS notification for a conversation deleted on another device.
+	if (!conversation) throw redirect(302, `/?notice=${CONVERSATION_MISSING_NOTICE}`);
 
 	// Whether a generation is running for this conversation right now,
 	// per the server's in-flight registry — the source of truth the

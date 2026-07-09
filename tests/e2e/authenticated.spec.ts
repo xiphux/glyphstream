@@ -42,6 +42,18 @@ test.describe('authenticated app shell', () => {
 		await expect(page.getByText('Recents')).toBeVisible();
 	});
 
+	// A stale OS notification for a deleted conversation used to land on the
+	// bare 404 page, which in a standalone PWA has no way out — no back
+	// button, no app chrome. It redirects home with an explanatory toast now.
+	test('a missing conversation redirects home with a toast', async ({ page }) => {
+		await page.goto('/chat/does-not-exist');
+		await expect(page).toHaveURL(/\/$/);
+		await expect(page.getByText(/that conversation no longer exists/i)).toBeVisible();
+		await expect(page.locator('textarea')).toBeVisible();
+		// The notice param is stripped so a refresh doesn't replay the toast.
+		expect(new URL(page.url()).searchParams.has('notice')).toBe(false);
+	});
+
 	test('archived page renders empty state', async ({ page, isMobile }) => {
 		await page.goto('/');
 		if (isMobile) {

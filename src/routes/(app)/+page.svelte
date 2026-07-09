@@ -24,6 +24,8 @@
 		preferredFirstName,
 	} from '$lib/greeting';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import { noticeMessage } from '$lib/notices';
+	import { toast } from '$lib/toast.svelte';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { stripSkillCommand } from '$lib/skill-command';
@@ -318,6 +320,27 @@
 				replaceState(window.location.pathname + window.location.search, page.state);
 			} catch {
 				/* router not ready / state unserializable — leave the fragment */
+			}
+		});
+	});
+
+	// Surface a `?notice=` handed to us by a load function that redirected
+	// here instead of erroring — today, a chat route whose conversation is
+	// gone. Strip the param afterwards so a refresh doesn't replay the toast;
+	// same deferred replaceState dance as the fragment above, and other params
+	// (`?model=`) are preserved.
+	afterNavigate(() => {
+		const message = noticeMessage(page.url.searchParams.get('notice'));
+		if (!message) return;
+		toast.error(message);
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('notice');
+		const query = params.size > 0 ? `?${params}` : '';
+		queueMicrotask(() => {
+			try {
+				replaceState(page.url.pathname + query + window.location.hash, page.state);
+			} catch {
+				/* router not ready / state unserializable — leave the param */
 			}
 		});
 	});
