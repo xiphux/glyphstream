@@ -22,13 +22,6 @@ command = "pnpm install"
 working_dir = "{worktree}"
 deferred = true
 
-# Context injected into the agent's session (port vars expanded by Foundry).
-context = """
-The dev server runs at http://localhost:{VITE_PORT} (the "server" pane, `pnpm dev`).
-Run e2e tests with `pnpm test:e2e`; they bind E2E_PORT ({E2E_PORT}) for the app
-and MOCK_UPSTREAM_PORT ({MOCK_UPSTREAM_PORT}) for the mock upstream.
-"""
-
 # Opt in to optional panes and/or override pane commands.
 # EXTERNAL_BASE_URL is pinned to VITE_PORT so GitHub OAuth + passkey callbacks
 # resolve to this worktree's dev server instead of the default :5173.
