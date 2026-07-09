@@ -33,9 +33,11 @@
 		Sparkles,
 		Trash2,
 		User as UserIcon,
+		VenetianMask,
 		Video as VideoIcon,
 	} from '@lucide/svelte';
 	import type { ModelKind } from '$lib/types/api';
+	import { privateView } from '$lib/private-chat.svelte';
 
 	let { data, children } = $props();
 
@@ -138,6 +140,18 @@
 		apply();
 		mql.addEventListener('change', apply);
 		return () => mql.removeEventListener('change', apply);
+	});
+
+	// Incognito re-tint. The single owner of the `data-private` attribute (app.css
+	// keys the violet surface/accent overrides off it). Pages that are private
+	// publish it via `privateView.active` — the new-chat toggle and an open
+	// private conversation — and clear it on unmount, so navigating to any
+	// non-private view drops the re-tint automatically.
+	$effect(() => {
+		if (!browser) return;
+		const root = document.documentElement;
+		if (privateView.active) root.dataset.private = '';
+		else delete root.dataset.private;
 	});
 
 	// Sidebar link highlight combines "currently here" with "navigating
@@ -605,6 +619,16 @@
 												aria-hidden="true"
 												title="Generating title…"
 											></span>
+										{:else if c.private}
+											<!-- Private (incognito) chat marker — a leading mask
+											 glyph, mirroring the title-pending spinner's slot, so
+											 sealed chats are recognizable at a glance in history. -->
+											<VenetianMask
+												size={14}
+												strokeWidth={2.25}
+												class="shrink-0 text-accent"
+												aria-label="Private chat"
+											/>
 										{/if}
 										<span class="min-w-0 truncate">{c.title ?? 'Untitled'}</span>
 									</a>

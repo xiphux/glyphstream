@@ -332,6 +332,42 @@
 }
 
 /*
+ * "Private chat" incognito re-tint. A per-conversation content seal (see
+ * conversations.private) that also flips the whole surface to a distinct violet
+ * cast + a violet accent, so it's unmistakable at a glance that you've left
+ * normal mode — the browser-incognito convention. Attribute-driven like the
+ * scheme/theme blocks: the (app) layout stamps `data-private` on <html> while a
+ * private view is open (see private-chat.svelte.ts), and every `bg-surface-*` /
+ * `text-accent` utility re-tints for free. Overrides theme tint (placed after
+ * the [data-theme] blocks) but pairs with the scheme: the light values below are
+ * for the light scheme; the [data-scheme='dark'] combo restores dark surfaces.
+ * The accent shift also re-colors the new-chat aura, which the page fades out.
+ */
+[data-private] {
+	--color-surface: oklch(97.6% 0.014 305);
+	--color-surface-raised: oklch(96% 0.018 305);
+	--color-surface-sunken: oklch(91% 0.024 305);
+	--color-surface-panel: oklch(98.6% 0.012 305);
+	--color-surface-sidebar: oklch(95% 0.028 305);
+	--color-border: oklch(90.5% 0.02 305);
+	--color-border-strong: oklch(85.5% 0.026 305);
+	--color-border-focus: oklch(58% 0.19 305);
+	--color-accent: oklch(56% 0.19 305);
+	--color-accent-fg: oklch(99% 0.012 305);
+}
+[data-private][data-scheme='dark'] {
+	--color-surface: oklch(16.5% 0.026 305);
+	--color-surface-raised: oklch(27% 0.03 305);
+	--color-surface-sunken: oklch(37% 0.03 305);
+	--color-surface-panel: oklch(21% 0.03 305);
+	--color-surface-sidebar: oklch(19% 0.034 305);
+	--color-border: oklch(37% 0.03 305);
+	--color-border-strong: oklch(44% 0.03 305);
+	--color-border-focus: oklch(66% 0.17 305);
+	--color-accent: oklch(74% 0.16 305);
+}
+
+/*
  * Per-theme motion personalities. The motion/ease tokens live in :root
  * (default = Signature: emphasized + springy); each theme retunes the feel
  * to match its visual character — Claude softer + slower, ChatGPT tighter +

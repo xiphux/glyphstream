@@ -3,7 +3,7 @@
 	import { browser } from '$app/environment';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
-	import { ArrowUp } from '@lucide/svelte';
+	import { ArrowUp, VenetianMask } from '@lucide/svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
@@ -29,6 +29,7 @@
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
+	import { privateView } from '$lib/private-chat.svelte';
 
 	let { data } = $props();
 
@@ -92,6 +93,19 @@
 	// posture we want: one accidental off-flip shouldn't quietly become
 	// sticky across future sessions.
 	let disabledFeatures = $state<FeatureCategory[]>([]);
+
+	// "Private chat" toggle — transient per page load, like disabledFeatures: a
+	// fresh new-chat box always starts non-private. Chosen only here (immutable
+	// once the conversation exists), carried into the create request, and
+	// published to `privateView` so the (app) layout paints the incognito re-tint
+	// live as you toggle it.
+	let isPrivate = $state(false);
+	$effect(() => {
+		privateView.active = isPrivate;
+		return () => {
+			privateView.active = false;
+		};
+	});
 
 	// Apply `?model=` from the URL whenever it changes. Sidebar favorites
 	// link to `/?model=…`, and SvelteKit SPA-navigates between favorites
@@ -362,6 +376,9 @@
 			if (disabledFeatures.length > 0) {
 				createBody.disabledFeatures = [...disabledFeatures];
 			}
+			if (isPrivate) {
+				createBody.private = true;
+			}
 			const createRes = await fetch('/api/conversations', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -419,6 +436,28 @@
 		is inert to pointer/AT. Frames the composer rather than competing.
 	-->
 	<div class="aura" aria-hidden="true"></div>
+
+	<!--
+		Private-chat toggle — upper-right, the incognito-toggle spot users know
+		from Claude / ChatGPT / Gemini. A pill that fills in when armed; the whole
+		screen re-tints (via privateView → [data-private]) so the state is
+		unmistakable, not just this control. Only offered on the new-chat screen:
+		private is fixed at creation, so there's nothing to toggle on an open chat.
+	-->
+	<button
+		type="button"
+		onclick={() => (isPrivate = !isPrivate)}
+		aria-pressed={isPrivate}
+		title={isPrivate
+			? 'Private chat is on — nothing from this chat is saved to memories, summaries, or search'
+			: 'Start a private chat — sealed from memories, personalization, search, and web/MCP tools'}
+		class="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition {isPrivate
+			? 'border-transparent bg-accent text-accent-fg shadow-sm'
+			: 'border-border bg-surface-panel/70 text-fg-muted hover:bg-surface-raised hover:text-fg'}"
+	>
+		<VenetianMask size={15} strokeWidth={2.25} />
+		<span>{isPrivate ? 'Private' : 'Private chat'}</span>
+	</button>
 
 	<!--
 		Zero-state reflows by form factor with flexible spacers (no JS
@@ -593,6 +632,16 @@
 			color-mix(in oklch, var(--color-accent) var(--aura-strength, 13%), transparent),
 			transparent 70%
 		);
+		/* Smoothly fade the bloom out when private mode arms (and back in when it
+		   disarms) — the "reverse the bloom" cue. Layered under the entrance
+		   animation, which settles opacity at 1 before any toggle happens. */
+		transition: opacity 0.6s var(--ease-standard, cubic-bezier(0.3, 0, 0, 1));
+	}
+
+	/* Private mode: the accent-tinted bloom would fight the incognito re-tint, so
+	   retract it entirely. Global because [data-private] lives on <html>. */
+	:global([data-private]) .aura {
+		opacity: 0;
 	}
 
 	@media (min-width: 640px) {

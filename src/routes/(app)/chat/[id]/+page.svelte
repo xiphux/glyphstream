@@ -23,6 +23,7 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import { privateView } from '$lib/private-chat.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
 	import MessageActions from '$lib/components/chat/MessageActions.svelte';
@@ -100,6 +101,18 @@
 	let modelId = $state(data.conversation.modelId);
 	// svelte-ignore state_referenced_locally
 	let disabledFeatures = $state<FeatureCategory[]>([...data.conversation.disabledFeatures]);
+
+	// Whether this is a "Private chat" (immutable content seal). Derived — it
+	// tracks data.conversation across in-place navigations. Published to
+	// `privateView` so the (app) layout paints the incognito re-tint while the
+	// chat is open, and cleared when we leave it.
+	let isPrivate = $derived(data.conversation.private);
+	$effect(() => {
+		privateView.active = isPrivate;
+		return () => {
+			privateView.active = false;
+		};
+	});
 
 	// The custom-model preset this conversation was materialized from (if any).
 	// Its system prompt + params are fixed for the thread server-side, so the
@@ -2083,7 +2096,7 @@
 </script>
 
 <div class="relative flex h-full flex-col">
-	<ChatHeader {title} />
+	<ChatHeader {title} private={isPrivate} />
 
 	<!--
 		Scroll area fills the full height *behind* the floating composer

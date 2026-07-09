@@ -28,4 +28,14 @@ describe('ChatHeader', () => {
 		// Exactly one heading, no secondary model row.
 		expect(screen.getAllByRole('heading')).toHaveLength(1);
 	});
+
+	it('shows the Private badge only when the chat is private', () => {
+		render(ChatHeader, { props: { title: 'My chat', private: true } });
+		expect(screen.getByText('Private')).toBeInTheDocument();
+	});
+
+	it('omits the Private badge for a normal chat (default)', () => {
+		render(ChatHeader, { props: { title: 'My chat' } });
+		expect(screen.queryByText('Private')).toBeNull();
+	});
 });
