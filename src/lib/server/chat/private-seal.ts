@@ -23,9 +23,10 @@
  *     talks only to its own model.
  *   - every `mcp:<id>` — all MCP servers (data can leave the box through them).
  *
- * Deliberately LEFT ENABLED: `code_interpreter` (pyodide is transient in-browser
- * compute, and its network egress is already sealed by the `web` disable) and
- * `skills` (static context pulled IN, nothing sent out).
+ * Deliberately LEFT ENABLED: `code_interpreter` (run_python runs in a sandboxed
+ * server-side worker with an ephemeral per-conversation filesystem — nothing is
+ * persisted or sent anywhere, and its only network egress is already sealed by the
+ * `web` disable) and `skills` (static context pulled IN, nothing sent out).
  */
 import { listServerCatalog } from '../mcp/registry';
 import { PRIVATE_SEALED_BUILTIN_CATEGORIES } from '$lib/types/api';
@@ -47,4 +48,17 @@ export function sealPrivateFeatures(base: readonly FeatureCategory[]): FeatureCa
 	for (const c of PRIVATE_SEALED_BUILTIN_CATEGORIES) sealed.add(c);
 	for (const s of listServerCatalog()) sealed.add(`mcp:${s.id}`);
 	return [...sealed];
+}
+
+/**
+ * The effective feature opt-outs for a turn, from the conversation meta: a private
+ * chat's base opt-outs sealed up, otherwise its opt-outs verbatim. The single
+ * place the two chat handlers (message-send + tool-approval) derive this, so the
+ * seal can't drift between them.
+ */
+export function resolveDisabledFeatures(meta: {
+	private: boolean;
+	disabledFeatures: FeatureCategory[];
+}): FeatureCategory[] {
+	return meta.private ? sealPrivateFeatures(meta.disabledFeatures) : meta.disabledFeatures;
 }

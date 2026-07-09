@@ -82,6 +82,11 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	}
 
 	const disabledFeatures = validateDisabledFeaturesOrThrow400(body.disabledFeatures);
+	// Validate strictly (like disabledFeatures) rather than silently coercing —
+	// e.g. a `{"private": 1}` typo should 400, not quietly create a non-private chat.
+	if (body.private !== undefined && typeof body.private !== 'boolean') {
+		throw error(400, "'private' must be a boolean");
+	}
 
 	const conv = createConversation({
 		userId: locals.user.id,
@@ -94,7 +99,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		title: body.title?.trim() || null,
 		disabledFeatures,
 		// "Private chat" content seal — create-time only, never mutable via PATCH.
-		private: body.private === true,
+		private: body.private ?? false,
 	});
 	return json({ conversation: conv }, { status: 201 });
 };

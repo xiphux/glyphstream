@@ -30,7 +30,7 @@ import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
-import { sealPrivateFeatures } from '$lib/server/chat/private-seal';
+import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import { get as getTool } from '$lib/server/tools/registry';
@@ -78,9 +78,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// Effective feature opt-outs — the private-chat seal, kept identical to the
 	// message-send handler (the anti-drift twin) so a private conversation seals
 	// the same tool surface whether it streams fresh or resumes after an approval.
-	const disabledFeatures = meta.private
-		? sealPrivateFeatures(meta.disabledFeatures)
-		: meta.disabledFeatures;
+	const disabledFeatures = resolveDisabledFeatures(meta);
 	const endpoint = getEndpoint(meta.endpointId);
 	if (!endpoint) {
 		throw error(409, `Endpoint "${meta.endpointId}" is no longer in config.toml`);

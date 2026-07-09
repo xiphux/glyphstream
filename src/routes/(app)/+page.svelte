@@ -521,12 +521,21 @@
 				<VenetianMask class="h-8 w-8 text-accent" strokeWidth={2} aria-hidden="true" />
 			</span>
 		</div>
-		<!-- Greeting ↔ private explainer, also stacked in one grid cell so the
-		     composer below never snaps as the taller/shorter block swaps in; the
-		     two just cross-fade. The cell reserves the taller (private) block's
-		     height in both states. -->
-		<div class="grid w-full place-items-center">
-			{#if data.prefs?.showGreeting ?? true}
+		<!-- The private explainer's content, shared by the cross-fade layer (when a
+		     greeting is present) and the standalone case (greeting off). -->
+		{#snippet privateExplainer()}
+			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+				<span class="text-fg">Private chat</span>
+			</h1>
+			<p class="max-w-sm text-center text-sm text-fg-muted">
+				Off the record — kept out of your memories, personalization, and search.
+			</p>
+		{/snippet}
+		{#if data.prefs?.showGreeting ?? true}
+			<!-- Greeting ↔ private explainer stacked in one grid cell so the composer
+			     below never snaps as the blocks swap — they cross-fade, and the cell
+			     reserves the taller (private) block's height in both states. -->
+			<div class="grid w-full place-items-center">
 				<!-- aria-hidden on the wrapper (not the h1) so the inactive layer leaves
 				     the a11y tree without tripping the "hidden heading" lint. -->
 				<div
@@ -539,21 +548,23 @@
 						<span class="text-fg">{composedGreeting}</span>
 					</h1>
 				</div>
-			{/if}
-			<div
-				aria-hidden={!isPrivate}
-				class="col-start-1 row-start-1 flex flex-col items-center gap-1.5 transition-opacity duration-300 {isPrivate
-					? 'opacity-100'
-					: 'opacity-0'}"
-			>
-				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-					<span class="text-fg">Private chat</span>
-				</h1>
-				<p class="max-w-sm text-center text-sm text-fg-muted">
-					Off the record — kept out of your memories, personalization, and search.
-				</p>
+				<div
+					aria-hidden={!isPrivate}
+					class="col-start-1 row-start-1 flex flex-col items-center gap-1.5 transition-opacity duration-300 {isPrivate
+						? 'opacity-100'
+						: 'opacity-0'}"
+				>
+					{@render privateExplainer()}
+				</div>
 			</div>
-		</div>
+		{:else if isPrivate}
+			<!-- Greeting off: no sibling to cross-fade or reserve height against, so
+			     render the explainer alone (it just snaps in on the explicit toggle)
+			     rather than leaving an always-present, invisible layer of dead space. -->
+			<div class="flex flex-col items-center gap-1.5">
+				{@render privateExplainer()}
+			</div>
+		{/if}
 	</div>
 
 	<!--

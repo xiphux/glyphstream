@@ -6,7 +6,7 @@ import type { FeatureCategory } from '$lib/types/api';
 const listServerCatalogMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/mcp/registry', () => ({ listServerCatalog: listServerCatalogMock }));
 
-import { sealPrivateFeatures } from '$lib/server/chat/private-seal';
+import { resolveDisabledFeatures, sealPrivateFeatures } from '$lib/server/chat/private-seal';
 
 function catalog(...ids: string[]) {
 	listServerCatalogMock.mockReturnValue(
@@ -53,5 +53,21 @@ describe('sealPrivateFeatures', () => {
 		expect(sealed.filter((c) => c === 'web')).toHaveLength(1);
 		// A base opt-out we don't force (code_interpreter) still carries through.
 		expect(sealed).toContain('code_interpreter');
+	});
+});
+
+describe('resolveDisabledFeatures', () => {
+	it('passes a non-private conversation’s opt-outs through verbatim', () => {
+		catalog('github');
+		const base: FeatureCategory[] = ['web'];
+		// Same reference, unsealed — no MCP/personalization added.
+		expect(resolveDisabledFeatures({ private: false, disabledFeatures: base })).toBe(base);
+	});
+
+	it('seals a private conversation (adds personalization + mcp, etc.)', () => {
+		catalog('github');
+		const sealed = resolveDisabledFeatures({ private: true, disabledFeatures: [] });
+		expect(sealed).toContain('personalization');
+		expect(sealed).toContain('mcp:github');
 	});
 });

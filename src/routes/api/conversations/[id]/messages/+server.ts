@@ -28,7 +28,7 @@ import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
-import { sealPrivateFeatures } from '$lib/server/chat/private-seal';
+import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import {
@@ -86,9 +86,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// otherwise it's the conversation's own opt-outs verbatim. Derived here once
 	// and used everywhere below that gates on features — so the private seal can't
 	// be sidestepped by any single call site.
-	const disabledFeatures = meta.private
-		? sealPrivateFeatures(meta.disabledFeatures)
-		: meta.disabledFeatures;
+	const disabledFeatures = resolveDisabledFeatures(meta);
 
 	// Per-turn model override: when the client supplies a `modelId` that
 	// differs from what the conversation row currently stores, validate it
