@@ -30,6 +30,7 @@ import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { sealPrivateFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import { get as getTool } from '$lib/server/tools/registry';
@@ -74,6 +75,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	const meta = requireFound(getConversationMeta(params.id, userId), 'Conversation not found');
+	// Effective feature opt-outs — the private-chat seal, kept identical to the
+	// message-send handler (the anti-drift twin) so a private conversation seals
+	// the same tool surface whether it streams fresh or resumes after an approval.
+	const disabledFeatures = meta.private
+		? sealPrivateFeatures(meta.disabledFeatures)
+		: meta.disabledFeatures;
 	const endpoint = getEndpoint(meta.endpointId);
 	if (!endpoint) {
 		throw error(409, `Endpoint "${meta.endpointId}" is no longer in config.toml`);
@@ -108,7 +115,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				userId,
 				params.id,
 				request.signal,
-				meta.disabledFeatures,
+				disabledFeatures,
 			);
 			nextPart = {
 				type: 'tool_result',
@@ -166,7 +173,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const prefs = getUserPreferences(userId);
 	let baseSystemPrompt: string | null = meta.systemPrompt;
 	if (baseSystemPrompt === null) {
-		baseSystemPrompt = composePersonaPrompt(prefs, userId, meta.disabledFeatures);
+		baseSystemPrompt = composePersonaPrompt(prefs, userId, disabledFeatures);
 	}
 
 	const parsed = parseModelId(meta.modelId);
@@ -192,7 +199,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// just-completed tool results are now part of history).
 	const toolCtx = await buildChatToolContext({
 		userId,
-		disabledFeatures: meta.disabledFeatures,
+		disabledFeatures,
 		supportsTools,
 		baseSystemPrompt,
 		branch: walkActiveBranch(params.id),
@@ -223,7 +230,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				? dedupeToolDefs([
 						...toolDefs,
 						...resolveActivatedToolDefs(activatedToolNames, {
-							excludeCategories: meta.disabledFeatures,
+							excludeCategories: disabledFeatures,
 						}),
 					])
 				: toolDefs;
@@ -283,7 +290,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		...(toolCtx.unavailableMcpServers.length
 			? { unavailableMcpServers: toolCtx.unavailableMcpServers }
 			: {}),
-		disabledFeatures: meta.disabledFeatures,
+		disabledFeatures,
 		maxToolLoopIterations: getMaxToolLoopIterations(),
 		rebuildRequestBody: buildRequestBody,
 		initialParentMessageId,

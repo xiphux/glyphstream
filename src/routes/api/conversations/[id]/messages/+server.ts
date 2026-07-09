@@ -28,6 +28,7 @@ import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { sealPrivateFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
 import {
@@ -79,6 +80,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		getConversationMeta(params.id, locals.user.id),
 		'Conversation not found',
 	);
+
+	// The effective feature opt-outs for this turn. For a "Private chat" this is
+	// the base set sealed up (personalization/web/mcp/prompt-enhancement all off);
+	// otherwise it's the conversation's own opt-outs verbatim. Derived here once
+	// and used everywhere below that gates on features — so the private seal can't
+	// be sidestepped by any single call site.
+	const disabledFeatures = meta.private
+		? sealPrivateFeatures(meta.disabledFeatures)
+		: meta.disabledFeatures;
 
 	// Per-turn model override: when the client supplies a `modelId` that
 	// differs from what the conversation row currently stores, validate it
@@ -303,7 +313,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// Resolve the target model's prompt-style metadata (live, cached) so the
 		// relay can rewrite the prompt into the model's preferred format. Skip the
 		// lookup entirely when the feature is toggled off for this conversation.
-		const enhancementEnabled = !meta.disabledFeatures.includes('image_prompt_enhancement');
+		const enhancementEnabled = !disabledFeatures.includes('image_prompt_enhancement');
 		let promptStyle: string | null = null;
 		let promptHint: string | null = null;
 		if (enhancementEnabled) {
@@ -356,7 +366,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// relay can rewrite the prompt into the model's preferred video format.
 		// Skip the lookup entirely when the feature is toggled off. Mirrors the
 		// image branch above.
-		const enhancementEnabled = !meta.disabledFeatures.includes('video_prompt_enhancement');
+		const enhancementEnabled = !disabledFeatures.includes('video_prompt_enhancement');
 		let promptStyle: string | null = null;
 		let promptHint: string | null = null;
 		if (enhancementEnabled) {
@@ -412,7 +422,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	const prefs = getUserPreferences(locals.user.id);
 	let baseSystemPrompt: string | null = meta.systemPrompt;
 	if (baseSystemPrompt === null) {
-		baseSystemPrompt = composePersonaPrompt(prefs, locals.user.id, meta.disabledFeatures);
+		baseSystemPrompt = composePersonaPrompt(prefs, locals.user.id, disabledFeatures);
 	}
 
 	// Resolve tool support up front — before assembling the tool context — because
@@ -446,7 +456,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		!isFanout &&
 		!isRetry &&
 		supportsTools &&
-		!meta.disabledFeatures.includes('skills') &&
+		!disabledFeatures.includes('skills') &&
 		Array.isArray(body.activatedSkillNames) &&
 		body.activatedSkillNames.length > 0
 	) {
@@ -455,7 +465,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			userId: locals.user.id,
 			parentMessageId: userMessage.id,
 			names: body.activatedSkillNames,
-			disabledFeatures: meta.disabledFeatures,
+			disabledFeatures,
 			signal: inFlight.controller.signal,
 		});
 		synthLeafId = synth?.leafMessageId;
@@ -480,7 +490,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// serialize and the per-iteration rebuildRequestBody closure carry them.
 	const toolCtx = await buildChatToolContext({
 		userId: locals.user.id,
-		disabledFeatures: meta.disabledFeatures,
+		disabledFeatures,
 		supportsTools,
 		baseSystemPrompt,
 		branch,
@@ -551,7 +561,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// already carries the base set + the cross-turn seed, so we just append.
 			if (activatedToolNames.length > 0) {
 				const additions = resolveActivatedToolDefs(activatedToolNames, {
-					excludeCategories: meta.disabledFeatures,
+					excludeCategories: disabledFeatures,
 				});
 				if (additions.length > 0) {
 					next.tools = dedupeToolDefs([...(next.tools ?? []), ...additions]);
@@ -608,7 +618,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			// blocks egress when 'web' is off even though run_python is
 			// in 'code_interpreter') can honor the conversation's
 			// disabled-features without a registry-level filter.
-			disabledFeatures: meta.disabledFeatures,
+			disabledFeatures,
 			maxToolLoopIterations: getMaxToolLoopIterations(),
 			// Only enable the multi-iteration loop for endpoints whose
 			// models actually support tools. Endpoints without tools
