@@ -483,12 +483,16 @@
 		to state the rules and to reassure that nothing personal is in play.
 	-->
 	<div class="relative z-10 mb-6 flex w-full max-w-2xl flex-col items-center gap-4">
+		<!-- Badge: glyph mark ↔ private mask, stacked in one grid cell and
+		     cross-faded on opacity so the mode switch doesn't hard-swap. -->
 		<div
-			class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border"
+			class="grid h-16 w-16 place-items-center rounded-full bg-surface-raised ring-1 ring-border"
 		>
-			{#if isPrivate}
-				<VenetianMask class="h-8 w-8 text-accent" strokeWidth={2} aria-hidden="true" />
-			{:else}
+			<span
+				class="col-start-1 row-start-1 transition-opacity duration-300 {isPrivate
+					? 'opacity-0'
+					: 'opacity-100'}"
+			>
 				<svg
 					viewBox="0 0 32 32"
 					class="h-8 w-8 text-accent"
@@ -503,23 +507,48 @@
 					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
 					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
 				</svg>
-			{/if}
+			</span>
+			<span
+				class="col-start-1 row-start-1 transition-opacity duration-300 {isPrivate
+					? 'opacity-100'
+					: 'opacity-0'}"
+			>
+				<VenetianMask class="h-8 w-8 text-accent" strokeWidth={2} aria-hidden="true" />
+			</span>
 		</div>
-		{#if isPrivate}
-			<div class="flex flex-col items-center gap-2">
+		<!-- Greeting ↔ private explainer, also stacked in one grid cell so the
+		     composer below never snaps as the taller/shorter block swaps in; the
+		     two just cross-fade. The cell reserves the taller (private) block's
+		     height in both states. -->
+		<div class="grid w-full place-items-center">
+			{#if data.prefs?.showGreeting ?? true}
+				<!-- aria-hidden on the wrapper (not the h1) so the inactive layer leaves
+				     the a11y tree without tripping the "hidden heading" lint. -->
+				<div
+					aria-hidden={isPrivate}
+					class="col-start-1 row-start-1 transition-opacity duration-300 {isPrivate
+						? 'opacity-0'
+						: 'opacity-100'}"
+				>
+					<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+						<span class="text-fg">{composedGreeting}</span>
+					</h1>
+				</div>
+			{/if}
+			<div
+				aria-hidden={!isPrivate}
+				class="col-start-1 row-start-1 flex flex-col items-center gap-1.5 transition-opacity duration-300 {isPrivate
+					? 'opacity-100'
+					: 'opacity-0'}"
+			>
 				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
 					<span class="text-fg">Private chat</span>
 				</h1>
-				<p class="max-w-md text-center text-sm text-fg-muted">
-					Nothing here is saved to your memories, summaries, or search, and personalization, web,
-					and MCP tools are off. Code and skills still work.
+				<p class="max-w-sm text-center text-sm text-fg-muted">
+					Off the record — kept out of your memories, personalization, and search.
 				</p>
 			</div>
-		{:else if data.prefs?.showGreeting ?? true}
-			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
-				<span class="text-fg">{composedGreeting}</span>
-			</h1>
-		{/if}
+		</div>
 	</div>
 
 	<!--
@@ -558,6 +587,7 @@
 					categories={data.featureCategories}
 					modelKind={activeKind}
 					disabled={busy}
+					private={isPrivate}
 					onChange={(next) => (disabledFeatures = next)}
 				/>
 				<div class="flex-1"></div>
@@ -652,21 +682,35 @@
 			color-mix(in oklch, var(--color-accent) var(--aura-strength, 13%), transparent),
 			transparent 70%
 		);
-		/* Smoothly fade the bloom out when private mode arms (and back in when it
-		   disarms) — the "reverse the bloom" cue. Layered under the entrance
-		   animation, which settles opacity at 1 before any toggle happens. */
-		transition: opacity 0.6s var(--ease-standard, cubic-bezier(0.3, 0, 0, 1));
+		/* Resting state (post-entrance). Explicit so the private toggle's
+		   transition has a real from-value to animate; the entrance animation uses
+		   fill-mode `backwards` (not `both`), so once it ends it stops pinning these
+		   and the transition below governs. */
+		opacity: 1;
+		transform: none;
+		/* Reverse the bloom when private mode arms (and re-bloom when it disarms):
+		   fade + shrink back toward the composer (desktop) / fade (mobile). Mirrors
+		   the entrance, run as a transition rather than an animation so it plays on
+		   the state toggle, not on mount. */
+		transition:
+			opacity 0.5s var(--ease-standard, cubic-bezier(0.3, 0, 0, 1)),
+			transform 0.5s var(--ease-standard, cubic-bezier(0.3, 0, 0, 1));
 	}
 
 	/* Private mode: the accent-tinted bloom would fight the incognito re-tint, so
-	   retract it entirely. `animation: none` is load-bearing — the entrance
-	   keyframes use fill-mode `both`, which would otherwise pin opacity at 1 and
-	   beat this declaration in the cascade; cancelling the animation lets the
-	   opacity (and its transition, for the fade-out) take over. Global because
-	   [data-private] lives on <html>. */
+	   retract it. Just opacity on mobile (bottom-anchored bloom — a transform would
+	   reintroduce the iOS clip-rasterize artifact the entrance avoids); the sm+
+	   rule below adds the shrink-back. Global because [data-private] lives on
+	   <html>. */
 	:global([data-private]) .aura {
-		animation: none;
 		opacity: 0;
+	}
+	@media (min-width: 640px) {
+		:global([data-private]) .aura {
+			/* Shrinks toward the composer (transform-origin is set on the sm+ aura),
+			   the entrance bloom played in reverse. */
+			transform: scale(0.2);
+		}
 	}
 
 	@media (min-width: 640px) {
@@ -690,7 +734,11 @@
 	   the edges. Fading opacity without a transform sidesteps it entirely. */
 	@media (prefers-reduced-motion: no-preference) {
 		.aura {
-			animation: aura-fade 0.9s var(--ease-emphasized, cubic-bezier(0.3, 0, 0, 1)) both;
+			/* `backwards` (not `both`): hold the from-state during any delay so there's
+			   no first-paint flash, but DON'T pin the to-state after it ends — else the
+			   animation's opacity:1 would beat the private-toggle transition in the
+			   cascade and the bloom would snap out instead of fading. */
+			animation: aura-fade 0.9s var(--ease-emphasized, cubic-bezier(0.3, 0, 0, 1)) backwards;
 		}
 	}
 

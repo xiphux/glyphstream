@@ -28,15 +28,8 @@
  * `skills` (static context pulled IN, nothing sent out).
  */
 import { listServerCatalog } from '../mcp/registry';
+import { PRIVATE_SEALED_BUILTIN_CATEGORIES } from '$lib/types/api';
 import type { FeatureCategory } from '$lib/types/api';
-
-/** Feature categories a private chat always disables, on top of its base opt-outs. */
-const PRIVATE_SEALED_BUILTINS = [
-	'personalization',
-	'web',
-	'image_prompt_enhancement',
-	'video_prompt_enhancement',
-] as const;
 
 /**
  * The effective disabled-feature set for a private conversation: its base opt-outs
@@ -51,7 +44,7 @@ const PRIVATE_SEALED_BUILTINS = [
  */
 export function sealPrivateFeatures(base: readonly FeatureCategory[]): FeatureCategory[] {
 	const sealed = new Set<FeatureCategory>(base);
-	for (const c of PRIVATE_SEALED_BUILTINS) sealed.add(c);
+	for (const c of PRIVATE_SEALED_BUILTIN_CATEGORIES) sealed.add(c);
 	for (const s of listServerCatalog()) sealed.add(`mcp:${s.id}`);
 	return [...sealed];
 }

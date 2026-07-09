@@ -2335,6 +2335,7 @@
 					{modelKind}
 					{disabledFeatures}
 					featureCategories={data.featureCategories}
+					private={isPrivate}
 					models={data.models}
 					enabledSkills={data.enabledSkills}
 					favoritedIds={data.prefs?.favoriteModels ?? []}

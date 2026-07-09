@@ -38,6 +38,9 @@
 		modelKind: ModelKind | null;
 		disabledFeatures: FeatureCategory[];
 		featureCategories: readonly FeatureCategoryEntry[];
+		/** Whether the conversation is a Private chat — locks the sealed feature
+		 *  toggles off in the feature menu. */
+		private?: boolean;
 		models: ModelEntry[];
 		/** The user's enabled skills, for the `/skill-name` autocomplete. */
 		enabledSkills?: { id: string; name: string; description: string }[];
@@ -82,6 +85,7 @@
 		modelKind,
 		disabledFeatures,
 		featureCategories,
+		private: isPrivate = false,
 		models,
 		enabledSkills = [],
 		favoritedIds,
@@ -209,6 +213,7 @@
 				categories={featureCategories}
 				modelKind={activeKind}
 				disabled={generating}
+				private={isPrivate}
 				onChange={onFeaturesChange}
 			/>
 			<div class="flex-1"></div>

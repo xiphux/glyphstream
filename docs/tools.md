@@ -181,7 +181,8 @@ A private chat:
   turn (so no persona/memory/overview injection, no memory writes, no web or MCP
   egress), plus image/video **prompt enhancement** off — nothing leaves for any
   model but the chat's own. This is derived at request time, so it can't be
-  re-enabled via the feature toggles.
+  re-enabled via the feature toggles — the feature menu shows those rows off and
+  locked, leaving only code and skills toggleable.
 
 Left **on** by design: the **code interpreter** (Pyodide is transient in-browser
 compute, and its network egress is already sealed by the web disable) and **agent

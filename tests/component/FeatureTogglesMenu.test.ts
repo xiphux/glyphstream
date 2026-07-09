@@ -261,6 +261,71 @@ describe('FeatureTogglesMenu — model-kind filtering', () => {
 	});
 });
 
+describe('FeatureTogglesMenu — private chat locking', () => {
+	/** web + personalization + the MCP server are sealed; only non-sealed rows stay live. */
+	const PRIVATE_CATEGORIES: FeatureCategoryEntry[] = [
+		...CATEGORIES_WITH_MCP,
+		{
+			id: 'code_interpreter',
+			label: 'Code interpreter',
+			description: 'Runs Python in a sandbox.',
+			source: 'builtin',
+		},
+	];
+
+	it('renders the sealed categories off + disabled, and leaves code_interpreter live', async () => {
+		const user = userEvent.setup();
+		render(FeatureTogglesMenu, {
+			props: {
+				disabledFeatures: [],
+				categories: PRIVATE_CATEGORIES,
+				private: true,
+				onChange: vi.fn(),
+			},
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+
+		for (const name of ['Web access', 'Personalization', 'Filesystem']) {
+			const sw = screen.getByRole('switch', { name });
+			expect(sw).toHaveAttribute('data-state', 'unchecked');
+			expect(sw).toBeDisabled();
+		}
+		// Not sealed — still on and toggleable.
+		const code = screen.getByRole('switch', { name: 'Code interpreter' });
+		expect(code).toHaveAttribute('data-state', 'checked');
+		expect(code).not.toBeDisabled();
+	});
+
+	it('does not call onChange when a sealed switch is clicked', async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		render(FeatureTogglesMenu, {
+			props: { disabledFeatures: [], categories: CATEGORIES, private: true, onChange },
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		await user.click(screen.getByRole('switch', { name: 'Web access' }));
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('shows the off-state dot in private mode (sealed rows read off)', () => {
+		const { container } = render(FeatureTogglesMenu, {
+			props: { disabledFeatures: [], categories: CATEGORIES, private: true, onChange: vi.fn() },
+		});
+		expect(container.querySelector('.bg-warning')).toBeInTheDocument();
+	});
+
+	it('without the private flag the same categories are on and toggleable', async () => {
+		const user = userEvent.setup();
+		render(FeatureTogglesMenu, {
+			props: { disabledFeatures: [], categories: CATEGORIES, onChange: vi.fn() },
+		});
+		await user.click(screen.getByLabelText('Feature toggles'));
+		const sw = screen.getByRole('switch', { name: 'Web access' });
+		expect(sw).toHaveAttribute('data-state', 'checked');
+		expect(sw).not.toBeDisabled();
+	});
+});
+
 describe('FeatureTogglesMenu — toggle callbacks', () => {
 	it('calls onChange with the new disabled list when a checked switch is clicked', async () => {
 		const user = userEvent.setup();

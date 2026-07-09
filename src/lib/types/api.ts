@@ -75,6 +75,33 @@ export type FeatureCategory = BuiltinFeatureCategory | (string & {});
  */
 export const FEATURE_CATEGORIES = BUILTIN_FEATURE_CATEGORIES;
 
+/**
+ * Built-in feature categories a "Private chat" always disables, on top of the
+ * conversation's own opt-outs. The single source of truth for the seal — the
+ * server derives the effective set from this (`server/chat/private-seal.ts`) and
+ * the feature-toggles UI locks these rows off the same list. MCP servers
+ * (`mcp:<id>`) are sealed too but are dynamic, so they're matched by prefix in
+ * {@link isCategorySealedByPrivate} rather than listed here. `code_interpreter`
+ * and `skills` are deliberately NOT sealed — transient in-browser compute and
+ * static context pulled in, nothing personal leaves.
+ */
+export const PRIVATE_SEALED_BUILTIN_CATEGORIES = [
+	'personalization',
+	'web',
+	'image_prompt_enhancement',
+	'video_prompt_enhancement',
+] as const;
+
+/** Whether a Private chat seals this category off (its tools/injection disabled,
+ *  and the feature toggle locked). Matches the built-in seal list plus every MCP
+ *  server category by `mcp:` prefix. */
+export function isCategorySealedByPrivate(category: FeatureCategory): boolean {
+	return (
+		(PRIVATE_SEALED_BUILTIN_CATEGORIES as readonly string[]).includes(category) ||
+		category.startsWith('mcp:')
+	);
+}
+
 export const FEATURE_CATEGORY_LABELS: Record<
 	BuiltinFeatureCategory,
 	{ label: string; description: string }

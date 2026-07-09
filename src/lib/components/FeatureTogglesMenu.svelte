@@ -22,9 +22,10 @@
 -->
 <script lang="ts">
 	import { Popover, Switch, Tooltip } from 'bits-ui';
-	import { Sliders, Info } from '@lucide/svelte';
+	import { Sliders, Info, Lock } from '@lucide/svelte';
 	import {
 		featureCategoryAppliesToModelKind,
+		isCategorySealedByPrivate,
 		type FeatureCategory,
 		type FeatureCategoryEntry,
 		type ModelKind,
@@ -38,6 +39,14 @@
 		 * paint already has the right toggle set.
 		 */
 		categories: readonly FeatureCategoryEntry[];
+		/**
+		 * Whether this is a "Private chat". When true, the categories the private
+		 * seal forces off (personalization, web, prompt-enhancement, every MCP
+		 * server) render as off + locked — the seal is enforced server-side
+		 * regardless, so showing them toggleable-on would be a lie. code_interpreter
+		 * and skills stay interactive.
+		 */
+		private?: boolean;
 		/**
 		 * The active model's kind, used to hide toggles that don't apply to it.
 		 * The prompt-enhancement categories are kind-scoped — `image_prompt_enhancement`
@@ -60,7 +69,19 @@
 		modelKind = null,
 		onChange,
 		disabled = false,
+		private: isPrivate = false,
 	}: Props = $props();
+
+	/** A row the private seal locks off — shown but not toggleable. */
+	function isSealed(category: FeatureCategory): boolean {
+		return isPrivate && isCategorySealedByPrivate(category);
+	}
+
+	/** The state the switch should DISPLAY: a sealed row always reads off,
+	 *  regardless of the (irrelevant) stored disabledFeatures. */
+	function displayEnabled(category: FeatureCategory): boolean {
+		return !isSealed(category) && isEnabled(category);
+	}
 
 	// Drop category toggles that don't apply to the current model (image models
 	// keep only the image enhancer, video models only the video enhancer; chat
@@ -83,11 +104,12 @@
 		onChange(next);
 	}
 
-	// True when any *visible* category is disabled — used to indicate the toggle
-	// is in a non-default state, since the closed popover hides the actual state
-	// from the user otherwise. Scoped to visible categories so the dot never
-	// points at a hidden toggle (e.g. `web` off on an image model).
-	const anyDisabled = $derived(visibleCategories.some((c) => !isEnabled(c.id)));
+	// True when any *visible* category reads off — used to indicate the toggle is
+	// in a non-default state, since the closed popover hides the actual state from
+	// the user otherwise. Scoped to visible categories so the dot never points at a
+	// hidden toggle (e.g. `web` off on an image model), and using the DISPLAYED
+	// state so a private chat's sealed-off rows light the dot too.
+	const anyDisabled = $derived(visibleCategories.some((c) => !displayEnabled(c.id)));
 </script>
 
 <!-- No applicable toggles for this model (e.g. an embedding model, or a media
@@ -130,27 +152,38 @@
 				     (many built-ins + connected MCP servers). -->
 					<div class="flex flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 pb-2">
 						{#each visibleCategories as meta (meta.id)}
-							{@const enabled = isEnabled(meta.id)}
+							{@const sealed = isSealed(meta.id)}
+							{@const enabled = displayEnabled(meta.id)}
 							<!-- A <label> so a tap anywhere on the row toggles the switch — a
 						     much bigger touch target than the switch alone (matters on
 						     mobile). The Switch is FIRST in DOM so it's the label's
 						     forwarded control; `order-last ml-auto` puts it back on the
 						     right. The (i) tooltip trigger sits AFTER it in DOM, so a row
-						     tap forwards to the switch, never the info button. -->
+						     tap forwards to the switch, never the info button.
+						     A private-sealed row is dimmed + not-allowed and its switch is
+						     disabled — off and locked. -->
 							<label
-								class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+								class="flex items-center gap-1.5 rounded-md px-2 py-1.5 transition {sealed
+									? 'cursor-not-allowed opacity-60'
+									: 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}"
 							>
 								<Switch.Root
 									checked={enabled}
+									disabled={sealed}
 									onCheckedChange={(checked) => toggle(meta.id, checked)}
 									aria-label={meta.label}
-									class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel"
+									class="relative order-last ml-auto inline-flex h-5 w-9 shrink-0 items-center rounded-full transition data-[state=checked]:bg-surface-inverse data-[state=unchecked]:bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface-panel disabled:cursor-not-allowed"
 								>
 									<Switch.Thumb
 										class="block h-4 w-4 translate-x-0.5 rounded-full bg-surface-panel shadow-sm transition data-[state=checked]:translate-x-[1.125rem]"
 									/>
 								</Switch.Root>
 								<span class="text-sm font-medium text-fg">{meta.label}</span>
+								{#if sealed}
+									<!-- Lock glyph so the reason a row is off-and-fixed reads at a
+								     glance; the tooltip below carries the explanation. -->
+									<Lock size={12} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
+								{/if}
 								<Tooltip.Root>
 									<Tooltip.Trigger
 										aria-label={`About ${meta.label}`}
@@ -165,7 +198,7 @@
 											collisionPadding={12}
 											class="z-[60] max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
 										>
-											{meta.description}
+											{sealed ? 'Off in private chat — this chat is sealed off.' : meta.description}
 										</Tooltip.Content>
 									</Tooltip.Portal>
 								</Tooltip.Root>
