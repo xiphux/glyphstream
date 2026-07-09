@@ -108,10 +108,12 @@
 	// chat is open, and cleared when we leave it.
 	let isPrivate = $derived(data.conversation.private);
 	$effect(() => {
+		// Read-only here (private is immutable once created): publish `active` for
+		// the re-tint + the mobile top-bar badge, but no toggle.
 		privateView.active = isPrivate;
-		return () => {
-			privateView.active = false;
-		};
+		privateView.toggleable = false;
+		privateView.onToggle = null;
+		return () => privateView.reset();
 	});
 
 	// The custom-model preset this conversation was materialized from (if any).

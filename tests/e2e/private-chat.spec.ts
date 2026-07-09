@@ -71,14 +71,17 @@ test.describe('private chat', () => {
 		await expect(page.getByText(MOCK_REPLY)).toBeVisible();
 		await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
 
-		// Header badge + still re-tinted on the created chat.
-		await expect(page.getByText('Private', { exact: true })).toBeVisible();
+		// Private badge shows + still re-tinted on the created chat. The badge lives
+		// in the ChatHeader on desktop and in the mobile top bar on small screens
+		// (the other is display:none), so target whichever copy is actually visible.
+		const privateBadge = page.getByText('Private', { exact: true }).and(page.locator(':visible'));
+		await expect(privateBadge).toBeVisible();
 		await expect(html(page)).toHaveAttribute('data-private', '');
 
 		// Reload — the flag is persisted (a real column), so it comes back private.
 		await page.reload();
 		await expect(page.getByText(MOCK_REPLY)).toBeVisible();
-		await expect(page.getByText('Private', { exact: true })).toBeVisible();
+		await expect(privateBadge).toBeVisible();
 		await expect(html(page)).toHaveAttribute('data-private', '');
 
 		// Sidebar marks the row as private (aria-label on the leading mask glyph).

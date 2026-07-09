@@ -102,9 +102,11 @@
 	let isPrivate = $state(false);
 	$effect(() => {
 		privateView.active = isPrivate;
-		return () => {
-			privateView.active = false;
-		};
+		// The new-chat screen owns an interactive toggle — publish it so the mobile
+		// top bar can host the control (on mobile the corner toggle is hidden).
+		privateView.toggleable = true;
+		privateView.onToggle = () => (isPrivate = !isPrivate);
+		return () => privateView.reset();
 	});
 
 	// Apply `?model=` from the URL whenever it changes. Sidebar favorites
@@ -443,6 +445,9 @@
 		screen re-tints (via privateView → [data-private]) so the state is
 		unmistakable, not just this control. Only offered on the new-chat screen:
 		private is fixed at creation, so there's nothing to toggle on an open chat.
+		Desktop only (hidden sm:flex) — on mobile the same toggle lives in the top
+		bar (see the layout) so it shares the hamburger row instead of sitting
+		crooked on its own line. Published to privateView so that row can drive it.
 	-->
 	<button
 		type="button"
@@ -451,7 +456,7 @@
 		title={isPrivate
 			? 'Private chat is on — nothing from this chat is saved to memories, summaries, or search'
 			: 'Start a private chat — sealed from memories, personalization, search, and web/MCP tools'}
-		class="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition {isPrivate
+		class="absolute right-3 top-3 z-20 hidden items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:flex {isPrivate
 			? 'border-transparent bg-accent text-accent-fg shadow-sm'
 			: 'border-border bg-surface-panel/70 text-fg-muted hover:bg-surface-raised hover:text-fg'}"
 	>

@@ -21,8 +21,10 @@
 <header class="flex items-center gap-3 px-4 py-3">
 	<h1 class="min-w-0 flex-1 truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
 	{#if isPrivate}
+		<!-- Desktop only: on mobile the badge moves to the layout's top bar so the
+		     tiny-screen title gets the full row width (see the layout). -->
 		<span
-			class="flex shrink-0 items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-xs font-medium text-accent"
+			class="hidden shrink-0 items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-xs font-medium text-accent sm:flex"
 			title="Private chat — nothing from this chat is saved to memories, summaries, or search, and personalization / web / MCP tools are off"
 		>
 			<VenetianMask size={13} strokeWidth={2.25} />

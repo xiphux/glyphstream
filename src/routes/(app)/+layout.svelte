@@ -744,6 +744,33 @@
 				<Menu size={20} strokeWidth={2.25} />
 			</button>
 			<span class="text-sm font-semibold tracking-tight">GlyphStream</span>
+			<!-- Private-chat control, shared with the hamburger row so it isn't
+				 stranded on its own line (and, in an open chat, doesn't eat the
+				 title's width). New-chat screen → an interactive toggle; an open
+				 private chat → a read-only badge. Both published by the page via
+				 privateView; the desktop equivalents live on the pages themselves. -->
+			{#if privateView.toggleable}
+				<button
+					type="button"
+					onclick={() => privateView.onToggle?.()}
+					aria-pressed={privateView.active}
+					aria-label={privateView.active ? 'Private chat on' : 'Start a private chat'}
+					class="ml-auto flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition {privateView.active
+						? 'border-transparent bg-accent text-accent-fg'
+						: 'border-border text-fg-muted hover:bg-surface-raised hover:text-fg'}"
+				>
+					<VenetianMask size={14} strokeWidth={2.25} />
+					<span>{privateView.active ? 'Private' : 'Private chat'}</span>
+				</button>
+			{:else if privateView.active}
+				<span
+					class="ml-auto flex items-center gap-1.5 rounded-full bg-accent/12 px-2.5 py-1 text-xs font-medium text-accent"
+					title="Private chat — nothing from this chat is saved to memories, summaries, or search, and personalization / web / MCP tools are off"
+				>
+					<VenetianMask size={14} strokeWidth={2.25} />
+					<span>Private</span>
+				</span>
+			{/if}
 		</div>
 		<div class="min-h-0 flex-1">
 			{@render children()}
