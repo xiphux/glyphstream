@@ -1,0 +1,37 @@
+# Unique port block per worktree so parallel dev servers + e2e runs don't
+# collide. GlyphStream is a single Node process (no separate API server):
+#   VITE_PORT          — `vite dev` (consumed in vite.config.ts)
+#   E2E_PORT           — the compiled app under Playwright
+#   MOCK_UPSTREAM_PORT — Playwright's mock OpenAI upstream
+# The last two are read by playwright.config.ts; MOCK_UPSTREAM_PORT is also
+# the exact var the mock server (mock-upstream.mjs) already reads.
+ports = ["VITE_PORT", "E2E_PORT", "MOCK_UPSTREAM_PORT"]
+
+# Setup scripts run after worktree creation (in order)
+[[scripts.setup]]
+name = "Copy env file"
+command = "cp {source}/.env {worktree}/.env"
+
+[[scripts.setup]]
+name = "Copy database"
+command = "cp -R {source}/data {worktree}/data"
+
+[[scripts.setup]]
+name = "Install dependencies"
+command = "pnpm install"
+working_dir = "{worktree}"
+deferred = true
+
+# Context injected into the agent's session (port vars expanded by Foundry).
+context = """
+The dev server runs at http://localhost:{VITE_PORT} (the "server" pane, `pnpm dev`).
+Run e2e tests with `pnpm test:e2e`; they bind E2E_PORT ({E2E_PORT}) for the app
+and MOCK_UPSTREAM_PORT ({MOCK_UPSTREAM_PORT}) for the mock upstream.
+"""
+
+# Opt in to optional panes and/or override pane commands.
+# EXTERNAL_BASE_URL is pinned to VITE_PORT so GitHub OAuth + passkey callbacks
+# resolve to this worktree's dev server instead of the default :5173.
+[panes.server]
+command = "EXTERNAL_BASE_URL=http://localhost:$VITE_PORT pnpm dev"
+deferred = true

@@ -43,6 +43,9 @@ src/lib/server/code-interpreter/worker.js
 # E2E test data + Playwright outputs
 tests/.e2e-data/
 playwright-report/
+# Generated at e2e setup when Foundry allocates a non-default MOCK_UPSTREAM_PORT
+# (playwright.config.ts rewrites the fixture's mock base_url into this sibling).
+tests/e2e/fixtures/config.generated.toml
 test-results/
 .playwright-cli/
 

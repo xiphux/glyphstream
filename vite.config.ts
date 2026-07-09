@@ -25,6 +25,16 @@ export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(pkg.version),
 	},
+	// Foundry allocates a unique port per worktree and exposes it as
+	// $VITE_PORT so parallel dev servers don't collide. When it's set we
+	// bind to it and fail loudly (strictPort) rather than silently drifting
+	// to the next free port — the pane's EXTERNAL_BASE_URL is pinned to this
+	// exact port, so a silent bump would break OAuth/passkey callbacks.
+	// Unset (normal `pnpm dev`) → undefined → Vite's usual 5173.
+	server: {
+		port: process.env.VITE_PORT ? Number(process.env.VITE_PORT) : undefined,
+		strictPort: !!process.env.VITE_PORT,
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
