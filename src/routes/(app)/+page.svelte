@@ -475,27 +475,47 @@
 		against the page bg the same way the composer below does, with
 		a subtle ring + slightly raised bg shade. Mark is inlined (not
 		<img>) so its strokes use currentColor and adapt to dark mode.
+
+		In private mode we deliberately drop the personalized greeting: a
+		mode whose whole point is airgapping your personal info shouldn't
+		open with "Hi, {name}". The badge swaps to the mask glyph and the
+		heading becomes a brief explainer of what private mode seals — both
+		to state the rules and to reassure that nothing personal is in play.
 	-->
 	<div class="relative z-10 mb-6 flex w-full max-w-2xl flex-col items-center gap-4">
 		<div
 			class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised ring-1 ring-border"
 		>
-			<svg
-				viewBox="0 0 32 32"
-				class="h-8 w-8 text-accent"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				aria-hidden="true"
-			>
-				<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
-				<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
-				<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
-			</svg>
+			{#if isPrivate}
+				<VenetianMask class="h-8 w-8 text-accent" strokeWidth={2} aria-hidden="true" />
+			{:else}
+				<svg
+					viewBox="0 0 32 32"
+					class="h-8 w-8 text-accent"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2.5"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<line x1="10.6" y1="7.5" x2="10.6" y2="24.5" />
+					<path d="M 10.6 10 C 20 10, 22.5 18.5, 13.75 18.5" />
+					<line x1="15" y1="22.75" x2="22.25" y2="22.75" />
+				</svg>
+			{/if}
 		</div>
-		{#if data.prefs?.showGreeting ?? true}
+		{#if isPrivate}
+			<div class="flex flex-col items-center gap-2">
+				<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
+					<span class="text-fg">Private chat</span>
+				</h1>
+				<p class="max-w-md text-center text-sm text-fg-muted">
+					Nothing here is saved to your memories, summaries, or search, and personalization, web,
+					and MCP tools are off. Code and skills still work.
+				</p>
+			</div>
+		{:else if data.prefs?.showGreeting ?? true}
 			<h1 class="text-center text-3xl font-semibold tracking-tight sm:text-4xl">
 				<span class="text-fg">{composedGreeting}</span>
 			</h1>

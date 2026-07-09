@@ -33,6 +33,11 @@ test.describe('private chat', () => {
 		// The whole app re-tints (attribute present, value is the empty string).
 		await expect(html(page)).toHaveAttribute('data-private', '');
 
+		// The personalized greeting is replaced by a private-mode explainer — a
+		// mode that airgaps your personal info shouldn't open with "Hi, {name}".
+		await expect(page.getByRole('heading', { name: 'Private chat' })).toBeVisible();
+		await expect(page.getByText(/Nothing here is saved to your memories/)).toBeVisible();
+
 		// The accent aura retracts (opacity 0). Guards a real cascade gotcha: the
 		// entrance keyframes' fill-mode `both` pins opacity at 1 and beats a plain
 		// `opacity: 0`, so the private rule must also cancel the animation.
