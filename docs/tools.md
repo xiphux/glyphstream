@@ -182,10 +182,17 @@ A private chat:
   egress), plus image/video **prompt enhancement** off — nothing leaves for any
   model but the chat's own. This is derived at request time, so it can't be
   re-enabled via the feature toggles — the feature menu shows those rows off and
-  locked, leaving only code and skills toggleable.
+  locked, leaving only code and skills toggleable;
+- **keeps a local first-line title** instead of an auto-generated one. Titling
+  sends the first exchange to your [`task_model`](configuration.md) — a secondary
+  model unrelated to the chat's own — so a private chat is only auto-titled when
+  you've marked that model trusted with `[task_model] private = true` (set it only
+  if the task model runs somewhere you trust with private content, e.g. a local
+  llama.cpp).
 
-Left **on** by design: the **code interpreter** (Pyodide is transient in-browser
-compute, and its network egress is already sealed by the web disable) and **agent
+Left **on** by design: the **code interpreter** (runs in a sandboxed server-side
+worker with an ephemeral per-conversation filesystem — nothing is kept or sent
+out, and its only network egress is already sealed by the web disable) and **agent
 skills** (static context pulled _in_, nothing sent out).
 
 ## Adding more tools

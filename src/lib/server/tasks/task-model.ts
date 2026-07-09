@@ -12,7 +12,7 @@
  * user-visible errors when the task model is gone.
  */
 
-import { loadTaskModel, type LoadedEndpoint } from '../endpoints/config';
+import { loadTaskModel, loadTaskModelConfig, type LoadedEndpoint } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
 
@@ -66,7 +66,24 @@ export function getTaskModel(): ResolvedTaskModel | null {
 	return resolved;
 }
 
+/**
+ * Whether the configured task model is trusted with Private chat content
+ * (`[task_model] private = true`). Gates whether a Private chat may be auto-titled
+ * by it — titling ships the first exchange to the task model, which is a secondary
+ * model unrelated to the chat's own, so a private chat only does it when the
+ * operator has vouched for the task model. Memoized; false when task_model is
+ * unset or configured in the bare-string form.
+ */
+export function isTaskModelPrivate(): boolean {
+	if (privateCache) return privateCache.value;
+	const value = loadTaskModelConfig()?.private ?? false;
+	privateCache = { value };
+	return value;
+}
+let privateCache: { value: boolean } | null = null;
+
 /** Test/dev only: discard the cached resolution so the next access reloads. */
 export function resetTaskModel(): void {
 	cached = null;
+	privateCache = null;
 }

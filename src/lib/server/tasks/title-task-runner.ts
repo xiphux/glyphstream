@@ -13,15 +13,18 @@
  * persists for the next refetch.
  */
 
-import { getConversationTitleSource } from '../db/queries/conversations';
+import { getConversationMeta, getConversationTitleSource } from '../db/queries/conversations';
 import { generateConversationTitle } from './title-generator';
-import { getTaskModel } from './task-model';
+import { getTaskModel, isTaskModelPrivate } from './task-model';
 
 /**
  * Kick off the title task for `conversationId` if (and only if) it's
  * still the first exchange — i.e., title_source is 'fallback'. Returns a
  * promise that resolves to the persisted title or null. The promise
  * never rejects.
+ *
+ * Gated here (not at the four call sites) so every path — text/media relays,
+ * sync send, fan-out prepare — and any future caller is covered at once.
  */
 export function startTitleTaskIfFirstExchange(
 	conversationId: string,
@@ -30,6 +33,14 @@ export function startTitleTaskIfFirstExchange(
 	if (!getTaskModel()) return Promise.resolve(null);
 	if (getConversationTitleSource(conversationId, userId) !== 'fallback')
 		return Promise.resolve(null);
+	// Private chat content seal: titling ships the first exchange to the task
+	// model — a secondary model unrelated to the chat's own. A private chat only
+	// does that when the operator has marked the task model trusted
+	// (`[task_model] private = true`); otherwise it keeps its local fallback title.
+	// (Config check first — no DB read when the task model is trusted anyway.)
+	if (!isTaskModelPrivate() && getConversationMeta(conversationId, userId)?.private) {
+		return Promise.resolve(null);
+	}
 	return generateConversationTitle(conversationId, userId).then(
 		(result) => (result && result.persisted ? result.title : null),
 		(e) => {

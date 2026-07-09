@@ -261,30 +261,64 @@ export function loadNotificationsConfig(path = configPath()): LoadedNotification
 	return { vapidPublic, vapidPrivate: envValue, vapidSubject };
 }
 
+export interface LoadedTaskModelConfig {
+	/** "endpoint_id::upstream_model_id". */
+	model: string;
+	/** Whether this task model is trusted with Private chat content. When true,
+	 *  Private chats may still be auto-titled by it (the first exchange is sent to
+	 *  it); when false (the default, and the only option for the bare-string form),
+	 *  a Private chat keeps its local first-line fallback title. Set it only if the
+	 *  task model runs somewhere you trust with private content (e.g. a local
+	 *  llama.cpp). */
+	private: boolean;
+}
+
 /**
- * Read the top-level `task_model` setting from config.toml, if present.
- * Returns the raw "endpoint_id::upstream_model_id" string when set, or
- * null when the field is absent. Validates only the field's *type and
- * shape* (must be a non-empty string of the form `id::id`); it does NOT
- * verify the referenced endpoint actually exists in the registry —
- * that resolution happens at use-time in the task-model resolver so a
- * typo in `task_model` doesn't crash app boot.
+ * Read the `task_model` setting from config.toml, if present. Accepts two forms:
+ *
+ *   - a bare string:  `task_model = "endpoint::model"`  → `{ model, private: false }`
+ *   - a table:        `[task_model]` with `model = "…"` and optional `private = true`
+ *
+ * The table form is preferred — a `[table]` header can sit anywhere in the file,
+ * unlike the bare key which must precede every other table header. Returns null
+ * when the field is absent. Validates only *type and shape* (the model must be a
+ * non-empty `id::id` string); it does NOT verify the referenced endpoint exists —
+ * that resolution happens at use-time so a typo doesn't crash app boot.
  */
-export function loadTaskModel(path = configPath()): string | null {
+export function loadTaskModelConfig(path = configPath()): LoadedTaskModelConfig | null {
 	const { parsed, absolutePath } = readAndParse(path);
 	const raw = parsed.task_model;
 	if (raw === undefined || raw === null) return null;
-	if (typeof raw !== 'string' || raw.length === 0) {
+
+	// Back-compat: the original bare-string form is "not trusted for private".
+	if (typeof raw === 'string') {
+		if (raw.length === 0 || parseModelId(raw) === null) {
+			throw new ConfigError(
+				`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`,
+			);
+		}
+		return { model: raw, private: false };
+	}
+
+	if (typeof raw !== 'object' || Array.isArray(raw)) {
 		throw new ConfigError(
-			`'task_model' in ${absolutePath} must be a non-empty string of the form "endpoint_id::model_id"`,
+			`'task_model' in ${absolutePath} must be a string "endpoint_id::model_id" or a [task_model] table`,
 		);
 	}
-	if (parseModelId(raw) === null) {
-		throw new ConfigError(
-			`'task_model' "${raw}" in ${absolutePath} must be of the form "endpoint_id::model_id"`,
-		);
+	const block = raw as Record<string, unknown>;
+	const at = `[task_model] in ${absolutePath}`;
+	const model = requireString(block.model, 'model', at);
+	if (parseModelId(model) === null) {
+		throw new ConfigError(`'model' in ${at} must be of the form "endpoint_id::model_id"`);
 	}
-	return raw;
+	const isPrivate =
+		block.private === undefined ? false : requireBoolean(block.private, 'private', at);
+	return { model, private: isPrivate };
+}
+
+/** The task model's `endpoint::model` string (from either config form), or null. */
+export function loadTaskModel(path = configPath()): string | null {
+	return loadTaskModelConfig(path)?.model ?? null;
 }
 
 /** Default token cap for one enhancement call. Sized to fit a *structured JSON*

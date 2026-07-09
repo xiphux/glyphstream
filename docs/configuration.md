@@ -157,25 +157,28 @@ preference, not a server config setting.)
 
 By default, conversation titles in the sidebar are the first ~50 characters
 of the user's opening message. To get model-generated titles instead, add a
-top-level `task_model` field **at the very top of `config.toml`, above the
-first `[[endpoints]]` block**, naming a model that one of those endpoints
-exposes:
+`[task_model]` section naming a model that one of your endpoints exposes:
 
 ```toml
-# top of config.toml — before any [[endpoints]] or [table] header
-task_model = "groq::llama-3.1-8b-instant"
-
-[[endpoints]]
-id = "groq"
-# ...
+[task_model]
+model = "groq::llama-3.1-8b-instant"
+private = false   # optional; see "Private chats" below
 ```
 
-The format is `endpoint_id::upstream_model_id` — the same namespaced shape
-the model picker uses. After the first user+assistant exchange in a new
+The `model` format is `endpoint_id::upstream_model_id` — the same namespaced
+shape the model picker uses. After the first user+assistant exchange in a new
 chat, GlyphStream calls this model once to produce a short title and streams
 it on the same SSE channel as the assistant response. Image and video chats
 run the title task in parallel with asset generation, prompted from the user
 message alone.
+
+The older bare-string form is still accepted and is equivalent to
+`private = false`:
+
+```toml
+# top of config.toml — above every [[endpoints]] / [table] header (see the gotcha below)
+task_model = "groq::llama-3.1-8b-instant"
+```
 
 Pick a **small, fast** model — title delivery has a 5-second SSE budget so
 the title lands while the user is still watching the message finish. Slower
@@ -196,14 +199,21 @@ rest of the response is unaffected. Users can also rename any conversation
 manually via the sidebar **Rename** action — manual renames win even if they
 race a running title task.
 
-> **TOML scoping gotcha:** `task_model` is a top-level scalar, and TOML
-> binds every bare key to the _most recently opened_ table header — there is
-> no syntax to return to the root table once a header appears. So
-> `task_model` must sit above **every** `[[endpoints]]` and `[table]` header
-> in the file. Placed below an `[[endpoints]]` block it is parsed as a field
-> of that endpoint, where endpoint validation ignores it as an unknown key
-> and title generation reads a top-level `task_model` that isn't there — so
-> titling silently stays in fallback mode with no error at boot.
+**Private chats.** Auto-titling sends the conversation's first exchange to the
+task model, which is a _secondary_ model unrelated to the chat's own. A
+[Private chat](tools.md#private-chat) therefore keeps its local first-line title
+unless you've vouched for the task model with `private = true` — set that only if
+the task model runs somewhere you trust with private content (e.g. a local
+llama.cpp). It's a property of the task model, not the chat.
+
+> **TOML scoping gotcha (bare-string form only):** the `[task_model]` table
+> header can sit anywhere in the file. The older bare `task_model = "…"` scalar
+> cannot: TOML binds every bare key to the _most recently opened_ table header,
+> with no syntax to return to the root table once a header appears, so a bare
+> `task_model` must sit above **every** `[[endpoints]]` and `[table]` header.
+> Placed below an `[[endpoints]]` block it is parsed as a field of that endpoint,
+> ignored as an unknown key, and titling silently stays in fallback mode with no
+> error at boot. Using the `[task_model]` table form avoids this entirely.
 
 ## Prompt enhancement (`[image_enhancement]`)
 

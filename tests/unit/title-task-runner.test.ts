@@ -22,18 +22,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
 	getTaskModel: vi.fn<() => { endpoint: unknown; upstreamId: string } | null>(),
+	isTaskModelPrivate: vi.fn<() => boolean>(),
 	getConversationTitleSource:
 		vi.fn<(id: string, userId: string) => 'fallback' | 'ai' | 'user' | null>(),
+	getConversationMeta: vi.fn<(id: string, userId: string) => { private: boolean } | null>(),
 	generateConversationTitle:
 		vi.fn<(id: string, userId: string) => Promise<{ title: string; persisted: boolean } | null>>(),
 }));
 
 vi.mock('$lib/server/tasks/task-model', () => ({
 	getTaskModel: mocks.getTaskModel,
+	isTaskModelPrivate: mocks.isTaskModelPrivate,
 }));
 
 vi.mock('$lib/server/db/queries/conversations', () => ({
 	getConversationTitleSource: mocks.getConversationTitleSource,
+	getConversationMeta: mocks.getConversationMeta,
 }));
 
 vi.mock('$lib/server/tasks/title-generator', () => ({
@@ -44,8 +48,14 @@ import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/titl
 
 beforeEach(() => {
 	mocks.getTaskModel.mockReset();
+	mocks.isTaskModelPrivate.mockReset();
 	mocks.getConversationTitleSource.mockReset();
+	mocks.getConversationMeta.mockReset();
 	mocks.generateConversationTitle.mockReset();
+	// Safe defaults: task model not trusted-for-private, conversation not private —
+	// so the private gate is a no-op unless a test opts in.
+	mocks.isTaskModelPrivate.mockReturnValue(false);
+	mocks.getConversationMeta.mockReturnValue({ private: false });
 });
 
 describe('startTitleTaskIfFirstExchange — gating', () => {
@@ -81,6 +91,40 @@ describe('startTitleTaskIfFirstExchange — gating', () => {
 		mocks.generateConversationTitle.mockResolvedValue({ title: 'A Title', persisted: true });
 		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
 		expect(result).toBe('A Title');
+		expect(mocks.generateConversationTitle).toHaveBeenCalledWith('c1', 'u1');
+	});
+});
+
+describe('startTitleTaskIfFirstExchange — private-chat seal', () => {
+	beforeEach(() => {
+		mocks.getTaskModel.mockReturnValue({ endpoint: {}, upstreamId: 'qwen2.5:0.5b' });
+		mocks.getConversationTitleSource.mockReturnValue('fallback');
+		mocks.generateConversationTitle.mockResolvedValue({ title: 'A Title', persisted: true });
+	});
+
+	it('skips titling a private chat when the task model is not trusted-for-private', async () => {
+		mocks.isTaskModelPrivate.mockReturnValue(false);
+		mocks.getConversationMeta.mockReturnValue({ private: true });
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
+		expect(result).toBeNull();
+		// Content never reaches the task model — the generator isn't called.
+		expect(mocks.generateConversationTitle).not.toHaveBeenCalled();
+	});
+
+	it('titles a private chat when the task model IS trusted-for-private', async () => {
+		mocks.isTaskModelPrivate.mockReturnValue(true);
+		mocks.getConversationMeta.mockReturnValue({ private: true });
+		const result = await startTitleTaskIfFirstExchange('c1', 'u1');
+		expect(result).toBe('A Title');
+		expect(mocks.generateConversationTitle).toHaveBeenCalledWith('c1', 'u1');
+		// Short-circuits on the config flag → no per-call DB read for `private`.
+		expect(mocks.getConversationMeta).not.toHaveBeenCalled();
+	});
+
+	it('titles a non-private chat normally (untrusted task model is irrelevant)', async () => {
+		mocks.isTaskModelPrivate.mockReturnValue(false);
+		mocks.getConversationMeta.mockReturnValue({ private: false });
+		expect(await startTitleTaskIfFirstExchange('c1', 'u1')).toBe('A Title');
 		expect(mocks.generateConversationTitle).toHaveBeenCalledWith('c1', 'u1');
 	});
 });

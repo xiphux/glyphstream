@@ -9,7 +9,7 @@
 # env var to read at startup, never the literal secret. Keeps this file safe
 # to commit to a private repo.
 
-# ── Optional top-level setting: task_model ───────────────────────────
+# ── Optional: task_model ─────────────────────────────────────────────
 # The small utility model for lightweight background text tasks. Today it
 # (1) auto-generates conversation titles — after the first user+assistant
 # exchange in a new chat, GlyphStream calls it once to produce a short
@@ -17,7 +17,7 @@
 # (2) backfills topic labels for saved memories created before memories
 # carried a topic (a one-time sweep; new memories are labelled at save time).
 #
-# Format: "endpoint_id::upstream_model_id" — the same namespaced shape
+# `model` is "endpoint_id::upstream_model_id" — the same namespaced shape
 # the model picker uses. The endpoint it names is one defined further
 # down this file; forward references are fine (the id is resolved at
 # request time, not parse time). Pick a small, fast model: title
@@ -26,13 +26,21 @@
 # appears on the next sidebar refetch. Unset / typo'd / removed-endpoint
 # is non-fatal: titling silently falls back to the first-N-chars preview.
 #
-# MUST stay here, at the very top of the file, ABOVE every [[endpoints]]
-# and [table] header. TOML binds each bare key to the most recent table
-# header — a `task_model =` line written below an [[endpoints]] block is
-# parsed as a field OF that endpoint (then silently ignored), not as a
-# top-level setting, and titling never turns on.
+# `private` (default false): whether this task model is trusted with the
+# content of a "Private chat". Titling sends the chat's first exchange to
+# the task model — a secondary model unrelated to the chat's own — so a
+# Private chat is auto-titled ONLY when this is true. Set it only if the
+# task model runs somewhere you trust with private content (e.g. a local
+# llama.cpp); left false, Private chats keep their local first-line title.
 #
-# task_model = "groq::llama-3.1-8b-instant"
+# [table] header, so it can sit anywhere (unlike a bare top-level key,
+# which TOML binds to the nearest table above it).
+# [task_model]
+# model = "groq::llama-3.1-8b-instant"
+# private = false
+#
+# The older bare-string form is still accepted (equivalent to private = false):
+# task_model = "groq::llama-3.1-8b-instant"   # MUST sit above every [table] header
 
 # ── Optional: [tools] ────────────────────────────────────────────────
 # max_tool_loop_iterations — the hard cap on upstream round-trips within a

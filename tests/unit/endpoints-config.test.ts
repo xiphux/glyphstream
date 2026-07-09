@@ -15,6 +15,8 @@ import {
 	loadNotificationsConfig,
 	loadRerankConfig,
 	loadSearchConfig,
+	loadTaskModel,
+	loadTaskModelConfig,
 	DEFAULT_MEMORY_MODEL_MAX_TOKENS,
 	DEFAULT_MEMORY_MODEL_TEMPERATURE,
 } from '$lib/server/endpoints/config';
@@ -806,6 +808,55 @@ describe('loadMaxToolLoopIterations', () => {
 
 	it('rejects a non-table [tools] entry', () => {
 		expect(() => loadMaxToolLoopIterations(writeConfig(`tools = "nope"`))).toThrow(ConfigError);
+	});
+});
+
+describe('loadTaskModelConfig', () => {
+	it('returns null when task_model is absent', () => {
+		expect(loadTaskModelConfig(writeConfig(``))).toBeNull();
+	});
+
+	it('accepts the bare-string form (→ private: false)', () => {
+		const path = writeConfig(`task_model = "groq::llama"`);
+		expect(loadTaskModelConfig(path)).toEqual({ model: 'groq::llama', private: false });
+		// loadTaskModel still returns just the model string for existing callers.
+		expect(loadTaskModel(path)).toBe('groq::llama');
+	});
+
+	it('accepts the [task_model] table form with an explicit private flag', () => {
+		const path = writeConfig(`[task_model]\nmodel = "dirac::qwen"\nprivate = true`);
+		expect(loadTaskModelConfig(path)).toEqual({ model: 'dirac::qwen', private: true });
+		expect(loadTaskModel(path)).toBe('dirac::qwen');
+	});
+
+	it('defaults private to false when the table omits it', () => {
+		const path = writeConfig(`[task_model]\nmodel = "dirac::qwen"`);
+		expect(loadTaskModelConfig(path)).toEqual({ model: 'dirac::qwen', private: false });
+	});
+
+	it('rejects a malformed model id in either form', () => {
+		expect(() => loadTaskModelConfig(writeConfig(`task_model = "no-separator"`))).toThrow(
+			ConfigError,
+		);
+		expect(() => loadTaskModelConfig(writeConfig(`[task_model]\nmodel = "no-separator"`))).toThrow(
+			ConfigError,
+		);
+	});
+
+	it('rejects a missing model in the table form', () => {
+		expect(() => loadTaskModelConfig(writeConfig(`[task_model]\nprivate = true`))).toThrow(
+			ConfigError,
+		);
+	});
+
+	it('rejects a non-boolean private flag', () => {
+		expect(() =>
+			loadTaskModelConfig(writeConfig(`[task_model]\nmodel = "e::m"\nprivate = "yes"`)),
+		).toThrow(ConfigError);
+	});
+
+	it('rejects an array task_model', () => {
+		expect(() => loadTaskModelConfig(writeConfig(`task_model = ["e::m"]`))).toThrow(ConfigError);
 	});
 });
 
