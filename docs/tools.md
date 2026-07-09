@@ -191,9 +191,10 @@ A private chat:
   llama.cpp).
 
 Left **on** by design: the **code interpreter** (runs in a sandboxed server-side
-worker with an ephemeral per-conversation filesystem — nothing is kept or sent
-out, and its only network egress is already sealed by the web disable) and **agent
-skills** (static context pulled _in_, nothing sent out).
+worker; its only network egress is already sealed by the web disable, and any
+files it emits are saved as your own conversation media — kept, but never indexed
+for search — not sent anywhere) and **agent skills** (static context pulled _in_,
+nothing sent out).
 
 ## Adding more tools
 

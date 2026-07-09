@@ -33,8 +33,8 @@
 # task model runs somewhere you trust with private content (e.g. a local
 # llama.cpp); left false, Private chats keep their local first-line title.
 #
-# [table] header, so it can sit anywhere (unlike a bare top-level key,
-# which TOML binds to the nearest table above it).
+# Configured as a [table] header, so it can sit anywhere in the file (unlike a
+# bare top-level key, which TOML binds to the nearest table above it).
 # [task_model]
 # model = "groq::llama-3.1-8b-instant"
 # private = false

@@ -2,11 +2,13 @@
  * "Private chat" request-time consumption seal.
  *
  * A private conversation (`conversations.private`) is airgapped: no data flows in
- * from the user's cross-conversation stores, and nothing flows out to any model
- * but the chat's own. The content-OUT half (never summarized / never returned by
- * the search tool) is enforced in the DB queries; this is the request-time
- * consumption half — an *effective* disabled-feature set derived from the
- * conversation's base opt-outs.
+ * from the user's cross-conversation stores, and nothing flows out to a secondary
+ * model — only the chat's own (the one exception is auto-titling, and only when the
+ * operator has explicitly marked the task model trusted with `[task_model]
+ * private = true`; see title-task-runner.ts). The content-OUT half (never
+ * summarized / never returned by the search tool) is enforced in the DB queries;
+ * this is the request-time consumption half — an *effective* disabled-feature set
+ * derived from the conversation's base opt-outs.
  *
  * We derive rather than persist (the `private` flag stays a separate axis from
  * `disabled_features`) so the seal is unbreakable: the user can't re-enable
@@ -24,9 +26,10 @@
  *   - every `mcp:<id>` — all MCP servers (data can leave the box through them).
  *
  * Deliberately LEFT ENABLED: `code_interpreter` (run_python runs in a sandboxed
- * server-side worker with an ephemeral per-conversation filesystem — nothing is
- * persisted or sent anywhere, and its only network egress is already sealed by the
- * `web` disable) and `skills` (static context pulled IN, nothing sent out).
+ * server-side worker; its only network egress is already sealed by the `web`
+ * disable, and any files it emits are persisted as the user's own conversation
+ * media — never indexed for search, since promptExcerpt is null — not sent
+ * anywhere) and `skills` (static context pulled IN, nothing sent out).
  */
 import { listServerCatalog } from '../mcp/registry';
 import { PRIVATE_SEALED_BUILTIN_CATEGORIES } from '$lib/types/api';
