@@ -639,8 +639,13 @@
 	}
 
 	/* Private mode: the accent-tinted bloom would fight the incognito re-tint, so
-	   retract it entirely. Global because [data-private] lives on <html>. */
+	   retract it entirely. `animation: none` is load-bearing — the entrance
+	   keyframes use fill-mode `both`, which would otherwise pin opacity at 1 and
+	   beat this declaration in the cascade; cancelling the animation lets the
+	   opacity (and its transition, for the fade-out) take over. Global because
+	   [data-private] lives on <html>. */
 	:global([data-private]) .aura {
+		animation: none;
 		opacity: 0;
 	}
 
