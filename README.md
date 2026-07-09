@@ -147,6 +147,11 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   Gated by the same Personalization toggle as memory ([guide](docs/tools.md)).
 - **Per-conversation privacy toggles** — switch off web access, code
   execution, personalization, or any MCP server for a single conversation.
+- **Private chat** — an incognito mode (toggle on the new-chat screen) that
+  airgaps a conversation: its content never feeds your memories, summaries, topic
+  overview, or `search_conversations`, and personalization / web / MCP tools are
+  sealed off for the chat. Code execution and skills stay on. The whole app
+  re-tints so you can't miss that you're in it ([guide](docs/tools.md)).
 
 ### Self-hosting & polish
 

@@ -125,12 +125,11 @@ button) with one switch per opt-out _category_:
   stored context nor reads your past chats. It is **not** a content seal: a
   personalization-off conversation still _contributes_ to your searchable history
   and topic overview (which are only ever read by personalization-**on**
-  conversations, so nothing surfaces anywhere you didn't consent to). `save_memory`
-  is additionally blocked from writing here — a conservative carry-over; a proper
-  "keep this chat's content out of my cross-conversation stores" seal is the
-  planned **Private chat** flag (see `ROADMAP.md`). Has no effect on conversations
-  that carry an explicit system prompt or were started from a custom-model preset —
-  those already snapshot whatever prompt _they_ declared.
+  conversations, so nothing surfaces anywhere you didn't consent to). The proper
+  "keep this chat's content out of my cross-conversation stores" seal is a separate
+  axis — [Private chat](#private-chat), below. Has no effect on conversations that
+  carry an explicit system prompt or were started from a custom-model preset — those
+  already snapshot whatever prompt _they_ declared.
 - **Code interpreter** disables `run_python` for the turn. The web toggle
   above still independently controls Python's network egress (so a
   code-allowed but web-blocked turn runs pure compute with no outbound
@@ -152,6 +151,41 @@ Defaults are **all features on** for every new conversation — never sticky
 across sessions, since a one-time off-flip carrying forward silently would
 undermine the privacy intent. Toggles flipped in an existing chat apply
 forward from the next message; history already on the page is unaffected.
+
+## Private chat
+
+The feature toggles above are a _consumption_ gate — they change what a given
+turn is allowed to use. **Private chat** is the orthogonal _content seal_: it
+keeps a conversation's content out of your cross-conversation stores entirely.
+The two axes are deliberately separate — e.g. a roleplay/story chat may want
+non-personalized output but still want its own sessions searchable for
+continuity, while a private chat wants the opposite.
+
+Turn it on from the incognito toggle in the upper-right of the **new-chat
+screen**. It's fixed at creation and can't be flipped on an existing chat — a
+private conversation is private for life, and a normal one can't be
+retroactively sealed (its content may already be indexed). The whole app
+re-tints to a violet "incognito" treatment and the sidebar marks the row, so
+it's always obvious which mode you're in.
+
+A private chat:
+
+- **is never summarized** — so it produces no conversation summary, contributes
+  nothing to your topic overview, and never becomes a `search_conversations`
+  target;
+- **is excluded from the `search_conversations` tool** even from other chats
+  (its raw messages can't surface to the model elsewhere) — though it's still
+  findable in your **own** sidebar full-text search, since the seal is about
+  model/cross-conversation leakage, not hiding history from yourself;
+- **runs with personalization, web, and every MCP server sealed off** for the
+  turn (so no persona/memory/overview injection, no memory writes, no web or MCP
+  egress), plus image/video **prompt enhancement** off — nothing leaves for any
+  model but the chat's own. This is derived at request time, so it can't be
+  re-enabled via the feature toggles.
+
+Left **on** by design: the **code interpreter** (Pyodide is transient in-browser
+compute, and its network egress is already sealed by the web disable) and **agent
+skills** (static context pulled _in_, nothing sent out).
 
 ## Adding more tools
 

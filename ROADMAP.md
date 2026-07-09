@@ -91,27 +91,6 @@ docs.
     that restores the cited branch leaf, and a `read_conversation` tool for when a
     snippet isn't enough. Today the tool returns ids + matched text only.
 
-- **Private chat (content seal — the second privacy axis).** Today
-  `personalization` is a _consumption_ gate: off = don't tailor this response to me
-  (no persona/memory/overview injection, no memory + search tools). It's
-  deliberately NOT a content seal — a personalization-off chat still contributes to
-  the user's own searchable history + topic overview (only ever read by
-  personalization-on chats). The orthogonal axis is missing: a **per-conversation
-  "Private" flag** meaning "this chat's content stays out of my cross-conversation
-  stores" — it (a) implies personalization-off, and (b) blocks the _production_
-  side: no summary, no overview contribution, excluded from the
-  `search_conversations` tool (still in the user's own sidebar history — no
-  auto-purge; that's a cloud-retention thing, not useful self-hosted). When it
-  lands it also **retrofits `save_memory`** to key off "private" instead of
-  borrowing `personalization` (the current conservative proxy), and extends
-  `reconcileOverviewAfterConversationDelete` to "no _contributing_ conversations
-  remain". Motivating case: a "write stories"/roleplay custom model wants
-  not-personalized output but _may_ still want its sessions searchable for
-  continuity — which is exactly why the two axes must stay separate rather than
-  collapsing into one "temporary chat" switch. (The four quadrants of
-  personalize×contribute are all meaningful; most products ship only the content
-  seal, Gemini ships both.)
-
 - **Code interpreter — phase-2.** The server-side Pyodide `run_python` built-in
   shipped (per-conversation worker, idle-reap + LRU evict + timeout, SSRF-gated
   net, media round-trip). Remaining:
