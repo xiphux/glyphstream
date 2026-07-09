@@ -18,6 +18,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 	// toast. A 404 here is a dead end in the standalone PWA — no back button,
 	// no chrome, nothing to tap — and the most common way to reach one is a
 	// stale OS notification for a conversation deleted on another device.
+	//
+	// The /api/* handlers 404 on an ownership-scoped miss so a non-owner can't
+	// confirm a row exists; this diverges deliberately, and safely, because
+	// getConversationDetail(id, userId) has already collapsed "gone" and "not
+	// yours" into the same null — the redirect discloses nothing the 404 didn't.
 	if (!conversation) throw redirect(302, `/?notice=${CONVERSATION_MISSING_NOTICE}`);
 
 	// Whether a generation is running for this conversation right now,
