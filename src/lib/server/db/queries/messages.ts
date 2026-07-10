@@ -130,6 +130,21 @@ export function updateMessageParts(
 	return result.changes > 0;
 }
 
+export interface WalkActiveBranchOptions {
+	/**
+	 * Which columns to fetch from the messages table.
+	 * - `'all'` (default): every column, including the heavy ones
+	 *   (`content_html`, `reasoning_text`, etc.). Use for render paths
+	 *   like `getConversationDetail` that need `contentHtml`.
+	 * - `'serialization'`: only the columns needed for upstream serialization,
+	 *   tool-context building, and compaction logic. Skips `content_html`,
+	 *   `reasoning_text`, `raw_response_json`, `tokens_in`, `tokens_out`,
+	 *   `gen_ms`. Safe for message-send, tool-approval, compaction, and
+	 *   summary callers.
+	 */
+	columns?: 'all' | 'serialization';
+}
+
 /**
  * Walk the active branch root → leaf and return messages in order.
  *
@@ -144,8 +159,17 @@ export function updateMessageParts(
  *      sibling-grouping for branch-aware rendering and lets us walk the
  *      parent chain to compute the active-branch id list.
  *   2. Heavy fetch of full columns for just the active-branch ids.
+ *
+ * Pass `{ columns: 'serialization' }` to skip the read-time heavy columns
+ * (`content_html`, `reasoning_text`, `raw_response_json`, token counts,
+ * gen_ms) — the projection rows have these fields set to `null`. Use this
+ * for serialization / tool-context / compaction callers that only need
+ * `parts`, `role`, and metadata.
  */
-export function walkActiveBranch(conversationId: string): ChatMessage[] {
+export function walkActiveBranch(
+	conversationId: string,
+	options?: WalkActiveBranchOptions,
+): ChatMessage[] {
 	const db = getDb();
 	const conv = db
 		.select({ activeLeaf: conversations.activeLeafMessageId })
@@ -187,6 +211,47 @@ export function walkActiveBranch(conversationId: string): ChatMessage[] {
 		branchIds.push(cursor.id);
 		if (!cursor.parentMessageId) break;
 		cursor = skelById.get(cursor.parentMessageId);
+	}
+
+	const useSerialization = options?.columns === 'serialization';
+
+	// Heavy fetch — projected for serialization-only callers to avoid
+	// loading content_html (shiki output, 5-20x the source text for code
+	// blocks), reasoning_text (large for reasoning models), raw_response_json,
+	// and token/gen counters that only the render path needs.
+	if (useSerialization) {
+		const projectedRows = db
+			.select({
+				id: messages.id,
+				conversationId: messages.conversationId,
+				parentMessageId: messages.parentMessageId,
+				role: messages.role,
+				contentJson: messages.contentJson,
+				finishReason: messages.finishReason,
+				modelUsed: messages.modelUsed,
+				dispatchedModelsJson: messages.dispatchedModelsJson,
+				compactionResumeFromMessageId: messages.compactionResumeFromMessageId,
+				createdAt: messages.createdAt,
+			})
+			.from(messages)
+			.where(and(eq(messages.conversationId, conversationId), inArray(messages.id, branchIds)))
+			.all();
+		const heavyById = new Map(projectedRows.map((r) => [r.id, r]));
+
+		const ordered: ChatMessage[] = [];
+		for (const id of branchIds) {
+			const row = heavyById.get(id);
+			if (!row) continue;
+			const siblings = byParent.get(row.parentMessageId ?? null) ?? [];
+			const siblingIds = siblings.map((s) => s.id);
+			const msg = serializationRowToChatMessage(row);
+			msg.parentMessageId = row.parentMessageId;
+			msg.siblingCount = siblings.length || 1;
+			msg.siblingPosition = siblingIds.indexOf(row.id) + 1 || 1;
+			msg.siblingIds = siblingIds.length ? siblingIds : [row.id];
+			ordered.push(msg);
+		}
+		return ordered.reverse();
 	}
 
 	const heavyRows = db
@@ -714,6 +779,39 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		tokensIn: row.tokensIn,
 		tokensOut: row.tokensOut,
 		genMs: row.genMs,
+		compactionResumeFromMessageId: row.compactionResumeFromMessageId,
+		createdAt: row.createdAt,
+	};
+}
+
+/**
+ * Convert a serialization-projected row (only the columns needed for upstream
+ * serialization, tool-context building, and compaction logic) to a ChatMessage.
+ * The heavy columns (`content_html`, `reasoning_text`, `raw_response_json`,
+ * token counts, `gen_ms`) are absent from the DB row and set to `null`.
+ */
+function serializationRowToChatMessage(row: {
+	id: string;
+	role: string;
+	contentJson: string;
+	finishReason: string | null;
+	modelUsed: string | null;
+	dispatchedModelsJson: string | null;
+	compactionResumeFromMessageId: string | null;
+	createdAt: number;
+}): ChatMessage {
+	return {
+		id: row.id,
+		role: row.role as ChatMessage['role'],
+		parts: parseMessageParts(row.contentJson),
+		contentHtml: null,
+		reasoningText: null,
+		finishReason: row.finishReason,
+		modelUsed: row.modelUsed,
+		dispatchedModels: parseDispatchedModels(row.dispatchedModelsJson) ?? undefined,
+		tokensIn: null,
+		tokensOut: null,
+		genMs: null,
 		compactionResumeFromMessageId: row.compactionResumeFromMessageId,
 		createdAt: row.createdAt,
 	};

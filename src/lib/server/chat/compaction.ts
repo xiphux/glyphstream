@@ -95,7 +95,7 @@ export async function prepareCompaction(
 	const endpoint = parsed ? getEndpoint(parsed.endpointId) : null;
 	if (!parsed || !endpoint) return null;
 
-	const branch = walkActiveBranch(conversationId);
+	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
 	if (branch.length === 0) return null;
 
 	// Compact the current *model-visible* view, so an earlier summary folds into
@@ -227,7 +227,7 @@ export function undoCompaction(conversationId: string, userId: string): Uncompac
 	const meta = getConversationMeta(conversationId, userId);
 	if (!meta) return { status: 'noop' };
 
-	const branch = walkActiveBranch(conversationId);
+	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
 	const leaf = branch[branch.length - 1];
 	if (!leaf || !isCompactionSummary(leaf)) return { status: 'noop' };
 

@@ -90,7 +90,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// are stable across the decision loop. Apply changes via
 	// updateMessageParts — the active-leaf doesn't move because we're
 	// rewriting existing rows, not appending.
-	const branch = walkActiveBranch(params.id);
+	const branch = walkActiveBranch(params.id, { columns: 'serialization' });
 	const newlyTrusted: string[] = [];
 	let updatedAny = false;
 
@@ -183,7 +183,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		disabledFeatures,
 		supportsTools,
 		baseSystemPrompt,
-		branch: walkActiveBranch(params.id),
+		branch: walkActiveBranch(params.id, { columns: 'serialization' }),
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
 	});
 	const effectiveSystemPrompt = toolCtx.systemPrompt;
@@ -193,7 +193,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const buildRequestBody = async ({
 		activatedToolNames = [],
 	}: { activatedToolNames?: string[] } = {}): Promise<ChatCompletionRequest> => {
-		const nextBranch = walkActiveBranch(params.id);
+		const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
 		const nextMessages = await serializeBranchForUpstream(
 			nextBranch,
 			(mediaId) => mediaIdToDataUrl(mediaId, userId),
@@ -237,7 +237,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// resume isn't producing a new user message — the chat page already
 	// rendered the prior turn — so we send the last user message in the
 	// branch as a no-op placeholder; the client ignores it on resume.
-	const updatedBranch = walkActiveBranch(params.id);
+	const updatedBranch = walkActiveBranch(params.id, { columns: 'serialization' });
 	const lastUserMessage = [...updatedBranch].reverse().find((m) => m.role === 'user');
 	if (!lastUserMessage) throw error(500, 'No user message anchor for resume');
 

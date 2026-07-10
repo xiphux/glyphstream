@@ -701,6 +701,73 @@ describe('branching: siblings + selectBranch', () => {
 		// aiMsg row still exists in DB, just not in active branch.
 		expect(getMessage(conv.id, aiMsg.id)).not.toBeNull();
 	});
+
+	it('walkActiveBranch with serialization projection returns same message ids as full walk', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const m1 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'first' }],
+			contentHtml: '<p>first</p>',
+			reasoningText: null,
+			tokensIn: 10,
+			tokensOut: null,
+		});
+		const m2 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: m1.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'reply' }],
+			contentHtml: '<p>reply</p>',
+			reasoningText: 'hmm...',
+			tokensIn: null,
+			tokensOut: 20,
+			genMs: 500,
+			rawResponseJson: JSON.stringify({ id: 'resp-1' }),
+		});
+		const m3 = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: m2.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'follow-up' }],
+		});
+
+		// Full walk (default 'all') loads every column.
+		const full = walkActiveBranch(conv.id);
+		expect(full.map((m) => m.id)).toEqual([m1.id, m2.id, m3.id]);
+
+		// Serialization projection loads the same messages…
+		const proj = walkActiveBranch(conv.id, { columns: 'serialization' });
+		expect(proj.map((m) => m.id)).toEqual([m1.id, m2.id, m3.id]);
+
+		// …but the heavy columns are null.
+		for (const m of proj) {
+			expect(m.contentHtml).toBeNull();
+			expect(m.reasoningText).toBeNull();
+			expect(m.tokensIn).toBeNull();
+			expect(m.tokensOut).toBeNull();
+			expect(m.genMs).toBeNull();
+		}
+
+		// Serialization columns are populated correctly.
+		expect(proj[0].role).toBe('user');
+		expect(proj[0].parts).toEqual([{ type: 'text', text: 'first' }]);
+		expect(proj[0].finishReason).toBeNull();
+		expect(proj[0].modelUsed).toBeNull();
+		// m2's finishReason is null → null; it wasn't set in the append.
+		expect(proj[1].role).toBe('assistant');
+		expect(proj[1].parts).toEqual([{ type: 'text', text: 'reply' }]);
+		expect(proj[1].compactionResumeFromMessageId).toBeNull();
+		expect(proj[2].role).toBe('user');
+		expect(proj[2].parts).toEqual([{ type: 'text', text: 'follow-up' }]);
+
+		// Sibling metadata is identical.
+		expect(proj[0].siblingCount).toBe(full[0].siblingCount);
+		expect(proj[1].siblingPosition).toBe(full[1].siblingPosition);
+		expect(proj[2].siblingIds).toEqual(full[2].siblingIds);
+	});
 });
 
 describe('deleteBranch', () => {

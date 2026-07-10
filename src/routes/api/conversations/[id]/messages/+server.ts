@@ -499,7 +499,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// URLs depends on the deployment's reverse-proxy / network topology
 		// and we don't want to assume it's reachable. tool_call / tool_result
 		// parts serialize to OpenAI's tool-calling shape.
-		const branch = walkActiveBranch(params.id);
+		const branch = walkActiveBranch(params.id, { columns: 'serialization' });
 
 		// Assemble the system prompt + tool list + approval gate from this branch —
 		// shared verbatim with the tool-approval resume handler (buildChatToolContext)
@@ -567,7 +567,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			}: {
 				activatedToolNames: string[];
 			}): Promise<ChatCompletionRequest> => {
-				const nextBranch = walkActiveBranch(params.id);
+				const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
 				const nextMessages = await serializeBranchForUpstream(
 					nextBranch,
 					(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),

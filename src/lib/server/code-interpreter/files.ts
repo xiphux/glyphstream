@@ -47,7 +47,7 @@ export async function collectConversationFiles(
 	userId: string,
 ): Promise<RunPythonPreFile[]> {
 	const db = getDb();
-	const branch = walkActiveBranch(conversationId);
+	const branch = walkActiveBranch(conversationId, { columns: 'serialization' });
 	if (branch.length === 0) return [];
 	const messageIds = branch.map((m) => m.id);
 

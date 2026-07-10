@@ -145,7 +145,7 @@ async function summarizeOne(
 	contextWindow: number | null,
 	now: number,
 ): Promise<boolean> {
-	const messages = walkActiveBranch(conversationId);
+	const messages = walkActiveBranch(conversationId, { columns: 'serialization' });
 	// Nothing worth indexing (e.g. an image-only exchange) — stamp and move on.
 	if (buildTranscript(messages).length === 0) {
 		setConversationSummary(conversationId, null, now);
