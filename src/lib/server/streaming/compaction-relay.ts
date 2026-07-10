@@ -11,6 +11,7 @@
  */
 
 import { chatCompletionStream } from '../endpoints/client';
+import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
 import { persistCompactionSummary, type CompactionPlan } from '../chat/compaction';
 import { parseSSEStream } from './sse-parser';
 import { createNormalizer } from './normalizers';
@@ -34,7 +35,28 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 	return new ReadableStream({
 		async start(controller) {
 			const { write, close } = sseWriter(controller);
+			let slot: EndpointSlot | null = null;
 			try {
+				// Hold a per-endpoint concurrency slot so compaction doesn't
+				// preempt a live chat (or another compaction) on a single-GPU
+				// backend. Emit `queued` while waiting; abort-while-queued
+				// surfaces as a cancellation rather than a partial write.
+				try {
+					slot = await acquireEndpointSlot(plan.endpoint.id, plan.endpoint.maxConcurrent, {
+						signal: abortSignal,
+						onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
+					});
+				} catch (e) {
+					write({
+						type: 'error',
+						message:
+							isAbortError(e) || abortSignal?.aborted
+								? 'Compaction was cancelled.'
+								: errorMessage(e),
+					});
+					return;
+				}
+
 				write({ type: 'compaction_start' });
 
 				let upstream;
@@ -125,6 +147,7 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 			} catch (e) {
 				write({ type: 'error', message: errorMessage(e) });
 			} finally {
+				slot?.release();
 				close();
 			}
 		},

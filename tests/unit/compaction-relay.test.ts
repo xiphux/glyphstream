@@ -10,6 +10,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
+import {
+	acquireEndpointSlot,
+	getEndpointQueueDepth,
+	resetEndpointGatesForTests,
+} from '$lib/server/endpoints/concurrency';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
@@ -49,6 +54,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	resetEndpointGatesForTests();
 	closeTestDb();
 });
 
@@ -291,5 +297,96 @@ describe('streamCompaction', () => {
 		expect(err?.message).toMatch(/cancelled/i);
 		expect(events.some((e) => e.type === 'compaction_done')).toBe(false);
 		expect(walkActiveBranch(conversationId).length).toBe(before);
+	});
+});
+
+describe('streamCompaction — per-endpoint concurrency gate', () => {
+	it('emits `queued` and holds the compaction until a slot frees', async () => {
+		const { conversationId, userMsg, leaf } = seedBranch();
+		mocks.upstreamResponses = [() => sseResponse([textChunk('summary text'), finishChunk('stop')])];
+
+		// Use an endpoint with a capacity of 1, then occupy its only slot.
+		const gated: LoadedEndpoint = { ...endpoint, id: 'compaction-gated', maxConcurrent: 1 };
+		const plan = {
+			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
+			endpoint: gated,
+		};
+		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+
+		// Start draining the stream in the background — it can't finish while
+		// the slot is held.
+		const drained = drainEvents(streamCompaction({ conversationId, plan }));
+		await new Promise((r) => setTimeout(r, 10));
+
+		// The compaction queued: `queued` before `compaction_start`, no upstream call yet.
+		expect(mocks.upstreamCalls).toHaveLength(0);
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+
+		// Free the slot — the compaction proceeds and completes.
+		held.release();
+		const events = await drained;
+		const types = events.map((e) => e.type);
+
+		expect(types[0]).toBe('queued');
+		expect(types[1]).toBe('compaction_start');
+		expect(types).toContain('compaction_done');
+		expect(types).not.toContain('error');
+		expect(mocks.upstreamCalls).toHaveLength(1);
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('releases the slot when the upstream errors', async () => {
+		const { conversationId, userMsg, leaf } = seedBranch();
+		// Upstream throws on connect.
+		mocks.upstreamResponses = [
+			() => {
+				throw new Error('connection refused');
+			},
+		];
+
+		const gated: LoadedEndpoint = { ...endpoint, id: 'compaction-error-gated', maxConcurrent: 1 };
+		const plan = {
+			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
+			endpoint: gated,
+		};
+
+		await drainEvents(streamCompaction({ conversationId, plan }));
+
+		// Slot released back to the gate after the error.
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('drops a queued compaction when the client disconnects', async () => {
+		const { conversationId, userMsg, leaf } = seedBranch();
+		mocks.upstreamResponses = [() => sseResponse([textChunk('summary'), finishChunk('stop')])];
+
+		const gated: LoadedEndpoint = { ...endpoint, id: 'compaction-abort-gated', maxConcurrent: 1 };
+		const plan = {
+			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
+			endpoint: gated,
+		};
+		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+		const abort = new AbortController();
+
+		const eventsPromise = drainEvents(
+			streamCompaction({ conversationId, plan, abortSignal: abort.signal }),
+		);
+
+		// Verify it queued.
+		await new Promise((r) => setTimeout(r, 10));
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+
+		// Stop while queued.
+		abort.abort();
+		const events = await eventsPromise;
+		const err = events.find(
+			(e): e is Extract<StreamEvent, { type: 'error' }> => e.type === 'error',
+		);
+		expect(err?.message).toMatch(/cancelled/i);
+		expect(mocks.upstreamCalls).toHaveLength(0);
+		// The aborted waiter left the queue — the held slot is still active.
+		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
+
+		held.release();
 	});
 });

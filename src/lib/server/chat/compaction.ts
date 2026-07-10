@@ -16,6 +16,7 @@
 import { getConversationMeta } from '../db/queries/conversations';
 import { appendMessage, truncateAtMessage, walkActiveBranch } from '../db/queries/messages';
 import { chatCompletionSync, type ChatCompletionRequest } from '../endpoints/client';
+import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
@@ -187,17 +188,25 @@ export async function runCompaction(
 	const plan = await prepareCompaction(conversationId, userId, opts);
 	if (!plan) return { status: 'noop' };
 
-	const resp = await chatCompletionSync(plan.endpoint, {
-		model: plan.upstreamId,
-		messages: plan.messages,
-		temperature: plan.temperature,
-		max_tokens: plan.maxTokens,
-	});
-	const summaryText = (resp.choices?.[0]?.message?.content ?? '').trim();
-	if (!summaryText) return { status: 'noop' };
+	// Hold a per-endpoint slot so compaction doesn't preempt a live
+	// generation on a single-GPU backend. Release once the upstream
+	// call settles — even on error.
+	const slot = await acquireEndpointSlot(plan.endpoint.id, plan.endpoint.maxConcurrent);
+	try {
+		const resp = await chatCompletionSync(plan.endpoint, {
+			model: plan.upstreamId,
+			messages: plan.messages,
+			temperature: plan.temperature,
+			max_tokens: plan.maxTokens,
+		});
+		const summaryText = (resp.choices?.[0]?.message?.content ?? '').trim();
+		if (!summaryText) return { status: 'noop' };
 
-	const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
-	return { status: 'compacted', summaryMessageId: summaryMsg.id };
+		const summaryMsg = await persistCompactionSummary(conversationId, plan, summaryText);
+		return { status: 'compacted', summaryMessageId: summaryMsg.id };
+	} finally {
+		slot.release();
+	}
 }
 
 export type UncompactionResult = { status: 'reverted' } | { status: 'noop' };

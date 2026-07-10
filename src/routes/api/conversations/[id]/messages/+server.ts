@@ -17,6 +17,7 @@ import {
 	UpstreamError,
 	type ChatCompletionRequest,
 } from '$lib/server/endpoints/client';
+import { acquireEndpointSlot } from '$lib/server/endpoints/concurrency';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
@@ -647,57 +648,62 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		}
 
 		// JSON / sync path (Phase 5 behavior preserved).
-		let upstream;
+		const syncSlot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent);
 		try {
-			upstream = await chatCompletionSync(endpoint, requestBody);
-		} catch (e) {
-			clearInFlight(params.id, inFlight);
-			if (e instanceof UpstreamError) {
-				const status = mapUpstreamStatus(e.status);
-				throw error(status, `Upstream error: ${formatUpstreamError(e)}`);
+			let upstream;
+			try {
+				upstream = await chatCompletionSync(endpoint, requestBody);
+			} catch (e) {
+				clearInFlight(params.id, inFlight);
+				if (e instanceof UpstreamError) {
+					const status = mapUpstreamStatus(e.status);
+					throw error(status, `Upstream error: ${formatUpstreamError(e)}`);
+				}
+				throw e;
 			}
-			throw e;
+			clearInFlight(params.id, inFlight);
+
+			const assistantText = upstream.choices?.[0]?.message?.content ?? '';
+			const finishReason = upstream.choices?.[0]?.finish_reason ?? null;
+			const tokensIn = upstream.usage?.prompt_tokens ?? null;
+			const tokensOut = upstream.usage?.completion_tokens ?? null;
+			const contentHtml = await renderMarkdown(assistantText);
+
+			const assistantMessage = appendMessage({
+				conversationId: params.id,
+				// Continue off the synthetic skill-activation tool result when present,
+				// else off the user message (the streaming path does the same via the
+				// relay's initialParentMessageId).
+				parentMessageId: synthLeafId ?? userMessage.id,
+				role: 'assistant',
+				parts: [{ type: 'text', text: assistantText }],
+				contentHtml,
+				finishReason,
+				modelUsed: meta.modelId,
+				tokensIn,
+				tokensOut,
+				rawResponseJson: JSON.stringify(upstream),
+			});
+
+			// Title task: same shape as the image branch — fire now (after both
+			// user + assistant messages are persisted) and race the bounded
+			// delivery budget before returning JSON. Non-streaming chat callers
+			// (clients that don't pass `?stream=1`) get the title inline; the
+			// generator's conditional UPDATE handles "already AI/user-titled."
+			const syncTitle = await raceTitle(
+				startTitleTaskIfFirstExchange(params.id, locals.user.id),
+				TITLE_DELIVERY_BUDGET_MS,
+			);
+
+			const response: SendMessageResponse = {
+				userMessage: userMessage as ChatMessage,
+				assistantMessage: assistantMessage as ChatMessage,
+				...(syncTitle ? { title: syncTitle } : {}),
+			};
+			return json(response);
+		} finally {
+			syncSlot.release();
 		}
-		clearInFlight(params.id, inFlight);
-
-		const assistantText = upstream.choices?.[0]?.message?.content ?? '';
-		const finishReason = upstream.choices?.[0]?.finish_reason ?? null;
-		const tokensIn = upstream.usage?.prompt_tokens ?? null;
-		const tokensOut = upstream.usage?.completion_tokens ?? null;
-		const contentHtml = await renderMarkdown(assistantText);
-
-		const assistantMessage = appendMessage({
-			conversationId: params.id,
-			// Continue off the synthetic skill-activation tool result when present,
-			// else off the user message (the streaming path does the same via the
-			// relay's initialParentMessageId).
-			parentMessageId: synthLeafId ?? userMessage.id,
-			role: 'assistant',
-			parts: [{ type: 'text', text: assistantText }],
-			contentHtml,
-			finishReason,
-			modelUsed: meta.modelId,
-			tokensIn,
-			tokensOut,
-			rawResponseJson: JSON.stringify(upstream),
-		});
-
-		// Title task: same shape as the image branch — fire now (after both
-		// user + assistant messages are persisted) and race the bounded
-		// delivery budget before returning JSON. Non-streaming chat callers
-		// (clients that don't pass `?stream=1`) get the title inline; the
-		// generator's conditional UPDATE handles "already AI/user-titled."
-		const syncTitle = await raceTitle(
-			startTitleTaskIfFirstExchange(params.id, locals.user.id),
-			TITLE_DELIVERY_BUDGET_MS,
-		);
-
-		const response: SendMessageResponse = {
-			userMessage: userMessage as ChatMessage,
-			assistantMessage: assistantMessage as ChatMessage,
-			...(syncTitle ? { title: syncTitle } : {}),
-		};
-		return json(response);
 	} catch (e) {
 		clearInFlight(params.id, inFlight);
 		throw e;
