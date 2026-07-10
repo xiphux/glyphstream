@@ -20,7 +20,7 @@ import { requireFound } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta } from '$lib/server/db/queries/conversations';
 import { walkActiveBranch, updateMessageParts } from '$lib/server/db/queries/messages';
-import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
+import { linkMessageMedia } from '$lib/server/db/queries/media';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
@@ -33,7 +33,7 @@ import { buildChatToolContext } from '$lib/server/chat/tool-context';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
-import { get as getTool } from '$lib/server/tools/registry';
+import { executeOneToolCall } from '$lib/server/streaming/tool-execution';
 import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { mediaIdToDataUrl } from '$lib/server/media/data-url';
@@ -108,7 +108,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				isError: true,
 			};
 		} else {
-			const execution = await runApprovedTool(
+			const execResult = await executeOneToolCall(
 				toolCallPart,
 				userId,
 				params.id,
@@ -118,36 +118,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			nextPart = {
 				type: 'tool_result',
 				toolCallId: resultPart.toolCallId,
-				result: execution.content,
-				...(execution.isError ? { isError: true } : {}),
+				result: execResult.execution.content,
+				...(execResult.execution.isError ? { isError: true } : {}),
 			};
-			// Any media the tool created during approval-resume execution
-			// (e.g. run_python writing files) gets linked to the now-
-			// completed tool row + surfaced as MessageParts on the same
-			// row so the renderer draws chips / inline previews, mirroring
-			// the inline path in tool-execution.ts.
-			const extraParts: MessagePart[] = [];
-			if (execution.attachedMediaIds && execution.attachedMediaIds.length > 0) {
-				for (const mediaId of execution.attachedMediaIds) {
+			// Media MessageParts were pre-constructed by executeOneToolCall
+			// (which also handles the lookup via getMediaForUser). We still
+			// need to link each attached media to the tool message row.
+			if (execResult.execution.attachedMediaIds?.length) {
+				for (const mediaId of execResult.execution.attachedMediaIds) {
 					linkMessageMedia(toolMsg.id, mediaId);
-					const m = getMediaForUser(mediaId, userId);
-					if (!m) continue;
-					if (m.kind === 'image') {
-						extraParts.push({ type: 'image', mediaId });
-					} else if (m.kind === 'video') {
-						extraParts.push({ type: 'video', mediaId });
-					} else {
-						extraParts.push({
-							type: 'file',
-							mediaId,
-							filename: m.originalFilename ?? mediaId,
-							byteSize: m.byteSize,
-						});
-					}
 				}
 			}
 			if (decision.action === 'allow_always') newlyTrusted.push(toolCallPart.toolName);
-			updateMessageParts(toolMsg.id, params.id, [nextPart, ...extraParts]);
+			updateMessageParts(toolMsg.id, params.id, [nextPart, ...execResult.mediaParts]);
 			updatedAny = true;
 			continue;
 		}
@@ -338,52 +321,4 @@ function findPending(branch: ChatMessage[], toolCallId: string): FoundPending | 
 		}
 	}
 	return null;
-}
-
-async function runApprovedTool(
-	toolCallPart: Extract<MessagePart, { type: 'tool_call' }>,
-	userId: string,
-	conversationId: string,
-	signal: AbortSignal,
-	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[],
-): Promise<{ content: string; isError: boolean; attachedMediaIds?: string[] }> {
-	const tool = getTool(toolCallPart.toolName);
-	if (!tool) {
-		return {
-			content: JSON.stringify({ error: `Unknown tool: ${toolCallPart.toolName}` }),
-			isError: true,
-		};
-	}
-	let args: unknown = {};
-	if (toolCallPart.arguments.length > 0) {
-		try {
-			args = JSON.parse(toolCallPart.arguments);
-		} catch (e) {
-			return {
-				content: JSON.stringify({
-					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`,
-				}),
-				isError: true,
-			};
-		}
-	}
-	try {
-		const execution = await Promise.resolve(
-			tool.execute(args, { userId, conversationId, signal, disabledFeatures }),
-		);
-		return {
-			content: execution.content,
-			isError: execution.isError === true,
-			...(execution.attachedMediaIds?.length
-				? { attachedMediaIds: execution.attachedMediaIds }
-				: {}),
-		};
-	} catch (e) {
-		return {
-			content: JSON.stringify({
-				error: `Tool "${toolCallPart.toolName}" threw: ${e instanceof Error ? e.message : String(e)}`,
-			}),
-			isError: true,
-		};
-	}
 }

@@ -12,7 +12,7 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage, getMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { _resetForTests, register } from '$lib/server/tools/registry';
-import { executeToolCalls } from '$lib/server/streaming/tool-execution';
+import { executeToolCalls, executeOneToolCall } from '$lib/server/streaming/tool-execution';
 import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
 import type { Tool } from '$lib/server/tools/types';
 
@@ -381,4 +381,38 @@ describe('executeToolCalls', () => {
 		expect(toolResults[0]).toMatchObject({ role: 'tool', tool_call_id: 'call_auto' });
 		expect(toolResults[1]).toMatchObject({ role: 'tool', tool_call_id: 'call_approval' });
 	});
+
+	it('applies a timeout via executeOneToolCall (approval path coverage), distinguishing timeout from throw', async () => {
+		// Use a cooperative tool that waits for the abort signal.
+		// The tool's short timeoutMs simulates a hung MCP peer.
+		const tool = mkTool('slow', async (_args, ctx) => {
+			await new Promise((_, reject) => {
+				if (ctx.signal.aborted) {
+					reject(new DOMException('Aborted', 'AbortError'));
+					return;
+				}
+				ctx.signal.addEventListener('abort', () => {
+					reject(new DOMException('Aborted', 'AbortError'));
+				});
+			});
+			return { content: 'never' };
+		});
+		tool.timeoutMs = 200;
+		register(tool);
+
+		const part: Extract<MessagePart, { type: 'tool_call' }> = {
+			type: 'tool_call',
+			toolCallId: 'call_slow',
+			toolName: 'slow',
+			arguments: '{}',
+		};
+		const signal = new AbortController().signal;
+		const { execution } = await executeOneToolCall(part, 'u1', 'c1', signal, []);
+
+		expect(execution.isError).toBe(true);
+		// The error message should say "exceeded its Nms timeout", distinguishing
+		// timeout from a generic throw — this is the fix that was missing from
+		// the approval-resume path (B6).
+		expect(execution.content).toContain('exceeded its 200ms timeout');
+	}, 10_000);
 });

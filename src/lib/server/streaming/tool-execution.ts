@@ -75,6 +75,19 @@ export interface ExecuteToolCallsResult {
 	activatedToolNames: string[];
 }
 
+export interface ExecuteOneToolCallResult {
+	execution: ToolExecution;
+	/**
+	 * Pre-constructed MessageParts (image/video/file) from
+	 * execution.attachedMediaIds, ready for appendage to the
+	 * tool_result part by the caller. Empty when no media was
+	 * generated or none was found for the user.
+	 * Callers must still call `linkMessageMedia(toolMsgId, mediaId)`
+	 * for each entry in execution.attachedMediaIds separately.
+	 */
+	mediaParts: MessagePart[];
+}
+
 /**
  * Execute every tool_call on the given assistant message in parallel,
  * persist one role:'tool' child per result, and advance
@@ -118,8 +131,13 @@ export async function executeToolCalls(
 				});
 				return { part, kind: 'pending' as const };
 			}
-			const execution = await runOneTool(part, params, signal);
-			return { part, kind: 'completed' as const, execution: execution.execution };
+			const result = await runOneTool(part, params, signal);
+			return {
+				part,
+				kind: 'completed' as const,
+				execution: result.execution,
+				mediaParts: result.mediaParts,
+			};
 		}),
 	);
 
@@ -179,37 +197,19 @@ export async function executeToolCalls(
 		// likewise). Link them to the freshly-persisted tool row so
 		// the renderer can surface them as attachments and the orphan
 		// reaper sees the same ref-count semantics user uploads use.
-		// We also append matching MessageParts (image / video / file)
-		// for each linked media so the existing render path draws
-		// chips / inline previews on the tool bubble without needing
-		// to consult the message_media join at render time.
-		if (entry.kind === 'completed' && entry.execution.attachedMediaIds) {
-			const extraParts: MessagePart[] = [];
+		// Media MessageParts were pre-constructed by executeOneToolCall
+		// (shared by both the inline and approval-resume paths) so we
+		// just need to link and update here.
+		if (entry.kind === 'completed' && entry.execution.attachedMediaIds?.length) {
 			for (const mediaId of entry.execution.attachedMediaIds) {
 				linkMessageMedia(toolMsg.id, mediaId);
-				const m = getMediaForUser(mediaId, params.userId);
-				if (!m) continue;
-				if (m.kind === 'image') {
-					extraParts.push({ type: 'image', mediaId });
-				} else if (m.kind === 'video') {
-					extraParts.push({ type: 'video', mediaId });
-				} else {
-					// 'file' kind — chip rendering with denormalized
-					// filename + size so the renderer needs no lookup.
-					extraParts.push({
-						type: 'file',
-						mediaId,
-						filename: m.originalFilename ?? mediaId,
-						byteSize: m.byteSize,
-					});
-				}
 			}
-			if (extraParts.length > 0) {
-				updateMessageParts(toolMsg.id, params.conversationId, [partPayload, ...extraParts]);
+			if (entry.mediaParts.length > 0) {
+				updateMessageParts(toolMsg.id, params.conversationId, [partPayload, ...entry.mediaParts]);
 				// Reflect the persisted change on the in-memory ChatMessage
 				// the relay returns to its callers, so the very next
 				// branch-walk after this turn sees the file parts too.
-				toolMsg.parts = [partPayload, ...extraParts];
+				toolMsg.parts = [partPayload, ...entry.mediaParts];
 			}
 		}
 		toolMessages.push(toolMsg);
@@ -222,31 +222,31 @@ export async function executeToolCalls(
 	return { toolMessages, pendingCount, activatedToolNames };
 }
 
-interface SettledToolExecution {
-	part: Extract<MessagePart, { type: 'tool_call' }>;
-	execution: ToolExecution;
-}
-
-async function runOneTool(
+/**
+ * Execute a single tool call, encapsulating registry lookup,
+ * JSON argument parsing, timeout wrapping, execution, error
+ * shaping (timeout-vs-throw), and media-part construction.
+ *
+ * Does NOT emit SSE events or persist anything — those are the
+ * caller's responsibility. This is the shared core for both the
+ * inline tool-execution path and the approval-resume path.
+ */
+export async function executeOneToolCall(
 	part: Extract<MessagePart, { type: 'tool_call' }>,
-	params: ExecuteToolCallsParams,
+	userId: string,
+	conversationId: string,
 	signal: AbortSignal,
-): Promise<SettledToolExecution> {
-	params.emit({ type: 'tool_call_executing', toolCallId: part.toolCallId });
-
+	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[],
+): Promise<ExecuteOneToolCallResult> {
 	const tool = getTool(part.toolName);
 	if (!tool) {
-		const execution: ToolExecution = {
-			content: JSON.stringify({ error: `Unknown tool: ${part.toolName}` }),
-			isError: true,
+		return {
+			execution: {
+				content: JSON.stringify({ error: `Unknown tool: ${part.toolName}` }),
+				isError: true,
+			},
+			mediaParts: [],
 		};
-		params.emit({
-			type: 'tool_call_result',
-			toolCallId: part.toolCallId,
-			result: execution.content,
-			isError: true,
-		});
-		return { part, execution };
 	}
 
 	let args: unknown = {};
@@ -254,19 +254,15 @@ async function runOneTool(
 		try {
 			args = JSON.parse(part.arguments);
 		} catch (e) {
-			const execution: ToolExecution = {
-				content: JSON.stringify({
-					error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`,
-				}),
-				isError: true,
+			return {
+				execution: {
+					content: JSON.stringify({
+						error: `Tool arguments did not parse as JSON: ${e instanceof Error ? e.message : String(e)}`,
+					}),
+					isError: true,
+				},
+				mediaParts: [],
 			};
-			params.emit({
-				type: 'tool_call_result',
-				toolCallId: part.toolCallId,
-				result: execution.content,
-				isError: true,
-			});
-			return { part, execution };
 		}
 	}
 
@@ -278,10 +274,10 @@ async function runOneTool(
 	try {
 		execution = await Promise.resolve(
 			tool.execute(args, {
-				userId: params.userId,
-				conversationId: params.conversationId,
+				userId,
+				conversationId,
 				signal: combinedSignal,
-				disabledFeatures: params.disabledFeatures ?? [],
+				disabledFeatures,
 			}),
 		);
 	} catch (e) {
@@ -305,11 +301,57 @@ async function runOneTool(
 		}
 	}
 
+	// Construct media parts from attachedMediaIds so callers (inline
+	// and approval-resume) don't duplicate this shaping.
+	const mediaParts: MessagePart[] = [];
+	if (execution.attachedMediaIds) {
+		for (const mediaId of execution.attachedMediaIds) {
+			const m = getMediaForUser(mediaId, userId);
+			if (!m) continue;
+			if (m.kind === 'image') {
+				mediaParts.push({ type: 'image', mediaId });
+			} else if (m.kind === 'video') {
+				mediaParts.push({ type: 'video', mediaId });
+			} else {
+				mediaParts.push({
+					type: 'file',
+					mediaId,
+					filename: m.originalFilename ?? mediaId,
+					byteSize: m.byteSize,
+				});
+			}
+		}
+	}
+
+	return { execution, mediaParts };
+}
+
+interface SettledToolExecution {
+	part: Extract<MessagePart, { type: 'tool_call' }>;
+	execution: ToolExecution;
+	mediaParts: MessagePart[];
+}
+
+async function runOneTool(
+	part: Extract<MessagePart, { type: 'tool_call' }>,
+	params: ExecuteToolCallsParams,
+	signal: AbortSignal,
+): Promise<SettledToolExecution> {
+	params.emit({ type: 'tool_call_executing', toolCallId: part.toolCallId });
+
+	const { execution, mediaParts } = await executeOneToolCall(
+		part,
+		params.userId,
+		params.conversationId,
+		signal,
+		params.disabledFeatures ?? [],
+	);
+
 	params.emit({
 		type: 'tool_call_result',
 		toolCallId: part.toolCallId,
 		result: execution.content,
 		isError: execution.isError === true,
 	});
-	return { part, execution };
+	return { part, execution, mediaParts };
 }
