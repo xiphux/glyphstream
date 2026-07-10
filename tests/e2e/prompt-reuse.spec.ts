@@ -89,6 +89,25 @@ test.describe('flow: new chat from this prompt', () => {
 		await expect(page.getByRole('button', { name: 'Send to 2 models' })).toBeEnabled();
 	});
 
+	// The handler is a synchronous onclick with no error boundary behind it, so an
+	// unguarded throw here would abort before `goto('/')` and leave the button
+	// looking inert. Degrade to an ordinary new chat instead.
+	test('still navigates when sessionStorage.setItem throws', async ({ page }) => {
+		await sendChatFromHome(page, 'a prompt that will not survive the trip');
+
+		await page.evaluate(() => {
+			Storage.prototype.setItem = function () {
+				throw new DOMException('QuotaExceededError');
+			};
+		});
+		await page.getByRole('button', { name: REUSE }).first().click();
+
+		// Navigated, and the composer is simply empty — no intent to apply.
+		await page.waitForURL((url) => url.pathname === '/');
+		await expect(page.locator('textarea').first()).toHaveValue('');
+		await expect(page.getByRole('button', { name: 'Select model' })).toBeVisible();
+	});
+
 	test('displacing a typed draft is undoable', async ({ page }) => {
 		const prompt = 'the original prompt';
 		await sendChatFromHome(page, prompt);

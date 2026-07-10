@@ -2015,7 +2015,14 @@
 			disabledFeatures: data.conversation.disabledFeatures,
 			private: data.conversation.private,
 		};
-		sessionStorage.setItem(PROMPT_REUSE_KEY, JSON.stringify(intent));
+		try {
+			sessionStorage.setItem(PROMPT_REUSE_KEY, JSON.stringify(intent));
+		} catch {
+			// sessionStorage can throw (private mode, quota, disabled by policy).
+			// Navigate anyway: the receiver treats a missing key as "no intent" and
+			// opens an ordinary new chat, which beats an onclick that throws and
+			// leaves the user on a button that appears to do nothing.
+		}
 		void goto('/');
 	}
 

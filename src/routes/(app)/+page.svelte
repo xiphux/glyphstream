@@ -348,8 +348,17 @@
 			}
 			disabledFeatures = [...intent.disabledFeatures];
 
-			if (intent.compareSelections?.length) {
-				compareSelections = intent.compareSelections.map((s) => ({ ...s }));
+			// Re-check the cart against the live model list too, for the same reason
+			// as `modelId` above. `expandCompareSelections` would drop a stale id at
+			// send time anyway, but not before the picker had already advertised a
+			// branch count the send wouldn't honor. A cart that shrinks below two
+			// isn't a comparison any more, so it collapses to the single model —
+			// which `modelId` already holds, and which was validated above.
+			const cart = (intent.compareSelections ?? []).filter((s) =>
+				data.models.some((m) => m.id === s.modelId),
+			);
+			if (cart.reduce((n, s) => n + s.count, 0) >= 2) {
+				compareSelections = cart.map((s) => ({ ...s }));
 				compareMode = true;
 			}
 			for (const mediaId of intent.mediaIds) {
