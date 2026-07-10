@@ -5,7 +5,7 @@
  *   3. GET /v1/videos/{id}/content -> mp4 bytes -> persist via MediaStore
  *
  * The full relay lifecycle (slot/queued, start, title, persist as a sibling,
- * regenerate replace-delete, notify, done) lives in the shared `startMediaRelay`
+ * notify, done) lives in the shared `startMediaRelay`
  * scaffold; this module supplies the video-specific `generate` step — the
  * create + poll loop that surfaces `progress` to the client over SSE, then
  * fetches + persists the mp4. Like the chat relay, the recorder runs

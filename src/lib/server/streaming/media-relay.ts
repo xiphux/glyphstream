@@ -8,7 +8,6 @@
  *   → first-exchange title task (suppressed for fan-out — /prepare owns it)
  *   → [modality-specific generate: produce + persist the media bytes]
  *   → append as a sibling (active_leaf pinned for fan-out) + link media
- *   → regenerate replace-delete (server-side, survives a refresh mid-re-roll)
  *   → push notify
  *   → `done` + race the title → `title`
  *   → finally: release the slot + onComplete
