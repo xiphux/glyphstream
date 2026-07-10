@@ -198,79 +198,109 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 	const cfg = getCodeInterpreterConfig();
 	const timeoutMs = params.callTimeoutMs ?? cfg.callTimeoutSeconds * 1000;
 
-	const entry = await ensureReady(params.conversationId, params.onStatus);
-	const release = await entry.mutex.acquire();
+	// B5: re-validation + retry loop. After acquiring the mutex, check that
+	// the entry is still the current one for this conversation and still in
+	// 'ready' state. The mutex wait can be arbitrarily long (a concurrent
+	// call in the same conversation runs to completion or times out), so
+	// the entry may have been terminated (timeout), evicted (enforcePoolCap),
+	// or reaped (reapIfIdle) while this call was queued. If stale, release
+	// the stale mutex and retry with a fresh worker.
+	//
+	// Cap retries to avoid an infinite loop if ensureReady keeps failing
+	// (e.g. the pool is saturated and every startWorker call either throws
+	// or produces a FailedEntry).
+	const MAX_RETRIES = 1;
+	for (let attempt = 0; ; attempt++) {
+		const entry = await ensureReady(params.conversationId, params.onStatus);
+		const release = await entry.mutex.acquire();
 
-	const callId = nextCallId++;
-	try {
-		return await new Promise<WorkerRunResult>((resolve, reject) => {
-			let settled = false;
-			const finish = (err: Error | null, value?: WorkerRunResult) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timeoutHandle);
-				if (params.ctxSignal) params.ctxSignal.removeEventListener('abort', onAbort);
-				entry.pendingResolvers.delete(callId);
-				if (err) reject(err);
-				else resolve(value!);
-			};
+		// Re-check that this entry is still valid after the (potentially
+		// long) mutex wait.
+		const current = entries.get(params.conversationId);
+		if (current && current === entry && current.state === 'ready') {
+			// Entry is still valid — proceed with the call.
+			const callId = nextCallId++;
+			try {
+				return await new Promise<WorkerRunResult>((resolve, reject) => {
+					let settled = false;
+					const finish = (err: Error | null, value?: WorkerRunResult) => {
+						if (settled) return;
+						settled = true;
+						clearTimeout(timeoutHandle);
+						if (params.ctxSignal) params.ctxSignal.removeEventListener('abort', onAbort);
+						entry.pendingResolvers.delete(callId);
+						if (err) reject(err);
+						else resolve(value!);
+					};
 
-			// Route the worker's reply for this callId through finish, so
-			// timeout / abort / result paths all settle the outer Promise
-			// through one chokepoint.
-			entry.pendingResolvers.set(callId, {
-				resolve: (v) => finish(null, v),
-				reject: (e) => finish(e),
-			});
+					// Route the worker's reply for this callId through finish, so
+					// timeout / abort / result paths all settle the outer Promise
+					// through one chokepoint.
+					entry.pendingResolvers.set(callId, {
+						resolve: (v) => finish(null, v),
+						reject: (e) => finish(e),
+					});
 
-			const onAbort = () => {
-				// Settle the in-flight promise FIRST so the worker.terminate()
-				// that follows (which can fire 'exit' synchronously) finds an
-				// empty pendingResolvers map and doesn't double-reject with a
-				// misleading "exited unexpectedly" error.
-				finish(new Error('run_python: aborted by caller'));
-				void terminateAndMarkFailed(entry, 'aborted by caller signal');
-			};
-			if (params.ctxSignal) {
-				if (params.ctxSignal.aborted) {
-					onAbort();
-					return;
-				}
-				params.ctxSignal.addEventListener('abort', onAbort);
+					const onAbort = () => {
+						// Settle the in-flight promise FIRST so the worker.terminate()
+						// that follows (which can fire 'exit' synchronously) finds an
+						// empty pendingResolvers map and doesn't double-reject with a
+						// misleading "exited unexpectedly" error.
+						finish(new Error('run_python: aborted by caller'));
+						void terminateAndMarkFailed(entry, 'aborted by caller signal');
+					};
+					if (params.ctxSignal) {
+						if (params.ctxSignal.aborted) {
+							onAbort();
+							return;
+						}
+						params.ctxSignal.addEventListener('abort', onAbort);
+					}
+
+					const timeoutHandle = setTimeout(() => {
+						// Same ordering reason as onAbort: settle the promise with the
+						// authoritative timeout error before terminating, so the
+						// 'exit' handler can't race in and overwrite it with a less
+						// informative "worker exited" rejection.
+						finish(
+							new Error(
+								`run_python: exceeded ${Math.round(timeoutMs / 1000)}s wall-clock budget; interpreter restarted (variables lost)`,
+							),
+						);
+						void terminateAndMarkFailed(
+							entry,
+							`run_python: exceeded ${Math.round(timeoutMs / 1000)}s wall-clock budget`,
+						);
+					}, timeoutMs);
+					// Don't keep the event loop alive purely for an in-flight timeout.
+					if (typeof timeoutHandle === 'object' && timeoutHandle && 'unref' in timeoutHandle) {
+						(timeoutHandle as { unref: () => void }).unref();
+					}
+
+					entry.worker.postMessage({
+						type: 'run',
+						callId,
+						code: params.code,
+						disabledFeatures: [...params.disabledFeatures],
+						preFiles: params.preFiles ? [...params.preFiles] : [],
+					});
+					entry.lastUsedAt = Date.now();
+					scheduleIdleReap(params.conversationId);
+				});
+			} finally {
+				release();
 			}
+		}
 
-			const timeoutHandle = setTimeout(() => {
-				// Same ordering reason as onAbort: settle the promise with the
-				// authoritative timeout error before terminating, so the
-				// 'exit' handler can't race in and overwrite it with a less
-				// informative "worker exited" rejection.
-				finish(
-					new Error(
-						`run_python: exceeded ${Math.round(timeoutMs / 1000)}s wall-clock budget; interpreter restarted (variables lost)`,
-					),
-				);
-				void terminateAndMarkFailed(
-					entry,
-					`run_python: exceeded ${Math.round(timeoutMs / 1000)}s wall-clock budget`,
-				);
-			}, timeoutMs);
-			// Don't keep the event loop alive purely for an in-flight timeout.
-			if (typeof timeoutHandle === 'object' && timeoutHandle && 'unref' in timeoutHandle) {
-				(timeoutHandle as { unref: () => void }).unref();
-			}
-
-			entry.worker.postMessage({
-				type: 'run',
-				callId,
-				code: params.code,
-				disabledFeatures: [...params.disabledFeatures],
-				preFiles: params.preFiles ? [...params.preFiles] : [],
-			});
-			entry.lastUsedAt = Date.now();
-			scheduleIdleReap(params.conversationId);
-		});
-	} finally {
+		// Stale entry: release the mutex we acquired from the dead/invalid
+		// entry so other waiters can also detect staleness and retry.
 		release();
+		if (attempt >= MAX_RETRIES) {
+			throw new Error(
+				`code_interpreter: failed to acquire a stable worker after ${MAX_RETRIES + 1} attempts`,
+			);
+		}
+		// Loop — ensureReady will create/spawn a fresh worker.
 	}
 }
 

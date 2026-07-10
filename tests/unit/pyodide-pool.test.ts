@@ -520,3 +520,98 @@ describe('ctxSignal — abort terminates the worker', () => {
 		expect(createdWorkers[0].terminated).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// B5: stale-entry recovery — re-validation after mutex acquire
+// ---------------------------------------------------------------------------
+
+describe('stale entry recovery — B5', () => {
+	it('synchronous exit in the executor rejects — minimal smoke test', async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = () => {
+				w.emit('exit', 1); // synchronous exit during postMessage
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+
+		await expect(
+			runPython({ conversationId: 'smoke', code: 'x', disabledFeatures: [] }),
+		).rejects.toThrow(/worker exited/);
+	});
+
+	it('recovers when a concurrent worker crashes while another call waits on the mutex', async () => {
+		// Two concurrent calls for the same conversation.
+		// Call A's worker exits (crash) while Call B is queued on the mutex.
+		// Without the B5 fix, B would acquire the stale mutex, postMessage
+		// to the terminated worker (a silent no-op), and hang until timeout.
+		// With the fix, B detects the entry is no longer current, releases
+		// the stale mutex, retries ensureReady which spawns a fresh worker,
+		// and completes normally.
+		//
+		// Note: async scheduling means either call may acquire the mutex
+		// first — the test only asserts ONE rejects (worker exit) and the
+		// OTHER fulfills (recovered on fresh worker), without assuming order.
+
+		let workerIdx = 0;
+		setWorkerFactoryForTests(() => {
+			const idx = workerIdx++;
+			const w = new MockWorker();
+			if (idx === 0) {
+				// First worker: simulate crash synchronously during run dispatch,
+				// so the exit handler fires within the Promise executor where the
+				// resolver is already registered.
+				w.onRun = () => {
+					w.emit('exit', 1);
+				};
+			} else {
+				// Subsequent workers (spawned on retry): reply immediately.
+				w.onRun = ({ callId }) => replyOk(w, callId, { recovered: true });
+			}
+			createdWorkers.push(w);
+			return w;
+		});
+
+		// Collect outcomes from both calls without assuming order.
+		const outcomes: Array<{ ok: boolean; error?: string; value?: unknown }> = [];
+
+		// Park both promises with .catch() to prevent unhandled rejections.
+		const p1 = runPython({
+			conversationId: 'c',
+			code: 'a',
+			disabledFeatures: [],
+		}).then(
+			(v) => outcomes.push({ ok: true, value: v.result }),
+			(e: Error) => outcomes.push({ ok: false, error: e.message }),
+		);
+
+		const p2 = runPython({
+			conversationId: 'c',
+			code: 'b',
+			disabledFeatures: [],
+		}).then(
+			(v) => outcomes.push({ ok: true, value: v.result }),
+			(e: Error) => outcomes.push({ ok: false, error: e.message }),
+		);
+
+		await Promise.all([p1, p2]);
+
+		expect(outcomes).toHaveLength(2);
+
+		// One call must have been rejected with a worker-exit error,
+		// NOT a timeout error (would indicate the B5 fix is missing).
+		const crashed = outcomes.find((o) => !o.ok)!;
+		expect(crashed.error).toMatch(/worker exited/);
+
+		// The other call must have recovered on a fresh worker
+		// (not hung or timed out).
+		const recovered = outcomes.find((o) => o.ok)!;
+		expect(recovered.value).toEqual({ recovered: true });
+
+		// Two workers: first (crashed via exit, NOT .terminate()d), second (fresh).
+		expect(createdWorkers).toHaveLength(2);
+		expect(createdWorkers[0].terminated).toBe(false);
+		expect(createdWorkers[1].terminated).toBe(false);
+	});
+});
