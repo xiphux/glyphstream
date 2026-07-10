@@ -124,10 +124,12 @@ export async function executeToolCalls(
 	);
 
 	// Persist results serially so created_at strictly orders the rows.
-	// Tree shape: each tool message's parent is the assistant message;
-	// the active_leaf moves to whichever was persisted last (= last in
-	// tool-call order). The next iteration's upstream call parents to
-	// that same active_leaf when the loop continues.
+	// Tree shape: each tool message chains to the previous tool result
+	// (the first chains to the assistant message), forming a linear chain
+	// that walkActiveBranch can traverse leaf→root. The active_leaf moves
+	// to whichever was persisted last (= last in tool-call order). The
+	// next iteration's upstream call parents to that same active_leaf
+	// when the loop continues.
 	const toolMessages: ChatMessage[] = [];
 	const activatedToolNames: string[] = [];
 	let pendingCount = 0;
@@ -162,7 +164,7 @@ export async function executeToolCalls(
 		}
 		const toolMsg = appendMessage({
 			conversationId: params.conversationId,
-			parentMessageId: params.assistantMessage.id,
+			parentMessageId: toolMessages[toolMessages.length - 1]?.id ?? params.assistantMessage.id,
 			role: 'tool',
 			parts: [partPayload],
 			contentHtml: null,

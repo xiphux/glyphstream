@@ -10,6 +10,7 @@ vi.mock('$lib/server/db/client', () => ({
 
 import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage, getMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
+import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
 import { _resetForTests, register } from '$lib/server/tools/registry';
 import { executeToolCalls } from '$lib/server/streaming/tool-execution';
 import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
@@ -125,10 +126,44 @@ describe('executeToolCalls', () => {
 			userId,
 			emit: () => {},
 		});
+
 		// Active leaf moves to the LAST persisted tool message — its id
 		// becomes the parent for any follow-up upstream call (PR5).
 		const branch = walkActiveBranch(conversationId);
 		expect(branch[branch.length - 1].id).toBe(toolMessages[1].id);
+
+		// Both tool rows are on the active branch (chained, not off-chain
+		// siblings), so walkActiveBranch's leaf→root walk finds both.
+		const branchIds = branch.map((m) => m.id);
+		expect(branchIds).toContain(toolMessages[0].id);
+		expect(branchIds).toContain(toolMessages[1].id);
+
+		// The tool messages appear in order (first tool before second tool).
+		const branchRoles = branch.map((m) => m.role);
+		const firstToolIdx = branchRoles.indexOf('tool');
+		expect(firstToolIdx).toBeGreaterThanOrEqual(0);
+		expect(branch[firstToolIdx].id).toBe(toolMessages[0].id);
+		expect(branch[firstToolIdx + 1].id).toBe(toolMessages[1].id);
+
+		// Serialize the branch for upstream and confirm every tool_call_id
+		// has a matching role:'tool' response.
+		const serialized = await serializeBranchForUpstream(
+			branch,
+			async () => 'data:image/png;base64,',
+			null,
+		);
+		const toolResults = serialized.filter((m) => m.role === 'tool');
+		expect(toolResults).toHaveLength(2);
+		expect(toolResults[0]).toEqual({
+			role: 'tool',
+			content: 'ok',
+			tool_call_id: 'a',
+		});
+		expect(toolResults[1]).toEqual({
+			role: 'tool',
+			content: 'ok',
+			tool_call_id: 'b',
+		});
 	});
 
 	it('persists tool_calls in upstream index order even though execute is parallel', async () => {
@@ -289,5 +324,61 @@ describe('executeToolCalls', () => {
 		});
 		expect(toolMessages).toEqual([]);
 		expect(events).toEqual([]);
+	});
+
+	it('chains mixed pending_approval and auto-executed tool rows on the active branch', async () => {
+		register(mkTool('auto_tool', () => ({ content: 'auto-result' })));
+		register(
+			mkTool('approval_tool', () => {
+				throw new Error('must not execute when pending');
+			}),
+		);
+		const { conversationId, assistantMessage, userId } = seedConversationWithAssistantToolCalls([
+			{ type: 'tool_call', toolCallId: 'call_auto', toolName: 'auto_tool', arguments: '{}' },
+			{
+				type: 'tool_call',
+				toolCallId: 'call_approval',
+				toolName: 'approval_tool',
+				arguments: '{}',
+			},
+		]);
+		const { toolMessages, pendingCount } = await executeToolCalls({
+			assistantMessage,
+			conversationId,
+			userId,
+			emit: () => {},
+			needsApproval: (name) => name === 'approval_tool',
+		});
+
+		expect(toolMessages).toHaveLength(2);
+		expect(pendingCount).toBe(1);
+
+		// Both tool rows are on the active branch (chained, not off-chain siblings).
+		const branch = walkActiveBranch(conversationId);
+		const branchIds = branch.map((m) => m.id);
+		expect(branchIds).toContain(toolMessages[0].id);
+		expect(branchIds).toContain(toolMessages[1].id);
+
+		// Auto-executed tool has its content
+		const autoPart = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
+		expect(autoPart.toolCallId).toBe('call_auto');
+		expect(autoPart.result).toBe('auto-result');
+
+		// Pending tool has the placeholder shape
+		const pendingPart = toolMessages[1].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
+		expect(pendingPart.toolCallId).toBe('call_approval');
+		expect(pendingPart.result).toBe('');
+		expect(pendingPart.status).toBe('pending_approval');
+
+		// Serialization preserves both tool results
+		const serialized = await serializeBranchForUpstream(
+			branch,
+			async () => 'data:image/png;base64,',
+			null,
+		);
+		const toolResults = serialized.filter((m) => m.role === 'tool');
+		expect(toolResults).toHaveLength(2);
+		expect(toolResults[0]).toMatchObject({ role: 'tool', tool_call_id: 'call_auto' });
+		expect(toolResults[1]).toMatchObject({ role: 'tool', tool_call_id: 'call_approval' });
 	});
 });
