@@ -151,6 +151,8 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				return null;
 			}
 			if (Date.now() - startedAt > MAX_WAIT_MS) {
+				// Best-effort cancel of the bridge job, mirroring the abort path above
+				await videoCancel(params.endpoint, job.id);
 				const message = `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`;
 				write({ type: 'error', message } satisfies StreamErrorEvent);
 				return { error: message };

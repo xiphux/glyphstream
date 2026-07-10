@@ -569,4 +569,55 @@ describe('startVideoRelay — backpressure + failure', () => {
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toBe('Cancelled');
 	});
+
+	it('calls videoCancel when the polling budget expires (MAX_WAIT_MS)', async () => {
+		vi.useFakeTimers();
+		try {
+			const { conv, user, userMessage } = seedConvWithUser();
+			const onComplete = vi.fn();
+
+			// Job never completes — poll loop runs until timeout
+			mocks.videoCreate.mockReset().mockResolvedValue({
+				id: 'job-timeout',
+				status: 'running',
+				progress: null,
+			});
+			mocks.videoStatus.mockReset().mockResolvedValue({
+				id: 'job-timeout',
+				status: 'running',
+				progress: 50,
+			});
+
+			const relay = startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					onComplete,
+				}),
+			);
+
+			const drainPromise = drain(relay);
+
+			// Advance far past MAX_WAIT_MS (20 min) so the sleep/poll
+			// loop accumulates enough time to trip the expiry check.
+			await vi.advanceTimersByTimeAsync(20 * 60_000 + 60_000);
+
+			const events = await drainPromise;
+
+			// Must cancel the bridge job before giving up on it
+			expect(mocks.videoCancel).toHaveBeenCalledWith(endpoint(), 'job-timeout');
+
+			// The timeout surfaces as an error, not a done event
+			const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
+			expect(err).toBeDefined();
+			expect(err!.message).toContain('did not complete');
+			expect(events.some((e) => e.type === 'done')).toBe(false);
+
+			// The relay still releases the slot and fires onComplete
+			expect(onComplete).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
