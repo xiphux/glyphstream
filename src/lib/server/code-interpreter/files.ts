@@ -27,15 +27,12 @@
  */
 
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { extname } from 'node:path';
 import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '../db/client';
 import { media, messageMedia } from '../db/schema';
 import { walkActiveBranch } from '../db/queries/messages';
 import { insertMedia, type MediaKind } from '../db/queries/media';
-import { mediaDir } from '../env';
 import { getMediaStore } from '../media/disk-store';
 import type { RunPythonPreFile, RunPythonPostFile } from './pool';
 
@@ -99,11 +96,17 @@ export async function collectConversationFiles(
 		if (!byFilename.has(name)) byFilename.set(name, r);
 	}
 
+	const store = getMediaStore();
 	const out: RunPythonPreFile[] = [];
 	for (const [filename, r] of byFilename) {
 		try {
-			const fullPath = resolve(mediaDir(), r.storagePath);
-			const bytes = await readFile(fullPath);
+			const result = await store.open(r.storagePath, r.contentType);
+			if (!result) continue;
+			const chunks: Buffer[] = [];
+			for await (const chunk of result.stream) {
+				chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+			}
+			const bytes = Buffer.concat(chunks);
 			const u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 			out.push({
 				filename,
@@ -111,9 +114,10 @@ export async function collectConversationFiles(
 				sha256: createHash('sha256').update(u8).digest('hex'),
 			});
 		} catch {
-			// File missing on disk (race with hard-delete / disk cleanup).
-			// Skip rather than failing the whole call — the model sees
-			// the file as absent in /workspace/ and can adjust.
+			// File missing or unreadable (race with hard-delete / disk
+			// cleanup, transient I/O error). Skip rather than failing the
+			// whole call — the model sees the file as absent in /workspace/
+			// and can adjust.
 		}
 	}
 	return out;

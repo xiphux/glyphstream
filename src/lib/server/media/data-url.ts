@@ -12,11 +12,9 @@
  * on the same network, give it a signed URL" is a v2 concern.
  */
 
-import type { Buffer } from 'node:buffer';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
-import { mediaDir } from '../env';
+import { Buffer } from 'node:buffer';
 import { getMediaForUser } from '../db/queries/media';
+import { getMediaStore } from './disk-store';
 
 /**
  * Thrown by `loadMediaBytes` when the media is permanently unavailable:
@@ -45,11 +43,11 @@ export interface LoadedMediaBytes {
  * Used by both the vision-chat data-URL path and the I2I multipart path.
  *
  * Refuses `kind: 'file'` rows — those are user/file-attachment uploads
- * (xlsx, csv, pdf, ...) that mean nothing as image-inputs to the vision
- * model. The code interpreter has its own materialization path through
- * the MediaStore; routing files into a vision-shaped data URL would
- * either confuse the upstream or expose the bytes of an internal
- * document to a model that can't read them.
+ * (xlsx, csv, pdf, ...) that mean nothing as image-inputs to a vision
+ * model. The code interpreter mounts files through the same MediaStore
+ * interface; routing them into a vision-shaped data URL would either
+ * confuse the upstream or expose the bytes of an internal document to
+ * a model that can't read them.
  *
  * Throws `MediaNotAvailableError` for permanently-unavailable media
  * (not found, hard-deleted, wrong kind, ENOENT). Transient filesystem
@@ -62,16 +60,14 @@ export async function loadMediaBytes(mediaId: string, userId: string): Promise<L
 	if (row.kind !== 'image' && row.kind !== 'video') {
 		throw new MediaNotAvailableError(mediaId, `kind '${row.kind}' cannot be inlined`);
 	}
-	const fullPath = resolve(mediaDir(), row.storagePath);
-	try {
-		const bytes = await readFile(fullPath);
-		return { bytes, contentType: row.contentType, kind: row.kind };
-	} catch (e) {
-		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-			throw new MediaNotAvailableError(mediaId, 'file not found');
-		}
-		throw e;
+	const store = getMediaStore();
+	const result = await store.open(row.storagePath, row.contentType);
+	if (!result) throw new MediaNotAvailableError(mediaId, 'file not found');
+	const chunks: Buffer[] = [];
+	for await (const chunk of result.stream) {
+		chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 	}
+	return { bytes: Buffer.concat(chunks), contentType: row.contentType, kind: row.kind };
 }
 
 export async function mediaIdToDataUrl(mediaId: string, userId: string): Promise<string> {

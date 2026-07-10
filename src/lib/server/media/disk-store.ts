@@ -138,7 +138,7 @@ export class DiskMediaStore implements MediaStore {
 }
 
 let cached: DiskMediaStore | null = null;
-export function getMediaStore(): DiskMediaStore {
+export function getMediaStore(): MediaStore {
 	if (!cached) cached = new DiskMediaStore();
 	return cached;
 }

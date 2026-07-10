@@ -18,6 +18,19 @@
  * codec) we return null and the endpoint falls back to streaming
  * the original — gallery shows a slow tile but no broken-image
  * icon. Per-file failures don't poison the cache.
+ *
+ * DISK-STORE-ONLY: This module reads and writes via raw `node:fs`
+ * paths resolved from `mediaDir()`. It does NOT go through the
+ * MediaStore interface and is therefore tied to the disk-backed
+ * implementation. The gallery endpoint
+ * (routes/api/media/[id]/thumbnail/+server.ts) degrades gracefully
+ * under an S3 store — `getOrCreateThumbnail` returns null for
+ * missing source files, and the endpoint falls back to
+ * `store.open()` which streams the full-resolution original. This
+ * means the gallery loses the thumbnail optimization under S3 but
+ * does not break. Extending the MediaStore interface with
+ * derived-asset methods (openDerived / putDerived) is deferred to
+ * a future v2 change.
  */
 
 import sharp from 'sharp';
