@@ -220,10 +220,14 @@ export function startDreamingWorker(): void {
 		runDreamSweep()
 			.catch((e) => console.error('[dreaming] sweep failed:', e))
 			.finally(() => {
-				if (generation === myGen) timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				if (generation === myGen) {
+					timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+					timer?.unref();
+				}
 			});
 	}
 	timer = setTimeout(tick, INITIAL_DELAY_MS);
+	timer?.unref();
 	console.log(`[dreaming] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 

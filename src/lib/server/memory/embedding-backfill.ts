@@ -163,8 +163,10 @@ export function startEmbeddingBackfiller(): void {
 			.catch((e) => console.error('[embedding-backfill] sweep failed:', e))
 			.finally(() => {
 				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				timer?.unref();
 			});
 	}, INITIAL_DELAY_MS);
+	timer?.unref();
 	console.log(`[embedding-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 

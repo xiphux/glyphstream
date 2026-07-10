@@ -108,8 +108,10 @@ export function startMediaPurger(): void {
 			.catch((e) => console.error('[purger] sweep failed:', e))
 			.finally(() => {
 				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				timer?.unref();
 			});
 	}, initialDelayMs);
+	timer?.unref();
 	console.log(
 		`[purger] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min, grace ${
 			GRACE_PERIOD_MS / 60000

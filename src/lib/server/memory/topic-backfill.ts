@@ -116,15 +116,18 @@ export function startTopicBackfiller(): void {
 					return;
 				}
 				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				timer?.unref();
 			},
 			(e) => {
 				console.error('[topic-backfill] sweep failed:', e);
 				if (generation !== myGen) return; // superseded — don't re-arm
 				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				timer?.unref();
 			},
 		);
 	}
 	timer = setTimeout(tick, INITIAL_DELAY_MS);
+	timer?.unref();
 	console.log(`[topic-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 

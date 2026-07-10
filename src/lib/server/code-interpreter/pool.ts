@@ -129,21 +129,11 @@ interface PendingResolver {
 }
 
 const entries = new Map<string, Entry>();
-let shutdownInstalled = false;
 let nextCallId = 1;
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-
-/**
- * Idempotent process-wide init. Installs the SIGINT/SIGTERM shutdown hook
- * so workers are cleanly terminated on graceful exit. No eager spawn:
- * workers come up on the first `runPython` per conversation.
- */
-export function initializeCodeInterpreter(): void {
-	installShutdownHook();
-}
 
 export interface RunPythonPreFile {
 	filename: string;
@@ -563,27 +553,18 @@ function markFailed(conversationId: string, error: string): void {
 	entries.set(conversationId, { state: 'failed', conversationId, error });
 }
 
-function installShutdownHook(): void {
-	if (shutdownInstalled) return;
-	shutdownInstalled = true;
-	const close = async () => {
-		await Promise.all(
-			Array.from(entries.values()).map(async (e) => {
-				if (e.state === 'ready') {
-					await e.worker.terminate().catch(() => {});
-				}
-			}),
-		);
-	};
-	process.on('SIGINT', () => {
-		void close();
-	});
-	process.on('SIGTERM', () => {
-		void close();
-	});
-	process.on('beforeExit', () => {
-		void close();
-	});
+/**
+ * Terminate all pool workers — called by the sveltekit:shutdown hook
+ * so clean teardown runs after in-flight requests settle.
+ */
+export async function stopPool(): Promise<void> {
+	await Promise.all(
+		Array.from(entries.values()).map(async (e) => {
+			if (e.state === 'ready') {
+				await e.worker.terminate().catch(() => {});
+			}
+		}),
+	);
 }
 
 /** Test-only: clear every entry, terminate live workers, reset state. */

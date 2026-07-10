@@ -23,6 +23,9 @@ services:
     image: glyphstream:latest
     container_name: glyphstream
     restart: unless-stopped
+    # Give adapter-node's SHUTDOWN_TIMEOUT (30s) room to drain in-flight
+    # requests and close connections before the supervisor SIGKILLs.
+    stop_grace_period: 30s
     ports:
       - '${PORT:-3000}:3000'
     volumes:

@@ -3,12 +3,20 @@ import { readSessionCookie, validateSessionToken } from '$lib/server/auth/sessio
 import { maybeCompressResponse } from '$lib/server/compression';
 import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
-import { startMediaPurger } from '$lib/server/media/purger';
-import { startEmbeddingBackfiller } from '$lib/server/memory/embedding-backfill';
-import { startTopicBackfiller } from '$lib/server/memory/topic-backfill';
-import { startDreamingWorker } from '$lib/server/memory/dreaming';
-import { startConversationSummaryWorker } from '$lib/server/memory/conversation-summary';
+import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
+import {
+	startEmbeddingBackfiller,
+	stopEmbeddingBackfiller,
+} from '$lib/server/memory/embedding-backfill';
+import { startTopicBackfiller, stopTopicBackfiller } from '$lib/server/memory/topic-backfill';
+import { startDreamingWorker, stopDreamingWorker } from '$lib/server/memory/dreaming';
+import {
+	startConversationSummaryWorker,
+	stopConversationSummaryWorker,
+} from '$lib/server/memory/conversation-summary';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
+import { stopMcp } from '$lib/server/mcp/registry';
+import { stopPool } from '$lib/server/code-interpreter/pool';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -65,6 +73,25 @@ startConversationSummaryWorker();
 // before advertising tools so the model never sees a partially-populated
 // MCP surface; the rest of the app is unblocked.
 void bootstrapMcp();
+
+// Clean shutdown on SIGTERM (adapter-node's graceful_shutdown emits
+// 'sveltekit:shutdown' after closing the HTTP server and before the
+// SHUTDOWN_TIMEOUT grace period expires). Without this listener the
+// event loop never drains — the five recursive setTimeout chains above
+// keep it alive — and the supervisor SIGKILLs. Each stop*() clears its
+// timer or bumps its generation so the in-flight tick's completion
+// callback won't re-arm. The MCP and pool closers await connections to
+// drain, so in-flight tool calls / interpreter runs finish before the
+// process exits.
+process.on('sveltekit:shutdown', async () => {
+	stopMediaPurger();
+	stopDreamingWorker();
+	stopEmbeddingBackfiller();
+	stopTopicBackfiller();
+	stopConversationSummaryWorker();
+	await stopMcp();
+	await stopPool();
+});
 
 // Paths that must always revalidate against the server. Browsers
 // special-case sw.js for SW updates, but reverse proxies and CDNs don't —

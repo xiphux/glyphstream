@@ -178,10 +178,14 @@ export function startConversationSummaryWorker(): void {
 		runSummarySweep()
 			.catch((e) => console.error('[conversation-summary] sweep failed:', e))
 			.finally(() => {
-				if (generation === myGen) timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+				if (generation === myGen) {
+					timer = setTimeout(tick, SWEEP_INTERVAL_MS);
+					timer?.unref();
+				}
 			});
 	}
 	timer = setTimeout(tick, INITIAL_DELAY_MS);
+	timer?.unref();
 	console.log(`[conversation-summary] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
 }
 
