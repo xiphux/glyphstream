@@ -388,6 +388,91 @@ describe('LRU eviction', () => {
 		expect(createdWorkers[2].terminated).toBe(false);
 		expect(createdWorkers[3].terminated).toBe(false);
 	});
+
+	it('does not terminate a busy worker when enforcing the pool cap', async () => {
+		// pool_max = 3 (from beforeEach). Seed the pool with 3 conversations,
+		// one of which has a call still in flight (parked — never replies).
+		// When a 4th conversation starts, enforcePoolCap should skip the
+		// busy worker and evict one of the idle ones instead.
+		let parkedCallId: number | undefined;
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = (msg) => {
+				if (msg.code === 'park') {
+					// Record the callId but never reply — stays in flight.
+					parkedCallId = msg.callId;
+				} else {
+					replyOk(w, msg.callId);
+				}
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+
+		// 'a' runs and completes (idle).
+		await runPython({ conversationId: 'a', code: 'a', disabledFeatures: [] });
+		await new Promise((r) => setTimeout(r, 1));
+		// 'b' runs with 'park' — this call never resolves. Swallow the
+		// eventual rejection so afterEach cleanup (worker termination)
+		// doesn't surface as an unhandled rejection.
+		const inFlightB = runPython({ conversationId: 'b', code: 'park', disabledFeatures: [] }).catch(
+			() => {},
+		);
+		await new Promise((r) => setTimeout(r, 10));
+		// 'c' runs and completes (idle).
+		await runPython({ conversationId: 'c', code: 'c', disabledFeatures: [] });
+		await new Promise((r) => setTimeout(r, 1));
+
+		expect(createdWorkers).toHaveLength(3);
+		expect(createdWorkers.every((w) => !w.terminated)).toBe(true);
+
+		// Fourth call — 'a' is the oldest idle worker and should be evicted.
+		// 'b' is busy (parked call) and must NOT be terminated.
+		await runPython({ conversationId: 'd', code: 'd', disabledFeatures: [] });
+		expect(createdWorkers).toHaveLength(4);
+		expect(createdWorkers[0].terminated).toBe(true); // 'a' (oldest idle) evicted
+		expect(createdWorkers[1].terminated).toBe(false); // 'b' (busy) preserved
+		expect(createdWorkers[2].terminated).toBe(false);
+		expect(createdWorkers[3].terminated).toBe(false);
+	});
+
+	it('throws "pool at capacity — all busy" when every ready worker has a call in flight', async () => {
+		// pool_max = 2 — override from the default 3 so we can saturate
+		// with fewer park-mode workers.
+		testConfig.poolMax = 2;
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = () => {}; // Park — never reply
+			createdWorkers.push(w);
+			return w;
+		});
+
+		// Start two in-flight calls that never complete. Swallow their
+		// eventual rejections so afterEach cleanup doesn't surface as
+		// unhandled rejections.
+		const inFlightA = runPython({ conversationId: 'a', code: 'hang', disabledFeatures: [] }).catch(
+			() => {},
+		);
+		const inFlightB = runPython({ conversationId: 'b', code: 'hang', disabledFeatures: [] }).catch(
+			() => {},
+		);
+
+		// Wait for both workers to boot and reach 'ready' with pending resolvers.
+		await new Promise((r) => setTimeout(r, 30));
+
+		expect(createdWorkers).toHaveLength(2);
+		expect(createdWorkers[0].terminated).toBe(false);
+		expect(createdWorkers[1].terminated).toBe(false);
+
+		// Third call — pool at capacity, all workers busy — should throw.
+		await expect(
+			runPython({ conversationId: 'c', code: 'overflow', disabledFeatures: [] }),
+		).rejects.toThrow(/pool at capacity.*busy/);
+
+		// Assert neither busy worker was terminated.
+		expect(createdWorkers[0].terminated).toBe(false);
+		expect(createdWorkers[1].terminated).toBe(false);
+	});
 });
 
 describe('worker exit propagation', () => {

@@ -448,17 +448,28 @@ function enforcePoolCap(): void {
 	// slot is in-flight, the caller eats a clear error rather than
 	// silently queueing.
 	const ready = liveEntries.filter((e): e is ReadyEntry => e.state === 'ready');
-	if (ready.length === 0) {
+
+	// Only consider truly idle workers — those with no in-flight calls.
+	const idle = ready.filter((e) => e.pendingResolvers.size === 0);
+	if (idle.length > 0) {
+		// Sort by lastUsedAt ascending so the oldest is first.
+		idle.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+		const victim = idle[0];
+		if (victim.idleTimerId) clearTimeout(victim.idleTimerId);
+		void victim.worker.terminate().catch(() => {});
+		entries.delete(victim.conversationId);
+		return;
+	}
+
+	// All ready entries are busy — or every slot is still starting up.
+	if (ready.length > 0) {
 		throw new Error(
-			`code_interpreter: pool at capacity (${cap}); all workers are starting up. Try again momentarily.`,
+			`code_interpreter: pool at capacity (${cap}); all workers are busy. Try again momentarily.`,
 		);
 	}
-	// Sort by lastUsedAt ascending so the oldest is first.
-	ready.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-	const victim = ready[0];
-	if (victim.idleTimerId) clearTimeout(victim.idleTimerId);
-	void victim.worker.terminate().catch(() => {});
-	entries.delete(victim.conversationId);
+	throw new Error(
+		`code_interpreter: pool at capacity (${cap}); all workers are starting up. Try again momentarily.`,
+	);
 }
 
 function scheduleIdleReap(conversationId: string): void {
@@ -477,6 +488,14 @@ function scheduleIdleReap(conversationId: string): void {
 function reapIfIdle(conversationId: string): void {
 	const entry = entries.get(conversationId);
 	if (!entry || entry.state !== 'ready') return;
+
+	// Don't terminate a worker with a call still in flight.
+	if (entry.pendingResolvers.size > 0) {
+		entry.idleTimerId = null;
+		scheduleIdleReap(conversationId);
+		return;
+	}
+
 	const idleMs = getCodeInterpreterConfig().idleTimeoutSeconds * 1000;
 	const elapsed = Date.now() - entry.lastUsedAt;
 	if (elapsed < idleMs) {
