@@ -83,6 +83,12 @@ void bootstrapMcp();
 // callback won't re-arm. The MCP and pool closers await connections to
 // drain, so in-flight tool calls / interpreter runs finish before the
 // process exits.
+//
+// Node's EventEmitter doesn't await async callbacks, so this handler
+// is effectively fire-and-forget — teardown starts immediately and the
+// SHUTDOWN_TIMEOUT / stop_grace_period window provides the time budget.
+// A future slow operation added here won't block shutdown; if blocking
+// is ever needed, call process.exit() explicitly after the awaits.
 process.on('sveltekit:shutdown', async () => {
 	stopMediaPurger();
 	stopDreamingWorker();

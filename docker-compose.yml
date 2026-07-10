@@ -24,8 +24,10 @@ services:
     container_name: glyphstream
     restart: unless-stopped
     # Give adapter-node's SHUTDOWN_TIMEOUT (30s) room to drain in-flight
-    # requests and close connections before the supervisor SIGKILLs.
-    stop_grace_period: 30s
+    # requests, close connections, and run the sveltekit:shutdown handler
+    # before the supervisor SIGKILLs. 40s > 30s so the handler has a
+    # margin even if closeAllConnections fires near the timeout.
+    stop_grace_period: 40s
     ports:
       - '${PORT:-3000}:3000'
     volumes:
