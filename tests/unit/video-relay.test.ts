@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
@@ -70,7 +71,7 @@ beforeEach(() => {
 	mocks.videoStatus.mockReset();
 	mocks.videoFetchContent
 		.mockReset()
-		.mockResolvedValue({ bytes: Buffer.from([0, 1, 2]), contentType: 'video/mp4' });
+		.mockResolvedValue({ stream: Readable.from(Buffer.from([0, 1, 2])), contentType: 'video/mp4' });
 	mocks.videoCancel.mockReset().mockResolvedValue(undefined);
 	mocks.persistGeneratedVideo.mockReset().mockResolvedValue('media-vid');
 	mocks.linkMessageMedia.mockReset();

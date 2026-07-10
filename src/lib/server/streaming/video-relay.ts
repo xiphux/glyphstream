@@ -14,6 +14,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import {
 	videoCancel,
 	videoCreate,
@@ -177,11 +178,11 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		}
 
 		// status === 'completed' — fetch + persist
-		let bytes: Buffer;
+		let stream: Readable;
 		let contentType: string;
 		try {
 			const fetched = await videoFetchContent(params.endpoint, job.id);
-			bytes = fetched.bytes;
+			stream = fetched.stream;
 			contentType = fetched.contentType;
 		} catch (e) {
 			// A Stop click mid-fetch is a cancellation, not a failure — bail quietly
@@ -203,7 +204,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				sourceModel: params.storedModelId,
 				prompt: effectivePrompt,
 				originalPrompt,
-				bytes,
+				stream,
 				contentType,
 				sourceMediaId: params.sourceMediaId ?? null,
 			});

@@ -25,6 +25,12 @@ export interface MediaPutInput {
 	kind: 'image' | 'video' | 'file';
 }
 
+export interface MediaPutStreamInput {
+	stream: Readable;
+	contentType: string;
+	kind: 'image' | 'video' | 'file';
+}
+
 /** What `open()` returns — body + status info for serving the bytes. */
 export interface MediaOpenResult {
 	stream: Readable;
@@ -42,6 +48,13 @@ export interface MediaRange {
 export interface MediaStore {
 	/** Persist `bytes` and return where it landed. Atomic on disk via tmp+rename. */
 	put(input: MediaPutInput): Promise<MediaStoredRef>;
+	/**
+	 * Persist a readable stream to disk without buffering the whole payload
+	 * in memory. Same atomic pattern: pipe to `.tmp`, then rename. Use this
+	 * for large payloads like video mp4s where holding the full Buffer in
+	 * the Node heap would spike memory pressure.
+	 */
+	putStream(input: MediaPutStreamInput): Promise<MediaStoredRef>;
 	/**
 	 * Open a stored asset for reading. Honors `range` for partial content
 	 * (clamped to the file's length). Returns null if the asset is missing.

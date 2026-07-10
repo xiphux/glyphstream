@@ -7,15 +7,17 @@
  * across thousands of dirs without slowing dirent lookup.
  */
 
-import { createReadStream, existsSync, mkdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
 import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import { mediaDir } from '../env';
 import { thumbStoragePath } from './thumbnail';
 import type {
 	MediaOpenResult,
 	MediaPutInput,
+	MediaPutStreamInput,
 	MediaRange,
 	MediaStore,
 	MediaStoredRef,
@@ -80,6 +82,29 @@ export class DiskMediaStore implements MediaStore {
 		return {
 			storagePath,
 			byteSize: input.bytes.byteLength,
+			contentType: input.contentType,
+		};
+	}
+
+	async putStream(input: MediaPutStreamInput): Promise<MediaStoredRef> {
+		const id = randomUUID().replace(/-/g, '');
+		const ext = extFor(input.contentType);
+		const storagePath = pathFor(id, ext);
+		const absolute = resolve(root(), storagePath);
+		mkdirSync(dirname(absolute), { recursive: true });
+
+		const tmp = `${absolute}.tmp`;
+		const ws = createWriteStream(tmp);
+		await pipeline(input.stream, ws);
+
+		// Stat after pipeline completes — guarantees the OS has flushed the
+		// write stream to disk before we read the size.
+		const st = await stat(tmp);
+		await rename(tmp, absolute);
+
+		return {
+			storagePath,
+			byteSize: st.size,
 			contentType: input.contentType,
 		};
 	}

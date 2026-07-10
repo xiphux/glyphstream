@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import type { LoadedEndpoint } from './config';
 import type { UpstreamModel } from '$lib/types/api';
 import { composeSignals } from '../util/abort';
@@ -518,11 +519,11 @@ export async function videoStatus(endpoint: LoadedEndpoint, videoId: string): Pr
 	);
 }
 
-/** GET /v1/videos/{id}/content — raw mp4 bytes. Only valid once status === "completed". */
+/** GET /v1/videos/{id}/content — raw mp4 bytes as a stream. Only valid once status === "completed". */
 export async function videoFetchContent(
 	endpoint: LoadedEndpoint,
 	videoId: string,
-): Promise<{ bytes: Buffer; contentType: string }> {
+): Promise<{ stream: Readable; contentType: string }> {
 	const url = `${endpoint.baseUrl}/videos/${encodeURIComponent(videoId)}/content`;
 	const res = await doFetch(
 		url,
@@ -535,9 +536,11 @@ export async function videoFetchContent(
 		`Network error fetching video content at ${url}`,
 	);
 	await ensureOk(res, `Fetching video content returned HTTP ${res.status}`);
-	const arrayBuf = await res.arrayBuffer();
+	if (!res.body) {
+		throw new UpstreamError('Video content response had no body', 200, null);
+	}
 	const contentType = res.headers.get('content-type') ?? 'video/mp4';
-	return { bytes: Buffer.from(arrayBuf), contentType };
+	return { stream: Readable.from(res.body), contentType };
 }
 
 /**

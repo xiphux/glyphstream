@@ -10,6 +10,7 @@
  */
 
 import { Buffer } from 'node:buffer';
+import { Readable } from 'node:stream';
 import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
@@ -76,17 +77,17 @@ interface PersistVideoInput {
 	/** The user's pre-enhancement prompt, when the enhancer rewrote `prompt`.
 	 *  Null when no enhancement happened. */
 	originalPrompt?: string | null;
-	bytes: Buffer;
+	stream: Readable;
 	contentType: string;
 	/** Input image this video was animated from (i2v). Null for text-to-video. */
 	sourceMediaId?: string | null;
 }
 
-/** Persist already-fetched video bytes (fetched directly from upstream by the caller). */
+/** Persist a video stream directly to the media store without buffering in memory. */
 export async function persistGeneratedVideo(input: PersistVideoInput): Promise<string> {
 	const store = getMediaStore();
-	const ref = await store.put({
-		bytes: input.bytes,
+	const ref = await store.putStream({
+		stream: input.stream,
 		contentType: input.contentType || 'video/mp4',
 		kind: 'video',
 	});
