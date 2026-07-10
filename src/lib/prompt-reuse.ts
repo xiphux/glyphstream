@@ -74,6 +74,35 @@ export function deriveReuseModels(
 }
 
 /**
+ * Reconcile an intent against the receiving page's live model lists.
+ *
+ * `deriveReuseModels` already resolved everything at click time, but config can
+ * change before the new-chat page mounts (an endpoint edited or health-flapped),
+ * so nothing the intent carries can be trusted to still exist.
+ *
+ * The rule is that every model in the cart is one the user deliberately picked,
+ * so a survivor always beats the page's own default. `intent.modelId` is the
+ * cart's FIRST entry, which means it's exactly as mortal as any other — when it
+ * is the one that vanished, adopt a survivor rather than falling through.
+ * Falling through would be strictly worse than not filtering at all: the send
+ * would go to an unrelated default instead of to a model the user chose.
+ *
+ * A cart that survives with fewer than two branches is no longer a comparison,
+ * so it collapses to a single model. Returns the selection to apply; a null
+ * `modelId` means "nothing usable survived — let the default-model effect pick".
+ */
+export function resolveIntentSelection(
+	intent: Pick<PromptReuseIntent, 'modelId' | 'compareSelections'>,
+	isKnown: (modelId: string) => boolean,
+): { modelId: string | null; compareSelections: CompareSelection[] | null } {
+	const cart = (intent.compareSelections ?? []).filter((s) => isKnown(s.modelId));
+	const total = cart.reduce((n, s) => n + s.count, 0);
+	const modelId =
+		intent.modelId && isKnown(intent.modelId) ? intent.modelId : (cart[0]?.modelId ?? null);
+	return { modelId, compareSelections: total >= 2 ? cart.map((s) => ({ ...s })) : null };
+}
+
+/**
  * Upgrade a base model id back to the `custom::<id>` preset the conversation was
  * created from, so a reused prompt keeps its system prompt and sampling params.
  *

@@ -10,7 +10,11 @@
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
-	import { PROMPT_REUSE_KEY, type PromptReuseIntent } from '$lib/prompt-reuse';
+	import {
+		PROMPT_REUSE_KEY,
+		resolveIntentSelection,
+		type PromptReuseIntent,
+	} from '$lib/prompt-reuse';
 	import {
 		expandCompareSelections,
 		resolveActiveModelKind,
@@ -331,34 +335,28 @@
 		}
 
 		untrack(() => {
-			// The intent's model was resolved against the live model list when it was
-			// created, but config can change between pages — re-check, and fall
-			// through to the default-modelId effect's choice if it's gone.
-			const known = intent.modelId?.startsWith('custom::')
-				? data.customModels.some((m) => m.id === intent.modelId!.slice('custom::'.length))
-				: data.models.some((m) => m.id === intent.modelId);
-			if (intent.modelId && known) {
+			// Everything the intent carries was resolved against the model list at
+			// click time, but config can change before this page mounts — so
+			// re-reconcile the whole selection against the live lists at once.
+			// Presets live in `customModels`; cart entries are always base models.
+			const selection = resolveIntentSelection(intent, (id) =>
+				id.startsWith('custom::')
+					? data.customModels.some((m) => m.id === id.slice('custom::'.length))
+					: data.models.some((m) => m.id === id),
+			);
+			if (selection.modelId) {
 				// Arm the baton only when this write will actually re-fire the
 				// seeding effect; otherwise it would sit armed and swallow the next
 				// user-driven model switch's preset defaults.
-				if (intent.modelId !== modelId) {
+				if (selection.modelId !== modelId) {
 					pendingDisabledFeatures = [...intent.disabledFeatures];
 				}
-				modelId = intent.modelId;
+				modelId = selection.modelId;
 			}
 			disabledFeatures = [...intent.disabledFeatures];
 
-			// Re-check the cart against the live model list too, for the same reason
-			// as `modelId` above. `expandCompareSelections` would drop a stale id at
-			// send time anyway, but not before the picker had already advertised a
-			// branch count the send wouldn't honor. A cart that shrinks below two
-			// isn't a comparison any more, so it collapses to the single model —
-			// which `modelId` already holds, and which was validated above.
-			const cart = (intent.compareSelections ?? []).filter((s) =>
-				data.models.some((m) => m.id === s.modelId),
-			);
-			if (cart.reduce((n, s) => n + s.count, 0) >= 2) {
-				compareSelections = cart.map((s) => ({ ...s }));
+			if (selection.compareSelections) {
+				compareSelections = selection.compareSelections;
 				compareMode = true;
 			}
 			for (const mediaId of intent.mediaIds) {

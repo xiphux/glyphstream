@@ -5,7 +5,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { deriveReuseModels, upgradeToPresetModelId } from '$lib/prompt-reuse';
+import {
+	deriveReuseModels,
+	resolveIntentSelection,
+	upgradeToPresetModelId,
+} from '$lib/prompt-reuse';
 import type { CompareSelection } from '$lib/fanout';
 import type { ModelKind } from '$lib/types/api';
 
@@ -97,6 +101,85 @@ describe('deriveReuseModels', () => {
 		const { compareSelections } = deriveReuseModels(stored, null, resolve);
 		compareSelections![0].count = 99;
 		expect(stored[0].count).toBe(1);
+	});
+});
+
+describe('resolveIntentSelection', () => {
+	// `bridge::a` has been removed from config since the intent was built.
+	const isKnown = (id: string) => id !== 'bridge::a';
+	const intent = (modelId: string | null, compareSelections: CompareSelection[] | null = null) => ({
+		modelId,
+		compareSelections,
+	});
+
+	it('keeps a fully-resolvable cart', () => {
+		expect(
+			resolveIntentSelection(intent('bridge::b', [sel('bridge::b'), sel('bridge::sdxl')]), isKnown),
+		).toEqual({
+			modelId: 'bridge::b',
+			compareSelections: [sel('bridge::b'), sel('bridge::sdxl')],
+		});
+	});
+
+	// deriveReuseModels puts the cart's FIRST entry in `modelId`, so the intent's
+	// model is exactly as mortal as any cart member. Dropping to the page's
+	// default here would be worse than not filtering at all: the send would go to
+	// a model the user never picked, instead of to the one that survived.
+	it('adopts a survivor when the cart’s first entry is the one removed', () => {
+		expect(
+			resolveIntentSelection(intent('bridge::a', [sel('bridge::a'), sel('bridge::b')]), isKnown),
+		).toEqual({ modelId: 'bridge::b', compareSelections: null });
+	});
+
+	it('keeps comparing when the removed entry still leaves two branches', () => {
+		expect(
+			resolveIntentSelection(
+				intent('bridge::a', [sel('bridge::a'), sel('bridge::b'), sel('bridge::sdxl')]),
+				isKnown,
+			),
+		).toEqual({
+			modelId: 'bridge::b',
+			compareSelections: [sel('bridge::b'), sel('bridge::sdxl')],
+		});
+	});
+
+	it('collapses to the single model when a non-first entry is removed', () => {
+		expect(
+			resolveIntentSelection(intent('bridge::b', [sel('bridge::b'), sel('bridge::a')]), isKnown),
+		).toEqual({ modelId: 'bridge::b', compareSelections: null });
+	});
+
+	// A ×N cart of one model is still a comparison; losing a *different* model
+	// from it must not silently drop the extra branches.
+	it('keeps a surviving ×N entry as a cart', () => {
+		expect(
+			resolveIntentSelection(intent('bridge::a', [sel('bridge::a'), sel('bridge::b', 2)]), isKnown),
+		).toEqual({ modelId: 'bridge::b', compareSelections: [sel('bridge::b', 2)] });
+	});
+
+	it('passes a preset through untouched', () => {
+		expect(resolveIntentSelection(intent('custom::cm-1'), isKnown)).toEqual({
+			modelId: 'custom::cm-1',
+			compareSelections: null,
+		});
+	});
+
+	it('yields null when nothing survives, leaving the default-model effect to pick', () => {
+		expect(resolveIntentSelection(intent('bridge::a', [sel('bridge::a')]), isKnown)).toEqual({
+			modelId: null,
+			compareSelections: null,
+		});
+		expect(resolveIntentSelection(intent(null), isKnown)).toEqual({
+			modelId: null,
+			compareSelections: null,
+		});
+	});
+
+	it('does not alias the intent’s cart into the applied selection', () => {
+		const carried = [sel('bridge::b'), sel('bridge::sdxl')];
+		const out = resolveIntentSelection(intent('bridge::b', carried), isKnown);
+		out.compareSelections![0].count = 99;
+		expect(carried[0].count).toBe(1);
 	});
 });
 
