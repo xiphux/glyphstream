@@ -19,6 +19,14 @@ import {
 	listMessageIdsForConversation,
 } from './media';
 
+/**
+ * Maximum number of conversations returned by the sidebar listing queries.
+ * The sidebar can't usefully show more than this — the FTS search modal
+ * (`SearchModal`) covers the long tail. Same cap for active and archived
+ * listings so both surfaces stay bounded.
+ */
+const SIDEBAR_CONVERSATION_LIMIT = 150;
+
 export type TitleSource = 'fallback' | 'ai' | 'user';
 
 interface CreateInput {
@@ -93,6 +101,7 @@ export function listConversations(userId: string): ConversationSummary[] {
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
 		.orderBy(desc(conversations.updatedAt))
+		.limit(SIDEBAR_CONVERSATION_LIMIT)
 		.all();
 }
 
@@ -110,6 +119,7 @@ export function listArchivedConversations(userId: string): ConversationSummary[]
 		.from(conversations)
 		.where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
 		.orderBy(desc(conversations.updatedAt))
+		.limit(SIDEBAR_CONVERSATION_LIMIT)
 		.all();
 }
 
