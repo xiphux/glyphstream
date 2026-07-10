@@ -16,7 +16,11 @@ vi.mock('$lib/title-pending.svelte', () => ({
 }));
 
 import { FanoutController, type FanoutDeps } from '$lib/fanout-controller.svelte';
-import { expandFanoutBranches, MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
+import {
+	expandFanoutBranches,
+	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
+	type FanoutModel,
+} from '$lib/fanout';
 import type { ChatMessage, FanoutRecoveryState, ModelEntry } from '$lib/types/api';
 
 const MODELS = [
@@ -356,6 +360,10 @@ describe('FanoutController — actions', () => {
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: null },
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: null },
 			],
+			[
+				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+			],
 		);
 		// Live grid handed off to server-truth recovery (not shown as "Failed"),
 		// so the recovery flow can rebuild it.
@@ -489,7 +497,7 @@ describe('FanoutController — actions', () => {
 			displayName: 'SDXL',
 			inputMediaId: null,
 		}));
-		await fc.send('x', [], branches);
+		await fc.send('x', [], branches, branches);
 		// Bailed before even creating the shared user message — no network at all.
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(state.error).toContain('Too many variations');
@@ -541,6 +549,11 @@ describe('FanoutController — actions', () => {
 				{ modelId: 'bridge::a', modelKind: 'chat', displayName: 'A', inputMediaId: null },
 				{ modelId: 'bridge::b', modelKind: 'chat', displayName: 'B', inputMediaId: null },
 				{ modelId: 'bridge::c', modelKind: 'chat', displayName: 'C', inputMediaId: null },
+			],
+			[
+				{ modelId: 'bridge::a', modelKind: 'chat', displayName: 'A' },
+				{ modelId: 'bridge::b', modelKind: 'chat', displayName: 'B' },
+				{ modelId: 'bridge::c', modelKind: 'chat', displayName: 'C' },
 			],
 		);
 
@@ -599,6 +612,9 @@ describe('FanoutController — actions', () => {
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: 'img-1' },
 				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL', inputMediaId: 'img-2' },
 			],
+			// One model, split across two images — the recorded cart is the model,
+			// not the branches.
+			[{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' }],
 		);
 		// Branches POST with ?stream=1 now (no sync image path).
 		expect(fetchMock).toHaveBeenCalledWith(
@@ -631,15 +647,13 @@ describe('FanoutController — actions', () => {
 		const fc = new FanoutController(deps);
 
 		// Mirror the page seam: split toggle → ready image ids → cross-product.
-		const branches = expandFanoutBranches(
-			[
-				{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
-				{ modelId: 'bridge::flux', modelKind: 'image', displayName: 'Flux' },
-			],
-			['img-1', 'img-2'],
-		);
+		const models: FanoutModel[] = [
+			{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+			{ modelId: 'bridge::flux', modelKind: 'image', displayName: 'Flux' },
+		];
+		const branches = expandFanoutBranches(models, ['img-1', 'img-2']);
 		expect(branches).toHaveLength(4); // 2 images × 2 models
-		await fc.send('cartoon', ['img-1', 'img-2'], branches);
+		await fc.send('cartoon', ['img-1', 'img-2'], branches, models);
 
 		// One branch POST per spec, image-outer/model-inner, each carrying ONLY
 		// its own split image — the provenance that drives the per-image grid.

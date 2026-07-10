@@ -10,6 +10,7 @@
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
+	import { PROMPT_REUSE_KEY, type PromptReuseIntent } from '$lib/prompt-reuse';
 	import {
 		expandCompareSelections,
 		resolveActiveModelKind,
@@ -173,6 +174,13 @@
 		return data.models.find((m) => m.id === modelId);
 	});
 
+	// A launch intent's own feature toggles, awaiting the seeding effect below.
+	// Armed ONLY when the intent also changes `modelId` (which is what re-fires
+	// that effect); consumed on the very next run so a later user-driven model
+	// switch gets the normal preset-defaults behavior. Plain `let`, not `$state`
+	// — it's a one-shot baton between two effects, not rendered anywhere.
+	let pendingDisabledFeatures: FeatureCategory[] | null = null;
+
 	// Seed the feature-toggle state from the selected custom model's
 	// defaults whenever the model selection changes. Base models reset to
 	// [] (the global default). User toggles AFTER picking a model are
@@ -184,6 +192,15 @@
 	$effect(() => {
 		const id = modelId;
 		untrack(() => {
+			// A reused prompt carries the source conversation's toggles, which
+			// already reflect whatever the user settled on there. Those beat both
+			// the preset defaults and the base-model reset — otherwise this effect,
+			// re-fired by the intent's own modelId write, would immediately undo it.
+			if (pendingDisabledFeatures) {
+				disabledFeatures = pendingDisabledFeatures;
+				pendingDisabledFeatures = null;
+				return;
+			}
 			if (id.startsWith('custom::')) {
 				const cm = data.customModels.find((m) => m.id === id.slice('custom::'.length));
 				disabledFeatures = cm ? [...cm.defaultDisabledFeatures] : [];
@@ -291,6 +308,69 @@
 				text = intent.prompt;
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
+			}
+		});
+	});
+
+	// Pick up a "New chat from this prompt" intent stashed by the chat page.
+	// Same consume-and-clear + untrack discipline as the gallery-launch effect
+	// above; runs after it, and the two are mutually exclusive in practice
+	// (different entry points). Never submits — the prompt lands in the box for
+	// the user to tweak.
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const raw = window.sessionStorage.getItem(PROMPT_REUSE_KEY);
+		if (!raw) return;
+		window.sessionStorage.removeItem(PROMPT_REUSE_KEY);
+
+		let intent: PromptReuseIntent;
+		try {
+			intent = JSON.parse(raw) as PromptReuseIntent;
+		} catch {
+			return;
+		}
+
+		untrack(() => {
+			// The intent's model was resolved against the live model list when it was
+			// created, but config can change between pages — re-check, and fall
+			// through to the default-modelId effect's choice if it's gone.
+			const known = intent.modelId?.startsWith('custom::')
+				? data.customModels.some((m) => m.id === intent.modelId!.slice('custom::'.length))
+				: data.models.some((m) => m.id === intent.modelId);
+			if (intent.modelId && known) {
+				// Arm the baton only when this write will actually re-fire the
+				// seeding effect; otherwise it would sit armed and swallow the next
+				// user-driven model switch's preset defaults.
+				if (intent.modelId !== modelId) {
+					pendingDisabledFeatures = [...intent.disabledFeatures];
+				}
+				modelId = intent.modelId;
+			}
+			disabledFeatures = [...intent.disabledFeatures];
+
+			if (intent.compareSelections?.length) {
+				compareSelections = intent.compareSelections.map((s) => ({ ...s }));
+				compareMode = true;
+			}
+			for (const mediaId of intent.mediaIds) {
+				attachments.attachExisting(mediaId);
+			}
+			isPrivate = intent.private;
+
+			// The box may already hold an unsent draft. The prompt the user just
+			// asked for wins, but losing typed text silently would be worse than
+			// the collision — so offer it back.
+			const previous = text;
+			text = intent.text;
+			if (previous.trim() && previous !== intent.text) {
+				toast.info('Prompt loaded — your draft was replaced', {
+					action: {
+						label: 'Undo',
+						handler: () => {
+							text = previous;
+						},
+					},
+				});
 			}
 		});
 	});

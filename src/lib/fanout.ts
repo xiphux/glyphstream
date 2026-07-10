@@ -90,6 +90,26 @@ export function expandCompareSelections(
 	return out;
 }
 
+/**
+ * Inverse of `expandCompareSelections`: collapse one FanoutModel per branch back
+ * into `{ modelId, count }[]`, preserving first-seen order. Lossy by design —
+ * `displayName` and `modelKind` are dropped, since both are re-resolved from
+ * config wherever a cart is rehydrated.
+ *
+ * Takes the picked MODELS, never the post-cross-product branches: with split
+ * attachments each model appears once per input image, so collapsing branches
+ * would multiply every count by the image count.
+ */
+export function collapseToCompareSelections(models: readonly FanoutModel[]): CompareSelection[] {
+	const byId = new Map<string, CompareSelection>();
+	for (const m of models) {
+		const existing = byId.get(m.modelId);
+		if (existing) existing.count += 1;
+		else byId.set(m.modelId, { modelId: m.modelId, count: 1 });
+	}
+	return [...byId.values()];
+}
+
 /** One concrete fan-out branch: a model paired with its (optional) split input
  *  image. The cross product of the picked models and the split images. */
 export interface FanoutBranchSpec extends FanoutModel {

@@ -7,6 +7,7 @@
  */
 
 import { isFeatureCategoryString } from '$lib/types/api';
+import type { CompareSelection } from '$lib/fanout';
 import type { CustomModelParameters, FeatureCategory, MessagePart } from '$lib/types/api';
 
 /**
@@ -56,4 +57,34 @@ export function parseDisabledFeatures(raw: string | null): FeatureCategory[] {
 	}
 	if (!Array.isArray(parsed)) return [];
 	return parsed.filter(isFeatureCategoryString);
+}
+
+/**
+ * Parse a `dispatched_models` column into CompareSelection[]. Returns null
+ * for an absent column, invalid JSON, or a payload that isn't a non-empty
+ * array of well-formed entries — the callers treat null as "no record" and
+ * fall back to the reply's `model_used`, so a garbage row degrades to the
+ * legacy path rather than seeding a bogus compare cart. Model ids are NOT
+ * validated against the current config here: an id that no longer resolves
+ * is dropped at read time by the consumer (same contract as saved model
+ * sets), so a transient config edit doesn't garden the stored record.
+ */
+export function parseDispatchedModels(raw: string | null): CompareSelection[] | null {
+	if (!raw) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed) || parsed.length === 0) return null;
+	const out: CompareSelection[] = [];
+	for (const entry of parsed) {
+		if (!entry || typeof entry !== 'object') return null;
+		const { modelId, count } = entry as Partial<CompareSelection>;
+		if (typeof modelId !== 'string' || !modelId) return null;
+		if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) return null;
+		out.push({ modelId, count });
+	}
+	return out;
 }

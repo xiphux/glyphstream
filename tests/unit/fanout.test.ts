@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	allColumnsSettled,
+	collapseToCompareSelections,
 	expandCompareSelections,
 	expandFanoutBranches,
 	isMediaKind,
@@ -49,6 +50,38 @@ describe('expandCompareSelections', () => {
 
 	it('returns empty for an empty cart', () => {
 		expect(expandCompareSelections([], resolve)).toEqual([]);
+	});
+});
+
+describe('collapseToCompareSelections', () => {
+	const m = (id: string): FanoutModel => ({ modelId: id, modelKind: 'chat', displayName: id });
+
+	it('round-trips an expanded cart back to its counts, in first-seen order', () => {
+		const cart: CompareSelection[] = [
+			{ modelId: 'bridge::b', count: 1 },
+			{ modelId: 'bridge::a', count: 2 },
+		];
+		expect(collapseToCompareSelections(expandCompareSelections(cart, resolve))).toEqual(cart);
+	});
+
+	it('returns empty for no models', () => {
+		expect(collapseToCompareSelections([])).toEqual([]);
+	});
+
+	// Guards the reason this takes models rather than branches: with split
+	// attachments each model repeats once per input image, so collapsing the
+	// cross-product would multiply every count by the image count.
+	it('is not fed branches — the cross-product would inflate counts', () => {
+		const models = [m('bridge::a'), m('bridge::b')];
+		const branches = expandFanoutBranches(models, ['img-1', 'img-2']);
+		expect(collapseToCompareSelections(models)).toEqual([
+			{ modelId: 'bridge::a', count: 1 },
+			{ modelId: 'bridge::b', count: 1 },
+		]);
+		expect(collapseToCompareSelections(branches)).toEqual([
+			{ modelId: 'bridge::a', count: 2 },
+			{ modelId: 'bridge::b', count: 2 },
+		]);
 	});
 });
 

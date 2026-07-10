@@ -32,6 +32,7 @@ function makeMessage(role: MessageRole, overrides: Partial<ChatMessage> = {}): C
 const cb = () => ({
 	onCopy: vi.fn(),
 	onEdit: vi.fn(),
+	onReuse: vi.fn(),
 	onRetry: vi.fn(),
 	onSelectSibling: vi.fn(),
 	onDeleteBranch: vi.fn(),
@@ -59,6 +60,21 @@ describe('MessageActions — per-role buttons', () => {
 		});
 		expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
+	});
+
+	// Reuse is a prompt affordance: it seeds a new chat from what the user typed,
+	// so it belongs on their bubble, never on a reply.
+	it('user messages show New chat from this prompt; assistant messages do not', () => {
+		const { unmount } = render(MessageActions, {
+			props: { ...baseProps, ...cb(), message: makeMessage('user') },
+		});
+		expect(screen.getByRole('button', { name: 'New chat from this prompt' })).toBeInTheDocument();
+		unmount();
+
+		render(MessageActions, {
+			props: { ...baseProps, ...cb(), message: makeMessage('assistant') },
+		});
+		expect(screen.queryByRole('button', { name: 'New chat from this prompt' })).toBeNull();
 	});
 
 	it('shows Copy when canCopy is true', () => {
@@ -108,11 +124,26 @@ describe('MessageActions — callbacks', () => {
 		expect(cbs.onRetry).toHaveBeenCalledTimes(1);
 	});
 
+	it('fires onReuse when New chat from this prompt is clicked', async () => {
+		const user = userEvent.setup();
+		const cbs = cb();
+		render(MessageActions, { props: { ...baseProps, ...cbs, message: makeMessage('user') } });
+		await user.click(screen.getByRole('button', { name: 'New chat from this prompt' }));
+		expect(cbs.onReuse).toHaveBeenCalledTimes(1);
+	});
+
 	it('disables Edit/Retry while generating', () => {
 		render(MessageActions, {
 			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') },
 		});
 		expect(screen.getByRole('button', { name: 'Edit message' })).toBeDisabled();
+	});
+
+	it('disables New chat from this prompt while generating', () => {
+		render(MessageActions, {
+			props: { ...baseProps, ...cb(), generating: true, message: makeMessage('user') },
+		});
+		expect(screen.getByRole('button', { name: 'New chat from this prompt' })).toBeDisabled();
 	});
 
 	it('leaves Copy enabled even while generating', () => {

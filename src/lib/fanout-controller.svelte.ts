@@ -22,10 +22,12 @@ import { buildFanoutBranchBody } from './chat-send-body';
 import { consumeChatStream } from './consume-chat-stream';
 import {
 	allColumnsSettled,
+	collapseToCompareSelections,
 	isMediaKind,
 	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 	type FanoutBranchSpec,
 	type FanoutColumn,
+	type FanoutModel,
 } from './fanout';
 import { errorMessageFromResponse } from './fetch-error';
 import { clearTitlePending, markTitlePending } from './title-pending.svelte';
@@ -207,11 +209,17 @@ export class FanoutController {
 	 * stays pinned at the user message (server-side, advanceActiveLeaf:false) so
 	 * every branch serializes the identical history and the unpicked siblings
 	 * remain reachable; picking a column promotes it to the active thread.
+	 *
+	 * `models` is the picked cart *before* the split cross-product, passed
+	 * separately because it can't be recovered from `branches` (splitting repeats
+	 * each model once per input image). /prepare records it on the user message as
+	 * the durable provenance the reuse-prompt action reads.
 	 */
 	async send(
 		text: string,
 		attachedMediaIds: string[],
 		branches: FanoutBranchSpec[],
+		models: readonly FanoutModel[],
 	): Promise<void> {
 		// Mirror the server's per-conversation cap so a legitimate user who builds
 		// an oversized cross-product (models × split images) gets a friendly message
@@ -237,7 +245,11 @@ export class FanoutController {
 			const res = await fetch(`/api/conversations/${turnConvId}/messages/prepare`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ text, attachedMediaIds } satisfies PrepareFanoutRequest),
+				body: JSON.stringify({
+					text,
+					attachedMediaIds,
+					models: collapseToCompareSelections(models),
+				} satisfies PrepareFanoutRequest),
 			});
 			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			userMessage = ((await res.json()) as PrepareFanoutResponse).userMessage;

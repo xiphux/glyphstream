@@ -463,6 +463,20 @@ export interface ChatMessage {
 	reasoningText: string | null;
 	finishReason: string | null;
 	modelUsed: string | null;
+	/**
+	 * The model set this prompt was dispatched to — user messages only, and
+	 * only for rows written since the column landed (absent on older rows and
+	 * OWUI imports). Shaped as the compare cart (`CompareSelection[]`) so it
+	 * round-trips straight back into the picker.
+	 *
+	 * Survives the replies: discarding a fan-out result hard-deletes the
+	 * assistant row, and a retry appends a sibling without touching this. So
+	 * "which models did I run this prompt against" stays answerable, which
+	 * inspecting `modelUsed` across siblings cannot do. Consumed by the
+	 * reuse-prompt action (`$lib/prompt-reuse`). Ids that no longer resolve
+	 * against the current config are dropped by the consumer, not here.
+	 */
+	dispatchedModels?: CompareSelection[];
 	tokensIn: number | null;
 	tokensOut: number | null;
 	/** Generation wall-time in ms (see `messages.gen_ms`). Null on legacy
@@ -868,14 +882,23 @@ export interface SendMessageRequest {
 /**
  * POST /api/conversations/:id/messages/prepare request — creates the shared
  * user message for a multi-model fan-out without dispatching. Mirrors the
- * user-message fields of `SendMessageRequest` (no model fields: each branch
- * carries its own model).
+ * user-message fields of `SendMessageRequest`; dispatch still carries no model
+ * fields here (each branch POSTs its own `modelId`).
  */
 export interface PrepareFanoutRequest {
 	text: string;
 	attachedMediaIds?: string[];
 	parentMessageId?: string;
 	editedMessageId?: string;
+	/**
+	 * The compare cart being kicked off — provenance, not dispatch. Recorded
+	 * once onto the shared user message (`messages.dispatched_models`) before
+	 * any branch runs, so it captures the full set even for branches that later
+	 * error or get discarded. Accumulating it from the N concurrent branch
+	 * requests instead would race, and would lose exactly the branches the user
+	 * pruned. Omit to leave no record (the reuse action then falls back).
+	 */
+	models?: CompareSelection[];
 }
 
 /** POST .../messages/prepare response — the persisted shared user message

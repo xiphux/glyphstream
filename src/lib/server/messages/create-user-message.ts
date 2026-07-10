@@ -13,6 +13,7 @@ import { error } from '@sveltejs/kit';
 import { setConversationTitle } from '$lib/server/db/queries/conversations';
 import { getMediaForUser, linkMessageMedia } from '$lib/server/db/queries/media';
 import { appendMessage, resolveParentForUserMessage } from '$lib/server/db/queries/messages';
+import type { CompareSelection } from '$lib/fanout';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 
 const TITLE_PREVIEW_MAX = 60;
@@ -30,6 +31,11 @@ export interface CreateUserMessageInput {
 	 *  from the first text so the sidebar isn't blank before the task model's
 	 *  title lands. */
 	existingTitle: string | null;
+	/** The model set this prompt is being dispatched to — one entry for a plain
+	 *  send, the whole compare cart for a fan-out. Recorded on the row so the
+	 *  reuse-prompt action can rebuild the selection after the replies are gone.
+	 *  See `messages.dispatched_models`. */
+	dispatchedModels?: CompareSelection[];
 }
 
 export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
@@ -99,6 +105,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 		parentMessageId: resolved.parentMessageId,
 		role: 'user',
 		parts: userParts,
+		dispatchedModels: input.dispatchedModels,
 	});
 	for (const mid of input.attachedMediaIds) {
 		linkMessageMedia(userMessage.id, mid);

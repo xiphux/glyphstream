@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import { invalidateAll } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { isAbortError } from '$lib/abort';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
@@ -19,6 +19,12 @@
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
+	import {
+		deriveReuseModels,
+		upgradeToPresetModelId,
+		PROMPT_REUSE_KEY,
+		type PromptReuseIntent,
+	} from '$lib/prompt-reuse';
 	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
@@ -1762,7 +1768,7 @@
 		if (willFanOut) {
 			resetCompare();
 			splitAttachments = false;
-			await fanout.send(text, attachedMediaIds, branches);
+			await fanout.send(text, attachedMediaIds, branches, baseModels);
 			return;
 		}
 		// Single effective branch — collapse to a normal send with that model.
@@ -1865,7 +1871,7 @@
 			];
 			const pendingBranches = expandFanoutBranches(pendingBase, pendingSplitImageIds);
 			if (pendingBranches.length >= 2) {
-				void fanout.send(pendingText, pendingMediaIds, pendingBranches);
+				void fanout.send(pendingText, pendingMediaIds, pendingBranches, pendingBase);
 			} else
 				void sendStreaming(
 					pendingText,
@@ -1973,6 +1979,44 @@
 		}
 		editingMessageId = m.id;
 		editingParentId = m.parentMessageId ?? null;
+	}
+
+	/**
+	 * "New chat from this prompt": stash the prompt + its model selection and
+	 * navigate to the new-chat composer. Never submits — the user tweaks first.
+	 *
+	 * The model comes from the prompt's recorded dispatch, not the conversation
+	 * row (which goes stale the moment you switch models mid-thread). The
+	 * fallback chain covers rows predating `dispatched_models` and OWUI imports:
+	 * the active reply's `modelUsed`, then the conversation's model, then
+	 * nothing — at which point the new-chat page picks its own default.
+	 */
+	function reusePrompt(m: ChatMessage) {
+		if (generating) return;
+		const activeReply = messages.find((x) => x.parentMessageId === m.id);
+		const { modelId: derivedModelId, compareSelections } = deriveReuseModels(
+			m.dispatchedModels,
+			activeReply?.modelUsed ?? data.conversation.modelId,
+			(id) => data.models.find((x) => x.id === id),
+		);
+		// A cart resolves against base models only, so the preset upgrade is a
+		// single-model concern.
+		const intent: PromptReuseIntent = {
+			text: partsToText(m.parts),
+			mediaIds: m.parts.filter((p) => p.type === 'image').map((p) => p.mediaId),
+			modelId: compareSelections
+				? derivedModelId
+				: upgradeToPresetModelId(
+						derivedModelId,
+						data.conversation.customModelId,
+						data.customModels ?? [],
+					),
+			compareSelections,
+			disabledFeatures: data.conversation.disabledFeatures,
+			private: data.conversation.private,
+		};
+		sessionStorage.setItem(PROMPT_REUSE_KEY, JSON.stringify(intent));
+		void goto('/');
 	}
 
 	function cancelEdit() {
@@ -2214,6 +2258,7 @@
 								userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
 								onCopy={() => copyMessage(m)}
 								onEdit={() => beginEdit(m)}
+								onReuse={() => reusePrompt(m)}
 								onRetry={() => retryAssistant(m)}
 								onSelectSibling={(id, dir) => selectSibling(id, dir)}
 								onDeleteBranch={() => deleteBranch(m)}

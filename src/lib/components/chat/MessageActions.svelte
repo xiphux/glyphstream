@@ -1,12 +1,12 @@
 <!--
 	Per-message action toolbar: sibling branch navigation (‹ N/M › +
-	delete-branch), copy, edit (user msgs), retry (assistant msgs), and a
-	token-usage popover. Sits directly below a message bubble, aligned to
-	the same side (right for user, left for assistant), revealed on hover
-	at sm+.
+	delete-branch), copy, edit + reuse-in-new-chat (user msgs), retry
+	(assistant msgs), and a token-usage popover. Sits directly below a message
+	bubble, aligned to the same side (right for user, left for assistant),
+	revealed on hover at sm+.
 
 	Purely presentational — every action is a callback the page wires to
-	its copy/edit/retry/select-sibling/delete handlers.
+	its copy/edit/reuse/retry/select-sibling/delete handlers.
 -->
 <script lang="ts">
 	import { Popover } from 'bits-ui';
@@ -16,6 +16,7 @@
 		ChevronRight,
 		Copy,
 		Info,
+		MessageSquarePlus,
 		Pencil,
 		RotateCcw,
 		Trash2,
@@ -34,6 +35,8 @@
 		userSentTokens: number | null;
 		onCopy: () => void;
 		onEdit: () => void;
+		/** Start a new chat pre-filled with this prompt (never auto-submits). */
+		onReuse: () => void;
 		onRetry: () => void;
 		onSelectSibling: (id: string, dir: 1 | -1) => void;
 		onDeleteBranch: () => void;
@@ -47,6 +50,7 @@
 		userSentTokens,
 		onCopy,
 		onEdit,
+		onReuse,
 		onRetry,
 		onSelectSibling,
 		onDeleteBranch,
@@ -56,6 +60,7 @@
 
 	const isUser = $derived(message.role === 'user');
 	const showEdit = $derived(message.role === 'user');
+	const showReuse = $derived(message.role === 'user');
 	const showRetry = $derived(message.role === 'assistant');
 	const assistantOut = $derived(message.role === 'assistant' ? (message.tokensOut ?? 0) : 0);
 	// Media (image/video) rows carry no token count — for them the popover
@@ -165,6 +170,18 @@
 			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
 		>
 			<Pencil size={14} strokeWidth={2.25} />
+		</button>
+	{/if}
+	{#if showReuse}
+		<button
+			type="button"
+			onclick={onReuse}
+			disabled={generating}
+			aria-label="New chat from this prompt"
+			title="New chat from prompt"
+			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
+		>
+			<MessageSquarePlus size={14} strokeWidth={2.25} />
 		</button>
 	{/if}
 	{#if showRetry}

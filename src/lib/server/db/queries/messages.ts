@@ -1,7 +1,8 @@
 import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from '../../util/id';
+import type { CompareSelection } from '$lib/fanout';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
-import { parseMessageParts } from './json-columns';
+import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
 import { decrementMediaForMessages, hardDeleteOrphanGeneratedMediaForMessages } from './media';
@@ -15,6 +16,9 @@ interface AppendInput {
 	reasoningText?: string | null;
 	finishReason?: string | null;
 	modelUsed?: string | null;
+	/** Set ONLY when appending a user message: the model set the prompt was
+	 *  dispatched to. See `messages.dispatched_models` in schema.ts. */
+	dispatchedModels?: CompareSelection[] | null;
 	tokensIn?: number | null;
 	tokensOut?: number | null;
 	/** Generation wall-time in ms; see `messages.gen_ms` in schema.ts. */
@@ -59,6 +63,9 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				reasoningText: input.reasoningText ?? null,
 				finishReason: input.finishReason ?? null,
 				modelUsed: input.modelUsed ?? null,
+				dispatchedModelsJson: input.dispatchedModels?.length
+					? JSON.stringify(input.dispatchedModels)
+					: null,
 				tokensIn: input.tokensIn ?? null,
 				tokensOut: input.tokensOut ?? null,
 				genMs: input.genMs ?? null,
@@ -700,6 +707,10 @@ function rowToChatMessage(row: typeof messages.$inferSelect): ChatMessage {
 		reasoningText: row.reasoningText,
 		finishReason: row.finishReason,
 		modelUsed: row.modelUsed,
+		// `?? undefined` so the key drops out of the JSON payload entirely on
+		// assistant rows (where it's always null) rather than shipping a null
+		// on every message in the branch.
+		dispatchedModels: parseDispatchedModels(row.dispatchedModelsJson) ?? undefined,
 		tokensIn: row.tokensIn,
 		tokensOut: row.tokensOut,
 		genMs: row.genMs,

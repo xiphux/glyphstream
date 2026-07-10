@@ -215,6 +215,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			parentMessageId: body.parentMessageId,
 			activeLeafMessageId: meta.activeLeafMessageId ?? null,
 			existingTitle: meta.title,
+			// `meta.modelId` is fully resolved by here (per-turn override applied,
+			// endpoint validated). A fan-out never reaches this branch — it creates
+			// its user message in /prepare, which records the whole cart.
+			dispatchedModels: [{ modelId: meta.modelId, count: 1 }],
 		});
 	}
 

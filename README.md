@@ -41,6 +41,9 @@ them into a single fast chat UI with one model picker.
 - **Collapsible reasoning blocks** for thinking models (DeepSeek-R1, o-series).
 - **Branching conversations** — edit or retry any message and navigate
   siblings with ‹ N/M › arrows; the schema is a tree, not a log.
+- **New chat from any prompt** — reuse a prompt in a fresh conversation,
+  attachments, model (or whole compare set) and all. It lands in the composer
+  ready to tweak, never auto-sent.
 - **Full-text search** across every conversation.
 - **Auto-titling** via a small, fast task model of your choice.
 - Token usage and generation speed (tok/s) per message; Stop button wired
