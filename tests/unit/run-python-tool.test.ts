@@ -99,6 +99,22 @@ describe('runPythonTool — metadata + availability', () => {
 		expect(desc).toContain(`${Math.round(mocks.config.idleTimeoutSeconds / 60)} minutes`);
 	});
 
+	it('timeoutMs reflects callTimeoutSeconds + margin, read lazily per config', () => {
+		// The getter reads getCodeInterpreterConfig() at access time, so
+		// changing mocks.config.callTimeoutSeconds between reads produces
+		// different values — verify a few points across the valid range.
+		const expectations: { callTimeoutSeconds: number; expected: number }[] = [
+			{ callTimeoutSeconds: 30, expected: 30 * 1000 + 30_000 },
+			{ callTimeoutSeconds: 120, expected: 120 * 1000 + 30_000 },
+			{ callTimeoutSeconds: 300, expected: 300 * 1000 + 30_000 },
+			{ callTimeoutSeconds: 600, expected: 600 * 1000 + 30_000 },
+		];
+		for (const { callTimeoutSeconds, expected } of expectations) {
+			mocks.config.callTimeoutSeconds = callTimeoutSeconds;
+			expect(runPythonTool.timeoutMs).toBe(expected);
+		}
+	});
+
 	it('declares { code: string } required, no extra properties', () => {
 		const params = runPythonTool.definition.function.parameters as {
 			properties: Record<string, unknown>;

@@ -87,6 +87,37 @@ export const runPythonTool: Tool = {
 		category: 'code_interpreter',
 	},
 	isAvailable: () => isCodeInterpreterEnabled(),
+	/**
+	 * Lazy getter: reads the configured call timeout at execution time and
+	 * adds a margin to cover overhead that the inner pool timer doesn't
+	 * include — Pyodide cold start (~2-5s), file materialization (~1-2s),
+	 * and pool mutex queueing (headroom for serialized parallel calls).
+	 *
+	 * Must be lazy (same rationale as `description`): the tool object is
+	 * evaluated at module-import time during SvelteKit's analyse postbuild
+	 * (docker build context doesn't have config.toml), so an eager read
+	 * would throw.
+	 *
+	 * The outer wall-clock timeout (this value) is strictly longer than
+	 * the pool's own per-call budget (`callTimeoutSeconds`) so that
+	 * `executeToolCalls` in tool-execution.ts does not abort while the
+	 * call is still waiting in the pool mutex queue or during cold start.
+	 * The pool's internal timer (started after `ensureReady` + mutex
+	 * acquire) is the precise budget the model sees described; this outer
+	 * signal exists only to prevent stuck goroutines from hanging the
+	 * tool-call slot indefinitely.
+	 *
+	 * Note: mutex queueing under heavy parallel `run_python` calls in one
+	 * conversation is unbounded and can't be fully covered by a static
+	 * margin. Multi-second queue waits are normal; if the queue exceeds
+	 * the margin the outer timer will fire and produce a false-positive
+	 * timeout. A future enhancement could track queue depth and adjust
+	 * the margin dynamically, but for the self-hosted scale this targets,
+	 * a 30s static margin suffices.
+	 */
+	get timeoutMs(): number {
+		return getCodeInterpreterConfig().callTimeoutSeconds * 1000 + 30_000;
+	},
 	async execute(args, ctx): Promise<ToolExecution> {
 		if (!args || typeof args !== 'object' || typeof (args as { code: unknown }).code !== 'string') {
 			return {
