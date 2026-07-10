@@ -56,3 +56,6 @@ test-results/
 /image-chat*.json
 /imports/
 scripts/screenshots/.demo-data/
+
+# OpenCode deepwork session state — local progress notes, never committed
+.slim/deepwork/

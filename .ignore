@@ -1,0 +1,3 @@
+# Make OpenCode deepwork session state readable to tooling while git ignores it
+!.slim/deepwork/
+!.slim/deepwork/**
