@@ -30,7 +30,11 @@ vi.mock('$lib/server/env', () => ({
 	logLevel: () => 'info',
 }));
 
-import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
+import {
+	loadMediaBytes,
+	mediaIdToDataUrl,
+	MediaNotAvailableError,
+} from '$lib/server/media/data-url';
 import { insertMedia } from '$lib/server/db/queries/media';
 import { media } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
@@ -114,11 +118,11 @@ describe('loadMediaBytes', () => {
 		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(/deleted/i);
 	});
 
-	it('propagates the underlying fs error when the file is missing on disk', async () => {
-		// DB row says the file exists; disk says no — surfaces as a real
-		// ENOENT so callers know the source of the problem rather than
-		// seeing an opaque "not found" that they'd otherwise interpret as
-		// "user passed wrong id."
+	it('wraps a missing-on-disk file as MediaNotAvailableError (known-dead)', async () => {
+		// DB row says the file exists; disk says no. The send path treats
+		// ENOENT as known-dead and degrades to [Image deleted] rather than
+		// crashing. The serializer catches MediaNotAvailableError; wrapping
+		// ENOENT into it is what makes the degradation path work.
 		const u = seedUser();
 		const { id } = insertMedia({
 			userId: u.id,
@@ -130,7 +134,7 @@ describe('loadMediaBytes', () => {
 			sourceModel: null,
 			promptExcerpt: null,
 		});
-		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(/ENOENT/);
+		await expect(loadMediaBytes(id, u.id)).rejects.toThrow(MediaNotAvailableError);
 	});
 });
 

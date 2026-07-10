@@ -37,7 +37,12 @@ import {
 } from '$lib/server/chat/synthesize-skill-activation';
 import { logLevel } from '$lib/server/env';
 import { renderMarkdown } from '$lib/server/markdown/render';
-import { loadMediaBytes, mediaIdToDataUrl } from '$lib/server/media/data-url';
+import {
+	loadMediaBytes,
+	MediaNotAvailableError,
+	mediaIdToDataUrl,
+	type LoadedMediaBytes,
+} from '$lib/server/media/data-url';
 import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
@@ -356,7 +361,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// I2V workflows declare a single `image_inputs` entry.
 		let inputReference: { bytes: Buffer; contentType: string } | undefined;
 		if (dispatchMediaIds.length > 0) {
-			const loaded = await loadMediaBytes(dispatchMediaIds[0], locals.user.id);
+			let loaded: LoadedMediaBytes;
+			try {
+				loaded = await loadMediaBytes(dispatchMediaIds[0], locals.user.id);
+			} catch (e) {
+				if (e instanceof MediaNotAvailableError) {
+					throw error(400, 'The source image was deleted and is no longer available');
+				}
+				throw e;
+			}
 			inputReference = { bytes: loaded.bytes, contentType: loaded.contentType };
 			if (DEBUG) {
 				console.debug(

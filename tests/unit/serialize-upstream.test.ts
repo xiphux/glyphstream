@@ -4,6 +4,7 @@ import {
 	serializeBranchForUpstream,
 	serializeMessageForUpstream,
 } from '$lib/server/endpoints/serialize-upstream';
+import { MediaNotAvailableError } from '$lib/server/media/data-url';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 
 /** A full `activate_skill` tool result as `wrapSkillContent` persists it — the
@@ -102,6 +103,63 @@ describe('serializeMessageForUpstream', () => {
 				{ type: 'image_url', image_url: { url: 'data:image/png;base64,FAKE-media-abc' } },
 			],
 		});
+	});
+
+	it('degrades a hard-deleted image to a [Image deleted] text note', async () => {
+		const resolver = async (id: string) => {
+			if (id === 'deleted-img') {
+				throw new MediaNotAvailableError(id, 'deleted');
+			}
+			return `data:image/png;base64,FAKE-${id}`;
+		};
+		const out = await serializeMessageForUpstream(
+			msg('user', [
+				{ type: 'text', text: 'what was that?' },
+				{ type: 'image', mediaId: 'deleted-img' },
+			]),
+			resolver,
+		);
+		expect(out).toEqual({
+			role: 'user',
+			content: [
+				{ type: 'text', text: 'what was that?' },
+				{ type: 'text', text: '[Image deleted]' },
+			],
+		});
+	});
+
+	it('preserves live images alongside a deleted one', async () => {
+		const resolver = async (id: string) => {
+			if (id === 'deleted-img') {
+				throw new MediaNotAvailableError(id, 'deleted');
+			}
+			return `data:image/png;base64,FAKE-${id}`;
+		};
+		const out = await serializeMessageForUpstream(
+			msg('user', [
+				{ type: 'text', text: 'compare these' },
+				{ type: 'image', mediaId: 'live-img' },
+				{ type: 'image', mediaId: 'deleted-img' },
+			]),
+			resolver,
+		);
+		expect(out).toEqual({
+			role: 'user',
+			content: [
+				{ type: 'text', text: 'compare these' },
+				{ type: 'image_url', image_url: { url: 'data:image/png;base64,FAKE-live-img' } },
+				{ type: 'text', text: '[Image deleted]' },
+			],
+		});
+	});
+
+	it('re-throws a non-MediaNotAvailableError from the resolver', async () => {
+		const resolver = async () => {
+			throw new Error('disk I/O error');
+		};
+		await expect(
+			serializeMessageForUpstream(msg('user', [{ type: 'image', mediaId: 'img-1' }]), resolver),
+		).rejects.toThrow('disk I/O error');
 	});
 
 	it('notes a file attachment in text so the model knows it exists', async () => {
@@ -331,6 +389,24 @@ describe('serializeBranchForUpstream', () => {
 		expect(out[1].tool_calls).toHaveLength(2);
 		expect(out[2]).toMatchObject({ role: 'tool', tool_call_id: 'a' });
 		expect(out[3]).toMatchObject({ role: 'tool', tool_call_id: 'b' });
+	});
+
+	it('serializes a branch with a deleted image without crashing', async () => {
+		const resolver = async (id: string) => {
+			if (id === 'dead-img') throw new MediaNotAvailableError(id, 'deleted');
+			return `data:image/png;base64,FAKE-${id}`;
+		};
+		const branch: ChatMessage[] = [
+			msg('user', [{ type: 'text', text: 'describe the image' }], 'u1'),
+			msg('user', [{ type: 'image', mediaId: 'dead-img' }], 'u2'),
+		];
+		const out = await serializeBranchForUpstream(branch, resolver, null);
+		expect(out).toHaveLength(2);
+		expect(out[0]).toEqual({ role: 'user', content: 'describe the image' });
+		expect(out[1]).toEqual({
+			role: 'user',
+			content: [{ type: 'text', text: '[Image deleted]' }],
+		});
 	});
 
 	it('trims a compacted branch: leads with the summary, drops summarized turns, keeps the verbatim tail', async () => {

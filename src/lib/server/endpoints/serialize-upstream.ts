@@ -10,6 +10,7 @@
 
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 import { upstreamBranch } from '$lib/chat-compaction';
+import { MediaNotAvailableError } from '$lib/server/media/data-url';
 import type {
 	ChatCompletionContentPart,
 	ChatCompletionRequest,
@@ -106,14 +107,30 @@ export async function serializeMessageForUpstream(
 
 	if (hasImages) {
 		const content: ChatCompletionContentPart[] = [];
+		let hasDeletedImage = false;
 		for (const p of m.parts) {
 			if (p.type === 'text' && p.text) {
 				content.push({ type: 'text', text: p.text });
 			} else if (p.type === 'image') {
-				const url = await resolveMediaUrl(p.mediaId);
-				content.push({ type: 'image_url', image_url: { url } });
+				try {
+					const url = await resolveMediaUrl(p.mediaId);
+					content.push({ type: 'image_url', image_url: { url } });
+				} catch (e) {
+					// Known-dead media (hard-deleted, row gone, ENOENT) degrades to
+					// a text note so the model knows something was attached rather
+					// than crashing the entire send. Transient I/O errors (EACCES,
+					// EIO, …) still propagate — see MediaNotAvailableError doc.
+					if (e instanceof MediaNotAvailableError) {
+						hasDeletedImage = true;
+					} else {
+						throw e;
+					}
+				}
 			}
 		}
+		// Append a single note if any image was known-dead, so the model
+		// knows something was there. Matches the fileAttachmentNote idiom.
+		if (hasDeletedImage) content.push({ type: 'text', text: '[Image deleted]' });
 		// Non-image attachments (files) get a text note so the model knows they
 		// exist and can reference them by name (they're mounted in /workspace/).
 		if (fileNote) content.push({ type: 'text', text: fileNote });
