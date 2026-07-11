@@ -13,7 +13,7 @@
  * users (rare) fall back to an iterative fold (structure best-effort).
  */
 
-import { approxTokens, callMemoryModel, chunkStrings } from './summarize-util';
+import { approxTokens, callMemoryModel, chunkStrings, memoryInputBudget } from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 
 /** Hard cap on the stored/injected overview — it rides in the system prompt every
@@ -60,8 +60,10 @@ export async function buildOverview(
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (summaries.length === 0) return (previousOverview ?? '').trim();
-	const budget = Math.max(
-		(contextWindow ?? DEFAULT_CONTEXT_WINDOW) - model.maxTokens - PROMPT_OVERHEAD_TOKENS,
+	const budget = memoryInputBudget(
+		contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+		model.maxTokens,
+		PROMPT_OVERHEAD_TOKENS,
 		MIN_BUDGET_TOKENS,
 	);
 	const prev = (previousOverview ?? '').trim();

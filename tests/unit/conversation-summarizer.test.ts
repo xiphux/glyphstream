@@ -14,6 +14,7 @@ import {
 	buildTranscript,
 	SUMMARY_MAX_CHARS,
 } from '$lib/server/memory/conversation-summarizer';
+import { memoryInputBudget } from '$lib/server/memory/summarize-util';
 import type { ChatMessage } from '$lib/types/api';
 
 const MODEL = {
@@ -41,6 +42,27 @@ beforeEach(() => {
 	chatMock.mockReset();
 	acquireMock.mockReset();
 	acquireMock.mockResolvedValue({ release: vi.fn() });
+});
+
+describe('memoryInputBudget', () => {
+	it('holds back a safety fraction of the window on top of the reserves', () => {
+		// floor(100000 * 0.85) - 4000 - 400
+		expect(memoryInputBudget(100000, 4000, 400, 1000)).toBe(80600);
+	});
+
+	it('floors at minBudget when the window is tiny (never zero/negative)', () => {
+		// floor(1000 * 0.85) - 500 - 400 = -50 → clamped to the floor
+		expect(memoryInputBudget(1000, 500, 400, 1000)).toBe(1000);
+	});
+
+	it('leaves headroom below the real window so a chars/4 undercount cannot overflow', () => {
+		// Regression guard for the Gemma case: llama n_ctx 98304, memory max_tokens 4000.
+		// The budget must sit well under 98304 so a ~122k-token transcript overflows the
+		// fit-check and map-reduces, instead of being sent one-shot and rejected.
+		const budget = memoryInputBudget(98304, 4000, 400, 1000);
+		expect(budget).toBe(79158);
+		expect(budget).toBeLessThan(98304);
+	});
 });
 
 describe('buildTranscript', () => {

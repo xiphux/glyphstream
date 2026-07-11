@@ -15,7 +15,7 @@
  */
 
 import { estimateContentTokens } from '$lib/chat-compaction';
-import { approxTokens, callMemoryModel, chunkStrings } from './summarize-util';
+import { approxTokens, callMemoryModel, chunkStrings, memoryInputBudget } from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 import type { ChatMessage } from '$lib/types/api';
 
@@ -76,8 +76,10 @@ export async function summarizeConversation(
 	contextWindow: number | null,
 	signal?: AbortSignal,
 ): Promise<string> {
-	const budget = Math.max(
-		(contextWindow ?? DEFAULT_CONTEXT_WINDOW) - model.maxTokens - PROMPT_OVERHEAD_TOKENS,
+	const budget = memoryInputBudget(
+		contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+		model.maxTokens,
+		PROMPT_OVERHEAD_TOKENS,
 		MIN_BUDGET_TOKENS,
 	);
 	return capSummary(await summarizeMessages(model, messages, budget, signal));

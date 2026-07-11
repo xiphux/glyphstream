@@ -16,6 +16,38 @@ export function approxTokens(s: string): number {
 }
 
 /**
+ * Fraction of a model's context window the background memory passes trust as
+ * usable INPUT space, held back on top of the `maxTokens` + prompt-overhead
+ * subtraction. The token counts feeding these budgets are the model-agnostic
+ * `chars/4` heuristic (`approxTokens` / `estimateContentTokens`); a denser
+ * tokenizer (Gemma, CJK, code) can undercount, so a request the estimate calls
+ * "fits" can still overflow the upstream's real `n_ctx`. Reserving this slice
+ * keeps an under-estimate inside the true window, so map-reduce chunks land
+ * comfortably under it instead of on its edge. It does NOT touch live-chat
+ * compaction — that path uses the raw reported window on purpose (it wants every
+ * usable token; a mis-estimate there degrades to a recoverable overflow, not a
+ * silently-wedged background worker).
+ */
+export const MEMORY_BUDGET_SAFETY_FRACTION = 0.85;
+
+/**
+ * Usable input budget for one memory-model call: the safety-fraction of the
+ * context window, less the completion reserve (`maxTokens`) and prompt overhead,
+ * floored at `minBudget` so a tiny/misconfigured window can't drive it to zero
+ * (or negative). Shared by the summarizer and the overview builder so they can't
+ * drift on how much input they pack per call.
+ */
+export function memoryInputBudget(
+	contextWindow: number,
+	maxTokens: number,
+	overheadTokens: number,
+	minBudget: number,
+): number {
+	const usable = Math.floor(contextWindow * MEMORY_BUDGET_SAFETY_FRACTION);
+	return Math.max(usable - maxTokens - overheadTokens, minBudget);
+}
+
+/**
  * One memory-model call. Queues on the shared per-endpoint slot (released even on
  * error): a background pass makes several calls, so slotting PER CALL lets a
  * waiting live chat slip between them — a fair peer, never a preempting or
