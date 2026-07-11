@@ -15,7 +15,7 @@
  */
 
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
-import { UpstreamError } from '../endpoints/client';
+import { UpstreamError, isPermanentRequestError } from '../endpoints/client';
 import { isWithinWindow } from './dream-window';
 import { summarizeConversation, buildTranscript } from './conversation-summarizer';
 import { buildOverview } from './conversation-overview';
@@ -77,10 +77,19 @@ export async function runSummarySweep(
 			try {
 				if (await summarizeOne(model, id, contextWindow, now)) summarized++;
 			} catch (e) {
-				if (e instanceof UpstreamError) {
+				if (e instanceof UpstreamError && !isPermanentRequestError(e)) {
+					// A transient endpoint failure (5xx / network / timeout / 429) or a
+					// systemic auth failure (401 / 403 / 407): the rest of this sweep would
+					// fail the same way, so end it and retry next tick rather than burning
+					// the whole backlog on doomed calls.
 					console.warn('[conversation-summary] endpoint error; ending sweep:', e);
 					return { summarized, overviewsUpdated: 0 };
 				}
+				// A permanent per-request rejection (e.g. 400 context-size overflow) or a
+				// non-upstream error: skip THIS conversation and keep sweeping. A permanent
+				// 4xx recurs every sweep, so bailing here would let one poison conversation
+				// wedge the entire oldest-first backlog behind it. The watermark is left
+				// unadvanced, so it retries once a bigger margin / config fix lets it fit.
 				console.warn(`[conversation-summary] conversation ${id} failed, skipping:`, e);
 			}
 		}
@@ -93,10 +102,12 @@ export async function runSummarySweep(
 				await rebuildOverview(model, userId, contextWindow, now);
 				overviewsUpdated++;
 			} catch (e) {
-				if (e instanceof UpstreamError) {
+				if (e instanceof UpstreamError && !isPermanentRequestError(e)) {
 					console.warn('[conversation-summary] endpoint error during overviews; ending:', e);
 					break;
 				}
+				// Permanent per-request rejection or a non-upstream error: skip this user's
+				// overview and keep going, so one user can't stall everyone behind them.
 				console.warn(`[conversation-summary] overview for user ${userId} failed, skipping:`, e);
 			}
 		}

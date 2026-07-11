@@ -14,6 +14,31 @@ export class UpstreamError extends Error {
 	}
 }
 
+/**
+ * True for an `UpstreamError` a batch worker can SKIP on a single item and keep
+ * going: a permanent, REQUEST-SPECIFIC 4xx the endpoint refused on this request's
+ * own content (malformed body, context-size overflow, unsupported input), which
+ * will recur identically on retry but says nothing about the other items. Returns
+ * false — so the caller aborts the batch rather than burning it on doomed calls —
+ * for two classes that are NOT per-item:
+ *   - transient failures that may clear on their own: 5xx, a network error
+ *     surfacing as a null status, 408 (Request Timeout), 429 (Too Many Requests);
+ *   - SYSTEMIC auth failures that reject EVERY request regardless of content:
+ *     401 (Unauthorized), 403 (Forbidden), 407 (Proxy Auth Required). Skipping
+ *     those would make a whole sweep of guaranteed-to-fail calls each tick.
+ * A systematic 400 from a bad param is indistinguishable by status from a
+ * per-request 400, so it still reads as skippable — it surfaces loudly in the
+ * per-item logs rather than silently aborting.
+ */
+export function isPermanentRequestError(e: unknown): boolean {
+	if (!(e instanceof UpstreamError) || e.status === null) return false;
+	const s = e.status;
+	if (s < 400 || s >= 500) return false; // non-client / transient 5xx
+	if (s === 408 || s === 429) return false; // transient 4xx
+	if (s === 401 || s === 403 || s === 407) return false; // systemic auth → abort, don't skip
+	return true;
+}
+
 function authHeaders(endpoint: LoadedEndpoint): Record<string, string> {
 	return endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {};
 }

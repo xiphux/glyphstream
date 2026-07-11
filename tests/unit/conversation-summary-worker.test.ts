@@ -7,11 +7,13 @@ const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
 vi.mock('$lib/server/db/client', () => ({ getDb: () => mocks.testDb, closeDb: () => {} }));
 
 const chatMock = vi.hoisted(() => vi.fn());
-const FakeUpstreamError = vi.hoisted(() => class UpstreamError extends Error {});
-vi.mock('$lib/server/endpoints/client', () => ({
-	chatCompletionSync: chatMock,
-	UpstreamError: FakeUpstreamError,
-}));
+// Mock only the network call; keep the REAL UpstreamError + isPermanentRequestError
+// so this worker test exercises the actual classifier it branches on and can't
+// drift from it.
+vi.mock('$lib/server/endpoints/client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/server/endpoints/client')>();
+	return { ...actual, chatCompletionSync: chatMock };
+});
 
 const memModelMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/tasks/memory-model', () => ({ getMemoryModel: memModelMock }));
@@ -23,6 +25,7 @@ const listModelsMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/endpoints/list-models', () => ({ listAllModels: listModelsMock }));
 
 import { runSummarySweep } from '$lib/server/memory/conversation-summary';
+import { UpstreamError } from '$lib/server/endpoints/client';
 import { createConversation } from '$lib/server/db/queries/conversations';
 import { getConversationOverview } from '$lib/server/db/queries/users';
 import { appendMessage } from '$lib/server/db/queries/messages';
@@ -131,13 +134,53 @@ describe('runSummarySweep', () => {
 		expect(row.summarizedAt).toBe(NOW); // watermark advanced so it isn't reconsidered
 	});
 
-	it('ends the sweep on an UpstreamError, leaving the watermark unadvanced', async () => {
+	it('ends the sweep on a transient UpstreamError (network / 5xx), leaving the watermark unadvanced', async () => {
 		const u = seedUser();
 		const c = seedConv(u.id);
-		chatMock.mockRejectedValue(new FakeUpstreamError('endpoint down'));
+		chatMock.mockRejectedValue(new UpstreamError('endpoint down', null, null)); // null status → transient
 		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
 		const row = summaryOf(c);
 		expect(row.summary).toBeNull();
 		expect(row.summarizedAt).toBeNull(); // unadvanced → retried next window
+
+		chatMock.mockReset();
+		chatMock.mockRejectedValue(new UpstreamError('upstream boom', 503, null)); // 5xx → transient
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
+		expect(summaryOf(c).summarizedAt).toBeNull();
+	});
+
+	it('ends the sweep on a systemic auth failure (401) instead of skipping every conversation', async () => {
+		const u = seedUser();
+		seedConv(u.id);
+		seedConv(u.id);
+		// Auth rejects EVERY request — skipping would burn the whole sweep on doomed
+		// calls, so it aborts after the first like a transient outage.
+		chatMock.mockRejectedValue(new UpstreamError('invalid api key', 401, null));
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 0, overviewsUpdated: 0 });
+		expect(chatMock).toHaveBeenCalledTimes(1); // bailed, did not try the second conversation
+	});
+
+	it('skips a conversation that permanently 400s (context overflow) and keeps sweeping the rest', async () => {
+		const u = seedUser();
+		const c1 = seedConv(u.id);
+		const c2 = seedConv(u.id);
+		// The first conversation processed hits a permanent context-size 400; the next
+		// (and the overview build) succeed. The old behavior bailed the whole sweep here.
+		chatMock
+			.mockRejectedValueOnce(new UpstreamError('exceeds context size', 400, null))
+			.mockResolvedValue({ choices: [{ message: { content: 'A gist of the chat.' } }] });
+
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1, overviewsUpdated: 1 });
+
+		const rows = [summaryOf(c1), summaryOf(c2)];
+		const done = rows.filter((r) => r.summary !== null);
+		const skipped = rows.filter((r) => r.summary === null);
+		// One conversation summarized despite the other permanently failing.
+		expect(done).toHaveLength(1);
+		expect(done[0].summarizedAt).toBe(NOW);
+		// The poison conversation is left unadvanced so it retries once it can fit
+		// (bigger margin / a corrected context-window config), not stamped-as-done.
+		expect(skipped).toHaveLength(1);
+		expect(skipped[0].summarizedAt).toBeNull();
 	});
 });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	extractUpstreamErrorMessage,
 	formatUpstreamError,
+	isPermanentRequestError,
 	UpstreamError,
 } from '$lib/server/endpoints/client';
 
@@ -88,5 +89,39 @@ describe('formatUpstreamError', () => {
 		expect(formatUpstreamError(e)).toBe(
 			'Network error contacting endpoint "x" at http://…: ECONNREFUSED',
 		);
+	});
+});
+
+describe('isPermanentRequestError', () => {
+	const err = (status: number | null) => new UpstreamError('x', status, null);
+
+	it('is true for a 4xx the endpoint refused on the request (400 context overflow)', () => {
+		expect(isPermanentRequestError(err(400))).toBe(true);
+		expect(isPermanentRequestError(err(413))).toBe(true); // payload too large
+		expect(isPermanentRequestError(err(422))).toBe(true); // unprocessable
+		expect(isPermanentRequestError(err(404))).toBe(true);
+	});
+
+	it('is false for transient 4xx (timeout / rate limit) that may clear on retry', () => {
+		expect(isPermanentRequestError(err(408))).toBe(false);
+		expect(isPermanentRequestError(err(429))).toBe(false);
+	});
+
+	it('is false for systemic auth-class 4xx (they fail every request, not just this one)', () => {
+		expect(isPermanentRequestError(err(401))).toBe(false);
+		expect(isPermanentRequestError(err(403))).toBe(false);
+		expect(isPermanentRequestError(err(407))).toBe(false);
+	});
+
+	it('is false for 5xx / null-status (network) — endpoint-level, not per-request', () => {
+		expect(isPermanentRequestError(err(500))).toBe(false);
+		expect(isPermanentRequestError(err(503))).toBe(false);
+		expect(isPermanentRequestError(err(null))).toBe(false);
+	});
+
+	it('is false for non-UpstreamError values', () => {
+		expect(isPermanentRequestError(new Error('boom'))).toBe(false);
+		expect(isPermanentRequestError(null)).toBe(false);
+		expect(isPermanentRequestError({ status: 400 })).toBe(false);
 	});
 });
