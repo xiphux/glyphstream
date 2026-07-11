@@ -13,7 +13,14 @@
  * users (rare) fall back to an iterative fold (structure best-effort).
  */
 
-import { approxTokens, callMemoryModel, chunkStrings, memoryInputBudget } from './summarize-util';
+import {
+	approxTokens,
+	callMemoryModel,
+	capAtBoundary,
+	chunkStrings,
+	memoryInputBudget,
+	withOverflowRetry,
+} from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 
 /** Hard cap on the stored/injected overview — it rides in the system prompt every
@@ -32,11 +39,12 @@ const BUILD_PROMPT = `You maintain a compact, STRUCTURED map of the topics a use
 
 const FOLD_PROMPT = `You are building a compact, STRUCTURED map of the topics a user has discussed, in batches. Given the map so far and more conversation summaries, return the updated map: group related topics under short thematic headings (most significant first), a brief phrase per topic, merge duplicates, drop trivia. Keep it under ${OVERVIEW_MAX_CHARS} characters. Output only the map, no preamble.`;
 
-/** Trim + hard-cap, preserving newlines (it's prompt text / a structured list,
- *  not a single-line FTS row). */
+/** Trim + cap, preserving newlines (it's prompt text / a structured list, not a
+ *  single-line FTS row) and cutting at the last complete line — the model is asked
+ *  for a length and reliably overshoots it, so this cap fires routinely and a raw
+ *  slice would leave the stored map ending mid-sentence. */
 function capOverview(s: string): string {
-	const t = s.trim();
-	return t.length <= OVERVIEW_MAX_CHARS ? t : t.slice(0, OVERVIEW_MAX_CHARS - 1).trimEnd() + '…';
+	return capAtBoundary(s, OVERVIEW_MAX_CHARS);
 }
 
 function renderSummaries(summaries: string[]): string {
@@ -60,20 +68,43 @@ export async function buildOverview(
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (summaries.length === 0) return (previousOverview ?? '').trim();
+	const opts = {
+		maxTokens: model.maxTokens,
+		overheadTokens: PROMPT_OVERHEAD_TOKENS,
+		minBudget: MIN_BUDGET_TOKENS,
+	};
 	const budget = memoryInputBudget(
 		contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-		model.maxTokens,
-		PROMPT_OVERHEAD_TOKENS,
-		MIN_BUDGET_TOKENS,
+		opts.maxTokens,
+		opts.overheadTokens,
+		opts.minBudget,
 	);
 	const prev = (previousOverview ?? '').trim();
+	// An over-window rejection re-runs this against a budget corrected by the
+	// upstream's own token counts (see `withOverflowRetry`) — a shrunk budget just
+	// tips the one-shot path into the fold path, which is exactly what's wanted.
+	return capOverview(
+		await withOverflowRetry(budget, opts, (b) =>
+			composeOverview(model, prev, summaries, b, signal),
+		),
+	);
+}
 
+/** The overview text for a given input budget: one-shot when everything fits,
+ *  otherwise an iterative fold. Pure in `budget`, so it is safe to re-run. */
+async function composeOverview(
+	model: ResolvedMemoryModel,
+	prev: string,
+	summaries: string[],
+	budget: number,
+	signal?: AbortSignal,
+): Promise<string> {
 	// Common path: the whole set fits one call — most stable + structured.
 	if (approxTokens(prev + '\n' + renderSummaries(summaries)) <= budget) {
 		const user =
 			`Previous map (for structure/order continuity only):\n${prev || '(none yet)'}\n\n` +
 			`Conversation summaries (source of truth, oldest first):\n${renderSummaries(summaries)}`;
-		return capOverview(await callMemoryModel(model, BUILD_PROMPT, user, signal));
+		return callMemoryModel(model, BUILD_PROMPT, user, signal);
 	}
 
 	// Over-window (rare, huge user): iterative fold over ordered batches, seeded
@@ -85,5 +116,5 @@ export async function buildOverview(
 		const user = `Map so far:\n${map || '(none yet)'}\n\nMore conversation summaries:\n${renderSummaries(batch)}`;
 		map = await callMemoryModel(model, FOLD_PROMPT, user, signal);
 	}
-	return capOverview(map);
+	return map;
 }

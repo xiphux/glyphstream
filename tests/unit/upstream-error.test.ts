@@ -3,6 +3,7 @@ import {
 	extractUpstreamErrorMessage,
 	formatUpstreamError,
 	isPermanentRequestError,
+	parseContextOverflow,
 	UpstreamError,
 } from '$lib/server/endpoints/client';
 
@@ -123,5 +124,59 @@ describe('isPermanentRequestError', () => {
 		expect(isPermanentRequestError(new Error('boom'))).toBe(false);
 		expect(isPermanentRequestError(null)).toBe(false);
 		expect(isPermanentRequestError({ status: 400 })).toBe(false);
+	});
+});
+
+describe('parseContextOverflow', () => {
+	const err = (body: unknown, status = 400) =>
+		new UpstreamError('HTTP 400', status, JSON.stringify(body));
+
+	it("recovers llama.cpp's reported prompt size and real context window", () => {
+		// Verbatim shape from the production failure.
+		const e = err({
+			error: {
+				code: 400,
+				message:
+					'request (104317 tokens) exceeds the available context size (98304 tokens), try increasing it',
+				type: 'exceed_context_size_error',
+				n_prompt_tokens: 104317,
+				n_ctx: 98304,
+			},
+		});
+		expect(parseContextOverflow(e)).toEqual({ promptTokens: 104317, contextWindow: 98304 });
+	});
+
+	it('recognizes the OpenAI-style overflow, which carries no numbers', () => {
+		const byCode = err({ error: { code: 'context_length_exceeded', message: 'too long' } });
+		expect(parseContextOverflow(byCode)).toEqual({ promptTokens: 0, contextWindow: 0 });
+
+		const byMessage = err({
+			error: {
+				message: "This model's maximum context length is 8192 tokens",
+				type: 'invalid_request_error',
+			},
+		});
+		expect(parseContextOverflow(byMessage)).toEqual({ promptTokens: 0, contextWindow: 0 });
+	});
+
+	it('is null for a 4xx that is not an overflow — a bad request must still fail', () => {
+		expect(parseContextOverflow(err({ error: { message: 'unknown parameter: foo' } }))).toBeNull();
+		expect(parseContextOverflow(err({ error: { message: 'context' } }))).toBeNull(); // bare word, no size/length/window
+	});
+
+	it('is null for 5xx, missing/unparseable bodies, and non-UpstreamError values', () => {
+		expect(
+			parseContextOverflow(err({ error: { type: 'exceed_context_size_error' } }, 500)),
+		).toBeNull();
+		expect(parseContextOverflow(new UpstreamError('HTTP 400', 400, null))).toBeNull();
+		expect(parseContextOverflow(new UpstreamError('HTTP 400', 400, 'not json'))).toBeNull();
+		expect(parseContextOverflow(new Error('boom'))).toBeNull();
+	});
+
+	it('ignores nonsense token counts rather than trusting them into a bad budget', () => {
+		const e = err({
+			error: { type: 'exceed_context_size_error', n_prompt_tokens: -1, n_ctx: 'lots' },
+		});
+		expect(parseContextOverflow(e)).toEqual({ promptTokens: 0, contextWindow: 0 });
 	});
 });

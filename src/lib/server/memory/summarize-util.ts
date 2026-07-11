@@ -5,7 +5,7 @@
  * the overview builder can't drift on how they call the model or budget input.
  */
 
-import { chatCompletionSync } from '../endpoints/client';
+import { chatCompletionSync, parseContextOverflow } from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 
@@ -47,6 +47,84 @@ export function memoryInputBudget(
 	return Math.max(usable - maxTokens - overheadTokens, minBudget);
 }
 
+/** Budget options for one memory pass, as passed to {@link memoryInputBudget}. */
+export type BudgetOpts = { maxTokens: number; overheadTokens: number; minBudget: number };
+
+/** How many times a pass may re-run against a smaller budget before giving up. */
+const MAX_OVERFLOW_RETRIES = 3;
+/** Minimum shrink per retry, so a vendor that names the overflow but reports no
+ *  numbers still converges instead of re-sending a near-identical payload. */
+const OVERFLOW_SHRINK_FACTOR = 0.6;
+
+/**
+ * The input budget to use after the upstream rejected a payload as too large, or
+ * null when the error wasn't an overflow (rethrow) or we're already as small as
+ * we go (give up — the caller skips the item).
+ *
+ * The rejection carries what actually fits (`n_ctx`) and what we actually sent
+ * (`n_prompt_tokens`) — both measured with the upstream's real tokenizer. Their
+ * ratio is exactly the correction factor our `chars/4` estimate was missing, so
+ * scaling the estimated budget by it lands the next attempt under the true window
+ * whether we were wrong about the window, wrong about the tokenizer, or both.
+ */
+export function shrinkBudgetAfterOverflow(
+	e: unknown,
+	budget: number,
+	opts: BudgetOpts,
+): number | null {
+	const overflow = parseContextOverflow(e);
+	if (!overflow) return null;
+
+	// Trust the upstream's window over the configured/advertised one. With no
+	// reported numbers, both terms collapse to the current budget and the flat
+	// shrink factor below carries the retry.
+	const allowed =
+		overflow.contextWindow > 0
+			? memoryInputBudget(overflow.contextWindow, opts.maxTokens, opts.overheadTokens, 0)
+			: budget;
+	const scaled =
+		overflow.promptTokens > 0 ? Math.floor((budget * allowed) / overflow.promptTokens) : budget;
+
+	const next = Math.max(
+		Math.min(scaled, Math.floor(budget * OVERFLOW_SHRINK_FACTOR)),
+		opts.minBudget,
+	);
+	// Already at the floor and still overflowing: nothing left to give.
+	return next < budget ? next : null;
+}
+
+/**
+ * Run a memory pass, re-running it against a smaller input budget each time the
+ * upstream rejects the payload as too large. `run` must be a pure function of the
+ * budget (it re-chunks from scratch), so a retry is just a cheaper re-do.
+ *
+ * This is what makes the background passes self-correcting rather than dependent
+ * on getting the window config and the token estimate right up front: the first
+ * overflow tells us the truth and the retry uses it. Exhausting the retries
+ * rethrows the original 4xx, which `isPermanentRequestError` classifies as
+ * skippable so one un-summarizable conversation can't wedge the sweep.
+ */
+export async function withOverflowRetry<T>(
+	initialBudget: number,
+	opts: BudgetOpts,
+	run: (budget: number) => Promise<T>,
+): Promise<T> {
+	let budget = initialBudget;
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await run(budget);
+		} catch (e) {
+			const next =
+				attempt < MAX_OVERFLOW_RETRIES ? shrinkBudgetAfterOverflow(e, budget, opts) : null;
+			if (next === null) throw e;
+			console.warn(
+				`[memory] upstream rejected a ${budget}-token input budget as over-window; retrying at ${next}`,
+			);
+			budget = next;
+		}
+	}
+}
+
 /**
  * One memory-model call. Queues on the shared per-endpoint slot (released even on
  * error): a background pass makes several calls, so slotting PER CALL lets a
@@ -82,8 +160,76 @@ export async function callMemoryModel(
 	}
 }
 
+/**
+ * Split one string into pieces that each fit `budget`, breaking at the last
+ * paragraph/line/space before the limit so pieces stay readable. A no-op for a
+ * string already within budget.
+ *
+ * Without this, a single item larger than the budget (one enormous pasted
+ * message) becomes its own over-budget chunk that NO budget can shrink into
+ * range — the overflow retry would shrink forever and still send the same
+ * oversized payload. This is the base case that makes shrinking converge.
+ */
+export function splitToBudget(s: string, budget: number): string[] {
+	if (budget <= 0 || approxTokens(s) <= budget) return [s];
+	const maxChars = budget * 4; // inverse of approxTokens
+	const pieces: string[] = [];
+	let rest = s;
+	while (approxTokens(rest) > budget) {
+		const head = rest.slice(0, maxChars);
+		// Break at the last structural boundary in the back half; a run with no
+		// break at all (minified blob) falls back to a hard slice.
+		const floor = Math.floor(head.length / 2);
+		let cut = head.lastIndexOf('\n\n');
+		if (cut < floor) cut = head.lastIndexOf('\n');
+		if (cut < floor) cut = head.lastIndexOf(' ');
+		if (cut < floor) cut = head.length;
+		pieces.push(rest.slice(0, cut).trim());
+		rest = rest.slice(cut).trim();
+	}
+	if (rest.length > 0) pieces.push(rest);
+	return pieces;
+}
+
+/**
+ * Trim to `max` characters, cutting at the last clean boundary — a complete line,
+ * else a sentence end, else a word break — so stored text never ends mid-word or
+ * mid-sentence. Only a boundary in the back half is accepted, so one long
+ * unbroken run degrades to a word break rather than collapsing to a fragment.
+ *
+ * The caps exist because the model is ASKED for a length and routinely overshoots
+ * it (LLMs can't count characters), so the cap is load-bearing, not defensive — it
+ * fires often enough that where it cuts is user-visible.
+ */
+export function capAtBoundary(s: string, max: number): string {
+	const t = s.trim();
+	if (t.length <= max) return t;
+
+	const head = t.slice(0, max - 1); // leave room for the ellipsis
+	const floor = Math.floor(head.length / 2);
+	let cut = head.lastIndexOf('\n');
+	if (cut < floor) cut = lastSentenceEnd(head);
+	if (cut < floor) {
+		// Nothing structural to land on, so just keep whole words — and if the cut
+		// already fell between two words, keep all of them.
+		cut = /\s/.test(t[head.length]) ? head.length : head.lastIndexOf(' ');
+	}
+	const kept = cut >= floor ? head.slice(0, cut) : head;
+	return kept.trimEnd() + '…';
+}
+
+/** Index just past the final sentence-ending punctuation in `s`, or -1. */
+function lastSentenceEnd(s: string): number {
+	let last = -1;
+	for (const m of s.matchAll(/[.!?][)\]"'”’]?(?=\s|$)/g)) {
+		last = m.index + m[0].length;
+	}
+	return last;
+}
+
 /** Greedily group strings so each group's estimated tokens stay within `budget`.
- *  A single over-budget item becomes its own group. */
+ *  A single over-budget item becomes its own group — pre-split with
+ *  {@link splitToBudget} when the caller needs a hard guarantee. */
 export function chunkStrings(items: string[], budget: number): string[][] {
 	const groups: string[][] = [];
 	let cur: string[] = [];

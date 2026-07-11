@@ -39,6 +39,54 @@ export function isPermanentRequestError(e: unknown): boolean {
 	return true;
 }
 
+/** A context-overflow rejection, as reported BY THE UPSTREAM. `promptTokens` /
+ *  `contextWindow` are 0 when the vendor names the condition but not the numbers. */
+export type ContextOverflow = { promptTokens: number; contextWindow: number };
+
+/**
+ * Recognize "your prompt didn't fit my context window" in a 4xx, and recover the
+ * upstream's own token counts when it reports them.
+ *
+ * This is the ONE authoritative token measurement we ever get. Everything on our
+ * side is the model-agnostic `chars/4` heuristic (see `approxTokens`), which a
+ * denser tokenizer can undercount badly — and the context window we budget
+ * against is itself only as good as what the endpoint advertises (llama.cpp's
+ * router reports a cold model's *trained* window, not the server's configured
+ * `--ctx-size`). So a caller that can retry smaller should trust these numbers
+ * over both, rather than treating the rejection as terminal. Shapes handled:
+ *   - llama.cpp: `type: 'exceed_context_size_error'` + `n_prompt_tokens` / `n_ctx`.
+ *   - OpenAI-ish: `code: 'context_length_exceeded'`, or a message naming the
+ *     context size/length/window. No numbers — the caller falls back to a flat
+ *     shrink.
+ * Returns null for any other error, so a genuinely malformed request still fails.
+ */
+export function parseContextOverflow(e: unknown): ContextOverflow | null {
+	if (!(e instanceof UpstreamError) || e.status === null || e.status < 400 || e.status >= 500) {
+		return null;
+	}
+	if (!e.body) return null;
+
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(e.body);
+	} catch {
+		return null;
+	}
+	const err = (parsed as { error?: unknown })?.error;
+	if (!err || typeof err !== 'object') return null;
+	const f = err as Record<string, unknown>;
+
+	const named =
+		f.type === 'exceed_context_size_error' ||
+		f.code === 'context_length_exceeded' ||
+		(typeof f.message === 'string' && /context (?:size|length|window)/i.test(f.message));
+	if (!named) return null;
+
+	const count = (v: unknown) =>
+		typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+	return { promptTokens: count(f.n_prompt_tokens), contextWindow: count(f.n_ctx) };
+}
+
 function authHeaders(endpoint: LoadedEndpoint): Record<string, string> {
 	return endpoint.apiKey ? { Authorization: `Bearer ${endpoint.apiKey}` } : {};
 }

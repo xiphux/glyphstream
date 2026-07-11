@@ -160,14 +160,44 @@ describe('runSummarySweep', () => {
 		expect(chatMock).toHaveBeenCalledTimes(1); // bailed, did not try the second conversation
 	});
 
-	it('skips a conversation that permanently 400s (context overflow) and keeps sweeping the rest', async () => {
+	it('recovers a conversation the endpoint rejects as over-window, instead of skipping it', async () => {
+		const u = seedUser();
+		const c = seedConv(u.id);
+		// llama.cpp's context-overflow 400, carrying its real numbers. The summarizer
+		// re-runs against a budget corrected by them, so the conversation gets a
+		// summary rather than being written off as un-summarizable.
+		chatMock
+			.mockRejectedValueOnce(
+				new UpstreamError(
+					'HTTP 400',
+					400,
+					JSON.stringify({
+						error: {
+							type: 'exceed_context_size_error',
+							message: 'request (104317 tokens) exceeds the available context size (98304 tokens)',
+							n_prompt_tokens: 104317,
+							n_ctx: 98304,
+						},
+					}),
+				),
+			)
+			.mockResolvedValue({ choices: [{ message: { content: 'A gist of the chat.' } }] });
+
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1, overviewsUpdated: 1 });
+		const row = summaryOf(c);
+		expect(row.summary).toBe('A gist of the chat.');
+		expect(row.summarizedAt).toBe(NOW);
+	});
+
+	it('skips a conversation the endpoint permanently rejects and keeps sweeping the rest', async () => {
 		const u = seedUser();
 		const c1 = seedConv(u.id);
 		const c2 = seedConv(u.id);
-		// The first conversation processed hits a permanent context-size 400; the next
-		// (and the overview build) succeed. The old behavior bailed the whole sweep here.
+		// A permanent, request-specific 400 that shrinking cannot fix. The next
+		// conversation (and the overview build) still succeed — the old behavior bailed
+		// the whole sweep here, wedging the oldest-first backlog behind one bad chat.
 		chatMock
-			.mockRejectedValueOnce(new UpstreamError('exceeds context size', 400, null))
+			.mockRejectedValueOnce(new UpstreamError('unsupported input', 400, null))
 			.mockResolvedValue({ choices: [{ message: { content: 'A gist of the chat.' } }] });
 
 		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1, overviewsUpdated: 1 });
@@ -178,8 +208,7 @@ describe('runSummarySweep', () => {
 		// One conversation summarized despite the other permanently failing.
 		expect(done).toHaveLength(1);
 		expect(done[0].summarizedAt).toBe(NOW);
-		// The poison conversation is left unadvanced so it retries once it can fit
-		// (bigger margin / a corrected context-window config), not stamped-as-done.
+		// The skipped one is left unadvanced so it retries next sweep, not stamped-as-done.
 		expect(skipped).toHaveLength(1);
 		expect(skipped[0].summarizedAt).toBeNull();
 	});

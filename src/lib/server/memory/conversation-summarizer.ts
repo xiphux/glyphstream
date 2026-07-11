@@ -12,10 +12,25 @@
  * overflows, hierarchically map-reduce: summarize windows that fit, then reduce
  * the partials (recursively if the partials themselves overflow). The memory
  * model's window therefore never limits what we can summarize.
+ *
+ * That fit-check is a GUESS, on two axes — chars/4 can undercount a denser
+ * tokenizer, and the advertised context window can itself be wrong (llama.cpp's
+ * router reports a cold model's trained window, not its configured `--ctx-size`).
+ * Either way the upstream is the one that finds out, and says so. So the whole
+ * pass runs under `withOverflowRetry`: an over-window rejection re-runs it against
+ * a budget corrected by the upstream's own token counts, instead of a guess we
+ * can't check being terminal for the conversation.
  */
 
-import { estimateContentTokens } from '$lib/chat-compaction';
-import { approxTokens, callMemoryModel, chunkStrings, memoryInputBudget } from './summarize-util';
+import {
+	approxTokens,
+	callMemoryModel,
+	capAtBoundary,
+	chunkStrings,
+	memoryInputBudget,
+	splitToBudget,
+	withOverflowRetry,
+} from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 import type { ChatMessage } from '$lib/types/api';
 
@@ -47,21 +62,24 @@ function messageLine(m: ChatMessage): string {
 	return text ? `${m.role}: ${text}` : '';
 }
 
-/** The conversation rendered as a plain-text transcript for the summarizer. */
-export function buildTranscript(messages: ChatMessage[]): string {
-	return messages
-		.map(messageLine)
-		.filter((l) => l.length > 0)
-		.join('\n\n');
+/** The transcript as one entry per message with text, in order. Budgeting works on
+ *  these — the same strings we actually send — rather than on the messages, whose
+ *  non-text parts (tool calls/results) never reach the model here. */
+function transcriptLines(messages: ChatMessage[]): string[] {
+	return messages.map(messageLine).filter((l) => l.length > 0);
 }
 
-/** Trim + collapse whitespace + hard-cap. Keeps the stored/indexed gist a single
- *  clean line even if the model returns paragraphs. */
+const JOIN = '\n\n';
+
+/** The conversation rendered as a plain-text transcript for the summarizer. */
+export function buildTranscript(messages: ChatMessage[]): string {
+	return transcriptLines(messages).join(JOIN);
+}
+
+/** Trim + collapse whitespace + cap at a sentence/word boundary. Keeps the
+ *  stored/indexed gist a single clean line even if the model returns paragraphs. */
 function capSummary(s: string): string {
-	const clean = s.trim().replace(/\s+/g, ' ');
-	return clean.length <= SUMMARY_MAX_CHARS
-		? clean
-		: clean.slice(0, SUMMARY_MAX_CHARS - 1).trimEnd() + '…';
+	return capAtBoundary(s.trim().replace(/\s+/g, ' '), SUMMARY_MAX_CHARS);
 }
 
 /**
@@ -76,29 +94,41 @@ export async function summarizeConversation(
 	contextWindow: number | null,
 	signal?: AbortSignal,
 ): Promise<string> {
+	const opts = {
+		maxTokens: model.maxTokens,
+		overheadTokens: PROMPT_OVERHEAD_TOKENS,
+		minBudget: MIN_BUDGET_TOKENS,
+	};
 	const budget = memoryInputBudget(
 		contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-		model.maxTokens,
-		PROMPT_OVERHEAD_TOKENS,
-		MIN_BUDGET_TOKENS,
+		opts.maxTokens,
+		opts.overheadTokens,
+		opts.minBudget,
 	);
-	return capSummary(await summarizeMessages(model, messages, budget, signal));
+	// Re-chunks from scratch on each retry, so an over-window rejection just costs
+	// a cheaper re-do against a budget corrected by the upstream's own numbers.
+	const summary = await withOverflowRetry(budget, opts, (b) =>
+		summarizeMessages(model, messages, b, signal),
+	);
+	return capSummary(summary);
 }
 
 /** One-shot when the transcript fits the budget; otherwise map (per-chunk
- *  summaries) then reduce. */
+ *  summaries) then reduce. Oversized single messages are pre-split so every chunk
+ *  is guaranteed to fit — otherwise no budget, however small, could place them. */
 async function summarizeMessages(
 	model: ResolvedMemoryModel,
 	messages: ChatMessage[],
 	budget: number,
 	signal?: AbortSignal,
 ): Promise<string> {
-	if (estimateContentTokens(messages) <= budget) {
-		return callMemoryModel(model, SYSTEM_PROMPT, buildTranscript(messages), signal);
+	const lines = transcriptLines(messages).flatMap((l) => splitToBudget(l, budget));
+	if (approxTokens(lines.join(JOIN)) <= budget) {
+		return callMemoryModel(model, SYSTEM_PROMPT, lines.join(JOIN), signal);
 	}
 	const partials: string[] = [];
-	for (const chunk of chunkMessages(messages, budget)) {
-		partials.push(await callMemoryModel(model, SYSTEM_PROMPT, buildTranscript(chunk), signal));
+	for (const chunk of chunkStrings(lines, budget)) {
+		partials.push(await callMemoryModel(model, SYSTEM_PROMPT, chunk.join(JOIN), signal));
 	}
 	return reduceSummaries(model, partials, budget, signal);
 }
@@ -112,31 +142,16 @@ async function reduceSummaries(
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (partials.length <= 1) return partials[0] ?? '';
-	const render = (ps: string[]) => ps.map((p, i) => `Part ${i + 1}: ${p}`).join('\n\n');
+	const render = (ps: string[]) => ps.map((p, i) => `Part ${i + 1}: ${p}`).join(JOIN);
 	if (approxTokens(render(partials)) <= budget) {
 		return callMemoryModel(model, REDUCE_PROMPT, render(partials), signal);
 	}
+	// A partial is model output, so it's bounded by max_tokens rather than by our
+	// budget — split any that alone overshoot, same as the transcript lines.
+	const fitted = partials.flatMap((p) => splitToBudget(p, budget));
 	const reduced: string[] = [];
-	for (const group of chunkStrings(partials, budget)) {
+	for (const group of chunkStrings(fitted, budget)) {
 		reduced.push(await callMemoryModel(model, REDUCE_PROMPT, render(group), signal));
 	}
 	return reduceSummaries(model, reduced, budget, signal);
-}
-
-/** Greedily group messages so each group's estimated tokens stay within budget.
- *  A single over-budget message becomes its own group (can't split at message
- *  granularity — a rare edge the model will truncate). */
-function chunkMessages(messages: ChatMessage[], budget: number): ChatMessage[][] {
-	const groups: ChatMessage[][] = [];
-	let cur: ChatMessage[] = [];
-	for (const m of messages) {
-		const t = estimateContentTokens([m]);
-		if (cur.length > 0 && estimateContentTokens(cur) + t > budget) {
-			groups.push(cur);
-			cur = [];
-		}
-		cur.push(m);
-	}
-	if (cur.length > 0) groups.push(cur);
-	return groups;
 }

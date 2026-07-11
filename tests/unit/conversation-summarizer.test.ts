@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const chatMock = vi.hoisted(() => vi.fn());
-vi.mock('$lib/server/endpoints/client', () => ({
-	chatCompletionSync: chatMock,
-	UpstreamError: class UpstreamError extends Error {},
-}));
+// Mock only the network call; keep the REAL UpstreamError + parseContextOverflow so
+// the overflow-retry path here exercises the actual classifier it branches on.
+vi.mock('$lib/server/endpoints/client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('$lib/server/endpoints/client')>();
+	return { ...actual, chatCompletionSync: chatMock };
+});
 
 const acquireMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/endpoints/concurrency', () => ({ acquireEndpointSlot: acquireMock }));
@@ -15,7 +17,25 @@ import {
 	SUMMARY_MAX_CHARS,
 } from '$lib/server/memory/conversation-summarizer';
 import { memoryInputBudget } from '$lib/server/memory/summarize-util';
+import { UpstreamError } from '$lib/server/endpoints/client';
 import type { ChatMessage } from '$lib/types/api';
+
+/** llama.cpp's context-overflow 400, verbatim in shape. */
+function overflow400(promptTokens: number, nCtx: number): UpstreamError {
+	return new UpstreamError(
+		`Endpoint "llama" returned HTTP 400`,
+		400,
+		JSON.stringify({
+			error: {
+				code: 400,
+				message: `request (${promptTokens} tokens) exceeds the available context size (${nCtx} tokens), try increasing it`,
+				type: 'exceed_context_size_error',
+				n_prompt_tokens: promptTokens,
+				n_ctx: nCtx,
+			},
+		}),
+	);
+}
 
 const MODEL = {
 	endpoint: { id: 'gpu', maxConcurrent: 1 },
@@ -133,5 +153,84 @@ describe('summarizeConversation', () => {
 		await summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000);
 		expect(acquireMock).toHaveBeenCalledWith('gpu', 1, expect.anything());
 		expect(release).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('summarizeConversation — recovery from an over-window rejection', () => {
+	// The production failure: llama advertises Gemma's *trained* 131072 window while
+	// the server is actually running --ctx-size 98304, so the transcript "fits" the
+	// budget, goes one-shot, and is rejected at 104317 real tokens. The rejection
+	// carries the true numbers; the retry has to use them.
+	const ADVERTISED = 131072;
+	const oneShotSized = () => [
+		mkMsg('user', 'x'.repeat(200_000)), // ~50k est. tokens
+		mkMsg('assistant', 'y'.repeat(200_000)), // ~100k total — under the 110511 budget
+	];
+
+	it('re-runs against a corrected budget and map-reduces instead of failing', async () => {
+		chatMock
+			.mockRejectedValueOnce(overflow400(104317, 98304))
+			.mockResolvedValue({ choices: [{ message: { content: 'a gist' } }] });
+
+		const out = await summarizeConversation(MODEL, oneShotSized(), ADVERTISED);
+
+		expect(out).toBe('a gist');
+		// 1 rejected one-shot, then the retry's 2 map calls + 1 reduce.
+		expect(chatMock).toHaveBeenCalledTimes(4);
+	});
+
+	it('shrinks below the window the UPSTREAM reported, not the advertised one', async () => {
+		chatMock
+			.mockRejectedValueOnce(overflow400(104317, 98304))
+			.mockResolvedValue({ choices: [{ message: { content: 'a gist' } }] });
+
+		await summarizeConversation(MODEL, oneShotSized(), ADVERTISED);
+
+		// Every retry payload must fit the REAL window (98304), with the completion
+		// reserve still to come — the advertised 131072 would have let it through again.
+		const sent = chatMock.mock.calls.slice(1).map((c) => c[1].messages[1].content as string);
+		for (const payload of sent) {
+			expect(Math.ceil(payload.length / 4)).toBeLessThan(98304 - MODEL.maxTokens);
+		}
+	});
+
+	it('gives up (rethrows) once the retries are exhausted, so the worker can skip it', async () => {
+		chatMock.mockRejectedValue(overflow400(104317, 98304)); // never fits, whatever we do
+
+		await expect(summarizeConversation(MODEL, oneShotSized(), ADVERTISED)).rejects.toBeInstanceOf(
+			UpstreamError,
+		);
+		expect(chatMock).toHaveBeenCalledTimes(4); // initial attempt + 3 retries
+	});
+
+	it('does not retry a 400 that is not a context overflow', async () => {
+		chatMock.mockRejectedValue(
+			new UpstreamError('bad request', 400, '{"error":{"message":"nope"}}'),
+		);
+		await expect(summarizeConversation(MODEL, oneShotSized(), ADVERTISED)).rejects.toBeInstanceOf(
+			UpstreamError,
+		);
+		expect(chatMock).toHaveBeenCalledTimes(1); // no shrink-and-retry
+	});
+
+	it('splits a single message too big for any budget, so shrinking converges', async () => {
+		chatMock
+			.mockRejectedValueOnce(overflow400(104317, 98304))
+			.mockResolvedValue({ choices: [{ message: { content: 'a gist' } }] });
+
+		// One enormous pasted message. Pre-split, this was an unplaceable chunk: no
+		// budget could hold it, so the retry would shrink forever and re-send it whole.
+		const out = await summarizeConversation(
+			MODEL,
+			[mkMsg('user', 'z'.repeat(400_000))],
+			ADVERTISED,
+		);
+
+		expect(out).toBe('a gist');
+		const retried = chatMock.mock.calls.slice(1).map((c) => c[1].messages[1].content as string);
+		expect(retried.length).toBeGreaterThan(1); // it got chopped up
+		for (const payload of retried) {
+			expect(Math.ceil(payload.length / 4)).toBeLessThan(98304 - MODEL.maxTokens);
+		}
 	});
 });
