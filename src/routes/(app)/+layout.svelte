@@ -760,7 +760,7 @@
 						: 'border-border text-fg-muted hover:bg-surface-raised hover:text-fg'}"
 				>
 					<VenetianMask size={14} strokeWidth={2.25} />
-					<span>{privateView.active ? 'Private' : 'Private chat'}</span>
+					<span>Private chat</span>
 				</button>
 			{:else if privateView.active}
 				<span

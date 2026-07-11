@@ -571,7 +571,7 @@
 			: 'border-border bg-surface-panel/70 text-fg-muted hover:bg-surface-raised hover:text-fg'}"
 	>
 		<VenetianMask size={15} strokeWidth={2.25} />
-		<span>{isPrivate ? 'Private' : 'Private chat'}</span>
+		<span>Private chat</span>
 	</button>
 
 	<!--
