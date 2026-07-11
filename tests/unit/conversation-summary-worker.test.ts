@@ -41,6 +41,7 @@ const MODEL = {
 	temperature: 0.2,
 	activeHours: '',
 	timezone: 'UTC',
+	overviewMaxChars: 2500,
 };
 
 beforeEach(() => {

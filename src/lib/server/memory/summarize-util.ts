@@ -203,6 +203,9 @@ export function splitToBudget(s: string, budget: number): string[] {
  */
 export function capAtBoundary(s: string, max: number): string {
 	const t = s.trim();
+	// A missing/garbage cap must not silently reduce the text to an ellipsis — a
+	// nonsense limit is a bug worth seeing, and losing the content hides it.
+	if (!Number.isFinite(max) || max <= 1) return t;
 	if (t.length <= max) return t;
 
 	const head = t.slice(0, max - 1); // leave room for the ellipsis

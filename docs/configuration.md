@@ -404,6 +404,7 @@ max_tokens = 2000               # optional; cap per consolidation call
 temperature = 0.2               # optional; low — careful bookkeeping
 active_hours = "02:00-06:00"    # optional; a quiet-hours window (omit to run any time)
 timezone = "America/New_York"   # optional; default "UTC"
+overview_max_chars = 2500       # optional; size of the conversation-topics map
 ```
 
 **Pick a capable model.** This is a separate slot from the small `task_model` —
@@ -442,6 +443,17 @@ schedule; the shared slot keeps them within `max_concurrent`):
   discussed" map per user from those summaries and injects it into the assistant's
   context, so it knows what past conversations exist to search. It's view-only in
   **Settings → Memories** (regenerated from your conversations, so not hand-edited).
+
+**Sizing the topics map (`overview_max_chars`, default 2500).** The map is
+injected into the system prompt on **every** personalization-on turn, so its size
+is a recurring per-message token cost (~2500 chars ≈ ~600 tokens), not a one-off.
+That's why it's bounded: it's a _signpost_ telling the model which past threads
+exist to go `search_conversations` for — not a record of what was said, which
+lives in the summaries and gets fetched on demand. So it needs roughly a line per
+_theme_, and themes accumulate far more slowly than conversations do. It does not
+grow with your corpus. Raise it if the map visibly goes thin (topics you'd expect
+to see start dropping out); the cost is paid on every message, not just the ones
+that benefit.
 
 ## Feature blocks
 

@@ -8,16 +8,23 @@ vi.mock('$lib/server/memory/summarize-util', async (orig) => ({
 	callMemoryModel: callMock,
 }));
 
-import { buildOverview, OVERVIEW_MAX_CHARS } from '$lib/server/memory/conversation-overview';
+import { buildOverview } from '$lib/server/memory/conversation-overview';
+import { DEFAULT_MEMORY_OVERVIEW_MAX_CHARS } from '$lib/server/endpoints/config';
 
-const MODEL = {
-	endpoint: { id: 'gpu', maxConcurrent: 1 },
-	upstreamId: 'm',
-	maxTokens: 500,
-	temperature: 0.2,
-	activeHours: '',
-	timezone: 'UTC',
-} as unknown as Parameters<typeof buildOverview>[0];
+type Model = Parameters<typeof buildOverview>[0];
+
+const model = (overviewMaxChars = DEFAULT_MEMORY_OVERVIEW_MAX_CHARS) =>
+	({
+		endpoint: { id: 'gpu', maxConcurrent: 1 },
+		upstreamId: 'm',
+		maxTokens: 500,
+		temperature: 0.2,
+		activeHours: '',
+		timezone: 'UTC',
+		overviewMaxChars,
+	}) as unknown as Model;
+
+const MODEL = model();
 
 beforeEach(() => {
 	callMock.mockReset();
@@ -54,11 +61,21 @@ describe('buildOverview', () => {
 		expect(callMock.mock.calls.length).toBeGreaterThan(1);
 	});
 
-	it('caps the overview at OVERVIEW_MAX_CHARS', async () => {
-		callMock.mockResolvedValue('theme '.repeat(400)); // ~2400 chars
+	it("caps the overview at the model's overview_max_chars", async () => {
+		callMock.mockResolvedValue('theme '.repeat(1000)); // ~6000 chars — well over any cap
 		const out = await buildOverview(MODEL, null, ['a', 'b'], 8000);
-		expect(out.length).toBeLessThanOrEqual(OVERVIEW_MAX_CHARS);
+		expect(out.length).toBeLessThanOrEqual(DEFAULT_MEMORY_OVERVIEW_MAX_CHARS);
 		expect(out.endsWith('…')).toBe(true);
+	});
+
+	it('honors a configured overview_max_chars, in the cap AND in what it asks the model for', async () => {
+		callMock.mockResolvedValue('theme '.repeat(1000));
+		const out = await buildOverview(model(800), null, ['a', 'b'], 8000);
+
+		expect(out.length).toBeLessThanOrEqual(800);
+		// The model is told the same budget it will be held to — an LLM can't count
+		// characters, so the cap is the backstop, not the mechanism.
+		expect(callMock.mock.calls[0][1]).toContain('under 800 characters');
 	});
 
 	it('preserves newlines (structured map, not a single line)', async () => {

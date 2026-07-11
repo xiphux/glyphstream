@@ -120,6 +120,15 @@ describe('capAtBoundary', () => {
 		expect(out.length).toBeLessThanOrEqual(20);
 	});
 
+	it('returns the text intact rather than an ellipsis when the cap is nonsense', () => {
+		// A missing/zero cap is a config or wiring bug. Reducing the whole map to "…"
+		// would destroy the content AND hide the bug.
+		expect(capAtBoundary('some real content', undefined as unknown as number)).toBe(
+			'some real content',
+		);
+		expect(capAtBoundary('some real content', 0)).toBe('some real content');
+	});
+
 	it('never exceeds the cap, and never ends mid-word', () => {
 		const s = 'lorem ipsum dolor sit amet '.repeat(50);
 		for (const max of [10, 37, 100, 601]) {

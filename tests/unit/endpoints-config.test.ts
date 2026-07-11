@@ -19,6 +19,7 @@ import {
 	loadTaskModelConfig,
 	DEFAULT_MEMORY_MODEL_MAX_TOKENS,
 	DEFAULT_MEMORY_MODEL_TEMPERATURE,
+	DEFAULT_MEMORY_OVERVIEW_MAX_CHARS,
 } from '$lib/server/endpoints/config';
 
 // Stub $env/dynamic/private so we can control api_key_env resolution
@@ -1027,10 +1028,11 @@ describe('loadMemoryModelConfig', () => {
 			temperature: DEFAULT_MEMORY_MODEL_TEMPERATURE,
 			activeHours: '',
 			timezone: 'UTC',
+			overviewMaxChars: DEFAULT_MEMORY_OVERVIEW_MAX_CHARS,
 		});
 	});
 
-	it('honors max_tokens / temperature / active_hours / timezone', () => {
+	it('honors max_tokens / temperature / active_hours / timezone / overview_max_chars', () => {
 		const cfg = loadMemoryModelConfig(
 			writeConfig(`
 [memory_model]
@@ -1039,6 +1041,7 @@ max_tokens = 1500
 temperature = 0.1
 active_hours = "02:00-06:00"
 timezone = "America/New_York"
+overview_max_chars = 4000
 			`),
 		);
 		expect(cfg).toEqual({
@@ -1047,7 +1050,20 @@ timezone = "America/New_York"
 			temperature: 0.1,
 			activeHours: '02:00-06:00',
 			timezone: 'America/New_York',
+			overviewMaxChars: 4000,
 		});
+	});
+
+	it('rejects an overview_max_chars that is too small to be a useful map', () => {
+		// Below a few hundred chars it can't name enough threads to be a search
+		// signpost, and the model is being asked for a length it can't hit.
+		for (const bad of ['0', '100', '-1', '2500.5', '"lots"']) {
+			expect(() =>
+				loadMemoryModelConfig(
+					writeConfig(`[memory_model]\nmodel = "g::m"\noverview_max_chars = ${bad}`),
+				),
+			).toThrow(ConfigError);
+		}
 	});
 
 	it('rejects a malformed model, a bad active_hours, and an unknown timezone', () => {

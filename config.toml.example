@@ -87,12 +87,24 @@
 # "22:00-06:00" are fine), and it also queues behind live chats on the endpoint.
 # See docs/configuration.md#memory-consolidation-memory_model.
 # (Top-level block — like [tools], must sit ABOVE every [[endpoints]] block.)
+# The same model also writes the per-conversation summaries and the
+# conversation-topics map that powers `search_conversations`.
 # [memory_model]
 # model = "dirac::qwen3-32b"          # endpoint_id::upstream_model_id
 # max_tokens = 2000                    # cap per consolidation call
 # temperature = 0.2                    # low — careful bookkeeping, not creative writing
 # active_hours = "02:00-06:00"         # optional; omit to run any time
 # timezone = "America/New_York"        # optional; default "UTC"
+# overview_max_chars = 2500            # optional; size of the conversation-topics map.
+#                                      # It rides in the system prompt on EVERY
+#                                      # personalization-on turn, so this is a recurring
+#                                      # per-message token cost (~2500 chars ≈ ~600
+#                                      # tokens), not a one-off. It's a signpost telling
+#                                      # the model which past threads exist to search —
+#                                      # not a log of them — so it needs about a line per
+#                                      # theme, and themes grow far slower than
+#                                      # conversations do. Raise it only if the map
+#                                      # actually goes thin.
 
 # Example: an openai-api-bridge instance running on the NAS — gives us
 # ComfyUI image/video, Venice, plus any openai-compat passthrough providers

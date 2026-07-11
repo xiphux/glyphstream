@@ -414,6 +414,15 @@ export function loadImageEnhancementConfig(
 export const DEFAULT_MEMORY_MODEL_MAX_TOKENS = 2000;
 /** Low temperature — consolidation is careful bookkeeping, not creative writing. */
 export const DEFAULT_MEMORY_MODEL_TEMPERATURE = 0.2;
+/**
+ * Default size of the conversation-topics map (characters). It rides in the
+ * system prompt on every personalization-on turn, so it's a permanent per-turn
+ * token cost (~2500 chars ≈ ~600 tokens) — hence a bounded signpost the model
+ * uses to decide what to `search_conversations` for, NOT a log of what was said.
+ * Raise it if the map goes thin as the corpus grows; the tradeoff is paid on
+ * every message, not just the ones that need it.
+ */
+export const DEFAULT_MEMORY_OVERVIEW_MAX_CHARS = 2500;
 
 /**
  * The optional `[memory_model]` block — the capable model + schedule for the
@@ -427,6 +436,8 @@ export const DEFAULT_MEMORY_MODEL_TEMPERATURE = 0.2;
  * - `active_hours`: optional `"HH:MM-HH:MM"` quiet-hours window (24-hour;
  *   overnight wrap allowed, e.g. `"22:00-06:00"`). Empty = always open.
  * - `timezone`: optional IANA zone the window is read in (default `"UTC"`).
+ * - `overview_max_chars`: optional size of the conversation-topics map (see
+ *   {@link DEFAULT_MEMORY_OVERVIEW_MAX_CHARS}).
  */
 export interface LoadedMemoryModelConfig {
 	model: string;
@@ -434,6 +445,7 @@ export interface LoadedMemoryModelConfig {
 	temperature: number;
 	activeHours: string;
 	timezone: string;
+	overviewMaxChars: number;
 }
 
 export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelConfig | null {
@@ -494,7 +506,18 @@ export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelCon
 		}
 	}
 
-	return { model, maxTokens, temperature, activeHours, timezone };
+	// Floored well above zero: below a few hundred chars the map can't name enough
+	// threads to be a useful search signpost, and the model would be asked for a
+	// length it can't meaningfully hit.
+	const overviewMaxChars =
+		block.overview_max_chars === undefined
+			? DEFAULT_MEMORY_OVERVIEW_MAX_CHARS
+			: requireNumber(block.overview_max_chars, 'overview_max_chars', at, { min: 500 });
+	if (!Number.isInteger(overviewMaxChars)) {
+		throw new ConfigError(`${at}: 'overview_max_chars' must be a whole number`);
+	}
+
+	return { model, maxTokens, temperature, activeHours, timezone, overviewMaxChars };
 }
 
 /** Default hard cap on upstream round-trips within a single turn's tool loop. */

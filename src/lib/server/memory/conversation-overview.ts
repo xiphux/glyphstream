@@ -11,6 +11,13 @@
  * previous overview is passed as a *structural anchor* — content is re-derived
  * from the summaries, but its organization/ordering is kept stable. Over-window
  * users (rare) fall back to an iterative fold (structure best-effort).
+ *
+ * Its size is `[memory_model] overview_max_chars` (default 2500). The map does not
+ * grow with the corpus — it's a bounded SIGNPOST telling the model which threads
+ * exist to search, not a record of them, so it needs roughly a line per theme and
+ * themes accumulate far more slowly than conversations do. It also rides in the
+ * system prompt on every personalization-on turn, so every character is a
+ * recurring token cost; raise the cap only if the map actually goes thin.
  */
 
 import {
@@ -23,29 +30,22 @@ import {
 } from './summarize-util';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 
-/** Hard cap on the stored/injected overview — it rides in the system prompt every
- *  personalization-on turn, so it stays a bounded signpost. */
-export const OVERVIEW_MAX_CHARS = 1500;
-
 const PROMPT_OVERHEAD_TOKENS = 500;
 const DEFAULT_CONTEXT_WINDOW = 8000;
 const MIN_BUDGET_TOKENS = 1000;
 
-const BUILD_PROMPT = `You maintain a compact, STRUCTURED map of the topics a user has discussed with an assistant across many conversations. The assistant reads this map to know what past conversations exist so it can search them. Given the user's conversation summaries (and the previous map), produce an updated map:
+// The size of the map is `[memory_model] overview_max_chars` (default 2500). It's
+// told to the model AND enforced afterwards: an LLM can't count characters, so it
+// overshoots a stated budget routinely and the cap is what actually holds.
+const buildPrompt = (maxChars: number) =>
+	`You maintain a compact, STRUCTURED map of the topics a user has discussed with an assistant across many conversations. The assistant reads this map to know what past conversations exist so it can search them. Given the user's conversation summaries (and the previous map), produce an updated map:
 - Group related topics under a few short thematic headings; put the most significant or recurring themes first.
 - Under each heading, a brief phrase per notable topic. Merge duplicates; drop trivia.
 - Base the CONTENT entirely on the summaries provided. Do NOT carry over anything from the previous map that the summaries no longer support — conversations may have been deleted or changed. Use the previous map ONLY to keep the structure and ordering stable between updates.
-- Keep the whole map under ${OVERVIEW_MAX_CHARS} characters. It is a signpost for search, not an exhaustive log. Output only the map, no preamble.`;
+- Keep the whole map under ${maxChars} characters. It is a signpost for search, not an exhaustive log. Output only the map, no preamble.`;
 
-const FOLD_PROMPT = `You are building a compact, STRUCTURED map of the topics a user has discussed, in batches. Given the map so far and more conversation summaries, return the updated map: group related topics under short thematic headings (most significant first), a brief phrase per topic, merge duplicates, drop trivia. Keep it under ${OVERVIEW_MAX_CHARS} characters. Output only the map, no preamble.`;
-
-/** Trim + cap, preserving newlines (it's prompt text / a structured list, not a
- *  single-line FTS row) and cutting at the last complete line — the model is asked
- *  for a length and reliably overshoots it, so this cap fires routinely and a raw
- *  slice would leave the stored map ending mid-sentence. */
-function capOverview(s: string): string {
-	return capAtBoundary(s, OVERVIEW_MAX_CHARS);
-}
+const foldPrompt = (maxChars: number) =>
+	`You are building a compact, STRUCTURED map of the topics a user has discussed, in batches. Given the map so far and more conversation summaries, return the updated map: group related topics under short thematic headings (most significant first), a brief phrase per topic, merge duplicates, drop trivia. Keep it under ${maxChars} characters. Output only the map, no preamble.`;
 
 function renderSummaries(summaries: string[]): string {
 	return summaries.map((s) => `- ${s}`).join('\n');
@@ -83,11 +83,12 @@ export async function buildOverview(
 	// An over-window rejection re-runs this against a budget corrected by the
 	// upstream's own token counts (see `withOverflowRetry`) — a shrunk budget just
 	// tips the one-shot path into the fold path, which is exactly what's wanted.
-	return capOverview(
-		await withOverflowRetry(budget, opts, (b) =>
-			composeOverview(model, prev, summaries, b, signal),
-		),
+	const map = await withOverflowRetry(budget, opts, (b) =>
+		composeOverview(model, prev, summaries, b, signal),
 	);
+	// Cut at the last complete line: the model overshoots the stated budget often
+	// enough that a raw slice would routinely leave the stored map mid-sentence.
+	return capAtBoundary(map, model.overviewMaxChars);
 }
 
 /** The overview text for a given input budget: one-shot when everything fits,
@@ -104,7 +105,7 @@ async function composeOverview(
 		const user =
 			`Previous map (for structure/order continuity only):\n${prev || '(none yet)'}\n\n` +
 			`Conversation summaries (source of truth, oldest first):\n${renderSummaries(summaries)}`;
-		return callMemoryModel(model, BUILD_PROMPT, user, signal);
+		return callMemoryModel(model, buildPrompt(model.overviewMaxChars), user, signal);
 	}
 
 	// Over-window (rare, huge user): iterative fold over ordered batches, seeded
@@ -114,7 +115,7 @@ async function composeOverview(
 	let map = '';
 	for (const batch of chunkStrings(summaries, foldBudget)) {
 		const user = `Map so far:\n${map || '(none yet)'}\n\nMore conversation summaries:\n${renderSummaries(batch)}`;
-		map = await callMemoryModel(model, FOLD_PROMPT, user, signal);
+		map = await callMemoryModel(model, foldPrompt(model.overviewMaxChars), user, signal);
 	}
 	return map;
 }

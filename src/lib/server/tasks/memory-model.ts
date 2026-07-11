@@ -25,6 +25,9 @@ export interface ResolvedMemoryModel {
 	activeHours: string;
 	/** IANA zone the window is interpreted in. */
 	timezone: string;
+	/** Char cap on the conversation-topics map — it rides in the system prompt every
+	 *  personalization-on turn, so this is a per-turn token cost, not a one-off. */
+	overviewMaxChars: number;
 }
 
 let cached: { resolved: ResolvedMemoryModel | null } | null = null;
@@ -67,6 +70,7 @@ export function getMemoryModel(): ResolvedMemoryModel | null {
 		temperature: cfg.temperature,
 		activeHours: cfg.activeHours,
 		timezone: cfg.timezone,
+		overviewMaxChars: cfg.overviewMaxChars,
 	};
 	cached = { resolved };
 	return resolved;
