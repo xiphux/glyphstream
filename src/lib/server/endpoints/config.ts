@@ -564,6 +564,55 @@ export function _resetMaxToolLoopIterationsCacheForTests(): void {
 }
 
 /**
+ * Default ceiling on the characters of a single tool result sent upstream
+ * (~4k tokens). Tool results are re-sent verbatim on every later turn of the
+ * branch, so one `fetch_url` against a fat page is not a one-time cost — it's a
+ * permanent tax on the rest of the conversation. 16 KiB is generous for a normal
+ * result (a search hit list, a JSON payload, Python output) and still bounds the
+ * pathological one.
+ *
+ * The FULL result is always persisted and always shown in the UI; this caps only
+ * the copy the model is re-sent.
+ */
+export const DEFAULT_MAX_TOOL_RESULT_CHARS = 16 * 1024;
+
+/**
+ * Read `[tools] max_tool_result_chars`. 0 disables capping (re-send every tool
+ * result in full, forever — the old behavior). Must be a non-negative integer.
+ */
+export function loadMaxToolResultChars(path = configPath()): number {
+	const { parsed, absolutePath } = readAndParse(path);
+	const tools = parsed.tools;
+	if (tools === undefined || tools === null) return DEFAULT_MAX_TOOL_RESULT_CHARS;
+	if (typeof tools !== 'object' || Array.isArray(tools)) {
+		throw new ConfigError(`'[tools]' in ${absolutePath} must be a TOML table`);
+	}
+	const raw = (tools as Record<string, unknown>).max_tool_result_chars;
+	if (raw === undefined || raw === null) return DEFAULT_MAX_TOOL_RESULT_CHARS;
+	if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+		throw new ConfigError(
+			`'[tools] max_tool_result_chars' in ${absolutePath} must be a non-negative integer (0 disables the cap)`,
+		);
+	}
+	return raw;
+}
+
+let maxToolResultCharsCache: number | undefined;
+
+/** Memoized {@link loadMaxToolResultChars} for the per-request hot path. */
+export function getMaxToolResultChars(): number {
+	if (maxToolResultCharsCache === undefined) {
+		maxToolResultCharsCache = loadMaxToolResultChars();
+	}
+	return maxToolResultCharsCache;
+}
+
+/** Test hook: clear the memoized result cap so the next call re-reads. */
+export function _resetMaxToolResultCharsCacheForTests(): void {
+	maxToolResultCharsCache = undefined;
+}
+
+/**
  * Longest edge, in pixels, an image is downscaled to before being inlined into a
  * chat request. 1568 is the largest size that's still useful to current vision
  * models — above it they downscale internally anyway, so the extra pixels buy

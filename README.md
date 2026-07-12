@@ -51,6 +51,11 @@ them into a single fast chat UI with one model picker.
   thread's running context size against the model's window (`27,725 / 40,960
 tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
+- **Bulky tool results are capped on the way to the model**, not in your
+  transcript. A tool result rides along on every later turn, so one fetch of a
+  fat page would otherwise be permanent rent on the window; the model gets the
+  head and tail with the middle elided, while you keep the whole thing
+  ([configuration](docs/configuration.md#tool-result-size-tools-max_tool_result_chars)).
 - **Images are downscaled before they're sent to the model**, not before they're
   stored. An attached image rides along on every later turn of the conversation,
   so a 4 MB photo costs 4 MB again and again; the model downscales it internally

@@ -11,6 +11,7 @@
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 import { upstreamBranch } from '$lib/chat-compaction';
 import { MediaNotAvailableError } from '$lib/server/media/data-url';
+import { getMaxToolResultChars } from './config';
 import type {
 	ChatCompletionContentPart,
 	ChatCompletionRequest,
@@ -226,10 +227,105 @@ export function collapseSupersededSkillActivations(
 }
 
 /**
+ * Tools whose results are exempt from `capToolResults`.
+ *
+ * Both deliver content the model was explicitly directed to load, where a
+ * truncation would silently corrupt the instructions rather than merely trim a
+ * verbose answer: `activate_skill` returns the skill body (up to
+ * MAX_SKILL_BODY_BYTES = 64 KiB — well over any sane cap), and `read_skill_file`
+ * returns a bundled resource the skill's own instructions told it to open.
+ *
+ * Duplicate skill bodies are already handled, better, by
+ * `collapseSupersededSkillActivations` — which drops the stale copies entirely
+ * instead of cutting every copy off mid-sentence.
+ */
+const UNCAPPED_TOOLS: ReadonlySet<string> = new Set(['activate_skill', 'read_skill_file']);
+
+/**
+ * Bound a single tool result's contribution to the payload.
+ *
+ * A tool result is re-sent verbatim on every subsequent turn of the branch, so
+ * one `fetch_url` against a 200 KB page isn't a one-off — it's ~50k tokens of
+ * permanent rent for the rest of the conversation, and compaction can't reach it
+ * until the turn is old enough to fold. This caps what goes upstream. The full
+ * result stays in the database and stays visible in the UI; only the model's copy
+ * is trimmed.
+ *
+ * Keeps the HEAD and the TAIL, eliding the middle: the head carries the shape of
+ * the result (a JSON envelope, a page title, the first hits), and the tail is
+ * where errors, totals, and closing structure live. Head-only truncation reliably
+ * loses the punchline.
+ *
+ * Deterministic on purpose — the same result yields the same bytes on every turn.
+ * An age-based scheme (trim older results harder as the thread grows) would save
+ * more, but it rewrites the middle of the prompt on every turn and so invalidates
+ * the upstream's KV/prefix cache for the entire conversation. Not worth it.
+ */
+export function truncateToolResult(result: string, maxChars: number): string {
+	if (maxChars <= 0 || result.length <= maxChars) return result;
+
+	const omitted = result.length - maxChars;
+	const marker = `\n\n[... ${omitted.toLocaleString('en-US')} characters truncated. The full result is preserved in the conversation and visible to the user, but is too large to resend on every turn. Re-run the tool with a narrower query if you need the omitted part. ...]\n\n`;
+
+	// Budget the marker out of the cap so the result never exceeds it. If the cap
+	// is so tight the marker alone won't fit, a bare head is the best we can do.
+	const budget = maxChars - marker.length;
+	if (budget <= 0) return result.slice(0, maxChars);
+
+	const headChars = Math.ceil(budget * 0.7);
+	const tailChars = budget - headChars;
+	return result.slice(0, headChars) + marker + result.slice(result.length - tailChars);
+}
+
+/**
+ * Cap oversized tool results across an already-serialized upstream payload.
+ *
+ * Operates on the wire array (like `collapseSupersededSkillActivations`) and
+ * rebuilds the tool-call-id → tool-name mapping from the assistant turns in it,
+ * because the persisted `tool_result` part carries only the call id. That keeps
+ * the exemption list keyed on the actual TOOL rather than on sniffing the result's
+ * content, and needs no extra plumbing from the caller.
+ *
+ * Branch- and compaction-aware for free, for the same reason the collapse pass is:
+ * it only ever sees the model-visible view.
+ */
+export function capToolResults(
+	messages: ChatCompletionRequest['messages'],
+	maxChars: number,
+): ChatCompletionRequest['messages'] {
+	if (maxChars <= 0) return messages;
+
+	const toolNameByCallId = new Map<string, string>();
+	for (const m of messages) {
+		for (const call of m.tool_calls ?? []) {
+			toolNameByCallId.set(call.id, call.function.name);
+		}
+	}
+
+	let changed = false;
+	const out = messages.map((m) => {
+		if (m.role !== 'tool' || typeof m.content !== 'string') return m;
+		if (m.content.length <= maxChars) return m;
+
+		const name = m.tool_call_id ? toolNameByCallId.get(m.tool_call_id) : undefined;
+		if (name && UNCAPPED_TOOLS.has(name)) return m;
+		// Belt-and-braces: a skill body whose originating assistant turn isn't in
+		// this view (so the id → name lookup came up empty) is still recognizable by
+		// its wrapper, and cutting a 64 KiB instruction block off mid-sentence is
+		// exactly the failure this pass must never cause.
+		if (SKILL_CONTENT_OPEN.test(m.content)) return m;
+
+		changed = true;
+		return { ...m, content: truncateToolResult(m.content, maxChars) };
+	});
+	return changed ? out : messages;
+}
+
+/**
  * Serialize an entire branch (root → active leaf) into the upstream
  * messages array, prepending the optional system prompt. Filters out
- * any messages that serialize to null (defensive), then collapses superseded
- * skill activations (`collapseSupersededSkillActivations`).
+ * any messages that serialize to null (defensive), then applies the wire
+ * transforms — see `applyWireTransforms`.
  *
  * If the branch has been compacted, `upstreamBranch` trims it to
  * `[latest summary, ...verbatim tail + later turns]` — the summary stands in
@@ -252,5 +348,22 @@ export async function serializeBranchForUpstream(
 		const serialized = await serializeMessageForUpstream(m, resolveMediaUrl);
 		if (serialized) out.push(serialized);
 	}
-	return collapseSupersededSkillActivations(out);
+	return applyWireTransforms(out);
+}
+
+/**
+ * The send-time transforms every upstream payload gets, in order: drop stale
+ * skill bodies, then cap oversized tool results.
+ *
+ * Shared by the send path and by the context breakdown, so the panel measures
+ * what the model is actually handed. Both are recomputed per request from
+ * persisted rows (nothing is mutated), and both are deterministic — the same
+ * branch produces the same bytes every turn, which is what keeps the upstream's
+ * prefix cache valid across a conversation.
+ */
+export function applyWireTransforms(
+	messages: ChatCompletionRequest['messages'],
+	maxToolResultChars: number = getMaxToolResultChars(),
+): ChatCompletionRequest['messages'] {
+	return capToolResults(collapseSupersededSkillActivations(messages), maxToolResultChars);
 }

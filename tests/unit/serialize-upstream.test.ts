@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+	capToolResults,
 	collapseSupersededSkillActivations,
 	serializeBranchForUpstream,
 	serializeMessageForUpstream,
+	truncateToolResult,
 } from '$lib/server/endpoints/serialize-upstream';
 import { MediaNotAvailableError } from '$lib/server/media/data-url';
 import type { ChatMessage, MessagePart } from '$lib/types/api';
@@ -525,5 +527,115 @@ describe('collapseSupersededSkillActivations', () => {
 		const toolResults = out.filter((m) => m.role === 'tool');
 		expect(toolResults[0].content).toContain('superseded="true"');
 		expect(toolResults[1].content).toBe(skillResult('docx'));
+	});
+});
+
+describe('capToolResults', () => {
+	const CAP = 1000;
+
+	/** An assistant turn calling `name`, paired with its result. Together these are
+	 *  what lets the pass map a result back to the tool that produced it. */
+	const exchange = (name: string, callId: string, result: string) => [
+		{
+			role: 'assistant' as const,
+			content: null,
+			tool_calls: [{ id: callId, type: 'function' as const, function: { name, arguments: '{}' } }],
+		},
+		{ role: 'tool' as const, content: result, tool_call_id: callId },
+	];
+
+	it('leaves an under-cap result untouched (same array reference, no allocation)', () => {
+		const messages = exchange('fetch_url', 'c1', 'short');
+		expect(capToolResults(messages, CAP)).toBe(messages);
+	});
+
+	it('caps an oversized result and says how much was dropped', () => {
+		const huge = 'x'.repeat(50_000);
+		const out = capToolResults(exchange('fetch_url', 'c1', huge), CAP);
+
+		expect(out[1].content!.length).toBeLessThanOrEqual(CAP);
+		expect(out[1].content).toContain('characters truncated');
+		// The count names what the model is missing, not what it was given.
+		expect(out[1].content).toContain((50_000 - CAP).toLocaleString('en-US'));
+	});
+
+	it('keeps the head AND the tail — errors and totals live at the end', () => {
+		const body = `HEAD-MARKER${'.'.repeat(50_000)}TAIL-MARKER`;
+		const out = capToolResults(exchange('fetch_url', 'c1', body), CAP);
+
+		expect(out[1].content).toContain('HEAD-MARKER');
+		expect(out[1].content).toContain('TAIL-MARKER');
+	});
+
+	it('never truncates a skill body, however large', () => {
+		// A skill body runs to 64 KiB and is INSTRUCTIONS — cutting it mid-sentence
+		// corrupts the skill rather than trimming a verbose answer.
+		const body = skillResult('research', 'B'.repeat(60_000));
+		const out = capToolResults(exchange('activate_skill', 'c1', body), CAP);
+
+		expect(out[1].content).toBe(body);
+	});
+
+	it('never truncates a skill resource read', () => {
+		const body = 'reference material '.repeat(5000);
+		const out = capToolResults(exchange('read_skill_file', 'c1', body), CAP);
+
+		expect(out[1].content).toBe(body);
+	});
+
+	it('still spares a skill body whose originating tool_call is not in view', () => {
+		// Compaction (or a branch walk) can leave a tool result whose assistant turn
+		// isn't in the model-visible slice, so the id → name lookup comes up empty.
+		// The wrapper is the fallback signal; without it we'd shred the instructions.
+		const orphan = [
+			{
+				role: 'tool' as const,
+				content: skillResult('research', 'B'.repeat(60_000)),
+				tool_call_id: 'gone',
+			},
+		];
+		expect(capToolResults(orphan, CAP)[0].content).toBe(orphan[0].content);
+	});
+
+	it('is deterministic — the same result caps to the same bytes every turn', () => {
+		// This is what keeps the upstream KV/prefix cache valid across a
+		// conversation. A scheme that trimmed harder as the thread grew would
+		// rewrite the middle of the prompt on every turn.
+		const huge = 'y'.repeat(80_000);
+		const a = capToolResults(exchange('run_python', 'c1', huge), CAP);
+		const b = capToolResults(exchange('run_python', 'c1', huge), CAP);
+		expect(a[1].content).toBe(b[1].content);
+	});
+
+	it('is idempotent — re-capping an already-capped result changes nothing', () => {
+		const once = capToolResults(exchange('fetch_url', 'c1', 'z'.repeat(50_000)), CAP);
+		const twice = capToolResults(once, CAP);
+		expect(twice[1].content).toBe(once[1].content);
+	});
+
+	it('caps nothing when the cap is 0 (disabled)', () => {
+		const huge = 'x'.repeat(50_000);
+		const messages = exchange('fetch_url', 'c1', huge);
+		expect(capToolResults(messages, 0)).toBe(messages);
+	});
+});
+
+describe('truncateToolResult', () => {
+	it('returns the input unchanged when it fits', () => {
+		expect(truncateToolResult('small', 1000)).toBe('small');
+	});
+
+	it('never exceeds the cap it was given', () => {
+		for (const cap of [200, 1000, 4096]) {
+			expect(truncateToolResult('q'.repeat(100_000), cap).length).toBeLessThanOrEqual(cap);
+		}
+	});
+
+	it('degrades to a bare head when the cap is too tight for the marker', () => {
+		// The explanatory marker is ~250 chars. Under a cap that small there's no
+		// room to explain, but we must still honour the cap rather than overshoot.
+		const out = truncateToolResult('w'.repeat(5000), 50);
+		expect(out.length).toBe(50);
+		expect(out).toBe('w'.repeat(50));
 	});
 });

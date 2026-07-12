@@ -50,8 +50,18 @@
 # a small local model. Hitting the cap surfaces a visible error, not silent
 # truncation. (As a table header, this must sit ABOVE every [[endpoints]] block,
 # like [search]/[embeddings] below.)
+#
+# max_tool_result_chars — ceiling on a single tool result sent back to the
+# model. Tool results are re-sent verbatim on EVERY later turn of the
+# conversation, so one fetch_url against a fat page is not a one-time cost —
+# it's permanent rent on the context window. Default 16384 (~4k tokens); the
+# head and tail are kept and the middle is elided with a note. The FULL result
+# is always stored and always shown to you in the UI — this caps only the copy
+# the model is re-sent. Set to 0 to disable. Skill activations and skill file
+# reads are never capped (they're instructions, not answers).
 # [tools]
 # max_tool_loop_iterations = 8
+# max_tool_result_chars = 16384
 
 # ── Optional: [vision] ───────────────────────────────────────────────
 # Controls the downscaled copy of an image that gets inlined into a chat

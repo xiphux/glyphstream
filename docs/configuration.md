@@ -153,6 +153,30 @@ preference, not a server config setting.)
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
+## Tool result size (`[tools] max_tool_result_chars`)
+
+Like images, a tool result is re-sent to the model on **every later turn** of the
+conversation. So a single `fetch_url` against a 200 KB page isn't a one-time
+cost — it's roughly 50k tokens of permanent rent on the context window, and
+compaction can't reclaim it until that turn is old enough to fold away.
+
+GlyphStream caps what goes upstream at 16384 characters (~4k tokens) by default,
+keeping the head and the tail and eliding the middle with a note saying how much
+was dropped. The head carries the shape of the result; the tail is where errors
+and totals live.
+
+**The full result is always stored and always shown to you in the UI.** This caps
+only the copy the model is re-sent.
+
+```toml
+[tools]
+max_tool_result_chars = 16384   # 0 disables the cap.
+```
+
+Skill activations and skill file reads are never capped — those are instructions
+the model was told to load, and truncating them would corrupt the skill rather
+than merely trim a verbose answer.
+
 ## Inlined image size (`[vision]`)
 
 An image attached to a chat is re-sent to the model on **every subsequent turn**

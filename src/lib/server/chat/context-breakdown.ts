@@ -28,7 +28,7 @@ import type { OpenAIToolDefinition } from '../tools/types';
 import type { PersonaPart } from '../db/queries/user-preferences';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import {
-	collapseSupersededSkillActivations,
+	applyWireTransforms,
 	serializeMessageForUpstream,
 	type MediaUrlResolver,
 } from '../endpoints/serialize-upstream';
@@ -141,11 +141,15 @@ async function priceHistory(
 		if (wire) pairs.push({ src, wire });
 	}
 
-	const collapsed = collapseSupersededSkillActivations(pairs.map((p) => p.wire));
+	// The same transforms the send path applies (stale skill bodies dropped,
+	// oversized tool results capped) — so the panel prices the payload the model
+	// gets, not the payload before send-time trimming. Both are index-preserving
+	// `.map()`s, which is what keeps `pairs[i]` aligned with `wire[i]`.
+	const wireMessages = applyWireTransforms(pairs.map((p) => p.wire));
 	let imageBytes = 0;
 
 	for (const [i, { src }] of pairs.entries()) {
-		const wire = collapsed[i];
+		const wire = wireMessages[i];
 
 		// A tool result is its own segment regardless of what's in it — these are
 		// the rows that get resent verbatim forever and never shrink.
