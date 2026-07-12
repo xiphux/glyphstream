@@ -59,12 +59,19 @@ export class CodeInterpreterConfigError extends Error {
 	}
 }
 
+/** A missing config file means "nothing configured" → defaults, same as an absent
+ *  `[code_interpreter]` block (which this module's own header already promises).
+ *  Mirrors `endpoints/config.ts`; see the rationale there. Only ENOENT is
+ *  forgiven — a broken-but-present config still throws. */
 function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
 	const absolutePath = resolve(path);
 	let raw: string;
 	try {
 		raw = readFileSync(absolutePath, 'utf8');
 	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+			return { parsed: {}, absolutePath };
+		}
 		const cause = e instanceof Error ? e.message : String(e);
 		throw new CodeInterpreterConfigError(`Could not read config file at ${absolutePath}: ${cause}`);
 	}

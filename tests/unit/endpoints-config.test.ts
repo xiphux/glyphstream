@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -265,8 +265,30 @@ api_key_env = "MISSING_KEY"
 		expect(loadEndpoints(path)).toEqual([]);
 	});
 
-	it('throws when the file does not exist', () => {
-		expect(() => loadEndpoints('/nonexistent/path/config.toml')).toThrow(ConfigError);
+	it('treats a missing file as an empty config, not an error', () => {
+		// A missing config means "nothing is configured", which is already a legal
+		// state here ("Empty config is allowed — no endpoints yet"): a file that omits
+		// [[endpoints]] and a file that doesn't exist are the same situation. Throwing
+		// mattered once the OPTIONAL loaders started being read from hot paths
+		// (serialize-upstream, the media path) — config.toml is gitignored, so CI has
+		// none, and the whole unit suite went red on an ENOENT thrown from a module
+		// nobody would connect to config.
+		expect(loadEndpoints('/nonexistent/path/config.toml')).toEqual([]);
+	});
+
+	it('still throws on a config that exists but cannot be read', () => {
+		// Only ENOENT is forgiven. A permissions/IO error means a config IS there and
+		// is broken — an operator needs to be told, not silently given defaults.
+		const path = writeConfig('[[endpoints]]\nid = "e"\nbase_url = "http://e"\n');
+		chmodSync(path, 0o000);
+		try {
+			// Root ignores the mode bits, so only assert when the deny actually applies.
+			if (process.getuid?.() !== 0) {
+				expect(() => loadEndpoints(path)).toThrow(ConfigError);
+			}
+		} finally {
+			chmodSync(path, 0o600);
+		}
 	});
 
 	it('throws on invalid TOML syntax', () => {

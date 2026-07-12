@@ -154,11 +154,14 @@ pyodide_index_url = 42
 		);
 	});
 
-	it('reports file-not-found errors with the absolute path', () => {
-		const missingPath = join(tmpDir, 'does-not-exist.toml');
-		expect(() => loadCodeInterpreterConfig(missingPath)).toThrow(
-			new RegExp(`Could not read config file at .*does-not-exist\\.toml`),
-		);
+	it('falls back to defaults when the file does not exist', () => {
+		// Same situation as an absent [code_interpreter] block — which this module's
+		// own header already promises yields defaults. See endpoints/config.ts for
+		// why the throw was load-bearing (config.toml is gitignored, so CI has none).
+		writeConfig(''); // an empty config: the behaviour a missing one must match
+		const fromEmpty = loadCodeInterpreterConfig(configPath);
+		const fromMissing = loadCodeInterpreterConfig(join(tmpDir, 'does-not-exist.toml'));
+		expect(fromMissing).toEqual(fromEmpty);
 	});
 
 	it('reports parse errors with the absolute path', () => {

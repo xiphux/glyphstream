@@ -127,6 +127,16 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 		patch.autoCompactionThreshold = Math.round(t);
 	}
+	// `null` explicitly clears it; anything else non-string is ignored. Whether the
+	// zone is a REAL IANA zone is settled by `coerceTimezone` in the query layer —
+	// which matters, because an unresolvable zone reaches `Intl.DateTimeFormat` on
+	// the send path and throws there, i.e. it would be a client-triggerable 500 on
+	// every message the user sends. Rejecting here with a 400 would also be
+	// defensible, but silently keeping the previous value is friendlier for a
+	// background sync the user never asked for.
+	if (typeof body.timezone === 'string' || body.timezone === null) {
+		patch.timezone = body.timezone;
+	}
 
 	const next = setUserPreferences(locals.user.id, patch);
 	// Mirror the theme into a non-httpOnly cookie so hooks.server.ts can

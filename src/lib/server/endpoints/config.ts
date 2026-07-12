@@ -157,12 +157,32 @@ export const DEFAULT_MAX_CONCURRENT = 4;
 
 export class ConfigError extends Error {}
 
+/**
+ * A MISSING config file is not an error — it means "nothing is configured", and
+ * every loader here already has a documented default for that. `loadEndpoints`
+ * has always said so out loud ("Empty config is allowed — no endpoints yet"), and
+ * a file that merely omits a block is indistinguishable from one that doesn't
+ * exist. This makes the two behave the same.
+ *
+ * It matters because the optional loaders are now read from hot, widely-imported
+ * modules — `getMaxToolResultChars` from serialize-upstream, `getVisionConfig`
+ * from the media path — so a hard throw here turns "no config.toml" into a crash
+ * far away from anything the operator would connect to config. config.toml is
+ * gitignored, so CI has none: the whole unit suite went red on it.
+ *
+ * Only ENOENT is forgiven. A permissions error, an I/O error, or malformed TOML
+ * still throws loudly — those mean a config exists and is broken, which is a real
+ * problem an operator needs told about.
+ */
 function readAndParse(path: string): { parsed: Record<string, unknown>; absolutePath: string } {
 	const absolutePath = resolve(path);
 	let raw: string;
 	try {
 		raw = readFileSync(absolutePath, 'utf8');
 	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+			return { parsed: {}, absolutePath };
+		}
 		const cause = e instanceof Error ? e.message : String(e);
 		throw new ConfigError(`Could not read config file at ${absolutePath}: ${cause}`);
 	}
