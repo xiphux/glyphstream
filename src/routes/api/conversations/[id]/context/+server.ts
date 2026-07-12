@@ -66,7 +66,17 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		customSystemPrompt ??
 		(personaParts.length > 0 ? personaParts.map((p) => p.text).join(PERSONA_PART_SEPARATOR) : null);
 
-	const branch = walkActiveBranch(params.id, { columns: 'serialization' });
+	// `columns: 'all'`, NOT the send path's `'serialization'`. That projection
+	// deliberately skips `tokens_in` / `tokens_out` (see walkActiveBranch), which
+	// the send path never needs — but they are exactly what this endpoint exists to
+	// report: the upstream's own `prompt_tokens` is the ONLY authoritative
+	// measurement we ever get, and the gap between it and our chars/4 estimate is
+	// where the image tokens live. Fetching 'serialization' here silently pinned
+	// `reportedPromptTokens` to null and blanked that whole row of the panel.
+	//
+	// The heavy columns (content_html, reasoning_text) are dead weight here, but
+	// this is a read-only probe on an explicit user action, not the hot path.
+	const branch = walkActiveBranch(params.id, { columns: 'all' });
 
 	const toolCtx = await buildChatToolContext({
 		userId,
