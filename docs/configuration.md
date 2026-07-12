@@ -181,8 +181,19 @@ only the copy the model is re-sent.
 
 ```toml
 [tools]
-max_tool_result_chars = 16384   # 0 disables the cap.
+max_tool_result_chars = 16384   # 0 disables the cap; otherwise minimum 1024.
 ```
+
+Most tool results are JSON, so the cap is applied **structurally** rather than by
+slicing characters: the bulky text fields are shortened, or trailing records are
+dropped, and the result is re-serialized — so what the model receives is still
+valid, parseable JSON with its ids and structure intact. A blind character cut
+would leave half-written records and broken escapes.
+
+That's also why the value must be either `0` or **at least 1024**: below a few
+hundred characters there isn't room for even a minimal structured result, and the
+cap would have to fall back to the raw slice it exists to avoid. GlyphStream
+refuses to start rather than quietly do the broken thing.
 
 Skill activations and skill file reads are never capped — those are instructions
 the model was told to load, and truncating them would corrupt the skill rather

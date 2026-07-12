@@ -893,6 +893,43 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		expect(parsed.truncated).toBe(true);
 	});
 
+	it('gives the same answer no matter how deep the CALLER is', () => {
+		// The nastiest defect this file has had. V8 runs a JSON.parse reviver through a
+		// JS-level recursion whose stack headroom depends on the CALLER's depth — so a
+		// deeply-nested payload could truncate structurally when called from the send
+		// path and fall back to a character slice when called from the (more deeply
+		// nested) tool-approval resume or the context endpoint. Same input, same cap,
+		// two different outputs, decided by stack depth.
+		//
+		// That's CLAUDE.md's prefix-stability invariant broken exactly as written:
+		// "what the user did may change the payload; timing must not."
+		let node: unknown = { leaf: 'x'.repeat(40_000) };
+		for (let i = 0; i < 2400; i++) node = { n: node };
+		const payload = JSON.stringify(node);
+
+		const callAtStackDepth = (d: number): string =>
+			d <= 0 ? truncateToolResult(payload, CAP) : callAtStackDepth(d - 1);
+
+		const outputs = [0, 100, 400, 800, 1500].map((d) => callAtStackDepth(d));
+		expect(new Set(outputs).size, 'output must not depend on caller stack depth').toBe(1);
+		// And whatever it is, it's still valid JSON within the cap.
+		expect(outputs[0].length).toBeLessThanOrEqual(CAP);
+		expect(() => JSON.parse(outputs[0])).not.toThrow();
+	});
+
+	it('takes the envelope rather than recursing into a pathologically nested payload', () => {
+		// Built as raw text: JSON.stringify itself blows the stack at this depth, which
+		// is rather the point — nothing that recurses can be trusted here.
+		const depth = 5000;
+		const payload = `${'{"n":'.repeat(depth)}{"leaf":"${'y'.repeat(40_000)}"}${'}'.repeat(depth)}`;
+
+		// The old walkers threw an uncaught RangeError out of collectStringLeaves here
+		// — a hard crash on the send path.
+		const capped = truncateToolResult(payload, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		expect(JSON.parse(capped).truncated).toBe(true);
+	});
+
 	it('stays fast on a large many-leaf payload (no event-loop stall)', () => {
 		// The first cut called JSON.stringify on the WHOLE payload inside a per-leaf
 		// binary search — ~13 full serializations per leaf, for every leaf. An 850 KB

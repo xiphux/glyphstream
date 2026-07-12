@@ -86,41 +86,54 @@ describe('PATCH /api/user/preferences — timezone', () => {
 });
 
 describe('PATCH /api/user/preferences — the allowlist', () => {
-	it('round-trips every writable field (add a preference → add it here)', async () => {
-		// The general guard, and it has to be a COMPILE-TIME one. Typed as the full
-		// `UserPreferences` (not Partial), so adding a field to the interface fails
-		// `pnpm check` right here until someone lists it — otherwise this fixture
-		// drifts silently in exactly the same way the hand-maintained allowlist it
-		// exists to guard did, and the test would keep passing while the new field
-		// was quietly dropped by the route.
-		const full: UserPreferences = {
-			name: 'Chris',
-			aboutYou: 'engineer',
-			customInstructions: 'be brief',
-			enterBehavior: 'newline',
-			showGreeting: false,
-			theme: 'claude',
-			colorScheme: 'dark',
-			notificationsEnabled: true,
-			notificationsShowContent: true,
-			notificationsForegroundToast: false,
-			favoriteModels: ['e::m'],
+	/**
+	 * Typed as the full `UserPreferences` (not Partial), so adding a field to the
+	 * interface fails `pnpm check` right here until someone lists it — otherwise the
+	 * fixture drifts silently in exactly the same way the hand-maintained allowlist
+	 * it exists to guard did, and the test keeps passing while the new field is
+	 * quietly dropped by the route.
+	 *
+	 * `bit` flips every boolean and swaps the enums. Comparing values alone isn't
+	 * enough with five booleans and two possible values: a mis-wire like
+	 * `patch.notificationsShowContent = body.notificationsEnabled` sails through a
+	 * single fixture where both happen to be `true`. Running BOTH bit patterns means
+	 * any two fields that alias each other must disagree in at least one pass.
+	 */
+	function fixture(bit: boolean): UserPreferences {
+		return {
+			name: bit ? 'Chris' : 'Alex',
+			aboutYou: bit ? 'engineer' : 'teacher',
+			customInstructions: bit ? 'be brief' : 'be thorough',
+			enterBehavior: bit ? 'newline' : 'send',
+			showGreeting: bit,
+			theme: bit ? 'claude' : 'chatgpt',
+			colorScheme: bit ? 'dark' : 'light',
+			notificationsEnabled: bit,
+			notificationsShowContent: !bit,
+			notificationsForegroundToast: bit,
+			favoriteModels: bit ? ['e::m'] : ['e::other'],
 			modelSets: [],
 			trustedMcpTools: [],
-			autoCompactionEnabled: false,
-			autoCompactionThreshold: 60,
-			timezone: 'Europe/London',
+			autoCompactionEnabled: !bit,
+			autoCompactionThreshold: bit ? 60 : 95,
+			timezone: bit ? 'Europe/London' : 'Asia/Tokyo',
 		};
+	}
 
-		const forwarded = await patch(full);
+	it.each([true, false])(
+		'round-trips every writable field, bit pattern %s (add a preference → add it here)',
+		async (bit) => {
+			const full = fixture(bit);
+			const forwarded = await patch(full);
 
-		// Compare VALUES, not just key presence: a new field accidentally wired to the
-		// wrong `body.*` key would still be "present" while carrying the wrong data.
-		// `trustedMcpTools` is managed by the tool-approval flow, not this route — the
-		// single deliberate exclusion, and spelled out rather than skipped in a loop.
-		const { trustedMcpTools: _excluded, ...writable } = full;
-		expect(forwarded).toEqual(writable);
-	});
+			// Compare VALUES, not just key presence: a field wired to the wrong `body.*`
+			// key would still be "present" while carrying the wrong data.
+			// `trustedMcpTools` is managed by the tool-approval flow, not this route — the
+			// single deliberate exclusion, and spelled out rather than skipped in a loop.
+			const { trustedMcpTools: _excluded, ...writable } = full;
+			expect(forwarded).toEqual(writable);
+		},
+	);
 
 	it('drops unknown fields instead of writing them through', async () => {
 		expect(await patch({ isAdmin: true, preferencesJson: 'pwned' })).toEqual({});

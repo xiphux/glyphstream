@@ -54,11 +54,17 @@
 # max_tool_result_chars — ceiling on a single tool result sent back to the
 # model. Tool results are re-sent verbatim on EVERY later turn of the
 # conversation, so one fetch_url against a fat page is not a one-time cost —
-# it's permanent rent on the context window. Default 16384 (~4k tokens); the
-# head and tail are kept and the middle is elided with a note. The FULL result
-# is always stored and always shown to you in the UI — this caps only the copy
-# the model is re-sent. Set to 0 to disable. Skill activations and skill file
-# reads are never capped (they're instructions, not answers).
+# it's permanent rent on the context window. Default 16384 (~4k tokens). Most
+# tool results are JSON, so the cap is applied STRUCTURALLY (shorten the bulky
+# fields, or drop trailing records, then re-serialize) — the model still gets
+# valid JSON with its ids and structure intact, not a half-cut record. The FULL
+# result is always stored and always shown to you in the UI; this caps only the
+# copy the model is re-sent.
+#
+# Must be 0 (disabled) or at least 1024: below a few hundred characters there
+# isn't room for even a minimal structured result, and the cap would have to fall
+# back to the raw character slice it exists to avoid. Skill activations and skill
+# file reads are never capped (they're instructions, not answers).
 # [tools]
 # max_tool_loop_iterations = 8
 # max_tool_result_chars = 16384

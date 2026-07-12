@@ -7,6 +7,9 @@ import {
 	DEFAULT_IMAGE_ENHANCEMENT_MAX_TOKENS,
 	DEFAULT_IMAGE_ENHANCEMENT_TEMPERATURE,
 	DEFAULT_MAX_TOOL_LOOP_ITERATIONS,
+	DEFAULT_MAX_TOOL_RESULT_CHARS,
+	MIN_MAX_TOOL_RESULT_CHARS,
+	loadMaxToolResultChars,
 	loadEmbeddingsConfig,
 	loadEndpoints,
 	loadImageEnhancementConfig,
@@ -1105,5 +1108,48 @@ overview_max_chars = 4000
 				writeConfig(`[memory_model]\nmodel = "g::m"\ntimezone = "Mars/Phobos"`),
 			),
 		).toThrow(ConfigError);
+	});
+});
+
+describe('loadMaxToolResultChars', () => {
+	it('defaults when [tools] is absent', () => {
+		const path = writeConfig(`task_model = "e::m"`);
+		expect(loadMaxToolResultChars(path)).toBe(DEFAULT_MAX_TOOL_RESULT_CHARS);
+	});
+
+	it('defaults when the key is absent from a present [tools] block', () => {
+		const path = writeConfig(`[tools]\nmax_tool_loop_iterations = 4\n`);
+		expect(loadMaxToolResultChars(path)).toBe(DEFAULT_MAX_TOOL_RESULT_CHARS);
+	});
+
+	it('accepts an explicit cap', () => {
+		const path = writeConfig(`[tools]\nmax_tool_result_chars = 8192\n`);
+		expect(loadMaxToolResultChars(path)).toBe(8192);
+	});
+
+	it('accepts 0, which disables capping entirely', () => {
+		const path = writeConfig(`[tools]\nmax_tool_result_chars = 0\n`);
+		expect(loadMaxToolResultChars(path)).toBe(0);
+	});
+
+	it('rejects a cap below the structural-truncation floor', () => {
+		// Below ~243 chars not even the minimal JSON envelope fits, so a capped result
+		// would degrade to a raw character slice — the very thing structural truncation
+		// exists to avoid. Refusing to boot beats silently doing the broken thing.
+		const path = writeConfig(`[tools]\nmax_tool_result_chars = 512\n`);
+		expect(() => loadMaxToolResultChars(path)).toThrow(ConfigError);
+		expect(() => loadMaxToolResultChars(path)).toThrow(String(MIN_MAX_TOOL_RESULT_CHARS));
+	});
+
+	it('accepts exactly the floor', () => {
+		const path = writeConfig(`[tools]\nmax_tool_result_chars = ${MIN_MAX_TOOL_RESULT_CHARS}\n`);
+		expect(loadMaxToolResultChars(path)).toBe(MIN_MAX_TOOL_RESULT_CHARS);
+	});
+
+	it('rejects negatives and non-integers', () => {
+		for (const v of ['-1', '1.5', '"lots"']) {
+			const path = writeConfig(`[tools]\nmax_tool_result_chars = ${v}\n`);
+			expect(() => loadMaxToolResultChars(path)).toThrow(ConfigError);
+		}
 	});
 });

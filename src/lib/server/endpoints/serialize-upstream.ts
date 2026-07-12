@@ -382,6 +382,12 @@ function jsonLen(s: string): number {
  * reviver hand back the original source text, which `JSON.stringify` then emits
  * verbatim. Feature-guarded anyway: on a runtime without it we fall back to the
  * lossy-but-working round-trip rather than failing the send.
+ *
+ * Cost: the reviver boxes every number, which is ~8x slower on a number-DOMINATED
+ * payload (a 1M-element int array: ~424ms vs ~54ms). Realistic tool results — prose
+ * and rows — are ~1.1x, and this only runs on results already over the cap. Paying
+ * that to stop a snowflake id being silently rounded is the right trade; it's noted
+ * because it's send-path rent, not because it's free.
  */
 /** `JSON.rawJSON` / source-carrying revivers are ES2025 (Node 22+). TypeScript's
  *  bundled lib doesn't declare them yet, so type the two we use rather than move
@@ -404,6 +410,57 @@ function parseJsonPreservingNumbers(text: string): unknown {
 			? RawJSON.rawJSON!(context.source)
 			: value,
 	);
+}
+
+/**
+ * Deepest nesting we will structurally truncate. Beyond this the payload takes the
+ * envelope instead.
+ *
+ * This bound is a DETERMINISM guarantee, not a taste judgement. V8 runs a
+ * `JSON.parse` reviver through a JS-level recursion whose stack limit is far
+ * shallower than the parser's own — and, crucially, whose headroom depends on how
+ * deep the CALLER already is. Our own tree walkers recurse too. So without a bound,
+ * the same payload at the same cap could truncate structurally when called from the
+ * send path and fall back to a character slice when called from the (more deeply
+ * nested) tool-approval resume or the context-breakdown endpoint. Same input, two
+ * different outputs, decided by stack depth.
+ *
+ * That is CLAUDE.md's prefix-stability invariant broken exactly as written — "what
+ * the user did may change the payload; timing must not" — and it would show up as
+ * the breakdown pricing bytes the send path never sent, or a retry silently
+ * re-prefilling the conversation.
+ *
+ * 100 is far above any real tool result (a JSON payload nested even 20 deep is
+ * exotic) and far below the shallowest reviver limit at any plausible caller depth,
+ * so the recursion below is safe from ANY stack, and the answer depends only on the
+ * input.
+ */
+const MAX_JSON_DEPTH = 100;
+
+/**
+ * Maximum bracket nesting of a JSON document, read straight off the TEXT — no
+ * parsing, no recursion, and therefore no stack of its own. String-aware, so
+ * brackets inside string values don't count.
+ */
+function jsonNestingDepth(text: string): number {
+	let depth = 0;
+	let max = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = 0; i < text.length; i++) {
+		const c = text[i];
+		if (inString) {
+			if (escaped) escaped = false;
+			else if (c === '\\') escaped = true;
+			else if (c === '"') inString = false;
+			continue;
+		}
+		if (c === '"') inString = true;
+		else if (c === '{' || c === '[') {
+			if (++depth > max) max = depth;
+		} else if (c === '}' || c === ']') depth--;
+	}
+	return max;
 }
 
 /** A `JSON.rawJSON` box is an object, so the tree walkers must not descend into it
@@ -629,11 +686,23 @@ function truncationEnvelope(result: string, maxChars: number): string | null {
  * A ladder, degrading only as far as it must:
  *   1. elide the bulky string leaves (prose payloads — the common case);
  *   2. drop tail records from the biggest array (row payloads — big MCP results);
- *   3. an honest envelope with a preview (irreducible structure, and every JSON
- *      scalar — a bare number can't be "shortened" and stay a number).
- * Within a workable cap, valid JSON in always yields valid JSON out.
+ *   3. an honest envelope with a preview — for irreducible structure, for every
+ *      JSON scalar (a bare number can't be "shortened" and stay a number), and for
+ *      anything nested past MAX_JSON_DEPTH.
+ * Within a workable cap, valid JSON in yields valid JSON out — every rung of the
+ * ladder, including the last, emits parseable JSON.
  */
 function truncateJsonResult(result: string, maxChars: number): string | null {
+	// Bound the nesting BEFORE parsing. Both the reviver and the tree walkers below
+	// recurse, and their stack headroom depends on the caller's depth — so on a
+	// pathologically nested payload the output would otherwise depend on WHO called
+	// us (send path vs. tool-approval resume vs. context endpoint). See MAX_JSON_DEPTH.
+	// The envelope is always-valid JSON and needs no parse, so it's the safe answer.
+	const head = result.trimStart();
+	if ((head.startsWith('{') || head.startsWith('[')) && jsonNestingDepth(result) > MAX_JSON_DEPTH) {
+		return truncationEnvelope(result, maxChars);
+	}
+
 	let parsed: unknown;
 	try {
 		// Preserves number literals exactly; see parseJsonPreservingNumbers.
