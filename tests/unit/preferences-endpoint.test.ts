@@ -133,7 +133,12 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 			modelSets: [
 				{ id: `set-${p}`, name: `Set ${p}`, models: [{ modelId: `e::m${p}`, count: p + 1 }] },
 			],
-			trustedMcpTools: [],
+			// Distinct and NON-EMPTY even though this field isn't writable here. It's
+			// still a `body.*` key the route could accidentally read from, and if it
+			// stayed `[]` then any future field that also defaults to `[]` could be wired
+			// to it and round-trip green. Giving it a signature makes that cross-wire
+			// fail like any other.
+			trustedMcpTools: [[`mcp__a__t${p}`], [`mcp__b__t${p}`], [`mcp__c__t${p}`]][p],
 			autoCompactionEnabled: bits.autoCompactionEnabled[p],
 			autoCompactionThreshold: [60, 95, 30][p],
 			timezone: ['Europe/London', 'Asia/Tokyo', 'America/Chicago'][p],
@@ -144,9 +149,13 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		// Guards the guard: if a future edit makes two fields carry identical values
 		// across all three passes, a cross-wire between them becomes undetectable and
 		// the suite would go quietly blind rather than fail.
+		//
+		// EVERY key, including `trustedMcpTools`. It isn't writable through this route,
+		// but it's still a `body.*` key the handler could accidentally read from — so it
+		// needs a distinct signature like any other, or a future field wired to it would
+		// round-trip green.
 		const signatures = new Map<string, string>();
 		for (const key of Object.keys(fixture(0)) as (keyof UserPreferences)[]) {
-			if (key === 'trustedMcpTools') continue; // not writable via this route
 			const sig = JSON.stringify(PASSES.map((p) => fixture(p)[key]));
 			const clash = [...signatures.entries()].find(([, s]) => s === sig);
 			expect(clash?.[0], `"${key}" is indistinguishable from "${clash?.[0]}"`).toBeUndefined();

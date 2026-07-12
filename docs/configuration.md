@@ -183,13 +183,22 @@ max_tool_result_chars = 16384   # 0 disables the cap; otherwise minimum 1024.
 ```
 
 Most tool results are JSON, so the cap is applied **structurally** rather than by
-slicing characters: the bulky text fields are shortened, or trailing records are
-dropped whole, and the result is re-serialized — so what the model receives is
-still valid, parseable JSON with its ids and structure intact. A blind character
-cut would leave half-written records and broken escapes, and a model that reads a
-half-truncated id and then acts on it is a genuine hazard. Results that aren't
-JSON keep their head and their tail, with the middle elided: the head carries the
-shape of the result, and the tail is where errors and totals live.
+slicing characters. A blind character cut would leave half-written records and
+broken escapes — and a model that reads a half-truncated id and then acts on it is
+a genuine hazard — so instead GlyphStream degrades in steps:
+
+1. shorten the bulky text fields, keeping every record and id intact;
+2. if that isn't enough, drop trailing records **whole** and say how many went;
+3. if the result is too large even then (its bulk is structure rather than text),
+   replace it with a small summary object carrying a preview.
+
+The first two steps preserve the result's shape and its ids; the third doesn't
+pretend to — it tells the model plainly that the result was too large, so it can
+re-run the tool with a narrower query. Every step produces valid, parseable JSON.
+
+Results that aren't JSON keep their head and their tail, with the middle elided:
+the head carries the shape of the result, and the tail is where errors and totals
+live.
 
 That's also why the value must be either `0` or **at least 1024**: below a few
 hundred characters there isn't room for even a minimal structured result, and the

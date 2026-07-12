@@ -1145,9 +1145,17 @@ describe('loadMaxToolResultChars', () => {
 		expect(() => loadMaxToolResultChars(path)).toThrow(String(MIN_MAX_TOOL_RESULT_CHARS));
 	});
 
-	it('accepts exactly the floor', () => {
-		const path = writeConfig(`[tools]\nmax_tool_result_chars = ${MIN_MAX_TOOL_RESULT_CHARS}\n`);
-		expect(loadMaxToolResultChars(path)).toBe(MIN_MAX_TOOL_RESULT_CHARS);
+	it('pins the boundary exactly: the floor passes, one below it does not', () => {
+		// Both sides. Only asserting the accept side would let an off-by-one that
+		// LOOSENS the floor slip through, and loosening is the dangerous direction —
+		// it's the one that lets a broken value reach production.
+		const at = writeConfig(`[tools]\nmax_tool_result_chars = ${MIN_MAX_TOOL_RESULT_CHARS}\n`);
+		expect(loadMaxToolResultChars(at)).toBe(MIN_MAX_TOOL_RESULT_CHARS);
+
+		const below = writeConfig(
+			`[tools]\nmax_tool_result_chars = ${MIN_MAX_TOOL_RESULT_CHARS - 1}\n`,
+		);
+		expect(() => loadMaxToolResultChars(below)).toThrow(ConfigError);
 	});
 
 	it('rejects negatives and non-integers', () => {
@@ -1187,9 +1195,12 @@ describe('loadVisionConfig', () => {
 		expect(() => loadVisionConfig(path)).toThrow(String(MIN_VISION_MAX_IMAGE_DIM));
 	});
 
-	it('accepts exactly the floor', () => {
-		const path = writeConfig(`[vision]\nmax_image_dim = ${MIN_VISION_MAX_IMAGE_DIM}\n`);
-		expect(loadVisionConfig(path).maxImageDim).toBe(MIN_VISION_MAX_IMAGE_DIM);
+	it('pins the boundary exactly: the floor passes, one below it does not', () => {
+		const at = writeConfig(`[vision]\nmax_image_dim = ${MIN_VISION_MAX_IMAGE_DIM}\n`);
+		expect(loadVisionConfig(at).maxImageDim).toBe(MIN_VISION_MAX_IMAGE_DIM);
+
+		const below = writeConfig(`[vision]\nmax_image_dim = ${MIN_VISION_MAX_IMAGE_DIM - 1}\n`);
+		expect(() => loadVisionConfig(below)).toThrow(ConfigError);
 	});
 
 	it('rejects an out-of-range image_quality', () => {
