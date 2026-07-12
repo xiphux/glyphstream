@@ -54,6 +54,20 @@ tests/e2e/            # playwright (production-build webServer)
   (toggled from `/settings/admin`), NOT a config allowlist. Account creation
   is invite-only after the first (admin) user. Reverse proxy in front for
   TLS + HTTP/2.
+- **The upstream payload is rent, and its prefix must be stable.** The system
+  prompt and `tools[]` are re-sent on _every_ turn, so a sentence added to a
+  tool description is charged per turn, forever (`tool-definition-budget.test.ts`
+  holds the line — a failure there is a request to justify the growth, not a
+  bug). Upstreams also reuse a KV cache for the longest common token _prefix_,
+  so a payload that differs when nothing meaningful changed re-prefills the
+  whole conversation — and when it's `tools[]`, the model's capabilities visibly
+  blink in and out. What the **user** did may change the payload (saving a
+  memory, enabling a skill, compacting); **timing** must not — a slow MCP
+  handshake, a registration race, an `ORDER BY` with no tiebreak. Corollaries:
+  send-time trims must be deterministic (same branch → same bytes; never
+  age-based), and anything grown mid-conversation is _appended_ so it extends
+  the suffix rather than reshuffling the prefix. `/api/conversations/:id/context`
+  (the breakdown behind the context readout) prices what's actually being sent.
 
 ## Conventions
 
