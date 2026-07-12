@@ -763,6 +763,115 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		expect(capped.length).toBeLessThanOrEqual(CAP);
 		expect(capped).toContain('characters truncated');
 	});
+
+	it('keeps whole records when the bulk is ROWS, not prose', () => {
+		// The shape leaf-eliding can't help with: hundreds of short rows, none of them
+		// bulky enough to elide, and a per-row note costing more than the row saves.
+		// The first cut fell through to character-slicing here and emitted invalid
+		// JSON — at the shipped default cap, on the single most plausible oversized
+		// MCP payload. Drop rows from the tail instead, and say how many went.
+		const rows = Array.from({ length: 300 }, (_, i) => ({
+			id: `rec-${String(i).padStart(4, '0')}`,
+			fact: `A short fact about subject ${i}, about eighty characters long give or take.`,
+		}));
+		const result = JSON.stringify({ results: rows });
+		expect(result.length).toBeGreaterThan(CAP);
+
+		const capped = truncateToolResult(result, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+
+		const parsed = JSON.parse(capped); // invalid JSON before
+		const kept = parsed.results.filter((r: unknown) => typeof r === 'object');
+		expect(kept.length).toBeGreaterThan(0);
+		expect(kept.length).toBeLessThan(300);
+		// Every surviving record is WHOLE — no half-cut ids.
+		for (const [i, r] of kept.entries()) {
+			expect(r.id).toBe(`rec-${String(i).padStart(4, '0')}`);
+		}
+		// And the model is told what it's missing.
+		expect(parsed.results.at(-1)).toContain('more items truncated');
+	});
+
+	it('emits a valid envelope when the structure itself is irreducible', () => {
+		// No bulky leaves, and a single array too short to drop from. Rather than
+		// character-slicing (the original bug), degrade to an honest envelope.
+		const wide: Record<string, number> = {};
+		for (let i = 0; i < 4000; i++) wide[`key_${i}`] = i;
+		const result = JSON.stringify(wide);
+		expect(result.length).toBeGreaterThan(CAP);
+
+		const capped = truncateToolResult(result, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+
+		const parsed = JSON.parse(capped);
+		expect(parsed.truncated).toBe(true);
+		expect(parsed.original_chars).toBe(result.length);
+		expect(typeof parsed.preview).toBe('string');
+	});
+
+	it('truncates a bare JSON string (the branch that could never fire)', () => {
+		// The first cut reserved 64 chars for a note that is 221 long, so this path
+		// could not return non-null under any input — it silently fell through to
+		// character-slicing. No built-in emits a bare JSON string, but MCP servers may.
+		const result = JSON.stringify('z'.repeat(60_000));
+		const capped = truncateToolResult(result, CAP);
+
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		const parsed = JSON.parse(capped);
+		expect(typeof parsed).toBe('string');
+		expect(parsed).toContain('characters truncated');
+	});
+
+	it('never exceeds the cap, across shapes and cap sizes', () => {
+		const shapes: Record<string, string> = {
+			prose: JSON.stringify({ content: 'word '.repeat(20_000) }),
+			rows: JSON.stringify({
+				r: Array.from({ length: 500 }, (_, i) => ({ id: `id-${i}`, v: 'x'.repeat(60) })),
+			}),
+			wide: JSON.stringify(
+				Object.fromEntries(Array.from({ length: 3000 }, (_, i) => [`k${i}`, i])),
+			),
+			bare: JSON.stringify('y'.repeat(50_000)),
+			text: 'not json '.repeat(6000),
+			unicode: JSON.stringify({ content: '😀 café — naïve ✓ '.repeat(3000) }),
+		};
+		for (const [name, payload] of Object.entries(shapes)) {
+			for (const cap of [512, 2048, 8192, 16_384]) {
+				const out = truncateToolResult(payload, cap);
+				expect(out.length, `${name} @ ${cap}`).toBeLessThanOrEqual(cap);
+				// Idempotent: recomputed every request, so it must be a fixed point.
+				expect(truncateToolResult(out, cap), `${name} @ ${cap} idempotent`).toBe(out);
+				// Deterministic: byte-identical every turn, or the prefix cache dies.
+				expect(truncateToolResult(payload, cap), `${name} @ ${cap} deterministic`).toBe(out);
+				// JSON in → JSON out. Always.
+				if (name !== 'text') expect(() => JSON.parse(out), `${name} @ ${cap} JSON`).not.toThrow();
+			}
+		}
+	});
+
+	it('stays fast on a large many-leaf payload (no event-loop stall)', () => {
+		// The first cut called JSON.stringify on the WHOLE payload inside a per-leaf
+		// binary search — ~13 full serializations per leaf, for every leaf. An 850 KB
+		// result blocked the single Node process for 4.6 SECONDS. On a self-hosted box
+		// that stall is a worse failure than the corrupt JSON it was curing, and it ran
+		// on the context-breakdown endpoint too, so opening the panel paid it.
+		const payload = JSON.stringify({
+			results: Array.from({ length: 1600 }, (_, i) => ({
+				id: `rec-${i}`,
+				title: `Result ${i}`,
+				snippet: 'a fact about something. '.repeat(20),
+			})),
+		});
+		expect(payload.length).toBeGreaterThan(800_000);
+
+		const started = performance.now();
+		const out = truncateToolResult(payload, CAP);
+		const elapsed = performance.now() - started;
+
+		expect(() => JSON.parse(out)).not.toThrow();
+		// Generous ceiling — the point is "milliseconds, not seconds". It was 4,605 ms.
+		expect(elapsed).toBeLessThan(400);
+	});
 });
 
 describe('truncateToolResult', () => {

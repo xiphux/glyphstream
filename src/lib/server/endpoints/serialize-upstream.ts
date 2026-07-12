@@ -359,30 +359,220 @@ function collectStringLeaves(node: unknown, out: StringLeaf[]): void {
 	}
 }
 
+/** Serialized cost of a string leaf — what it contributes to the enclosing
+ *  `JSON.stringify`, quotes and escapes included. */
+function jsonLen(s: string): number {
+	return JSON.stringify(s).length;
+}
+
+/** Every array in the tree, largest (most elements) first. Ties keep walk order,
+ *  so the choice stays deterministic. */
+function collectArrays(node: unknown, out: unknown[][]): void {
+	if (Array.isArray(node)) {
+		out.push(node);
+		for (const v of node) collectArrays(v, out);
+		return;
+	}
+	if (node !== null && typeof node === 'object') {
+		for (const k of Object.keys(node as Record<string, unknown>)) {
+			collectArrays((node as Record<string, unknown>)[k], out);
+		}
+	}
+}
+
 /**
- * Truncate a JSON tool result *structurally* — shrink its biggest string leaves
- * until the whole re-serializes under the cap. Returns null when the value isn't
- * JSON, or when even emptying every string can't get it under (a payload whose
- * bulk is structure, not text).
+ * Stage 1 of the ladder: shrink the bulky string leaves so the whole fits.
+ * Mutates `root` on success; restores it exactly on failure.
+ *
+ * The budget arithmetic is EXACT and needs only two full stringifies, because a
+ * `JSON.stringify` length is additive in its leaves: replacing one leaf's value
+ * changes the total by exactly the change in that leaf's own serialized cost.
+ * So: serialize once with every elidable leaf at its floor (note only), and the
+ * slack is `maxChars - floorLength`. Each leaf is then priced on its own with
+ * `jsonLen`, never by re-serializing the payload.
+ *
+ * The first cut of this called `JSON.stringify(root)` INSIDE a per-leaf binary
+ * search — ~13 full serializations per leaf, for every leaf. On an 850 KB
+ * many-leaf result that blocked the (single) Node process for 4.6 SECONDS, and
+ * the payloads it worked hardest on were exactly the ones it then gave up on. On
+ * a self-hosted box that stall is a worse failure than the corrupt JSON this was
+ * curing.
+ *
+ * Leaves are filled HEAD-first: a ranked list puts its best results first, so the
+ * head is what's worth keeping and the tail degrades to a note.
+ */
+function fitByElidingLeaves(root: unknown, leaves: StringLeaf[], maxChars: number): boolean {
+	const originals = leaves.map((l) => l.get());
+	const restore = () => leaves.forEach((l, i) => l.set(originals[i]));
+
+	// Floor: every elidable leaf reduced to its note. Nothing else can be given up.
+	const notes = originals.map((s) => leafNote(s.length));
+	leaves.forEach((l, i) => l.set(notes[i]));
+	const floorLength = JSON.stringify(root).length;
+	if (floorLength > maxChars) {
+		restore();
+		return false; // even the floor is too big — try dropping records instead
+	}
+
+	let budget = maxChars - floorLength;
+	for (let i = 0; i < leaves.length && budget > 0; i++) {
+		const original = originals[i];
+		const noteCost = jsonLen(notes[i]);
+
+		// Cheapest case: it fits whole.
+		const fullCost = jsonLen(original);
+		if (fullCost - noteCost <= budget) {
+			leaves[i].set(original);
+			budget -= fullCost - noteCost;
+			continue;
+		}
+
+		// Otherwise find the most of it we can afford. Each probe prices only THIS
+		// leaf, so the search is O(leaf), not O(payload).
+		let lo = 0;
+		let hi = original.length;
+		let best = -1;
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			if (jsonLen(elide(original, mid, leafNote)) - noteCost <= budget) {
+				best = mid;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		if (best >= 0) {
+			const kept = elide(original, best, leafNote);
+			leaves[i].set(kept);
+			budget -= jsonLen(kept) - noteCost;
+		}
+		// Budget is spent; every later leaf stays at its floor note.
+		break;
+	}
+
+	if (JSON.stringify(root).length <= maxChars) return true;
+	restore();
+	return false;
+}
+
+/** Marker left in place of the array elements that were dropped. */
+function droppedItemsMarker(n: number): string {
+	return `[... ${n.toLocaleString('en-US')} more items truncated — re-run with a narrower query for the rest ...]`;
+}
+
+/**
+ * Stage 2: the payload's bulk is RECORDS, not prose — a big array of small rows,
+ * which is the single most plausible shape for an oversized MCP result. No amount
+ * of leaf-eliding helps (there are no bulky leaves, and each row's note costs more
+ * than the row saves), so drop rows from the tail instead and say how many went.
+ *
+ * Keeps whole records rather than shredding every one of them, which is the point:
+ * a half-truncated id that a model then feeds to `forget_memory` is exactly the
+ * misfire this file exists to prevent.
+ */
+function fitByDroppingArrayTail(root: unknown, maxChars: number): boolean {
+	const arrays: unknown[][] = [];
+	collectArrays(root, arrays);
+	const target = arrays.sort((a, b) => b.length - a.length)[0];
+	if (!target || target.length < 2) return false;
+
+	const original = [...target];
+	// Largest prefix of records that still fits alongside the marker.
+	let lo = 0;
+	let hi = original.length - 1;
+	let best = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		target.length = 0;
+		target.push(...original.slice(0, mid), droppedItemsMarker(original.length - mid));
+		if (JSON.stringify(root).length <= maxChars) {
+			best = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	if (best < 0) {
+		target.length = 0;
+		target.push(...original);
+		return false;
+	}
+	target.length = 0;
+	target.push(...original.slice(0, best), droppedItemsMarker(original.length - best));
+	return true;
+}
+
+/**
+ * Stage 3: the structure itself is irreducible. Rather than character-slicing —
+ * which is what produced invalid JSON in the first place — emit a small, honest,
+ * always-valid envelope carrying a preview.
+ */
+function truncationEnvelope(result: string, maxChars: number): string | null {
+	const build = (preview: string) =>
+		JSON.stringify({
+			truncated: true,
+			original_chars: result.length,
+			note: 'This result was too large to resend on every turn. The full version is preserved in the conversation and visible to the user. Re-run the tool with a narrower query if you need it.',
+			preview,
+		});
+	if (build('').length > maxChars) return null; // cap too tight even for this
+
+	let lo = 0;
+	let hi = result.length;
+	let best = 0;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		if (build(safeSlice(result, 0, mid)).length <= maxChars) {
+			best = mid;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return build(safeSlice(result, 0, best));
+}
+
+/**
+ * Truncate a JSON tool result *structurally*, so the output is still parseable
+ * JSON. Returns null only when the input isn't JSON at all.
  *
  * This is why the cap can't just slice characters: EVERY built-in tool emits
  * `JSON.stringify(...)` (fetch_url, web_search, run_python, recall_memory,
  * search_conversations), and a blind cut lands mid-escape or mid-record. Shrinking
- * a leaf and re-stringifying keeps the envelope intact and lets `JSON.stringify`
- * regenerate the escaping, so the result is still parseable JSON.
+ * the value and re-stringifying keeps the envelope intact and lets `JSON.stringify`
+ * regenerate the escaping.
+ *
+ * A ladder, degrading only as far as it must:
+ *   1. elide the bulky string leaves (prose payloads — the common case);
+ *   2. drop tail records from the biggest array (row payloads — big MCP results);
+ *   3. an honest envelope with a preview (irreducible structure).
+ * JSON never falls through to character-slicing.
  */
 function truncateJsonResult(result: string, maxChars: number): string | null {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(result);
 	} catch {
-		return null; // not JSON — caller falls back to text
+		return null; // not JSON — caller falls back to a text elision
 	}
 
-	// A bare JSON string (rare, but some tools do it) has exactly one leaf.
+	// A bare JSON string (no built-in emits one today, but MCP servers may) is a
+	// single leaf with no envelope: price the QUOTED form directly, since the
+	// escaping is the whole difference between it fitting and not.
 	if (typeof parsed === 'string') {
-		const out = JSON.stringify(elide(parsed, Math.max(0, maxChars - 64), truncationNote));
-		return out.length <= maxChars ? out : null;
+		let lo = 0;
+		let hi = parsed.length;
+		let best = -1;
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			if (jsonLen(elide(parsed, mid, truncationNote)) <= maxChars) {
+				best = mid;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		return best >= 0 ? JSON.stringify(elide(parsed, best, truncationNote)) : null;
 	}
 	if (parsed === null || typeof parsed !== 'object') return null;
 
@@ -394,35 +584,12 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
 	// forget_memory is exactly the misfire this whole change exists to prevent.
 	// (Below the floor there's nothing to win anyway: the note costs ~30 chars.)
 	const leaves = all.filter((l) => l.get().length > ELIDABLE_LEAF_MIN_CHARS);
-	if (leaves.length === 0) return null;
 
-	// Elide from the TAIL of the walk backwards. A ranked list (web_search hits,
-	// recall_memory matches) puts its best results first, so the tail is what should
-	// go. For the far more common single-fat-field shape (fetch_url's `content`,
-	// run_python's `stdout`) there's only one elidable leaf and the order is moot.
-	for (let i = leaves.length - 1; i >= 0; i--) {
-		if (JSON.stringify(parsed).length <= maxChars) break;
-		const leaf = leaves[i];
-		const original = leaf.get();
-		// Largest `keep` for this leaf that gets the whole payload under the cap.
-		let lo = 0;
-		let hi = original.length;
-		let best = 0;
-		while (lo <= hi) {
-			const mid = (lo + hi) >> 1;
-			leaf.set(elide(original, mid, leafNote));
-			if (JSON.stringify(parsed).length <= maxChars) {
-				best = mid;
-				lo = mid + 1;
-			} else {
-				hi = mid - 1;
-			}
-		}
-		leaf.set(elide(original, best, leafNote));
+	if (leaves.length > 0 && fitByElidingLeaves(parsed, leaves, maxChars)) {
+		return JSON.stringify(parsed);
 	}
-
-	const out = JSON.stringify(parsed);
-	return out.length <= maxChars ? out : null;
+	if (fitByDroppingArrayTail(parsed, maxChars)) return JSON.stringify(parsed);
+	return truncationEnvelope(result, maxChars);
 }
 
 /**
@@ -458,12 +625,19 @@ export function truncateToolResult(result: string, maxChars: number): string {
 	const structured = truncateJsonResult(result, maxChars);
 	if (structured !== null) return structured;
 
-	// Plain text (or a JSON payload whose bulk is structure rather than strings).
-	const note = truncationNote(result.length - maxChars);
-	const budget = maxChars - note.length;
+	// Plain text. Sizing the budget is mildly self-referential: the note reports how
+	// much was dropped, and the note itself occupies budget, so a bigger note means a
+	// smaller keep means a bigger reported number — which can tick over a digit
+	// boundary and push the result 1-2 chars past the cap. Converge instead of
+	// guessing (it settles on the first or second pass).
+	let budget = maxChars - truncationNote(result.length - maxChars).length;
+	for (let i = 0; i < 4 && budget > 0; i++) {
+		const out = elide(result, budget, truncationNote);
+		if (out.length <= maxChars) return out;
+		budget -= out.length - maxChars;
+	}
 	// Cap so tight the note alone won't fit → a bare head is the best we can do.
-	if (budget <= 0) return safeSlice(result, 0, maxChars);
-	return elide(result, budget, truncationNote);
+	return safeSlice(result, 0, maxChars);
 }
 
 /**

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
 import { defineConfig } from 'vitest/config';
@@ -14,6 +15,20 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
 	plugins: [sveltekit(), svelteTesting()],
+	resolve: {
+		alias: {
+			// `$env/dynamic/private` is populated by the SvelteKit SERVER at runtime;
+			// under vitest it resolves to an empty object, so every `env.X` read in
+			// src/lib/server/env.ts silently fell through to its hard-coded fallback —
+			// and the `env` block below, which sets process.env, never reached it. The
+			// CONFIG_PATH isolation was therefore inert, and the suite had been reading
+			// the developer's REAL ./config.toml all along. Aliasing to process.env is
+			// what actually makes that block work.
+			'$env/dynamic/private': fileURLToPath(
+				new URL('./tests/_stubs/env-dynamic-private.ts', import.meta.url),
+			),
+		},
+	},
 	test: {
 		include: ['tests/unit/**/*.{test,spec}.{js,ts}', 'tests/component/**/*.{test,spec}.{js,ts}'],
 		// Default is "node" — most of our pure-logic tests don't need a DOM.
@@ -30,8 +45,9 @@ export default defineConfig({
 		// read the developer's real ./config.toml. Without this, tests that
 		// don't fully mock the config layer (e.g. tools-memory, tools-fetch-url)
 		// behave differently on a dev machine (real config present) than in CI
-		// (no config.toml) — the loaders all degrade gracefully on ENOENT, so
-		// "config absent" is the deterministic, isolated baseline.
+		// (no config.toml). The loaders degrade to their documented defaults on
+		// ENOENT, so "config absent" is the deterministic, isolated baseline.
+		// Only effective because of the $env/dynamic/private alias above.
 		env: { CONFIG_PATH: '/glyphstream-test-no-such-config.toml' },
 		// Run each test file in its own process so DB tests with global
 		// connection state don't cross-contaminate. Cheap because the

@@ -87,10 +87,13 @@ describe('PATCH /api/user/preferences — timezone', () => {
 
 describe('PATCH /api/user/preferences — the allowlist', () => {
 	it('round-trips every writable field (add a preference → add it here)', async () => {
-		// The general guard. The allowlist is hand-maintained with no spread, so a
-		// new field is silently dropped until someone remembers this file. Anything
-		// absent from the forwarded patch below is a field the API cannot save.
-		const full: Partial<UserPreferences> = {
+		// The general guard, and it has to be a COMPILE-TIME one. Typed as the full
+		// `UserPreferences` (not Partial), so adding a field to the interface fails
+		// `pnpm check` right here until someone lists it — otherwise this fixture
+		// drifts silently in exactly the same way the hand-maintained allowlist it
+		// exists to guard did, and the test would keep passing while the new field
+		// was quietly dropped by the route.
+		const full: UserPreferences = {
 			name: 'Chris',
 			aboutYou: 'engineer',
 			customInstructions: 'be brief',
