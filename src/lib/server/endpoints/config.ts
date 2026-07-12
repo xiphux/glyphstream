@@ -597,8 +597,18 @@ export function _resetMaxToolLoopIterationsCacheForTests(): void {
 export const DEFAULT_MAX_TOOL_RESULT_CHARS = 16 * 1024;
 
 /**
+ * Smallest cap that still leaves room for a *structured* truncation. Below roughly
+ * 243 characters not even the minimal JSON envelope fits, and a capped result would
+ * degrade to a raw character slice — the very thing the structural truncation
+ * exists to avoid. 1 KiB is comfortably clear of that and still far tighter than
+ * anyone sane would configure; the real choice is between the default and 0.
+ */
+export const MIN_MAX_TOOL_RESULT_CHARS = 1024;
+
+/**
  * Read `[tools] max_tool_result_chars`. 0 disables capping (re-send every tool
- * result in full, forever — the old behavior). Must be a non-negative integer.
+ * result in full, forever — the old behavior). Otherwise it must be an integer of
+ * at least {@link MIN_MAX_TOOL_RESULT_CHARS}.
  */
 export function loadMaxToolResultChars(path = configPath()): number {
 	const { parsed, absolutePath } = readAndParse(path);
@@ -612,6 +622,11 @@ export function loadMaxToolResultChars(path = configPath()): number {
 	if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
 		throw new ConfigError(
 			`'[tools] max_tool_result_chars' in ${absolutePath} must be a non-negative integer (0 disables the cap)`,
+		);
+	}
+	if (raw > 0 && raw < MIN_MAX_TOOL_RESULT_CHARS) {
+		throw new ConfigError(
+			`'[tools] max_tool_result_chars' in ${absolutePath} must be 0 (disabled) or at least ${MIN_MAX_TOOL_RESULT_CHARS} — below that, a capped tool result can't even hold a valid truncation envelope`,
 		);
 	}
 	return raw;

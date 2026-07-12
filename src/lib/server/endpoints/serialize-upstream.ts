@@ -340,6 +340,7 @@ interface StringLeaf {
 	set: (v: string) => void;
 }
 function collectStringLeaves(node: unknown, out: StringLeaf[]): void {
+	if (isRawNumber(node)) return; // a preserved number literal, not a string leaf
 	if (Array.isArray(node)) {
 		node.forEach((v, i) => {
 			if (typeof v === 'string')
@@ -365,9 +366,56 @@ function jsonLen(s: string): number {
 	return JSON.stringify(s).length;
 }
 
+/**
+ * Parse preserving NUMBER LITERALS exactly.
+ *
+ * A plain `JSON.parse` → `JSON.stringify` round-trip is lossy for numbers outside
+ * IEEE-754 double range: an id of `12345678901234567890` comes back as
+ * `12345678901234567000`, and `1e400` becomes `null`. Structural truncation
+ * round-trips the whole payload, so a large numeric id in an over-cap result would
+ * be silently rewritten — which is precisely the "corrupted id fed back to
+ * forget_memory" failure class this file exists to prevent, just arriving through a
+ * different door. Snowflake-style numeric ids from an MCP server are exactly this
+ * shape.
+ *
+ * `JSON.rawJSON` (Node 22+; this project requires >=24 and ships on 26) lets the
+ * reviver hand back the original source text, which `JSON.stringify` then emits
+ * verbatim. Feature-guarded anyway: on a runtime without it we fall back to the
+ * lossy-but-working round-trip rather than failing the send.
+ */
+/** `JSON.rawJSON` / source-carrying revivers are ES2025 (Node 22+). TypeScript's
+ *  bundled lib doesn't declare them yet, so type the two we use rather than move
+ *  the whole project's lib target for this. */
+interface JsonWithRaw {
+	rawJSON?: (text: string) => unknown;
+	isRawJSON?: (v: unknown) => boolean;
+	parse: (
+		text: string,
+		reviver?: (key: string, value: unknown, context?: { source?: string }) => unknown,
+	) => unknown;
+}
+const RawJSON = JSON as unknown as JsonWithRaw;
+const RAW_JSON_SUPPORTED = typeof RawJSON.rawJSON === 'function';
+
+function parseJsonPreservingNumbers(text: string): unknown {
+	if (!RAW_JSON_SUPPORTED) return JSON.parse(text);
+	return RawJSON.parse(text, (_key, value, context) =>
+		typeof value === 'number' && typeof context?.source === 'string'
+			? RawJSON.rawJSON!(context.source)
+			: value,
+	);
+}
+
+/** A `JSON.rawJSON` box is an object, so the tree walkers must not descend into it
+ *  and mistake its `rawJSON` field for a truncatable string leaf. */
+function isRawNumber(node: unknown): boolean {
+	return RAW_JSON_SUPPORTED && RawJSON.isRawJSON!(node);
+}
+
 /** Every array in the tree, largest (most elements) first. Ties keep walk order,
  *  so the choice stays deterministic. */
 function collectArrays(node: unknown, out: unknown[][]): void {
+	if (isRawNumber(node)) return;
 	if (Array.isArray(node)) {
 		out.push(node);
 		for (const v of node) collectArrays(v, out);
@@ -477,29 +525,62 @@ function fitByDroppingArrayTail(root: unknown, maxChars: number): boolean {
 	if (!target || target.length < 2) return false;
 
 	const original = [...target];
-	// Largest prefix of records that still fits alongside the marker.
+	const n = original.length;
+
+	// NEVER `push(...arr)` here. Spread-into-call passes one argument per element,
+	// so a large array blows the argument/stack limit outright: a 2 MB result of
+	// 300k numbers threw `RangeError: Maximum call stack size exceeded` — from
+	// inside `capToolResults`, i.e. on the SEND path, not merely the panel. Write
+	// through indices instead; it is bounded by nothing.
+	const keepPrefix = (k: number, marker: string | null): void => {
+		target.length = 0;
+		for (let i = 0; i < k; i++) target[i] = original[i];
+		if (marker !== null) target[k] = marker;
+	};
+
+	// Same additivity trick as stage 1, one level up: an array's serialized length
+	// is its elements' costs plus the separators, so the whole payload can be priced
+	// for ANY k from one full stringify plus a prefix sum — rather than
+	// re-serializing megabytes on each of ~18 binary-search probes.
+	//
+	//   total(k) = emptyLength + prefix[k] + k + markerCost(k)
+	//
+	// where `emptyLength` is the payload with this array emptied, `prefix[k]` the
+	// summed cost of the first k elements, `k` the commas between k elements and the
+	// marker, and `markerCost(k)` the marker's own quoted length (which varies with
+	// the digits of the dropped count).
+	keepPrefix(0, null);
+	const emptyLength = JSON.stringify(root).length;
+
+	const prefix = new Array<number>(n + 1);
+	prefix[0] = 0;
+	for (let i = 0; i < n; i++) prefix[i + 1] = prefix[i] + JSON.stringify(original[i]).length;
+
+	const totalFor = (k: number) => emptyLength + prefix[k] + k + jsonLen(droppedItemsMarker(n - k));
+
 	let lo = 0;
-	let hi = original.length - 1;
+	let hi = n - 1;
 	let best = -1;
 	while (lo <= hi) {
 		const mid = (lo + hi) >> 1;
-		target.length = 0;
-		target.push(...original.slice(0, mid), droppedItemsMarker(original.length - mid));
-		if (JSON.stringify(root).length <= maxChars) {
+		if (totalFor(mid) <= maxChars) {
 			best = mid;
 			lo = mid + 1;
 		} else {
 			hi = mid - 1;
 		}
 	}
+
 	if (best < 0) {
-		target.length = 0;
-		target.push(...original);
+		keepPrefix(n, null); // restore untouched
 		return false;
 	}
-	target.length = 0;
-	target.push(...original.slice(0, best), droppedItemsMarker(original.length - best));
-	return true;
+	keepPrefix(best, droppedItemsMarker(n - best));
+	// Belt and braces: the arithmetic above is exact, but a mistake here would ship
+	// an over-cap payload rather than a visibly broken one.
+	if (JSON.stringify(root).length <= maxChars) return true;
+	keepPrefix(n, null);
+	return false;
 }
 
 /**
@@ -534,7 +615,10 @@ function truncationEnvelope(result: string, maxChars: number): string | null {
 
 /**
  * Truncate a JSON tool result *structurally*, so the output is still parseable
- * JSON. Returns null only when the input isn't JSON at all.
+ * JSON. Returns null ONLY when the input isn't JSON, or when the cap is too tight
+ * for even the smallest valid envelope (~243 chars — see `max_tool_result_chars`,
+ * whose minimum is enforced well above that). In both of those cases the caller
+ * falls back to a text elision, which is the only thing left.
  *
  * This is why the cap can't just slice characters: EVERY built-in tool emits
  * `JSON.stringify(...)` (fetch_url, web_search, run_python, recall_memory,
@@ -545,13 +629,15 @@ function truncationEnvelope(result: string, maxChars: number): string | null {
  * A ladder, degrading only as far as it must:
  *   1. elide the bulky string leaves (prose payloads — the common case);
  *   2. drop tail records from the biggest array (row payloads — big MCP results);
- *   3. an honest envelope with a preview (irreducible structure).
- * JSON never falls through to character-slicing.
+ *   3. an honest envelope with a preview (irreducible structure, and every JSON
+ *      scalar — a bare number can't be "shortened" and stay a number).
+ * Within a workable cap, valid JSON in always yields valid JSON out.
  */
 function truncateJsonResult(result: string, maxChars: number): string | null {
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(result);
+		// Preserves number literals exactly; see parseJsonPreservingNumbers.
+		parsed = parseJsonPreservingNumbers(result);
 	} catch {
 		return null; // not JSON — caller falls back to a text elision
 	}
@@ -572,9 +658,17 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
 				hi = mid - 1;
 			}
 		}
-		return best >= 0 ? JSON.stringify(elide(parsed, best, truncationNote)) : null;
+		if (best >= 0) return JSON.stringify(elide(parsed, best, truncationNote));
+		return truncationEnvelope(result, maxChars);
 	}
-	if (parsed === null || typeof parsed !== 'object') return null;
+
+	// Any other bare scalar — a number, a boolean, `null`, or a preserved raw
+	// number. There's no way to "shorten" a numeric literal and have it still be
+	// that number, so character-slicing one would splice a prose note into the
+	// middle of a digit string. The envelope is the only honest answer.
+	if (parsed === null || typeof parsed !== 'object' || isRawNumber(parsed)) {
+		return truncationEnvelope(result, maxChars);
+	}
 
 	const all: StringLeaf[] = [];
 	collectStringLeaves(parsed, all);

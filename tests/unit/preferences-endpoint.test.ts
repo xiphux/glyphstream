@@ -114,11 +114,12 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 
 		const forwarded = await patch(full);
 
-		for (const key of Object.keys(full) as (keyof UserPreferences)[]) {
-			// trustedMcpTools is managed by the approval flow, not this route.
-			if (key === 'trustedMcpTools') continue;
-			expect(forwarded, `"${key}" is not in the PATCH allowlist`).toHaveProperty(key);
-		}
+		// Compare VALUES, not just key presence: a new field accidentally wired to the
+		// wrong `body.*` key would still be "present" while carrying the wrong data.
+		// `trustedMcpTools` is managed by the tool-approval flow, not this route — the
+		// single deliberate exclusion, and spelled out rather than skipped in a loop.
+		const { trustedMcpTools: _excluded, ...writable } = full;
+		expect(forwarded).toEqual(writable);
 	});
 
 	it('drops unknown fields instead of writing them through', async () => {

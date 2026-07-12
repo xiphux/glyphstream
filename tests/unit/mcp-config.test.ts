@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { McpConfigError, loadMcpServers } from '$lib/server/mcp/config';
@@ -332,5 +332,28 @@ env_from = { FOO = "MISSING_VAR" }
 mcp_servers = "not an array"
 		`);
 		expect(() => loadMcpServers(path)).toThrow(/must be an array/);
+	});
+});
+
+describe('loadMcpServers — a missing config file', () => {
+	it('means "no MCP servers configured", not an error', () => {
+		// The norm, not a failure. Before this, a config-less deployment booted fine
+		// but logged an MCP bootstrap error on every single start. Mirrors the ENOENT
+		// tolerance in endpoints/config.ts and code-interpreter/config.ts.
+		expect(loadMcpServers('/nonexistent/path/config.toml')).toEqual([]);
+	});
+
+	it('still throws on a config that exists but cannot be read', () => {
+		// ENOENT only. A permissions/IO error means a config IS there and is broken —
+		// an operator needs telling, not silently given "no servers".
+		const path = writeConfig('');
+		chmodSync(path, 0o000);
+		try {
+			if (process.getuid?.() !== 0) {
+				expect(() => loadMcpServers(path)).toThrow(McpConfigError);
+			}
+		} finally {
+			chmodSync(path, 0o600);
+		}
 	});
 });

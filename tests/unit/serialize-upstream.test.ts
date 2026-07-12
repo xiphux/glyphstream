@@ -849,6 +849,50 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		}
 	});
 
+	it('does not blow the stack on a very large array', () => {
+		// `push(...arr)` passes ONE ARGUMENT PER ELEMENT, so a large array threw
+		// `RangeError: Maximum call stack size exceeded` — from inside capToolResults,
+		// i.e. on the SEND path, not merely the panel. Any MCP server returning a big
+		// row/id/number array (~2 MB) reached it.
+		const payload = JSON.stringify({ v: Array.from({ length: 300_000 }, (_, i) => i) });
+		expect(payload.length).toBeGreaterThan(1_900_000);
+
+		const out = truncateToolResult(payload, CAP); // threw before
+		expect(out.length).toBeLessThanOrEqual(CAP);
+		const parsed = JSON.parse(out);
+		expect(parsed.v.at(-1)).toContain('more items truncated');
+	});
+
+	it('preserves number literals too large for a double', () => {
+		// Structural truncation round-trips the payload, and a plain
+		// JSON.parse→stringify silently rewrites 12345678901234567890 as
+		// ...567000 (and 1e400 as null). That's the same "corrupted id fed back to
+		// forget_memory" failure this file exists to prevent, arriving by another
+		// door — snowflake-style numeric ids from an MCP server are exactly this shape.
+		// Hand-written, because JSON.stringify can't produce this literal from a JS
+		// number in the first place — which is the whole point.
+		const raw = `{"id":12345678901234567890,"content":${JSON.stringify('x'.repeat(40_000))}}`;
+
+		const capped = truncateToolResult(raw, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		// The id must survive as the EXACT literal, not a rounded double.
+		expect(capped).toContain('"id":12345678901234567890');
+		expect(capped).not.toContain('12345678901234567000');
+		expect(() => JSON.parse(capped)).not.toThrow();
+	});
+
+	it('emits a valid envelope for a bare JSON scalar rather than slicing a number', () => {
+		// A 40 kB bare number can't be "shortened" and still be that number, so a
+		// character slice spliced a prose note into the middle of a digit string.
+		const raw = `1${'0'.repeat(40_000)}`;
+		expect(() => JSON.parse(raw)).not.toThrow();
+
+		const capped = truncateToolResult(raw, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		const parsed = JSON.parse(capped);
+		expect(parsed.truncated).toBe(true);
+	});
+
 	it('stays fast on a large many-leaf payload (no event-loop stall)', () => {
 		// The first cut called JSON.stringify on the WHOLE payload inside a per-leaf
 		// binary search — ~13 full serializations per leaf, for every leaf. An 850 KB
