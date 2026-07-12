@@ -74,6 +74,13 @@ export interface MemoryTierRow {
  * because the bracketed-id index injected into the system prompt
  * anchors the model — if turn-to-turn ordering drifts, the model can
  * cite ids that have moved beneath it.
+ *
+ * `createdAt` alone does NOT give that guarantee: it's `Date.now()` at insert, so
+ * a consolidation pass (or any burst of saves) writes rows sharing a millisecond,
+ * and SQLite is free to render tied rows in whichever order the chosen plan
+ * happens to produce. The `id` tiebreak makes the order total — which also keeps
+ * the system prompt byte-identical between turns, so the upstream's prefix cache
+ * survives.
  */
 export function listMemoriesForUser(userId: string): Memory[] {
 	const db = getDb();
@@ -86,7 +93,7 @@ export function listMemoriesForUser(userId: string): Memory[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 
@@ -137,7 +144,7 @@ export function listMemoryTierRows(userId: string): MemoryTierRow[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 
@@ -160,7 +167,7 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), inArray(memories.id, ids), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 
@@ -169,6 +176,13 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
  * model that produced it. The recall tool ranks the rows whose `embeddingModel`
  * matches the currently-configured model (different models = different vector
  * spaces) and falls back to BM25 over `content` for the rest.
+ *
+ * Deliberately NOT given the `id` tiebreak its siblings have. This list is a
+ * retrieval INPUT, not prompt text: `fuseRankings` breaks RRF ties by ascending
+ * list index (see `retrieval/fusion.ts`), so this row order is load-bearing for
+ * which memory wins a tied recall. Changing it changes answers. It also never
+ * reaches the system prompt, so it can't affect the upstream's prefix cache —
+ * there's nothing to gain here and a ranking regression to lose.
  */
 export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[] {
 	const db = getDb();
@@ -638,7 +652,7 @@ export function listMemoriesForDreaming(userId: string): MemoryForDreaming[] {
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 

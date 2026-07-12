@@ -56,14 +56,21 @@ export function listSkillsForUser(userId: string): Skill[] {
 }
 
 /** Enabled skills only — the source for both the injected catalog and the
- *  activate_skill enum. Oldest-first for stable catalog ordering. */
+ *  activate_skill enum. Oldest-first for stable catalog ordering.
+ *
+ *  The `id` tiebreak is load-bearing, not decoration: `createdAt` is `Date.now()`
+ *  at insert, so a bulk import writes several skills in the same millisecond, and
+ *  `ORDER BY created_at` alone leaves their relative order to whatever plan SQLite
+ *  picks. This order feeds the `<available_skills>` catalog (in the system prompt)
+ *  AND the `enum` of three tool schemas — so an unstable tie rewrites the front of
+ *  the prefix and re-prefills the conversation for no reason. */
 export function listEnabledSkillsForUser(userId: string): Skill[] {
 	const db = getDb();
 	return db
 		.select()
 		.from(skills)
 		.where(and(eq(skills.userId, userId), eq(skills.enabled, 1)))
-		.orderBy(asc(skills.createdAt))
+		.orderBy(asc(skills.createdAt), asc(skills.id))
 		.all()
 		.map(rowToSkill);
 }

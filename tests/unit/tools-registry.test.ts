@@ -213,3 +213,49 @@ describe('resolveActivatedToolDefs', () => {
 		expect(defs).toEqual([]);
 	});
 });
+
+describe('openaiToolDefinitions — deterministic ordering', () => {
+	beforeEach(() => _resetForTests());
+	afterEach(() => _resetForTests());
+
+	it('emits tools in name order, not registration order', () => {
+		// Registration order is a function of TIMING, not of anything a user did:
+		// built-ins register lazily on the first chat request, while bootstrapMcp()
+		// registers global MCP tools from a hook fired at module eval — so whichever
+		// wins the race at boot lands first in the Map. An admin retrying a global
+		// server that failed at startup appends its tools to the tail, mid-process.
+		// Either way the SAME logical tool set serializes to different bytes, which
+		// re-prefills every conversation on the box for nothing.
+		register(mkTool('zebra'));
+		register(mkTool('alpha'));
+		register(mkTool('mike'));
+
+		expect(openaiToolDefinitions().map((d) => d.function.name)).toEqual(['alpha', 'mike', 'zebra']);
+	});
+
+	it('is invariant to the order the same tools were registered in', () => {
+		// The property that actually matters: two processes that registered the same
+		// tools in different orders must produce byte-identical tools[].
+		register(mkTool('web_search'));
+		register(mkTool('run_python'));
+		register(mkTool('get_current_time'));
+		const bootA = JSON.stringify(openaiToolDefinitions());
+
+		_resetForTests();
+		register(mkTool('get_current_time'));
+		register(mkTool('web_search'));
+		register(mkTool('run_python'));
+		const bootB = JSON.stringify(openaiToolDefinitions());
+
+		expect(bootA).toBe(bootB);
+	});
+
+	it('a late registration lands in its sorted position, not at the tail', () => {
+		// e.g. an admin hitting "retry" on a global MCP server that failed at boot.
+		register(mkTool('alpha'));
+		register(mkTool('zebra'));
+		register(mkTool('mike')); // arrives late
+
+		expect(openaiToolDefinitions().map((d) => d.function.name)).toEqual(['alpha', 'mike', 'zebra']);
+	});
+});

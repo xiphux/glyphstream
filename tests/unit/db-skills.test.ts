@@ -171,3 +171,29 @@ describe('composeSkillsCatalog', () => {
 		expect(out).toMatch(/activate_skill/);
 	});
 });
+
+describe('listEnabledSkillsForUser — total ordering', () => {
+	it('breaks createdAt ties deterministically, so the catalog and enums are stable', () => {
+		// `createdAt` is Date.now() at insert, so a bulk import writes several skills
+		// in the same millisecond. Ordering by created_at ALONE leaves tied rows in
+		// whatever order SQLite's chosen plan produces — and this order feeds both the
+		// <available_skills> catalog (in the system prompt) and the `enum` of three
+		// tool schemas. An unstable tie therefore rewrites the front of the prefix and
+		// re-prefills the whole conversation for no reason.
+		const u = seedUser();
+		const now = Date.now();
+		vi.spyOn(Date, 'now').mockReturnValue(now); // force the tie
+		try {
+			for (const n of ['zebra', 'alpha', 'mike', 'bravo']) makeSkill(u.id, n);
+		} finally {
+			vi.restoreAllMocks();
+		}
+
+		const first = listEnabledSkillsForUser(u.id).map((s) => s.name);
+		// Same rows, same query, repeated — must not drift.
+		for (let i = 0; i < 5; i++) {
+			expect(listEnabledSkillsForUser(u.id).map((s) => s.name)).toEqual(first);
+		}
+		expect(first).toHaveLength(4);
+	});
+});

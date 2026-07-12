@@ -51,7 +51,17 @@ export function list(): Tool[] {
  *  A third filter drops `metadata.deferred` tools: those are hidden from the
  *  default advertisement and surfaced only via `search_tools` (which enumerates
  *  them through `deferredToolCatalog()` and loads the chosen ones back via
- *  `resolveActivatedToolDefs()`). */
+ *  `resolveActivatedToolDefs()`).
+ *
+ *  Sorted by name, NOT left in registry-insertion order. Insertion order is a
+ *  function of timing, not of anything a user did: built-ins register lazily on
+ *  the first chat request while `bootstrapMcp()` registers global MCP tools from
+ *  a hook fired at module eval, so whichever wins the race at boot lands first —
+ *  and an admin retrying a global server that failed at startup appends its tools
+ *  to the TAIL rather than its config position, mid-process. Either way `tools[]`
+ *  is a different byte sequence for the same logical tool set, which re-prefills
+ *  every conversation on the box for no reason. A total order over the names
+ *  makes the array a pure function of which tools exist. */
 export function openaiToolDefinitions(opts?: {
 	excludeCategories?: readonly string[];
 }): OpenAIToolDefinition[] {
@@ -60,7 +70,8 @@ export function openaiToolDefinitions(opts?: {
 		.filter((t) => !t.metadata?.deferred)
 		.filter((t) => t.isAvailable?.() ?? true)
 		.filter((t) => !exclude || !t.metadata?.category || !exclude.has(t.metadata.category))
-		.map((t) => t.definition);
+		.map((t) => t.definition)
+		.sort((a, b) => (a.function.name < b.function.name ? -1 : 1));
 }
 
 /** The searchable catalog of GLOBAL deferred tools, for `search_tools`. Same

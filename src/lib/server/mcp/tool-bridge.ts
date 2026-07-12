@@ -220,7 +220,29 @@ async function* eachRegisteredPerUserTool(
 	const exclude = opts.excludeCategories?.length ? new Set(opts.excludeCategories) : null;
 	const states = opts.states ?? (await getUserServerStates(userId));
 	for (const s of states) {
-		if (s.auth !== 'per_user' || !s.configured || s.state !== 'connected') continue;
+		if (s.auth !== 'per_user' || !s.configured) continue;
+		// Advertise on the strength of the TOOLS WE HOLD, not the transport's current
+		// state. `getUserServerStates` reports `reconnecting` (with the previously
+		// discovered descriptors still populated) in two routine situations: the
+		// server didn't finish its handshake inside the send path's 2.5s budget, and
+		// the idle reaper closed a perfectly healthy connection between turns. Gating
+		// on `state === 'connected'` threw those cached descriptors away — so a user
+		// who stepped away from a conversation for longer than the idle timeout came
+		// back to find the server's tools silently missing for one turn, then back
+		// again on the next.
+		//
+		// That flicker is worse than the thing it was guarding against. It rewrites
+		// `tools[]` (and, for a deferred server, the Tier-1 hint at the FRONT of the
+		// system prompt) between two turns the user considers identical — which both
+		// invalidates the upstream's prefix cache for the whole conversation and makes
+		// the model's advertised capabilities come and go for no visible reason.
+		//
+		// Advertising a tool whose transport is mid-reconnect is safe: execution goes
+		// through `callMcpTool`, which awaits `ensureConnected` itself. The worst case
+		// is a tool error the model can recover from, rather than a capability that
+		// blinks out. A `failed` server still yields nothing (`state` check below) —
+		// that's a settled failure, and it's surfaced to the user as such.
+		if (s.state === 'failed' || s.tools.length === 0) continue;
 		if (exclude?.has(`mcp:${s.id}`)) continue;
 		const cfg = getMcpServerCfg(s.id);
 		if (!cfg) continue;
