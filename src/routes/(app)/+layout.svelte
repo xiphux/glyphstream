@@ -364,7 +364,10 @@
 		 Desktop (sm+): in-flow column whose width toggles via `collapsed`
 		 between w-64 (full) and w-14 (icons only). The conversation list
 		 + recents header hide entirely when collapsed; nav items show
-		 just their lucide icons with `title` tooltips. -->
+		 just their lucide icons with `title` tooltips.
+		 The transition list is `translate`, not `transform`: Tailwind v4
+		 compiles -translate-x-full to the standalone `translate` property,
+		 so naming `transform` here transitions nothing and the drawer pops. -->
 	<!--
 		`convUi.busyId !== null` makes the entire sidebar inert while an
 		archive/delete is in flight. The dropdown menu's Content lives
@@ -377,7 +380,7 @@
 		Archived sidebar link.
 	-->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[transform,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
+		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[translate,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {convUi.busyId !==
 		null
