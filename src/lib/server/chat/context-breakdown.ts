@@ -54,7 +54,8 @@ export function dataUrlChars(bytes: number, contentType: string): number {
 	return `data:${contentType};base64,`.length + Math.ceil(bytes / 3) * 4;
 }
 
-/** What the breakdown needs to know about a stored image, without touching disk. */
+/** What the breakdown needs to know about an image to price it: the bytes that
+ *  will actually be inlined, and the type they'll be inlined as. */
 export interface MediaSize {
 	byteSize: number;
 	contentType: string;
@@ -73,9 +74,16 @@ export interface ContextBreakdownInput {
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	toolDefs: readonly OpenAIToolDefinition[];
-	/** Null for media that's been hard-deleted or is otherwise unavailable — the
-	 *  serializer degrades those to an `[Image deleted]` note, and so does this. */
-	mediaSize: (mediaId: string) => MediaSize | null;
+	/**
+	 * The bytes an image actually contributes — its downscaled vision variant
+	 * where one has been generated, NOT the original on disk. Pricing the original
+	 * would overstate a 4 MB photo by an order of magnitude now that it isn't the
+	 * thing being sent.
+	 *
+	 * Null for media that's been hard-deleted or is otherwise unavailable: the
+	 * serializer degrades those to an `[Image deleted]` note, and so does this.
+	 */
+	mediaSize: (mediaId: string) => Promise<MediaSize | null>;
 	contextWindow: number | null;
 }
 
@@ -171,7 +179,7 @@ async function priceHistory(
 				const mediaId = part.image_url.url.startsWith(MEDIA_SENTINEL)
 					? part.image_url.url.slice(MEDIA_SENTINEL.length)
 					: null;
-				const size = mediaId ? input.mediaSize(mediaId) : null;
+				const size = mediaId ? await input.mediaSize(mediaId) : null;
 				if (!size) continue;
 				imageBytes += size.byteSize;
 				acc.add('history:images', dataUrlChars(size.byteSize, size.contentType), mediaId ?? '?');

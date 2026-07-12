@@ -153,6 +153,41 @@ preference, not a server config setting.)
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 
+## Inlined image size (`[vision]`)
+
+An image attached to a chat is re-sent to the model on **every subsequent turn**
+of that conversation — that's how the chat protocol works, since each request
+carries the whole history. So a 4 MB photo isn't a one-time 4 MB: it's ~5.4 MB
+of base64 going up again on turn 2, turn 3, turn 20, and it permanently occupies
+context the model re-reads each time.
+
+Vision models downscale internally before tiling, so pixels above ~1568px on the
+long edge get transmitted and then thrown away. GlyphStream therefore inlines a
+downscaled JPEG copy instead, generated on first send and cached next to the
+original.
+
+**The original upload is never modified.** The gallery, downloads, and
+image-to-image dispatch all still use full resolution — this only governs what
+the chat model is shown.
+
+```toml
+[vision]
+max_image_dim = 1568   # longest edge, px. 0 disables (inline originals).
+image_quality = 82     # JPEG quality, 1-100.
+```
+
+Both keys are optional; the defaults above apply if the block is absent. Raise
+`max_image_dim` if you work with dense diagrams or small-print scans and find the
+model misreading them; set it to `0` to restore the old inline-the-original
+behavior at the cost of re-uploading the full bytes every turn.
+
+Like `[tools]` and `[search]`, this is a table header — it must appear **above**
+every `[[endpoints]]` block in the file.
+
+You can see what this saves in a given conversation: click the context readout
+above the composer to open the [context breakdown](#context-window-context_window),
+which itemizes what each image costs.
+
 ## Auto-titling (`task_model`)
 
 By default, conversation titles in the sidebar are the first ~50 characters

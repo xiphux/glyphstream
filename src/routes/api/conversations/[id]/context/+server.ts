@@ -30,6 +30,7 @@ import { composePersonaPromptParts } from '$lib/server/chat/persona-context';
 import { buildChatToolContext } from '$lib/server/chat/tool-context';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildContextBreakdown, type MediaSize } from '$lib/server/chat/context-breakdown';
+import { cachedVisionVariantSize } from '$lib/server/media/vision-variant';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
@@ -80,13 +81,24 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	// in both the base list and the cross-turn activation seed gets double-billed.
 	const toolDefs = toolCtx.toolDefs.length > 0 ? dedupeToolDefs(toolCtx.toolDefs) : [];
 
-	// Mirrors `loadMediaBytes`' validity rules without touching the filesystem:
-	// a row that's missing, hard-deleted, or not an image/video degrades to an
-	// `[Image deleted]` note upstream and so costs nothing here.
-	const mediaSize = (mediaId: string): MediaSize | null => {
+	// Mirrors `requireInlineable`'s validity rules: a row that's missing,
+	// hard-deleted, or not an image/video degrades to an `[Image deleted]` note
+	// upstream and so costs nothing here.
+	//
+	// Prices the DOWNSCALED VARIANT where one exists, because that's what
+	// `mediaIdToDataUrl` actually inlines — quoting the original would overstate a
+	// photo tenfold. An image that hasn't been sent yet has no variant cached, and
+	// we deliberately don't generate one here (a read-only probe shouldn't sit
+	// re-encoding a thread's worth of images), so it prices as the original until
+	// the next send. Erring high on a not-yet-sent image is the safe direction.
+	const mediaSize = async (mediaId: string): Promise<MediaSize | null> => {
 		const row = getMediaForUser(mediaId, userId);
 		if (!row || row.hardDeletedAt !== null) return null;
 		if (row.kind !== 'image' && row.kind !== 'video') return null;
+		if (row.kind === 'image') {
+			const variant = await cachedVisionVariantSize(row.storagePath);
+			if (variant !== null) return { byteSize: variant, contentType: 'image/jpeg' };
+		}
 		return { byteSize: row.byteSize, contentType: row.contentType };
 	};
 

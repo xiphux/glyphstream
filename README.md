@@ -51,6 +51,12 @@ them into a single fast chat UI with one model picker.
   thread's running context size against the model's window (`27,725 / 40,960
 tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
+- **Images are downscaled before they're sent to the model**, not before they're
+  stored. An attached image rides along on every later turn of the conversation,
+  so a 4 MB photo costs 4 MB again and again; the model downscales it internally
+  anyway. GlyphStream inlines a 1568px JPEG copy instead and keeps your original
+  untouched for the gallery, downloads, and image-to-image
+  ([configuration](docs/configuration.md#inlined-image-size-vision)).
 - **Context breakdown** — click that bar to see what's actually filling the
   window, itemized: saved memories, the skills catalog, each tool definition,
   messages, tool results, images. It separates the overhead re-sent on every turn

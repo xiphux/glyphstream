@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { mediaDir } from '../env';
 import { thumbStoragePath } from './thumbnail';
+import { visionStoragePath } from './vision-variant';
 import type {
 	MediaOpenResult,
 	MediaPutInput,
@@ -146,17 +147,20 @@ export class DiskMediaStore implements MediaStore {
 				console.warn(`[disk-store] delete(${storagePath}) failed:`, e);
 			}
 		}
-		// Also remove the lazy-generated thumbnail sibling, if there is
-		// one. We don't track presence — just try to unlink and shrug
-		// off ENOENT (most media won't have a thumb yet; uploaded media
-		// never does). Without this, every hard-deleted image would
-		// leak its `.thumb.jpg` to disk indefinitely.
-		const thumbAbs = resolve(root(), thumbStoragePath(storagePath));
-		try {
-			await unlink(thumbAbs);
-		} catch (e) {
-			if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-				console.warn(`[disk-store] delete thumb of ${storagePath} failed:`, e);
+		// Also remove the lazy-generated derived siblings, if there are
+		// any: the gallery thumbnail and the downscaled variant inlined
+		// into vision requests. We don't track presence — just try to
+		// unlink each and shrug off ENOENT (most media won't have either
+		// yet; a never-viewed, never-sent image has neither). Without
+		// this, every hard-deleted image would leak its derivatives to
+		// disk indefinitely.
+		for (const derived of [thumbStoragePath(storagePath), visionStoragePath(storagePath)]) {
+			try {
+				await unlink(resolve(root(), derived));
+			} catch (e) {
+				if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+					console.warn(`[disk-store] delete ${derived} failed:`, e);
+				}
 			}
 		}
 	}

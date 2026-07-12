@@ -564,6 +564,88 @@ export function _resetMaxToolLoopIterationsCacheForTests(): void {
 }
 
 /**
+ * Longest edge, in pixels, an image is downscaled to before being inlined into a
+ * chat request. 1568 is the largest size that's still useful to current vision
+ * models — above it they downscale internally anyway, so the extra pixels buy
+ * nothing and cost real bytes in every turn of the conversation. Small enough to
+ * cut a 4K screenshot by ~85%, large enough to keep screenshot text legible,
+ * which is the quality floor that actually matters here.
+ */
+export const DEFAULT_VISION_MAX_IMAGE_DIM = 1568;
+
+/** JPEG quality for the inlined variant. 82 is past the point where vision
+ *  models measurably care, and well under the size cliff at 90+. */
+export const DEFAULT_VISION_IMAGE_QUALITY = 82;
+
+export interface VisionConfig {
+	maxImageDim: number;
+	imageQuality: number;
+}
+
+/**
+ * Read the optional top-level `[vision]` block. Governs the downscaled variant
+ * inlined into chat requests — NOT what's stored: the original upload is kept
+ * untouched, and image-to-image still dispatches full-resolution bytes.
+ *
+ * Set `max_image_dim = 0` to disable downscaling and inline originals (the old
+ * behavior) — useful if a model genuinely needs full resolution, at the cost of
+ * re-sending those bytes on every turn.
+ */
+export function loadVisionConfig(path = configPath()): VisionConfig {
+	const { parsed, absolutePath } = readAndParse(path);
+	const vision = parsed.vision;
+	const defaults: VisionConfig = {
+		maxImageDim: DEFAULT_VISION_MAX_IMAGE_DIM,
+		imageQuality: DEFAULT_VISION_IMAGE_QUALITY,
+	};
+	if (vision === undefined || vision === null) return defaults;
+	if (typeof vision !== 'object' || Array.isArray(vision)) {
+		throw new ConfigError(`'[vision]' in ${absolutePath} must be a TOML table`);
+	}
+	const block = vision as Record<string, unknown>;
+
+	const maxImageDim = block.max_image_dim;
+	if (maxImageDim !== undefined && maxImageDim !== null) {
+		if (typeof maxImageDim !== 'number' || !Number.isInteger(maxImageDim) || maxImageDim < 0) {
+			throw new ConfigError(
+				`'[vision] max_image_dim' in ${absolutePath} must be a non-negative integer (0 disables downscaling)`,
+			);
+		}
+		defaults.maxImageDim = maxImageDim;
+	}
+
+	const imageQuality = block.image_quality;
+	if (imageQuality !== undefined && imageQuality !== null) {
+		if (
+			typeof imageQuality !== 'number' ||
+			!Number.isInteger(imageQuality) ||
+			imageQuality < 1 ||
+			imageQuality > 100
+		) {
+			throw new ConfigError(
+				`'[vision] image_quality' in ${absolutePath} must be an integer between 1 and 100`,
+			);
+		}
+		defaults.imageQuality = imageQuality;
+	}
+
+	return defaults;
+}
+
+let visionConfigCache: VisionConfig | undefined;
+
+/** Memoized {@link loadVisionConfig} for the per-request hot path. */
+export function getVisionConfig(): VisionConfig {
+	if (visionConfigCache === undefined) visionConfigCache = loadVisionConfig();
+	return visionConfigCache;
+}
+
+/** Test hook: clear the memoized vision config so the next call re-reads. */
+export function _resetVisionConfigCacheForTests(): void {
+	visionConfigCache = undefined;
+}
+
+/**
  * Read the top-level `[search]` block from config.toml, if present.
  * Backs the `web_search` tool. Returns null when the section is absent,
  * which the tool reads via `isAvailable()` to hide itself from the

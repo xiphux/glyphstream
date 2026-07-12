@@ -53,6 +53,26 @@
 # [tools]
 # max_tool_loop_iterations = 8
 
+# ── Optional: [vision] ───────────────────────────────────────────────
+# Controls the downscaled copy of an image that gets inlined into a chat
+# request. Attached images are re-sent on EVERY turn for the life of the
+# conversation, so a 4 MB photo isn't a one-time cost — it's ~5.4 MB of base64
+# re-uploaded on turn 2, turn 3, turn 20. Vision models downscale internally
+# before tiling anyway, so pixels above the cap are transmitted and then thrown
+# away.
+#
+# The ORIGINAL upload is never modified: the gallery, downloads, and
+# image-to-image all still use full resolution. This only governs what the chat
+# model sees.
+#
+# max_image_dim — longest edge in pixels. Default 1568 (keeps screenshot text
+# legible; cuts a 4K photo by ~85%). Set to 0 to disable and inline originals.
+# image_quality — JPEG quality, 1-100. Default 82.
+# (Table header — must sit ABOVE every [[endpoints]] block, like [tools].)
+# [vision]
+# max_image_dim = 1568
+# image_quality = 82
+
 # ── Optional: [image_enhancement] ────────────────────────────────────
 # Rewrites image AND video prompts into the target model's preferred format
 # (image: natural-language, booru tags, keyword soup, hybrid, json; video:

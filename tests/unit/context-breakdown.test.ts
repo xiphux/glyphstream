@@ -46,7 +46,7 @@ function input(over: Partial<ContextBreakdownInput> = {}): ContextBreakdownInput
 		skillsCatalog: null,
 		toolSearchHint: null,
 		toolDefs: [],
-		mediaSize: () => PNG,
+		mediaSize: async () => PNG,
 		contextWindow: null,
 		...over,
 	};
@@ -139,7 +139,7 @@ describe('buildContextBreakdown', () => {
 	it('ignores media the serializer would degrade to an [Image deleted] note', async () => {
 		const b = await buildContextBreakdown(
 			input({
-				mediaSize: () => null,
+				mediaSize: async () => null,
 				branch: [msg('user', [{ type: 'image', mediaId: 'gone' }])],
 			}),
 		);
