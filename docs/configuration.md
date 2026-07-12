@@ -172,9 +172,7 @@ cost — it's roughly 50k tokens of permanent rent on the context window, and
 compaction can't reclaim it until that turn is old enough to fold away.
 
 GlyphStream caps what goes upstream at 16384 characters (~4k tokens) by default,
-keeping the head and the tail and eliding the middle with a note saying how much
-was dropped. The head carries the shape of the result; the tail is where errors
-and totals live.
+with a note saying how much was dropped.
 
 **The full result is always stored and always shown to you in the UI.** This caps
 only the copy the model is re-sent.
@@ -186,9 +184,12 @@ max_tool_result_chars = 16384   # 0 disables the cap; otherwise minimum 1024.
 
 Most tool results are JSON, so the cap is applied **structurally** rather than by
 slicing characters: the bulky text fields are shortened, or trailing records are
-dropped, and the result is re-serialized — so what the model receives is still
-valid, parseable JSON with its ids and structure intact. A blind character cut
-would leave half-written records and broken escapes.
+dropped whole, and the result is re-serialized — so what the model receives is
+still valid, parseable JSON with its ids and structure intact. A blind character
+cut would leave half-written records and broken escapes, and a model that reads a
+half-truncated id and then acts on it is a genuine hazard. Results that aren't
+JSON keep their head and their tail, with the middle elided: the head carries the
+shape of the result, and the tail is where errors and totals live.
 
 That's also why the value must be either `0` or **at least 1024**: below a few
 hundred characters there isn't room for even a minimal structured result, and the
@@ -218,7 +219,7 @@ the chat model is shown.
 
 ```toml
 [vision]
-max_image_dim = 1568   # longest edge, px. 0 disables (inline originals).
+max_image_dim = 1568   # longest edge, px. 0 disables (inline originals); else min 256.
 image_quality = 82     # JPEG quality, 1-100.
 ```
 
@@ -226,6 +227,11 @@ Both keys are optional; the defaults above apply if the block is absent. Raise
 `max_image_dim` if you work with dense diagrams or small-print scans and find the
 model misreading them; set it to `0` to restore the old inline-the-original
 behavior at the cost of re-uploading the full bytes every turn.
+
+A positive `max_image_dim` must be at least **256**. Below that an image is
+downscaled into uselessness — the model reads a smudge and describes it
+confidently, with nothing anywhere to explain why vision stopped working — so
+GlyphStream refuses the value rather than silently destroying every image.
 
 Like `[tools]` and `[search]`, this is a table header — it must appear **above**
 every `[[endpoints]]` block in the file.

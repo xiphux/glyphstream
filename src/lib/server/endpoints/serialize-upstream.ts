@@ -431,9 +431,13 @@ function parseJsonPreservingNumbers(text: string): unknown {
  * re-prefilling the conversation.
  *
  * 100 is far above any real tool result (a JSON payload nested even 20 deep is
- * exotic) and far below the shallowest reviver limit at any plausible caller depth,
- * so the recursion below is safe from ANY stack, and the answer depends only on the
- * input.
+ * exotic) and far below the reviver's limit at any caller depth we could actually
+ * reach: measured, a caller 3,000 frames deep still survives a JSON depth of ~1,878.
+ * The guarantee isn't absolute — a caller within a few hundred frames of blowing the
+ * stack outright (~12,400) could still diverge — but nothing in this codebase comes
+ * within an order of magnitude of that, and such a caller is one call from dying
+ * anyway. The old bug fired across ordinary depths (0–1,500); this one needs a stack
+ * already 96% spent.
  */
 const MAX_JSON_DEPTH = 100;
 

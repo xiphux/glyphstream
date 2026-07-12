@@ -82,7 +82,9 @@
 # model sees.
 #
 # max_image_dim — longest edge in pixels. Default 1568 (keeps screenshot text
-# legible; cuts a 4K photo by ~85%). Set to 0 to disable and inline originals.
+# legible; cuts a 4K photo by ~85%). Set to 0 to disable and inline originals;
+# any other value must be at least 256, below which an image is downscaled into
+# uselessness and the model reads a smudge with nothing to explain why.
 # image_quality — JPEG quality, 1-100. Default 82.
 # (Table header — must sit ABOVE every [[endpoints]] block, like [tools].)
 # [vision]

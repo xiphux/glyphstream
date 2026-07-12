@@ -661,6 +661,16 @@ export const DEFAULT_VISION_MAX_IMAGE_DIM = 1568;
  *  models measurably care, and well under the size cliff at 90+. */
 export const DEFAULT_VISION_IMAGE_QUALITY = 82;
 
+/**
+ * Smallest longest-edge an image may be downscaled to. Without a floor,
+ * `max_image_dim = 1` is accepted and every image is resized to 1x1 — which the
+ * model dutifully "reads" and describes as a blank square, with no error anywhere
+ * to explain why vision suddenly stopped working. Silent quality destruction is a
+ * worse failure than a startup error, so refuse the value instead. 256 is well
+ * below anything useful and still leaves the setting a real dial.
+ */
+export const MIN_VISION_MAX_IMAGE_DIM = 256;
+
 export interface VisionConfig {
 	maxImageDim: number;
 	imageQuality: number;
@@ -693,6 +703,11 @@ export function loadVisionConfig(path = configPath()): VisionConfig {
 		if (typeof maxImageDim !== 'number' || !Number.isInteger(maxImageDim) || maxImageDim < 0) {
 			throw new ConfigError(
 				`'[vision] max_image_dim' in ${absolutePath} must be a non-negative integer (0 disables downscaling)`,
+			);
+		}
+		if (maxImageDim > 0 && maxImageDim < MIN_VISION_MAX_IMAGE_DIM) {
+			throw new ConfigError(
+				`'[vision] max_image_dim' in ${absolutePath} must be 0 (disabled) or at least ${MIN_VISION_MAX_IMAGE_DIM} — below that, images are downscaled into uselessness and the model sees a blank square with nothing to explain why`,
 			);
 		}
 		defaults.maxImageDim = maxImageDim;

@@ -9,6 +9,10 @@ import {
 	DEFAULT_MAX_TOOL_LOOP_ITERATIONS,
 	DEFAULT_MAX_TOOL_RESULT_CHARS,
 	MIN_MAX_TOOL_RESULT_CHARS,
+	DEFAULT_VISION_MAX_IMAGE_DIM,
+	DEFAULT_VISION_IMAGE_QUALITY,
+	MIN_VISION_MAX_IMAGE_DIM,
+	loadVisionConfig,
 	loadMaxToolResultChars,
 	loadEmbeddingsConfig,
 	loadEndpoints,
@@ -1150,6 +1154,48 @@ describe('loadMaxToolResultChars', () => {
 		for (const v of ['-1', '1.5', '"lots"']) {
 			const path = writeConfig(`[tools]\nmax_tool_result_chars = ${v}\n`);
 			expect(() => loadMaxToolResultChars(path)).toThrow(ConfigError);
+		}
+	});
+});
+
+describe('loadVisionConfig', () => {
+	it('defaults when [vision] is absent', () => {
+		const path = writeConfig(`task_model = "e::m"`);
+		expect(loadVisionConfig(path)).toEqual({
+			maxImageDim: DEFAULT_VISION_MAX_IMAGE_DIM,
+			imageQuality: DEFAULT_VISION_IMAGE_QUALITY,
+		});
+	});
+
+	it('accepts explicit values', () => {
+		const path = writeConfig(`[vision]\nmax_image_dim = 1024\nimage_quality = 90\n`);
+		expect(loadVisionConfig(path)).toEqual({ maxImageDim: 1024, imageQuality: 90 });
+	});
+
+	it('accepts 0, which inlines originals at full resolution', () => {
+		const path = writeConfig(`[vision]\nmax_image_dim = 0\n`);
+		expect(loadVisionConfig(path).maxImageDim).toBe(0);
+	});
+
+	it('rejects a max_image_dim that would destroy the image', () => {
+		// Without a floor, `max_image_dim = 1` is accepted and every image is resized
+		// to 1x1. The model dutifully "reads" it and describes a blank square, with no
+		// error anywhere to explain why vision stopped working. Silent quality
+		// destruction is worse than a startup error.
+		const path = writeConfig(`[vision]\nmax_image_dim = 1\n`);
+		expect(() => loadVisionConfig(path)).toThrow(ConfigError);
+		expect(() => loadVisionConfig(path)).toThrow(String(MIN_VISION_MAX_IMAGE_DIM));
+	});
+
+	it('accepts exactly the floor', () => {
+		const path = writeConfig(`[vision]\nmax_image_dim = ${MIN_VISION_MAX_IMAGE_DIM}\n`);
+		expect(loadVisionConfig(path).maxImageDim).toBe(MIN_VISION_MAX_IMAGE_DIM);
+	});
+
+	it('rejects an out-of-range image_quality', () => {
+		for (const v of ['0', '101', '-5', '82.5']) {
+			const path = writeConfig(`[vision]\nimage_quality = ${v}\n`);
+			expect(() => loadVisionConfig(path)).toThrow(ConfigError);
 		}
 	});
 });

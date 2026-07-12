@@ -93,37 +93,71 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 	 * it exists to guard did, and the test keeps passing while the new field is
 	 * quietly dropped by the route.
 	 *
-	 * `bit` flips every boolean and swaps the enums. Comparing values alone isn't
-	 * enough with five booleans and two possible values: a mis-wire like
-	 * `patch.notificationsShowContent = body.notificationsEnabled` sails through a
-	 * single fixture where both happen to be `true`. Running BOTH bit patterns means
-	 * any two fields that alias each other must disagree in at least one pass.
+	 * THREE passes, and the count is pigeonhole arithmetic rather than taste. To
+	 * catch a cross-wire (`patch.a = body.b`) by comparing values, every field must
+	 * carry a value sequence no other field shares. A boolean's sequence over N
+	 * passes is an N-bit word, so N passes distinguish at most 2^N booleans — and
+	 * there are five. Two passes admit only four signatures and in practice gave
+	 * each boolean one of two (TF or FT), which is why an earlier version of this
+	 * fixture claimed to catch any aliasing pair and demonstrably did not:
+	 * `patch.notificationsEnabled = body.showGreeting` sailed straight through it.
+	 *
+	 * Three passes give eight signatures; the five booleans below take five distinct
+	 * ones. Every other field is likewise distinct per pass — including `modelSets`,
+	 * which must be NON-EMPTY or it silently aliases the (also empty)
+	 * `trustedMcpTools`.
 	 */
-	function fixture(bit: boolean): UserPreferences {
+	const PASSES = [0, 1, 2] as const;
+	/** Unique 3-bit signature per boolean — see the pigeonhole note above. */
+	const bits = {
+		showGreeting: [true, true, false],
+		notificationsEnabled: [true, false, true],
+		notificationsShowContent: [true, false, false],
+		notificationsForegroundToast: [false, true, true],
+		autoCompactionEnabled: [false, true, false],
+	} as const;
+
+	function fixture(p: 0 | 1 | 2): UserPreferences {
 		return {
-			name: bit ? 'Chris' : 'Alex',
-			aboutYou: bit ? 'engineer' : 'teacher',
-			customInstructions: bit ? 'be brief' : 'be thorough',
-			enterBehavior: bit ? 'newline' : 'send',
-			showGreeting: bit,
-			theme: bit ? 'claude' : 'chatgpt',
-			colorScheme: bit ? 'dark' : 'light',
-			notificationsEnabled: bit,
-			notificationsShowContent: !bit,
-			notificationsForegroundToast: bit,
-			favoriteModels: bit ? ['e::m'] : ['e::other'],
-			modelSets: [],
+			name: ['Chris', 'Alex', 'Sam'][p],
+			aboutYou: ['engineer', 'teacher', 'chef'][p],
+			customInstructions: ['be brief', 'be thorough', 'be funny'][p],
+			enterBehavior: (['newline', 'send', 'newline'] as const)[p],
+			showGreeting: bits.showGreeting[p],
+			theme: (['claude', 'chatgpt', 'glyphstream'] as const)[p],
+			colorScheme: (['dark', 'light', 'system'] as const)[p],
+			notificationsEnabled: bits.notificationsEnabled[p],
+			notificationsShowContent: bits.notificationsShowContent[p],
+			notificationsForegroundToast: bits.notificationsForegroundToast[p],
+			favoriteModels: [['e::a'], ['e::b'], ['e::c']][p],
+			modelSets: [
+				{ id: `set-${p}`, name: `Set ${p}`, models: [{ modelId: `e::m${p}`, count: p + 1 }] },
+			],
 			trustedMcpTools: [],
-			autoCompactionEnabled: !bit,
-			autoCompactionThreshold: bit ? 60 : 95,
-			timezone: bit ? 'Europe/London' : 'Asia/Tokyo',
+			autoCompactionEnabled: bits.autoCompactionEnabled[p],
+			autoCompactionThreshold: [60, 95, 30][p],
+			timezone: ['Europe/London', 'Asia/Tokyo', 'America/Chicago'][p],
 		};
 	}
 
-	it.each([true, false])(
-		'round-trips every writable field, bit pattern %s (add a preference → add it here)',
-		async (bit) => {
-			const full = fixture(bit);
+	it('gives every field a signature no other field shares', () => {
+		// Guards the guard: if a future edit makes two fields carry identical values
+		// across all three passes, a cross-wire between them becomes undetectable and
+		// the suite would go quietly blind rather than fail.
+		const signatures = new Map<string, string>();
+		for (const key of Object.keys(fixture(0)) as (keyof UserPreferences)[]) {
+			if (key === 'trustedMcpTools') continue; // not writable via this route
+			const sig = JSON.stringify(PASSES.map((p) => fixture(p)[key]));
+			const clash = [...signatures.entries()].find(([, s]) => s === sig);
+			expect(clash?.[0], `"${key}" is indistinguishable from "${clash?.[0]}"`).toBeUndefined();
+			signatures.set(key, sig);
+		}
+	});
+
+	it.each(PASSES)(
+		'round-trips every writable field, pass %i (add a preference → add it here)',
+		async (p) => {
+			const full = fixture(p);
 			const forwarded = await patch(full);
 
 			// Compare VALUES, not just key presence: a field wired to the wrong `body.*`
