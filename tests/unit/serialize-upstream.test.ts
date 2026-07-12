@@ -447,7 +447,13 @@ describe('collapseSupersededSkillActivations', () => {
 		expect(collapseSupersededSkillActivations(messages)).toBe(messages);
 	});
 
-	it('collapses the earlier of two same-skill activations, keeps the latest full', () => {
+	it('keeps the FIRST copy full when a re-activation is redundant, and stubs the later one', () => {
+		// The cache-critical case, and the common one. Both policies carry the same
+		// tokens (one body + one stub); keep-LAST would rewrite the earlier message
+		// from 64 KiB down to a stub, changing the MIDDLE of the prompt and forcing
+		// the upstream to re-prefill everything after it. Keep-first leaves the
+		// earlier message byte-identical and puts the stub at the tail, where the
+		// tokens are new anyway — so a redundant reload costs nothing.
 		const messages = [
 			toolMsg('docx', 'c1'),
 			{ role: 'user' as const, content: 'more' },
@@ -455,25 +461,68 @@ describe('collapseSupersededSkillActivations', () => {
 		];
 		const out = collapseSupersededSkillActivations(messages);
 
-		// Earlier copy → placeholder, but the tool_call_id is preserved so the
-		// assistant's tool_call still pairs to a tool result.
-		expect(out[0]).toMatchObject({
+		// First copy → untouched, byte for byte. This is the property the KV cache
+		// depends on.
+		expect(out[0]).toEqual(toolMsg('docx', 'c1'));
+		// Later copy → placeholder pointing BACK, with the tool_call_id preserved so
+		// the assistant's tool_call still pairs to a tool result.
+		expect(out[2]).toMatchObject({
 			role: 'tool',
-			tool_call_id: 'c1',
-			content: expect.stringContaining('superseded="true"'),
+			tool_call_id: 'c2',
+			content: expect.stringContaining('duplicate="true"'),
 		});
-		expect(out[0].content).not.toContain('do the thing');
-		// Latest copy → full, unchanged.
-		expect(out[2]).toEqual(toolMsg('docx', 'c2'));
+		expect(out[2].content).not.toContain('do the thing');
+		expect(out[2].content).toMatch(/earlier in this conversation/i);
+	});
+
+	it('keeps the post-edit copy when the skill body actually changed', () => {
+		// An edit is an asked-for payload change, so it earns its cache invalidation.
+		// The stale copy must not be the one the model reads.
+		const messages = [
+			toolMsg('docx', 'c1'), // old body
+			{ role: 'tool' as const, content: skillResult('docx', 'NEW BODY'), tool_call_id: 'c2' },
+		];
+		const out = collapseSupersededSkillActivations(messages);
+
+		// Stale copy → superseded, pointing FORWARD.
+		expect(out[0].content).toContain('superseded="true"');
+		expect(out[0].content).toMatch(/below/i);
+		// Current copy → kept in full.
+		expect(out[1].content).toContain('NEW BODY');
+	});
+
+	it('keeps the EARLIEST copy of the current body when an edit is then reloaded again', () => {
+		// v1, v2, v2 → the current body first appears at index 1, so that's the copy
+		// to keep: the stale v1 is superseded and the redundant third is a duplicate.
+		// Keeping index 2 instead would rewrite index 1 for no reason.
+		const messages = [
+			toolMsg('docx', 'c1'), // v1 (stale)
+			{ role: 'tool' as const, content: skillResult('docx', 'V2'), tool_call_id: 'c2' },
+			{ role: 'tool' as const, content: skillResult('docx', 'V2'), tool_call_id: 'c3' },
+		];
+		const out = collapseSupersededSkillActivations(messages);
+
+		expect(out[0].content).toContain('superseded="true"');
+		expect(out[1].content).toContain('V2'); // earliest copy of the current body
+		expect(out[2].content).toContain('duplicate="true"');
 	});
 
 	it('leaves distinct skills alone — only same-name duplicates collapse', () => {
 		const messages = [toolMsg('docx', 'c1'), toolMsg('pdf', 'c2'), toolMsg('docx', 'c3')];
 		const out = collapseSupersededSkillActivations(messages);
 
-		expect(out[0].content).toContain('superseded="true"'); // first docx
+		expect(out[0]).toEqual(toolMsg('docx', 'c1')); // first docx kept full
 		expect(out[1]).toEqual(toolMsg('pdf', 'c2')); // lone pdf untouched
-		expect(out[2]).toEqual(toolMsg('docx', 'c3')); // latest docx full
+		expect(out[2].content).toContain('duplicate="true"'); // redundant docx reload
+	});
+
+	it('is idempotent — re-collapsing an already-collapsed payload is a no-op', () => {
+		// The transform is recomputed on every request, so it must be a fixed point.
+		// The placeholders carry an extra tag attribute precisely so they no longer
+		// match SKILL_CONTENT_OPEN.
+		const messages = [toolMsg('docx', 'c1'), toolMsg('docx', 'c2'), toolMsg('docx', 'c3')];
+		const once = collapseSupersededSkillActivations(messages);
+		expect(collapseSupersededSkillActivations(once)).toEqual(once);
 	});
 
 	it('ignores non-skill tool results (regular tools are never collapsed)', () => {
@@ -525,8 +574,10 @@ describe('collapseSupersededSkillActivations', () => {
 		const out = await serializeBranchForUpstream(branch, noMedia, null);
 
 		const toolResults = out.filter((m) => m.role === 'tool');
-		expect(toolResults[0].content).toContain('superseded="true"');
-		expect(toolResults[1].content).toBe(skillResult('docx'));
+		// Keep-FIRST: the earlier body is left byte-identical (so the prefix cache
+		// survives) and the redundant reload becomes a backward-pointing stub.
+		expect(toolResults[0].content).toBe(skillResult('docx'));
+		expect(toolResults[1].content).toContain('duplicate="true"');
 	});
 });
 

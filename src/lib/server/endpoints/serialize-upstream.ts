@@ -163,17 +163,29 @@ export async function serializeMessageForUpstream(
 
 /** Opening marker of an `activate_skill` tool result — see `wrapSkillContent`
  *  in tools/activate-skill.ts. The captured group is the skill name. Requires
- *  the immediate `">` so it matches a full activation but NOT the superseded
- *  placeholder below (whose tag carries an extra attribute first). */
+ *  the immediate `">` so it matches a full activation but NOT the placeholders
+ *  below (whose tags carry an extra attribute first). That's what makes this
+ *  pass idempotent. */
 const SKILL_CONTENT_OPEN = /^<skill_content name="([^"]*)">/;
 
-/** Compact stand-in for a superseded skill activation. Names the skill and
- *  points forward, so the model knows the instructions still exist (in full,
- *  later) rather than reading a silent gap. */
+/** Stand-in for a redundant re-activation: the identical body is already in
+ *  context, ABOVE. Points backward so the model uses what it already has instead
+ *  of reading a silent gap and assuming the skill failed to load. */
+function duplicateSkillPlaceholder(name: string): string {
+	return (
+		`<skill_content name="${name}" duplicate="true">\n` +
+		`Already loaded. The full instructions for "${name}" appear earlier in this ` +
+		`conversation and have not changed — use those.\n` +
+		`</skill_content>`
+	);
+}
+
+/** Stand-in for a STALE body: the skill was edited mid-conversation, so this
+ *  copy is out of date and the current one is BELOW. Points forward. */
 function supersededSkillPlaceholder(name: string): string {
 	return (
 		`<skill_content name="${name}" superseded="true">\n` +
-		`These instructions were reloaded later in this conversation — see the ` +
+		`These instructions were edited later in this conversation — see the ` +
 		`most recent activation of "${name}" below for the current version.\n` +
 		`</skill_content>`
 	);
@@ -183,18 +195,33 @@ function supersededSkillPlaceholder(name: string): string {
  * Collapse duplicate skill activations in an already-serialized upstream
  * payload. When the same skill's full `<skill_content>` body appears more than
  * once in the model-visible view — the model re-activated it, or an explicit
- * `/skill-name` re-issued it — keep only the most recent full copy and replace
- * each earlier one with `supersededSkillPlaceholder`. A skill body (now up to
- * 64 KiB) duplicated across a long thread is otherwise dead weight resent on
- * every subsequent request.
+ * `/skill-name` re-issued it — exactly one copy is kept in full and the rest
+ * become compact placeholders. A skill body (up to 64 KiB) duplicated across a
+ * long thread is otherwise dead weight resent on every subsequent request.
+ *
+ * WHICH copy is kept is a caching decision, and it is the whole point of this
+ * function's shape: **the EARLIEST copy of the CURRENT body**.
+ *
+ * Both the keep-first and keep-last policies carry the same number of tokens —
+ * one full body plus one stub either way, only the positions differ. But
+ * keep-last rewrites the *earlier* message from 64 KiB down to a stub, and that
+ * is a change in the MIDDLE of the prompt: the upstream's KV/prefix cache
+ * diverges there and every token after it re-prefills. Keep-first leaves the
+ * earlier message byte-identical and appends the stub at the tail, where the
+ * tokens are new anyway — so a redundant re-activation costs nothing at all.
+ *
+ * Edits are still handled, and get the cache bust they actually deserve. If the
+ * skill was edited between two activations, the current body first appears at
+ * the post-edit activation, so that's the copy kept and the stale earlier ones
+ * are superseded. The payload changes because the USER changed the skill — an
+ * asked-for invalidation, not a gratuitous one (see CLAUDE.md on prefix
+ * stability).
  *
  * Operates on the post-`upstreamBranch` wire array, which makes it inherently:
  *   - branch-aware — a sibling branch's activation isn't in this view;
  *   - compaction-safe — an activation folded into a summary is no longer here,
  *     so a later re-activation is correctly kept in full (the model lost the
- *     original instructions when they were summarized away);
- *   - edit-safe — keep-last retains an edited skill's newer body and collapses
- *     the stale earlier copy.
+ *     original instructions when they were summarized away).
  *
  * Persisted rows are untouched; this is a send-time transform recomputed each
  * request, so it's idempotent (placeholders don't match `SKILL_CONTENT_OPEN`).
@@ -207,22 +234,41 @@ export function collapseSupersededSkillActivations(
 			? (SKILL_CONTENT_OPEN.exec(m.content)?.[1] ?? null)
 			: null;
 
-	// Last position each skill name appears as a full activation.
-	const lastIndexByName = new Map<string, number>();
+	// Every full activation, grouped by skill name, in wire order.
+	const indicesByName = new Map<string, number[]>();
 	messages.forEach((m, i) => {
 		const name = skillName(m);
-		if (name !== null) lastIndexByName.set(name, i);
+		if (name === null) return;
+		const at = indicesByName.get(name);
+		if (at) at.push(i);
+		else indicesByName.set(name, [i]);
 	});
 
 	// Nothing duplicated → return the array untouched (no allocation).
-	if (lastIndexByName.size === messages.filter((m) => skillName(m) !== null).length) {
-		return messages;
+	if ([...indicesByName.values()].every((at) => at.length === 1)) return messages;
+
+	// The index to keep in full, per skill: the earliest copy whose body matches
+	// the newest one. Unchanged instructions → that's the FIRST activation, so the
+	// prefix is never rewritten. Edited skill → it's the first post-edit copy.
+	const keptByName = new Map<string, number>();
+	for (const [name, at] of indicesByName) {
+		const current = messages[at[at.length - 1]].content;
+		keptByName.set(name, at.find((i) => messages[i].content === current) ?? at[at.length - 1]);
 	}
 
 	return messages.map((m, i) => {
 		const name = skillName(m);
-		if (name === null || lastIndexByName.get(name) === i) return m;
-		return { ...m, content: supersededSkillPlaceholder(name) };
+		if (name === null) return m;
+		const kept = keptByName.get(name)!;
+		if (i === kept) return m;
+		// A copy BEFORE the kept one can only be a stale pre-edit body; one after it
+		// is a redundant reload of what's already above. Point the model the right way
+		// in each case — a placeholder that points the WRONG way is worse than none,
+		// because it sends the model looking for instructions that aren't there.
+		return {
+			...m,
+			content: i < kept ? supersededSkillPlaceholder(name) : duplicateSkillPlaceholder(name),
+		};
 	});
 }
 

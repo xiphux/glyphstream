@@ -179,8 +179,16 @@ export function deleteSkill(userId: string, id: string): { storagePath: string }
  */
 export function composeSkillsCatalog(list: Pick<Skill, 'name' | 'description'>[]): string | null {
 	if (list.length === 0) return null;
+	// The re-activation clause is phrased against what the model can SEE, not
+	// against what it once did. "Don't re-activate a skill already loaded in this
+	// conversation" went stale the moment compaction folded that activation into a
+	// summary: the instructions are genuinely gone from the payload, but the model
+	// was still being told not to reload them. Anchoring on "still visible above"
+	// is both true and self-checking — and a redundant reload is cheap anyway,
+	// since `collapseSupersededSkillActivations` stubs it out without disturbing
+	// the prefix.
 	const header =
-		'Available skills (reusable capabilities you can load on demand). When a task matches a skill below, call the activate_skill tool with its name to load the full instructions before proceeding; then, if those instructions reference a bundled file, call read_skill_file to load it. Do not re-activate a skill already loaded in this conversation.';
+		"Available skills (reusable capabilities you can load on demand). When a task matches a skill below, call the activate_skill tool with its name to load the full instructions before proceeding; then, if those instructions reference a bundled file, call read_skill_file to load it. If a skill's instructions are still visible above from an earlier activation, use those rather than re-activating it.";
 	const lines = list.map((s) => `- ${s.name} — ${s.description}`);
 	return `<available_skills>\n${header}\n\n${lines.join('\n')}\n</available_skills>`;
 }

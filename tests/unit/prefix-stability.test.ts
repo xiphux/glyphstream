@@ -17,6 +17,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { buildUserMcpToolDefinitions } from '$lib/server/mcp/tool-bridge';
+import { collapseSupersededSkillActivations } from '$lib/server/endpoints/serialize-upstream';
 import type { UserServerState } from '$lib/server/mcp/registry';
 import type { LoadedMcpServer } from '$lib/server/mcp/config';
 
@@ -119,5 +120,71 @@ describe('per-user MCP tools survive a transport blip', () => {
 			states: [state({ configured: false, state: 'needs-credential', tools: [] })],
 		});
 		expect(defs).toEqual([]);
+	});
+});
+
+describe('a redundant skill re-activation must not disturb the prefix', () => {
+	const skill = (body: string) => `<skill_content name="research">\n${body}\n</skill_content>`;
+	const BODY = 'B'.repeat(60_000); // a real skill body runs to 64 KiB
+
+	/** The payload as of the turn where the skill was first activated. */
+	const turnN = [
+		{ role: 'user' as const, content: 'research this' },
+		{
+			role: 'assistant' as const,
+			content: null,
+			tool_calls: [
+				{
+					id: 'c1',
+					type: 'function' as const,
+					function: { name: 'activate_skill', arguments: '{}' },
+				},
+			],
+		},
+		{ role: 'tool' as const, content: skill(BODY), tool_call_id: 'c1' },
+		{ role: 'assistant' as const, content: 'done' },
+	];
+
+	/** …and many turns later the model activates it again. */
+	const turnLater = [
+		...turnN,
+		{ role: 'user' as const, content: 'now research that' },
+		{
+			role: 'assistant' as const,
+			content: null,
+			tool_calls: [
+				{
+					id: 'c2',
+					type: 'function' as const,
+					function: { name: 'activate_skill', arguments: '{}' },
+				},
+			],
+		},
+		{ role: 'tool' as const, content: skill(BODY), tool_call_id: 'c2' },
+	];
+
+	it('leaves every token of the earlier turns byte-identical', () => {
+		// THE property. Keep-last would rewrite the 64 KiB body at index 2 down to a
+		// stub — a change in the MIDDLE of the prompt, which diverges the upstream's
+		// KV prefix there and re-prefills everything after it. Keep-first touches
+		// nothing before the new turn.
+		const before = collapseSupersededSkillActivations(turnN);
+		const after = collapseSupersededSkillActivations(turnLater);
+
+		expect(after.slice(0, turnN.length)).toEqual(before);
+	});
+
+	it('carries the body exactly once, so the reload is not paid for twice', () => {
+		const after = collapseSupersededSkillActivations(turnLater);
+		const full = after.filter((m) => typeof m.content === 'string' && m.content.includes(BODY));
+		expect(full).toHaveLength(1);
+	});
+
+	it('points the model back at the copy it already has', () => {
+		const after = collapseSupersededSkillActivations(turnLater);
+		const stub = after[after.length - 1].content as string;
+		expect(stub).toContain('duplicate="true"');
+		expect(stub).toMatch(/earlier in this conversation/i);
+		expect(stub.length).toBeLessThan(300); // a stub, not a body
 	});
 });
