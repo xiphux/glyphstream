@@ -93,7 +93,7 @@ function withEnv(rest: string, ctx: { environmentBlock: string }): string {
 }
 
 describe('buildChatToolContext — supportsTools gating', () => {
-	it('advertises no tools and passes the prompt through when tools are unsupported', async () => {
+	it('advertises no tools and injects no catalog/hint when tools are unsupported', async () => {
 		const ctx = await buildChatToolContext({ ...baseInput, supportsTools: false });
 		expect(ctx.toolDefs).toEqual([]);
 		// The skills catalog and tool-search hint are gated off; the environment

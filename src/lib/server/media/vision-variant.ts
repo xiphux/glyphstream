@@ -29,6 +29,7 @@ import sharp from 'sharp';
 import { Buffer } from 'node:buffer';
 import { existsSync, mkdirSync } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
@@ -69,9 +70,24 @@ export async function cachedVisionVariantSize(storagePath: string): Promise<numb
  * icon) the re-encode came out no smaller than what we started with. Callers must
  * treat null as "use the original", never as an error.
  */
+/**
+ * Storage paths whose re-encode came out no smaller than the original, so the
+ * variant was declined. WITHOUT this, every such image is fully decoded and
+ * mozjpeg-encoded again on EVERY turn, forever — paying the most expensive part
+ * of the pipeline to reach the same "no thanks" each time. There's no cached
+ * artifact to short-circuit on, precisely because we decided not to write one.
+ *
+ * In-memory rather than an on-disk marker: it costs one wasted re-encode per
+ * image per process restart, and it adds no new file to reap in `disk-store.delete`.
+ * Bounded so a long-lived server with a big gallery can't grow it without limit.
+ */
+const declined = new Set<string>();
+const DECLINED_MAX = 4096;
+
 export async function getVisionVariant(storagePath: string): Promise<VisionVariant | null> {
 	const { maxImageDim, imageQuality } = getVisionConfig();
 	if (maxImageDim <= 0) return null; // explicitly disabled
+	if (declined.has(storagePath)) return null;
 
 	const root = resolve(mediaDir());
 	const sourceAbs = resolve(root, storagePath);
@@ -103,15 +119,26 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 
 		// Re-encoding a small, already-efficient image can come out BIGGER (a 200px
 		// JPEG icon round-tripped through sharp, say). Inlining that would make the
-		// payload worse while also losing quality, so keep the original instead.
-		if (encoded.byteLength >= original.byteLength) return null;
+		// payload worse while also losing quality, so keep the original instead —
+		// and remember, so we don't pay the decode again next turn.
+		if (encoded.byteLength >= original.byteLength) {
+			if (declined.size >= DECLINED_MAX) declined.clear();
+			declined.add(storagePath);
+			return null;
+		}
 
 		// Cache only what we'll actually use, and write the buffer verbatim — running
 		// it back through sharp would re-encode an already-lossy JPEG a second time.
 		// Atomic rename (as in disk-store) so a torn write can't poison the cache:
 		// a half-written variant would be served as a corrupt image on every
 		// subsequent turn.
-		const tmp = `${variantAbs}.${process.pid}.tmp`;
+		//
+		// The temp name must be unique PER CALL, not per process: a multi-model
+		// fan-out sends the same fresh image from several concurrent requests, and a
+		// pid-keyed path would have them writing one file underneath each other. With
+		// distinct temps the renames are independent and whichever lands last wins —
+		// both hold identical, complete bytes.
+		const tmp = `${variantAbs}.${randomUUID()}.tmp`;
 		await writeFile(tmp, encoded);
 		await rename(tmp, variantAbs);
 		return { bytes: encoded, contentType: 'image/jpeg' };

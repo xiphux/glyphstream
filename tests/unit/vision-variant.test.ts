@@ -7,7 +7,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import {
+	mkdtempSync,
+	mkdirSync,
+	writeFileSync,
+	rmSync,
+	existsSync,
+	readFileSync,
+	readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -144,6 +152,50 @@ describe('getVisionVariant', () => {
 		expect(await getVisionVariant('ab/cd/tiny.jpg')).toBeNull();
 		// And it must not have cached a variant it decided against using.
 		expect(existsSync(resolve(mocks.mediaDir, visionStoragePath('ab/cd/tiny.jpg')))).toBe(false);
+	});
+
+	it('remembers a declined image instead of re-encoding it every turn', async () => {
+		// There's no cached artifact to short-circuit on — precisely because we chose
+		// not to write one. Without a negative cache, a declined image pays a full
+		// decode + mozjpeg encode on EVERY turn of the conversation, forever, to
+		// arrive at the same "no thanks".
+		const tiny = await sharp({
+			create: { width: 8, height: 8, channels: 3, background: '#336699' },
+		})
+			.jpeg({ quality: 82 })
+			.toBuffer();
+		write('ab/cd/tiny2.jpg', tiny);
+
+		expect(await getVisionVariant('ab/cd/tiny2.jpg')).toBeNull();
+
+		// If it re-ran the pipeline it would have to read the source again. Make that
+		// impossible: delete the file. A second call must still answer (null) from
+		// memory rather than touching the disk.
+		rmSync(resolve(mocks.mediaDir, 'ab/cd/tiny2.jpg'));
+		expect(await getVisionVariant('ab/cd/tiny2.jpg')).toBeNull();
+	});
+
+	it('uses a per-call temp file, so concurrent sends of one image cannot collide', async () => {
+		// A multi-model fan-out sends the same fresh image from several concurrent
+		// requests. A pid-keyed temp path had them all writing one file underneath
+		// each other; with distinct temps the renames are independent and every
+		// caller gets complete, identical bytes.
+		write('ab/cd/race.png', await photoPng(2400, 1600));
+
+		const results = await Promise.all(
+			Array.from({ length: 6 }, () => getVisionVariant('ab/cd/race.png')),
+		);
+
+		expect(results.every((r) => r !== null)).toBe(true);
+		const first = results[0]!.bytes;
+		for (const r of results) expect(r!.bytes.equals(first)).toBe(true);
+		// The cached file is whole and decodable — not a torn write.
+		const cached = readFileSync(resolve(mocks.mediaDir, visionStoragePath('ab/cd/race.png')));
+		await expect(sharp(cached).metadata()).resolves.toMatchObject({ format: 'jpeg' });
+		// And no temp files left behind.
+		expect(readdirSync(resolve(mocks.mediaDir, 'ab/cd')).filter((f) => f.endsWith('.tmp'))).toEqual(
+			[],
+		);
 	});
 
 	it('flattens transparency onto white rather than black', async () => {

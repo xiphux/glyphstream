@@ -603,11 +603,21 @@ describe('capToolResults', () => {
 	it('caps an oversized result and says how much was dropped', () => {
 		const huge = 'x'.repeat(50_000);
 		const out = capToolResults(exchange('fetch_url', 'c1', huge), CAP);
+		const capped = out[1].content as string;
 
-		expect(out[1].content!.length).toBeLessThanOrEqual(CAP);
-		expect(out[1].content).toContain('characters truncated');
-		// The count names what the model is missing, not what it was given.
-		expect(out[1].content).toContain((50_000 - CAP).toLocaleString('en-US'));
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		expect(capped).toContain('characters truncated');
+
+		// The count names what the model is MISSING, and it must be honest: the note
+		// occupies budget too, so the true figure is a little larger than
+		// (length - cap). The old implementation quoted (length - cap) flat and so
+		// understated the loss by exactly the note's own length.
+		const reported = Number(/([\d,]+) characters truncated/.exec(capped)![1].replaceAll(',', ''));
+		expect(reported).toBeGreaterThanOrEqual(50_000 - CAP);
+
+		// Every 'x' either survived or was counted as dropped — nothing unaccounted for.
+		const survivingXs = capped.length - capped.replace(/x/g, '').length;
+		expect(survivingXs + reported).toBe(50_000);
 	});
 
 	it('keeps the head AND the tail — errors and totals live at the end', () => {
@@ -668,6 +678,90 @@ describe('capToolResults', () => {
 		const huge = 'x'.repeat(50_000);
 		const messages = exchange('fetch_url', 'c1', huge);
 		expect(capToolResults(messages, 0)).toBe(messages);
+	});
+});
+
+describe('truncateToolResult — JSON results stay parseable', () => {
+	/**
+	 * EVERY built-in tool sets its result to `JSON.stringify(...)` — fetch_url,
+	 * web_search, run_python, recall_memory, search_conversations — and that string
+	 * goes on the wire verbatim. A blind character slice cuts through `\uXXXX`
+	 * escapes and half-way through records, and the result stops being JSON.
+	 *
+	 * It's reachable in ordinary use, not adversarially: fetch_url's own content
+	 * budget (MAX_CONTENT_CHARS = 20_000) is LARGER than the 16 KiB cap, so a
+	 * normal page read trips it.
+	 */
+	const CAP = 16_384;
+
+	it('keeps a fetch_url envelope valid JSON', () => {
+		const page = 'Text with "quotes" and\nnewlines and — em dashes. '.repeat(500);
+		const result = JSON.stringify({
+			url: 'https://x.test/a',
+			status: 200,
+			content_type: 'text/html',
+			content: page,
+			mode: 'full',
+		});
+		expect(result.length).toBeGreaterThan(CAP);
+
+		const capped = truncateToolResult(result, CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+
+		const parsed = JSON.parse(capped); // would have thrown before
+		// The envelope survives — the model can still see what it fetched and that
+		// the call succeeded. Only the bulky leaf shrank.
+		expect(parsed.url).toBe('https://x.test/a');
+		expect(parsed.status).toBe(200);
+		expect(parsed.mode).toBe('full');
+		expect(parsed.content).toContain('chars truncated');
+		expect(parsed.content.length).toBeLessThan(page.length);
+	});
+
+	it('does not leave half-cut records in a list-shaped result', () => {
+		// The failure that actually bites: a model reading a partially-truncated
+		// memory id out of a recall_memory list and then passing it to forget_memory.
+		const matches = Array.from({ length: 60 }, (_, i) => ({
+			id: `mem-${String(i).padStart(4, '0')}-abcdef`,
+			topic: `Topic ${i}`,
+			content: `A saved memory about subject number ${i}. `.repeat(20),
+		}));
+		const result = JSON.stringify({ matches });
+		expect(result.length).toBeGreaterThan(CAP);
+
+		const parsed = JSON.parse(truncateToolResult(result, CAP));
+		// Every record is still a whole record with an intact id.
+		expect(parsed.matches).toHaveLength(60);
+		for (const [i, m] of parsed.matches.entries()) {
+			expect(m.id).toBe(`mem-${String(i).padStart(4, '0')}-abcdef`);
+			expect(m.topic).toBe(`Topic ${i}`);
+		}
+	});
+
+	it('never splits a unicode escape or a surrogate pair', () => {
+		// A lone surrogate half is not valid text and renders as mojibake.
+		const body = '😀 café — naïve ✓ '.repeat(2000);
+		const result = JSON.stringify({ content: body });
+		const capped = truncateToolResult(result, CAP);
+
+		const parsed = JSON.parse(capped);
+		expect(parsed.content).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/); // lone high
+		expect(parsed.content).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/); // lone low
+	});
+
+	it('is idempotent and deterministic on JSON', () => {
+		// Recomputed every request, so it must be a fixed point — and byte-identical
+		// each turn, or the prefix cache dies.
+		const result = JSON.stringify({ content: 'z'.repeat(40_000) });
+		const once = truncateToolResult(result, CAP);
+		expect(truncateToolResult(once, CAP)).toBe(once);
+		expect(truncateToolResult(result, CAP)).toBe(once);
+	});
+
+	it('falls back to a text elision for a non-JSON result', () => {
+		const capped = truncateToolResult('q'.repeat(50_000), CAP);
+		expect(capped.length).toBeLessThanOrEqual(CAP);
+		expect(capped).toContain('characters truncated');
 	});
 });
 

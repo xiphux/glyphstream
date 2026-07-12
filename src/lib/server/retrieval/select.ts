@@ -171,13 +171,6 @@ async function applyRerank(
 }
 
 /**
- * Greedily take chunks in rank order while they fit the budget (the cost
- * estimate uses chunk.text, an upper bound — breadcrumb-dedupe at render only
- * shrinks it). Keeps scanning past an over-large chunk so smaller relevant
- * chunks still fill the budget. Guarantees at least one chunk: if even the
- * top-ranked chunk exceeds the budget, it's sliced rather than dropped.
- */
-/**
  * Restore totality to a fused ranking: `packToBudget` walks `ranking` and can
  * only ever select a chunk that appears in it, so every chunk must be present.
  *
@@ -197,6 +190,13 @@ function completeRanking(fused: ScoredChunk[], chunkCount: number): ScoredChunk[
 	return out;
 }
 
+/**
+ * Greedily take chunks in rank order while they fit the budget (the cost
+ * estimate uses chunk.text, an upper bound — breadcrumb-dedupe at render only
+ * shrinks it). Keeps scanning past an over-large chunk so smaller relevant
+ * chunks still fill the budget. Guarantees at least one chunk: if even the
+ * top-ranked chunk exceeds the budget, it's sliced rather than dropped.
+ */
 function packToBudget(chunks: Chunk[], ranking: ScoredChunk[], budgetChars: number): Chunk[] {
 	const selected: Chunk[] = [];
 	let used = 0;

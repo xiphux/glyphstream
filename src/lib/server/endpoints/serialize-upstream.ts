@@ -287,6 +287,144 @@ export function collapseSupersededSkillActivations(
  */
 const UNCAPPED_TOOLS: ReadonlySet<string> = new Set(['activate_skill', 'read_skill_file']);
 
+/** The elision note for a whole (non-JSON) result. Roomy: it's spliced in once. */
+function truncationNote(omitted: number): string {
+	return `\n\n[... ${omitted.toLocaleString('en-US')} characters truncated. The full result is preserved in the conversation and visible to the user, but is too large to resend on every turn. Re-run the tool with a narrower query if you need the omitted part. ...]\n\n`;
+}
+
+/**
+ * The elision note for one string leaf INSIDE a JSON result. Deliberately terse:
+ * a list-shaped payload (60 `recall_memory` matches, say) has a note per leaf, and
+ * at the long note's ~230 chars the notes alone would blow the entire cap — which
+ * would send the whole thing down the character-slicing fallback and corrupt the
+ * JSON we came here to protect.
+ */
+function leafNote(omitted: number): string {
+	return `\n[... ${omitted.toLocaleString('en-US')} chars truncated ...]\n`;
+}
+
+/** Below this, a string leaf is treated as an identifier/label rather than bulk,
+ *  and is never elided. See the filter in `truncateJsonResult` for why. */
+const ELIDABLE_LEAF_MIN_CHARS = 120;
+
+/** Slice without splitting a surrogate pair — a lone half is not valid text and
+ *  renders as mojibake at the seam. */
+function safeSlice(s: string, start: number, end: number): string {
+	let a = start;
+	let b = end;
+	// A low surrogate at the start (or a high surrogate just before the end) means
+	// the cut landed inside an astral character; step off it.
+	if (a > 0 && a < s.length && s.charCodeAt(a) >= 0xdc00 && s.charCodeAt(a) <= 0xdfff) a += 1;
+	if (b > 0 && b < s.length && s.charCodeAt(b - 1) >= 0xd800 && s.charCodeAt(b - 1) <= 0xdbff) {
+		b -= 1;
+	}
+	return s.slice(a, Math.max(a, b));
+}
+
+/** Head + note + tail, keeping `keep` characters of `s` in total. */
+function elide(s: string, keep: number, note: (omitted: number) => string): string {
+	if (keep >= s.length) return s;
+	const head = Math.ceil(keep * 0.7);
+	const tail = keep - head;
+	return (
+		safeSlice(s, 0, head) +
+		note(s.length - keep) +
+		(tail > 0 ? safeSlice(s, s.length - tail, s.length) : '')
+	);
+}
+
+/** Every string leaf of a parsed JSON value, with a setter, in a stable walk
+ *  order (so truncation stays deterministic). */
+interface StringLeaf {
+	get: () => string;
+	set: (v: string) => void;
+}
+function collectStringLeaves(node: unknown, out: StringLeaf[]): void {
+	if (Array.isArray(node)) {
+		node.forEach((v, i) => {
+			if (typeof v === 'string')
+				out.push({ get: () => node[i] as string, set: (x) => (node[i] = x) });
+			else collectStringLeaves(v, out);
+		});
+		return;
+	}
+	if (node !== null && typeof node === 'object') {
+		const obj = node as Record<string, unknown>;
+		for (const k of Object.keys(obj)) {
+			const v = obj[k];
+			if (typeof v === 'string')
+				out.push({ get: () => obj[k] as string, set: (x) => (obj[k] = x) });
+			else collectStringLeaves(v, out);
+		}
+	}
+}
+
+/**
+ * Truncate a JSON tool result *structurally* — shrink its biggest string leaves
+ * until the whole re-serializes under the cap. Returns null when the value isn't
+ * JSON, or when even emptying every string can't get it under (a payload whose
+ * bulk is structure, not text).
+ *
+ * This is why the cap can't just slice characters: EVERY built-in tool emits
+ * `JSON.stringify(...)` (fetch_url, web_search, run_python, recall_memory,
+ * search_conversations), and a blind cut lands mid-escape or mid-record. Shrinking
+ * a leaf and re-stringifying keeps the envelope intact and lets `JSON.stringify`
+ * regenerate the escaping, so the result is still parseable JSON.
+ */
+function truncateJsonResult(result: string, maxChars: number): string | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(result);
+	} catch {
+		return null; // not JSON — caller falls back to text
+	}
+
+	// A bare JSON string (rare, but some tools do it) has exactly one leaf.
+	if (typeof parsed === 'string') {
+		const out = JSON.stringify(elide(parsed, Math.max(0, maxChars - 64), truncationNote));
+		return out.length <= maxChars ? out : null;
+	}
+	if (parsed === null || typeof parsed !== 'object') return null;
+
+	const all: StringLeaf[] = [];
+	collectStringLeaves(parsed, all);
+	// Only BULKY leaves are elidable. Short ones are identifiers and metadata — an
+	// `id`, a `topic`, a `url`, a status string — and cutting them is pure damage:
+	// a model that reads a half-truncated memory id and then passes it to
+	// forget_memory is exactly the misfire this whole change exists to prevent.
+	// (Below the floor there's nothing to win anyway: the note costs ~30 chars.)
+	const leaves = all.filter((l) => l.get().length > ELIDABLE_LEAF_MIN_CHARS);
+	if (leaves.length === 0) return null;
+
+	// Elide from the TAIL of the walk backwards. A ranked list (web_search hits,
+	// recall_memory matches) puts its best results first, so the tail is what should
+	// go. For the far more common single-fat-field shape (fetch_url's `content`,
+	// run_python's `stdout`) there's only one elidable leaf and the order is moot.
+	for (let i = leaves.length - 1; i >= 0; i--) {
+		if (JSON.stringify(parsed).length <= maxChars) break;
+		const leaf = leaves[i];
+		const original = leaf.get();
+		// Largest `keep` for this leaf that gets the whole payload under the cap.
+		let lo = 0;
+		let hi = original.length;
+		let best = 0;
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			leaf.set(elide(original, mid, leafNote));
+			if (JSON.stringify(parsed).length <= maxChars) {
+				best = mid;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		leaf.set(elide(original, best, leafNote));
+	}
+
+	const out = JSON.stringify(parsed);
+	return out.length <= maxChars ? out : null;
+}
+
 /**
  * Bound a single tool result's contribution to the payload.
  *
@@ -297,10 +435,17 @@ const UNCAPPED_TOOLS: ReadonlySet<string> = new Set(['activate_skill', 'read_ski
  * result stays in the database and stays visible in the UI; only the model's copy
  * is trimmed.
  *
- * Keeps the HEAD and the TAIL, eliding the middle: the head carries the shape of
- * the result (a JSON envelope, a page title, the first hits), and the tail is
- * where errors, totals, and closing structure live. Head-only truncation reliably
- * loses the punchline.
+ * JSON results — which is to say nearly all of them — are truncated STRUCTURALLY:
+ * parse, shrink the biggest string leaves, re-stringify. A blind character slice
+ * cuts through `\uXXXX` escapes and half-way through records, and the result stops
+ * being parseable JSON at all. Nothing in the loop parses it (the HTTP body is
+ * re-stringified downstream), so it wasn't a crash — but a model reading a
+ * half-truncated memory id out of a `recall_memory` list and then passing it to
+ * `forget_memory` is a very plausible misfire.
+ *
+ * Non-JSON falls back to a head+tail character elision (surrogate-safe): the head
+ * carries the shape of the result and the tail is where errors and totals live, so
+ * head-only truncation reliably loses the punchline.
  *
  * Deterministic on purpose — the same result yields the same bytes on every turn.
  * An age-based scheme (trim older results harder as the thread grows) would save
@@ -310,17 +455,15 @@ const UNCAPPED_TOOLS: ReadonlySet<string> = new Set(['activate_skill', 'read_ski
 export function truncateToolResult(result: string, maxChars: number): string {
 	if (maxChars <= 0 || result.length <= maxChars) return result;
 
-	const omitted = result.length - maxChars;
-	const marker = `\n\n[... ${omitted.toLocaleString('en-US')} characters truncated. The full result is preserved in the conversation and visible to the user, but is too large to resend on every turn. Re-run the tool with a narrower query if you need the omitted part. ...]\n\n`;
+	const structured = truncateJsonResult(result, maxChars);
+	if (structured !== null) return structured;
 
-	// Budget the marker out of the cap so the result never exceeds it. If the cap
-	// is so tight the marker alone won't fit, a bare head is the best we can do.
-	const budget = maxChars - marker.length;
-	if (budget <= 0) return result.slice(0, maxChars);
-
-	const headChars = Math.ceil(budget * 0.7);
-	const tailChars = budget - headChars;
-	return result.slice(0, headChars) + marker + result.slice(result.length - tailChars);
+	// Plain text (or a JSON payload whose bulk is structure rather than strings).
+	const note = truncationNote(result.length - maxChars);
+	const budget = maxChars - note.length;
+	// Cap so tight the note alone won't fit → a bare head is the best we can do.
+	if (budget <= 0) return safeSlice(result, 0, maxChars);
+	return elide(result, budget, truncationNote);
 }
 
 /**

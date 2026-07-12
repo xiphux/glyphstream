@@ -41,9 +41,11 @@ export interface ChatToolContextInput {
 	disabledFeatures: readonly FeatureCategory[];
 	/**
 	 * Whether the resolved model/endpoint supports tools (and isn't a fan-out
-	 * branch). When false, no tools are advertised and neither the skills catalog
-	 * nor the deferred-tool hint is injected — the system prompt passes through
-	 * unchanged and MCP discovery isn't awaited.
+	 * branch). When false, no tools are advertised, neither the skills catalog nor
+	 * the deferred-tool hint is injected, and MCP discovery isn't awaited. The
+	 * environment preamble (today's date) is NOT gated on this — a model that can't
+	 * call tools still needs to know what day it is, and in fact needs it more,
+	 * since it can't reach for get_current_time.
 	 */
 	supportsTools: boolean;
 	/**
