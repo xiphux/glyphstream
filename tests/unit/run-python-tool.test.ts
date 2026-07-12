@@ -93,9 +93,14 @@ describe('runPythonTool — metadata + availability', () => {
 		// would read config.toml at module-init time and break
 		// SvelteKit's analyse postbuild in environments where config.toml
 		// hasn't been mounted yet (docker build context, CI).
+		//
+		// Asserts that the LIMITS come from config, not that any particular
+		// sentence surrounds them: the prose is under a size budget (see
+		// tool-definition-budget.test.ts) and gets reworded, but a hardcoded
+		// timeout that silently disagrees with config.toml would mislead the model.
 		const desc = runPythonTool.definition.function.description;
-		expect(desc).toContain('30-second wall-clock');
-		expect(desc).toContain('512 MB of memory');
+		expect(desc).toContain(`${mocks.config.callTimeoutSeconds}s per call`);
+		expect(desc).toContain(`${mocks.config.workerMemoryMb} MB`);
 		expect(desc).toContain(`${Math.round(mocks.config.idleTimeoutSeconds / 60)} minutes`);
 	});
 

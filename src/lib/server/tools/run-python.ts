@@ -43,21 +43,29 @@ function getRunPythonDescription(): string {
 	return cachedDescription;
 }
 
+/**
+ * The registry's largest description by some margin, and it ships on every single
+ * request whenever the code interpreter is enabled — including in the many
+ * conversations that never run a line of Python. Every sentence here is rent, so
+ * it states only what the model cannot discover from a single error message:
+ * what's preinstalled, that state persists, where the files are, and that network
+ * may simply not be there. The failure modes (timeout, OOM) announce themselves.
+ */
 function buildToolDescription(): string {
 	const cfg = getCodeInterpreterConfig();
-	return `Execute Python code in this conversation's persistent sandboxed interpreter.
+	return `Execute Python in this conversation's persistent sandboxed interpreter (CPython 3 via Pyodide).
 
-Available: a CPython 3 environment via Pyodide with numpy, pandas, matplotlib, scipy, sympy, scikit-learn pre-installed (load on first use). The standard library is available except for subprocess / sockets / threading and any native C extension not shipped with Pyodide.
+Preinstalled: numpy, pandas, matplotlib, scipy, sympy, scikit-learn. Standard library minus subprocess/sockets/threading and any native C extension Pyodide doesn't ship. micropip installs more, but needs network.
 
-Persistence: variables, imports, and functions you define persist across calls within this conversation. Re-importing or re-defining isn't necessary unless the interpreter was restarted (which happens if a previous call timed out, ran out of memory, or has been idle for more than ${Math.round(cfg.idleTimeoutSeconds / 60)} minutes).
+State: variables, imports, and definitions persist across calls in this conversation. They're lost if the interpreter restarts — after a timed-out call, an out-of-memory call, or ${Math.round(cfg.idleTimeoutSeconds / 60)} minutes idle.
 
-Files: any files attached to messages in this conversation are mounted under /workspace/. Files you write under /workspace/ are persisted as attachments on the assistant message and visible to the user; files you write elsewhere live only for the duration of this interpreter session.
+Files: this conversation's attachments are mounted under /workspace/. Write there to hand a file back to the user (images and videos render inline, everything else as a download chip); files written elsewhere vanish with the session.
 
-Network: depending on conversation settings, network access may be unavailable. When available, all network calls (pyodide.http.pyfetch, urllib, requests, micropip) go through the same egress filtering as the web tools (no private/loopback/metadata addresses; no reaching configured backends). Do NOT assume network is available — handle errors gracefully. micropip.install also requires network and is subject to the same gate.
+Network: may be disabled by conversation settings, and is egress-filtered when on. Do NOT assume it works — handle the failure.
 
-Limits: each call has a ${cfg.callTimeoutSeconds}-second wall-clock budget and the interpreter has roughly ${cfg.workerMemoryMb} MB of memory. Long-running loops, large allocations, or unbounded recursion will cause the interpreter to be killed and restarted (with loss of in-memory state) — chunk heavy work and stream results.
+Limits: ${cfg.callTimeoutSeconds}s per call, ~${cfg.workerMemoryMb} MB memory. Exceeding either kills the interpreter and loses state, so chunk heavy work.
 
-Output: stdout, stderr, and the value of the last expression are returned to you. Print selectively — full repr of large arrays or dataframes can flood the response. Files saved under /workspace/ appear inline (for images / videos) or as download chips (for everything else) to the user.`;
+Output: stdout, stderr, and the last expression's value come back. Print selectively — a full repr of a large frame floods the response.`;
 }
 
 export const runPythonTool: Tool = {

@@ -52,7 +52,7 @@ export const fetchUrlTool: Tool = {
 		function: {
 			name: 'fetch_url',
 			description:
-				'Fetch a single web page or text resource by URL and return its readable contents. Use this after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content, mode} as JSON. When mode is "relevance" it also returns `sections` (the section headings actually returned) and `outline` (every section in the page) — if the answer wasn\'t in `content`, re-fetch the same URL with a different `find` aimed at a section from `outline`. Refuses non-http(s) URLs and private/loopback/metadata addresses.',
+				'Fetch a web page or text resource and return its readable contents. Use after web_search to read a result, or when the user gives you a link. Returns {url, status, content_type, content, mode} as JSON. When mode is "relevance" it also returns `sections` (the headings returned) and `outline` (every heading in the page) — if the answer wasn\'t in `content`, re-fetch with a different `find` aimed at a section from `outline`. Refuses non-http(s), private, loopback, and metadata addresses.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -63,7 +63,7 @@ export const fetchUrlTool: Tool = {
 					find: {
 						type: 'string',
 						description:
-							'Optional: what you want to learn from this page, in plain words. Only affects long pages — when the readable text exceeds the size budget, the most relevant sections are selected and returned instead of just the first part. Ignored on short pages (the whole page is returned). Use it when you have a SPECIFIC question about a long doc. Do NOT use it for whole-page summary or "what is the overall point" questions — selection returns disjoint sections, so for synthesis/overview omit `find` to get the page in document order.',
+							'Optional: what you want from this page, in plain words. Only affects pages too long to return whole, where it selects the most relevant sections instead of just the opening. Use it for a SPECIFIC question; omit it for a summary or overall-point question, since the sections it returns are disjoint and out of document order.',
 					},
 				},
 				required: ['url'],

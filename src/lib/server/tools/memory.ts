@@ -49,23 +49,31 @@ import type { Tool, ToolExecution } from './types';
 /** How many recalled memories to hand back to the model per query. */
 const RECALL_TOP_K = 8;
 
+/**
+ * Shared parameter copy. Every tool definition is re-sent on every turn, so the
+ * same sentence pasted into three tools is that sentence billed three times, for
+ * the life of every conversation. Naming them once is both cheaper and the only
+ * way they stay in sync.
+ */
+const CONTENT_PARAM_DESC = `Self-contained note — a sentence to a short paragraph, covering the fact and its useful nuance. Read in isolation, so it must not lean on surrounding context. Max ${MEMORY_MAX_CONTENT_CHARS} characters.`;
+
+const ID_PARAM_DESC =
+	'Memory id — the bracketed value shown beside the entry under "Saved memories".';
+
 export const saveMemoryTool: Tool = {
 	definition: {
 		type: 'function',
 		function: {
 			name: 'save_memory',
 			description:
-				'Save a durable fact about the user that should persist across conversations. Use sparingly. Capture the useful texture around a fact, not just the bare fact — a preference and the reasoning behind it, working or communication style, standing context, durable interests or opinions the user has stated as their own. Good: "Prefers metric units, and gets frustrated when technical docs use imperial — worth converting proactively in engineering contexts"; "Backend engineer at Acme; works mostly in Go and dislikes heavy frameworks". Bad: anything tied to a single conversation, anything re-derivable from earlier in this thread, temporary state ("is currently debugging X"), or things the user has not actually told you. Write each memory as a self-contained note — a sentence up to a short paragraph — that reads correctly in isolation, with no surrounding context, and keep it to a single coherent topic so it stays easy to update. Prefer updating an existing memory over saving a near-duplicate.',
+				'Save a durable fact about the user, to persist across conversations. Use sparingly. Capture the texture around a fact, not the bare fact alone — a preference and the reason for it, working or communication style, standing context, durable stated interests. Good: "Prefers metric units, and is frustrated by imperial in technical docs — convert proactively." Not: anything tied to this one conversation, anything re-derivable from this thread, temporary state, or anything the user has not actually told you. Keep each memory to one coherent topic so it stays easy to update, and prefer updating an existing memory over saving a near-duplicate.',
 			parameters: {
 				type: 'object',
 				properties: {
-					content: {
-						type: 'string',
-						description: `The memory text — a self-contained note, a sentence up to a short paragraph, capturing the fact and any useful nuance. It is read in isolation, so don't rely on surrounding context. At most ${MEMORY_MAX_CONTENT_CHARS} characters.`,
-					},
+					content: { type: 'string', description: CONTENT_PARAM_DESC },
 					topic: {
 						type: 'string',
-						description: `A short label naming what this memory is about — a few words, at most ${MEMORY_MAX_TOPIC_CHARS} characters (e.g. "Dietary preferences", "Employer", "Kids' names"). Shown as the index entry when the store is too large to inline in full.`,
+						description: `Short label naming the subject — a few words, max ${MEMORY_MAX_TOPIC_CHARS} characters (e.g. "Dietary preferences", "Employer"). Used as the index entry when the store is too large to inline in full.`,
 					},
 				},
 				required: ['content', 'topic'],
@@ -88,22 +96,15 @@ export const updateMemoryTool: Tool = {
 		function: {
 			name: 'update_memory',
 			description:
-				'Replace the content of an existing memory in place when a stored fact needs to be corrected or refined. Prefer this over forget+save for edits — the memory keeps its id and the index ordering stays stable.',
+				'Correct or refine an existing memory in place. Prefer this over forget+save for edits — the memory keeps its id and the index ordering stays stable.',
 			parameters: {
 				type: 'object',
 				properties: {
-					id: {
-						type: 'string',
-						description:
-							'The id of the memory to update — the bracketed value shown next to the entry in "Saved memories".',
-					},
-					content: {
-						type: 'string',
-						description: `The new memory text — a self-contained note, a sentence up to a short paragraph, capturing the fact and any useful nuance. It is read in isolation, so don't rely on surrounding context. At most ${MEMORY_MAX_CONTENT_CHARS} characters.`,
-					},
+					id: { type: 'string', description: ID_PARAM_DESC },
+					content: { type: 'string', description: CONTENT_PARAM_DESC },
 					topic: {
 						type: 'string',
-						description: `A short label naming what this memory is about — a few words, at most ${MEMORY_MAX_TOPIC_CHARS} characters. Re-supply it (adjusted if the edit changes the subject) so the index entry stays accurate.`,
+						description: `Short label naming the subject — a few words, max ${MEMORY_MAX_TOPIC_CHARS} characters. Re-supply it (adjusted if the edit changes the subject) so the index entry stays accurate.`,
 					},
 				},
 				required: ['id', 'content', 'topic'],
@@ -127,15 +128,11 @@ export const forgetMemoryTool: Tool = {
 		function: {
 			name: 'forget_memory',
 			description:
-				'Delete a saved memory by id. Use when the user explicitly retracts a fact, or when a memory has become wrong. The id is the bracketed value shown next to each entry in "Saved memories".',
+				'Delete a saved memory by id. Use when the user retracts a fact, or when a memory has become wrong.',
 			parameters: {
 				type: 'object',
 				properties: {
-					id: {
-						type: 'string',
-						description:
-							'The id of the memory to forget — the bracketed value shown next to the entry in "Saved memories".',
-					},
+					id: { type: 'string', description: ID_PARAM_DESC },
 				},
 				required: ['id'],
 				additionalProperties: false,
@@ -157,21 +154,24 @@ export const recallMemoryTool: Tool = {
 		type: 'function',
 		function: {
 			name: 'recall_memory',
+			// The system prompt's memory section already explains the inline/index
+			// split to the model, in the same breath as showing it the index. Saying
+			// it again here is the same explanation billed twice per turn.
 			description:
-				"Read the user's saved memories (durable facts about them, carried across conversations) that aren't fully shown in the system prompt. When the store is large, only the highest-scored memories are shown in full; the rest appear as a `[id] topic` index — pass the ids of relevant-looking indexed entries in `ids` to read their full text, or pass a `query` to search by meaning/keywords. Returns matching memories, each with its id (pass it to update_memory or forget_memory) and topic.",
+				"Read saved memories that the system prompt shows only as an index entry, rather than in full. Expand specific entries by passing their ids, or search by meaning/keywords with `query`. Returns each match's full text, id, and topic.",
 			parameters: {
 				type: 'object',
 				properties: {
 					query: {
 						type: 'string',
 						description:
-							"What to look for — a topic, question, or keywords describing the kind of saved fact you need. Use when you don't already know which entries you want.",
+							"Topic, question, or keywords describing the saved fact you need. Use when you don't already know which entries you want.",
 					},
 					ids: {
 						type: 'array',
 						items: { type: 'string' },
 						description:
-							'Specific memory ids to read in full — the bracketed values from the saved-memory index. Use this to expand entries whose topic looks relevant. Takes precedence over `query`.',
+							'Ids to expand in full, from the saved-memory index. Takes precedence over `query`.',
 					},
 				},
 				additionalProperties: false,
