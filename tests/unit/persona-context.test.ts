@@ -27,7 +27,7 @@ const PREFS: UserPreferences = {
 	favoriteModels: [],
 	modelSets: [],
 	trustedMcpTools: [],
-	autoCompactionEnabled: false,
+	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
 };

@@ -142,14 +142,25 @@ A `model_context_windows` override is static until you edit it. The running
 count itself is the upstream-reported `prompt_tokens + completion_tokens` of
 the latest response, so it reflects the real tokenizer, not an estimate.
 
-The known window also powers **context compaction**: each user picks, in
-Preferences ▸ Context compaction, whether GlyphStream should automatically
-summarize older history once a thread crosses a percentage of this window
-(default 80%). Without a known window, automatic compaction can't fire — but
-the manual "Compact" button (in the bar above the composer) still works. A
-compaction can be undone (from the success toast, or by expanding the summary
-divider) as long as no message has been sent after it. (This is a user
-preference, not a server config setting.)
+The known window also powers **context compaction**, which is **on by default**:
+once a thread crosses 80% of this window, the next send first summarizes the
+older history so the conversation can continue with reclaimed space. It's the
+only windowing GlyphStream does — with it off, the entire thread is re-sent on
+every turn and grows until the upstream rejects the request outright, which is a
+worse way to meet the limit than a summary you can undo.
+
+Both the threshold and the on/off switch live in Preferences ▸ Context
+compaction (a user preference, not a server config setting). Without a known
+window, automatic compaction can't fire — but the manual "Compact" button (in
+the bar above the composer) still works. A compaction can be undone (from the
+success toast, or by expanding the summary divider) as long as no message has
+been sent after it.
+
+Compaction only folds **history**. It cannot touch the system prompt, the tool
+definitions, or your saved memories, all of which are re-sent every turn — so on
+a thread whose bulk is overhead rather than history, compacting won't help much.
+The [context breakdown](#context-window-context_window) shows you which of the
+two you're looking at.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 

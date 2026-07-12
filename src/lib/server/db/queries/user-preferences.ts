@@ -30,7 +30,12 @@ const DEFAULTS: UserPreferences = {
 	favoriteModels: [],
 	modelSets: [],
 	trustedMcpTools: [],
-	autoCompactionEnabled: false,
+	// On by default. Without it there is NO windowing at all — the whole branch is
+	// re-sent every turn and grows monotonically until the upstream rejects the
+	// request outright, which is a worse first encounter with the limit than a
+	// summary the user can undo. Only fires when the model's context window is
+	// known and there is enough history to be worth folding.
+	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
 };

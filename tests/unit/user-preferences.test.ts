@@ -40,7 +40,7 @@ const EMPTY_PREFS = {
 	favoriteModels: [] as string[],
 	modelSets: [] as SavedModelSet[],
 	trustedMcpTools: [] as string[],
-	autoCompactionEnabled: false,
+	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
 };
@@ -495,9 +495,19 @@ describe('setUserPreferences', () => {
 });
 
 describe('autoCompaction preferences', () => {
-	it('defaults to disabled at 80%', () => {
-		expect(parseUserPreferences(null).autoCompactionEnabled).toBe(false);
+	it('defaults to enabled at 80%', () => {
+		// On by default: it's the only windowing there is. With it off, the whole
+		// branch is re-sent every turn and grows until the upstream rejects the
+		// request outright — a worse way to meet the context limit than a summary
+		// the user can undo.
+		expect(parseUserPreferences(null).autoCompactionEnabled).toBe(true);
 		expect(parseUserPreferences(null).autoCompactionThreshold).toBe(80);
+	});
+
+	it('honours an explicit opt-out', () => {
+		expect(
+			parseUserPreferences(JSON.stringify({ autoCompactionEnabled: false })).autoCompactionEnabled,
+		).toBe(false);
 	});
 
 	it('accepts a valid enabled flag + threshold', () => {
@@ -517,10 +527,10 @@ describe('autoCompaction preferences', () => {
 		expect(th('x')).toBe(80); // non-numeric → default
 	});
 
-	it('ignores a non-boolean enabled flag', () => {
+	it('ignores a non-boolean enabled flag, falling back to the default', () => {
 		expect(
 			parseUserPreferences(JSON.stringify({ autoCompactionEnabled: 'yes' })).autoCompactionEnabled,
-		).toBe(false);
+		).toBe(true);
 	});
 });
 

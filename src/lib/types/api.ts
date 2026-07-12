@@ -659,9 +659,13 @@ export interface UserPreferences {
 	 * Auto-compaction: when a turn pushes the conversation past
 	 * `autoCompactionThreshold` percent of the model's context window, the
 	 * NEXT send first summarizes the older history (just-in-time, through the
-	 * conversation's own model) so it continues with reclaimed space. Default
-	 * false — opt-in, and only effective when the model's window is known.
-	 * Manual "Compact" works regardless of this flag.
+	 * conversation's own model) so it continues with reclaimed space.
+	 *
+	 * Default TRUE. It's the only windowing there is — with it off, the whole
+	 * branch is re-sent every turn and grows until the upstream rejects the
+	 * request, which is a worse way to meet the context limit than a summary you
+	 * can undo. Only effective when the model's window is known; manual "Compact"
+	 * works regardless of this flag.
 	 */
 	autoCompactionEnabled: boolean;
 	/**
