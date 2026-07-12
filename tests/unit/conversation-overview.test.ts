@@ -9,6 +9,7 @@ vi.mock('$lib/server/memory/summarize-util', async (orig) => ({
 }));
 
 import { buildOverview } from '$lib/server/memory/conversation-overview';
+import { EmptyCompletionError } from '$lib/server/memory/summarize-util';
 import { DEFAULT_MEMORY_OVERVIEW_MAX_CHARS } from '$lib/server/endpoints/config';
 
 type Model = Parameters<typeof buildOverview>[0];
@@ -59,6 +60,22 @@ describe('buildOverview', () => {
 		const summaries = Array.from({ length: 8 }, (_, i) => `summary ${i} ` + 'x'.repeat(580));
 		await buildOverview(MODEL, null, summaries, 1000);
 		expect(callMock.mock.calls.length).toBeGreaterThan(1);
+	});
+
+	it('fails the rebuild when a fold batch comes back empty, rather than cold-starting the map', async () => {
+		// The fold assigns each call's result to `map`, so an empty one used to reset it:
+		// the next batch would restart from "(none yet)" and the final map would silently
+		// omit every topic from the earlier batches. That map is truthy, so it sailed past
+		// the worker's empty-check and got stored — lossy, with the watermark stamped
+		// behind it. An empty completion now throws (callMemoryModel), and the fold must
+		// let it through so the worker skips the user and retries next sweep.
+		const summaries = Array.from({ length: 8 }, (_, i) => `summary ${i} ` + 'x'.repeat(580));
+		callMock
+			.mockResolvedValueOnce('## Work\n- API deploys')
+			.mockRejectedValueOnce(new EmptyCompletionError('gpu::m returned an empty completion'))
+			.mockResolvedValue('## Personal\n- Japan trip');
+
+		await expect(buildOverview(MODEL, null, summaries, 1000)).rejects.toThrow(EmptyCompletionError);
 	});
 
 	it("caps the overview at the model's overview_max_chars", async () => {

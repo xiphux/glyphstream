@@ -83,8 +83,11 @@ function capSummary(s: string): string {
 }
 
 /**
- * Summarize a conversation branch into a capped gist. Returns '' if the model
- * yields nothing (the worker then skips the write and retries next sweep).
+ * Summarize a conversation branch into a capped gist. Always returns text: a model
+ * that yields nothing — on this call or on any map/reduce call behind it — raises
+ * `EmptyCompletionError`, so the pass fails as a unit rather than storing a gist
+ * that quietly omits part of the transcript. The worker's catch then skips the
+ * conversation with its watermark unadvanced, and the next sweep retries it.
  * `contextWindow` null → a conservative default; the budget is what a single
  * call may carry before we map-reduce.
  */

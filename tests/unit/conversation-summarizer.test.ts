@@ -16,7 +16,7 @@ import {
 	buildTranscript,
 	SUMMARY_MAX_CHARS,
 } from '$lib/server/memory/conversation-summarizer';
-import { memoryInputBudget } from '$lib/server/memory/summarize-util';
+import { EmptyCompletionError, memoryInputBudget } from '$lib/server/memory/summarize-util';
 import { UpstreamError } from '$lib/server/endpoints/client';
 import type { ChatMessage } from '$lib/types/api';
 
@@ -136,14 +136,39 @@ describe('summarizeConversation', () => {
 		expect(out).not.toContain('  '); // collapsed
 	});
 
-	it('returns empty string when the model yields nothing', async () => {
-		reply('   ');
-		const out = await summarizeConversation(
-			MODEL,
-			[mkMsg('user', 'a'), mkMsg('assistant', 'b')],
-			8000,
-		);
-		expect(out).toBe('');
+	it('throws rather than returning an empty summary when the model yields nothing', async () => {
+		// An empty completion is a 200, so it would otherwise pass for a result. It
+		// fails the pass instead, which is what leaves the watermark unadvanced so the
+		// sweep retries the conversation (see the worker test). The message carries the
+		// two numbers that say WHY it was empty — here, a model that spent its whole
+		// completion budget thinking and never reached an answer.
+		chatMock.mockResolvedValue({
+			choices: [
+				{
+					message: { content: '   ', reasoning_content: 'hmm'.repeat(10) },
+					finish_reason: 'length',
+				},
+			],
+		});
+		await expect(
+			summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000),
+		).rejects.toThrow(/finish_reason=length.*reasoning_chars=30/);
+	});
+
+	it('does not silently drop a chunk when one map call comes back empty', async () => {
+		// The map/reduce loop folds each call's result into a list, so an empty one used
+		// to contribute nothing and let the reduce produce a gist missing a slice of the
+		// transcript — a lossy summary indistinguishable from a whole one, stored with
+		// the watermark stamped behind it.
+		const long = 'x'.repeat(40_000);
+		chatMock
+			.mockResolvedValueOnce({ choices: [{ message: { content: 'part one' } }] })
+			.mockResolvedValueOnce({ choices: [{ message: { content: '' } }] })
+			.mockResolvedValue({ choices: [{ message: { content: 'the gist' } }] });
+
+		await expect(
+			summarizeConversation(MODEL, [mkMsg('user', long), mkMsg('assistant', long)], 8000),
+		).rejects.toThrow(EmptyCompletionError);
 	});
 
 	it('takes and releases an endpoint slot per model call', async () => {

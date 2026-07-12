@@ -144,12 +144,29 @@ export async function withOverflowRetry<T>(
 }
 
 /**
+ * A memory-model call that produced no text. An empty completion arrives as a 200,
+ * so nothing downstream would otherwise notice — and half the call sites here are
+ * loops that fold each result into the next (the overview's batch fold, the
+ * summarizer's map/reduce). A silently-empty step there doesn't fail the pass, it
+ * quietly drops a batch and lets a LOSSY map or gist be stored as if it were whole,
+ * with the watermark stamped behind it. Raising it as an error is what makes the
+ * pass fail as a unit: both workers catch per item, skip it, and leave the watermark
+ * unadvanced, so the next sweep retries.
+ */
+export class EmptyCompletionError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'EmptyCompletionError';
+	}
+}
+
+/**
  * One memory-model call. Queues on the shared per-endpoint slot (released even on
  * error): a background pass makes several calls, so slotting PER CALL lets a
  * waiting live chat slip between them — a fair peer, never a preempting or
- * endpoint-hogging one. Returns the trimmed completion text, or '' if the model
- * produced none — which every caller must treat as a FAILED pass, never as a
- * result worth storing (see `summarizeOne` / `rebuildOverview`).
+ * endpoint-hogging one. Returns the trimmed completion text; an empty one throws
+ * {@link EmptyCompletionError} rather than returning '', so no caller can fold
+ * nothing into a partial result.
  */
 export async function callMemoryModel(
 	model: ResolvedMemoryModel,
@@ -176,7 +193,7 @@ export async function callMemoryModel(
 		);
 		const choice = resp.choices?.[0];
 		const content = (choice?.message?.content ?? '').trim();
-		if (!content) warnEmptyCompletion(model, choice);
+		if (!content) throw new EmptyCompletionError(describeEmptyCompletion(model, choice));
 		return content;
 	} finally {
 		slot.release();
@@ -184,25 +201,25 @@ export async function callMemoryModel(
 }
 
 /**
- * An empty completion is a 200 — no error is thrown and nothing else in the pass
- * notices — so say so out loud, with the three numbers that distinguish the causes
- * that need different fixes: a reasoning model that burned its whole `max_tokens`
- * budget thinking and never reached an answer (finish_reason=length, non-zero
- * reasoning), a refusal/stop with no output (finish_reason=stop, no tokens), and
- * an upstream that returned a malformed choice. Do NOT fall back to the reasoning
- * text: it's the model's scratchpad, not its answer, and storing it as a user's
- * summary or topic map would be worse than storing nothing.
+ * Why the completion was empty, in the terms that separate the causes needing
+ * different fixes: a reasoning model that burned its whole `max_tokens` budget
+ * thinking and never reached an answer (finish_reason=length, non-zero reasoning →
+ * raise `max_tokens`), a stop with no output at all, and a malformed choice. The
+ * worker logs this when it skips the item, so it lands next to the id it cost.
+ *
+ * Deliberately no fallback to the reasoning text: it's the model's scratchpad, not
+ * its answer, and storing it as a user's gist or topic map would be worse than
+ * storing nothing.
  */
-function warnEmptyCompletion(
+function describeEmptyCompletion(
 	model: ResolvedMemoryModel,
 	choice: NonNullable<ChatCompletionResponse['choices']>[number] | undefined,
-): void {
+): string {
 	const msg = choice?.message;
 	const reasoning = (msg?.reasoning_content ?? msg?.reasoning ?? '').length;
-	console.warn(
-		`[memory] ${model.endpoint.id}::${model.upstreamId} returned an empty completion ` +
-			`(finish_reason=${choice?.finish_reason ?? 'none'}, reasoning_chars=${reasoning}); ` +
-			`the pass that made this call will be retried, not stored`,
+	return (
+		`${model.endpoint.id}::${model.upstreamId} returned an empty completion ` +
+		`(finish_reason=${choice?.finish_reason ?? 'none'}, reasoning_chars=${reasoning})`
 	);
 }
 

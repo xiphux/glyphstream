@@ -128,13 +128,18 @@ export async function runSummarySweep(
  * query found with ≥1 summary; the "all summarized conversations deleted" case is
  * handled at delete time (`reconcileOverviewAfterConversationDelete`), not here.
  *
- * A model that yields nothing leaves BOTH the stored map and the watermark alone —
- * same contract as `summarizeOne`, and load-bearing here in a way it isn't there.
- * The rebuild is destructive by design (rebuild-from-all, so deletions propagate),
- * so writing an empty completion would erase a good map; and because the write also
- * stamps the watermark, `listUsersNeedingOverview` would then consider the user
- * settled and never rebuild it. One bad response would cost the map until some
- * unrelated conversation happened to be summarized.
+ * A model that yields nothing never reaches the write: `callMemoryModel` raises
+ * `EmptyCompletionError`, the sweep's catch below skips this user, and the watermark
+ * stays where it was, so the next sweep retries. That matters more here than in
+ * `summarizeOne`: the rebuild is destructive by design (rebuild-from-all, so
+ * deletions propagate), so storing an empty completion would ERASE a good map — and
+ * since the write also stamps the watermark, `listUsersNeedingOverview` would then
+ * read the user as settled and never rebuild it. One bad response would cost the map
+ * until some unrelated conversation happened to be summarized.
+ *
+ * The remaining `!overview` case is the genuinely-empty one (no summaries and no
+ * previous map): nothing to store, and stamping would only settle a user who has
+ * nothing to settle.
  */
 async function rebuildOverview(
 	model: ResolvedMemoryModel,
@@ -149,12 +154,7 @@ async function rebuildOverview(
 		summaries,
 		contextWindow,
 	);
-	if (!overview) {
-		console.warn(
-			`[conversation-summary] overview for user ${userId} came back empty; keeping the stored map, retrying next sweep`,
-		);
-		return false;
-	}
+	if (!overview) return false;
 	setConversationOverview(userId, overview, now);
 	return true;
 }
@@ -162,9 +162,10 @@ async function rebuildOverview(
 /**
  * Summarize one conversation and stamp its watermark. Returns true if a summary
  * was written. A conversation with no summarizable text (image-only) stamps a
- * null summary so it isn't reconsidered every sweep. A model that yields nothing
- * leaves the watermark unadvanced (retry next sweep) rather than storing an empty
- * gist.
+ * null summary so it isn't reconsidered every sweep — that's a settled fact about
+ * the conversation, not a failure. A model that yields nothing IS a failure:
+ * `callMemoryModel` raises `EmptyCompletionError`, so the watermark is left
+ * unadvanced and the next sweep retries rather than storing an empty gist.
  */
 async function summarizeOne(
 	model: ResolvedMemoryModel,
@@ -179,7 +180,6 @@ async function summarizeOne(
 		return false;
 	}
 	const summary = await summarizeConversation(model, messages, contextWindow);
-	if (!summary) return false; // model returned nothing → don't stamp; retry next sweep
 	setConversationSummary(conversationId, summary, now);
 	return true;
 }
