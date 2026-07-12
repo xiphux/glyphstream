@@ -185,6 +185,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		baseSystemPrompt,
 		branch: walkActiveBranch(params.id, { columns: 'serialization' }),
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
+		timeZone: prefs?.timezone ?? null,
 	});
 	const effectiveSystemPrompt = toolCtx.systemPrompt;
 	const toolDefs = toolCtx.toolDefs;

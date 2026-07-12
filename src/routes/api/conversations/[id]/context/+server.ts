@@ -75,6 +75,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		baseSystemPrompt,
 		branch,
 		trustedMcpTools: prefs?.trustedMcpTools ?? [],
+		timeZone: prefs?.timezone ?? null,
 	});
 
 	// Dedupe exactly as the send path does at assignment, or a tool that appears
@@ -106,6 +107,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		branch,
 		personaParts,
 		customSystemPrompt,
+		environmentBlock: toolCtx.environmentBlock,
 		skillsCatalog: toolCtx.skillsCatalog,
 		toolSearchHint: toolCtx.toolSearchHint,
 		toolDefs,

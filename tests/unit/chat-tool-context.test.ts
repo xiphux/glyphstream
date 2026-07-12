@@ -82,13 +82,23 @@ const baseInput = {
 	baseSystemPrompt: 'BASE',
 	branch: [] as ChatMessage[],
 	trustedMcpTools: [] as string[],
+	timeZone: 'America/Chicago',
 };
+
+/** The environment preamble leads every system prompt (see environment-context.ts)
+ *  and is unconditional, so the folding assertions below anchor to it rather than
+ *  duplicating its wording. It has its own suite. */
+function withEnv(rest: string, ctx: { environmentBlock: string }): string {
+	return `${ctx.environmentBlock}\n\n${rest}`;
+}
 
 describe('buildChatToolContext — supportsTools gating', () => {
 	it('advertises no tools and passes the prompt through when tools are unsupported', async () => {
 		const ctx = await buildChatToolContext({ ...baseInput, supportsTools: false });
 		expect(ctx.toolDefs).toEqual([]);
-		expect(ctx.systemPrompt).toBe('BASE');
+		// The skills catalog and tool-search hint are gated off; the environment
+		// preamble is not (a non-tool model still needs to know the date).
+		expect(ctx.systemPrompt).toBe(withEnv('BASE', ctx));
 		// No MCP work at all when tools are off.
 		expect(mocks.awaitMcpReady).not.toHaveBeenCalled();
 		expect(mocks.getUserServerStates).not.toHaveBeenCalled();
@@ -163,12 +173,31 @@ describe('buildChatToolContext — system prompt folding', () => {
 		mocks.buildSkillsRequestContext.mockReturnValue({ catalog: 'SKILLS', toolDefs: [] });
 		mocks.buildToolSearchRequestContext.mockResolvedValue({ def: null, hint: 'HINT' });
 		const ctx = await buildChatToolContext(baseInput);
-		expect(ctx.systemPrompt).toBe('BASE\n\nSKILLS\n\nHINT');
+		expect(ctx.systemPrompt).toBe(withEnv('BASE\n\nSKILLS\n\nHINT', ctx));
 	});
 
 	it('returns the base prompt unchanged when nothing is injected', async () => {
 		const ctx = await buildChatToolContext(baseInput);
-		expect(ctx.systemPrompt).toBe('BASE');
+		expect(ctx.systemPrompt).toBe(withEnv('BASE', ctx));
+	});
+
+	it('leads with the environment preamble, in the user’s timezone', async () => {
+		const ctx = await buildChatToolContext(baseInput);
+		expect(ctx.environmentBlock).toContain('America/Chicago');
+		expect(ctx.systemPrompt!.startsWith(ctx.environmentBlock)).toBe(true);
+	});
+
+	it('injects the date even with no base prompt and no tools', async () => {
+		// A conversation with no persona, no memories, and a non-tool model still
+		// needs to know what day it is — otherwise the model dates the world to its
+		// training cutoff and says so with total confidence.
+		const ctx = await buildChatToolContext({
+			...baseInput,
+			baseSystemPrompt: null,
+			supportsTools: false,
+		});
+		expect(ctx.systemPrompt).toBe(ctx.environmentBlock);
+		expect(ctx.systemPrompt).toContain('current date');
 	});
 });
 

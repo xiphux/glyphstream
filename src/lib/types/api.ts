@@ -670,6 +670,16 @@ export interface UserPreferences {
 	 * prompt is roughly the current full history) and for continued chat.
 	 */
 	autoCompactionThreshold: number;
+	/**
+	 * The user's IANA timezone (e.g. "America/Chicago"), detected from the browser
+	 * and re-synced whenever it changes — so the model reads dates and times in the
+	 * user's local terms rather than the server's, which for a self-hosted app on a
+	 * VPS (or a user who travels) is routinely a different day.
+	 *
+	 * Null until a browser has reported one; server paths fall back to the server's
+	 * own zone.
+	 */
+	timezone: string | null;
 }
 
 export interface ConversationSummary {
@@ -1196,6 +1206,7 @@ export interface Skill {
  * no matter how many times you compact it, and until now nothing said so.
  */
 export type ContextSegmentKey =
+	| 'system:environment'
 	| 'persona:name'
 	| 'persona:about'
 	| 'persona:instructions'

@@ -2,6 +2,7 @@
 	import { browser } from '$app/environment';
 	import { onMount, untrack } from 'svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
+	import { syncTimeZone } from '$lib/timezone-sync';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { goto, invalidate, invalidateAll } from '$app/navigation';
@@ -49,6 +50,11 @@
 	// unless the user has opted in and already granted permission.
 	onMount(() => {
 		void reconcileSubscription(data.prefs?.notificationsEnabled ?? false);
+		// The server can't know the user's timezone, and a self-hosted box is often
+		// in a different one (a VPS abroad, or the owner travelling). Without this
+		// the model is told the SERVER's date, which can be the wrong day. No-ops
+		// unless the browser's zone actually differs from what's stored.
+		void syncTimeZone(data.prefs);
 	});
 
 	// Pull the conversation list forward when the app resumes from the

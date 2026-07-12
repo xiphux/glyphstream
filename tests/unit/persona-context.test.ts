@@ -29,6 +29,7 @@ const PREFS: UserPreferences = {
 	trustedMcpTools: [],
 	autoCompactionEnabled: false,
 	autoCompactionThreshold: 80,
+	timezone: null,
 };
 
 beforeEach(() => {

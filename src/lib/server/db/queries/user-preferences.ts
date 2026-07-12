@@ -32,7 +32,26 @@ const DEFAULTS: UserPreferences = {
 	trustedMcpTools: [],
 	autoCompactionEnabled: false,
 	autoCompactionThreshold: 80,
+	timezone: null,
 };
+
+/**
+ * Accept only a real IANA zone. The value arrives from the browser and is
+ * interpolated into the system prompt and handed to `Intl.DateTimeFormat`, which
+ * THROWS on an unknown zone — so an unvalidated string here would be a
+ * client-triggerable 500 on every send. Asking Intl to resolve it is both the
+ * validation and the canonicalization.
+ */
+function coerceTimezone(input: unknown, fallback: string | null): string | null {
+	if (input === null) return null;
+	if (typeof input !== 'string' || input.length === 0) return fallback;
+	try {
+		new Intl.DateTimeFormat('en-US', { timeZone: input });
+		return input;
+	} catch {
+		return fallback;
+	}
+}
 
 /**
  * Coerce a candidate favoriteModels value to a clean string[]. Accepts only
@@ -163,6 +182,10 @@ function coerceUserPreferences(
 			input.autoCompactionThreshold <= 100
 				? Math.round(input.autoCompactionThreshold)
 				: fallback.autoCompactionThreshold,
+		timezone:
+			input.timezone === undefined
+				? fallback.timezone
+				: coerceTimezone(input.timezone, fallback.timezone),
 	};
 }
 

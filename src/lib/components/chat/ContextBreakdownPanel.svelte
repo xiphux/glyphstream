@@ -25,6 +25,7 @@
 	const tokenFmt = new Intl.NumberFormat();
 
 	const LABELS: Record<ContextSegmentKey, string> = {
+		'system:environment': "Today's date",
 		'persona:name': 'Your name',
 		'persona:about': 'About you',
 		'persona:instructions': 'Custom instructions',
@@ -43,6 +44,7 @@
 
 	/** Segments re-sent verbatim on every turn. Compaction cannot touch these. */
 	const OVERHEAD: ReadonlySet<ContextSegmentKey> = new Set([
+		'system:environment',
 		'persona:name',
 		'persona:about',
 		'persona:instructions',

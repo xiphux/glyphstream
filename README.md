@@ -51,6 +51,11 @@ them into a single fast chat UI with one model picker.
   thread's running context size against the model's window (`27,725 / 40,960
 tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
+- **The model knows what day it is, in your timezone.** Your browser's IANA zone
+  is synced to your profile and the current date rides in the system prompt, so
+  relative dates ("last Tuesday", "is that still current?") resolve against
+  today instead of the model's training cutoff. `get_current_time` answers in
+  your zone too, rather than UTC.
 - **Bulky tool results are capped on the way to the model**, not in your
   transcript. A tool result rides along on every later turn, so one fetch of a
   fat page would otherwise be permanent rent on the window; the model gets the

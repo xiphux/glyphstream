@@ -513,6 +513,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			baseSystemPrompt,
 			branch,
 			trustedMcpTools: prefs?.trustedMcpTools ?? [],
+			timeZone: prefs?.timezone ?? null,
 		});
 		const effectiveSystemPrompt = toolCtx.systemPrompt;
 

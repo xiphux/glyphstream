@@ -19,6 +19,7 @@ import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
 import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
 import { getUserServerStates } from '../mcp/registry';
 import { awaitMcpReady } from '../mcp/bootstrap';
+import { composeEnvironmentBlock } from './environment-context';
 import { appendSkillsCatalog, buildSkillsRequestContext } from './skills-context';
 import {
 	appendToolSearchHint,
@@ -57,14 +58,20 @@ export interface ChatToolContextInput {
 	branch: ChatMessage[];
 	/** The user's trusted MCP tool names (`prefs.trustedMcpTools`). */
 	trustedMcpTools: readonly string[];
+	/** The user's IANA timezone (`prefs.timezone`), so the date the model is given
+	 *  is the user's today, not the server's. Null falls back to the server's zone. */
+	timeZone: string | null;
 }
 
 export interface ChatToolContext {
-	/** System prompt with the skills catalog + deferred-tool hint folded in. */
+	/** System prompt with the environment preamble, skills catalog, and
+	 *  deferred-tool hint folded in. */
 	systemPrompt: string | null;
-	/** The two blocks `systemPrompt` folded in on top of `baseSystemPrompt`, kept
-	 *  separately so the context breakdown can price them. Both null when the
-	 *  model doesn't support tools (nothing was appended). */
+	/** The blocks `systemPrompt` folded in on top of `baseSystemPrompt`, kept
+	 *  separately so the context breakdown can price them. The catalog and hint are
+	 *  null when the model doesn't support tools (nothing was appended); the
+	 *  environment preamble is unconditional. */
+	environmentBlock: string;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	/**
@@ -91,12 +98,22 @@ export interface ChatToolContext {
 export async function buildChatToolContext(input: ChatToolContextInput): Promise<ChatToolContext> {
 	const { userId, disabledFeatures, supportsTools, baseSystemPrompt, branch } = input;
 
+	// The environment preamble (currently: today's date) leads the prompt, and is
+	// NOT gated on anything — a conversation with no persona, no memories, and no
+	// tools still needs to know what day it is, and a custom-model conversation
+	// with its own snapshotted prompt needs it just as much. Without it the model
+	// silently dates the world to its training cutoff.
+	const environmentBlock = composeEnvironmentBlock(new Date(), input.timeZone);
+	let systemPrompt: string | null = [environmentBlock, baseSystemPrompt]
+		.filter(Boolean)
+		.join('\n\n');
+
 	// Agent skills (Tier-1 catalog + activation tools). Folded into the prompt so
 	// both the initial serialize and the per-iteration rebuild carry it.
 	const skillsCtx = supportsTools
 		? buildSkillsRequestContext(userId, disabledFeatures)
 		: { catalog: null, toolDefs: [] as OpenAIToolDefinition[] };
-	let systemPrompt = appendSkillsCatalog(baseSystemPrompt, skillsCtx.catalog);
+	systemPrompt = appendSkillsCatalog(systemPrompt, skillsCtx.catalog);
 
 	// Block until MCP discovery finishes before we read the tool surface — a
 	// partially-populated surface would make the model refuse a tool later in the
@@ -173,6 +190,7 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 
 	return {
 		systemPrompt,
+		environmentBlock,
 		skillsCatalog: skillsCtx.catalog,
 		toolSearchHint: toolSearchCtx.hint,
 		toolDefs,

@@ -71,6 +71,8 @@ export interface ContextBreakdownInput {
 	/** A custom-model conversation's snapshotted `meta.systemPrompt`, which
 	 *  replaces the persona prompt outright. */
 	customSystemPrompt: string | null;
+	/** The unconditional environment preamble (today's date). */
+	environmentBlock: string;
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	toolDefs: readonly OpenAIToolDefinition[];
@@ -93,6 +95,7 @@ export async function buildContextBreakdown(
 	const acc = new SegmentAccumulator();
 
 	// --- Overhead: re-sent verbatim on every turn, untouchable by compaction.
+	acc.add('system:environment', input.environmentBlock.length);
 	if (input.customSystemPrompt) {
 		acc.add('system:custom', input.customSystemPrompt.length);
 	}

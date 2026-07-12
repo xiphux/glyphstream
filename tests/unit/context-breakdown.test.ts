@@ -43,6 +43,9 @@ function input(over: Partial<ContextBreakdownInput> = {}): ContextBreakdownInput
 		branch: [],
 		personaParts: [],
 		customSystemPrompt: null,
+		// Empty by default so the segment assertions below aren't perturbed by it;
+		// the preamble has its own suite (environment-context.test.ts).
+		environmentBlock: '',
 		skillsCatalog: null,
 		toolSearchHint: null,
 		toolDefs: [],

@@ -42,6 +42,7 @@ const EMPTY_PREFS = {
 	trustedMcpTools: [] as string[],
 	autoCompactionEnabled: false,
 	autoCompactionThreshold: 80,
+	timezone: null,
 };
 
 describe('parseUserPreferences', () => {
@@ -358,6 +359,7 @@ describe('setUserPreferences', () => {
 			'notificationsShowContent',
 			'showGreeting',
 			'theme',
+			'timezone',
 			'trustedMcpTools',
 		]);
 	});
@@ -369,6 +371,32 @@ describe('setUserPreferences', () => {
 			...EMPTY_PREFS,
 			name: 'Chris',
 		});
+	});
+
+	it('persists a valid IANA timezone reported by the browser', () => {
+		const u = seedUser();
+		expect(setUserPreferences(u.id, { timezone: 'America/Chicago' }).timezone).toBe(
+			'America/Chicago',
+		);
+	});
+
+	it('rejects a timezone Intl cannot resolve, keeping the previous value', () => {
+		// This value arrives from the client and is handed straight to
+		// Intl.DateTimeFormat on the send path, which THROWS on an unknown zone. An
+		// unvalidated string here would be a client-triggerable 500 on every message
+		// the user sends — i.e. a way to lock yourself out of your own chat.
+		const u = seedUser();
+		setUserPreferences(u.id, { timezone: 'America/Chicago' });
+
+		for (const bogus of ['Mars/Olympus_Mons', 'not a zone', '../../etc/passwd', '']) {
+			expect(setUserPreferences(u.id, { timezone: bogus }).timezone).toBe('America/Chicago');
+		}
+	});
+
+	it('accepts an explicit null to clear the timezone', () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { timezone: 'Asia/Tokyo' });
+		expect(setUserPreferences(u.id, { timezone: null }).timezone).toBeNull();
 	});
 
 	it('persists notification preference toggles', () => {
