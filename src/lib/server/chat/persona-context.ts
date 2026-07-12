@@ -13,7 +13,11 @@
  * keeps its own prompt and never calls this.
  */
 import type { FeatureCategory, UserPreferences } from '$lib/types/api';
-import { composePersonaSystemPrompt } from '../db/queries/user-preferences';
+import {
+	composePersonaParts,
+	PERSONA_PART_SEPARATOR,
+	type PersonaPart,
+} from '../db/queries/user-preferences';
 import {
 	listMemoriesForUser,
 	listMemoryBodies,
@@ -44,14 +48,29 @@ export function composePersonaPrompt(
 	userId: string,
 	disabledFeatures: readonly FeatureCategory[],
 ): string | null {
-	if (!prefs || disabledFeatures.includes('personalization')) return null;
+	const parts = composePersonaPromptParts(prefs, userId, disabledFeatures);
+	return parts.length === 0 ? null : parts.map((p) => p.text).join(PERSONA_PART_SEPARATOR);
+}
+
+/**
+ * The same composition as `composePersonaPrompt`, but kept as labeled sections
+ * so the context breakdown can price the memory index and the topic overview
+ * apart from the (small, fixed) name/about/instructions text. `composePersonaPrompt`
+ * is the wire path and joins these; this is the only other caller.
+ */
+export function composePersonaPromptParts(
+	prefs: UserPreferences | null,
+	userId: string,
+	disabledFeatures: readonly FeatureCategory[],
+): PersonaPart[] {
+	if (!prefs || disabledFeatures.includes('personalization')) return [];
 	// The conversation-topics map — injected the same for both the inline and the
 	// over-budget memory renderings, and gated by the personalization check above
 	// (same seal as the memory tools + search_conversations).
 	const conversationOverview = getConversationOverview(userId);
 	const stats = memoryStats(userId);
 	if (stats.totalChars <= MEMORY_INLINE_BUDGET_CHARS) {
-		return composePersonaSystemPrompt(prefs, listMemoriesForUser(userId), { conversationOverview });
+		return composePersonaParts(prefs, listMemoriesForUser(userId), { conversationOverview });
 	}
 	const { hotIds, cold } = selectMemoryTiers(
 		listMemoryTierRows(userId),
@@ -59,7 +78,7 @@ export function composePersonaPrompt(
 		Date.now(),
 	);
 	const hot = listMemoryBodies(userId, hotIds);
-	return composePersonaSystemPrompt(prefs, hot, {
+	return composePersonaParts(prefs, hot, {
 		recallMode: true,
 		index: cold,
 		conversationOverview,

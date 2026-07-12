@@ -1183,3 +1183,63 @@ export interface Skill {
 	createdAt: number;
 	updatedAt: number;
 }
+
+/**
+ * One priced slice of the upstream request, as returned by
+ * `GET /api/conversations/:id/context`.
+ *
+ * The split is drawn along the lines that actually behave differently under
+ * pressure. `persona:*`, `skills:catalog`, `tools:hint` and `tools:defs` are
+ * *overhead*: re-sent verbatim every turn, and untouchable by compaction (which
+ * only folds history). `history:*` is what compaction can reclaim. Keeping them
+ * apart is the whole point — a thread whose bulk is overhead won't get smaller
+ * no matter how many times you compact it, and until now nothing said so.
+ */
+export type ContextSegmentKey =
+	| 'persona:name'
+	| 'persona:about'
+	| 'persona:instructions'
+	| 'persona:memories'
+	| 'persona:overview'
+	| 'system:custom'
+	| 'skills:catalog'
+	| 'tools:hint'
+	| 'tools:defs'
+	| 'history:summary'
+	| 'history:text'
+	| 'history:tool_calls'
+	| 'history:tool_results'
+	| 'history:images';
+
+export interface ContextSegment {
+	key: ContextSegmentKey;
+	/** Wire characters this segment contributes. Ground truth. */
+	chars: number;
+	/**
+	 * Estimated tokens. Text segments use the codebase-wide chars/4 heuristic.
+	 * `history:images` is NOT text — see `ContextBreakdown.imageBytes`.
+	 */
+	tokens: number;
+	/** Per-item costs, largest first — the tools in `tools:defs`, the images in
+	 *  `history:images`. Absent for segments with nothing to itemize. */
+	items?: { label: string; chars: number }[];
+}
+
+export interface ContextBreakdown {
+	segments: ContextSegment[];
+	/** Sum of `segments[].tokens`. An estimate, not the upstream's count. */
+	estimatedTokens: number;
+	/**
+	 * `prompt_tokens` the upstream actually reported for the most recent turn, or
+	 * null on a thread that hasn't completed one. This is the only authoritative
+	 * number we ever get; the estimate above is what we can attribute to a
+	 * segment. Show both — the gap is mostly image tokens plus the chat
+	 * template's own framing, neither of which chars/4 can see.
+	 */
+	reportedPromptTokens: number | null;
+	/** Raw base64 bytes of inlined images. Their real token cost is model-specific
+	 *  (tile-based) and not derivable from bytes, so it is deliberately not folded
+	 *  into `estimatedTokens` — it shows up in the reported-vs-estimated gap. */
+	imageBytes: number;
+	contextWindow: number | null;
+}

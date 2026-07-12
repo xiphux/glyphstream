@@ -2378,6 +2378,8 @@
 						onCompact={compactConversation}
 						canCompact={compactable}
 						{compacting}
+						conversationId={convId}
+						revision={messages.length}
 					/>
 				{/if}
 				<ChatComposer

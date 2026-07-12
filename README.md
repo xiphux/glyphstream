@@ -51,6 +51,11 @@ them into a single fast chat UI with one model picker.
   thread's running context size against the model's window (`27,725 / 40,960
 tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   set per endpoint ([configuration](docs/configuration.md#context-window-context_window)).
+- **Context breakdown** — click that bar to see what's actually filling the
+  window, itemized: saved memories, the skills catalog, each tool definition,
+  messages, tool results, images. It separates the overhead re-sent on every turn
+  from the history compaction can reclaim, so "compacting won't help here" is
+  something you can see rather than discover.
 - **Context compaction** — when a thread fills a small window, summarize the
   older turns through the conversation's own model and keep going. The real
   messages stay in the thread (the summary is a collapsed divider); only what's

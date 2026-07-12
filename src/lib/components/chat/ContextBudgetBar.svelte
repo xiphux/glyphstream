@@ -12,6 +12,8 @@
 -->
 <script lang="ts">
 	import { FoldVertical } from '@lucide/svelte';
+	import { Popover } from 'bits-ui';
+	import ContextBreakdownPanel from './ContextBreakdownPanel.svelte';
 
 	interface Props {
 		/** Approximate context size (tokensIn + tokensOut of the latest assistant
@@ -24,6 +26,11 @@
 		canCompact?: boolean;
 		/** True while a compaction is in flight — shows a "Compacting…" state. */
 		compacting?: boolean;
+		/** Backs the itemized breakdown popover behind the readout. */
+		conversationId: string;
+		/** Bumped on each completed turn, so the open panel refetches instead of
+		 *  showing the previous turn's numbers. */
+		revision: number;
 	}
 
 	let {
@@ -32,6 +39,8 @@
 		onCompact,
 		canCompact = false,
 		compacting = false,
+		conversationId,
+		revision,
 	}: Props = $props();
 
 	const tokenFmt = new Intl.NumberFormat();
@@ -68,21 +77,35 @@
 			<span class="hidden sm:inline">{compacting ? 'Compacting…' : 'Compact'}</span>
 		</button>
 		{#if contextTokenCount > 0}
-			{#if budget !== null}
-				<span
-					class="tabular-nums"
-					class:text-warning={budget.pct >= 90}
-					title="Approximate context used after the last response ({budget.pct}% of the model's {tokenFmt.format(
-						budget.max,
-					)}-token window)"
+			<Popover.Root>
+				<!-- `class:` is not a valid directive on a component, so the near-full
+				     warning colour rides the class string instead. -->
+				<Popover.Trigger
+					title="See what's using the context window"
+					class="rounded px-1 py-0.5 tabular-nums transition hover:bg-surface-raised {budget !==
+						null && budget.pct >= 90
+						? 'text-warning'
+						: ''}"
 				>
-					{tokenFmt.format(contextTokenCount)} / {tokenFmt.format(budget.max)} tokens · {budget.pct}%
-				</span>
-			{:else}
-				<span class="tabular-nums" title="Approximate context size after the last response">
-					{tokenFmt.format(contextTokenCount)} tokens
-				</span>
-			{/if}
+					{#if budget !== null}
+						{tokenFmt.format(contextTokenCount)} / {tokenFmt.format(budget.max)} tokens · {budget.pct}%
+					{:else}
+						{tokenFmt.format(contextTokenCount)} tokens
+					{/if}
+				</Popover.Trigger>
+				<Popover.Portal>
+					<Popover.Content
+						sideOffset={6}
+						align="end"
+						avoidCollisions
+						collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
+						onOpenAutoFocus={(e) => e.preventDefault()}
+						class="z-50 max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-lg border border-border surface-glass gs-pop shadow-lg"
+					>
+						<ContextBreakdownPanel {conversationId} {revision} />
+					</Popover.Content>
+				</Popover.Portal>
+			</Popover.Root>
 		{/if}
 	</div>
 </div>

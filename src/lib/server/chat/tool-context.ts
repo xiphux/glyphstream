@@ -62,6 +62,11 @@ export interface ChatToolContextInput {
 export interface ChatToolContext {
 	/** System prompt with the skills catalog + deferred-tool hint folded in. */
 	systemPrompt: string | null;
+	/** The two blocks `systemPrompt` folded in on top of `baseSystemPrompt`, kept
+	 *  separately so the context breakdown can price them. Both null when the
+	 *  model doesn't support tools (nothing was appended). */
+	skillsCatalog: string | null;
+	toolSearchHint: string | null;
 	/**
 	 * Base upstream tool list: built-ins ∪ skills ∪ per-user MCP ∪ `search_tools`
 	 * ∪ the cross-turn activation seed, in that order. NOT deduped — callers
@@ -166,5 +171,12 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		)
 		.map((s) => ({ id: s.id, displayName: s.displayName, error: s.error }));
 
-	return { systemPrompt, toolDefs, needsApproval, unavailableMcpServers };
+	return {
+		systemPrompt,
+		skillsCatalog: skillsCtx.catalog,
+		toolSearchHint: toolSearchCtx.hint,
+		toolDefs,
+		needsApproval,
+		unavailableMcpServers,
+	};
 }
