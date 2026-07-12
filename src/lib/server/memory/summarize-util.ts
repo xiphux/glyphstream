@@ -61,11 +61,16 @@ const OVERFLOW_SHRINK_FACTOR = 0.6;
  * null when the error wasn't an overflow (rethrow) or we're already as small as
  * we go (give up — the caller skips the item).
  *
- * The rejection carries what actually fits (`n_ctx`) and what we actually sent
- * (`n_prompt_tokens`) — both measured with the upstream's real tokenizer. Their
- * ratio is exactly the correction factor our `chars/4` estimate was missing, so
- * scaling the estimated budget by it lands the next attempt under the true window
- * whether we were wrong about the window, wrong about the tokenizer, or both.
+ * The rejection can carry what actually fits (`n_ctx`) and what we actually sent
+ * (`n_prompt_tokens`) — both measured with the upstream's real tokenizer. Each is
+ * useful on its own, so each bounds the next budget independently:
+ *   - `n_ctx` gives an absolute ceiling on input space, better than the window we
+ *     were configured/advertised with.
+ *   - the ratio of the two is the correction factor our `chars/4` estimate was
+ *     missing, and unlike the ceiling it also survives a denser tokenizer.
+ * A vendor may report either, both, or neither, so take the smallest bound that
+ * applies and floor it with a flat shrink — which is the only thing left when the
+ * vendor names the overflow but reports no numbers at all.
  */
 export function shrinkBudgetAfterOverflow(
 	e: unknown,
@@ -75,18 +80,19 @@ export function shrinkBudgetAfterOverflow(
 	const overflow = parseContextOverflow(e);
 	if (!overflow) return null;
 
-	// Trust the upstream's window over the configured/advertised one. With no
-	// reported numbers, both terms collapse to the current budget and the flat
-	// shrink factor below carries the retry.
+	// Unreported numbers drop out as Infinity rather than collapsing to `budget`:
+	// a bound we weren't given must not mask one we were.
 	const allowed =
 		overflow.contextWindow > 0
 			? memoryInputBudget(overflow.contextWindow, opts.maxTokens, opts.overheadTokens, 0)
-			: budget;
+			: Infinity;
 	const scaled =
-		overflow.promptTokens > 0 ? Math.floor((budget * allowed) / overflow.promptTokens) : budget;
+		overflow.promptTokens > 0 && Number.isFinite(allowed)
+			? Math.floor((budget * allowed) / overflow.promptTokens)
+			: Infinity;
 
 	const next = Math.max(
-		Math.min(scaled, Math.floor(budget * OVERFLOW_SHRINK_FACTOR)),
+		Math.min(scaled, allowed, Math.floor(budget * OVERFLOW_SHRINK_FACTOR)),
 		opts.minBudget,
 	);
 	// Already at the floor and still overflowing: nothing left to give.
@@ -95,8 +101,16 @@ export function shrinkBudgetAfterOverflow(
 
 /**
  * Run a memory pass, re-running it against a smaller input budget each time the
- * upstream rejects the payload as too large. `run` must be a pure function of the
- * budget (it re-chunks from scratch), so a retry is just a cheaper re-do.
+ * upstream rejects the payload as too large. `run` MUST be a pure function of the
+ * budget — it re-chunks from scratch and keeps nothing from the failed attempt.
+ *
+ * That purity is bought, not free: a retry re-runs the whole pass at a smaller
+ * budget, which chunks into MORE calls than the attempt it replaces and throws
+ * away any map chunks that already succeeded. The trade is deliberate — a
+ * stateless retry is provably convergent and has no partial-state to reason
+ * about, and this is an idle-hours background pass where a few extra local calls
+ * cost nothing worth optimizing. Do not "improve" it into resuming mid-pass
+ * without a reason better than call count.
  *
  * This is what makes the background passes self-correcting rather than dependent
  * on getting the window config and the token estimate right up front: the first

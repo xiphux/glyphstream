@@ -105,8 +105,9 @@ export async function summarizeConversation(
 		opts.overheadTokens,
 		opts.minBudget,
 	);
-	// Re-chunks from scratch on each retry, so an over-window rejection just costs
-	// a cheaper re-do against a budget corrected by the upstream's own numbers.
+	// An over-window rejection re-runs the whole pass from scratch against a budget
+	// corrected by the upstream's own numbers — discarding any chunks that already
+	// succeeded, in exchange for a retry with no partial state to reason about.
 	const summary = await withOverflowRetry(budget, opts, (b) =>
 		summarizeMessages(model, messages, b, signal),
 	);

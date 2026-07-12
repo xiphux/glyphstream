@@ -52,6 +52,25 @@ describe('shrinkBudgetAfterOverflow', () => {
 		expect(next).toBeLessThanOrEqual(Math.floor(budget * 0.6));
 	});
 
+	it('uses a reported n_ctx even when the vendor omits the prompt count', () => {
+		// Regression: the window is the one bound we were actually handed. Deriving the
+		// next budget ONLY from the prompt-count ratio discarded it, leaving a vendor
+		// that reports n_ctx but not n_prompt_tokens to grind through flat 0.6x shrinks
+		// — and possibly give up — despite having been told exactly what fits.
+		const e = new UpstreamError(
+			'HTTP 400',
+			400,
+			JSON.stringify({
+				error: { type: 'exceed_context_size_error', message: 'too long', n_ctx: 8192 },
+			}),
+		);
+		const allowed = memoryInputBudget(8192, OPTS.maxTokens, OPTS.overheadTokens, 0);
+		const next = shrinkBudgetAfterOverflow(e, 100_000, OPTS)!;
+
+		expect(next).toBeLessThanOrEqual(allowed); // one step, straight under the real window
+		expect(next).toBeLessThan(Math.floor(100_000 * 0.6)); // not merely the flat shrink
+	});
+
 	it('still shrinks when the vendor names the overflow but reports no numbers', () => {
 		const e = new UpstreamError(
 			'HTTP 400',
