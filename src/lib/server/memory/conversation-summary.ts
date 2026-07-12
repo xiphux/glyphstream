@@ -99,8 +99,7 @@ export async function runSummarySweep(
 		let overviewsUpdated = 0;
 		for (const userId of users) {
 			try {
-				await rebuildOverview(model, userId, contextWindow, now);
-				overviewsUpdated++;
+				if (await rebuildOverview(model, userId, contextWindow, now)) overviewsUpdated++;
 			} catch (e) {
 				if (e instanceof UpstreamError && !isPermanentRequestError(e)) {
 					console.warn('[conversation-summary] endpoint error during overviews; ending:', e);
@@ -123,16 +122,26 @@ export async function runSummarySweep(
 	}
 }
 
-/** Rebuild one user's overview from all their conversation summaries and stamp the
- *  watermark. Only reached for users the watermark query found with ≥1 summary; the
- *  "all summarized conversations deleted" case is handled at delete time
- *  (`reconcileOverviewAfterConversationDelete`), not here. */
+/**
+ * Rebuild one user's overview from all their conversation summaries and stamp the
+ * watermark. Returns true if a map was written. Only reached for users the watermark
+ * query found with ≥1 summary; the "all summarized conversations deleted" case is
+ * handled at delete time (`reconcileOverviewAfterConversationDelete`), not here.
+ *
+ * A model that yields nothing leaves BOTH the stored map and the watermark alone —
+ * same contract as `summarizeOne`, and load-bearing here in a way it isn't there.
+ * The rebuild is destructive by design (rebuild-from-all, so deletions propagate),
+ * so writing an empty completion would erase a good map; and because the write also
+ * stamps the watermark, `listUsersNeedingOverview` would then consider the user
+ * settled and never rebuild it. One bad response would cost the map until some
+ * unrelated conversation happened to be summarized.
+ */
 async function rebuildOverview(
 	model: ResolvedMemoryModel,
 	userId: string,
 	contextWindow: number | null,
 	now: number,
-): Promise<void> {
+): Promise<boolean> {
 	const summaries = listConversationSummariesForOverview(userId);
 	const overview = await buildOverview(
 		model,
@@ -140,7 +149,14 @@ async function rebuildOverview(
 		summaries,
 		contextWindow,
 	);
+	if (!overview) {
+		console.warn(
+			`[conversation-summary] overview for user ${userId} came back empty; keeping the stored map, retrying next sweep`,
+		);
+		return false;
+	}
 	setConversationOverview(userId, overview, now);
+	return true;
 }
 
 /**

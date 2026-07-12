@@ -5,7 +5,11 @@
  * the overview builder can't drift on how they call the model or budget input.
  */
 
-import { chatCompletionSync, parseContextOverflow } from '../endpoints/client';
+import {
+	chatCompletionSync,
+	parseContextOverflow,
+	type ChatCompletionResponse,
+} from '../endpoints/client';
 import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { ResolvedMemoryModel } from '../tasks/memory-model';
 
@@ -143,7 +147,9 @@ export async function withOverflowRetry<T>(
  * One memory-model call. Queues on the shared per-endpoint slot (released even on
  * error): a background pass makes several calls, so slotting PER CALL lets a
  * waiting live chat slip between them — a fair peer, never a preempting or
- * endpoint-hogging one. Returns the trimmed completion text.
+ * endpoint-hogging one. Returns the trimmed completion text, or '' if the model
+ * produced none — which every caller must treat as a FAILED pass, never as a
+ * result worth storing (see `summarizeOne` / `rebuildOverview`).
  */
 export async function callMemoryModel(
 	model: ResolvedMemoryModel,
@@ -168,10 +174,36 @@ export async function callMemoryModel(
 			},
 			signal,
 		);
-		return (resp.choices?.[0]?.message?.content ?? '').trim();
+		const choice = resp.choices?.[0];
+		const content = (choice?.message?.content ?? '').trim();
+		if (!content) warnEmptyCompletion(model, choice);
+		return content;
 	} finally {
 		slot.release();
 	}
+}
+
+/**
+ * An empty completion is a 200 — no error is thrown and nothing else in the pass
+ * notices — so say so out loud, with the three numbers that distinguish the causes
+ * that need different fixes: a reasoning model that burned its whole `max_tokens`
+ * budget thinking and never reached an answer (finish_reason=length, non-zero
+ * reasoning), a refusal/stop with no output (finish_reason=stop, no tokens), and
+ * an upstream that returned a malformed choice. Do NOT fall back to the reasoning
+ * text: it's the model's scratchpad, not its answer, and storing it as a user's
+ * summary or topic map would be worse than storing nothing.
+ */
+function warnEmptyCompletion(
+	model: ResolvedMemoryModel,
+	choice: NonNullable<ChatCompletionResponse['choices']>[number] | undefined,
+): void {
+	const msg = choice?.message;
+	const reasoning = (msg?.reasoning_content ?? msg?.reasoning ?? '').length;
+	console.warn(
+		`[memory] ${model.endpoint.id}::${model.upstreamId} returned an empty completion ` +
+			`(finish_reason=${choice?.finish_reason ?? 'none'}, reasoning_chars=${reasoning}); ` +
+			`the pass that made this call will be retried, not stored`,
+	);
 }
 
 /**

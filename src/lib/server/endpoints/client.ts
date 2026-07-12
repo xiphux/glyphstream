@@ -293,6 +293,12 @@ export interface ChatCompletionResponse {
 		message?: {
 			role?: string;
 			content?: string | null;
+			/** A reasoning model's scratchpad, split out of `content` by the upstream
+			 *  (the two field names the streaming normalizers already handle). Never an
+			 *  answer — but when `content` is empty, its presence is what tells you the
+			 *  model spent its whole completion budget thinking. Diagnostics only. */
+			reasoning_content?: string | null;
+			reasoning?: string | null;
 		};
 		finish_reason?: string | null;
 	}>;

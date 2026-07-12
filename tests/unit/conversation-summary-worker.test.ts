@@ -124,6 +124,37 @@ describe('runSummarySweep', () => {
 		expect(chatMock).not.toHaveBeenCalled();
 	});
 
+	it('keeps the stored overview when the model returns an empty completion for it', async () => {
+		// The rebuild is destructive by design (rebuild-from-all), so storing an empty
+		// completion doesn't just skip an update — it ERASES the map. And because the
+		// write stamps the watermark, the user then reads as settled and never rebuilds.
+		// That's how one empty 200 wiped a production overview for good.
+		const u = seedUser();
+		seedConv(u.id);
+		expect(await runSummarySweep(NOW)).toEqual({ summarized: 1, overviewsUpdated: 1 });
+		expect(getConversationOverview(u.id)).toBe('A gist of the chat.');
+
+		// A second conversation makes the user due again; this time the overview call
+		// (the 2nd of the sweep — summaries run first) comes back with no content.
+		seedConv(u.id);
+		chatMock.mockReset();
+		chatMock
+			.mockResolvedValueOnce({ choices: [{ message: { content: 'Another gist.' } }] })
+			.mockResolvedValueOnce({
+				choices: [{ message: { content: '' }, finish_reason: 'length' }],
+			});
+
+		const later = NOW + 1000;
+		expect(await runSummarySweep(later)).toEqual({ summarized: 1, overviewsUpdated: 0 });
+		expect(getConversationOverview(u.id)).toBe('A gist of the chat.'); // not erased
+
+		// Watermark left unadvanced → the next sweep retries the overview and it heals.
+		chatMock.mockReset();
+		chatMock.mockResolvedValue({ choices: [{ message: { content: 'A rebuilt map.' } }] });
+		expect(await runSummarySweep(later)).toEqual({ summarized: 0, overviewsUpdated: 1 });
+		expect(getConversationOverview(u.id)).toBe('A rebuilt map.');
+	});
+
 	it('stamps a null summary (not re-picked) when there is nothing to summarize', async () => {
 		const u = seedUser();
 		const c = seedConv(u.id, false); // empty text → empty transcript
