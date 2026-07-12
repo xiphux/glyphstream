@@ -63,6 +63,15 @@ export async function selectRelevant(
 		chunks.map((c) => c.text),
 	);
 
+	// Only POSITIVE scores are real lexical matches. `bm25Rank` deliberately
+	// returns every chunk, zero-score ones in document order — which is a useful
+	// total ordering on its own (BM25-only, below), but is NOT a lexical opinion.
+	// Fusing the raw ranking hands RRF a full-strength "ranking" that is really
+	// just document order, and on a `find` query with no term overlap that is
+	// enough to outweigh a genuine semantic win. Same defect, and same fix, as
+	// `retrieval/tool-search.ts`.
+	const bm25Hits = bm25.filter((sc) => sc.score > 0);
+
 	let ranking: ScoredChunk[] = bm25;
 
 	if (embedding) {
@@ -78,16 +87,23 @@ export async function selectRelevant(
 			// bm25's sc.index is already the chunk's blockIndex (chunks are in
 			// document order). Remap the dense leg from candidate-subset space back
 			// onto blockIndex so both rankings share one index space, then fuse.
-			// bm25 covers every chunk, so its missingRank never fires; the dense leg
-			// only ranked the prefiltered candidates, so chunks it never saw get the
-			// `EMBED_CAP + 1` floor (preserving the prior hand-rolled fusion exactly).
+			//
+			// Both legs now carry a finite `missingRank`, so every chunk still gets a
+			// contribution from both: a chunk with no lexical hit takes the SAME
+			// lexical floor as every other non-hit (no spurious ordering between
+			// them), leaving the dense leg to discriminate — which is the whole point
+			// of the semantic leg. Chunks the dense leg never saw (only possible when
+			// a page exceeds EMBED_CAP) keep their `EMBED_CAP + 1` floor as before.
 			const denseByBlock = dense.map((sc) => ({
 				index: candidates[sc.index].blockIndex,
 				score: sc.score,
 			}));
-			ranking = fuseRankings([bm25, denseByBlock], {
-				missingRanks: [chunks.length + 1, EMBED_CAP + 1],
-			});
+			ranking = completeRanking(
+				fuseRankings([bm25Hits, denseByBlock], {
+					missingRanks: [bm25Hits.length + 1, EMBED_CAP + 1],
+				}),
+				chunks.length,
+			);
 		}
 	}
 
@@ -161,6 +177,26 @@ async function applyRerank(
  * chunks still fill the budget. Guarantees at least one chunk: if even the
  * top-ranked chunk exceeds the budget, it's sliced rather than dropped.
  */
+/**
+ * Restore totality to a fused ranking: `packToBudget` walks `ranking` and can
+ * only ever select a chunk that appears in it, so every chunk must be present.
+ *
+ * RRF's universe is the union of the input legs. Once the lexical leg carries
+ * only its real hits, a chunk can fall outside both legs — but only on a page
+ * bigger than EMBED_CAP, where the dense leg saw just the prefiltered candidates.
+ * Such a chunk has neither a lexical match nor an embedding, so it is genuinely
+ * the least relevant thing on the page: append it at the tail, in document order.
+ */
+function completeRanking(fused: ScoredChunk[], chunkCount: number): ScoredChunk[] {
+	if (fused.length === chunkCount) return fused;
+	const ranked = new Set(fused.map((sc) => sc.index));
+	const out = [...fused];
+	for (let i = 0; i < chunkCount; i++) {
+		if (!ranked.has(i)) out.push({ index: i, score: 0 });
+	}
+	return out;
+}
+
 function packToBudget(chunks: Chunk[], ranking: ScoredChunk[], budgetChars: number): Chunk[] {
 	const selected: Chunk[] = [];
 	let used = 0;

@@ -203,11 +203,24 @@ export const recallMemoryTool: Tool = {
 
 		// Lexical leg — always, over ALL rows so a freshly-saved memory the
 		// backfill worker hasn't embedded yet is still findable. Needs no vectors.
+		//
+		// Only POSITIVE-score entries are real lexical matches. `bm25Rank` returns
+		// every doc — zero-score ones in index order — so feeding the raw ranking to
+		// the fusion hands RRF a full lexical "opinion" that is really just creation
+		// order, and it can outweigh a genuine semantic win. Concretely: ask
+		// "what do I like to eat" with no literal term overlap, and the lexical leg
+		// ranks the OLDEST memory first purely because it was saved first, which is
+		// enough to cancel the dense leg's correct answer. (BM25's non-negative IDF
+		// means even a ubiquitous term scores slightly above zero, so `> 0` is a
+		// clean "has any lexical signal at all" test.)
+		//
+		// Same reasoning, and the same fix, as `retrieval/tool-search.ts` — this path
+		// simply never got it.
 		const rankings: ScoredChunk[][] = [
 			bm25Rank(
 				parsed.query,
 				rows.map((r) => r.content),
-			),
+			).filter((sc) => sc.score > 0),
 		];
 		// Dense leg — only when an embedding model is configured. Embeds the query
 		// and cosines against the matching-model vectors; any failure (or no model)

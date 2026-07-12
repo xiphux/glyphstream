@@ -201,3 +201,76 @@ describe('recallMemoryTool.execute', () => {
 		expect(res.isError).toBe(true);
 	});
 });
+
+describe('recallMemoryTool — the lexical leg must not drown the dense leg', () => {
+	/**
+	 * `bm25Rank` returns EVERY doc, scoring the non-matching ones 0 and leaving
+	 * them in index (= creation) order. Feeding that raw ranking into RRF hands the
+	 * fusion a full lexical "opinion" that is really just "oldest first" — strong
+	 * enough to cancel a correct semantic answer.
+	 */
+	it('ignores a lexical ranking that is really just creation order', async () => {
+		const u = seedUser();
+		ctx.userId = u.id;
+
+		// Ten decoys saved BEFORE the answer, none sharing a token with the query.
+		for (let i = 0; i < 10; i++) {
+			const text = `decoy number ${i}`;
+			const d = createMemory(u.id, text);
+			setMemoryEmbedding(d.id, text, encodeVector([0, 1]), MODEL);
+		}
+		const answerText = 'partial to a good ristretto';
+		const answer = createMemory(u.id, answerText);
+		setMemoryEmbedding(answer.id, answerText, encodeVector([1, 0]), MODEL);
+
+		// Semantically adjacent to the answer, lexically disjoint from everything.
+		mockQueryVec([0.97, 0.05]);
+		const { parsed } = await run('preferred hot beverage');
+
+		// Every decoy outranks the answer lexically (they were saved first), so the
+		// old behaviour surfaced them ahead of it.
+		expect(parsed.matches[0].id).toBe(answer.id);
+	});
+
+	it('still lets a lexical-only hit win when there is no embedding model', async () => {
+		// The lexical leg must keep working on its own — filtering ZERO scores must
+		// not filter real matches.
+		const u = seedUser();
+		ctx.userId = u.id;
+		createMemory(u.id, 'unrelated trivia');
+		const hit = createMemory(u.id, 'allergic to shellfish');
+		resolveMock.mockReturnValue(undefined); // no embeddings configured
+
+		const { parsed } = await run('shellfish');
+		expect(parsed.matches[0].id).toBe(hit.id);
+		expect(embeddingsMock).not.toHaveBeenCalled();
+	});
+
+	it('returns nothing rather than arbitrary rows when nothing matches at all', async () => {
+		// No lexical overlap and no embeddings to fall back on. Handing the model 8
+		// arbitrary oldest memories isn't a recall — it's noise it will try to use.
+		const u = seedUser();
+		ctx.userId = u.id;
+		createMemory(u.id, 'unrelated trivia');
+		createMemory(u.id, 'more unrelated trivia');
+		resolveMock.mockReturnValue(undefined);
+
+		const { parsed } = await run('zzzz nonexistent tokens qqqq');
+		expect(parsed.matches).toEqual([]);
+	});
+
+	it('finds an un-embedded memory lexically, so a fresh save is still recallable', async () => {
+		// The reason the lexical leg runs over ALL rows: the embedding backfill
+		// worker may not have reached a just-saved memory yet.
+		const u = seedUser();
+		ctx.userId = u.id;
+		const fresh = createMemory(u.id, 'daughter is named Wren'); // no embedding
+		const otherText = 'unrelated trivia';
+		const other = createMemory(u.id, otherText);
+		setMemoryEmbedding(other.id, otherText, encodeVector([0, 1]), MODEL);
+		mockQueryVec([0, 1]);
+
+		const { parsed } = await run('Wren');
+		expect(parsed.matches[0].id).toBe(fresh.id);
+	});
+});

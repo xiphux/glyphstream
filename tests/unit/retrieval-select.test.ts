@@ -301,3 +301,54 @@ describe('selectRelevant — breadcrumbs (sections + outline)', () => {
 		expect(sections).toEqual([]);
 	});
 });
+
+describe('the lexical leg must not impose document order on the fusion', () => {
+	const signal = new AbortController().signal;
+
+	/**
+	 * `bm25Rank` returns EVERY chunk, scoring non-matching ones 0 and leaving them
+	 * in document order. That total ordering is useful on its own (the BM25-only
+	 * path relies on it), but it is NOT a lexical opinion — and feeding it to RRF
+	 * hands the fusion a full-strength ranking that is really just "top of the page
+	 * first", strong enough to outweigh a correct semantic hit.
+	 */
+	it('lets the dense leg win when the query has no lexical overlap with the page', async () => {
+		// Six chunks, none sharing a token with the query. The answer is LAST in
+		// document order — so document-order bias and semantics disagree, and we can
+		// see which one actually decided.
+		const chunks = [
+			mk(0, 'aaaa aaaa aaaa'),
+			mk(1, 'bbbb bbbb bbbb'),
+			mk(2, 'cccc cccc cccc'),
+			mk(3, 'dddd dddd dddd'),
+			mk(4, 'eeee eeee eeee'),
+			mk(5, 'THE ANSWER zzzz'),
+		];
+		// Query vector points at the last chunk; every other chunk is orthogonal.
+		embeddingsMock.mockResolvedValue({
+			data: [
+				{ index: 0, embedding: [1, 0] }, // the query
+				{ index: 1, embedding: [0, 1] },
+				{ index: 2, embedding: [0, 1] },
+				{ index: 3, embedding: [0, 1] },
+				{ index: 4, embedding: [0, 1] },
+				{ index: 5, embedding: [0, 1] },
+				{ index: 6, embedding: [1, 0] }, // chunk 5 — the semantic match
+			],
+		});
+
+		// Budget fits one chunk, so exactly one wins.
+		const { mode, content } = await selectRelevant(chunks, 'qqqq wwww', 20, signal, cfg());
+
+		expect(mode).toBe('relevance');
+		expect(content).toContain('THE ANSWER');
+	});
+
+	it('still returns the page in document order when BM25 alone is in play', async () => {
+		// No embedding config → the BM25-only path, where the zero-score total
+		// ordering IS the intended fallback (you get the top of the page).
+		const chunks = [mk(0, 'first section here'), mk(1, 'second section here')];
+		const { content } = await selectRelevant(chunks, 'qqqq wwww', 25, signal);
+		expect(content).toContain('first section');
+	});
+});
