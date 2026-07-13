@@ -132,9 +132,7 @@ export interface InFlightReasoningSegment {
 }
 
 export type InFlightSegment =
-	| InFlightTextSegment
-	| InFlightToolCallSegment
-	| InFlightReasoningSegment;
+	InFlightTextSegment | InFlightToolCallSegment | InFlightReasoningSegment;
 
 // --- in-flight segment transformations ---------------------------------
 //

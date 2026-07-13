@@ -23,8 +23,7 @@ import { parseSkillMd } from './parse-skill-md';
 import type { SkillBundleFile } from './store';
 
 export type ImportSkillResult =
-	| { ok: true; skill: Skill }
-	| { ok: false; status: number; error: string };
+	{ ok: true; skill: Skill } | { ok: false; status: number; error: string };
 
 /** Normalize uploaded bundle paths: forward-slash separators, drop a single
  *  common leading directory (a folder upload yields `my-skill/SKILL.md`), and

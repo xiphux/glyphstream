@@ -32,8 +32,7 @@ export interface MaterializedScript {
 }
 
 export type MaterializeResult =
-	| { ok: true; value: MaterializedScript }
-	| { ok: false; error: string };
+	{ ok: true; value: MaterializedScript } | { ok: false; error: string };
 
 /**
  * Read the entry script + its same-directory `.py` siblings from a skill bundle

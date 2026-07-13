@@ -455,9 +455,7 @@
 	// nothing to free" (proceed) from "the summarization failed" (ask the user
 	// before sending the full context). `error` carries the upstream message.
 	type CompactionOutcome =
-		| { status: 'compacted' }
-		| { status: 'noop' }
-		| { status: 'error'; error: string };
+		{ status: 'compacted' } | { status: 'noop' } | { status: 'error'; error: string };
 
 	// `silent` (the auto path) suppresses ALL user-facing feedback — error toasts
 	// AND the success toast/scroll below. The user never asked for an auto

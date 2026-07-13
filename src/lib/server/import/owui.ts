@@ -138,10 +138,7 @@ export async function importOwuiExport(
 }
 
 type ImportOutcome =
-	| 'imported-active'
-	| 'imported-archived'
-	| 'skipped-no-history'
-	| 'skipped-empty';
+	'imported-active' | 'imported-archived' | 'skipped-no-history' | 'skipped-empty';
 
 async function importOne(
 	entry: OwuiExportEntry,

@@ -170,8 +170,7 @@ export async function persistCompactionSummary(
 }
 
 export type CompactionResult =
-	| { status: 'compacted'; summaryMessageId: string }
-	| { status: 'noop' };
+	{ status: 'compacted'; summaryMessageId: string } | { status: 'noop' };
 
 /**
  * Synchronous compaction — plan, call the model once (blocking), persist.
