@@ -354,6 +354,18 @@ docs.
   boot, and revisit the better-sqlite3 inert-peer note in CLAUDE.md (the
   optional-peer situation may change at GA).
 
+- **Upgrade to TypeScript 7 once `svelte-check` supports it.** TS 7 is the
+  native Go compiler; it doesn't yet expose a stable programmatic API, so
+  `svelte2tsx` / `svelte-check` (which embed the language service) crash on it
+  outright — upstream-acknowledged in the TS 7.0 release notes and in
+  sveltejs/language-tools#3063, with the API deferred to TS 7.1. `pnpm check`
+  _is_ svelte-check, so TS 7 currently costs us the typecheck gate and buys
+  nothing: esbuild does the transpiling, so the compiler's speed win never
+  touches our dev/build loop. Stay on `^6`; revisit when language-tools adopts
+  the 7.1 API. Note TS 7 also flips `strict` on by default and stops
+  auto-including `@types/*` (`types` defaults to `[]`), so the tsconfig will
+  need a pass at the same time.
+
 ## Differentiation bets (exploratory)
 
 Most of the v2 list above is _the good version of a thing other chat UIs also
