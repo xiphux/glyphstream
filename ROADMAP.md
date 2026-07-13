@@ -305,7 +305,16 @@ docs.
   endpoints from a settings page; reload the registry without restart.
 
 - **S3-compatible media storage.** `MediaStore` is already the abstraction;
-  implement `S3MediaStore` (Backblaze B2, Cloudflare R2, MinIO).
+  implement `S3MediaStore` against remote object storage (Cloudflare R2,
+  Backblaze B2). Trigger — the media set outgrowing the host's disk, wanting
+  offsite durability, or handing byte-serving to presigned URLs so Node stops
+  proxying every image. Generated media is kept indefinitely (the purger only
+  reaps abandoned uploads), so a generation-heavy install gets there first.
+  Note that this is _not_ a win for a self-hosted box with storage attached:
+  a local MinIO writes to the same disks behind an extra daemon and an HTTP
+  hop, and turns a plain rsync/snapshot-able tree into an opaque bucket.
+  `DiskMediaStore` already does the sharding, atomic writes, streaming puts,
+  and range responses that object storage is usually reached for.
 
 - **Postgres deployment option.** Drizzle is dialect-portable; needs a
   postgres-driver adapter and migration regeneration.
