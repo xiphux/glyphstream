@@ -4,6 +4,7 @@
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import {
+		featureCategoryAppliesToModelKind,
 		type CreateCustomModelRequest,
 		type CustomModel,
 		type CustomModelParameters,
@@ -34,6 +35,18 @@
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
+
+	// Show only the toggles the composer will actually offer for this preset's base
+	// model — same rule as FeatureTogglesMenu. No base model picked yet → unknown
+	// kind → show everything.
+	const baseKind = $derived(
+		data.models.find((m: ModelEntry) => m.id === baseModelComposite)?.kind ?? null,
+	);
+	const visibleFeatureCategories = $derived(
+		data.featureCategories.filter((c: FeatureCategoryEntry) =>
+			featureCategoryAppliesToModelKind(c.id, baseKind),
+		),
+	);
 
 	function isFeatureDefaultOn(cat: FeatureCategory): boolean {
 		return !defaultDisabledFeatures.includes(cat);
@@ -395,34 +408,36 @@
 						</div>
 					</details>
 
-					<details class="rounded-md border border-border px-3 py-2">
-						<summary class="cursor-pointer text-xs font-medium text-fg-secondary">
-							Default feature toggles (optional)
-						</summary>
-						<p class="mt-2 text-[11px] text-fg-muted">
-							Sets the starting state of the per-conversation feature toggles when this preset is
-							selected. The user can still flip individual toggles before sending. Useful when a
-							preset's purpose makes one of the features irrelevant — e.g. a code-review preset that
-							shouldn't pull in personal context.
-						</p>
-						<div class="mt-3 flex flex-col gap-2">
-							{#each data.featureCategories as cat (cat.id)}
-								<label class="flex cursor-pointer items-start gap-2 text-xs">
-									<input
-										type="checkbox"
-										checked={isFeatureDefaultOn(cat.id)}
-										onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
-										disabled={busy}
-										class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
-									/>
-									<span class="min-w-0">
-										<span class="font-medium">{cat.label}</span>
-										<span class="ml-1 text-fg-muted">on by default</span>
-									</span>
-								</label>
-							{/each}
-						</div>
-					</details>
+					{#if visibleFeatureCategories.length > 0}
+						<details class="rounded-md border border-border px-3 py-2">
+							<summary class="cursor-pointer text-xs font-medium text-fg-secondary">
+								Default feature toggles (optional)
+							</summary>
+							<p class="mt-2 text-[11px] text-fg-muted">
+								Sets the starting state of the per-conversation feature toggles when this preset is
+								selected. The user can still flip individual toggles before sending. Useful when a
+								preset's purpose makes one of the features irrelevant — e.g. a code-review preset
+								that shouldn't pull in personal context.
+							</p>
+							<div class="mt-3 flex flex-col gap-2">
+								{#each visibleFeatureCategories as cat (cat.id)}
+									<label class="flex cursor-pointer items-start gap-2 text-xs">
+										<input
+											type="checkbox"
+											checked={isFeatureDefaultOn(cat.id)}
+											onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
+											disabled={busy}
+											class="mt-0.5 h-3.5 w-3.5 rounded border-border accent-surface-inverse disabled:opacity-50"
+										/>
+										<span class="min-w-0">
+											<span class="font-medium">{cat.label}</span>
+											<span class="ml-1 text-fg-muted">on by default</span>
+										</span>
+									</label>
+								{/each}
+							</div>
+						</details>
+					{/if}
 
 					{#if error}
 						<div class="rounded-md border px-3 py-2 text-sm alert-danger">
