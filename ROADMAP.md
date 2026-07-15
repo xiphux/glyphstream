@@ -281,12 +281,21 @@ docs.
   starts (record the intended branch set in `/prepare`, spawn the relays
   server-side like the existing decoupled path), and have the client watch via
   the single recovery-poll channel instead of N SSE streams — making a branch's
-  lifecycle independent of how many connections the client can hold. _Why
-  deferred:_ HTTP/2 (the documented deployment) eliminates the symptom entirely,
-  so this only earns its cost if HTTP/1.1 large-fan-out becomes a real use case
-  rather than a hypothetical; and it's a transport rework with known
-  live-vs-recovery race hazards (the blank-column bug came from exactly that
-  live/poll interplay). Open questions: live-token streaming for **chat**
+  lifecycle independent of how many connections the client can hold. There's a
+  small win **even on HTTP/2**, where the connection-cap symptom never occurs:
+  recording the branch set at `/prepare` and spawning relays server-side closes
+  the dispatch-race window. Today a relay exists server-side only once its client
+  stream lands, so a reload after firing the fan-out but before every stream is
+  established leaves the not-yet-opened branches unknown to the server and
+  unrecoverable. HTTP/2 dispatches all N near-simultaneously so that window is
+  small — but nonzero. This is a **resilience** gain only; it's not a performance
+  or network-traffic improvement on HTTP/2, and swapping N multiplexed SSE
+  streams for a poll channel is plausibly a regression for live chat tokens (see
+  open questions). _Why deferred:_ HTTP/2 (the documented deployment) eliminates
+  the visible symptom entirely, so this only earns its cost if HTTP/1.1
+  large-fan-out becomes a real use case rather than a hypothetical; and it's a
+  transport rework with known live-vs-recovery race hazards (the blank-column bug
+  came from exactly that live/poll interplay). Open questions: live-token streaming for **chat**
   fan-out (media only needs queued/progress/done, which polling covers, but chat
   wants live tokens — multiplex over one stream vs. keep chat on the per-branch
   path); poll cadence vs. responsiveness; whether the in-flight registry becomes
