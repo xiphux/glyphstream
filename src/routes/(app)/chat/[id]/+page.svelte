@@ -939,6 +939,15 @@
 	// the same way visibilitychange handles suspension.
 	let wasOfflineDuringFetch = $state(false);
 
+	// Live connectivity state (distinct from wasOfflineDuringFetch, which is a
+	// per-fetch latch). Drives the composer's offline notice + disabled Send:
+	// while offline we block sending rather than firing a doomed fetch, so the
+	// typed message stays in the box (and its draft) instead of being cleared
+	// into a "Load failed". navigator.onLine === false is reliable; a true is
+	// only a hint, so we never over-block — a stale-true just falls through to
+	// the existing error handling. Seeded + kept current in the $effect below.
+	let isOffline = $state(false);
+
 	// Multi-model fan-out controller (state + orchestration extracted to
 	// $lib/fanout-controller for testability). The page owns the composer/picker
 	// bindings + a few effects that delegate here; the controller reaches shared
@@ -972,6 +981,7 @@
 	// only after the user navigates away and back to force a refetch.
 	$effect(() => {
 		if (typeof document === 'undefined') return;
+		isOffline = !navigator.onLine;
 		function onVisibilityChange() {
 			// A fan-out releases `busy` early (so the grid can show), so also
 			// track its branch streams as in-flight work worth recovering.
@@ -990,9 +1000,11 @@
 			}
 		}
 		function onOffline() {
+			isOffline = true;
 			if (busy || fanout.streaming) wasOfflineDuringFetch = true;
 		}
 		function onOnline() {
+			isOffline = false;
 			// Same reasoning as the visibility path — don't pre-emptively abort a
 			// live fan-out; an actually-dropped branch fetch recovers via runBranch.
 			if (wasOfflineDuringFetch) void invalidateAll();
@@ -1723,6 +1735,11 @@
 			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
 		if ((!text && attachments.items.length === 0) || generating || compacting) return;
 		if (attachments.isBusy) return;
+		// Offline: block the send before anything is cleared. The button is
+		// already disabled, but Enter can still reach here — bail so the typed
+		// message stays in the box (and its draft) rather than clearing into a
+		// doomed fetch. onOnline re-enables Send the moment connectivity returns.
+		if (isOffline) return;
 		const attachedMediaIds = attachments.readyMediaIds();
 		// Split-attachments image set (one branch per image) captured before the
 		// strip is cleared below.
@@ -2396,6 +2413,7 @@
 					{allowAttachments}
 					{hasValidModel}
 					{generating}
+					offline={isOffline}
 					canStop={((busy || approvalSubmitting) && activeAbort != null) ||
 						recoveredInFlight ||
 						fanout.streaming}

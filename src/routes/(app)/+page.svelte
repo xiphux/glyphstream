@@ -7,6 +7,7 @@
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
+	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
@@ -246,6 +247,25 @@
 	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 
+	// Live connectivity — drives the offline notice + disabled Send. While
+	// offline we block starting a chat rather than firing a doomed fetch, so
+	// the typed prompt stays in the box (and its draft) instead of clearing
+	// into a "Load failed". navigator.onLine === false is reliable; a true is
+	// only a hint, so we never over-block. Seeded + kept current below.
+	let isOffline = $state(false);
+	$effect(() => {
+		if (!browser) return;
+		isOffline = !navigator.onLine;
+		const onOffline = () => (isOffline = true);
+		const onOnline = () => (isOffline = false);
+		window.addEventListener('offline', onOffline);
+		window.addEventListener('online', onOnline);
+		return () => {
+			window.removeEventListener('offline', onOffline);
+			window.removeEventListener('online', onOnline);
+		};
+	});
+
 	// Attachments are picked here and travel into the chat-id page via
 	// sessionStorage along with the first-message text — the chat-id page
 	// then forwards them to the message-send call.
@@ -463,6 +483,10 @@
 		if ((!fanout && !effectiveModelId) || busy) return;
 		if (!cleanText && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
+		// Offline: block before the create fetch. The button is disabled, but
+		// Enter can still reach here — bail so the prompt stays in the box (and
+		// its draft). onOnline re-enables Send the moment connectivity returns.
+		if (isOffline) return;
 		busy = true;
 		errorMsg = null;
 		try {
@@ -745,13 +769,16 @@
 					disabled={(compareMode && fanoutFirstModels.length > 0 ? false : !modelId) ||
 						(!text.trim() && attachments.items.length === 0) ||
 						busy ||
-						attachments.isBusy}
+						attachments.isBusy ||
+						isOffline}
 					aria-label={compareMode && fanoutFirstModels.length > 0
 						? `Send to ${fanoutFirstModels.length} models`
 						: 'Send message'}
-					title={compareMode && fanoutFirstModels.length > 0
-						? `Send to ${fanoutFirstModels.length} models`
-						: 'Send'}
+					title={isOffline
+						? "You're offline — reconnect to send"
+						: compareMode && fanoutFirstModels.length > 0
+							? `Send to ${fanoutFirstModels.length} models`
+							: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />
@@ -763,6 +790,12 @@
 			<p class="mt-3 text-center text-xs text-warning">
 				No models available — check <code>config.toml</code> and your endpoints.
 			</p>
+		{/if}
+
+		{#if isOffline}
+			<div class="mt-3">
+				<OfflineNotice />
+			</div>
 		{/if}
 
 		{#if errorMsg}

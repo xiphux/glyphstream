@@ -162,6 +162,28 @@ describe('ChatComposer — send/stop button', () => {
 		render(ChatComposer, { props: baseProps({ generating: true }) });
 		expect(screen.getByPlaceholderText('Write a message…')).toBeDisabled();
 	});
+
+	it('disables Send while offline, even with text present', () => {
+		render(ChatComposer, { props: baseProps({ composerText: 'hi', offline: true }) });
+		const btn = screen.getByRole('button', { name: 'Send message' });
+		expect(btn).toBeDisabled();
+		expect(btn).toHaveAttribute('title', "You're offline — reconnect to send");
+	});
+
+	it('keeps the textarea editable while offline (message must not be lost)', () => {
+		render(ChatComposer, { props: baseProps({ composerText: 'hi', offline: true }) });
+		expect(screen.getByPlaceholderText('Write a message…')).not.toBeDisabled();
+	});
+
+	it('shows the offline notice while offline', () => {
+		render(ChatComposer, { props: baseProps({ offline: true }) });
+		expect(screen.getByText(/you're offline/i)).toBeInTheDocument();
+	});
+
+	it('hides the offline notice when online', () => {
+		render(ChatComposer, { props: baseProps({ offline: false }) });
+		expect(screen.queryByText(/you're offline/i)).toBeNull();
+	});
 });
 
 describe('ChatComposer — callbacks', () => {

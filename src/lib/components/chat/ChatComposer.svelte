@@ -13,6 +13,7 @@
 	import FeatureTogglesMenu from '$lib/components/FeatureTogglesMenu.svelte';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
+	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
@@ -48,6 +49,9 @@
 		allowAttachments: boolean;
 		hasValidModel: boolean;
 		generating: boolean;
+		/** Browser reports no network. Blocks Send (the message stays in the box)
+		 *  and surfaces the offline notice; the textarea stays editable. */
+		offline?: boolean;
 		/** True when a generation is in flight + cancellable (shows Stop). */
 		canStop: boolean;
 		enterBehavior: EnterBehavior;
@@ -92,6 +96,7 @@
 		allowAttachments,
 		hasValidModel,
 		generating,
+		offline = false,
 		canStop,
 		enterBehavior,
 		compareSelections = $bindable(),
@@ -157,7 +162,8 @@
 			(!effectiveText && attachments.items.length === 0) ||
 			generating ||
 			attachments.isBusy ||
-			!hasValidModel
+			!hasValidModel ||
+			offline
 		),
 	);
 
@@ -184,6 +190,11 @@
 	{#if errorMsg}
 		<div class="mb-2 rounded-md border px-3 py-2 text-xs alert-danger">
 			{errorMsg}
+		</div>
+	{/if}
+	{#if offline}
+		<div class="mb-2">
+			<OfflineNotice />
 		</div>
 	{/if}
 	<ComposerCore
@@ -258,9 +269,11 @@
 					aria-label={fanoutActive ? `Send to ${compareTotal} models` : 'Send message'}
 					title={!hasValidModel
 						? 'Pick a model to send'
-						: fanoutActive
-							? `Send to ${compareTotal} models`
-							: 'Send'}
+						: offline
+							? "You're offline — reconnect to send"
+							: fanoutActive
+								? `Send to ${compareTotal} models`
+								: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

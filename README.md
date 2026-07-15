@@ -85,6 +85,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 - **Draft autosave** — a half-typed prompt is kept per-conversation in local
   storage and restored after a reload, so an interrupted message (e.g. an iOS
   PWA frozen in the background) isn't lost.
+- **Offline-aware composer** — walk into a dead zone or tunnel and Send
+  disables with an inline notice; your typed message stays put (in the box and
+  its draft) and sending re-enables the moment you're back online.
 
 ### Multi-model
 
