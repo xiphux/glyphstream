@@ -579,6 +579,14 @@ proactivity and pipeline bets are the most identity-defining.
   mutations; and reconciling a live update against the resume-refresh so the two
   don't double-fetch.
 
-- **Background sync / offline composition.** Service worker queues messages
-  while offline, resends on reconnect. Low priority — chat apps generally don't
-  need this.
+- **Background sync / offline composition.** Auto-_resend_ a message composed
+  offline the moment connectivity returns. The data-loss half of this is now
+  handled the other way: the composer is offline-aware — while `navigator.onLine`
+  is false, Send disables with an inline notice and the send handlers bail before
+  clearing, so the typed message stays in the box (and its localStorage draft,
+  which already survives an iOS PWA kill). What remains is the auto-resend, and
+  it's deferred largely because it's infeasible where it'd matter most: the
+  Background Sync API (`SyncManager`) that fires a queued request after the PWA is
+  killed is Chromium-only — iOS WebKit has never supported it. On iOS it'd degrade
+  to an in-page outbox that only flushes while the tab is alive, which buys little
+  over the draft that already survives the kill. Low priority.
