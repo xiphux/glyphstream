@@ -435,35 +435,12 @@ proactivity and pipeline bets are the most identity-defining.
     endpoint has no reference-image / IP-adapter support.
 
 - **Gallery search & large-library navigation** (asset: permanently-accumulating
-  multimodal corpus). Stacking (shipped) bought _display_ density; it didn't
-  help _findability_ as the gallery grows from a scroll into a library. The
-  missing capability is finding a specific asset fast — leaning on a key
-  property: for a _generated_ image the prompt is already a dense description of
-  its content (the `media` row stores `promptFull` + `promptExcerpt`), so
-  searching the prompt covers most of what pixel-level "visual search" promises,
-  with little or no new infra. Phased cheapest-first:
-  - _Prompt search — keyword, then semantic (the lead win)._ Start with SQLite
-    FTS5 over `promptFull` (optionally the conversation title + `sourceModel`):
-    no new infra, instant, fully offline, and it resolves "the red sunset ones"
-    whenever that phrasing was in the prompt — which for generated media it
-    nearly always was. Then add a semantic leg that **reuses the existing text
-    `[embeddings]` endpoint** — embed each _prompt_ (text, not pixels), so it
-    rides the whole `memories` pattern verbatim (`embedding` blob + `embeddingModel`
-    columns, the partial `WHERE embedding IS NULL` index, the backfill sweep in
-    `embedding-backfill.ts`, `vector.ts` cosine, RRF fusion). Crucially needs
-    **no new endpoint**, unlike CLIP below. Open questions: which fields join
-    the FTS index; degradation for _uploaded_ images, which have no prompt
-    (fall back to filename, or just exclude them from prompt search).
-
-  - _Faceted filters + date grouping._ The columns already exist (`sourceModel`,
-    `sourceEndpointId`, `kind`, `createdAt`) — filter the gallery by model /
-    endpoint / kind / date range with pure query work. The gallery is already
-    reverse-chronological with stacking, so a "timeline" isn't a re-sort: it's
-    **group headings** (Today / This week / by month) over the existing order
-    plus a **quick-jump** rail to those groupers. Open question: how a heading
-    reconciles with a stack that straddles a date boundary (date the stack by
-    its newest member, most likely).
-
+  multimodal corpus). Prompt search (FTS5 keyword over `prompt_full` fused with
+  a semantic cosine leg via RRF), model/kind facets, and date grouping with a
+  quick-jump timeline rail have all shipped — the gallery reads as a library
+  now, not just a scroll. What's left, roughly costliest-last (still-open
+  faceting slice: filter by `sourceEndpointId` and by explicit date range — the
+  columns exist but only `model`/`kind`/`before` are wired):
   - _Lineage view._ `sourceMediaId` already chains i2i / i2v derivations (this
     image was edited / animated _from_ that one). Rather than a separate view,
     likely a **logic extension of stacking**: stacks today group media from the
