@@ -35,7 +35,12 @@ export class CanvasController {
 	 *  after a change. Cleared by the pane once the highlight settles. */
 	lastChangedVersionId = $state<string | null>(null);
 
-	/** Seed from the page load. Opens the pane if a canvas exists. */
+	/**
+	 * Seed from the page load. Does NOT open the pane — whether to auto-open on
+	 * entry is a viewport decision the page makes (side-by-side on desktop, but
+	 * not full-screen-over-the-chat on mobile), so it calls `show()` itself when
+	 * appropriate.
+	 */
 	hydrate(seed: CanvasSeed | null): void {
 		if (!seed) {
 			this.doc = null;
@@ -51,7 +56,7 @@ export class CanvasController {
 			versionNumber: seed.versionNumber,
 			editSource: 'agent',
 		};
-		this.open = true;
+		this.open = false;
 	}
 
 	/** Apply a live edit from a canvas_version stream event. */

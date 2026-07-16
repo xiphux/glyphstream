@@ -180,6 +180,10 @@
 	canvas.hydrate(data.canvas);
 	// svelte-ignore state_referenced_locally
 	let hydratedCanvasConvId = data.conversation.id;
+	// Tracks which conversation we've already auto-opened the canvas for, so the
+	// auto-open fires once per entry (not on every reactive tick) and a manual
+	// close isn't undone. Null so the first conversation counts.
+	let canvasAutoOpenedConvId: string | null = null;
 
 	$effect(() => {
 		messages = data.conversation.messages;
@@ -195,6 +199,15 @@
 		if (data.conversation.id !== hydratedCanvasConvId) {
 			hydratedCanvasConvId = data.conversation.id;
 			canvas.hydrate(data.canvas);
+		}
+		// Auto-open the canvas beside the conversation on entry — but only on a
+		// wide viewport. On a small screen the pane is a full-screen overlay, so
+		// auto-opening would replace the conversation you just entered with a wall
+		// of document; there the inline card opens it on demand. This runs in an
+		// $effect (client-only), so window.matchMedia is safe.
+		if (canvas.doc && canvasAutoOpenedConvId !== data.conversation.id) {
+			canvasAutoOpenedConvId = data.conversation.id;
+			if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
 		}
 	});
 
