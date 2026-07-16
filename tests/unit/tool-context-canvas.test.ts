@@ -9,7 +9,7 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import {
 	appendCanvasVersion,
 	createCanvas,
-	getActiveCanvas,
+	listActiveCanvases,
 } from '$lib/server/db/queries/artifacts';
 import { augmentRequestForCanvas } from '$lib/server/chat/tool-context';
 import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
@@ -41,7 +41,7 @@ function seedCanvasConv(content: string) {
 		modelKind: 'chat',
 		title: 'T',
 	}).id;
-	createCanvas({
+	const doc = createCanvas({
 		userId: user.id,
 		conversationId: convId,
 		title: 'Doc',
@@ -49,7 +49,7 @@ function seedCanvasConv(content: string) {
 		contentHtml: null,
 		createdByMessageId: null,
 	});
-	return { userId: user.id, convId };
+	return { userId: user.id, convId, artifactId: doc.id };
 }
 
 describe('augmentRequestForCanvas', () => {
@@ -65,7 +65,8 @@ describe('augmentRequestForCanvas', () => {
 		expect(out.tools?.some((t) => t.function.name === 'update_canvas')).toBe(true);
 		const tail = out.messages[out.messages.length - 1];
 		expect(tail.role).toBe('system');
-		expect(tail.content).toContain('<canvas_current_state version="1"');
+		expect(tail.content).toContain('<canvas_current_state artifact_id=');
+		expect(tail.content).toContain('version="1"');
 		expect(tail.content).toContain('body text');
 		// The doc text appears ONLY in the tail, never earlier (prefix stays clean).
 		const earlier = out.messages
@@ -115,7 +116,7 @@ describe('augmentRequestForCanvas', () => {
 		});
 
 		// A later edit changes the document.
-		const head = getActiveCanvas(convId, userId)!;
+		const head = listActiveCanvases(convId, userId)[0];
 		appendCanvasVersion({
 			artifactId: head.id,
 			userId,
@@ -142,5 +143,50 @@ describe('augmentRequestForCanvas', () => {
 		const tail = second.messages[second.messages.length - 1];
 		expect(tail.content).toContain('version="2"');
 		expect(tail.content).toContain('version two body');
+	});
+
+	it('injects one block per canvas, each with its artifact_id, in stable order', () => {
+		const user = seedUser();
+		const convId = createConversation({
+			userId: user.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+			title: 'T',
+		}).id;
+		const deck = createCanvas({
+			userId: user.id,
+			conversationId: convId,
+			title: 'Deck',
+			content: 'slide content',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+		const notes = createCanvas({
+			userId: user.id,
+			conversationId: convId,
+			title: 'Notes',
+			content: 'talking points',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+
+		const out = augmentRequestForCanvas(baseReq(), {
+			conversationId: convId,
+			userId: user.id,
+			disabledFeatures: [],
+			supportsTools: true,
+		});
+		const tail = out.messages[out.messages.length - 1].content as string;
+
+		// Both canvases present, each with its own id + content.
+		expect(tail).toContain(`artifact_id="${deck.id}"`);
+		expect(tail).toContain('slide content');
+		expect(tail).toContain(`artifact_id="${notes.id}"`);
+		expect(tail).toContain('talking points');
+		// Stable creation order: deck's block precedes notes'.
+		expect(tail.indexOf(deck.id)).toBeLessThan(tail.indexOf(notes.id));
+		// Two blocks.
+		expect(tail.split('<canvas_current_state').length - 1).toBe(2);
 	});
 });

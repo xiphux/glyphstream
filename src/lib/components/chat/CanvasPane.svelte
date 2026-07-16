@@ -11,15 +11,20 @@
 	import type { CanvasVersion } from '$lib/types/api';
 
 	interface Props {
+		/** The document currently shown. */
 		doc: CanvasVersion;
+		/** All open canvases, for the switcher (a tab strip when >1). */
+		docs: CanvasVersion[];
 		/** True right after an edit lands, to flash the body briefly. */
 		changed: boolean;
 		onClose: () => void;
+		/** Switch which canvas is shown. */
+		onSwitch: (artifactId: string) => void;
 		/** Called once the post-change highlight has settled. */
 		onHighlightSettled: () => void;
 	}
 
-	let { doc, changed, onClose, onHighlightSettled }: Props = $props();
+	let { doc, docs, changed, onClose, onSwitch, onHighlightSettled }: Props = $props();
 
 	/**
 	 * Slide the pane in/out. On a wide viewport it's a docked column, so we
@@ -95,19 +100,52 @@
 	     growing column's left edge — a real slide — while its fixed width keeps
 	     the text from rewrapping. Falls back to 100% at rest. -->
 	<div class="flex h-full shrink-0 flex-col" style="width: var(--pane-w, 100%)">
-		<header class="flex items-center gap-3 border-b border-border-strong px-4 py-3">
-			<div class="min-w-0 flex-1">
-				<h2 class="truncate text-sm font-semibold">{doc.title ?? 'Canvas'}</h2>
-				<p class="text-xs text-fg-muted">Version {doc.versionNumber}</p>
-			</div>
-			<button
-				type="button"
-				onclick={onClose}
-				aria-label="Close canvas"
-				class="shrink-0 rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
-			>
-				<X size={18} />
-			</button>
+		<header class="border-b border-border-strong">
+			{#if docs.length > 1}
+				<!-- Multiple canvases: a tab strip to switch between them. -->
+				<div class="flex items-center gap-2 px-2 pt-2">
+					<div class="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-0.5" role="tablist">
+						{#each docs as d (d.artifactId)}
+							<button
+								type="button"
+								role="tab"
+								aria-selected={d.artifactId === doc.artifactId}
+								onclick={() => onSwitch(d.artifactId)}
+								class="shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition {d.artifactId ===
+								doc.artifactId
+									? 'bg-surface-sunken text-fg'
+									: 'text-fg-muted hover:bg-surface-sunken/60 hover:text-fg-secondary'}"
+							>
+								{d.title ?? 'Canvas'}
+							</button>
+						{/each}
+					</div>
+					<button
+						type="button"
+						onclick={onClose}
+						aria-label="Close canvas"
+						class="shrink-0 rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
+					>
+						<X size={18} />
+					</button>
+				</div>
+				<p class="truncate px-4 pt-1.5 pb-2 text-xs text-fg-muted">Version {doc.versionNumber}</p>
+			{:else}
+				<div class="flex items-center gap-3 px-4 py-3">
+					<div class="min-w-0 flex-1">
+						<h2 class="truncate text-sm font-semibold">{doc.title ?? 'Canvas'}</h2>
+						<p class="text-xs text-fg-muted">Version {doc.versionNumber}</p>
+					</div>
+					<button
+						type="button"
+						onclick={onClose}
+						aria-label="Close canvas"
+						class="shrink-0 rounded-md p-1.5 text-fg-muted transition hover:bg-surface-sunken hover:text-fg"
+					>
+						<X size={18} />
+					</button>
+				</div>
+			{/if}
 		</header>
 
 		<div

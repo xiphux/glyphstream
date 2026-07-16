@@ -13,7 +13,7 @@
 import { register } from './registry';
 import type { Tool } from './types';
 import { renderMarkdown } from '../markdown/render';
-import { createCanvas, getActiveCanvas } from '../db/queries/artifacts';
+import { createCanvas } from '../db/queries/artifacts';
 import { getActiveLeafMessageId } from '../db/queries/messages';
 
 export const createCanvasTool: Tool = {
@@ -52,18 +52,6 @@ export const createCanvasTool: Tool = {
 		if (content === null) {
 			return {
 				content: JSON.stringify({ error: 'create_canvas requires a `content` string.' }),
-				isError: true,
-			};
-		}
-
-		// Phase 1: one canvas per conversation. Steer edits to update_canvas.
-		const existing = getActiveCanvas(ctx.conversationId, ctx.userId);
-		if (existing) {
-			return {
-				content: JSON.stringify({
-					error:
-						'A canvas already exists in this conversation. Use update_canvas to change it (command "rewrite" to replace it wholesale).',
-				}),
 				isError: true,
 			};
 		}

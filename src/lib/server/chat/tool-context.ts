@@ -17,7 +17,7 @@ import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '$lib/ty
 import type { OpenAIToolDefinition } from '../tools/types';
 import type { ChatCompletionRequest } from '../endpoints/client';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
-import { getActiveCanvas } from '../db/queries/artifacts';
+import { listActiveCanvases } from '../db/queries/artifacts';
 import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
 import { getUserServerStates } from '../mcp/registry';
 import { awaitMcpReady } from '../mcp/bootstrap';
@@ -212,39 +212,51 @@ export interface CanvasAugmentInput {
 }
 
 /**
- * Fold the conversation's open canvas into an upstream request, if any: arm
- * `update_canvas` (never statically advertised) and append the document's
+ * Fold the conversation's open canvases into an upstream request, if any: arm
+ * `update_canvas` (never statically advertised) and append each document's
  * current content as ONE `role:'system'` block at the very END of `messages`.
  *
  * This is THE canvas prefix-stability mechanism (CLAUDE.md "the payload is
- * rent"): the mutating document sits only at the tail, so it extends the suffix
- * and never reshuffles the cached prefix, and it's re-read from the DB on every
+ * rent"): the mutating documents sit only at the tail, so they extend the suffix
+ * and never reshuffle the cached prefix, and they're re-read from the DB on every
  * call so within a turn the model always sees the latest state (create_canvas
- * then update_canvas). Called by BOTH the message-send and tool-approval
- * handlers — on the initial body and inside their per-iteration
- * `rebuildRequestBody` — so the two paths can't drift and mid-turn creation
- * arms the editor from the next iteration on. A no-op when tools are
- * unsupported, the `canvas` category is off, or no canvas exists.
+ * then update_canvas). Multiple canvases are emitted in a STABLE creation order
+ * (listActiveCanvases) so editing one doesn't reorder the blocks and bust the
+ * cache; each carries its `id` so the model can target it via update_canvas's
+ * artifact_id. Called by BOTH the message-send and tool-approval handlers — on
+ * the initial body and inside their per-iteration `rebuildRequestBody` — so the
+ * two paths can't drift and mid-turn creation arms the editor from the next
+ * iteration on. A no-op when tools are unsupported, the `canvas` category is off,
+ * or no canvas exists.
  */
 export function augmentRequestForCanvas(
 	req: ChatCompletionRequest,
 	input: CanvasAugmentInput,
 ): ChatCompletionRequest {
 	if (!input.supportsTools || input.disabledFeatures.includes('canvas')) return req;
-	const doc = getActiveCanvas(input.conversationId, input.userId);
-	if (!doc) return req;
+	const docs = listActiveCanvases(input.conversationId, input.userId);
+	if (docs.length === 0) return req;
 
 	const updateDef = resolveActivatedToolDefs(['update_canvas'], {
 		excludeCategories: input.disabledFeatures,
 	});
 	const tools = dedupeToolDefs([...(req.tools ?? []), ...updateDef]);
 
-	const titleAttr = doc.title ? ` title=${JSON.stringify(doc.title)}` : '';
-	const tail =
-		'The user has an open canvas — a document shown beside the chat that you edit with update_canvas. ' +
-		'Below is its current, authoritative content. To change it, call update_canvas (str_replace for targeted ' +
-		'edits, rewrite to replace it wholesale) rather than repasting the document into your reply.\n\n' +
-		`<canvas_current_state version="${doc.versionNumber}"${titleAttr}>\n${doc.content}\n</canvas_current_state>`;
+	const noun = docs.length === 1 ? 'an open canvas' : `${docs.length} open canvases`;
+	const preamble =
+		`The user has ${noun} — ${docs.length === 1 ? 'a document' : 'documents'} shown beside the chat ` +
+		'that you edit with update_canvas. Below is the current, authoritative content of ' +
+		`${docs.length === 1 ? 'it' : 'each'}. To change ${docs.length === 1 ? 'it' : 'one'}, call ` +
+		'update_canvas (str_replace for targeted edits, rewrite to replace it wholesale' +
+		(docs.length === 1 ? '' : ', artifact_id to pick which') +
+		') rather than repasting the document into your reply.';
+	const blocks = docs
+		.map((d) => {
+			const titleAttr = d.title ? ` title=${JSON.stringify(d.title)}` : '';
+			return `<canvas_current_state artifact_id="${d.id}" version="${d.versionNumber}"${titleAttr}>\n${d.content}\n</canvas_current_state>`;
+		})
+		.join('\n\n');
+	const tail = `${preamble}\n\n${blocks}`;
 
 	return {
 		...req,

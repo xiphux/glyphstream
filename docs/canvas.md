@@ -32,9 +32,11 @@ model once per turn (appended at the end of the request, never mixed into the
 cached system prompt) so the model always edits the live state without the
 document bloating every turn's payload.
 
-There is **one canvas per conversation** for now. If the model tries to create a
-second, it's steered to `update_canvas` (use `rewrite` to start the document
-over).
+A conversation can hold **more than one canvas** — e.g. a spec and its
+accompanying notes. Each carries an id the assistant uses to say which one an
+edit applies to, and the current content of every open canvas is handed to the
+model each turn, so it can track and revise all of them. In the pane, a tab strip
+switches between them; the inline cards (one per canvas) open a specific one.
 
 ## What you can do
 

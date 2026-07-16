@@ -69,7 +69,7 @@ describe('tool definition budget', () => {
 		// isAvailable:false and appended per-request only once a conversation has a
 		// canvas. But it's still re-sent every turn for the rest of that
 		// conversation, so it earns a ceiling of its own.
-		expect(wireChars(updateCanvasTool)).toBeLessThanOrEqual(1000);
+		expect(wireChars(updateCanvasTool)).toBeLessThanOrEqual(1200);
 	});
 
 	it('does not repeat the same parameter prose across the memory tools', () => {

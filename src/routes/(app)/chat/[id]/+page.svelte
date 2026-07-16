@@ -177,7 +177,7 @@
 	// canvas_version stream events during a turn (see runChatStream below).
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
-	canvas.hydrate(data.canvas);
+	canvas.hydrate(data.canvases);
 	// The pane component is lazy-loaded once the conversation has a canvas (its
 	// chunk stays off the chat-route critical path). Kept in a variable rather
 	// than an {#await} so the open/close toggle below is a plain {#if}: Svelte
@@ -187,14 +187,16 @@
 	let CanvasPaneComp = $state<
 		| import('svelte').Component<{
 				doc: import('$lib/types/api').CanvasVersion;
+				docs: import('$lib/types/api').CanvasVersion[];
 				changed: boolean;
 				onClose: () => void;
+				onSwitch: (artifactId: string) => void;
 				onHighlightSettled: () => void;
 		  }>
 		| null
 	>(null);
 	$effect(() => {
-		if (canvas.doc && !CanvasPaneComp) {
+		if (canvas.docs.length > 0 && !CanvasPaneComp) {
 			void import('$lib/components/chat/CanvasPane.svelte').then(
 				(m) => (CanvasPaneComp = m.default),
 			);
@@ -220,14 +222,14 @@
 		// state, which already matches the persisted content.
 		if (data.conversation.id !== hydratedCanvasConvId) {
 			hydratedCanvasConvId = data.conversation.id;
-			canvas.hydrate(data.canvas);
+			canvas.hydrate(data.canvases);
 		}
 		// Auto-open the canvas beside the conversation on entry — but only on a
 		// wide viewport. On a small screen the pane is a full-screen overlay, so
 		// auto-opening would replace the conversation you just entered with a wall
 		// of document; there the inline card opens it on demand. This runs in an
 		// $effect (client-only), so window.matchMedia is safe.
-		if (canvas.doc && canvasAutoOpenedConvId !== data.conversation.id) {
+		if (canvas.docs.length > 0 && canvasAutoOpenedConvId !== data.conversation.id) {
 			canvasAutoOpenedConvId = data.conversation.id;
 			if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
 		}
@@ -2360,7 +2362,7 @@
 									approvalBusy={approvalSubmitting}
 									{onApprovalSelect}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
-									onOpenCanvas={() => canvas.show()}
+									onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
 								/>
 							{/if}
 							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
@@ -2545,12 +2547,14 @@
 		by a reactive block it coordinates, and tearing down the {#await} wouldn't
 		count — the pane would just vanish on close instead of sliding out.
 	-->
-	{#if canvas.open && canvas.doc && CanvasPaneComp}
+	{#if canvas.open && canvas.current && CanvasPaneComp}
 		{@const CanvasPane = CanvasPaneComp}
 		<CanvasPane
-			doc={canvas.doc}
-			changed={canvas.lastChangedVersionId === canvas.doc.versionId}
+			doc={canvas.current}
+			docs={canvas.docs}
+			changed={canvas.lastChangedVersionId === canvas.current.versionId}
 			onClose={() => canvas.hide()}
+			onSwitch={(id) => canvas.focus(id)}
 			onHighlightSettled={() => canvas.clearChangeFlag()}
 		/>
 	{/if}

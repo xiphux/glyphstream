@@ -17,7 +17,7 @@
 import { register } from './registry';
 import type { Tool } from './types';
 import { renderMarkdown } from '../markdown/render';
-import { appendCanvasVersion, getActiveCanvas } from '../db/queries/artifacts';
+import { appendCanvasVersion, listActiveCanvases } from '../db/queries/artifacts';
 import { getActiveLeafMessageId } from '../db/queries/messages';
 
 export const updateCanvasTool: Tool = {
@@ -26,7 +26,7 @@ export const updateCanvasTool: Tool = {
 		function: {
 			name: 'update_canvas',
 			description:
-				'Edit the open canvas. With command "str_replace", replace the single exact occurrence of old_str with new_str (include enough surrounding text that old_str matches exactly once). With command "rewrite", replace the whole document with content. Prefer str_replace for targeted changes. Pass title to rename the document.',
+				'Edit an open canvas. With command "str_replace", replace the single exact occurrence of old_str with new_str (include enough surrounding text that old_str matches exactly once). With command "rewrite", replace the whole document with content. Prefer str_replace for targeted changes. Pass title to rename. When more than one canvas is open, pass artifact_id (shown on each canvas) to say which to edit.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -34,6 +34,10 @@ export const updateCanvasTool: Tool = {
 						type: 'string',
 						enum: ['str_replace', 'rewrite'],
 						description: 'The edit to perform.',
+					},
+					artifact_id: {
+						type: 'string',
+						description: 'Which canvas to edit. Required only when more than one is open.',
 					},
 					title: {
 						type: 'string',
@@ -64,9 +68,28 @@ export const updateCanvasTool: Tool = {
 		if (ctx.disabledFeatures.includes('canvas')) {
 			return err('Canvas is disabled for this conversation.');
 		}
-		const doc = getActiveCanvas(ctx.conversationId, ctx.userId);
-		if (!doc) {
+		const canvases = listActiveCanvases(ctx.conversationId, ctx.userId);
+		if (canvases.length === 0) {
 			return err('There is no canvas to edit. Create one first with create_canvas.');
+		}
+
+		// Resolve which canvas to edit. With one open, edit it; with several, the
+		// model must name it by artifact_id (listed in the current-state blocks).
+		const requestedId = parseArtifactId(args);
+		let doc;
+		if (requestedId) {
+			doc = canvases.find((c) => c.id === requestedId);
+			if (!doc) {
+				return err(
+					`No open canvas has artifact_id "${requestedId}". Open canvases: ${describeCanvases(canvases)}.`,
+				);
+			}
+		} else if (canvases.length === 1) {
+			doc = canvases[0];
+		} else {
+			return err(
+				`More than one canvas is open — pass artifact_id to say which to edit. Open canvases: ${describeCanvases(canvases)}.`,
+			);
 		}
 
 		const edit = computeEdit(args, doc.content);
@@ -158,6 +181,18 @@ function parseTitle(args: unknown): string | null {
 	if (!args || typeof args !== 'object') return null;
 	const t = (args as Record<string, unknown>).title;
 	return typeof t === 'string' && t.trim().length > 0 ? t.trim() : null;
+}
+
+/** The target artifact id, or null when the model didn't name one. */
+function parseArtifactId(args: unknown): string | null {
+	if (!args || typeof args !== 'object') return null;
+	const id = (args as Record<string, unknown>).artifact_id;
+	return typeof id === 'string' && id.trim().length > 0 ? id.trim() : null;
+}
+
+/** A compact "id (title)" listing for the disambiguation error messages. */
+function describeCanvases(canvases: { id: string; title: string | null }[]): string {
+	return canvases.map((c) => `${c.id} (${c.title ?? 'Canvas'})`).join(', ');
 }
 
 function err(message: string) {

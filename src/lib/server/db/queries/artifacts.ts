@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { artifacts, artifactVersions } from '../schema';
@@ -44,38 +44,29 @@ function countVersions(artifactId: string): number {
 	return row?.n ?? 0;
 }
 
-/**
- * The conversation's active (non-deleted, most-recently-updated) canvas with
- * its current content, or null if none. Used to (a) decide whether to arm
- * `update_canvas` and build the tail block on the send path, and (b) rehydrate
- * the pane on page load.
- */
-export function getActiveCanvas(conversationId: string, userId: string): CanvasDoc | null {
-	const db = getDb();
-	const row = db
-		.select({
-			id: artifacts.id,
-			conversationId: artifacts.conversationId,
-			title: artifacts.title,
-			kind: artifacts.kind,
-			currentVersionId: artifacts.currentVersionId,
-			updatedAt: artifacts.updatedAt,
-			content: artifactVersions.content,
-			contentHtml: artifactVersions.contentHtml,
-		})
-		.from(artifacts)
-		.leftJoin(artifactVersions, eq(artifacts.currentVersionId, artifactVersions.id))
-		.where(
-			and(
-				eq(artifacts.conversationId, conversationId),
-				eq(artifacts.userId, userId),
-				isNull(artifacts.deletedAt),
-			),
-		)
-		.orderBy(desc(artifacts.updatedAt))
-		.limit(1)
-		.get();
-	if (!row) return null;
+const CANVAS_COLUMNS = {
+	id: artifacts.id,
+	conversationId: artifacts.conversationId,
+	title: artifacts.title,
+	kind: artifacts.kind,
+	currentVersionId: artifacts.currentVersionId,
+	updatedAt: artifacts.updatedAt,
+	content: artifactVersions.content,
+	contentHtml: artifactVersions.contentHtml,
+} as const;
+
+type CanvasRow = {
+	id: string;
+	conversationId: string;
+	title: string | null;
+	kind: 'markdown';
+	currentVersionId: string | null;
+	updatedAt: number;
+	content: string | null;
+	contentHtml: string | null;
+};
+
+function toCanvasDoc(row: CanvasRow): CanvasDoc {
 	return {
 		id: row.id,
 		conversationId: row.conversationId,
@@ -87,6 +78,59 @@ export function getActiveCanvas(conversationId: string, userId: string): CanvasD
 		versionNumber: countVersions(row.id),
 		updatedAt: row.updatedAt,
 	};
+}
+
+/**
+ * All of the conversation's active (non-deleted) canvases with their current
+ * content, in a STABLE order (creation time, then id as tiebreak). Order must
+ * not depend on which was last edited: the send path injects one tail block per
+ * canvas, and reordering them when nothing structural changed would bust the
+ * upstream's prefix cache (the "payload is rent" invariant). Used to build the
+ * tail blocks + arm `update_canvas`, and to rehydrate the pane on page load.
+ */
+export function listActiveCanvases(conversationId: string, userId: string): CanvasDoc[] {
+	const db = getDb();
+	const rows = db
+		.select(CANVAS_COLUMNS)
+		.from(artifacts)
+		.leftJoin(artifactVersions, eq(artifacts.currentVersionId, artifactVersions.id))
+		.where(
+			and(
+				eq(artifacts.conversationId, conversationId),
+				eq(artifacts.userId, userId),
+				isNull(artifacts.deletedAt),
+			),
+		)
+		.orderBy(asc(artifacts.createdAt), asc(artifacts.id))
+		.all();
+	return rows.map(toCanvasDoc);
+}
+
+/**
+ * A specific canvas by id, scoped to its conversation + owner (so a stray id
+ * can't reach another user's or conversation's artifact). Used by `update_canvas`
+ * to resolve the edit target when the model names one.
+ */
+export function getCanvasById(
+	artifactId: string,
+	conversationId: string,
+	userId: string,
+): CanvasDoc | null {
+	const db = getDb();
+	const row = db
+		.select(CANVAS_COLUMNS)
+		.from(artifacts)
+		.leftJoin(artifactVersions, eq(artifacts.currentVersionId, artifactVersions.id))
+		.where(
+			and(
+				eq(artifacts.id, artifactId),
+				eq(artifacts.conversationId, conversationId),
+				eq(artifacts.userId, userId),
+				isNull(artifacts.deletedAt),
+			),
+		)
+		.get();
+	return row ? toCanvasDoc(row) : null;
 }
 
 export interface CreateCanvasInput {

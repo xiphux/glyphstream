@@ -9,10 +9,12 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import {
 	appendCanvasVersion,
 	createCanvas,
-	getActiveCanvas,
+	getCanvasById,
+	listActiveCanvases,
 } from '$lib/server/db/queries/artifacts';
-import { computeEdit } from '$lib/server/tools/update-canvas';
+import { computeEdit, updateCanvasTool } from '$lib/server/tools/update-canvas';
 import { deriveCanvasTitle } from '$lib/server/tools/create-canvas';
+import type { ToolContext } from '$lib/server/tools/types';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -27,6 +29,11 @@ function seedConv(userId: string): string {
 		modelKind: 'chat',
 		title: 'T',
 	}).id;
+}
+
+/** The single active canvas for a conversation (test convenience). */
+function activeCanvas(convId: string, userId: string) {
+	return listActiveCanvases(convId, userId)[0] ?? null;
 }
 
 describe('artifacts queries', () => {
@@ -44,7 +51,7 @@ describe('artifacts queries', () => {
 		expect(doc.versionNumber).toBe(1);
 		expect(doc.currentVersionId).toBeTruthy();
 
-		const active = getActiveCanvas(convId, user.id);
+		const active = activeCanvas(convId, user.id);
 		expect(active).not.toBeNull();
 		expect(active!.id).toBe(doc.id);
 		expect(active!.content).toBe('# Hello');
@@ -78,7 +85,7 @@ describe('artifacts queries', () => {
 		expect(res.doc.versionNumber).toBe(2);
 		expect(res.doc.content).toBe('v2');
 
-		const active = getActiveCanvas(convId, user.id);
+		const active = activeCanvas(convId, user.id);
 		expect(active!.versionNumber).toBe(2);
 		expect(active!.content).toBe('v2');
 		expect(active!.currentVersionId).toBe(res.doc.currentVersionId);
@@ -119,7 +126,7 @@ describe('artifacts queries', () => {
 			editSource: 'agent',
 		});
 		expect(conflict).toEqual({ ok: false, reason: 'conflict' });
-		expect(getActiveCanvas(convId, user.id)!.content).toBe('v2');
+		expect(activeCanvas(convId, user.id)!.content).toBe('v2');
 	});
 
 	it('renames the artifact when a title is passed to appendCanvasVersion', () => {
@@ -144,7 +151,7 @@ describe('artifacts queries', () => {
 			title: 'New Name',
 		});
 		expect(res.ok && res.doc.title).toBe('New Name');
-		expect(getActiveCanvas(convId, user.id)!.title).toBe('New Name');
+		expect(activeCanvas(convId, user.id)!.title).toBe('New Name');
 	});
 
 	it('leaves the title unchanged when no title is passed', () => {
@@ -167,7 +174,7 @@ describe('artifacts queries', () => {
 			createdByMessageId: null,
 			editSource: 'agent',
 		});
-		expect(getActiveCanvas(convId, user.id)!.title).toBe('Keep Me');
+		expect(activeCanvas(convId, user.id)!.title).toBe('Keep Me');
 	});
 
 	it('scopes canvases to their owner', () => {
@@ -182,14 +189,14 @@ describe('artifacts queries', () => {
 			contentHtml: null,
 			createdByMessageId: null,
 		});
-		expect(getActiveCanvas(convId, owner.id)).not.toBeNull();
-		expect(getActiveCanvas(convId, other.id)).toBeNull();
+		expect(activeCanvas(convId, owner.id)).not.toBeNull();
+		expect(activeCanvas(convId, other.id)).toBeNull();
 	});
 
-	it('returns the most-recently-updated non-deleted canvas', () => {
+	it('lists multiple canvases in stable creation order, and resolves one by id', () => {
 		const user = seedUser();
 		const convId = seedConv(user.id);
-		createCanvas({
+		const first = createCanvas({
 			userId: user.id,
 			conversationId: convId,
 			title: 'first',
@@ -205,8 +212,116 @@ describe('artifacts queries', () => {
 			contentHtml: null,
 			createdByMessageId: null,
 		});
-		// Both exist; getActiveCanvas returns the newest by updated_at.
-		expect(getActiveCanvas(convId, user.id)!.id).toBe(second.id);
+
+		const list = listActiveCanvases(convId, user.id);
+		expect(list.map((c) => c.id)).toEqual([first.id, second.id]);
+
+		// Editing the first must NOT reorder the list (prefix stability).
+		appendCanvasVersion({
+			artifactId: first.id,
+			userId: user.id,
+			expectedCurrentVersionId: first.currentVersionId,
+			content: 'a2',
+			contentHtml: null,
+			createdByMessageId: null,
+			editSource: 'agent',
+		});
+		expect(listActiveCanvases(convId, user.id).map((c) => c.id)).toEqual([first.id, second.id]);
+
+		expect(getCanvasById(second.id, convId, user.id)?.title).toBe('second');
+	});
+
+	it('getCanvasById is scoped to conversation + owner', () => {
+		const owner = seedUser();
+		const other = seedUser();
+		const convId = seedConv(owner.id);
+		const doc = createCanvas({
+			userId: owner.id,
+			conversationId: convId,
+			title: 'mine',
+			content: 'x',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+		expect(getCanvasById(doc.id, convId, owner.id)).not.toBeNull();
+		expect(getCanvasById(doc.id, convId, other.id)).toBeNull();
+		expect(getCanvasById(doc.id, 'some-other-conversation', owner.id)).toBeNull();
+	});
+});
+
+describe('update_canvas targeting (multiple canvases)', () => {
+	function ctx(conversationId: string, userId: string): ToolContext {
+		return {
+			userId,
+			conversationId,
+			signal: new AbortController().signal,
+			disabledFeatures: [],
+		};
+	}
+	function seedCanvas(convId: string, userId: string, title: string, content: string) {
+		return createCanvas({
+			userId,
+			conversationId: convId,
+			title,
+			content,
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+	}
+
+	it('edits the sole canvas without an artifact_id', async () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		seedCanvas(convId, user.id, 'Only', 'hello world');
+		const res = await updateCanvasTool.execute(
+			{ command: 'str_replace', old_str: 'world', new_str: 'there' },
+			ctx(convId, user.id),
+		);
+		expect(res.isError).toBeFalsy();
+		expect(activeCanvas(convId, user.id)!.content).toBe('hello there');
+	});
+
+	it('requires an artifact_id when more than one canvas is open', async () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		seedCanvas(convId, user.id, 'A', 'aaa');
+		seedCanvas(convId, user.id, 'B', 'bbb');
+		const res = await updateCanvasTool.execute(
+			{ command: 'rewrite', content: 'nope' },
+			ctx(convId, user.id),
+		);
+		expect(res.isError).toBe(true);
+		expect(res.content).toMatch(/more than one/i);
+	});
+
+	it('edits the named canvas when artifact_id is given', async () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		const a = seedCanvas(convId, user.id, 'A', 'aaa');
+		const b = seedCanvas(convId, user.id, 'B', 'bbb');
+		const res = await updateCanvasTool.execute(
+			{ command: 'rewrite', content: 'B edited', artifact_id: b.id },
+			ctx(convId, user.id),
+		);
+		expect(res.isError).toBeFalsy();
+		expect(listActiveCanvases(convId, user.id).find((c) => c.id === b.id)!.content).toBe(
+			'B edited',
+		);
+		// A is untouched.
+		expect(listActiveCanvases(convId, user.id).find((c) => c.id === a.id)!.content).toBe('aaa');
+	});
+
+	it('errors on an unknown artifact_id', async () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		seedCanvas(convId, user.id, 'A', 'aaa');
+		seedCanvas(convId, user.id, 'B', 'bbb');
+		const res = await updateCanvasTool.execute(
+			{ command: 'rewrite', content: 'x', artifact_id: 'nonexistent' },
+			ctx(convId, user.id),
+		);
+		expect(res.isError).toBe(true);
+		expect(res.content).toMatch(/no open canvas/i);
 	});
 });
 
