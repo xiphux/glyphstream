@@ -9,7 +9,8 @@
 -->
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
-	import type { RenderBlock } from '$lib/chat-render';
+	import CanvasCard from './CanvasCard.svelte';
+	import { splitCanvasCards, type RenderBlock } from '$lib/chat-render';
 	import type { ApprovalAction } from '$lib/approval-workflow';
 	import type { McpUnavailableServer } from '$lib/types/api';
 
@@ -42,6 +43,7 @@
 		 *  Renders an inline notice above the response so skipped tools aren't
 		 *  silent. Empty = no notice. */
 		mcpUnavailable?: McpUnavailableServer[];
+		onOpenCanvas?: (artifactId: string | null) => void;
 	}
 
 	let {
@@ -59,7 +61,14 @@
 		onApprovalSelect,
 		mergeWithPrev = false,
 		mcpUnavailable = [],
+		onOpenCanvas,
 	}: Props = $props();
+
+	// Canvas cards render at the bottom of the live bubble, matching how the
+	// persisted view hoists them to the group bottom (RenderBlocks strips the
+	// successful ones from its body). Without this a create_canvas-first turn
+	// would stream into a blank bubble — its only block is the canvas tool call.
+	let split = $derived(splitCanvasCards(blocks));
 </script>
 
 <article
@@ -90,10 +99,15 @@
 		{approvalBusy}
 		{onApprovalSelect}
 	/>
-	{#if blocks.length === 0}
+	{#each split.cards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+		{#if block.type === 'tool_call'}
+			<CanvasCard result={block.result} onOpen={onOpenCanvas} />
+		{/if}
+	{/each}
+	{#if split.body.length === 0 && split.cards.length === 0}
 		<!-- Pre-first-token placeholder: thinking dots + optional
-		     progress/elapsed indicators. Once any text or tool_call
-		     segment lands, RenderBlocks takes over. -->
+		     progress/elapsed indicators. Once any text, tool_call, or canvas
+		     card lands, RenderBlocks (+ the cards above) takes over. -->
 		<div class="mt-1 flex items-center gap-2 text-fg-muted">
 			<span>{queued ? 'Queued' : label}</span>
 			<span class="inline-flex gap-1">

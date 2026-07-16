@@ -1,10 +1,9 @@
 <!--
 	Inline canvas card. Renders in the conversation in place of the raw tool block
 	whenever the assistant creates or edits a canvas — a compact, clickable
-	reference to the document (title + version) that reopens the pane. Each canvas
-	tool call is its own card, so multiple artifacts in a conversation list
-	themselves inline (the schema already allows several; the multi-artifact
-	controller + switcher come later — `onOpen` will then carry the artifactId).
+	reference to the document (title) that opens/focuses it in the pane. A
+	conversation can have several canvases, so cards are deduped to one per
+	artifact and `onOpen` carries the artifactId of the one to focus.
 -->
 <script lang="ts">
 	import { FileText, CircleAlert } from '@lucide/svelte';
@@ -13,7 +12,7 @@
 	interface Props {
 		/** The canvas tool's result (terse ack JSON); absent while executing. */
 		result?: string;
-		/** Open the canvas pane. (Phase 1: opens the conversation's single canvas.) */
+		/** Open the pane focused on this card's canvas (by artifactId). */
 		onOpen?: (artifactId: string | null) => void;
 	}
 

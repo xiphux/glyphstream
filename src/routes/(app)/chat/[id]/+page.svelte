@@ -2411,6 +2411,7 @@
 							{onApprovalSelect}
 							mergeWithPrev={fuseWithPrevAssistant}
 							mcpUnavailable={inFlightMcpUnavailable}
+							onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
 						/>
 					</div>
 				{/if}

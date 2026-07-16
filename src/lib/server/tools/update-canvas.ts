@@ -2,10 +2,10 @@
  * `update_canvas` — apply a targeted edit to the conversation's open canvas.
  *
  * Registered `isAvailable: () => false` so it's never in the static tool
- * advertisement; `buildChatToolContext` appends its definition per-request only
- * when the conversation has an active canvas (the `search_tools` / `activate_skill`
- * pattern). That keeps `tools[]` prefix-stable: the tool appears once a canvas
- * exists and stays, rather than blinking on volatile state.
+ * advertisement; `augmentRequestForCanvas` (called from the two send-path
+ * handlers) appends its definition per-request only when the conversation has an
+ * active canvas. That keeps `tools[]` prefix-stable: the tool appears once a
+ * canvas exists and stays, rather than blinking on volatile state.
  *
  * Two commands: `str_replace` (one exact-match find/replace — token-cheap
  * targeted edits) and `rewrite` (full replacement — for large restructures).
@@ -103,7 +103,7 @@ export const updateCanvasTool: Tool = {
 			expectedCurrentVersionId: doc.currentVersionId,
 			content: edit.content,
 			contentHtml,
-			createdByMessageId: getActiveLeafMessageId(ctx.conversationId),
+			createdByMessageId: getActiveLeafMessageId(ctx.conversationId, ctx.userId),
 			editSource: 'agent',
 			...(newTitle !== null ? { title: newTitle } : {}),
 		});

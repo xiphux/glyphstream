@@ -211,36 +211,32 @@ export interface CanvasAugmentInput {
 	supportsTools: boolean;
 }
 
-/**
- * Fold the conversation's open canvases into an upstream request, if any: arm
- * `update_canvas` (never statically advertised) and append each document's
- * current content as ONE `role:'system'` block at the very END of `messages`.
- *
- * This is THE canvas prefix-stability mechanism (CLAUDE.md "the payload is
- * rent"): the mutating documents sit only at the tail, so they extend the suffix
- * and never reshuffle the cached prefix, and they're re-read from the DB on every
- * call so within a turn the model always sees the latest state (create_canvas
- * then update_canvas). Multiple canvases are emitted in a STABLE creation order
- * (listActiveCanvases) so editing one doesn't reorder the blocks and bust the
- * cache; each carries its `id` so the model can target it via update_canvas's
- * artifact_id. Called by BOTH the message-send and tool-approval handlers — on
- * the initial body and inside their per-iteration `rebuildRequestBody` — so the
- * two paths can't drift and mid-turn creation arms the editor from the next
- * iteration on. A no-op when tools are unsupported, the `canvas` category is off,
- * or no canvas exists.
- */
-export function augmentRequestForCanvas(
-	req: ChatCompletionRequest,
-	input: CanvasAugmentInput,
-): ChatCompletionRequest {
-	if (!input.supportsTools || input.disabledFeatures.includes('canvas')) return req;
-	const docs = listActiveCanvases(input.conversationId, input.userId);
-	if (docs.length === 0) return req;
+export interface CanvasInjection {
+	/** The tail system-message text (preamble + one block per canvas), or null
+	 *  when there's nothing to inject. */
+	tailText: string | null;
+	/** The `update_canvas` definition to add to `tools[]` (empty when no canvas). */
+	toolDefs: OpenAIToolDefinition[];
+}
 
-	const updateDef = resolveActivatedToolDefs(['update_canvas'], {
+/**
+ * Resolve what the open canvases contribute to an upstream request: the tail
+ * block text + the `update_canvas` tool def. Factored out so BOTH the send path
+ * (`augmentRequestForCanvas`) and the context-breakdown endpoint price the exact
+ * same bytes — CLAUDE.md: "/api/conversations/:id/context prices what's actually
+ * being sent." A no-op (nulls / empty) when tools are unsupported, the `canvas`
+ * category is off, or no canvas exists.
+ */
+export function buildCanvasInjection(input: CanvasAugmentInput): CanvasInjection {
+	if (!input.supportsTools || input.disabledFeatures.includes('canvas')) {
+		return { tailText: null, toolDefs: [] };
+	}
+	const docs = listActiveCanvases(input.conversationId, input.userId);
+	if (docs.length === 0) return { tailText: null, toolDefs: [] };
+
+	const toolDefs = resolveActivatedToolDefs(['update_canvas'], {
 		excludeCategories: input.disabledFeatures,
 	});
-	const tools = dedupeToolDefs([...(req.tools ?? []), ...updateDef]);
 
 	const noun = docs.length === 1 ? 'an open canvas' : `${docs.length} open canvases`;
 	const preamble =
@@ -253,14 +249,51 @@ export function augmentRequestForCanvas(
 	const blocks = docs
 		.map((d) => {
 			const titleAttr = d.title ? ` title=${JSON.stringify(d.title)}` : '';
-			return `<canvas_current_state artifact_id="${d.id}" version="${d.versionNumber}"${titleAttr}>\n${d.content}\n</canvas_current_state>`;
+			return `<canvas_current_state artifact_id="${d.id}" version="${d.versionNumber}"${titleAttr}>\n${fenceCanvasContent(d.content)}\n</canvas_current_state>`;
 		})
 		.join('\n\n');
-	const tail = `${preamble}\n\n${blocks}`;
+	return { tailText: `${preamble}\n\n${blocks}`, toolDefs };
+}
 
+/**
+ * Defang any literal `</canvas_current_state` inside a document so its content
+ * can't forge an early close of the block and smuggle instructions past the
+ * delimiter into the surrounding `role:'system'` framing. Model-authored today,
+ * but canvases are exactly the surface a "fill from a fetched page" feature would
+ * pour untrusted content into — cheap defense-in-depth now. Injection-only: the
+ * STORED content stays pristine so `update_canvas`'s str_replace still matches
+ * (the zero-width space only reaches the model's view, and only for the
+ * essentially-never document that contains the sentinel verbatim).
+ */
+function fenceCanvasContent(content: string): string {
+	return content.replaceAll('</canvas_current_state', '</\u200bcanvas_current_state');
+}
+
+/**
+ * Fold the conversation's open canvases into an upstream request, if any: arm
+ * `update_canvas` (never statically advertised) and append each document's
+ * current content as ONE `role:'system'` block at the very END of `messages`.
+ *
+ * This is THE canvas prefix-stability mechanism (CLAUDE.md "the payload is
+ * rent"): the mutating documents sit only at the tail, so they extend the suffix
+ * and never reshuffle the cached prefix, and they're re-read from the DB on every
+ * call so within a turn the model always sees the latest state (create_canvas
+ * then update_canvas). Multiple canvases are emitted in STABLE creation order
+ * (see `buildCanvasInjection`) so editing one doesn't reorder the blocks. Called
+ * by BOTH the message-send and tool-approval handlers — on the initial body and
+ * inside their per-iteration `rebuildRequestBody` — so the two paths can't drift
+ * and mid-turn creation arms the editor from the next iteration on.
+ */
+export function augmentRequestForCanvas(
+	req: ChatCompletionRequest,
+	input: CanvasAugmentInput,
+): ChatCompletionRequest {
+	const { tailText, toolDefs } = buildCanvasInjection(input);
+	if (!tailText) return req;
+	const tools = dedupeToolDefs([...(req.tools ?? []), ...toolDefs]);
 	return {
 		...req,
-		messages: [...req.messages, { role: 'system', content: tail }],
+		messages: [...req.messages, { role: 'system', content: tailText }],
 		...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
 	};
 }

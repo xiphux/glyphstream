@@ -170,14 +170,15 @@ export interface WalkActiveBranchOptions {
  * The conversation's current active-leaf message id, or null. A cheap
  * single-column read — used by the canvas tools to stamp a version's
  * `created_by_message_id` (at tool-execution time the leaf is the assistant
- * message that emitted the tool call).
+ * message that emitted the tool call). Scoped by `userId` per the multi-user
+ * isolation invariant (a caller's ctx already carries both).
  */
-export function getActiveLeafMessageId(conversationId: string): string | null {
+export function getActiveLeafMessageId(conversationId: string, userId: string): string | null {
 	const db = getDb();
 	const row = db
 		.select({ activeLeaf: conversations.activeLeafMessageId })
 		.from(conversations)
-		.where(eq(conversations.id, conversationId))
+		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
 		.get();
 	return row?.activeLeaf ?? null;
 }

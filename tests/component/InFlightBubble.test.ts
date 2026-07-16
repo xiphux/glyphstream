@@ -88,4 +88,23 @@ describe('InFlightBubble — with blocks', () => {
 		expect(screen.getByText('web_search')).toBeInTheDocument();
 		expect(screen.getByText('running')).toBeInTheDocument();
 	});
+
+	it('renders a canvas card (not a blank bubble) when create_canvas is the only in-flight block', () => {
+		// Regression: canvas success cards are stripped from RenderBlocks' body and
+		// hoisted; without InFlightBubble rendering them, a create_canvas-first turn
+		// streamed into an empty bubble with just the label.
+		const blocks: RenderBlock[] = [
+			{
+				type: 'tool_call',
+				toolCallId: 'c1',
+				toolName: 'create_canvas',
+				arguments: '{"title":"Doc"',
+				status: 'executing',
+			},
+		];
+		render(InFlightBubble, { props: { ...base, blocks } });
+		// The pending canvas card shows, and the "Thinking" placeholder does not.
+		expect(screen.getByText(/working/i)).toBeInTheDocument();
+		expect(screen.queryByText('Thinking')).toBeNull();
+	});
 });

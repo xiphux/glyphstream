@@ -35,6 +35,7 @@
 		'skills:catalog': 'Skills catalog',
 		'tools:hint': 'Deferred-tool hint',
 		'tools:defs': 'Tool definitions',
+		canvas: 'Canvas documents',
 		'history:summary': 'Compaction summary',
 		'history:text': 'Messages',
 		'history:tool_calls': 'Tool calls',
@@ -54,6 +55,7 @@
 		'skills:catalog',
 		'tools:hint',
 		'tools:defs',
+		'canvas',
 	]);
 
 	let data = $state<ContextBreakdown | null>(null);

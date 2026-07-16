@@ -1256,6 +1256,7 @@ export type ContextSegmentKey =
 	| 'skills:catalog'
 	| 'tools:hint'
 	| 'tools:defs'
+	| 'canvas'
 	| 'history:summary'
 	| 'history:text'
 	| 'history:tool_calls'

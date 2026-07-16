@@ -76,6 +76,10 @@ export interface ContextBreakdownInput {
 	skillsCatalog: string | null;
 	toolSearchHint: string | null;
 	toolDefs: readonly OpenAIToolDefinition[];
+	/** The canvas tail block(s) appended at send time (`buildCanvasInjection`),
+	 *  or null. Re-sent verbatim every turn, so it's overhead — priced on its own
+	 *  `canvas` line. The `update_canvas` def rides `toolDefs` like any tool. */
+	canvasTailText?: string | null;
 	/**
 	 * The bytes an image actually contributes — its downscaled vision variant
 	 * where one has been generated, NOT the original on disk. Pricing the original
@@ -107,6 +111,7 @@ export async function buildContextBreakdown(
 	for (const def of input.toolDefs) {
 		acc.add('tools:defs', JSON.stringify(def).length, def.function.name);
 	}
+	if (input.canvasTailText) acc.add('canvas', input.canvasTailText.length);
 
 	// --- History: what compaction can actually reclaim.
 	const imageBytes = await priceHistory(input, acc);

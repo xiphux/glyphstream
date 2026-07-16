@@ -61,6 +61,7 @@ vi.mock('$lib/server/chat/tool-context', () => ({
 		needsApproval: () => false,
 		unavailableMcpServers: [],
 	}),
+	buildCanvasInjection: () => ({ tailText: null, toolDefs: [] }),
 }));
 vi.mock('$lib/server/media/vision-variant', () => ({ cachedVisionVariantSize: async () => null }));
 

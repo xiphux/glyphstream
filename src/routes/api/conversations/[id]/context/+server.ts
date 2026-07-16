@@ -27,7 +27,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { composePersonaPromptParts } from '$lib/server/chat/persona-context';
-import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { buildCanvasInjection, buildChatToolContext } from '$lib/server/chat/tool-context';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
 import { buildContextBreakdown, type MediaSize } from '$lib/server/chat/context-breakdown';
 import { cachedVisionVariantSize } from '$lib/server/media/vision-variant';
@@ -88,9 +88,22 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		timeZone: prefs?.timezone ?? null,
 	});
 
+	// The open canvases: the send path appends update_canvas to tools[] and the
+	// document text as a tail system block (augmentRequestForCanvas). Mirror both
+	// so the readout prices what's actually sent — the tail is uncapped and
+	// re-sent every turn, so omitting it under-reports by the whole document.
+	const canvas = buildCanvasInjection({
+		conversationId: params.id,
+		userId,
+		disabledFeatures,
+		supportsTools,
+	});
+
 	// Dedupe exactly as the send path does at assignment, or a tool that appears
 	// in both the base list and the cross-turn activation seed gets double-billed.
-	const toolDefs = toolCtx.toolDefs.length > 0 ? dedupeToolDefs(toolCtx.toolDefs) : [];
+	// update_canvas is folded in alongside the base defs (the send path adds it via
+	// augmentRequestForCanvas), so it prices under tools:defs like any tool.
+	const toolDefs = dedupeToolDefs([...toolCtx.toolDefs, ...canvas.toolDefs]);
 
 	// Mirrors `requireInlineable`'s validity rules: a row that's missing,
 	// hard-deleted, or not an image/video degrades to an `[Image deleted]` note
@@ -121,6 +134,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		skillsCatalog: toolCtx.skillsCatalog,
 		toolSearchHint: toolCtx.toolSearchHint,
 		toolDefs,
+		canvasTailText: canvas.tailText,
 		mediaSize,
 		contextWindow: modelEntry?.contextWindow ?? null,
 	});

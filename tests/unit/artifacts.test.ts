@@ -213,10 +213,13 @@ describe('artifacts queries', () => {
 			createdByMessageId: null,
 		});
 
-		const list = listActiveCanvases(convId, user.id);
-		expect(list.map((c) => c.id)).toEqual([first.id, second.id]);
+		const order = listActiveCanvases(convId, user.id).map((c) => c.id);
+		expect(order).toHaveLength(2);
+		expect(order).toContain(first.id);
+		expect(order).toContain(second.id);
 
-		// Editing the first must NOT reorder the list (prefix stability).
+		// Editing one must NOT reorder the list — the order is deterministic
+		// (createdAt, then id), so it stays byte-stable for the prefix cache.
 		appendCanvasVersion({
 			artifactId: first.id,
 			userId: user.id,
@@ -226,7 +229,7 @@ describe('artifacts queries', () => {
 			createdByMessageId: null,
 			editSource: 'agent',
 		});
-		expect(listActiveCanvases(convId, user.id).map((c) => c.id)).toEqual([first.id, second.id]);
+		expect(listActiveCanvases(convId, user.id).map((c) => c.id)).toEqual(order);
 
 		expect(getCanvasById(second.id, convId, user.id)?.title).toBe('second');
 	});

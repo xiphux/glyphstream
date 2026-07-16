@@ -4,10 +4,9 @@
  * it's advertised in every text chat (image/video generation runs with no
  * tools[] at all) unless the user turned the category off.
  *
- * Phase 1 is one canvas per conversation: if an active canvas already exists,
- * this declines in-band and points the model at `update_canvas`. Errors are
- * returned as `{ isError: true }` (the clock.ts philosophy) so the model
- * self-corrects rather than aborting the turn.
+ * A conversation may hold several canvases (e.g. a spec + its notes); each call
+ * creates a new one. Errors are returned as `{ isError: true }` (the clock.ts
+ * philosophy) so the model self-corrects rather than aborting the turn.
  */
 
 import { register } from './registry';
@@ -66,7 +65,7 @@ export const createCanvasTool: Tool = {
 			title: title ?? deriveCanvasTitle(content),
 			content,
 			contentHtml,
-			createdByMessageId: getActiveLeafMessageId(ctx.conversationId),
+			createdByMessageId: getActiveLeafMessageId(ctx.conversationId, ctx.userId),
 		});
 
 		return {

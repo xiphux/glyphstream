@@ -94,6 +94,17 @@ describe('buildContextBreakdown', () => {
 		expect(defs.items?.map((i) => i.label)).toEqual(['b', 'a']);
 	});
 
+	it('prices the canvas tail block on its own segment', async () => {
+		const tail = '<canvas_current_state artifact_id="a1">hello world</canvas_current_state>';
+		const b = await buildContextBreakdown(input({ canvasTailText: tail }));
+		expect(chars(b.segments, 'canvas')).toBe(tail.length);
+	});
+
+	it('omits the canvas segment when there is no canvas', async () => {
+		const b = await buildContextBreakdown(input({ canvasTailText: null }));
+		expect(b.segments.some((s) => s.key === 'canvas')).toBe(false);
+	});
+
 	it('bills tool results separately from assistant text', async () => {
 		const b = await buildContextBreakdown(
 			input({

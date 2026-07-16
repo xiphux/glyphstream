@@ -9,10 +9,10 @@ import { artifacts, artifactVersions } from '../schema';
  * pointing at the head. Every function is user-scoped (ANDs `user_id`) per the
  * multi-user isolation invariant.
  *
- * Phase 1 treats a conversation as having at most ONE active canvas — the
- * most-recently-updated non-deleted artifact. The schema allows several (no
- * uniqueness constraint), so a multi-canvas switcher can land later with no
- * migration; `create_canvas` just declines to make a second one for now.
+ * A conversation may hold several canvases. `listActiveCanvases` returns them
+ * all (non-deleted) in stable creation order; `getCanvasById` resolves one that
+ * `update_canvas` names. All reads scope by `user_id` (and, for by-id, the
+ * conversation) so a stray id can't reach another user's artifact.
  */
 
 /** An artifact plus the content of its current version — the shape the tool
