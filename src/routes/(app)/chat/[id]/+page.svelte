@@ -178,6 +178,28 @@
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
 	canvas.hydrate(data.canvas);
+	// The pane component is lazy-loaded once the conversation has a canvas (its
+	// chunk stays off the chat-route critical path). Kept in a variable rather
+	// than an {#await} so the open/close toggle below is a plain {#if}: Svelte
+	// only plays a transition when an element is added/removed by a reactive
+	// block, and an {#await} resolving with the pane already "open" would render
+	// it as initial content (no intro). A stable {#if} makes the slide reliable.
+	let CanvasPaneComp = $state<
+		| import('svelte').Component<{
+				doc: import('$lib/types/api').CanvasVersion;
+				changed: boolean;
+				onClose: () => void;
+				onHighlightSettled: () => void;
+		  }>
+		| null
+	>(null);
+	$effect(() => {
+		if (canvas.doc && !CanvasPaneComp) {
+			void import('$lib/components/chat/CanvasPane.svelte').then(
+				(m) => (CanvasPaneComp = m.default),
+			);
+		}
+	});
 	// svelte-ignore state_referenced_locally
 	let hydratedCanvasConvId = data.conversation.id;
 	// Tracks which conversation we've already auto-opened the canvas for, so the
@@ -2512,22 +2534,25 @@
 	</div>
 
 	<!--
-		Canvas pane. Lazy-loaded on first open (like MediaLightbox) so its chunk
-		stays off the chat-route critical path. On desktop it docks as a right
-		column and the chat above flexes to fill the rest; on mobile the pane
-		renders itself as a full-screen overlay (so this flex row leaves it
-		full-width behind). Content is server-rendered HTML carried on each
-		canvas_version — no client markdown/highlight stack is pulled in.
+		Canvas pane. Lazy-loaded once the conversation has a canvas (like
+		MediaLightbox) so its chunk stays off the chat-route critical path. On
+		desktop it docks as a right column and the chat flexes to fill the rest; on
+		mobile it's a full-screen overlay. Content is server-rendered HTML carried
+		on each canvas_version — no client markdown/highlight stack is pulled in.
+
+		The open/close toggle is an inner {#if} INSIDE the resolved import, not the
+		outer gate: Svelte only plays a leave transition when the element is removed
+		by a reactive block it coordinates, and tearing down the {#await} wouldn't
+		count — the pane would just vanish on close instead of sliding out.
 	-->
-	{#if canvas.open && canvas.doc}
-		{#await import('$lib/components/chat/CanvasPane.svelte') then { default: CanvasPane }}
-			<CanvasPane
-				doc={canvas.doc}
-				changed={canvas.lastChangedVersionId === canvas.doc.versionId}
-				onClose={() => canvas.hide()}
-				onHighlightSettled={() => canvas.clearChangeFlag()}
-			/>
-		{/await}
+	{#if canvas.open && canvas.doc && CanvasPaneComp}
+		{@const CanvasPane = CanvasPaneComp}
+		<CanvasPane
+			doc={canvas.doc}
+			changed={canvas.lastChangedVersionId === canvas.doc.versionId}
+			onClose={() => canvas.hide()}
+			onHighlightSettled={() => canvas.clearChangeFlag()}
+		/>
 	{/if}
 </div>
 

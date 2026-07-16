@@ -15,6 +15,39 @@ import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
 /**
+ * happy-dom doesn't implement the Web Animations API (`Element.prototype.animate`),
+ * which Svelte 5's `transition:`/`animate:` directives call. Without this, any
+ * component that transitions on mount (e.g. CanvasPane's slide-in) throws
+ * "element.animate is not a function" at render. Stub it with a no-op that
+ * reports itself already finished, so transitions are effectively instant in
+ * tests (we assert on final DOM, not animation frames).
+ */
+if (typeof Element !== 'undefined' && typeof Element.prototype.animate !== 'function') {
+	Element.prototype.animate = function animate() {
+		return {
+			cancel() {},
+			finish() {},
+			play() {},
+			pause() {},
+			reverse() {},
+			commitStyles() {},
+			persist() {},
+			addEventListener() {},
+			removeEventListener() {},
+			onfinish: null,
+			oncancel: null,
+			currentTime: 0,
+			startTime: 0,
+			playState: 'finished',
+			playbackRate: 1,
+			finished: Promise.resolve(),
+			ready: Promise.resolve(),
+			effect: null,
+		} as unknown as Animation;
+	} as Element['animate'];
+}
+
+/**
  * Cancel any setTimeout still pending when a component test ends.
  *
  * bits-ui's dismissible-layer (Popover / Switch) attaches a document
