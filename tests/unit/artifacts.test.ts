@@ -12,6 +12,7 @@ import {
 	getActiveCanvas,
 } from '$lib/server/db/queries/artifacts';
 import { computeEdit } from '$lib/server/tools/update-canvas';
+import { deriveCanvasTitle } from '$lib/server/tools/create-canvas';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -121,6 +122,54 @@ describe('artifacts queries', () => {
 		expect(getActiveCanvas(convId, user.id)!.content).toBe('v2');
 	});
 
+	it('renames the artifact when a title is passed to appendCanvasVersion', () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		const doc = createCanvas({
+			userId: user.id,
+			conversationId: convId,
+			title: 'Old Name',
+			content: 'body',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+		const res = appendCanvasVersion({
+			artifactId: doc.id,
+			userId: user.id,
+			expectedCurrentVersionId: doc.currentVersionId,
+			content: 'body edited',
+			contentHtml: null,
+			createdByMessageId: null,
+			editSource: 'agent',
+			title: 'New Name',
+		});
+		expect(res.ok && res.doc.title).toBe('New Name');
+		expect(getActiveCanvas(convId, user.id)!.title).toBe('New Name');
+	});
+
+	it('leaves the title unchanged when no title is passed', () => {
+		const user = seedUser();
+		const convId = seedConv(user.id);
+		const doc = createCanvas({
+			userId: user.id,
+			conversationId: convId,
+			title: 'Keep Me',
+			content: 'body',
+			contentHtml: null,
+			createdByMessageId: null,
+		});
+		appendCanvasVersion({
+			artifactId: doc.id,
+			userId: user.id,
+			expectedCurrentVersionId: doc.currentVersionId,
+			content: 'edited',
+			contentHtml: null,
+			createdByMessageId: null,
+			editSource: 'agent',
+		});
+		expect(getActiveCanvas(convId, user.id)!.title).toBe('Keep Me');
+	});
+
 	it('scopes canvases to their owner', () => {
 		const owner = seedUser();
 		const other = seedUser();
@@ -195,5 +244,27 @@ describe('update_canvas edit computation', () => {
 		expect('error' in computeEdit({ command: 'str_replace', old_str: '', new_str: 'y' }, 'x')).toBe(
 			true,
 		);
+	});
+});
+
+describe('deriveCanvasTitle', () => {
+	it('uses the first markdown heading', () => {
+		expect(deriveCanvasTitle('# Morning Walks\n\nbody')).toBe('Morning Walks');
+		expect(deriveCanvasTitle('\n\n## A Sub Heading\ntext')).toBe('A Sub Heading');
+	});
+
+	it('falls back to the first non-empty line, stripped of markers', () => {
+		expect(deriveCanvasTitle('**Bold intro** line\nmore')).toBe('Bold intro line');
+	});
+
+	it('truncates a very long first line', () => {
+		const long = 'x'.repeat(100);
+		const out = deriveCanvasTitle(long);
+		expect(out.length).toBeLessThanOrEqual(60);
+		expect(out.endsWith('…')).toBe(true);
+	});
+
+	it('returns a placeholder for empty content', () => {
+		expect(deriveCanvasTitle('   \n\n')).toBe('Untitled canvas');
 	});
 });

@@ -166,6 +166,8 @@ export interface AppendCanvasVersionInput {
 	contentHtml: string | null;
 	createdByMessageId: string | null;
 	editSource: 'agent' | 'user';
+	/** New artifact title (a rename). Undefined leaves the current title as-is. */
+	title?: string;
 }
 
 export type AppendCanvasVersionResult =
@@ -217,7 +219,11 @@ export function appendCanvasVersion(input: AppendCanvasVersionInput): AppendCanv
 			})
 			.run();
 		tx.update(artifacts)
-			.set({ currentVersionId: versionId, updatedAt: now })
+			.set({
+				currentVersionId: versionId,
+				updatedAt: now,
+				...(input.title !== undefined ? { title: input.title } : {}),
+			})
 			.where(eq(artifacts.id, input.artifactId))
 			.run();
 		outcome = { ok: true, doc: null as unknown as CanvasDoc };

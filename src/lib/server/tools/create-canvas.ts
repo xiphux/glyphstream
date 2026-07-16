@@ -22,17 +22,20 @@ export const createCanvasTool: Tool = {
 		function: {
 			name: 'create_canvas',
 			description:
-				'Open a canvas — a document shown beside the chat that you revise across turns. Use it for substantial work the user will iterate on (prose, a spec, a plan, a report, a config), not for short answers or snippets that belong inline. Creates the document with initial markdown content; afterward edit it with update_canvas.',
+				'Open a canvas — a document shown beside the chat that you revise across turns. Use it for substantial work the user will iterate on (prose, a spec, a plan, a report), not for short answers or snippets that belong inline. Always give it a short, descriptive title so the user can tell it apart from other canvases. Provide the initial markdown content; edit it afterward with update_canvas.',
 			parameters: {
 				type: 'object',
 				properties: {
-					title: { type: 'string', description: 'Short title for the document.' },
+					title: {
+						type: 'string',
+						description: 'A short, descriptive title naming the document (a few words).',
+					},
 					content: {
 						type: 'string',
 						description: 'Initial document content, as markdown.',
 					},
 				},
-				required: ['content'],
+				required: ['title', 'content'],
 				additionalProperties: false,
 			},
 		},
@@ -69,7 +72,10 @@ export const createCanvasTool: Tool = {
 		const doc = createCanvas({
 			userId: ctx.userId,
 			conversationId: ctx.conversationId,
-			title: title,
+			// `title` is required in the schema, but not every model honors that —
+			// fall back to a title derived from the content so a canvas is never
+			// nameless (the whole point of naming it: telling canvases apart).
+			title: title ?? deriveCanvasTitle(content),
 			content,
 			contentHtml,
 			createdByMessageId: getActiveLeafMessageId(ctx.conversationId),
@@ -100,9 +106,25 @@ export const createCanvasTool: Tool = {
 function parseArgs(args: unknown): { title: string | null; content: string | null } {
 	if (!args || typeof args !== 'object') return { title: null, content: null };
 	const a = args as Record<string, unknown>;
-	const title = typeof a.title === 'string' && a.title.length > 0 ? a.title : null;
+	const title = typeof a.title === 'string' && a.title.trim().length > 0 ? a.title.trim() : null;
 	const content = typeof a.content === 'string' ? a.content : null;
 	return { title, content };
+}
+
+/**
+ * Best-effort title from the document itself, for when the model omits one:
+ * the first markdown heading, else the first non-empty line — stripped of
+ * heading/emphasis markers and truncated. Exported for unit tests.
+ */
+export function deriveCanvasTitle(content: string): string {
+	for (const rawLine of content.split('\n')) {
+		const text = rawLine
+			.replace(/^\s*#{1,6}\s+/, '') // heading markers
+			.replace(/[*_`#>]/g, '') // inline emphasis / stray markers
+			.trim();
+		if (text) return text.length > 60 ? text.slice(0, 57).trimEnd() + '…' : text;
+	}
+	return 'Untitled canvas';
 }
 
 register(createCanvasTool);

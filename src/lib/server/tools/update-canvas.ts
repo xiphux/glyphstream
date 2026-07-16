@@ -26,7 +26,7 @@ export const updateCanvasTool: Tool = {
 		function: {
 			name: 'update_canvas',
 			description:
-				'Edit the open canvas. With command "str_replace", replace the single exact occurrence of old_str with new_str (include enough surrounding text that old_str matches exactly once). With command "rewrite", replace the whole document with content. Prefer str_replace for targeted changes.',
+				'Edit the open canvas. With command "str_replace", replace the single exact occurrence of old_str with new_str (include enough surrounding text that old_str matches exactly once). With command "rewrite", replace the whole document with content. Prefer str_replace for targeted changes. Pass title to rename the document.',
 			parameters: {
 				type: 'object',
 				properties: {
@@ -34,6 +34,10 @@ export const updateCanvasTool: Tool = {
 						type: 'string',
 						enum: ['str_replace', 'rewrite'],
 						description: 'The edit to perform.',
+					},
+					title: {
+						type: 'string',
+						description: 'Optional new title, to rename the document.',
 					},
 					old_str: {
 						type: 'string',
@@ -68,6 +72,7 @@ export const updateCanvasTool: Tool = {
 		const edit = computeEdit(args, doc.content);
 		if ('error' in edit) return err(edit.error);
 
+		const newTitle = parseTitle(args);
 		const contentHtml = await renderMarkdown(edit.content);
 		const result = appendCanvasVersion({
 			artifactId: doc.id,
@@ -77,6 +82,7 @@ export const updateCanvasTool: Tool = {
 			contentHtml,
 			createdByMessageId: getActiveLeafMessageId(ctx.conversationId),
 			editSource: 'agent',
+			...(newTitle !== null ? { title: newTitle } : {}),
 		});
 		if (!result.ok) {
 			return err(
@@ -145,6 +151,13 @@ export function computeEdit(args: unknown, current: string): EditResult {
 		return { command: 'str_replace', content: current.replace(oldStr, newStr) };
 	}
 	return { error: 'command must be "str_replace" or "rewrite".' };
+}
+
+/** The new title from a rename, or null when none was supplied. */
+function parseTitle(args: unknown): string | null {
+	if (!args || typeof args !== 'object') return null;
+	const t = (args as Record<string, unknown>).title;
+	return typeof t === 'string' && t.trim().length > 0 ? t.trim() : null;
 }
 
 function err(message: string) {

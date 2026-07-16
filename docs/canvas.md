@@ -18,6 +18,11 @@ document:
   whole document). The model uses `str_replace` for small changes so a revision
   costs a few tokens rather than re-typing the whole thing.
 
+Every canvas gets a short **title** — the assistant names it on creation (and
+can rename it with a later edit), so you can tell canvases apart at a glance in
+the pane header and the inline cards. If the assistant ever omits a name, one is
+derived from the document's first heading.
+
 Each edit is a new **version**; the pane header shows the current version number.
 Versions are kept, so the history is preserved even though Phase 1 shows only the
 latest.

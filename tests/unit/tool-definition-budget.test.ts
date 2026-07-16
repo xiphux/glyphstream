@@ -49,7 +49,7 @@ const BUDGETS: ReadonlyArray<readonly [string, Tool, number]> = [
 	['recall_memory', recallMemoryTool, 750],
 	['forget_memory', forgetMemoryTool, 450],
 	// Always advertised in every text chat (unless the canvas category is off).
-	['create_canvas', createCanvasTool, 700],
+	['create_canvas', createCanvasTool, 800],
 ];
 
 describe('tool definition budget', () => {
@@ -61,7 +61,7 @@ describe('tool definition budget', () => {
 		// The number that actually matters: what a fully-featured turn pays before a
 		// single MCP tool or skill is counted.
 		const total = BUDGETS.reduce((sum, [, tool]) => sum + wireChars(tool), 0);
-		expect(total).toBeLessThanOrEqual(9700);
+		expect(total).toBeLessThanOrEqual(9800);
 	});
 
 	it('keeps update_canvas within its wire budget', () => {
@@ -69,7 +69,7 @@ describe('tool definition budget', () => {
 		// isAvailable:false and appended per-request only once a conversation has a
 		// canvas. But it's still re-sent every turn for the rest of that
 		// conversation, so it earns a ceiling of its own.
-		expect(wireChars(updateCanvasTool)).toBeLessThanOrEqual(900);
+		expect(wireChars(updateCanvasTool)).toBeLessThanOrEqual(1000);
 	});
 
 	it('does not repeat the same parameter prose across the memory tools', () => {
