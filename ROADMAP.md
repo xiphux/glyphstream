@@ -186,19 +186,32 @@ docs.
   rendering the breakdown (collapsible per-model columns) vs. only the final
   answer; reusing the custom-model materialization path for the panel config.
 
-- **Canvas / collaborative document mode.** A long-lived document the model
-  edits across turns and the user can edit too — a side-by-side artifact pane
-  rather than inline chat messages — for work that needs several revisions
-  (prose, a spec, a config) where re-pasting the whole document every turn is
-  the friction. The canvas is a _mutable artifact_, not an append-only message,
-  so it wants its own entity + version chain. Sketch: an `artifacts` table
-  (per-user, `conversation_id`-scoped) holding current content + version
-  history; the model edits via a diff/replace tool (`update_canvas`) so turns
-  apply targeted edits; human edits append versions to the same chain.
-  Markdown-first (reuse the server-side markdown-it + shiki pipeline). Open
-  questions: reconcile with the tree schema — does a canvas version pin to the
-  leaf that produced it, so branch-nav restores the matching doc state?;
-  concurrent human + model edit conflicts; whether to diff-render edits.
+- **Canvas / collaborative document mode.** The **agent-driven** side is
+  shipped: `artifacts` + `artifact_versions` tables (per-user,
+  `conversation_id`-scoped; append-only version chain via `parent_version_id`,
+  head pointer on `artifacts.current_version_id`), `create_canvas` +
+  `update_canvas` (`str_replace` / `rewrite` + rename) under the `canvas` feature
+  category, and a side-by-side markdown pane (slide transition, mobile overlay)
+  with inline per-canvas cards. Multiple canvases per conversation are supported
+  (tab-strip switcher; `update_canvas` targets one by `artifact_id`). The
+  prefix-stability mechanism is `augmentRequestForCanvas` in
+  `chat/tool-context.ts` — one `<canvas_current_state>` tail block per canvas in
+  stable creation order, so editing never reshuffles the cached prefix ("payload
+  is rent"). Remaining:
+  - _User editing by hand._ The pane is view-only for the user today; only the
+    model edits. The schema is already staged for it — `artifact_versions`
+    carries `edit_source` (`'agent'` | `'user'`), and `appendCanvasVersion` takes
+    an optimistic `expectedCurrentVersionId` (the compare-and-swap that would
+    guard a human edit racing a mid-stream agent edit). A pane editor would
+    append a `'user'` version to the same chain; the next turn's tail injection
+    reflects it for free (the server is authoritative).
+  - _Tree reconciliation._ `created_by_message_id` is captured on every version
+    now, but branch-nav doesn't yet restore the doc state matching a navigated
+    leaf — deferred until the v2 branching UI exists (then: resolve the version
+    whose producing message is the nearest ancestor of the active leaf).
+  - _Diff-render + lifecycle._ Edits settle with a brief highlight, not a shown
+    diff of what changed; and canvases only accumulate (no delete/close tool or
+    UI — `deletedAt` soft-delete exists on the row but nothing sets it yet).
 
 - **Text-to-speech (read a reply aloud).** A per-message "read aloud" action on
   a text reply (plus an optional auto-read toggle). _Why this ranks above its
