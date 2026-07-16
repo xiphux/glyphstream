@@ -588,6 +588,71 @@ export function isCodeArgTool(toolName: string): boolean {
 	return toolName in CODE_ARG_TOOLS;
 }
 
+/** The canvas tools, whose tool_call blocks render as a clickable canvas card
+ *  (CanvasCard) rather than the generic ToolCallBlock. */
+const CANVAS_TOOLS = new Set(['create_canvas', 'update_canvas']);
+
+export function isCanvasTool(toolName: string): boolean {
+	return CANVAS_TOOLS.has(toolName);
+}
+
+/** The bits an inline canvas card shows, parsed from a canvas tool's result
+ *  (the terse ack JSON). All fields are best-effort — an in-flight or errored
+ *  call may have no result yet. */
+export interface CanvasCardInfo {
+	artifactId: string | null;
+	title: string | null;
+	version: number | null;
+	/** True when the ack reported an error (the edit didn't land). */
+	failed: boolean;
+}
+
+/**
+ * Split a bubble's blocks so canvas cards render at the BOTTOM of the response
+ * (the artifact reads as the turn's result, not something buried mid-reply) and
+ * collapse to one card per artifact. Phase 1 always opens the artifact's current
+ * state — there's no per-version viewer yet — so repeating a card per edit, or
+ * labelling one with a now-stale version, would mislead; a single card per
+ * artifact avoids that. A failed edit (nothing changed) stays inline as a small
+ * note where it happened rather than becoming a bottom card.
+ */
+export function splitCanvasCards(blocks: RenderBlock[]): {
+	body: RenderBlock[];
+	cards: RenderBlock[];
+} {
+	const body: RenderBlock[] = [];
+	const byArtifact = new Map<string, RenderBlock>();
+	const pending: RenderBlock[] = [];
+	for (const b of blocks) {
+		if (b.type === 'tool_call' && isCanvasTool(b.toolName)) {
+			const info = parseCanvasAck(b.result);
+			if (info.failed) body.push(b);
+			else if (info.artifactId)
+				byArtifact.set(info.artifactId, b); // last edit wins
+			else pending.push(b); // still executing — no artifact id yet
+			continue;
+		}
+		body.push(b);
+	}
+	return { body, cards: [...pending, ...byArtifact.values()] };
+}
+
+export function parseCanvasAck(result: string | undefined): CanvasCardInfo {
+	const empty: CanvasCardInfo = { artifactId: null, title: null, version: null, failed: false };
+	if (!result) return empty;
+	try {
+		const o = JSON.parse(result) as Record<string, unknown>;
+		return {
+			artifactId: typeof o.artifactId === 'string' ? o.artifactId : null,
+			title: typeof o.title === 'string' && o.title.length > 0 ? o.title : null,
+			version: typeof o.version === 'number' ? o.version : null,
+			failed: 'error' in o,
+		};
+	} catch {
+		return empty;
+	}
+}
+
 /** Pretty-print a JSON string (2-space indent) when it parses; otherwise the
  *  raw string. Shared by the tool-block components for args / result display.
  *  Cheap even on large args — the args themselves are typically tiny. */

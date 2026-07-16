@@ -166,6 +166,22 @@ export interface WalkActiveBranchOptions {
  * for serialization / tool-context / compaction callers that only need
  * `parts`, `role`, and metadata.
  */
+/**
+ * The conversation's current active-leaf message id, or null. A cheap
+ * single-column read — used by the canvas tools to stamp a version's
+ * `created_by_message_id` (at tool-execution time the leaf is the assistant
+ * message that emitted the tool call).
+ */
+export function getActiveLeafMessageId(conversationId: string): string | null {
+	const db = getDb();
+	const row = db
+		.select({ activeLeaf: conversations.activeLeafMessageId })
+		.from(conversations)
+		.where(eq(conversations.id, conversationId))
+		.get();
+	return row?.activeLeaf ?? null;
+}
+
 export function walkActiveBranch(
 	conversationId: string,
 	options?: WalkActiveBranchOptions,

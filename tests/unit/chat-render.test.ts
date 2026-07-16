@@ -8,12 +8,15 @@ import {
 	extractCodeArg,
 	filterVisibleMessages,
 	inFlightToBlocks,
+	isCanvasTool,
 	isCodeArgTool,
 	isSkillTool,
+	parseCanvasAck,
 	markToolCallPendingApproval,
 	messageToBlocks,
 	parseSkillToolDisplay,
 	prettyJson,
+	splitCanvasCards,
 	pushToolCall,
 	updateToolCallArgs,
 	updateToolCallResult,
@@ -749,6 +752,79 @@ describe('markToolCallPendingApproval', () => {
 });
 
 // --- bubble-merge flags ------------------------------------------------
+
+describe('canvas tool helpers', () => {
+	it('identifies the canvas tools', () => {
+		expect(isCanvasTool('create_canvas')).toBe(true);
+		expect(isCanvasTool('update_canvas')).toBe(true);
+		expect(isCanvasTool('run_python')).toBe(false);
+	});
+
+	it('parses a create/update ack into card info', () => {
+		expect(
+			parseCanvasAck(JSON.stringify({ ok: true, artifactId: 'a1', version: 3, title: 'Doc' })),
+		).toEqual({ artifactId: 'a1', title: 'Doc', version: 3, failed: false });
+	});
+
+	it('flags an error ack and tolerates missing/garbage input', () => {
+		expect(parseCanvasAck(JSON.stringify({ error: 'nope' })).failed).toBe(true);
+		expect(parseCanvasAck(undefined)).toEqual({
+			artifactId: null,
+			title: null,
+			version: null,
+			failed: false,
+		});
+		expect(parseCanvasAck('not json').failed).toBe(false);
+	});
+});
+
+describe('splitCanvasCards', () => {
+	const canvasBlock = (toolCallId: string, ack: Record<string, unknown>): RenderBlock => ({
+		type: 'tool_call',
+		toolCallId,
+		toolName: ack.error
+			? 'update_canvas'
+			: toolCallId.startsWith('c')
+				? 'create_canvas'
+				: 'update_canvas',
+		arguments: '',
+		result: JSON.stringify(ack),
+		status: 'done',
+	});
+
+	it('moves canvas cards to the bottom, keeping other blocks in order', () => {
+		const text: RenderBlock = { type: 'html', html: '<p>hi</p>' };
+		const { body, cards } = splitCanvasCards([
+			canvasBlock('c1', { artifactId: 'a1', version: 1, title: 'Doc' }),
+			text,
+		]);
+		expect(body).toEqual([text]);
+		expect(cards).toHaveLength(1);
+	});
+
+	it('collapses multiple edits of one artifact to a single (latest) card', () => {
+		const { cards } = splitCanvasCards([
+			canvasBlock('c1', { artifactId: 'a1', version: 1 }),
+			canvasBlock('u1', { artifactId: 'a1', version: 2 }),
+		]);
+		expect(cards).toHaveLength(1);
+		expect(cards[0].type === 'tool_call' && cards[0].toolCallId).toBe('u1');
+	});
+
+	it('keeps one card per distinct artifact (forward-compatible with multiple)', () => {
+		const { cards } = splitCanvasCards([
+			canvasBlock('c1', { artifactId: 'a1', version: 1 }),
+			canvasBlock('c2', { artifactId: 'a2', version: 1 }),
+		]);
+		expect(cards).toHaveLength(2);
+	});
+
+	it('leaves a failed edit inline (in body), not as a bottom card', () => {
+		const { body, cards } = splitCanvasCards([canvasBlock('u1', { error: 'no match' })]);
+		expect(cards).toHaveLength(0);
+		expect(body).toHaveLength(1);
+	});
+});
 
 describe('computeMergeFlags', () => {
 	const u = msg('user', [{ type: 'text', text: 'a' }], { id: 'u' });

@@ -1,5 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 import { CONVERSATION_MISSING_NOTICE } from '$lib/notices';
+import { getActiveCanvas } from '$lib/server/db/queries/artifacts';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
@@ -55,5 +56,11 @@ export const load: PageServerLoad = async ({ locals, params, parent }) => {
 		conversation.activeLeafMessageId,
 	);
 
-	return { conversation, assistantLabel, inFlightSince, fanout };
+	// The conversation's open canvas (if any), so the side-by-side pane
+	// rehydrates on load / after a reload. Null when the conversation has no
+	// canvas. The live pane is driven by canvas_version stream events during a
+	// turn; this is the durable seed.
+	const canvas = getActiveCanvas(params.id, locals.user.id);
+
+	return { conversation, assistantLabel, inFlightSince, fanout, canvas };
 };

@@ -18,7 +18,7 @@
  */
 
 import { readSSE } from './sse-client';
-import type { ChatMessage, McpUnavailableServer, StreamEvent } from './types/api';
+import type { CanvasVersion, ChatMessage, McpUnavailableServer, StreamEvent } from './types/api';
 
 export interface ConsumeChatStreamCallbacks {
 	/**
@@ -43,6 +43,9 @@ export interface ConsumeChatStreamCallbacks {
 		displayLabel: string | undefined,
 		category: string | undefined,
 	): void;
+	/** A canvas edit was applied and persisted; `canvas` is the new full state.
+	 *  Drives the live side-by-side pane (rehydrated from the DB on reload). */
+	onCanvasVersion?(canvas: CanvasVersion): void;
 	onProgress?(percent: number | null, status: string | null): void;
 	/** The request is waiting for a per-endpoint concurrency slot. Fires at
 	 *  most once, before any generation events; the next real event signals
@@ -121,6 +124,9 @@ export async function consumeChatStream(
 					event.displayLabel,
 					event.category,
 				);
+				break;
+			case 'canvas_version':
+				cb.onCanvasVersion?.(event.canvas);
 				break;
 			case 'progress':
 				cb.onProgress?.(event.percent, event.status ?? null);

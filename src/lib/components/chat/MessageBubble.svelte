@@ -11,7 +11,8 @@
 -->
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
-	import { messageToBlocks, type ToolResultEntry } from '$lib/chat-render';
+	import CanvasCard from './CanvasCard.svelte';
+	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '$lib/chat-render';
 	import type { ChatMessage } from '$lib/types/api';
 	import type { ApprovalAction } from '$lib/approval-workflow';
 
@@ -27,6 +28,11 @@
 		approvalDecisions?: Map<string, ApprovalAction>;
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
+		/** Canvas cards to render at the bottom of this bubble — set only on the
+		 *  last message of an assistant group, hoisted there by the page so the
+		 *  artifact reads as the turn's result rather than buried mid-reply. */
+		bottomCanvasCards?: RenderBlock[];
+		onOpenCanvas?: (artifactId: string | null) => void;
 	}
 
 	let {
@@ -41,6 +47,8 @@
 		approvalDecisions,
 		approvalBusy = false,
 		onApprovalSelect,
+		bottomCanvasCards = [],
+		onOpenCanvas,
 	}: Props = $props();
 
 	const roleLabel = $derived(
@@ -75,4 +83,9 @@
 		{approvalBusy}
 		{onApprovalSelect}
 	/>
+	{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
+		{#if block.type === 'tool_call'}
+			<CanvasCard result={block.result} onOpen={onOpenCanvas} />
+		{/if}
+	{/each}
 </article>

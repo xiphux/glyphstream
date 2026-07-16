@@ -134,6 +134,10 @@ button) with one switch per opt-out _category_:
   above still independently controls Python's network egress (so a
   code-allowed but web-blocked turn runs pure compute with no outbound
   traffic, including `micropip`).
+- **Canvas** drops `create_canvas` / `update_canvas`, so the model can't open
+  or edit a side-by-side document in that conversation. On by default in text
+  chats; see [Canvas](canvas.md). (Never advertised in image/video generation
+  conversations, which carry no tools at all.)
 - **One toggle per configured MCP server** (`mcp:<server-id>`, labeled with
   the server's `display_name`). Closes off every tool that server advertises
   in one switch — the natural unit of trust for a multi-tool MCP server. See

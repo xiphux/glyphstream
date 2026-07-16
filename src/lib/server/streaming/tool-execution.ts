@@ -353,5 +353,10 @@ async function runOneTool(
 		result: execution.content,
 		isError: execution.isError === true,
 	});
+	// Canvas tools signal the new document state back via `execution.canvas`;
+	// push it to the pane as a live tick (durable state is already in the DB).
+	if (execution.canvas) {
+		params.emit({ type: 'canvas_version', canvas: execution.canvas });
+	}
 	return { part, execution, mediaParts };
 }

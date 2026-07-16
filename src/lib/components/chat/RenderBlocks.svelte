@@ -10,8 +10,9 @@
 <script lang="ts">
 	import { CircleAlert } from '@lucide/svelte';
 	import ToolCallBlock from '$lib/components/ToolCallBlock.svelte';
+	import CanvasCard from '$lib/components/chat/CanvasCard.svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
-	import type { RenderBlock } from '$lib/chat-render';
+	import { isCanvasTool, splitCanvasCards, type RenderBlock } from '$lib/chat-render';
 	import type { ApprovalAction } from '$lib/approval-workflow';
 
 	interface Props {
@@ -38,6 +39,11 @@
 		onApprovalSelect,
 	}: Props = $props();
 
+	// Successful canvas edits don't render inline — the chat page hoists them to
+	// one card at the bottom of the whole assistant group (see splitCanvasCards).
+	// A failed edit stays inline here as a small note where it happened.
+	let split = $derived(splitCanvasCards(blocks));
+
 	function blockKey(b: RenderBlock, i: number): string {
 		if (b.type === 'tool_call') return 'tool_call:' + b.toolCallId;
 		if (b.type === 'image' || b.type === 'video' || b.type === 'file') {
@@ -47,7 +53,7 @@
 	}
 </script>
 
-{#each blocks as block, i (blockKey(block, i))}
+{#each split.body as block, i (blockKey(block, i))}
 	{#if block.type === 'reasoning'}
 		<details
 			open={block.open}
@@ -65,6 +71,11 @@
 		<div class="gs-prose mt-1">{@html block.html}</div>
 	{:else if block.type === 'plain-text'}
 		<div class="mt-1 whitespace-pre-wrap break-words">{block.text}</div>
+	{:else if block.type === 'tool_call' && isCanvasTool(block.toolName)}
+		<!-- Only failed canvas edits reach here (splitCanvasCards keeps them in the
+		     body); a success is hoisted to the group-bottom card by the page.
+		     CanvasCard renders the "didn't apply" note for a failure. -->
+		<CanvasCard result={block.result} />
 	{:else if block.type === 'tool_call'}
 		<ToolCallBlock
 			toolName={block.toolName}

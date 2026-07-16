@@ -29,7 +29,7 @@ import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
-import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { augmentRequestForCanvas, buildChatToolContext } from '$lib/server/chat/tool-context';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
@@ -229,7 +229,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		if (meta.parameters?.max_tokens !== undefined) {
 			requestBody.max_tokens = meta.parameters.max_tokens;
 		}
-		return requestBody;
+		// Same canvas fold as the send path: arm update_canvas + append the
+		// current document as a tail block, re-read each iteration.
+		return augmentRequestForCanvas(requestBody, {
+			conversationId: params.id,
+			userId,
+			disabledFeatures,
+			supportsTools,
+		});
 	};
 
 	const initialRequestBody = await buildRequestBody();

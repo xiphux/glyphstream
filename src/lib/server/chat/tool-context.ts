@@ -15,7 +15,9 @@
  */
 import type { ChatMessage, FeatureCategory, McpUnavailableServer } from '$lib/types/api';
 import type { OpenAIToolDefinition } from '../tools/types';
+import type { ChatCompletionRequest } from '../endpoints/client';
 import { openaiToolDefinitions, resolveActivatedToolDefs } from '../tools';
+import { getActiveCanvas } from '../db/queries/artifacts';
 import { buildUserMcpToolDefinitions } from '../mcp/tool-bridge';
 import { getUserServerStates } from '../mcp/registry';
 import { awaitMcpReady } from '../mcp/bootstrap';
@@ -25,6 +27,7 @@ import {
 	appendToolSearchHint,
 	buildToolSearchRequestContext,
 	collectActivatedToolNames,
+	dedupeToolDefs,
 } from './tool-search-context';
 
 /**
@@ -198,5 +201,54 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 		toolDefs,
 		needsApproval,
 		unavailableMcpServers,
+	};
+}
+
+export interface CanvasAugmentInput {
+	conversationId: string;
+	userId: string;
+	disabledFeatures: readonly FeatureCategory[];
+	supportsTools: boolean;
+}
+
+/**
+ * Fold the conversation's open canvas into an upstream request, if any: arm
+ * `update_canvas` (never statically advertised) and append the document's
+ * current content as ONE `role:'system'` block at the very END of `messages`.
+ *
+ * This is THE canvas prefix-stability mechanism (CLAUDE.md "the payload is
+ * rent"): the mutating document sits only at the tail, so it extends the suffix
+ * and never reshuffles the cached prefix, and it's re-read from the DB on every
+ * call so within a turn the model always sees the latest state (create_canvas
+ * then update_canvas). Called by BOTH the message-send and tool-approval
+ * handlers — on the initial body and inside their per-iteration
+ * `rebuildRequestBody` — so the two paths can't drift and mid-turn creation
+ * arms the editor from the next iteration on. A no-op when tools are
+ * unsupported, the `canvas` category is off, or no canvas exists.
+ */
+export function augmentRequestForCanvas(
+	req: ChatCompletionRequest,
+	input: CanvasAugmentInput,
+): ChatCompletionRequest {
+	if (!input.supportsTools || input.disabledFeatures.includes('canvas')) return req;
+	const doc = getActiveCanvas(input.conversationId, input.userId);
+	if (!doc) return req;
+
+	const updateDef = resolveActivatedToolDefs(['update_canvas'], {
+		excludeCategories: input.disabledFeatures,
+	});
+	const tools = dedupeToolDefs([...(req.tools ?? []), ...updateDef]);
+
+	const titleAttr = doc.title ? ` title=${JSON.stringify(doc.title)}` : '';
+	const tail =
+		'The user has an open canvas — a document shown beside the chat that you edit with update_canvas. ' +
+		'Below is its current, authoritative content. To change it, call update_canvas (str_replace for targeted ' +
+		'edits, rewrite to replace it wholesale) rather than repasting the document into your reply.\n\n' +
+		`<canvas_current_state version="${doc.versionNumber}"${titleAttr}>\n${doc.content}\n</canvas_current_state>`;
+
+	return {
+		...req,
+		messages: [...req.messages, { role: 'system', content: tail }],
+		...(tools.length ? { tools, tool_choice: 'auto' as const } : {}),
 	};
 }

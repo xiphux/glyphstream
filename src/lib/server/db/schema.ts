@@ -679,3 +679,96 @@ export const mcpCredentials = sqliteTable(
 	},
 	(t) => [uniqueIndex('uq_mcp_credentials_user_server').on(t.userId, t.serverId)],
 );
+
+// --- canvas artifacts -----------------------------------------------------
+//
+// A "canvas" is a long-lived document the model edits across turns (and, in a
+// later phase, the user edits too) — a mutable artifact rather than an
+// append-only message. The current content lives here (server-authoritative),
+// so the upstream payload can carry a SINGLE fresh copy of the document at the
+// tail on each canvas-active turn instead of re-pasting stale copies through
+// history (see src/lib/server/chat/tool-context.ts and the "payload is rent"
+// rule in CLAUDE.md).
+//
+// `artifacts` is per-user (direct `user_id`, like `media`) and
+// conversation-scoped; the version chain hangs off `artifact_versions`. The
+// current-content pointer (`current_version_id`) is a nullable forward FK into
+// that table — the same cyclic-nullable dance as
+// `conversations.active_leaf_message_id ↔ messages`: null between "artifact
+// row created" and "first version inserted", so SQLite resolves the cycle.
+export const artifacts = sqliteTable(
+	'artifacts',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		conversationId: text('conversation_id')
+			.notNull()
+			.references(() => conversations.id, { onDelete: 'cascade' }),
+		title: text('title'),
+		// Document kind. v1 is markdown-only (reuses the server markdown-it +
+		// shiki pipeline); the enum leaves room for 'code' etc. without a
+		// migration.
+		kind: text('kind', { enum: ['markdown'] })
+			.notNull()
+			.default('markdown'),
+		// Forward FK to artifact_versions.id; nullable until the first version
+		// exists. Insert the version row first, then update this pointer, inside
+		// one transaction.
+		currentVersionId: text('current_version_id').references((): any => artifactVersions.id, {
+			onDelete: 'set null',
+		}),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+		// Soft-delete tombstone (the `media` pattern). Every request-path reader
+		// filters `deleted_at IS NULL`; a deleted canvas stops arming
+		// `update_canvas` and drops out of the pane.
+		deletedAt: integer('deleted_at'),
+	},
+	(t) => [
+		index('idx_artifacts_conversation').on(t.conversationId),
+		index('idx_artifacts_user_updated').on(t.userId, t.updatedAt),
+	],
+);
+
+// Append-only version chain for a canvas. Each row is a full markdown snapshot
+// (diff-encoding can replace `content` later with no migration). The chain is a
+// self-FK linked list via `parent_version_id`, mirroring `messages.parent_message_id`.
+//
+// `created_by_message_id` and `edit_source` are captured from day one even
+// though Phase 1 uses neither for behavior: the former lets a later branching
+// UI restore the doc state matching a navigated leaf (resolve the version whose
+// producing message is the nearest ancestor of the active leaf); the latter
+// distinguishes agent edits from the user edits that land in a later phase.
+export const artifactVersions = sqliteTable(
+	'artifact_versions',
+	{
+		id: text('id').primaryKey(),
+		artifactId: text('artifact_id')
+			.notNull()
+			.references(() => artifacts.id, { onDelete: 'cascade' }),
+		// Self-FK chain; NULL only for an artifact's first version. Soft
+		// reference (no FK constraint) — the ordering index carries lookups and
+		// versions are never hard-deleted out from under a child.
+		parentVersionId: text('parent_version_id'),
+		content: text('content').notNull(),
+		// Server-rendered cached HTML (renderMarkdown). Hot-path read, like
+		// messages.content_html.
+		contentHtml: text('content_html'),
+		// The message whose turn produced this version (the active leaf at edit
+		// time). Captured for future branch-aware restore; null for user edits
+		// that don't originate from a message and for legacy rows.
+		createdByMessageId: text('created_by_message_id').references((): any => messages.id, {
+			onDelete: 'set null',
+		}),
+		editSource: text('edit_source', { enum: ['agent', 'user'] })
+			.notNull()
+			.default('agent'),
+		createdAt: integer('created_at').notNull(),
+	},
+	(t) => [
+		index('idx_artifact_versions_artifact_created').on(t.artifactId, t.createdAt),
+		index('idx_artifact_versions_created_by_message').on(t.createdByMessageId),
+	],
+);

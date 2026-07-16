@@ -76,6 +76,14 @@ export interface ToolExecution {
 	 * this field.
 	 */
 	activatedToolNames?: string[];
+	/**
+	 * Set by the canvas tools (`create_canvas` / `update_canvas`) after they
+	 * apply and persist an edit. The tool-execution stage emits it as a
+	 * `canvas_version` StreamEvent so the side-by-side pane updates live. Purely
+	 * a live-tick signal — the pane rehydrates from the DB on reload, so this is
+	 * never the durable record. Omitted by every non-canvas tool.
+	 */
+	canvas?: import('$lib/types/api').CanvasVersion;
 }
 
 /**

@@ -30,6 +30,8 @@ import { fetchUrlTool } from '$lib/server/tools/fetch-url';
 import { runPythonTool } from '$lib/server/tools/run-python';
 import { webSearchTool } from '$lib/server/tools/web-search';
 import { searchConversationsTool } from '$lib/server/tools/conversation-search';
+import { createCanvasTool } from '$lib/server/tools/create-canvas';
+import { updateCanvasTool } from '$lib/server/tools/update-canvas';
 import type { Tool } from '$lib/server/tools/types';
 
 /** Serialized size of a definition exactly as it goes on the wire. */
@@ -46,6 +48,8 @@ const BUDGETS: ReadonlyArray<readonly [string, Tool, number]> = [
 	['update_memory', updateMemoryTool, 950],
 	['recall_memory', recallMemoryTool, 750],
 	['forget_memory', forgetMemoryTool, 450],
+	// Always advertised in every text chat (unless the canvas category is off).
+	['create_canvas', createCanvasTool, 700],
 ];
 
 describe('tool definition budget', () => {
@@ -57,7 +61,15 @@ describe('tool definition budget', () => {
 		// The number that actually matters: what a fully-featured turn pays before a
 		// single MCP tool or skill is counted.
 		const total = BUDGETS.reduce((sum, [, tool]) => sum + wireChars(tool), 0);
-		expect(total).toBeLessThanOrEqual(9000);
+		expect(total).toBeLessThanOrEqual(9700);
+	});
+
+	it('keeps update_canvas within its wire budget', () => {
+		// Not in the always-on total above: update_canvas is registered
+		// isAvailable:false and appended per-request only once a conversation has a
+		// canvas. But it's still re-sent every turn for the rest of that
+		// conversation, so it earns a ceiling of its own.
+		expect(wireChars(updateCanvasTool)).toBeLessThanOrEqual(900);
 	});
 
 	it('does not repeat the same parameter prose across the memory tools', () => {

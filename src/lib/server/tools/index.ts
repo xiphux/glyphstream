@@ -20,3 +20,5 @@ import './run-python';
 import './activate-skill';
 import './search-tools';
 import './conversation-search';
+import './create-canvas';
+import './update-canvas';

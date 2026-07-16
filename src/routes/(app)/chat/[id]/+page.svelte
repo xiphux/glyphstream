@@ -29,6 +29,7 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { privateView } from '$lib/private-chat.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
@@ -43,10 +44,14 @@
 		computeMergeFlags,
 		inFlightToBlocks,
 		markToolCallPendingApproval as inFlightMarkToolCallPendingApproval,
+		messageToBlocks,
+		parseCanvasAck,
 		pushToolCall as inFlightPushToolCall,
+		splitCanvasCards,
 		updateToolCallArgs as inFlightUpdateToolCallArgs,
 		updateToolCallResult as inFlightUpdateToolCallResult,
 		type InFlightSegment,
+		type RenderBlock,
 	} from '$lib/chat-render';
 	import {
 		compactionWorthwhile,
@@ -167,6 +172,15 @@
 	// svelte-ignore state_referenced_locally
 	let serverInFlightSince = $state<number | null>(data.inFlightSince);
 
+	// Side-by-side canvas pane. The server is authoritative; this holds the
+	// live doc + open state. Seeded from the page load, updated by
+	// canvas_version stream events during a turn (see runChatStream below).
+	const canvas = new CanvasController();
+	// svelte-ignore state_referenced_locally
+	canvas.hydrate(data.canvas);
+	// svelte-ignore state_referenced_locally
+	let hydratedCanvasConvId = data.conversation.id;
+
 	$effect(() => {
 		messages = data.conversation.messages;
 		title = data.conversation.title;
@@ -174,6 +188,14 @@
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
+		// Re-seed the canvas ONLY when switching conversations. A mid-turn
+		// invalidateAll refreshes `data` with the same id — re-hydrating then
+		// would reopen a pane the user closed and clobber the just-applied live
+		// state, which already matches the persisted content.
+		if (data.conversation.id !== hydratedCanvasConvId) {
+			hydratedCanvasConvId = data.conversation.id;
+			canvas.hydrate(data.canvas);
+		}
 	});
 
 	// In-flight streaming state. Lifted to the top of the script so the
@@ -209,6 +231,33 @@
 		for (let i = 0; i < visibleMessages.length; i++) {
 			const m = visibleMessages[i];
 			map.set(m.id, computeMergeFlags(visibleMessages, i, editingMessageId, inFlightOpen));
+		}
+		return map;
+	});
+
+	// Canvas cards hoisted to the BOTTOM of each assistant group. The model
+	// emits create_canvas/update_canvas in one message and its prose in a
+	// follow-up message, so a per-message card lands above the reply. Instead we
+	// gather each group's canvas edits (deduped to one card per artifact, latest
+	// wins) and hand them to the group's LAST message, which renders them under
+	// its text. Keyed by that last message's id.
+	const canvasCardsByGroupLast = $derived.by(() => {
+		const map = new Map<string, RenderBlock[]>();
+		let group = new Map<string, RenderBlock>();
+		for (const m of visibleMessages) {
+			if (m.role !== 'assistant') {
+				group = new Map();
+				continue;
+			}
+			for (const card of splitCanvasCards(messageToBlocks(m, toolResultsByCallId)).cards) {
+				if (card.type !== 'tool_call') continue;
+				const key = parseCanvasAck(card.result).artifactId ?? card.toolCallId;
+				group.set(key, card);
+			}
+			if (!(mergeFlagsById.get(m.id)?.mergeWithNext ?? false)) {
+				if (group.size > 0) map.set(m.id, [...group.values()]);
+				group = new Map();
+			}
 		}
 		return map;
 	});
@@ -1405,6 +1454,11 @@
 			onToolCallResult(toolCallId, result, isError) {
 				updateInFlightToolCallResult(toolCallId, result, isError);
 			},
+			onCanvasVersion(c) {
+				// A create_canvas / update_canvas edit landed — swap the pane to
+				// the new server-rendered state and flash the change.
+				canvas.apply(c);
+			},
 			onToolPendingApproval(toolCallId, toolName, args) {
 				// Untrusted MCP tool — the relay halted before
 				// executing. Flip the in-flight segment to
@@ -2163,43 +2217,44 @@
 	}
 </script>
 
-<div class="relative flex h-full flex-col">
-	<ChatHeader {title} private={isPrivate} />
+<div class="flex h-full min-w-0">
+	<div class="relative flex h-full min-w-0 flex-1 flex-col">
+		<ChatHeader {title} private={isPrivate} />
 
-	<!--
+		<!--
 		Scroll area fills the full height *behind* the floating composer
 		(see below); the message list pads its own bottom by the composer's
 		measured height so the last message scrolls clear. No mask-fade —
 		content now slides under the frosted-glass composer, which is the
 		transition, rather than dissolving into the page bg.
 	-->
-	<div bind:this={scrollContainer} class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4">
-		<div
-			class="mx-auto min-w-0 max-w-3xl space-y-4"
-			style="padding-bottom: {composerHeight + 24}px"
-		>
-			{#each visibleMessages as m (m.id)}
-				{#if isCompactionSummary(m)}
-					<!-- A compaction summary: collapsed divider, not a bubble. The
+		<div bind:this={scrollContainer} class="flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4">
+			<div
+				class="mx-auto min-w-0 max-w-3xl space-y-4"
+				style="padding-bottom: {composerHeight + 24}px"
+			>
+				{#each visibleMessages as m (m.id)}
+					{#if isCompactionSummary(m)}
+						<!-- A compaction summary: collapsed divider, not a bubble. The
 						 real messages it stands in for stay visible above/below it.
 						 `summary-<id>` (not `msg-<id>`) is the scroll/highlight target a
 						 manual compaction jumps to — kept off the `msg-` namespace so
 						 bubble-counting logic still skips it. -->
-					<div
-						id="summary-{m.id}"
-						class={[
-							'rounded-lg transition-colors duration-1000',
-							m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
-						]}
-					>
-						<CompactionSummary
-							message={m}
-							canUndo={m.id === activeLeafSummaryId && !busy && !compacting}
-							onUndo={undoCompaction}
-						/>
-					</div>
-				{:else}
-					<!--
+						<div
+							id="summary-{m.id}"
+							class={[
+								'rounded-lg transition-colors duration-1000',
+								m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
+							]}
+						>
+							<CompactionSummary
+								message={m}
+								canUndo={m.id === activeLeafSummaryId && !busy && !compacting}
+								onUndo={undoCompaction}
+							/>
+						</div>
+					{:else}
+						<!--
 					Message + action-bar group. The actions row sits directly
 					below the bubble, aligned to the same side (right for user
 					messages, left for assistant), and reveals on hover at sm+.
@@ -2213,13 +2268,13 @@
 					by collapsing the gap + sharing corners + suppressing the
 					duplicate role label / interstitial action bar.
 				-->
-					{@const merge = mergeFlagsById.get(m.id) ?? {
-						mergeWithPrev: false,
-						mergeWithNext: false,
-					}}
-					{@const mergeWithPrev = merge.mergeWithPrev}
-					{@const mergeWithNext = merge.mergeWithNext}
-					<!--
+						{@const merge = mergeFlagsById.get(m.id) ?? {
+							mergeWithPrev: false,
+							mergeWithNext: false,
+						}}
+						{@const mergeWithPrev = merge.mergeWithPrev}
+						{@const mergeWithNext = merge.mergeWithNext}
+						<!--
 					Bubble-merge gap close. Tailwind v4's `space-y-4` sets
 					`margin-block-end: 1rem` on EVERY child (not the v3 pattern
 					of margin-top on subsequent siblings) — so the gap is the
@@ -2230,152 +2285,157 @@
 					Tailwind v4 important syntax is the `!` SUFFIX (`mb-0!`),
 					not the v3 prefix (`!mb-0`).
 				-->
-					<div
-						id="msg-{m.id}"
-						in:messageIntro={{ streamed: m.id === streamedMessageId }}
-						class={[
-							'group rounded-lg transition-colors duration-1000',
-							mergeWithPrev && 'mt-0!',
-							mergeWithNext && 'mb-0!',
-							m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
-						]}
-					>
-						{#if m.id === editingMessageId}
-							<!--
+						<div
+							id="msg-{m.id}"
+							in:messageIntro={{ streamed: m.id === streamedMessageId }}
+							class={[
+								'group rounded-lg transition-colors duration-1000',
+								mergeWithPrev && 'mt-0!',
+								mergeWithNext && 'mb-0!',
+								m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
+							]}
+						>
+							{#if m.id === editingMessageId}
+								<!--
 						Inline editor: replaces the static bubble with an
 						editable surface in the same position so it's
 						unambiguous WHICH message is being edited. Save creates
 						a sibling under the original's parent (preserving the
 						original as a branch); Cancel discards.
 					-->
-							<EditMessageForm
-								bind:editText
-								attachments={editAttachments}
-								{allowAttachments}
-								enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-								onSave={() => void saveEdit()}
-								onCancel={cancelEdit}
-							/>
-						{:else}
-							<MessageBubble
-								message={m}
-								{toolResultsByCallId}
-								{userLabel}
-								assistantLabel={assistantLabelFor(m)}
-								{mergeWithPrev}
-								{mergeWithNext}
-								onImageClick={openImageInLightbox}
-								{openingLightboxFor}
-								{approvalDecisions}
-								approvalBusy={approvalSubmitting}
-								{onApprovalSelect}
-							/>
-						{/if}
-						{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
-							<MessageActions
-								message={m}
-								{generating}
-								recentlyCopied={recentlyCopiedId === m.id}
-								canCopy={hasCopyableText(m)}
-								userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
-								onCopy={() => copyMessage(m)}
-								onEdit={() => beginEdit(m)}
-								onReuse={() => reusePrompt(m)}
-								onRetry={() => retryAssistant(m)}
-								onSelectSibling={(id, dir) => selectSibling(id, dir)}
-								onDeleteBranch={() => deleteBranch(m)}
-							/>
+								<EditMessageForm
+									bind:editText
+									attachments={editAttachments}
+									{allowAttachments}
+									enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+									onSave={() => void saveEdit()}
+									onCancel={cancelEdit}
+								/>
+							{:else}
+								<MessageBubble
+									message={m}
+									{toolResultsByCallId}
+									{userLabel}
+									assistantLabel={assistantLabelFor(m)}
+									{mergeWithPrev}
+									{mergeWithNext}
+									onImageClick={openImageInLightbox}
+									{openingLightboxFor}
+									{approvalDecisions}
+									approvalBusy={approvalSubmitting}
+									{onApprovalSelect}
+									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
+									onOpenCanvas={() => canvas.show()}
+								/>
+							{/if}
+							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
+								<MessageActions
+									message={m}
+									{generating}
+									recentlyCopied={recentlyCopiedId === m.id}
+									canCopy={hasCopyableText(m)}
+									userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
+									onCopy={() => copyMessage(m)}
+									onEdit={() => beginEdit(m)}
+									onReuse={() => reusePrompt(m)}
+									onRetry={() => retryAssistant(m)}
+									onSelectSibling={(id, dir) => selectSibling(id, dir)}
+									onDeleteBranch={() => deleteBranch(m)}
+								/>
+							{/if}
+						</div>
+					{/if}
+				{/each}
+
+				{#if compactionStreaming}
+					<CompactionSummaryStreaming text={compactionStreamText} />
+				{/if}
+
+				{#if showInFlight}
+					{@const last = visibleMessages[visibleMessages.length - 1]}
+					{@const fuseWithPrevAssistant =
+						!!last && last.role === 'assistant' && last.id !== editingMessageId}
+					<div
+						class={fuseWithPrevAssistant ? 'mt-0!' : ''}
+						in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
+					>
+						<InFlightBubble
+							blocks={inFlightBlocks}
+							{assistantLabel}
+							label={inFlightLabel}
+							status={inFlightStatus}
+							progress={inFlightProgress}
+							queued={inFlightQueued}
+							{elapsedSeconds}
+							onImageClick={openImageInLightbox}
+							{openingLightboxFor}
+							{approvalDecisions}
+							approvalBusy={approvalSubmitting}
+							{onApprovalSelect}
+							mergeWithPrev={fuseWithPrevAssistant}
+							mcpUnavailable={inFlightMcpUnavailable}
+						/>
+					</div>
+				{/if}
+				{#if fanout.comparing}
+					<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
+						<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
+					     discard duds + regenerate, no single pick. -->
+						<FanoutColumns
+							columns={fanout.columns}
+							onPick={fanout.isMedia ? undefined : (c) => void fanout.pick(c)}
+							onDiscard={fanout.isMedia ? (c) => void fanout.discard(c) : undefined}
+							onRegenerate={fanout.isMedia ? (c) => void fanout.regenerate(c) : undefined}
+							onImageClick={openImageInLightbox}
+							busy={fanout.picking}
+						/>
+						{#if fanout.columnsSettled}
+							<div class="mt-2 flex justify-center">
+								<button
+									type="button"
+									onclick={() => void fanout.dismiss()}
+									disabled={fanout.picking}
+									class="rounded-lg px-3 py-1.5 text-xs text-fg-muted transition hover:bg-surface-raised disabled:opacity-40"
+								>
+									{fanout.isMedia ? 'Done' : 'Dismiss comparison'}
+								</button>
+							</div>
 						{/if}
 					</div>
 				{/if}
-			{/each}
-
-			{#if compactionStreaming}
-				<CompactionSummaryStreaming text={compactionStreamText} />
-			{/if}
-
-			{#if showInFlight}
-				{@const last = visibleMessages[visibleMessages.length - 1]}
-				{@const fuseWithPrevAssistant =
-					!!last && last.role === 'assistant' && last.id !== editingMessageId}
-				<div
-					class={fuseWithPrevAssistant ? 'mt-0!' : ''}
-					in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
-				>
-					<InFlightBubble
-						blocks={inFlightBlocks}
-						{assistantLabel}
-						label={inFlightLabel}
-						status={inFlightStatus}
-						progress={inFlightProgress}
-						queued={inFlightQueued}
-						{elapsedSeconds}
-						onImageClick={openImageInLightbox}
-						{openingLightboxFor}
-						{approvalDecisions}
-						approvalBusy={approvalSubmitting}
-						{onApprovalSelect}
-						mergeWithPrev={fuseWithPrevAssistant}
-						mcpUnavailable={inFlightMcpUnavailable}
-					/>
-				</div>
-			{/if}
-			{#if fanout.comparing}
-				<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
-					<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
-					     discard duds + regenerate, no single pick. -->
-					<FanoutColumns
-						columns={fanout.columns}
-						onPick={fanout.isMedia ? undefined : (c) => void fanout.pick(c)}
-						onDiscard={fanout.isMedia ? (c) => void fanout.discard(c) : undefined}
-						onRegenerate={fanout.isMedia ? (c) => void fanout.regenerate(c) : undefined}
-						onImageClick={openImageInLightbox}
-						busy={fanout.picking}
-					/>
-					{#if fanout.columnsSettled}
-						<div class="mt-2 flex justify-center">
-							<button
-								type="button"
-								onclick={() => void fanout.dismiss()}
-								disabled={fanout.picking}
-								class="rounded-lg px-3 py-1.5 text-xs text-fg-muted transition hover:bg-surface-raised disabled:opacity-40"
-							>
-								{fanout.isMedia ? 'Done' : 'Dismiss comparison'}
-							</button>
-						</div>
-					{/if}
-				</div>
-			{/if}
-			<!--
+				<!--
 				Bottom sentinel for IntersectionObserver. Pinned to the very
 				end of the message list so the observer can tell when the
 				user is scrolled within ~100px of it (see effect above).
 				1px tall + aria-hidden so it's invisible / inaudible to AT.
 			-->
-			<div bind:this={bottomSentinel} aria-hidden="true" class="h-px"></div>
+				<div bind:this={bottomSentinel} aria-hidden="true" class="h-px"></div>
+			</div>
 		</div>
-	</div>
 
-	<!--
+		<!--
 		Floating composer overlay. Absolutely positioned over the bottom of
 		the scroll area so messages scroll *behind* the frosted glass (the
 		Signature liquid-glass look). pointer-events-none lets wheel / clicks
 		in the side margins fall through to the messages; the centered
 		composer re-enables them. Its measured height pads the message list.
 	-->
-	<div class="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
-		<div class="pointer-events-auto relative mx-auto max-w-3xl" bind:clientHeight={composerHeight}>
-			<ScrollToBottomButton
-				visible={!isNearBottom}
-				onClick={() => scrollToBottom({ smooth: true })}
-			/>
-			{#if editingMessageId}
-				<!-- Composer hidden while editing: the edit happens inline on
+		<div class="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
+			<div
+				class="pointer-events-auto relative mx-auto max-w-3xl"
+				bind:clientHeight={composerHeight}
+			>
+				<ScrollToBottomButton
+					visible={!isNearBottom}
+					onClick={() => scrollToBottom({ smooth: true })}
+				/>
+				{#if editingMessageId}
+					<!-- Composer hidden while editing: the edit happens inline on
 					 the message bubble itself, with its own Save/Cancel
 					 controls. Re-shown when the user dismisses the inline
 					 editor. -->
-			{:else}
-				<!--
+				{:else}
+					<!--
 					Composer stays visible across the entire turn lifecycle —
 					sending, generating, pending-approval, and resuming. The
 					Allow / Allow Always / Reject buttons live inline with
@@ -2386,55 +2446,76 @@
 					that can be aborted — meaning the user can always halt a
 					runaway resumed generation, not just an initial one.
 				-->
-				{#if showBudgetBar}
-					<ContextBudgetBar
-						{contextTokenCount}
-						contextWindow={modelContextWindow}
-						onCompact={compactConversation}
-						canCompact={compactable}
-						{compacting}
-						conversationId={convId}
-						revision={messages.length}
+					{#if showBudgetBar}
+						<ContextBudgetBar
+							{contextTokenCount}
+							contextWindow={modelContextWindow}
+							onCompact={compactConversation}
+							canCompact={compactable}
+							{compacting}
+							conversationId={convId}
+							revision={messages.length}
+						/>
+					{/if}
+					<ChatComposer
+						bind:this={composerRef}
+						bind:composerText
+						bind:modelId
+						{errorMsg}
+						{attachments}
+						{modelKind}
+						{disabledFeatures}
+						featureCategories={data.featureCategories}
+						private={isPrivate}
+						models={data.models}
+						enabledSkills={data.enabledSkills}
+						favoritedIds={data.prefs?.favoriteModels ?? []}
+						{allowAttachments}
+						{hasValidModel}
+						{generating}
+						offline={isOffline}
+						canStop={((busy || approvalSubmitting) && activeAbort != null) ||
+							recoveredInFlight ||
+							fanout.streaming}
+						enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+						bind:compareSelections
+						bind:compareMode
+						bind:splitAttachments
+						modelSets={data.prefs?.modelSets ?? []}
+						presetLabel={activePreset?.name ?? null}
+						presetModelId={activePresetModelId}
+						onSend={() => void send()}
+						onStop={stop}
+						onFeaturesChange={(next) => void persistDisabledFeatures(next)}
+						onToggleFavorite={(id) =>
+							void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+						onSaveModelSet={(name, sels) =>
+							void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
+						onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
 					/>
 				{/if}
-				<ChatComposer
-					bind:this={composerRef}
-					bind:composerText
-					bind:modelId
-					{errorMsg}
-					{attachments}
-					{modelKind}
-					{disabledFeatures}
-					featureCategories={data.featureCategories}
-					private={isPrivate}
-					models={data.models}
-					enabledSkills={data.enabledSkills}
-					favoritedIds={data.prefs?.favoriteModels ?? []}
-					{allowAttachments}
-					{hasValidModel}
-					{generating}
-					offline={isOffline}
-					canStop={((busy || approvalSubmitting) && activeAbort != null) ||
-						recoveredInFlight ||
-						fanout.streaming}
-					enterBehavior={data.prefs?.enterBehavior ?? 'send'}
-					bind:compareSelections
-					bind:compareMode
-					bind:splitAttachments
-					modelSets={data.prefs?.modelSets ?? []}
-					presetLabel={activePreset?.name ?? null}
-					presetModelId={activePresetModelId}
-					onSend={() => void send()}
-					onStop={stop}
-					onFeaturesChange={(next) => void persistDisabledFeatures(next)}
-					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
-					onSaveModelSet={(name, sels) =>
-						void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
-					onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
-				/>
-			{/if}
+			</div>
 		</div>
 	</div>
+
+	<!--
+		Canvas pane. Lazy-loaded on first open (like MediaLightbox) so its chunk
+		stays off the chat-route critical path. On desktop it docks as a right
+		column and the chat above flexes to fill the rest; on mobile the pane
+		renders itself as a full-screen overlay (so this flex row leaves it
+		full-width behind). Content is server-rendered HTML carried on each
+		canvas_version — no client markdown/highlight stack is pulled in.
+	-->
+	{#if canvas.open && canvas.doc}
+		{#await import('$lib/components/chat/CanvasPane.svelte') then { default: CanvasPane }}
+			<CanvasPane
+				doc={canvas.doc}
+				changed={canvas.lastChangedVersionId === canvas.doc.versionId}
+				onClose={() => canvas.hide()}
+				onHighlightSettled={() => canvas.clearChangeFlag()}
+			/>
+		{/await}
+	{/if}
 </div>
 
 <!--

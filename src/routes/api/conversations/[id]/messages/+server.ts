@@ -28,7 +28,7 @@ import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
 import { dedupeToolDefs } from '$lib/server/chat/tool-search-context';
-import { buildChatToolContext } from '$lib/server/chat/tool-context';
+import { augmentRequestForCanvas, buildChatToolContext } from '$lib/server/chat/tool-context';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { composePersonaPrompt } from '$lib/server/chat/persona-context';
@@ -523,7 +523,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			effectiveSystemPrompt,
 		);
 
-		const requestBody: ChatCompletionRequest = {
+		let requestBody: ChatCompletionRequest = {
 			model: parsed.upstreamId,
 			messages: upstreamMessages,
 		};
@@ -550,6 +550,18 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				requestBody.max_tokens = meta.parameters.max_tokens;
 			}
 		}
+
+		// Fold the open canvas (if any) into the request: arm update_canvas and
+		// append the document's current content as a single tail block. Shared
+		// with the tool-approval handler + reapplied per iteration below so the
+		// model always sees the latest doc without it ever entering the cached
+		// prefix.
+		requestBody = augmentRequestForCanvas(requestBody, {
+			conversationId: params.id,
+			userId: locals.user.id,
+			disabledFeatures,
+			supportsTools,
+		});
 
 		const wantsStream = url.searchParams.get('stream') === '1';
 
@@ -587,7 +599,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 						next.tool_choice = 'auto';
 					}
 				}
-				return next;
+				// Re-fold the canvas each iteration: a create_canvas earlier this
+				// turn arms update_canvas now, and every edit is reflected in a
+				// freshly-read tail block (always last, never in the prefix).
+				return augmentRequestForCanvas(next, {
+					conversationId: params.id,
+					userId: locals.user.id,
+					disabledFeatures,
+					supportsTools,
+				});
 			};
 
 			// MCP approval gate from the shared assembly: built-in tools and

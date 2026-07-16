@@ -54,6 +54,7 @@ export const BUILTIN_FEATURE_CATEGORIES = [
 	'personalization',
 	'code_interpreter',
 	'skills',
+	'canvas',
 	'image_prompt_enhancement',
 	'video_prompt_enhancement',
 ] as const;
@@ -124,6 +125,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		label: 'Agent skills',
 		description:
 			'Lets the assistant load reusable skill instructions you’ve authored. The catalog of your enabled skills is offered to the assistant, which loads a skill’s full instructions on demand when a task matches.',
+	},
+	canvas: {
+		label: 'Canvas',
+		description:
+			'Lets the assistant open a side-by-side document it can edit across turns — for prose, specs, or configs that take several revisions. Only applies to text chats.',
 	},
 	image_prompt_enhancement: {
 		label: 'Image prompt enhancement',
@@ -1112,6 +1118,35 @@ export interface StreamMcpUnavailableEvent {
 	servers: McpUnavailableServer[];
 }
 
+// --- canvas streaming events --------------------------------------------
+//
+// Canvas mode: a long-lived markdown document the model edits across turns via
+// the create_canvas / update_canvas tools, shown in a side-by-side pane. The
+// server is authoritative (content lives in the `artifacts` / `artifact_versions`
+// tables); this event pushes the new state to the pane the moment an edit is
+// applied + persisted. The pane otherwise rehydrates from the DB on page load,
+// so a dropped event is only ever a missed live tick, never lost content.
+
+/** A committed canvas version — the full current document state after an edit. */
+export interface CanvasVersion {
+	artifactId: string;
+	versionId: string;
+	title: string | null;
+	content: string;
+	/** Server-rendered HTML (renderMarkdown). Null only if rendering yielded
+	 *  nothing (empty doc). */
+	contentHtml: string | null;
+	/** 1-based version count for this artifact — what the pane shows as "v7". */
+	versionNumber: number;
+	editSource: 'agent' | 'user';
+}
+
+/** A canvas edit was applied and persisted; the pane should swap to this state. */
+export interface StreamCanvasVersionEvent {
+	type: 'canvas_version';
+	canvas: CanvasVersion;
+}
+
 // --- compaction streaming events ----------------------------------------
 //
 // Emitted by the compaction relay (the manual /compact?stream=1 endpoint, and
@@ -1152,6 +1187,7 @@ export type StreamEvent =
 	| StreamToolCallExecutingEvent
 	| StreamToolCallResultEvent
 	| StreamToolPendingApprovalEvent
+	| StreamCanvasVersionEvent
 	| StreamCompactionStartEvent
 	| StreamCompactionTextEvent
 	| StreamCompactionDoneEvent;
