@@ -306,6 +306,14 @@
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
 	let approvalSubmitting = $state(false);
 	let approvalError = $state<string | null>(null);
+	// Monotonic latch owner for `approvalSubmitting`. A resume's `finally`
+	// clears the flag only if it still owns this token — so a stale resume from
+	// a conversation we've since left (its promise parked on an
+	// `await invalidateAll()`) can't clear the flag out from under a NEW resume
+	// that has since started on the destination thread, which would drop
+	// presence and re-trigger the auto-submit effect. Same ownership convention
+	// as `activeAbort === abort`.
+	let approvalSubmitToken = 0;
 
 	// Reset decisions whenever the pending set changes (a resume just
 	// completed, or a new turn left a different set of pending tools).
@@ -373,6 +381,7 @@
 		decisions: Array<{ toolCallId: string; action: ApprovalAction }>,
 	): Promise<void> {
 		if (approvalSubmitting) return;
+		const token = ++approvalSubmitToken;
 		approvalSubmitting = true;
 		approvalError = null;
 		try {
@@ -390,7 +399,10 @@
 			}
 			await invalidateAll();
 		} finally {
-			approvalSubmitting = false;
+			// Only clear if we still own the latch — a thread switch (reset
+			// effect) or a newer resume may have taken it while we were parked
+			// on invalidateAll() above.
+			if (approvalSubmitToken === token) approvalSubmitting = false;
 		}
 	}
 
