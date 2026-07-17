@@ -41,11 +41,12 @@ const buildPrompt = (maxChars: number) =>
 	`You maintain a compact, STRUCTURED map of the topics a user has discussed with an assistant across many conversations. The assistant reads this map to know what past conversations exist so it can search them. Given the user's conversation summaries (and the previous map), produce an updated map:
 - Group related topics under a few short thematic headings; put the most significant or recurring themes first.
 - Under each heading, a brief phrase per notable topic. Merge duplicates; drop trivia.
+- Keep sensitive or explicit topics at a categorical level: name the theme so the thread can be found and searched, but do NOT reproduce graphic or explicit specifics. This map rides in the system prompt, where verbatim explicit detail can trip a provider's safety filter and reject the whole turn.
 - Base the CONTENT entirely on the summaries provided. Do NOT carry over anything from the previous map that the summaries no longer support — conversations may have been deleted or changed. Use the previous map ONLY to keep the structure and ordering stable between updates.
 - Keep the whole map under ${maxChars} characters. It is a signpost for search, not an exhaustive log. Output only the map, no preamble.`;
 
 const foldPrompt = (maxChars: number) =>
-	`You are building a compact, STRUCTURED map of the topics a user has discussed, in batches. Given the map so far and more conversation summaries, return the updated map: group related topics under short thematic headings (most significant first), a brief phrase per topic, merge duplicates, drop trivia. Keep it under ${maxChars} characters. Output only the map, no preamble.`;
+	`You are building a compact, STRUCTURED map of the topics a user has discussed, in batches. Given the map so far and more conversation summaries, return the updated map: group related topics under short thematic headings (most significant first), a brief phrase per topic, merge duplicates, drop trivia. Keep sensitive or explicit topics at a categorical level — name the theme, never reproduce graphic specifics (this map rides in the system prompt, where explicit detail can trip a provider's safety filter). Keep it under ${maxChars} characters. Output only the map, no preamble.`;
 
 function renderSummaries(summaries: string[]): string {
 	return summaries.map((s) => `- ${s}`).join('\n');
