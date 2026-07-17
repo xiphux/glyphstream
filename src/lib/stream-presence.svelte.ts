@@ -5,7 +5,7 @@
  * whose next completion this tab will render in place, over its own live
  * stream or recovery poll.
  *
- * Published by the chat page (from a `generating`-scoped `$effect`) and read by
+ * Published by the chat page (from a `renderingGeneration`-scoped `$effect`) and read by
  * the root layout's presence heartbeat. Cross-device push suppression must only
  * fire for a device that will actually render the completion — NOT one merely
  * parked-visible on the thread. A parked tab holds no stream and would show

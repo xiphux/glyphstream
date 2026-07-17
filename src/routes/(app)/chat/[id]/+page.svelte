@@ -1319,6 +1319,12 @@
 		activeAbort?.abort();
 		activeAbort = null;
 		busy = false;
+		// An approval-resume streams under `approvalSubmitting` (not `busy`) and
+		// registers its abort in `activeAbort` above — so clear it too, both to
+		// abandon the resumed turn we're leaving and so the presence-publish
+		// effect below doesn't transiently report the new conversation while a
+		// resume from the old one is still marked in flight.
+		approvalSubmitting = false;
 		inFlightOpen = false;
 		resetInFlightSegments();
 		inFlightProgress = null;

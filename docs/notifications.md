@@ -228,7 +228,7 @@ happens, check the SW console for errors.
 - **Cross-device presence**: `src/lib/server/push/presence.ts` (in-memory
   registry, single-process — mirrors the in-flight registry) fed by
   `POST /api/presence`. The chat page publishes the conversation it is
-  rendering (its `generating` signal) to `src/lib/stream-presence.svelte.ts`;
+  rendering (its `renderingGeneration` signal) to `src/lib/stream-presence.svelte.ts`;
   the root `+layout.svelte` heartbeats that (while visible) and
   `notifyConversationComplete()` skips the send when
   `isConversationBeingViewed()` is true.

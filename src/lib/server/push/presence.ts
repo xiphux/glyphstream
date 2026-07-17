@@ -15,7 +15,7 @@
  * Presence tracks "is rendering", NOT "is merely looking at the thread": a tab
  * parked on a conversation it didn't generate holds no stream and would show
  * stale content, so counting it would silence a completion nobody sees. The
- * client only heartbeats while its `generating` signal is true (see
+ * client only heartbeats while its `renderingGeneration` signal is true (see
  * stream-presence.svelte.ts + the root layout).
  *
  * Keyed by userId FIRST so a client that posts someone else's conversationId
