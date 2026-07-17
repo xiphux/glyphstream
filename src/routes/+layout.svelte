@@ -6,22 +6,25 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import { toast } from '$lib/toast.svelte';
+	import { streamPresence } from '$lib/stream-presence.svelte';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 
 	let { children } = $props();
 
-	// Presence heartbeat. Tells the server which conversation this window is
-	// actively viewing so notifyConversationComplete can suppress a redundant
-	// push to this user's OTHER devices while one is watching the thread — the
-	// per-device SW arbiter can't see across devices. Reuses the exact signal
-	// the arbiter trusts: the page's real SPA route (page.params.id) + the
-	// document's visibility. viewerId is per-page-load (per-tab precision;
-	// App.Locals carries no session identity anyway).
+	// Presence heartbeat. Reports which conversation this tab is actively
+	// RENDERING a generation for (streamPresence, published by the chat page)
+	// so notifyConversationComplete can suppress a redundant cross-device push
+	// while a device is truly rendering the completion in place — the
+	// per-device SW arbiter can't see across devices. We report only while
+	// generating (not merely parked-visible on the thread): a parked tab holds
+	// no stream and would show stale content, so suppressing its other devices
+	// would silence a completion nobody sees. viewerId is per-page-load
+	// (per-tab precision; App.Locals carries no session identity anyway).
 	const HEARTBEAT_MS = 25_000;
 	let presenceViewerId: string | null = null;
-	// The conversation we last told the server about — lets a thread switch
-	// clear the thread we left before announcing the new one.
-	let lastReportedConv: string | null = null;
+	// The conversation we last posted `true` for — diffed against the desired
+	// state so we clear the old thread before announcing a new one.
+	let reportedConv: string | null = null;
 
 	function postPresence(conversationId: string, visible: boolean) {
 		if (!presenceViewerId) return;
@@ -34,24 +37,40 @@
 		}).catch(() => {});
 	}
 
+	// The conversation we should currently be reporting presence for: the one
+	// this tab is rendering a generation for, but only while visible (if you
+	// submit on desktop then switch to your phone, the hidden desktop must stop
+	// suppressing the phone).
+	function desiredPresenceConv(): string | null {
+		const conv = streamPresence.conversationId;
+		return conv && document.visibilityState === 'visible' ? conv : null;
+	}
+
+	// Reconcile server presence with the desired state, and refresh the TTL when
+	// unchanged (keeps a long stream — e.g. video — alive across heartbeats).
+	function syncPresence() {
+		const want = desiredPresenceConv();
+		if (want === reportedConv) {
+			if (reportedConv) postPresence(reportedConv, true);
+			return;
+		}
+		if (reportedConv) postPresence(reportedConv, false);
+		reportedConv = want;
+		if (want) postPresence(want, true);
+	}
+
 	// One-time setup + teardown. Reads no reactive state, so it runs once on
 	// mount and cleans up on destroy (browser-only — effects don't run in SSR).
+	// Defined before the tracking effect so the viewerId exists on first sync.
 	$effect(() => {
 		presenceViewerId ??= crypto.randomUUID();
-		const beat = () => {
-			if (lastReportedConv && document.visibilityState === 'visible') {
-				postPresence(lastReportedConv, true);
-			}
-		};
-		const onVisibility = () => {
-			if (lastReportedConv) postPresence(lastReportedConv, document.visibilityState === 'visible');
-		};
+		const onVisibility = () => syncPresence();
 		const onPageHide = () => {
-			if (lastReportedConv) postPresence(lastReportedConv, false);
+			if (reportedConv) postPresence(reportedConv, false);
 		};
 		document.addEventListener('visibilitychange', onVisibility);
 		window.addEventListener('pagehide', onPageHide);
-		const heartbeat = setInterval(beat, HEARTBEAT_MS);
+		const heartbeat = setInterval(syncPresence, HEARTBEAT_MS);
 		return () => {
 			clearInterval(heartbeat);
 			document.removeEventListener('visibilitychange', onVisibility);
@@ -59,14 +78,12 @@
 		};
 	});
 
-	// React to navigation: on a thread switch (or leaving chat entirely) clear
-	// the conversation we left, then announce the new one if it's visible.
+	// React to generation start/stop (and thread switches, which null out
+	// streamPresence.conversationId via the chat page's cleanup).
 	$effect(() => {
-		const conv = page.params.id ?? null;
-		if (conv === lastReportedConv) return;
-		if (lastReportedConv) postPresence(lastReportedConv, false);
-		lastReportedConv = conv;
-		if (conv && document.visibilityState === 'visible') postPresence(conv, true);
+		// Track the reactive source, then reconcile.
+		streamPresence.conversationId;
+		syncPresence();
 	});
 
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and

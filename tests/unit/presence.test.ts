@@ -16,6 +16,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
 	PRESENCE_TTL_MS,
 	isConversationBeingViewed,
+	presenceEntryCount,
 	recordPresence,
 	resetPresence,
 } from '$lib/server/push/presence';
@@ -72,6 +73,36 @@ describe('clearing', () => {
 		recordPresence(USER, CONV, 'viewer-b', true, T0 + PRESENCE_TTL_MS - 1);
 		// viewer-a has aged out, viewer-b has not.
 		expect(isConversationBeingViewed(USER, CONV, T0 + PRESENCE_TTL_MS)).toBe(true);
+	});
+});
+
+describe('reclamation', () => {
+	// SWEEP_INTERVAL_MS is 5min; a write past it triggers the global sweep.
+	const PAST_SWEEP = 5 * 60_000 + 1;
+
+	it('a throttled write-path sweep reclaims a stale viewer whose thread never completes', () => {
+		// A crashed tab left a viewer on conv-a that no isConversationBeingViewed
+		// read ever reaches (conv-a never completes another message), so only the
+		// global sweep can reclaim it.
+		recordPresence(USER, 'conv-a', 'crashed', true, T0);
+		expect(presenceEntryCount()).toBe(1);
+
+		// A later heartbeat for a DIFFERENT conversation, past the sweep interval
+		// and past conv-a's TTL, triggers the sweep.
+		recordPresence(USER, 'conv-b', 'live', true, T0 + PAST_SWEEP);
+
+		// conv-a's expired viewer is gone; only conv-b's remains — proving the
+		// reclamation happened without ever reading conv-a.
+		expect(presenceEntryCount()).toBe(1);
+		expect(isConversationBeingViewed(USER, 'conv-b', T0 + PAST_SWEEP)).toBe(true);
+	});
+
+	it('does not sweep more than once per interval', () => {
+		recordPresence(USER, 'conv-a', 'crashed', true, T0);
+		// A write within the interval must NOT sweep, so the (now-expired) conv-a
+		// entry is still held until the next eligible sweep.
+		recordPresence(USER, 'conv-b', 'live', true, T0 + PRESENCE_TTL_MS + 1);
+		expect(presenceEntryCount()).toBe(2);
 	});
 });
 

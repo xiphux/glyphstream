@@ -31,6 +31,7 @@
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { privateView } from '$lib/private-chat.svelte';
+	import { streamPresence } from '$lib/stream-presence.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
 	import MessageActions from '$lib/components/chat/MessageActions.svelte';
@@ -1256,6 +1257,18 @@
 	const generating = $derived(
 		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval || fanout.comparing,
 	);
+
+	// Publish "this tab is rendering a generation for convId" so the root
+	// layout's presence heartbeat can suppress a cross-device push only while a
+	// device is actually rendering the completion (not merely parked on the
+	// thread). Scoped to convId + cleared on cleanup so a thread switch or
+	// unmount never leaves a stale id set. See stream-presence.svelte.ts.
+	$effect(() => {
+		streamPresence.conversationId = generating ? convId : null;
+		return () => {
+			streamPresence.conversationId = null;
+		};
+	});
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
 	// progress signal for slow operations (image generation, video gen) and

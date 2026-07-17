@@ -9,10 +9,17 @@ depending on where the user actually is when the stream finishes:
 | In the app, tab visible, but on a different thread or page    | An in-app toast appears with the conversation title and an **Open** action.              |
 | Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread. |
 
-The decision lives in `src/lib/sw/arbiter.ts` (pure function, unit-tested
-in `tests/unit/sw-arbiter.test.ts`) and is executed by
-`src/service-worker.ts`. The server unconditionally fires a push on every
-completion; the SW arbitrates per-client based on visibility.
+This table is the per-device arbitration for a push that fires. The
+server fires a push on every completion **unless another of your devices
+is actively rendering that thread**, in which case it suppresses the push
+to _all_ your devices (see [Cross-device suppression](#cross-device-suppression)) —
+so the "different thread → toast" and "backgrounded → OS notification"
+rows only apply when no other device is already showing the response.
+
+The per-device decision lives in `src/lib/sw/arbiter.ts` (pure function,
+unit-tested in `tests/unit/sw-arbiter.test.ts`) and is executed by
+`src/service-worker.ts`; the cross-device decision lives on the server in
+`src/lib/server/push/notify.ts`.
 
 Each behavior is independently togglable in **Settings → Preferences →
 Notifications**.
@@ -144,17 +151,33 @@ watch the response finish on your desktop.
 
 The per-device service worker already silences the device you're looking
 at (its own window is visible on that thread), but it can only see its
-own windows — it has no idea another device is watching. So each open
-chat window heartbeats "I'm viewing this conversation" to the server
-while it's foregrounded, and the notify pipeline skips **all** pushes for
-a conversation any of your devices is currently viewing. That viewer
-already receives the message over its live stream, so nothing is missed.
+own windows — it has no idea another device is showing the same thread.
+So a chat window heartbeats to the server **while it is actively
+rendering a generation** for that conversation — streaming its turn or a
+fan-out, or polling a recovered in-flight one — and the notify pipeline
+skips **all** pushes for a conversation any of your devices is currently
+rendering. That device shows the message in place, so nothing is missed.
 
-The moment a window is backgrounded, switches threads, or closes, it
-stops counting as "viewing" — so submitting on the desktop and then
-walking away (or locking the screen) still delivers the notification to
-your phone. Presence is in-memory and per-user; it writes nothing to the
-database and never crosses between users.
+The key word is _rendering_, not merely _looking at_. Presence is only
+reported by the tab that owns the live stream (the one you submitted
+from, or one that recovered an in-flight generation). A tab merely parked
+on a thread it didn't generate holds no stream — it would show stale
+content until reloaded — so it deliberately does **not** suppress, and
+the completion still reaches your other devices. The moment a rendering
+window finishes, is backgrounded, switches threads, or closes, it stops
+counting — so submitting on the desktop and then walking away (or locking
+the screen) still delivers the notification to your phone.
+
+Presence is in-memory and per-user: it writes nothing to the database,
+never crosses between users, and evaporates on process restart (a restart
+mid-generation simply falls back to firing the push).
+
+**Known limitation:** a tab parked on a conversation it did not generate
+does not update live when a _different_ device completes a response — it
+shows stale content until you reload or re-open the thread. This is a
+property of the streaming model (only the originating tab holds the SSE
+stream), independent of notifications; the cross-device rule above is
+careful not to suppress a notification such a tab can't act on.
 
 ## Troubleshooting
 
@@ -204,9 +227,11 @@ happens, check the SW console for errors.
   `src/lib/sw/arbiter.ts`, exercised by the SW's `push` event handler.
 - **Cross-device presence**: `src/lib/server/push/presence.ts` (in-memory
   registry, single-process — mirrors the in-flight registry) fed by
-  `POST /api/presence`. The root `+layout.svelte` heartbeats the current
-  chat route + visibility; `notifyConversationComplete()` skips the send
-  when `isConversationBeingViewed()` is true.
+  `POST /api/presence`. The chat page publishes the conversation it is
+  rendering (its `generating` signal) to `src/lib/stream-presence.svelte.ts`;
+  the root `+layout.svelte` heartbeats that (while visible) and
+  `notifyConversationComplete()` skips the send when
+  `isConversationBeingViewed()` is true.
 - **Toast surface**: `src/lib/toast.svelte.ts` (singleton, used for
   the archive toast and the message-complete toast).
 

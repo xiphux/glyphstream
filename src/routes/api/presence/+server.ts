@@ -23,20 +23,32 @@ interface PresenceBody {
 	visible?: unknown;
 }
 
+// Both ids are short in practice (a conversation id and a UUID). Cap length so
+// a malicious client can't pump megabytes of distinct keys into the in-memory
+// map through this unauthenticated-by-content path (the body limit alone is
+// 25 MB); real values are well under this.
+const MAX_ID_LEN = 200;
+
+function requireId(v: unknown, field: string): string {
+	if (typeof v !== 'string' || v.length === 0) {
+		throw error(400, `Field "${field}" must be a non-empty string`);
+	}
+	if (v.length > MAX_ID_LEN) {
+		throw error(400, `Field "${field}" is too long`);
+	}
+	return v;
+}
+
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
 
 	const body = await parseJsonBody<PresenceBody>(request);
-	if (typeof body.conversationId !== 'string' || body.conversationId.length === 0) {
-		throw error(400, 'Field "conversationId" must be a non-empty string');
-	}
-	if (typeof body.viewerId !== 'string' || body.viewerId.length === 0) {
-		throw error(400, 'Field "viewerId" must be a non-empty string');
-	}
+	const conversationId = requireId(body.conversationId, 'conversationId');
+	const viewerId = requireId(body.viewerId, 'viewerId');
 	if (typeof body.visible !== 'boolean') {
 		throw error(400, 'Field "visible" must be a boolean');
 	}
 
-	recordPresence(locals.user.id, body.conversationId, body.viewerId, body.visible);
+	recordPresence(locals.user.id, conversationId, viewerId, body.visible);
 	return new Response(null, { status: 204 });
 };

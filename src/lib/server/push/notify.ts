@@ -2,12 +2,16 @@
  * Fire push notifications when an assistant message completes.
  *
  * Server side, this is the single boundary between "a message was just
- * persisted" and "the user's devices should know." It's intentionally
- * unaware of foreground/background — the service worker's `push`
- * handler arbitrates between silent (same thread visible), in-app toast
- * (other thread visible), and OS notification (no visible client).
+ * persisted" and "the user's devices should know." It leaves each device's
+ * foreground/background arbitration to the service worker's `push` handler —
+ * silent (same thread visible), in-app toast (other thread visible), or OS
+ * notification (no visible client) — but it does make one CROSS-device call
+ * the SW can't: it suppresses the push entirely when another of the user's
+ * devices is actively rendering this conversation (see `presence.ts`), since
+ * that device already shows the message and a per-device SW only sees its own
+ * windows.
  *
- * The server still decides one thing the SW can't: whether to *include
+ * The server also decides one more thing the SW can't: whether to *include
  * content* in the payload. When notificationsShowContent is false the
  * `preview` field is omitted entirely so the preview never traverses
  * the push service (defense-in-depth — encryption alone isn't the only
@@ -83,6 +87,8 @@ function truncateTitle(title: string): string {
  *
  * Behavior:
  *  - Reads user prefs; bails when notificationsEnabled is false.
+ *  - Bails when another of the user's devices is actively rendering this
+ *    conversation (cross-device suppression — see `presence.ts`).
  *  - Lists subscriptions; bails when none.
  *  - Builds payload (omits preview unless notificationsShowContent).
  *  - Sends to each subscription in parallel.
@@ -96,11 +102,12 @@ export async function notifyConversationComplete(
 	if (!prefs || !prefs.notificationsEnabled) return;
 
 	// Cross-device suppression: if any of the user's devices is actively
-	// viewing this conversation, that window already receives the message over
-	// its live SSE stream, so a push would only double-buzz a second device
-	// (the phone while you watch the response finish on desktop). The per-device
-	// SW arbiter can't see across devices — this is the only layer that can.
-	// Cheaper than the subs query below, so short-circuit before it.
+	// rendering this conversation (streaming its turn / fan-out, or polling a
+	// recovered in-flight one), that device already shows the message in place,
+	// so a push would only double-buzz a second device (the phone while you
+	// watch the response finish on desktop). The per-device SW arbiter can't see
+	// across devices — this is the only layer that can. Cheaper than the subs
+	// query below, so short-circuit before it.
 	if (isConversationBeingViewed(input.userId, input.conversationId)) return;
 
 	const subs = listPushSubscriptionsForUser(input.userId);
