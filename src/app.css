@@ -464,23 +464,17 @@ body {
 	@apply bg-surface text-fg antialiased;
 }
 
-/* App shell height. In a normal browser we use the dynamic viewport unit so
-   the layout tracks Safari's collapsing/expanding toolbar. In an installed
+/* App shell height. In a normal browser the dynamic viewport unit is right:
+   it tracks Safari's collapsing/expanding toolbar with no JS. In an installed
    (standalone) PWA there's no dynamic chrome, and iOS WebKit miscomputes
-   dvh/vh on a *cold* launch — the shell renders ~½" short and only snaps to
-   full height after a scroll forces a reflow (iOS never fires the resize
-   itself). Pinning to the layout viewport with fixed/inset sidesteps that
-   miscompute; the root already sets overflow-hidden with its own internal
-   scroll containers, so fixed positioning changes nothing else. */
+   dvh/vh on a *cold* launch — the shell renders ~½" short and never corrects
+   itself (iOS fires no viewport event; only a manual scroll used to nudge it).
+   So in standalone the (app) layout measures window.innerHeight in JS and
+   writes it to --app-height; that overrides the dvh fallback below. The var is
+   unset on SSR, in-browser, and before JS runs, so those all fall through to
+   100dvh. */
 .app-shell {
-	height: 100dvh;
-}
-@media all and (display-mode: standalone) {
-	.app-shell {
-		position: fixed;
-		inset: 0;
-		height: auto;
-	}
+	height: var(--app-height, 100dvh);
 }
 
 /* --- markdown prose ------------------------------------------------------ */

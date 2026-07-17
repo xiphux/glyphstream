@@ -48,6 +48,36 @@
 	// the pref still reads "on" — notifications silently stop. Reconciling here,
 	// on every cold app load, re-registers it. No-op (and no permission prompt)
 	// unless the user has opted in and already granted permission.
+	// iOS installed-PWA viewport fix. On a cold launch WebKit lays the
+	// standalone web view out ~½" short and — unlike in-browser Safari — never
+	// emits a viewport event to correct it, so a CSS `100dvh` shell keeps a
+	// dead bar at the bottom until the user manually scrolls. `innerHeight`,
+	// however, reports the *settled* full height once the launch animation
+	// finishes, even though the CSS unit didn't re-layout. So drive the shell
+	// height from `innerHeight`: measure now, again on the next frame, and once
+	// more after the launch settles, then keep it current on resize /
+	// orientation change. Gated to standalone (via --app-height) so in-browser
+	// Safari keeps native dvh toolbar tracking and desktop is untouched. Uses
+	// innerHeight, not visualViewport, so the on-screen keyboard doesn't shrink
+	// the shell.
+	onMount(() => {
+		if (!window.matchMedia?.('(display-mode: standalone)').matches) return;
+		const root = document.documentElement;
+		const measure = () => root.style.setProperty('--app-height', `${window.innerHeight}px`);
+		measure();
+		const raf = requestAnimationFrame(measure);
+		const settle = setTimeout(measure, 300);
+		window.addEventListener('resize', measure);
+		window.addEventListener('orientationchange', measure);
+		return () => {
+			cancelAnimationFrame(raf);
+			clearTimeout(settle);
+			window.removeEventListener('resize', measure);
+			window.removeEventListener('orientationchange', measure);
+			root.style.removeProperty('--app-height');
+		};
+	});
+
 	onMount(() => {
 		void reconcileSubscription(data.prefs?.notificationsEnabled ?? false);
 		// The server can't know the user's timezone, and a self-hosted box is often
