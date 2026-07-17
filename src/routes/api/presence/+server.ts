@@ -1,14 +1,16 @@
 /**
  * POST /api/presence — heartbeat: this window is (or is no longer) actively
- * viewing a conversation.
+ * rendering a generation for a conversation.
  *
- * The client beats `{ visible: true }` while a chat window is foregrounded and
- * `{ visible: false }` when it blurs, switches thread, or unloads. The server
- * uses this only to suppress a redundant push to the user's OTHER devices
- * while one is watching the thread (see `push/presence.ts`). It writes nothing
- * to the DB and does no ownership check: presence is filed under the caller's
- * own userId, so a spoofed conversationId can only affect the caller's own
- * notifications, never another user's.
+ * The client beats `{ visible: true }` while a chat window is foregrounded AND
+ * actively streaming/polling a generation it owns (its `renderingGeneration`
+ * signal), and `{ visible: false }` when it stops rendering, blurs, switches
+ * thread, or unloads — so a foregrounded-but-parked tab never beats `true`.
+ * The server uses this only to suppress a redundant push to the user's OTHER
+ * devices while one is rendering the thread in place (see `push/presence.ts`).
+ * It writes nothing to the DB and does no ownership check: presence is filed
+ * under the caller's own userId, so a spoofed conversationId can only affect
+ * the caller's own notifications, never another user's.
  */
 
 import { error } from '@sveltejs/kit';

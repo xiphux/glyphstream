@@ -1258,17 +1258,18 @@
 		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval || fanout.comparing,
 	);
 
-	// Publish "this tab is rendering a generation for convId" so the root
-	// layout's presence heartbeat can suppress a cross-device push only while a
-	// device is actually rendering the completion (not merely parked on the
-	// thread). Scoped to convId + cleared on cleanup so a thread switch or
-	// unmount never leaves a stale id set. See stream-presence.svelte.ts.
-	$effect(() => {
-		streamPresence.conversationId = generating ? convId : null;
-		return () => {
-			streamPresence.conversationId = null;
-		};
-	});
+	// The subset of `generating` where THIS tab actually OWNS a live stream (or
+	// a recovery poll) it will render the completion into — as opposed to a
+	// UI-gating state that merely looks busy: an idle Allow/Reject prompt
+	// (`hasAnyPendingApproval` — the SSE has already closed) or a settled
+	// fan-out grid still on screen (`fanout.comparing` stays true after the last
+	// branch finishes; `fanout.streaming` is the actively-generating subset).
+	// Only stream-owning states may report cross-device presence, so we never
+	// suppress a completion this tab won't actually show. See
+	// stream-presence.svelte.ts.
+	const renderingGeneration = $derived(
+		busy || approvalSubmitting || recoveredInFlight || fanout.streaming,
+	);
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
 	// progress signal for slow operations (image generation, video gen) and
@@ -1328,6 +1329,21 @@
 		// conversation's columns (if any) re-hydrate from its load data below.
 		fanout.teardown();
 		resetCompare();
+	});
+
+	// Publish "this tab is rendering a generation for convId" so the root
+	// layout's presence heartbeat can suppress a cross-device push only while a
+	// device is actually rendering the completion (see stream-presence.svelte.ts).
+	// Defined AFTER the conversation-switch reset above so that, in the flush
+	// where we switch A -> B mid-stream, `busy` is already cleared when this
+	// runs — otherwise it would transiently publish B (the new convId with A's
+	// not-yet-reset busy) before correcting to null. Scoped to convId + cleared
+	// on cleanup so a switch or unmount never leaves a stale id set.
+	$effect(() => {
+		streamPresence.conversationId = renderingGeneration ? convId : null;
+		return () => {
+			streamPresence.conversationId = null;
+		};
 	});
 
 	// Rebuild the compare grid from server-truth recovery state on a reload /

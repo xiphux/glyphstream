@@ -90,9 +90,10 @@ export function recordPresence(
 }
 
 /**
- * True when any of the user's devices is actively viewing this conversation.
- * Prunes expired viewers as it scans (lazy cleanup — there's no background
- * sweeper), so a stale entry from a crashed tab can't keep suppressing past
+ * True when any of the user's devices is actively rendering this conversation.
+ * Prunes expired viewers as it scans (lazy cleanup, complemented by the
+ * throttled write-path {@link maybeSweep} for conversations that never reach
+ * this read), so a stale entry from a crashed tab can't keep suppressing past
  * its TTL.
  */
 export function isConversationBeingViewed(
