@@ -50,30 +50,43 @@
 	// unless the user has opted in and already granted permission.
 	// iOS installed-PWA viewport fix. On a cold launch WebKit lays the
 	// standalone web view out ~½" short and — unlike in-browser Safari — never
-	// emits a viewport event to correct it, so a CSS `100dvh` shell keeps a
-	// dead bar at the bottom until the user manually scrolls. `innerHeight`,
-	// however, reports the *settled* full height once the launch animation
-	// finishes, even though the CSS unit didn't re-layout. So drive the shell
-	// height from `innerHeight`: measure now, again on the next frame, and once
-	// more after the launch settles, then keep it current on resize /
-	// orientation change. Gated to standalone (via --app-height) so in-browser
-	// Safari keeps native dvh toolbar tracking and desktop is untouched. Uses
-	// innerHeight, not visualViewport, so the on-screen keyboard doesn't shrink
-	// the shell.
+	// emits a `resize` to correct it, so a CSS `100dvh` shell keeps a dead bar
+	// at the bottom. `innerHeight` reports the *settled* full height, but the
+	// settle lands at a variable time after launch, so a single delayed read
+	// races it (and a lost race is unrecoverable once we override dvh with a
+	// fixed px height). Two defenses: (1) re-measure across a ~1.5s window via
+	// rAF so a late settle is still caught, and (2) also re-measure on
+	// visualViewport resize/scroll — the event a manual scroll fires — so a
+	// swipe can still self-heal a launch that never settled on its own. Gated
+	// to standalone (via --app-height) so in-browser Safari keeps native dvh
+	// toolbar tracking and desktop is untouched. Uses innerHeight, not
+	// visualViewport height, so the on-screen keyboard doesn't shrink the shell.
 	onMount(() => {
 		if (!window.matchMedia?.('(display-mode: standalone)').matches) return;
 		const root = document.documentElement;
 		const measure = () => root.style.setProperty('--app-height', `${window.innerHeight}px`);
-		measure();
-		const raf = requestAnimationFrame(measure);
-		const settle = setTimeout(measure, 300);
+
+		// Poll across the launch-settle window: measure each frame until 1.5s
+		// have elapsed (counted in frames so we don't need a wall clock).
+		let frames = 0;
+		let raf = 0;
+		const poll = () => {
+			measure();
+			if (++frames < 90) raf = requestAnimationFrame(poll);
+		};
+		poll();
+
+		const vv = window.visualViewport;
 		window.addEventListener('resize', measure);
 		window.addEventListener('orientationchange', measure);
+		vv?.addEventListener('resize', measure);
+		vv?.addEventListener('scroll', measure);
 		return () => {
 			cancelAnimationFrame(raf);
-			clearTimeout(settle);
 			window.removeEventListener('resize', measure);
 			window.removeEventListener('orientationchange', measure);
+			vv?.removeEventListener('resize', measure);
+			vv?.removeEventListener('scroll', measure);
 			root.style.removeProperty('--app-height');
 		};
 	});
