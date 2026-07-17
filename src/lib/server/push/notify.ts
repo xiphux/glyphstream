@@ -21,6 +21,7 @@ import {
 	listPushSubscriptionsForUser,
 } from '../db/queries/push-subscriptions';
 import { getUserPreferences } from '../db/queries/user-preferences';
+import { isConversationBeingViewed } from './presence';
 import { truncateEllipsis } from '$lib/text';
 import { sendPushNotification, type WebPushSubscription } from './web-push';
 
@@ -93,6 +94,14 @@ export async function notifyConversationComplete(
 ): Promise<void> {
 	const prefs = getUserPreferences(input.userId);
 	if (!prefs || !prefs.notificationsEnabled) return;
+
+	// Cross-device suppression: if any of the user's devices is actively
+	// viewing this conversation, that window already receives the message over
+	// its live SSE stream, so a push would only double-buzz a second device
+	// (the phone while you watch the response finish on desktop). The per-device
+	// SW arbiter can't see across devices — this is the only layer that can.
+	// Cheaper than the subs query below, so short-circuit before it.
+	if (isConversationBeingViewed(input.userId, input.conversationId)) return;
 
 	const subs = listPushSubscriptionsForUser(input.userId);
 	if (subs.length === 0) return;

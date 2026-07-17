@@ -27,16 +27,19 @@ import {
 	upsertPushSubscription,
 } from '$lib/server/db/queries/push-subscriptions';
 import { setUserPreferences } from '$lib/server/db/queries/user-preferences';
+import { recordPresence, resetPresence } from '$lib/server/push/presence';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.sendCalls = [];
 	mocks.sendResult = { ok: true };
 	mocks.sendResultsByEndpoint = new Map();
+	resetPresence();
 });
 
 afterEach(() => {
 	closeTestDb();
+	resetPresence();
 });
 
 const SAMPLE_KEYS = {
@@ -189,6 +192,27 @@ describe('notifyConversationComplete', () => {
 		mocks.sendResultsByEndpoint.set('a', { ok: false, statusCode: 503 });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
+	});
+
+	it('suppresses all pushes when a device is actively viewing the conversation', async () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { notificationsEnabled: true });
+		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		// A window on another device is watching this thread (its live SSE
+		// stream already delivers the message) — no device should be pushed.
+		recordPresence(u.id, 'conv1', 'viewer-1', true);
+		await notifyConversationComplete(baseInput(u.id));
+		expect(mocks.sendCalls).toHaveLength(0);
+	});
+
+	it('still pushes when the viewed conversation is a DIFFERENT one', async () => {
+		const u = seedUser();
+		setUserPreferences(u.id, { notificationsEnabled: true });
+		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		// Watching some other thread must not suppress this conversation's push.
+		recordPresence(u.id, 'other-conv', 'viewer-1', true);
+		await notifyConversationComplete(baseInput(u.id));
+		expect(mocks.sendCalls).toHaveLength(1);
 	});
 
 	it('respects notificationsForegroundToast in the payload', async () => {

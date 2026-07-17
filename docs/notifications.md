@@ -136,6 +136,26 @@ If a push service returns `404 Gone` or `410 Gone` for an endpoint
 etc.), the notify pipeline auto-deletes that row so it doesn't keep
 trying to send to a dead endpoint.
 
+### Cross-device suppression
+
+If you're **actively watching a conversation on one device** when the
+reply lands, your **other** devices stay quiet — no phone buzz while you
+watch the response finish on your desktop.
+
+The per-device service worker already silences the device you're looking
+at (its own window is visible on that thread), but it can only see its
+own windows — it has no idea another device is watching. So each open
+chat window heartbeats "I'm viewing this conversation" to the server
+while it's foregrounded, and the notify pipeline skips **all** pushes for
+a conversation any of your devices is currently viewing. That viewer
+already receives the message over its live stream, so nothing is missed.
+
+The moment a window is backgrounded, switches threads, or closes, it
+stops counting as "viewing" — so submitting on the desktop and then
+walking away (or locking the screen) still delivers the notification to
+your phone. Presence is in-memory and per-user; it writes nothing to the
+database and never crosses between users.
+
 ## Troubleshooting
 
 **The master switch is greyed out with no hint shown.**
@@ -182,6 +202,11 @@ happens, check the SW console for errors.
   (`messages/+server.ts`), and the video relay (`video-relay.ts`).
 - **Client-side fire arbiter**: `pickAction()` in
   `src/lib/sw/arbiter.ts`, exercised by the SW's `push` event handler.
+- **Cross-device presence**: `src/lib/server/push/presence.ts` (in-memory
+  registry, single-process — mirrors the in-flight registry) fed by
+  `POST /api/presence`. The root `+layout.svelte` heartbeats the current
+  chat route + visibility; `notifyConversationComplete()` skips the send
+  when `isConversationBeingViewed()` is true.
 - **Toast surface**: `src/lib/toast.svelte.ts` (singleton, used for
   the archive toast and the message-complete toast).
 

@@ -10,6 +10,65 @@
 
 	let { children } = $props();
 
+	// Presence heartbeat. Tells the server which conversation this window is
+	// actively viewing so notifyConversationComplete can suppress a redundant
+	// push to this user's OTHER devices while one is watching the thread — the
+	// per-device SW arbiter can't see across devices. Reuses the exact signal
+	// the arbiter trusts: the page's real SPA route (page.params.id) + the
+	// document's visibility. viewerId is per-page-load (per-tab precision;
+	// App.Locals carries no session identity anyway).
+	const HEARTBEAT_MS = 25_000;
+	let presenceViewerId: string | null = null;
+	// The conversation we last told the server about — lets a thread switch
+	// clear the thread we left before announcing the new one.
+	let lastReportedConv: string | null = null;
+
+	function postPresence(conversationId: string, visible: boolean) {
+		if (!presenceViewerId) return;
+		void fetch('/api/presence', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ conversationId, viewerId: presenceViewerId, visible }),
+			// keepalive lets the visible:false beat survive an unloading page.
+			keepalive: true,
+		}).catch(() => {});
+	}
+
+	// One-time setup + teardown. Reads no reactive state, so it runs once on
+	// mount and cleans up on destroy (browser-only — effects don't run in SSR).
+	$effect(() => {
+		presenceViewerId ??= crypto.randomUUID();
+		const beat = () => {
+			if (lastReportedConv && document.visibilityState === 'visible') {
+				postPresence(lastReportedConv, true);
+			}
+		};
+		const onVisibility = () => {
+			if (lastReportedConv) postPresence(lastReportedConv, document.visibilityState === 'visible');
+		};
+		const onPageHide = () => {
+			if (lastReportedConv) postPresence(lastReportedConv, false);
+		};
+		document.addEventListener('visibilitychange', onVisibility);
+		window.addEventListener('pagehide', onPageHide);
+		const heartbeat = setInterval(beat, HEARTBEAT_MS);
+		return () => {
+			clearInterval(heartbeat);
+			document.removeEventListener('visibilitychange', onVisibility);
+			window.removeEventListener('pagehide', onPageHide);
+		};
+	});
+
+	// React to navigation: on a thread switch (or leaving chat entirely) clear
+	// the conversation we left, then announce the new one if it's visible.
+	$effect(() => {
+		const conv = page.params.id ?? null;
+		if (conv === lastReportedConv) return;
+		if (lastReportedConv) postPresence(lastReportedConv, false);
+		lastReportedConv = conv;
+		if (conv && document.visibilityState === 'visible') postPresence(conv, true);
+	});
+
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and
 	// returns an updateSW() we can call when the user opts in. We surface
 	// the prompt via UpdateBanner rather than silently reloading the page
