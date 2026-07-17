@@ -331,7 +331,7 @@
 	}
 </script>
 
-<div class="flex h-[100dvh] overflow-hidden">
+<div class="app-shell flex overflow-hidden">
 	<!-- Mobile drawer backdrop. Pointer-events stay off when the drawer
 		 is closed *or* when a conversation overflow menu is open. The
 		 second case defends against an iOS Safari quirk: tapping the

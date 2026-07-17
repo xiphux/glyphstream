@@ -464,6 +464,25 @@ body {
 	@apply bg-surface text-fg antialiased;
 }
 
+/* App shell height. In a normal browser we use the dynamic viewport unit so
+   the layout tracks Safari's collapsing/expanding toolbar. In an installed
+   (standalone) PWA there's no dynamic chrome, and iOS WebKit miscomputes
+   dvh/vh on a *cold* launch — the shell renders ~½" short and only snaps to
+   full height after a scroll forces a reflow (iOS never fires the resize
+   itself). Pinning to the layout viewport with fixed/inset sidesteps that
+   miscompute; the root already sets overflow-hidden with its own internal
+   scroll containers, so fixed positioning changes nothing else. */
+.app-shell {
+	height: 100dvh;
+}
+@media all and (display-mode: standalone) {
+	.app-shell {
+		position: fixed;
+		inset: 0;
+		height: auto;
+	}
+}
+
 /* --- markdown prose ------------------------------------------------------ */
 /* Tailwind v4 doesn't bundle @tailwindcss/typography by default; this is a
    focused mini-prose to style the rendered assistant HTML. Keep it lean. */
