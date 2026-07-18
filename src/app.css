@@ -460,6 +460,18 @@ body {
 	height: 100%;
 }
 
+/* Paint the root canvas with the theme surface, not the browser default
+   (white). The app shell lives in <body>, but if iOS ever mis-sizes the
+   standalone viewport and <body> comes up short — the iOS PWA cold-launch
+   "chin gap" — the band below it falls through to <html>. Backgrounding
+   <html> makes that band read as theme-colored padding instead of a jarring
+   white bar; it also colors the overscroll/rubber-band area. --color-surface
+   resolves per scheme/theme because data-scheme and data-theme live on the
+   <html> element itself. This is a symptom safety net, not the height fix. */
+html {
+	background-color: var(--color-surface);
+}
+
 body {
 	@apply bg-surface text-fg antialiased;
 }
