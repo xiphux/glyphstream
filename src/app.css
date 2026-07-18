@@ -476,17 +476,24 @@ body {
 	@apply bg-surface text-fg antialiased;
 }
 
-/* App shell height. In a normal browser the dynamic viewport unit is right:
-   it tracks Safari's collapsing/expanding toolbar with no JS. In an installed
-   (standalone) PWA there's no dynamic chrome, and iOS WebKit miscomputes
-   dvh/vh on a *cold* launch — the shell renders ~½" short and never corrects
-   itself (iOS fires no viewport event; only a manual scroll used to nudge it).
-   So in standalone the (app) layout measures window.innerHeight in JS and
-   writes it to --app-height; that overrides the dvh fallback below. The var is
-   unset on SSR, in-browser, and before JS runs, so those all fall through to
-   100dvh. */
+/* App shell height. In a browser tab the dynamic viewport unit is right — it
+   tracks Safari's collapsing/expanding toolbar. In an installed (standalone)
+   PWA on iOS, the black-translucent status bar offsets the view up by the
+   status-bar height WITHOUT growing the viewport, so 100dvh (which resolves
+   like 100%, against the offset-but-not-grown box) comes up short and leaves
+   the "chin gap" at the bottom — and because dvh is dynamic it healed only
+   sometimes, which is why the gap was intermittent. 100vh is the full physical
+   viewport height, so it spans edge-to-edge with no gap. Scoped to standalone
+   because in a browser tab 100vh would run under Safari's collapsing toolbar
+   (exactly what dvh avoids there). See app.html for the black-translucent note.
+   Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2). */
 .app-shell {
-	height: var(--app-height, 100dvh);
+	height: 100dvh;
+}
+@media all and (display-mode: standalone) {
+	.app-shell {
+		height: 100vh;
+	}
 }
 
 /* --- markdown prose ------------------------------------------------------ */

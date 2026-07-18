@@ -217,26 +217,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const themeCookie = event.cookies.get('gs-theme');
 	const theme = themeCookie === 'claude' || themeCookie === 'chatgpt' ? themeCookie : null;
 
-	// iOS standalone status bar can't take an arbitrary color, only
-	// default/black/black-translucent (see app.html). The static default is
-	// `black`; swap to `default` (light bar, dark icons) only when the user has
-	// explicitly chosen the light scheme. 'dark' and 'system' keep `black` —
-	// the OS preference behind 'system' isn't knowable server-side, and `black`
-	// is the safe-looking fallback that also matches the dark launch splash.
-	const lightScheme = event.cookies.get('gs-scheme') === 'light';
-
-	const response = await resolve(event, {
-		transformPageChunk: ({ html }) => {
-			let out = html;
-			if (theme) out = out.replace('<html lang="en"', `<html lang="en" data-theme="${theme}"`);
-			if (lightScheme)
-				out = out.replace(
-					'name="apple-mobile-web-app-status-bar-style" content="black"',
-					'name="apple-mobile-web-app-status-bar-style" content="default"',
-				);
-			return out;
-		},
-	});
+	const response = await resolve(
+		event,
+		theme
+			? {
+					transformPageChunk: ({ html }) =>
+						html.replace('<html lang="en"', `<html lang="en" data-theme="${theme}"`),
+				}
+			: undefined,
+	);
 	for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
 		response.headers.set(name, value);
 	}

@@ -66,18 +66,17 @@
 			 screenshot for the icon and a blank dark splash. Full-bleed
 			 (no rounded corners); iOS applies its own squircle mask. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<!-- Status bar style. We deliberately DON'T use `black-translucent`
-			 (the edge-to-edge look where content renders under the status bar):
-			 combined with viewport-fit=cover it makes iOS miscompute the
-			 standalone viewport height on a cold launch, leaving an
-			 intermittent dead bar at the bottom that no JS reliably heals.
-			 An opaque bar gives a stable viewport rectangle. iOS offers no
-			 arbitrary color here (it ignores theme-color for the standalone
-			 status bar) — only default/black/black-translucent — so we track
-			 light/dark, not the per-theme hue: `black` is the safe baseline
-			 (also matches the dark launch splash) and hooks.server.ts swaps it
-			 to `default` (light bar) when the gs-scheme cookie is 'light'. -->
-		<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+		<!-- black-translucent renders the app edge-to-edge BEHIND the status bar,
+			 so the bar takes on the app's own colors (a themed status bar iOS
+			 otherwise won't let us set — it ignores theme-color for the
+			 standalone bar). Its one famous footgun: in standalone the view is
+			 offset up by the status-bar height (~59px) WITHOUT the viewport
+			 growing, so a shell sized with 100dvh/100% comes up short and leaves
+			 the intermittent "chin gap" at the bottom. The fix is to size the app
+			 shell with 100vh (the full physical viewport) in standalone — see
+			 .app-shell in app.css. Do NOT switch this to default/black to "fix"
+			 the gap: that just hides the symptom and loses the themed bar. -->
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
 		<!-- Browser tab favicon. Without this, browsers fall back to /favicon.ico
 			 (which we don't ship) and end up showing whatever they previously

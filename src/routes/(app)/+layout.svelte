@@ -48,49 +48,6 @@
 	// the pref still reads "on" — notifications silently stop. Reconciling here,
 	// on every cold app load, re-registers it. No-op (and no permission prompt)
 	// unless the user has opted in and already granted permission.
-	// iOS installed-PWA viewport fix. On a cold launch WebKit lays the
-	// standalone web view out ~½" short and — unlike in-browser Safari — never
-	// emits a `resize` to correct it, so a CSS `100dvh` shell keeps a dead bar
-	// at the bottom. `innerHeight` reports the *settled* full height, but the
-	// settle lands at a variable time after launch, so a single delayed read
-	// races it (and a lost race is unrecoverable once we override dvh with a
-	// fixed px height). Two defenses: (1) re-measure across a ~1.5s window via
-	// rAF so a late settle is still caught, and (2) also re-measure on
-	// visualViewport resize/scroll — the event a manual scroll fires — so a
-	// swipe can still self-heal a launch that never settled on its own. Gated
-	// to standalone (via --app-height) so in-browser Safari keeps native dvh
-	// toolbar tracking and desktop is untouched. Uses innerHeight, not
-	// visualViewport height, so the on-screen keyboard doesn't shrink the shell.
-	onMount(() => {
-		if (!window.matchMedia?.('(display-mode: standalone)').matches) return;
-		const root = document.documentElement;
-		const measure = () => root.style.setProperty('--app-height', `${window.innerHeight}px`);
-
-		// Poll across the launch-settle window: measure each frame until 1.5s
-		// have elapsed (counted in frames so we don't need a wall clock).
-		let frames = 0;
-		let raf = 0;
-		const poll = () => {
-			measure();
-			if (++frames < 90) raf = requestAnimationFrame(poll);
-		};
-		poll();
-
-		const vv = window.visualViewport;
-		window.addEventListener('resize', measure);
-		window.addEventListener('orientationchange', measure);
-		vv?.addEventListener('resize', measure);
-		vv?.addEventListener('scroll', measure);
-		return () => {
-			cancelAnimationFrame(raf);
-			window.removeEventListener('resize', measure);
-			window.removeEventListener('orientationchange', measure);
-			vv?.removeEventListener('resize', measure);
-			vv?.removeEventListener('scroll', measure);
-			root.style.removeProperty('--app-height');
-		};
-	});
-
 	onMount(() => {
 		void reconcileSubscription(data.prefs?.notificationsEnabled ?? false);
 		// The server can't know the user's timezone, and a self-hosted box is often
@@ -431,12 +388,11 @@
 			: ''}"
 	>
 		<!-- Header row: title (when expanded) + collapse toggle (sm+ only).
-			 pt uses max(env(safe-area-inset-top), default) as a guard: with the
-			 opaque (non-translucent) status bar the web view starts below the
-			 bar so the top inset is ~0 and this falls through to the 1rem
-			 default — same as desktop / Android / mobile Safari. The max() stays
-			 in case a future edge-to-edge (black-translucent) top ever returns a
-			 nonzero inset. -->
+			 pt uses max(env(safe-area-inset-top), default) so the title sits
+			 below the iOS status bar in PWA standalone mode (viewport-fit=cover
+			 + black-translucent status bar, where the top inset is the ~59px
+			 status-bar height). Falls through to the default 1rem on desktop /
+			 Android / mobile Safari where the inset is 0. -->
 		<div
 			class="flex items-center {collapsed
 				? 'justify-center'
