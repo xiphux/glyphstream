@@ -431,10 +431,12 @@
 			: ''}"
 	>
 		<!-- Header row: title (when expanded) + collapse toggle (sm+ only).
-			 pt uses max(env(safe-area-inset-top), default) so the title sits
-			 below the iOS status bar in PWA standalone mode (viewport-fit=cover
-			 + black-translucent status bar). Falls through to the default 1rem
-			 on desktop / Android / mobile Safari where the inset is 0. -->
+			 pt uses max(env(safe-area-inset-top), default) as a guard: with the
+			 opaque (non-translucent) status bar the web view starts below the
+			 bar so the top inset is ~0 and this falls through to the 1rem
+			 default — same as desktop / Android / mobile Safari. The max() stays
+			 in case a future edge-to-edge (black-translucent) top ever returns a
+			 nonzero inset. -->
 		<div
 			class="flex items-center {collapsed
 				? 'justify-center'
