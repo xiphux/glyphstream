@@ -15,7 +15,6 @@ import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
-import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
 import { truncateEllipsis } from '$lib/text';
 
 const PROMPT_EXCERPT_MAX = 500;
@@ -126,7 +125,6 @@ async function resolveBytes(
 		// when the hostname is publicly routable. The most common
 		// legitimate off-host case is OpenAI's image responses, which
 		// return Azure-blob CDN URLs distinct from api.openai.com.
-		let absolute: string;
 		if (urlOrB64.url.startsWith('http')) {
 			let parsed: URL;
 			try {
@@ -135,21 +133,15 @@ async function resolveBytes(
 				throw new Error(`Image generation response url is not a valid URL: ${urlOrB64.url}`);
 			}
 			const endpointHost = new URL(endpoint.baseUrl).hostname.toLowerCase();
-			if (parsed.hostname.toLowerCase() !== endpointHost) {
-				try {
-					assertHttpScheme(parsed);
-					await assertHostnameRoutable(parsed.hostname);
-				} catch (e) {
-					if (e instanceof UrlPolicyError) {
-						throw new Error(`Upstream returned an unsafe media URL: ${e.message}`);
-					}
-					throw e;
-				}
-			}
-			absolute = urlOrB64.url;
-		} else {
-			absolute = new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
+			const offHost = parsed.hostname.toLowerCase() !== endpointHost;
+			// Off-host absolute URLs are untrusted: guard every redirect hop
+			// against the SSRF ranges (a public host can still 302 into the LAN
+			// or the cloud-metadata endpoint). On-host URLs are the configured
+			// backend — trusted, and may live on localhost/LAN — so they follow
+			// redirects normally with the endpoint credential.
+			return fetchUpstreamBytes(endpoint, urlOrB64.url, { guardRedirects: offHost });
 		}
+		const absolute = new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
 		return fetchUpstreamBytes(endpoint, absolute);
 	}
 	throw new Error('Image generation response had neither url nor b64_json');

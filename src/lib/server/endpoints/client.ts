@@ -3,6 +3,10 @@ import { Readable } from 'node:stream';
 import type { LoadedEndpoint } from './config';
 import type { UpstreamModel } from '$lib/types/api';
 import { composeSignals } from '../util/abort';
+import { assertHostnameRoutable, assertHttpScheme, UrlPolicyError } from '../tools/url-policy-base';
+
+/** Redirect cap for the guarded (untrusted, off-host) media-fetch path. */
+const MAX_UPSTREAM_REDIRECTS = 5;
 
 export class UpstreamError extends Error {
 	constructor(
@@ -627,24 +631,90 @@ export async function videoFetchContent(
  * to pull image/video content into local storage. Forwards the endpoint's
  * Authorization header in case the URL is on the same upstream and requires
  * auth (e.g. openai-api-bridge's /v1/files/{id}/content).
+ *
+ * `opts.guardRedirects` is set for the UNTRUSTED case — an absolute, off-host
+ * URL returned by a possibly-compromised upstream. It follows redirects
+ * MANUALLY, re-running the SSRF gate (`assertHttpScheme` + `assertHostnameRoutable`)
+ * on EVERY hop, so a public→private redirect (e.g. `302 → 169.254.169.254` or a
+ * LAN address) is refused at the same gate as the initial address rather than
+ * silently followed by `fetch`'s default `redirect: 'follow'`. The endpoint's
+ * bearer token is never forwarded to a host other than the configured endpoint.
+ * Left off (default) for the trusted same-host path, whose backend may legitimately
+ * live on localhost/LAN — where the routable check would wrongly refuse it.
  */
 export async function fetchUpstreamBytes(
 	endpoint: LoadedEndpoint,
 	urlString: string,
+	opts: { guardRedirects?: boolean } = {},
 ): Promise<{ bytes: Buffer; contentType: string }> {
-	const res = await doFetch(
-		urlString,
-		{
-			method: 'GET',
-			headers: authHeaders(endpoint),
-			signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
-		},
-		`Network error fetching media from ${urlString}`,
-	);
-	await ensureOk(res, `Fetching media from ${urlString} returned HTTP ${res.status}`);
-	const arrayBuf = await res.arrayBuffer();
-	const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
-	return { bytes: Buffer.from(arrayBuf), contentType };
+	if (!opts.guardRedirects) {
+		const res = await doFetch(
+			urlString,
+			{
+				method: 'GET',
+				headers: authHeaders(endpoint),
+				signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+			},
+			`Network error fetching media from ${urlString}`,
+		);
+		await ensureOk(res, `Fetching media from ${urlString} returned HTTP ${res.status}`);
+		const arrayBuf = await res.arrayBuffer();
+		const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+		return { bytes: Buffer.from(arrayBuf), contentType };
+	}
+
+	const endpointHost = new URL(endpoint.baseUrl).hostname.toLowerCase();
+	let current: URL;
+	try {
+		current = new URL(urlString);
+	} catch {
+		throw new Error(`Upstream returned an invalid media URL: ${urlString}`);
+	}
+	for (let hop = 0; hop <= MAX_UPSTREAM_REDIRECTS; hop++) {
+		try {
+			assertHttpScheme(current);
+			await assertHostnameRoutable(current.hostname);
+		} catch (e) {
+			if (e instanceof UrlPolicyError) {
+				throw new Error(`Upstream returned an unsafe media URL: ${e.message}`);
+			}
+			throw e;
+		}
+		// Only send the endpoint's credential to the configured endpoint itself,
+		// never to a redirect target we don't control.
+		const sameHost = current.hostname.toLowerCase() === endpointHost;
+		const res = await doFetch(
+			current.href,
+			{
+				method: 'GET',
+				headers: sameHost ? authHeaders(endpoint) : {},
+				redirect: 'manual',
+				signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+			},
+			`Network error fetching media from ${current.href}`,
+		);
+		if (res.status >= 300 && res.status < 400) {
+			const loc = res.headers.get('location');
+			await res.body?.cancel().catch(() => {});
+			if (!loc) {
+				throw new Error(`Upstream media URL redirected (HTTP ${res.status}) with no Location.`);
+			}
+			if (hop >= MAX_UPSTREAM_REDIRECTS) {
+				throw new Error(`Upstream media URL exceeded ${MAX_UPSTREAM_REDIRECTS} redirects.`);
+			}
+			try {
+				current = new URL(loc, current);
+			} catch {
+				throw new Error(`Upstream media redirect Location "${loc}" is not a valid URL.`);
+			}
+			continue;
+		}
+		await ensureOk(res, `Fetching media from ${current.href} returned HTTP ${res.status}`);
+		const arrayBuf = await res.arrayBuffer();
+		const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+		return { bytes: Buffer.from(arrayBuf), contentType };
+	}
+	throw new Error(`Upstream media URL exceeded ${MAX_UPSTREAM_REDIRECTS} redirects.`);
 }
 
 /**
