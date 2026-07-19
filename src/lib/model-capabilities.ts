@@ -97,9 +97,10 @@ export function capabilityPill(caps: string[] | undefined): CapabilityPill | nul
 	const inputSet = new Set(routes.map((r) => r.input));
 	const orderedInputs: string[] = INPUT_ORDER.filter((m) => inputSet.has(m));
 	// Any input the vocabulary above doesn't know about still gets a letter, so
-	// a future modality shows up rather than vanishing from the union.
-	for (const r of routes)
-		if (!(INPUT_ORDER as readonly string[]).includes(r.input)) orderedInputs.push(r.input);
+	// a future modality shows up rather than vanishing from the union. Iterate the
+	// deduped set, not routes, so a modality shared by two routes isn't doubled.
+	for (const m of inputSet)
+		if (!(INPUT_ORDER as readonly string[]).includes(m)) orderedInputs.push(m);
 	const outputs = [...new Set(routes.map((r) => r.output))];
 
 	const inAbbr = orderedInputs.map(letterOf).join('');

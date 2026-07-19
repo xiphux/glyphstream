@@ -154,6 +154,17 @@ describe('normalizeUpstreamModel', () => {
 		it('is undefined when the upstream omits the field', () => {
 			expect(normalizeUpstreamModel(ep(), { id: 'x', kind: 'image' }).capabilities).toBeUndefined();
 		});
+
+		it('lowercases routes so a spec-violating upstream still classifies correctly', () => {
+			// Lowercase happens before the shape filter, so an upper-cased separator
+			// (`-TO-`) still passes and normalizes rather than dropping to unknown.
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'x',
+				kind: 'image',
+				capabilities: ['Image-To-Image'],
+			});
+			expect(e.capabilities).toEqual(['image-to-image']);
+		});
 	});
 
 	describe('group / groupKey', () => {

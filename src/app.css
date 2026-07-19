@@ -130,8 +130,9 @@
 	--color-danger-emphasis: oklch(0.55 0.22 27);
 	--color-danger-fg: oklch(0.985 0.016 17);
 	--color-info: oklch(0.7 0.16 255);
-	/* Violet lifted for legibility on the dark canvas; modality-image follows
-	   --color-info automatically via its var() reference. */
+	/* Violet lifted for legibility on the dark canvas. The blue "image optional"
+	   pill uses Tailwind's info utility directly (ModelPicker pillTone →
+	   bg-info/15 text-info), so it's retuned by --color-info above, not here. */
 	--color-modality-text: oklch(0.78 0.14 300);
 }
 [data-scheme='light'] {
@@ -236,6 +237,8 @@
 	   against the warm paper without reading as a cold system color. */
 	--color-info: oklch(0.55 0.1 248);
 	--color-info-fg: oklch(0.98 0.01 85);
+	/* Violet pill tone, chroma dropped to match Claude's desaturated palette. */
+	--color-modality-text: oklch(0.55 0.1 300);
 	--radius-sm: 0.375rem;
 	--radius-md: 0.5rem;
 	--radius-lg: 0.75rem;
@@ -272,6 +275,7 @@
 	--color-danger-emphasis: oklch(0.52 0.17 30);
 	--color-danger-fg: oklch(0.98 0.01 85);
 	--color-info: oklch(0.68 0.1 248);
+	--color-modality-text: oklch(0.74 0.1 300);
 }
 
 /* === ChatGPT — cool grays, green accent, tight + flat (no glass) ===== */
@@ -301,6 +305,7 @@
 	--color-danger-fg: oklch(0.99 0 0);
 	--color-info: oklch(0.58 0.15 250);
 	--color-info-fg: oklch(0.99 0 0);
+	--color-modality-text: oklch(0.56 0.15 300);
 	--radius-sm: 0.25rem;
 	--radius-md: 0.3rem;
 	--radius-lg: 0.4rem;
@@ -336,6 +341,7 @@
 	--color-danger-emphasis: oklch(0.56 0.21 27);
 	--color-danger-fg: oklch(0.99 0 0);
 	--color-info: oklch(0.7 0.15 250);
+	--color-modality-text: oklch(0.74 0.15 300);
 }
 
 /*

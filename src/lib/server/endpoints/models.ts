@@ -190,10 +190,16 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	// openai-api-bridge `capabilities` modality routes. Kept only for entries of
 	// the `{input}-to-{output}` shape — that shape guard is also what separates
 	// them from the Fireworks-ish flat tokens `detectKind` reads off the same
-	// field. Omitted (undefined) when nothing qualifies, so absence stays
-	// meaningful ("upstream didn't say") downstream in `imageAttachment`.
+	// field. Lowercased so the stored routes match detectKind's case-folding and
+	// the case-sensitive `startsWith` predicates in `imageAttachment` — the spec
+	// is lowercase-only, this just hardens against a spec-violating upstream.
+	// Omitted (undefined) when nothing qualifies, so absence stays meaningful
+	// ("upstream didn't say") downstream in `imageAttachment`.
 	const capabilities = Array.isArray(m.capabilities)
-		? m.capabilities.filter((c) => typeof c === 'string' && c.includes('-to-'))
+		? m.capabilities
+				.filter((c): c is string => typeof c === 'string')
+				.map((c) => c.toLowerCase())
+				.filter((c) => c.includes('-to-'))
 		: [];
 
 	return {

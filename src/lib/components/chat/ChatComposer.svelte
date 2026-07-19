@@ -186,7 +186,13 @@
 	// models are unaffected. Compare mode gates on any required model in the cart.
 	const needsImage = $derived.by(() => {
 		if (attachments.readyImageCount > 0) return false;
-		const ids = compareMode ? compareSelections.map((s) => s.modelId) : [modelId];
+		// Length-checked so an empty cart falls back to the single model — matching
+		// the send path (which defaults to [{ modelId }]) and resolveActiveModelKind,
+		// so Send never enables on a stale-empty-compare state the send would reject.
+		const ids =
+			compareMode && compareSelections.length > 0
+				? compareSelections.map((s) => s.modelId)
+				: [modelId];
 		return ids.some((id) => {
 			const m = models.find((x) => x.id === id);
 			return m ? imageAttachment(m) === 'required' : false;
