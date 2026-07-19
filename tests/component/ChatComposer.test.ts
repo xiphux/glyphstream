@@ -40,6 +40,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		contextWindow: overrides.contextWindow ?? null,
 		promptStyle: overrides.promptStyle ?? null,
 		promptHint: overrides.promptHint ?? null,
+		capabilities: overrides.capabilities,
 	};
 }
 
@@ -244,5 +245,72 @@ describe('ChatComposer — focus()', () => {
 		expect(typeof component.focus).toBe('function');
 		component.focus();
 		expect(screen.getByPlaceholderText('Write a message…')).toHaveFocus();
+	});
+});
+
+describe('ChatComposer — image-required gate', () => {
+	const upscaler = () =>
+		makeModel({
+			id: 'bridge::upscaler',
+			displayName: 'Upscaler',
+			kind: 'image',
+			capabilities: ['image-to-image'],
+		});
+
+	it('disables Send + shows the hint for an image-required model with no image', () => {
+		render(ChatComposer, {
+			props: baseProps({
+				composerText: 'sharpen this',
+				modelId: 'bridge::upscaler',
+				modelKind: 'image',
+				models: [upscaler()],
+			}),
+		});
+		const btn = screen.getByRole('button', { name: 'Send message' });
+		expect(btn).toBeDisabled();
+		expect(btn).toHaveAttribute('title', 'This model needs an image — attach one to continue');
+		expect(
+			screen.getByText('This model needs an image — attach one to continue.'),
+		).toBeInTheDocument();
+	});
+
+	it('does not gate an image-optional (text+image) model', () => {
+		const flux = makeModel({
+			id: 'bridge::flux',
+			kind: 'image',
+			capabilities: ['text-to-image', 'image-to-image'],
+		});
+		render(ChatComposer, {
+			props: baseProps({
+				composerText: 'a cat',
+				modelId: 'bridge::flux',
+				modelKind: 'image',
+				models: [flux],
+			}),
+		});
+		expect(screen.getByRole('button', { name: 'Send message' })).not.toBeDisabled();
+	});
+
+	it('gates on the RESOLVED cart — a fully-unresolvable compare cart falls back to the single model', () => {
+		// Regression: the cart holds only ids that no longer resolve (endpoints
+		// removed since selection), so it expands to []. The gate must fall back to
+		// modelId (the image-required upscaler) and block — matching the send path —
+		// rather than reading the raw cart length, finding no resolvable model, and
+		// wrongly enabling Send. Two entries (compareTotal 2) dodge the picker's
+		// single-item auto-collapse so compare mode stays live.
+		const { container } = render(ChatComposer, {
+			props: baseProps({
+				composerText: 'do it',
+				modelId: 'bridge::upscaler',
+				modelKind: 'image',
+				models: [upscaler()],
+				compareMode: true,
+				compareSelections: [
+					{ modelId: 'bridge::ghost-a', count: 1 },
+					{ modelId: 'bridge::ghost-b', count: 1 },
+				],
+			}),
+		});
+		expect(container.querySelector('button[type="submit"]')).toBeDisabled();
 	});
 });

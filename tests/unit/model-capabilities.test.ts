@@ -24,12 +24,6 @@ describe('imageAttachment', () => {
 		expect(imageAttachment({ capabilities: ['text-to-video'] })).toBe('unsupported');
 	});
 
-	it('does not double a letter when an unknown input modality spans two routes', () => {
-		// Both routes share the (non-vocabulary) `sketch` input — it should appear
-		// once in the union, not twice.
-		expect(capabilityPill(['sketch-to-image', 'sketch-to-video'])?.label).toBe('S2I/V');
-	});
-
 	it('matches on the {input}-to- prefix, so a new output modality still counts', () => {
 		// A hypothetical future output modality must not read as unsupported.
 		expect(imageAttachment({ capabilities: ['image-to-model3d'] })).toBe('required');
@@ -78,6 +72,12 @@ describe('capabilityPill', () => {
 			title: 'Image → video',
 			attachment: 'required',
 		});
+	});
+
+	it('does not double a letter when an unknown input modality spans two routes', () => {
+		// Both routes share the (non-vocabulary) `sketch` input — it should appear
+		// once in the union, not twice.
+		expect(capabilityPill(['sketch-to-image', 'sketch-to-video'])?.label).toBe('S2I/V');
 	});
 
 	it('unions inputs into one pill in fixed T,I,V,A order (array order irrelevant)', () => {

@@ -186,13 +186,12 @@
 	// models are unaffected. Compare mode gates on any required model in the cart.
 	const needsImage = $derived.by(() => {
 		if (attachments.readyImageCount > 0) return false;
-		// Length-checked so an empty cart falls back to the single model — matching
-		// the send path (which defaults to [{ modelId }]) and resolveActiveModelKind,
-		// so Send never enables on a stale-empty-compare state the send would reject.
+		// Gate on the RESOLVED cart (fanoutModels), not the raw selections — a cart
+		// of only-unresolvable ids expands to [] and the send path falls back to
+		// [{ modelId }], so mirroring the resolver here keeps the composer, the send
+		// path, and resolveActiveModelKind provably identical on that edge.
 		const ids =
-			compareMode && compareSelections.length > 0
-				? compareSelections.map((s) => s.modelId)
-				: [modelId];
+			compareMode && fanoutModels.length > 0 ? fanoutModels.map((m) => m.modelId) : [modelId];
 		return ids.some((id) => {
 			const m = models.find((x) => x.id === id);
 			return m ? imageAttachment(m) === 'required' : false;

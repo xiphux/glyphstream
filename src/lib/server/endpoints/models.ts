@@ -15,6 +15,20 @@ import { normalizeStyle } from '../streaming/prompt-styles';
 import { normalizeVideoStyle } from '../streaming/prompt-styles-video';
 
 /**
+ * Lowercased string entries of an upstream `capabilities` array (or `[]` when
+ * absent/malformed). Shared by `detectKind` (which reads it as a kind signal)
+ * and `normalizeUpstreamModel` (which stores the modality routes) so their
+ * case-folding can't drift — the spec is lowercase-only, this hardens against a
+ * spec-violating upstream. Plain `toLowerCase` (no Turkish-I hazard: the
+ * vocabulary is ASCII).
+ */
+function lowerCaseCapabilities(caps: unknown): string[] {
+	return Array.isArray(caps)
+		? caps.filter((c): c is string => typeof c === 'string').map((c) => c.toLowerCase())
+		: [];
+}
+
+/**
  * Try multiple conventions to determine a model's kind. Returns null when
  * no signal is confident enough to pick.
  *
@@ -43,10 +57,8 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 	//    (a) openai-api-bridge modality routes — `image-to-image`,
 	//        `text-to-video` (contain `-to-`); the OUTPUT side names the kind.
 	//    (b) Fireworks-ish flat tokens — `image-generation`, `chat`, `embedding`.
-	if (Array.isArray(m.capabilities)) {
-		const caps = m.capabilities
-			.filter((c): c is string => typeof c === 'string')
-			.map((c) => c.toLowerCase());
+	const caps = lowerCaseCapabilities(m.capabilities);
+	if (caps.length > 0) {
 		// (a) bridge routes: read the output modality of any `{input}-to-{output}`.
 		const outputs = caps
 			.filter((c) => c.includes('-to-'))
@@ -195,12 +207,7 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 	// is lowercase-only, this just hardens against a spec-violating upstream.
 	// Omitted (undefined) when nothing qualifies, so absence stays meaningful
 	// ("upstream didn't say") downstream in `imageAttachment`.
-	const capabilities = Array.isArray(m.capabilities)
-		? m.capabilities
-				.filter((c): c is string => typeof c === 'string')
-				.map((c) => c.toLowerCase())
-				.filter((c) => c.includes('-to-'))
-		: [];
+	const capabilities = lowerCaseCapabilities(m.capabilities).filter((c) => c.includes('-to-'));
 
 	return {
 		id: formatModelId(endpoint.id, m.id),
