@@ -144,6 +144,52 @@ describe('runPython — happy path + isolation', () => {
 		});
 	});
 
+	it('terminates the worker when Pyodide init fails (no thread leak)', async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			// Report an init error instead of `ready` — the real worker posts
+			// {type:'error'} and does NOT self-exit, so the pool must terminate it.
+			w.postMessage = function (this: MockWorker, value: unknown) {
+				this.posts.push(value);
+				if ((value as { type?: string }).type === 'init') {
+					queueMicrotask(() => this.emit('message', { type: 'error', message: 'pyodide boom' }));
+				}
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+
+		await expect(
+			runPython({ conversationId: 'boom', code: '1', disabledFeatures: [] }),
+		).rejects.toThrow(/pyodide boom|failed to start/i);
+
+		expect(createdWorkers).toHaveLength(1);
+		expect(createdWorkers[0].terminated).toBe(true);
+	});
+
+	it('does not leak workers across repeated init failures for the same conversation', async () => {
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.postMessage = function (this: MockWorker, value: unknown) {
+				this.posts.push(value);
+				if ((value as { type?: string }).type === 'init') {
+					queueMicrotask(() => this.emit('message', { type: 'error', message: 'boom' }));
+				}
+			};
+			createdWorkers.push(w);
+			return w;
+		});
+
+		for (let i = 0; i < 3; i++) {
+			await expect(
+				runPython({ conversationId: 'retry', code: '1', disabledFeatures: [] }),
+			).rejects.toThrow();
+		}
+		// Each retry spawned a fresh worker, and every one was terminated.
+		expect(createdWorkers).toHaveLength(3);
+		expect(createdWorkers.every((w) => w.terminated)).toBe(true);
+	});
+
 	it('reuses the same worker across calls in the same conversation', async () => {
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();

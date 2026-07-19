@@ -358,9 +358,17 @@ async function doStart(
 	onStatus?: (status: string) => void,
 ): Promise<ReadyEntry | FailedEntry> {
 	const cfg = getCodeInterpreterConfig();
+	// Outer handle so the catch can terminate a worker whose Pyodide init failed.
+	// The worker signals init failure by posting {type:'error'} and does NOT
+	// self-exit, so without an explicit terminate() the thread would leak — and
+	// because the entry becomes 'failed', the next runPython re-spawns (leaking
+	// again), and enforcePoolCap counts only ready/starting entries so the
+	// orphans are invisible and unevictable.
+	let workerHandle: ManagedWorker | undefined;
 	try {
 		onStatus?.('Starting Python interpreter…');
 		const worker = workerFactory({ memoryMb: cfg.workerMemoryMb });
+		workerHandle = worker;
 		const pendingResolvers = new Map<number, PendingResolver>();
 
 		// Wire the message → resolver routing once per worker.
@@ -451,6 +459,8 @@ async function doStart(
 		};
 		return ready;
 	} catch (err) {
+		// Terminate the worker whose init failed so its thread doesn't leak.
+		await workerHandle?.terminate().catch(() => {});
 		const msg = err instanceof Error ? err.message : String(err);
 		return { state: 'failed', conversationId, error: msg };
 	}
