@@ -17,6 +17,7 @@
 	} from '$lib/approval-workflow';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
+	import { imageAttachment } from '$lib/model-capabilities';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import {
@@ -1896,6 +1897,22 @@
 				: [{ modelId, modelKind: modelKind ?? 'chat', displayName: modelDisplayName(modelId) }];
 		const branches = expandFanoutBranches(baseModels, splitImageIds);
 		const willFanOut = branches.length >= 2;
+
+		// Image-input-only models (upscalers, background removal, image-to-video)
+		// reject a text-only request upstream. The composer's Send button is
+		// already disabled in this case, but Enter reaches here — bail so the typed
+		// prompt stays put (draft intact) rather than clearing into a doomed send.
+		// Absent capabilities data reads as "unknown" (never `required`), so
+		// passthrough models are unaffected. Mirrors ChatComposer's `needsImage`.
+		if (
+			attachments.readyImageCount === 0 &&
+			baseModels.some((b) => {
+				const m = data.models.find((x) => x.id === b.modelId);
+				return m ? imageAttachment(m) === 'required' : false;
+			})
+		) {
+			return;
+		}
 
 		// Plain continuation sends only: an edit resend (editParent) parents off an
 		// earlier message, so compacting at the leaf would orphan onto the wrong

@@ -41,6 +41,7 @@ function makeModel(overrides: Partial<ModelEntry> = {}): ModelEntry {
 		contextWindow: overrides.contextWindow ?? null,
 		promptStyle: overrides.promptStyle ?? null,
 		promptHint: overrides.promptHint ?? null,
+		capabilities: overrides.capabilities,
 	};
 }
 
@@ -503,32 +504,63 @@ describe('ModelPicker — keyboard navigation', () => {
 	});
 });
 
-describe('ModelPicker — kind emojis', () => {
-	it('renders the camera emoji for image kind', async () => {
+describe('ModelPicker — modality pills', () => {
+	it('shows a routed pill (TI2I) for an image model reporting capabilities', async () => {
 		const user = userEvent.setup();
-		const models = [makeModel({ id: 'bridge::flux', displayName: 'flux', kind: 'image' })];
+		const models = [
+			makeModel({
+				id: 'bridge::flux',
+				displayName: 'flux',
+				kind: 'image',
+				capabilities: ['text-to-image', 'image-to-image'],
+			}),
+		];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
 		const option = screen.getByRole('option', { name: /flux/ });
-		expect(within(option).getByText('📷')).toBeInTheDocument();
+		// Letters split into per-modality spans, so assert the combined text.
+		expect(within(option).getByTitle('Text or image → image')).toHaveTextContent('TI2I');
 	});
 
-	it('renders the video camera emoji for video kind', async () => {
+	it('falls back to an output-only pill (2I / 2V) when no routes are reported', async () => {
 		const user = userEvent.setup();
-		const models = [makeModel({ id: 'bridge::wan', displayName: 'wan', kind: 'video' })];
+		const models = [
+			makeModel({ id: 'bridge::flux', displayName: 'flux', kind: 'image' }),
+			makeModel({ id: 'bridge::wan', displayName: 'wan', kind: 'video' }),
+		];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
-		const option = screen.getByRole('option', { name: /wan/ });
-		expect(within(option).getByText('📹')).toBeInTheDocument();
+		expect(
+			within(screen.getByRole('option', { name: /flux/ })).getByTitle('Outputs image'),
+		).toHaveTextContent('2I');
+		expect(
+			within(screen.getByRole('option', { name: /wan/ })).getByTitle('Outputs video'),
+		).toHaveTextContent('2V');
 	});
 
-	it('renders no emoji for chat kind', async () => {
+	it('shows a vision marker on a chat model reporting an image-to-text route', async () => {
+		const user = userEvent.setup();
+		const models = [
+			makeModel({
+				id: 'bridge::vlm',
+				displayName: 'vlm',
+				kind: 'chat',
+				capabilities: ['text-to-text', 'image-to-text'],
+			}),
+		];
+		render(ModelPicker, { props: { models, value: '' } });
+		await user.click(screen.getByLabelText('Select model'));
+		const option = screen.getByRole('option', { name: /vlm/ });
+		expect(within(option).getByTitle('Accepts image input')).toBeInTheDocument();
+	});
+
+	it('renders no pill or emoji for a plain chat model', async () => {
 		const user = userEvent.setup();
 		const models = [makeModel({ id: 'bridge::gpt', displayName: 'gpt', kind: 'chat' })];
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
 		const option = screen.getByRole('option', { name: /gpt/ });
-		expect(within(option).queryByText(/[📷📹🔢]/)).toBeNull();
+		expect(within(option).queryByText(/[📷📹🔢]|2I|2V/)).toBeNull();
 	});
 });
 

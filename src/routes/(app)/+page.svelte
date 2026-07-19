@@ -10,6 +10,8 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { imageAttachment } from '$lib/model-capabilities';
+	import type { ImageAttachment } from '$lib/model-capabilities';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 	import {
 		PROMPT_REUSE_KEY,
@@ -232,13 +234,41 @@
 	const skillCommands = $derived(
 		activeKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
 	);
-	const composerPlaceholder = $derived(
-		activeKind === 'image'
-			? 'Describe an image to generate…'
-			: activeKind === 'video'
-				? 'Describe a video to generate…'
-				: 'How can I help you today?',
+	// Attachment requirement of the selected model (presets resolved to their
+	// base). Drives the capability-aware placeholder + the image-required gate,
+	// so an I2I upscaler / image-to-video model doesn't invite a text-only prompt
+	// it can't act on. 'unknown' (no reported routes) never gates.
+	const activeAttachment = $derived<ImageAttachment>(
+		resolvedBase ? imageAttachment(resolvedBase) : 'unknown',
 	);
+	const composerPlaceholder = $derived.by(() => {
+		const hasImage = attachments.readyImageCount > 0;
+		if (activeKind === 'image') {
+			if (activeAttachment === 'required')
+				return hasImage ? 'Describe the edit…' : 'Attach an image to edit…';
+			return 'Describe an image to generate…';
+		}
+		if (activeKind === 'video') {
+			if (activeAttachment === 'required')
+				return hasImage ? 'Describe the video…' : 'Attach an image to animate…';
+			return 'Describe a video to generate…';
+		}
+		return 'How can I help you today?';
+	});
+	// Block starting a chat on an image-required model with no image attached.
+	// Compare mode gates on any required model in the cart. Mirrors the chat
+	// page's ChatComposer.
+	const needsImage = $derived.by(() => {
+		if (attachments.readyImageCount > 0) return false;
+		const ids =
+			compareMode && fanoutFirstModels.length >= 1
+				? fanoutFirstModels.map((m) => m.modelId)
+				: [modelId];
+		return ids.some((id) => {
+			const m = id.startsWith('custom::') ? resolvedBase : data.models.find((x) => x.id === id);
+			return m ? imageAttachment(m) === 'required' : false;
+		});
+	});
 
 	// Restore a half-typed prompt left over from a previous visit (e.g. an iOS
 	// PWA that was frozen in the background and reloaded). The new-chat box uses
@@ -483,6 +513,9 @@
 		if ((!fanout && !effectiveModelId) || busy) return;
 		if (!cleanText && attachments.items.length === 0) return;
 		if (attachments.isBusy) return;
+		// Image-required model with no image: bail before creating a doomed chat.
+		// Button is disabled, but Enter reaches here — keep the prompt in the box.
+		if (needsImage) return;
 		// Offline: block before the create fetch. The button is disabled, but
 		// Enter can still reach here — bail so the prompt stays in the box (and
 		// its draft). onOnline re-enables Send the moment connectivity returns.
@@ -770,15 +803,18 @@
 						(!text.trim() && attachments.items.length === 0) ||
 						busy ||
 						attachments.isBusy ||
-						isOffline}
+						isOffline ||
+						needsImage}
 					aria-label={compareMode && fanoutFirstModels.length > 0
 						? `Send to ${fanoutFirstModels.length} models`
 						: 'Send message'}
 					title={isOffline
 						? "You're offline — reconnect to send"
-						: compareMode && fanoutFirstModels.length > 0
-							? `Send to ${fanoutFirstModels.length} models`
-							: 'Send'}
+						: needsImage
+							? 'This model needs an image — attach one to continue'
+							: compareMode && fanoutFirstModels.length > 0
+								? `Send to ${fanoutFirstModels.length} models`
+								: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />
@@ -795,6 +831,14 @@
 		{#if isOffline}
 			<div class="mt-3">
 				<OfflineNotice />
+			</div>
+		{/if}
+
+		{#if needsImage && text.trim()}
+			<!-- Active model only accepts an image (upscaler / i2v / etc.); send is
+				 already blocked. Surfaced once the user types intent. -->
+			<div class="mt-3 rounded-md border px-3 py-2 text-sm alert-warning">
+				This model needs an image — attach one to continue.
 			</div>
 		{/if}
 

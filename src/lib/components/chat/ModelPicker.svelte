@@ -1,9 +1,21 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { Check, ChevronDown, Minus, Plus, Search, Star, Layers, X } from '@lucide/svelte';
+	import {
+		Check,
+		ChevronDown,
+		Minus,
+		Plus,
+		Search,
+		Star,
+		Layers,
+		X,
+		Image as ImageIcon,
+	} from '@lucide/svelte';
 	import type { CompareSelection } from '$lib/fanout';
 	import { mergeModelSet } from '$lib/model-sets';
+	import { capabilityPill, acceptsImageInput, imageAttachment } from '$lib/model-capabilities';
+	import type { ImageAttachment } from '$lib/model-capabilities';
 	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '$lib/types/api';
 
 	interface Props {
@@ -242,6 +254,26 @@
 		if (savingSet) setNameInput?.focus();
 	});
 
+	// Layout for every modality pill; the color (bg + text) comes from pillTone.
+	const PILL_CLASS = 'shrink-0 rounded px-1 py-px text-[10px] font-medium tabular-nums';
+
+	// The whole chip is colored by the image-attachment requirement, so it reads
+	// at a glance without parsing the label: violet = text-only, blue = image
+	// optional, amber = image required (attach one), gray = unknown/output-only.
+	// bg is a soft tint of the hue (like the alert-* utilities) with matching text.
+	function pillTone(att: ImageAttachment): string {
+		switch (att) {
+			case 'required':
+				return 'bg-warning/15 text-warning';
+			case 'optional':
+				return 'bg-info/15 text-info';
+			case 'unsupported':
+				return 'bg-modality-text/15 text-modality-text';
+			default:
+				return 'bg-surface-sunken text-fg-secondary';
+		}
+	}
+
 	function kindEmoji(kind: ModelKind): string {
 		switch (kind) {
 			case 'image':
@@ -268,6 +300,8 @@
 		isCustom: boolean;
 		groupKey: string;
 		groupLabel: string;
+		/** Modality routes for the pill; carried from the base ModelEntry. */
+		capabilities?: string[];
 		/** Pre-lowercased haystack for fast search filtering. */
 		searchText: string;
 	}
@@ -306,6 +340,7 @@
 				label: cm.name,
 				sublabel: base.displayName,
 				kind: base.kind,
+				capabilities: base.capabilities,
 				isCustom: true,
 				groupKey: '__custom',
 				groupLabel: 'Your presets',
@@ -337,6 +372,7 @@
 					label: m.displayName,
 					sublabel: showOwner && m.ownedBy ? m.ownedBy : '',
 					kind: m.kind,
+					capabilities: m.capabilities,
 					isCustom: false,
 					groupKey: m.groupKey,
 					groupLabel: m.group,
@@ -409,6 +445,19 @@
 
 	/** Currently selected item (or undefined if value isn't in `items`). */
 	const selected = $derived(items.find((i) => i.value === value));
+
+	/**
+	 * Capability pill for the collapsed trigger, so a favorited/auto-selected
+	 * model shows what it takes without reopening the picker. Suppressed in a
+	 * multi-model comparison (the trigger reads "N variations", not one model).
+	 */
+	const triggerPill = $derived(
+		compareMode && compareTotal >= 2
+			? null
+			: selected
+				? capabilityPill(selected.capabilities)
+				: null,
+	);
 
 	/**
 	 * Trigger label for the collapsed view. Strips any `owner/` prefix
@@ -568,7 +617,14 @@
 				: 'group flex w-full items-center justify-between gap-2 rounded-md border border-border bg-surface-panel px-3 py-2 text-sm shadow-sm transition hover:border-border-strong focus:border-border-focus focus:outline-none disabled:opacity-50'}
 			aria-label="Select model"
 		>
-			<span class="truncate">{triggerLabel}</span>
+			<span class="flex min-w-0 items-center gap-1.5">
+				<span class="truncate">{triggerLabel}</span>
+				{#if triggerPill}
+					<span class="{PILL_CLASS} {pillTone(triggerPill.attachment)}" title={triggerPill.title}
+						>{triggerPill.label}</span
+					>
+				{/if}
+			</span>
 			<ChevronDown
 				size={inline ? 12 : 14}
 				strokeWidth={2.25}
@@ -817,8 +873,29 @@
 										<span class="ml-1 text-xs text-fg-muted">· {item.sublabel}</span>
 									{/if}
 								</span>
-								{#if item.kind !== 'chat' && item.kind !== 'embedding'}
-									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
+								{#if item.kind === 'image' || item.kind === 'video'}
+									{@const pill = capabilityPill(item.capabilities)}
+									<!--
+										Modality pill `{inputs}2{output}` (T2I / I2I / TI2V), the whole
+										chip colored by image-attachment requirement (violet text-only,
+										blue optional, amber required). When the model reports no routes
+										we still show the output-only form (`2I`/`2V`) in the neutral
+										tone — the leading `2` marks it as output (inputs sit left of
+										the `2`), so it can't be misread as an input.
+									-->
+									<span
+										class="{PILL_CLASS} {pillTone(pill?.attachment ?? 'unknown')}"
+										title={pill?.title ??
+											(item.kind === 'video' ? 'Outputs video' : 'Outputs image')}
+										>{pill ? pill.label : `2${item.kind === 'video' ? 'V' : 'I'}`}</span
+									>
+								{:else if item.kind === 'chat' && acceptsImageInput(item.capabilities)}
+									<!-- Vision chat: the model reported an image-to-text route. Shown
+										only when positively reported; absent for llama.cpp and other
+										upstreams that don't expose input modalities. -->
+									<span class="shrink-0 text-info" title="Accepts image input">
+										<ImageIcon size={13} strokeWidth={2} />
+									</span>
 								{:else if item.kind === 'embedding'}
 									<span class="shrink-0 text-xs opacity-70">{kindEmoji(item.kind)}</span>
 								{/if}

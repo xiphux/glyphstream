@@ -121,6 +121,11 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   upstreams, with job-status progress for long video renders.
 - **Image-to-image follow-ups** auto-attach the last generated image;
   re-rolls are additive, never destructive.
+- **Modality-aware model picker** — each image/video model shows what it takes
+  and makes (`T2I`, `I2I`, `TI2V`), so the text-to-image and image-to-image
+  listings of the same family are easy to tell apart. Models that only edit an
+  image (upscalers, background removal, image-to-video) require an attachment
+  before you can send, instead of failing after you've written a prompt.
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers: for images (natural-language
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video

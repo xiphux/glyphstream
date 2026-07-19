@@ -79,6 +79,10 @@
 	   toasts. Flipped lighter in dark like the other state colors. */
 	--color-info: oklch(0.62 0.19 255);
 	--color-info-fg: oklch(0.99 0.01 255);
+	/* Violet for the model picker's "text-only input" pill (the third tone
+	   alongside info-blue = image optional and warning-amber = image required).
+	   No other role; the dark block lifts it like the other on-surface colors. */
+	--color-modality-text: oklch(0.55 0.19 300);
 
 	/* Favorite — the "pinned model" gold-star slot. Aliased to the theme
 	   accent so favorites adopt each theme's brand color (sky on Signature,
@@ -126,6 +130,9 @@
 	--color-danger-emphasis: oklch(0.55 0.22 27);
 	--color-danger-fg: oklch(0.985 0.016 17);
 	--color-info: oklch(0.7 0.16 255);
+	/* Violet lifted for legibility on the dark canvas; modality-image follows
+	   --color-info automatically via its var() reference. */
+	--color-modality-text: oklch(0.78 0.14 300);
 }
 [data-scheme='light'] {
 	color-scheme: light;

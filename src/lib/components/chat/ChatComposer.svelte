@@ -16,6 +16,8 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { stripSkillCommand } from '$lib/skill-command';
+	import { imageAttachment } from '$lib/model-capabilities';
+	import type { ImageAttachment } from '$lib/model-capabilities';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
 	import {
 		expandCompareSelections,
@@ -139,9 +141,28 @@
 		),
 	);
 
-	const placeholder = $derived(
-		activeKind === 'image' ? 'Describe an image to generate…' : 'Write a message…',
-	);
+	// Placeholder tracks the active model's INPUT need, not just its kind — an
+	// image-required model (I2I upscaler, image-to-video) can't act on a text
+	// prompt, so "Describe an image to generate…" would be misleading. Once an
+	// image is attached the ask flips to describing the edit.
+	const activeAttachment = $derived.by<ImageAttachment>(() => {
+		const m = models.find((x) => x.id === modelId);
+		return m ? imageAttachment(m) : 'unknown';
+	});
+	const placeholder = $derived.by(() => {
+		const hasImage = attachments.readyImageCount > 0;
+		if (activeKind === 'image') {
+			if (activeAttachment === 'required')
+				return hasImage ? 'Describe the edit…' : 'Attach an image to edit…';
+			return 'Describe an image to generate…';
+		}
+		if (activeKind === 'video') {
+			if (activeAttachment === 'required')
+				return hasImage ? 'Describe the video…' : 'Attach an image to animate…';
+			return 'Describe a video to generate…';
+		}
+		return 'Write a message…';
+	});
 
 	// `/skill-name` autocomplete is offered only on chat models with the `skills`
 	// category enabled for this conversation. Undefined → ComposerCore shows no
@@ -157,13 +178,28 @@
 			? stripSkillCommand(composerText.trim(), skillCommands).text
 			: composerText.trim(),
 	);
+	// Image-input-only models (upscalers, background removal, image-to-video)
+	// reject a text-only request upstream. When the active selection requires an
+	// image and none is attached, block the send so the user learns before
+	// committing a prompt rather than after an upstream failure. Absent
+	// capabilities data reads as "unknown" (never `required`), so passthrough
+	// models are unaffected. Compare mode gates on any required model in the cart.
+	const needsImage = $derived.by(() => {
+		if (attachments.readyImageCount > 0) return false;
+		const ids = compareMode ? compareSelections.map((s) => s.modelId) : [modelId];
+		return ids.some((id) => {
+			const m = models.find((x) => x.id === id);
+			return m ? imageAttachment(m) === 'required' : false;
+		});
+	});
 	const canSend = $derived(
 		!(
 			(!effectiveText && attachments.items.length === 0) ||
 			generating ||
 			attachments.isBusy ||
 			!hasValidModel ||
-			offline
+			offline ||
+			needsImage
 		),
 	);
 
@@ -195,6 +231,16 @@
 	{#if offline}
 		<div class="mb-2">
 			<OfflineNotice />
+		</div>
+	{/if}
+	{#if needsImage && effectiveText}
+		<!--
+			The active model only accepts an image (upscaler / i2v / etc.) and none
+			is attached — the send is already blocked (canSend). Surface the reason
+			once the user has typed intent, so an untouched composer stays quiet.
+		-->
+		<div class="mb-2 rounded-md border px-3 py-2 text-xs alert-warning">
+			This model needs an image — attach one to continue.
 		</div>
 	{/if}
 	<ComposerCore
@@ -271,9 +317,11 @@
 						? 'Pick a model to send'
 						: offline
 							? "You're offline — reconnect to send"
-							: fanoutActive
-								? `Send to ${compareTotal} models`
-								: 'Send'}
+							: needsImage
+								? 'This model needs an image — attach one to continue'
+								: fanoutActive
+									? `Send to ${compareTotal} models`
+									: 'Send'}
 					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-inverse text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 				>
 					<ArrowUp size={16} strokeWidth={2.5} />

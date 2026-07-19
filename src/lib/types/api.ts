@@ -301,6 +301,21 @@ export interface ModelEntry {
 	 * chat/embedding models.
 	 */
 	promptHint: string | null;
+	/**
+	 * openai-api-bridge `capabilities`: the model's `{input}-to-{output}`
+	 * modality routes (e.g. `["text-to-image", "image-to-image"]`). Drives the
+	 * picker's modality pill and the composer's image-required send gate via the
+	 * helpers in `$lib/model-capabilities`.
+	 *
+	 * Only entries of the `{input}-to-{output}` shape are kept here, which also
+	 * separates them from the Fireworks-ish flat `capabilities` vocabulary
+	 * (`image-generation`, `chat`) that {@link detectKind} reads for kind — the
+	 * two conventions share the upstream field name (see
+	 * `normalizeUpstreamModel`). Undefined when the upstream didn't emit routes;
+	 * absence means "unknown", never "accepts nothing" — consumers fall back to
+	 * their own default rather than disabling the model.
+	 */
+	capabilities?: string[];
 }
 
 /**

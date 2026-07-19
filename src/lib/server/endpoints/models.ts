@@ -38,9 +38,24 @@ export function detectKind(m: UpstreamModel): ModelKind | null {
 		// "moderation" / "audio" / etc fall through — we don't model them yet.
 	}
 
-	// 3. Fireworks-style capabilities array
+	// 3. `capabilities` array. Two disjoint vocabularies share this upstream
+	//    field, told apart by shape:
+	//    (a) openai-api-bridge modality routes — `image-to-image`,
+	//        `text-to-video` (contain `-to-`); the OUTPUT side names the kind.
+	//    (b) Fireworks-ish flat tokens — `image-generation`, `chat`, `embedding`.
 	if (Array.isArray(m.capabilities)) {
-		const caps = m.capabilities.map((c) => c.toLowerCase());
+		const caps = m.capabilities
+			.filter((c): c is string => typeof c === 'string')
+			.map((c) => c.toLowerCase());
+		// (a) bridge routes: read the output modality of any `{input}-to-{output}`.
+		const outputs = caps
+			.filter((c) => c.includes('-to-'))
+			.map((c) => c.slice(c.indexOf('-to-') + 4));
+		if (outputs.includes('video')) return 'video';
+		if (outputs.includes('image')) return 'image';
+		if (outputs.includes('embedding')) return 'embedding';
+		if (outputs.includes('text')) return 'chat';
+		// (b) Fireworks flat tokens.
 		if (caps.includes('video-generation')) return 'video';
 		if (caps.includes('image-generation')) return 'image';
 		if (caps.includes('embedding')) return 'embedding';
@@ -172,6 +187,15 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 			? (endpoint.modelPromptHints[m.id] ?? (m.prompt_hint || null))
 			: null;
 
+	// openai-api-bridge `capabilities` modality routes. Kept only for entries of
+	// the `{input}-to-{output}` shape — that shape guard is also what separates
+	// them from the Fireworks-ish flat tokens `detectKind` reads off the same
+	// field. Omitted (undefined) when nothing qualifies, so absence stays
+	// meaningful ("upstream didn't say") downstream in `imageAttachment`.
+	const capabilities = Array.isArray(m.capabilities)
+		? m.capabilities.filter((c) => typeof c === 'string' && c.includes('-to-'))
+		: [];
+
 	return {
 		id: formatModelId(endpoint.id, m.id),
 		endpointId: endpoint.id,
@@ -186,5 +210,6 @@ export function normalizeUpstreamModel(endpoint: LoadedEndpoint, m: UpstreamMode
 		contextWindow,
 		promptStyle,
 		promptHint,
+		capabilities: capabilities.length > 0 ? capabilities : undefined,
 	};
 }

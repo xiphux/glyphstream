@@ -50,6 +50,15 @@ describe('detectKind', () => {
 			expect(detectKind({ id: 'x', capabilities: ['chat'] })).toBe('chat');
 		});
 
+		it('derives kind from bridge `capabilities` modality routes (output side)', () => {
+			expect(detectKind({ id: 'x', capabilities: ['image-to-image'] })).toBe('image');
+			expect(detectKind({ id: 'x', capabilities: ['text-to-image', 'image-to-image'] })).toBe(
+				'image',
+			);
+			expect(detectKind({ id: 'x', capabilities: ['image-to-video'] })).toBe('video');
+			expect(detectKind({ id: 'x', capabilities: ['text-to-text', 'image-to-text'] })).toBe('chat');
+		});
+
 		it('uses OpenRouter-style architecture.output_modalities', () => {
 			expect(detectKind({ id: 'x', architecture: { output_modalities: ['image'] } })).toBe('image');
 			expect(detectKind({ id: 'x', architecture: { output_modalities: ['text'] } })).toBe('chat');
@@ -123,6 +132,28 @@ describe('normalizeUpstreamModel', () => {
 	it('extracts owned_by when set, null when missing', () => {
 		expect(normalizeUpstreamModel(ep(), { id: 'x', owned_by: 'comfyui' }).ownedBy).toBe('comfyui');
 		expect(normalizeUpstreamModel(ep(), { id: 'x' }).ownedBy).toBeNull();
+	});
+
+	describe('capabilities (bridge modality routes)', () => {
+		it('carries through `{input}-to-{output}` routes', () => {
+			const e = normalizeUpstreamModel(ep(), {
+				id: 'nano-banana',
+				kind: 'image',
+				capabilities: ['text-to-image', 'image-to-image'],
+			});
+			expect(e.capabilities).toEqual(['text-to-image', 'image-to-image']);
+		});
+
+		it('filters out the Fireworks-ish flat vocabulary that shares the field', () => {
+			// `image-generation` carries no `-to-`, so it is a kind signal only and
+			// never leaks into the modality-routes field.
+			const e = normalizeUpstreamModel(ep(), { id: 'x', capabilities: ['image-generation'] });
+			expect(e.capabilities).toBeUndefined();
+		});
+
+		it('is undefined when the upstream omits the field', () => {
+			expect(normalizeUpstreamModel(ep(), { id: 'x', kind: 'image' }).capabilities).toBeUndefined();
+		});
 	});
 
 	describe('group / groupKey', () => {
