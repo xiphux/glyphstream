@@ -7,18 +7,21 @@
  * foreign row.
  *
  * Last-method guard on DELETE: a user must always have ≥1 viable login
- * method. When GITHUB_LOGIN_ENABLED is false AND this is the user's
- * only registered passkey, refuse the delete with a 409 so they can't
- * lock themselves out.
+ * method. Refuse the delete with a 409 when it would leave the user with
+ * zero sign-in methods — counting their ACTUAL remaining bindings (other
+ * passkeys + OAuth accounts), not a global feature flag. GITHUB_LOGIN_ENABLED
+ * being on does not mean this user has a GitHub binding to fall back to, so a
+ * passkey-only account (the normal result of the passkey invite flow) must not
+ * be allowed to delete its sole credential. Mirrors the OAuth-unlink sibling.
  */
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import {
-	countCredentialsForUser,
 	deleteCredential,
+	listCredentialSummariesForUser,
 	renameCredential,
 } from '$lib/server/db/queries/passkey';
-import { githubLoginEnabled } from '$lib/server/env';
+import { countOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
 import type { RequestHandler } from './$types';
 
 const MAX_NAME_LENGTH = 60;
@@ -31,14 +34,21 @@ function sanitizeName(raw: unknown): string | null {
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
-	if (!githubLoginEnabled() && countCredentialsForUser(locals.user.id) <= 1) {
+	// Check the credential exists (and belongs to this user) BEFORE the
+	// last-method math, so a fabricated/foreign id surfaces as 404 rather than a
+	// misleading 409.
+	const passkeys = listCredentialSummariesForUser(locals.user.id);
+	if (!passkeys.some((p) => p.id === params.id)) throw error(404, 'Passkey not found');
+
+	// `passkeys.length - 1` is the passkey count after the impending delete.
+	const remainingMethods = countOAuthAccountsForUser(locals.user.id) + (passkeys.length - 1);
+	if (remainingMethods <= 0) {
 		throw error(
 			409,
-			"Can't delete your last sign-in method. Re-enable GitHub login or add another passkey first.",
+			"Can't delete your last sign-in method. Add another passkey or link a provider first.",
 		);
 	}
-	const matched = deleteCredential(locals.user.id, params.id);
-	if (!matched) throw error(404, 'Passkey not found');
+	deleteCredential(locals.user.id, params.id);
 	return new Response(null, { status: 204 });
 };
 
