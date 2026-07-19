@@ -314,13 +314,70 @@ export interface ChatCompletionResponse {
 }
 
 /**
+ * Wrap a byte stream with an idle-stall watchdog. The deadline re-arms on every
+ * chunk; if `idleMs` elapses with no data, `onIdle()` fires (we use it to abort
+ * the underlying fetch). Returns a stream that surfaces the same bytes and errors
+ * when the source does. The timer is `unref`'d so it never keeps the process
+ * alive, and is cleared on normal end / cancel.
+ */
+function withIdleWatchdog(
+	source: ReadableStream<Uint8Array>,
+	idleMs: number,
+	onIdle: () => void,
+): ReadableStream<Uint8Array> {
+	const reader = source.getReader();
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	const disarm = () => {
+		if (timer) {
+			clearTimeout(timer);
+			timer = null;
+		}
+	};
+	const arm = () => {
+		disarm();
+		timer = setTimeout(onIdle, idleMs);
+		timer.unref?.();
+	};
+	// A manual pump (rather than pipeThrough) so we own the read loop: when the
+	// idle abort errors the source, the rejection surfaces on THIS stream's
+	// consumer instead of a dangling internal pipe promise.
+	return new ReadableStream<Uint8Array>({
+		start: arm,
+		async pull(controller) {
+			try {
+				const { done, value } = await reader.read();
+				if (done) {
+					disarm();
+					controller.close();
+					return;
+				}
+				arm();
+				controller.enqueue(value);
+			} catch (e) {
+				disarm();
+				controller.error(e);
+			}
+		},
+		async cancel(reason) {
+			disarm();
+			await reader.cancel(reason).catch(() => {});
+		},
+	});
+}
+
+/**
  * Open a streaming POST /v1/chat/completions against `endpoint`. Returns
  * the upstream Response so the caller can `.body.tee()` for fan-out into
  * client + recorder branches.
  *
- * No fetch-level timeout — streaming responses legitimately stay open
- * longer than the per-request timeout. Use `signal` to abort externally
- * (e.g. when the user clicks Stop).
+ * No TOTAL fetch timeout — streaming responses legitimately stay open longer
+ * than the per-request timeout. But an upstream that accepts the connection
+ * then goes silent (stalled decode, half-open TCP) would otherwise block the
+ * read forever, pinning the endpoint concurrency slot until a user Stop or a
+ * process restart. So we arm an IDLE watchdog: if no bytes arrive for
+ * `requestTimeoutSeconds` (re-armed on every chunk — active generation streams
+ * far faster than that), the fetch is aborted and the read errors out. Use
+ * `signal` to abort externally (e.g. when the user clicks Stop).
  */
 export async function chatCompletionStream(
 	endpoint: LoadedEndpoint,
@@ -328,6 +385,7 @@ export async function chatCompletionStream(
 	signal?: AbortSignal,
 ): Promise<Response> {
 	const url = `${endpoint.baseUrl}/chat/completions`;
+	const idleController = new AbortController();
 	const res = await doFetch(
 		url,
 		{
@@ -338,7 +396,7 @@ export async function chatCompletionStream(
 				...authHeaders(endpoint),
 			},
 			body: JSON.stringify({ ...body, stream: true }),
-			signal,
+			signal: composeSignals(signal, idleController.signal),
 		},
 		`Network error contacting endpoint "${endpoint.id}" at ${url}`,
 	);
@@ -353,7 +411,15 @@ export async function chatCompletionStream(
 			null,
 		);
 	}
-	return res;
+	const guarded = withIdleWatchdog(res.body, endpoint.requestTimeoutSeconds * 1000, () =>
+		idleController.abort(
+			new DOMException(
+				`Upstream "${endpoint.id}" stalled: no data for ${endpoint.requestTimeoutSeconds}s`,
+				'TimeoutError',
+			),
+		),
+	);
+	return new Response(guarded, { status: res.status, headers: res.headers });
 }
 
 // --- image generation ---------------------------------------------------
