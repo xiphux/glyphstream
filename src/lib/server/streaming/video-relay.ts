@@ -16,6 +16,7 @@
 import { Buffer } from 'node:buffer';
 import { Readable } from 'node:stream';
 import {
+	isPermanentRequestError,
 	videoCancel,
 	videoCreate,
 	videoFetchContent,
@@ -166,6 +167,16 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 						`[video-relay] poll job=${job.id} status=${job.status} progress=${job.progress}`,
 					);
 			} catch (e) {
+				// A permanent, request-specific failure (e.g. the bridge restarted
+				// and lost the job → 404) will recur identically on every future
+				// poll — bail now instead of re-polling to MAX_WAIT_MS while holding
+				// the endpoint concurrency slot for 20 minutes on a dead job.
+				if (isPermanentRequestError(e)) {
+					await videoCancel(params.endpoint, job.id).catch(() => {});
+					const message = `Video job ${job.id} failed: ${errorMessage(e)}`;
+					write({ type: 'error', message } satisfies StreamErrorEvent);
+					return { error: message };
+				}
 				// Transient upstream blip — keep polling unless we've burned the budget.
 				console.warn(`[video-relay] poll error for job ${job.id}:`, e);
 				continue;

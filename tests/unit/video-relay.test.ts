@@ -59,6 +59,7 @@ vi.mock('$lib/server/tasks/title-task-runner', () => ({
 import { createConversation, getConversationDetail } from '$lib/server/db/queries/conversations';
 import { appendMessage, getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
 import { startVideoRelay, type VideoRelayParams } from '$lib/server/streaming/video-relay';
+import { UpstreamError } from '$lib/server/endpoints/client';
 import { acquireEndpointSlot, resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage, StreamEvent } from '$lib/types/api';
@@ -568,6 +569,81 @@ describe('startVideoRelay — backpressure + failure', () => {
 		);
 		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
 		expect(err?.message).toBe('Cancelled');
+	});
+
+	it('bails fast on a permanent poll error (job gone) instead of polling to MAX_WAIT_MS', async () => {
+		vi.useFakeTimers();
+		try {
+			const { conv, user, userMessage } = seedConvWithUser();
+			const onComplete = vi.fn();
+			mocks.videoCreate.mockReset().mockResolvedValue({
+				id: 'job-gone',
+				status: 'running',
+				progress: null,
+			});
+			// The bridge restarted and lost the job → 404 on every poll. This is a
+			// permanent, request-specific failure: bail immediately.
+			mocks.videoStatus
+				.mockReset()
+				.mockRejectedValue(new UpstreamError('no such video job', 404, null));
+
+			const relay = startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					onComplete,
+				}),
+			);
+			const drainPromise = drain(relay);
+			// One poll interval is enough to reach the first (failing) status call.
+			await vi.advanceTimersByTimeAsync(2_000);
+			const events = await drainPromise;
+
+			// Polled exactly once, then gave up — did NOT grind on to 20 minutes.
+			expect(mocks.videoStatus).toHaveBeenCalledTimes(1);
+			expect(mocks.videoCancel).toHaveBeenCalledWith(endpoint(), 'job-gone');
+			const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
+			expect(err?.message).toMatch(/failed/i);
+			expect(events.some((e) => e.type === 'done')).toBe(false);
+			expect(onComplete).toHaveBeenCalledOnce();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('keeps polling through a transient poll error until the job completes', async () => {
+		vi.useFakeTimers();
+		try {
+			const { conv, user, userMessage } = seedConvWithUser();
+			mocks.videoCreate.mockReset().mockResolvedValue({
+				id: 'job-blip',
+				status: 'running',
+				progress: null,
+			});
+			// A 503 (transient) on the first poll, then success — must NOT bail.
+			mocks.videoStatus
+				.mockReset()
+				.mockRejectedValueOnce(new UpstreamError('upstream busy', 503, null))
+				.mockResolvedValue({ id: 'job-blip', status: 'completed', progress: 100 });
+
+			const relay = startVideoRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+				}),
+			);
+			const drainPromise = drain(relay);
+			await vi.advanceTimersByTimeAsync(10_000);
+			const events = await drainPromise;
+
+			expect(mocks.videoStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
+			expect(events.some((e) => e.type === 'done')).toBe(true);
+			expect(mocks.videoCancel).not.toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('calls videoCancel when the polling budget expires (MAX_WAIT_MS)', async () => {
