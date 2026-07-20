@@ -322,8 +322,12 @@ export interface ChatCompletionResponse {
  * open but pre-first-token. A large-context prefill on a cold local model can
  * legitimately take a long time to emit its first token, and bounding THAT by
  * `idleMs` would false-abort a healthy generation. So time-to-first-token is
- * deliberately unbounded here (a never-starts upstream is still recoverable via
- * user Stop); the watchdog only catches a stream that started and then stalled.
+ * deliberately unbounded HERE; the watchdog only catches a stream that started
+ * and then stalled. A never-starts upstream (accepts, then silent forever) is
+ * instead backstopped by user Stop and by undici's default response timeouts
+ * (headers/body ~300s) — note we rely on those platform defaults, so a future
+ * custom global dispatcher must not set `bodyTimeout: 0` without restoring a
+ * pre-first-byte bound here.
  *
  * The timer is `unref`'d so it never keeps the process alive, and is cleared on
  * normal end / cancel. Manual pump (not pipeThrough) so we own the read loop:

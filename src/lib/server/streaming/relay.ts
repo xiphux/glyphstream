@@ -456,9 +456,13 @@ async function runChatTurn(
 		}
 
 		// Generation + tools + persistence are done — free the endpoint slot NOW,
-		// before we sit on the title race. The title task runs on the (small,
-		// separately-gated) task model and needs no generation slot, so the next
-		// queued generation shouldn't wait out the title budget for it.
+		// before we sit on the title race. This release is REQUIRED, not an
+		// optimization: the title task acquires the SAME endpoint gate (see
+		// callTaskModel), so on a single-GPU (max_concurrent=1) endpoint where the
+		// task model shares this endpoint, holding the slot across the race would
+		// deadlock the title task out entirely — it could never be granted, and
+		// raceTitle would burn its whole budget while the next queued generation
+		// waits it out. Do NOT move this back below the race.
 		releaseSlot?.();
 
 		// Race the title task in the background. The SSE stream stays
