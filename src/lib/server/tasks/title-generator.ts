@@ -173,7 +173,15 @@ async function callTaskModel(
 	// own generation slot before awaiting the race — the chat relay
 	// (startStreamingRelay), the media relay (startMediaRelay), and the sync send
 	// path — so this acquire can't deadlock behind a slot the racer still holds.
-	const slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent);
+	//
+	// Bound the wait so a saturated gate can't leave a title waiter queued
+	// indefinitely, jumping ahead of later real user turns (FIFO). The title is
+	// best-effort: if it can't get a slot within one request-timeout, drop it and
+	// keep the fallback title. AbortSignal.timeout also splices the waiter out of
+	// the queue on expiry.
+	const slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
+		signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
+	});
 	try {
 		const resp = await chatCompletionSync(endpoint, {
 			model: upstreamId,
