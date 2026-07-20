@@ -28,10 +28,11 @@
 import {
 	createMemory,
 	deleteMemory,
-	listMemoriesWithEmbeddings,
+	listMemoriesForRecall,
+	listMemoryRecallVectors,
 	recordMemoryRecall,
 	updateMemory,
-	type MemoryWithEmbedding,
+	type MemoryRecallRow,
 } from '../db/queries/memories';
 import { bm25Rank, type ScoredChunk } from '../retrieval/bm25';
 import { resolveRelevanceConfig } from '../retrieval/embeddings-config';
@@ -188,7 +189,7 @@ export const recallMemoryTool: Tool = {
 		const parsed = parseRecallArgs(args);
 		if ('error' in parsed) return errorResult(parsed.error);
 
-		const rows = listMemoriesWithEmbeddings(ctx.userId);
+		const rows = listMemoriesForRecall(ctx.userId);
 		if (rows.length === 0) return { content: JSON.stringify({ matches: [] }) };
 
 		// ids path — return exactly the requested rows in full, no ranking. A
@@ -224,11 +225,18 @@ export const recallMemoryTool: Tool = {
 		];
 		// Dense leg — only when an embedding model is configured. Embeds the query
 		// and cosines against the matching-model vectors; any failure (or no model)
-		// degrades to BM25 alone, never errors the turn.
+		// degrades to BM25 alone, never errors the turn. The vector set is bounded
+		// (newest RECALL_DENSE_CORPUS_CAP) so a large store doesn't turn every call
+		// into a whole-corpus blob load + decode + cosine.
 		const cfg = resolveRelevanceConfig();
 		if (cfg) {
-			const dense = await denseRank(parsed.query, rows, cfg, ctx.signal);
-			if (dense) rankings.push(dense);
+			const vecById = new Map(
+				listMemoryRecallVectors(ctx.userId, cfg.modelId).map((v) => [v.id, v.embedding]),
+			);
+			if (vecById.size > 0) {
+				const dense = await denseRank(parsed.query, rows, vecById, cfg, ctx.signal);
+				if (dense) rankings.push(dense);
+			}
 		}
 
 		const fused = fuseRankings(rankings).slice(0, RECALL_TOP_K);
@@ -251,7 +259,7 @@ export const recallMemoryTool: Tool = {
  * for — catch and log, mirroring the dense leg's "degrade, never error the turn"
  * stance rather than the write tools' (where the write IS the point).
  */
-function finishRecall(userId: string, rows: MemoryWithEmbedding[]): ToolExecution {
+function finishRecall(userId: string, rows: MemoryRecallRow[]): ToolExecution {
 	const matches = rows.map((r) => ({ id: r.id, topic: r.topic ?? null, content: r.content }));
 	try {
 		recordMemoryRecall(
@@ -266,21 +274,22 @@ function finishRecall(userId: string, rows: MemoryWithEmbedding[]): ToolExecutio
 
 /**
  * Rank memory rows by cosine of the query embedding against each row's stored
- * vector. Only rows whose `embeddingModel` matches the configured model are
- * comparable (different models → different vector spaces/dims). Returns
- * ScoredChunk indices in the full `rows` index space, or null on any failure so
- * the caller keeps the BM25 ranking.
+ * vector. `vecById` holds only vectors already filtered to the configured model
+ * (and bounded to the newest RECALL_DENSE_CORPUS_CAP), so a row participates in
+ * the dense leg iff its id is present. Returns ScoredChunk indices in the full
+ * `rows` index space, or null on any failure so the caller keeps the BM25 ranking.
  */
 async function denseRank(
 	query: string,
-	rows: MemoryWithEmbedding[],
+	rows: MemoryRecallRow[],
+	vecById: Map<string, Buffer>,
 	cfg: RelevanceConfig,
 	signal: AbortSignal,
 ): Promise<ScoredChunk[] | null> {
 	try {
 		const embedded = rows
-			.map((r, index) => ({ index, row: r }))
-			.filter((x) => x.row.embedding && x.row.embeddingModel === cfg.modelId);
+			.map((row, index) => ({ index, id: row.id }))
+			.filter((x) => vecById.has(x.id));
 		if (embedded.length === 0) return null;
 
 		// Shared query-embed plumbing (prefix + truncation + timeout/abort), so the
@@ -288,7 +297,7 @@ async function denseRank(
 		const qvec = await embedQuery(query, cfg, signal);
 		if (!qvec) return null;
 
-		const vecs = embedded.map((x) => decodeVector(x.row.embedding as Buffer) as Vec);
+		const vecs = embedded.map((x) => decodeVector(vecById.get(x.id) as Buffer) as Vec);
 		// cosineRank indices are local to `embedded`; map them back to `rows`.
 		return cosineRank(qvec, vecs).map((sc) => ({
 			index: embedded[sc.index].index,

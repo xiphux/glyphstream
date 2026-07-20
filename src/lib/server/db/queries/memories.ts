@@ -206,6 +206,71 @@ export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[
 	);
 }
 
+/** A recall-corpus row WITHOUT the embedding blob — the cheap full-store scan
+ *  the BM25 leg (and the result shaping) runs over. */
+export interface MemoryRecallRow {
+	id: string;
+	content: string;
+	topic: string | null;
+}
+
+/**
+ * The recall lexical corpus: every live memory's id/topic/content, WITHOUT the
+ * embedding blob. `recall_memory` runs BM25 over the whole store, so this stays
+ * full-corpus — but loading (potentially thousands of) multi-KB vectors here
+ * would be pure waste; the dense leg loads a bounded vector set separately
+ * (`listMemoryRecallVectors`).
+ *
+ * Order is `asc(createdAt)`, matching `listMemoriesWithEmbeddings`: it's a
+ * retrieval INPUT, and `fuseRankings` breaks RRF ties by ascending list index,
+ * so this order is load-bearing for which memory wins a tied recall.
+ */
+export function listMemoriesForRecall(userId: string): MemoryRecallRow[] {
+	const db = getDb();
+	return db
+		.select({ id: memories.id, content: memories.content, topic: memories.topic })
+		.from(memories)
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
+		.orderBy(asc(memories.createdAt))
+		.all() as MemoryRecallRow[];
+}
+
+/** Newest-first cap on the recall dense corpus, mirroring media's
+ *  `DENSE_CORPUS_CAP`: bounds the blob load + decode + cosine so a large memory
+ *  store doesn't make every `recall_memory` call a multi-megabyte, whole-corpus
+ *  vector scan. Memories beyond the cap still surface via the (full-corpus,
+ *  blob-free) BM25 leg. */
+export const RECALL_DENSE_CORPUS_CAP = 5000;
+
+/**
+ * Load embedding vectors for the recall dense leg: the newest `limit` live
+ * memories whose stored vector matches `embeddingModel` (different models →
+ * incomparable vector spaces). Returns `{ id, embedding }` so the caller can map
+ * cosine ranks back onto the full recall corpus by id.
+ */
+export function listMemoryRecallVectors(
+	userId: string,
+	embeddingModel: string,
+	limit: number = RECALL_DENSE_CORPUS_CAP,
+): { id: string; embedding: Buffer }[] {
+	const db = getDb();
+	const capped = Math.max(1, Math.min(limit, 20000));
+	return db
+		.select({ id: memories.id, embedding: memories.embedding })
+		.from(memories)
+		.where(
+			and(
+				eq(memories.userId, userId),
+				isNull(memories.deletedAt),
+				eq(memories.embeddingModel, embeddingModel),
+				isNotNull(memories.embedding),
+			),
+		)
+		.orderBy(desc(memories.createdAt))
+		.limit(capped)
+		.all() as { id: string; embedding: Buffer }[];
+}
+
 /**
  * Rows whose stored embedding is missing or was produced by a different model
  * than the one currently configured — the backfill worker's work queue.

@@ -17,8 +17,10 @@ import {
 	listMemoriesForUser,
 	listMemoriesNeedingEmbedding,
 	listMemoriesNeedingTopic,
+	listMemoriesForRecall,
 	listMemoriesWithEmbeddings,
 	listMemoryBodies,
+	listMemoryRecallVectors,
 	listMemoryTierRows,
 	listUsersNeedingDreaming,
 	MEMORY_INLINE_BUDGET_CHARS,
@@ -141,6 +143,61 @@ describe('deleteMemory', () => {
 		// Drop the user; FK ON DELETE CASCADE should sweep memories with it.
 		mocks.testDb.delete(users).where(eq(users.id, u.id)).run();
 		expect(listMemoriesForUser(u.id)).toEqual([]);
+	});
+});
+
+describe('recall corpus queries', () => {
+	const MODEL = 'embed-v1';
+
+	// Give rows explicit, distinct createdAt so newest-first ordering is
+	// deterministic (createMemory stamps Date.now(), which can tie).
+	function stampCreatedAt(id: string, at: number) {
+		mocks.testDb.update(memories).set({ createdAt: at }).where(eq(memories.id, id)).run();
+	}
+
+	it('listMemoriesForRecall returns live rows blob-free in createdAt order, excluding deleted', () => {
+		const u = seedUser();
+		const a = createMemory(u.id, 'apple').id;
+		const b = createMemory(u.id, 'banana').id;
+		const c = createMemory(u.id, 'cherry').id;
+		stampCreatedAt(a, 1000);
+		stampCreatedAt(b, 2000);
+		stampCreatedAt(c, 3000);
+		softDeleteMemory(u.id, b, null, 'banana');
+
+		const rows = listMemoriesForRecall(u.id);
+		expect(rows.map((r) => r.content)).toEqual(['apple', 'cherry']);
+		// Blob-free projection — no embedding field leaks into the recall corpus.
+		expect(rows[0]).not.toHaveProperty('embedding');
+	});
+
+	it('listMemoryRecallVectors returns only matching-model, non-null vectors, newest-first, capped', () => {
+		const u = seedUser();
+		const ids = ['m1', 'm2', 'm3', 'm4'].map((_, i) => createMemory(u.id, `fact ${i}`).id);
+		ids.forEach((id, i) => stampCreatedAt(id, 1000 + i * 1000));
+		// m1: matching model. m2: no embedding. m3: different model. m4: matching (newest).
+		setMemoryEmbedding(ids[0], 'fact 0', encodeVector([1, 0]), MODEL);
+		setMemoryEmbedding(ids[2], 'fact 2', encodeVector([0, 1]), 'other-model');
+		setMemoryEmbedding(ids[3], 'fact 3', encodeVector([1, 1]), MODEL);
+
+		const all = listMemoryRecallVectors(u.id, MODEL);
+		// Only the two matching-model, embedded rows — newest (m4) first.
+		expect(all.map((v) => v.id)).toEqual([ids[3], ids[0]]);
+		expect(all.every((v) => v.embedding != null)).toBe(true);
+
+		// The newest-first cap bounds the loaded set.
+		const capped = listMemoryRecallVectors(u.id, MODEL, 1);
+		expect(capped.map((v) => v.id)).toEqual([ids[3]]);
+	});
+
+	it('listMemoryRecallVectors is user-scoped', () => {
+		const u1 = seedUser();
+		const u2 = seedUser();
+		const m1 = createMemory(u1.id, 'mine').id;
+		const m2 = createMemory(u2.id, 'theirs').id;
+		setMemoryEmbedding(m1, 'mine', encodeVector([1, 0]), MODEL);
+		setMemoryEmbedding(m2, 'theirs', encodeVector([0, 1]), MODEL);
+		expect(listMemoryRecallVectors(u1.id, MODEL).map((v) => v.id)).toEqual([m1]);
 	});
 });
 
