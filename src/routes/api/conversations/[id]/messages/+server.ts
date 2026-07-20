@@ -517,9 +517,24 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		});
 		const effectiveSystemPrompt = toolCtx.systemPrompt;
 
+		// Per-turn data-URL cache. Image bytes are immutable for the life of the
+		// conversation, so resolve each media id at most once per turn — instead of
+		// re-reading the file off disk and re-base64-encoding it on every tool-loop
+		// iteration (up to maxToolLoopIterations rebuilds). Shared across the initial
+		// serialize and every rebuildRequestBody call below.
+		const dataUrlCache = new Map<string, Promise<string>>();
+		const resolveMediaDataUrl = (mediaId: string): Promise<string> => {
+			let p = dataUrlCache.get(mediaId);
+			if (!p) {
+				p = mediaIdToDataUrl(mediaId, locals.user.id);
+				dataUrlCache.set(mediaId, p);
+			}
+			return p;
+		};
+
 		const upstreamMessages = await serializeBranchForUpstream(
 			branch,
-			(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
+			resolveMediaDataUrl,
 			effectiveSystemPrompt,
 		);
 
@@ -583,7 +598,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				const nextBranch = walkActiveBranch(params.id, { columns: 'serialization' });
 				const nextMessages = await serializeBranchForUpstream(
 					nextBranch,
-					(mediaId) => mediaIdToDataUrl(mediaId, locals.user.id),
+					resolveMediaDataUrl,
 					effectiveSystemPrompt,
 				);
 				const next: ChatCompletionRequest = { ...requestBody, messages: nextMessages };
