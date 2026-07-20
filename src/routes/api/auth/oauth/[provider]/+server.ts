@@ -16,6 +16,7 @@ import {
 	listOAuthAccountsForUser,
 } from '$lib/server/db/queries/oauth-accounts';
 import { countCredentialsForUser } from '$lib/server/db/queries/passkey';
+import { isProviderEnabled } from '$lib/server/auth/oauth/registry';
 import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
@@ -25,8 +26,13 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	if (!bound) throw error(404, 'OAuth binding not found');
 
 	const passkeyCount = countCredentialsForUser(locals.user.id);
-	// `accounts.length - 1` is the count after the impending delete.
-	if (accounts.length - 1 + passkeyCount <= 0) {
+	// Remaining viable methods after this unlink: passkeys + OAuth bindings that
+	// are NOT the one being removed AND whose provider is actually enabled (a
+	// binding for a disabled provider is not a usable fallback).
+	const remainingOAuth = accounts.filter(
+		(a) => a.provider !== params.provider && isProviderEnabled(a.provider),
+	).length;
+	if (remainingOAuth + passkeyCount <= 0) {
 		throw error(
 			409,
 			"Can't unlink your last sign-in method. Add a passkey or another provider first.",

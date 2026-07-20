@@ -21,7 +21,8 @@ import {
 	listCredentialSummariesForUser,
 	renameCredential,
 } from '$lib/server/db/queries/passkey';
-import { countOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
+import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
+import { isProviderEnabled } from '$lib/server/auth/oauth/registry';
 import type { RequestHandler } from './$types';
 
 const MAX_NAME_LENGTH = 60;
@@ -40,8 +41,13 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	const passkeys = listCredentialSummariesForUser(locals.user.id);
 	if (!passkeys.some((p) => p.id === params.id)) throw error(404, 'Passkey not found');
 
-	// `passkeys.length - 1` is the passkey count after the impending delete.
-	const remainingMethods = countOAuthAccountsForUser(locals.user.id) + (passkeys.length - 1);
+	// Count only OAuth bindings whose provider is actually ENABLED — a github
+	// binding when GITHUB_LOGIN_ENABLED=0 is not a usable fallback. `passkeys.length
+	// - 1` is the passkey count after the impending delete.
+	const usableOAuth = listOAuthAccountsForUser(locals.user.id).filter((a) =>
+		isProviderEnabled(a.provider),
+	).length;
+	const remainingMethods = usableOAuth + (passkeys.length - 1);
 	if (remainingMethods <= 0) {
 		throw error(
 			409,

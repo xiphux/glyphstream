@@ -12,10 +12,17 @@ import { isHttpError, type HttpError } from '@sveltejs/kit';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedOAuthAccount, seedUser } from './_helpers/seed';
 
-const mocks = vi.hoisted(() => ({ testDb: null as unknown as TestDB }));
+const mocks = vi.hoisted(() => ({
+	testDb: null as unknown as TestDB,
+	// Default: every provider enabled. Individual tests flip a provider off.
+	providerEnabled: (_id: string) => true as boolean,
+}));
 vi.mock('$lib/server/db/client', () => ({
 	getDb: () => mocks.testDb,
 	closeDb: () => {},
+}));
+vi.mock('$lib/server/auth/oauth/registry', () => ({
+	isProviderEnabled: (id: string) => mocks.providerEnabled(id),
 }));
 
 import { DELETE } from '../../src/routes/api/auth/oauth/[provider]/+server';
@@ -69,6 +76,7 @@ async function expectHttpError(fn: () => unknown): Promise<HttpError> {
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
+	mocks.providerEnabled = () => true;
 });
 
 afterEach(() => {
@@ -118,6 +126,19 @@ describe('DELETE /api/auth/oauth/:provider — last-method guard', () => {
 		// Only the targeted binding is gone.
 		const remaining = listOAuthAccountsForUser(u.id);
 		expect(remaining.map((r) => r.provider)).toEqual(['google']);
+	});
+
+	it('refuses when the only remaining provider is DISABLED', async () => {
+		const u = seedUser();
+		seedOAuthAccount(u.id, { provider: 'github', externalId: '42' });
+		seedOAuthAccount(u.id, { provider: 'google', externalId: 'g-42' });
+		// Google login is turned off → the remaining google binding isn't usable.
+		mocks.providerEnabled = (id) => id !== 'google';
+
+		const event = mkEvent({ locals: userLocals(u.id), params: { provider: 'github' } });
+		const err = await expectHttpError(() => DELETE(event as never));
+		expect(err.status).toBe(409);
+		expect(listOAuthAccountsForUser(u.id)).toHaveLength(2);
 	});
 });
 
