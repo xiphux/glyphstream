@@ -505,6 +505,49 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('settles a truncated media branch (clean EOF) so a surviving grid does not wedge', async () => {
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		// A media keep-many grid: branch img1 completes; branch img2's stream ends
+		// with only a `start` and no terminal done/error event (proxy idle-timeout /
+		// graceful truncation). Before the fix, img2 dangled at 'streaming', keeping
+		// the whole grid non-settled (no Done/Dismiss, composer disabled).
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+			const modelId = (JSON.parse(init?.body ?? '{}') as { modelId: string }).modelId;
+			if (modelId === 'bridge::img1') {
+				return sseResponse([
+					{ type: 'start', userMessage: user, assistantMessageId: '' },
+					{ type: 'done', assistantMessage: imageSibling('img1-a', 'bridge::img1', null) },
+				]);
+			}
+			return sseResponse([{ type: 'start', userMessage: user, assistantMessageId: '' }]);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps(); // interrupted() stays false
+		const fc = new FanoutController(deps);
+		await fc.send(
+			'a cat',
+			[],
+			[
+				{ modelId: 'bridge::img1', modelKind: 'image', displayName: 'I1', inputMediaId: null },
+				{ modelId: 'bridge::img2', modelKind: 'image', displayName: 'I2', inputMediaId: null },
+			],
+			[
+				{ modelId: 'bridge::img1', modelKind: 'image', displayName: 'I1' },
+				{ modelId: 'bridge::img2', modelKind: 'image', displayName: 'I2' },
+			],
+		);
+		// The survivor is kept AND the truncated branch settled to a terminal error.
+		const byModel = Object.fromEntries(fc.columns.map((c) => [c.modelId, c.status]));
+		expect(byModel['bridge::img1']).toBe('done');
+		expect(byModel['bridge::img2']).toBe('error');
+		// Grid is no longer "generating" and is settleable (Done/Dismiss renders).
+		expect(fc.streaming).toBe(false);
+		expect(fc.columnsSettled).toBe(true);
+		vi.unstubAllGlobals();
+	});
+
 	it('dispatches branches in selection order, holding each until the prior reaches the gate', async () => {
 		const user = imageSibling('u1', '', null);
 		user.role = 'user';

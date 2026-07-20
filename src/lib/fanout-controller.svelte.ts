@@ -447,6 +447,31 @@ export class FanoutController {
 					col.status = 'error';
 				},
 			});
+			// consumeChatStream can resolve on a clean body EOF WITHOUT a terminal
+			// done/error event (a proxy idle-timeout or an upstream truncation that
+			// still closes gracefully) — the callbacks above never fire, so the
+			// column is stuck non-terminal. Left as-is it wedges the grid: the
+			// `streaming` derived stays true (composer disabled) and no column ever
+			// settles, so the Done/Dismiss control never renders and a media
+			// keep-many grid (no pick-to-resolve) has no in-grid escape. Settle it,
+			// mirroring the single-send path's finally.
+			if (!col.persisted && (col.status === 'streaming' || col.status === 'queued')) {
+				if (this.#deps.interrupted()) {
+					// Hidden/offline mid-stream — reconcile via server truth rather than
+					// flag a false error, matching the catch's interrupted handling.
+					if (this.live) {
+						this.handoffToRecovery();
+						void invalidateAll();
+					} else {
+						this.columns = this.columns.filter((c) => c.branchId !== col.branchId);
+					}
+				} else {
+					col.error ??= 'Stream ended unexpectedly';
+					col.status = 'error';
+					col.progress = null;
+					col.startedAt = null;
+				}
+			}
 			return col.persisted;
 		} catch (e) {
 			if (isAbortError(e)) col.status = 'cancelled';
