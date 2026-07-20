@@ -81,7 +81,11 @@ export async function sendPushNotification(
 ): Promise<PushSendResult> {
 	if (!init()) return { ok: false };
 	try {
-		await webpush.sendNotification(subscription, payload, { TTL: 60 });
+		// `TTL` is the push-MESSAGE lifetime header, not an HTTP timeout — and the
+		// web-push lib sets no default socket timeout, so a non-responsive push
+		// endpoint would leave the request (and its socket) pending indefinitely.
+		// These sends are fire-and-forget under Promise.allSettled, so bound them.
+		await webpush.sendNotification(subscription, payload, { TTL: 60, timeout: 10_000 });
 		return { ok: true };
 	} catch (e) {
 		// web-push throws a WebPushError with statusCode on HTTP failures;
