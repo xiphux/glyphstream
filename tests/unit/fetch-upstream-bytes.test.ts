@@ -133,6 +133,19 @@ describe('fetchUpstreamBytes SSRF-guarded redirects', () => {
 		expect(downgradeHeaders?.Authorization).toBeUndefined();
 	});
 
+	it('does not forward the credential on a same-host DIFFERENT-PORT redirect', async () => {
+		// endpoint origin is http://backend.local:8080; a redirect to :9090 on the
+		// same host is a different origin → no bearer.
+		resolves({ 'cdn.example.com': '203.0.113.10', 'backend.local': '203.0.113.20' });
+		fetchMock
+			.mockResolvedValueOnce(redirectResponse('http://backend.local:9090/leak'))
+			.mockResolvedValueOnce(bytesResponse());
+
+		await fetchUpstreamBytes(endpoint(), 'https://cdn.example.com/x.png', { guardRedirects: true });
+		const headers = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
+		expect(headers?.Authorization).toBeUndefined();
+	});
+
 	it('does forward the credential on a same-origin redirect back to the endpoint', async () => {
 		const tlsEndpoint = {
 			baseUrl: 'https://backend.local/v1',

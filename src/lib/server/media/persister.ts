@@ -132,14 +132,16 @@ async function resolveBytes(
 			} catch {
 				throw new Error(`Image generation response url is not a valid URL: ${urlOrB64.url}`);
 			}
-			const endpointHost = new URL(endpoint.baseUrl).hostname.toLowerCase();
-			const offHost = parsed.hostname.toLowerCase() !== endpointHost;
-			// Off-host absolute URLs are untrusted: guard every redirect hop
-			// against the SSRF ranges (a public host can still 302 into the LAN
-			// or the cloud-metadata endpoint). On-host URLs are the configured
-			// backend — trusted, and may live on localhost/LAN — so they follow
-			// redirects normally with the endpoint credential.
-			return fetchUpstreamBytes(endpoint, urlOrB64.url, { guardRedirects: offHost });
+			// Trust is by full ORIGIN (scheme + host + port), not hostname: an
+			// absolute URL on the SAME origin as the configured endpoint is the
+			// backend returning its own asset (same as a relative URL). Anything
+			// else — a different host, a different port, or a scheme downgrade on
+			// the same host — is untrusted and takes the guarded branch, which
+			// re-runs the SSRF check on every redirect hop and never forwards the
+			// endpoint credential off-origin. (A hostname-only check would leak the
+			// bearer to `http://<endpoint-host>:<other-port>/…` with no SSRF gate.)
+			const offOrigin = parsed.origin !== new URL(endpoint.baseUrl).origin;
+			return fetchUpstreamBytes(endpoint, urlOrB64.url, { guardRedirects: offOrigin });
 		}
 		const absolute = new URL(urlOrB64.url, endpoint.baseUrl + '/').toString();
 		return fetchUpstreamBytes(endpoint, absolute);
