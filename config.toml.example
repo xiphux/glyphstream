@@ -152,6 +152,9 @@
 # display_name = "NAS Bridge"
 # base_url = "http://192.168.1.10:8080/v1"
 # api_key_env = "NAS_BRIDGE_KEY"
+# # Non-stream request cap. For streaming it's the MID-STREAM idle window: once
+# # tokens flow, abort if no further bytes arrive for this long (so a stalled
+# # decode can't pin the concurrency slot). Time-to-first-token is NOT bounded.
 # request_timeout_seconds = 600
 # # An aggregating proxy like the bridge usually exposes many real providers
 # # (openrouter, venice, imagerouter, comfyui...) under one endpoint. Setting

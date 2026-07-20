@@ -314,11 +314,21 @@ export interface ChatCompletionResponse {
 }
 
 /**
- * Wrap a byte stream with an idle-stall watchdog. The deadline re-arms on every
- * chunk; if `idleMs` elapses with no data, `onIdle()` fires (we use it to abort
- * the underlying fetch). Returns a stream that surfaces the same bytes and errors
- * when the source does. The timer is `unref`'d so it never keeps the process
- * alive, and is cleared on normal end / cancel.
+ * Wrap a byte stream with an idle-stall watchdog: once bytes are flowing, the
+ * deadline re-arms on every chunk, and if `idleMs` elapses with no further data
+ * `onIdle()` fires (we use it to abort the underlying fetch).
+ *
+ * The watchdog is armed only AFTER the first byte — NOT while the connection is
+ * open but pre-first-token. A large-context prefill on a cold local model can
+ * legitimately take a long time to emit its first token, and bounding THAT by
+ * `idleMs` would false-abort a healthy generation. So time-to-first-token is
+ * deliberately unbounded here (a never-starts upstream is still recoverable via
+ * user Stop); the watchdog only catches a stream that started and then stalled.
+ *
+ * The timer is `unref`'d so it never keeps the process alive, and is cleared on
+ * normal end / cancel. Manual pump (not pipeThrough) so we own the read loop:
+ * when the idle abort errors the source, the rejection surfaces on THIS stream's
+ * consumer instead of a dangling internal pipe promise.
  */
 function withIdleWatchdog(
 	source: ReadableStream<Uint8Array>,
@@ -338,11 +348,8 @@ function withIdleWatchdog(
 		timer = setTimeout(onIdle, idleMs);
 		timer.unref?.();
 	};
-	// A manual pump (rather than pipeThrough) so we own the read loop: when the
-	// idle abort errors the source, the rejection surfaces on THIS stream's
-	// consumer instead of a dangling internal pipe promise.
 	return new ReadableStream<Uint8Array>({
-		start: arm,
+		// Intentionally NOT armed on start — see the doc above (prefill is unbounded).
 		async pull(controller) {
 			try {
 				const { done, value } = await reader.read();
@@ -351,6 +358,7 @@ function withIdleWatchdog(
 					controller.close();
 					return;
 				}
+				// Arm/re-arm only once bytes are actually flowing.
 				arm();
 				controller.enqueue(value);
 			} catch (e) {
@@ -371,13 +379,15 @@ function withIdleWatchdog(
  * client + recorder branches.
  *
  * No TOTAL fetch timeout — streaming responses legitimately stay open longer
- * than the per-request timeout. But an upstream that accepts the connection
- * then goes silent (stalled decode, half-open TCP) would otherwise block the
- * read forever, pinning the endpoint concurrency slot until a user Stop or a
- * process restart. So we arm an IDLE watchdog: if no bytes arrive for
- * `requestTimeoutSeconds` (re-armed on every chunk — active generation streams
- * far faster than that), the fetch is aborted and the read errors out. Use
- * `signal` to abort externally (e.g. when the user clicks Stop).
+ * than the per-request timeout. But a stream that STARTS and then goes silent
+ * (stalled decode, half-open TCP mid-generation) would otherwise block the read
+ * forever, pinning the endpoint concurrency slot until a user Stop or a process
+ * restart. So we arm an IDLE watchdog: once tokens are flowing, if no further
+ * bytes arrive for `requestTimeoutSeconds` (re-armed on every chunk — active
+ * generation streams far faster than that) the fetch is aborted and the read
+ * errors out. Time-to-first-token is deliberately NOT bounded by this — a
+ * large-context prefill on a cold local model can be slow, and aborting that
+ * would kill a healthy generation. Use `signal` to abort externally (Stop).
  */
 export async function chatCompletionStream(
 	endpoint: LoadedEndpoint,

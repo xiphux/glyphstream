@@ -40,7 +40,7 @@ id = "llama"                          # stable internal id — don't rename casu
 display_name = "Llama (main)"         # picker group label
 base_url = "http://192.168.1.20:8080/v1"
 # api_key_env = "LLAMA_KEY"           # omit for no Authorization header
-# request_timeout_seconds = 600
+# request_timeout_seconds = 600       # non-stream request cap; also the mid-stream idle window (see below)
 # supports_tools = true               # see the tool-calling guide
 # max_concurrent = 1                  # see "Limiting concurrency" below
 # context_window = 32768              # fallback token budget; see "Context window" below
@@ -57,6 +57,14 @@ base_url = "http://192.168.1.20:8080/v1"
   ([openai-api-bridge][bridge]) that expose many real providers under one
   endpoint — the picker buckets by each model's `owned_by` field instead of
   putting everything under one group.
+- **`request_timeout_seconds`** (default 120) caps a non-streaming request.
+  For a streaming chat it does **not** bound the total duration (long answers
+  are fine) — it's the **mid-stream idle** window: once tokens are flowing, the
+  stream is aborted if no further bytes arrive for this long, so a stalled
+  decode or half-open connection can't pin the endpoint's concurrency slot
+  forever. Time-to-first-token (a slow cold-model prefill) is **not** bounded,
+  so raising this only matters if a healthy model ever pauses mid-answer longer
+  than the window.
 
 [bridge]: https://github.com/xiphux/openai-api-bridge
 

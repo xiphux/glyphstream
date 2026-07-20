@@ -106,4 +106,30 @@ describe('chatCompletionStream idle watchdog', () => {
 		await vi.advanceTimersByTimeAsync(6_000);
 		expect(await drained).toBe('ab');
 	});
+
+	it('does NOT abort during a slow prefill (no bytes before the first token)', async () => {
+		// A long time-to-first-token (large-context prefill on a cold local model)
+		// must not trip the watchdog — it only guards mid-stream stalls.
+		fetchMock.mockImplementation((_url, init: RequestInit) =>
+			Promise.resolve(
+				streamingResponse((push, close) => {
+					// First byte arrives only after 90s — well past the 30s idle window.
+					setTimeout(() => {
+						push('first token');
+						close();
+					}, 90_000);
+				}, init.signal!),
+			),
+		);
+
+		const res = await chatCompletionStream(endpoint(30), {
+			model: 'm',
+			messages: [],
+		} as never);
+
+		const drained = drain(res);
+		await vi.advanceTimersByTimeAsync(95_000);
+		// Prefill was not aborted; the token came through.
+		expect(await drained).toBe('first token');
+	});
 });
