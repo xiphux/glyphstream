@@ -532,6 +532,17 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			return p;
 		};
 
+		// Warm the cache concurrently: kick off every image read in the branch up
+		// front so the (order-preserving, sequential) serialize below awaits reads
+		// already in flight rather than resolving them one at a time ahead of the
+		// first upstream byte. The `.catch` here is only on the fire-and-forget
+		// reference — the cached promise keeps its rejection for the real await.
+		for (const m of branch) {
+			for (const p of m.parts) {
+				if (p.type === 'image') void resolveMediaDataUrl(p.mediaId).catch(() => {});
+			}
+		}
+
 		const upstreamMessages = await serializeBranchForUpstream(
 			branch,
 			resolveMediaDataUrl,
