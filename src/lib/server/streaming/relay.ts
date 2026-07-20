@@ -482,6 +482,37 @@ async function runChatTurn(
  * Returns null when the upstream itself failed; the error event is
  * already written to the client in that case.
  */
+/**
+ * Persist a durable error assistant sibling on a GENUINE (non-abort) upstream
+ * failure, so a fan-out branch recovered after a client disconnect (iOS suspend)
+ * still shows the failed column instead of silently vanishing — the relay's
+ * `finally` clears the in-flight slot, so without a persisted row the branch
+ * leaves no trace. Mirrors the media relay's error-sibling. A user Stop persists
+ * nothing (matching the recorder's cancelled semantics). `advanceActiveLeaf`
+ * follows params: a fan-out branch stays a pinned sibling; a single send advances
+ * the leaf so the failure shows in the thread on reload.
+ */
+function persistTurnErrorSibling(
+	params: RelayParams,
+	parentMessageId: string,
+	message: string,
+	err: unknown,
+): void {
+	if (isAbortError(err) || params.abortSignal?.aborted) return;
+	try {
+		appendMessage({
+			conversationId: params.conversationId,
+			parentMessageId,
+			role: 'assistant',
+			parts: [{ type: 'error', message }],
+			modelUsed: params.storedModelId,
+			advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+		});
+	} catch (e) {
+		console.warn('[stream/relay] failed to persist error sibling:', errorMessage(e));
+	}
+}
+
 async function runOneIteration(args: {
 	params: RelayParams;
 	requestBody: ChatCompletionRequest;
@@ -493,12 +524,16 @@ async function runOneIteration(args: {
 	try {
 		upstreamResponse = await chatCompletionStream(params.endpoint, requestBody, params.abortSignal);
 	} catch (e) {
-		write({ type: 'error', message: errorMessage(e) });
+		const message = errorMessage(e);
+		write({ type: 'error', message });
+		persistTurnErrorSibling(params, parentMessageId, message, e);
 		return null;
 	}
 
 	if (!upstreamResponse.body) {
-		write({ type: 'error', message: `Upstream "${params.endpoint.id}" returned no body` });
+		const message = `Upstream "${params.endpoint.id}" returned no body`;
+		write({ type: 'error', message });
+		persistTurnErrorSibling(params, parentMessageId, message, null);
 		return null;
 	}
 
@@ -538,7 +573,9 @@ async function runOneIteration(args: {
 	try {
 		return await recorderPromise;
 	} catch (e) {
-		write({ type: 'error', message: `Persistence failed: ${errorMessage(e)}` });
+		const message = `Persistence failed: ${errorMessage(e)}`;
+		write({ type: 'error', message });
+		persistTurnErrorSibling(params, parentMessageId, message, e);
 		return null;
 	}
 }

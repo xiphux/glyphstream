@@ -39,7 +39,11 @@ vi.mock('$lib/server/tasks/title-task-runner', () => ({
 }));
 
 import { createConversation } from '$lib/server/db/queries/conversations';
-import { appendMessage, walkActiveBranch } from '$lib/server/db/queries/messages';
+import {
+	appendMessage,
+	getSiblingAssistants,
+	walkActiveBranch,
+} from '$lib/server/db/queries/messages';
 import { _resetForTests, register, resolveActivatedToolDefs } from '$lib/server/tools/registry';
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import {
@@ -822,6 +826,60 @@ describe('per-endpoint concurrency gate', () => {
 		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
 
 		held.release();
+	});
+
+	it('persists a durable error sibling when a fan-out branch fails (non-abort)', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		// No canned upstream response → chatCompletionStream throws ("no canned
+		// upstream response left"), a genuine (non-abort) failure.
+		const events = await drainEvents(
+			await startStreamingRelay({
+				conversationId: conv.id,
+				userId,
+				conversationTitle: 'test',
+				modelKind: 'chat',
+				endpoint,
+				providerQuirk: 'passthrough',
+				requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'x' }] },
+				userMessage: user,
+				storedModelId: 'bridge::test',
+				// Fan-out branch: pinned sibling, recovery rebuilds the failed column.
+				advanceActiveLeaf: false,
+				onComplete: () => {},
+			}),
+		);
+		// The live error frame still goes out...
+		expect(events.some((e) => (e as { type?: string }).type === 'error')).toBe(true);
+		// ...and a durable error sibling now records the failure for recovery.
+		const siblings = getSiblingAssistants(conv.id, user.id);
+		expect(siblings).toHaveLength(1);
+		expect(siblings[0].parts).toEqual([expect.objectContaining({ type: 'error' })]);
+		// Fan-out leaf stays pinned at the shared user message.
+		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user']);
+	});
+
+	it('does NOT persist an error sibling when the branch is stopped (abort)', async () => {
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		const abort = new AbortController();
+		abort.abort(); // pre-aborted: a Stop, not a genuine failure
+		await drainEvents(
+			await startStreamingRelay({
+				conversationId: conv.id,
+				userId,
+				conversationTitle: 'test',
+				modelKind: 'chat',
+				endpoint,
+				providerQuirk: 'passthrough',
+				requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'x' }] },
+				userMessage: user,
+				storedModelId: 'bridge::test',
+				advanceActiveLeaf: false,
+				abortSignal: abort.signal,
+				onComplete: () => {},
+			}),
+		);
+		// A Stop leaves no durable record.
+		expect(getSiblingAssistants(conv.id, user.id)).toHaveLength(0);
 	});
 
 	it('releases the endpoint slot before the post-done title race', async () => {
