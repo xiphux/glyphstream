@@ -669,13 +669,28 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		}
 
 		// JSON / sync path (Phase 5 behavior preserved).
-		const syncSlot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent);
+		// Wire the in-flight abort signal into BOTH the gate wait and the upstream
+		// call so a client Stop / disconnect actually cancels this path: without it
+		// a saturated endpoint queues uncancellably and the upstream fetch runs to
+		// completion ignoring /cancel. (Dormant in practice — the shipping client
+		// always requests ?stream=1 — but a latent hang otherwise.)
+		let syncSlot;
+		try {
+			syncSlot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
+				signal: inFlight.controller.signal,
+			});
+		} catch (e) {
+			clearInFlight(params.id, inFlight);
+			if (inFlight.controller.signal.aborted) throw error(499, 'Client closed request');
+			throw e;
+		}
 		try {
 			let upstream;
 			try {
-				upstream = await chatCompletionSync(endpoint, requestBody);
+				upstream = await chatCompletionSync(endpoint, requestBody, inFlight.controller.signal);
 			} catch (e) {
 				clearInFlight(params.id, inFlight);
+				if (inFlight.controller.signal.aborted) throw error(499, 'Client closed request');
 				if (e instanceof UpstreamError) {
 					const status = mapUpstreamStatus(e.status);
 					throw error(status, `Upstream error: ${formatUpstreamError(e)}`);
