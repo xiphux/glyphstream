@@ -173,16 +173,16 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
 
 /**
  * Like `listMemoriesForUser` but also returns the persisted embedding + the
- * model that produced it. The recall tool ranks the rows whose `embeddingModel`
- * matches the currently-configured model (different models = different vector
- * spaces) and falls back to BM25 over `content` for the rest.
+ * model that produced it, for every live memory of the user.
  *
- * Deliberately NOT given the `id` tiebreak its siblings have. This list is a
- * retrieval INPUT, not prompt text: `fuseRankings` breaks RRF ties by ascending
- * list index (see `retrieval/fusion.ts`), so this row order is load-bearing for
- * which memory wins a tied recall. Changing it changes answers. It also never
- * reaches the system prompt, so it can't affect the upstream's prefix cache —
- * there's nothing to gain here and a ranking regression to lose.
+ * NOTE: the recall tool no longer uses this — it reads the corpus blob-free via
+ * `listMemoriesForRecall` and loads a bounded vector set via
+ * `listMemoryRecallVectors` (so a large store isn't a whole-corpus blob scan).
+ * This full-blob read is retained for tests / embedding-backfill assertions.
+ *
+ * Ordered `createdAt ASC` with deliberately NO `id` tiebreak — kept consistent
+ * with `listMemoriesForRecall` so the two agree on tied-row order (which
+ * `fuseRankings` resolves by ascending list index).
  */
 export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[] {
 	const db = getDb();

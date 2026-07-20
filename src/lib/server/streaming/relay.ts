@@ -474,15 +474,6 @@ async function runChatTurn(
 }
 
 /**
- * Run one upstream iteration: fetch, tee, drive the recorder (which
- * persists the assistant row) and the client forwarder (which streams
- * SSE events) concurrently, then await both. Returns the persisted
- * assistant message + the text preview used for push notifications.
- *
- * Returns null when the upstream itself failed; the error event is
- * already written to the client in that case.
- */
-/**
  * Persist a durable error assistant sibling on a GENUINE (non-abort) upstream
  * failure, so a fan-out branch recovered after a client disconnect (iOS suspend)
  * still shows the failed column instead of silently vanishing — the relay's
@@ -513,6 +504,15 @@ function persistTurnErrorSibling(
 	}
 }
 
+/**
+ * Run one upstream iteration: fetch, tee, drive the recorder (which
+ * persists the assistant row) and the client forwarder (which streams
+ * SSE events) concurrently, then await both. Returns the persisted
+ * assistant message + the text preview used for push notifications.
+ *
+ * Returns null when the upstream itself failed; the error event is
+ * already written to the client in that case.
+ */
 async function runOneIteration(args: {
 	params: RelayParams;
 	requestBody: ChatCompletionRequest;
