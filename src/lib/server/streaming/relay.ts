@@ -279,7 +279,13 @@ export async function startStreamingRelay(
 						isError: ev.isError,
 					});
 				}
-				await runChatTurn(params, write);
+				// Pass a release hook so the slot is freed the moment generation
+				// completes — BEFORE the post-`done` title race — instead of being
+				// pinned for up to TITLE_DELIVERY_BUDGET_MS while a title trickles in.
+				// On a single-GPU (max_concurrent=1) endpoint that title wait would
+				// otherwise block the next generation. The finally's slot?.release()
+				// stays as an idempotent backstop for the error / early-return paths.
+				await runChatTurn(params, write, () => slot?.release());
 			} catch (err) {
 				// runChatTurn handles its own upstream errors internally; the
 				// only thing that throws out here is the slot acquisition being
@@ -303,7 +309,11 @@ export async function startStreamingRelay(
  * when the turn settles — by `finish_reason !== 'tool_calls'`, by hitting
  * MAX_TOOL_LOOP_ITERATIONS, by user abort, or by an upstream failure.
  */
-async function runChatTurn(params: RelayParams, write: SseWriter['write']): Promise<void> {
+async function runChatTurn(
+	params: RelayParams,
+	write: SseWriter['write'],
+	releaseSlot?: () => void,
+): Promise<void> {
 	// Tell the client about the user message id immediately so it can
 	// reconcile its optimistic render before the assistant text starts.
 	const startEvent: StreamStartEvent = {
@@ -444,6 +454,12 @@ async function runChatTurn(params: RelayParams, write: SseWriter['write']): Prom
 				}).catch((e) => console.warn('[stream/relay] notify failed:', e));
 			}
 		}
+
+		// Generation + tools + persistence are done — free the endpoint slot NOW,
+		// before we sit on the title race. The title task runs on the (small,
+		// separately-gated) task model and needs no generation slot, so the next
+		// queued generation shouldn't wait out the title budget for it.
+		releaseSlot?.();
 
 		// Race the title task in the background. The SSE stream stays
 		// open until either the title arrives or the budget expires.

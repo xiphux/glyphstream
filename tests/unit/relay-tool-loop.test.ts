@@ -47,6 +47,7 @@ import {
 	getEndpointQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
+import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage } from '$lib/types/api';
@@ -821,5 +822,60 @@ describe('per-endpoint concurrency gate', () => {
 		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
 
 		held.release();
+	});
+
+	it('releases the endpoint slot before the post-done title race', async () => {
+		const solo: LoadedEndpoint = { ...endpoint, id: 'solo', maxConcurrent: 1 };
+		const { conv, user, userId } = seedConversationWithUserMessage();
+
+		// A title task that stays pending until we release it; the mocked
+		// raceTitle simply awaits it, so the relay parks on the title race after
+		// `done` — exactly the window where the slot must already be free.
+		let resolveTitle!: (t: string | null) => void;
+		const titlePromise = new Promise<string | null>((r) => (resolveTitle = r));
+		vi.mocked(startTitleTaskIfFirstExchange).mockReturnValueOnce(titlePromise);
+
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('hi'), finishChunk('stop')]));
+
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint: solo,
+			providerQuirk: 'passthrough',
+			requestBody: { model: 'solo::test', messages: [{ role: 'user', content: 'x' }] },
+			userMessage: user,
+			storedModelId: 'solo::test',
+			onComplete: () => {},
+		});
+
+		// Read until `done`, then inspect the gate while the relay is still parked
+		// on the (unresolved) title race.
+		const reader = stream.getReader();
+		const dec = new TextDecoder();
+		let buf = '';
+		let sawDone = false;
+		while (!sawDone) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buf += dec.decode(value, { stream: true });
+			if (buf.includes('"type":"done"')) sawDone = true;
+		}
+		expect(sawDone).toBe(true);
+
+		// Slot already freed even though the title hasn't arrived — a fresh
+		// generation can take it immediately instead of waiting out the title budget.
+		expect(getEndpointQueueDepth('solo').active).toBe(0);
+		const next = await acquireEndpointSlot('solo', 1);
+		expect(getEndpointQueueDepth('solo').active).toBe(1);
+		next.release();
+
+		// Let the relay finish (title arrives, stream closes).
+		resolveTitle('A title');
+		for (;;) {
+			const { done } = await reader.read();
+			if (done) break;
+		}
 	});
 });

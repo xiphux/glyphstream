@@ -23,6 +23,7 @@
 
 import { logLevel } from '../env';
 import { chatCompletionSync, UpstreamError } from '../endpoints/client';
+import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint } from '../endpoints/config';
 import {
 	getConversationFirstExchange,
@@ -187,14 +188,25 @@ async function callTaskModel(
 	upstreamId: string,
 	taskMessages: TaskMessage[],
 ): Promise<string> {
-	const resp = await chatCompletionSync(endpoint, {
-		model: upstreamId,
-		messages: taskMessages,
-		// Modest cap so a chatty task model can't run away on token cost;
-		// 60 tokens is enough for any sane 3-7 word title with room.
-		max_tokens: 60,
-		// Lower temperature for deterministic title-like output.
-		temperature: 0.3,
-	});
-	return resp.choices?.[0]?.message?.content ?? '';
+	// Serialize on the endpoint's concurrency slot so a task model sharing a
+	// single-GPU chat endpoint doesn't thrash VRAM against a live generation —
+	// the whole point of the gate. On a separate or high-concurrency endpoint
+	// this is the immediate fast path (zero overhead). Safe from the relay's
+	// title race because the relay releases its own slot before awaiting the
+	// title (see startStreamingRelay), so this can't deadlock behind it.
+	const slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent);
+	try {
+		const resp = await chatCompletionSync(endpoint, {
+			model: upstreamId,
+			messages: taskMessages,
+			// Modest cap so a chatty task model can't run away on token cost;
+			// 60 tokens is enough for any sane 3-7 word title with room.
+			max_tokens: 60,
+			// Lower temperature for deterministic title-like output.
+			temperature: 0.3,
+		});
+		return resp.choices?.[0]?.message?.content ?? '';
+	} finally {
+		slot.release();
+	}
 }
