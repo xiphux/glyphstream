@@ -22,6 +22,7 @@ import { getEndpoint } from '$lib/server/endpoints/registry';
 import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
+import { upstreamBranch } from '$lib/chat-compaction';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
@@ -532,12 +533,15 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			return p;
 		};
 
-		// Warm the cache concurrently: kick off every image read in the branch up
-		// front so the (order-preserving, sequential) serialize below awaits reads
-		// already in flight rather than resolving them one at a time ahead of the
-		// first upstream byte. The `.catch` here is only on the fire-and-forget
-		// reference — the cached promise keeps its rejection for the real await.
-		for (const m of branch) {
+		// Warm the cache concurrently: kick off every image read up front so the
+		// (order-preserving, sequential) serialize below awaits reads already in
+		// flight rather than resolving them one at a time ahead of the first
+		// upstream byte. Walk `upstreamBranch(branch)` — the SAME post-compaction
+		// wire set the serializer sends — so we don't read+pin images in the
+		// summarized-away prefix that never reach the model. The `.catch` here is
+		// only on the fire-and-forget reference — the cached promise keeps its
+		// rejection for the real await.
+		for (const m of upstreamBranch(branch)) {
 			for (const p of m.parts) {
 				if (p.type === 'image') void resolveMediaDataUrl(p.mediaId).catch(() => {});
 			}
