@@ -18,6 +18,7 @@
 import { chatCompletionSync } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import type { ResolvedTaskModel } from './task-model';
+import { sanitizeModelLabel } from './sanitize-label';
 import { truncateEllipsis } from '$lib/text';
 
 // Matches the cap the save_memory tool enforces on model-authored topics, so a
@@ -93,24 +94,7 @@ export function buildTopicPrompt(content: string): TaskMessage[] | null {
  * `sanitizeTitle`, retuned for the "Topic:" prefix and topic length.)
  */
 export function sanitizeTopic(raw: string): string {
-	let s = raw.trim();
-	s = s.replace(/^\s*topic\s*[:\-]\s*/i, '');
-	const quotePairs: Array<[string, string]> = [
-		['"', '"'],
-		["'", "'"],
-		['“', '”'],
-		['‘', '’'],
-		['«', '»'],
-	];
-	for (const [open, close] of quotePairs) {
-		if (s.startsWith(open) && s.endsWith(close) && s.length >= 2) {
-			s = s.slice(open.length, s.length - close.length).trim();
-			break;
-		}
-	}
-	s = s.replace(/\s+/g, ' ');
-	s = s.replace(/[.!?;:,]+$/, '').trim();
-	return truncateEllipsis(s, MAX_TOPIC_CHARS);
+	return sanitizeModelLabel(raw, { labelWord: 'topic', maxChars: MAX_TOPIC_CHARS });
 }
 
 async function callTaskModel(

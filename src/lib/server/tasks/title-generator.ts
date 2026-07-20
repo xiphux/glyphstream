@@ -30,6 +30,7 @@ import {
 	setConversationTitleIfFallback,
 } from '../db/queries/conversations';
 import { getTaskModel, type ResolvedTaskModel } from './task-model';
+import { sanitizeModelLabel } from './sanitize-label';
 import { truncateEllipsis } from '$lib/text';
 
 const DEBUG = logLevel() === 'debug';
@@ -156,31 +157,7 @@ export function buildTitlePrompt(exchange: {
  * length-capping. Exported for testing.
  */
 export function sanitizeTitle(raw: string): string {
-	let s = raw.trim();
-	// Strip leading "Title:" / "title -" prefixes a model might add.
-	s = s.replace(/^\s*title\s*[:\-]\s*/i, '');
-	// Strip surrounding ASCII or smart quotes (single pair only — repeated
-	// pairs are likely intentional).
-	const quotePairs: Array<[string, string]> = [
-		['"', '"'],
-		["'", "'"],
-		['“', '”'],
-		['‘', '’'],
-		['«', '»'],
-	];
-	for (const [open, close] of quotePairs) {
-		if (s.startsWith(open) && s.endsWith(close) && s.length >= 2) {
-			s = s.slice(open.length, s.length - close.length).trim();
-			break;
-		}
-	}
-	// Collapse internal newlines/whitespace runs to single spaces — titles
-	// are always one-line.
-	s = s.replace(/\s+/g, ' ');
-	// Trailing sentence-style punctuation looks wrong on a title.
-	s = s.replace(/[.!?;:,]+$/, '').trim();
-	// Hard cap so a runaway model can't write a 10kb "title."
-	return truncateEllipsis(s, MAX_TITLE_CHARS);
+	return sanitizeModelLabel(raw, { labelWord: 'title', maxChars: MAX_TITLE_CHARS });
 }
 
 async function callTaskModel(
