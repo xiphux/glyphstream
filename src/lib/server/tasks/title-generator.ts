@@ -168,9 +168,11 @@ async function callTaskModel(
 	// Serialize on the endpoint's concurrency slot so a task model sharing a
 	// single-GPU chat endpoint doesn't thrash VRAM against a live generation —
 	// the whole point of the gate. On a separate or high-concurrency endpoint
-	// this is the immediate fast path (zero overhead). Safe from the relay's
-	// title race because the relay releases its own slot before awaiting the
-	// title (see startStreamingRelay), so this can't deadlock behind it.
+	// this is the immediate fast path (zero overhead). Safe from the title race
+	// because EVERY caller that races the title on the same endpoint releases its
+	// own generation slot before awaiting the race — the chat relay
+	// (startStreamingRelay), the media relay (startMediaRelay), and the sync send
+	// path — so this acquire can't deadlock behind a slot the racer still holds.
 	const slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent);
 	try {
 		const resp = await chatCompletionSync(endpoint, {

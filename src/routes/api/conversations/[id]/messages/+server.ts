@@ -747,6 +747,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				rawResponseJson: JSON.stringify(upstream),
 			});
 
+			// Generation + persistence are done — free the endpoint slot BEFORE the
+			// title race. The title task is gated on the same endpoint slot now (see
+			// callTaskModel), so on a single-GPU (max_concurrent=1) endpoint holding
+			// it here would block the title task from being granted and raceTitle
+			// would burn its whole budget. The finally's release is the idempotent
+			// backstop.
+			syncSlot.release();
+
 			// Title task: same shape as the image branch — fire now (after both
 			// user + assistant messages are persisted) and race the bounded
 			// delivery budget before returning JSON. Non-streaming chat callers

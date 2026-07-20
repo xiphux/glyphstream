@@ -60,7 +60,12 @@ import { createConversation, getConversationDetail } from '$lib/server/db/querie
 import { appendMessage, getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
 import { startVideoRelay, type VideoRelayParams } from '$lib/server/streaming/video-relay';
 import { UpstreamError } from '$lib/server/endpoints/client';
-import { acquireEndpointSlot, resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
+import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
+import {
+	acquireEndpointSlot,
+	getEndpointQueueDepth,
+	resetEndpointGatesForTests,
+} from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage, StreamEvent } from '$lib/types/api';
 
@@ -456,6 +461,43 @@ describe('startVideoRelay — fan-out semantics', () => {
 });
 
 describe('startVideoRelay — backpressure + failure', () => {
+	it('frees the endpoint slot before the post-done title race', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		// Title task stays pending; the mocked raceTitle awaits it, so the relay
+		// parks on the title race after `done` — the window where the slot must
+		// already be free (the title task is gated on the same endpoint slot).
+		let resolveTitle!: (t: string | null) => void;
+		vi.mocked(startTitleTaskIfFirstExchange).mockReturnValueOnce(
+			new Promise<string | null>((r) => (resolveTitle = r)),
+		);
+		const stream = startVideoRelay(
+			baseParams({
+				conversationId: conv.id,
+				userId: user.id,
+				userMessage: userMessage as ChatMessage,
+				endpoint: endpoint(1),
+			}),
+		);
+		const reader = stream.getReader();
+		const dec = new TextDecoder();
+		let buf = '';
+		let sawDone = false;
+		while (!sawDone) {
+			const { value, done } = await reader.read();
+			if (done) break;
+			buf += dec.decode(value, { stream: true });
+			if (buf.includes('"type":"done"')) sawDone = true;
+		}
+		expect(sawDone).toBe(true);
+		// Slot released even though the title race is still pending.
+		expect(getEndpointQueueDepth('bridge').active).toBe(0);
+		resolveTitle('A title');
+		for (;;) {
+			const { done } = await reader.read();
+			if (done) break;
+		}
+	});
+
 	it('emits queued while waiting on a full per-endpoint slot, then proceeds', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const held = await acquireEndpointSlot('bridge', 1, {});

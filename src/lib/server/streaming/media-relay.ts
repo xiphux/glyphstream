@@ -243,6 +243,14 @@ export function startMediaRelay(
 				}
 
 				safeWrite({ type: 'done', assistantMessage } satisfies StreamDoneEvent);
+				// Generation + persistence are done — free the endpoint slot BEFORE the
+				// title race, not after. The title task is gated on the same endpoint
+				// slot now (see callTaskModel), so on a single-GPU (max_concurrent=1)
+				// endpoint holding the slot here would block the title task from ever
+				// being granted → raceTitle would burn its whole budget and the next
+				// queued generation would wait it out. The finally is the idempotent
+				// backstop for the early-return / error paths.
+				slot?.release();
 				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
 				if (title) safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 				safeClose();
