@@ -612,3 +612,33 @@ proactivity and pipeline bets are the most identity-defining.
   killed is Chromium-only — iOS WebKit has never supported it. On iOS it'd degrade
   to an in-page outbox that only flushes while the tab is alive, which buys little
   over the draft that already survives the kill. Low priority.
+
+- **Extract a `ChatTurnController` from the chat page.** The multi-model fan-out
+  flow was extracted into `fanout-controller.svelte.ts` (injected deps, unit-
+  tested in isolation), but the _single-turn_ orchestration — send/edit/retry
+  streaming (`runChatStream`/`sendStreaming`), approval-resume, and compaction —
+  still lives inline in `src/routes/(app)/chat/[id]/+page.svelte` (~2658 lines),
+  where four independent flows mutate the same shared render state
+  (`inFlightSegments`, `inFlightOpen`, `busy`, `activeAbort`, `streamedMessageId`)
+  coordinated by ad-hoc conventions replicated across the file (`convId ===
+turnConvId` guards, `activeAbort === abort` ownership, the `approvalSubmitToken`
+  latch, the load-bearing ordering of the two convId-switch reset effects). This
+  shared-mutable-state-across-flows coupling is the root of a class of subtle
+  desync bugs (a stuck bubble; the canvas-edit-wipes-user-message and truncated-
+  fan-out-branch bugs both fixed on this branch were symptoms of it). _Fix:_
+  mirror `FanoutController` — a `ChatTurnController` owning
+  `inFlightSegments`/`inFlightOpen`/`busy`/`activeAbort` and the send/resume/
+  recover state machine behind injected deps, with `runChatStream` as its private
+  SSE binding. Unlocks vitest coverage of the turn state machine the way the
+  fan-out logic now has. _Deferred:_ it's a large, core-UX refactor that wants a
+  dedicated PR with an e2e/live-app pass, not a bundle into a fix batch.
+
+- **Virtualize the gallery grid.** `gallery/+page.svelte` renders every loaded
+  tile via `{#each}` over `items` (grown by the IntersectionObserver `loadMore`
+  pagination) with no windowing/recycling, so a long infinite-scroll session
+  accumulates thousands of `<li>`/`<button>`/`<img>` nodes and their layout/
+  style-recalc cost. _Why deferred:_ only the DOM-node count grows — bytes are
+  already bounded (512px `/thumbnail` variants + `loading="lazy"`, `preload=
+"metadata"` on video) — so it only bites in the thousands of tiles, past the
+  household/small-team target scale. _Fix when it matters:_ windowed rendering
+  (render only tiles near the viewport, recycle the rest).
