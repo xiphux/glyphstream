@@ -388,7 +388,10 @@ export function listConversationsNeedingSummary(
 					gt(conversations.updatedAt, conversations.summarizedAt),
 				),
 				lt(conversations.updatedAt, now - settleMs),
-				sql`(select count(*) from ${messages} where ${messages.conversationId} = ${conversations.id}) >= 2`,
+				// "Has at least 2 messages." EXISTS with OFFSET 1 short-circuits at the
+				// second row (index-served by idx_messages_conv_*) rather than counting
+				// every message per surviving conversation like `count(*) >= 2` did.
+				sql`exists (select 1 from ${messages} where ${messages.conversationId} = ${conversations.id} limit 1 offset 1)`,
 			),
 		)
 		.orderBy(asc(conversations.updatedAt))
