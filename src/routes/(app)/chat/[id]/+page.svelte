@@ -231,10 +231,20 @@
 		// auto-opening would replace the conversation you just entered with a wall
 		// of document; there the inline card opens it on demand. This runs in an
 		// $effect (client-only), so window.matchMedia is safe.
-		if (canvas.docs.length > 0 && canvasAutoOpenedConvId !== data.conversation.id) {
-			canvasAutoOpenedConvId = data.conversation.id;
-			if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
-		}
+		//
+		// untrack the canvas reads: `hydrate` above already ran synchronously this
+		// tick, so `canvas.docs` is current here — but WITHOUT untrack, reading
+		// `canvas.docs.length` would make `canvas.docs` a dependency of this whole
+		// effect. A mid-turn `create_canvas`/`update_canvas` mutates `canvas.docs`,
+		// which would then re-fire this effect and reset `messages` back to the
+		// (pre-turn) load data, making the user's just-sent prompt bubble vanish
+		// until the end-of-turn invalidateAll.
+		untrack(() => {
+			if (canvas.docs.length > 0 && canvasAutoOpenedConvId !== data.conversation.id) {
+				canvasAutoOpenedConvId = data.conversation.id;
+				if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
+			}
+		});
 	});
 
 	// In-flight streaming state. Lifted to the top of the script so the
