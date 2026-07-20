@@ -110,6 +110,50 @@ describe('fetchUpstreamBytes SSRF-guarded redirects', () => {
 		expect(secondCallHeaders?.Authorization).toBeUndefined();
 	});
 
+	it('does not forward the credential on a scheme-downgrade redirect to the same host', async () => {
+		const tlsEndpoint = {
+			baseUrl: 'https://backend.local/v1',
+			apiKey: 'sk-endpoint-secret',
+			requestTimeoutSeconds: 30,
+		} as unknown as LoadedEndpoint;
+		resolves({ 'cdn.example.com': '203.0.113.10', 'backend.local': '203.0.113.20' });
+		fetchMock
+			// Off-origin start → 302 to http:// on the SAME host (TLS downgrade).
+			.mockResolvedValueOnce(redirectResponse('http://backend.local/leak'))
+			.mockResolvedValueOnce(bytesResponse());
+
+		await fetchUpstreamBytes(tlsEndpoint, 'https://cdn.example.com/x.png', {
+			guardRedirects: true,
+		});
+		const downgradeHeaders = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<
+			string,
+			string
+		>;
+		// http://backend.local ≠ https://backend.local origin → no bearer leaked.
+		expect(downgradeHeaders?.Authorization).toBeUndefined();
+	});
+
+	it('does forward the credential on a same-origin redirect back to the endpoint', async () => {
+		const tlsEndpoint = {
+			baseUrl: 'https://backend.local/v1',
+			apiKey: 'sk-endpoint-secret',
+			requestTimeoutSeconds: 30,
+		} as unknown as LoadedEndpoint;
+		resolves({ 'cdn.example.com': '203.0.113.10', 'backend.local': '203.0.113.20' });
+		fetchMock
+			.mockResolvedValueOnce(redirectResponse('https://backend.local/files/abc'))
+			.mockResolvedValueOnce(bytesResponse());
+
+		await fetchUpstreamBytes(tlsEndpoint, 'https://cdn.example.com/x.png', {
+			guardRedirects: true,
+		});
+		const sameOriginHeaders = (fetchMock.mock.calls[1][1] as RequestInit).headers as Record<
+			string,
+			string
+		>;
+		expect(sameOriginHeaders?.Authorization).toBe('Bearer sk-endpoint-secret');
+	});
+
 	it('refuses an initial off-host URL that itself resolves private', async () => {
 		resolves({ 'sneaky.example': '10.0.0.5' });
 		fetchMock.mockResolvedValue(bytesResponse());

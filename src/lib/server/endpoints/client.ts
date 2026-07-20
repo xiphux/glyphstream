@@ -739,7 +739,7 @@ export async function fetchUpstreamBytes(
 		return { bytes: Buffer.from(arrayBuf), contentType };
 	}
 
-	const endpointHost = new URL(endpoint.baseUrl).hostname.toLowerCase();
+	const endpointOrigin = new URL(endpoint.baseUrl).origin;
 	let current: URL;
 	try {
 		current = new URL(urlString);
@@ -757,13 +757,15 @@ export async function fetchUpstreamBytes(
 			throw e;
 		}
 		// Only send the endpoint's credential to the configured endpoint itself,
-		// never to a redirect target we don't control.
-		const sameHost = current.hostname.toLowerCase() === endpointHost;
+		// never to a redirect target we don't control. Compare full ORIGIN
+		// (scheme + host + port), not just hostname — a redirect to http:// (a TLS
+		// downgrade) or another port on the same host must not receive the bearer.
+		const sameOrigin = current.origin === endpointOrigin;
 		const res = await doFetch(
 			current.href,
 			{
 				method: 'GET',
-				headers: sameHost ? authHeaders(endpoint) : {},
+				headers: sameOrigin ? authHeaders(endpoint) : {},
 				redirect: 'manual',
 				signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 			},
