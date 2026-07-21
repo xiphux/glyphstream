@@ -283,6 +283,10 @@ describe('ChatTurnController — approval resume', () => {
 
 		await turn.submitApproval([{ toolCallId: 't1', action: 'allow' }]);
 
+		// Pin that the resume actually reached its success path (not an early fetch
+		// error, which would also yield a single invalidate but skip this) — so the
+		// single-invalidate assertion below genuinely exercises the guard.
+		expect(state.approvalCleared).toBe(1);
 		// The in-turn guard (deps.convId() === turnConvId) is now false, so the
 		// inner post-stream invalidate is skipped — only submitApproval's outer
 		// invalidate runs. Regression guard: the old inline runApprovalStream took a
