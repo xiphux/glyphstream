@@ -4,13 +4,14 @@
  * resume-fetch contract and the decision-snapshot math are unit-testable
  * without spinning up a chat.
  *
- * The chat page still owns the surrounding state machine
- * (approvalSubmitting flag, in-flight bubble bindings, post-resume
- * invalidateAll) — that's UI-state glue. What lives here is the
- * type that previously duplicated across five component files, the
- * pure decision-snapshot builder (default-to-reject is a subtle rule),
- * and the fetch wrapper that owns the URL, body shape, and error
- * extraction.
+ * ChatTurnController owns the surrounding state machine (the
+ * approvalSubmitting latch, the in-flight resume stream, post-resume
+ * invalidateAll); the chat page only forwards decisions via
+ * turn.submitApproval(...) and reads turn.approvalSubmitting for UI guards.
+ * What lives here is the type that previously duplicated across five
+ * component files, the pure decision-snapshot builder (default-to-reject is
+ * a subtle rule), and the fetch wrapper that owns the URL, body shape, and
+ * error extraction.
  */
 
 import { errorMessageFromResponse } from './fetch-error';

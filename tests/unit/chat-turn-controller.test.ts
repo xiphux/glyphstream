@@ -260,7 +260,35 @@ describe('ChatTurnController — approval resume', () => {
 		expect(state.messages.map((m) => m.id)).toEqual(['a-resume']);
 		expect(state.approvalCleared).toBe(1);
 		expect(turn.approvalSubmitting).toBe(false);
-		expect(invalidateAll).toHaveBeenCalled();
+		// Guard held (still on c1): the resume's inner post-stream invalidate ran,
+		// plus submitApproval's outer one — two invalidations.
+		expect(invalidateAll).toHaveBeenCalledTimes(2);
+		vi.unstubAllGlobals();
+	});
+
+	it('reads the LIVE convId in the resume guard, so a settle after a conversation switch is skipped', async () => {
+		const reply = assistantMsg('a-resume');
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.endsWith('/tool-approval')) {
+				// Model the user navigating to another conversation before the resume
+				// settles: the reactive convId moves off the turn's snapshot mid-stream.
+				state.convId = 'c2';
+				return sseResponse([{ type: 'done', assistantMessage: reply }]);
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+
+		await turn.submitApproval([{ toolCallId: 't1', action: 'allow' }]);
+
+		// The in-turn guard (deps.convId() === turnConvId) is now false, so the
+		// inner post-stream invalidate is skipped — only submitApproval's outer
+		// invalidate runs. Regression guard: the old inline runApprovalStream took a
+		// `convId` param that shadowed the reactive one, making this check
+		// permanently true (dead abandon-on-switch guard); it would invalidate twice.
+		expect(invalidateAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
 });

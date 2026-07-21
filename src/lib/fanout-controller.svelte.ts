@@ -234,7 +234,7 @@ export class FanoutController {
 		const isFirstExchange = this.#deps.messageCount() === 0;
 		this.#deps.setBusy(true);
 		this.#deps.setError(null);
-		// Clear the suspend/offline flags for this turn (mirrors sendStreaming).
+		// Clear the suspend/offline flags for this turn (mirrors ChatTurnController.send()).
 		// Without this a stale flag from a prior backgrounded turn would make
 		// runBranch misclassify a genuine branch failure as "Generating…".
 		this.#deps.clearInterruptedFlags();

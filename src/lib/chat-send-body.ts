@@ -3,9 +3,9 @@
  *
  * Lives outside the chat page mostly so the wire body can be tested in
  * isolation — but it also fixes a real duplication / drift hazard: the
- * page previously constructed this body inline in two places
- * (`sendStreaming` and `sendImageGeneration`), and the next caller that
- * added a new `SendOptions` field had to remember to update both.
+ * page previously constructed this body inline in more than one send path,
+ * and the next caller that added a new `SendOptions` field had to remember
+ * to update every one.
  * Centralizing here forces the contract through one code path, which
  * is exactly the kind of footgun that let the `editedMessageId` field
  * silently fall off the wire after the server-side edit-routing

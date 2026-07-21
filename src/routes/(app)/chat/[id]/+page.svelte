@@ -157,7 +157,8 @@
 
 	// Side-by-side canvas pane. The server is authoritative; this holds the
 	// live doc + open state. Seeded from the page load, updated by
-	// canvas_version stream events during a turn (see runChatStream below).
+	// canvas_version stream events during a turn (see ChatTurnController's
+	// #runChatStream in $lib/chat-turn-controller.svelte, via the applyCanvas dep).
 	const canvas = new CanvasController();
 	// svelte-ignore state_referenced_locally
 	canvas.hydrate(data.canvases);
