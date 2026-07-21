@@ -3,18 +3,14 @@
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { goto, invalidateAll } from '$app/navigation';
-	import { isAbortError } from '$lib/abort';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
+	import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
 	import { preferredFirstName } from '$lib/greeting';
 	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
 	import { consumeChatStream } from '$lib/consume-chat-stream';
-	import {
-		buildApprovalDecisionsSnapshot,
-		runApprovalResume,
-		type ApprovalAction,
-	} from '$lib/approval-workflow';
+	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '$lib/approval-workflow';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
 	import { imageAttachment } from '$lib/model-capabilities';
@@ -39,20 +35,12 @@
 	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
 	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
 	import {
-		appendReasoning as inFlightAppendReasoning,
-		appendText as inFlightAppendText,
 		assistantLabelForMessage,
 		buildRenderedConversation,
 		computeMergeFlags,
-		inFlightToBlocks,
-		markToolCallPendingApproval as inFlightMarkToolCallPendingApproval,
 		messageToBlocks,
 		parseCanvasAck,
-		pushToolCall as inFlightPushToolCall,
 		splitCanvasCards,
-		updateToolCallArgs as inFlightUpdateToolCallArgs,
-		updateToolCallResult as inFlightUpdateToolCallResult,
-		type InFlightSegment,
 		type RenderBlock,
 	} from '$lib/chat-render';
 	import {
@@ -65,7 +53,6 @@
 	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
 	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
-	import { buildSendRequestBody, type SendOptions } from '$lib/chat-send-body';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
@@ -77,13 +64,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { ConversationMediaRef, MediaListItem } from '$lib/server/db/queries/media';
-	import type {
-		ChatMessage,
-		FeatureCategory,
-		McpUnavailableServer,
-		MessagePart,
-		ModelKind,
-	} from '$lib/types/api';
+	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
 
 	let { data } = $props();
 
@@ -247,10 +228,37 @@
 		});
 	});
 
-	// In-flight streaming state. Lifted to the top of the script so the
-	// derived approval-pending state (below) can reference it; the
-	// mutation helpers + the rest of the SSE pipeline live further down.
-	let inFlightSegments = $state<InFlightSegment[]>([]);
+	// Single-turn orchestration (send/edit/retry streaming, approval-resume,
+	// server-truth recovery) + its shared render state — the in-flight bubble,
+	// `busy`, `activeAbort`, `streamedMessageId`, the approval-resume latch, and
+	// the suspend/offline flags — extracted to $lib/chat-turn-controller for
+	// testability. Constructed up here (ahead of the fan-out controller) because
+	// the approval-pending derivations below read `turn.inFlightSegments`. The
+	// page owns the composer/picker bindings, the higher-level send() dispatch,
+	// and a few effects that delegate here; the controller reaches shared page
+	// state through these getters/setters. The `fanout.comparing` read is a
+	// forward reference (fanout is constructed further down) — safe inside a
+	// getter, which only runs after both controllers exist.
+	// Explicitly typed (as is `fanout` below) to break the mutual-reference cycle:
+	// turn's `fanoutComparing` reads `fanout`, fanout's `interrupted` reads `turn`,
+	// and without the annotations TS infers each as `any` inside the other's
+	// initializer.
+	const turn: ChatTurnController = new ChatTurnController({
+		convId: () => convId,
+		getMessages: () => messages,
+		setMessages: (next) => (messages = next),
+		modelId: () => modelId,
+		modelKind: () => modelKind,
+		setError: (m) => (errorMsg = m),
+		setApprovalError: (m) => (approvalError = m),
+		clearApprovalDecisions: () => (approvalDecisions = new Map()),
+		setTitle: (t) => (title = t),
+		applyCanvas: (c) => canvas.apply(c),
+		isNearBottom: () => isNearBottom,
+		scrollToBottom: () => scrollToBottom(),
+		serverInFlightSince: () => serverInFlightSince,
+		fanoutComparing: () => fanout.comparing,
+	});
 
 	// Fold tool-result messages out of the visible list and expose them
 	// via a side-map keyed by tool_call_id. The matching assistant
@@ -279,7 +287,7 @@
 		const map = new Map<string, { mergeWithPrev: boolean; mergeWithNext: boolean }>();
 		for (let i = 0; i < visibleMessages.length; i++) {
 			const m = visibleMessages[i];
-			map.set(m.id, computeMergeFlags(visibleMessages, i, editingMessageId, inFlightOpen));
+			map.set(m.id, computeMergeFlags(visibleMessages, i, editingMessageId, turn.inFlightOpen));
 		}
 		return map;
 	});
@@ -315,16 +323,10 @@
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
-	let approvalSubmitting = $state(false);
+	// The approval-prompt's inline error, written by the controller's resume path.
 	let approvalError = $state<string | null>(null);
-	// Monotonic latch owner for `approvalSubmitting`. A resume's `finally`
-	// clears the flag only if it still owns this token — so a stale resume from
-	// a conversation we've since left (its promise parked on an
-	// `await invalidateAll()`) can't clear the flag out from under a NEW resume
-	// that has since started on the destination thread, which would drop
-	// presence and re-trigger the auto-submit effect. Same ownership convention
-	// as `activeAbort === abort`.
-	let approvalSubmitToken = 0;
+	// `approvalSubmitting` (+ its monotonic latch token) lives on the turn
+	// controller now — it owns the resume state machine.
 
 	// Reset decisions whenever the pending set changes (a resume just
 	// completed, or a new turn left a different set of pending tools).
@@ -350,7 +352,7 @@
 	// the stream, not only after invalidate refetches the persisted
 	// pending rows.
 	const liveInFlightPendingIds = $derived(
-		inFlightSegments
+		turn.inFlightSegments
 			.filter((s) => s.kind === 'tool_call' && s.status === 'pending_approval')
 			.map((s) => (s as { toolCallId: string }).toolCallId),
 	);
@@ -381,86 +383,12 @@
 	// resume just as fast as clicks on the persisted bubble.
 	$effect(() => {
 		if (!approvalsAllDecided) return;
-		if (approvalSubmitting) return;
+		if (turn.approvalSubmitting) return;
 		const ids = allPendingToolCallIds;
 		untrack(() => {
-			void submitApprovalDecisions(buildApprovalDecisionsSnapshot(ids, approvalDecisions));
+			void turn.submitApproval(buildApprovalDecisionsSnapshot(ids, approvalDecisions));
 		});
 	});
-
-	async function submitApprovalDecisions(
-		decisions: Array<{ toolCallId: string; action: ApprovalAction }>,
-	): Promise<void> {
-		if (approvalSubmitting) return;
-		const token = ++approvalSubmitToken;
-		approvalSubmitting = true;
-		approvalError = null;
-		try {
-			await runApprovalStream(data.conversation.id, decisions);
-			approvalDecisions = new Map();
-			await invalidateAll();
-		} catch (e) {
-			// AbortError from clicking Stop mid-resume is expected and
-			// shouldn't surface as a red banner — same convention as the
-			// initial-send path. The server-side recorder will have
-			// committed whatever partial text it had; invalidateAll on
-			// the way out picks that up.
-			if (!isAbortError(e)) {
-				approvalError = e instanceof Error ? e.message : String(e);
-			}
-			await invalidateAll();
-		} finally {
-			// Only clear if we still own the latch — a thread switch (reset
-			// effect) or a newer resume may have taken it while we were parked
-			// on invalidateAll() above.
-			if (approvalSubmitToken === token) approvalSubmitting = false;
-		}
-	}
-
-	async function runApprovalStream(
-		convId: string,
-		decisions: Array<{ toolCallId: string; action: ApprovalAction }>,
-	): Promise<void> {
-		const turnConvId = convId;
-		// Open the in-flight bubble so the user sees text + tool calls
-		// streaming in live instead of staring at "Resuming…" for the
-		// duration of the model's response.
-		resetInFlightSegments();
-		inFlightProgress = null;
-		inFlightStatus = null;
-		inFlightOpen = true;
-		// Reuse the same Stop wiring the initial send path uses — the
-		// in-flight registry on the server keys by conversation id, so
-		// stop()'s POST to /cancel reaches the resumed upstream call,
-		// and aborting `activeAbort` here tears down our local fetch.
-		// Without this the user has no way to halt a runaway resumed
-		// generation (small models in a thinking loop, etc.).
-		const abort = new AbortController();
-		activeAbort = abort;
-		try {
-			const { sawToolCalls } = await runApprovalResume(convId, decisions, abort.signal, (body) =>
-				runChatStream(body, {
-					turnConvId,
-					optimisticId: null,
-					// onDone omitted — approvalSubmitting clears in the
-					// caller's finally so the inline buttons stay disabled
-					// until the invalidate completes and the persisted
-					// rows surface.
-				}),
-			);
-			if (convId === turnConvId) {
-				await invalidateAll();
-				if (sawToolCalls) {
-					inFlightOpen = false;
-					resetInFlightSegments();
-					inFlightProgress = null;
-					inFlightStatus = null;
-				}
-			}
-		} finally {
-			if (activeAbort === abort) activeAbort = null;
-		}
-	}
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
 	// model, derive the new modelKind from data.models so the composer's
@@ -481,7 +409,6 @@
 	});
 
 	let composerText = $state('');
-	let busy = $state(false);
 	let errorMsg = $state<string | null>(null);
 	let scrollContainer = $state<HTMLElement | null>(null);
 
@@ -538,7 +465,7 @@
 	// foldable history is tiny (the dominant cost being system prompt + tools +
 	// memories) the button stays disabled rather than running for ~no benefit.
 	const compactable = $derived.by(
-		() => !busy && !compacting && !fanout.comparing && compactionWorthwhile(messages),
+		() => !turn.busy && !compacting && !fanout.comparing && compactionWorthwhile(messages),
 	);
 
 	// The context-budget bar (readout + Compact) lives just above the composer.
@@ -575,7 +502,7 @@
 	// The auto path handles failure itself (a confirm dialog in maybeAutoCompact)
 	// off the returned outcome instead.
 	async function compactConversation(opts: { silent?: boolean } = {}): Promise<CompactionOutcome> {
-		if (compacting || busy || fanout.comparing) return { status: 'noop' };
+		if (compacting || turn.busy || fanout.comparing) return { status: 'noop' };
 		compacting = true;
 		compactionStreaming = false;
 		compactionStreamText = '';
@@ -649,7 +576,7 @@
 	// the server 409s once a later turn has been sent. Reverts the leaf so the
 	// full history serializes again — the summary row stays in the tree.
 	async function undoCompaction() {
-		if (compacting || busy || fanout.comparing) return;
+		if (compacting || turn.busy || fanout.comparing) return;
 		let res: Response;
 		try {
 			res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
@@ -703,7 +630,8 @@
 	// past the window, so we ask the user whether to send anyway or hold off and
 	// deal with it (e.g. retry, or compact manually) — false means they backed out.
 	async function maybeAutoCompact(): Promise<boolean> {
-		if (!data.prefs?.autoCompactionEnabled || compacting || busy || fanout.comparing) return true;
+		if (!data.prefs?.autoCompactionEnabled || compacting || turn.busy || fanout.comparing)
+			return true;
 		if (
 			!shouldAutoCompact({
 				branch: messages,
@@ -993,12 +921,11 @@
 		return { duration: 160, css: (t: number) => `opacity: ${t}` };
 	}
 
-	// The assistant message id that just finished streaming / generating.
-	// Its content was already on screen as the in-flight bubble, so when
-	// the persisted row mounts to replace it we suppress the arrival fade —
-	// otherwise the bubble visibly blinks out and re-fades on finalize. The
-	// in-flight bubble itself carries the fade (on stream start) instead.
-	let streamedMessageId = $state<string | null>(null);
+	// The just-streamed message id (`turn.streamedMessageId`): its content was
+	// already on screen as the in-flight bubble, so when the persisted row mounts
+	// to replace it we suppress the arrival fade — otherwise the bubble visibly
+	// blinks out and re-fades on finalize. The in-flight bubble itself carries the
+	// fade (on stream start) instead.
 
 	// Land focus in the follow-up composer whenever the conversation
 	// becomes ready for input — on entering a conversation (including
@@ -1024,32 +951,12 @@
 		composerRef.focus();
 	});
 
-	// AbortController for the in-flight fetch. Stop button click triggers
-	// .abort() AND fires a POST to /api/conversations/:id/cancel so the
-	// server tears down upstream too (otherwise the bridge keeps generating).
-	let activeAbort = $state<AbortController | null>(null);
+	// The in-flight fetch's AbortController (`turn.activeAbort`) and the
+	// suspend/offline interruption flags (`turn.wasHiddenDuringFetch` /
+	// `turn.wasOfflineDuringFetch`) live on the turn controller now — the
+	// visibility/online listeners below flip them via turn.markHidden/markOffline.
 
-	// Tracks whether the page got backgrounded while a fetch was in flight.
-	// iOS aggressively suspends PWAs and Safari tabs after a few seconds in
-	// the background, which kills the in-flight network request and surfaces
-	// as a generic "Load failed" TypeError on the catch side — indistinguishable
-	// from a real network failure. We flip this flag in a visibilitychange
-	// listener so the catch blocks below can recognize the suspension case
-	// and treat it like an abort (silent invalidate, no misleading error
-	// toast) instead of like a real failure. Reset at the top of each send.
-	let wasHiddenDuringFetch = $state(false);
-
-	// Parallel flag for connectivity transitions during a fetch — the
-	// foreground equivalent of the suspension case. iPhone hopping
-	// between wifi and cellular (or vice versa), losing signal briefly
-	// in a dead zone, an AP changing, an airplane-mode toggle, etc. all
-	// kill in-flight TCP connections and surface the same generic
-	// "Load failed" TypeError. browser `offline`/`online` events fire
-	// around these transitions (iOS Safari included) — we use them
-	// the same way visibilitychange handles suspension.
-	let wasOfflineDuringFetch = $state(false);
-
-	// Live connectivity state (distinct from wasOfflineDuringFetch, which is a
+	// Live connectivity state (distinct from turn's per-fetch offline latch, which is a
 	// per-fetch latch). Drives the composer's offline notice + disabled Send:
 	// while offline we block sending rather than firing a doomed fetch, so the
 	// typed message stays in the box (and its draft) instead of being cleared
@@ -1062,24 +969,23 @@
 	// $lib/fanout-controller for testability). The page owns the composer/picker
 	// bindings + a few effects that delegate here; the controller reaches shared
 	// page state through these getters/setters.
-	const fanout = new FanoutController({
+	const fanout: FanoutController = new FanoutController({
 		convId: () => convId,
 		models: () => data.models,
 		messageCount: () => messages.length,
-		busy: () => busy,
+		busy: () => turn.busy,
 		appendUserMessage: (m) => (messages = [...messages, m]),
-		setBusy: (b) => (busy = b),
+		setBusy: (b) => (turn.busy = b),
 		setError: (m) => (errorMsg = m),
 		setActiveModel: (id, kind) => {
 			modelId = id;
 			modelKind = kind;
 		},
-		setStreamedMessageId: (id) => (streamedMessageId = id),
-		interrupted: () => wasHiddenDuringFetch || wasOfflineDuringFetch,
-		clearInterruptedFlags: () => {
-			wasHiddenDuringFetch = false;
-			wasOfflineDuringFetch = false;
-		},
+		setStreamedMessageId: (id) => (turn.streamedMessageId = id),
+		// Both controllers share the one pair of interruption flags (the turn
+		// controller owns them).
+		interrupted: () => turn.interrupted,
+		clearInterruptedFlags: () => turn.clearInterruptedFlags(),
 		scrollToBottom: () => scrollToBottom(),
 	});
 
@@ -1095,9 +1001,9 @@
 		function onVisibilityChange() {
 			// A fan-out releases `busy` early (so the grid can show), so also
 			// track its branch streams as in-flight work worth recovering.
-			if (document.visibilityState === 'hidden' && (busy || fanout.streaming)) {
-				wasHiddenDuringFetch = true;
-			} else if (document.visibilityState === 'visible' && wasHiddenDuringFetch) {
+			if (document.visibilityState === 'hidden' && (turn.busy || fanout.streaming)) {
+				turn.markHidden();
+			} else if (document.visibilityState === 'visible' && turn.wasHiddenDuringFetch) {
 				// Reconcile against server state — if a single generation completed
 				// while we were backgrounded, the new message arrives via the load.
 				// A live fan-out's streams are NOT eagerly handed off here: a desktop
@@ -1111,13 +1017,13 @@
 		}
 		function onOffline() {
 			isOffline = true;
-			if (busy || fanout.streaming) wasOfflineDuringFetch = true;
+			if (turn.busy || fanout.streaming) turn.markOffline();
 		}
 		function onOnline() {
 			isOffline = false;
 			// Same reasoning as the visibility path — don't pre-emptively abort a
 			// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-			if (wasOfflineDuringFetch) void invalidateAll();
+			if (turn.wasOfflineDuringFetch) void invalidateAll();
 		}
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		window.addEventListener('offline', onOffline);
@@ -1129,31 +1035,11 @@
 		};
 	});
 
-	// In-flight assistant render state. While streaming we show a transient
+	// In-flight assistant render state (segments + open/progress/status/queued/
+	// mcp-unavailable) lives on `turn` — while streaming it shows a transient
 	// "assistant" bubble that isn't yet a row in the messages array; on `done`
-	// we splice the canonical persisted ChatMessage into messages.
-	// In-flight content is a single ordered list of segments — reasoning,
-	// text, and tool_call interleaved in arrival order. The mutation
-	// helpers + the segments-to-blocks conversion are pure functions in
-	// $lib/chat-render so they can be vitest-tested independently of the
-	// Svelte component.
-	// inFlightSegments lifted to the top of the script — see the
-	// pending-approval derivations that depend on it. The other three
-	// pieces of in-flight state stay here next to the helper functions
-	// that mutate them.
-	let inFlightOpen = $state(false);
-	let inFlightProgress = $state<number | null>(null);
-	let inFlightStatus = $state<string | null>(null);
-	// Set when the server emits a `queued` event (the endpoint's
-	// max_concurrent was full); cleared by resetInFlightSegments at turn
-	// boundaries and by the first real generation event below. Drives the
-	// "Queued…" placeholder in the in-flight bubble.
-	let inFlightQueued = $state<{ ahead: number } | null>(null);
-	// Set when the server emits an `mcp_unavailable` event (a conversation-
-	// enabled per-user MCP server is down and its tools were skipped this turn).
-	// Cleared at turn boundaries by resetInFlightSegments; drives the inline
-	// "unavailable" notice on the in-flight bubble.
-	let inFlightMcpUnavailable = $state<McpUnavailableServer[]>([]);
+	// the canonical persisted ChatMessage is spliced into messages. The
+	// segments-to-blocks conversion is `turn.inFlightBlocks`.
 
 	// --- Multi-model fan-out -------------------------------------------------
 	// The model picker's compare "cart" (model id → count) + whether compare
@@ -1184,47 +1070,16 @@
 		compareMode = false;
 	}
 
-	function resetInFlightSegments() {
-		inFlightSegments = [];
-		inFlightQueued = null;
-		inFlightMcpUnavailable = [];
-	}
-	function appendInFlightText(chunk: string) {
-		inFlightSegments = inFlightAppendText(inFlightSegments, chunk);
-	}
-	function appendInFlightReasoning(chunk: string) {
-		inFlightSegments = inFlightAppendReasoning(inFlightSegments, chunk);
-	}
-	function pushInFlightToolCall(toolCallId: string, toolName: string) {
-		inFlightSegments = inFlightPushToolCall(inFlightSegments, toolCallId, toolName);
-	}
-	function updateInFlightToolCallArgs(toolCallId: string, argsDelta: string) {
-		inFlightSegments = inFlightUpdateToolCallArgs(inFlightSegments, toolCallId, argsDelta);
-	}
-	function updateInFlightToolCallResult(toolCallId: string, result: string, isError: boolean) {
-		inFlightSegments = inFlightUpdateToolCallResult(inFlightSegments, toolCallId, result, isError);
-	}
-	function markInFlightToolCallPendingApproval(toolCallId: string, toolName: string, args: string) {
-		inFlightSegments = inFlightMarkToolCallPendingApproval(
-			inFlightSegments,
-			toolCallId,
-			toolName,
-			args,
-		);
-	}
-
-	const inFlightBlocks = $derived(inFlightToBlocks(inFlightSegments));
-
 	// rAF-coalesced per-segment markdown render. Each text segment grows
 	// independently; we render each segment's HTML on the next frame
 	// rather than on every chunk to cap markdown-it cost at ~60Hz no
 	// matter how fast the upstream streams tokens.
 	//
-	// Critically the callback does NOT reassign `inFlightSegments` — Svelte
+	// Critically the callback does NOT reassign `turn.inFlightSegments` — Svelte
 	// 5's $state proxy wraps each array element, so mutating `s.html` in
 	// place triggers reactivity for every reader that touched that field
-	// (notably `inFlightBlocks`). Reassigning the array would re-trigger
-	// this very effect (which reads `inFlightSegments` to iterate), causing
+	// (notably `turn.inFlightBlocks`). Reassigning the array would re-trigger
+	// this very effect (which reads the segments to iterate), causing
 	// a self-perpetuating rAF loop at 60Hz that fires the auto-scroll
 	// effect each frame — which yanked the scroll position back to the
 	// bottom whenever the user tried to scroll up, even when idle.
@@ -1232,13 +1087,13 @@
 	$effect(() => {
 		// Touch every text segment's text so the effect re-runs whenever
 		// any of them grows.
-		for (const s of inFlightSegments) {
+		for (const s of turn.inFlightSegments) {
 			if (s.kind === 'text') void s.text;
 		}
 		if (inFlightHtmlFrame !== 0) return;
 		inFlightHtmlFrame = requestAnimationFrame(() => {
 			inFlightHtmlFrame = 0;
-			for (const s of inFlightSegments) {
+			for (const s of turn.inFlightSegments) {
 				if (s.kind !== 'text') continue;
 				if (s.htmlFromText === s.text) continue;
 				s.html = renderLiveMarkdown(s.text);
@@ -1247,38 +1102,26 @@
 		});
 	});
 
-	// Server-reported truth: a generation is running for this conversation
-	// but this client isn't the one driving it — its fetch died (iOS
-	// suspended the PWA, the network dropped). `serverInFlightSince` is
-	// mirrored from the load function; `recoveredInFlight` means "show the
-	// bubble hydrated from the registry, not from a live local fetch."
+	// `turn.recoveredInFlight` is server-reported truth: a generation is running
+	// for this conversation but this client isn't driving it — its fetch died
+	// (iOS suspended the PWA, the network dropped). Show the bubble hydrated from
+	// the registry, not from a live local fetch.
 	//
-	// The leaf check matters: the registry entry lingers a little past the
-	// message itself (the SSE stream stays open through the background
-	// title task), so `serverInFlightSince` can still be set for a
-	// generation that already produced its assistant turn. If `messages`
-	// already ends in an assistant message, there's nothing to recover.
-	const recoveredInFlight = $derived(
-		serverInFlightSince !== null &&
-			!inFlightOpen &&
-			// A live/parked fan-out owns the in-flight display via its columns,
-			// so don't also surface the single recovered bubble — its N branches
-			// keep serverInFlightSince set while the leaf sits on the user message.
-			!fanout.comparing &&
-			messages[messages.length - 1]?.role !== 'assistant',
-	);
-	// The in-flight bubble shows for either a live local turn or a
-	// recovered one.
-	const showInFlight = $derived(inFlightOpen || recoveredInFlight);
+	// The in-flight bubble shows for either a live local turn or a recovered one.
+	const showInFlight = $derived(turn.inFlightOpen || turn.recoveredInFlight);
 	// A generation is in progress, whether or not this client is driving
 	// it — gates composer input + message actions the same as a live
-	// turn. Includes the approval-resume window (`approvalSubmitting`)
+	// turn. Includes the approval-resume window (`turn.approvalSubmitting`)
 	// so the composer disables and the Send button flips to Stop while
 	// the resumed iteration is streaming, AND the pending-approval
 	// window so the user can't type a new message while the existing
 	// turn is suspended waiting on a tool decision.
 	const generating = $derived(
-		busy || approvalSubmitting || recoveredInFlight || hasAnyPendingApproval || fanout.comparing,
+		turn.busy ||
+			turn.approvalSubmitting ||
+			turn.recoveredInFlight ||
+			hasAnyPendingApproval ||
+			fanout.comparing,
 	);
 
 	// The subset of `generating` where THIS tab actually OWNS a live stream (or
@@ -1291,7 +1134,7 @@
 	// suppress a completion this tab won't actually show. See
 	// stream-presence.svelte.ts.
 	const renderingGeneration = $derived(
-		busy || approvalSubmitting || recoveredInFlight || fanout.streaming,
+		turn.busy || turn.approvalSubmitting || turn.recoveredInFlight || fanout.streaming,
 	);
 
 	// Tick a timer while the in-flight bubble is open so the user gets a
@@ -1307,7 +1150,7 @@
 		// the timer stays honest after a suspension; a live local turn
 		// counts from now (when this send began).
 		const startedAt =
-			recoveredInFlight && serverInFlightSince !== null ? serverInFlightSince : Date.now();
+			turn.recoveredInFlight && serverInFlightSince !== null ? serverInFlightSince : Date.now();
 		elapsedSeconds = (Date.now() - startedAt) / 1000;
 		const interval = setInterval(() => {
 			elapsedSeconds = (Date.now() - startedAt) / 1000;
@@ -1339,19 +1182,13 @@
 		const id = data.conversation.id;
 		if (id === previousConvId) return;
 		previousConvId = id;
-		activeAbort?.abort();
-		activeAbort = null;
-		busy = false;
-		// An approval-resume streams under `approvalSubmitting` (not `busy`) and
-		// registers its abort in `activeAbort` above — so clear it too, both to
-		// abandon the resumed turn we're leaving and so the presence-publish
-		// effect below doesn't transiently report the new conversation while a
-		// resume from the old one is still marked in flight.
-		approvalSubmitting = false;
-		inFlightOpen = false;
-		resetInFlightSegments();
-		inFlightProgress = null;
-		inFlightStatus = null;
+		// Abandon the in-flight turn we're leaving: abort its fetch, clear busy +
+		// the in-flight bubble, and drop the approval-resume latch (a resume streams
+		// under `approvalSubmitting`, not `busy`, and registers its abort in
+		// `activeAbort`) — so the presence-publish effect below doesn't transiently
+		// report the new conversation while a resume from the old one is still
+		// marked in flight.
+		turn.teardown();
 		errorMsg = null;
 		// Tear down any fan-out from the conversation we're leaving — abort its
 		// in-flight branches and drop the comparison state. The new
@@ -1385,46 +1222,15 @@
 		untrack(() => fanout.syncFromServer(serverFanout));
 	});
 
-	// While a generation runs server-side that this client isn't driving
-	// (a recovered bubble — the local fetch died to an iOS suspension or
-	// dropped connection), poll the lightweight conversation endpoint so
-	// the "Generating…" bubble resolves the moment the generation finishes
-	// — even if the user just stays in the app. invalidateAll() is too
-	// heavy to poll (it re-fetches every endpoint's model list); the GET
-	// endpoint is DB-only.
+	// While a generation runs server-side that this client isn't driving (a
+	// recovered bubble — the local fetch died to an iOS suspension or dropped
+	// connection), the controller polls the lightweight conversation endpoint so
+	// the "Generating…" bubble resolves the moment the generation finishes — even
+	// if the user just stays in the app. invalidateAll() is too heavy to poll (it
+	// re-fetches every endpoint's model list); the GET endpoint is DB-only.
 	$effect(() => {
-		if (!recoveredInFlight) return;
-		const id = convId;
-		let stopped = false;
-		const interval = setInterval(async () => {
-			try {
-				const res = await fetch(`/api/conversations/${id}`);
-				if (stopped || !res.ok) return;
-				const body = (await res.json()) as {
-					conversation: { messages: Array<{ role: string }> };
-					inFlightSince: number | null;
-				};
-				// Done when the assistant turn has landed (the timely
-				// signal — beats the registry, which lingers through the
-				// title task) or the registry cleared with no message
-				// (a cancelled generation).
-				const msgs = body.conversation.messages;
-				const finished = msgs[msgs.length - 1]?.role === 'assistant' || body.inFlightSince === null;
-				if (finished && !stopped) {
-					stopped = true;
-					clearInterval(interval);
-					// One full reload to pull in the finished message, the
-					// AI title, and the now-cleared in-flight state.
-					await invalidateAll();
-				}
-			} catch {
-				// Transient — the next tick retries.
-			}
-		}, 4000);
-		return () => {
-			stopped = true;
-			clearInterval(interval);
-		};
+		if (!turn.recoveredInFlight) return;
+		return turn.startRecoveryPoll();
 	});
 
 	// Recovery poll for a RECOVERED fan-out (rebuilt from server truth after a
@@ -1437,439 +1243,15 @@
 		return fanout.startRecoveryPoll();
 	});
 
-	/**
-	 * Build a placeholder user message rendered optimistically so the
-	 * bubble appears the moment the user hits Send, before the upstream
-	 * call (which can take seconds for chat, minutes for image/video)
-	 * has had a chance to come back. The canonical persisted message
-	 * replaces it on the SSE 'start' event (chat/video) or in the JSON
-	 * response handler (image).
-	 *
-	 * The temp id is prefixed `optimistic-` so any code that compares
-	 * by id (replacement, removal, error recovery) can recognize it.
-	 */
-	function buildOptimisticUserMessage(text: string, attachedMediaIds: string[]): ChatMessage {
-		const parts: MessagePart[] = [];
-		if (text) parts.push({ type: 'text', text });
-		for (const mediaId of attachedMediaIds) {
-			parts.push({ type: 'image', mediaId });
-		}
-		return {
-			id: `optimistic-${crypto.randomUUID()}`,
-			role: 'user',
-			parts,
-			contentHtml: null,
-			reasoningText: null,
-			finishReason: null,
-			modelUsed: null,
-			tokensIn: null,
-			tokensOut: null,
-			genMs: null,
-			createdAt: Date.now(),
-		};
-	}
-
-	/**
-	 * Drive the SSE consumer (extracted to $lib/consume-chat-stream so
-	 * its event-loop semantics can be unit-tested) with the chat-page
-	 * UI bindings. Used by the initial send / edit / retry path
-	 * (sendStreaming below) AND the approval-resume path
-	 * (runApprovalStream further down) — both flows want identical
-	 * handling, including `tool_pending_approval` flipping the in-flight
-	 * tool segment to render the inline Allow/Always/Reject buttons live.
-	 *
-	 * Returns whether the stream included tool calls so the caller can
-	 * decide between (a) keeping the in-flight bubble visible until
-	 * invalidate lands the canonical intermediate rows or (b) clearing
-	 * it immediately for single-iteration turns.
-	 */
-	function runChatStream(
-		body: ReadableStream<Uint8Array>,
-		ctx: {
-			turnConvId: string;
-			optimisticId: string | null;
-			/** Fired when `done` arrives so the caller can flip its busy
-			 *  flag mid-stream (background title delivery still keeps the
-			 *  SSE open after done in the messages POST path). */
-			onDone?: () => void;
-		},
-	): Promise<{ sawToolCalls: boolean }> {
-		return consumeChatStream(body, {
-			// Abandoned mid-stream by a conversation switch — stop
-			// touching shared render state; it belongs to a different
-			// conversation now.
-			shouldContinue: () => convId === ctx.turnConvId,
-			onQueued(ahead) {
-				// Waiting on a per-endpoint concurrency slot. Show "Queued…"
-				// until the slot is granted and the first real event lands.
-				inFlightQueued = { ahead };
-				// Past the (pre-slot) enhancement phase — drop its transient status.
-				inFlightStatus = null;
-			},
-			onMcpUnavailable(servers) {
-				// A conversation-enabled per-user MCP server is down; its tools
-				// were skipped this turn. Surface the inline notice on the bubble.
-				inFlightMcpUnavailable = servers;
-			},
-			async onStart(userMessage) {
-				inFlightQueued = null;
-				// Past the (pre-slot) enhancement phase — drop its transient status.
-				inFlightStatus = null;
-				// Send / edit: replace the optimistic placeholder with
-				// the canonical persisted user message. Retry +
-				// resume: no optimistic id (resume's start event
-				// carries the prior user message we already render),
-				// so this branch is a no-op.
-				if (ctx.optimisticId) {
-					messages = messages.some((m) => m.id === ctx.optimisticId)
-						? messages.map((m) => (m.id === ctx.optimisticId ? userMessage : m))
-						: [...messages, userMessage];
-					await tick();
-					scrollToBottom();
-				}
-			},
-			onText(chunk) {
-				inFlightQueued = null;
-				appendInFlightText(chunk);
-				if (isNearBottom) scrollToBottom();
-			},
-			onReasoning(chunk) {
-				inFlightQueued = null;
-				appendInFlightReasoning(chunk);
-				if (isNearBottom) scrollToBottom();
-			},
-			onToolCallStart(toolCallId, toolName) {
-				inFlightQueued = null;
-				pushInFlightToolCall(toolCallId, toolName);
-				if (isNearBottom) scrollToBottom();
-			},
-			onToolCallArgsDelta(toolCallId, argumentsDelta) {
-				updateInFlightToolCallArgs(toolCallId, argumentsDelta);
-			},
-			onToolCallResult(toolCallId, result, isError) {
-				updateInFlightToolCallResult(toolCallId, result, isError);
-			},
-			onCanvasVersion(c) {
-				// A create_canvas / update_canvas edit landed — swap the pane to
-				// the new server-rendered state and flash the change.
-				canvas.apply(c);
-			},
-			onToolPendingApproval(toolCallId, toolName, args) {
-				// Untrusted MCP tool — the relay halted before
-				// executing. Flip the in-flight segment to
-				// pending_approval so the Allow/Always/Reject buttons
-				// appear right where the tool call rendered, without
-				// waiting for the post-stream invalidate.
-				markInFlightToolCallPendingApproval(toolCallId, toolName, args);
-				if (isNearBottom) scrollToBottom();
-			},
-			onProgress(percent, status) {
-				inFlightQueued = null;
-				inFlightProgress = percent;
-				inFlightStatus = status;
-			},
-			onTitle(newTitle) {
-				// Task-model auto-title arrived ahead of `done`. Update
-				// the chat-page header immediately; the sidebar
-				// refreshes via invalidateAll after the stream closes.
-				title = newTitle;
-			},
-			onDone({ assistantMessage, sawToolCalls }) {
-				// Single-iteration turn: optimistically append the
-				// final assistant message and clear in-flight — snappy
-				// because `done`'s message is the only new server-side
-				// row.
-				//
-				// Multi-iteration turn (sawToolCalls): `done` carries
-				// only the FINAL iteration's row; the intermediate
-				// assistant + role:'tool' rows live in the DB and come
-				// back via invalidateAll once the stream closes. Keep
-				// the in-flight bubble visible until then so the user
-				// doesn't stare at a blank gap.
-				streamedMessageId = assistantMessage.id;
-				if (!sawToolCalls) {
-					messages = [...messages, assistantMessage];
-					inFlightOpen = false;
-					resetInFlightSegments();
-				}
-				inFlightProgress = null;
-				inFlightStatus = null;
-				ctx.onDone?.();
-			},
-			onError(message) {
-				errorMsg = message;
-				inFlightOpen = false;
-				inFlightProgress = null;
-				inFlightStatus = null;
-				resetInFlightSegments();
-			},
-		});
-	}
-
-	// SendOptions used to live inline here; extracted to
-	// `$lib/chat-send-body` so the wire body construction can be
-	// unit-tested in isolation. The chat-page uses the same shape
-	// for one additional client-only purpose: `editedMessageId`
-	// also drives the optimistic-insert trim below (slicing the old
-	// branch's continuation out of the visible list so the new
-	// in-flight bubble doesn't briefly stream beneath stale tail
-	// messages — symmetric counterpart to retry's `retryFromMessageId`
-	// slice). That client-side use is unchanged; only the wire-body
-	// construction moved.
-
-	/**
-	 * Shared front-half of sendStreaming (chat, image, and video all stream now).
-	 * Snapshots the conversation id for the abandon-on-conversation-switch
-	 * guards, installs a fresh AbortController as the active one (so Stop / a
-	 * newer turn can abort this one), and builds the wire body once.
-	 */
-	function startTurn(text: string, attachedMediaIds: string[], options: SendOptions) {
-		const turnConvId = convId;
-		const isRetry = !!options.retryFromMessageId;
-		const abort = new AbortController();
-		activeAbort = abort;
-		// Wire body construction lives in `buildSendRequestBody` — see
-		// that module for the three modes (retry, edit, plain send) and
-		// why the field-spread shape matters.
-		const requestBody = buildSendRequestBody({
-			text,
-			attachedMediaIds,
-			modelId,
-			modelKind,
-			options,
-		});
-		return { turnConvId, isRetry, abort, requestBody };
-	}
-
-	/**
-	 * Shared catch-side reconciliation for both send paths.
-	 *
-	 * AbortError from clicking Stop is expected — don't surface as a
-	 * user-facing error. The server-side recorder will have committed
-	 * whatever partial text it had; invalidateAll picks that up.
-	 *
-	 * wasHiddenDuringFetch / wasOfflineDuringFetch are the "client
-	 * connection died, server still has the generation" cases: iOS
-	 * suspension and network handoff (wifi↔cellular, dead zone,
-	 * airplane-mode toggle) respectively. Either way the fetch error
-	 * is a connectivity artifact, not a real server-side failure, so
-	 * we re-sync against the conversation instead of surfacing a
-	 * misleading toast. The actual generation is whatever the server
-	 * made of it — completed, still running, or genuinely errored on
-	 * its end — and the invalidate picks up whichever.
-	 *
-	 * All of this is render state for `turnConvId`'s thread — skip it
-	 * entirely if the user has since navigated away (the abandon-on-
-	 * navigation $effect already cleaned up).
-	 */
-	function handleSendError(e: unknown, turnConvId: string): void {
-		if (convId !== turnConvId) return;
-		if (isAbortError(e) || wasHiddenDuringFetch || wasOfflineDuringFetch) {
-			void invalidateAll();
-		} else {
-			errorMsg = e instanceof Error ? e.message : String(e);
-		}
-		inFlightOpen = false;
-	}
-
-	async function sendStreaming(
-		text: string,
-		attachedMediaIds: string[] = [],
-		options: SendOptions = {},
-	) {
-		// The conversation this turn belongs to. The chat-page component
-		// is reused across conversation navigations, so by the time an
-		// await below resolves the user may be looking at a different
-		// conversation — every post-await mutation of shared render state
-		// is guarded against `convId` having moved on.
-		const turnConvId = convId;
-		// First exchange ⇒ the server runs the auto-title task once the
-		// response lands; drives the sidebar's title spinner below.
-		const isFirstExchange = messages.length === 0;
-		busy = true;
-		errorMsg = null;
-		wasHiddenDuringFetch = false;
-		wasOfflineDuringFetch = false;
-		resetInFlightSegments();
-		inFlightProgress = null;
-		inFlightStatus = null;
-
-		// For send / edit: render an optimistic user bubble. For retry:
-		// the user message already exists, so skip — but DO trim the
-		// retry target (and any descendants on the active branch) out of
-		// the visible list so the in-flight bubble visually takes the
-		// retried message's slot. Otherwise the user briefly sees the
-		// old response above the streaming new one ("assistant replied
-		// twice" effect) until invalidateAll runs after 'done'.
-		const isRetry = !!options.retryFromMessageId;
-		let optimisticId: string | null = null;
-		// Tracks whether ANY tool_call SSE event arrived during this turn.
-		// When true, we know the server's multi-iteration loop ran and the
-		// `done` event's single `assistantMessage` is just the LAST
-		// iteration's row — there are intermediate assistant + tool rows
-		// in the DB that `done` doesn't carry. Skip the optimistic append
-		// in that case and rely on invalidateAll to populate the full
-		// sequence in the right order. Without this, the user briefly sees
-		// only the final answer, then the intermediate "tool-call" bubble
-		// pops in above it once invalidate lands.
-		let sawToolCalls = false;
-		if (isRetry) {
-			// Trim the retry target AND everything in its multi-iteration
-			// tool chain — walk back from the target through preceding
-			// assistant/tool rows until the user message that started the
-			// turn. Server-side retry re-anchors at that user message
-			// (same logic, see api/conversations/[id]/messages/+server.ts).
-			// Without this walk-back the user sees stale iter-0 bubbles
-			// (assistant + tool) hanging above the in-flight regeneration.
-			const retryIdx = messages.findIndex((m) => m.id === options.retryFromMessageId);
-			if (retryIdx >= 0) {
-				let cutIdx = retryIdx;
-				while (cutIdx > 0 && messages[cutIdx - 1].role !== 'user') {
-					cutIdx--;
-				}
-				messages = messages.slice(0, cutIdx);
-			}
-		} else {
-			// Edit case: trim everything from the edited message onward so
-			// the new optimistic bubble visually replaces it. Without this
-			// the old branch's [B, C, D, E] would still be rendered above
-			// the in-flight bubble, making it look like a new message at
-			// the end of the conversation instead of a sibling replacing B.
-			if (options.editedMessageId) {
-				const editIdx = messages.findIndex((m) => m.id === options.editedMessageId);
-				if (editIdx >= 0) messages = messages.slice(0, editIdx);
-			}
-			const opt = buildOptimisticUserMessage(text, attachedMediaIds);
-			messages = [...messages, opt];
-			optimisticId = opt.id;
-		}
-		// Flip the in-flight bubble on BEFORE the tick+scroll so the
-		// "Thinking…/Generating…" row is in the DOM when we measure.
-		// Otherwise scrollToBottom lands with the optimistic user message
-		// at the viewport bottom and the in-flight bubble renders one row
-		// below it, off-screen — the user has to scroll manually to see
-		// that anything is happening.
-		inFlightOpen = true;
-		if (!isRetry) {
-			await tick();
-			scrollToBottom();
-		}
-
-		// Chat, image, and video all stream via SSE: chat for tokens, video for
-		// poll progress, image for the per-endpoint queue + start/done (so a busy
-		// endpoint surfaces a "Queued…" state + an honest timer, same as a
-		// fan-out branch). The image relay is just the video relay without
-		// progress events, so this consumer handles it unchanged.
-
-		// First message of a conversation ⇒ the server auto-titles it once
-		// the response lands. Flag the sidebar spinner now, at submit time,
-		// so the title slot reads as "a title is coming" instead of sitting
-		// on "Untitled" and then snapping to a title. `clearTitlePending`
-		// in the `finally` removes it once the title task has run.
-		if (isFirstExchange) markTitlePending(turnConvId);
-
-		const { abort, requestBody } = startTurn(text, attachedMediaIds, options);
-		try {
-			const res = await fetch(`/api/conversations/${convId}/messages?stream=1`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'text/event-stream',
-				},
-				body: JSON.stringify(requestBody),
-				signal: abort.signal,
-			});
-			if (!res.ok) {
-				throw new Error(await errorMessageFromResponse(res));
-			}
-			if (!res.body) throw new Error('Server returned no body');
-
-			const consumed = await runChatStream(res.body, {
-				turnConvId,
-				optimisticId,
-				onDone: () => {
-					// Release the composer now — `done` means the response
-					// is complete. The relay deliberately keeps the SSE
-					// stream open past this point so the background
-					// auto-title task can still deliver a `title` event
-					// (first exchange only); the for-await loop keeps
-					// reading for it. But the user must not be blocked
-					// from sending a follow-up while a cosmetic title
-					// generates, so `busy` releases here rather than in
-					// `finally` (which only runs once the stream
-					// actually closes).
-					busy = false;
-				},
-			});
-			sawToolCalls = consumed.sawToolCalls;
-			if (convId === turnConvId) {
-				// Await the reload so the in-flight bubble (still visible for
-				// multi-iteration tool turns — see the `done` handler) only
-				// clears once the canonical message rows are in `messages`.
-				// Without this, the user stares at a blank gap for as long
-				// as the load functions take (model-list fetch, etc.).
-				await invalidateAll();
-				if (sawToolCalls) {
-					inFlightOpen = false;
-					resetInFlightSegments();
-					inFlightProgress = null;
-					inFlightStatus = null;
-				}
-			}
-		} catch (e) {
-			handleSendError(e, turnConvId);
-		} finally {
-			// The stream has closed — the title task (if any) has delivered
-			// or timed out. Drop the sidebar spinner. Gated on isFirstExchange
-			// so a fast follow-up turn can't clear a spinner it didn't set.
-			if (isFirstExchange) clearTitlePending(turnConvId);
-			// Only the turn that still owns the controller clears it — a
-			// conversation switch (or a newer turn) may have replaced it.
-			// The in-flight transients live here (not in the 'done' / 'error'
-			// cases) so a stream that closes without either event — or a
-			// success/catch path that early-returned on a convId mismatch —
-			// still leaves the bubble closed.
-			if (activeAbort === abort) {
-				inFlightOpen = false;
-				resetInFlightSegments();
-				inFlightProgress = null;
-				inFlightStatus = null;
-				busy = false;
-				activeAbort = null;
-			}
-		}
-	}
-
 	async function stop() {
-		// A streaming fan-out has its own per-branch controllers; cancel them
-		// all (and the server-side generations) rather than the single-turn
-		// abort path below.
+		// A streaming fan-out has its own per-branch controllers; cancel them all
+		// (and the server-side generations). Otherwise the turn controller handles
+		// the single-turn / recovered-bubble cancel path.
 		if (fanout.streaming) {
 			await fanout.stop();
 			return;
 		}
-		const abort = activeAbort;
-		// A recovered bubble has no local fetch to abort, but the server
-		// generation is still registered — /cancel reaches it by
-		// conversation id all the same.
-		if (!abort && !recoveredInFlight) return;
-		// Tell the server to tear down upstream first (so the bridge stops
-		// generating instead of running to completion). Then abort the local
-		// fetch so we stop receiving the in-flight events.
-		try {
-			await fetch(`/api/conversations/${convId}/cancel`, { method: 'POST' });
-		} catch {
-			// Best-effort — even if the cancel POST fails, aborting locally
-			// still gives the user the "stopped" UX.
-		}
-		if (abort) {
-			abort.abort();
-		} else {
-			// Recovered case: nothing local to abort. Re-sync so the
-			// cancelled state lands; the recovery poll backstops this if
-			// the server hasn't finished tearing down yet.
-			void invalidateAll();
-		}
+		await turn.stop();
 	}
 
 	async function send() {
@@ -1958,7 +1340,7 @@
 			resetCompare();
 		}
 		splitAttachments = false;
-		await sendStreaming(text, attachedMediaIds, {
+		await turn.send(text, attachedMediaIds, {
 			...(editParent ? { parentMessageId: editParent } : {}),
 			...(activatedSkillNames.length ? { activatedSkillNames } : {}),
 		});
@@ -1996,7 +1378,7 @@
 	// changes — messages added or new tokens streaming in.
 	$effect(() => {
 		void messages.length;
-		void inFlightSegments;
+		void turn.inFlightSegments;
 		if (!untrack(() => isNearBottom)) return;
 		void tick().then(() => scrollToBottom());
 	});
@@ -2010,7 +1392,7 @@
 	// JSON shape — safe to delete a release or two from now.
 	let bootstrapped = $state(false);
 	$effect(() => {
-		if (bootstrapped || typeof window === 'undefined' || busy) return;
+		if (bootstrapped || typeof window === 'undefined' || turn.busy) return;
 		const key = pendingFirstMessageKey(convId);
 		const pending = window.sessionStorage.getItem(key);
 		if (pending) {
@@ -2053,7 +1435,7 @@
 			if (pendingBranches.length >= 2) {
 				void fanout.send(pendingText, pendingMediaIds, pendingBranches, pendingBase);
 			} else
-				void sendStreaming(
+				void turn.send(
 					pendingText,
 					pendingMediaIds,
 					pendingActivatedSkillNames.length
@@ -2220,7 +1602,7 @@
 		const editedId = editingMessageId;
 		if (!editedId) return;
 		const attachedMediaIds = editAttachments.readyMediaIds();
-		// Snapshot then reset state — sendStreaming does its own UI work
+		// Snapshot then reset state — turn.send does its own UI work
 		// (in-flight bubble, optimistic placeholder swap on 'start') that
 		// we don't want to compete with the dismissed editor.
 		editingMessageId = null;
@@ -2233,18 +1615,18 @@
 		// message), which the older parent-resolved-on-the-client
 		// approach silently dropped on the wire and caused those root
 		// edits to append-instead-of-branch.
-		await sendStreaming(text, attachedMediaIds, { editedMessageId: editedId });
+		await turn.send(text, attachedMediaIds, { editedMessageId: editedId });
 	}
 
 	/**
 	 * Retry an assistant turn — server creates a new assistant sibling
 	 * under the same parent user message and re-dispatches. Reuses the
 	 * normal streaming pipeline; the retry-specific bits (skip optimistic,
-	 * forward `regenerateFromMessageId`) are handled in sendStreaming.
+	 * forward `regenerateFromMessageId`) are handled in turn.send.
 	 */
 	async function retryAssistant(m: ChatMessage) {
 		if (generating) return;
-		await sendStreaming('', [], { retryFromMessageId: m.id });
+		await turn.send('', [], { retryFromMessageId: m.id });
 	}
 
 	/** Switch the active branch to a sibling of the given message. Used by
@@ -2360,7 +1742,7 @@
 						>
 							<CompactionSummary
 								message={m}
-								canUndo={m.id === activeLeafSummaryId && !busy && !compacting}
+								canUndo={m.id === activeLeafSummaryId && !turn.busy && !compacting}
 								onUndo={undoCompaction}
 							/>
 						</div>
@@ -2398,7 +1780,7 @@
 				-->
 						<div
 							id="msg-{m.id}"
-							in:messageIntro={{ streamed: m.id === streamedMessageId }}
+							in:messageIntro={{ streamed: m.id === turn.streamedMessageId }}
 							class={[
 								'group rounded-lg transition-colors duration-1000',
 								mergeWithPrev && 'mt-0!',
@@ -2433,7 +1815,7 @@
 									onImageClick={openImageInLightbox}
 									{openingLightboxFor}
 									{approvalDecisions}
-									approvalBusy={approvalSubmitting}
+									approvalBusy={turn.approvalSubmitting}
 									{onApprovalSelect}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
@@ -2471,20 +1853,20 @@
 						in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
 					>
 						<InFlightBubble
-							blocks={inFlightBlocks}
+							blocks={turn.inFlightBlocks}
 							{assistantLabel}
 							label={inFlightLabel}
-							status={inFlightStatus}
-							progress={inFlightProgress}
-							queued={inFlightQueued}
+							status={turn.inFlightStatus}
+							progress={turn.inFlightProgress}
+							queued={turn.inFlightQueued}
 							{elapsedSeconds}
 							onImageClick={openImageInLightbox}
 							{openingLightboxFor}
 							{approvalDecisions}
-							approvalBusy={approvalSubmitting}
+							approvalBusy={turn.approvalSubmitting}
 							{onApprovalSelect}
 							mergeWithPrev={fuseWithPrevAssistant}
-							mcpUnavailable={inFlightMcpUnavailable}
+							mcpUnavailable={turn.inFlightMcpUnavailable}
 							onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
 						/>
 					</div>
@@ -2586,8 +1968,8 @@
 						{hasValidModel}
 						{generating}
 						offline={isOffline}
-						canStop={((busy || approvalSubmitting) && activeAbort != null) ||
-							recoveredInFlight ||
+						canStop={((turn.busy || turn.approvalSubmitting) && turn.activeAbort != null) ||
+							turn.recoveredInFlight ||
 							fanout.streaming}
 						enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 						bind:compareSelections
