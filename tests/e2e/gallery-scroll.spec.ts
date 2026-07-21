@@ -1,104 +1,134 @@
-import { test, expect } from '@playwright/test';
-import { resetData, seedMedia } from './helpers';
+import { test, expect, type Page } from '@playwright/test';
+import { resetData, seedMedia, seedMediaInBuckets } from './helpers';
 
 /**
- * Gallery infinite-scroll. The grid SSRs the first page (60 rows) and then
- * auto-loads each subsequent page as an IntersectionObserver sentinel nears
- * the bottom of the scroll viewport — there is no longer a manual "Load
- * more" button. These specs seed more rows than fit on one page (so several
- * loads must chain) and assert the grid grows on scroll alone.
+ * Gallery grid virtualization (layout-driven / demand-paged). The server computes
+ * the stacked layout up front (per-day unit counts); the client reserves exact
+ * scroll height from those counts immediately, then streams thin unit descriptors
+ * for only the ranges near the viewport — rendering placeholder tiles until they
+ * land. So, unlike the old append-pagination:
+ *   - the full unit total is known from first paint (data-loaded-count),
+ *   - the scroll height is reserved up front and does NOT grow as you scroll,
+ *   - the rendered DOM stays bounded no matter how much has loaded.
  *
- * Clean slate + fresh seed per test for the usual one-DB-across-projects
- * reason (see helpers.resetData): a sibling test's media would skew the
- * deterministic tile counts here.
+ * seedMedia rows have distinct prompts and no conversation, so each is its own
+ * solo unit → `unit count == media count`.
  *
- * SEED_COUNT = 150 spans exactly three pages (60 + 60 + 30); the final page
- * is short, so the server returns a null nextCursor and the sentinel
- * unmounts — letting us assert the grid settles at exactly 150 and grows no
- * further.
+ * Clean slate + fresh seed per test (one shared DB across projects — see
+ * helpers.resetData).
  */
 
-const PAGE_SIZE = 60;
 const SEED_COUNT = 150;
 
-// Every gallery tile is an <img> pointing at the per-id thumbnail route.
-// Counting these DOM nodes is load-independent: the seeded rows have no
-// bytes on disk, so the thumbnails 404 — but the <img> element still exists,
-// which is all the count needs.
-const TILE_SELECTOR = 'img[src*="/api/media/"]';
+// The scroll container carries the TOTAL unit count (known up front from the
+// layout), independent of how many unit descriptors have actually streamed in.
+const LOADED = '[data-loaded-count]';
+// Every rendered cell (real tile or not-yet-loaded placeholder).
+const TILE = '[data-tile]';
+// A real, loaded image tile — placeholders have no <img>. Distinguishes
+// "reserved but unloaded" from "streamed in".
+const REAL = 'img[src*="/api/media/"]';
+
+async function scrollHeight(page: Page): Promise<number> {
+	return page.evaluate(
+		(sel) => document.querySelector<HTMLElement>(sel)?.scrollHeight ?? 0,
+		LOADED,
+	);
+}
+async function scrollToBottom(page: Page): Promise<void> {
+	await page.evaluate((sel) => {
+		const el = document.querySelector<HTMLElement>(sel);
+		if (el) el.scrollTop = el.scrollHeight;
+	}, LOADED);
+}
 
 test.beforeEach(() => {
 	resetData();
 	seedMedia(SEED_COUNT);
 });
 
-test.describe('gallery: infinite scroll', () => {
-	test('SSRs the first page and has no "Load more" button', async ({ page }) => {
+test.describe('gallery: layout-driven virtualization', () => {
+	test('knows the full unit total from first paint (no "Load more")', async ({ page }) => {
 		await page.goto('/gallery');
 		await expect(page.getByRole('heading', { name: 'Gallery' })).toBeVisible();
 
-		// Exactly one page rendered up front…
-		await expect(page.locator(TILE_SELECTOR)).toHaveCount(PAGE_SIZE);
-		// …and the old manual control is gone for good.
+		// The whole count is reserved immediately — not a first page of 60.
+		await expect(page.locator(LOADED)).toHaveAttribute('data-loaded-count', String(SEED_COUNT));
 		await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0);
 	});
 
-	test('auto-loads further pages as you scroll to the bottom', async ({ page }) => {
-		await page.goto('/gallery');
-		const tiles = page.locator(TILE_SELECTOR);
-		await expect(tiles).toHaveCount(PAGE_SIZE);
-
-		// Scrolling the last tile into view drags the sentinel into its 400px
-		// prefetch zone, which fires the auto-load. Re-scrolling on each poll
-		// chains through every page: as new tiles append, `.last()` is a new,
-		// lower element, so the next scroll pushes the sentinel down again.
-		// We assert it climbs PAST a single extra page rather than to an exact
-		// number first, to prove the chaining works at all before pinning the
-		// final total.
-		await expect
-			.poll(
-				async () => {
-					await tiles.last().scrollIntoViewIfNeeded();
-					return tiles.count();
-				},
-				{ timeout: 15_000 },
-			)
-			.toBeGreaterThan(PAGE_SIZE);
-	});
-
-	test('settles at the full set and stops loading on the last page', async ({ page }) => {
-		await page.goto('/gallery');
-		const tiles = page.locator(TILE_SELECTOR);
-		await expect(tiles).toHaveCount(PAGE_SIZE);
-
-		// Drive it all the way to the end.
-		await expect
-			.poll(
-				async () => {
-					await tiles.last().scrollIntoViewIfNeeded();
-					return tiles.count();
-				},
-				{ timeout: 20_000 },
-			)
-			.toBe(SEED_COUNT);
-
-		// On the last (short) page the server returns nextCursor=null, so the
-		// sentinel unmounts and no further fetch can fire. One more scroll +
-		// settle must leave the count pinned at the full set — a guard against
-		// a regression that re-requested the final page or looped past the end.
-		await tiles.last().scrollIntoViewIfNeeded();
-		await page.waitForTimeout(500);
-		await expect(tiles).toHaveCount(SEED_COUNT);
-	});
-
-	test('a failed delete shows its own error and does NOT block infinite scroll', async ({
+	test('reserves scroll height up front — the scrollbar does not grow as you scroll', async ({
 		page,
 	}) => {
-		// Force every media DELETE to fail server-side. The glob only matches
-		// the single-segment delete route (`/api/media/<id>`); the paginating
-		// GET (`/api/media?cursor=…`) and the thumbnail route
-		// (`/api/media/<id>/thumbnail`) have a different shape and pass through,
-		// so scrolling still hits the real server.
+		await page.goto('/gallery');
+		await expect(page.locator(REAL).first()).toBeVisible();
+		// Let mount reload (real tz) + geometry measurement settle so the full
+		// height is reserved.
+		await page.waitForTimeout(700);
+
+		const top = await scrollHeight(page);
+		expect(top).toBeGreaterThan(1000); // many rows reserved, not just a page
+
+		await scrollToBottom(page);
+		await page.waitForTimeout(400);
+		const bottom = await scrollHeight(page);
+
+		// The key property vs. the old append-pagination: height is reserved from
+		// the layout, so it stays put (within a row's slack) instead of jumping as
+		// pages load.
+		expect(Math.abs(bottom - top)).toBeLessThan(300);
+	});
+
+	test('keeps the rendered tile count bounded while windowing the full set', async ({ page }) => {
+		await page.goto('/gallery');
+		await expect(page.locator(REAL).first()).toBeVisible();
+		await page.waitForTimeout(700);
+
+		// 150 units reserved, but only the viewport window is in the DOM.
+		const rendered = await page.locator(TILE).count();
+		expect(rendered).toBeGreaterThan(0);
+		expect(rendered).toBeLessThan(SEED_COUNT);
+	});
+
+	test('demand-loads unit ranges as you scroll (bottom tiles materialize)', async ({ page }) => {
+		await page.goto('/gallery');
+		await expect(page.locator(REAL).first()).toBeVisible();
+		await page.waitForTimeout(700);
+
+		// Scroll to the bottom; the last rendered cell is one of the newest-oldest
+		// units, initially outside the SSR-seeded first page. It must resolve from a
+		// placeholder to a real image via demand-load.
+		await scrollToBottom(page);
+		await expect(page.locator(TILE).last().locator('img')).toBeVisible({ timeout: 10_000 });
+		// Still bounded after loading the tail.
+		expect(await page.locator(TILE).count()).toBeLessThan(SEED_COUNT);
+	});
+
+	test('tiles stay rendered through scrolling multiple sections (no blank-out)', async ({
+		page,
+	}) => {
+		// Multi-section seed: several months, each more than one demand page.
+		resetData();
+		seedMediaInBuckets([
+			{ createdAt: Date.UTC(2024, 4, 15, 12), count: 130 },
+			{ createdAt: Date.UTC(2024, 3, 15, 12), count: 130 },
+			{ createdAt: Date.UTC(2024, 2, 15, 12), count: 130 },
+		]);
+		await page.goto('/gallery');
+		await expect(page.locator(REAL).first()).toBeVisible();
+
+		const tiles = page.locator(TILE);
+		for (let step = 0; step < 12; step++) {
+			await page.evaluate((sel) => {
+				const el = document.querySelector<HTMLElement>(sel);
+				if (el) el.scrollTop = Math.min(el.scrollTop + el.clientHeight * 0.9, el.scrollHeight);
+			}, LOADED);
+			await page.waitForTimeout(180);
+			expect(await tiles.count(), `grid blanked at step ${step}`).toBeGreaterThan(0);
+		}
+	});
+
+	test('a failed delete surfaces its own error and leaves the item in place', async ({ page }) => {
 		await page.route('**/api/media/*', async (route) => {
 			if (route.request().method() === 'DELETE') {
 				await route.fulfill({ status: 500, contentType: 'text/plain', body: 'boom' });
@@ -108,34 +138,18 @@ test.describe('gallery: infinite scroll', () => {
 		});
 
 		await page.goto('/gallery');
-		const tiles = page.locator(TILE_SELECTOR);
-		await expect(tiles).toHaveCount(PAGE_SIZE);
+		await expect(page.locator(REAL).first()).toBeVisible();
+		await expect(page.locator(LOADED)).toHaveAttribute('data-loaded-count', String(SEED_COUNT));
 
-		// Delete the first tile and confirm — the request 500s.
+		await page.locator(TILE).first().hover();
 		await page.getByRole('button', { name: 'Delete this media' }).first().click();
 		await page
 			.getByRole('alertdialog')
 			.getByRole('button', { name: 'Delete', exact: true })
 			.click();
 
-		// The delete failure surfaces its own banner, carries NO Retry button
-		// (Retry belongs to pagination only), and leaves the tile in place
-		// (optimistic removal happens only on success).
 		await expect(page.getByText('Server returned 500')).toBeVisible();
-		await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
-		await expect(tiles).toHaveCount(PAGE_SIZE);
-
-		// The actual regression guard for reviewer issue #1: a delete error now
-		// lives in a channel separate from pagination, so scrolling to the
-		// bottom must still auto-load the next page.
-		await expect
-			.poll(
-				async () => {
-					await tiles.last().scrollIntoViewIfNeeded();
-					return tiles.count();
-				},
-				{ timeout: 15_000 },
-			)
-			.toBeGreaterThan(PAGE_SIZE);
+		// Delete failed → no reload happened → the full set is still reserved.
+		await expect(page.locator(LOADED)).toHaveAttribute('data-loaded-count', String(SEED_COUNT));
 	});
 });

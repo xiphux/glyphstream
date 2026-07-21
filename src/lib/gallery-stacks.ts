@@ -1,6 +1,21 @@
 import type { MediaListItem } from '$lib/server/db/queries/media';
 
 /**
+ * The minimal media shape the stacking pass needs. `MediaListItem` satisfies it,
+ * so the client groups full items — but the server can run the SAME pass over a
+ * lightweight projection (these columns only) to compute the gallery's unit
+ * layout without loading whole rows. One implementation, no client/server drift.
+ */
+export interface StackableMedia {
+	id: string;
+	createdAt: number;
+	conversationId: string | null;
+	conversationTitle: string | null;
+	originalPrompt: string | null;
+	promptFull: string | null;
+}
+
+/**
  * Gallery stacking groups related generated media so a multi-model fan-out or
  * a whole conversation's worth of revisions collapses into one card instead of
  * flooding the flat grid.
@@ -39,7 +54,7 @@ import type { MediaListItem } from '$lib/server/db/queries/media';
  *  an old prompt "much later" stays a separate stack. */
 export const ORPHAN_GAP_MS = 60 * 60 * 1000; // 1 hour
 
-export interface GalleryGroup {
+export interface GalleryGroup<T extends StackableMedia = MediaListItem> {
 	/** Stable identity for drill-in / keyed rendering. Conversation groups use
 	 *  the conversation id (one bucket per conversation); prompt/orphan runs use
 	 *  `p:<leader item id>`. Unique across groups either way. */
@@ -49,10 +64,10 @@ export interface GalleryGroup {
 	/** Conversation title for `conversation` groups; null otherwise. */
 	title: string | null;
 	/** Members, newest-first (same order as the input stream). */
-	items: MediaListItem[];
+	items: T[];
 }
 
-type Run = GalleryGroup & { kind: 'conversation' | 'prompt' };
+type Run<T extends StackableMedia> = GalleryGroup<T> & { kind: 'conversation' | 'prompt' };
 
 /**
  * The `key`/identity of a prompt (orphan) run, anchored to its leader (newest)
@@ -68,13 +83,13 @@ export function promptRunKey(leaderId: string): string {
  *  branches — which share one `originalPrompt` but each carry a model-specific
  *  enhanced `promptFull` — in a single stack, while non-enhanced rows
  *  (originalPrompt = null) still group on their `promptFull`. */
-function groupingPrompt(item: MediaListItem): string | null {
+function groupingPrompt(item: StackableMedia): string | null {
 	return item.originalPrompt ?? item.promptFull;
 }
 
 /** Can `item` extend the open orphan (prompt) run? Identical non-empty grouping
  *  prompt, and the previous (newer) member within the time-gap window. */
-function canJoinPromptRun(run: Run, item: MediaListItem): boolean {
+function canJoinPromptRun<T extends StackableMedia>(run: Run<T>, item: T): boolean {
 	const prompt = groupingPrompt(item);
 	const leader = run.items[0];
 	if (!prompt || !leader || groupingPrompt(leader) !== prompt) return false;
@@ -86,15 +101,17 @@ function canJoinPromptRun(run: Run, item: MediaListItem): boolean {
  * Collapse a newest-first gallery item stream into stacks + solos. Pure; safe
  * to call on the accumulated `items` array on every change.
  */
-export function groupGalleryItems(items: MediaListItem[]): GalleryGroup[] {
-	const groups: Run[] = [];
+export function groupGalleryItems<T extends StackableMedia = MediaListItem>(
+	items: T[],
+): GalleryGroup<T>[] {
+	const groups: Run<T>[] = [];
 	// Conversation buckets are global (one per id), so they're addressed by a
 	// map rather than only the tail of `groups`.
-	const convGroups = new Map<string, Run>();
+	const convGroups = new Map<string, Run<T>>();
 	// The orphan run the next orphan item could extend — only the one whose
 	// last member was the immediately-preceding stream item. Any conversation
 	// item resets it, breaking adjacency.
-	let openOrphanRun: Run | null = null;
+	let openOrphanRun: Run<T> | null = null;
 
 	for (const item of items) {
 		if (item.conversationId != null) {
@@ -102,7 +119,7 @@ export function groupGalleryItems(items: MediaListItem[]): GalleryGroup[] {
 			if (existing) {
 				existing.items.push(item);
 			} else {
-				const run: Run = {
+				const run: Run<T> = {
 					key: item.conversationId,
 					kind: 'conversation',
 					conversationId: item.conversationId,
@@ -131,5 +148,5 @@ export function groupGalleryItems(items: MediaListItem[]): GalleryGroup[] {
 	}
 	// A group of one isn't a stack — demote to a solo tile. Keys stay unique:
 	// conversation buckets are one-per-id; prompt runs key off their leader id.
-	return groups.map((g): GalleryGroup => (g.items.length === 1 ? { ...g, kind: 'solo' } : g));
+	return groups.map((g): GalleryGroup<T> => (g.items.length === 1 ? { ...g, kind: 'solo' } : g));
 }

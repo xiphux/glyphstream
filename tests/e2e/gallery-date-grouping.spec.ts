@@ -20,8 +20,6 @@ const MAR_2024_EARLIER = Date.UTC(2024, 2, 10, 12); // March 10 2024
 const FEB_2024 = Date.UTC(2024, 1, 15, 12); // February 2024
 const DEC_2023 = Date.UTC(2023, 11, 15, 12); // December 2023
 
-const TILE = 'img[src*="/api/media/"]';
-
 test.describe('gallery: date grouping + timeline rail', () => {
 	test('renders month headers and a per-month rail across months', async ({ page }) => {
 		resetData();
@@ -63,10 +61,10 @@ test.describe('gallery: date grouping + timeline rail', () => {
 		await expect(page.getByRole('heading', { name: /March 10, 2024/ })).toBeVisible();
 	});
 
-	test('quick-jump seeks to a month that is not yet loaded', async ({ page }) => {
+	test('quick-jump scrolls to an off-screen month and demand-loads it', async ({ page }) => {
 		resetData();
-		// 70 + 70 fill past the first SSR page (60), so the 5 December rows are not
-		// loaded initially — reaching them requires the rail to seek, not scroll.
+		// 70 + 70 push December far down the reserved height — off-screen at the top,
+		// reachable via the rail (a pure scroll now that the whole layout is known).
 		seedMediaInBuckets([
 			{ createdAt: MAR_2024, count: 70 },
 			{ createdAt: FEB_2024, count: 70 },
@@ -74,17 +72,17 @@ test.describe('gallery: date grouping + timeline rail', () => {
 		]);
 		await page.goto('/gallery');
 
-		await expect(page.locator(TILE)).toHaveCount(60); // first page = newest month
-		await expect(page.getByRole('heading', { name: 'December 2023' })).toHaveCount(0);
+		// The full unit total (145) is known up front — every month's height is
+		// reserved, and its header is mounted (though December is scrolled off).
+		await expect(page.locator('[data-loaded-count]')).toHaveAttribute('data-loaded-count', '145');
+		await expect(page.getByRole('heading', { name: 'December 2023' })).not.toBeInViewport();
 
-		// Jump to the off-screen month → the feed re-anchors there (O(1) seek).
+		// Jump to December → the rail scrolls to it and the range demand-loads.
 		await page.getByRole('button', { name: 'Jump to December 2023' }).click();
-		await expect(page.getByRole('heading', { name: 'December 2023' })).toBeVisible();
-		// Re-anchored: the newest month is no longer in the feed.
-		await expect(page.getByRole('heading', { name: 'March 2024' })).toHaveCount(0);
+		await expect(page.getByRole('heading', { name: 'December 2023' })).toBeInViewport();
 
 		// The newest tick returns to the top of history.
 		await page.getByRole('button', { name: 'Jump to March 2024' }).click();
-		await expect(page.getByRole('heading', { name: 'March 2024' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'March 2024' })).toBeInViewport();
 	});
 });

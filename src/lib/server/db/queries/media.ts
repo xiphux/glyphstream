@@ -8,6 +8,7 @@ import { resolveRelevanceConfig } from '../../retrieval/embeddings-config';
 import { embedQuery } from '../../retrieval/embed-rank';
 import { cosineRank, decodeVector } from '../../retrieval/vector';
 import { fuseRankings } from '../../retrieval/fusion';
+import { groupGalleryItems, type StackableMedia } from '../../../gallery-stacks';
 
 /** Union of valid `media.kind` values. 'file' covers anything that
  *  isn't natively image/video (xlsx, csv, pdf, json, txt, ...) — used
@@ -781,6 +782,239 @@ export function listMediaMonthPeriodsForUser(
 		.groupBy(monthExpr)
 		.orderBy(sql`${monthExpr} desc`)
 		.all();
+}
+
+/**
+ * A single top-level gallery unit — a stack (conversation bucket or same-prompt
+ * run) or a solo tile — as the client's virtualized grid renders it. Thin by
+ * design: the demand-paged grid streams these in for the visible range, so a
+ * unit carries only what a tile / stack-card needs (ids for thumbnails, the
+ * newest few members for the collage, the leader's caption), never full prompt
+ * bodies.
+ */
+export interface GalleryUnit {
+	/** Group identity — the conversation id, or `p:<leaderId>` for a prompt run. */
+	key: string;
+	/** Stack flavor; 'solo' renders a single tile. */
+	groupKind: 'conversation' | 'prompt' | 'solo';
+	/** Newest member — the tile shown for a solo, the card anchor for a stack. */
+	leaderId: string;
+	leaderKind: MediaKind;
+	/** Leader's createdAt — the unit's position in the newest-first stream. */
+	createdAt: number;
+	/** Local-time day bucket (`YYYY-MM-DD`) of the leader, computed with the
+	 *  caller's tz offset so it matches the layout counts exactly. */
+	dayKey: string;
+	/** Total members (drives the "N items" / "+N" affordances). */
+	memberCount: number;
+	/** Newest ≤4 members for the stack-card collage (solo: just the leader). */
+	previews: { id: string; kind: MediaKind }[];
+	/** Leader's truncated prompt for the caption overlay. */
+	excerpt: string | null;
+	/** Human label for a stack card: the conversation title, or the run's shared
+	 *  original prompt. Empty for solos (they show `excerpt` instead). */
+	label: string;
+	conversationId: string | null;
+	title: string | null;
+}
+
+export interface GalleryLayout {
+	/** Per-day unit counts, newest-first. The client reserves exact scroll height
+	 *  from these (aggregating days into months for month granularity) before any
+	 *  unit data loads — the counts, not the loaded rows, size the grid. */
+	days: { key: string; units: number }[];
+	/** Total top-level units across the whole (filtered) library. */
+	totalUnits: number;
+}
+
+type GalleryUnitOpts = {
+	kind?: 'image' | 'video';
+	model?: string;
+	tzOffsetMinutes?: number;
+	/** Whether to collapse related media into stacks (the gallery's default).
+	 *  `false` = the "stacking off" firehose: every media row is its own solo
+	 *  unit, so the unit count equals the media count. */
+	stack?: boolean;
+};
+
+/** Lightweight row projection sufficient to run `groupGalleryItems` and build
+ *  the thin `GalleryUnit`s. */
+interface UnitSourceRow extends StackableMedia {
+	kind: MediaKind;
+	promptExcerpt: string | null;
+}
+
+/** Two-digit zero-pad for the local day key. */
+function pad2(n: number): string {
+	return n < 10 ? `0${n}` : String(n);
+}
+
+/** Local-time `YYYY-MM-DD` for an instant, shifting UTC by the viewer's offset
+ *  (same single-offset approach as the periods query; the DST-boundary caveat is
+ *  cosmetic and — because each unit carries this exact key and the client
+ *  sections by it — never desyncs a section's reserved height from the units
+ *  rendered into it). */
+function localDayKey(ms: number, tzOffsetMin: number): string {
+	const d = new Date(ms + tzOffsetMin * 60_000);
+	return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+/** Load the whole filtered gallery library as lightweight rows, newest-first —
+ *  the input to the server-side stacking pass. Mirrors listMediaForUser's
+ *  gallery filter (generated, non-deleted, image/video, kind/model), minus
+ *  pagination. */
+function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
+	const db = getDb();
+	const conditions = [
+		eq(media.userId, userId),
+		isNull(media.hardDeletedAt),
+		eq(media.origin, 'generated'),
+		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+	].filter(Boolean) as Parameters<typeof and>[number][];
+
+	const rows = db
+		.select({
+			id: media.id,
+			kind: media.kind,
+			createdAt: media.createdAt,
+			originalPrompt: media.originalPrompt,
+			promptFull: media.promptFull,
+			promptExcerpt: media.promptExcerpt,
+			conversationId: assignedConversationId,
+		})
+		.from(media)
+		.where(and(...conditions))
+		.orderBy(desc(media.createdAt), desc(media.id))
+		.all();
+
+	return attachConversationTitles(
+		userId,
+		rows.map((r) => ({ ...r, conversationTitle: null as string | null })),
+	);
+}
+
+/** One media row → a solo unit (the "stacking off" firehose path). */
+function unitFromRow(r: UnitSourceRow, tz: number): GalleryUnit {
+	return {
+		key: r.id,
+		groupKind: 'solo',
+		leaderId: r.id,
+		leaderKind: r.kind,
+		createdAt: r.createdAt,
+		dayKey: localDayKey(r.createdAt, tz),
+		memberCount: 1,
+		previews: [{ id: r.id, kind: r.kind }],
+		excerpt: r.promptExcerpt,
+		label: '',
+		conversationId: r.conversationId,
+		title: r.conversationTitle,
+	};
+}
+
+/** One stacking group → a thin unit (leader-anchored, newest few previews). */
+function unitFromGroup(
+	g: ReturnType<typeof groupGalleryItems<UnitSourceRow>>[number],
+	tz: number,
+): GalleryUnit {
+	const leader = g.items[0];
+	return {
+		key: g.key,
+		groupKind: g.kind,
+		leaderId: leader.id,
+		leaderKind: leader.kind,
+		createdAt: leader.createdAt,
+		dayKey: localDayKey(leader.createdAt, tz),
+		memberCount: g.items.length,
+		previews: g.items.slice(0, 4).map((m) => ({ id: m.id, kind: m.kind })),
+		excerpt: leader.promptExcerpt,
+		// Stack label: conversation title, or the run's shared ORIGINAL prompt
+		// (not the leader's enhanced excerpt, which describes only one image).
+		label:
+			g.kind === 'conversation'
+				? (g.title ?? 'Untitled chat')
+				: (leader.originalPrompt ?? leader.promptExcerpt ?? 'Untitled'),
+		conversationId: g.conversationId,
+		title: g.title,
+	};
+}
+
+/** Run the shared stacking pass over the whole library and shape each group into
+ *  a thin `GalleryUnit`, newest-first. This is the single source of truth the
+ *  client's grid renders — identical grouping to the client's own
+ *  `groupGalleryItems`, since it IS that function. With `stack: false` every row
+ *  is a solo unit instead (the firehose view). */
+function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit[] {
+	const tz = Number.isFinite(opts.tzOffsetMinutes) ? (opts.tzOffsetMinutes as number) : 0;
+	const rows = loadGalleryUnitSource(userId, opts);
+	if (opts.stack === false) return rows.map((r) => unitFromRow(r, tz));
+	return groupGalleryItems(rows).map((g) => unitFromGroup(g, tz));
+}
+
+/**
+ * Per-day unit counts for the whole filtered library, newest-first, plus the
+ * total. The client reserves exact scroll height from this before streaming any
+ * unit data.
+ */
+export function computeGalleryLayout(userId: string, opts: GalleryUnitOpts = {}): GalleryLayout {
+	const units = computeGalleryUnits(userId, opts);
+	// Units are newest-first with monotonically non-increasing dayKeys, so a Map
+	// keyed by day accumulates in newest-first order with each day contiguous.
+	const byDay = new Map<string, number>();
+	for (const u of units) byDay.set(u.dayKey, (byDay.get(u.dayKey) ?? 0) + 1);
+	return {
+		days: [...byDay.entries()].map(([key, count]) => ({ key, units: count })),
+		totalUnits: units.length,
+	};
+}
+
+export interface GalleryUnitsPage {
+	units: GalleryUnit[];
+	/** Total units across the library, so the client can bound its window. */
+	total: number;
+}
+
+/**
+ * A contiguous slice of the newest-first unit stream, for the grid's demand
+ * loader. Offset-paged (not cursor) because the client drives it by absolute
+ * unit index derived from the layout counts; the unit list only ever prepends
+ * at the top, and a mutation refetches the layout. Recomputes the full unit list
+ * per call — O(library), trivial at household scale; cache by (user, filter) if
+ * a library ever makes it hurt.
+ */
+export function listGalleryUnits(
+	userId: string,
+	opts: GalleryUnitOpts & { offset?: number; limit?: number } = {},
+): GalleryUnitsPage {
+	const all = computeGalleryUnits(userId, opts);
+	const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
+	const limit = Math.max(1, Math.min(Math.trunc(opts.limit ?? 120), 500));
+	return { units: all.slice(offset, offset + limit), total: all.length };
+}
+
+/**
+ * The complete member set of one gallery unit, newest-first — for drilling into
+ * a stack. A conversation key (a bare conversation id) delegates to the
+ * authoritative per-conversation read; a prompt-run key (`p:<leaderId>`)
+ * recomputes the stacking and materializes that run's members. A solo/unknown
+ * key returns `[]` (nothing to drill into).
+ */
+export function listGalleryUnitMembers(
+	userId: string,
+	unitKey: string,
+	opts: { kind?: 'image' | 'video'; model?: string } = {},
+): MediaListItem[] {
+	if (!unitKey.startsWith('p:')) {
+		// Conversation stack — the key IS the conversation id.
+		return listMediaForConversation(unitKey, userId, opts);
+	}
+	// Prompt (orphan) run: re-run the shared grouping and pull the matching run's
+	// members, then materialize them as full MediaListItems in run order.
+	const run = groupGalleryItems(loadGalleryUnitSource(userId, opts)).find((g) => g.key === unitKey);
+	if (!run) return [];
+	const orderedIds = run.items.map((m) => m.id);
+	const byId = new Map(getMediaListItemsByIds(userId, orderedIds).map((m) => [m.id, m]));
+	return orderedIds.map((id) => byId.get(id)).filter((m): m is MediaListItem => m != null);
 }
 
 /**

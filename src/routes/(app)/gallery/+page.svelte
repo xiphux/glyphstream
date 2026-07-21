@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Popover, Switch } from 'bits-ui';
@@ -7,18 +7,22 @@
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
-	import { groupIntoSections, nextMonthStartMs, type Granularity } from '$lib/gallery-date-buckets';
-	import { groupGalleryItems, promptRunKey, type GalleryGroup } from '$lib/gallery-stacks';
-	import { observeSentinel } from '$lib/observe-sentinel';
+	import { type Granularity } from '$lib/gallery-date-buckets';
+	import { buildLayoutSections, monthTicksFromLayout } from '$lib/gallery-layout';
+	import { GalleryFeed } from '$lib/gallery-feed.svelte';
+	import { computeSectionWindows, type WindowConstants } from '$lib/gallery-window';
 	import type {
+		GalleryLayout,
+		GalleryUnit,
+		GalleryUnitsPage,
 		MediaConversationRef,
 		MediaListItem,
-		MediaListResult,
 	} from '$lib/server/db/queries/media';
 
 	let { data } = $props<{
 		data: {
-			initial: MediaListResult;
+			mode: 'browse' | 'search';
+			searchItems?: MediaListItem[];
 			kind: 'image' | 'video' | null;
 			model: string | null;
 			modelFacets: { value: string; label: string; count: number }[];
@@ -26,185 +30,265 @@
 		};
 	}>();
 
-	// Search is a relevance-ranked mode: when active, the chronological chrome
-	// (date headers, timeline rail, stacking) is suspended and results come
-	// pre-ranked + cursorless from the server.
+	// Search is a relevance-ranked mode: date headers, timeline rail, and stacking
+	// are all suspended; results come pre-ranked + cursorless from the server as a
+	// flat MediaListItem list.
 	const searching = $derived(!!data.q);
 
-	// We seed local state from the SSR initial page, then mutate as the user
-	// paginates / filters / deletes. The $effect below resyncs whenever
-	// SvelteKit re-runs `load` (e.g. on filter switch via query-string nav).
-	// svelte-ignore state_referenced_locally
-	let items = $state<MediaListItem[]>([...data.initial.items]);
-	// svelte-ignore state_referenced_locally
-	let nextCursor = $state<string | null>(data.initial.nextCursor);
-	let loadingMore = $state(false);
-	// Two independent failure channels. `loadError` is pagination-only — it
-	// gates the auto-load $effect and the Retry button, so a failed page
-	// fetch stops the retry-loop without disabling anything else. `error` is
-	// for delete failures (single + bulk); keeping it separate means a failed
-	// delete shows its banner but does NOT wedge infinite scroll (which a
-	// single shared channel did — there's no "Load more" fallback anymore).
-	let loadError = $state<string | null>(null);
+	// Viewer's UTC offset in minutes; every layout/units fetch passes it so the
+	// day buckets match the local-time section headers. (SSR bucketed at 0 for the
+	// instant first paint; the mount reload below corrects it.)
+	const tzOffset = () => -new Date().getTimezoneOffset();
+
 	let error = $state<string | null>(null);
-	// Bumped every time SvelteKit re-runs `load` (i.e. a filter switch) AND on
-	// every timeline quick-jump (seekTo(), a purely client-side fetch). A
-	// loadMore() response that lands after a bump belongs to the previous
-	// filter/anchor; it's discarded rather than concatenated onto — and
-	// clobbering the cursor of — the freshly-loaded list.
-	let loadGeneration = 0;
-	let lightbox = $state<MediaListItem | null>(null);
 	let deletingId = $state<string | null>(null);
 
-	// --- Stacking ("albums") ------------------------------------------------
-	// Related media (same conversation, or an orphaned same-prompt multi-model
-	// batch) collapse into one stack so a few fan-out sends don't bury the
-	// grid. Default ON (product decision); the toggle is per-session, not
-	// persisted. Grouping is a pure pass over the already-loaded `items`, so it
-	// recomputes for free on paginate / delete — see $lib/gallery-stacks.
+	// --- Browse feed (layout-driven virtualization) -------------------------
+	// The server owns stacking + counts (see computeGalleryLayout / listGalleryUnits);
+	// the feed reserves exact height from the per-day unit counts and streams thin
+	// unit descriptors for the visible range. See $lib/gallery-feed.
 	let stacking = $state(true);
-	// Key of the stack the user has drilled into; null = top-level grid.
-	let openGroupKey = $state<string | null>(null);
-
-	// --- Date grouping ------------------------------------------------------
-	// Sticky time headers over the (already reverse-chron) feed. Granularity is
-	// per-session like `stacking`, not persisted. Bucketing is a pure local-time
-	// pass over the loaded units, recomputing for free on paginate/seek/delete.
 	let granularity = $state<Granularity>('month');
 
-	const groups = $derived(stacking ? groupGalleryItems(items) : []);
-	const openGroup = $derived(
-		openGroupKey ? (groups.find((g) => g.key === openGroupKey) ?? null) : null,
-	);
-	// Members of the open stack (newest-first). Null when not drilled in.
-	const drillItems = $derived(openGroup?.items ?? null);
-
-	// The set the lightbox carousels over: just the drilled stack when one is
-	// open, otherwise the whole loaded gallery.
-	const lightboxList = $derived(drillItems ?? items);
-
-	// Top-level render units bucketed into sticky date sections: stacks (when
-	// stacking) or flat items. Drill-in is never sectioned.
-	const stackedSections = $derived(
-		stacking ? groupIntoSections(groups, granularity, (g) => g.items[0]?.createdAt ?? 0) : [],
-	);
-	const flatSections = $derived(
-		stacking ? [] : groupIntoSections(items, granularity, (i) => i.createdAt),
-	);
-
-	// The last group can be a partially-loaded "trailing" run — its older
-	// members may still be on an unfetched page. Used to (a) mark its card as
-	// still filling and (b) keep loading when the user drills into it.
-	const trailingGroupKey = $derived(groups.length > 0 ? groups[groups.length - 1].key : null);
-
-	// Drop the drill-in if its group disappeared (all members deleted) or
-	// stacking was switched off — openGroup goes null and we pop back.
-	$effect(() => {
-		if (openGroupKey && !openGroup) openGroupKey = null;
-	});
-
-	// While drilled into the trailing (incomplete) prompt stack, keep paginating
-	// until it's fully assembled — otherwise a run split across the load boundary
-	// would show truncated. Re-runs as each loadMore settles; the drill view has
-	// no scroll sentinel of its own, so this is the only driver there. Limited to
-	// prompt/orphan stacks (`conversationId === null`); conversation stacks get
-	// their complete member set from the eager-load $effect below instead.
-	$effect(() => {
-		if (
-			openGroup &&
-			openGroup.conversationId === null &&
-			openGroup.key === trailingGroupKey &&
-			nextCursor &&
-			!loadingMore &&
-			!loadError
-		) {
-			loadMore();
-		}
-	});
-
-	// A prompt (orphan) stack is keyed by its leader (newest) member's id, so
-	// deleting that leader changes the key and would pop the user out of a
-	// drill-in mid-curation. Re-anchor to the newest surviving member (or close
-	// if the whole stack went). Conversation stacks key off conversationId and
-	// stay stable, so they're left alone. Call BEFORE mutating `items`.
-	function reanchorDrillOnDelete(dropped: Set<string>) {
-		const g = openGroup;
-		if (!g || g.conversationId !== null || !dropped.has(g.items[0].id)) return;
-		const survivor = g.items.find((m) => !dropped.has(m.id));
-		openGroupKey = survivor ? promptRunKey(survivor.id) : null;
+	async function fetchUnitsPage(offset: number, limit: number): Promise<GalleryUnitsPage> {
+		const p = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+		if (data.kind) p.set('kind', data.kind);
+		if (data.model) p.set('model', data.model);
+		if (!stacking) p.set('stack', 'false');
+		p.set('tzOffset', String(tzOffset()));
+		const res = await fetch(`/api/media/units?${p}`);
+		if (!res.ok) throw new Error(`Server returned ${res.status}`);
+		return res.json();
 	}
 
-	// Infinite-scroll plumbing. `scrollContainer` is the scrollable region used
-	// as the IntersectionObserver root; `sentinel` is a zero-content marker
-	// rendered just past the grid. `sentinelVisible` is the observer's output —
-	// an $effect below turns it into auto-pagination.
-	let scrollContainer = $state<HTMLElement | null>(null);
-	let sentinel = $state<HTMLElement | null>(null);
-	let sentinelVisible = $state(false);
+	const feed = new GalleryFeed({
+		fetchPage: fetchUnitsPage,
+		onError: (m) => (error = m),
+	});
+	// True until the first browse layout lands (browse isn't SSR'd — see the load
+	// function), so the grid shows a skeleton rather than a false "empty" state.
+	// svelte-ignore state_referenced_locally
+	let browseLoading = $state(data.mode === 'browse');
 
-	// The top-level grid and the drill-in grid share one scroll container, so
-	// `scrollTop` carries over between them unless we manage it: drilling in
-	// would start partway down the stack, and Back would land away from where
-	// the user left the gallery. On enter we reset to the stack's top; on Back
-	// we restore the gallery scroll we stashed when drilling in.
-	//
-	// The gallery scroll MUST be captured synchronously, before openGroupKey
-	// flips — by the time the effect below runs (post-DOM-swap) the container
-	// already holds the shorter drill-in grid and the browser has clamped
-	// scrollTop down to it, so a capture there records a too-small value. That
-	// clamping is why an earlier effect-only version restored a compressed
-	// position. `openStack()` is the sole entry point, so it owns the capture.
+	// Search results (flat, ranked). Only used in search mode.
+	// svelte-ignore state_referenced_locally
+	let searchItems = $state<MediaListItem[]>(
+		data.mode === 'search' ? [...(data.searchItems ?? [])] : [],
+	);
+
+	// Refetch the whole layout + first units page with the real tz / current
+	// stacking. Bumps the feed generation, so any in-flight page from the previous
+	// filter/tz is discarded rather than landing in the fresh cache.
+	async function reloadFeed(resetScroll = false) {
+		const p = new URLSearchParams();
+		if (data.kind) p.set('kind', data.kind);
+		if (data.model) p.set('model', data.model);
+		if (!stacking) p.set('stack', 'false');
+		p.set('tzOffset', String(tzOffset()));
+		const unitsParams = new URLSearchParams(p);
+		unitsParams.set('offset', '0');
+		unitsParams.set('limit', String(GalleryFeed.PAGE));
+		try {
+			const [lr, ur] = await Promise.all([
+				fetch(`/api/media/layout?${p}`),
+				fetch(`/api/media/units?${unitsParams}`),
+			]);
+			if (!lr.ok || !ur.ok) throw new Error('Failed to load gallery');
+			const layout = (await lr.json()) as GalleryLayout;
+			const unitsPage = (await ur.json()) as GalleryUnitsPage;
+			feed.seed(layout, unitsPage.units);
+			error = null;
+			// On a filter/stacking change, snap to the top as the new layout lands:
+			// the seeded first page always covers the top viewport, so the grid fills
+			// with real tiles instead of flashing placeholders (which a deep scroll
+			// position would show until its range demand-loaded). Matches the old
+			// filter-switch scroll reset. A delete keeps its place instead.
+			if (resetScroll && scrollContainer) {
+				scrollContainer.scrollTop = 0;
+				scrollTop = 0;
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load gallery';
+		} finally {
+			browseLoading = false;
+		}
+	}
+
+	// Keep search results in sync with SSR navigation (each keystroke re-runs load).
+	$effect(() => {
+		if (data.mode === 'search') searchItems = [...(data.searchItems ?? [])];
+	});
+
+	// Load / reload the browse layout+units client-side whenever the filters or
+	// stacking change (and once on mount). Fetched here — not SSR'd — so the day
+	// buckets use the viewer's real tz. Waits for the tiles before any test/user
+	// interaction, so there's no mid-interaction reseed.
+	$effect(() => {
+		if (searching) return;
+		// deps: filters + stacking
+		void data.kind;
+		void data.model;
+		void stacking;
+		// Skeleton only for a genuine first load (no layout yet); a filter/stacking
+		// change keeps the current grid until the new units land. untrack so reading
+		// the layout doesn't feed back into this effect.
+		if (untrack(() => feed.layout) === null) browseLoading = true;
+		reloadFeed(true);
+	});
+
+	// --- Filters ------------------------------------------------------------
+	const kindFilter = $derived(data.kind);
+
+	const modelOptions = $derived(
+		data.model != null && !data.modelFacets.some((f: { value: string }) => f.value === data.model)
+			? [...data.modelFacets, { value: data.model, label: data.model, count: 0 }]
+			: data.modelFacets,
+	);
+
+	function setKind(k: 'image' | 'video' | null) {
+		const url = new URL(page.url);
+		if (k) url.searchParams.set('kind', k);
+		else url.searchParams.delete('kind');
+		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	function setModel(m: string | null) {
+		const url = new URL(page.url);
+		if (m) url.searchParams.set('model', m);
+		else url.searchParams.delete('model');
+		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	// --- Prompt search box --------------------------------------------------
+	// svelte-ignore state_referenced_locally
+	let queryText = $state(data.q ?? '');
+	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
+	let searchOpen = $state(false);
+	let searchInput = $state<HTMLInputElement | null>(null);
+	const searchExpanded = $derived(searchOpen || !!data.q);
+
+	$effect(() => {
+		// Keep the box in sync with the URL after a back-nav away from search.
+		queryText = data.q ?? '';
+	});
+
+	function openSearch() {
+		searchOpen = true;
+		tick().then(() => searchInput?.focus());
+	}
+	function onSearchBlur() {
+		if (!queryText.trim() && !data.q) searchOpen = false;
+	}
+	function commitQuery(q: string) {
+		const url = new URL(page.url);
+		const trimmed = q.trim();
+		if (trimmed) url.searchParams.set('q', trimmed);
+		else url.searchParams.delete('q');
+		goto(url, { keepFocus: true, noScroll: true, replaceState: true });
+	}
+	function onQueryInput() {
+		if (queryDebounce) clearTimeout(queryDebounce);
+		queryDebounce = setTimeout(() => commitQuery(queryText), 250);
+	}
+	function clearQuery() {
+		if (queryDebounce) clearTimeout(queryDebounce);
+		queryText = '';
+		searchOpen = false;
+		commitQuery('');
+	}
+
+	const viewNonDefault = $derived(!stacking || granularity !== 'month');
+	const filterActive = $derived(kindFilter !== null || data.model != null);
+
+	// --- Sections (from the layout) -----------------------------------------
+	const sections = $derived(feed.layout ? buildLayoutSections(feed.layout.days, granularity) : []);
+	const sectionUnitCounts = $derived(sections.map((s) => s.unitCount));
+
+	// --- Drill-in -----------------------------------------------------------
+	// Opening a stack fetches its full member set (thin units hold only ≤4
+	// previews). Conversation stacks + prompt runs both resolve via
+	// /api/media/unit-members.
+	let drillUnit = $state<GalleryUnit | null>(null);
+	let drillItems = $state<MediaListItem[] | null>(null);
+	let drillLoading = $state(false);
+	let drillError = $state<string | null>(null);
 	let savedGalleryScroll = 0;
-	function openStack(key: string) {
+
+	async function openStack(u: GalleryUnit) {
+		// Capture the gallery scroll synchronously — the DOM swap to the shorter
+		// drill grid would otherwise clamp scrollTop before we could read it.
 		if (scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
-		openGroupKey = key;
+		drillUnit = u;
+		drillItems = null;
+		drillError = null;
+		drillLoading = true;
+		const p = new URLSearchParams({ key: u.key });
+		if (data.kind) p.set('kind', data.kind);
+		if (data.model) p.set('model', data.model);
+		try {
+			const res = await fetch(`/api/media/unit-members?${p}`);
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			const body = (await res.json()) as { items: MediaListItem[] };
+			if (drillUnit?.key === u.key) drillItems = body.items;
+		} catch (e) {
+			if (drillUnit?.key === u.key) {
+				drillError = e instanceof Error ? e.message : 'Failed to open stack';
+				drillItems = [];
+			}
+		} finally {
+			if (drillUnit?.key === u.key) drillLoading = false;
+		}
+		tick().then(() => {
+			if (scrollContainer) scrollContainer.scrollTop = 0;
+		});
 	}
 
-	// Apply the scrollTop change after the destination grid renders (a tick so
-	// it exists and is tall enough to accept the restored offset). The gallery
-	// is normally as tall or taller on Back, so the saved offset survives;
-	// deleting stack members from within the drill-in can shrink it, in which
-	// case the browser harmlessly clamps the restore to the new bottom. Either
-	// way no synchronous capture is needed on Back — only on enter (above).
-	let prevOpenKey: string | null = null;
-	$effect(() => {
-		const key = openGroupKey;
-		if (key === prevOpenKey) return;
-		const wasOpen = prevOpenKey !== null;
-		prevOpenKey = key;
-		if (!wasOpen && key !== null) {
-			// Entering a stack from the gallery: start at the stack's top.
-			tick().then(() => {
-				if (scrollContainer) scrollContainer.scrollTop = 0;
-			});
-		} else if (wasOpen && key === null) {
-			// Back to the gallery: restore the scroll position we left from.
-			tick().then(() => {
-				if (scrollContainer) scrollContainer.scrollTop = savedGalleryScroll;
-			});
-		}
-		// stack→stack (a re-anchor after deleting the leader) leaves scroll as-is.
-	});
+	function closeDrill() {
+		drillUnit = null;
+		drillItems = null;
+		drillError = null;
+		tick().then(() => {
+			if (scrollContainer) scrollContainer.scrollTop = savedGalleryScroll;
+		});
+	}
 
-	// Selection mode + selection set for bulk-delete. SvelteKit's reactivity
-	// on collections needs a fresh reference to fire, so toggle/clear rebuild
-	// the Set rather than mutating in place.
-	let selectMode = $state(false);
-	let selected = $state<Set<string>>(new Set());
-	let bulkDeleting = $state(false);
-	const selectedCount = $derived(selected.size);
-
-	// Conversation refs for the currently-open lightbox item.
-	// `null` means "we haven't fetched yet (loading)"; `[]` means "fetched,
-	// genuinely none" — distinguishing these matters because the empty case
-	// is the actual signal we want users to see ("you can clean up the
-	// orphan media without breaking any chats").
+	// --- Lightbox -----------------------------------------------------------
+	let lightbox = $state<MediaListItem | null>(null);
 	let lightboxConversations = $state<MediaConversationRef[] | null>(null);
 	let conversationsError = $state<string | null>(null);
 
-	// Refetch whenever a different lightbox item opens. Tracking by id
-	// (not the whole object) avoids duplicate fetches when the list
-	// re-renders and produces a new MediaListItem reference for the same row.
+	// Open the lightbox for a media id. Drill/search rows are already full
+	// MediaListItems (instant); a top-level grid tile carries only a thin unit,
+	// so its leader is fetched.
+	async function openLightboxById(id: string) {
+		const local =
+			drillItems?.find((m) => m.id === id) ??
+			(searching ? searchItems.find((m) => m.id === id) : undefined);
+		if (local) {
+			lightbox = local;
+			return;
+		}
+		try {
+			const res = await fetch(`/api/media/${id}`);
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			lightbox = (await res.json()) as MediaListItem;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to open media';
+		}
+	}
+
+	// The carousel spans the drilled stack, the search results, or — at the top
+	// level — the loaded units' leaders (Google-Photos style: one representative
+	// per stack, next swipe moves to the next stack/solo).
+	const lightboxSiblings = $derived(
+		drillItems
+			? drillItems.map((m) => ({ id: m.id, kind: m.kind }))
+			: searching
+				? searchItems.map((m) => ({ id: m.id, kind: m.kind }))
+				: feed.loadedLeaders(),
+	);
+
+	// Refetch the open lightbox item's conversation refs whenever it changes.
 	$effect(() => {
 		const id = lightbox?.id;
 		if (!id) {
@@ -212,19 +296,7 @@
 			conversationsError = null;
 			return;
 		}
-		// Deliberately do NOT blank `lightboxConversations` here on navigate.
-		// Resetting to null flashes the one-line "Loading…" placeholder
-		// between every swipe, and that collapse-then-expand resizes the
-		// flex-1 image area — a visible jerk after each carousel move. The
-		// stale-id guard below already discards a late response, so keeping
-		// the previous item's list visible during the ~one-fetch window is
-		// safe; it's replaced atomically when the new list lands. On the
-		// very first open the prior value is already null (cleared on close),
-		// so the loading state still shows then, where it belongs.
 		conversationsError = null;
-		// Capture id so a stale response from a previous open can't clobber
-		// the current state if the user opens lightbox A, closes, then opens
-		// B before A's request resolves.
 		const requested = id;
 		fetch(`/api/media/${id}/conversations`)
 			.then((r) => {
@@ -242,366 +314,38 @@
 			});
 	});
 
-	const kindFilter = $derived(data.kind);
+	// --- Selection + delete -------------------------------------------------
+	let selectMode = $state(false);
+	let selected = $state<Set<string>>(new Set());
+	let bulkDeleting = $state(false);
+	const selectedCount = $derived(selected.size);
 
-	// Options for the Model facet dropdown. If a model is selected but absent
-	// from the facet list (e.g. it produced no media of the current kind, so
-	// the distinct query dropped it) we still append it, so the active filter
-	// always has a visible option to switch away from rather than stranding.
-	const modelOptions = $derived(
-		data.model != null && !data.modelFacets.some((f: { value: string }) => f.value === data.model)
-			? [...data.modelFacets, { value: data.model, label: data.model, count: 0 }]
-			: data.modelFacets,
-	);
-
-	// Re-sync local state when SvelteKit re-runs `load` (e.g. filter switch via
-	// query-string nav); the server gives us the new initial page. Bumping
-	// loadGeneration supersedes any in-flight page fetch so its rows can't land
-	// on the new filter; clearing loadingMore/loadError gives the fresh list a
-	// clean slate (the in-flight fetch's finally won't touch them — it's gated
-	// on still being the current generation).
-	$effect(() => {
-		items = [...data.initial.items];
-		nextCursor = data.initial.nextCursor;
-		loadGeneration += 1;
-		loadingMore = false;
-		loadError = null;
-		error = null;
-		// The fresh page may be a different modality; any eager-loaded stack
-		// media is gone with the reset, so allow drill-ins to re-fetch.
-		eagerLoaded = new Set();
-		drillLoading = false;
-		drillError = null;
-		// Keep the search box in sync with the URL — otherwise a back-nav from a
-		// search to a no-q state leaves stale text in the input (the component
-		// instance, and its $state, persist across same-route navs).
-		queryText = data.q ?? '';
-	});
-
-	// Conversation stacks are global buckets whose members can be scattered
-	// across pages the gallery hasn't loaded yet, so the in-memory bucket may be
-	// incomplete. On drill-in, fetch the conversation's complete media set and
-	// merge it into `items` — the bucket (and its lightbox carousel) is then
-	// guaranteed whole. Prompt/orphan stacks are consecutive runs, already
-	// complete in memory, so they need no fetch.
-	let eagerLoaded = $state<Set<string>>(new Set()); // conversationIds already fetched
-	let drillLoading = $state(false);
-	let drillError = $state<string | null>(null);
-
-	$effect(() => {
-		const g = openGroup;
-		if (!g || g.conversationId === null) return;
-		const convId = g.conversationId;
-		if (eagerLoaded.has(convId)) return;
-		// Mark before fetching so the merge-driven re-run doesn't loop.
-		eagerLoaded = new Set(eagerLoaded).add(convId);
-		drillLoading = true;
-		drillError = null;
-		const params = new URLSearchParams();
-		if (kindFilter) params.set('kind', kindFilter);
-		// Mirror the active model filter — the fetched set is merged into the
-		// master `items` list, so an unfiltered drill-in would leak foreign-model
-		// media into a filtered gallery (and persist after navigating back).
-		if (data.model) params.set('model', data.model);
-		const qs = params.toString();
-		fetch(`/api/media/by-conversation/${convId}${qs ? `?${qs}` : ''}`)
-			.then((r) => {
-				if (!r.ok) throw new Error(`Server returned ${r.status}`);
-				return r.json() as Promise<{ items: MediaListItem[] }>;
-			})
-			.then((body) => mergeMedia(body.items))
-			.catch((e) => {
-				drillError = e instanceof Error ? e.message : 'Failed to load the full stack';
-				// Let the next drill-in retry.
-				const next = new Set(eagerLoaded);
-				next.delete(convId);
-				eagerLoaded = next;
-			})
-			.finally(() => {
-				drillLoading = false;
-			});
-	});
-
-	function setKind(k: 'image' | 'video' | null) {
-		const url = new URL(page.url);
-		if (k) url.searchParams.set('kind', k);
-		else url.searchParams.delete('kind');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	function enterSelectMode() {
+		selectMode = true;
+		selected = new Set();
+		lightbox = null;
+	}
+	function exitSelectMode() {
+		selectMode = false;
+		selected = new Set();
+	}
+	function toggleSelected(id: string) {
+		const next = new Set(selected);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selected = next;
 	}
 
-	function setModel(m: string | null) {
-		const url = new URL(page.url);
-		if (m) url.searchParams.set('model', m);
-		else url.searchParams.delete('model');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
-	}
-
-	// --- Prompt search ------------------------------------------------------
-	// The input is bound to local state and debounced into a `?q=` nav (which
-	// re-runs `load` → ranked results). replaceState so each keystroke doesn't
-	// stack a history entry. Initialized from the URL so a shared/reloaded
-	// search link populates the box.
-	// svelte-ignore state_referenced_locally
-	let queryText = $state(data.q ?? '');
-	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
-
-	// The search box is collapsed to an icon by default and expands on click, so
-	// it only costs toolbar space when in use. An active query (data.q) forces it
-	// open so a reloaded/shared search link shows its box; otherwise an empty box
-	// collapses again on blur.
-	let searchOpen = $state(false);
-	let searchInput = $state<HTMLInputElement | null>(null);
-	const searchExpanded = $derived(searchOpen || !!data.q);
-
-	function openSearch() {
-		searchOpen = true;
-		tick().then(() => searchInput?.focus());
-	}
-
-	function onSearchBlur() {
-		if (!queryText.trim() && !data.q) searchOpen = false;
-	}
-
-	function commitQuery(q: string) {
-		const url = new URL(page.url);
-		const trimmed = q.trim();
-		if (trimmed) url.searchParams.set('q', trimmed);
-		else url.searchParams.delete('q');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: true });
-	}
-
-	function onQueryInput() {
-		if (queryDebounce) clearTimeout(queryDebounce);
-		queryDebounce = setTimeout(() => commitQuery(queryText), 250);
-	}
-
-	function clearQuery() {
-		if (queryDebounce) clearTimeout(queryDebounce);
-		queryText = '';
-		searchOpen = false;
-		commitQuery('');
-	}
-
-	// Stack on + Month granularity is the default view; flag any deviation so the
-	// collapsed View popover shows a dot rather than hiding a changed setting.
-	const viewNonDefault = $derived(!stacking || granularity !== 'month');
-
-	// Filters live in the View popover on mobile, so reflect an active filter on
-	// the trigger dot too — otherwise a hidden filter has no visible cue there.
-	const filterActive = $derived(kindFilter !== null || data.model != null);
-
-	// --- Quick-jump (timeline rail) -----------------------------------------
-	// Full-history month list for the right-edge rail. Fetched (not SSR'd) so we
-	// can pass the viewer's tz offset for local-month bucketing; refetched when
-	// the kind/model filters change so the rail mirrors the filtered feed.
-	let monthPeriods = $state<{ key: string; count: number }[]>([]);
-	// The section key currently pinned at the top of the scroll viewport, so the
-	// rail can highlight "where am I".
-	let activeSectionKey = $state<string | null>(null);
-
-	$effect(() => {
-		// The rail is hidden during search (ranked, not chronological) — skip the
-		// timeline fetch entirely.
-		if (searching) {
-			monthPeriods = [];
-			return;
-		}
-		const params = new URLSearchParams();
-		if (data.kind) params.set('kind', data.kind);
-		if (data.model) params.set('model', data.model);
-		params.set('tzOffset', String(-new Date().getTimezoneOffset()));
-		let cancelled = false;
-		fetch(`/api/media/periods?${params.toString()}`)
-			.then((r) => (r.ok ? r.json() : { periods: [] }))
-			.then((d) => {
-				if (!cancelled) monthPeriods = d.periods ?? [];
-			})
-			.catch(() => {
-				if (!cancelled) monthPeriods = [];
-			});
-		return () => {
-			cancelled = true;
-		};
-	});
-
-	// Re-anchor the feed at an instant (older-than), or to newest when omitted.
-	// Mirrors loadMore's generation-guard so a stale page can't land on the
-	// seeked list, and its AbortController + timeout so a hung seek can't await
-	// forever with no feedback (the user can re-click a tick to retry).
-	async function seekTo(before?: number) {
-		const gen = ++loadGeneration;
-		loadingMore = false;
-		loadError = null;
-		const ctrl = new AbortController();
-		const timer = setTimeout(() => ctrl.abort(), 15_000);
-		const params = new URLSearchParams();
-		if (data.kind) params.set('kind', data.kind);
-		if (data.model) params.set('model', data.model);
-		if (before != null) params.set('before', String(before));
-		try {
-			const res = await fetch(`/api/media?${params.toString()}`, { signal: ctrl.signal });
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			const next = (await res.json()) as MediaListResult;
-			if (gen !== loadGeneration) return;
-			// Wholesale items replacement: mirror the filter-resync invariant so
-			// drill-ins re-fetch complete conversation sets rather than skipping on
-			// a now-stale eagerLoaded entry (see the resync $effect).
-			items = next.items;
-			nextCursor = next.nextCursor;
-			eagerLoaded = new Set();
-			drillLoading = false;
-			drillError = null;
-			if (scrollContainer) scrollContainer.scrollTop = 0;
-		} catch {
-			if (gen !== loadGeneration) return;
-			loadError = ctrl.signal.aborted ? 'Jump timed out' : 'Failed to jump';
-		} finally {
-			clearTimeout(timer);
+	// A delete shifts the whole layout (counts change), so the simplest correct
+	// response is a full reload of the layout + first page; if drilled in, refetch
+	// the stack too.
+	async function refreshAfterMutation() {
+		await reloadFeed();
+		if (drillUnit) {
+			const u = drillUnit;
+			await openStack(u);
 		}
 	}
-
-	// Rail callback (key is a month 'YYYY-MM'): the newest month seeks to top; a
-	// month with a loaded section scrolls to it (no fetch); else seek to it. Day
-	// headers carry their month in their first 7 chars, so this works at either
-	// granularity.
-	function jumpToMonth(key: string) {
-		if (key === monthPeriods[0]?.key) {
-			seekTo(undefined);
-			return;
-		}
-		for (const [sectionKey, el] of sectionHeaders) {
-			if (sectionKey.slice(0, 7) === key && scrollContainer) {
-				scrollContainer.scrollTop +=
-					el.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
-				return;
-			}
-		}
-		seekTo(nextMonthStartMs(key));
-	}
-
-	// Section header elements by section key (insertion order = newest-first DOM
-	// order), for scroll-to + active tracking.
-	const sectionHeaders = new Map<string, HTMLElement>();
-	function registerHeader(node: HTMLElement, key: string) {
-		sectionHeaders.set(key, node);
-		return {
-			update(newKey: string) {
-				sectionHeaders.delete(key);
-				key = newKey;
-				sectionHeaders.set(key, node);
-			},
-			destroy() {
-				sectionHeaders.delete(key);
-			},
-		};
-	}
-
-	// Active-month tracking: the topmost header at/above the container top wins;
-	// report its month so it matches the rail. rAF-coalesced so a fast scroll
-	// does at most one measure pass per frame.
-	let activeRaf = 0;
-	function scheduleActiveUpdate() {
-		if (activeRaf) return;
-		activeRaf = requestAnimationFrame(() => {
-			activeRaf = 0;
-			updateActiveSection();
-		});
-	}
-	function updateActiveSection() {
-		if (!scrollContainer) return;
-		const top = scrollContainer.getBoundingClientRect().top;
-		let best: { key: string; delta: number } | null = null;
-		for (const [key, el] of sectionHeaders) {
-			const delta = el.getBoundingClientRect().top - top;
-			if (delta <= 1 && (!best || delta > best.delta)) best = { key, delta };
-		}
-		activeSectionKey = (best?.key ?? monthPeriods[0]?.key ?? null)?.slice(0, 7) ?? null;
-	}
-
-	// Merge media into `items`, de-duped by id and kept globally newest-first
-	// (createdAt desc, id desc — same order listMediaForUser returns). Used by
-	// pagination (dedup guards against overlap with eager-loaded stack media)
-	// and by the conversation drill-in eager-load, which can insert items from
-	// below the current pagination frontier.
-	function mergeMedia(incoming: MediaListItem[]) {
-		if (incoming.length === 0) return;
-		const have = new Set(items.map((m) => m.id));
-		const additions = incoming.filter((m) => !have.has(m.id));
-		if (additions.length === 0) return;
-		items = items
-			.concat(additions)
-			.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-	}
-
-	async function loadMore() {
-		if (!nextCursor || loadingMore) return;
-		loadingMore = true;
-		loadError = null;
-		const gen = loadGeneration;
-		// Time the request out so a hung fetch can't strand loadingMore=true
-		// forever (which would silently kill both the auto-load and the Retry
-		// banner). An abort routes into the catch and surfaces Retry.
-		const ctrl = new AbortController();
-		const timer = setTimeout(() => ctrl.abort(), 15_000);
-		try {
-			const params = new URLSearchParams({ cursor: nextCursor });
-			if (kindFilter) params.set('kind', kindFilter);
-			// Must mirror the SSR load's filters: the cursor is global
-			// (createdAt:id), so without the model filter the next page returns
-			// the globally-newest rows across all models and mergeMedia would
-			// interleave foreign-model media into a single-model view.
-			if (data.model) params.set('model', data.model);
-			const res = await fetch(`/api/media?${params.toString()}`, { signal: ctrl.signal });
-			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			const next = (await res.json()) as MediaListResult;
-			// A filter switched while this was in flight — discard, or we'd mix
-			// kinds into the new list and overwrite its cursor.
-			if (gen !== loadGeneration) return;
-			mergeMedia(next.items);
-			nextCursor = next.nextCursor;
-		} catch (e) {
-			if (gen !== loadGeneration) return;
-			loadError = ctrl.signal.aborted
-				? 'Request timed out'
-				: e instanceof Error
-					? e.message
-					: 'Failed to load more';
-		} finally {
-			clearTimeout(timer);
-			// Only the current generation owns loadingMore; a filter switch
-			// already reset it for the fresh list, so a stale fetch must not.
-			if (gen === loadGeneration) loadingMore = false;
-		}
-	}
-
-	// Watch the sentinel within the scroll container. The 400px bottom margin
-	// pre-fetches the next page before the user actually hits the end, so the
-	// grid grows ahead of the scroll rather than stalling at the bottom.
-	// IntersectionObserver only fires on intersection *changes*, so the
-	// auto-load below — not this callback — handles "still visible after a
-	// load" by re-running until the sentinel scrolls out or pages run out.
-	$effect(() =>
-		observeSentinel(scrollContainer, sentinel, (v) => (sentinelVisible = v), {
-			rootMargin: '0px 0px 400px 0px',
-		}),
-	);
-
-	// Auto-paginate while the sentinel is in view. Depending on `loadingMore`
-	// and `nextCursor` makes this re-run when a load settles: if the freshly
-	// loaded page didn't push the sentinel out of the prefetch zone, it fires
-	// again, chaining until the viewport is filled or `nextCursor` is null.
-	// The `!loadError` guard stops a failed *page* request from retrying in a
-	// tight loop — the banner's Retry button is the only way back in. A failed
-	// delete sets `error`, not `loadError`, so it can't wedge scrolling.
-	$effect(() => {
-		// `!openGroup`: while drilled into a stack the top-level sentinel is
-		// unmounted, but `sentinelVisible` can be left stale-true — don't let
-		// that quietly paginate the whole gallery behind the drill-in view.
-		// The trailing-group $effect handles loading needed to complete a stack.
-		if (sentinelVisible && nextCursor && !loadingMore && !loadError && !openGroup) {
-			loadMore();
-		}
-	});
 
 	async function deleteOne(id: string) {
 		if (deletingId) return;
@@ -615,34 +359,13 @@
 		try {
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(`Server returned ${res.status}`);
-			reanchorDrillOnDelete(new Set([id]));
-			items = items.filter((m) => m.id !== id);
 			if (lightbox?.id === id) lightbox = null;
+			await refreshAfterMutation();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
 			deletingId = null;
 		}
-	}
-
-	function enterSelectMode() {
-		selectMode = true;
-		selected = new Set();
-		lightbox = null;
-	}
-
-	function exitSelectMode() {
-		selectMode = false;
-		selected = new Set();
-	}
-
-	function toggleSelected(id: string) {
-		// Rebuild the Set so $state-tracked reactivity fires; in-place
-		// add/delete on the same reference doesn't.
-		const next = new Set(selected);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
-		selected = next;
 	}
 
 	async function deleteSelected() {
@@ -663,54 +386,226 @@
 				body: JSON.stringify({ ids }),
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			// Optimistically drop every requested id regardless of how many
-			// the server actually tombstoned — any in the request that
-			// weren't tombstoned were already gone, so they shouldn't be in
-			// the list anyway.
-			const dropped = new Set(ids);
-			reanchorDrillOnDelete(dropped);
-			items = items.filter((m) => !dropped.has(m.id));
 			exitSelectMode();
+			await refreshAfterMutation();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to delete selected media';
+			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
 			bulkDeleting = false;
 		}
 	}
 
-	// Human label for a stack: the conversation title, or the batch's prompt.
-	function groupLabel(g: GalleryGroup): string {
-		if (g.kind === 'conversation') return g.title ?? 'Untitled chat';
-		// A prompt stack groups by the user's ORIGINAL (pre-enhancement) prompt, so
-		// label it with that — it's the one prompt all members share. The leader's
-		// promptExcerpt is its ENHANCED prompt, which only describes one image.
-		// Falls back to the excerpt for an unenhanced batch (originalPrompt null).
-		const leader = g.items[0];
-		return leader?.originalPrompt ?? leader?.promptExcerpt ?? 'Untitled';
+	// --- Timeline rail ------------------------------------------------------
+	const months = $derived(feed.layout ? monthTicksFromLayout(feed.layout.days) : []);
+	let activeSectionKey = $state<string | null>(null);
+
+	// Every section header stays mounted (only tiles are windowed), so the rail's
+	// header-measurement logic works unchanged.
+	const sectionHeaders = new Map<string, HTMLElement>();
+	function registerHeader(node: HTMLElement, key: string) {
+		sectionHeaders.set(key, node);
+		return {
+			update(newKey: string) {
+				sectionHeaders.delete(key);
+				key = newKey;
+				sectionHeaders.set(key, node);
+			},
+			destroy() {
+				sectionHeaders.delete(key);
+			},
+		};
 	}
 
-	// Formatting helpers + Escape handling now live inside MediaLightbox —
-	// see src/lib/components/MediaLightbox.svelte. The lightbox state is
-	// still owned here so the conversations-fetch $effect above (and the
-	// deleteOne handler that needs to close the lightbox on success) can
-	// observe + mutate it directly.
+	function jumpToMonth(key: string) {
+		if (!scrollContainer) return;
+		if (key === months[0]?.key) {
+			scrollContainer.scrollTop = 0;
+			return;
+		}
+		// Every month's header is mounted, so a jump is a pure scroll to it — no
+		// data re-anchoring (the demand loader fills the range as it lands).
+		for (const [sectionKey, el] of sectionHeaders) {
+			if (sectionKey.slice(0, 7) === key) {
+				scrollContainer.scrollTop +=
+					el.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+				return;
+			}
+		}
+	}
+
+	let activeRaf = 0;
+	function scheduleActiveUpdate() {
+		if (activeRaf) return;
+		activeRaf = requestAnimationFrame(() => {
+			activeRaf = 0;
+			if (scrollContainer) scrollTop = scrollContainer.scrollTop;
+			updateActiveSection();
+		});
+	}
+	function updateActiveSection() {
+		if (!scrollContainer) return;
+		const top = scrollContainer.getBoundingClientRect().top;
+		let best: { key: string; delta: number } | null = null;
+		for (const [key, el] of sectionHeaders) {
+			const delta = el.getBoundingClientRect().top - top;
+			if (delta <= 1 && (!best || delta > best.delta)) best = { key, delta };
+		}
+		activeSectionKey = (best?.key ?? months[0]?.key ?? null)?.slice(0, 7) ?? null;
+	}
+
+	// --- Grid virtualization (windowing) ------------------------------------
+	// Only the rows near the viewport render; the rest are reserved as padding on
+	// each section's grid. Pure arithmetic because every tile is a constant height
+	// (caption overlay + aspect-square). See $lib/gallery-window.
+	let scrollContainer = $state<HTMLElement | null>(null);
+	let gridMetrics = $state<WindowConstants | null>(null);
+	let scrollTop = $state(0);
+	let viewportH = $state(0);
+	const OVERSCAN_PX = 800;
+	// Before geometry is measured, render a small probe from the first section so
+	// there's a tile to measure without laying out the whole library.
+	const PREMEASURE_CAP = 24;
+
+	function measureGrid() {
+		const el = scrollContainer;
+		if (!el) return;
+		viewportH = el.clientHeight;
+		const tiles = el.querySelectorAll<HTMLElement>('[data-tile]');
+		if (tiles.length === 0) return;
+		const ul = tiles[0].parentElement;
+		if (!ul) return;
+		const cs = getComputedStyle(ul);
+		const cols = cs.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+		const firstRect = tiles[0].getBoundingClientRect();
+		const tileH = firstRect.height;
+		let rowPitch = tileH + parseFloat(cs.rowGap || '0');
+		const nextRowTile = tiles[cols];
+		if (nextRowTile && nextRowTile.parentElement === ul) {
+			rowPitch = nextRowTile.getBoundingClientRect().top - firstRect.top;
+		}
+		// Header→grid distance from the header's intrinsic box (offsetHeight + its
+		// bottom margin) — NOT a rect delta, which a sticky-pinned header corrupts.
+		let headerH = 0;
+		const header = el.querySelector<HTMLElement>('[data-section-header]');
+		if (header) {
+			headerH = header.offsetHeight + parseFloat(getComputedStyle(header).marginBottom || '0');
+		}
+		if (rowPitch <= 0 || tileH <= 0) return;
+		const next: WindowConstants = { cols, rowPitch, tileH, headerH };
+		const p = gridMetrics;
+		if (
+			p &&
+			p.cols === cols &&
+			p.rowPitch === rowPitch &&
+			p.tileH === tileH &&
+			p.headerH === headerH
+		) {
+			return;
+		}
+		gridMetrics = next;
+	}
+
+	$effect(() => {
+		const el = scrollContainer;
+		if (!el) return;
+		measureGrid();
+		const ro = new ResizeObserver(() => measureGrid());
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	// Re-measure after the rendered structure changes shape.
+	$effect(() => {
+		void searching;
+		void drillUnit;
+		void granularity;
+		void feed.totalUnits;
+		void (drillItems?.length ?? 0);
+		void searchItems.length;
+		if (scrollContainer) tick().then(measureGrid);
+	});
+
+	const viewport = $derived({ scrollTop, viewportH, overscanPx: OVERSCAN_PX });
+
+	// Per-section windows for the browse grid.
+	const sectionWindows = $derived(
+		gridMetrics && viewportH > 0
+			? computeSectionWindows(sectionUnitCounts, gridMetrics, viewport)
+			: null,
+	);
+
+	// A window over a flat (section-less) list — search + drill-in.
+	function flatWindow(count: number) {
+		if (!gridMetrics || viewportH === 0) return null;
+		return computeSectionWindows([count], gridMetrics, viewport)[0];
+	}
+
+	// The global unit indices to render for a browse section: the windowed slice,
+	// or (pre-measure) a bounded probe from the first section only.
+	function unitIndices(
+		section: { startIndex: number; unitCount: number },
+		i: number,
+		win: { firstUnit: number; unitEnd: number } | null,
+	): number[] {
+		if (win) return range(section.startIndex + win.firstUnit, section.startIndex + win.unitEnd);
+		if (i !== 0) return [];
+		const n = Math.min(section.unitCount, PREMEASURE_CAP);
+		return range(section.startIndex, section.startIndex + n);
+	}
+
+	function range(a: number, b: number): number[] {
+		const n = Math.max(0, b - a);
+		return Array.from({ length: n }, (_, k) => a + k);
+	}
+
+	// Demand-load the visible unit ranges as the window moves.
+	$effect(() => {
+		if (searching || drillUnit) return;
+		const wins = sectionWindows;
+		if (!wins) return;
+		for (let i = 0; i < sections.length; i++) {
+			const w = wins[i];
+			const s = sections[i];
+			if (w && w.rowCount > 0)
+				feed.ensureRange(s.startIndex + w.firstUnit, s.startIndex + w.unitEnd);
+		}
+	});
+
+	// Content/empty state per mode.
+	const isEmpty = $derived(
+		searching
+			? searchItems.length === 0
+			: drillUnit
+				? drillItems?.length === 0
+				: feed.totalUnits === 0,
+	);
+	const hasContent = $derived(
+		searching
+			? searchItems.length > 0
+			: drillUnit
+				? (drillItems?.length ?? 0) > 0
+				: feed.totalUnits > 0,
+	);
+	const loadedCount = $derived(
+		searching ? searchItems.length : drillUnit ? (drillItems?.length ?? 0) : feed.totalUnits,
+	);
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
 	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
 		<div class="flex min-w-0 items-center gap-2">
-			{#if openGroup}
+			{#if drillUnit}
 				<button
 					type="button"
-					onclick={() => (openGroupKey = null)}
+					onclick={closeDrill}
 					class="-ml-1 flex shrink-0 items-center gap-1 rounded-md px-2 py-1.5 text-sm transition hover:bg-surface-raised"
 					aria-label="Back to gallery"
 				>
 					<ChevronLeft size={18} />
 					Back
 				</button>
-				<h1 class="truncate text-lg font-semibold tracking-tight">{groupLabel(openGroup)}</h1>
-				<span class="shrink-0 text-xs text-fg-muted">{openGroup.items.length}</span>
+				<h1 class="truncate text-lg font-semibold tracking-tight">{drillUnit.label}</h1>
+				<span class="shrink-0 text-xs text-fg-muted">{drillUnit.memberCount}</span>
 				{#if drillLoading}
 					<span class="shrink-0 text-xs text-fg-subtle">updating…</span>
 				{:else if drillError}
@@ -782,7 +677,7 @@
 						</select>
 					{/if}
 				{/snippet}
-				{#if !openGroup}
+				{#if !drillUnit}
 					{#if searchExpanded}
 						<div class="relative">
 							<input
@@ -817,18 +712,12 @@
 							<Search size={16} />
 						</button>
 					{/if}
-					<!-- Kind + model facets: inline in the toolbar on desktop; on mobile they
-					     move into the View popover below to keep the bar to a single row. -->
+					<!-- Kind + model facets: inline on desktop; on mobile they move into the
+					     View popover below to keep the bar to a single row. -->
 					<div class="hidden sm:contents">
 						{@render kindFacet()}
 						{@render modelFacet()}
 					</div>
-					<!-- Options popover. Holds the kind/model filters (mobile only — desktop
-					     shows them inline above) plus the chronological view prefs. The view
-					     prefs don't apply to ranked search, so they're gated by !searching; the
-					     filters DO compose with search, so they stay reachable. During search
-					     the desktop filters are inline, leaving nothing for the popover there,
-					     so the trigger hides on desktop (sm:hidden). -->
 					<Popover.Root>
 						<Popover.Trigger
 							aria-label="View options"
@@ -929,7 +818,7 @@
 						</Popover.Portal>
 					</Popover.Root>
 				{/if}
-				{#if (openGroup ? (drillItems?.length ?? 0) : items.length) > 0}
+				{#if hasContent}
 					<button
 						type="button"
 						onclick={enterSelectMode}
@@ -948,11 +837,25 @@
 		<div
 			bind:this={scrollContainer}
 			onscroll={scheduleActiveUpdate}
-			class="h-full overflow-y-auto pt-4 pb-4 pl-4 {!openGroup && monthPeriods.length > 1
+			data-loaded-count={loadedCount}
+			class="h-full overflow-y-auto pt-4 pb-4 pl-4 {!drillUnit && months.length > 1
 				? 'pr-9'
 				: 'pr-4'}"
 		>
-			{#if items.length === 0}
+			{#if !searching && !drillUnit && browseLoading}
+				<!-- Browse isn't SSR'd (tz-dependent buckets), so cover the initial
+				     layout round-trip with a skeleton instead of a false empty state. -->
+				<ul
+					class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+					aria-hidden="true"
+				>
+					{#each range(0, 18) as i (i)}
+						<li
+							class="aspect-square w-full animate-pulse rounded-lg border border-border bg-surface-panel"
+						></li>
+					{/each}
+				</ul>
+			{:else if isEmpty}
 				<div class="flex h-full flex-col items-center justify-center text-center">
 					{#if searching}
 						<p class="text-sm text-fg-muted">No results for "{data.q}".</p>
@@ -965,16 +868,13 @@
 					{/if}
 				</div>
 			{:else}
-				<!--
-				A single media tile. Shared by the flat grid, the drill-in grid, and
-				solo (size-1) stacks so the three render paths stay identical. Grid
-				tiles use the /thumbnail variant (server-side sharp resize to 512px
-				JPEG, disk-cached — see src/lib/server/media/thumbnail.ts), not the
-				full-resolution /content the lightbox pulls.
-			-->
+				<!-- A single media tile from a full MediaListItem — shared by search +
+				     drill-in. Grid tiles use the /thumbnail variant (512px sharp resize,
+				     disk-cached), not the full-resolution /content the lightbox pulls. -->
 				{#snippet mediaTile(m: MediaListItem)}
 					{@const isSelected = selectMode && selected.has(m.id)}
 					<li
+						data-tile
 						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
 							? 'border-surface-inverse ring-2 ring-surface-inverse'
 							: 'border-border hover:border-border-focus'}"
@@ -999,12 +899,6 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
-									<!--
-									#t=0.1 is a Media Fragment URI: tells the browser to seek
-									to 0.1s on load so it renders that frame as an inline poster.
-									Avoids needing a server-side ffmpeg poster pipeline. The 0.1
-									(vs 0) sidesteps encoders that begin with a black/blue frame.
-								-->
 									<!-- svelte-ignore a11y_media_has_caption -->
 									<video
 										src="/api/media/{m.id}/content#t=0.1"
@@ -1019,20 +913,16 @@
 										video
 									</div>
 								{/if}
+								{#if m.promptExcerpt}
+									<div
+										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
+									>
+										{m.promptExcerpt}
+									</div>
+								{/if}
 							</div>
-							{#if m.promptExcerpt}
-								<div class="px-2 py-1.5 text-left text-xs text-fg-secondary line-clamp-2">
-									{m.promptExcerpt}
-								</div>
-							{/if}
 						</button>
 						{#if selectMode}
-							<!--
-							Checkbox badge for selection mode. Purely visual — the
-							whole tile is the toggle (the wrapping button handles
-							the click), so the badge is aria-hidden and not its
-							own focus target.
-						-->
 							<span
 								aria-hidden="true"
 								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
@@ -1056,28 +946,107 @@
 					</li>
 				{/snippet}
 
-				<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell
-			     for the rest. Clicking drills into the stack. -->
-				{#snippet stackCard(g: GalleryGroup)}
-					{@const previews = g.items.slice(0, g.items.length > 4 ? 3 : 4)}
-					{@const remaining = g.items.length - previews.length}
-					{@const incomplete = g.key === trailingGroupKey && !!nextCursor}
+				<!-- A solo grid tile from a thin unit (top-level browse). Same visual as
+				     mediaTile, but built from the unit's leader + it fetches the full item
+				     lazily when opened. -->
+				{#snippet unitTile(u: GalleryUnit)}
+					{@const isSelected = selectMode && selected.has(u.leaderId)}
 					<li
+						data-tile
+						class="group relative overflow-hidden rounded-lg border bg-surface-raised transition {isSelected
+							? 'border-surface-inverse ring-2 ring-surface-inverse'
+							: 'border-border hover:border-border-focus'}"
+					>
+						<button
+							type="button"
+							onclick={() =>
+								selectMode ? toggleSelected(u.leaderId) : openLightboxById(u.leaderId)}
+							class="block w-full"
+							aria-label={selectMode
+								? isSelected
+									? `Deselect ${u.leaderKind}`
+									: `Select ${u.leaderKind}`
+								: `Open ${u.leaderKind} ${u.excerpt ?? ''}`}
+							aria-pressed={selectMode ? isSelected : undefined}
+						>
+							<div class="relative aspect-square w-full overflow-hidden">
+								{#if u.leaderKind === 'image'}
+									<img
+										src="/api/media/{u.leaderId}/thumbnail"
+										alt={u.excerpt ?? 'Generated image'}
+										loading="lazy"
+										class="h-full w-full object-cover"
+									/>
+								{:else}
+									<!-- svelte-ignore a11y_media_has_caption -->
+									<video
+										src="/api/media/{u.leaderId}/content#t=0.1"
+										preload="metadata"
+										muted
+										playsinline
+										class="h-full w-full object-cover"
+									></video>
+									<div
+										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+									>
+										video
+									</div>
+								{/if}
+								{#if u.excerpt}
+									<div
+										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
+									>
+										{u.excerpt}
+									</div>
+								{/if}
+							</div>
+						</button>
+						{#if selectMode}
+							<span
+								aria-hidden="true"
+								class="pointer-events-none absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 text-[12px] font-bold transition {isSelected
+									? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+									: 'border-white/80 bg-black/40 text-transparent'}"
+							>
+								✓
+							</span>
+						{:else}
+							<button
+								type="button"
+								onclick={() => deleteOne(u.leaderId)}
+								disabled={deletingId === u.leaderId}
+								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
+								aria-label="Delete this media"
+								title="Delete"
+							>
+								{deletingId === u.leaderId ? '…' : '×'}
+							</button>
+						{/if}
+					</li>
+				{/snippet}
+
+				<!-- A stack card: a 2×2 collage of the newest members + a "+N" cell.
+				     Clicking drills into the stack. -->
+				{#snippet unitCard(u: GalleryUnit)}
+					{@const previews = u.memberCount > 4 ? u.previews.slice(0, 3) : u.previews}
+					{@const remaining = u.memberCount - previews.length}
+					<li
+						data-tile
 						class="group relative overflow-hidden rounded-lg border border-border bg-surface-raised transition hover:border-border-focus"
 					>
 						<button
 							type="button"
-							onclick={() => openStack(g.key)}
+							onclick={() => openStack(u)}
 							class="block w-full"
-							aria-label={`Open stack: ${groupLabel(g)} (${g.items.length} items)`}
+							aria-label={`Open stack: ${u.label} (${u.memberCount} items)`}
 						>
 							<div class="relative aspect-square w-full overflow-hidden bg-surface-panel">
 								<div class="grid h-full w-full grid-cols-2 grid-rows-2 gap-px">
-									{#each previews as m (m.id)}
+									{#each previews as p (p.id)}
 										<div class="relative overflow-hidden bg-surface-panel">
-											{#if m.kind === 'image'}
+											{#if p.kind === 'image'}
 												<img
-													src="/api/media/{m.id}/thumbnail"
+													src="/api/media/{p.id}/thumbnail"
 													alt=""
 													loading="lazy"
 													class="h-full w-full object-cover"
@@ -1085,7 +1054,7 @@
 											{:else}
 												<!-- svelte-ignore a11y_media_has_caption -->
 												<video
-													src="/api/media/{m.id}/content#t=0.1"
+													src="/api/media/{p.id}/content#t=0.1"
 													preload="metadata"
 													muted
 													playsinline
@@ -1102,43 +1071,39 @@
 										</div>
 									{/if}
 								</div>
-							</div>
-							<div class="px-2 py-1.5">
-								<div class="truncate text-left text-xs text-fg-secondary">{groupLabel(g)}</div>
-								<div class="text-left text-[10px] text-fg-muted">
-									{g.items.length} item{g.items.length === 1 ? '' : 's'}{incomplete ? '…' : ''}
+								<div
+									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-white"
+								>
+									<div class="truncate text-left text-xs">{u.label}</div>
+									<div class="text-left text-[10px] text-white/80">
+										{u.memberCount} item{u.memberCount === 1 ? '' : 's'}
+									</div>
 								</div>
 							</div>
 						</button>
 					</li>
 				{/snippet}
 
-				<!-- Sentinel: the IntersectionObserver effect auto-loads the next page
-			     as it nears the viewport. Only one of the branches below renders at
-			     a time, so the single `sentinel` bind is unambiguous; the drill-in
-			     view omits it (the trailing-group $effect drives its loading). -->
-				{#snippet scrollSentinel()}
-					{#if nextCursor}
-						<div bind:this={sentinel} class="mt-6 flex h-8 justify-center" aria-hidden="true">
-							{#if loadingMore}
-								<span class="text-sm text-fg-muted">Loading…</span>
-							{/if}
-						</div>
-					{/if}
+				<!-- A not-yet-loaded unit: an empty box that reserves the tile's constant
+				     height until its demand-load lands. Carries data-tile so measurement
+				     works even when only placeholders are on screen. -->
+				{#snippet placeholderTile()}
+					<li
+						data-tile
+						class="relative overflow-hidden rounded-lg border border-border bg-surface-raised"
+						aria-hidden="true"
+					>
+						<div class="aspect-square w-full animate-pulse bg-surface-panel"></div>
+					</li>
 				{/snippet}
 
 				<!-- A sticky time header; `registerHeader` tracks its element for
-				     quick-jump scroll-to + active-month highlighting.
-				     `-top-4` (not top-0) cancels the scroll container's `pt-4`: a
-				     sticky element's constraint rect is the container's *content*
-				     box, so top-0 would pin it 16px below the scrollport's top edge,
-				     leaving a gap that images scroll through above the header. The
-				     negative offset pins it flush to the top while the padding still
-				     gives the first header its at-rest breathing room. Keep these two
-				     in sync. -->
+				     quick-jump scroll-to + active-month highlighting. `-top-4` cancels the
+				     scroll container's `pt-4` so it pins flush. -->
 				{#snippet sectionHeader(label: string, key: string)}
 					<h2
 						use:registerHeader={key}
+						data-section-header
 						class="sticky -top-4 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
 					>
 						{label}
@@ -1146,96 +1111,69 @@
 				{/snippet}
 
 				{#if searching}
-					<!-- Search: a flat relevance-ranked grid (no date sections, rail,
-					     or stacking — those assume chronological order). -->
+					<!-- Search: a flat relevance-ranked grid (no date sections). Windowed as
+					     a single section. -->
+					{@const win = flatWindow(searchItems.length)}
 					<p class="mb-3 text-xs text-fg-muted">
-						{items.length} result{items.length === 1 ? '' : 's'} for "{data.q}"
+						{searchItems.length} result{searchItems.length === 1 ? '' : 's'} for "{data.q}"
 					</p>
 					<ul
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+						style={win ? `padding-top:${win.padTop}px;padding-bottom:${win.padBottom}px` : ''}
 					>
-						{#each items as m (m.id)}
+						{#each win ? searchItems.slice(win.firstUnit, win.unitEnd) : searchItems as m (m.id)}
 							{@render mediaTile(m)}
 						{/each}
 					</ul>
-				{:else if openGroup}
-					<!-- Drill-in: just this stack's members (no date sections). -->
+				{:else if drillUnit}
+					<!-- Drill-in: this stack's members (no date sections). -->
+					{@const drilled = drillItems ?? []}
+					{@const win = flatWindow(drilled.length)}
 					<ul
 						class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+						style={win ? `padding-top:${win.padTop}px;padding-bottom:${win.padBottom}px` : ''}
 					>
-						{#each drillItems ?? [] as m (m.id)}
+						{#each win ? drilled.slice(win.firstUnit, win.unitEnd) : drilled as m (m.id)}
 							{@render mediaTile(m)}
 						{/each}
 					</ul>
-				{:else if stacking}
-					<!-- Stacked top level, grouped into date sections; solos render as
-					     normal tiles, interleaved in true newest-first order. -->
-					{#each stackedSections as section (section.key)}
+				{:else}
+					<!-- Browse: date sections reserved from the layout counts; only the
+					     units near the viewport render, the rest are padding + placeholders
+					     that fill as they demand-load. -->
+					{#each sections as section, i (section.key)}
+						{@const win = sectionWindows?.[i] ?? null}
 						{@render sectionHeader(section.label, section.key)}
 						<ul
 							class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+							style={win ? `padding-top:${win.padTop}px;padding-bottom:${win.padBottom}px` : ''}
 						>
-							{#each section.units as g (g.key)}
-								{#if g.kind === 'solo'}
-									{@render mediaTile(g.items[0])}
+							{#each unitIndices(section, i, win) as gi (gi)}
+								{@const unit = feed.unitAt(gi)}
+								{#if !unit}
+									{@render placeholderTile()}
+								{:else if unit.groupKind === 'solo'}
+									{@render unitTile(unit)}
 								{:else}
-									{@render stackCard(g)}
+									{@render unitCard(unit)}
 								{/if}
 							{/each}
 						</ul>
 					{/each}
-					{@render scrollSentinel()}
-				{:else}
-					<!-- Flat firehose (stacking off), grouped into date sections. -->
-					{#each flatSections as section (section.key)}
-						{@render sectionHeader(section.label, section.key)}
-						<ul
-							class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
-						>
-							{#each section.units as m (m.id)}
-								{@render mediaTile(m)}
-							{/each}
-						</ul>
-					{/each}
-					{@render scrollSentinel()}
 				{/if}
 			{/if}
 
-			{#if loadError}
-				<!--
-				Pagination failure. Retry re-runs loadMore (not whatever else may
-				have failed) and is always available here: loadError is only set
-				while a next page exists, so there's no last-page dead end.
-			-->
-				<div
-					class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
-				>
-					<span>{loadError}</span>
-					<button
-						type="button"
-						onclick={() => {
-							loadError = null;
-							loadMore();
-						}}
-						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
-					>
-						Retry
-					</button>
-				</div>
-			{/if}
-
 			{#if error}
-				<!-- Delete failure (single or bulk). Distinct from loadError so it
-				 never gates scrolling; re-attempting the delete clears it. -->
+				<!-- Load or delete failure. Re-attempting the action clears it. -->
 				<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
 					{error}
 				</div>
 			{/if}
 		</div>
-		{#if !openGroup && monthPeriods.length > 1}
+		{#if !drillUnit && months.length > 1}
 			<GalleryTimelineRail
 				class="absolute inset-y-0 right-0 z-20 w-7"
-				periods={monthPeriods}
+				periods={months}
 				activeKey={activeSectionKey}
 				onjump={jumpToMonth}
 			/>
@@ -1250,13 +1188,6 @@
 	{deletingId}
 	conversationsUsingThis={lightboxConversations}
 	{conversationsError}
-	siblings={lightboxList.map((m) => ({ id: m.id, kind: m.kind }))}
-	onNavigate={(id) => {
-		// All items are already in memory, so navigation is an instant in-array
-		// swap — no fetch. Inside a drilled stack the carousel spans just that
-		// stack; at the top level it spans the whole loaded gallery. The
-		// conversations effect (keyed on lightbox.id) refetches the new item's refs.
-		const found = lightboxList.find((m) => m.id === id);
-		if (found) lightbox = found;
-	}}
+	siblings={lightboxSiblings}
+	onNavigate={openLightboxById}
 />

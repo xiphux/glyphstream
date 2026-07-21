@@ -321,7 +321,12 @@ docs.
   content height. Likely pattern: virtualize only historical messages, leave the
   streaming message in plain DOM until it completes. Trigger — implement when
   real conversations actually feel janky; below that threshold the measurement
-  overhead can exceed just rendering everything.
+  overhead can exceed just rendering everything. Note: the gallery grid shipped
+  a hand-rolled, dependency-free windower (`$lib/gallery-window.ts`) — but that
+  approach leans on a _constant_ tile height, which chat can't offer (variable,
+  async-image-shifted, streaming-grown message heights), so chat would need real
+  per-row measurement (`@tanstack/virtual-core`, headless) rather than reusing
+  the gallery math.
 
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
@@ -612,13 +617,3 @@ proactivity and pipeline bets are the most identity-defining.
   killed is Chromium-only — iOS WebKit has never supported it. On iOS it'd degrade
   to an in-page outbox that only flushes while the tab is alive, which buys little
   over the draft that already survives the kill. Low priority.
-
-- **Virtualize the gallery grid.** `gallery/+page.svelte` renders every loaded
-  tile via `{#each}` over `items` (grown by the IntersectionObserver `loadMore`
-  pagination) with no windowing/recycling, so a long infinite-scroll session
-  accumulates thousands of `<li>`/`<button>`/`<img>` nodes and their layout/
-  style-recalc cost. _Why deferred:_ only the DOM-node count grows — bytes are
-  already bounded (512px `/thumbnail` variants + `loading="lazy"`, `preload=
-"metadata"` on video) — so it only bites in the thousands of tiles, past the
-  household/small-team target scale. _Fix when it matters:_ windowed rendering
-  (render only tiles near the viewport, recycle the rest).
