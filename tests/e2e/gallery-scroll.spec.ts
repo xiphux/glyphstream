@@ -149,6 +149,9 @@ test.describe('gallery: layout-driven virtualization', () => {
 			.click();
 
 		await expect(page.getByText('Server returned 500')).toBeVisible();
+		// A delete failure is its own channel — no "Retry" button (that belongs to
+		// load failures; there's nothing for a reload to re-attempt here).
+		await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
 		// Delete failed → no reload happened → the full set is still reserved.
 		await expect(page.locator(LOADED)).toHaveAttribute('data-loaded-count', String(SEED_COUNT));
 	});

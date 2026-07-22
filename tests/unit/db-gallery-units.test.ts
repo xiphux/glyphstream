@@ -11,6 +11,7 @@ vi.mock('$lib/server/db/client', () => ({
 
 import {
 	computeGalleryLayout,
+	hardDeleteMediaForUser,
 	insertMedia,
 	linkMessageMedia,
 	listGalleryUnits,
@@ -286,6 +287,22 @@ describe('gallery units: filters', () => {
 		const u = seedUser();
 		makeGen(u.id, at(2024, 6, 15), { promptFull: 'gen', originalPrompt: null });
 		makeGen(u.id, at(2024, 6, 14), { origin: 'uploaded', promptFull: 'up', originalPrompt: null });
+		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
+	});
+});
+
+describe('gallery units: cache invalidation on mutation', () => {
+	it('a delete is reflected on the next query (the memo is invalidated)', () => {
+		const u = seedUser();
+		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
+		makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
+
+		// Populate the per-(user, filter, tz) unit-list cache.
+		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(2);
+
+		// Delete one; the next query must recompute, not serve the cached list of 2.
+		hardDeleteMediaForUser(a, u.id);
+		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(1);
 		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
 	});
 });

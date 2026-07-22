@@ -951,13 +951,86 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 	return groupGalleryItems(rows).map((g) => unitFromGroup(g, tz));
 }
 
+// --- Gallery unit-list cache -------------------------------------------------
+// `computeGalleryUnits` loads + stacks the WHOLE filtered library, and the
+// client's grid demand-pages it (one `/api/media/units` request per PAGE units).
+// A full top-to-bottom scroll would otherwise re-run that O(library) pass once
+// per page — O(library²) of work across the scroll. Memoize the computed list
+// per (user, filter, tz) so all pages of one scroll — and the paired layout +
+// first-units of a single reload — share one computation.
+//
+// Correctness: each entry is validated against a cheap per-user data fingerprint
+// (a count of the user's generated media, live + total). Any insert or delete
+// changes it, so the cache auto-invalidates on every write path — including
+// direct DB writes that bypass the query layer (e.g. the e2e seed helpers) —
+// with no manual invalidation calls to keep in sync. A short TTL backstops the
+// residual case a count can't see (a link/unlink or conversation delete that
+// re-homes stacking without changing the count).
+//
+// Bounded size: `model` and `tzOffsetMinutes` are part of the key and come from
+// unvalidated query params, so key cardinality is client-controlled. The map is
+// capped and evicts the oldest entry (insertion order) past the cap, so it can't
+// grow without bound in the single long-running Node process.
+const GALLERY_UNITS_TTL_MS = 30_000;
+const GALLERY_UNITS_CACHE_MAX = 256;
+const galleryUnitsCache = new Map<
+	string,
+	{ fingerprint: string; expiresAt: number; units: GalleryUnit[] }
+>();
+
+/** Cheap signature of a user's gallery-relevant media state. `total` (all
+ *  generated rows, incl. tombstones) rises on insert; `live` (non-deleted) falls
+ *  on delete — the pair changes on any insert/delete combination, and drops to
+ *  0/0 when the rows are wiped (a test reset). A single aggregate count over the
+ *  user's media — far cheaper than recomputing the unit list, though it scans the
+ *  user's rows rather than being fully index-served. */
+function galleryUserFingerprint(userId: string): string {
+	const row = getDb()
+		.select({
+			total: sql<number>`count(*)`,
+			live: sql<number>`coalesce(sum(case when ${media.hardDeletedAt} is null then 1 else 0 end), 0)`,
+		})
+		.from(media)
+		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
+		.get();
+	return `${row?.total ?? 0}:${row?.live ?? 0}`;
+}
+
+function galleryUnitsCacheKey(userId: string, opts: GalleryUnitOpts): string {
+	// JSON-encode the tuple so an arbitrary model id can't forge a key collision.
+	return JSON.stringify([
+		userId,
+		opts.kind ?? '',
+		opts.model ?? '',
+		opts.stack === false ? 'flat' : 'stack',
+		opts.tzOffsetMinutes ?? 0,
+	]);
+}
+
+/** `computeGalleryUnits` behind the per-(user, filter, tz) memo above. The
+ *  returned array is shared read-only — callers slice/read it, never mutate. */
+function computeGalleryUnitsCached(userId: string, opts: GalleryUnitOpts): GalleryUnit[] {
+	const fingerprint = galleryUserFingerprint(userId);
+	const key = galleryUnitsCacheKey(userId, opts);
+	const hit = galleryUnitsCache.get(key);
+	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) return hit.units;
+	const units = computeGalleryUnits(userId, opts);
+	// Evict the oldest entry before inserting a new key, capping total size.
+	if (!galleryUnitsCache.has(key) && galleryUnitsCache.size >= GALLERY_UNITS_CACHE_MAX) {
+		const oldest = galleryUnitsCache.keys().next().value;
+		if (oldest !== undefined) galleryUnitsCache.delete(oldest);
+	}
+	galleryUnitsCache.set(key, { fingerprint, expiresAt: Date.now() + GALLERY_UNITS_TTL_MS, units });
+	return units;
+}
+
 /**
  * Per-day unit counts for the whole filtered library, newest-first, plus the
  * total. The client reserves exact scroll height from this before streaming any
  * unit data.
  */
 export function computeGalleryLayout(userId: string, opts: GalleryUnitOpts = {}): GalleryLayout {
-	const units = computeGalleryUnits(userId, opts);
+	const units = computeGalleryUnitsCached(userId, opts);
 	// Units are newest-first with monotonically non-increasing dayKeys, so a Map
 	// keyed by day accumulates in newest-first order with each day contiguous.
 	const byDay = new Map<string, number>();
@@ -977,16 +1050,17 @@ export interface GalleryUnitsPage {
 /**
  * A contiguous slice of the newest-first unit stream, for the grid's demand
  * loader. Offset-paged (not cursor) because the client drives it by absolute
- * unit index derived from the layout counts; the unit list only ever prepends
- * at the top, and a mutation refetches the layout. Recomputes the full unit list
- * per call — O(library), trivial at household scale; cache by (user, filter) if
- * a library ever makes it hurt.
+ * unit index derived from the layout counts, and — because conversation stacks
+ * are global — the unit at any offset depends on every row newer than it, so the
+ * stream can't be keyset-sliced at the DB anyway. The full list is computed via
+ * `computeGalleryUnitsCached`, so all pages of one scroll (and the paired layout)
+ * reuse a single O(library) pass instead of re-running it per page.
  */
 export function listGalleryUnits(
 	userId: string,
 	opts: GalleryUnitOpts & { offset?: number; limit?: number } = {},
 ): GalleryUnitsPage {
-	const all = computeGalleryUnits(userId, opts);
+	const all = computeGalleryUnitsCached(userId, opts);
 	const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
 	const limit = Math.max(1, Math.min(Math.trunc(opts.limit ?? 120), 500));
 	return { units: all.slice(offset, offset + limit), total: all.length };
@@ -1145,7 +1219,7 @@ export function hardDeleteMediaForUser(
 	userId: string,
 ): { storagePath: string } | null {
 	const db = getDb();
-	return db.transaction((tx) => {
+	const result = db.transaction((tx) => {
 		const row = tx
 			.select({ storagePath: media.storagePath, hardDeletedAt: media.hardDeletedAt })
 			.from(media)
@@ -1164,6 +1238,7 @@ export function hardDeleteMediaForUser(
 		tx.delete(messageMedia).where(eq(messageMedia.mediaId, mediaId)).run();
 		return { storagePath: row.storagePath };
 	});
+	return result;
 }
 
 /**
@@ -1182,7 +1257,7 @@ export function bulkHardDeleteMediaForUser(
 ): { id: string; storagePath: string }[] {
 	if (ids.length === 0) return [];
 	const db = getDb();
-	return db.transaction((tx) => {
+	const result = db.transaction((tx) => {
 		const rows = tx
 			.select({ id: media.id, storagePath: media.storagePath })
 			.from(media)
@@ -1204,6 +1279,7 @@ export function bulkHardDeleteMediaForUser(
 		tx.delete(messageMedia).where(inArray(messageMedia.mediaId, liveIds)).run();
 		return rows;
 	});
+	return result;
 }
 
 // --- Per-conversation orphan analysis (drives the delete-conversation UI) ---

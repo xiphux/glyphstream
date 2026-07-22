@@ -9,6 +9,7 @@
 	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
 	import { type Granularity } from '$lib/gallery-date-buckets';
 	import { buildLayoutSections, monthTicksFromLayout } from '$lib/gallery-layout';
+	import { promptRunKey } from '$lib/gallery-stacks';
 	import { GalleryFeed } from '$lib/gallery-feed.svelte';
 	import { computeSectionWindows, type WindowConstants } from '$lib/gallery-window';
 	import type {
@@ -36,10 +37,32 @@
 	const searching = $derived(!!data.q);
 
 	// Viewer's UTC offset in minutes; every layout/units fetch passes it so the
-	// day buckets match the local-time section headers. (SSR bucketed at 0 for the
-	// instant first paint; the mount reload below corrects it.)
+	// day buckets match the local-time section headers. Browse is fetched
+	// client-side on mount with this offset (never SSR'd — the server has no
+	// viewer tz), so the buckets are local-correct from the first load.
 	const tzOffset = () => -new Date().getTimezoneOffset();
 
+	// A hung fetch must never strand the grid in a loading/placeholder state with
+	// no recovery, so every gallery fetch is time-boxed with an AbortController
+	// (the old cursor-pagination path used the same pattern). On timeout the fetch
+	// rejects, the caller's catch/finally runs, and the range/reload becomes
+	// retriable again.
+	async function fetchWithTimeout(url: string, ms = 15_000): Promise<Response> {
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), ms);
+		try {
+			return await fetch(url, { signal: ctrl.signal });
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	// Two failure channels, kept distinct so a delete error can't masquerade as a
+	// recoverable load error (and vice versa): `loadError` is for the browse
+	// layout/units fetches — its banner offers Retry, which re-runs the load —
+	// while `error` is for delete / lightbox failures, whose banner has no Retry
+	// (there's nothing for a generic reload to re-attempt).
+	let loadError = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 
@@ -50,20 +73,30 @@
 	let stacking = $state(true);
 	let granularity = $state<Granularity>('month');
 
-	async function fetchUnitsPage(offset: number, limit: number): Promise<GalleryUnitsPage> {
-		const p = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+	// The kind/model/stack/tz filter params shared by the layout + units fetches.
+	// Built in one place so the two (which MUST agree for the unit offsets to line
+	// up with the layout's reserved section heights) can't drift.
+	function galleryFilterParams(): URLSearchParams {
+		const p = new URLSearchParams();
 		if (data.kind) p.set('kind', data.kind);
 		if (data.model) p.set('model', data.model);
 		if (!stacking) p.set('stack', 'false');
 		p.set('tzOffset', String(tzOffset()));
-		const res = await fetch(`/api/media/units?${p}`);
+		return p;
+	}
+
+	async function fetchUnitsPage(offset: number, limit: number): Promise<GalleryUnitsPage> {
+		const p = galleryFilterParams();
+		p.set('offset', String(offset));
+		p.set('limit', String(limit));
+		const res = await fetchWithTimeout(`/api/media/units?${p}`);
 		if (!res.ok) throw new Error(`Server returned ${res.status}`);
 		return res.json();
 	}
 
 	const feed = new GalleryFeed({
 		fetchPage: fetchUnitsPage,
-		onError: (m) => (error = m),
+		onError: (m) => (loadError = m),
 	});
 	// True until the first browse layout lands (browse isn't SSR'd — see the load
 	// function), so the grid shows a skeleton rather than a false "empty" state.
@@ -76,28 +109,34 @@
 		data.mode === 'search' ? [...(data.searchItems ?? [])] : [],
 	);
 
+	// Monotonic token guarding `reloadFeed` against out-of-order responses: a
+	// rapid filter/stacking toggle fires overlapping reloads, and without this the
+	// last one to *resolve* (not the last issued) would win and install a stale
+	// filter's layout. Bumped synchronously at entry; a superseded call bails
+	// before committing. (`feed.#generation` only guards demand-loaded pages, not
+	// the reseed itself.)
+	let reloadGen = 0;
+
 	// Refetch the whole layout + first units page with the real tz / current
 	// stacking. Bumps the feed generation, so any in-flight page from the previous
 	// filter/tz is discarded rather than landing in the fresh cache.
 	async function reloadFeed(resetScroll = false) {
-		const p = new URLSearchParams();
-		if (data.kind) p.set('kind', data.kind);
-		if (data.model) p.set('model', data.model);
-		if (!stacking) p.set('stack', 'false');
-		p.set('tzOffset', String(tzOffset()));
-		const unitsParams = new URLSearchParams(p);
+		const gen = ++reloadGen;
+		const p = galleryFilterParams();
+		const unitsParams = galleryFilterParams();
 		unitsParams.set('offset', '0');
 		unitsParams.set('limit', String(GalleryFeed.PAGE));
 		try {
 			const [lr, ur] = await Promise.all([
-				fetch(`/api/media/layout?${p}`),
-				fetch(`/api/media/units?${unitsParams}`),
+				fetchWithTimeout(`/api/media/layout?${p}`),
+				fetchWithTimeout(`/api/media/units?${unitsParams}`),
 			]);
 			if (!lr.ok || !ur.ok) throw new Error('Failed to load gallery');
 			const layout = (await lr.json()) as GalleryLayout;
 			const unitsPage = (await ur.json()) as GalleryUnitsPage;
+			if (gen !== reloadGen) return; // superseded by a newer reload — discard
 			feed.seed(layout, unitsPage.units);
-			error = null;
+			loadError = null;
 			// On a filter/stacking change, snap to the top as the new layout lands:
 			// the seeded first page always covers the top viewport, so the grid fills
 			// with real tiles instead of flashing placeholders (which a deep scroll
@@ -108,9 +147,11 @@
 				scrollTop = 0;
 			}
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load gallery';
+			if (gen === reloadGen) loadError = e instanceof Error ? e.message : 'Failed to load gallery';
 		} finally {
-			browseLoading = false;
+			// Only the latest reload owns the skeleton flag — a superseded call must
+			// not clear it while the current one is still loading.
+			if (gen === reloadGen) browseLoading = false;
 		}
 	}
 
@@ -214,11 +255,9 @@
 	let drillError = $state<string | null>(null);
 	let savedGalleryScroll = 0;
 
-	async function openStack(u: GalleryUnit) {
-		// Capture the gallery scroll synchronously — the DOM swap to the shorter
-		// drill grid would otherwise clamp scrollTop before we could read it.
-		if (scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
-		drillUnit = u;
+	// Fetch the members of the currently-open stack. Guarded by `drillUnit.key` so
+	// a stale response (the user drilled elsewhere meanwhile) can't land.
+	async function loadDrillMembers(u: GalleryUnit) {
 		drillItems = null;
 		drillError = null;
 		drillLoading = true;
@@ -226,7 +265,7 @@
 		if (data.kind) p.set('kind', data.kind);
 		if (data.model) p.set('model', data.model);
 		try {
-			const res = await fetch(`/api/media/unit-members?${p}`);
+			const res = await fetchWithTimeout(`/api/media/unit-members?${p}`);
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			const body = (await res.json()) as { items: MediaListItem[] };
 			if (drillUnit?.key === u.key) drillItems = body.items;
@@ -238,6 +277,17 @@
 		} finally {
 			if (drillUnit?.key === u.key) drillLoading = false;
 		}
+	}
+
+	function openStack(u: GalleryUnit) {
+		// Capture the gallery scroll synchronously — and ONLY when entering from the
+		// gallery (guarded by `drillUnit === null`), never while already drilled in,
+		// so the drill grid's own (near-zero) offset can't clobber the saved gallery
+		// position. The DOM swap to the shorter drill grid would otherwise clamp
+		// scrollTop before we read it.
+		if (drillUnit === null && scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
+		drillUnit = u;
+		void loadDrillMembers(u);
 		tick().then(() => {
 			if (scrollContainer) scrollContainer.scrollTop = 0;
 		});
@@ -269,7 +319,7 @@
 			return;
 		}
 		try {
-			const res = await fetch(`/api/media/${id}`);
+			const res = await fetchWithTimeout(`/api/media/${id}`);
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			lightbox = (await res.json()) as MediaListItem;
 		} catch (e) {
@@ -336,15 +386,37 @@
 		selected = next;
 	}
 
-	// A delete shifts the whole layout (counts change), so the simplest correct
-	// response is a full reload of the layout + first page; if drilled in, refetch
-	// the stack too.
-	async function refreshAfterMutation() {
+	// A delete shifts the whole layout (counts change), so refresh the top-level
+	// feed. If drilled in, re-resolve the open stack against the deletion rather
+	// than blindly re-opening with the stale unit: deleting a prompt run's leader
+	// re-keys the run (`p:<leaderId>`), so re-opening with the old key would fetch
+	// an empty set and strand a phantom stack. `drillItems` already holds the full
+	// member set, so the survivors are known without a refetch.
+	async function refreshAfterMutation(deleted: Set<string>) {
 		await reloadFeed();
-		if (drillUnit) {
-			const u = drillUnit;
-			await openStack(u);
+		if (!drillUnit) return;
+		const survivors = (drillItems ?? []).filter((m) => !deleted.has(m.id));
+		if (survivors.length === 0) {
+			// The whole stack is gone — return to the gallery (restores saved scroll).
+			closeDrill();
+			return;
 		}
+		// Re-anchor: a conversation stack keeps its stable id key; a prompt run
+		// re-keys to its newest surviving member (replacing the old
+		// `reanchorDrillOnDelete` from the items-based path).
+		const leader = survivors[0];
+		drillItems = survivors;
+		drillUnit = {
+			...drillUnit,
+			key: drillUnit.groupKind === 'conversation' ? drillUnit.key : promptRunKey(leader.id),
+			leaderId: leader.id,
+			leaderKind: leader.kind,
+			memberCount: survivors.length,
+			label:
+				drillUnit.groupKind === 'conversation'
+					? drillUnit.label
+					: (leader.originalPrompt ?? leader.promptExcerpt ?? 'Untitled'),
+		};
 	}
 
 	async function deleteOne(id: string) {
@@ -360,7 +432,7 @@
 			const res = await fetch(`/api/media/${id}`, { method: 'DELETE' });
 			if (!res.ok && res.status !== 404) throw new Error(`Server returned ${res.status}`);
 			if (lightbox?.id === id) lightbox = null;
-			await refreshAfterMutation();
+			await refreshAfterMutation(new Set([id]));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
@@ -387,7 +459,7 @@
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
 			exitSelectMode();
-			await refreshAfterMutation();
+			await refreshAfterMutation(new Set(ids));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
@@ -1163,8 +1235,31 @@
 				{/if}
 			{/if}
 
+			{#if loadError}
+				<!-- Browse layout/units load failure (incl. a timed-out fetch or a
+				     failed demand page). Retry re-runs the load, which reseeds the feed
+				     and clears any failed-page markers so the range is fetched again. -->
+				<div
+					class="mt-4 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm alert-danger"
+				>
+					<span>{loadError}</span>
+					<button
+						type="button"
+						onclick={() => {
+							loadError = null;
+							reloadFeed();
+						}}
+						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
+					>
+						Retry
+					</button>
+				</div>
+			{/if}
+
 			{#if error}
-				<!-- Load or delete failure. Re-attempting the action clears it. -->
+				<!-- Delete / lightbox failure. Distinct from loadError (no Retry — there's
+				     nothing for a generic reload to re-attempt); re-doing the action
+				     clears it. -->
 				<div class="mt-4 rounded-md border px-3 py-2 text-sm alert-danger">
 					{error}
 				</div>
