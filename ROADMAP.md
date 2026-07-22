@@ -314,19 +314,40 @@ docs.
   path); poll cadence vs. responsiveness; whether the in-flight registry becomes
   the single source of truth the grid renders from.
 
-- **Virtualized message list.** Long conversations eventually overwhelm the DOM.
-  `@tanstack/svelte-virtual` is the candidate; the hard part is the streaming
-  case — the bottom message's height grows mid-stream, so the virtualizer
-  re-measures every chunk and the pin-to-bottom anchor tracks virtualized
-  content height. Likely pattern: virtualize only historical messages, leave the
-  streaming message in plain DOM until it completes. Trigger — implement when
-  real conversations actually feel janky; below that threshold the measurement
-  overhead can exceed just rendering everything. Note: the gallery grid shipped
-  a hand-rolled, dependency-free windower (`$lib/gallery-window.ts`) — but that
-  approach leans on a _constant_ tile height, which chat can't offer (variable,
-  async-image-shifted, streaming-grown message heights), so chat would need real
-  per-row measurement (`@tanstack/virtual-core`, headless) rather than reusing
-  the gallery math.
+- **Virtualized message list (tier 2+).** Long conversations eventually
+  overwhelm the DOM. The chat list is a flat, non-virtualized `{#each}` over the
+  whole active branch, so a long code-heavy thread piles up layout/paint work
+  (server `content_html` is 5-20x the source for shiki blocks). **Tier 1 shipped:**
+  `content-visibility: auto` + `contain-intrinsic-size: auto 150px` on each
+  message wrapper (`chat/[id]/+page.svelte`) lets the browser skip layout+paint
+  for off-screen messages while keeping every node in the DOM — so
+  getElementById deep-links, branch-switch re-centering, Ctrl-F find-in-page,
+  and the `scrollHeight` pin-to-bottom all keep working unchanged (scrollIntoView
+  and find force a skipped row to render), and it's progressive enhancement
+  (unsupported browsers render everything as before). That's ~zero-risk and
+  captures the layout/paint win, but it does _not_ reduce node count or HTML
+  parse cost. Remaining tiers, deferred until tier 1 proves insufficient:
+  - **Tier 2 — true windowing** (`@tanstack/virtual-core`, headless — _not_ the
+    gallery's `$lib/gallery-window.ts`, whose math leans on a _constant_ tile
+    height chat can't offer: variable, async-image-shifted, streaming-grown
+    heights). The hard part is the streaming case — the bottom message's height
+    grows mid-stream, so the virtualizer re-measures every chunk and the
+    pin-to-bottom anchor tracks virtualized content height. Likely pattern:
+    virtualize only historical messages, leave the streaming message in plain
+    DOM until it completes (the in-flight bubble is already a separate render
+    path, so the split falls out cleanly). Also has to rework the three
+    getElementById-based scroll paths (deep-link, branch-switch, compaction
+    jump) into scroll-to-index-then-measure. Trigger — real conversations
+    actually feel janky _with tier 1 already in place_ (memory/node-count
+    pressure, not just paint); below that the measurement overhead can exceed
+    just rendering everything.
+  - **Tier 3 — server-side message pagination** (a separate axis DOM
+    virtualization doesn't touch). `walkActiveBranch` serializes the _entire_
+    active branch with full `content_html` on every load, so a truly huge thread
+    is a payload problem regardless of how few rows the DOM mounts. This fights
+    the current SSR-everything model and the simple `scrollHeight` pin-to-bottom,
+    so it earns its own evaluation only once conversation _length_ (not render
+    cost) is the bottleneck.
 
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.

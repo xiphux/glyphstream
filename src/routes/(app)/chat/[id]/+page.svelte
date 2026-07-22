@@ -1779,11 +1779,31 @@
 					Tailwind v4 important syntax is the `!` SUFFIX (`mb-0!`),
 					not the v3 prefix (`!mb-0`).
 				-->
+						<!--
+						Off-screen render skipping (`content-visibility: auto`). The
+						whole active branch is a flat, non-virtualized list, so a long
+						code-heavy conversation piles up expensive layout/paint work
+						(server `content_html` is 5-20x the source for shiki blocks).
+						This lets the browser skip layout+paint for messages outside
+						the viewport while keeping every node in the DOM — so
+						getElementById deep-links, branch-switch re-centering, Ctrl-F
+						find-in-page, and the scrollHeight pin-to-bottom all keep
+						working unchanged (scrollIntoView/find force a skipped row to
+						render). `contain-intrinsic-size: auto 150px` reserves a
+						placeholder height so the scrollbar is roughly right before a
+						row is first seen, and the `auto` keyword makes the browser
+						remember each row's *real* height once rendered, so estimates
+						stop mattering for the rest of the session. Progressive
+						enhancement: browsers without support just render everything
+						as before. See ROADMAP "Virtualized message list" for the
+						heavier windowing tiers this defers.
+					-->
 						<div
 							id="msg-{m.id}"
 							in:messageIntro={{ streamed: m.id === turn.streamedMessageId }}
 							class={[
 								'group rounded-lg transition-colors duration-1000',
+								'[content-visibility:auto] [contain-intrinsic-size:auto_150px]',
 								mergeWithPrev && 'mt-0!',
 								mergeWithNext && 'mb-0!',
 								m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
