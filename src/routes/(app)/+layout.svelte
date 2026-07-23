@@ -292,6 +292,13 @@
 	// living in the layout chunk for sessions that never open it.
 	let accountMenuOpen = $state(false);
 
+	// True while any sidebar-anchored popover is open — the per-conversation
+	// overflow menu or the bottom account menu. Both portal out of the
+	// translated aside and share the same iOS Safari backdrop race, so both
+	// must hold the mobile drawer open (and keep the backdrop inert) while
+	// their menu is showing.
+	const sidebarMenuOpen = $derived(openOverflowFor !== null || accountMenuOpen);
+
 	// Desktop collapse state. Only affects the sm+ static sidebar; the
 	// mobile drawer always opens to the full width when toggled.
 	// Persisted in localStorage so the user's preference survives reloads;
@@ -333,9 +340,10 @@
 
 <div class="app-shell flex overflow-hidden">
 	<!-- Mobile drawer backdrop. Pointer-events stay off when the drawer
-		 is closed *or* when a conversation overflow menu is open. The
-		 second case defends against an iOS Safari quirk: tapping the
-		 overflow trigger inside the translated aside opens the menu via
+		 is closed *or* when a sidebar popover is open (a conversation
+		 overflow menu or the bottom account menu — see sidebarMenuOpen).
+		 The second case defends against an iOS Safari quirk: tapping the
+		 trigger inside the translated aside opens the menu via
 		 a portal'd popover, and the browser-synthesized click that
 		 follows the touch can end up dispatched to the z-30 backdrop
 		 instead of staying on the trigger — closing the drawer the
@@ -348,12 +356,12 @@
 		type="button"
 		aria-label="Close menu"
 		onclick={() => {
-			if (openOverflowFor !== null) return;
+			if (sidebarMenuOpen) return;
 			drawerOpen = false;
 		}}
 		class="fixed inset-0 z-30 bg-black/40 transition-opacity sm:hidden {drawerOpen
 			? 'opacity-100'
-			: 'opacity-0'} {drawerOpen && openOverflowFor === null
+			: 'opacity-0'} {drawerOpen && !sidebarMenuOpen
 			? 'pointer-events-auto'
 			: 'pointer-events-none'}"
 	></button>
