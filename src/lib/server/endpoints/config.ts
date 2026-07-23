@@ -434,9 +434,12 @@ export function loadImageEnhancementConfig(
  *  are small (a gist is ~150 tokens, a map ~600, a consolidation ~2000), so on a
  *  non-reasoning model this is slack; the number is really sized for a REASONING
  *  model, whose scratchpad shares this budget with the answer and is what a thin
- *  cap starves — a truncated pass then fails and retries (`TruncatedCompletionError`)
- *  rather than storing a stub. 4000 leaves that headroom; the per-request timeout
- *  backstops a runaway. Raise it for a model that thinks harder. */
+ *  cap starves. For the two passes that route through `callMemoryModel` (summaries
+ *  and the topics map), a starved, truncated completion fails and retries
+ *  (`TruncatedCompletionError`) rather than storing a stub; consolidation parses its
+ *  own output, so there a too-thin budget instead degrades to zero ops. 4000 leaves
+ *  that headroom either way; the per-request timeout backstops a runaway. Raise it
+ *  for a model that thinks harder. */
 export const DEFAULT_MEMORY_MODEL_MAX_TOKENS = 4000;
 /** Low temperature — consolidation is careful bookkeeping, not creative writing. */
 export const DEFAULT_MEMORY_MODEL_TEMPERATURE = 0.2;

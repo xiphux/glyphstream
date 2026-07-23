@@ -564,9 +564,12 @@ for **every** pass on the memory model — consolidation, the per-conversation
 summaries, and the topics map — not consolidation alone. The outputs are all small
 (a gist is a couple of sentences, the map ~600 tokens), so on a plain model it's
 slack. It matters for a **reasoning** model, where the scratchpad shares this budget
-with the answer: set it too low and a pass runs out of room mid-thought, comes back
-truncated, and is skipped and retried on the next sweep rather than stored as a
-stub. 4000 leaves a reasoning model headroom; raise it for one that thinks harder.
+with the answer: set it too low and a pass runs out of room mid-thought and comes
+back truncated. For the summaries and the topics map, a truncated result is caught,
+skipped, and retried on the next sweep rather than stored as a stub; consolidation
+parses its own output, so a truncated consolidation instead makes no changes that
+sweep (and isn't re-attempted until that user's memories change again). 4000 leaves
+a reasoning model headroom; raise it for one that thinks harder.
 
 ## Feature blocks
 

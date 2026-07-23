@@ -132,7 +132,7 @@
 # max_tokens = 4000                    # completion budget per call, ALL passes on this
 #                                      # model (consolidation, summaries, topics map) —
 #                                      # size it for a reasoning model's scratchpad +
-#                                      # output; too low truncates and the pass retries
+#                                      # output; too thin truncates the completion
 # temperature = 0.2                    # low — careful bookkeeping, not creative writing
 # active_hours = "02:00-06:00"         # optional; omit to run any time
 # timezone = "America/New_York"        # optional; default "UTC"
