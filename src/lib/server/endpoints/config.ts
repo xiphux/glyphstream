@@ -428,10 +428,16 @@ export function loadImageEnhancementConfig(
 	return { model, maxTokens, temperature, styleInstructionOverrides };
 }
 
-/** Default token cap for one memory-consolidation call — a few merge/reword ops
- *  with rewritten content fit well under this; it's a ceiling, and the
- *  per-request timeout backstops a runaway. */
-export const DEFAULT_MEMORY_MODEL_MAX_TOKENS = 2000;
+/** Default completion budget for ONE memory-model call — the ceiling for every
+ *  background pass on this model (consolidation, per-conversation summaries, and
+ *  the conversation-topics map), not just consolidation. The outputs themselves
+ *  are small (a gist is ~150 tokens, a map ~600, a consolidation ~2000), so on a
+ *  non-reasoning model this is slack; the number is really sized for a REASONING
+ *  model, whose scratchpad shares this budget with the answer and is what a thin
+ *  cap starves — a truncated pass then fails and retries (`TruncatedCompletionError`)
+ *  rather than storing a stub. 4000 leaves that headroom; the per-request timeout
+ *  backstops a runaway. Raise it for a model that thinks harder. */
+export const DEFAULT_MEMORY_MODEL_MAX_TOKENS = 4000;
 /** Low temperature — consolidation is careful bookkeeping, not creative writing. */
 export const DEFAULT_MEMORY_MODEL_TEMPERATURE = 0.2;
 /**
@@ -452,7 +458,10 @@ export const DEFAULT_MEMORY_OVERVIEW_MAX_CHARS = 2500;
  * - `model`: required, `"endpoint_id::model_id"`. Like the other model slots the
  *   endpoint is NOT verified at load time — a typo silently disables dreaming at
  *   use-time rather than crashing boot (see `getMemoryModel`).
- * - `max_tokens` / `temperature`: optional sampling overrides.
+ * - `max_tokens` / `temperature`: optional sampling overrides. `max_tokens` is the
+ *   completion budget for EVERY pass on this model (consolidation, summaries, and
+ *   the topics map), not consolidation alone — size it for a reasoning model's
+ *   scratchpad + output (see {@link DEFAULT_MEMORY_MODEL_MAX_TOKENS}).
  * - `active_hours`: optional `"HH:MM-HH:MM"` quiet-hours window (24-hour;
  *   overnight wrap allowed, e.g. `"22:00-06:00"`). Empty = always open.
  * - `timezone`: optional IANA zone the window is read in (default `"UTC"`).

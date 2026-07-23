@@ -504,7 +504,7 @@ background **"dreaming"** pass that periodically tidies the store:
 # top of config.toml — like [image_enhancement], above every [[endpoints]] block
 [memory_model]
 model = "dirac::qwen3-32b"      # endpoint_id::upstream_model_id
-max_tokens = 2000               # optional; cap per consolidation call
+max_tokens = 4000               # optional; completion budget per call, all passes
 temperature = 0.2               # optional; low — careful bookkeeping
 active_hours = "02:00-06:00"    # optional; a quiet-hours window (omit to run any time)
 timezone = "America/New_York"   # optional; default "UTC"
@@ -558,6 +558,15 @@ _theme_, and themes accumulate far more slowly than conversations do. It does no
 grow with your corpus. Raise it if the map visibly goes thin (topics you'd expect
 to see start dropping out); the cost is paid on every message, not just the ones
 that benefit.
+
+**Sizing the completion budget (`max_tokens`, default 4000).** This is the ceiling
+for **every** pass on the memory model — consolidation, the per-conversation
+summaries, and the topics map — not consolidation alone. The outputs are all small
+(a gist is a couple of sentences, the map ~600 tokens), so on a plain model it's
+slack. It matters for a **reasoning** model, where the scratchpad shares this budget
+with the answer: set it too low and a pass runs out of room mid-thought, comes back
+truncated, and is skipped and retried on the next sweep rather than stored as a
+stub. 4000 leaves a reasoning model headroom; raise it for one that thinks harder.
 
 ## Feature blocks
 
