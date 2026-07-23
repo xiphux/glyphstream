@@ -16,7 +16,11 @@ import {
 	buildTranscript,
 	SUMMARY_MAX_CHARS,
 } from '$lib/server/memory/conversation-summarizer';
-import { EmptyCompletionError, memoryInputBudget } from '$lib/server/memory/summarize-util';
+import {
+	EmptyCompletionError,
+	TruncatedCompletionError,
+	memoryInputBudget,
+} from '$lib/server/memory/summarize-util';
 import { UpstreamError } from '$lib/server/endpoints/client';
 import type { ChatMessage } from '$lib/types/api';
 
@@ -153,6 +157,36 @@ describe('summarizeConversation', () => {
 		await expect(
 			summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000),
 		).rejects.toThrow(/finish_reason=length.*reasoning_chars=30/);
+	});
+
+	it('throws when a non-empty gist is truncated below the length it would keep', async () => {
+		// finish_reason=length with content SHORTER than SUMMARY_MAX_CHARS: the model
+		// was cut mid-gist and the severed tail is content we'd have kept, not surplus a
+		// cap trims. Most often a reasoning model that spent its budget thinking. Fail
+		// the pass (like the empty case) so the watermark stays put and the sweep retries
+		// — rather than store a half-written gist that reads as whole.
+		chatMock.mockResolvedValue({
+			choices: [{ message: { content: 'a severed half-gist,' }, finish_reason: 'length' }],
+		});
+		await expect(
+			summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000),
+		).rejects.toThrow(TruncatedCompletionError);
+	});
+
+	it('accepts a length-stopped completion that still overflows the cap (the tail is trimmed anyway)', async () => {
+		// finish_reason=length but content LONGER than SUMMARY_MAX_CHARS: the model
+		// rambled past the cap, so capSummary trims the severed tail off a clean boundary
+		// and nothing we'd have kept was lost. Not a failure — store the capped gist.
+		chatMock.mockResolvedValue({
+			choices: [{ message: { content: 'word '.repeat(400) }, finish_reason: 'length' }],
+		});
+		const out = await summarizeConversation(
+			MODEL,
+			[mkMsg('user', 'a'), mkMsg('assistant', 'b')],
+			8000,
+		);
+		expect(out.length).toBeLessThanOrEqual(SUMMARY_MAX_CHARS);
+		expect(out.endsWith('…')).toBe(true);
 	});
 
 	it('does not silently drop a chunk when one map call comes back empty', async () => {

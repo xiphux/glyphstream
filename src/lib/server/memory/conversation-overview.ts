@@ -106,7 +106,13 @@ async function composeOverview(
 		const user =
 			`Previous map (for structure/order continuity only):\n${prev || '(none yet)'}\n\n` +
 			`Conversation summaries (source of truth, oldest first):\n${renderSummaries(summaries)}`;
-		return callMemoryModel(model, buildPrompt(model.overviewMaxChars), user, signal);
+		return callMemoryModel(
+			model,
+			buildPrompt(model.overviewMaxChars),
+			user,
+			signal,
+			model.overviewMaxChars,
+		);
 	}
 
 	// Over-window (rare, huge user): iterative fold over ordered batches, seeded
@@ -116,7 +122,17 @@ async function composeOverview(
 	let map = '';
 	for (const batch of chunkStrings(summaries, foldBudget)) {
 		const user = `Map so far:\n${map || '(none yet)'}\n\nMore conversation summaries:\n${renderSummaries(batch)}`;
-		map = await callMemoryModel(model, foldPrompt(model.overviewMaxChars), user, signal);
+		// `overviewMaxChars` as the keep-threshold holds for intermediate folds too:
+		// buildOverview caps the final map there anyway, so a fold that already reached
+		// that length has nothing a later fold could keep past it — only a fold that
+		// stopped short of it (reasoning ate the budget) has actually lost content.
+		map = await callMemoryModel(
+			model,
+			foldPrompt(model.overviewMaxChars),
+			user,
+			signal,
+			model.overviewMaxChars,
+		);
 	}
 	return map;
 }

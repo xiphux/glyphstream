@@ -161,18 +161,46 @@ export class EmptyCompletionError extends Error {
 }
 
 /**
+ * A memory-model call that stopped on `finish_reason: "length"` and came back
+ * SHORTER than the caller was going to keep — i.e. the completion was severed
+ * mid-generation and the lost tail was content we'd have retained, not surplus a
+ * cap would have trimmed anyway. Same hazard as {@link EmptyCompletionError} and
+ * handled the same way (the workers catch per item, skip it, leave the watermark
+ * unadvanced so the next sweep retries): a truncated-but-non-empty map or gist is
+ * a 200 that reads as whole, so nothing downstream would otherwise notice it was
+ * cut. Most often a reasoning model that spent its `max_tokens` budget thinking
+ * and reached only a stub of an answer — the fix is a larger `max_tokens`.
+ */
+export class TruncatedCompletionError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'TruncatedCompletionError';
+	}
+}
+
+/**
  * One memory-model call. Queues on the shared per-endpoint slot (released even on
  * error): a background pass makes several calls, so slotting PER CALL lets a
  * waiting live chat slip between them — a fair peer, never a preempting or
  * endpoint-hogging one. Returns the trimmed completion text; an empty one throws
  * {@link EmptyCompletionError} rather than returning '', so no caller can fold
  * nothing into a partial result.
+ *
+ * `keepChars` is how many characters the CALLER will retain from this completion —
+ * its char cap for a final result, or `Infinity` (the default) for an intermediate
+ * whose whole output is folded onward. A completion that stopped on
+ * `finish_reason: "length"` is only a real loss when it came back shorter than that:
+ * above the cap the caller trims the severed tail off a clean boundary anyway, but
+ * below it the lost tail is content we'd have kept, so it throws
+ * {@link TruncatedCompletionError}. The default is strict (any truncation is a loss)
+ * so a caller that forgets the cap fails loud rather than storing a cut result.
  */
 export async function callMemoryModel(
 	model: ResolvedMemoryModel,
 	systemPrompt: string,
 	userContent: string,
 	signal?: AbortSignal,
+	keepChars: number = Infinity,
 ): Promise<string> {
 	const slot = await acquireEndpointSlot(model.endpoint.id, model.endpoint.maxConcurrent, {
 		signal,
@@ -194,6 +222,11 @@ export async function callMemoryModel(
 		const choice = resp.choices?.[0];
 		const content = (choice?.message?.content ?? '').trim();
 		if (!content) throw new EmptyCompletionError(describeEmptyCompletion(model, choice));
+		if (choice?.finish_reason === 'length' && content.length < keepChars) {
+			throw new TruncatedCompletionError(
+				describeTruncatedCompletion(model, choice, content.length, keepChars),
+			);
+		}
 		return content;
 	} finally {
 		slot.release();
@@ -220,6 +253,27 @@ function describeEmptyCompletion(
 	return (
 		`${model.endpoint.id}::${model.upstreamId} returned an empty completion ` +
 		`(finish_reason=${choice?.finish_reason ?? 'none'}, reasoning_chars=${reasoning})`
+	);
+}
+
+/**
+ * Why a non-empty completion counts as truncated: it stopped on `length` with
+ * fewer chars than the caller would keep, and — as with the empty case — whether
+ * `max_tokens` went to a reasoning scratchpad is the number that says to raise it.
+ * Logged by the worker when it skips the item, so it lands next to the id it cost.
+ */
+function describeTruncatedCompletion(
+	model: ResolvedMemoryModel,
+	choice: NonNullable<ChatCompletionResponse['choices']>[number],
+	contentChars: number,
+	keepChars: number,
+): string {
+	const msg = choice.message;
+	const reasoning = (msg?.reasoning_content ?? msg?.reasoning ?? '').length;
+	return (
+		`${model.endpoint.id}::${model.upstreamId} returned a truncated completion ` +
+		`(finish_reason=length, content_chars=${contentChars} < keep_chars=${keepChars}, ` +
+		`reasoning_chars=${reasoning}) — raise the memory model's max_tokens`
 	);
 }
 

@@ -128,34 +128,43 @@ async function summarizeMessages(
 ): Promise<string> {
 	const lines = transcriptLines(messages).flatMap((l) => splitToBudget(l, budget));
 	if (approxTokens(lines.join(JOIN)) <= budget) {
-		return callMemoryModel(model, SYSTEM_PROMPT, lines.join(JOIN), signal);
+		// The final gist — capped to SUMMARY_MAX_CHARS by the caller, so anything past
+		// that is trimmed and only a completion shorter than it lost content it kept.
+		return callMemoryModel(model, SYSTEM_PROMPT, lines.join(JOIN), signal, SUMMARY_MAX_CHARS);
 	}
 	const partials: string[] = [];
 	for (const chunk of chunkStrings(lines, budget)) {
+		// A per-chunk partial is folded WHOLE into the reduce (never capped on its
+		// own), so a truncated one is always a loss — the default strict keep applies.
 		partials.push(await callMemoryModel(model, SYSTEM_PROMPT, chunk.join(JOIN), signal));
 	}
-	return reduceSummaries(model, partials, budget, signal);
+	return reduceSummaries(model, partials, budget, SUMMARY_MAX_CHARS, signal);
 }
 
 /** Fold partial summaries into one. Recurses if the partials themselves overflow
- *  the budget (many chunks → reduce in groups, then reduce those). */
+ *  the budget (many chunks → reduce in groups, then reduce those). `keepChars` is
+ *  the cap on this call's eventual result: it rides the fits-branch (the final
+ *  fold) and the recursion (whose result is also final), while the intermediate
+ *  group reductions stay strict — they're re-reduced whole. */
 async function reduceSummaries(
 	model: ResolvedMemoryModel,
 	partials: string[],
 	budget: number,
+	keepChars: number,
 	signal?: AbortSignal,
 ): Promise<string> {
 	if (partials.length <= 1) return partials[0] ?? '';
 	const render = (ps: string[]) => ps.map((p, i) => `Part ${i + 1}: ${p}`).join(JOIN);
 	if (approxTokens(render(partials)) <= budget) {
-		return callMemoryModel(model, REDUCE_PROMPT, render(partials), signal);
+		return callMemoryModel(model, REDUCE_PROMPT, render(partials), signal, keepChars);
 	}
 	// A partial is model output, so it's bounded by max_tokens rather than by our
 	// budget — split any that alone overshoot, same as the transcript lines.
 	const fitted = partials.flatMap((p) => splitToBudget(p, budget));
 	const reduced: string[] = [];
 	for (const group of chunkStrings(fitted, budget)) {
+		// Intermediate — folded whole into the next reduce, so strict keep (default).
 		reduced.push(await callMemoryModel(model, REDUCE_PROMPT, render(group), signal));
 	}
-	return reduceSummaries(model, reduced, budget, signal);
+	return reduceSummaries(model, reduced, budget, keepChars, signal);
 }

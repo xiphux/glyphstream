@@ -9,7 +9,7 @@ vi.mock('$lib/server/memory/summarize-util', async (orig) => ({
 }));
 
 import { buildOverview } from '$lib/server/memory/conversation-overview';
-import { EmptyCompletionError } from '$lib/server/memory/summarize-util';
+import { EmptyCompletionError, TruncatedCompletionError } from '$lib/server/memory/summarize-util';
 import { DEFAULT_MEMORY_OVERVIEW_MAX_CHARS } from '$lib/server/endpoints/config';
 
 type Model = Parameters<typeof buildOverview>[0];
@@ -76,6 +76,29 @@ describe('buildOverview', () => {
 			.mockResolvedValue('## Personal\n- Japan trip');
 
 		await expect(buildOverview(MODEL, null, summaries, 1000)).rejects.toThrow(EmptyCompletionError);
+	});
+
+	it('tells callMemoryModel to keep up to overview_max_chars (so a truncation below it fails)', async () => {
+		await buildOverview(model(800), 'PRIOR', ['a', 'b'], 8000);
+		// 5th arg is the keep-threshold: content stopped on `length` shorter than this
+		// is a real loss, longer than it is surplus the cap trims. Must be the same
+		// budget the model is asked for — here the configured 800.
+		expect(callMock.mock.calls[0][4]).toBe(800);
+	});
+
+	it('fails the rebuild when a fold batch comes back truncated, rather than storing a cut map', async () => {
+		// Same contract as the empty-batch case: a length-stopped fold that lost content
+		// throws (callMemoryModel), and the fold must let it through so the worker skips
+		// the user and retries — not fold a severed map forward as if it were whole.
+		const summaries = Array.from({ length: 8 }, (_, i) => `summary ${i} ` + 'x'.repeat(580));
+		callMock
+			.mockResolvedValueOnce('## Work\n- API deploys')
+			.mockRejectedValueOnce(new TruncatedCompletionError('gpu::m returned a truncated completion'))
+			.mockResolvedValue('## Personal\n- Japan trip');
+
+		await expect(buildOverview(MODEL, null, summaries, 1000)).rejects.toThrow(
+			TruncatedCompletionError,
+		);
 	});
 
 	it("caps the overview at the model's overview_max_chars", async () => {
