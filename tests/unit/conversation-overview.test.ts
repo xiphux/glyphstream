@@ -62,6 +62,20 @@ describe('buildOverview', () => {
 		expect(callMock.mock.calls.length).toBeGreaterThan(1);
 	});
 
+	it('keeps intermediate folds strict and caps only the final fold at overview_max_chars', async () => {
+		// Every fold but the last is fed forward verbatim as "Map so far", so those must
+		// stay strict (keepChars omitted → Infinity, so any truncation throws rather than
+		// propagating a severed map into the next fold). Only the final fold's output is
+		// what buildOverview caps, so it alone carries overviewMaxChars as the threshold.
+		const summaries = Array.from({ length: 8 }, (_, i) => `summary ${i} ` + 'x'.repeat(580));
+		await buildOverview(model(800), null, summaries, 1000);
+		const keepArgs = callMock.mock.calls.map((c) => c[4]); // 5th positional arg = keepChars
+		expect(keepArgs.length).toBeGreaterThan(1);
+		const last = keepArgs.length - 1;
+		for (let i = 0; i < last; i++) expect(keepArgs[i]).toBeUndefined();
+		expect(keepArgs[last]).toBe(800);
+	});
+
 	it('fails the rebuild when a fold batch comes back empty, rather than cold-starting the map', async () => {
 		// The fold assigns each call's result to `map`, so an empty one used to reset it:
 		// the next batch would restart from "(none yet)" and the final map would silently

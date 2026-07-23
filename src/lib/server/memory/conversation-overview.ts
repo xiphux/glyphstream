@@ -119,19 +119,22 @@ async function composeOverview(
 	// empty (true rebuild — no cruft). Reserve room for the growing map by batching
 	// summaries at a fraction of the budget. Structure stability is best-effort here.
 	const foldBudget = Math.max(Math.floor(budget / 2), MIN_BUDGET_TOKENS / 2);
+	const batches = chunkStrings(summaries, foldBudget);
 	let map = '';
-	for (const batch of chunkStrings(summaries, foldBudget)) {
-		const user = `Map so far:\n${map || '(none yet)'}\n\nMore conversation summaries:\n${renderSummaries(batch)}`;
-		// `overviewMaxChars` as the keep-threshold holds for intermediate folds too:
-		// buildOverview caps the final map there anyway, so a fold that already reached
-		// that length has nothing a later fold could keep past it — only a fold that
-		// stopped short of it (reasoning ate the budget) has actually lost content.
+	for (let i = 0; i < batches.length; i++) {
+		const user = `Map so far:\n${map || '(none yet)'}\n\nMore conversation summaries:\n${renderSummaries(batches[i])}`;
+		// Only the LAST fold's output is what buildOverview caps; every earlier map is
+		// fed onward verbatim as "Map so far", so keep intermediates strict (omit
+		// keepChars → Infinity, any truncation throws) the way reduceSummaries does —
+		// a severed intermediate map would otherwise propagate into the next fold. The
+		// final fold may legitimately overshoot the cap and be trimmed, so it carries it.
+		const isFinal = i === batches.length - 1;
 		map = await callMemoryModel(
 			model,
 			foldPrompt(model.overviewMaxChars),
 			user,
 			signal,
-			model.overviewMaxChars,
+			isFinal ? model.overviewMaxChars : undefined,
 		);
 	}
 	return map;
