@@ -275,6 +275,59 @@ docs.
   fitting voice); and how the markdown→speech reduction strips code blocks /
   tables / links before synthesis.
 
+- **Prompt snippets — a curated library of reusable prompt _fragments_.** A
+  user-scoped library of named text fragments you compose _into_ a message at
+  type time — a visual-style block ("Akira Toriyama Style: …"), a tone
+  instruction, a creative-writing character/place/scenario — then keep typing to
+  finish the prompt. Distinct from **custom models**, which are whole-assistant
+  presets (base model + system prompt + params) picked _before_ you type and
+  materialized onto the conversation: snippets operate at the _message_ level, not
+  the config level, so they compose (stack several in one prompt — style + camera
+  - palette + your description, which a single preset can't) and never touch the
+    model picker. At ~100 entries that distinction is the whole point: 100 custom
+    models explode the picker and cost a preset-build each; 100 snippets are a
+    non-event for a fuzzy-filtered autocomplete. Also the _curated_ counterpart to
+    the mined "your styles" note (under **Gallery** below) — that one auto-discovers
+    fragments from history; this is the hand-authored primitive it would feed.
+  * _Insertion is plain editable text, single-undo._ Insert the body at the caret
+    as ordinary editable text — no collapsed "chip" (a chip loses the editability
+    and transparency that are the point; you can't tweak or even see it until
+    send). The one non-obvious mechanic: insert via
+    `document.execCommand('insertText')`, the _only_ API that writes the browser's
+    native undo stack, so a mis-selected snippet vanishes as one Ctrl-Z instead of
+    char-by-char. The modern `setRangeText()` inserts but pushes _no_ undo entry —
+    the wrong tool here despite being the un-deprecated one. A post-insert visual
+    indicator (highlighting/labelling the inserted range) is explicitly _not_
+    pursued: the composer is a plain `<textarea>` (`ComposerCore.svelte`), which
+    can't style a sub-range without a mirror-overlay hack or a `contenteditable`
+    rewrite — disproportionate for a flourish.
+  * _Per-snippet `kinds[]` do double duty._ Each snippet is tagged with the
+    modalities it applies to (image / video / text, plus an "any/generic" that
+    always shows). This both organizes the library _and_ context-filters the
+    autocomplete against the active model's modality (the composer already
+    branches on image today) — so image styles don't clutter a text chat, and a
+    modality-agnostic tone instruction shows everywhere. A _set_, not a single
+    value, so generic snippets needn't be duplicated; and a _default_ filter, not
+    a hard wall (a "show all" escape hatch keeps a mis-tagged snippet reachable).
+  * _Generality is load-bearing, not speculative._ Two concrete modalities with
+    their own snippet vocabularies — image styles, and creative-writing
+    character/place/setting/scenario blocks — so the primitive is genuinely
+    modality-agnostic; `kinds[]` is what keeps the two libraries from bleeding
+    together.
+  * _Cheap, and free on the payload budget._ A `prompt_snippets` table
+    (`user_id`-scoped per the isolation invariant; `name`, `body`, `kinds[]`,
+    tags, `usage_count` for recency), a composer autocomplete (client-side fuzzy
+    match over ~100 short strings — no dep, no round-trip), and a settings CRUD
+    page. Unlike memory / skills / tools, a snippet adds _zero_ standing payload:
+    never in the system prompt or `tools[]`, it only expands into a message the
+    user chose to send — no per-turn rent, no prefix churn. **Bulk import is v1,
+    not a nice-to-have:** the ~100 already live in a text file, and if the only way
+    in is a form the feature is as cumbersome as the 100-custom-models path it
+    replaces. Open questions: the trigger char (avoid `/` — skills; `;` / `\` /
+    `@` the candidates, wants a char rarely typed literally at a word start);
+    whether the discovery picker panel ships with the MVP or the autocomplete
+    carries v1 alone.
+
 - **Multi-user — nice-to-haves.** Role + invite flow, admin UI, and data
   isolation shipped. Remaining: a per-user storage-quota / usage view; bulk user
   import.
@@ -510,10 +563,13 @@ proactivity and pipeline bets are the most identity-defining.
     question of where the image-embedding model lives (another endpoint vs. a
     bundled local model — the latter fights the lightweight constraint).
 
-  - _Style / prompt library._ Mine the user's own generation history for
-    recurring prompt patterns and surface them as reusable, auto-discovered
+  - _Style / prompt library (auto-mined)._ Mine the user's own generation history
+    for recurring prompt patterns and surface them as reusable, auto-discovered
     presets ("your styles") — distinct from hand-saved custom-model presets, and
-    from prompt _search_ (this clusters for reuse rather than retrieves). Cheap;
+    from prompt _search_ (this clusters for reuse rather than retrieves). The
+    _discovered_ source that feeds the hand-curated **Prompt snippets** primitive
+    (mid-term), not a separate library: clustering here proposes fragments; that
+    entry owns storing, organizing, and composing them into a prompt. Cheap;
     mostly a query + clustering over the prompt history the FTS work already
     indexes. Open question: auto-cluster vs. just a "reuse this prompt"
     affordance on a gallery item, which captures most of the value for far less.
