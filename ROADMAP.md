@@ -300,7 +300,16 @@ docs.
     indicator (highlighting/labelling the inserted range) is explicitly _not_
     pursued: the composer is a plain `<textarea>` (`ComposerCore.svelte`), which
     can't style a sub-range without a mirror-overlay hack or a `contenteditable`
-    rewrite — disproportionate for a flourish.
+    rewrite — disproportionate for a flourish. Factor one `insertAtCaret` /
+    `replaceSelection` helper (focus → set range → `execCommand('insertText')` →
+    let `bind:value` catch the resulting `input` event, which `setRangeText`
+    wouldn't fire) and retrofit the existing skill-completion path onto it:
+    `selectSkill` (`ComposerCore.svelte`) today full-replaces via `text = next`,
+    which breaks the native undo stack, so a wrong `/skill` pick can't be undone
+    back to the partial query to re-choose. The stakes there are lower (the skill
+    menu only opens when the whole box is a bare `/query`, so nothing else is at
+    risk), so this is consistency + a re-pick nicety, not a bug fix — worth doing
+    only as a shared helper falls out of the snippet work, not on its own.
   * _Per-snippet `kinds[]` do double duty._ Each snippet is tagged with the
     modalities it applies to (image / video / text, plus an "any/generic" that
     always shows). This both organizes the library _and_ context-filters the
