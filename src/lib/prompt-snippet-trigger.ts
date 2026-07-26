@@ -27,8 +27,17 @@ export interface SnippetQuery {
 	start: number;
 }
 
+/**
+ * Whitespace for the backward scan and the start-of-word rule.
+ *
+ * `\s` rather than a hand-listed set: it already covers the Unicode spaces and
+ * every line terminator, including U+2028 — the soft break word processors and
+ * PDFs emit. Listing only space/tab/LF/CR meant a `;` typed at the start of a
+ * line that followed a pasted soft break failed the start-of-word rule, so the
+ * menu silently declined to open with nothing to explain why.
+ */
 function isWhitespace(ch: string): boolean {
-	return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+	return /\s/.test(ch);
 }
 
 /**

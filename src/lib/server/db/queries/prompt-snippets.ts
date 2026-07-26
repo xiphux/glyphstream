@@ -41,13 +41,17 @@ function encodeList(list: readonly string[] | undefined): string | null {
 }
 
 /**
- * All of a user's snippets, most-used first.
+ * All of a user's snippets, alphabetical by name.
  *
- * The `asc(id)` tiebreak is load-bearing, not decoration: a bulk import writes
- * the whole library within the same millisecond and most rows share
- * `usage_count = 0`, so ordering on those columns alone would leave the
- * relative order to whatever plan SQLite picks — and this list feeds an
- * autocomplete where a reshuffling menu is user-visible.
+ * This is the raw order the settings page renders. Most-used-first ordering is
+ * NOT applied here — the composer's autocomplete re-sorts by `usageCount` in
+ * `filterSnippets` (`$lib/prompt-snippet-trigger`), which is the only consumer
+ * that wants it.
+ *
+ * The `asc(id)` tiebreak is belt-and-braces: `uq_prompt_snippets_user_name`
+ * already makes `name` unique per user, so no tie can occur today — but it
+ * costs nothing and keeps the order deterministic if that constraint is ever
+ * relaxed, since this list feeds a menu where reshuffling is user-visible.
  */
 export function listPromptSnippetsForUser(userId: string): PromptSnippet[] {
 	const db = getDb();

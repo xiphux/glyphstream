@@ -14,6 +14,7 @@ import { createPromptSnippet, updatePromptSnippet } from '$lib/server/db/queries
 import { promptSnippets } from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import { parseSnippetMarkdown } from './markdown';
+import { snippetCapViolation } from './validate';
 
 /** Upper bound on one import. Generous next to a realistic library (~100)
  *  while still refusing a runaway paste. */
@@ -39,6 +40,23 @@ export function importSnippets(opts: ImportOptions): ImportSnippetsResult {
 
 	const parsed = parseSnippetMarkdown(content);
 	if (parsed.snippets.length === 0) {
+		// Nothing importable — but if the parser diagnosed WHY (bodyless
+		// headings, blank names), return those reasons through the normal
+		// result channel rather than replacing them with a generic error.
+		// A library that's malformed the same way throughout — e.g. every body
+		// written on its heading line — is exactly when the per-entry reasons
+		// are the whole answer, and exactly when a bare "no snippets found"
+		// leaves the user to re-derive by trial and error what the parser
+		// already worked out.
+		if (parsed.skipped.length > 0) {
+			return {
+				ok: true,
+				imported: 0,
+				updated: 0,
+				skipped: parsed.skipped,
+				warnings: parsed.warnings,
+			};
+		}
 		return {
 			ok: false,
 			status: 400,
@@ -70,6 +88,16 @@ export function importSnippets(opts: ImportOptions): ImportSnippetsResult {
 				continue;
 			}
 			seen.add(s.name);
+
+			// The same caps the create/edit API enforces. Without this an
+			// imported row could exceed every documented limit and then be
+			// unsavable from the settings form, since PATCH validates every
+			// field present — so even renaming it would trip the body cap.
+			const violation = snippetCapViolation(s);
+			if (violation) {
+				skipped.push(`${s.name}: ${violation}`);
+				continue;
+			}
 
 			// Read through `tx`, not getDb(): the rows written earlier in this
 			// same loop aren't committed yet, so the existence check has to see

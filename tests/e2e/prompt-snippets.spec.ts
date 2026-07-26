@@ -145,6 +145,33 @@ test.describe('prompt snippets: settings', () => {
 		expect(body).toContain('kinds: video');
 	});
 
+	// Regression: the import route answers 200 for "nothing parsed, but here's
+	// why", so clearing the box on res.ok deleted the very library the user
+	// needs to correct and retry — with no undo, since a programmatic value
+	// assignment drops the textarea's native undo stack. The shape below (every
+	// body written on its heading line) is the realistic hand-conversion slip.
+	test('a failed paste import keeps the pasted text so it can be fixed', async ({ page }) => {
+		await page.goto('/settings/snippets');
+		const malformed = '## Style A: bold linework\n\n## Style B: soft pastel\n';
+		const box = page.getByPlaceholder('## Akira Toriyama Style', { exact: false });
+		await box.fill(malformed);
+		await page.getByRole('button', { name: 'Import pasted text' }).click();
+
+		// Nothing imported, and the text is still there to edit.
+		await expect(page.getByText('Style A', { exact: false })).toHaveCount(0);
+		await expect(box).toHaveValue(malformed);
+	});
+
+	test('a successful paste import clears the box', async ({ page }) => {
+		await page.goto('/settings/snippets');
+		const box = page.getByPlaceholder('## Akira Toriyama Style', { exact: false });
+		await box.fill('## Good Snippet\n\na real body\n');
+		await page.getByRole('button', { name: 'Import pasted text' }).click();
+
+		await expect(page.getByText('Good Snippet')).toBeVisible();
+		await expect(box).toHaveValue('');
+	});
+
 	test('a snippet created here is offered in the composer', async ({ page }) => {
 		await page.goto('/settings/snippets');
 		await page.getByRole('button', { name: 'New snippet' }).click();

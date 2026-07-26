@@ -27,46 +27,78 @@ export function snippetList(): PromptSnippet[] {
 	return snippets;
 }
 
-/** True once a fetch has completed (successfully or not) — lets the menu tell
- *  "no snippets" apart from "not fetched yet". */
-export function snippetsLoaded(): boolean {
-	return loaded;
-}
+/**
+ * How long to wait before retrying after a failed load.
+ *
+ * The caller fires on every keystroke AND every caret move inside a `;` token,
+ * so without a cooldown one failing endpoint turned a single attempted snippet
+ * use into ~20 requests — adding load exactly when the server is already
+ * unhealthy, and filling the console with errors while the user is just typing.
+ */
+const RETRY_AFTER_FAILURE_MS = 30_000;
+let nextRetryAt = 0;
+
+/**
+ * Bumped by `invalidateSnippets()` so a load that was already in flight can't
+ * commit its result afterwards.
+ *
+ * Nulling `inflight` isn't enough on its own: the running promise keeps its
+ * closure and would still assign `snippets` and set `loaded = true` — pinning
+ * the cache to the pre-mutation library for the rest of the session, since
+ * `loaded` then short-circuits every later call. A superseded failure would
+ * likewise re-arm the retry cooldown the invalidation had just cleared.
+ */
+let generation = 0;
 
 /**
  * Fetch the library once per session. Idempotent and safe to call on every
  * trigger keypress: concurrent callers share the in-flight promise, and a
  * completed load short-circuits.
  *
- * A failure leaves `loaded` false so a later keypress retries — the menu
- * simply shows nothing in the meantime rather than surfacing an error, since
- * this fires on a keystroke the user may not have meant as a command.
+ * A failure leaves `loaded` false so a later keypress retries, but not before
+ * the cooldown above. The menu simply shows nothing in the meantime rather than
+ * surfacing an error, since this fires on a keystroke the user may not have
+ * meant as a command.
  */
 export function ensureSnippetsLoaded(): Promise<void> {
 	if (loaded) return Promise.resolve();
 	if (inflight) return inflight;
+	if (Date.now() < nextRetryAt) return Promise.resolve();
+	const gen = generation;
 	inflight = (async () => {
 		try {
 			const res = await fetch('/api/user/prompt-snippets');
-			if (!res.ok) return;
+			if (gen !== generation) return;
+			if (!res.ok) {
+				nextRetryAt = Date.now() + RETRY_AFTER_FAILURE_MS;
+				return;
+			}
 			const body = (await res.json()) as { promptSnippets?: PromptSnippet[] };
+			if (gen !== generation) return;
 			snippets = body.promptSnippets ?? [];
 			loaded = true;
+			nextRetryAt = 0;
 		} catch {
-			/* offline or aborted — retried on the next trigger */
+			/* offline or aborted — retried after the cooldown */
+			if (gen === generation) nextRetryAt = Date.now() + RETRY_AFTER_FAILURE_MS;
 		} finally {
-			inflight = null;
+			// Only clear the slot we own. A superseded run must not null a newer
+			// load's `inflight`, or the dedupe breaks and requests pile up.
+			if (gen === generation) inflight = null;
 		}
 	})();
 	return inflight;
 }
 
 /** Drop the cache after a settings-page mutation so the composer picks up the
- *  change without a reload. */
+ *  change without a reload. Clears the failure cooldown too, since this is an
+ *  explicit "go look again". */
 export function invalidateSnippets(): void {
+	generation++;
 	snippets = [];
 	loaded = false;
 	inflight = null;
+	nextRetryAt = 0;
 }
 
 /** Bump a snippet's usage counter. Fire-and-forget: ordering is a nicety, and

@@ -131,11 +131,16 @@
 
 	/** Report what the import actually did — counts and reasons, not a bare
 	 *  "done", since a 100-entry import that silently skipped 40 would
-	 *  otherwise look like a success. */
-	async function afterImport(res: Response) {
+	 *  otherwise look like a success.
+	 *
+	 *  Returns whether anything actually landed, which is what the paste box
+	 *  keys its clear-on-success off. A rejected import can still answer 200
+	 *  (the "nothing parsed, but here's why" case), so clearing on `res.ok`
+	 *  would delete the very text the user needs to correct and retry. */
+	async function afterImport(res: Response): Promise<boolean> {
 		if (!res.ok) {
 			toast.error(`Import failed: ${await errorMessage(res)}`);
-			return;
+			return false;
 		}
 		const body = (await res.json()) as {
 			imported: number;
@@ -147,10 +152,25 @@
 		if (body.updated > 0) parts.push(`updated ${body.updated}`);
 		if (body.skipped.length > 0) parts.push(`skipped ${body.skipped.length}`);
 		if (body.warnings.length > 0) parts.push(`${body.warnings.length} warning(s)`);
-		toast.success(parts.join(', ') + '.');
+		const summary = parts.join(', ') + '.';
+
+		// When NOTHING landed, the counts alone are useless — the reasons are the
+		// answer. This is the systematically-malformed-library case (e.g. every
+		// body written on its heading line), where the same reason repeats and
+		// naming it once tells the user exactly what to change.
+		const nothingLanded = body.imported === 0 && body.updated === 0;
+		const reasons = [...body.skipped, ...body.warnings];
+		if (nothingLanded && reasons.length > 0) {
+			const shown = reasons.slice(0, 3).join('; ');
+			const more = reasons.length > 3 ? ` (+${reasons.length - 3} more)` : '';
+			toast.error(`${summary} ${shown}${more}`);
+		} else {
+			toast.success(summary);
+		}
 		if (body.skipped.length > 0) console.warn('Skipped snippets:', body.skipped);
 		if (body.warnings.length > 0) console.warn('Import warnings:', body.warnings);
 		await refresh();
+		return !nothingLanded;
 	}
 
 	async function importPaste() {
@@ -162,8 +182,12 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ content: pasteText, overwrite }),
 			});
-			await afterImport(res);
-			if (res.ok) pasteText = '';
+			// Clear only when something actually landed. `res.ok` isn't the test:
+			// a 200 can still mean "nothing imported, here's what's wrong", and
+			// wiping the box there loses the library the user just hand-converted
+			// — with no undo, since a programmatic assignment drops the native
+			// undo stack.
+			if (await afterImport(res)) pasteText = '';
 		} catch (e) {
 			toast.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
 		} finally {
