@@ -133,6 +133,32 @@ describe('Security settings page — empty state', () => {
 		});
 		expect(screen.queryByRole('button', { name: /Add passkey/ })).toBeNull();
 	});
+
+	// The page advertises methods by what it offers, not by a config
+	// matrix: a disabled provider the user hasn't bound is something they
+	// can't act on and an admin controls, so it renders nothing at all.
+	it('says nothing about a disabled provider the user has not bound', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					providers: [
+						{ id: 'github', label: 'GitHub', enabled: true },
+						{ id: 'google', label: 'Google', enabled: false },
+					],
+					passkeys: [],
+				},
+			},
+		});
+		expect(screen.queryByText(/Google/)).toBeNull();
+	});
+
+	it('drops the Passkeys section entirely when passkey login is off and none exist', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeyEnabled: false, passkeys: [] } },
+		});
+		expect(screen.queryByRole('heading', { name: 'Passkeys' })).toBeNull();
+	});
 });
 
 describe('Security settings page — list rendering', () => {
@@ -183,6 +209,39 @@ describe('Security settings page — list rendering', () => {
 			},
 		});
 		expect(screen.queryByText('Synced')).toBeNull();
+	});
+
+	// The inverse of the "say nothing about disabled providers" rule: once
+	// a binding exists, the admin turning that provider off is state the
+	// user can't infer from anything else on the page, so the row says it.
+	it('flags a bound provider whose sign-in an admin has since turned off', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					providers: [{ id: 'github', label: 'GitHub', enabled: false }],
+					passkeys: [mkPasskey({ id: 'a' })],
+				},
+			},
+		});
+		expect(screen.getByText('Sign-in off')).toBeInTheDocument();
+	});
+
+	it('leaves an enabled provider unflagged', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [mkPasskey({ id: 'a' })] } },
+		});
+		expect(screen.queryByText('Sign-in off')).toBeNull();
+	});
+
+	it('keeps registered passkeys visible with a note when passkey login is off', () => {
+		render(SecurityPage, {
+			props: {
+				data: { ...baseData, passkeyEnabled: false, passkeys: [mkPasskey({ id: 'a' })] },
+			},
+		});
+		expect(screen.getByRole('heading', { name: 'Passkeys' })).toBeInTheDocument();
+		expect(screen.getByText(/can't be used to sign\s+in/)).toBeInTheDocument();
 	});
 });
 

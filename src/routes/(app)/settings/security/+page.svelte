@@ -57,6 +57,14 @@
 		return data.providers.find((p: ProviderInfo) => p.id === provider)?.label ?? provider;
 	}
 
+	// A binding whose provider the admin has since turned off (or dropped
+	// from the registry) still exists but can no longer be signed in with.
+	// That's the one piece of provider state the user can't infer from what
+	// this page offers them, so the row says it.
+	function providerDisabled(provider: string): boolean {
+		return !data.providers.find((p: ProviderInfo) => p.id === provider)?.enabled;
+	}
+
 	let addBusy = $state(false);
 	let addName = $state('');
 	let addError = $state<string | null>(null);
@@ -264,7 +272,16 @@
 								<div class="flex min-w-0 flex-1 items-center gap-2.5">
 									<ProviderIcon provider={a.provider} size={18} />
 									<div class="min-w-0">
-										<div class="font-medium">{providerLabel(a.provider)}</div>
+										<div class="flex items-center gap-2 font-medium">
+											<span class="truncate">{providerLabel(a.provider)}</span>
+											{#if providerDisabled(a.provider)}
+												<span
+													class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+													title="An admin has turned this provider off — the binding stays, but you can't sign in with it."
+													>Sign-in off</span
+												>
+											{/if}
+										</div>
 										<div class="text-xs text-fg-muted">
 											{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
 										</div>
@@ -299,153 +316,144 @@
 						{/each}
 					</div>
 				{/if}
-
-				<dl class="mt-4 flex flex-col gap-1 border-t border-border pt-3 text-xs text-fg-muted">
-					{#each data.providers as provider (provider.id)}
-						<div class="flex justify-between">
-							<dt>{provider.label} OAuth login</dt>
-							<dd class={provider.enabled ? 'text-fg' : 'text-fg-muted italic'}>
-								{provider.enabled ? 'Enabled' : 'Disabled'}
-							</dd>
-						</div>
-					{/each}
-					<div class="flex justify-between">
-						<dt>Passkey login</dt>
-						<dd class={data.passkeyEnabled ? 'text-fg' : 'text-fg-muted italic'}>
-							{data.passkeyEnabled ? 'Enabled' : 'Disabled'}
-						</dd>
-					</div>
-				</dl>
 			</section>
 
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<div class="flex items-baseline justify-between">
-					<h2 class="text-sm font-semibold">Passkeys</h2>
-					<span class="text-xs text-fg-muted">{data.passkeys.length} registered</span>
-				</div>
+			{#if data.passkeyEnabled || data.passkeys.length > 0}
+				<section class="rounded-lg border border-border bg-surface-panel p-4">
+					<div class="flex items-baseline justify-between">
+						<h2 class="text-sm font-semibold">Passkeys</h2>
+						<span class="text-xs text-fg-muted">{data.passkeys.length} registered</span>
+					</div>
+					{#if !data.passkeyEnabled}
+						<p class="mt-1 text-xs text-fg-muted">
+							An admin has turned passkey sign-in off. These stay registered but can't be used to
+							sign in — remove any you no longer want on file.
+						</p>
+					{/if}
 
-				{#if data.passkeys.length === 0}
-					<p class="mt-4 py-6 text-center text-sm text-fg-muted">
-						No passkeys yet. Add one to sign in without an OAuth provider.
-					</p>
-				{:else}
-					<ul class="mt-3 flex flex-col gap-2">
-						{#each data.passkeys as p (p.id)}
-							<li
-								class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
-							>
-								<KeyRound size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
-								<div class="min-w-0 flex-1">
-									{#if renamingId === p.id}
-										<div class="flex items-center gap-2">
-											<input
-												type="text"
-												bind:value={renameDraft}
-												maxlength="60"
-												placeholder="Passkey name"
-												aria-label="Passkey name"
-												onkeydown={(e) => onRenameKeydown(e, p)}
-												class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
-											/>
-											<button
-												type="button"
-												onclick={() => commitRename(p)}
-												aria-label="Save name"
-												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
-											>
-												<Check size={14} strokeWidth={2.25} />
-											</button>
-											<button
-												type="button"
-												onclick={cancelRename}
-												aria-label="Cancel rename"
-												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
-											>
-												<X size={14} strokeWidth={2.25} />
-											</button>
-										</div>
-									{:else}
-										<div class="flex items-center gap-2 text-sm font-medium">
-											<span class="truncate">{displayName(p)}</span>
-											{#if p.backedUp}
+					{#if data.passkeys.length === 0}
+						<p class="mt-4 py-6 text-center text-sm text-fg-muted">
+							No passkeys yet. Add one to sign in without an OAuth provider.
+						</p>
+					{:else}
+						<ul class="mt-3 flex flex-col gap-2">
+							{#each data.passkeys as p (p.id)}
+								<li
+									class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
+								>
+									<KeyRound size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
+									<div class="min-w-0 flex-1">
+										{#if renamingId === p.id}
+											<div class="flex items-center gap-2">
+												<input
+													type="text"
+													bind:value={renameDraft}
+													maxlength="60"
+													placeholder="Passkey name"
+													aria-label="Passkey name"
+													onkeydown={(e) => onRenameKeydown(e, p)}
+													class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
+												/>
+												<button
+													type="button"
+													onclick={() => commitRename(p)}
+													aria-label="Save name"
+													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
+												>
+													<Check size={14} strokeWidth={2.25} />
+												</button>
+												<button
+													type="button"
+													onclick={cancelRename}
+													aria-label="Cancel rename"
+													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
+												>
+													<X size={14} strokeWidth={2.25} />
+												</button>
+											</div>
+										{:else}
+											<div class="flex items-center gap-2 text-sm font-medium">
+												<span class="truncate">{displayName(p)}</span>
+												{#if p.backedUp}
+													<span
+														class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+														>Synced</span
+													>
+												{/if}
 												<span
 													class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-													>Synced</span
 												>
-											{/if}
-											<span
-												class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-											>
-												{p.deviceType === 'multiDevice' ? 'Cross-device' : 'This device'}
-											</span>
-										</div>
-										<div class="mt-1 text-xs text-fg-muted">
-											Added {formatDate(p.createdAt)} · Last used
-											{p.lastUsedAt ? formatDate(p.lastUsedAt) : 'never'}
-										</div>
-									{/if}
-								</div>
-								{#if renamingId !== p.id}
-									<div class="flex shrink-0 items-center gap-1">
-										<button
-											type="button"
-											onclick={() => startRename(p)}
-											disabled={busyId === p.id}
-											aria-label="Rename passkey"
-											class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg disabled:opacity-50"
-										>
-											<Pencil size={14} strokeWidth={2.25} />
-										</button>
-										{#if !(lastMethodLocked && data.passkeys.length === 1)}
-											<button
-												type="button"
-												onclick={() => deletePasskey(p)}
-												disabled={busyId === p.id}
-												aria-label="Delete passkey"
-												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
-											>
-												<Trash2 size={14} strokeWidth={2.25} />
-											</button>
+													{p.deviceType === 'multiDevice' ? 'Cross-device' : 'This device'}
+												</span>
+											</div>
+											<div class="mt-1 text-xs text-fg-muted">
+												Added {formatDate(p.createdAt)} · Last used
+												{p.lastUsedAt ? formatDate(p.lastUsedAt) : 'never'}
+											</div>
 										{/if}
 									</div>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
+									{#if renamingId !== p.id}
+										<div class="flex shrink-0 items-center gap-1">
+											<button
+												type="button"
+												onclick={() => startRename(p)}
+												disabled={busyId === p.id}
+												aria-label="Rename passkey"
+												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg disabled:opacity-50"
+											>
+												<Pencil size={14} strokeWidth={2.25} />
+											</button>
+											{#if !(lastMethodLocked && data.passkeys.length === 1)}
+												<button
+													type="button"
+													onclick={() => deletePasskey(p)}
+													disabled={busyId === p.id}
+													aria-label="Delete passkey"
+													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+												>
+													<Trash2 size={14} strokeWidth={2.25} />
+												</button>
+											{/if}
+										</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
 
-				{#if data.passkeyEnabled}
-					<div class="mt-4 border-t border-border pt-4">
-						<label class="block text-xs font-medium text-fg-muted" for="passkey-name">
-							Name (optional)
-						</label>
-						<div class="mt-1 flex gap-2">
-							<input
-								id="passkey-name"
-								type="text"
-								bind:value={addName}
-								maxlength="60"
-								placeholder="e.g. iPhone, 1Password"
-								class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
-							/>
-							<button
-								type="button"
-								onclick={addPasskey}
-								disabled={addBusy}
-								class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-							>
-								<KeyRound size={14} strokeWidth={2.25} />
-								{addBusy ? 'Waiting…' : 'Add passkey'}
-							</button>
+					{#if data.passkeyEnabled}
+						<div class="mt-4 border-t border-border pt-4">
+							<label class="block text-xs font-medium text-fg-muted" for="passkey-name">
+								Name (optional)
+							</label>
+							<div class="mt-1 flex gap-2">
+								<input
+									id="passkey-name"
+									type="text"
+									bind:value={addName}
+									maxlength="60"
+									placeholder="e.g. iPhone, 1Password"
+									class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
+								/>
+								<button
+									type="button"
+									onclick={addPasskey}
+									disabled={addBusy}
+									class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+								>
+									<KeyRound size={14} strokeWidth={2.25} />
+									{addBusy ? 'Waiting…' : 'Add passkey'}
+								</button>
+							</div>
+							{#if addError}
+								<p class="mt-2 rounded-lg border px-2 py-1.5 text-xs alert-danger">
+									{addError}
+								</p>
+							{/if}
 						</div>
-						{#if addError}
-							<p class="mt-2 rounded-lg border px-2 py-1.5 text-xs alert-danger">
-								{addError}
-							</p>
-						{/if}
-					</div>
-				{/if}
-			</section>
+					{/if}
+				</section>
+			{/if}
 		</div>
 	</div>
 </div>

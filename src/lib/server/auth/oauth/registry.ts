@@ -41,10 +41,11 @@ export function listEnabledProviders(): OAuthProvider[] {
 }
 
 /** Snapshot of every *registered* provider (enabled or not) for the
- *  settings page: it labels bound accounts (including ones whose provider
- *  was later disabled — still rendered, just not linkable), drives the
- *  "Link …" buttons (the enabled+unlinked subset), and the per-provider
- *  enabled/disabled status list. */
+ *  settings page: it labels bound accounts, flags the ones whose provider
+ *  was since disabled (still rendered, just no longer a way in), and drives
+ *  the "Link …" buttons (the enabled+unlinked subset). A provider the user
+ *  has neither bound nor can link renders nothing — the page shows what you
+ *  can act on, not a matrix of instance config. */
 export function describeProviders(): Array<{ id: string; label: string; enabled: boolean }> {
 	return PROVIDERS.map((p) => ({ id: p.id, label: p.label(), enabled: p.enabled() }));
 }
