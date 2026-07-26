@@ -271,6 +271,42 @@ describe('SnippetAutocomplete — caret tracking', () => {
 		expect(optionNames()).toEqual(['Toriyama']);
 	});
 
+	// Regression: not every change to `text` arrives with an event. The chat
+	// page swaps the draft on conversation switch, the gallery hands over a
+	// prompt, an undo toast restores a previous draft — all assign through
+	// `bind:value`, which does not dispatch `input`. The caret would keep
+	// indexing into text that is no longer there.
+	// The replacement text is chosen so the STALE caret would still land on a
+	// matching trigger: after typing ';tori' the caret is 5, and in 'ab ;tori…'
+	// scanning back from index 4 finds the `;` at 3 and yields query 't', which
+	// matches several fixtures. So the menu closing here can only be the
+	// staleness guard — not an incidental miss.
+	it('closes when text is replaced programmatically, without an event', async () => {
+		const user = userEvent.setup();
+		const { rerender } = render(ComposerCore, { props: baseProps() });
+		await user.type(screen.getByPlaceholderText('Write a message…'), ';tori');
+		await settle();
+
+		await rerender(baseProps({ text: 'ab ;tori and more' }));
+
+		expect(screen.queryByRole('listbox')).toBeNull();
+	});
+
+	it('reopens normally once the user interacts with the new text', async () => {
+		const user = userEvent.setup();
+		const { rerender } = render(ComposerCore, { props: baseProps() });
+		const ta = screen.getByPlaceholderText('Write a message…') as HTMLTextAreaElement;
+		await user.type(ta, ';tori');
+		await settle();
+		await rerender(baseProps({ text: 'ab ;tori and more' }));
+		expect(screen.queryByRole('listbox')).toBeNull();
+
+		// A real keystroke re-establishes caret and value together.
+		await user.type(ta, ' ;tori');
+		await settle();
+		expect(optionNames()).toEqual(['Toriyama']);
+	});
+
 	it('closes when the caret leaves the token', async () => {
 		const user = userEvent.setup();
 		render(ComposerCore, { props: baseProps() });

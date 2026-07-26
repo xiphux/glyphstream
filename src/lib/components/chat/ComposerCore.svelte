@@ -85,13 +85,6 @@
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 	let snippetMenu = $state<SnippetAutocomplete | null>(null);
 
-	/** The snippet menu is caret-anchored, so it needs the caret on every way
-	 *  it can move — typing, arrowing, clicking, refocusing — not just on text
-	 *  change. Missing one leaves the menu filtering a stale position. */
-	function syncSnippetCaret() {
-		snippetMenu?.syncCaret();
-	}
-
 	/** Focus the textarea. The consumer owns the *when* (e.g. on
 	 *  conversation-ready, or autofocus on mount, skipping touch); the
 	 *  textarea ref is local here, so the consumer calls this. */
@@ -269,10 +262,6 @@
 		{placeholder}
 		{disabled}
 		onkeydown={onKeydown}
-		oninput={syncSnippetCaret}
-		onkeyup={syncSnippetCaret}
-		onclick={syncSnippetCaret}
-		onfocus={syncSnippetCaret}
 		onpaste={onPaste}
 		class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 	></textarea>

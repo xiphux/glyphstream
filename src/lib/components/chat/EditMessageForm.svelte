@@ -44,10 +44,6 @@
 	let fileInputEl = $state<HTMLInputElement | null>(null);
 	let snippetMenu = $state<SnippetAutocomplete | null>(null);
 
-	function syncSnippetCaret() {
-		snippetMenu?.syncCaret();
-	}
-
 	// Auto-resize as the draft grows.
 	$effect(() => {
 		const el = textareaEl;
@@ -77,10 +73,6 @@
 		bind:this={textareaEl}
 		bind:value={editText}
 		rows="1"
-		oninput={syncSnippetCaret}
-		onkeyup={syncSnippetCaret}
-		onclick={syncSnippetCaret}
-		onfocus={syncSnippetCaret}
 		onkeydown={(e) => {
 			// The snippet menu gets first refusal — notably on Escape, which
 			// must close the menu rather than abandoning the whole edit.
