@@ -63,7 +63,11 @@
 						<span class="rounded bg-surface-sunken px-1 py-0.5 text-[10px] text-fg-muted">{k}</span>
 					{/each}
 				</span>
-				<span class="line-clamp-1 text-xs text-fg-muted">{s.body}</span>
+				<!-- Slice before rendering: `line-clamp-1` is CSS-only, so the browser
+			     lays out the WHOLE body and then clips it. With an 8000-char cap
+			     that made menu-open cost scale with total body text rather than
+			     row count. 160 chars is far more than the one visible line. -->
+				<span class="line-clamp-1 text-xs text-fg-muted">{s.body.slice(0, 160)}</span>
 			</button>
 		{/each}
 	</div>

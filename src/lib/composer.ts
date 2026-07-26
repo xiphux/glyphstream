@@ -56,11 +56,6 @@ export function replaceRange(
 	el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/** Insert at the caret, replacing any selection. See `replaceRange`. */
-export function insertAtCaret(el: HTMLTextAreaElement, insert: string): void {
-	replaceRange(el, el.selectionStart, el.selectionEnd, insert);
-}
-
 /** True when a drag carries files (rather than text or a page element). */
 export function dragHasFiles(e: DragEvent): boolean {
 	return Array.from(e.dataTransfer?.types ?? []).includes('Files');
