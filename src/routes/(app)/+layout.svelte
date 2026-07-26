@@ -708,13 +708,23 @@
 			leaves the top-level sidebar entries free for navigation
 			destinations the user visits regularly. When collapsed on
 			desktop, the trigger shrinks to a single User icon.
+
+			The expanded trigger's asymmetric padding (pl-3 vs pr-1) is
+			deliberate: this row sits in the sidebar's bottom-left corner,
+			which in an iOS PWA is the *screen's* bottom-left corner, and
+			the display's rounded mask eats ~20px of x at the name's
+			baseline. env(safe-area-inset-left) doesn't help — it's 0 in
+			portrait — so the clearance is a fixed nudge. 12 + 12 = 24px
+			puts the first glyph clear of the curve (descenders included)
+			while keeping the full-width tap target and hover surface,
+			since the inset lives inside the trigger, not on the wrapper.
 		-->
 		<div class="mt-2 border-t border-border px-3 py-2 text-xs text-fg-muted">
 			<DropdownMenu.Root bind:open={accountMenuOpen}>
 				<DropdownMenu.Trigger
 					class="flex w-full items-center gap-2 rounded transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:ring-1 focus-visible:ring-border-focus focus-visible:outline-none disabled:opacity-50 {collapsed
 						? 'sm:justify-center'
-						: 'justify-between px-1'} py-1"
+						: 'justify-between pl-3 pr-1'} py-1"
 					aria-label="Account menu"
 					title={data.user.displayName ?? data.user.email ?? 'You'}
 				>
