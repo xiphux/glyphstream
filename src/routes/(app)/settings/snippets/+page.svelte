@@ -2,7 +2,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { Trash2, Upload, Download, Pencil, Plus, X } from '@lucide/svelte';
 	import { SNIPPET_KINDS, type PromptSnippet, type SnippetKind } from '$lib/types/api';
-	import { SNIPPET_TRIGGER } from '$lib/prompt-snippet-trigger';
+	import { SNIPPET_TRIGGER, snippetAppliesToKind } from '$lib/prompt-snippet-trigger';
 	import { invalidateSnippets } from '$lib/prompt-snippets.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
@@ -12,6 +12,8 @@
 	let busy = $state(false);
 	let busyId = $state<string | null>(null);
 	let filter = $state('');
+	/** Modality quick-filter; null is "all". */
+	let kindFilter = $state<SnippetKind | null>(null);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let pasteText = $state('');
 	let overwrite = $state(false);
@@ -26,13 +28,35 @@
 
 	const filtered = $derived.by(() => {
 		const q = filter.trim().toLowerCase();
-		if (!q) return data.promptSnippets;
-		return data.promptSnippets.filter(
-			(s: PromptSnippet) =>
+		return data.promptSnippets.filter((s: PromptSnippet) => {
+			if (!snippetAppliesToKind(s, kindFilter)) return false;
+			if (!q) return true;
+			return (
 				s.name.toLowerCase().includes(q) ||
 				s.tags.some((t) => t.toLowerCase().includes(q)) ||
-				s.body.toLowerCase().includes(q),
-		);
+				s.body.toLowerCase().includes(q)
+			);
+		});
+	});
+
+	/**
+	 * Counts for the modality chips, computed once per data change rather than
+	 * per chip render.
+	 *
+	 * These deliberately do NOT partition the library: a snippet declaring both
+	 * `image` and `video` is counted under each, and a generic one (no kinds)
+	 * under all of them — because the question the chip answers is "what would
+	 * I be offered on this kind of model?", not "which bucket does this live
+	 * in". So the per-kind counts can exceed the total, which is correct.
+	 */
+	const kindCounts = $derived.by(() => {
+		const counts = new Map<SnippetKind, number>(SNIPPET_KINDS.map((k) => [k, 0]));
+		for (const s of data.promptSnippets as PromptSnippet[]) {
+			for (const k of SNIPPET_KINDS) {
+				if (snippetAppliesToKind(s, k)) counts.set(k, counts.get(k)! + 1);
+			}
+		}
+		return counts;
 	});
 
 	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
@@ -330,10 +354,50 @@ character-focused design language…`;
 					<input
 						bind:value={filter}
 						placeholder="Filter {data.promptSnippets.length} snippets…"
-						class="mb-3 w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+						class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
 					/>
+					<!-- Modality quick-filter. With a large single-modality library
+					     (hundreds of image styles) the text box alone can't answer
+					     "what do I actually have for chat?" — the counts here do it
+					     at a glance, before any clicking. -->
+					<div class="mt-2 mb-3 flex flex-wrap items-center gap-1.5">
+						<span class="text-xs text-fg-muted">Applies to</span>
+						<button
+							type="button"
+							aria-pressed={kindFilter === null}
+							onclick={() => (kindFilter = null)}
+							class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === null
+								? 'border-accent bg-accent text-on-accent'
+								: 'border-border text-fg-muted hover:bg-surface-sunken'}"
+						>
+							All {data.promptSnippets.length}
+						</button>
+						{#each SNIPPET_KINDS as k (k)}
+							<button
+								type="button"
+								aria-pressed={kindFilter === k}
+								onclick={() => (kindFilter = kindFilter === k ? null : k)}
+								class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === k
+									? 'border-accent bg-accent text-on-accent'
+									: 'border-border text-fg-muted hover:bg-surface-sunken'}"
+							>
+								{k}
+								{kindCounts.get(k) ?? 0}
+							</button>
+						{/each}
+					</div>
 					{#if filtered.length === 0}
-						<p class="py-6 text-center text-sm text-fg-muted">Nothing matches “{filter}”.</p>
+						<!-- Name the filter that actually emptied the list. "Nothing
+						     matches ''" for a kind-only filter would read as a bug. -->
+						<p class="py-6 text-center text-sm text-fg-muted">
+							{#if filter.trim() && kindFilter}
+								No {kindFilter} snippets match “{filter}”.
+							{:else if kindFilter}
+								No snippets apply to {kindFilter}.
+							{:else}
+								Nothing matches “{filter}”.
+							{/if}
+						</p>
 					{:else}
 						<ul class="flex flex-col gap-0.5">
 							{#each filtered as s (s.id)}
@@ -350,6 +414,16 @@ character-focused design language…`;
 														>{k}</span
 													>
 												{/each}
+												{#if s.kinds.length === 0}
+													<!-- No kinds means generic, and that's exactly what the
+													     modality chips count it under. Rendering nothing here
+													     left it indistinguishable from a row whose chips
+													     failed to load. -->
+													<span
+														class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted italic"
+														>everywhere</span
+													>
+												{/if}
 												{#each s.tags as t (t)}
 													<span class="text-[10px] text-fg-muted">#{t}</span>
 												{/each}

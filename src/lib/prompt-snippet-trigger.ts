@@ -70,9 +70,24 @@ export function snippetMenuQuery(text: string, caret: number): SnippetQuery | nu
 /** True when a snippet applies to the active modality. A snippet with no
  *  kinds is generic and applies everywhere; a null kind (no model resolved
  *  yet) doesn't filter anything out. */
-function matchesKind(snippet: PromptSnippet, activeKind: SnippetKind | null): boolean {
-	if (activeKind === null || snippet.kinds.length === 0) return true;
-	return snippet.kinds.includes(activeKind);
+/**
+ * Would this snippet be offered on a model of `kind`?
+ *
+ * An empty `kinds` means generic — offered everywhere — so it answers true for
+ * every kind, and a null `kind` (no model resolved) matches everything.
+ *
+ * Exported because the snippets settings page filters by modality too, and the
+ * two have to agree: a page that answered this question with a plain
+ * `kinds.includes(k)` would hide the generic snippets that the composer *does*
+ * offer, so the library would claim a modality has nothing while typing `;`
+ * there listed rows.
+ */
+export function snippetAppliesToKind(
+	snippet: Pick<PromptSnippet, 'kinds'>,
+	kind: SnippetKind | null,
+): boolean {
+	if (kind === null || snippet.kinds.length === 0) return true;
+	return snippet.kinds.includes(kind);
 }
 
 function matchesQuery(snippet: PromptSnippet, q: string): boolean {
@@ -101,7 +116,7 @@ export function filterSnippets(
 ): PromptSnippet[] {
 	const q = query.toLowerCase();
 	const matched = snippets.filter((s) => matchesQuery(s, q));
-	const byKind = matched.filter((s) => matchesKind(s, activeKind));
+	const byKind = matched.filter((s) => snippetAppliesToKind(s, activeKind));
 	const out = byKind.length > 0 ? byKind : matched;
 	// Most-used first, then alphabetical. Sort a copy — the caller's array is
 	// the shared client-side cache.
