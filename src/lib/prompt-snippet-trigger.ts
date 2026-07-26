@@ -67,20 +67,21 @@ export function snippetMenuQuery(text: string, caret: number): SnippetQuery | nu
 	return null;
 }
 
-/** True when a snippet applies to the active modality. A snippet with no
- *  kinds is generic and applies everywhere; a null kind (no model resolved
- *  yet) doesn't filter anything out. */
 /**
  * Would this snippet be offered on a model of `kind`?
  *
  * An empty `kinds` means generic — offered everywhere — so it answers true for
  * every kind, and a null `kind` (no model resolved) matches everything.
  *
- * Exported because the snippets settings page filters by modality too, and the
- * two have to agree: a page that answered this question with a plain
- * `kinds.includes(k)` would hide the generic snippets that the composer *does*
- * offer, so the library would claim a modality has nothing while typing `;`
- * there listed rows.
+ * Exported because the snippets settings page filters by modality too, and this
+ * one rule is the part the two must share: a page answering it with a plain
+ * `kinds.includes(k)` would omit exactly the generic snippets the composer
+ * *does* offer everywhere, so its per-kind counts would understate what typing
+ * `;` on that model actually lists.
+ *
+ * Only this predicate is shared, not the whole filter. `filterSnippets` layers
+ * a never-empty fallback on top (see below) that the settings page deliberately
+ * does not adopt, so the two still differ at the empty end.
  */
 export function snippetAppliesToKind(
 	snippet: Pick<PromptSnippet, 'kinds'>,

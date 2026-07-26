@@ -74,6 +74,18 @@ The filter never hides everything: if it would leave the menu empty but
 something does match what you typed, those matches are shown anyway. A
 mistagged snippet is always still reachable.
 
+**Settings → Prompt snippets** filters by modality too, with a row of chips
+above the library carrying a count each — so `chat 0` tells you at a glance
+that a library is entirely visual. A snippet that applies to more than one kind
+counts under each of them, generic ones under all three, which is why the
+numbers can add up to more than the total.
+
+Picking a chip there can legitimately show nothing, unlike the autocomplete —
+it's an explicit choice you can see and undo, not a filter applied while you
+type. So the two genuinely differ at the empty end: `chat 0` in the library
+does **not** mean typing `;` on a chat model offers nothing, because the
+never-hides-everything rule above still applies there.
+
 ## Import and export
 
 The whole library is one Markdown file. Paste it into the import box or upload
