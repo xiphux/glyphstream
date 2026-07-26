@@ -155,11 +155,34 @@ test.describe('prompt snippets: settings', () => {
 		const malformed = '## Style A: bold linework\n\n## Style B: soft pastel\n';
 		const box = page.getByPlaceholder('## Akira Toriyama Style', { exact: false });
 		await box.fill(malformed);
-		await page.getByRole('button', { name: 'Import pasted text' }).click();
 
-		// Nothing imported, and the text is still there to edit.
-		await expect(page.getByText('Style A', { exact: false })).toHaveCount(0);
+		// Wait for the import to actually answer before asserting anything.
+		// A negative assertion does NOT auto-wait the way a positive one does:
+		// `toHaveCount(0)` succeeds on its first poll, which lands before the
+		// response, so asserting straight after the click proved nothing about
+		// the import at all — it passed on a page that hadn't changed yet.
+		const imported = page.waitForResponse((r) =>
+			r.url().includes('/api/user/prompt-snippets/import'),
+		);
+		await page.getByRole('button', { name: 'Import pasted text' }).click();
+		const res = await imported;
+
+		// Take "nothing landed" from the server rather than from the absence of
+		// a row, which is only ever absent-so-far.
+		expect(await res.json()).toMatchObject({ imported: 0, updated: 0 });
+
+		// The regression this test exists for: the box keeps its text so the
+		// user can correct and retry.
 		await expect(box).toHaveValue(malformed);
+
+		// Scope the row check to the library list. The error toast NAMES every
+		// skipped entry ("Style A: bold linework: no body"), so a page-wide
+		// `getByText('Style A')` matches the report of the failure instead of a
+		// row — which is exactly how this assertion used to fail once the toast
+		// had time to render, while passing locally when it didn't.
+		const rows = page.getByRole('main').getByRole('listitem');
+		await expect(rows).toHaveCount(2); // the two seeded in beforeEach
+		await expect(rows.filter({ hasText: 'Style A' })).toHaveCount(0);
 	});
 
 	test('a successful paste import clears the box', async ({ page }) => {
