@@ -13,10 +13,11 @@
 	import { tick } from 'svelte';
 	import { Plus } from '@lucide/svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
+	import SnippetAutocomplete from '$lib/components/chat/SnippetAutocomplete.svelte';
 	import { autoResizeTextarea } from '$lib/composer';
 	import { composerEnterHandler } from '$lib/composer-keys';
 	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
-	import type { EnterBehavior } from '$lib/types/api';
+	import type { EnterBehavior, SnippetKind } from '$lib/types/api';
 
 	interface Props {
 		editText: string;
@@ -25,6 +26,8 @@
 		enterBehavior: EnterBehavior;
 		onSave: () => void;
 		onCancel: () => void;
+		/** Active model modality, for filtering the snippet autocomplete. */
+		activeKind?: SnippetKind | null;
 	}
 
 	let {
@@ -34,10 +37,16 @@
 		enterBehavior,
 		onSave,
 		onCancel,
+		activeKind = null,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let fileInputEl = $state<HTMLInputElement | null>(null);
+	let snippetMenu = $state<SnippetAutocomplete | null>(null);
+
+	function syncSnippetCaret() {
+		snippetMenu?.syncCaret();
+	}
 
 	// Auto-resize as the draft grows.
 	$effect(() => {
@@ -57,16 +66,25 @@
 	);
 </script>
 
+<!-- `relative` is the positioning context the snippet menu anchors against. -->
 <article
-	class="ml-auto max-w-[85%] rounded-2xl border border-warning/45 bg-surface-panel p-3 shadow-sm"
+	class="relative ml-auto max-w-[85%] rounded-2xl border border-warning/45 bg-surface-panel p-3 shadow-sm"
 >
 	<div class="mb-1 text-[11px] font-medium uppercase tracking-wider text-warning">Editing</div>
+	<SnippetAutocomplete bind:this={snippetMenu} bind:text={editText} {textareaEl} {activeKind} />
 	<AttachmentThumbnails {attachments} class="mb-2" />
 	<textarea
 		bind:this={textareaEl}
 		bind:value={editText}
 		rows="1"
+		oninput={syncSnippetCaret}
+		onkeyup={syncSnippetCaret}
+		onclick={syncSnippetCaret}
+		onfocus={syncSnippetCaret}
 		onkeydown={(e) => {
+			// The snippet menu gets first refusal — notably on Escape, which
+			// must close the menu rather than abandoning the whole edit.
+			if (snippetMenu?.handleKeydown(e)) return;
 			if (e.key === 'Escape') {
 				e.preventDefault();
 				onCancel();

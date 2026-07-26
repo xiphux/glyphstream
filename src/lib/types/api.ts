@@ -21,6 +21,22 @@ export function isModelKind(v: unknown): v is ModelKind {
 }
 
 /**
+ * The modalities a prompt snippet can be tagged for. A deliberate subset of
+ * MODEL_KINDS: `embedding` is never a composer target, so a snippet could
+ * never apply to it. A snippet with NO kinds is generic and offered for every
+ * modality — that's the common case for tone/instruction fragments, while an
+ * image style tags itself `image` so it stays out of a text chat's menu.
+ */
+export const SNIPPET_KINDS = ['chat', 'image', 'video'] as const;
+
+export type SnippetKind = (typeof SNIPPET_KINDS)[number];
+
+/** Runtime guard: true when `v` is one of the snippet-taggable kinds. */
+export function isSnippetKind(v: unknown): v is SnippetKind {
+	return typeof v === 'string' && (SNIPPET_KINDS as readonly string[]).includes(v);
+}
+
+/**
  * Hard cap on a user-set conversation title. Enforced on the client as
  * the rename input's `maxlength` and on the server in renameConversation
  * — single-sourced here so the two halves can't drift apart.
@@ -1247,6 +1263,45 @@ export interface Skill {
 	enabled: boolean;
 	createdAt: number;
 	updatedAt: number;
+}
+
+/**
+ * A reusable prompt *fragment* — a named block of text the user composes into
+ * a message at the caret (a visual style, a tone instruction, a
+ * creative-writing character), then keeps typing around.
+ *
+ * Distinct from a custom model, which is a whole-assistant preset chosen
+ * before you type: a snippet is message-level, so several can stack in one
+ * prompt and none of them ever reach the model as anything but the user's own
+ * text. Nothing is stripped or re-serialized at send time, and snippets never
+ * enter the system prompt or `tools[]` — they carry no standing payload cost.
+ *
+ * `kinds: []` means generic (offered for every modality). `usageCount` drives
+ * most-used-first ordering in the autocomplete.
+ */
+export interface PromptSnippet {
+	id: string;
+	name: string;
+	body: string;
+	kinds: SnippetKind[];
+	tags: string[];
+	usageCount: number;
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface CreatePromptSnippetRequest {
+	name: string;
+	body: string;
+	kinds?: SnippetKind[];
+	tags?: string[];
+}
+
+export interface UpdatePromptSnippetRequest {
+	name?: string;
+	body?: string;
+	kinds?: SnippetKind[];
+	tags?: string[];
 }
 
 /**

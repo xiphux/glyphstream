@@ -16,6 +16,7 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { stripSkillCommand } from '$lib/skill-command';
+	import { isSnippetKind } from '$lib/types/api';
 	import { imageAttachment } from '$lib/model-capabilities';
 	import type { ImageAttachment } from '$lib/model-capabilities';
 	import type { AttachmentStore } from '$lib/attachments.svelte';
@@ -171,6 +172,11 @@
 		activeKind === 'chat' && !disabledFeatures.includes('skills') ? enabledSkills : undefined,
 	);
 
+	// Snippet filtering keys off the same resolved kind, narrowed to the kinds a
+	// snippet can be tagged with — `embedding` isn't one, and reads as "don't
+	// filter" rather than "hide everything".
+	const snippetKind = $derived(isSnippetKind(activeKind) ? activeKind : null);
+
 	// The effective message after a leading `/skill-name` is stripped (when the
 	// skill menu is active) — a bare command with no message isn't sendable.
 	const effectiveText = $derived(
@@ -257,6 +263,7 @@
 		{placeholder}
 		{enterBehavior}
 		{skillCommands}
+		activeKind={snippetKind}
 		onSubmit={onSend}
 	>
 		{#snippet attachmentBar()}

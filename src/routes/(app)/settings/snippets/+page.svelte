@@ -1,0 +1,417 @@
+<script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+	import { Trash2, Upload, Download, Pencil, Plus, X } from '@lucide/svelte';
+	import { SNIPPET_KINDS, type PromptSnippet, type SnippetKind } from '$lib/types/api';
+	import { SNIPPET_TRIGGER } from '$lib/prompt-snippet-trigger';
+	import { invalidateSnippets } from '$lib/prompt-snippets.svelte';
+	import { confirmDialog } from '$lib/confirm.svelte';
+	import { toast } from '$lib/toast.svelte';
+
+	let { data } = $props<{ data: { promptSnippets: PromptSnippet[] } }>();
+
+	let busy = $state(false);
+	let busyId = $state<string | null>(null);
+	let filter = $state('');
+	let fileInput = $state<HTMLInputElement | null>(null);
+	let pasteText = $state('');
+	let overwrite = $state(false);
+
+	// Editor state. `editing` is null when the form is closed, '' when creating
+	// a new snippet, or the id of the snippet being edited.
+	let editing = $state<string | null>(null);
+	let formName = $state('');
+	let formBody = $state('');
+	let formKinds = $state<SnippetKind[]>([]);
+	let formTags = $state('');
+
+	const filtered = $derived.by(() => {
+		const q = filter.trim().toLowerCase();
+		if (!q) return data.promptSnippets;
+		return data.promptSnippets.filter(
+			(s: PromptSnippet) =>
+				s.name.toLowerCase().includes(q) ||
+				s.tags.some((t) => t.toLowerCase().includes(q)) ||
+				s.body.toLowerCase().includes(q),
+		);
+	});
+
+	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
+	async function errorMessage(res: Response): Promise<string> {
+		try {
+			const body = await res.json();
+			if (body && typeof body.message === 'string') return body.message;
+		} catch {
+			/* non-JSON body */
+		}
+		return `HTTP ${res.status}`;
+	}
+
+	/** Reload the page data AND drop the composer's client-side cache, so an
+	 *  edit here is reflected in the autocomplete without a full reload. */
+	async function refresh() {
+		invalidateSnippets();
+		await invalidateAll();
+	}
+
+	function openCreate() {
+		editing = '';
+		formName = '';
+		formBody = '';
+		formKinds = [];
+		formTags = '';
+	}
+
+	function openEdit(s: PromptSnippet) {
+		editing = s.id;
+		formName = s.name;
+		formBody = s.body;
+		formKinds = [...s.kinds];
+		formTags = s.tags.join(', ');
+	}
+
+	function toggleKind(k: SnippetKind) {
+		formKinds = formKinds.includes(k) ? formKinds.filter((x) => x !== k) : [...formKinds, k];
+	}
+
+	async function save() {
+		if (busy || !formName.trim() || !formBody.trim()) return;
+		busy = true;
+		const payload = {
+			name: formName.trim(),
+			body: formBody.trim(),
+			kinds: formKinds,
+			tags: formTags
+				.split(',')
+				.map((t) => t.trim())
+				.filter(Boolean),
+		};
+		try {
+			const res = editing
+				? await fetch(`/api/user/prompt-snippets/${encodeURIComponent(editing)}`, {
+						method: 'PATCH',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify(payload),
+					})
+				: await fetch('/api/user/prompt-snippets', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify(payload),
+					});
+			if (!res.ok) throw new Error(await errorMessage(res));
+			editing = null;
+			await refresh();
+		} catch (e) {
+			toast.error(`Couldn't save: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function requestDelete(s: PromptSnippet) {
+		if (busyId) return;
+		const ok = await confirmDialog.ask({
+			title: `Delete "${s.name}"?`,
+			message: 'This removes the snippet from your library. This cannot be undone.',
+			confirmLabel: 'Delete',
+		});
+		if (!ok) return;
+		busyId = s.id;
+		try {
+			const res = await fetch(`/api/user/prompt-snippets/${encodeURIComponent(s.id)}`, {
+				method: 'DELETE',
+			});
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessage(res));
+			await refresh();
+		} catch (e) {
+			toast.error(`Couldn't delete: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			busyId = null;
+		}
+	}
+
+	/** Report what the import actually did — counts and reasons, not a bare
+	 *  "done", since a 100-entry import that silently skipped 40 would
+	 *  otherwise look like a success. */
+	async function afterImport(res: Response) {
+		if (!res.ok) {
+			toast.error(`Import failed: ${await errorMessage(res)}`);
+			return;
+		}
+		const body = (await res.json()) as {
+			imported: number;
+			updated: number;
+			skipped: string[];
+			warnings: string[];
+		};
+		const parts = [`Imported ${body.imported}`];
+		if (body.updated > 0) parts.push(`updated ${body.updated}`);
+		if (body.skipped.length > 0) parts.push(`skipped ${body.skipped.length}`);
+		if (body.warnings.length > 0) parts.push(`${body.warnings.length} warning(s)`);
+		toast.success(parts.join(', ') + '.');
+		if (body.skipped.length > 0) console.warn('Skipped snippets:', body.skipped);
+		if (body.warnings.length > 0) console.warn('Import warnings:', body.warnings);
+		await refresh();
+	}
+
+	async function importPaste() {
+		if (busy || pasteText.trim().length === 0) return;
+		busy = true;
+		try {
+			const res = await fetch('/api/user/prompt-snippets/import', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ content: pasteText, overwrite }),
+			});
+			await afterImport(res);
+			if (res.ok) pasteText = '';
+		} catch (e) {
+			toast.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			busy = false;
+		}
+	}
+
+	async function importFile(list: FileList | null) {
+		if (busy || !list || list.length === 0) return;
+		busy = true;
+		try {
+			const fd = new FormData();
+			fd.append('file', list[0]);
+			fd.append('overwrite', String(overwrite));
+			const res = await fetch('/api/user/prompt-snippets/import', { method: 'POST', body: fd });
+			await afterImport(res);
+		} catch (e) {
+			toast.error(`Import failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			busy = false;
+			if (fileInput) fileInput.value = '';
+		}
+	}
+
+	const PLACEHOLDER = `## Akira Toriyama Style
+kinds: image, video
+tags: anime
+
+clean and highly readable linework, appealing
+character-focused design language…`;
+</script>
+
+<div class="flex h-full flex-col overflow-hidden">
+	<header class="shrink-0 px-4 py-3">
+		<h1 class="text-lg font-semibold tracking-tight">Prompt snippets</h1>
+		<p class="text-xs text-fg-muted">
+			Reusable pieces of a prompt — a visual style, a tone instruction, a recurring character. Type <code
+				>{SNIPPET_TRIGGER}</code
+			> in the message box to insert one at the cursor, then keep typing around it. Several can be stacked
+			in a single prompt.
+		</p>
+	</header>
+
+	<div class="flex-1 overflow-y-auto px-4 py-4">
+		<div class="mx-auto flex max-w-2xl flex-col gap-4">
+			<!-- Editor -->
+			<section class="rounded-lg border border-border bg-surface-panel p-4">
+				<div class="mb-2 flex items-center justify-between">
+					<h2 class="text-sm font-medium">
+						{editing === null ? 'Your library' : editing ? 'Edit snippet' : 'New snippet'}
+					</h2>
+					{#if editing === null}
+						<button
+							type="button"
+							onclick={openCreate}
+							class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90"
+						>
+							<Plus size={14} strokeWidth={2.25} /> New snippet
+						</button>
+					{:else}
+						<button
+							type="button"
+							onclick={() => (editing = null)}
+							aria-label="Close editor"
+							class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken"
+						>
+							<X size={14} strokeWidth={2.25} />
+						</button>
+					{/if}
+				</div>
+
+				{#if editing !== null}
+					<div class="flex flex-col gap-3">
+						<label class="flex flex-col gap-1">
+							<span class="text-xs text-fg-muted">Name</span>
+							<input
+								bind:value={formName}
+								maxlength="200"
+								placeholder="Akira Toriyama Style"
+								class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+							/>
+						</label>
+						<label class="flex flex-col gap-1">
+							<span class="text-xs text-fg-muted">Body</span>
+							<textarea
+								bind:value={formBody}
+								rows="6"
+								placeholder="clean and highly readable linework, appealing character-focused design language…"
+								class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+							></textarea>
+						</label>
+						<div class="flex flex-col gap-1">
+							<span class="text-xs text-fg-muted">
+								Applies to — leave all unchecked to offer it everywhere
+							</span>
+							<div class="flex flex-wrap gap-2">
+								{#each SNIPPET_KINDS as k (k)}
+									<label
+										class="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs transition hover:bg-surface-sunken"
+									>
+										<input
+											type="checkbox"
+											checked={formKinds.includes(k)}
+											onchange={() => toggleKind(k)}
+										/>
+										{k}
+									</label>
+								{/each}
+							</div>
+						</div>
+						<label class="flex flex-col gap-1">
+							<span class="text-xs text-fg-muted">Tags (comma-separated, searchable)</span>
+							<input
+								bind:value={formTags}
+								placeholder="anime, character"
+								class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+							/>
+						</label>
+						<div>
+							<button
+								type="button"
+								disabled={busy || !formName.trim() || !formBody.trim()}
+								onclick={save}
+								class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+							>
+								{editing ? 'Save changes' : 'Create snippet'}
+							</button>
+						</div>
+					</div>
+				{/if}
+			</section>
+
+			<!-- List -->
+			<section class="rounded-lg border border-border bg-surface-panel p-4">
+				{#if data.promptSnippets.length === 0}
+					<p class="py-8 text-center text-sm text-fg-muted">
+						No snippets yet. Create one above, or import a library below.
+					</p>
+				{:else}
+					<input
+						bind:value={filter}
+						placeholder="Filter {data.promptSnippets.length} snippets…"
+						class="mb-3 w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+					/>
+					{#if filtered.length === 0}
+						<p class="py-6 text-center text-sm text-fg-muted">Nothing matches “{filter}”.</p>
+					{:else}
+						<ul class="flex flex-col gap-0.5">
+							{#each filtered as s (s.id)}
+								<li>
+									<div
+										class="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm transition hover:bg-surface-sunken/70"
+									>
+										<div class="min-w-0 flex-1">
+											<div class="flex flex-wrap items-center gap-1.5">
+												<span class="font-medium">{s.name}</span>
+												{#each s.kinds as k (k)}
+													<span
+														class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
+														>{k}</span
+													>
+												{/each}
+												{#each s.tags as t (t)}
+													<span class="text-[10px] text-fg-muted">#{t}</span>
+												{/each}
+											</div>
+											<p class="mt-0.5 line-clamp-2 break-words text-xs text-fg-muted">{s.body}</p>
+										</div>
+										<div class="flex shrink-0 items-center gap-1">
+											<button
+												type="button"
+												disabled={busyId === s.id}
+												onclick={() => openEdit(s)}
+												title="Edit snippet"
+												aria-label="Edit snippet"
+												class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken disabled:opacity-50"
+											>
+												<Pencil size={14} strokeWidth={2.25} />
+											</button>
+											<button
+												type="button"
+												disabled={busyId === s.id}
+												onclick={() => requestDelete(s)}
+												title="Delete snippet"
+												aria-label="Delete snippet"
+												class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+											>
+												<Trash2 size={14} strokeWidth={2.25} />
+											</button>
+										</div>
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/if}
+			</section>
+
+			<!-- Import / export -->
+			<section class="rounded-lg border border-border bg-surface-panel p-4">
+				<h2 class="mb-2 text-sm font-medium">Import or export a library</h2>
+				<p class="mb-2 text-xs text-fg-muted">
+					One Markdown file. Each snippet is a <code>## Name</code> heading, optional
+					<code>kinds:</code> / <code>tags:</code> lines, a blank line, then the body.
+				</p>
+				<textarea
+					bind:value={pasteText}
+					placeholder={PLACEHOLDER}
+					rows="6"
+					class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+				></textarea>
+				<div class="mt-2 flex flex-wrap items-center gap-2">
+					<button
+						type="button"
+						disabled={busy || pasteText.trim().length === 0}
+						onclick={importPaste}
+						class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+					>
+						Import pasted text
+					</button>
+					<span class="text-xs text-fg-muted">or</span>
+					<button
+						type="button"
+						disabled={busy}
+						onclick={() => fileInput?.click()}
+						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
+					>
+						<Upload size={14} strokeWidth={2.25} /> Choose a .md file
+					</button>
+					<input
+						bind:this={fileInput}
+						type="file"
+						accept=".md,text/markdown,text/plain"
+						class="hidden"
+						onchange={(e) => importFile((e.currentTarget as HTMLInputElement).files)}
+					/>
+					<a
+						href="/api/user/prompt-snippets/export"
+						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken"
+					>
+						<Download size={14} strokeWidth={2.25} /> Export
+					</a>
+					<label class="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
+						<input type="checkbox" bind:checked={overwrite} />
+						Overwrite snippets with the same name
+					</label>
+				</div>
+			</section>
+		</div>
+	</div>
+</div>

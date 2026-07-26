@@ -91,6 +91,12 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 - **Offline-aware composer** — walk into a dead zone or tunnel and Send
   disables with an inline notice; your typed message stays put (in the box and
   its draft) and sending re-enables the moment you're back online.
+- **Prompt snippets** — a library of reusable prompt _pieces_ (a visual style,
+  a tone instruction, a recurring character). Type `;` in the composer to
+  insert one at the cursor and keep typing around it; stack several in one
+  prompt. Filtered by what the active model does, so image styles stay out of a
+  text chat. Import or export the whole library as one Markdown file —
+  see [docs/prompt-snippets.md](docs/prompt-snippets.md).
 
 ### Multi-model
 

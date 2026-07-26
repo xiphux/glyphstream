@@ -513,6 +513,42 @@ export const skills = sqliteTable(
 	],
 );
 
+// --- prompt snippets ------------------------------------------------------
+
+// Reusable prompt *fragments* the user inserts into the composer at the caret
+// (a visual style, a tone instruction, a creative-writing character). Purely a
+// client-side text-expansion source: nothing here is ever sent upstream on its
+// own — the expanded text is indistinguishable from what the user typed — so
+// this table carries no payload-prefix implications.
+//
+// `unique(userId, name)` is what makes bulk import idempotent: a re-import
+// skips (or overwrites) by name rather than duplicating the library. `kinds` /
+// `tags` are JSON string arrays in a text column (no array type in SQLite),
+// NULL when empty, read back through json-columns.ts.
+
+export const promptSnippets = sqliteTable(
+	'prompt_snippets',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		body: text('body').notNull(),
+		/** JSON string[] of SNIPPET_KINDS; NULL/[] = generic (every modality). */
+		kinds: text('kinds'),
+		/** JSON string[] of free-form tags; NULL/[] = untagged. */
+		tags: text('tags'),
+		usageCount: integer('usage_count').notNull().default(0),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+	},
+	// No second index: the unique index on (user_id, name) already serves both
+	// the per-user lookup and the list query's ORDER BY name, so a plain index
+	// on the same columns would be pure write cost.
+	(t) => [uniqueIndex('uq_prompt_snippets_user_name').on(t.userId, t.name)],
+);
+
 // --- media ----------------------------------------------------------------
 
 export const media = sqliteTable(

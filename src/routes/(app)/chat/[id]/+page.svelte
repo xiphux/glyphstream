@@ -64,6 +64,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import type { ConversationMediaRef, MediaListItem } from '$lib/server/db/queries/media';
+	import { isSnippetKind } from '$lib/types/api';
 	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
 
 	let { data } = $props();
@@ -418,6 +419,10 @@
 	// state read. See $lib/attachments.svelte.ts.
 	const attachments = new AttachmentStore();
 	const allowAttachments = $derived(attachmentsAllowedFor(modelKind));
+	// Snippet filtering for the inline editor. The conversation's own kind, not
+	// the composer's compare-cart-aware activeKind: you're editing a message
+	// that belongs to THIS conversation.
+	const editSnippetKind = $derived(isSnippetKind(modelKind) ? modelKind : null);
 	// Imported OWUI conversations land with a stored modelId like "gpt-4o"
 	// (no endpoint:: prefix), which the picker shows as "Choose a model…".
 	// Without this gate the user could type+submit and the server would 500
@@ -1822,6 +1827,7 @@
 									attachments={editAttachments}
 									{allowAttachments}
 									enterBehavior={data.prefs?.enterBehavior ?? 'send'}
+									activeKind={editSnippetKind}
 									onSave={() => void saveEdit()}
 									onCancel={cancelEdit}
 								/>

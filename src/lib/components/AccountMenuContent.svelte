@@ -21,6 +21,7 @@
 		Settings,
 		ShieldCheck,
 		Sparkles,
+		TextQuote,
 		Users,
 	} from '@lucide/svelte';
 
@@ -54,6 +55,13 @@
 		>
 			<Sparkles size={14} strokeWidth={2.25} />
 			<span>Skills</span>
+		</DropdownMenu.Item>
+		<DropdownMenu.Item
+			onSelect={() => goto('/settings/snippets')}
+			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+		>
+			<TextQuote size={14} strokeWidth={2.25} />
+			<span>Prompt snippets</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
 			onSelect={() => goto('/settings/mcp')}

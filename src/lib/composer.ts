@@ -21,6 +21,46 @@ export function autoResizeTextarea(el: HTMLTextAreaElement): void {
 	el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? 'auto' : 'hidden';
 }
 
+/**
+ * Replace `[start, end)` in a textarea with `insert`, as ONE undo unit.
+ *
+ * `document.execCommand('insertText')` is deprecated but is the only API that
+ * writes the browser's *native* undo stack, so a mis-picked snippet or skill
+ * disappears on a single Ctrl-Z instead of character by character. It also
+ * fires a real `input` event, which keeps Svelte's `bind:value` in sync for
+ * free — and, because the bound value updates, the composer's auto-resize
+ * effect runs without an explicit `tick()`.
+ *
+ * The modern-looking alternative, `setRangeText()`, does NEITHER: no undo
+ * entry and no `input` event. It is therefore the *wrong* tool here despite
+ * being the un-deprecated one, and is used only as the fallback below — where
+ * the manual event dispatch is what keeps the binding correct. Please don't
+ * "modernize" this to setRangeText.
+ */
+export function replaceRange(
+	el: HTMLTextAreaElement,
+	start: number,
+	end: number,
+	insert: string,
+): void {
+	el.focus();
+	el.setSelectionRange(start, end);
+	const ok =
+		typeof document !== 'undefined' &&
+		typeof document.execCommand === 'function' &&
+		document.execCommand('insertText', false, insert);
+	if (ok) return;
+	// happy-dom (which has no execCommand) and any browser that refuses:
+	// correct text, non-atomic undo.
+	el.setRangeText(insert, start, end, 'end');
+	el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** Insert at the caret, replacing any selection. See `replaceRange`. */
+export function insertAtCaret(el: HTMLTextAreaElement, insert: string): void {
+	replaceRange(el, el.selectionStart, el.selectionEnd, insert);
+}
+
 /** True when a drag carries files (rather than text or a page element). */
 export function dragHasFiles(e: DragEvent): boolean {
 	return Array.from(e.dataTransfer?.types ?? []).includes('Files');

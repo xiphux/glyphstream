@@ -24,6 +24,7 @@
 		type CompareSelection,
 		type FanoutModel,
 	} from '$lib/fanout';
+	import { isSnippetKind } from '$lib/types/api';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
 	import {
 		composeGreeting,
@@ -234,6 +235,9 @@
 	const skillCommands = $derived(
 		activeKind === 'chat' && !disabledFeatures.includes('skills') ? data.enabledSkills : undefined,
 	);
+	// Snippet filtering reads the same resolved kind, narrowed to the kinds a
+	// snippet can carry — `embedding` isn't one, and reads as "don't filter".
+	const snippetKind = $derived(isSnippetKind(activeKind) ? activeKind : null);
 	// Attachment requirement of the selected model (presets resolved to their
 	// base). Drives the capability-aware placeholder + the image-required gate,
 	// so an I2I upscaler / image-to-video model doesn't invite a text-only prompt
@@ -752,6 +756,7 @@
 			rows={2}
 			enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 			{skillCommands}
+			activeKind={snippetKind}
 			onSubmit={startChat}
 		>
 			{#snippet attachmentBar()}

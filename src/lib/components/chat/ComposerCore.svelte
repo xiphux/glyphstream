@@ -15,15 +15,16 @@
 	The form's submit (button OR Enter) routes to `onSubmit`.
 -->
 <script lang="ts">
-	import { tick, type Snippet } from 'svelte';
+	import { type Snippet } from 'svelte';
 	import { Plus } from '@lucide/svelte';
 	import AttachmentThumbnails from '$lib/components/AttachmentThumbnails.svelte';
 	import SkillMenu from '$lib/components/chat/SkillMenu.svelte';
-	import { autoResizeTextarea, dragHasFiles, extractImageFiles } from '$lib/composer';
+	import SnippetAutocomplete from '$lib/components/chat/SnippetAutocomplete.svelte';
+	import { autoResizeTextarea, dragHasFiles, extractImageFiles, replaceRange } from '$lib/composer';
 	import { composerEnterHandler } from '$lib/composer-keys';
 	import { filterSkillCommands, skillMenuQuery, type SkillCommandOption } from '$lib/skill-command';
 	import { ATTACHMENT_ACCEPT, type AttachmentStore } from '$lib/attachments.svelte';
-	import type { EnterBehavior } from '$lib/types/api';
+	import type { EnterBehavior, SnippetKind } from '$lib/types/api';
 
 	interface SkillCommand extends SkillCommandOption {
 		id: string;
@@ -55,6 +56,13 @@
 		 *  share this component). Selecting only completes the name into the box;
 		 *  the consumer strips the leading `/name` on send via stripSkillCommand. */
 		skillCommands?: SkillCommand[];
+		/** Active model modality — filters the snippet autocomplete so image
+		 *  styles don't clutter a text chat. Null disables the filter. */
+		activeKind?: SnippetKind | null;
+		/** Opt out of the `;` snippet autocomplete entirely. Defaults on: a
+		 *  snippet is plain text with no payload cost, so there's nothing to
+		 *  gate it behind the way skills need tool support. */
+		allowSnippets?: boolean;
 	}
 
 	let {
@@ -69,10 +77,20 @@
 		controls,
 		attachmentBar,
 		skillCommands,
+		activeKind = null,
+		allowSnippets = true,
 	}: Props = $props();
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let fileInputEl = $state<HTMLInputElement | null>(null);
+	let snippetMenu = $state<SnippetAutocomplete | null>(null);
+
+	/** The snippet menu is caret-anchored, so it needs the caret on every way
+	 *  it can move — typing, arrowing, clicking, refocusing — not just on text
+	 *  change. Missing one leaves the menu filtering a stale position. */
+	function syncSnippetCaret() {
+		snippetMenu?.syncCaret();
+	}
 
 	/** Focus the textarea. The consumer owns the *when* (e.g. on
 	 *  conversation-ready, or autofocus on mount, skipping touch); the
@@ -113,16 +131,17 @@
 		skillHighlight = 0;
 	});
 
-	async function selectSkill(name: string) {
-		const next = `/${name} `;
-		text = next;
-		await tick();
+	// Replaces the whole draft: the menu only opens when the entire box is a
+	// bare `/query` (skillMenuQuery is anchored start-to-end), so there is
+	// never surrounding text to preserve. Routed through replaceRange so the
+	// completion lands on the native undo stack — one Ctrl-Z restores the
+	// partial `/que` to re-pick, instead of the old `text = next` which wrote
+	// past the undo stack entirely. insertText also leaves the caret at the
+	// end and fires `input`, so the old tick()/setSelectionRange/resize dance
+	// is no longer needed.
+	function selectSkill(name: string) {
 		const el = textareaEl;
-		if (el) {
-			el.focus();
-			el.setSelectionRange(next.length, next.length);
-			autoResizeTextarea(el);
-		}
+		if (el) replaceRange(el, 0, text.length, `/${name} `);
 	}
 
 	/** Consume Arrow/Enter/Tab/Escape ONLY while the menu is open. Returns true
@@ -145,7 +164,7 @@
 			case 'Tab':
 				// Selection ONLY completes the name — it never submits.
 				e.preventDefault();
-				void selectSkill(filteredSkills[Math.min(skillHighlight, n - 1)].name);
+				selectSkill(filteredSkills[Math.min(skillHighlight, n - 1)].name);
 				return true;
 			case 'Escape':
 				e.preventDefault();
@@ -157,7 +176,11 @@
 	}
 
 	function onKeydown(e: KeyboardEvent) {
+		// Skills first. The two menus can't actually both be open (see the
+		// mutual-exclusivity note at the render site), so this ordering is
+		// belt-and-braces rather than a real tiebreak.
 		if (skillMenuOpen && handleSkillKey(e)) return;
+		if (snippetMenu?.handleKeydown(e)) return;
 		composerEnterHandler(enterBehavior, () => onSubmit())(e);
 	}
 
@@ -219,12 +242,23 @@
 	ondrop={onDrop}
 	class="surface-glass-soft relative rounded-2xl border border-border-strong px-3 py-2 shadow-sm transition focus-within:border-border-focus"
 >
+	<!-- The two menus anchor at the same spot but are mutually exclusive by
+	     construction: the snippet trigger requires start-of-word, so a `;` in
+	     a `/skill` draft never matches. The {:else} makes that structural. -->
 	{#if skillMenuOpen}
 		<SkillMenu
 			skills={filteredSkills}
 			highlightedIndex={skillHighlight}
 			onSelect={selectSkill}
 			onHover={(i) => (skillHighlight = i)}
+		/>
+	{:else}
+		<SnippetAutocomplete
+			bind:this={snippetMenu}
+			bind:text
+			{textareaEl}
+			{activeKind}
+			enabled={allowSnippets}
 		/>
 	{/if}
 	<AttachmentThumbnails {attachments} class="px-1" trailing={attachmentBar} />
@@ -235,6 +269,10 @@
 		{placeholder}
 		{disabled}
 		onkeydown={onKeydown}
+		oninput={syncSnippetCaret}
+		onkeyup={syncSnippetCaret}
+		onclick={syncSnippetCaret}
+		onfocus={syncSnippetCaret}
 		onpaste={onPaste}
 		class="block w-full resize-none border-0 bg-transparent px-2 py-2 text-base focus:outline-none disabled:opacity-50 sm:text-sm"
 	></textarea>

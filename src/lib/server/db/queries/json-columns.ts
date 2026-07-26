@@ -6,9 +6,14 @@
  * re-inlined at each row-mapping site.
  */
 
-import { isFeatureCategoryString } from '$lib/types/api';
+import { isFeatureCategoryString, isSnippetKind } from '$lib/types/api';
 import type { CompareSelection } from '$lib/fanout';
-import type { CustomModelParameters, FeatureCategory, MessagePart } from '$lib/types/api';
+import type {
+	CustomModelParameters,
+	FeatureCategory,
+	MessagePart,
+	SnippetKind,
+} from '$lib/types/api';
 
 /**
  * Parse a message row's `content_json` column into MessagePart[]. Falls
@@ -57,6 +62,41 @@ export function parseDisabledFeatures(raw: string | null): FeatureCategory[] {
 	}
 	if (!Array.isArray(parsed)) return [];
 	return parsed.filter(isFeatureCategoryString);
+}
+
+/**
+ * Parse a prompt snippet's `kinds` column into SnippetKind[]. Always returns
+ * an array — NULL column / invalid JSON / non-array payload / unknown entries
+ * all normalize to an empty list, which reads as "generic", the safe default
+ * (a snippet whose kinds got mangled stays visible everywhere rather than
+ * disappearing from every menu).
+ */
+export function parseSnippetKinds(raw: string | null): SnippetKind[] {
+	if (!raw) return [];
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	if (!Array.isArray(parsed)) return [];
+	return parsed.filter(isSnippetKind);
+}
+
+/**
+ * Parse a prompt snippet's `tags` column into string[]. Same defensive
+ * contract as parseSnippetKinds: always an array, non-string entries dropped.
+ */
+export function parseSnippetTags(raw: string | null): string[] {
+	if (!raw) return [];
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return [];
+	}
+	if (!Array.isArray(parsed)) return [];
+	return parsed.filter((t): t is string => typeof t === 'string' && t.length > 0);
 }
 
 /**

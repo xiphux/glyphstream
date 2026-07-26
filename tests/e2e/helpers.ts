@@ -57,6 +57,9 @@ export function resetData(): void {
 			// seeded by the settings/memories specs (seedMemory) leaks into a sibling
 			// test's deterministic list assertions.
 			'memories',
+			// Same reasoning: the snippet library is (user_id, name)-unique, so a
+			// leftover row would turn a sibling spec's seed into a silent skip.
+			'prompt_snippets',
 		]) {
 			db.prepare(`DELETE FROM ${table}`).run();
 		}
@@ -98,6 +101,43 @@ export function seedMedia(count: number): void {
 			const prompt = `Seeded gallery image ${i}`;
 			stmt.run(id, TEST_USER.id, `e2e/${id}.png`, 'image/png', 1024, prompt, prompt, base - i);
 		}
+	} finally {
+		db.close();
+	}
+}
+
+/**
+ * Seed a prompt snippet straight into the DB. The composer's autocomplete
+ * fetches the library lazily over HTTP, so a seeded row is all that's needed
+ * to drive the real menu — no import round-trip required for specs that are
+ * about insertion rather than import.
+ */
+export function seedSnippet(opts: {
+	id: string;
+	name: string;
+	body: string;
+	kinds?: string[];
+	tags?: string[];
+}): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const now = Date.now();
+		db.prepare(
+			`INSERT INTO prompt_snippets
+			   (id, user_id, name, body, kinds, tags, usage_count, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+		).run(
+			opts.id,
+			TEST_USER.id,
+			opts.name,
+			opts.body,
+			opts.kinds && opts.kinds.length > 0 ? JSON.stringify(opts.kinds) : null,
+			opts.tags && opts.tags.length > 0 ? JSON.stringify(opts.tags) : null,
+			now,
+			now,
+		);
 	} finally {
 		db.close();
 	}
