@@ -173,6 +173,70 @@ export function seedConversation(title: string): string {
 }
 
 /**
+ * Fill a seeded conversation with `pairs` user/assistant turns on one linear
+ * branch, and point `active_leaf_message_id` at the newest reply. Assistant
+ * rows carry a deliberately TALL `content_html` so the thread is many viewports
+ * long — that's what makes scroll-position behaviour (landing at the bottom on
+ * entry) observable at all. Ids are stable (`<prefix>-u-<i>` / `<prefix>-a-<i>`)
+ * so a spec can target the newest row directly. Returns the last assistant id.
+ *
+ * Direct insert for the same reason as seedConversation: driving 30+ real turns
+ * through the UI would take minutes and wouldn't produce taller content anyway.
+ */
+export function seedConversationMessages(
+	conversationId: string,
+	pairs: number,
+	prefix = 'seeded',
+): string {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const tall = Array.from(
+			{ length: 25 },
+			(_, i) => `<p>Paragraph ${i} of a deliberately long reply.</p>`,
+		).join('');
+		const now = Date.now();
+		let parent: string | null = null;
+		let last = '';
+		for (let i = 0; i < pairs; i++) {
+			const u = `${prefix}-u-${i}`;
+			const a = `${prefix}-a-${i}`;
+			db.prepare(
+				`INSERT INTO messages (id, conversation_id, parent_message_id, role, content_json, content_html, created_at)
+				 VALUES (?, ?, ?, 'user', ?, NULL, ?)`,
+			).run(
+				u,
+				conversationId,
+				parent,
+				JSON.stringify([{ type: 'text', text: `Question ${i}` }]),
+				now + i * 2,
+			);
+			db.prepare(
+				`INSERT INTO messages (id, conversation_id, parent_message_id, role, content_json, content_html, created_at)
+				 VALUES (?, ?, ?, 'assistant', ?, ?, ?)`,
+			).run(
+				a,
+				conversationId,
+				u,
+				JSON.stringify([{ type: 'text', text: `Reply ${i}` }]),
+				tall,
+				now + i * 2 + 1,
+			);
+			parent = a;
+			last = a;
+		}
+		db.prepare(`UPDATE conversations SET active_leaf_message_id = ? WHERE id = ?`).run(
+			last,
+			conversationId,
+		);
+		return last;
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Insert a memory row straight into the DB for the settings/memories specs.
  * Defaults to a live row; pass `deletedAt` (and optionally `supersededByMemoryId`)
  * to seed a dreaming-pass *tombstone* — the post-consolidation state the recover
