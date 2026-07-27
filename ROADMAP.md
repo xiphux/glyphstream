@@ -336,8 +336,35 @@ docs.
   back on — and the scrollbar thumb will still misrepresent position for
   never-yet-rendered rows regardless.
 
-  Remaining tiers:
-  - **Tier 2 — true windowing** (`@tanstack/virtual-core`, headless — _not_ the
+  **The real axis is estimated vs. real geometry.** Note that
+  `@tanstack/virtual-core` does _not_ dodge the problem above — a virtualizer
+  also derives total size from estimates for unmeasured rows. The difference is
+  that it _owns_ the scroll math and ships the correction machinery
+  (`scrollToIndex`, measurement cache) instead of leaving `scrollTop =
+scrollHeight` to be silently wrong. So options 1 and 2 below share the same
+  prerequisite: replace the naive pin-to-bottom first. Options, cheapest first,
+  **none currently justified** — measure before picking one:
+  - **Option 1 — fix pin-to-bottom, then re-add `content-visibility`.** Make
+    `scrollToBottom()` force layout rather than trust `scrollHeight`
+    (`bottomSentinel.scrollIntoView()` renders a skipped row on demand). Cheapest
+    route to the paint win, keeps every node in the DOM and Ctrl-F intact.
+    Residual: the scrollbar thumb still misrepresents position for never-rendered
+    rows, and scrolling up jitters as rows materialize.
+  - **Option 2 — render only the last N messages + "load earlier".** The one
+    option that sidesteps estimated height _entirely_: unrendered messages aren't
+    in the container at all, so nothing is estimated, `scrollTop = scrollHeight`
+    keeps working unchanged, and the whole existing scroll + streaming model
+    survives untouched. Costs: Ctrl-F only covers loaded history, and prepending
+    on scroll-up needs scroll-position compensation. Composes naturally with
+    server-side pagination below. Probably the best fit here _because_ it leaves
+    the load-bearing scroll model alone.
+  - **Option 3 — `contain: layout paint` with NO `content-visibility`.** The safe
+    micro-option: scopes a message's internal reflow so it can't invalidate
+    siblings, without size containment, so heights stay real and geometry stays
+    honest. Much smaller win (no off-screen paint skipping), but no lie. Nothing
+    overflows these wrappers today (the token-count popover is portaled), so
+    paint containment is safe as of this writing.
+  - **Option 4 — true windowing** (`@tanstack/virtual-core`, headless — _not_ the
     gallery's `$lib/gallery-window.ts`, whose math leans on a _constant_ tile
     height chat can't offer: variable, async-image-shifted, streaming-grown
     heights). The hard part is the streaming case — the bottom message's height
@@ -347,16 +374,45 @@ docs.
     DOM until it completes (the in-flight bubble is already a separate render
     path, so the split falls out cleanly). Also has to rework the three
     getElementById-based scroll paths (deep-link, branch-switch, compaction
-    jump) into scroll-to-index-then-measure. Trigger — implement when real
-    conversations actually feel janky; below that threshold the measurement
-    overhead can exceed just rendering everything.
-  - **Tier 3 — server-side message pagination** (a separate axis DOM
-    virtualization doesn't touch). `walkActiveBranch` serializes the _entire_
-    active branch with full `content_html` on every load, so a truly huge thread
-    is a payload problem regardless of how few rows the DOM mounts. This fights
-    the current SSR-everything model and the simple `scrollHeight` pin-to-bottom,
-    so it earns its own evaluation only once conversation _length_ (not render
-    cost) is the bottleneck.
+    jump) into scroll-to-index-then-measure. Most capable, most invasive.
+  - **Separate axis — server-side message pagination.** DOM virtualization
+    doesn't touch this. `walkActiveBranch` serializes the _entire_ active branch
+    with full `content_html` on every load, so a truly huge thread is a payload
+    problem regardless of how few rows the DOM mounts. This fights the current
+    SSR-everything model, so it earns its own evaluation only once conversation
+    _length_ (not render cost) is the bottleneck.
+
+  **Trigger — measured 2026-07, and it says DON'T.** We shipped
+  `content-visibility` speculatively and bought two scroll regressions for an
+  unmeasured benefit. A benchmark (seeded threads, every assistant reply carrying
+  a 30-line shiki-style code block — a deliberate worst case; desktop Chromium,
+  localhost) says the premise of this whole entry is wrong:
+
+  | turns | DOM nodes | scroll height | page load | scroll frame p95 |
+  | ----: | --------: | ------------: | --------: | ---------------: |
+  |    25 |      11 k |        24 kpx |    258 ms |          17.4 ms |
+  |   100 |      43 k |        96 kpx |    230 ms |          17.3 ms |
+  |   200 |      86 k |       193 kpx |    525 ms |          18.5 ms |
+  |   400 |     171 k |       385 kpx |   1047 ms |          17.5 ms |
+
+  **Scrolling never degrades** — a flat 60 fps through 400 turns / 171 k nodes,
+  with forced full-document layout at 0.1-0.2 ms throughout. What grows is
+  **page load**, and it's a _payload_ problem, not a render one: the SSR HTML is
+  ~2 MB at 50 turns, ~7.8 MB at 200, ~15.5 MB at 400 (and `transferSize` matched
+  `decodedBodySize` in that run — worth checking whether dynamic SSR HTML is
+  actually compressed in a real deployment; the `precompress` note under Sharp
+  Edges covers static assets only).
+
+  So DOM virtualization optimizes the axis that _isn't_ degrading. If a long
+  thread ever feels slow, the fix is server-side message pagination (the separate
+  axis above) or trimming `content_html` — not options 1-4. Re-run the benchmark
+  on target hardware before believing any of this on a low-end device.
+
+  Also note **auto-compaction does not bound the DOM**: `arrangeForDisplay`
+  re-orders and _inserts_ a summary row but never drops a message, so the folded
+  messages stay rendered above and below the divider. Context-window pressure and
+  frontend cost are decoupled — relieving the former does nothing for the latter,
+  and a long-lived compacted thread keeps accumulating rows indefinitely.
 
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
