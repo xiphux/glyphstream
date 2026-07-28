@@ -70,3 +70,23 @@ on modern CPUs; the fallbacks cover older browsers. SSE
 (`text/event-stream`) is always skipped so the chat-stream UI keeps flushing
 events as they arrive. Static `/_app/immutable/*` assets are already
 precompressed at build time and aren't affected by this flag.
+
+**Checking whether anything is compressing at all.** Open a long conversation,
+then DevTools → Network → click the `/chat/<id>` _document_ request → Response
+Headers. No `content-encoding` (or a "Transferred" size equal to "Size") means
+nothing in the chain is compressing it — worth fixing, since SSR HTML is highly
+repetitive markup and typically compresses ~8-15x.
+
+**Cost note.** Compression runs _synchronously_ on the buffered response, so it
+occupies the event loop of this single-process app for the duration. That is
+sub-millisecond for ordinary pages, but it scales with payload, and a very long
+conversation's SSR HTML gets large (a seeded 400-turn thread with a code block
+in every reply produced ~15 MB). Measured at that size: ~2-36 ms for zstd,
+~9-71 ms for brotli, ~33-174 ms for gzip (range spans highly-repetitive to
+high-entropy content). Modern browsers all negotiate zstd, so the common path
+stays cheap; the worst case is an older client falling back to gzip on a huge
+thread, which stalls every other request — including in-flight SSE streams —
+for that window. Not a reason to leave the flag off, but if you have threads
+that big, the durable fix is not serving a payload that size (see the
+`ROADMAP.md` "Virtualized message list" entry, which measures where this
+actually starts to matter).
