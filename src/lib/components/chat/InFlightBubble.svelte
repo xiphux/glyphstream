@@ -123,7 +123,7 @@
 						{queued.ahead} ahead
 					</span>
 				{/if}
-			{:else if status && status !== 'in_progress'}
+			{:else if status}
 				<span
 					class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-fg-secondary"
 				>

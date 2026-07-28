@@ -32,14 +32,18 @@ describe('InFlightBubble — placeholder (no blocks yet)', () => {
 		expect(screen.getByText('gpt-4o')).toBeInTheDocument();
 	});
 
-	it('shows a non-default status badge', () => {
-		render(InFlightBubble, { props: { ...base, blocks: [], status: 'queued' } });
-		expect(screen.getByText('queued')).toBeInTheDocument();
+	// `status` is display text supplied by the server (see StreamProgressEvent):
+	// a sub-phase worth naming, or absent for plain "it's generating". The badge
+	// renders it verbatim — no client-side filtering of provider enums, which is
+	// enforced at the emitter instead (video-relay's PHASE_LABELS map).
+	it('shows the status badge when a sub-phase is named', () => {
+		render(InFlightBubble, { props: { ...base, blocks: [], status: 'Enhancing prompt…' } });
+		expect(screen.getByText('Enhancing prompt…')).toBeInTheDocument();
 	});
 
-	it('hides the status badge for the default in_progress status', () => {
-		render(InFlightBubble, { props: { ...base, blocks: [], status: 'in_progress' } });
-		expect(screen.queryByText('in_progress')).toBeNull();
+	it('shows no status badge when there is no sub-phase', () => {
+		const { container } = render(InFlightBubble, { props: { ...base, blocks: [], status: null } });
+		expect(container.querySelector('.bg-surface-sunken')).toBeNull();
 	});
 
 	it('shows progress percent when set', () => {

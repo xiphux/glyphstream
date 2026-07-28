@@ -23,6 +23,7 @@ import {
 	videoStatus,
 	type VideoCreateRequest,
 	type VideoJob,
+	type VideoStatus,
 } from '../endpoints/client';
 import { errorMessage, isAbortError, type SseWriter } from './sse-transport';
 import { parseModelId } from '../endpoints/model-id';
@@ -242,11 +243,21 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 	});
 }
 
+// A progress event's `status` is display text, not a machine value — the
+// fan-out grid renders it verbatim in place of "Generating…". So map the
+// provider's job enum rather than forwarding it: `in_progress` is the ordinary
+// case both views already narrate ("Generating video" / "Generating…"), and the
+// terminal states are announced by the `done` / `error` events that follow.
+const PHASE_LABELS: Partial<Record<VideoStatus, string>> = {
+	queued: 'Queued upstream…',
+};
+
 function emitProgress(write: SseWriter['write'], job: VideoJob): void {
+	const label = PHASE_LABELS[job.status];
 	const ev: StreamProgressEvent = {
 		type: 'progress',
 		percent: typeof job.progress === 'number' ? job.progress : null,
-		status: job.status,
+		...(label ? { status: label } : {}),
 	};
 	write(ev);
 }

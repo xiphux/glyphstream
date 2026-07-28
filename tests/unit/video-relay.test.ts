@@ -205,6 +205,63 @@ describe('startVideoRelay — happy path', () => {
 	});
 });
 
+describe('startVideoRelay — progress status is display text', () => {
+	// Regression: the poll loop forwarded `job.status` verbatim, so a `progress`
+	// event carried the provider enum. The fan-out grid renders that label in
+	// place of "Generating…", which surfaced a literal "in_progress 24.8s" while
+	// a video generated. The status field is display text; the enum stays server-side.
+	const PROVIDER_ENUM = ['queued', 'in_progress', 'completed', 'failed'];
+
+	function progressStatuses(events: StreamEvent[]): (string | undefined)[] {
+		return events
+			.filter((e) => e.type === 'progress')
+			.map((e) => (e as { status?: string }).status);
+	}
+
+	async function drainPolledJob(createStatus: string): Promise<StreamEvent[]> {
+		vi.useFakeTimers();
+		try {
+			const { conv, user, userMessage } = seedConvWithUser();
+			mocks.videoCreate
+				.mockReset()
+				.mockResolvedValue({ id: 'job-p', status: createStatus, progress: 10 });
+			mocks.videoStatus
+				.mockReset()
+				.mockResolvedValue({ id: 'job-p', status: 'completed', progress: 100 });
+			const drainPromise = drain(
+				startVideoRelay(
+					baseParams({
+						conversationId: conv.id,
+						userId: user.id,
+						userMessage: userMessage as ChatMessage,
+					}),
+				),
+			);
+			await vi.advanceTimersByTimeAsync(10_000);
+			return await drainPromise;
+		} finally {
+			vi.useRealTimers();
+		}
+	}
+
+	it('omits the status while generating — the views already narrate that themselves', async () => {
+		const events = await drainPolledJob('in_progress');
+		const statuses = progressStatuses(events);
+		expect(statuses.length).toBeGreaterThan(0);
+		expect(statuses.every((s) => s === undefined)).toBe(true);
+		// The percent still rides along — only the label is suppressed.
+		expect(
+			events.some((e) => e.type === 'progress' && (e as { percent: number | null }).percent === 10),
+		).toBe(true);
+	});
+
+	it('maps an upstream-queued job to a readable label', async () => {
+		const statuses = progressStatuses(await drainPolledJob('queued'));
+		expect(statuses).toContain('Queued upstream…');
+		expect(statuses.some((s) => s !== undefined && PROVIDER_ENUM.includes(s))).toBe(false);
+	});
+});
+
 describe('startVideoRelay — prompt enhancement', () => {
 	const enhancerEndpoint = (): LoadedEndpoint => ({ ...endpoint(), id: 'enhancer' });
 	function enableEnhancer(maxConcurrent = Infinity) {

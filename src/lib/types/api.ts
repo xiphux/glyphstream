@@ -1023,6 +1023,10 @@ export interface StreamReasoningEvent {
 export interface StreamProgressEvent {
 	type: 'progress';
 	percent: number | null;
+	/** Human-readable sub-phase shown in place of the generating verb (e.g.
+	 *  "Enhancing prompt…"). Display text, never a provider status enum — the
+	 *  fan-out grid renders it verbatim. Omitted when there's no sub-phase
+	 *  worth naming, i.e. plain "it's generating". */
 	status?: string;
 }
 
