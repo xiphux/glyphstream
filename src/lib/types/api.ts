@@ -1024,9 +1024,12 @@ export interface StreamProgressEvent {
 	type: 'progress';
 	percent: number | null;
 	/** Human-readable sub-phase shown in place of the generating verb (e.g.
-	 *  "Enhancing prompt…"). Display text, never a provider status enum — the
-	 *  fan-out grid renders it verbatim. Omitted when there's no sub-phase
-	 *  worth naming, i.e. plain "it's generating". */
+	 *  "Enhancing prompt…"). Display text — the fan-out grid renders it
+	 *  verbatim — so emitters map their machine states to a phrase rather than
+	 *  forwarding an enum. Omitted when there's no sub-phase worth naming, i.e.
+	 *  plain "it's generating". The one deliberate exception is an upstream
+	 *  status the emitter doesn't recognize, passed through (truncated) so a
+	 *  stuck job isn't silent. */
 	status?: string;
 }
 

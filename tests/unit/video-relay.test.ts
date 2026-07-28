@@ -218,7 +218,10 @@ describe('startVideoRelay — progress status is display text', () => {
 			.map((e) => (e as { status?: string }).status);
 	}
 
-	async function drainPolledJob(createStatus: string): Promise<StreamEvent[]> {
+	// `createStatus` is deliberately `unknown`: VideoStatus is a compile-time
+	// assumption (the poll response is cast, not validated), so these cases feed
+	// the relay what a misbehaving bridge could actually put on the wire.
+	async function drainPolledJob(createStatus: unknown): Promise<StreamEvent[]> {
 		vi.useFakeTimers();
 		try {
 			const { conv, user, userMessage } = seedConvWithUser();
@@ -260,6 +263,68 @@ describe('startVideoRelay — progress status is display text', () => {
 		expect(statuses).toContain('Queued upstream…');
 		expect(statuses.some((s) => s !== undefined && PROVIDER_ENUM.includes(s))).toBe(false);
 	});
+
+	// The enum is a compile-time assumption — the poll response is parsed, not
+	// validated. A bridge reporting a fourth state must not vanish behind a bare
+	// ticking timer: the loop only exits on completed/failed, so an unlabelled
+	// unknown status would spin to MAX_WAIT_MS looking identical to generating.
+	it('surfaces an unrecognized upstream status instead of swallowing it', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const statuses = progressStatuses(await drainPolledJob('stalled_on_runner'));
+			expect(statuses).toContain('stalled_on_runner');
+			expect(warn).toHaveBeenCalled();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it('truncates an unrecognized status so it cannot wreck the badge layout', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const statuses = progressStatuses(await drainPolledJob('x'.repeat(500)));
+			const surfaced = statuses.find((s) => s !== undefined);
+			expect(surfaced).toBe('x'.repeat(32));
+			// The log is truncated too, not just the on-screen label.
+			expect(warn.mock.calls.flat().join(' ')).not.toContain('x'.repeat(33));
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	// A bridge that omits `status` entirely used to coerce to the literal string
+	// "undefined" and render it as the label — the same leak as `in_progress`,
+	// one layer down.
+	it.each([
+		['omitted', undefined],
+		['null', null],
+		['empty', ''],
+	])('emits no label when the upstream status is %s', async (_name, value) => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		try {
+			const statuses = progressStatuses(await drainPolledJob(value));
+			expect(statuses.length).toBeGreaterThan(0);
+			expect(statuses.every((s) => s === undefined)).toBe(true);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	// The label lookup must not resolve inherited members for a provider-supplied
+	// key — `toString` would have returned a function (silently swallowed) and
+	// `__proto__` an object (rendering "[object Object]").
+	it.each(['toString', '__proto__', 'constructor'])(
+		'treats the prototype key %s as an ordinary unrecognized status',
+		async (value) => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+			try {
+				const statuses = progressStatuses(await drainPolledJob(value));
+				expect(statuses).toContain(value);
+			} finally {
+				warn.mockRestore();
+			}
+		},
+	);
 });
 
 describe('startVideoRelay — prompt enhancement', () => {

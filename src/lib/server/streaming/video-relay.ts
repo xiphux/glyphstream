@@ -137,8 +137,12 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			return { error: message };
 		}
 
+		// Distinct out-of-spec statuses already logged for this job, so a 20-minute
+		// poll loop warns once rather than on every tick.
+		const warnedStatuses = new Set<string>();
+
 		// Initial state
-		emitProgress(write, job);
+		emitProgress(write, job, warnedStatuses);
 
 		const startedAt = Date.now();
 		let pollInterval = MIN_POLL_INTERVAL_MS;
@@ -182,7 +186,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				console.warn(`[video-relay] poll error for job ${job.id}:`, e);
 				continue;
 			}
-			emitProgress(write, job);
+			emitProgress(write, job, warnedStatuses);
 		}
 
 		if (job.status === 'failed') {
@@ -245,15 +249,58 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 
 // A progress event's `status` is display text, not a machine value — the
 // fan-out grid renders it verbatim in place of "Generating…". So map the
-// provider's job enum rather than forwarding it: `in_progress` is the ordinary
-// case both views already narrate ("Generating video" / "Generating…"), and the
-// terminal states are announced by the `done` / `error` events that follow.
-const PHASE_LABELS: Partial<Record<VideoStatus, string>> = {
-	queued: 'Queued upstream…',
-};
+// provider's job enum rather than forwarding it. Both collections are BUILT
+// keyed by `VideoStatus` (so a typo'd entry fails to compile) but EXPOSED keyed
+// by string, because what arrives at runtime may be neither — see `phaseLabel`.
+const PHASE_LABELS: ReadonlyMap<string, string> = new Map<VideoStatus, string>([
+	['queued', 'Queued upstream…'],
+]);
 
-function emitProgress(write: SseWriter['write'], job: VideoJob): void {
-	const label = PHASE_LABELS[job.status];
+// The spec statuses that need no label of their own: `in_progress` is the
+// ordinary case both views already narrate ("Generating video" / "Generating…"),
+// and the terminal pair is announced by the `done` / `error` events that follow.
+// Anything NOT listed here and not in PHASE_LABELS is out of spec.
+const SILENT_STATUSES: ReadonlySet<string> = new Set<VideoStatus>([
+	'in_progress',
+	'completed',
+	'failed',
+]);
+
+// Longest out-of-spec status we'll put on screen. Svelte escapes it, but an
+// unbounded string would still wreck the badge layout.
+const MAX_RAW_STATUS_CHARS = 32;
+
+/** Display text for a job status, or undefined when there's no sub-phase worth
+ *  naming. An unrecognized status is surfaced raw rather than swallowed: the
+ *  poll loop only exits on `completed`/`failed`, so a bridge reporting some
+ *  fourth state would otherwise spin to MAX_WAIT_MS behind a bare ticking timer
+ *  with nothing to suggest it's stuck rather than generating. */
+function phaseLabel(status: VideoStatus, warned: Set<string>): string | undefined {
+	// `VideoStatus` is a compile-time assumption only — the poll response is cast
+	// by `parseJson`, never validated — so treat the value as untrusted provider
+	// input from here down. A missing or non-string status is nothing the user
+	// could act on anyway, and coercing it would put a literal "undefined" on
+	// screen: precisely the leak this mapping exists to prevent.
+	const raw: string = status;
+	if (typeof raw !== 'string' || raw === '') return undefined;
+
+	const label = PHASE_LABELS.get(raw);
+	if (label) return label;
+	if (SILENT_STATUSES.has(raw)) return undefined;
+
+	// Truncate before both the log and the label, so an absurd upstream string
+	// can't bloat the server log either.
+	const shown = raw.slice(0, MAX_RAW_STATUS_CHARS);
+	// Poll ticks every 1.5–3s, so warn once per distinct status per job.
+	if (!warned.has(shown)) {
+		warned.add(shown);
+		console.warn(`[video-relay] unrecognized job status ${JSON.stringify(shown)}`);
+	}
+	return shown;
+}
+
+function emitProgress(write: SseWriter['write'], job: VideoJob, warned: Set<string>): void {
+	const label = phaseLabel(job.status, warned);
 	const ev: StreamProgressEvent = {
 		type: 'progress',
 		percent: typeof job.progress === 'number' ? job.progress : null,
