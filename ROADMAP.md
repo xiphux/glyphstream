@@ -613,12 +613,12 @@ proactivity and pipeline bets are the most identity-defining.
 
 ## Performance — remaining items from the 2026-08 audit
 
-A multi-angle performance audit ran on 2026-08-02; most findings are fixed on
-`perf/audit-fixes`. What's left is recorded here with the reasoning, because in
-several cases the _analysis_ is the deliverable — two findings were measured and
-deliberately NOT acted on (those notes live next to the code, in
-`markdown/render.ts` and `streaming/relay.ts`, so they're read before someone
-re-optimizes).
+A multi-angle performance audit ran on 2026-08-02. Almost everything it found is
+fixed on `perf/audit-fixes`. Two things are left, both deferred for a reason
+other than size — plus a set of findings that were **measured and deliberately
+declined**, whose numbers live next to the code (`markdown/render.ts`,
+`streaming/relay.ts`, `db/queries/memories.ts`, `media/data-url.ts`) so they're
+read before anyone re-optimizes from an estimate.
 
 - **Re-serializing the branch on every tool-loop iteration.** `rebuildRequestBody`
   re-reads the conversation skeleton, re-fetches the active branch, re-parses every
@@ -626,15 +626,16 @@ re-optimizes).
   only ever _grows_ during a turn, so the serialized prefix could be cached in the
   request closure and appended to. Costs O(all messages) x iterations of synchronous
   work _between_ iterations — inter-token dead air the user reads as the model
-  thinking. Deferred because it touches the send path's most load-bearing loop and
-  the win is latency-shaped, not correctness-shaped; do it with the
-  `capToolResults` memo (already landed) as the model.
+  thinking. Deferred on **risk, not size**: it caches state across iterations on
+  the send path's most load-bearing loop, where a stale prefix is a wrong prompt
+  rather than a slow one. Worth doing deliberately, with the `capToolResults` memo
+  (landed) as the model for how to key it.
 
 - **Unbounded settings payloads.** `/settings/memories` SSRs every memory body plus
   every tombstone, `/settings/snippets` every snippet body. Real at a large store
-  (~2.5 MB at 5000 memories) but the fix is pagination, which is a UI change — a
-  "load more" affordance and a count — not a pure optimization. Worth doing when
-  either page is next touched.
+  (~2.5 MB at 5000 memories), but the fix is pagination — a "load more" affordance
+  and a count — which is a **UI change, not an optimization**, so it belongs with
+  whatever next touches those pages rather than in a performance branch.
 
   The gallery's `/api/media/unit-members` and search SSR ship full `MediaListItem`s
   (three overlapping prompt copies per row) and were flagged alongside these. That
@@ -643,35 +644,14 @@ re-optimizes).
   would trade bytes for a fetch on every open. Left alone; if it ever matters, cap
   the member count rather than thinning the shape.
 
-- **Dense-vector decode per query.** Gallery semantic search and `recall_memory`
-  each read up to `DENSE_CORPUS_CAP` (5000) embedding BLOBs and decode every one
-  into a fresh `Float32Array` per query — ~20-30 MB read plus the same again in
-  garbage, synchronously, on the event loop. The query-norm hoist already landed
-  (a third of the arithmetic); the remaining win is caching the decoded corpus as
-  one contiguous matrix per (user, embedding model), invalidated by the same
-  fingerprint the gallery units cache uses. Degrades gracefully below the cap
-  today, so it's a cliff rather than a slope — it bites right as a library gets
-  interesting. Related: the tool-search catalog embedding cache under **MCP —
-  per-user OAuth + phase-2** is the same idea for a different corpus.
-
-- **Smaller items, none individually urgent.** The gallery's `viewport` derived
-  allocates a fresh object every rAF, cascading through per-section deriveds (only
-  costly at `granularity='day'` on a large library — quantize `scrollTop`);
-  `ToolCallBlock`'s skill parse runs unbatched at template top level rather than
-  inside the body snippet, so it re-parses a whole SKILL.md on every token of the
-  following iterations; `canvasCardsByGroupLast` builds every message's blocks on
-  any `messages` change to collect canvas cards; the chat page auto-scrolls twice
-  per streamed token (the controller and a page effect both call it);
-  `/api/conversations?generating=1` runs a full `listConversations()` to map out
-  bare ids; the context-breakdown endpoint issues one media query per reference;
-  `countVersions` is an N+1 across canvases on every send; `media_prompt_fts`
-  filters `user_id` as an UNINDEXED per-row comparison over every user's MATCH
-  hits; vision data-URLs are re-read and re-base64'd per turn (bytes are stable,
-  so it's CPU not prefix churn); the media purger deletes sequentially where
-  `unlinkMediaFiles` already has the parallel shape; and several whole-conversation
-  `inArray` calls bind one parameter per message, which would exceed
-  `SQLITE_MAX_VARIABLE_NUMBER` on a big enough thread (correctness, not perf, and
-  not reachable today).
+- **Two items that can't be fixed the way they were framed.** `media_prompt_fts`
+  filters `user_id` as a per-row comparison over every user's MATCH hits — that's
+  inherent to an FTS5 UNINDEXED column, so the only real fix is per-user index
+  partitioning, which is a bigger schema question than the cost justifies. And
+  several whole-conversation `inArray` calls bind one parameter per message, which
+  would exceed `SQLITE_MAX_VARIABLE_NUMBER` on a big enough thread — correctness
+  rather than performance, and not reachable at any realistic conversation length;
+  a chunked helper is the fix if it ever is.
 
 ## Long-term / nice-to-have
 
