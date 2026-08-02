@@ -47,6 +47,30 @@ import type {
 	ModelKind,
 } from './types/api';
 
+/**
+ * Does the branch's last row look like a turn that has finished?
+ *
+ * "Last row is the assistant" is the obvious reading and the wrong one during a
+ * tool loop. The relay persists each iteration's assistant row with
+ * `advanceActiveLeaf`, so the leaf becomes that row the moment the tool-call
+ * iteration stops streaming — and only moves on once the tools have run and
+ * their `role:'tool'` rows land. For the whole tool round-trip (an MCP call, a
+ * search, a Python run — seconds to tens of seconds, per iteration) the leaf is
+ * therefore an assistant row while the generation is very much alive. An
+ * assistant row carrying a `tool_call` is a turn mid-flight, not a settled one.
+ *
+ * Only `recoveredInFlight` needs this: it reads the page's already-loaded
+ * message list, so the check is free there. The recovery poll deliberately does
+ * NOT re-derive it — asking the server for the branch every 4s just to inspect
+ * its last row is what made that poll expensive; it gates on the in-flight
+ * registry instead, which `onGenerationSettled` now clears promptly.
+ */
+function turnLooksSettled(messages: Array<{ role: string; parts?: MessagePart[] }>): boolean {
+	const last = messages[messages.length - 1];
+	if (last?.role !== 'assistant') return false;
+	return !last.parts?.some((p) => p.type === 'tool_call');
+}
+
 /** Everything the controller needs from the host page. Getters for reactive
  *  reads; setters/callbacks for the shared state it must mutate. */
 export interface ChatTurnDeps {
@@ -167,20 +191,21 @@ export class ChatTurnController {
 	/**
 	 * Server-reported truth: a generation is running for this conversation but
 	 * this client isn't driving it — its fetch died (iOS suspended the PWA, the
-	 * network dropped). The leaf check matters: the registry entry lingers a
-	 * little past the message itself (the SSE stream stays open through the
-	 * background title task), so `serverInFlightSince` can still be set for a
-	 * generation that already produced its assistant turn. A live/parked fan-out
-	 * owns the in-flight display via its columns, so don't also surface the
-	 * single recovered bubble while it's comparing.
+	 * network dropped). The leaf check is belt-and-braces: `onGenerationSettled`
+	 * frees the registry entry as soon as the assistant row is persisted, ahead
+	 * of the post-`done` title race, so `serverInFlightSince` shouldn't normally
+	 * outlive the turn on any relay path — but a path that skips that hook, or a
+	 * load snapshot read a moment before it fired, still shouldn't draw a bubble
+	 * over a finished turn. A live/parked fan-out owns the in-flight display via
+	 * its columns, so don't also surface the single recovered bubble while it's
+	 * comparing.
 	 */
 	get recoveredInFlight(): boolean {
-		const msgs = this.#deps.getMessages();
 		return (
 			this.#deps.serverInFlightSince() !== null &&
 			!this.inFlightOpen &&
 			!this.#deps.fanoutComparing() &&
-			msgs[msgs.length - 1]?.role !== 'assistant'
+			!turnLooksSettled(this.#deps.getMessages())
 		);
 	}
 
@@ -642,29 +667,35 @@ export class ChatTurnController {
 	/**
 	 * While a generation runs server-side that this client isn't driving (a
 	 * recovered bubble — the local fetch died to an iOS suspension or dropped
-	 * connection), poll the lightweight conversation endpoint so the
-	 * "Generating…" bubble resolves the moment the generation finishes — even if
-	 * the user just stays in the app. invalidateAll() is too heavy to poll (it
-	 * re-fetches every endpoint's model list); the GET endpoint is DB-only.
-	 * Returns a cleanup fn for the caller's $effect.
+	 * connection), poll so the "Generating…" bubble resolves the moment the
+	 * generation finishes — even if the user just stays in the app.
+	 * invalidateAll() is too heavy to poll (it re-fetches every endpoint's model
+	 * list). Returns a cleanup fn for the caller's $effect.
+	 *
+	 * Rides the `?fanout=1` variant, which returns `inFlightSince` without
+	 * walking the active branch. The default GET would serialize every message on
+	 * the branch — `content_html` included, 5-20x the source for code blocks — on
+	 * every tick, to answer a yes/no question; a recovered tool-using turn can run
+	 * for minutes, so that's the whole thread re-serialized dozens of times and
+	 * discarded. (`fanout` comes along unused; the fan-out grid has its own poll.)
 	 */
 	startRecoveryPoll(): () => void {
 		const id = this.#deps.convId();
 		let stopped = false;
 		const interval = setInterval(async () => {
 			try {
-				const res = await fetch(`/api/conversations/${id}`);
+				const res = await fetch(`/api/conversations/${id}?fanout=1`);
 				if (stopped || !res.ok) return;
-				const body = (await res.json()) as {
-					conversation: { messages: Array<{ role: string }> };
-					inFlightSince: number | null;
-				};
-				// Done when the assistant turn has landed (the timely signal — beats
-				// the registry, which lingers through the title task) or the registry
-				// cleared with no message (a cancelled generation).
-				const msgs = body.conversation.messages;
-				const finished = msgs[msgs.length - 1]?.role === 'assistant' || body.inFlightSince === null;
-				if (finished && !stopped) {
+				const body = (await res.json()) as { inFlightSince: number | null };
+				// The registry alone is the signal now: `onGenerationSettled` frees the
+				// entry as soon as the response is persisted, ahead of the title race,
+				// so it no longer lags the message landing the way it did when this
+				// also checked the branch leaf. Dropping that check is what lets the
+				// poll skip the message walk entirely — and it removes the trap that
+				// the leaf mid-tool-loop IS an assistant row, which a naive
+				// "assistant row landed ⇒ done" read would call finished while the
+				// server still had iterations to run.
+				if (body.inFlightSince === null && !stopped) {
 					stopped = true;
 					clearInterval(interval);
 					// One full reload to pull in the finished message, the AI title, and

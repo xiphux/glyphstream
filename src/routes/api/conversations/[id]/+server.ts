@@ -20,13 +20,19 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
 
-	// Fan-out recovery poll (`?fanout=1`): the controller's 4s poll only reads
-	// `fanout` (+ inFlightSince) to rebuild the compare grid as branches land — it
-	// has no use for the conversation's message list. Skip getConversationDetail's
-	// walkActiveBranch (+ content_html serialization) entirely on this path; a
-	// poll over a long thread would otherwise re-fetch the whole thing each tick.
-	// getConversationMeta is the light, ownership-checked fetch that still carries
-	// the activeLeafMessageId getFanoutRecoveryState needs.
+	// The recovery polls (`?fanout=1`) — TWO callers, wanting different halves:
+	// the fan-out controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild
+	// the compare grid as branches land, and the single-turn recovery poll reads
+	// ONLY `inFlightSince`. Neither wants the message list, so skip
+	// getConversationDetail's walkActiveBranch (+ content_html serialization)
+	// entirely here; a poll over a long thread would otherwise re-fetch the whole
+	// thing each tick. getConversationMeta is the light, ownership-checked fetch
+	// that still carries the activeLeafMessageId getFanoutRecoveryState needs.
+	//
+	// Contract the single-turn caller depends on: `inFlightSince` must stay
+	// accurate for a NON-fan-out conversation too. That poll terminates only when
+	// it reads null, so short-circuiting this branch on "no fan-out here" would
+	// wedge it forever (see startRecoveryPoll in chat-turn-controller).
 	if (url.searchParams.get('fanout') === '1') {
 		const meta = requireFound(
 			getConversationMeta(params.id, locals.user.id),

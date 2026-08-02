@@ -60,6 +60,17 @@ function userMsg(id: string): ChatMessage {
 function assistantMsg(id: string): ChatMessage {
 	return msg(id, 'assistant');
 }
+/** An assistant row mid-tool-loop: it carries the tool_call the relay just
+ *  streamed, and the tools haven't run (or persisted their rows) yet. */
+function toolCallAssistantMsg(id: string): ChatMessage {
+	return {
+		...msg(id, 'assistant'),
+		parts: [
+			{ type: 'tool_call', toolCallId: `call_${id}`, toolName: 'fetch_url', arguments: '{}' },
+		],
+		finishReason: 'tool_calls',
+	};
+}
 function msg(id: string, role: 'user' | 'assistant'): ChatMessage {
 	return {
 		id,
@@ -315,6 +326,66 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		state.messages = [userMsg('u1')];
 		state.fanoutComparing = true;
 		expect(turn.recoveredInFlight).toBe(false);
+	});
+
+	it('still recovers while a tool call is executing, though the leaf is an assistant row', () => {
+		// The trap: the relay persists each iteration's assistant row with
+		// advanceActiveLeaf, so from the moment a tool-call iteration stops
+		// streaming until the tools return and their role:'tool' rows land, the
+		// branch leaf IS an assistant row — for as long as an MCP call, a search,
+		// or a Python run takes. Reading that as "the turn landed" drops the
+		// recovered bubble (and the sidebar's generating dot) mid-generation.
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		state.serverInFlightSince = 1000;
+		state.messages = [userMsg('u1'), toolCallAssistantMsg('a1')];
+		expect(turn.recoveredInFlight).toBe(true);
+
+		// The same row once the turn genuinely settles: text only, no tool_call.
+		state.messages = [userMsg('u1'), assistantMsg('a1')];
+		expect(turn.recoveredInFlight).toBe(false);
+	});
+
+	it('recovery poll rides the branch-walk-free variant and finishes on the registry alone', async () => {
+		// Two things worth pinning. (1) The URL: the default GET serializes every
+		// message on the branch (content_html included) per tick, to answer a
+		// yes/no — `?fanout=1` answers it without the walk. (2) The predicate:
+		// gating on the registry, not on "an assistant row landed", because
+		// mid-tool-loop the branch leaf IS an assistant row and reading that as
+		// done would stop the poll while the server still had iterations to run.
+		vi.useFakeTimers();
+		const urls: string[] = [];
+		let inFlightSince: number | null = 5000;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				urls.push(url);
+				return { ok: true, json: async () => ({ inFlightSince }) } as unknown as Response;
+			}),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const stop = turn.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(urls).toEqual(['/api/conversations/c1?fanout=1']);
+			// Registry still populated → keep polling, even though no message list
+			// was consulted at all.
+			expect(invalidateAll).not.toHaveBeenCalled();
+
+			inFlightSince = null;
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(invalidateAll).toHaveBeenCalledTimes(1);
+
+			// Terminated: no further ticks once it has resolved.
+			const seen = urls.length;
+			await vi.advanceTimersByTimeAsync(12000);
+			expect(urls.length).toBe(seen);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
 	});
 
 	it('stop on a recovered bubble cancels server-side and re-syncs (no local abort)', async () => {
