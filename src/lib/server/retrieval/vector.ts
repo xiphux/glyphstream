@@ -51,7 +51,19 @@ export function cosine(a: Vec, b: Vec): number {
  * outputs uniformly.
  */
 export function cosineRank(query: Vec, docs: Vec[]): ScoredChunk[] {
-	const scored = docs.map((d, index) => ({ index, score: cosine(query, d) }));
+	// `norm(query)` is loop-invariant, but `cosine` recomputes it per document.
+	// Calling it directly would spend a third of the arithmetic re-measuring the
+	// same vector — the three passes (norm(query), norm(doc), dot) collapse to
+	// two once it's hoisted. Worth the duplicated division at the dense corpus
+	// caps, where this runs over thousands of vectors synchronously.
+	const nq = norm(query);
+	if (nq === 0) return docs.map((_, index) => ({ index, score: 0 }));
+	const scored = docs.map((d, index) => {
+		const nd = norm(d);
+		// Mirrors `cosine`'s zero-guard exactly, including short-circuiting
+		// before `dot` (so a zero vector never reaches its length check).
+		return { index, score: nd === 0 ? 0 : dot(query, d) / (nq * nd) };
+	});
 	scored.sort((x, y) => (y.score === x.score ? x.index - y.index : y.score - x.score));
 	return scored;
 }
