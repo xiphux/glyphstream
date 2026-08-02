@@ -19,12 +19,18 @@
  * streaming UI into a single end-of-stream delivery.
  */
 
-import {
-	brotliCompressSync,
-	constants as zlibConstants,
-	gzipSync,
-	zstdCompressSync,
-} from 'node:zlib';
+import { brotliCompress, constants as zlibConstants, gzip, zstdCompress } from 'node:zlib';
+import { promisify } from 'node:util';
+
+// The async variants run the codec on libuv's threadpool. The sync ones block
+// the event loop for the whole compression, which on this single-process server
+// stalls every other in-flight request — including SSE forwarding for other
+// users' live generations. At brotli-4's ~70-100 MB/s a 2 MB conversation
+// payload is 20-30ms of global stall, and the deploy this feature exists for
+// (a proxy that can't compress) is also the one with the least CPU headroom.
+const gzipAsync = promisify(gzip);
+const brotliCompressAsync = promisify(brotliCompress);
+const zstdCompressAsync = promisify(zstdCompress);
 
 /**
  * Below this size, gzip framing overhead and the cost of breaking the
@@ -97,14 +103,14 @@ function pickEncoding(acceptEncoding: string | null): Encoding | null {
 	return null;
 }
 
-function compress(data: Buffer, encoding: Encoding): Buffer {
+function compress(data: Buffer, encoding: Encoding): Promise<Buffer> {
 	switch (encoding) {
 		case 'zstd':
-			return zstdCompressSync(data, {
+			return zstdCompressAsync(data, {
 				params: { [zlibConstants.ZSTD_c_compressionLevel]: ZSTD_LEVEL },
 			});
 		case 'br':
-			return brotliCompressSync(data, {
+			return brotliCompressAsync(data, {
 				params: {
 					[zlibConstants.BROTLI_PARAM_QUALITY]: BROTLI_LEVEL,
 					// Hint that the payload is text — lets brotli use its
@@ -113,7 +119,7 @@ function compress(data: Buffer, encoding: Encoding): Buffer {
 				},
 			});
 		case 'gzip':
-			return gzipSync(data, { level: GZIP_LEVEL });
+			return gzipAsync(data, { level: GZIP_LEVEL });
 	}
 }
 
@@ -167,7 +173,7 @@ export async function maybeCompressResponse(
 		});
 	}
 
-	const compressed = compress(raw, encoding);
+	const compressed = await compress(raw, encoding);
 
 	const headers = new Headers(response.headers);
 	headers.set('Content-Encoding', encoding);

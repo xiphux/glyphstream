@@ -183,9 +183,15 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   oniguruma WASM engine or any additional grammars into this client
   path — it costs 50–200 KB raw per grammar and the marginal value
   past Python tails off fast.
-- **Don't compress at the reverse proxy.** adapter-node has `precompress:
-true`, so static assets ship as `.br` + `.gz` on disk and sirv negotiates
-  via `Accept-Encoding`. Re-compressing at the proxy double-compresses.
+- **Don't compress _static assets_ at the reverse proxy.** adapter-node has
+  `precompress: true`, so they ship as `.br` + `.gz` on disk and sirv
+  negotiates via `Accept-Encoding`. Re-compressing at the proxy
+  double-compresses. **This does not extend to dynamic responses** — SSR HTML
+  and `__data.json` are generated per request and are never precompressed, and
+  they're the big ones (a long chat's payload dwarfs the JS bundle). Something
+  must compress them: either the proxy, or `COMPRESS_DYNAMIC=1` (see
+  `server/compression.ts`), which is off by default on the assumption the proxy
+  is doing it. Read as blanket advice, this bullet used to leave both sides off.
 - **Allowlist by numeric GitHub user ID, not username.** Usernames can be
   deleted and re-registered by someone else.
 - **`schema.ts` must stay `$lib`-free.** It's loaded outside the Vite

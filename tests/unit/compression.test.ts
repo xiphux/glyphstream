@@ -211,3 +211,40 @@ describe('maybeCompressResponse — skip rules', () => {
 		expect(out.status).toBe(201);
 	});
 });
+
+describe('compression does not block the event loop', () => {
+	/**
+	 * The codecs used to run through zlib's *Sync variants, which occupy the
+	 * event loop for the whole compression. On this single-process server that
+	 * stalls every other in-flight request — including SSE forwarding for other
+	 * users' live generations. At brotli-4's ~70-100 MB/s a multi-MB conversation
+	 * payload is tens of milliseconds of global stall, on exactly the deploy this
+	 * feature exists for (a proxy that can't compress, i.e. the least CPU
+	 * headroom).
+	 *
+	 * Asserted by observing that timers keep firing while a large body is being
+	 * compressed: with the sync codecs the loop is pinned and the counter cannot
+	 * advance until after the response resolves.
+	 */
+	it('lets other tasks run while a large body compresses', async () => {
+		// Compressible but not trivially so, and big enough to take real time.
+		const body = Array.from({ length: 200_000 }, (_, i) => `line ${i} of the payload\n`).join('');
+		const res = new Response(body, { headers: { 'Content-Type': 'application/json' } });
+		const req = new Request('http://localhost/api/big', {
+			headers: { 'accept-encoding': 'br' },
+		});
+
+		let ticks = 0;
+		const tick = () => {
+			ticks++;
+			timer = setTimeout(tick, 0);
+		};
+		let timer = setTimeout(tick, 0);
+
+		const out = await maybeCompressResponse(res, req);
+		clearTimeout(timer);
+
+		expect(out.headers.get('Content-Encoding')).toBe('br');
+		expect(ticks, 'event loop was blocked for the whole compression').toBeGreaterThan(0);
+	});
+});
