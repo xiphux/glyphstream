@@ -18,6 +18,8 @@ import {
 	setConversationTitleIfFallback,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage, setActiveLeafMessageId } from '$lib/server/db/queries/messages';
+import { messages } from '$lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -258,7 +260,7 @@ describe('getConversationFirstExchange', () => {
 		expect(ex!.assistantHasMedia).toBe(true);
 	});
 
-	it('ignores branches (only first-by-createdAt assistant child counts)', () => {
+	it('picks the earlier assistant child when siblings differ in createdAt', () => {
 		// Title gen runs once before branching is possible, but the
 		// query should still behave deterministically if called later.
 		const u = seedUser();
@@ -280,16 +282,71 @@ describe('getConversationFirstExchange', () => {
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'first answer' }],
 		});
-		// Sibling assistant from a regenerate
-		appendMessage({
+		// Sibling assistant from a regenerate, a moment later. A real regenerate
+		// is seconds apart; pinned here because `appendMessage` stamps
+		// `Date.now()`, and two rows written inside one millisecond have no
+		// defined order to assert on (see the determinism test below).
+		const second = appendMessage({
 			conversationId: conv.id,
 			parentMessageId: user.id,
 			role: 'assistant',
 			parts: [{ type: 'text', text: 'second answer' }],
 		});
+		mocks.testDb
+			.update(messages)
+			.set({ createdAt: Date.now() + 1000 })
+			.where(eq(messages.id, second.id))
+			.run();
 		setActiveLeafMessageId(conv.id, first.id);
 		const ex = getConversationFirstExchange(conv.id, u.id);
 		expect(ex!.assistantText).toBe('first answer');
+	});
+
+	it('is deterministic when two sibling assistants share a timestamp', () => {
+		// The real requirement. Ordering on `created_at` alone left the winner up
+		// to whichever index the planner picked, so extending
+		// idx_messages_conv_created silently changed the answer. Which sibling
+		// wins is arbitrary (ids are UUIDv4, so "inserted first" isn't recoverable
+		// from the columns) — that it's the SAME one every time is not.
+		const u = seedUser();
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::gpt-4o',
+			modelKind: 'chat',
+		});
+		const user = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'user',
+			parts: [{ type: 'text', text: 'q' }],
+		});
+		const stamp = Date.now();
+		for (const text of ['answer A', 'answer B', 'answer C']) {
+			const m = appendMessage({
+				conversationId: conv.id,
+				parentMessageId: user.id,
+				role: 'assistant',
+				parts: [{ type: 'text', text }],
+			});
+			mocks.testDb.update(messages).set({ createdAt: stamp }).where(eq(messages.id, m.id)).run();
+		}
+		// Pinned to the explicit `asc(id)` tiebreak rather than to whatever the
+		// current index happens to yield — that equivalence is a coincidence of
+		// this index's column order and would break the next time it changes.
+		const tied = mocks.testDb
+			.select({ id: messages.id, contentJson: messages.contentJson })
+			.from(messages)
+			.where(eq(messages.parentMessageId, user.id))
+			.all()
+			.sort((a, b) => (a.id < b.id ? -1 : 1));
+		const expected = JSON.parse(tied[0].contentJson!)[0].text as string;
+		const seen = new Set<string>();
+		for (let i = 0; i < 5; i++) {
+			seen.add(getConversationFirstExchange(conv.id, u.id)!.assistantText!);
+		}
+		expect(seen.size, 'first-exchange lookup returned different siblings across calls').toBe(1);
+		expect([...seen][0]).toBe(expected);
 	});
 });
 

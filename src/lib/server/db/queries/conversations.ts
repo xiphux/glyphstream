@@ -554,7 +554,14 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
 				eq(messages.role, 'user'),
 			),
 		)
-		.orderBy(asc(messages.createdAt))
+		// `id` breaks the tie explicitly. Ordering on `created_at` alone left the
+		// winner up to whichever index the planner happened to use — two rows
+		// written in the same millisecond have no defined order — so extending
+		// idx_messages_conv_created silently changed which row came back. An
+		// unstable ORDER BY feeding the title generator is the same hazard
+		// CLAUDE.md flags for the upstream payload; pin it rather than depend on
+		// physical layout.
+		.orderBy(asc(messages.createdAt), asc(messages.id))
 		.get();
 	if (!rootUser) return null;
 
@@ -568,7 +575,7 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
 				eq(messages.role, 'assistant'),
 			),
 		)
-		.orderBy(asc(messages.createdAt))
+		.orderBy(asc(messages.createdAt), asc(messages.id))
 		.get();
 
 	const userParts = parseMessageParts(rootUser.contentJson);

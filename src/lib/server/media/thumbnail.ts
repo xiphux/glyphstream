@@ -34,8 +34,10 @@
  */
 
 import sharp from 'sharp';
-import { existsSync, mkdirSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
+import { rename, stat, unlink } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { mediaDir } from '../env';
 
@@ -67,51 +69,128 @@ export function thumbStoragePath(storagePath: string): string {
 }
 
 /**
+ * In-flight generations, keyed by thumbnail path.
+ *
+ * A cold gallery viewport requests 30-60 tiles at once, every one a cache miss,
+ * and each miss used to start its own independent `sharp` pipeline — dozens of
+ * concurrent libvips decodes of multi-MB PNGs, competing for sharp's own thread
+ * pool, precisely at first paint of a new library. Two requests for the SAME id
+ * also both generated, and both wrote to the same path with no tmp+rename (which
+ * `DiskMediaStore.put` does have), so they raced on the output file.
+ *
+ * Deduping collapses the duplicate work and makes the write single-writer per
+ * path; the semaphore below bounds the rest.
+ */
+const inFlight = new Map<string, Promise<ThumbnailRef | null>>();
+
+/**
+ * Concurrent sharp pipelines. Small on purpose: sharp already parallelizes a
+ * single resize across its thread pool, so several at once mostly contend. The
+ * point is to keep a burst of misses from swamping the box while other requests
+ * (and other users' streams) need CPU.
+ */
+const MAX_CONCURRENT_GENERATIONS = 3;
+let active = 0;
+const waiting: Array<() => void> = [];
+
+async function acquireSlot(): Promise<void> {
+	if (active < MAX_CONCURRENT_GENERATIONS) {
+		active++;
+		return;
+	}
+	await new Promise<void>((release) => waiting.push(release));
+	active++;
+}
+
+function releaseSlot(): void {
+	active--;
+	waiting.shift()?.();
+}
+
+/** Stat a file, or null if it isn't there — one syscall instead of
+ *  `existsSync` followed by `stat` (which asks the filesystem twice, on a
+ *  path taken for every gallery tile). */
+async function statOrNull(path: string): Promise<Stats | null> {
+	try {
+		return await stat(path);
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. Returns null if neither
  * is possible (source missing, sharp decode error). Callers should
  * fall back to streaming the original in the null case.
+ *
+ * Concurrent callers for the same path share one generation, and generations
+ * are globally capped — see `inFlight` and `MAX_CONCURRENT_GENERATIONS`.
  */
 export async function getOrCreateThumbnail(storagePath: string): Promise<ThumbnailRef | null> {
 	const root = resolve(mediaDir());
-	const sourceAbs = resolve(root, storagePath);
-	if (!existsSync(sourceAbs)) return null;
-
 	const thumbAbs = resolve(root, thumbStoragePath(storagePath));
 
-	// Cache hit: just stat for size and return.
-	if (existsSync(thumbAbs)) {
-		const stats = await stat(thumbAbs);
-		return {
-			absolutePath: thumbAbs,
-			byteSize: stats.size,
-			contentType: 'image/jpeg',
-		};
+	// Cache hit — the overwhelmingly common case once a library has been
+	// viewed once, so it's checked before any locking.
+	const cached = await statOrNull(thumbAbs);
+	if (cached) {
+		return { absolutePath: thumbAbs, byteSize: cached.size, contentType: 'image/jpeg' };
 	}
 
-	// Cache miss: generate. mkdir handles the case where the source
-	// happens to be in a freshly-sharded directory whose siblings
-	// don't exist yet (unlikely in practice — original would have
-	// created the dir — but cheap).
-	mkdirSync(dirname(thumbAbs), { recursive: true });
+	const existing = inFlight.get(thumbAbs);
+	if (existing) return existing;
+
+	const job = generateThumbnail(resolve(root, storagePath), thumbAbs, storagePath).finally(() => {
+		inFlight.delete(thumbAbs);
+	});
+	inFlight.set(thumbAbs, job);
+	return job;
+}
+
+async function generateThumbnail(
+	sourceAbs: string,
+	thumbAbs: string,
+	storagePath: string,
+): Promise<ThumbnailRef | null> {
+	if (!(await statOrNull(sourceAbs))) return null;
+
+	await acquireSlot();
 	try {
-		await sharp(sourceAbs)
-			.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
-				fit: 'inside',
-				withoutEnlargement: true,
-			})
-			.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
-			.toFile(thumbAbs);
-		const stats = await stat(thumbAbs);
-		return {
-			absolutePath: thumbAbs,
-			byteSize: stats.size,
-			contentType: 'image/jpeg',
-		};
-	} catch (e) {
-		// One bad input shouldn't kill the endpoint. Log + null so
-		// the caller falls back to the original.
-		console.warn(`[thumbnail] generation failed for ${storagePath}:`, e);
-		return null;
+		// Re-check under the slot: a queued request may have been waiting behind
+		// the very generation that produced this file.
+		const raced = await statOrNull(thumbAbs);
+		if (raced) {
+			return { absolutePath: thumbAbs, byteSize: raced.size, contentType: 'image/jpeg' };
+		}
+
+		// mkdir handles the case where the source happens to be in a freshly-
+		// sharded directory whose siblings don't exist yet (unlikely in practice —
+		// the original would have created the dir — but cheap).
+		mkdirSync(dirname(thumbAbs), { recursive: true });
+		// Write to a unique temp path and rename into place, so a reader can never
+		// observe a half-written JPEG. rename(2) is atomic within a filesystem, and
+		// the temp file is a sibling so it always is. Mirrors DiskMediaStore.put.
+		const tmpAbs = `${thumbAbs}.${process.pid}.${randomUUID()}.tmp`;
+		try {
+			await sharp(sourceAbs)
+				.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
+					fit: 'inside',
+					withoutEnlargement: true,
+				})
+				.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
+				.toFile(tmpAbs);
+			await rename(tmpAbs, thumbAbs);
+			const stats = await stat(thumbAbs);
+			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/jpeg' };
+		} catch (e) {
+			await unlink(tmpAbs).catch(() => {});
+			// One bad input shouldn't kill the endpoint. Log + null so
+			// the caller falls back to the original.
+			console.warn(`[thumbnail] generation failed for ${storagePath}:`, e);
+			return null;
+		}
+	} finally {
+		releaseSlot();
 	}
 }
