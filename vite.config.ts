@@ -106,11 +106,27 @@ export default defineConfig({
 				],
 			},
 			injectManifest: {
-				// Precache the built shell. We only register precache routes
-				// inside the SW, so /api/* and SSE streams pass through to
-				// the network unintercepted — no need for the generateSW-only
-				// runtimeCaching/navigateFallback opt-outs.
-				globPatterns: ['client/**/*.{js,css,html,ico,png,svg,woff2}'],
+				// Precache ONLY the root-level, non-hashed assets — the icons the SW
+				// itself renders into notifications, plus the manifest. We register no
+				// other routes in the SW, so /api/*, SSE streams and SSR'd HTML pass
+				// straight through to the network.
+				//
+				// Deliberately NOT `client/**` over js/css. That swept in every hashed
+				// chunk — ~380 KB gzip across ~89 entries, including the markdown-it
+				// and shiki chunks the route-lazy design exists to defer, and the
+				// settings/gallery/admin chunks a given user may never open. Vite's
+				// chunk hashes cascade through the import graph, so one shared-module
+				// change rehashed many chunks and a large fraction of that re-installed
+				// on every deploy, competing with foreground traffic
+				// (`registerSW({ immediate: true })` starts right after page load).
+				//
+				// It bought very little. `/_app/immutable/*` is content-hashed and
+				// already served `max-age=31536000, immutable` (see hooks.server.ts),
+				// so the browser's own HTTP cache covers repeat loads. And there's no
+				// navigation fallback here by design — an offline navigation needs SSR
+				// HTML that isn't precached either way — so precached JS couldn't make
+				// a cold offline load work regardless.
+				globPatterns: ['client/*.{ico,png,svg,webmanifest}'],
 			},
 		}),
 		analyze &&

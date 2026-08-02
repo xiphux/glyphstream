@@ -896,17 +896,29 @@
 	let highlightedMessageId = $state<string | null>(null);
 	onMount(() => {
 		listMounted = true;
-		// Start the lazy syntax-highlighter chunk download as soon as the
-		// chat opens. ~72 KB gzip, route-lazy. Idempotent; safe to call on
-		// every chat-page mount. Result is ignored — the module flips its
-		// own reactive `liveHighlighterReady` signal once loaded, which
-		// the rAF-driven inFlightSegments effect picks up automatically.
-		void ensureLiveHighlighter();
-		// markdown-it itself is also route-lazy (~45 KB gzip). Kicking it
-		// off at mount means the first streaming tick after the user sends
-		// a message almost always finds it already loaded; while it's
-		// loading renderLiveMarkdown falls back to an escaped <p>.
-		void ensureLiveMarkdown();
+		// Start the lazy live-render chunks: the shiki subset (~72 KB gzip) and
+		// markdown-it (~45 KB gzip). Both are route-lazy and idempotent; results
+		// are ignored — the shiki module flips its own reactive
+		// `liveHighlighterReady` signal once loaded, which the rAF-driven
+		// inFlightSegments effect picks up automatically, and until markdown-it
+		// lands `renderLiveMarkdown` falls back to an escaped <p>.
+		//
+		// Kicked off at idle rather than straight away. These are only needed to
+		// render a *streaming* reply, so opening an existing thread to read it
+		// never uses them — but firing at mount put 120 KB gzip in contention with
+		// the initial route graph on every chat open, including read-only ones.
+		// Idle keeps the "already loaded before the first token arrives" property
+		// (the user still has to type and send) without competing with first paint.
+		// Safari has no requestIdleCallback, so fall back to a short timeout.
+		const warmLiveRenderers = () => {
+			void ensureLiveHighlighter();
+			void ensureLiveMarkdown();
+		};
+		const idle = (
+			window as Window & { requestIdleCallback?: (cb: () => void, o?: object) => number }
+		).requestIdleCallback;
+		if (idle) idle(warmLiveRenderers, { timeout: 2000 });
+		else setTimeout(warmLiveRenderers, 200);
 		// Deep-link from the search modal: URL hash like `#msg-<id>`.
 		// Wait for the message wrappers to be in the DOM before scrolling.
 		const hash = typeof location !== 'undefined' ? location.hash : '';
