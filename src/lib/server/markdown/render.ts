@@ -140,6 +140,29 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
  * downstream sanitizer needed for v1's threat model (assistant output +
  * server-controlled rendering).
  */
+/**
+ * NOTE ON COST: `md.render()` and shiki's `codeToHtml` are fully synchronous
+ * despite the async signature — the `await` above yields before the work, not
+ * during it — so this occupies the event loop, and on a single-process server
+ * that stalls every other in-flight request including other users' SSE
+ * forwarding. It runs once per tool-loop iteration at each persist boundary.
+ *
+ * Measured before reaching for a worker thread, because the fix is expensive
+ * (a pool, plus a shiki highlighter resident per worker) and the estimate it
+ * would have been based on was wrong:
+ *
+ *   prose only (~1.5 KB)              0.2 ms
+ *   30-line python fence              1.8 ms
+ *   300-line python fence             8.2 ms
+ *   1500-line python fence (~50 KB)  37.9 ms
+ *   3 x 300-line fences + prose      21.9 ms
+ *
+ * So the realistic worst case is tens of milliseconds, comparable to one of the
+ * synchronous SQLite queries this process already runs per request, and a
+ * typical reply is 1-20 ms. Deferring it behind `setImmediate` would reorder the
+ * stall without shortening it. Not worth a worker until replies get much larger
+ * or concurrency much higher — re-measure with this table before assuming.
+ */
 export async function renderMarkdown(text: string): Promise<string | null> {
 	const trimmed = text.trim();
 	if (!trimmed) return null;

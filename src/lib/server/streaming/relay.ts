@@ -563,6 +563,19 @@ async function runOneIteration(args: {
 		return null;
 	}
 
+	// `tee()` means each frame is UTF-8 decoded, SSE-parsed and JSON.parsed TWICE
+	// — once for the client branch, once for the recorder. That looks like the
+	// obvious thing to collapse (parse once, fan the normalized deltas out to
+	// both), and the recorder's independence is a *lifetime* property rather than
+	// a parsing one, so it would be possible.
+	//
+	// Measured first, and it doesn't earn the risk: one parse+normalize pass runs
+	// 1.3-2.7us per chunk, so the duplicated pass costs ~5ms total across a
+	// 4000-chunk response — spread over the tens of seconds that response takes
+	// to arrive. Collapsing it would restructure the one path that must keep
+	// persisting after the client disconnects (the iOS-suspend recovery design)
+	// to save single-digit milliseconds. Left alone deliberately; re-measure
+	// before revisiting.
 	const [forClient, forRecorder] = upstreamResponse.body.tee();
 
 	const recorderPromise = recordAndPersistOneIteration({
