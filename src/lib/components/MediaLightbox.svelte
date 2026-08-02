@@ -94,6 +94,11 @@
 	);
 	const showCarousel = $derived(!!siblings && siblings.length > 1 && currentIndex >= 0);
 
+	/** How many slides either side of the current one actually mount their media.
+	 *  Two is enough that a swipe or arrow press always lands on something already
+	 *  decoded, while keeping the mounted set constant regardless of library size. */
+	const SLIDE_WINDOW = 2;
+
 	let trackEl = $state<HTMLDivElement | null>(null);
 
 	// True once we've performed the initial (instant) scroll-to-position
@@ -153,7 +158,40 @@
 		// the positioning effect. The effect then no-ops (already centered).
 		const el = trackEl;
 		if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
-		onNavigate?.(siblings[next].id);
+		resolveSlide(siblings[next].id);
+	}
+
+	/**
+	 * Rate-limit the metadata resolve behind arrow-key navigation.
+	 *
+	 * Leading edge, so one press still resolves immediately — that's what keeps
+	 * the caption/model panel responsive, and it's the behaviour the carousel
+	 * tests pin. Subsequent presses inside the window are coalesced into a single
+	 * trailing call for wherever the user ended up. Holding an arrow key used to
+	 * emit ~30 resolves a second, each an uncancelled `/api/media/:id` plus
+	 * `/api/media/:id/conversations` (neither deduped nor aborted), for slides
+	 * being flown past.
+	 *
+	 * Deliberately not routed through `onTrackScroll`'s settle timer instead: a
+	 * smooth `scrollTo` that emits no scroll event — no track element, reduced
+	 * motion, a non-browser environment — would leave navigation resolving
+	 * nothing at all.
+	 */
+	const NAV_RESOLVE_WINDOW_MS = 120;
+	let navResolveTimer: ReturnType<typeof setTimeout> | undefined;
+	let navResolveBlockedUntil = 0;
+	function resolveSlide(id: string) {
+		clearTimeout(navResolveTimer);
+		const now = Date.now();
+		if (now >= navResolveBlockedUntil) {
+			navResolveBlockedUntil = now + NAV_RESOLVE_WINDOW_MS;
+			onNavigate?.(id);
+			return;
+		}
+		navResolveTimer = setTimeout(() => {
+			navResolveBlockedUntil = Date.now() + NAV_RESOLVE_WINDOW_MS;
+			onNavigate?.(id);
+		}, navResolveBlockedUntil - now);
 	}
 
 	function fmtBytes(n: number): string {
@@ -443,7 +481,7 @@
 					onscroll={onTrackScroll}
 					class="flex flex-1 snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 				>
-					{#each siblings! as s (s.id)}
+					{#each siblings! as s, i (s.id)}
 						<!--
 							`snap-always` (scroll-snap-stop: always) is what makes a
 							flick land on the *adjacent* slide and stop, instead of
@@ -454,7 +492,20 @@
 						<div
 							class="flex w-full shrink-0 snap-center snap-always items-center justify-center px-1"
 						>
-							{#if s.kind === 'video'}
+							{#if Math.abs(i - currentIndex) > SLIDE_WINDOW}
+								<!--
+									Out of window: an empty slot of the same width. The SLOT has
+									to stay — the track is scroll-snap and `onTrackScroll` maps
+									scroll offset back to an index, so slicing the array would
+									shift every index and break both. Only the media is skipped.
+
+									`siblings` is every unit demand-loaded this gallery session,
+									so after a deep scroll this each-block was mounting thousands
+									of full-resolution <img> at once. `loading="lazy"` keeps them
+									from all being fetched, but they're still elements the browser
+									must create, style and lay out on open.
+								-->
+							{:else if s.kind === 'video'}
 								<!-- svelte-ignore a11y_media_has_caption -->
 								<video
 									src="/api/media/{s.id}/content"
@@ -464,10 +515,19 @@
 									class="max-h-full max-w-full rounded-lg"
 								></video>
 							{:else}
+								<!--
+									The slide being LOOKED AT loads eagerly at high priority; its
+									neighbours stay lazy so they're ready on a swipe without
+									competing. Marking the current one `lazy` too meant every open
+									and every arrow press waited a full round trip on a blank
+									slide, because the browser only starts the fetch once the
+									element is near the viewport.
+								-->
 								<img
 									src="/api/media/{s.id}/content"
 									alt={s.id === m.id ? (m.promptExcerpt ?? 'Generated image') : ''}
-									loading="lazy"
+									loading={i === currentIndex ? 'eager' : 'lazy'}
+									fetchpriority={i === currentIndex ? 'high' : 'low'}
 									class="max-h-full max-w-full rounded-lg object-contain"
 								/>
 							{/if}

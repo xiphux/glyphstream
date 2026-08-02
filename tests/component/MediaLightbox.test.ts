@@ -524,6 +524,17 @@ describe('MediaLightbox — conversationsUsingThis', () => {
 	});
 });
 
+/**
+ * Wait out the lightbox's navigation coalescing window. Rapid navigation is
+ * rate-limited (leading edge + trailing call) so that holding an arrow key
+ * doesn't emit ~30 uncancelled metadata fetches a second for slides being flown
+ * past; a second press inside the window therefore resolves on the trailing
+ * edge rather than immediately.
+ */
+async function settleNavResolve() {
+	await new Promise((r) => setTimeout(r, 200));
+}
+
 describe('MediaLightbox — carousel navigation', () => {
 	const siblings = [
 		{ id: 'm-1', kind: 'image' as const },
@@ -586,8 +597,13 @@ describe('MediaLightbox — carousel navigation', () => {
 			props: { media: makeImage({ id: 'm-2' }), onClose: vi.fn(), siblings, onNavigate },
 		});
 		await user.click(screen.getByRole('button', { name: 'Next' }));
+		// Leading edge — the first navigation resolves immediately, so the caption
+		// and model panel stay responsive.
 		expect(onNavigate).toHaveBeenCalledWith('m-3');
 		await user.click(screen.getByRole('button', { name: 'Previous' }));
+		// The second lands inside the coalescing window, so it arrives on the
+		// trailing edge instead of firing its own metadata fetch immediately.
+		await settleNavResolve();
 		expect(onNavigate).toHaveBeenCalledWith('m-1');
 	});
 
@@ -612,6 +628,7 @@ describe('MediaLightbox — carousel navigation', () => {
 		await user.keyboard('{ArrowRight}');
 		expect(onNavigate).toHaveBeenCalledWith('m-3');
 		await user.keyboard('{ArrowLeft}');
+		await settleNavResolve();
 		expect(onNavigate).toHaveBeenCalledWith('m-1');
 	});
 
@@ -636,5 +653,52 @@ describe('MediaLightbox — carousel navigation', () => {
 		});
 		// currentIndex === -1 → no carousel chrome.
 		expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+	});
+});
+
+describe('MediaLightbox — slide windowing', () => {
+	/**
+	 * `siblings` is every unit demand-loaded this gallery session, so after a deep
+	 * scroll the carousel track was mounting thousands of full-resolution <img>
+	 * elements at once. `loading="lazy"` stops them all being fetched, but they're
+	 * still elements the browser must create, style and lay out on open.
+	 *
+	 * The slot divs have to stay — the track is scroll-snap and `onTrackScroll`
+	 * maps scroll offset back to an index, so slicing the array would shift every
+	 * index — but only the media near the current slide is mounted.
+	 */
+	const many = Array.from({ length: 400 }, (_, i) => ({ id: `w-${i}`, kind: 'image' as const }));
+
+	it('mounts only the slides near the current one', () => {
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'w-200' }),
+				onClose: vi.fn(),
+				siblings: many,
+				onNavigate: vi.fn(),
+			},
+		});
+		const imgs = container.querySelectorAll('img[src*="/api/media/"]');
+		// Window is +/-2 around the current index, so at most a handful — and
+		// crucially a constant, not 400.
+		expect(imgs.length).toBeLessThanOrEqual(6);
+		// The slots themselves are all still present, so scroll geometry is intact.
+		const slots = container.querySelectorAll('.snap-always');
+		expect(slots.length).toBe(400);
+	});
+
+	it('loads the current slide eagerly and its neighbours lazily', () => {
+		const { container } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'w-200' }),
+				onClose: vi.fn(),
+				siblings: many,
+				onNavigate: vi.fn(),
+			},
+		});
+		const eager = container.querySelectorAll('img[loading="eager"]');
+		expect(eager.length, 'exactly one slide should load eagerly').toBe(1);
+		expect(eager[0].getAttribute('src')).toContain('w-200');
+		expect(eager[0].getAttribute('fetchpriority')).toBe('high');
 	});
 });
