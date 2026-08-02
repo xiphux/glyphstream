@@ -29,6 +29,11 @@
 	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { privateView } from '$lib/private-chat.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
+	import {
+		clearGenerating,
+		isGenerating,
+		markGenerating,
+	} from '$lib/generating-conversations.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
 	import MessageActions from '$lib/components/chat/MessageActions.svelte';
@@ -1218,6 +1223,35 @@
 		};
 	});
 
+	// Publish the same signal to the sidebar's generating dot — but with the
+	// opposite teardown rule: no cleanup, so the flag SURVIVES navigating away.
+	// That's the whole point (the abandoned thread keeps generating server-side
+	// and is exactly the row the dot is for); the layout's poll is what takes it
+	// back off. On an A -> B switch this runs with B's convId and
+	// `renderingGeneration` already false — the reset effect above shares this
+	// flush and clears `busy` first — so it clears B and leaves A flagged, which
+	// is the intent. Navigating back into a finished thread clears it here
+	// immediately, ahead of the poll.
+	$effect(() => {
+		if (renderingGeneration) {
+			markGenerating(convId);
+			// Then SUBSCRIBE to this id's membership, so the mark self-heals if the
+			// layout's poll clears it. That happens for real: we flag on `busy`,
+			// which is set before the POST is even dispatched, while the server
+			// only registers the generation once the request lands — a poll whose
+			// snapshot falls in that window answers without this conversation and
+			// the clear-only reconcile drops it. Nothing else would put it back
+			// (neither `renderingGeneration` nor `convId` changes again this turn,
+			// so this effect wouldn't re-run), and the dot would be gone for the
+			// rest of the session — precisely for a thread the user is about to
+			// walk away from. Widest for a fan-out, whose `/prepare` round trip
+			// opens the window for hundreds of ms. Re-marking is a no-op when the
+			// id is already present, so this settles in one extra run rather than
+			// looping.
+			isGenerating(convId);
+		} else clearGenerating(convId);
+	});
+
 	// Rebuild the compare grid from server-truth recovery state on a reload /
 	// conversation-switch into a parked fan-out (and re-run as `data` refreshes
 	// — e.g. the recovery poll's invalidate — to fill in branches as they land).
@@ -1230,10 +1264,11 @@
 
 	// While a generation runs server-side that this client isn't driving (a
 	// recovered bubble — the local fetch died to an iOS suspension or dropped
-	// connection), the controller polls the lightweight conversation endpoint so
-	// the "Generating…" bubble resolves the moment the generation finishes — even
+	// connection), the controller polls the in-flight registry so the
+	// "Generating…" bubble resolves the moment the generation finishes — even
 	// if the user just stays in the app. invalidateAll() is too heavy to poll (it
-	// re-fetches every endpoint's model list); the GET endpoint is DB-only.
+	// re-fetches every endpoint's model list); see startRecoveryPoll for why it
+	// rides the branch-walk-free `?fanout=1` variant.
 	$effect(() => {
 		if (!turn.recoveredInFlight) return;
 		return turn.startRecoveryPoll();

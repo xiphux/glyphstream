@@ -13,6 +13,7 @@ import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
 	DEFAULT_BRANCH,
+	filterInFlight,
 	getInFlightEntries,
 	getInFlightSince,
 	registerInFlight,
@@ -130,6 +131,36 @@ describe('getInFlightSince', () => {
 		a.startedAt = 1000;
 		b.startedAt = 2000;
 		expect(getInFlightSince('c1')).toBe(1000);
+	});
+});
+
+describe('filterInFlight', () => {
+	it('keeps only the ids that have a generation registered, in caller order', () => {
+		registerInFlight('c1', endpoint('a'));
+		registerInFlight('c3', endpoint('a'));
+		expect(filterInFlight(['c1', 'c2', 'c3'])).toEqual(['c1', 'c3']);
+	});
+
+	it('never reports an id the caller did not ask about', () => {
+		// The scoping contract: callers pass their own conversations, so a
+		// generation belonging to someone else's conversation must not leak in
+		// just because it happens to be running.
+		registerInFlight('someone-elses', endpoint('a'));
+		expect(filterInFlight(['mine'])).toEqual([]);
+	});
+
+	it('drops an id once its last branch clears', () => {
+		const a = registerInFlight('c1', endpoint('a'), 'b0');
+		const b = registerInFlight('c1', endpoint('a'), 'b1');
+		clearInFlight('c1', a);
+		expect(filterInFlight(['c1'])).toEqual(['c1']);
+		clearInFlight('c1', b);
+		expect(filterInFlight(['c1'])).toEqual([]);
+	});
+
+	it('returns an empty array for an empty input', () => {
+		registerInFlight('c1', endpoint('a'));
+		expect(filterInFlight([])).toEqual([]);
 	});
 });
 

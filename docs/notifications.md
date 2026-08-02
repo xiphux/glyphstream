@@ -24,6 +24,37 @@ unit-tested in `tests/unit/sw-arbiter.test.ts`) and is executed by
 Each behavior is independently togglable in **Settings → Preferences →
 Notifications**.
 
+## The sidebar generating dot
+
+Independently of any of the above, a conversation with a generation
+running shows a small pulsing dot next to its title in the sidebar. It
+needs no notification permission and no VAPID keys — it's plain UI, so
+it works on a fresh install with pushes switched off entirely.
+
+It exists for the case the table doesn't cover well: you kick off a
+video, wander to another thread, and the one you left goes visually
+inert. Navigating away doesn't cancel anything (the server finishes the
+generation regardless of whether a client is still listening), so the
+dot is the standing "yes, that's still cooking" marker until it
+completes.
+
+Scope, deliberately: the dot tracks generations **running server-side on
+one of your own conversations**, and it clears when the generation
+finishes — whether or not you ever go back and look. It is not an unread
+badge. A durable "there's a response here you haven't seen" mark needs
+read state on the conversation row and a way to sync "read" across your
+devices; both are noted in `ROADMAP.md`.
+
+On a reload the dot is restored from the server's in-flight registry, so
+force-quitting the PWA mid-video and reopening it on another thread
+still shows the mark. That registry is keyed by conversation, not by
+device — so a fresh load also lights dots for generations you started on
+a _different_ device. What no client can do is learn about one
+**mid-session**: an already-open page only ever hears that generations
+have finished (its poll never adds), so one started elsewhere after this
+page loaded stays invisible until the next load. That gap is the missing
+standing per-user channel, deferred in `ROADMAP.md`.
+
 ## Operator setup
 
 The feature is **off by default** — a fresh GlyphStream install has no
@@ -234,6 +265,14 @@ happens, check the SW console for errors.
   `isConversationBeingViewed()` is true.
 - **Toast surface**: `src/lib/toast.svelte.ts` (singleton, used for
   the archive toast and the message-complete toast).
+- **Sidebar generating dot**: `src/lib/generating-conversations.svelte.ts`
+  (reactive id set). Marked by the chat page from the same
+  `renderingGeneration` signal as presence — but with no unmount cleanup,
+  so it survives navigating away; seeded at `(app)` layout mount from the
+  layout load's `generatingIds` (`filterInFlight()` over the user's own
+  conversation list); retired by the layout's poll of
+  `GET /api/conversations?generating=1`, which is clear-only. E2E:
+  `tests/e2e/generating-dot.spec.ts`.
 
 ## Future work (not shipped in this pass)
 

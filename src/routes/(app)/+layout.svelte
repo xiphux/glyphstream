@@ -17,6 +17,12 @@
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
 	import { isTitlePending } from '$lib/title-pending.svelte';
+	import {
+		anyGenerating,
+		isGenerating,
+		markGenerating,
+		reconcileGenerating,
+	} from '$lib/generating-conversations.svelte';
 	import { MAX_CONVERSATION_TITLE_LENGTH } from '$lib/types/api';
 	import {
 		Archive,
@@ -93,6 +99,62 @@
 			document.removeEventListener('visibilitychange', onVisibility);
 			window.removeEventListener('focus', refresh);
 			window.removeEventListener('pageshow', onPageShow);
+		};
+	});
+
+	// Seed the sidebar's generating dots from the server's in-flight registry.
+	// The flag set is in-memory, so a reload / cold PWA launch would otherwise
+	// forget a generation started before it — including the case this is most
+	// useful for: reopening the app on a thread that ISN'T the one still
+	// rendering a video. Seeding is also the only path that can surface a
+	// generation started on ANOTHER device, since the registry is keyed by
+	// conversation rather than by device (the poll never adds).
+	//
+	// Once, at mount, not on every `data` refresh: mid-session the client's own
+	// marks are the authoritative, immediate signal, so re-reading server state
+	// on each `invalidateAll` would be redundant work that can only lag them.
+	//
+	// The conversation being *displayed* is skipped because the chat page owns a
+	// strictly better signal for it — `recoveredInFlight` qualifies the same
+	// registry timestamp against the branch leaf — and publishes either way.
+	// Skipping rather than racing: this layout's effects flush before the child
+	// page's, so seeding the displayed id here would only be overwritten a moment
+	// later, and the page's verdict is the one we want anyway.
+	onMount(() => {
+		for (const id of data.generatingIds) {
+			if (id !== page.params.id) markGenerating(id);
+		}
+	});
+
+	// Poll for completions while any dot is showing. Nothing local is listening
+	// to a generation the user has navigated away from (the chat page aborts its
+	// fetch on the way out and the server finishes on its own), so this is the
+	// only thing that ever takes a dot back off. Gated on a boolean rather than
+	// the set itself so one of several conversations finishing doesn't restart
+	// the timer, and self-terminating: the last dot clearing stops the interval.
+	// `/api/conversations?generating=1` returns bare ids — invalidateAll would
+	// re-fetch every endpoint's model list, far too heavy for an interval.
+	const GENERATING_POLL_MS = 5000;
+	const generatingActive = $derived(anyGenerating());
+	$effect(() => {
+		if (!generatingActive) return;
+		let stopped = false;
+		const interval = setInterval(async () => {
+			// A backgrounded tab has nobody looking at the dot, and an offline one
+			// would just burn retries; the next tick picks it up on return.
+			if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+			try {
+				const res = await fetch('/api/conversations?generating=1');
+				if (stopped || !res.ok) return;
+				const body = (await res.json()) as { ids: string[] };
+				reconcileGenerating(body.ids);
+			} catch {
+				// Transient — the next tick retries.
+			}
+		}, GENERATING_POLL_MS);
+		return () => {
+			stopped = true;
+			clearInterval(interval);
 		};
 	});
 
@@ -628,7 +690,21 @@
 											? 'bg-surface-sunken text-accent'
 											: 'hover:bg-surface-sunken/70'}"
 									>
-										{#if isTitlePending(c.id)}
+										{#if isGenerating(c.id)}
+											<!-- A generation is running for this conversation right
+											 now (see $lib/generating-conversations). Takes the
+											 leading slot ahead of both the title spinner and the
+											 private mask: on a first exchange all three compete,
+											 and "a response is coming" is the one worth the pixel.
+											 A pulsing dot rather than a ring so it doesn't read as
+											 a second title spinner. -->
+											<span
+												class="h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent motion-reduce:animate-none"
+												role="img"
+												aria-label="Generating a response"
+												title="Generating…"
+											></span>
+										{:else if isTitlePending(c.id)}
 											<!-- Subtle spinner while the background auto-title
 											 task is still generating this conversation's
 											 title (see $lib/title-pending). -->

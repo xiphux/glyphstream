@@ -8,6 +8,7 @@ import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials'
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
+import { filterInFlight } from '$lib/server/streaming/in-flight';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
@@ -51,9 +52,18 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// re-runs the whole load body, not just listConversations, but it's cheap:
 	// cached models + local SQLite.)
 	depends('app:conversations');
+	const conversations = listConversations(locals.user.id);
 	return {
 		user: locals.user,
-		conversations: listConversations(locals.user.id),
+		conversations,
+		// Which of those have a generation running server-side right now. Seeds
+		// the sidebar's generating dot at layout mount so a reload / cold PWA
+		// launch into some *other* thread still shows the video left cooking
+		// (the client-side flag is in-memory and doesn't survive the reload).
+		// Free: an in-memory registry lookup per row, no extra query — and
+		// scoped by construction, since it can only answer for rows this user
+		// already owns.
+		generatingIds: filterInFlight(conversations.map((c) => c.id)),
 		prefs: getUserPreferences(locals.user.id),
 		models: await listAllModels(),
 		customModels: listCustomModelsForUser(locals.user.id),

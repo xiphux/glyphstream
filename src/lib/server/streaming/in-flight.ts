@@ -118,6 +118,20 @@ export function conversationFanoutAtCapacity(conversationId: string): boolean {
 	return getInFlightEntries(conversationId).length >= MAX_FANOUT_BRANCHES_PER_CONVERSATION;
 }
 
+/**
+ * Narrow `conversationIds` down to the ones with at least one generation in
+ * flight — the sidebar's "still cooking" dot.
+ *
+ * Takes the ids rather than enumerating the registry, because the registry is
+ * keyed by conversation id alone and carries no user identity: a raw
+ * `inFlight.keys()` would be an unscoped read of user-owned state. Callers
+ * pass a list they've already scoped (the user's own conversation list), so
+ * ownership is established before this is reached.
+ */
+export function filterInFlight(conversationIds: readonly string[]): string[] {
+	return conversationIds.filter((id) => inFlight.has(id));
+}
+
 /** Earliest `startedAt` across the conversation's in-flight generations, or
  *  null when none — the truthful "generating since" for the recovery
  *  indicator regardless of how many branches are running. */

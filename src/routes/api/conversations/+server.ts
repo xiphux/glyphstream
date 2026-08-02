@@ -4,14 +4,27 @@ import { parseJsonBody } from '$lib/server/http';
 import { createConversation, listConversations } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { getEndpoint } from '$lib/server/endpoints/registry';
+import { filterInFlight } from '$lib/server/streaming/in-flight';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
 import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = ({ locals }) => {
+export const GET: RequestHandler = ({ locals, url }) => {
 	requireUser(locals);
+
+	// Generating-dot poll (`?generating=1`): the sidebar only needs to know which
+	// of the user's conversations still have a generation in flight, so it can
+	// drop the dot on the ones that have finished. Returns bare ids — no titles,
+	// no timestamps — because that's all the caller reconciles against, and this
+	// runs on an interval for as long as a dot is showing. Same
+	// cheap-variant-of-an-existing-endpoint shape as `[id]`'s `?fanout=1`.
+	if (url.searchParams.get('generating') === '1') {
+		const ids = listConversations(locals.user.id).map((c) => c.id);
+		return json({ ids: filterInFlight(ids) });
+	}
+
 	return json({ conversations: listConversations(locals.user.id) });
 };
 

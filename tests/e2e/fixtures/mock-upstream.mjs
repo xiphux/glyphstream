@@ -54,6 +54,20 @@ function wantsEmptySummary(body) {
 	);
 }
 
+/** Sentinel a spec can plant in its PROMPT to make `mock-chat-slow` crawl
+ *  rather than merely dawdle. `SLOW_CHUNK_DELAY_MS` finishes a reply in about
+ *  2s, which is long enough to race a DOM event into but not long enough to
+ *  outlast a full page reload or a multi-second client poll interval — both of
+ *  which the sidebar generating-dot spec needs. Opt-in per prompt so the shared
+ *  slow model's normal timing (and every spec tuned to it) is untouched. */
+const GLACIAL_MARKER = 'GLACIAL_STREAM';
+function wantsGlacialStream(body) {
+	return (
+		Array.isArray(body?.messages) &&
+		body.messages.some((m) => typeof m.content === 'string' && m.content.includes(GLACIAL_MARKER))
+	);
+}
+
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
  *  bytes. */
@@ -130,11 +144,15 @@ function sendJson(res, status, obj) {
  *  timeout. */
 const SLOW_CHUNK_DELAY_MS = 250;
 const FAST_CHUNK_DELAY_MS = 5;
+/** Per-chunk delay when the prompt carries GLACIAL_MARKER — ~8s for the whole
+ *  reply, so a generation is still demonstrably running after a page reload
+ *  and across the sidebar poll's first tick. */
+const GLACIAL_CHUNK_DELAY_MS = 900;
 
 /** Emit the fixed reply as OpenAI chat-completion SSE chunks: a role
  *  chunk, one chunk per word, a finish chunk, a usage chunk, then
  *  [DONE]. Matches what PassthroughNormalizer expects. */
-function streamChatCompletion(res, model, text = REPLY_TEXT) {
+function streamChatCompletion(res, model, text = REPLY_TEXT, glacial = false) {
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache, no-store',
@@ -142,7 +160,12 @@ function streamChatCompletion(res, model, text = REPLY_TEXT) {
 	});
 	const id = 'chatcmpl-mock';
 	const base = { id, object: 'chat.completion.chunk', model: model ?? 'mock-chat' };
-	const delay = model === 'mock-chat-slow' ? SLOW_CHUNK_DELAY_MS : FAST_CHUNK_DELAY_MS;
+	const delay =
+		model === 'mock-chat-slow'
+			? glacial
+				? GLACIAL_CHUNK_DELAY_MS
+				: SLOW_CHUNK_DELAY_MS
+			: FAST_CHUNK_DELAY_MS;
 
 	const chunks = [];
 	chunks.push({
@@ -208,10 +231,12 @@ const server = createServer(async (req, res) => {
 		let wantsStream = false;
 		let model = 'mock-chat';
 		let text = REPLY_TEXT;
+		let glacial = false;
 		try {
 			const body = JSON.parse(raw || '{}');
 			wantsStream = body.stream === true;
 			if (typeof body.model === 'string') model = body.model;
+			glacial = wantsGlacialStream(body);
 			// A compaction request gets the deterministic summary; everything
 			// else gets the normal reply. The empty-summary sentinel (planted in a
 			// folded turn) forces a blank summary to exercise the failure path.
@@ -219,7 +244,9 @@ const server = createServer(async (req, res) => {
 		} catch {
 			/* default to sync, default model, normal reply */
 		}
-		return wantsStream ? streamChatCompletion(res, model, text) : syncChatCompletion(res, text);
+		return wantsStream
+			? streamChatCompletion(res, model, text, glacial)
+			: syncChatCompletion(res, text);
 	}
 
 	if (req.method === 'POST' && path === '/v1/images/generations') {
