@@ -9,7 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const invalidateAll = vi.fn(async () => {});
-vi.mock('$app/navigation', () => ({ invalidateAll: () => invalidateAll() }));
+const invalidate = vi.fn(async (_key: string) => {});
+vi.mock('$app/navigation', () => ({
+	invalidateAll: () => invalidateAll(),
+	invalidate: (key: string) => invalidate(key),
+}));
 vi.mock('$lib/title-pending.svelte', () => ({
 	markTitlePending: vi.fn(),
 	clearTitlePending: vi.fn(),
@@ -101,6 +105,7 @@ function sseResponse(events: unknown[]): Response {
 
 beforeEach(() => {
 	invalidateAll.mockClear();
+	invalidate.mockClear();
 });
 
 describe('ChatTurnController — send', () => {
@@ -130,7 +135,12 @@ describe('ChatTurnController — send', () => {
 		expect(turn.busy).toBe(false);
 		expect(turn.inFlightOpen).toBe(false);
 		expect(turn.activeAbort).toBeNull();
-		expect(invalidateAll).toHaveBeenCalled();
+		// A plain single-iteration append reconciles entirely from the stream —
+		// `onStart` swapped in the canonical user row, `onDone` appended the reply —
+		// so it must NOT re-read the conversation. Only the sidebar is refreshed,
+		// for the generated title and the updated_at re-sort.
+		expect(invalidateAll).not.toHaveBeenCalled();
+		expect(invalidate).toHaveBeenCalledWith('app:conversations');
 		vi.unstubAllGlobals();
 	});
 

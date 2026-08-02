@@ -90,7 +90,18 @@ tests/e2e/            # playwright (production-build webServer)
   Per-user auth is HTTP-only.
 - `await parent()` at the start of every `(app)` page server load. Without
   it the page's `locals.user!.id` deref races with the layout's
-  redirect-on-no-auth and surfaces a 500 instead of a 302.
+  redirect-on-no-auth and surfaces a 500 instead of a 302. **But it also
+  couples the page to the layout's invalidation**: it sets SvelteKit's
+  `uses.parent`, and a node whose parent re-ran is itself marked invalid — so
+  a targeted `invalidate('app:conversations')` re-runs the page load too, and
+  re-serializes everything it returns. A page with a big payload should
+  instead guard with `requireUserPage(locals, url)` (`server/auth/guard.ts`),
+  which reaches the layout's exact redirect from the layout's exact condition,
+  so the race is benign. `chat/[id]` does this — it ships the whole active
+  branch with `content_html`, and the coupling was making every completed turn
+  _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
+  on a 40-turn thread; megabytes on a long code-heavy one). If you re-add
+  `await parent()` there, that regresses silently.
 - `bits-ui` and `lucide-svelte` belong in `devDependencies` — Vite bundles
   them into the SSR build at compile time. Only packages that run
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,

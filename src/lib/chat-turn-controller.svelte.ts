@@ -21,7 +21,7 @@
  */
 
 import { tick } from 'svelte';
-import { invalidateAll } from '$app/navigation';
+import { invalidate, invalidateAll } from '$app/navigation';
 import { isAbortError } from './abort';
 import type { ApprovalDecision } from './approval-workflow';
 import { runApprovalResume } from './approval-workflow';
@@ -531,10 +531,30 @@ export class ChatTurnController {
 			});
 			sawToolCalls = consumed.sawToolCalls;
 			if (this.#deps.convId() === turnConvId) {
-				// Await the reload so the in-flight bubble (still visible for
-				// multi-iteration tool turns — see the `done` handler) only clears
-				// once the canonical message rows are in `messages`.
-				await invalidateAll();
+				// A plain append is the only shape the optimistic path fully
+				// reconciles. Edit / retry / an explicit parent override all branch
+				// the tree — the new row becomes a *sibling*, so the message it
+				// branched from gains navigation arrows and a sibling count that
+				// only the server knows. Those still need the full reload.
+				const branched = !!(
+					options.editedMessageId ||
+					options.retryFromMessageId ||
+					options.parentMessageId
+				);
+				if (sawToolCalls || branched) {
+					// Await the reload so the in-flight bubble (still visible for
+					// multi-iteration tool turns — see the `done` handler) only clears
+					// once the canonical message rows are in `messages`.
+					await invalidateAll();
+				} else {
+					// Plain single-iteration append: both new rows are already canonical
+					// in `messages` — `onStart` swapped the optimistic user bubble for
+					// the persisted row, `onDone` appended the assistant row — so
+					// re-reading the conversation would re-download the entire branch,
+					// `content_html` and all, to learn nothing. Refresh just the sidebar,
+					// which still needs the generated title and the updated_at re-sort.
+					await invalidate('app:conversations');
+				}
 				if (sawToolCalls) {
 					this.inFlightOpen = false;
 					this.#resetInFlightSegments();

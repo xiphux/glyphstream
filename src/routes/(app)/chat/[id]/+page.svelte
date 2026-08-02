@@ -198,8 +198,22 @@
 	// auto-open fires once per entry (not on every reactive tick) and a manual
 	// close isn't undone. Null so the first conversation counts.
 	let canvasAutoOpenedConvId: string | null = null;
+	// The `data.conversation` object we last re-seeded local state from. The
+	// merged `data` prop gets a fresh identity whenever ANY load in the branch
+	// re-runs — including a layout-only `invalidate('app:conversations')`, which
+	// deliberately does not re-run this page's load (see +page.server.ts). In
+	// that case `data.conversation` is the *reused* object from the last real
+	// page load, i.e. a pre-turn snapshot: re-seeding from it would wipe the
+	// messages this turn just appended and clobber a live-streamed title back to
+	// null. Comparing identity re-seeds on a genuine page-data change (entering
+	// another conversation, or the post-tool-turn invalidateAll) and skips the
+	// layout-only refresh.
+	// svelte-ignore state_referenced_locally
+	let seededFromConversation: unknown = data.conversation;
 
 	$effect(() => {
+		if (data.conversation === seededFromConversation) return;
+		seededFromConversation = data.conversation;
 		messages = data.conversation.messages;
 		title = data.conversation.title;
 		modelId = data.conversation.modelId;
@@ -712,8 +726,20 @@
 	// Reset composer state when navigating between conversations — without
 	// this the previous chat's attachments (and its auto-attach memory)
 	// would carry into the new one.
+	//
+	// Compared against the last id rather than just read: touching
+	// `data.conversation` makes the whole `data` prop a dependency, so this fired
+	// on *any* invalidation, not just a conversation change. It was invisible
+	// while every turn ended in `invalidateAll()` — the clear was immediately
+	// followed by a re-seeded `messages`, which re-ran the auto-attach effect and
+	// put the image back — but it meant each turn needlessly tore down and
+	// rebuilt the composer's attachments, and a layout-only invalidation would
+	// clear them with nothing to restore them.
+	// svelte-ignore state_referenced_locally
+	let attachmentsResetConvId = data.conversation.id;
 	$effect(() => {
-		void data.conversation.id;
+		if (data.conversation.id === attachmentsResetConvId) return;
+		attachmentsResetConvId = data.conversation.id;
 		attachments.clear();
 		autoAttached = null;
 		// Stale set from the previous conversation — cleared so it can't

@@ -1,5 +1,6 @@
-import { error, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import { CONVERSATION_MISSING_NOTICE } from '$lib/notices';
+import { requireUserPage } from '$lib/server/auth/guard';
 import { listActiveCanvases } from '$lib/server/db/queries/artifacts';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
@@ -8,12 +9,24 @@ import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params, parent }) => {
-	// The (app) layout handles auth + loads the aggregated `models` list
-	// shared by the per-turn picker and the sidebar favorites. Await it
-	// so a redirect there beats our locals.user deref below.
-	await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+export const load: PageServerLoad = async ({ locals, params, url }) => {
+	// Deliberately does NOT `await parent()`, diverging from the (app) page-load
+	// convention — see `requireUserPage`, which supplies the redirect the parent
+	// await was there to order.
+	//
+	// `await parent()` sets SvelteKit's `uses.parent`, and the client marks a
+	// node invalid whenever its parent re-ran. This page returns the entire
+	// active branch with `content_html` (5-20x the source text for shiki code
+	// blocks), so that coupling made every `invalidate('app:conversations')` —
+	// fired on tab refocus, and after each completed turn — re-serialize and
+	// re-download the whole conversation to refresh a sidebar title and sort
+	// order. Measured at 35 KB for a 40-turn seeded thread and megabytes for a
+	// long code-heavy one.
+	//
+	// Nothing here reads parent data (the old call discarded its result), so
+	// dropping it costs nothing and restores the targeted invalidation the
+	// layout's `depends('app:conversations')` comment already describes.
+	requireUserPage(locals, url);
 	const conversation = getConversationDetail(params.id, locals.user.id);
 	// Send the user home rather than 404, and let the new-chat page raise a
 	// toast. A 404 here is a dead end in the standalone PWA — no back button,
