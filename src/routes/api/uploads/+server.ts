@@ -27,11 +27,31 @@ import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { insertMedia } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
-import { classifyUpload } from '$lib/server/uploads/classify';
+import { classifyUpload, MAX_UPLOAD_BYTES_FILE } from '$lib/server/uploads/classify';
 import type { RequestHandler } from './$types';
+
+/** Headroom for multipart framing (boundaries, part headers, the trailing
+ *  boundary) on top of the file itself, so the pre-check can't reject an upload
+ *  that is actually within the limit. */
+const MULTIPART_SLACK = 64 * 1024;
 
 export const POST: RequestHandler = async ({ locals, request }) => {
 	requireUser(locals);
+
+	// Reject on the declared length BEFORE touching the body. `formData()`
+	// materializes the entire multipart payload in memory, and the per-kind
+	// `maxBytes` check below only runs once it already has — so an oversized
+	// upload was fully buffered just to be told it was too big. The largest any
+	// classification permits is MAX_UPLOAD_BYTES_FILE; anything past that plus a
+	// little multipart framing can't be valid for any kind.
+	//
+	// Advisory only: Content-Length is absent on a chunked request, in which case
+	// this is a no-op and adapter-node's BODY_SIZE_LIMIT is the backstop (see the
+	// catch below). It costs one header read and removes the common case.
+	const declaredLength = Number(request.headers.get('content-length'));
+	if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES_FILE + MULTIPART_SLACK) {
+		throw error(413, `File too large (${declaredLength} bytes; max ${MAX_UPLOAD_BYTES_FILE})`);
+	}
 
 	let form: FormData;
 	try {

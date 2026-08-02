@@ -59,9 +59,24 @@ function extFor(contentType: string): string {
 	return EXT_BY_CONTENT_TYPE[contentType.toLowerCase()] ?? 'bin';
 }
 
+/**
+ * The media root, created once per resolved path rather than on every call.
+ *
+ * `root()` is on the read path too — `open`, `delete` and the range/serve paths
+ * all go through it — so the unconditional `mkdirSync` meant a synchronous
+ * filesystem call per media request against a directory that has existed since
+ * the first upload. A gallery viewport is dozens of those in a burst. Keyed by
+ * the resolved path (not a bare boolean) so a test or a config change that
+ * repoints `mediaDir()` still gets its directory created.
+ */
+const ensuredRoots = new Set<string>();
+
 function root(): string {
 	const root = resolve(mediaDir());
-	mkdirSync(root, { recursive: true });
+	if (!ensuredRoots.has(root)) {
+		mkdirSync(root, { recursive: true });
+		ensuredRoots.add(root);
+	}
 	return root;
 }
 
