@@ -937,3 +937,43 @@ describe('per-endpoint concurrency gate', () => {
 		}
 	});
 });
+
+describe('in-flight registry release boundary', () => {
+	it('signals onGenerationSettled once, before onComplete', async () => {
+		// The registry entry means "a generation is running". The stream stays
+		// open past `done` for the auto-title race, so releasing on stream close
+		// (onComplete) would keep reporting a finished turn as still running for
+		// up to the title budget — which is what the sidebar's generating dot
+		// reads. Pin the earlier boundary, and its ordering against onComplete.
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() => sseResponse([textChunk('Done.'), finishChunk('stop')]));
+
+		const onGenerationSettled = vi.fn();
+		const onComplete = vi.fn();
+
+		const stream = await startStreamingRelay({
+			conversationId: conv.id,
+			userId,
+			conversationTitle: 'test',
+			modelKind: 'chat',
+			endpoint,
+			providerQuirk: 'passthrough',
+			requestBody: {
+				model: 'bridge::test',
+				messages: [{ role: 'user', content: 'hi' }],
+			} as ChatCompletionRequest,
+			userMessage: user,
+			storedModelId: 'bridge::test',
+			onGenerationSettled,
+			onComplete,
+		});
+		await drainEvents(stream);
+
+		expect(onGenerationSettled).toHaveBeenCalledOnce();
+		expect(onComplete).toHaveBeenCalledOnce();
+		// Strictly earlier — not merely "both ran".
+		expect(onGenerationSettled.mock.invocationCallOrder[0]).toBeLessThan(
+			onComplete.mock.invocationCallOrder[0],
+		);
+	});
+});

@@ -271,6 +271,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		userMessage: lastUserMessage as ChatMessage,
 		storedModelId: meta.modelId,
 		abortSignal: inFlight.controller.signal,
+		// Free the registry entry when the generation settles, ahead of the
+		// relay's post-`done` title race — same reasoning as the send path, and
+		// the resumed turn is just as likely to be one the user walked away from.
+		// Identity-guarded, so onComplete's later call is a no-op.
+		onGenerationSettled: () => clearInFlight(params.id, inFlight),
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
 		// Carry the same enabled-but-down MCP notice the send path emits — the

@@ -77,6 +77,17 @@ export interface MediaRelayParams {
 	onStarted?: () => void;
 	/** Fires when the relay truly finishes — the route clears the in-flight slot. */
 	onComplete: () => void;
+	/**
+	 * Fires when the GENERATION settles — media persisted, `done` written —
+	 * which is earlier than `onComplete`: the stream stays open past this point
+	 * for the auto-title race, so `onComplete` trails by up to
+	 * TITLE_DELIVERY_BUDGET_MS. The route frees the in-flight registry entry
+	 * here, since "in flight" means a generation is running and by now none is.
+	 * Matters most for media: a video is exactly the thing a user walks away
+	 * from, so a registry that lingers through the title task is what the
+	 * sidebar's generating dot would keep reporting.
+	 */
+	onGenerationSettled?: () => void;
 }
 
 /** What a modality's generate step yields on success. The scaffold persists it
@@ -251,6 +262,11 @@ export function startMediaRelay(
 				// queued generation would wait it out. The finally is the idempotent
 				// backstop for the early-return / error paths.
 				slot?.release();
+				// Same boundary for the in-flight registry: generation is over, so
+				// stop reporting it as running rather than holding the entry through
+				// the title race. Identity-guarded, so the finally's onComplete stays
+				// a harmless no-op (and can't clobber a fast follow-up's entry).
+				params.onGenerationSettled?.();
 				const title = await raceTitle(titlePromise, TITLE_DELIVERY_BUDGET_MS);
 				if (title) safeWrite({ type: 'title', title } satisfies StreamTitleEvent);
 				safeClose();

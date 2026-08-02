@@ -9,12 +9,21 @@
  * notification (the route passes `suppressNotify`) and this fires exactly one
  * "N ready" notification when the WHOLE fan-out has settled.
  *
- * "Whole fan-out settled" is detected via the in-flight registry: each branch's
- * relay clears its entry in `onComplete`, and the LAST branch to clear leaves
- * the conversation with no in-flight entries. The check runs synchronously right
- * after that clear (single-threaded Node — no interleaving), so exactly one
- * branch sees an empty registry and fires. No total-counting, so a branch that
- * errors before registering can't wedge the count.
+ * "Whole fan-out settled" is detected via the in-flight registry: a branch's
+ * relay clears its entry at `onGenerationSettled` (right after `done`), and the
+ * LAST branch to clear leaves the conversation with no in-flight entries. No
+ * total-counting, so a branch that errors before registering can't wedge the
+ * count.
+ *
+ * That clear is NOT the statement before this check — the check runs later, from
+ * `onComplete` at stream close. Exactly-once therefore rests on the settle →
+ * close gap being too small for a sibling to settle inside: every fan-out branch
+ * passes `suppressTitleTask`, so there is no title race to wait on and the gap
+ * is microtasks only, while a sibling's completion can only arrive on an I/O
+ * macrotask. Give a fan-out branch a title task and that gap becomes seconds,
+ * several branches will each see an empty registry, and the user gets N "N
+ * ready" pushes. If that ever changes, make the notify gate on whether THIS
+ * branch's clear is the one that emptied the map, rather than on emptiness.
  *
  * Re-rolls (Regenerate) route here too: an initial branch and a re-roll are the
  * same kind of fan-out branch, so a re-roll enqueued mid-flight folds into the
@@ -45,8 +54,11 @@ export interface FanoutNotifyInput {
 }
 
 /** Fire-and-forget; never throws (delegates to notifyConversationComplete, which
- *  swallows its own errors). Call from a fan-out branch's `onComplete` AFTER
- *  clearInFlight — only the last branch (empty registry) actually notifies. */
+ *  swallows its own errors). Call from a fan-out branch's `onComplete`, by which
+ *  point the branch's own registry entry is already gone (cleared at
+ *  `onGenerationSettled`) — only the last branch, i.e. the one that finds the
+ *  registry empty, actually notifies. See the module comment for why that stays
+ *  exactly-once. */
 export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// Not the last branch — another is still generating; it will fire instead.
 	if (getInFlightEntries(input.conversationId).length > 0) return;

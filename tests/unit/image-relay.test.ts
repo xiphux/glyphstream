@@ -161,6 +161,7 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		suppressTitleTask: over.suppressTitleTask ?? false,
 		suppressNotify: over.suppressNotify ?? false,
 		onStarted: over.onStarted,
+		onGenerationSettled: over.onGenerationSettled,
 		onComplete: over.onComplete ?? vi.fn(),
 	} satisfies ImageRelayParams;
 }
@@ -194,6 +195,36 @@ describe('startImageRelay — happy path', () => {
 		expect(sibs.map((s) => s.id)).toEqual([persistedId]);
 		expect(mocks.persistGeneratedImage).toHaveBeenCalledOnce();
 		expect(mocks.linkMessageMedia).toHaveBeenCalledWith(persistedId, 'media-out');
+	});
+
+	it('signals onGenerationSettled once, before onComplete', async () => {
+		// The in-flight registry entry means "a generation is running", and the
+		// media stream stays open past `done` for the auto-title race — so
+		// releasing on stream close alone would report a finished generation as
+		// still running for up to the title budget. That's what the sidebar's
+		// generating dot reads, and a video is exactly the thing a user walks
+		// away from. Pin the earlier boundary and its order against onComplete.
+		const { conv, user, userMessage } = seedConvWithUser();
+		const onGenerationSettled = vi.fn();
+		const onComplete = vi.fn();
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: userMessage as ChatMessage,
+					onGenerationSettled,
+					onComplete,
+				}),
+			),
+		);
+
+		expect(onGenerationSettled).toHaveBeenCalledOnce();
+		expect(onComplete).toHaveBeenCalledOnce();
+		// Strictly earlier — not merely "both ran".
+		expect(onGenerationSettled.mock.invocationCallOrder[0]).toBeLessThan(
+			onComplete.mock.invocationCallOrder[0],
+		);
 	});
 
 	it('routes attached input images through imageEdit (i2i), else imageGeneration (t2i)', async () => {

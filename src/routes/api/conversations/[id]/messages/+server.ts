@@ -296,8 +296,21 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// alone, so it's immediately "last" and fires its own aggregate.
 	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
 	// Every relay's onComplete: free the in-flight slot, then let the
-	// last-to-finish branch fire the one aggregate notify. clearInFlight must run
-	// first so the last branch sees an empty registry.
+	// last-to-finish branch fire the one aggregate notify.
+	// Free the registry entry as soon as the GENERATION settles, which the relays
+	// signal before parking on the auto-title race — the entry means "a
+	// generation is running", and past `done` none is. Idempotent: clearInFlight
+	// only clears if the slot still holds THIS entry, so onBranchComplete's later
+	// call is a no-op and a fast follow-up turn's entry is never clobbered.
+	//
+	// Note what this costs: `notifyFanoutCompleteIfLast` infers "last branch"
+	// from the registry going empty, and that clear is no longer the statement
+	// immediately before the check. Exactly-once survives only because every
+	// fan-out branch passes `suppressTitleTask`, leaving a microtask-sized gap
+	// between settle and stream close that no sibling's I/O can land in. A
+	// fan-out branch that ever DOES run a title task would reopen that gap to
+	// seconds and duplicate the "N ready" push — see fanout-notify.ts.
+	const onGenerationSettled = () => clearInFlight(params.id, inFlight);
 	const onBranchComplete = () => {
 		clearInFlight(params.id, inFlight);
 		if (isFanout) {
@@ -352,6 +365,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				onStarted: () => {
 					inFlight.generationStartedAt = Date.now();
 				},
+				onGenerationSettled,
 				onComplete: onBranchComplete,
 			});
 			return sseResponse(stream);
@@ -417,6 +431,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				onJobId: (jobId) => {
 					inFlight.videoJobId = jobId;
 				},
+				onGenerationSettled,
 				// Clear the registry slot when the relay's work is done — not
 				// when the response stream cancels. An iOS suspension drops
 				// the client SSE connection minutes before the polling loop
@@ -671,6 +686,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				onStarted: () => {
 					inFlight.generationStartedAt = Date.now();
 				},
+				onGenerationSettled,
 				// Clear the registry slot once the whole turn settles (all
 				// loop iterations + tool executions done), not per recorder.
 				// The recorder branches survive client disconnect, so the

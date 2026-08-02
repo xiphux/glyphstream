@@ -125,6 +125,19 @@ export interface RelayParams {
 	 * in-flight slot.
 	 */
 	onComplete: () => void;
+	/**
+	 * Fires when the GENERATION settles — response persisted, `done` written —
+	 * which is strictly earlier than `onComplete`: the stream stays open past
+	 * this point for the auto-title race, so `onComplete` can trail by up to
+	 * TITLE_DELIVERY_BUDGET_MS. The route frees the in-flight registry entry
+	 * here, because "in flight" means a generation is running and by now none
+	 * is: there is nothing left for Stop to cancel, and a registry that stays
+	 * populated through the title task makes every consumer that reads it
+	 * (the sidebar's generating dot, its poll) report a finished turn as still
+	 * running. Consumers that need the older, laxer answer already qualify it
+	 * themselves (`recoveredInFlight` checks the branch leaf).
+	 */
+	onGenerationSettled?: () => void;
 	/** Called when generation begins (slot acquired) — the route stamps the
 	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
 	onStarted?: () => void;
@@ -464,6 +477,15 @@ async function runChatTurn(
 		// raceTitle would burn its whole budget while the next queued generation
 		// waits it out. Do NOT move this back below the race.
 		releaseSlot?.();
+
+		// Same boundary, same reason, for the in-flight registry: the generation
+		// is over, so stop reporting it as running. Without this the entry lives
+		// until the finally below, i.e. until the title race ends, and anything
+		// asking "is this conversation generating?" gets a stale yes for up to
+		// TITLE_DELIVERY_BUDGET_MS. `clearInFlight` is identity-guarded, so the
+		// finally's `onComplete` remains a harmless no-op — and a re-registration
+		// by a fast follow-up turn is not clobbered.
+		params.onGenerationSettled?.();
 
 		// Race the title task in the background. The SSE stream stays
 		// open until either the title arrives or the budget expires.
