@@ -36,10 +36,24 @@
 	// not a one-line `{"code":"…"}` blob. Null once argumentsHtml (server shiki)
 	// is present, or for non-code tools / not-yet-arrived code fields.
 	const streamingCode = $derived(argumentsHtml ? null : extractCodeArg(toolName, argumentsJson));
-	// Upgrade mid-stream code to client-side shiki the moment the lazy chunk
-	// lands (reading liveHighlighterReady.value re-runs this on load).
+	// Upgrade the code to client-side shiki once the call settles — NOT while its
+	// arguments are still arriving.
+	//
+	// The relay emits one `tool_call_args_delta` per upstream chunk, and unlike
+	// the assistant text path this one has no rAF coalescing, so a derived that
+	// highlights `streamingCode.code` re-tokenized the *entire* accumulated
+	// source on every delta. Cost is O(tokens x final size): a 200-line program
+	// arriving over ~1200 deltas spends ~7ms per highlight on average and ~14ms
+	// at the tail, i.e. seconds of cumulative main-thread block for one tool
+	// call, with the last deltas each blowing the frame budget on their own.
+	// (ToolBlockShell opens the body by default while executing, so the lazy-body
+	// gate that protects other blocks is open exactly when this is worst.)
+	//
+	// Plain `<pre>` while executing costs nothing and reads the same modulo
+	// color; the highlight lands once the arguments stop changing, still ahead of
+	// the server-rendered `argumentsHtml` that replaces it after persistence.
 	const streamingCodeHtml = $derived.by(() => {
-		if (!streamingCode) return null;
+		if (!streamingCode || status === 'executing') return null;
 		if (!liveHighlighterReady.value) return null;
 		const lang = resolveLiveLang(streamingCode.language);
 		if (!lang) return null;
