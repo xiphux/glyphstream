@@ -52,6 +52,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// re-runs the whole load body, not just listConversations, but it's cheap:
 	// cached models + local SQLite.)
 	depends('app:conversations');
+	// Preferences that live on `prefs` and are mutated from surfaces outside
+	// /settings/preferences — favorite models (the picker's star, the sidebar's
+	// drag-reorder) and saved model sets. Those write through
+	// PATCH /api/user/preferences and then need `prefs` re-read; a separate key
+	// keeps that from re-running any *page* that happens to be open.
+	depends('app:prefs');
 	const conversations = listConversations(locals.user.id);
 	return {
 		user: locals.user,

@@ -48,6 +48,11 @@ export interface ConversationUiActionsDeps {
 	goto: (url: string, opts?: { invalidateAll?: boolean }) => Promise<void>;
 	/** SvelteKit's `invalidateAll`. */
 	invalidateAll: () => Promise<void>;
+	/** `invalidate('app:conversations')` — refreshes the sidebar list only.
+	 *  Preferred whenever the mutation can't have changed what the open page
+	 *  is showing: on the chat route `invalidateAll` re-serializes the entire
+	 *  active branch, which is a lot of bytes to move a row in a list. */
+	invalidateConversations: () => Promise<void>;
 }
 
 export class ConversationUiActions {
@@ -89,7 +94,8 @@ export class ConversationUiActions {
 			if (wasViewingChat) {
 				await this.#deps.goto('/', { invalidateAll: true });
 			} else {
-				await this.#deps.invalidateAll();
+				// Not the open conversation — only the sidebar row moves.
+				await this.#deps.invalidateConversations();
 			}
 			toast.success('Conversation archived', {
 				action: {
@@ -97,7 +103,9 @@ export class ConversationUiActions {
 					handler: async () => {
 						try {
 							await setArchived(id, false);
-							await this.#deps.invalidateAll();
+							// Restores the sidebar row; if they were viewing the
+							// thread, the goto below loads its page fresh anyway.
+							await this.#deps.invalidateConversations();
 							// Land the user back on the chat they were
 							// viewing when they archived. If they were on
 							// some other surface, leave them where they are.
@@ -142,7 +150,8 @@ export class ConversationUiActions {
 			if (this.#deps.getPathname() === `/chat/${id}`) {
 				await this.#deps.goto('/', { invalidateAll: true });
 			} else {
-				await this.#deps.invalidateAll();
+				// Deleting some other thread only removes a sidebar row.
+				await this.#deps.invalidateConversations();
 			}
 		} catch (e) {
 			toast.error(`Couldn't delete conversation: ${e instanceof Error ? e.message : String(e)}`);
@@ -154,7 +163,7 @@ export class ConversationUiActions {
 	/**
 	 * Open the inline rename input for the given conversation. We avoid
 	 * optimistic-update gymnastics (mutating the load prop) — Enter
-	 * fires the PATCH, closes the input, and invalidateAll() pulls the
+	 * fires the PATCH, closes the input, and an invalidate pulls the
 	 * fresh title in. Esc / blur-without-change bail out silently.
 	 */
 	startRename = async (id: string, currentTitle: string | null): Promise<void> => {
@@ -189,7 +198,14 @@ export class ConversationUiActions {
 		this.renameOriginal = '';
 		try {
 			await renameConversationApi(id, decision.next);
-			await this.#deps.invalidateAll();
+			// Renaming the conversation you're looking at also changes the chat
+			// header, which is page data — that one needs the full reload. Any
+			// other row is sidebar-only.
+			if (this.#deps.getPathname() === `/chat/${id}`) {
+				await this.#deps.invalidateAll();
+			} else {
+				await this.#deps.invalidateConversations();
+			}
 		} catch (e) {
 			toast.error(`Couldn't rename conversation: ${e instanceof Error ? e.message : String(e)}`);
 		}

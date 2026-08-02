@@ -5,9 +5,11 @@
  * PATCHes the *full* `modelSets` array (the same fire-and-invalidate shape
  * as `favorite-models.ts`).
  *
- * Like favorites, this is fire-and-`invalidateAll`: we send the new array,
- * then reload `data.prefs` so every place that reads the sets (the picker's
- * "Saved sets" section) re-renders from the layout's snapshot. No optimistic
+ * Like favorites, this is fire-and-`invalidate('app:prefs')`: we send the new
+ * array, then reload `data.prefs` so every place that reads the sets (the
+ * picker's "Saved sets" section) re-renders from the layout's snapshot —
+ * scoped to the layout's key so saving a set doesn't re-run the open page's
+ * load along with it. No optimistic
  * update — the picker reads sets from `data.prefs.modelSets`, and a local
  * optimistic copy would briefly disagree with the server during in-flight
  * requests. A toast surfaces failures; success is its own visible feedback.
@@ -17,7 +19,7 @@
  * mirroring `reorder` in `favorite-models.ts`.
  */
 
-import { invalidateAll } from '$app/navigation';
+import { invalidate } from '$app/navigation';
 import { errorMessageFromResponse } from '$lib/fetch-error';
 import { toast } from '$lib/toast.svelte';
 import type { CompareSelection } from '$lib/fanout';
@@ -34,7 +36,7 @@ async function setModelSets(next: readonly SavedModelSet[]): Promise<void> {
 			toast.error(`Couldn't update model sets: ${await errorMessageFromResponse(res)}`);
 			return;
 		}
-		await invalidateAll();
+		await invalidate('app:prefs');
 	} catch (e) {
 		toast.error(`Couldn't update model sets: ${e instanceof Error ? e.message : String(e)}`);
 	}

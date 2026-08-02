@@ -332,6 +332,7 @@
 		getPathname: () => page.url.pathname,
 		goto,
 		invalidateAll,
+		invalidateConversations: () => invalidate('app:conversations'),
 	});
 
 	// Mobile drawer state. The aside is `hidden ... sm:flex` on wide

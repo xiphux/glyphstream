@@ -4,9 +4,12 @@
  * sidebar drag-and-drop (reorder) eventually call it with the new array.
  *
  * Treated as a fire-and-invalidate operation: we send the new list, then
- * trigger `invalidateAll()` so the layout reloads `data.prefs` and every
- * place that reads it (sidebar favorites section, picker favorites group,
- * star fill state on each row) re-renders consistently. We don't
+ * trigger `invalidate('app:prefs')` so the layout reloads `data.prefs` and
+ * every place that reads it (sidebar favorites section, picker favorites
+ * group, star fill state on each row) re-renders consistently. Scoped to the
+ * layout's key rather than `invalidateAll()` — starring a model shouldn't
+ * re-run the open page's load, which on the chat route means re-serializing
+ * the whole conversation to move one star. We don't
  * optimistically update — the model picker's star fill is derived from
  * `data.prefs.favoriteModels`, and an optimistic local copy would briefly
  * disagree with the layout's snapshot during in-flight requests.
@@ -16,7 +19,7 @@
  * change in sidebar/picker is its own feedback).
  */
 
-import { invalidateAll } from '$app/navigation';
+import { invalidate } from '$app/navigation';
 import { errorMessageFromResponse } from '$lib/fetch-error';
 import { toast } from '$lib/toast.svelte';
 
@@ -31,7 +34,7 @@ async function setFavoriteModels(next: readonly string[]): Promise<void> {
 			toast.error(`Couldn't update favorites: ${await errorMessageFromResponse(res)}`);
 			return;
 		}
-		await invalidateAll();
+		await invalidate('app:prefs');
 	} catch (e) {
 		toast.error(`Couldn't update favorites: ${e instanceof Error ? e.message : String(e)}`);
 	}

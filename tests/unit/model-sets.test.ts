@@ -9,13 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SavedModelSet } from '$lib/types/api';
 
 const mocks = vi.hoisted(() => ({
-	invalidateAll: vi.fn(async () => {}),
+	invalidate: vi.fn(async (_key: string) => {}),
 	toastError: vi.fn(),
 	toastSuccess: vi.fn(),
 }));
 
 vi.mock('$app/navigation', () => ({
-	invalidateAll: mocks.invalidateAll,
+	invalidate: mocks.invalidate,
 }));
 
 vi.mock('$lib/toast.svelte', () => ({
@@ -36,7 +36,7 @@ function capturedSets(): SavedModelSet[] {
 }
 
 beforeEach(() => {
-	mocks.invalidateAll.mockClear();
+	mocks.invalidate.mockClear();
 	mocks.toastError.mockClear();
 	mocks.toastSuccess.mockClear();
 	global.fetch = vi.fn(async () => new Response(null, { status: 200 })) as never;
@@ -93,9 +93,9 @@ describe('saveModelSet', () => {
 		expect(global.fetch).not.toHaveBeenCalled();
 	});
 
-	it('triggers invalidateAll on 2xx and shows no toast', async () => {
+	it('refreshes prefs on 2xx and shows no toast', async () => {
 		await saveModelSet([], 'X', [{ modelId: 'a', count: 1 }]);
-		expect(mocks.invalidateAll).toHaveBeenCalledOnce();
+		expect(mocks.invalidate).toHaveBeenCalledExactlyOnceWith('app:prefs');
 		expect(mocks.toastError).not.toHaveBeenCalled();
 	});
 
@@ -104,7 +104,7 @@ describe('saveModelSet', () => {
 		await saveModelSet([], 'X', [{ modelId: 'a', count: 1 }]);
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/Couldn't update model sets/i);
-		expect(mocks.invalidateAll).not.toHaveBeenCalled();
+		expect(mocks.invalidate).not.toHaveBeenCalled();
 	});
 
 	it('shows an error toast on thrown fetch (network failure)', async () => {
@@ -114,7 +114,7 @@ describe('saveModelSet', () => {
 		await saveModelSet([], 'X', [{ modelId: 'a', count: 1 }]);
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/network down/);
-		expect(mocks.invalidateAll).not.toHaveBeenCalled();
+		expect(mocks.invalidate).not.toHaveBeenCalled();
 	});
 });
 
