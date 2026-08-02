@@ -697,6 +697,26 @@ proactivity and pipeline bets are the most identity-defining.
   mutations; and reconciling a live update against the resume-refresh so the two
   don't double-fetch.
 
+- **Sidebar unread badge (responses you haven't looked at yet).** A persistent
+  per-conversation "there's something here you haven't seen" mark, distinct from
+  the transient generating dot that ships today (that one clears when the
+  generation ends, whether or not you ever open the thread). _Why deferred:_ the
+  transient half was the actually-reported need — "did that video I kicked off
+  finish?" — and it needs no schema. A durable unread mark does: a `last_read_at`
+  on `conversations`, bumped by the chat route's load, compared against
+  `updated_at` in `listConversations`. The cost isn't the column, it's that
+  "read" is inherently a cross-device fact — mark it read on the desktop and the
+  phone's badge must clear, which is exactly the standing per-user channel
+  **live cross-client sync** (above) defers. Without it the badge is either
+  stale-until-refocus on every other device, or it needs its own poll, which is
+  the same infra by another name. So this wants to land _after_ that channel
+  exists, and reuse it. Open questions beyond the transport: what counts as read
+  (opening the thread at all, vs. scrolling the new message into view — the
+  latter matters for a long fan-out grid); whether a badge on a conversation you
+  yourself just generated in is noise; and whether the count is per-conversation
+  or a single app-level dot (the PWA badging API, `navigator.setAppBadge`, is the
+  natural extension and is iOS-supported for installed PWAs).
+
 - **Background sync / offline composition.** Auto-_resend_ a message composed
   offline the moment connectivity returns. The data-loss half of this is now
   handled the other way: the composer is offline-aware — while `navigator.onLine`
