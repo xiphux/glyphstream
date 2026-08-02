@@ -16,7 +16,7 @@
  * before we know which user owns it.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { getDb, type Tx } from '../client';
 import { passkeyCredentials, users } from '../schema';
 
@@ -262,10 +262,11 @@ export function deleteCredential(userId: string, credentialId: string): boolean 
  *  user's only passkey when GitHub login is also disabled. */
 export function countCredentialsForUser(userId: string): number {
 	const db = getDb();
-	const rows = db
-		.select({ id: passkeyCredentials.id })
-		.from(passkeyCredentials)
-		.where(eq(passkeyCredentials.userId, userId))
-		.all();
-	return rows.length;
+	return (
+		db
+			.select({ n: count() })
+			.from(passkeyCredentials)
+			.where(eq(passkeyCredentials.userId, userId))
+			.get()?.n ?? 0
+	);
 }

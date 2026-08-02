@@ -311,7 +311,23 @@ export const conversations = sqliteTable(
 		// (sealPrivateFeatures) so personalization/web/mcp/prompt-enhancement are off.
 		private: integer('private', { mode: 'boolean' }).notNull().default(false),
 	},
-	(t) => [index('idx_conversations_user_updated').on(t.userId, t.updatedAt)],
+	(t) => [
+		index('idx_conversations_user_updated').on(t.userId, t.updatedAt),
+		// The archived list filters `archived_at IS NOT NULL` as a residual on the
+		// index above, so it walks past every one of the user's ACTIVE conversations
+		// to find the archived ones — 5000 active to surface 20 archived. Partial, so
+		// it holds only the archived rows.
+		index('idx_conversations_user_archived')
+			.on(t.userId, t.updatedAt)
+			.where(sql`${t.archivedAt} is not null`),
+		// The background summary sweep picks the oldest conversations needing a
+		// summary across ALL users, so it had nothing to seek on: a full table scan
+		// plus a temp b-tree sort to satisfy `ORDER BY updated_at ASC LIMIT n`. This
+		// turns it into an index walk that stops at the limit.
+		index('idx_conversations_summary_queue')
+			.on(t.updatedAt)
+			.where(sql`${t.private} = 0`),
+	],
 );
 
 export const messages = sqliteTable(
@@ -370,36 +386,67 @@ export const messages = sqliteTable(
 	},
 	(t) => [
 		index('idx_messages_conv_parent').on(t.conversationId, t.parentMessageId),
-		index('idx_messages_conv_created').on(t.conversationId, t.createdAt),
+		// Carries the skeleton columns, not just the ordering pair. `walkActiveBranch`
+		// opens with a "cheap" scan of (id, parent_message_id, role, created_at) for the
+		// whole conversation before fetching only the active branch's heavy rows — but
+		// with just (conversation_id, created_at) indexed, `parent_message_id` and
+		// `role` forced a table lookup per message. `created_at` is also the LAST
+		// column in the row layout, behind content_json / content_html /
+		// reasoning_text / raw_response_json, so on any message whose record overflows
+		// (routine once shiki HTML is stored) reaching it walks the overflow chain.
+		// The "few dozen bytes per row" the scan is described as costing were in
+		// practice every heavy row in the thread. Covering makes it true.
+		index('idx_messages_conv_created').on(
+			t.conversationId,
+			t.createdAt,
+			t.parentMessageId,
+			t.role,
+			t.id,
+		),
 	],
 );
 
 // --- custom models (system-prompt presets) -------------------------------
 
-export const customModels = sqliteTable('custom_models', {
-	id: text('id').primaryKey(),
-	userId: text('user_id')
-		.notNull()
-		.references(() => users.id, { onDelete: 'cascade' }),
-	name: text('name').notNull(),
-	description: text('description'),
-	baseEndpointId: text('base_endpoint_id').notNull(),
-	baseModelId: text('base_model_id').notNull(),
-	systemPrompt: text('system_prompt'),
-	parametersJson: text('parameters_json'),
-	// Per-preset starting state for the per-conversation feature toggles.
-	// Same JSON-array shape as `conversations.disabled_features`. The
-	// composer seeds its `disabledFeatures` state from this when the user
-	// picks the preset, so the toggle UI reflects what the conversation
-	// will be created with (the user can still override before sending).
-	// NULL / empty means all features default ON, same as the global
-	// default. Useful when a preset's purpose doesn't fit one of the
-	// gates — e.g. a code-review preset that shouldn't pull in personal
-	// context, or a URL-summarizer where web access is redundant.
-	defaultDisabledFeaturesJson: text('default_disabled_features'),
-	createdAt: integer('created_at').notNull(),
-	updatedAt: integer('updated_at').notNull(),
-});
+export const customModels = sqliteTable(
+	'custom_models',
+	{
+		id: text('id').primaryKey(),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		description: text('description'),
+		baseEndpointId: text('base_endpoint_id').notNull(),
+		baseModelId: text('base_model_id').notNull(),
+		systemPrompt: text('system_prompt'),
+		parametersJson: text('parameters_json'),
+		// Per-preset starting state for the per-conversation feature toggles.
+		// Same JSON-array shape as `conversations.disabled_features`. The
+		// composer seeds its `disabledFeatures` state from this when the user
+		// picks the preset, so the toggle UI reflects what the conversation
+		// will be created with (the user can still override before sending).
+		// NULL / empty means all features default ON, same as the global
+		// default. Useful when a preset's purpose doesn't fit one of the
+		// gates — e.g. a code-review preset that shouldn't pull in personal
+		// context, or a URL-summarizer where web access is redundant.
+		defaultDisabledFeaturesJson: text('default_disabled_features'),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull(),
+	},
+	(t) => [
+		// The only user-scoped table whose read had no supporting index: the (app)
+		// layout lists a user's presets on EVERY authenticated page load, which was a
+		// full scan plus a temp b-tree for the `ORDER BY name`.
+		//
+		// Deliberately NOT unique, unlike prompt_snippets. Nothing has ever enforced
+		// name uniqueness here — `validateCustomModelBody` only checks presence and
+		// length — so an existing install may legitimately hold two presets with the
+		// same name, and a UNIQUE index would abort the migration on startup. The
+		// ordering win doesn't need uniqueness.
+		index('idx_custom_models_user_name').on(t.userId, t.name),
+	],
+);
 
 // --- memories -------------------------------------------------------------
 //
@@ -454,6 +501,15 @@ export const memories = sqliteTable(
 	},
 	(t) => [
 		index('idx_memories_user_created').on(t.userId, t.createdAt),
+		// Soft-deleted rows: the "Recently tidied" list (user-scoped, newest-first)
+		// and the purge sweep (`deleted_at < cutoff`, cross-user, every 15 minutes in
+		// the foreground). Neither had an index — the list read every one of the
+		// user's memory rows INCLUDING `content` and sorted them in a temp b-tree to
+		// return 20, and the purge scanned the whole table on every tick. Partial, so
+		// it holds only tombstones, which are a small minority and get purged.
+		index('idx_memories_deleted')
+			.on(t.deletedAt, t.userId)
+			.where(sql`${t.deletedAt} is not null`),
 		// Partial index over the backfill work queue: the never-embedded rows the
 		// sweep drains. `listMemoriesNeedingEmbedding` queries `embedding IS NULL`
 		// against this so a backlog of fresh memories is fetched by index scan, not

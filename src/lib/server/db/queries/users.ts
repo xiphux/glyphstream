@@ -82,8 +82,9 @@ export function createInitialUser(input: CreateInitialUserInput): string {
  */
 export function countUsers(): number {
 	const db = getDb();
-	const rows = db.select({ id: users.id }).from(users).all();
-	return rows.length;
+	// `count()` rather than materializing every row to read `.length`: this runs
+	// on the (app) layout's unauthenticated path, so every logged-out hit paid it.
+	return db.select({ n: count() }).from(users).get()?.n ?? 0;
 }
 
 /**
@@ -139,17 +140,19 @@ export function listUsers(): UserSummary[] {
  */
 export function countActiveAdmins(): number {
 	const db = getDb();
-	return db
-		.select({ id: users.id })
-		.from(users)
-		.where(and(eq(users.role, 'admin'), isNull(users.disabledAt)))
-		.all().length;
+	return (
+		db
+			.select({ n: count() })
+			.from(users)
+			.where(and(eq(users.role, 'admin'), isNull(users.disabledAt)))
+			.get()?.n ?? 0
+	);
 }
 
 /** Count admins (regardless of disabled state). */
 export function countAdmins(): number {
 	const db = getDb();
-	return db.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).all().length;
+	return db.select({ n: count() }).from(users).where(eq(users.role, 'admin')).get()?.n ?? 0;
 }
 
 /**

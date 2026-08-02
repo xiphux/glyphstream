@@ -11,7 +11,7 @@
  * mirror to keep in sync.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
 import { oauthAccounts, users } from '../schema';
@@ -134,10 +134,8 @@ export function deleteOAuthAccount(userId: string, provider: string): boolean {
  *  unlink that would leave the user with no way to sign in. */
 export function countOAuthAccountsForUser(userId: string): number {
 	const db = getDb();
-	const rows = db
-		.select({ id: oauthAccounts.id })
-		.from(oauthAccounts)
-		.where(eq(oauthAccounts.userId, userId))
-		.all();
-	return rows.length;
+	return (
+		db.select({ n: count() }).from(oauthAccounts).where(eq(oauthAccounts.userId, userId)).get()
+			?.n ?? 0
+	);
 }
