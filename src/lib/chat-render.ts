@@ -590,7 +590,10 @@ export function isCodeArgTool(toolName: string): boolean {
 
 /** The canvas tools, whose tool_call blocks render as a clickable canvas card
  *  (CanvasCard) rather than the generic ToolCallBlock. */
-const CANVAS_TOOLS = new Set(['create_canvas', 'update_canvas']);
+/** Tools whose calls render as canvas cards. Exported so the chat page can
+ *  cheaply pre-filter messages without rebuilding their blocks — keep it the one
+ *  definition, or the two lists drift the next time a canvas tool is added. */
+export const CANVAS_TOOLS = new Set(['create_canvas', 'update_canvas']);
 
 export function isCanvasTool(toolName: string): boolean {
 	return CANVAS_TOOLS.has(toolName);
@@ -774,7 +777,46 @@ export function isSkillTool(toolName: string): boolean {
 	return toolName === 'activate_skill' || toolName === 'read_skill_file';
 }
 
+/**
+ * Memo for `parseSkillToolDisplay`, keyed on its exact inputs.
+ *
+ * The call site describes this as "cheap (regex/name-check, memoized)". The
+ * cheap part was true; the memoized part wasn't. For an `activate_skill` result
+ * it builds a fresh RegExp with `[\s\S]*?` and runs it over the entire
+ * SKILL.md body, then splits and filters every line for the resource list — and
+ * it's read at template top level, so unlike every sibling block it runs even
+ * while the disclosure is collapsed.
+ *
+ * Bounded by entry count rather than characters: the values are small structs
+ * (the body string is a slice of one already retained by the message row).
+ */
+const skillDisplayCache = new Map<string, SkillToolDisplay | null>();
+const SKILL_DISPLAY_CACHE_MAX = 128;
+
 export function parseSkillToolDisplay(
+	toolName: string,
+	rawArgs: string,
+	result: string | undefined,
+	isError: boolean,
+): SkillToolDisplay | null {
+	if (!isSkillTool(toolName)) return null;
+	const key = `${isError ? 1 : 0}:${toolName}:${rawArgs}:${result ?? ''}`;
+	const hit = skillDisplayCache.get(key);
+	if (hit !== undefined) {
+		skillDisplayCache.delete(key);
+		skillDisplayCache.set(key, hit);
+		return hit;
+	}
+	const parsed = parseSkillToolDisplayUncached(toolName, rawArgs, result, isError);
+	skillDisplayCache.set(key, parsed);
+	if (skillDisplayCache.size > SKILL_DISPLAY_CACHE_MAX) {
+		const oldest = skillDisplayCache.keys().next();
+		if (!oldest.done) skillDisplayCache.delete(oldest.value);
+	}
+	return parsed;
+}
+
+function parseSkillToolDisplayUncached(
 	toolName: string,
 	rawArgs: string,
 	result: string | undefined,

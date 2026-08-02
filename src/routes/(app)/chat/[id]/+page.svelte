@@ -42,6 +42,7 @@
 	import {
 		assistantLabelForMessage,
 		buildRenderedConversation,
+		CANVAS_TOOLS,
 		computeMergeFlags,
 		messageToBlocks,
 		parseCanvasAck,
@@ -325,6 +326,19 @@
 		for (const m of visibleMessages) {
 			if (m.role !== 'assistant') {
 				group = new Map();
+				continue;
+			}
+			// Skip the block build entirely for the overwhelming majority of
+			// assistant messages, which contain no canvas tool call at all. Building
+			// every message's blocks just to collect canvas cards — and discarding
+			// nearly all of it — made this O(messages x parts) of allocation on any
+			// `messages` change, which after a turn is a fresh identity for all of
+			// `visibleMessages`, `toolResultsByCallId` and `mergeFlagsById`.
+			if (!m.parts.some((p) => p.type === 'tool_call' && CANVAS_TOOLS.has(p.toolName))) {
+				if (!(mergeFlagsById.get(m.id)?.mergeWithNext ?? false)) {
+					if (group.size > 0) map.set(m.id, [...group.values()]);
+					group = new Map();
+				}
 				continue;
 			}
 			for (const card of splitCanvasCards(messageToBlocks(m, toolResultsByCallId)).cards) {

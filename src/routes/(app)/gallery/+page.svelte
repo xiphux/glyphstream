@@ -597,7 +597,27 @@
 		if (scrollContainer) tick().then(measureGrid);
 	});
 
-	const viewport = $derived({ scrollTop, viewportH, overscanPx: OVERSCAN_PX });
+	// Quantized scroll position, not the raw one.
+	//
+	// This object is a fresh literal, so it's never `===`-equal to the previous
+	// value and every downstream derived recomputes — `sectionWindows` (O(sections)
+	// plus a new array), the demand-load effect, and one derived + one
+	// `unitIndices` allocation per section. `scrollTop` is written every rAF while
+	// scrolling, so at `granularity='day'` on a large library (a section per day
+	// with media — hundreds) that's thousands of reactive units per frame.
+	//
+	// Rounding to a step well inside OVERSCAN_PX means the windows only recompute
+	// once the view has actually moved a meaningful distance; the overscan absorbs
+	// the error, so nothing can scroll into view unrendered.
+	const VIEWPORT_QUANTUM_PX = 100;
+	const quantizedScrollTop = $derived(
+		Math.round(scrollTop / VIEWPORT_QUANTUM_PX) * VIEWPORT_QUANTUM_PX,
+	);
+	const viewport = $derived({
+		scrollTop: quantizedScrollTop,
+		viewportH,
+		overscanPx: OVERSCAN_PX,
+	});
 
 	// Per-section windows for the browse grid.
 	const sectionWindows = $derived(

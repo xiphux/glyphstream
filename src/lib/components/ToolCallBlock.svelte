@@ -56,9 +56,11 @@
 		attachments,
 	}: Props = $props();
 
-	// Cheap (regex/name-check, memoized) — NOT the expensive markdown render,
-	// which stays deferred inside SkillToolBlock's body snippet. Returns null for
-	// non-skill tools.
+	// Read at template top level (the `{#if skill}` below), so unlike every
+	// sibling block this runs even while the disclosure is collapsed — hence the
+	// memo in `parseSkillToolDisplay`, which the regex over a whole SKILL.md body
+	// needs. Still NOT the expensive markdown render, which stays deferred inside
+	// SkillToolBlock's body snippet. Returns null for non-skill tools.
 	const skill = $derived(parseSkillToolDisplay(toolName, argumentsJson, result, isError ?? false));
 </script>
 

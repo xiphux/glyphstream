@@ -299,20 +299,24 @@ export class ChatTurnController {
 					this.#deps.scrollToBottom();
 				}
 			},
+			// NOTE: none of the per-chunk hooks scroll. The chat page has an $effect
+			// on `inFlightSegments` that scrolls after `tick()`, which is both the
+			// correct moment and the only one that works: scrolling synchronously
+			// here read `scrollHeight` BEFORE the new token rendered, so it targeted
+			// the previous bottom and the post-tick effect had to correct it anyway.
+			// Two forced layouts per streamed token, one of them measuring stale
+			// geometry.
 			onText: (chunk) => {
 				this.inFlightQueued = null;
 				this.inFlightSegments = appendText(this.inFlightSegments, chunk);
-				if (this.#deps.isNearBottom()) this.#deps.scrollToBottom();
 			},
 			onReasoning: (chunk) => {
 				this.inFlightQueued = null;
 				this.inFlightSegments = appendReasoning(this.inFlightSegments, chunk);
-				if (this.#deps.isNearBottom()) this.#deps.scrollToBottom();
 			},
 			onToolCallStart: (toolCallId, toolName) => {
 				this.inFlightQueued = null;
 				this.inFlightSegments = pushToolCall(this.inFlightSegments, toolCallId, toolName);
-				if (this.#deps.isNearBottom()) this.#deps.scrollToBottom();
 			},
 			onToolCallArgsDelta: (toolCallId, argumentsDelta) => {
 				this.inFlightSegments = updateToolCallArgs(
