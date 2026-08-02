@@ -115,3 +115,53 @@ describe('renderLiveMarkdown — shiki upgrade path', () => {
 		expect(out).not.toContain('class="shiki');
 	});
 });
+
+describe('renderLiveMarkdown — fence highlight memoization', () => {
+	/**
+	 * markdown-it calls `highlight` for every fence in the document on every
+	 * render, and streaming re-renders the whole accumulated message each frame.
+	 * Without a memo, a reply that has already emitted several finished code
+	 * blocks re-highlights all of them ~60 times a second for the remainder of
+	 * the reply — at ~7ms per 100-line block that is the entire frame budget
+	 * spent regenerating byte-identical HTML.
+	 */
+	function countingHighlighter() {
+		const calls: string[] = [];
+		setLiveHighlighterForTests({
+			codeToHtml: (code: string) => {
+				calls.push(code);
+				return `<pre class="shiki">${code}</pre>`;
+			},
+		} as never);
+		return calls;
+	}
+
+	it('highlights a stable fence once no matter how often the document re-renders', () => {
+		const calls = countingHighlighter();
+		const doc = '```python\nprint(1)\n```\n\nsome prose';
+		for (let i = 0; i < 25; i++) renderLiveMarkdown(doc);
+		expect(calls).toHaveLength(1);
+	});
+
+	it('re-highlights only the fence that is still growing', () => {
+		const calls = countingHighlighter();
+		const closed = '```python\nclosed_block()\n```';
+		// The last fence grows each frame, the earlier one never changes.
+		for (let i = 1; i <= 10; i++) {
+			renderLiveMarkdown(`${closed}\n\nprose\n\n\`\`\`python\n${'x'.repeat(i)}\n\`\`\``);
+		}
+		const closedCalls = calls.filter((c) => c.includes('closed_block'));
+		expect(closedCalls, 'the settled fence should be highlighted exactly once').toHaveLength(1);
+		// The growing one legitimately re-highlights: 10 distinct bodies.
+		expect(calls).toHaveLength(11);
+	});
+
+	it('still reflects a fence whose content actually changes', () => {
+		countingHighlighter();
+		const a = renderLiveMarkdown('```python\nfirst()\n```');
+		const b = renderLiveMarkdown('```python\nsecond()\n```');
+		expect(a).toContain('first()');
+		expect(b).toContain('second()');
+		expect(b).not.toContain('first()');
+	});
+});
