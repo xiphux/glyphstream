@@ -15,6 +15,7 @@ import {
 	stopConversationSummaryWorker,
 } from '$lib/server/memory/conversation-summary';
 import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
+import { listAllModels } from '$lib/server/endpoints/list-models';
 import { stopMcp } from '$lib/server/mcp/registry';
 import { stopPool } from '$lib/server/code-interpreter/pool';
 
@@ -73,6 +74,16 @@ startConversationSummaryWorker();
 // before advertising tools so the model never sees a partially-populated
 // MCP surface; the rest of the app is unblocked.
 void bootstrapMcp();
+
+// Warm the model-list cache in the background for the same reason. The cache is
+// stale-while-revalidate, so steady state is free — but a COLD miss awaits a
+// real /v1/models round trip to every configured endpoint, and the send path
+// consults it before dispatching. That put the full round trip (or, for a down
+// endpoint, its entire `request_timeout_seconds`) in front of the first message
+// after every restart — precisely the send someone is watching right after a
+// deploy. Failures are already cached per endpoint, so a warm attempt that
+// fails costs nothing extra.
+void listAllModels().catch(() => {});
 
 // Clean shutdown on SIGTERM (adapter-node's graceful_shutdown emits
 // 'sveltekit:shutdown' after closing the HTTP server and before the
