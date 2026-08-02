@@ -15,6 +15,7 @@ import {
 	insertMedia,
 	linkMessageMedia,
 	listGalleryUnits,
+	listGalleryUnitMembers,
 	type GalleryUnit,
 } from '$lib/server/db/queries/media';
 import { createConversation } from '$lib/server/db/queries/conversations';
@@ -314,5 +315,85 @@ describe('gallery units: tz bucketing', () => {
 		makeGen(u.id, Date.UTC(2024, 5, 15, 0, 30), { promptFull: 'edge', originalPrompt: null });
 		expect(computeGalleryLayout(u.id, { tzOffsetMinutes: 0 }).days[0].key).toBe('2024-06-15');
 		expect(computeGalleryLayout(u.id, { tzOffsetMinutes: -60 }).days[0].key).toBe('2024-06-14');
+	});
+});
+
+describe('gallery drill-in shares the cached unit source', () => {
+	/**
+	 * `listGalleryUnitMembers` needs a prompt run's ordered member ids, which a
+	 * `GalleryUnit` doesn't carry (previews are capped at 4). It used to re-run
+	 * the library-wide source load and a full re-stack on every drill-in click,
+	 * bypassing the units cache entirely — the most expensive query in the app on
+	 * a routine action. It now reads the same memoized source the scroll uses.
+	 * These assertions pin the behaviour that memo has to preserve.
+	 */
+	it('returns every member of a prompt run in newest-first order', () => {
+		const u = seedUser();
+		const oldest = makeGen(u.id, at(2024, 6, 15, 12, 0), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [sdxl]',
+		});
+		const middle = makeGen(u.id, at(2024, 6, 15, 12, 1), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [flux]',
+		});
+		const leader = makeGen(u.id, at(2024, 6, 15, 12, 2), {
+			originalPrompt: 'sunset',
+			promptFull: 'sunset [sd3]',
+		});
+
+		const units = allUnits(u.id);
+		expect(units[0].groupKind).toBe('prompt');
+		const members = listGalleryUnitMembers(u.id, units[0].key);
+		expect(members.map((m) => m.id)).toEqual([leader, middle, oldest]);
+	});
+
+	it('still reflects a media row inserted after the source was cached', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15, 12, 0), { originalPrompt: 'dunes', promptFull: 'dunes [a]' });
+		const key = allUnits(u.id)[0].key;
+		expect(listGalleryUnitMembers(u.id, key)).toHaveLength(1);
+
+		// The fingerprint (a count of the user's generated media) must invalidate
+		// the memo, or a just-generated sibling would be invisible for 30s.
+		makeGen(u.id, at(2024, 6, 15, 12, 1), { originalPrompt: 'dunes', promptFull: 'dunes [b]' });
+		const after = allUnits(u.id);
+		expect(listGalleryUnitMembers(u.id, after[0].key)).toHaveLength(2);
+	});
+
+	it('does not leak one user of the cache into another', () => {
+		const a = seedUser();
+		const b = seedUser();
+		makeGen(a.id, at(2024, 6, 15, 12, 0), { originalPrompt: 'x', promptFull: 'x [a]' });
+		makeGen(a.id, at(2024, 6, 15, 12, 1), { originalPrompt: 'x', promptFull: 'x [b]' });
+		const aKey = allUnits(a.id)[0].key;
+		expect(listGalleryUnitMembers(a.id, aKey)).toHaveLength(2);
+		// Same unit key, different owner — must not resolve to A's media.
+		expect(listGalleryUnitMembers(b.id, aKey)).toEqual([]);
+	});
+});
+
+describe('gallery tz offset normalization', () => {
+	/**
+	 * `tzOffsetMinutes` is part of the units cache key and arrives unvalidated
+	 * from a query param, so its cardinality is the cache's cardinality. Snapped
+	 * to a real offset (-840..+720, 15-minute step) so a client can't mint
+	 * unbounded distinct keys, each forcing a cold O(library) recompute.
+	 */
+	it('treats offsets within the same 15-minute step as one bucketing', () => {
+		const u = seedUser();
+		// 23:50 UTC — which local day this lands in depends on the offset.
+		makeGen(u.id, at(2024, 6, 15, 23, 50), { promptFull: 'a', originalPrompt: null });
+		const at60 = computeGalleryLayout(u.id, { tzOffsetMinutes: 60 }).days[0].key;
+		const at58 = computeGalleryLayout(u.id, { tzOffsetMinutes: 58 }).days[0].key;
+		expect(at58).toBe(at60);
+	});
+
+	it('clamps an absurd offset instead of bucketing by it', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15, 12, 0), { promptFull: 'a', originalPrompt: null });
+		const insane = computeGalleryLayout(u.id, { tzOffsetMinutes: 100_000 }).days[0].key;
+		const maxReal = computeGalleryLayout(u.id, { tzOffsetMinutes: 720 }).days[0].key;
+		expect(insane).toBe(maxReal);
 	});
 });

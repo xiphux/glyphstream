@@ -949,7 +949,7 @@ function unitFromGroup(
  *  is a solo unit instead (the firehose view). */
 function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit[] {
 	const tz = Number.isFinite(opts.tzOffsetMinutes) ? (opts.tzOffsetMinutes as number) : 0;
-	const rows = loadGalleryUnitSource(userId, opts);
+	const rows = loadGalleryUnitSourceCached(userId, opts);
 	if (opts.stack === false) return rows.map((r) => unitFromRow(r, tz));
 	return groupGalleryItems(rows).map((g) => unitFromGroup(g, tz));
 }
@@ -976,10 +976,59 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 // grow without bound in the single long-running Node process.
 const GALLERY_UNITS_TTL_MS = 30_000;
 const GALLERY_UNITS_CACHE_MAX = 256;
+/** Total units held across all cache entries. Each entry holds a unit per item
+ *  in the whole filtered library, so a count-only cap bounds the number of
+ *  entries but not the memory behind them — 256 entries x a large library is
+ *  gigabytes. Evict on whichever bound trips first. */
+const GALLERY_UNITS_CACHE_MAX_UNITS = 200_000;
 const galleryUnitsCache = new Map<
 	string,
 	{ fingerprint: string; expiresAt: number; units: GalleryUnit[] }
 >();
+let galleryUnitsCachedTotal = 0;
+
+// The unit *source* — the O(library) load whose per-row correlated subquery
+// resolves each item's assigned conversation — memoized separately from the
+// computed units above.
+//
+// Two callers need it and only one of them wants units: the drill-in
+// (`listGalleryUnitMembers`) needs a group's ordered member ids, which a
+// `GalleryUnit` doesn't carry (it keeps <=4 previews and a count). It therefore
+// used to re-run this load *and* a full re-stack on every drill-in click, with
+// no cache at all — the single most expensive query in the app, on a routine
+// user action.
+//
+// Keyed without `stack`/`tzOffsetMinutes`, which only affect how the rows are
+// grouped and bucketed afterwards, so every variant shares one load.
+const gallerySourceCache = new Map<
+	string,
+	{ fingerprint: string; expiresAt: number; rows: UnitSourceRow[] }
+>();
+const GALLERY_SOURCE_CACHE_MAX = 64;
+
+function gallerySourceCacheKey(userId: string, opts: GalleryUnitOpts): string {
+	return JSON.stringify([userId, opts.kind ?? '', opts.model ?? '']);
+}
+
+/** `loadGalleryUnitSource` behind the same fingerprint + TTL validation the unit
+ *  cache uses. The returned array is shared read-only. */
+function loadGalleryUnitSourceCached(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
+	const fingerprint = galleryUserFingerprint(userId);
+	const key = gallerySourceCacheKey(userId, opts);
+	const hit = gallerySourceCache.get(key);
+	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) return hit.rows;
+	const rows = loadGalleryUnitSource(userId, opts);
+	if (!gallerySourceCache.has(key) && gallerySourceCache.size >= GALLERY_SOURCE_CACHE_MAX) {
+		const oldest = gallerySourceCache.keys().next().value;
+		if (oldest !== undefined) gallerySourceCache.delete(oldest);
+	}
+	gallerySourceCache.set(key, {
+		fingerprint,
+		expiresAt: Date.now() + GALLERY_UNITS_TTL_MS,
+		rows,
+	});
+	return rows;
+}
 
 /** Cheap signature of a user's gallery-relevant media state. `total` (all
  *  generated rows, incl. tombstones) rises on insert; `live` (non-deleted) falls
@@ -999,6 +1048,23 @@ function galleryUserFingerprint(userId: string): string {
 	return `${row?.total ?? 0}:${row?.live ?? 0}`;
 }
 
+/**
+ * Snap a client-supplied UTC offset to a real one: -840..+720 minutes (UTC-14 to
+ * UTC+12), on a 15-minute step. Real zones are all multiples of 15.
+ *
+ * Normalized here rather than at each route because the value is part of a cache
+ * key, so its cardinality is the cache's cardinality. Unclamped, a client could
+ * walk `tzOffset=1,2,3…` and mint an unbounded number of distinct keys, each
+ * forcing a cold O(library) recompute and evicting a legitimate entry. Snapping
+ * caps it at 105 possible values and costs nothing — no real client sends
+ * anything else.
+ */
+function normalizeTzOffset(minutes: number | undefined): number | undefined {
+	if (minutes == null || !Number.isFinite(minutes)) return undefined;
+	const clamped = Math.max(-840, Math.min(720, minutes));
+	return Math.round(clamped / 15) * 15;
+}
+
 function galleryUnitsCacheKey(userId: string, opts: GalleryUnitOpts): string {
 	// JSON-encode the tuple so an arbitrary model id can't forge a key collision.
 	return JSON.stringify([
@@ -1012,18 +1078,34 @@ function galleryUnitsCacheKey(userId: string, opts: GalleryUnitOpts): string {
 
 /** `computeGalleryUnits` behind the per-(user, filter, tz) memo above. The
  *  returned array is shared read-only — callers slice/read it, never mutate. */
-function computeGalleryUnitsCached(userId: string, opts: GalleryUnitOpts): GalleryUnit[] {
+function computeGalleryUnitsCached(userId: string, rawOpts: GalleryUnitOpts): GalleryUnit[] {
+	// Normalize before the key is built AND before the units are computed, so the
+	// cached day buckets match the offset the key claims.
+	const opts: GalleryUnitOpts = {
+		...rawOpts,
+		tzOffsetMinutes: normalizeTzOffset(rawOpts.tzOffsetMinutes),
+	};
 	const fingerprint = galleryUserFingerprint(userId);
 	const key = galleryUnitsCacheKey(userId, opts);
 	const hit = galleryUnitsCache.get(key);
 	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) return hit.units;
 	const units = computeGalleryUnits(userId, opts);
-	// Evict the oldest entry before inserting a new key, capping total size.
-	if (!galleryUnitsCache.has(key) && galleryUnitsCache.size >= GALLERY_UNITS_CACHE_MAX) {
-		const oldest = galleryUnitsCache.keys().next().value;
-		if (oldest !== undefined) galleryUnitsCache.delete(oldest);
-	}
+	const existing = galleryUnitsCache.get(key);
+	if (existing) galleryUnitsCachedTotal -= existing.units.length;
 	galleryUnitsCache.set(key, { fingerprint, expiresAt: Date.now() + GALLERY_UNITS_TTL_MS, units });
+	galleryUnitsCachedTotal += units.length;
+	// Evict oldest-first until BOTH bounds hold. The entry count alone doesn't
+	// bound memory (each entry is a unit per library item), and the unit total
+	// alone would let a huge library evict everything down to one entry.
+	while (
+		galleryUnitsCache.size > GALLERY_UNITS_CACHE_MAX ||
+		(galleryUnitsCachedTotal > GALLERY_UNITS_CACHE_MAX_UNITS && galleryUnitsCache.size > 1)
+	) {
+		const oldest = galleryUnitsCache.keys().next();
+		if (oldest.done || oldest.value === key) break;
+		galleryUnitsCachedTotal -= galleryUnitsCache.get(oldest.value)!.units.length;
+		galleryUnitsCache.delete(oldest.value);
+	}
 	return units;
 }
 
@@ -1086,8 +1168,13 @@ export function listGalleryUnitMembers(
 		return listMediaForConversation(unitKey, userId, opts);
 	}
 	// Prompt (orphan) run: re-run the shared grouping and pull the matching run's
-	// members, then materialize them as full MediaListItems in run order.
-	const run = groupGalleryItems(loadGalleryUnitSource(userId, opts)).find((g) => g.key === unitKey);
+	// members, then materialize them as full MediaListItems in run order. The
+	// source load is memoized (see loadGalleryUnitSourceCached) so a drill-in
+	// shares the scroll's load instead of re-running the library-wide query; only
+	// the grouping — one in-memory pass — repeats.
+	const run = groupGalleryItems(loadGalleryUnitSourceCached(userId, opts)).find(
+		(g) => g.key === unitKey,
+	);
 	if (!run) return [];
 	const orderedIds = run.items.map((m) => m.id);
 	const byId = new Map(getMediaListItemsByIds(userId, orderedIds).map((m) => [m.id, m]));
