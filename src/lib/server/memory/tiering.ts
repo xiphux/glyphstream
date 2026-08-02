@@ -63,8 +63,34 @@ export function selectMemoryTiers(
 	budgetChars: number,
 	now: number,
 ): { hotIds: string[]; cold: MemoryTierRow[] } {
+	// Score against a day-quantized clock, not the live one.
+	//
+	// The two decay terms have different half-lives (30d recall vs 7d freshness),
+	// so scores don't merely shrink with time — they CROSS. With a continuous
+	// `now`, a crossing anywhere near the budget cutoff silently swaps which
+	// memories are inlined in full, and the memory block sits at the very front
+	// of the system prompt. That's the failure CLAUDE.md's "payload is rent" rule
+	// names explicitly: what the *user* did may change the payload, but *timing*
+	// must not, because a prefix that differs when nothing meaningful changed
+	// re-prefills the entire conversation upstream. A long thread left open
+	// across a quiet afternoon would pay a full re-prefill for a reordering
+	// nobody asked for.
+	//
+	// Quantizing makes the split change at most once a day (plus on real writes
+	// and recalls, which are legitimate content changes). Same trade
+	// `environment-context.ts` documents for the date line: a boundary a
+	// conversation only occasionally spans, instead of a clock that ticks under
+	// the prompt continuously.
+	// Rounded UP to the end of the current day, not down. Flooring would put the
+	// reference point *before* anything saved today, making every such memory's
+	// freshness delta negative — `decay` clamps those to 1, so they'd all tie and
+	// the stable tiebreak (createdAt asc) would inline the OLDEST of today's
+	// memories rather than the freshest, inverting the intended behaviour.
+	// Ceiling keeps every delta positive, so recency ordering is preserved while
+	// the reference point still only moves once a day.
+	const quantizedNow = Math.ceil(now / DAY_MS) * DAY_MS;
 	const ranked = rows
-		.map((row) => ({ row, score: scoreMemory(row, now) }))
+		.map((row) => ({ row, score: scoreMemory(row, quantizedNow) }))
 		.sort((a, b) => b.score - a.score || a.row.createdAt - b.row.createdAt);
 
 	const hot = new Set<string>();

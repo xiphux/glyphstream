@@ -99,3 +99,108 @@ describe('selectMemoryTiers', () => {
 		expect(selectMemoryTiers([], 4000, NOW)).toEqual({ hotIds: [], cold: [] });
 	});
 });
+
+describe('selectMemoryTiers — the split must not move with the clock alone', () => {
+	/**
+	 * The memory block sits at the very front of the system prompt, so any change
+	 * to which memories are inlined re-prefills the whole conversation upstream.
+	 * The two decay terms have different half-lives (30d recall vs 7d freshness),
+	 * so scores don't merely shrink over time — they CROSS, and a crossing near
+	 * the budget cutoff silently swaps tier membership. CLAUDE.md's "payload is
+	 * rent" rule allows the *user* to change the payload but forbids *timing*
+	 * from doing so, hence day-quantized scoring.
+	 *
+	 * These rows are tuned to cross within a single day: `justSaved` leads on its
+	 * fast-decaying freshness term at midnight and is overtaken before the day is
+	 * out by `usedOnce`, whose recall term decays more slowly. Without
+	 * quantization the hour-by-hour assertion below fails.
+	 */
+	// Anchored to the start of a real day bucket rather than to NOW, which sits
+	// mid-bucket — otherwise "the same day" in these assertions wouldn't line up
+	// with the day the quantizer actually rounds to.
+	const DAY_START = Math.floor(NOW / DAY) * DAY + 1;
+	const rows = [
+		row({
+			id: 'usedOnce',
+			recallCount: 1,
+			lastRecalledAt: DAY_START - 58 * DAY,
+			createdAt: DAY_START - 200 * DAY,
+			updatedAt: DAY_START - 200 * DAY,
+			len: 100,
+		}),
+		row({
+			id: 'justSaved',
+			createdAt: DAY_START - 12.8 * DAY,
+			updatedAt: DAY_START - 12.8 * DAY,
+			len: 100,
+		}),
+	];
+	// A second pair whose crossing falls BETWEEN two day buckets rather than
+	// inside one — that's what makes the "still re-ranks" assertion real. The
+	// pair above deliberately crosses *within* a bucket, which is what makes the
+	// stability assertions non-vacuous; one pair can't do both.
+	const slowRows = [
+		row({
+			id: 'usedOnce',
+			recallCount: 1,
+			lastRecalledAt: DAY_START - 58 * DAY,
+			createdAt: DAY_START - 200 * DAY,
+			updatedAt: DAY_START - 200 * DAY,
+			len: 100,
+		}),
+		row({
+			id: 'justSaved',
+			createdAt: DAY_START - 12 * DAY,
+			updatedAt: DAY_START - 12 * DAY,
+			len: 100,
+		}),
+	];
+
+	// Budget fits exactly one, so the ranking IS the observable output.
+	const BUDGET = 150;
+
+	it('is identical across every hour of the same day', () => {
+		const base = selectMemoryTiers(rows, BUDGET, DAY_START);
+		for (let hour = 1; hour < 24; hour++) {
+			const t = DAY_START + hour * 60 * 60 * 1000;
+			if (Math.ceil(t / DAY) !== Math.ceil(DAY_START / DAY)) break; // next bucket
+			const later = selectMemoryTiers(rows, BUDGET, t);
+			expect(later.hotIds, `tier split moved ${hour}h into the same day`).toEqual(base.hotIds);
+			expect(later.cold.map((c) => c.id)).toEqual(base.cold.map((c) => c.id));
+		}
+	});
+
+	it('is identical after a minute of idling, at any offset', () => {
+		for (const offset of [0, 3 * DAY, 11 * DAY, 29 * DAY]) {
+			const t = DAY_START + offset;
+			const a = selectMemoryTiers(rows, BUDGET, t);
+			const b = selectMemoryTiers(rows, BUDGET, t + 60_000);
+			expect(b.hotIds, `split moved after 60s idling at +${offset / DAY}d`).toEqual(a.hotIds);
+		}
+	});
+
+	it('still re-ranks as real days pass', () => {
+		// Quantizing must not freeze the ranking outright — tiers should still
+		// evolve, just not sub-daily.
+		const early = selectMemoryTiers(slowRows, BUDGET, DAY_START);
+		const later = selectMemoryTiers(slowRows, BUDGET, DAY_START + DAY);
+		expect(early.hotIds).toEqual(['justSaved']);
+		expect(later.hotIds).toEqual(['usedOnce']);
+	});
+
+	it('keeps a memory saved moments ago ahead of one saved earlier today', () => {
+		// Guards the direction of the rounding. Flooring would put the reference
+		// point before both, clamping each freshness delta to a tie and letting
+		// the createdAt tiebreak inline the OLDER one.
+		const sixHours = 6 * 60 * 60 * 1000;
+		const earlier = row({
+			id: 'earlier',
+			createdAt: NOW - sixHours,
+			updatedAt: NOW - sixHours,
+			len: 100,
+		});
+		const newest = row({ id: 'newest', createdAt: NOW - 1000, updatedAt: NOW - 1000, len: 100 });
+		const { hotIds } = selectMemoryTiers([earlier, newest], BUDGET, NOW);
+		expect(hotIds).toEqual(['newest']);
+	});
+});
