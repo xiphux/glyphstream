@@ -270,12 +270,40 @@ export async function getUserServerStates(
 		return true;
 	});
 
+	// Of those, the ones the caller must actually WAIT for. A reaped connection
+	// keeps its last tool list (see reapIfIdle) and `ensureConnected` carries it
+	// into the reconnecting entry, so a server we've talked to before can report
+	// its known surface immediately while the handshake runs in the background.
+	//
+	// This matters on the send path, where waiting is worse than it looks. The
+	// budget bounds one turn, but idle reaping means a lightly-used server is
+	// re-handshaked on the first turn after every reap — repeatedly, forever, at
+	// the front of time-to-first-token. Shortening the budget instead would be
+	// the wrong trade: a handshake that misses a tighter deadline drops that
+	// server's tools from `tools[]` for the turn, and a tool surface that changes
+	// because of *timing* is exactly the payload churn CLAUDE.md's prefix-cache
+	// rule forbids (it re-prefills the whole conversation, and the model's
+	// capabilities visibly blink). Not waiting keeps the surface stable AND
+	// removes the stall; only a server with no known tools yet has anything to
+	// wait for.
+	const mustAwait = opts.connectBudgetMs != null ? toConnect.filter(hasNoKnownTools) : toConnect;
+	const background =
+		opts.connectBudgetMs != null ? toConnect.filter((id) => !hasNoKnownTools(id)) : [];
+
+	function hasNoKnownTools(id: string): boolean {
+		const e = entries.get(keyFor(id, userId));
+		return !e || e.state === 'failed' || (e.tools?.length ?? 0) === 0;
+	}
+
+	// Fire-and-forget: these already have a usable surface to advertise.
+	for (const id of background) void ensureConnected(id, userId).catch(() => {});
+
 	// Connect them CONCURRENTLY (best-effort) before reading state — a user
 	// with several per-user servers shouldn't pay the sum of their handshakes.
 	// With a budget, a straggler resolves the wait early and finishes in the
 	// background; without one, we await the full handshake (settings page).
 	await Promise.all(
-		toConnect.map((id) =>
+		mustAwait.map((id) =>
 			opts.connectBudgetMs != null
 				? withSoftDeadline(ensureConnected(id, userId), opts.connectBudgetMs)
 				: ensureConnected(id, userId).catch(() => {}),
@@ -629,6 +657,31 @@ export async function stopMcp(): Promise<void> {
 			if (e.state === 'connected') await e.client.close().catch(() => {});
 		}),
 	);
+}
+
+/**
+ * Force the idle reap for one connection, as the idle timer eventually would.
+ * Test-only — the real path is time-gated on `idle_timeout_seconds` (900s by
+ * default), which a test can't wait out. Leaves the entry `idle` with its last
+ * tool list intact, which is the state the send path relies on to advertise a
+ * stable surface while reconnecting in the background.
+ */
+export async function reapUserConnectionForTests(
+	serverId: string,
+	userId: string | null,
+): Promise<void> {
+	const key = keyFor(serverId, userId);
+	const entry = entries.get(key);
+	if (!entry || entry.state !== 'connected') return;
+	if (entry.idleTimerId) clearTimeout(entry.idleTimerId);
+	entries.set(key, {
+		serverId: entry.serverId,
+		userId: entry.userId,
+		state: 'idle',
+		cfg: entry.cfg,
+		tools: entry.tools,
+	});
+	await entry.client.close().catch(() => {});
 }
 
 /**

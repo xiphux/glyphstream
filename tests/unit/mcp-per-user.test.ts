@@ -28,6 +28,7 @@ import {
 	initializeMcpServers,
 	callMcpTool,
 	getUserServerStates,
+	reapUserConnectionForTests,
 	resetMcpRegistryForTests,
 } from '$lib/server/mcp/registry';
 
@@ -108,5 +109,52 @@ describe('per-user MCP servers', () => {
 		await expect(callMcpTool('mail', 'userA', 'tool_A', {}, ac.signal)).rejects.toThrow(
 			/no credential/,
 		);
+	});
+});
+
+describe('send-path connect does not wait for a server whose tools are known', () => {
+	/**
+	 * A reaped connection keeps its last tool list, and `ensureConnected` carries
+	 * it into the reconnecting entry — so a server we've talked to before can
+	 * advertise its known surface immediately while the handshake runs in the
+	 * background.
+	 *
+	 * Waiting instead put the handshake at the front of time-to-first-token on
+	 * the first turn after every idle reap, forever. Shortening the budget would
+	 * be the wrong trade: a handshake that misses a tighter deadline drops that
+	 * server's tools from `tools[]` for the turn, and a tool surface that changes
+	 * because of *timing* is the payload churn the prefix-cache rule forbids.
+	 */
+	it('returns the known tool surface without awaiting a slow reconnect', async () => {
+		mocks.credentials.set('userA:mail', 'tok-a');
+		mocks.connectImpl.mockResolvedValue(fakeConnection('a'));
+		await initializeMcpServers();
+
+		// First call establishes the connection and learns the tools.
+		const first = await getUserServerStates('userA', { connectBudgetMs: 2500 });
+		expect(first[0].tools.map((t) => t.name)).toEqual(['tool_a']);
+
+		// Reap it the way the idle timer would, then make reconnecting hang.
+		await reapUserConnectionForTests('mail', 'userA');
+		const released: Array<() => void> = [];
+		mocks.connectImpl.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					released.push(() => resolve(fakeConnection('a')));
+				}),
+		);
+
+		const started = Date.now();
+		const states = await getUserServerStates('userA', {
+			connectBudgetMs: 2500,
+			skipFailed: true,
+		});
+		const waited = Date.now() - started;
+
+		// Did not sit on the hanging handshake...
+		expect(waited).toBeLessThan(500);
+		// ...and still advertises the surface, so `tools[]` doesn't blink.
+		expect(states[0].tools.map((t) => t.name)).toEqual(['tool_a']);
+		for (const release of released) release();
 	});
 });
