@@ -974,3 +974,56 @@ describe('truncateToolResult', () => {
 		expect(out).toBe('w'.repeat(50));
 	});
 });
+
+describe('truncateToolResult memoization', () => {
+	/**
+	 * The transform is pure over rows that never change once persisted, but it
+	 * was recomputed on every turn AND every tool-loop iteration: a full nesting
+	 * scan, a JSON.parse with a number-boxing reviver, a whole-tree walk, and at
+	 * least two whole-payload JSON.stringify calls per oversized result. Three
+	 * large results on a four-iteration turn redid all of it twelve times,
+	 * synchronously, in front of each upstream call.
+	 *
+	 * Memoizing is only safe if it's invisible — same inputs, same bytes — so
+	 * these check equivalence rather than just that it got faster.
+	 */
+	const bigJson = JSON.stringify({
+		items: Array.from({ length: 400 }, (_, i) => ({
+			id: `item-${i}`,
+			body: 'x'.repeat(200),
+			score: i * 1.5,
+		})),
+	});
+
+	it('returns byte-identical output on repeat calls', () => {
+		const first = truncateToolResult(bigJson, 5_000);
+		const second = truncateToolResult(bigJson, 5_000);
+		const third = truncateToolResult(`${bigJson}`, 5_000);
+		expect(second).toBe(first);
+		expect(third).toBe(first);
+		expect(first.length).toBeLessThanOrEqual(5_000);
+	});
+
+	it('keys on the cap, not just the content', () => {
+		const tight = truncateToolResult(bigJson, 2_000);
+		const loose = truncateToolResult(bigJson, 20_000);
+		expect(tight).not.toBe(loose);
+		expect(tight.length).toBeLessThanOrEqual(2_000);
+		expect(loose.length).toBeLessThanOrEqual(20_000);
+	});
+
+	it('is measurably cheaper the second time', () => {
+		const payload = JSON.stringify({
+			rows: Array.from({ length: 4000 }, (_, i) => ({ i, v: 'y'.repeat(80), n: i / 3 })),
+		});
+		const t0 = performance.now();
+		truncateToolResult(payload, 10_000);
+		const cold = performance.now() - t0;
+		const t1 = performance.now();
+		truncateToolResult(payload, 10_000);
+		const warm = performance.now() - t1;
+		// Cold does real parsing work; warm is a Map hit. Generous ratio so this
+		// can't flake on a loaded machine.
+		expect(warm).toBeLessThan(Math.max(cold / 5, 0.5));
+	});
+});

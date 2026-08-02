@@ -760,6 +760,52 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
 }
 
 /**
+ * Memo for `truncateToolResult`, keyed on its exact inputs.
+ *
+ * The function is a pure transform of (result, maxChars) over rows that never
+ * change once persisted, but nothing cached it — so every oversized tool result
+ * was re-truncated from scratch on every turn AND on every iteration of the
+ * tool loop. That's not cheap work: per result it means a full-string nesting
+ * scan, a `JSON.parse` with a number-boxing reviver (measured ~8x a plain parse
+ * on number-heavy payloads), a whole-tree walk, and at least two whole-payload
+ * `JSON.stringify` calls, plus a per-element prefix-sum for array elision.
+ * Multiplicative: three 500 KB results on a turn running four tool-loop
+ * iterations redid all of it twelve times, synchronously, in front of each
+ * iteration's upstream call — and node:sqlite's single thread means that stalls
+ * every other user's stream too.
+ *
+ * Budgeted by total retained characters rather than entry count, since the
+ * entries are exactly the payloads that are large by definition. LRU by access,
+ * so the results still in the active conversation stay warm.
+ */
+const TRUNCATE_CACHE_MAX_CHARS = 8_000_000;
+const truncateCache = new Map<string, string>();
+let truncateCacheChars = 0;
+
+/**
+ * The uncached transform. Exported for tests that need to assert the memo
+ * doesn't change the output.
+ */
+function truncateToolResultUncached(result: string, maxChars: number): string {
+	const structured = truncateJsonResult(result, maxChars);
+	if (structured !== null) return structured;
+
+	// Plain text. Sizing the budget is mildly self-referential: the note reports how
+	// much was dropped, and the note itself occupies budget, so a bigger note means a
+	// smaller keep means a bigger reported number — which can tick over a digit
+	// boundary and push the result 1-2 chars past the cap. Converge instead of
+	// guessing (it settles on the first or second pass).
+	let budget = maxChars - truncationNote(result.length - maxChars).length;
+	for (let i = 0; i < 4 && budget > 0; i++) {
+		const out = elide(result, budget, truncationNote);
+		if (out.length <= maxChars) return out;
+		budget -= out.length - maxChars;
+	}
+	// Cap so tight the note alone won't fit → a bare head is the best we can do.
+	return safeSlice(result, 0, maxChars);
+}
+
+/**
  * Bound a single tool result's contribution to the payload.
  *
  * A tool result is re-sent verbatim on every subsequent turn of the branch, so
@@ -789,22 +835,25 @@ function truncateJsonResult(result: string, maxChars: number): string | null {
 export function truncateToolResult(result: string, maxChars: number): string {
 	if (maxChars <= 0 || result.length <= maxChars) return result;
 
-	const structured = truncateJsonResult(result, maxChars);
-	if (structured !== null) return structured;
-
-	// Plain text. Sizing the budget is mildly self-referential: the note reports how
-	// much was dropped, and the note itself occupies budget, so a bigger note means a
-	// smaller keep means a bigger reported number — which can tick over a digit
-	// boundary and push the result 1-2 chars past the cap. Converge instead of
-	// guessing (it settles on the first or second pass).
-	let budget = maxChars - truncationNote(result.length - maxChars).length;
-	for (let i = 0; i < 4 && budget > 0; i++) {
-		const out = elide(result, budget, truncationNote);
-		if (out.length <= maxChars) return out;
-		budget -= out.length - maxChars;
+	const key = `${maxChars}:${result}`;
+	const hit = truncateCache.get(key);
+	if (hit !== undefined) {
+		// Re-insert to mark most-recently-used (Map iterates in insertion order).
+		truncateCache.delete(key);
+		truncateCache.set(key, hit);
+		return hit;
 	}
-	// Cap so tight the note alone won't fit → a bare head is the best we can do.
-	return safeSlice(result, 0, maxChars);
+
+	const out = truncateToolResultUncached(result, maxChars);
+	truncateCache.set(key, out);
+	truncateCacheChars += key.length + out.length;
+	while (truncateCacheChars > TRUNCATE_CACHE_MAX_CHARS && truncateCache.size > 1) {
+		const oldest = truncateCache.keys().next();
+		if (oldest.done || oldest.value === key) break;
+		truncateCacheChars -= oldest.value.length + truncateCache.get(oldest.value)!.length;
+		truncateCache.delete(oldest.value);
+	}
+	return out;
 }
 
 /**
