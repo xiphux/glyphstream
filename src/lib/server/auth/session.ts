@@ -60,11 +60,20 @@ export function validateSessionToken(token: string): AuthContext | null {
 	// session row stays in the DB (so re-enabling restores access
 	// without re-issuing a token) but it stops resolving until the
 	// disabled flag clears.
+	//
+	// Only the four `SessionUser` columns are projected. Selecting the whole
+	// `users` row would decode `preferences_json` and `conversation_overview`
+	// (the injected topic map — multiple KB once the summary worker has run)
+	// out of SQLite on *every* request, including presence heartbeats, to
+	// throw them away here.
 	const row = db
 		.select({
 			sessionId: sessions.id,
 			expiresAt: sessions.expiresAt,
-			user: users,
+			userId: users.id,
+			displayName: users.displayName,
+			email: users.email,
+			role: users.role,
 		})
 		.from(sessions)
 		.innerJoin(users, eq(sessions.userId, users.id))
@@ -88,10 +97,10 @@ export function validateSessionToken(token: string): AuthContext | null {
 		sessionId: row.sessionId,
 		expiresAt,
 		user: {
-			id: row.user.id,
-			displayName: row.user.displayName,
-			email: row.user.email,
-			role: row.user.role,
+			id: row.userId,
+			displayName: row.displayName,
+			email: row.email,
+			role: row.role,
 		},
 	};
 }
