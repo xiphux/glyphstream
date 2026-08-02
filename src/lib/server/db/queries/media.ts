@@ -628,7 +628,10 @@ export function listMediaNeedingEmbedding(
 	const sel = { id: media.id, promptFull: media.promptFull };
 	// Excludes soft-deleted media (hard_deleted_at set, prompt_full intact) so a
 	// tombstoned-before-embedding row doesn't spend an embed call. Must stay in
-	// lockstep with idx_media_unembedded's WHERE so the index serves this query.
+	// lockstep with idx_media_unembedded's WHERE — matching the predicate is what
+	// makes the partial index *usable*, but see the note on the index itself for
+	// what makes it actually get *picked*: verify with EXPLAIN QUERY PLAN rather
+	// than assuming, because a competing index nearly won this one.
 	const embeddable = and(
 		isNull(media.hardDeletedAt),
 		isNotNull(media.promptFull),

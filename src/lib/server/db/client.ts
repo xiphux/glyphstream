@@ -47,6 +47,18 @@ export function getDb(): DB {
 		migrate(db, { migrationsFolder: resolve('./drizzle') });
 	}
 
+	// Collect planner statistics. Without `sqlite_stat1` every index is costed
+	// from hardcoded defaults, which is how a two-equality-column index kept
+	// getting picked over the one that actually narrows the rows — the planner
+	// had no way to know `origin = 'generated'` matches nearly the whole table
+	// while `user_id` matches a fraction of it.
+	//
+	// `optimize` rather than a bare `ANALYZE`: it's the incremental form, so it
+	// does the work once and then no-ops. Measured on a 30k-media DB with no
+	// prior stats — 68ms on the first open (populating 43 stat rows even with no
+	// queries yet run on the connection), 0.55ms on every open after.
+	sqlite.exec('PRAGMA optimize');
+
 	cached = { db, sqlite };
 	return db;
 }

@@ -647,6 +647,17 @@ export const media = sqliteTable(
 		// push_subscriptions.endpoint. Name pinned to the original auto-name.
 		uniqueIndex('media_storage_path_unique').on(t.storagePath),
 		index('idx_media_user_created').on(t.userId, t.createdAt),
+		// The gallery's predicate shape: one user's live generated media in
+		// created_at order. Exists because `idx_media_unreferenced` below leads
+		// with two equality columns (origin, hard_deleted_at) and therefore wins
+		// the planner's default costing for these queries — even though
+		// `origin = 'generated' AND hard_deleted_at IS NULL` matches essentially
+		// the whole table while `user_id` is the most selective predicate
+		// available. The result was that the gallery's hot reads (the units
+		// fingerprint, the model + month facet lists, the unit source load) each
+		// walked EVERY user's media. Leading with user_id and carrying created_at
+		// makes them index-served, and covering for the fingerprint.
+		index('idx_media_user_gallery').on(t.userId, t.origin, t.hardDeletedAt, t.createdAt),
 		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
 		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the
 		// range column last lets SQLite use index-only equality probes on
@@ -658,8 +669,18 @@ export const media = sqliteTable(
 		// rows out of the queue and the index near-empty once caught up. The WHERE
 		// must match listMediaNeedingEmbedding's predicate so it serves the query.
 		// Mirrors idx_memories_unembedded.
+		//
+		// The key columns look redundant — `origin` and `hard_deleted_at` are
+		// constant inside the partial predicate, and `prompt_full` isn't filtered
+		// on — but they're what actually gets this index *chosen*. Keyed on `id`
+		// alone it could only be scanned, and SQLite costed that above an equality
+		// seek into `idx_media_unreferenced`, so the backfill searched the whole
+		// library instead of its own 100-row queue (measured 1.35ms → 0.017ms at
+		// 30k media, and it grew with the library). Leading with the same two
+		// equality columns lets it compete as a seek; trailing `prompt_full` makes
+		// it covering. Constant columns cost almost nothing to store.
 		index('idx_media_unembedded')
-			.on(t.id)
+			.on(t.origin, t.hardDeletedAt, t.id, t.promptFull)
 			.where(
 				sql`${t.embedding} is null and ${t.promptFull} is not null and ${t.origin} = 'generated' and ${t.hardDeletedAt} is null`,
 			),
