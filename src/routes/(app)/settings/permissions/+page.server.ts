@@ -1,5 +1,4 @@
 import { error } from '@sveltejs/kit';
-import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import { listServerCatalog } from '$lib/server/mcp/registry';
 import type { PageServerLoad } from './$types';
@@ -16,14 +15,15 @@ import type { PageServerLoad } from './$types';
  * preserve the data so re-adding the server restores the grant.
  */
 export const load: PageServerLoad = async ({ locals, parent, depends }) => {
-	await parent();
+	// Prefs come from the (app) layout, which already loaded them — see the note
+	// in settings/preferences.
+	const { prefs } = await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
 	// Tagged so the page can `invalidate('settings:permissions')` after a
 	// revoke without re-running the (app) layout — the trust grants this
 	// page lists are independent of the layout's sidebar/picker data.
 	depends('settings:permissions');
 	await awaitMcpReady();
-	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];
 	const servers = listServerCatalog();
 	const groups = new Map<string, { displayName: string; tools: string[] }>();

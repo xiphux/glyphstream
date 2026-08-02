@@ -1,5 +1,4 @@
 import { error } from '@sveltejs/kit';
-import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import type { PageServerLoad } from './$types';
 
 /**
@@ -9,9 +8,13 @@ import type { PageServerLoad } from './$types';
  * value the user hadn't typed.
  */
 export const load: PageServerLoad = async ({ locals, parent }) => {
-	await parent();
+	// Reuse the layout's `prefs` instead of re-reading and re-parsing them. The
+	// (app) layout already loads them for every page (the composer needs
+	// enterBehavior on first paint), and re-reading here re-ran the full
+	// coerceUserPreferences walk and serialized a *second* copy of the blob into
+	// this page's data.
+	const { prefs } = await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
-	const prefs = getUserPreferences(locals.user.id);
 	if (!prefs) throw error(404, 'User not found');
 	return { prefs };
 };
