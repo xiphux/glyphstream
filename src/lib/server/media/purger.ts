@@ -71,16 +71,35 @@ export async function runPurgeSweep(): Promise<{
 		const cutoff = Date.now() - GRACE_PERIOD_MS;
 		const candidates = findPurgeCandidates(cutoff, BATCH_SIZE);
 
+		// Unlink concurrently rather than one candidate at a time. Each delete is
+		// three unlinks (original + .thumb.jpg + .vision.jpg), so a full 500-row
+		// batch was up to 1500 serialized filesystem round trips. Nothing here
+		// blocks the event loop (it's all async I/O) — it just made the sweep take
+		// far longer than it needed to. Bounded so a large batch can't saturate the
+		// filesystem queue against foreground media reads.
 		const store = getMediaStore();
 		let hardDeleted = 0;
-		for (const c of candidates) {
-			try {
-				await store.delete(c.storagePath);
+		const PURGE_CONCURRENCY = 8;
+		for (let i = 0; i < candidates.length; i += PURGE_CONCURRENCY) {
+			const slice = candidates.slice(i, i + PURGE_CONCURRENCY);
+			const outcomes = await Promise.all(
+				slice.map(async (c) => {
+					try {
+						await store.delete(c.storagePath);
+						return c;
+					} catch (e) {
+						// Log and continue — one bad row shouldn't block the batch.
+						console.warn(`[purger] failed to hard-delete ${c.id}:`, e);
+						return null;
+					}
+				}),
+			);
+			// Row updates stay sequential and on this thread: they're synchronous
+			// SQLite writes, and only rows whose bytes actually went are stamped.
+			for (const c of outcomes) {
+				if (!c) continue;
 				markHardDeleted(c.id);
 				hardDeleted++;
-			} catch (e) {
-				// Log and continue — one bad row shouldn't block the batch.
-				console.warn(`[purger] failed to hard-delete ${c.id}:`, e);
 			}
 		}
 

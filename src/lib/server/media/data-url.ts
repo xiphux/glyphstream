@@ -122,6 +122,12 @@ export async function mediaIdToDataUrl(mediaId: string, userId: string): Promise
 		// Checked before the original is read, so a cache hit never pulls the
 		// full-resolution bytes off disk at all — which is the point, since this
 		// runs once per image per turn for the whole life of the conversation.
+		//
+		// Caching the resulting data URL in memory on top of this looks tempting
+		// for the same reason, but measured it isn't: base64-encoding twenty
+		// 200 KB variants is ~1ms total, and the reads it would save are async and
+		// OS-cached. A string cache would trade tens of MB resident (base64 is
+		// 1.33x the bytes) for about a millisecond.
 		const variant = await getVisionVariant(row.storagePath);
 		if (variant) {
 			return `data:${variant.contentType};base64,${variant.bytes.toString('base64')}`;

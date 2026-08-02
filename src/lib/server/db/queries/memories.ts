@@ -248,6 +248,20 @@ export const RECALL_DENSE_CORPUS_CAP = 5000;
  * incomparable vector spaces). Returns `{ id, embedding }` so the caller can map
  * cosine ranks back onto the full recall corpus by id.
  */
+/**
+ * COST, measured before caching this: at the full 5000-vector cap with 1024-dim
+ * vectors the whole dense leg is ~28ms — 12.5ms to load the blobs, 4.1ms to
+ * decode them, 11.5ms to rank. Caching the decoded corpus (the obvious move)
+ * removes the load and decode, ~17ms, and leaves the ranking, which is
+ * irreducible.
+ *
+ * Not worth it: 17ms on an explicit user action (a typed search, or the model
+ * calling `recall_memory`) bought with a cache whose staleness shows up as
+ * *wrong search results* — a just-embedded memory silently missing from recall
+ * — plus ~20MB resident per (user, embedding model). Correctness of what comes
+ * back beats 17ms here. Revisit only if the cap rises a lot or the ranking
+ * itself gets cheaper.
+ */
 export function listMemoryRecallVectors(
 	userId: string,
 	embeddingModel: string,

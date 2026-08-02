@@ -115,15 +115,27 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	// we deliberately don't generate one here (a read-only probe shouldn't sit
 	// re-encoding a thread's worth of images), so it prices as the original until
 	// the next send. Erring high on a not-yet-sent image is the safe direction.
-	const mediaSize = async (mediaId: string): Promise<MediaSize | null> => {
-		const row = getMediaForUser(mediaId, userId);
-		if (!row || row.hardDeletedAt !== null) return null;
-		if (row.kind !== 'image' && row.kind !== 'video') return null;
-		if (row.kind === 'image') {
-			const variant = await cachedVisionVariantSize(row.storagePath);
-			if (variant !== null) return { byteSize: variant, contentType: 'image/jpeg' };
-		}
-		return { byteSize: row.byteSize, contentType: row.contentType };
+	//
+	// Memoized per request: the walk calls this once per image PART, and the same
+	// media commonly appears several times on a branch (re-attached across turns,
+	// or carried by a fan-out's siblings). Without the memo each occurrence cost
+	// its own row lookup plus an async disk stat for the variant.
+	const mediaSizeCache = new Map<string, Promise<MediaSize | null>>();
+	const mediaSize = (mediaId: string): Promise<MediaSize | null> => {
+		const hit = mediaSizeCache.get(mediaId);
+		if (hit) return hit;
+		const pending = (async (): Promise<MediaSize | null> => {
+			const row = getMediaForUser(mediaId, userId);
+			if (!row || row.hardDeletedAt !== null) return null;
+			if (row.kind !== 'image' && row.kind !== 'video') return null;
+			if (row.kind === 'image') {
+				const variant = await cachedVisionVariantSize(row.storagePath);
+				if (variant !== null) return { byteSize: variant, contentType: 'image/jpeg' };
+			}
+			return { byteSize: row.byteSize, contentType: row.contentType };
+		})();
+		mediaSizeCache.set(mediaId, pending);
+		return pending;
 	};
 
 	const breakdown = await buildContextBreakdown({

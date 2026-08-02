@@ -87,6 +87,27 @@ export function createConversation(input: CreateInput): ConversationDetail {
 	};
 }
 
+/**
+ * Just the ids of a user's most recent conversations, newest-first — the
+ * generating-dot poll's whole input.
+ *
+ * The poll used `listConversations()` and immediately `.map(c => c.id)`,
+ * building 150 full summaries (titles, model ids, timestamps, flags) to throw
+ * all but one column away, on an interval, for as long as any dot is showing.
+ * Same LIMIT and ordering so the two stay consistent.
+ */
+export function listConversationIds(userId: string): string[] {
+	const db = getDb();
+	return db
+		.select({ id: conversations.id })
+		.from(conversations)
+		.where(and(eq(conversations.userId, userId), isNull(conversations.archivedAt)))
+		.orderBy(desc(conversations.updatedAt))
+		.limit(SIDEBAR_CONVERSATION_LIMIT)
+		.all()
+		.map((r) => r.id);
+}
+
 export function listConversations(userId: string): ConversationSummary[] {
 	const db = getDb();
 	return db

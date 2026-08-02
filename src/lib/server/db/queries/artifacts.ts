@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb } from '../client';
 import { artifacts, artifactVersions } from '../schema';
@@ -44,6 +44,26 @@ function countVersions(artifactId: string): number {
 	return row?.n ?? 0;
 }
 
+/**
+ * Version counts for several artifacts in one grouped query.
+ *
+ * `toCanvasDoc` called `countVersions` per row, so listing a conversation's
+ * canvases issued one extra statement per canvas — on every send with an active
+ * canvas (`augmentRequestForCanvas`) and on every `update_canvas`. Each was
+ * index-served, but N round trips through the driver for a number that one
+ * GROUP BY answers.
+ */
+function countVersionsFor(artifactIds: string[]): Map<string, number> {
+	if (artifactIds.length === 0) return new Map();
+	const rows = getDb()
+		.select({ artifactId: artifactVersions.artifactId, n: sql<number>`count(*)` })
+		.from(artifactVersions)
+		.where(inArray(artifactVersions.artifactId, artifactIds))
+		.groupBy(artifactVersions.artifactId)
+		.all();
+	return new Map(rows.map((r) => [r.artifactId, Number(r.n)]));
+}
+
 const CANVAS_COLUMNS = {
 	id: artifacts.id,
 	conversationId: artifacts.conversationId,
@@ -66,7 +86,7 @@ type CanvasRow = {
 	contentHtml: string | null;
 };
 
-function toCanvasDoc(row: CanvasRow): CanvasDoc {
+function toCanvasDoc(row: CanvasRow, versionNumber = countVersions(row.id)): CanvasDoc {
 	return {
 		id: row.id,
 		conversationId: row.conversationId,
@@ -75,7 +95,7 @@ function toCanvasDoc(row: CanvasRow): CanvasDoc {
 		content: row.content ?? '',
 		contentHtml: row.contentHtml,
 		currentVersionId: row.currentVersionId,
-		versionNumber: countVersions(row.id),
+		versionNumber,
 		updatedAt: row.updatedAt,
 	};
 }
@@ -103,7 +123,8 @@ export function listActiveCanvases(conversationId: string, userId: string): Canv
 		)
 		.orderBy(asc(artifacts.createdAt), asc(artifacts.id))
 		.all();
-	return rows.map(toCanvasDoc);
+	const counts = countVersionsFor(rows.map((r) => r.id));
+	return rows.map((r) => toCanvasDoc(r, counts.get(r.id) ?? 0));
 }
 
 /**
