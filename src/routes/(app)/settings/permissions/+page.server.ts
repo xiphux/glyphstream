@@ -19,9 +19,16 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// in settings/preferences.
 	const { prefs } = await parent();
 	if (!locals.user) throw error(401, 'Authentication required');
-	// Tagged so the page can `invalidate('settings:permissions')` after a
-	// revoke without re-running the (app) layout — the trust grants this
-	// page lists are independent of the layout's sidebar/picker data.
+	// Tagged so the page can `invalidate('settings:permissions')` after a revoke
+	// without the (app) layout's payload being re-serialized to the client — the
+	// trust grants this page lists are independent of the layout's sidebar/picker
+	// data.
+	//
+	// Note the layout load body DOES still re-run: server-side, `parent()` calls
+	// the parent loader directly, and the invalidation bitstring only decides
+	// which nodes get serialized into the `__data.json` response. That's what
+	// keeps `prefs` above fresh after a revoke despite the page-scoped key. The
+	// saving is payload and client-side reactivity, not server work.
 	depends('settings:permissions');
 	await awaitMcpReady();
 	const trusted = prefs?.trustedMcpTools ?? [];

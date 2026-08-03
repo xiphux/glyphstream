@@ -386,16 +386,21 @@ export const messages = sqliteTable(
 	},
 	(t) => [
 		index('idx_messages_conv_parent').on(t.conversationId, t.parentMessageId),
-		// Carries the skeleton columns, not just the ordering pair. `walkActiveBranch`
-		// opens with a "cheap" scan of (id, parent_message_id, role, created_at) for the
-		// whole conversation before fetching only the active branch's heavy rows — but
-		// with just (conversation_id, created_at) indexed, `parent_message_id` and
-		// `role` forced a table lookup per message. `created_at` is also the LAST
-		// column in the row layout, behind content_json / content_html /
-		// reasoning_text / raw_response_json, so on any message whose record overflows
-		// (routine once shiki HTML is stored) reaching it walks the overflow chain.
-		// The "few dozen bytes per row" the scan is described as costing were in
-		// practice every heavy row in the thread. Covering makes it true.
+		// Carries the skeleton columns, not just the ordering pair. Two hot reads
+		// scan a whole conversation for a handful of narrow columns before touching
+		// any heavy row: `walkActiveBranch` takes (id, parent_message_id,
+		// created_at) to compute the active-branch id list, and
+		// `findUserMessageAncestor` takes (id, parent_message_id, role) to walk a
+		// tool turn back to its user message. With just (conversation_id,
+		// created_at) indexed, both forced a table lookup per message — and
+		// `created_at` is the LAST column in the row layout, behind content_json /
+		// content_html / reasoning_text / raw_response_json, so on any message whose
+		// record overflows (routine once shiki HTML is stored) reaching it walks the
+		// overflow chain. The "few dozen bytes per row" the scan is described as
+		// costing were in practice every heavy row in the thread. Covering both
+		// makes it true. `role` additionally lets `getConversationFirstExchange`
+		// evaluate its `parent_message_id IS NULL AND role = 'user'` residuals from
+		// the index instead of the table.
 		index('idx_messages_conv_created').on(
 			t.conversationId,
 			t.createdAt,

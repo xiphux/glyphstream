@@ -50,8 +50,16 @@
 	// gate that protects other blocks is open exactly when this is worst.)
 	//
 	// Plain `<pre>` while executing costs nothing and reads the same modulo
-	// color; the highlight lands once the arguments stop changing, still ahead of
+	// color; the highlight lands when the call leaves `executing`, still ahead of
 	// the server-rendered `argumentsHtml` that replaces it after persistence.
+	//
+	// Note that's when the tool *returns*, not when its arguments stop growing:
+	// `pushToolCall` sets `executing` before the first argument byte and only
+	// `updateToolCallResult` clears it, and the SSE vocabulary has no
+	// args-complete event to key off. So a slow tool (run_python pays a 2-5s
+	// Pyodide cold start plus pool-queue time) shows an unhighlighted block for
+	// its whole run. Highlighting at args-settled would need a new signal or a
+	// debounce, and would give back some of what the gate above is buying.
 	const streamingCodeHtml = $derived.by(() => {
 		if (!streamingCode || status === 'executing') return null;
 		if (!liveHighlighterReady.value) return null;

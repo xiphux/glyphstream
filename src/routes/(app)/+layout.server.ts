@@ -41,8 +41,10 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// /settings/mcp `invalidate('app:mcp-credentials')`s so the composer's
 	// capability list (featureCategories) reflects the newly-connected (or
 	// removed) server right away. Kept separate from the page's own
-	// `settings:mcp` key so frequent trust toggles / retries DON'T re-run this
-	// layout — only the rare credential change does.
+	// `settings:mcp` key so frequent trust toggles / retries don't re-serialize
+	// this layout's payload to the client — only the rare credential change does.
+	// (The load body still re-runs whenever a page that `await parent()`s is
+	// invalidated; the key controls what's sent, not what executes.)
 	depends('app:mcp-credentials');
 	// Tagged so a client that resumes from background (visibilitychange /
 	// focus / pageshow in the (app) layout) can `invalidate('app:conversations')`
@@ -56,7 +58,15 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// /settings/preferences — favorite models (the picker's star, the sidebar's
 	// drag-reorder) and saved model sets. Those write through
 	// PATCH /api/user/preferences and then need `prefs` re-read; a separate key
-	// keeps that from re-running any *page* that happens to be open.
+	// keeps that from re-serializing the open page's payload.
+	//
+	// Not a blanket "no page re-runs". The sidebar's favorites drag lives in this
+	// layout, so it's mounted on every (app) page, and any page that `await
+	// parent()`s does re-run its load — per the `uses.parent` note in CLAUDE.md.
+	// Reordering favorites while on /gallery re-runs that load. Those payloads are
+	// small; what the key protects is `chat/[id]`, which guards with
+	// `requireUserPage` instead of `await parent()` and so stays untouched — and
+	// that's the one whose payload is the entire conversation.
 	depends('app:prefs');
 	const conversations = listConversations(locals.user.id);
 	return {

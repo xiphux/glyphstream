@@ -184,6 +184,19 @@ END;
 -- COALESCE(prompt_full, '') gave every upload an empty FTS row that can never
 -- match, costing index space and a write per upload. Search joins back to
 -- `media` for visibility, so an absent row reads the same as a non-matching one.
+--
+-- OPERATOR NOTE — do not VACUUM this database without rebuilding this index.
+-- `media.id` is TEXT, so `media.rowid` is implicit, and SQLite is free to
+-- renumber implicit rowids during a VACUUM (a `.dump`/restore does the same).
+-- The pinning above would then point at the wrong rows: deleting a media item
+-- would clear some other item's prompt from the index and leave its own
+-- searchable. Nothing in this repo runs VACUUM, so this needs a deliberate
+-- operator action to break; if you do run one, follow it with
+--   DELETE FROM media_prompt_fts;
+--   INSERT INTO media_prompt_fts (rowid, text, media_id, user_id)
+--     SELECT rowid, prompt_full, id, user_id FROM media WHERE prompt_full IS NOT NULL;
+-- `search_index` is unaffected — it resolves deletes through `search_index_ref`
+-- keyed on message/conversation ids, which VACUUM doesn't touch.
 
 DROP TRIGGER media_prompt_fts_ai;
 --> statement-breakpoint
