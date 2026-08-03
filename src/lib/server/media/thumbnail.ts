@@ -98,13 +98,23 @@ async function acquireSlot(): Promise<void> {
 		active++;
 		return;
 	}
+	// The slot is handed over already-held by `releaseSlot`, so there's no
+	// increment here. Freeing it first and letting the woken waiter re-take it
+	// would leave a gap: the waiter resumes a microtask later, so a caller
+	// arriving in between passes the fast-path check, and both then increment —
+	// putting `active` over the cap during exactly the burst this bounds.
 	await new Promise<void>((release) => waiting.push(release));
-	active++;
 }
 
 function releaseSlot(): void {
+	const next = waiting.shift();
+	// Transfer rather than free-then-reacquire: `active` stays counted for the
+	// waiter that's about to run.
+	if (next) {
+		next();
+		return;
+	}
 	active--;
-	waiting.shift()?.();
 }
 
 /** Stat a file, or null if it isn't there — one syscall instead of
