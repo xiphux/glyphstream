@@ -65,13 +65,34 @@ describe('upsertPushSubscription', () => {
 		expect(listPushSubscriptionsForUser(u.id)).toHaveLength(1);
 	});
 
-	it('reassigns ownership when a different user resubscribes the same endpoint', () => {
+	it('replaces rather than adopts a row owned by another user', () => {
+		// Shared-browser account switch: the second user gets a clean row, and
+		// the first no longer has one. Previously the upsert reached into the
+		// existing row and SET user_id, which made this the only write in the
+		// codebase to mutate a row without proving the caller owned it —
+		// anyone who knew another user's endpoint URL could re-point that
+		// device at their own notifications, titles and previews included.
 		const a = seedUser();
 		const b = seedUser();
-		upsertPushSubscription({ userId: a.id, ...SAMPLE });
-		upsertPushSubscription({ userId: b.id, ...SAMPLE });
+		const aRow = upsertPushSubscription({ userId: a.id, ...SAMPLE });
+		const bRow = upsertPushSubscription({ userId: b.id, ...SAMPLE });
 		expect(listPushSubscriptionsForUser(a.id)).toHaveLength(0);
 		expect(listPushSubscriptionsForUser(b.id)).toHaveLength(1);
+		// A fresh row, not a's with the owner swapped: b's "first subscribed"
+		// is when b subscribed, and none of a's history carries over.
+		expect(bRow.id).not.toBe(aRow.id);
+		expect(bRow.userId).toBe(b.id);
+	});
+
+	it('still preserves created_at when the SAME user resubscribes', () => {
+		// The replace path must not fire for the owner — re-subscribing your
+		// own device shouldn't reset when you first subscribed.
+		const u = seedUser();
+		const first = upsertPushSubscription({ userId: u.id, ...SAMPLE });
+		const second = upsertPushSubscription({ userId: u.id, ...SAMPLE, p256dh: 'rotated' });
+		expect(second.id).toBe(first.id);
+		expect(second.createdAt).toBe(first.createdAt);
+		expect(second.p256dh).toBe('rotated');
 	});
 });
 

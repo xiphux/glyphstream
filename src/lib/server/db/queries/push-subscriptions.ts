@@ -4,14 +4,14 @@
  * produces the same endpoint, and we upsert on it so a stale row never
  * lingers when the user re-enables notifications. If the same device
  * had previously been subscribed under a different user (account
- * switch on a shared browser), the upsert reassigns ownership rather
- * than holding two rows for one endpoint, which the UNIQUE constraint
- * wouldn't permit anyway.
+ * switch on a shared browser), the prior row is dropped and replaced
+ * rather than adopted — one endpoint can only hold one row, which the
+ * UNIQUE constraint enforces anyway.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { generateId } from '../../util/id';
-import { getDb } from '../client';
+import { getDb, type Tx } from '../client';
 import { pushSubscriptions } from '../schema';
 
 export interface PushSubscriptionRow {
@@ -35,15 +35,43 @@ interface UpsertInput {
 
 /**
  * Insert-or-update a push subscription keyed by its endpoint URL.
- * On conflict we refresh user_id, the key material (in case it
- * rotated client-side), the user-agent string, and last_seen_at —
- * but never created_at, which keeps "first subscribed" stable for
- * the future "your devices" UI.
+ * On conflict we refresh the key material (in case it rotated
+ * client-side), the user-agent string, and last_seen_at — but never
+ * created_at, which keeps "first subscribed" stable for the future
+ * "your devices" UI.
+ *
+ * The upsert used to also SET user_id to the caller, which made it the one
+ * write in the codebase that mutated a row without first proving the caller
+ * owned it: anyone who knew another user's endpoint URL could re-point that
+ * device at their own notifications, which carry conversation titles and
+ * message previews. The endpoint is high-entropy and no route discloses it,
+ * so this was hard to reach — but "hard to guess" isn't the ownership
+ * invariant the rest of the schema holds to.
+ *
+ * A foreign row is now deleted and replaced rather than adopted. That keeps
+ * the shared-browser case working (the same physical device re-subscribing
+ * under a second account gets a clean row) while making the ownership
+ * transfer explicit rather than a silent side effect of an UPDATE.
  */
 export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow {
 	const db = getDb();
 	const now = Date.now();
 	const newId = generateId();
+	return db.transaction((tx) => {
+		tx.delete(pushSubscriptions)
+			.where(
+				and(
+					eq(pushSubscriptions.endpoint, input.endpoint),
+					ne(pushSubscriptions.userId, input.userId),
+				),
+			)
+			.run();
+		return upsertOwnRow(tx, input, newId, now);
+	});
+}
+
+function upsertOwnRow(tx: Tx, input: UpsertInput, newId: string, now: number): PushSubscriptionRow {
+	const db = tx;
 	db.insert(pushSubscriptions)
 		.values({
 			id: newId,
@@ -58,7 +86,6 @@ export function upsertPushSubscription(input: UpsertInput): PushSubscriptionRow 
 		.onConflictDoUpdate({
 			target: pushSubscriptions.endpoint,
 			set: {
-				userId: input.userId,
 				p256dh: input.p256dh,
 				auth: input.auth,
 				userAgent: input.userAgent ?? null,

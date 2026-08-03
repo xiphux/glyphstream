@@ -16,7 +16,16 @@ export const GET: RequestHandler = async ({ locals }) => {
 		listEndpoints();
 	} catch (e) {
 		if (e instanceof ConfigError) {
-			throw error(500, `Endpoint configuration is invalid: ${e.message}`);
+			// The detail names the absolute config.toml path and the env var
+			// expected to hold a key — troubleshooting gold for the operator,
+			// and infrastructure disclosure to everyone else. (Only the env var
+			// NAME, never a resolved value, per the *_env convention — so this
+			// is path/name disclosure, not a credential leak.) Admins can
+			// already read config.toml; non-admins get the bare fact.
+			if (locals.user.role === 'admin') {
+				throw error(500, `Endpoint configuration is invalid: ${e.message}`);
+			}
+			throw error(500, 'Endpoint configuration is invalid. Ask an administrator to check it.');
 		}
 		throw e;
 	}
