@@ -11,11 +11,11 @@
  * in the DB, mirroring the session module's hash-the-token pattern. A DB
  * read therefore can't reconstruct a usable invite.
  */
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, isNull } from 'drizzle-orm';
 import { createHash, randomBytes } from 'node:crypto';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
-import { invites } from '../schema';
+import { invites, users } from '../schema';
 import type { UserRole } from './users';
 
 /** Hex SHA-256 of a raw invite token — the stored/looked-up form. */
@@ -64,10 +64,24 @@ export interface ValidInvite {
 }
 
 /**
- * Resolve a raw token to a redeemable invite — exists and unexpired. (There's
- * no "used" state: a redeemed invite is deleted.) Returns null otherwise (the
- * join flow maps null to a "this invite link is invalid or expired" page).
- * `now` is injectable for tests.
+ * Resolve a raw token to a redeemable invite — exists, unexpired, and issued
+ * by an admin who is still an active admin. (There's no "used" state: a
+ * redeemed invite is deleted.) Returns null otherwise (the join flow maps null
+ * to a "this invite link is invalid or expired" page). `now` is injectable for
+ * tests.
+ *
+ * The issuer join is a revocation guard. Redemption used to check only the
+ * token hash and expiry, so every invite an admin had issued — including one
+ * carrying `role: 'admin'`, redeemable for up to the 30-day cap — stayed live
+ * after that admin was disabled. That's backwards: disable is precisely the
+ * non-destructive action an operator reaches for when an admin account is
+ * compromised, chosen over delete so the account's conversations and media
+ * survive. Delete already revoked (the FK cascades), so the safer-looking
+ * button was the one that left the door open.
+ *
+ * Checking issuer state at redemption rather than deleting invites inside
+ * `setUserDisabled` also covers a future demote path, and re-arms the invites
+ * automatically if the admin is re-enabled.
  */
 export function findValidInvite(rawToken: string, now: number = Date.now()): ValidInvite | null {
 	if (!rawToken) return null;
@@ -80,7 +94,14 @@ export function findValidInvite(rawToken: string, now: number = Date.now()): Val
 			expiresAt: invites.expiresAt,
 		})
 		.from(invites)
-		.where(eq(invites.tokenHash, hashInviteToken(rawToken)))
+		.innerJoin(users, eq(invites.createdByUserId, users.id))
+		.where(
+			and(
+				eq(invites.tokenHash, hashInviteToken(rawToken)),
+				eq(users.role, 'admin'),
+				isNull(users.disabledAt),
+			),
+		)
 		.get();
 	if (!row) return null;
 	if (row.expiresAt <= now) return null;

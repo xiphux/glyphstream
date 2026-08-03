@@ -50,6 +50,12 @@ Properties worth knowing:
 - **No extra OAuth setup.** The `/join` GitHub flow reuses login's callback
   URL — if GitHub OAuth already works for sign-in, invites work too. No new
   GitHub App or redirect URI to register.
+- **Only redeemable while the issuer is an active admin.** Redemption checks
+  the issuing admin's current state, so disabling an admin also makes every
+  invite they issued stop working — including admin-role ones. Re-enabling
+  them re-arms those invites. This matters when you disable a compromised
+  admin: the outstanding links they created are revoked with the account,
+  rather than staying live until they expire.
 
 ## Managing accounts
 
@@ -57,9 +63,10 @@ Properties worth knowing:
 was created, and who invited it. Per row:
 
 - **Disable / Enable** — disabling sets `users.disabled_at`, which invalidates
-  every active session and refuses every login method on that user's next
-  request. Re-enabling restores access. Nothing is deleted; this is the
-  reversible "revoke access" lever.
+  every active session, refuses every login method on that user's next
+  request, and (for an admin) makes any invite they issued unredeemable.
+  Re-enabling restores all three. Nothing is deleted; this is the reversible
+  "revoke access" lever.
 - **Delete** — removes the account and cascades its data (conversations, media
   references, credentials). Irreversible.
 

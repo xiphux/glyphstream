@@ -25,6 +25,7 @@ import {
 	ensureAdminBootstrap,
 	getUserRole,
 	listUsers,
+	setUserDisabled,
 } from '$lib/server/db/queries/users';
 import {
 	createInvite,
@@ -38,6 +39,7 @@ import { finalizeOAuthJoin, finalizePasskeyJoin, InviteConsumedError } from '$li
 import { findUserByOAuth } from '$lib/server/db/queries/oauth-accounts';
 import { listCredentialsForUser } from '$lib/server/db/queries/passkey';
 import { users } from '../../src/lib/server/db/schema';
+import { eq } from 'drizzle-orm';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -109,6 +111,43 @@ describe('invites', () => {
 		expect(consumeInvite(inv.id)).toBe(true);
 		// Second attempt matches 0 rows (the invite was deleted) → false.
 		expect(consumeInvite(inv.id)).toBe(false);
+	});
+
+	it('findValidInvite refuses an invite whose issuer has been disabled', () => {
+		// Disabling an admin is the non-destructive revocation an operator
+		// reaches for when an account is compromised — chosen over delete
+		// precisely so the account's conversations and media survive. It used
+		// to leave every invite that admin had issued fully redeemable,
+		// including role:'admin' ones good for up to the 30-day cap.
+		const adminId = admin();
+		const inv = createInvite({ createdByUserId: adminId, role: 'admin', ttlMs: 60_000 });
+		expect(findValidInvite(inv.token)?.role).toBe('admin');
+
+		expect(setUserDisabled(adminId, true)).toBe(true);
+		expect(findValidInvite(inv.token)).toBeNull();
+	});
+
+	it('re-enabling the issuer re-arms their outstanding invites', () => {
+		// Checking issuer state at redemption (rather than deleting invites
+		// when the admin is disabled) means the revocation is reversible along
+		// with the account it followed.
+		const adminId = admin();
+		const inv = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 60_000 });
+		setUserDisabled(adminId, true);
+		expect(findValidInvite(inv.token)).toBeNull();
+
+		setUserDisabled(adminId, false);
+		expect(findValidInvite(inv.token)?.id).toBe(inv.id);
+	});
+
+	it('findValidInvite refuses an invite whose issuer is no longer an admin', () => {
+		// No demote endpoint exists today, but the guard is written against
+		// role rather than the disabled flag alone so one can be added without
+		// reopening this hole.
+		const adminId = admin();
+		const inv = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 60_000 });
+		mocks.testDb.update(users).set({ role: 'user' }).where(eq(users.id, adminId)).run();
+		expect(findValidInvite(inv.token)).toBeNull();
 	});
 
 	it('deleteInvite revokes an unredeemed invite', () => {
