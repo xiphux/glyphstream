@@ -13,7 +13,12 @@ cp /path/to/repo/config.toml.example config.toml  # then edit
 cp /path/to/repo/docker-compose.yml .
 docker compose up -d --build
 curl http://localhost:3000/api/health
+docker compose logs | grep '\[setup\]'   # one-time /setup?token=… URL
 ```
+
+First-run setup requires that token — see the
+[authentication guide](authentication.md) — so an instance that's reachable
+before you finish setting it up can't be claimed by someone else.
 
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.

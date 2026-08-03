@@ -36,7 +36,20 @@ invalidates every session and refuses every login method at the next request.
 
 ## First-run setup
 
-On a fresh install with no users, visiting any page redirects to `/setup`.
+On a fresh install with no users, visiting any page redirects to `/setup` —
+which requires a one-time token, so the wizard can't be claimed by whoever
+reaches the host first. If you didn't set `SETUP_TOKEN` yourself, GlyphStream
+mints one at first boot and prints the URL to the log:
+
+```
+$ docker compose logs | grep '\[setup\]'
+[setup] No SETUP_TOKEN configured. First-run setup requires this one-time URL:
+[setup]   https://chat.example.com/setup?token=Xq3f...
+```
+
+Open that URL. (Set `SETUP_TOKEN` in `.env` beforehand to pin your own value
+instead — a minted token is regenerated whenever the process restarts.)
+
 Pick a display name (and optionally an email), then continue with any enabled
 OAuth provider or set up a passkey:
 
@@ -52,10 +65,12 @@ joins through an admin-issued invite (see
 [Multi-user & administration](multi-user.md)). The operator can later add more
 login methods (a second provider, or a passkey) from Settings → Security.
 
-For deployments on a long-known subdomain that want defense in depth against
-a "first visitor claims the account" race, set `SETUP_TOKEN` in `.env` to a
-random value; `/setup` then requires `?token=<value>` to render. The token
-has no effect once the first user exists.
+The token requirement closes the "first visitor claims the account" race —
+the window between pointing DNS at a new host and finishing setup, during
+which an unattended instance would otherwise hand out its admin account. Note
+what's at stake: a claimed instance closes `/setup` structurally against the
+real operator, and recovery means hand-editing SQLite. The token has no effect
+once the first user exists.
 
 ## GitHub OAuth setup (optional)
 
