@@ -971,9 +971,11 @@ function computeGalleryUnits(userId: string, opts: GalleryUnitOpts): GalleryUnit
 // re-homes stacking without changing the count).
 //
 // Bounded size: `model` and `tzOffsetMinutes` are part of the key and come from
-// unvalidated query params, so key cardinality is client-controlled. The map is
-// capped and evicts the oldest entry (insertion order) past the cap, so it can't
-// grow without bound in the single long-running Node process.
+// unvalidated query params, so key cardinality is client-controlled. Three
+// things bound it in the single long-running Node process — `tzOffsetMinutes` is
+// snapped to one of ~105 real offsets, a `model` that matches nothing is never
+// cached, and the map evicts oldest-first on both an entry cap and a total-units
+// cap (the entry cap alone bounds entries, not the memory behind them).
 const GALLERY_UNITS_TTL_MS = 30_000;
 const GALLERY_UNITS_CACHE_MAX = 256;
 /** Total units held across all cache entries. Each entry holds a unit per item
@@ -1002,9 +1004,39 @@ let galleryUnitsCachedTotal = 0;
 // grouped and bucketed afterwards, so every variant shares one load.
 const gallerySourceCache = new Map<
 	string,
-	{ fingerprint: string; expiresAt: number; rows: UnitSourceRow[] }
+	{ fingerprint: string; expiresAt: number; rows: UnitSourceRow[]; chars: number }
 >();
 const GALLERY_SOURCE_CACHE_MAX = 64;
+/** Total prompt characters held across all source entries — the same reasoning
+ *  as `GALLERY_UNITS_CACHE_MAX_UNITS`, and it binds harder here. A stacked
+ *  `GalleryUnit` keeps <=4 previews and a count, while a source row keeps every
+ *  item's id, excerpt and *untruncated* `promptFull`, so 64 entries x a large
+ *  library is worse than the units cache it sits next to. 20M chars is ~40MB of
+ *  UTF-16 — roughly one 30k-item library's worth of prompts, so the common case
+ *  caches whole and only a pathological one trims. */
+const GALLERY_SOURCE_CACHE_MAX_CHARS = 20_000_000;
+let gallerySourceCachedChars = 0;
+
+/** Retained prompt text in one source row. Budgeting on characters rather than
+ *  a row count (the units cache's bound) because these rows are dominated by
+ *  `promptFull`, which is stored untruncated — an enhanced image prompt runs
+ *  hundreds to a few thousand chars, so equal row counts can differ by an order
+ *  of magnitude in bytes. Ids/timestamps are ignored: they're a rounding error
+ *  next to the prompts, and the point is a ceiling, not an audit. */
+function sourceRowChars(r: UnitSourceRow): number {
+	return (
+		(r.promptFull?.length ?? 0) +
+		(r.originalPrompt?.length ?? 0) +
+		(r.promptExcerpt?.length ?? 0) +
+		(r.conversationTitle?.length ?? 0)
+	);
+}
+
+function sourceRowsChars(rows: UnitSourceRow[]): number {
+	let n = 0;
+	for (const r of rows) n += sourceRowChars(r);
+	return n;
+}
 
 function gallerySourceCacheKey(userId: string, opts: GalleryUnitOpts): string {
 	return JSON.stringify([userId, opts.kind ?? '', opts.model ?? '']);
@@ -1015,19 +1047,74 @@ function gallerySourceCacheKey(userId: string, opts: GalleryUnitOpts): string {
 function loadGalleryUnitSourceCached(userId: string, opts: GalleryUnitOpts): UnitSourceRow[] {
 	const fingerprint = galleryUserFingerprint(userId);
 	const key = gallerySourceCacheKey(userId, opts);
+	const now = Date.now();
 	const hit = gallerySourceCache.get(key);
-	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) return hit.rows;
-	const rows = loadGalleryUnitSource(userId, opts);
-	if (!gallerySourceCache.has(key) && gallerySourceCache.size >= GALLERY_SOURCE_CACHE_MAX) {
-		const oldest = gallerySourceCache.keys().next().value;
-		if (oldest !== undefined) gallerySourceCache.delete(oldest);
+	if (hit && hit.fingerprint === fingerprint && now < hit.expiresAt) {
+		// Touch on access so eviction is genuinely by-recency. `Map.set` over an
+		// existing key keeps its original position, so without the delete a hot
+		// entry ages to the front and gets evicted ahead of colder ones. The
+		// running char total is untouched — the entry stays resident, only its
+		// position moves.
+		gallerySourceCache.delete(key);
+		gallerySourceCache.set(key, hit);
+		return hit.rows;
 	}
-	gallerySourceCache.set(key, {
-		fingerprint,
-		expiresAt: Date.now() + GALLERY_UNITS_TTL_MS,
-		rows,
-	});
+	const rows = loadGalleryUnitSource(userId, opts);
+	// Don't cache an empty result. `model` reaches the key straight from an
+	// unvalidated query param, and an unknown one matches no rows — so without
+	// this, a client walking `model=1,2,3…` mints entries that evict the real
+	// ones. A legitimate filter comes from the facet dropdown, which is built
+	// from rows that exist; the false-negative (a filter whose last item was
+	// just deleted) re-runs a scan that now matches nothing, which is cheap.
+	if (rows.length === 0) {
+		evictSourceEntry(key);
+		return rows;
+	}
+	evictSourceEntry(key);
+	// Store the char count with the entry rather than re-walking its rows at
+	// eviction time: a TTL sweep can drop several full-library entries in one
+	// pass, and that pass runs on a gallery request, on the single thread.
+	const chars = sourceRowsChars(rows);
+	gallerySourceCache.set(key, { fingerprint, expiresAt: now + GALLERY_UNITS_TTL_MS, rows, chars });
+	gallerySourceCachedChars += chars;
+	// Drop entries whose TTL has already passed. The TTL is otherwise only
+	// checked on read, so a stale full-library array stays resident until its
+	// exact key is asked for again — which, with a key space this small, may be
+	// never.
+	for (const [k, entry] of [...gallerySourceCache]) {
+		if (k !== key && now >= entry.expiresAt) evictSourceEntry(k);
+	}
+	// Then evict oldest-first until both bounds hold.
+	for (const oldest of [...gallerySourceCache.keys()]) {
+		if (
+			gallerySourceCache.size <= GALLERY_SOURCE_CACHE_MAX &&
+			gallerySourceCachedChars <= GALLERY_SOURCE_CACHE_MAX_CHARS
+		) {
+			break;
+		}
+		if (oldest === key) continue;
+		evictSourceEntry(oldest);
+	}
 	return rows;
+}
+
+/** Drop one source entry, keeping the char total in step. Refreshing an entry
+ *  goes through this rather than `set`ting over the existing key, so the rewrite
+ *  lands at the end of the map — see the touch-on-hit note above for why
+ *  position matters. */
+function evictSourceEntry(key: string): void {
+	const existing = gallerySourceCache.get(key);
+	if (!existing) return;
+	gallerySourceCachedChars -= existing.chars;
+	gallerySourceCache.delete(key);
+}
+
+/** Drop one units entry, keeping the unit total in step. */
+function evictUnitsEntry(key: string): void {
+	const existing = galleryUnitsCache.get(key);
+	if (!existing) return;
+	galleryUnitsCachedTotal -= existing.units.length;
+	galleryUnitsCache.delete(key);
 }
 
 /** Cheap signature of a user's gallery-relevant media state. `total` (all
@@ -1049,8 +1136,15 @@ function galleryUserFingerprint(userId: string): string {
 }
 
 /**
- * Snap a client-supplied UTC offset to a real one: -840..+720 minutes (UTC-14 to
- * UTC+12), on a 15-minute step. Real zones are all multiples of 15.
+ * Snap a client-supplied UTC offset to a real one: -720..+840 minutes (UTC-12 to
+ * UTC+14), on a 15-minute step. Real zones are all multiples of 15.
+ *
+ * The sign is east-positive, matching what the routes actually receive — the
+ * client sends `-getTimezoneOffset()` (see `gallery/+page.svelte`), and
+ * `localDayKey` *adds* the offset before reading UTC parts. Clamping to the
+ * `getTimezoneOffset()` sign instead truncates every zone east of UTC+12
+ * (Auckland in DST +780, Chatham +825, Kiritimati +840), which files items
+ * created just after local midnight under the previous day's header.
  *
  * Normalized here rather than at each route because the value is part of a cache
  * key, so its cardinality is the cache's cardinality. Unclamped, a client could
@@ -1061,7 +1155,7 @@ function galleryUserFingerprint(userId: string): string {
  */
 function normalizeTzOffset(minutes: number | undefined): number | undefined {
 	if (minutes == null || !Number.isFinite(minutes)) return undefined;
-	const clamped = Math.max(-840, Math.min(720, minutes));
+	const clamped = Math.max(-720, Math.min(840, minutes));
 	return Math.round(clamped / 15) * 15;
 }
 
@@ -1088,23 +1182,47 @@ function computeGalleryUnitsCached(userId: string, rawOpts: GalleryUnitOpts): Ga
 	const fingerprint = galleryUserFingerprint(userId);
 	const key = galleryUnitsCacheKey(userId, opts);
 	const hit = galleryUnitsCache.get(key);
-	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) return hit.units;
+	if (hit && hit.fingerprint === fingerprint && Date.now() < hit.expiresAt) {
+		// Touch on access — same by-recency reasoning as the source cache above.
+		galleryUnitsCache.delete(key);
+		galleryUnitsCache.set(key, hit);
+		return hit.units;
+	}
 	const units = computeGalleryUnits(userId, opts);
-	const existing = galleryUnitsCache.get(key);
-	if (existing) galleryUnitsCachedTotal -= existing.units.length;
-	galleryUnitsCache.set(key, { fingerprint, expiresAt: Date.now() + GALLERY_UNITS_TTL_MS, units });
+	// Same anti-thrash rule as the source cache: an unknown `model` matches
+	// nothing, so don't let forged keys occupy slots.
+	if (units.length === 0) {
+		evictUnitsEntry(key);
+		return units;
+	}
+	// Delete before re-inserting so the refreshed entry lands at the *end* of the
+	// map. `Map.set` over an existing key keeps its original position, which made
+	// this FIFO-by-first-insert: a hot entry aged to the front, and when it was
+	// the oldest the eviction loop below hit it and bailed without trimming
+	// anything, leaving the total over budget.
+	evictUnitsEntry(key);
+	const now = Date.now();
+	galleryUnitsCache.set(key, { fingerprint, expiresAt: now + GALLERY_UNITS_TTL_MS, units });
 	galleryUnitsCachedTotal += units.length;
+	// Shed expired entries, same as the source cache — this one holds the heavier
+	// payload of the two (a unit per library item, each with its own dayKey string
+	// and up to 4 preview objects) and has the larger key space, so leaving it to
+	// the bounds alone keeps the most memory resident the longest.
+	for (const [k, entry] of [...galleryUnitsCache]) {
+		if (k !== key && now >= entry.expiresAt) evictUnitsEntry(k);
+	}
 	// Evict oldest-first until BOTH bounds hold. The entry count alone doesn't
 	// bound memory (each entry is a unit per library item), and the unit total
 	// alone would let a huge library evict everything down to one entry.
-	while (
-		galleryUnitsCache.size > GALLERY_UNITS_CACHE_MAX ||
-		(galleryUnitsCachedTotal > GALLERY_UNITS_CACHE_MAX_UNITS && galleryUnitsCache.size > 1)
-	) {
-		const oldest = galleryUnitsCache.keys().next();
-		if (oldest.done || oldest.value === key) break;
-		galleryUnitsCachedTotal -= galleryUnitsCache.get(oldest.value)!.units.length;
-		galleryUnitsCache.delete(oldest.value);
+	for (const oldest of [...galleryUnitsCache.keys()]) {
+		if (
+			galleryUnitsCache.size <= GALLERY_UNITS_CACHE_MAX &&
+			(galleryUnitsCachedTotal <= GALLERY_UNITS_CACHE_MAX_UNITS || galleryUnitsCache.size <= 1)
+		) {
+			break;
+		}
+		if (oldest === key) continue;
+		evictUnitsEntry(oldest);
 	}
 	return units;
 }

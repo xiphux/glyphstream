@@ -373,12 +373,64 @@ describe('gallery drill-in shares the cached unit source', () => {
 	});
 });
 
+describe('gallery source cache bounds', () => {
+	/**
+	 * The source cache holds one row per library item, each carrying an
+	 * *untruncated* `promptFull` — so a row-count bound (what the units cache
+	 * uses, where a stacked unit keeps <=4 previews) doesn't bound its memory:
+	 * equal row counts differ by an order of magnitude in bytes. Budgeting on
+	 * characters is what makes the ceiling mean anything.
+	 *
+	 * Asserted behaviourally, since the cache internals are module-private: a
+	 * filter whose rows are still cached must not re-read them from the DB, and
+	 * results must stay correct across the eviction paths.
+	 */
+	it('serves a repeat load from cache and stays correct across filters', () => {
+		const u = seedUser();
+		const long = 'x'.repeat(4000);
+		for (let i = 0; i < 6; i++) {
+			makeGen(u.id, at(2024, 6, 15, 12, i), {
+				originalPrompt: `p${i}`,
+				promptFull: `${long}-${i}`,
+				kind: i % 2 === 0 ? 'image' : 'video',
+			});
+		}
+		const first = allUnits(u.id);
+		expect(first).toHaveLength(6);
+		// Same key again — must agree exactly with the first read.
+		expect(allUnits(u.id).map((x) => x.key)).toEqual(first.map((x) => x.key));
+		// A different filter is a different entry; both must stay correct.
+		expect(allUnits(u.id, { kind: 'image' })).toHaveLength(3);
+		expect(allUnits(u.id, { kind: 'video' })).toHaveLength(3);
+		expect(allUnits(u.id).map((x) => x.key)).toEqual(first.map((x) => x.key));
+	});
+
+	it('does not let an unmatched filter displace the cached library', () => {
+		const u = seedUser();
+		for (let i = 0; i < 4; i++) {
+			makeGen(u.id, at(2024, 6, 15, 12, i), {
+				originalPrompt: `p${i}`,
+				promptFull: `full-${i}`,
+			});
+		}
+		const before = allUnits(u.id).map((x) => x.key);
+		// A model nobody has: matches nothing, and must not be cached — otherwise
+		// walking this param evicts the real entries.
+		for (let i = 0; i < 100; i++) {
+			expect(allUnits(u.id, { model: `forged-${i}` })).toEqual([]);
+		}
+		expect(allUnits(u.id).map((x) => x.key)).toEqual(before);
+	});
+});
+
 describe('gallery tz offset normalization', () => {
 	/**
 	 * `tzOffsetMinutes` is part of the units cache key and arrives unvalidated
 	 * from a query param, so its cardinality is the cache's cardinality. Snapped
-	 * to a real offset (-840..+720, 15-minute step) so a client can't mint
+	 * to a real offset (-720..+840, 15-minute step) so a client can't mint
 	 * unbounded distinct keys, each forcing a cold O(library) recompute.
+	 *
+	 * The sign is east-positive — the client sends `-getTimezoneOffset()`.
 	 */
 	it('treats offsets within the same 15-minute step as one bucketing', () => {
 		const u = seedUser();
@@ -389,11 +441,37 @@ describe('gallery tz offset normalization', () => {
 		expect(at58).toBe(at60);
 	});
 
-	it('clamps an absurd offset instead of bucketing by it', () => {
+	/**
+	 * Clamping to the `getTimezoneOffset()` sign (-840..+720) instead truncated
+	 * every zone east of UTC+12 down to +720, filing anything created in the
+	 * first hour after local midnight under the previous day's header. Auckland
+	 * is +780 for roughly half the year.
+	 */
+	it('does not truncate zones east of UTC+12', () => {
 		const u = seedUser();
-		makeGen(u.id, at(2024, 6, 15, 12, 0), { promptFull: 'a', originalPrompt: null });
+		// 11:30 UTC: +720 is still 23:30 on the 15th, +780 is 00:30 on the 16th.
+		makeGen(u.id, at(2024, 6, 15, 11, 30), { promptFull: 'a', originalPrompt: null });
+		expect(computeGalleryLayout(u.id, { tzOffsetMinutes: 780 }).days[0].key).toBe('2024-06-16');
+		expect(computeGalleryLayout(u.id, { tzOffsetMinutes: 840 }).days[0].key).toBe('2024-06-16');
+		// ...and the zone that really is +720 still buckets as +720.
+		expect(computeGalleryLayout(u.id, { tzOffsetMinutes: 720 }).days[0].key).toBe('2024-06-15');
+	});
+
+	it('clamps an absurd offset to the largest real one', () => {
+		const u = seedUser();
+		makeGen(u.id, at(2024, 6, 15, 11, 30), { promptFull: 'a', originalPrompt: null });
 		const insane = computeGalleryLayout(u.id, { tzOffsetMinutes: 100_000 }).days[0].key;
-		const maxReal = computeGalleryLayout(u.id, { tzOffsetMinutes: 720 }).days[0].key;
-		expect(insane).toBe(maxReal);
+		expect(insane).toBe(computeGalleryLayout(u.id, { tzOffsetMinutes: 840 }).days[0].key);
+		// Pins the bound: clamping lower would bucket this as the 15th.
+		expect(insane).toBe('2024-06-16');
+	});
+
+	it('clamps a westward absurd offset to the smallest real one', () => {
+		const u = seedUser();
+		// 11:30 UTC: -720 is 23:30 on the 14th, -660 is 00:30 on the 15th.
+		makeGen(u.id, at(2024, 6, 15, 11, 30), { promptFull: 'a', originalPrompt: null });
+		const insane = computeGalleryLayout(u.id, { tzOffsetMinutes: -100_000 }).days[0].key;
+		expect(insane).toBe(computeGalleryLayout(u.id, { tzOffsetMinutes: -720 }).days[0].key);
+		expect(insane).toBe('2024-06-14');
 	});
 });
