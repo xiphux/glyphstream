@@ -144,6 +144,45 @@ export function seedSnippet(opts: {
 }
 
 /**
+ * Attach a canvas (artifact + its first version) to a seeded conversation.
+ *
+ * Direct insert for the same reason as the helpers around it: producing one
+ * through the UI means driving a real `create_canvas` tool call, and this is
+ * needed by specs that are about what happens when you ENTER a conversation
+ * that already has one — i.e. state that predates the page load under test.
+ *
+ * Mirrors `createCanvas`'s two-step write (version row first, then point
+ * `current_version_id` at it) because that FK is a forward reference.
+ */
+export function seedCanvas(conversationId: string, title: string, content: string): string {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const now = Date.now();
+		const artifactId = `e2e-canvas-${conversationId}`;
+		const versionId = `${artifactId}-v1`;
+		db.prepare(
+			`INSERT INTO artifacts
+			   (id, user_id, conversation_id, title, kind, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, 'markdown', ?, ?)`,
+		).run(artifactId, TEST_USER.id, conversationId, title, now, now);
+		db.prepare(
+			`INSERT INTO artifact_versions
+			   (id, artifact_id, parent_version_id, content, content_html, edit_source, created_at)
+			 VALUES (?, ?, NULL, ?, ?, 'agent', ?)`,
+		).run(versionId, artifactId, content, `<p>${content}</p>`, now);
+		db.prepare(`UPDATE artifacts SET current_version_id = ? WHERE id = ?`).run(
+			versionId,
+			artifactId,
+		);
+		return artifactId;
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Insert a bare conversation row straight into the DB, returning its id.
  * Emulates a conversation created on *another* client — one the server has
  * but the current page's SSR sidebar data never saw. The app's

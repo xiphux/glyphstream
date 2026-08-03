@@ -197,8 +197,34 @@
 	let hydratedCanvasConvId = data.conversation.id;
 	// Tracks which conversation we've already auto-opened the canvas for, so the
 	// auto-open fires once per entry (not on every reactive tick) and a manual
-	// close isn't undone. Null so the first conversation counts.
+	// close isn't undone. Null so the first conversation counts — which takes both
+	// call sites of `maybeAutoOpenCanvas` below, since the seeding effect skips
+	// its own first run.
 	let canvasAutoOpenedConvId: string | null = null;
+
+	/**
+	 * Auto-open the canvas beside the conversation on entry — but only on a wide
+	 * viewport. On a small screen the pane is a full-screen overlay, so
+	 * auto-opening would replace the conversation you just entered with a wall of
+	 * document; there the inline card opens it on demand. Only ever called from an
+	 * $effect (client-only), so `window.matchMedia` is safe.
+	 *
+	 * untrack the canvas reads: at both call sites `canvas.hydrate` has already
+	 * run for this conversation, so `canvas.docs` is current — but WITHOUT untrack
+	 * reading `canvas.docs.length` would make `canvas.docs` a dependency of the
+	 * calling effect. A mid-turn `create_canvas`/`update_canvas` mutates
+	 * `canvas.docs`, which would then re-fire the seeding effect and reset
+	 * `messages` back to the (pre-turn) load data, making the user's just-sent
+	 * prompt bubble vanish until the end-of-turn invalidateAll.
+	 */
+	function maybeAutoOpenCanvas(): void {
+		untrack(() => {
+			if (canvas.docs.length > 0 && canvasAutoOpenedConvId !== data.conversation.id) {
+				canvasAutoOpenedConvId = data.conversation.id;
+				if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
+			}
+		});
+	}
 	// The `data.conversation` object we last re-seeded local state from. The
 	// merged `data` prop gets a fresh identity whenever ANY load in the branch
 	// re-runs — including a layout-only `invalidate('app:conversations')`, which
@@ -229,25 +255,22 @@
 			hydratedCanvasConvId = data.conversation.id;
 			canvas.hydrate(data.canvases);
 		}
-		// Auto-open the canvas beside the conversation on entry — but only on a
-		// wide viewport. On a small screen the pane is a full-screen overlay, so
-		// auto-opening would replace the conversation you just entered with a wall
-		// of document; there the inline card opens it on demand. This runs in an
-		// $effect (client-only), so window.matchMedia is safe.
-		//
-		// untrack the canvas reads: `hydrate` above already ran synchronously this
-		// tick, so `canvas.docs` is current here — but WITHOUT untrack, reading
-		// `canvas.docs.length` would make `canvas.docs` a dependency of this whole
-		// effect. A mid-turn `create_canvas`/`update_canvas` mutates `canvas.docs`,
-		// which would then re-fire this effect and reset `messages` back to the
-		// (pre-turn) load data, making the user's just-sent prompt bubble vanish
-		// until the end-of-turn invalidateAll.
-		untrack(() => {
-			if (canvas.docs.length > 0 && canvasAutoOpenedConvId !== data.conversation.id) {
-				canvasAutoOpenedConvId = data.conversation.id;
-				if (window.matchMedia('(min-width: 768px)').matches) canvas.show();
-			}
-		});
+		maybeAutoOpenCanvas();
+	});
+
+	// Also run it once at mount. The seeding effect above early-returns on its
+	// first run (its sentinel starts at the current `data.conversation`), and
+	// every other thing it seeds is separately initialized at its declaration —
+	// the auto-open was the one that wasn't, so entering a chat by full page load
+	// or from a non-chat route stopped opening the pane at all. Only the
+	// /chat/a → /chat/b path still worked, because there the component is reused
+	// and `data.conversation` identity genuinely changes.
+	//
+	// Deliberately reads nothing reactive (every read is inside `untrack`), so it
+	// fires exactly once, after `canvas.hydrate` at init has populated `docs`.
+	// `canvasAutoOpenedConvId` makes it idempotent against the call above.
+	$effect(() => {
+		maybeAutoOpenCanvas();
 	});
 
 	// Single-turn orchestration (send/edit/retry streaming, approval-resume,
