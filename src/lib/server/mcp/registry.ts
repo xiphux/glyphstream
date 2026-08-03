@@ -231,6 +231,15 @@ export interface ServerStatesOptions {
 	 *  in the background while we proceed — so one slow-but-up server can't hold
 	 *  the whole send. Omit to await the full handshake (settings page). */
 	connectBudgetMs?: number;
+	/** Don't wait at all for a server that already has a known tool list — just
+	 *  kick its reconnect off and report the surface it last advertised.
+	 *
+	 *  Send-path only. It keeps `tools[]` stable across an idle reap (see the
+	 *  rationale at the split below), but it reports last-known state rather than
+	 *  live state, which is the opposite of what /settings/mcp is for. Kept
+	 *  separate from `connectBudgetMs` so a page can bound its wait without also
+	 *  opting into staleness. */
+	backgroundKnownServers?: boolean;
 }
 
 /**
@@ -240,10 +249,11 @@ export interface ServerStatesOptions {
  * (connecting on demand when a credential exists) or `needs-credential` when
  * the user hasn't supplied a token yet.
  *
- * With no `opts` the settings page gets its eager "connect everything, retry
- * failures, wait the full handshake" behavior (it needs an accurate live
- * status view). The send path passes `opts` to gate by conversation, circuit-
- * break failed servers, and bound the wait — see {@link ServerStatesOptions}.
+ * With no `opts` the caller gets the eager "connect everything, retry failures,
+ * wait the full handshake" behavior. The settings page keeps that live-status
+ * view, adding only a wait budget so one black-holing server can't hold the
+ * page. The send path additionally gates by conversation, circuit-breaks failed
+ * servers, and backgrounds already-known ones — see {@link ServerStatesOptions}.
  */
 export async function getUserServerStates(
 	userId: string,
@@ -286,9 +296,17 @@ export async function getUserServerStates(
 	// capabilities visibly blink). Not waiting keeps the surface stable AND
 	// removes the stall; only a server with no known tools yet has anything to
 	// wait for.
-	const mustAwait = opts.connectBudgetMs != null ? toConnect.filter(hasNoKnownTools) : toConnect;
-	const background =
-		opts.connectBudgetMs != null ? toConnect.filter((id) => !hasNoKnownTools(id)) : [];
+	//
+	// Gated on its own flag rather than on `connectBudgetMs`, because the two
+	// wants are different. /settings/mcp bounds its wait but must still report
+	// live reachability: an idle-reaped server keeps its tool list, so keying the
+	// split off the budget sent it down this path and rendered it "Reconnecting"
+	// with a stale surface — including when it had since gone down, which is the
+	// one thing that page exists to surface.
+	const mustAwait = opts.backgroundKnownServers ? toConnect.filter(hasNoKnownTools) : toConnect;
+	const background = opts.backgroundKnownServers
+		? toConnect.filter((id) => !hasNoKnownTools(id))
+		: [];
 
 	function hasNoKnownTools(id: string): boolean {
 		const e = entries.get(keyFor(id, userId));

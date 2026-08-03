@@ -148,6 +148,7 @@ describe('send-path connect does not wait for a server whose tools are known', (
 		const states = await getUserServerStates('userA', {
 			connectBudgetMs: 2500,
 			skipFailed: true,
+			backgroundKnownServers: true,
 		});
 		const waited = Date.now() - started;
 
@@ -156,5 +157,39 @@ describe('send-path connect does not wait for a server whose tools are known', (
 		// ...and still advertises the surface, so `tools[]` doesn't blink.
 		expect(states[0].tools.map((t) => t.name)).toEqual(['tool_a']);
 		for (const release of released) release();
+	});
+
+	/**
+	 * The settings page passes a budget but NOT `backgroundKnownServers`: its
+	 * whole purpose is reporting whether a server is reachable *now*, so it has
+	 * to wait for the handshake it triggered. Keying the no-wait split off
+	 * `connectBudgetMs` instead made an idle-reaped server (which keeps its tool
+	 * list) render as "Reconnecting" with a stale surface — including after it
+	 * had gone down.
+	 */
+	it('still awaits a known server when only a budget is given', async () => {
+		mocks.credentials.set('userA:mail', 'tok-a');
+		mocks.connectImpl.mockResolvedValue(fakeConnection('a'));
+		await initializeMcpServers();
+
+		await getUserServerStates('userA', { connectBudgetMs: 2500 });
+		await reapUserConnectionForTests('mail', 'userA');
+
+		let release!: () => void;
+		mocks.connectImpl.mockImplementation(
+			() => new Promise((resolve) => (release = () => resolve(fakeConnection('a')))),
+		);
+
+		let settled = false;
+		const pending = getUserServerStates('userA', { connectBudgetMs: 2500 }).then((s) => {
+			settled = true;
+			return s;
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		expect(settled, 'settings page returned without awaiting the reconnect').toBe(false);
+
+		release();
+		const states = await pending;
+		expect(states[0].state).toBe('connected');
 	});
 });

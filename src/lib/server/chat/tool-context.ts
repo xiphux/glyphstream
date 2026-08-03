@@ -129,13 +129,15 @@ export async function buildChatToolContext(input: ChatToolContextInput): Promise
 	// both consumers below. On the send path we connect ONLY the servers enabled
 	// for this conversation (disabled `mcp:<id>` servers are skipped — no point
 	// handshaking tools we'd filter out anyway), circuit-break servers already
-	// `failed` (don't re-eat their connect timeout every message), and bound each
-	// connect so one slow server can't stall the turn.
+	// `failed` (don't re-eat their connect timeout every message), bound each
+	// connect so one slow server can't stall the turn, and don't wait at all on a
+	// server that already has a known tool surface to advertise.
 	const userServerStates = supportsTools
 		? await getUserServerStates(userId, {
 				excludeCategories: disabledFeatures,
 				skipFailed: true,
 				connectBudgetMs: MCP_HOTPATH_CONNECT_BUDGET_MS,
+				backgroundKnownServers: true,
 			})
 		: [];
 
