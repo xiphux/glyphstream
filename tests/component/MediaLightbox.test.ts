@@ -602,9 +602,17 @@ describe('MediaLightbox — carousel navigation', () => {
 		expect(onNavigate).toHaveBeenCalledWith('m-3');
 		await user.click(screen.getByRole('button', { name: 'Previous' }));
 		// The second lands inside the coalescing window, so it arrives on the
-		// trailing edge instead of firing its own metadata fetch immediately.
+		// trailing edge instead of firing its own metadata fetch immediately — and
+		// it steps back from where the FIRST press went, landing where we started.
+		//
+		// `media` is a static prop here, so `currentIndex` never advances. Stepping
+		// from it would make this 'm-1': every press inside the coalescing window
+		// computing the same target, which is the bug this pins. A real parent
+		// resolves `onNavigate` and feeds `media` back, and then Next-then-Previous
+		// returns the user to where they started — 'm-2' is what the component
+		// produces against a live parent, with or without the coalescer.
 		await settleNavResolve();
-		expect(onNavigate).toHaveBeenCalledWith('m-1');
+		expect(onNavigate).toHaveBeenLastCalledWith('m-2');
 	});
 
 	it('disables Previous on the first item and Next on the last', () => {
@@ -629,7 +637,47 @@ describe('MediaLightbox — carousel navigation', () => {
 		expect(onNavigate).toHaveBeenCalledWith('m-3');
 		await user.keyboard('{ArrowLeft}');
 		await settleNavResolve();
-		expect(onNavigate).toHaveBeenCalledWith('m-1');
+		// Steps back from the first press's target — see the Next/Previous test.
+		expect(onNavigate).toHaveBeenLastCalledWith('m-2');
+	});
+
+	/**
+	 * The point of the coalescer: a burst emits ONE trailing resolve, and it names
+	 * the slide the user actually ended on. Stepping from `currentIndex` (which
+	 * can't advance until the parent resolves) made every press in the window
+	 * compute the same target, so a five-press burst moved two slides.
+	 */
+	it('a rapid burst resolves once, at the end of the burst', async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		const many = Array.from({ length: 8 }, (_, i) => ({ id: `w-${i}`, kind: 'image' as const }));
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'w-0' }), onClose: vi.fn(), siblings: many, onNavigate },
+		});
+
+		for (let i = 0; i < 5; i++) await user.keyboard('{ArrowRight}');
+		await settleNavResolve();
+
+		// Leading edge fired for the first press; everything after it collapsed into
+		// one trailing call naming the final slide.
+		expect(onNavigate).toHaveBeenCalledWith('w-1');
+		expect(onNavigate).toHaveBeenLastCalledWith('w-5');
+		expect(onNavigate.mock.calls.length).toBeLessThanOrEqual(2);
+	});
+
+	it('a burst still stops at the last slide', async () => {
+		const user = userEvent.setup();
+		const onNavigate = vi.fn();
+		const many = Array.from({ length: 8 }, (_, i) => ({ id: `w-${i}`, kind: 'image' as const }));
+		render(MediaLightbox, {
+			props: { media: makeImage({ id: 'w-6' }), onClose: vi.fn(), siblings: many, onNavigate },
+		});
+
+		for (let i = 0; i < 5; i++) await user.keyboard('{ArrowRight}');
+		await settleNavResolve();
+
+		// Only one step was available; the rest are clamped, not wrapped.
+		for (const [id] of onNavigate.mock.calls) expect(id).toBe('w-7');
 	});
 
 	it('does not navigate past the ends', async () => {

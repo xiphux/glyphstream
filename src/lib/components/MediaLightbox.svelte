@@ -141,24 +141,133 @@
 	function onTrackScroll() {
 		const el = trackEl;
 		if (!el || !siblings) return;
+		// Track the live position while scrolling, not just on settle — that's what
+		// keeps the slides being scrolled through mounted.
+		//
+		// Quantized to SLIDE_WINDOW steps rather than written per crossed slide.
+		// `slideMounted` is called inside the per-item `{#if}` of an each-block
+		// over every unit loaded this gallery session (thousands after a deep
+		// scroll), so in Svelte 5 every sibling's block effect subscribes to this
+		// one `$state`. Writing it per slide re-runs all of them per slide; at this
+		// granularity the mounted set only shifts when the position has moved far
+		// enough to actually change it.
+		if (el.clientWidth > 0) {
+			const idx = Math.round(el.scrollLeft / el.clientWidth);
+			const snapped = Math.min(
+				siblings.length - 1,
+				Math.max(0, Math.round(idx / SLIDE_WINDOW) * SLIDE_WINDOW),
+			);
+			if (snapped !== scrolledIndex) scrolledIndex = snapped;
+		}
 		clearTimeout(scrollSettleTimer);
 		scrollSettleTimer = setTimeout(() => {
 			const idx = Math.round(el.scrollLeft / el.clientWidth);
 			const landed = siblings[idx];
-			if (landed && landed.id !== media?.id) onNavigate?.(landed.id);
+			// Couldn't read a position (a zero-width track makes `idx` NaN) — say
+			// nothing rather than cancelling work that may still be wanted.
+			if (!landed) return;
+			if (landed.id === media?.id) {
+				// Settled back on what's already shown — so anything still queued is
+				// stale, and letting it fire would drag `media` away from the slide the
+				// user is looking at. Reachable by arrowing forward (leaving a trailing
+				// resolve armed) and swiping back inside the same window.
+				clearTimeout(navResolveTimer);
+				pendingIndex = null;
+				return;
+			}
+			// Through the coalescer, not straight to `onNavigate`. Calling directly
+			// left the two paths on separate clocks: arrow-press twice (a trailing
+			// resolve queued for slide 2), then swipe back to slide 0 — the settle
+			// fires first, then the still-queued trailing resolve yanks `media` to
+			// slide 2 while the track sits at 0. Sharing the queue means the last
+			// intent wins, whichever path produced it.
+			pendingIndex = idx;
+			resolveSlide(landed.id);
 		}, 90);
 	}
 
 	function navigate(delta: number) {
 		if (!siblings || currentIndex < 0) return;
-		const next = currentIndex + delta;
+		// Step from where the user has already navigated TO, not from where the
+		// resolve has caught up to. `currentIndex` follows `media`, which only moves
+		// once the caller resolves `onNavigate` — and that resolve is coalesced by
+		// up to NAV_RESOLVE_WINDOW_MS. Stepping from `currentIndex` therefore made
+		// every press inside one window compute the same target: five quick presses
+		// landed two slides along, not five. Coalescing is meant to drop redundant
+		// metadata fetches, not to drop the navigation itself.
+		const from = pendingIndex ?? currentIndex;
+		const next = from + delta;
 		if (next < 0 || next >= siblings.length) return;
+		pendingIndex = next;
 		// Scroll immediately for instant feedback rather than waiting for the
 		// metadata fetch (chat) to round-trip through `media` → currentIndex →
 		// the positioning effect. The effect then no-ops (already centered).
 		const el = trackEl;
 		if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
 		resolveSlide(siblings[next].id);
+	}
+
+	/**
+	 * Where the user has navigated to, ahead of `media` catching up. Null when
+	 * they agree — so at rest every read of it falls through to `currentIndex`.
+	 */
+	let pendingIndex = $state<number | null>(null);
+	$effect(() => {
+		if (pendingIndex !== null && (currentIndex === pendingIndex || currentIndex < 0)) {
+			pendingIndex = null;
+		}
+	});
+	// A pending index is an offset into `siblings`, so it's meaningless the moment
+	// that array is swapped — toggling drill-in or search replaces the source
+	// outright and the offset would then point at a different item.
+	//
+	// Keyed on what the offset actually depends on rather than on array identity:
+	// the gallery's `siblings` is a fresh array literal derived from the feed, so
+	// identity changes whenever the feed absorbs a unit. Nothing can mutate the
+	// feed while the lightbox covers the grid today, but relying on that would
+	// make a live key burst silently resettable by an unrelated background load.
+	let siblingsKey = $derived(siblings ? `${siblings.length}:${siblings[0]?.id ?? ''}` : '');
+	$effect(() => {
+		void siblingsKey;
+		pendingIndex = null;
+	});
+
+	/** The slide the UI should present as current: where the user has navigated to,
+	 *  falling back to where `media` actually is. Keeps the counter and the arrow
+	 *  disabled-states from lagging a key burst by up to NAV_RESOLVE_WINDOW_MS. */
+	const displayIndex = $derived(pendingIndex ?? currentIndex);
+
+	/**
+	 * Which slide the track is actually showing, when that's ahead of
+	 * `currentIndex`.
+	 *
+	 * `currentIndex` is derived from `media`, which only updates once the caller
+	 * resolves `onNavigate` — after a metadata fetch, and now after up to
+	 * `NAV_RESOLVE_WINDOW_MS` of coalescing. A swipe moves the track under the
+	 * user's finger the whole time, so windowing on `currentIndex` alone renders
+	 * everything flown past as an empty slot until the scroll settles. Before the
+	 * window existed every slide was mounted, so the same lag was invisible.
+	 *
+	 * Fed from the live scroll position rather than from `navigate()` so it covers
+	 * the swipe case too — and so arrow navigation keeps computing from
+	 * `currentIndex`, which is what decides where a press actually goes.
+	 */
+	let scrolledIndex = $state<number | null>(null);
+	$effect(() => {
+		if (scrolledIndex !== null && (currentIndex === scrolledIndex || currentIndex < 0)) {
+			scrolledIndex = null;
+		}
+	});
+
+	/** Mount a slide's media if it's near the settled position, the one the track
+	 *  has scrolled to, or the one a key burst has already navigated to. Separate
+	 *  windows rather than the span between them, so a long inertial swipe can't
+	 *  mount everything it passed. At rest the latter two are null and this is just
+	 *  the window around `currentIndex`. */
+	function slideMounted(i: number): boolean {
+		if (Math.abs(i - currentIndex) <= SLIDE_WINDOW) return true;
+		if (scrolledIndex !== null && Math.abs(i - scrolledIndex) <= SLIDE_WINDOW) return true;
+		return pendingIndex !== null && Math.abs(i - pendingIndex) <= SLIDE_WINDOW;
 	}
 
 	/**
@@ -172,10 +281,16 @@
 	 * `/api/media/:id/conversations` (neither deduped nor aborted), for slides
 	 * being flown past.
 	 *
+	 * "Wherever the user ended up" means the trailing call reads `pendingIndex` at
+	 * FIRE time rather than resolving whichever id was captured when it was queued
+	 * — otherwise it lands one slide past the last resolved position instead of at
+	 * the end of the burst.
+	 *
 	 * Deliberately not routed through `onTrackScroll`'s settle timer instead: a
 	 * smooth `scrollTo` that emits no scroll event — no track element, reduced
 	 * motion, a non-browser environment — would leave navigation resolving
-	 * nothing at all.
+	 * nothing at all. (The reverse direction is fine and is done below: the settle
+	 * path feeds INTO this coalescer, so both share one queue and one clock.)
 	 */
 	const NAV_RESOLVE_WINDOW_MS = 120;
 	let navResolveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -190,9 +305,29 @@
 		}
 		navResolveTimer = setTimeout(() => {
 			navResolveBlockedUntil = Date.now() + NAV_RESOLVE_WINDOW_MS;
-			onNavigate?.(id);
+			const target = pendingIndex !== null ? siblings?.[pendingIndex]?.id : undefined;
+			onNavigate?.(target ?? id);
 		}, navResolveBlockedUntil - now);
 	}
+
+	// Drop queued work when the lightbox closes. The gallery mounts this component
+	// unconditionally and closes it by setting `media` to null, so nothing tears it
+	// down — without this, a trailing resolve queued by the last arrow press fires
+	// up to NAV_RESOLVE_WINDOW_MS later and calls `onNavigate`, which reopens the
+	// lightbox the user just dismissed. Same for the swipe settle timer.
+	$effect(() => {
+		if (media) return;
+		clearTimeout(navResolveTimer);
+		clearTimeout(scrollSettleTimer);
+		navResolveBlockedUntil = 0;
+		scrolledIndex = null;
+		pendingIndex = null;
+	});
+	// And on teardown, for callers that do unmount it.
+	$effect(() => () => {
+		clearTimeout(navResolveTimer);
+		clearTimeout(scrollSettleTimer);
+	});
 
 	function fmtBytes(n: number): string {
 		if (n < 1024) return `${n} B`;
@@ -416,7 +551,7 @@
 					{m.sourceModel ?? 'Unknown model'}
 					{#if showCarousel}
 						<span class="ml-1 opacity-60 tabular-nums">
-							{currentIndex + 1} / {siblings!.length}
+							{displayIndex + 1} / {siblings!.length}
 						</span>
 					{/if}
 				</span>
@@ -492,7 +627,7 @@
 						<div
 							class="flex w-full shrink-0 snap-center snap-always items-center justify-center px-1"
 						>
-							{#if Math.abs(i - currentIndex) > SLIDE_WINDOW}
+							{#if !slideMounted(i)}
 								<!--
 									Out of window: an empty slot of the same width. The SLOT has
 									to stay — the track is scroll-snap and `onTrackScroll` maps
@@ -538,7 +673,7 @@
 					<button
 						type="button"
 						onclick={() => navigate(-1)}
-						disabled={currentIndex <= 0}
+						disabled={displayIndex <= 0}
 						aria-label="Previous"
 						title="Previous"
 						class="absolute left-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
@@ -548,7 +683,7 @@
 					<button
 						type="button"
 						onclick={() => navigate(1)}
-						disabled={currentIndex >= siblings!.length - 1}
+						disabled={displayIndex >= siblings!.length - 1}
 						aria-label="Next"
 						title="Next"
 						class="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
