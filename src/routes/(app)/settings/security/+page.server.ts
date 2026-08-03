@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { listOAuthAccountsForUser } from '$lib/server/db/queries/oauth-accounts';
 import { listCredentialSummariesForUser } from '$lib/server/db/queries/passkey';
+import { listSessionsForUser } from '$lib/server/auth/session';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import { describeProviders } from '$lib/server/auth/oauth/registry';
 import type { PageServerLoad } from './$types';
@@ -20,6 +21,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	if (!locals.user) throw error(401, 'Authentication required');
 	depends('settings:passkeys');
 	depends('settings:oauth-accounts');
+	depends('settings:sessions');
 	const passkeys = listCredentialSummariesForUser(locals.user.id);
 	const oauthAccounts = listOAuthAccountsForUser(locals.user.id);
 	return {
@@ -27,5 +29,9 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 		oauthAccounts,
 		providers: describeProviders(),
 		passkeyEnabled: passkeyLoginEnabled(),
+		sessions: listSessionsForUser(locals.user.id),
+		// So the list can mark the row you're reading this on, and grey out
+		// its revoke button in the "sign out everywhere else" affordance.
+		currentSessionId: locals.sessionId,
 	};
 };

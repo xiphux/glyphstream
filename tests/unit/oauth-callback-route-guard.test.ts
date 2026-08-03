@@ -27,6 +27,8 @@ function mkEvent(provider: string) {
 		cookies: {} as Cookies,
 		locals: { user: null },
 		params: { provider },
+		// The route reads the User-Agent off this to label the minted session.
+		request: new Request(`http://localhost:5173/api/auth/oauth/${provider}/callback`),
 	};
 }
 

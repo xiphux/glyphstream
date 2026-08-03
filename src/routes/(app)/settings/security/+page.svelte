@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Check, KeyRound, Pencil, Plus, Trash2, X } from '@lucide/svelte';
+	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
 	import type { OAuthAccountSummary } from '$lib/server/db/queries/oauth-accounts';
 	import type { PasskeySummary } from '$lib/server/db/queries/passkey';
+	import type { SessionSummary } from '$lib/server/auth/session';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
@@ -21,8 +22,13 @@
 			oauthAccounts: OAuthAccountSummary[];
 			providers: ProviderInfo[];
 			passkeyEnabled: boolean;
+			sessions: SessionSummary[];
+			currentSessionId: string | null;
 		};
 	}>();
+
+	let sessionBusyId = $state<string | null>(null);
+	let revokeAllBusy = $state(false);
 
 	let linkBusy = $state(false);
 
@@ -86,6 +92,113 @@
 
 	function displayName(p: PasskeySummary): string {
 		return p.name ?? `Passkey · added ${formatDate(p.createdAt)}`;
+	}
+
+	/** Coarse "last active" — the point is spotting a session you don't
+	 *  recognize, which needs recency, not a timestamp. */
+	function formatLastSeen(ms: number): string {
+		if (!ms) return 'unknown';
+		const mins = Math.floor((Date.now() - ms) / 60_000);
+		if (mins < 5) return 'just now';
+		if (mins < 60) return `${mins} min ago`;
+		const hours = Math.floor(mins / 60);
+		if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+		const days = Math.floor(hours / 24);
+		if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+		return formatDate(ms);
+	}
+
+	/**
+	 * A short device label from the User-Agent. Deliberately crude: the UA is
+	 * an unvalidated client string, so it's matched against a fixed list and
+	 * never rendered raw — a hostile UA can at worst pick which of these
+	 * labels it gets.
+	 */
+	function deviceLabel(ua: string | null): string {
+		if (!ua) return 'Unknown device';
+		const os = /iPhone|iPad/.test(ua)
+			? 'iOS'
+			: /Android/.test(ua)
+				? 'Android'
+				: /Mac OS X/.test(ua)
+					? 'macOS'
+					: /Windows/.test(ua)
+						? 'Windows'
+						: /Linux/.test(ua)
+							? 'Linux'
+							: null;
+		// Order matters: Edge and Chrome both claim "Chrome", Safari claims
+		// none of the others.
+		const browser = /Edg\//.test(ua)
+			? 'Edge'
+			: /Firefox\//.test(ua)
+				? 'Firefox'
+				: /Chrome\//.test(ua)
+					? 'Chrome'
+					: /Safari\//.test(ua)
+						? 'Safari'
+						: null;
+		if (os && browser) return `${browser} on ${os}`;
+		return browser ?? os ?? 'Unknown device';
+	}
+
+	async function revokeSession(s: SessionSummary) {
+		if (sessionBusyId) return;
+		const self = s.id === data.currentSessionId;
+		const ok = await confirmDialog.ask({
+			title: self ? 'Sign out this device?' : 'Sign out that device?',
+			message: self
+				? "This is the device you're using now — you'll be returned to the sign-in page."
+				: `"${deviceLabel(s.userAgent)}" will be signed out immediately.`,
+			confirmLabel: 'Sign out',
+		});
+		if (!ok) return;
+		sessionBusyId = s.id;
+		try {
+			const res = await fetch(`/api/auth/sessions/${encodeURIComponent(s.id)}`, {
+				method: 'DELETE',
+			});
+			if (!res.ok && res.status !== 404) {
+				toast.error(`Couldn't sign out: ${await errorMessageFromResponse(res)}`);
+				return;
+			}
+			if (self) {
+				window.location.href = '/login';
+				return;
+			}
+			toast.success('Device signed out.');
+			await invalidate('settings:sessions');
+		} finally {
+			sessionBusyId = null;
+		}
+	}
+
+	async function revokeOtherSessions() {
+		if (revokeAllBusy) return;
+		const ok = await confirmDialog.ask({
+			title: 'Sign out everywhere else?',
+			message:
+				'Every other device will be signed out immediately. This one stays signed in. Use this if you think someone else has access.',
+			confirmLabel: 'Sign out others',
+		});
+		if (!ok) return;
+		revokeAllBusy = true;
+		try {
+			const res = await fetch('/api/auth/sessions', { method: 'DELETE' });
+			if (!res.ok) {
+				toast.error(`Couldn't sign out: ${await errorMessageFromResponse(res)}`);
+				return;
+			}
+			const { revoked } = (await res.json()) as { revoked: number };
+			toast.success(
+				revoked === 0
+					? 'No other devices were signed in.'
+					: `Signed out ${revoked} other device${revoked === 1 ? '' : 's'}.`,
+			);
+			await invalidate('settings:sessions');
+		} finally {
+			revokeAllBusy = false;
+		}
 	}
 
 	// A user is locked into a single remaining passkey when no OAuth
@@ -454,6 +567,63 @@
 					{/if}
 				</section>
 			{/if}
+
+			<section class="rounded-lg border border-border bg-surface-panel p-4">
+				<div class="flex items-baseline justify-between">
+					<h2 class="text-sm font-semibold">Signed-in devices</h2>
+					<span class="text-xs text-fg-muted">{data.sessions.length} active</span>
+				</div>
+				<p class="mt-1 text-xs text-fg-muted">
+					Every device currently signed in to your account. Sign one out if you don't recognize it.
+					Sessions expire 30 days after their last use, and always within 90 days of signing in.
+				</p>
+
+				<ul class="mt-3 flex flex-col gap-2">
+					{#each data.sessions as s (s.id)}
+						<li
+							class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
+						>
+							<Laptop size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
+							<div class="min-w-0 flex-1">
+								<div class="flex items-center gap-2 text-sm font-medium">
+									<span class="truncate">{deviceLabel(s.userAgent)}</span>
+									{#if s.id === data.currentSessionId}
+										<span
+											class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+											>This device</span
+										>
+									{/if}
+								</div>
+								<div class="mt-1 text-xs text-fg-muted">
+									Signed in {formatDate(s.createdAt)} · Last active {formatLastSeen(s.lastSeenAt)}
+								</div>
+							</div>
+							<button
+								type="button"
+								onclick={() => revokeSession(s)}
+								disabled={sessionBusyId === s.id}
+								aria-label="Sign out this device"
+								class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+							>
+								<Trash2 size={14} strokeWidth={2.25} />
+							</button>
+						</li>
+					{/each}
+				</ul>
+
+				{#if data.sessions.length > 1}
+					<div class="mt-3 border-t border-border/60 pt-3">
+						<button
+							type="button"
+							onclick={revokeOtherSessions}
+							disabled={revokeAllBusy}
+							class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							{revokeAllBusy ? 'Signing out…' : 'Sign out everywhere else'}
+						</button>
+					</div>
+				{/if}
+			</section>
 		</div>
 	</div>
 </div>

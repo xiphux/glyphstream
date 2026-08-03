@@ -62,7 +62,31 @@ const baseData = {
 		externalEmail: string | null;
 		createdAt: number;
 	}>,
+	sessions: [] as Array<{
+		id: string;
+		createdAt: number;
+		lastSeenAt: number;
+		expiresAt: number;
+		userAgent: string | null;
+	}>,
+	currentSessionId: null as string | null,
 };
+
+const CHROME_MAC =
+	'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const SAFARI_IOS =
+	'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+function mkSession(over: Partial<(typeof baseData.sessions)[number]> = {}) {
+	return {
+		id: 's1',
+		createdAt: Date.now() - 86_400_000,
+		lastSeenAt: Date.now() - 60_000,
+		expiresAt: Date.now() + 86_400_000,
+		userAgent: CHROME_MAC,
+		...over,
+	};
+}
 
 beforeEach(() => {
 	invalidateMock.mockReset();
@@ -433,5 +457,115 @@ describe('Security settings page — rename flow', () => {
 		// And the input is gone, leaving the original name visible.
 		expect(screen.queryByLabelText('Passkey name')).toBeNull();
 		expect(screen.getByText('orig')).toBeInTheDocument();
+	});
+});
+
+describe('Security settings page — signed-in devices', () => {
+	it('labels each session by device and marks the current one', () => {
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [],
+					sessions: [mkSession(), mkSession({ id: 's2', userAgent: SAFARI_IOS })],
+					currentSessionId: 's1',
+				},
+			},
+		});
+		expect(screen.getByText('Chrome on macOS')).toBeInTheDocument();
+		expect(screen.getByText('Safari on iOS')).toBeInTheDocument();
+		// Exactly one row carries the "This device" marker.
+		expect(screen.getAllByText('This device')).toHaveLength(1);
+	});
+
+	it('never renders the raw User-Agent', () => {
+		// The UA is an unvalidated client string. It is matched against a
+		// fixed label list, never echoed — a hostile UA can at most choose
+		// which of those labels it gets.
+		const hostile = '<img src=x onerror=alert(1)> Chrome/120.0';
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [], sessions: [mkSession({ userAgent: hostile })] } },
+		});
+		expect(document.body.textContent).not.toContain('onerror');
+		expect(screen.getByText('Chrome')).toBeInTheDocument();
+	});
+
+	it('falls back to a placeholder when no User-Agent was recorded', () => {
+		render(SecurityPage, {
+			props: { data: { ...baseData, passkeys: [], sessions: [mkSession({ userAgent: null })] } },
+		});
+		expect(screen.getByText('Unknown device')).toBeInTheDocument();
+	});
+
+	it('DELETEs a single session and invalidates on confirm', async () => {
+		const user = userEvent.setup();
+		fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true, self: false })));
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [],
+					sessions: [mkSession(), mkSession({ id: 's2', userAgent: SAFARI_IOS })],
+					currentSessionId: 's1',
+				},
+			},
+		});
+		render(ConfirmDialog);
+
+		await user.click(screen.getAllByLabelText('Sign out this device')[1]);
+		await tick();
+		await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('/api/auth/sessions/s2');
+		expect((init as RequestInit | undefined)?.method).toBe('DELETE');
+		expect(invalidateMock).toHaveBeenCalledWith('settings:sessions');
+	});
+
+	it('offers "sign out everywhere else" only when another session exists', () => {
+		const { unmount } = render(SecurityPage, {
+			props: {
+				data: { ...baseData, passkeys: [], sessions: [mkSession()], currentSessionId: 's1' },
+			},
+		});
+		expect(screen.queryByRole('button', { name: /everywhere else/ })).toBeNull();
+		unmount();
+
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [],
+					sessions: [mkSession(), mkSession({ id: 's2' })],
+					currentSessionId: 's1',
+				},
+			},
+		});
+		expect(screen.getByRole('button', { name: /everywhere else/ })).toBeInTheDocument();
+	});
+
+	it('DELETEs the collection for "sign out everywhere else"', async () => {
+		const user = userEvent.setup();
+		fetchMock.mockResolvedValue(new Response(JSON.stringify({ revoked: 3 })));
+		render(SecurityPage, {
+			props: {
+				data: {
+					...baseData,
+					passkeys: [],
+					sessions: [mkSession(), mkSession({ id: 's2' })],
+					currentSessionId: 's1',
+				},
+			},
+		});
+		render(ConfirmDialog);
+
+		await user.click(screen.getByRole('button', { name: /everywhere else/ }));
+		await tick();
+		await user.click(screen.getByRole('button', { name: 'Sign out others' }));
+
+		const [url, init] = fetchMock.mock.calls[0];
+		expect(url).toBe('/api/auth/sessions');
+		expect((init as RequestInit | undefined)?.method).toBe('DELETE');
+		expect(invalidateMock).toHaveBeenCalledWith('settings:sessions');
 	});
 });

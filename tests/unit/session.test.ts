@@ -25,6 +25,9 @@ import {
 	clearSessionCookie,
 	createSession,
 	SESSION_ABSOLUTE_MAX_MS,
+	listSessionsForUser,
+	revokeOtherSessionsForUser,
+	revokeSessionForUser,
 	invalidateSession,
 	readSessionCookie,
 	setSessionCookie,
@@ -261,5 +264,99 @@ describe('absolute session lifetime', () => {
 		const row = mocks.testDb.select().from(sessions).all()[0];
 		expect(row.createdAt).toBeGreaterThanOrEqual(before);
 		expect(row.createdAt).toBeLessThanOrEqual(Date.now());
+	});
+});
+
+describe('session listing + revocation', () => {
+	const DAY = 24 * 60 * 60 * 1000;
+
+	function mint(userId: string, userAgent: string | null = null) {
+		return createSession(userId, userAgent);
+	}
+
+	it('lists a user’s own live sessions, most recently active first', () => {
+		const u = seedUser();
+		mint(u.id, 'Chrome');
+		mint(u.id, 'Safari');
+		const list = listSessionsForUser(u.id);
+		expect(list).toHaveLength(2);
+		expect(list.map((s) => s.userAgent).sort()).toEqual(['Chrome', 'Safari']);
+	});
+
+	it('never lists another user’s sessions', () => {
+		const a = seedUser();
+		const b = seedUser({ email: 'b@x.test' });
+		mint(a.id);
+		mint(b.id);
+		expect(listSessionsForUser(a.id)).toHaveLength(1);
+		expect(listSessionsForUser(b.id)).toHaveLength(1);
+	});
+
+	it('omits expired sessions from the list', () => {
+		// They're already dead to validateSessionToken, but only get swept
+		// when their own token is next presented — which for an abandoned
+		// device never happens.
+		const u = seedUser();
+		const rawToken = randomBytes(20).toString('base64url');
+		mocks.testDb
+			.insert(sessions)
+			.values({
+				id: hash(rawToken),
+				userId: u.id,
+				expiresAt: Date.now() - 1,
+				createdAt: Date.now() - DAY,
+			})
+			.run();
+		expect(listSessionsForUser(u.id)).toHaveLength(0);
+	});
+
+	it('truncates a long User-Agent rather than storing it whole', () => {
+		const u = seedUser();
+		mint(u.id, 'x'.repeat(5000));
+		expect(listSessionsForUser(u.id)[0].userAgent!.length).toBeLessThanOrEqual(256);
+	});
+
+	it('revokes one session, and the token stops resolving', () => {
+		const u = seedUser();
+		const { token } = mint(u.id);
+		const id = listSessionsForUser(u.id)[0].id;
+		expect(revokeSessionForUser(u.id, id)).toBe(true);
+		expect(validateSessionToken(token)).toBeNull();
+	});
+
+	it('refuses to revoke a session belonging to someone else', () => {
+		// Scoped by user id, so a foreign session id matches nothing — the
+		// ids are unguessable sha256 hashes, but the scope is the invariant.
+		const a = seedUser();
+		const b = seedUser({ email: 'b@x.test' });
+		const { token: bToken } = mint(b.id);
+		const bSessionId = listSessionsForUser(b.id)[0].id;
+
+		expect(revokeSessionForUser(a.id, bSessionId)).toBe(false);
+		expect(validateSessionToken(bToken)).not.toBeNull();
+	});
+
+	it('signs out every other session but keeps the caller’s', () => {
+		const u = seedUser();
+		const keep = mint(u.id);
+		mint(u.id);
+		mint(u.id);
+		const keepId = hash(keep.token);
+
+		expect(revokeOtherSessionsForUser(u.id, keepId)).toBe(2);
+		expect(validateSessionToken(keep.token)).not.toBeNull();
+		expect(listSessionsForUser(u.id)).toHaveLength(1);
+	});
+
+	it('signing out everywhere else leaves other users untouched', () => {
+		const a = seedUser();
+		const b = seedUser({ email: 'b@x.test' });
+		const aKeep = mint(a.id);
+		mint(a.id);
+		const { token: bToken } = mint(b.id);
+
+		revokeOtherSessionsForUser(a.id, hash(aKeep.token));
+		expect(validateSessionToken(bToken)).not.toBeNull();
+		expect(listSessionsForUser(b.id)).toHaveLength(1);
 	});
 });

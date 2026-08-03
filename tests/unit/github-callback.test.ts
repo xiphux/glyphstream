@@ -90,6 +90,9 @@ interface Event {
 	url: URL;
 	cookies: Cookies;
 	locals: { user: { id: string; displayName: string | null; email: string | null } | null };
+	/** The handler reads the User-Agent off this to label the session it
+	 *  mints, so the fake event has to carry a real Request. */
+	request: Request;
 }
 
 function mkEvent(over: Partial<Event> = {}): Event {
@@ -97,6 +100,7 @@ function mkEvent(over: Partial<Event> = {}): Event {
 		url: over.url ?? fakeUrl(),
 		cookies: over.cookies ?? fakeCookies().cookies,
 		locals: over.locals ?? { user: null },
+		request: over.request ?? new Request('http://localhost/api/auth/github/callback'),
 	};
 }
 

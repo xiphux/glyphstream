@@ -183,3 +183,27 @@ registration is just a matter of accepting the right prompt at the time.
 
 When `PASSKEY_LOGIN_ENABLED=0`, the "Add passkey" button hides but the list
 stays visible so existing rows can be pruned.
+
+## Sessions and signed-in devices
+
+**Settings → Security → Signed-in devices** lists every session on your
+account — a coarse device label from the browser's User-Agent, when it signed
+in, and when it was last active. The one you're reading it on is marked
+**This device**.
+
+- **Sign out** on a row revokes that session immediately; the next request
+  from that device lands on `/login`.
+- **Sign out everywhere else** revokes every session but the current one.
+  This is the lever to reach for if you think someone else has access —
+  previously the only option was for an admin to disable the whole account,
+  which locked you out along with them.
+
+Two expiries apply. A session lapses 30 days after its last use, sliding
+forward as you keep using it, and lapses unconditionally 90 days after it was
+created. The absolute ceiling is what bounds a token that's been copied off
+your machine: without it, anything that keeps a session warm keeps it alive
+indefinitely.
+
+Sessions are not passkeys. Removing a passkey stops it being used to sign
+_in_; it doesn't sign out sessions already established with it. Revoke those
+here.

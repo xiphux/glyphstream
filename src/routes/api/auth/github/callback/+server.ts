@@ -9,7 +9,12 @@ import { getProvider } from '$lib/server/auth/oauth/registry';
 import { handleOAuthCallback } from '$lib/server/auth/oauth/callback-handler';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ url, cookies, locals }) => {
-	await handleOAuthCallback(getProvider('github')!, { url, cookies, locals });
+export const GET: RequestHandler = async ({ url, cookies, locals, request }) => {
+	await handleOAuthCallback(getProvider('github')!, {
+		url,
+		cookies,
+		locals,
+		userAgent: request.headers.get('user-agent'),
+	});
 	return new Response(); // unreachable — handleOAuthCallback always throws redirect
 };

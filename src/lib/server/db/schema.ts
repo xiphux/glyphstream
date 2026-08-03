@@ -153,6 +153,13 @@ export const sessions = sqliteTable('sessions', {
 		.references(() => users.id, { onDelete: 'cascade' }),
 	expiresAt: integer('expires_at').notNull(),
 	createdAt: integer('created_at').notNull().default(0),
+	// Identifying detail for the "your devices" list in /settings/security, so
+	// a session can be recognized before it's revoked. `last_seen_at` is
+	// written on a throttle, not per request — the session read is on every
+	// request including presence heartbeats, and this table is not where we
+	// want a write amplifier.
+	lastSeenAt: integer('last_seen_at').notNull().default(0),
+	userAgent: text('user_agent'),
 });
 
 // WebAuthn / passkey credentials. Bound to an existing user (always

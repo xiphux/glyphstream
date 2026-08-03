@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, ne } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { getDb } from '../db/client';
 import { sessions, users } from '../db/schema';
@@ -19,6 +19,19 @@ const SESSION_RENEWAL_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // renew if <7 day
  * that goes unnoticed still ends on its own.
  */
 export const SESSION_ABSOLUTE_MAX_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+/**
+ * How stale `last_seen_at` may get before a read pays for a write.
+ *
+ * The session row is read on EVERY request, presence heartbeats included.
+ * Stamping last-seen on each one would turn the hottest read in the app into
+ * a read plus a write for no user-visible gain — five-minute resolution is
+ * ample for "is this device still active?".
+ */
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
+/** Cap on the stored User-Agent; it's an unvalidated client header. */
+const MAX_USER_AGENT_LEN = 256;
 
 /**
  * Sessions are opaque random tokens. The cookie holds the *raw* token; the
@@ -52,14 +65,32 @@ export interface AuthContext {
 	renewed: boolean;
 }
 
-/** Create a new session row + return the raw cookie token to set. */
-export function createSession(userId: string): { token: string; expiresAt: number } {
+/**
+ * Create a new session row + return the raw cookie token to set.
+ *
+ * `userAgent` is stored verbatim so /settings/security can label the row.
+ * Truncated because it's an unvalidated client header and this is the one
+ * place it's persisted — no reason to accept an unbounded string.
+ */
+export function createSession(
+	userId: string,
+	userAgent?: string | null,
+): { token: string; expiresAt: number } {
 	const token = generateToken();
 	const sessionId = hashToken(token);
 	const now = Date.now();
 	const expiresAt = now + SESSION_DURATION_MS;
 	const db = getDb();
-	db.insert(sessions).values({ id: sessionId, userId, expiresAt, createdAt: now }).run();
+	db.insert(sessions)
+		.values({
+			id: sessionId,
+			userId,
+			expiresAt,
+			createdAt: now,
+			lastSeenAt: now,
+			userAgent: userAgent ? userAgent.slice(0, MAX_USER_AGENT_LEN) : null,
+		})
+		.run();
 	return { token, expiresAt };
 }
 
@@ -97,6 +128,7 @@ export function validateSessionToken(token: string): AuthContext | null {
 			sessionId: sessions.id,
 			expiresAt: sessions.expiresAt,
 			createdAt: sessions.createdAt,
+			lastSeenAt: sessions.lastSeenAt,
 			userId: users.id,
 			displayName: users.displayName,
 			email: users.email,
@@ -115,6 +147,10 @@ export function validateSessionToken(token: string): AuthContext | null {
 	if (row.expiresAt <= now || now >= absoluteDeadline) {
 		db.delete(sessions).where(eq(sessions.id, sessionId)).run();
 		return null;
+	}
+
+	if (now - row.lastSeenAt >= LAST_SEEN_THROTTLE_MS) {
+		db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, sessionId)).run();
 	}
 
 	let expiresAt = row.expiresAt;
@@ -147,6 +183,71 @@ export function validateSessionToken(token: string): AuthContext | null {
 export function invalidateSession(sessionId: string): void {
 	const db = getDb();
 	db.delete(sessions).where(eq(sessions.id, sessionId)).run();
+}
+
+export interface SessionSummary {
+	/** The sha256 of the cookie token — safe to hand to the client, since it
+	 *  can't be reversed into a usable cookie. */
+	id: string;
+	createdAt: number;
+	lastSeenAt: number;
+	expiresAt: number;
+	userAgent: string | null;
+}
+
+/**
+ * Every live session for a user, most recently active first.
+ *
+ * Expired rows are filtered rather than shown — they're already dead to
+ * `validateSessionToken` and only get swept when their own token is next
+ * presented, which for an abandoned device is never.
+ */
+export function listSessionsForUser(userId: string, now: number = Date.now()): SessionSummary[] {
+	const db = getDb();
+	return db
+		.select({
+			id: sessions.id,
+			createdAt: sessions.createdAt,
+			lastSeenAt: sessions.lastSeenAt,
+			expiresAt: sessions.expiresAt,
+			userAgent: sessions.userAgent,
+		})
+		.from(sessions)
+		.where(and(eq(sessions.userId, userId), gt(sessions.expiresAt, now)))
+		.orderBy(desc(sessions.lastSeenAt))
+		.all();
+}
+
+/**
+ * Revoke one of a user's own sessions. Scoped by `userId` so a session id
+ * belonging to someone else matches nothing — the ids are sha256 hashes and
+ * so unguessable, but the scope is the invariant, not the entropy.
+ *
+ * Returns false when nothing matched, which the route maps to a 404.
+ */
+export function revokeSessionForUser(userId: string, sessionId: string): boolean {
+	const db = getDb();
+	const res = db
+		.delete(sessions)
+		.where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId)))
+		.run();
+	return res.changes > 0;
+}
+
+/**
+ * Sign out everywhere else: drop every session for the user except the one
+ * making the request. Returns how many were revoked.
+ *
+ * Keeping the caller's own session is what makes this usable — the point is
+ * to evict an unrecognized device without having to sign back in yourself.
+ */
+export function revokeOtherSessionsForUser(userId: string, keepSessionId: string): number {
+	const db = getDb();
+	const res = db
+		.delete(sessions)
+		.where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId)))
+		.run();
+	return Number(res.changes);
 }
 
 // --- cookie wrangling ----------------------------------------------------

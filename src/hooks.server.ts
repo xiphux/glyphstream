@@ -235,6 +235,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
+	event.locals.sessionId = ctx?.sessionId ?? null;
 	// Renewal slid `expires_at` in the DB; push the same date to the browser.
 	// Without this the cookie keeps its original `expires`, so the row and the
 	// cookie drift apart and the sliding window only ever benefits a raw token

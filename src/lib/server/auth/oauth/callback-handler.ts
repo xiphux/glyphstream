@@ -52,6 +52,9 @@ interface CallbackContext {
 	url: URL;
 	cookies: Cookies;
 	locals: App.Locals;
+	/** Threaded through to createSession so the device list in
+	 *  /settings/security can label the session this flow mints. */
+	userAgent?: string | null;
 }
 
 function loginError(reason: string): never {
@@ -76,6 +79,7 @@ export async function handleOAuthCallback(
 	ctx: CallbackContext,
 ): Promise<never> {
 	const { url, cookies, locals } = ctx;
+	const userAgent = ctx.userAgent ?? null;
 	const code = url.searchParams.get('code');
 	const state = url.searchParams.get('state');
 
@@ -99,6 +103,7 @@ export async function handleOAuthCallback(
 			loginState,
 			codeVerifier,
 			setupCarrySigned,
+			userAgent,
 		});
 	}
 	if (joinCarrySigned) {
@@ -110,12 +115,13 @@ export async function handleOAuthCallback(
 			loginState,
 			codeVerifier,
 			joinCarrySigned,
+			userAgent,
 		});
 	}
 	if (linkState) {
 		return handleLink({ provider, locals, code, state, linkState, codeVerifier });
 	}
-	return handleLogin({ provider, cookies, code, state, loginState, codeVerifier });
+	return handleLogin({ provider, cookies, code, state, loginState, codeVerifier, userAgent });
 }
 
 /**
@@ -148,8 +154,10 @@ async function handleSetup(args: {
 	loginState: string | undefined;
 	codeVerifier: string | null;
 	setupCarrySigned: string;
+	userAgent: string | null;
 }): Promise<never> {
-	const { provider, cookies, code, state, loginState, codeVerifier, setupCarrySigned } = args;
+	const { provider, cookies, code, state, loginState, codeVerifier, setupCarrySigned, userAgent } =
+		args;
 
 	if (!code || !state || !loginState || state !== loginState) {
 		setupError('invalid_oauth_state');
@@ -187,7 +195,7 @@ async function handleSetup(args: {
 		externalEmail: profile.email,
 	});
 
-	const { token, expiresAt } = createSession(userId);
+	const { token, expiresAt } = createSession(userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
 	throw redirect(302, '/');
@@ -201,8 +209,10 @@ async function handleJoin(args: {
 	loginState: string | undefined;
 	codeVerifier: string | null;
 	joinCarrySigned: string;
+	userAgent: string | null;
 }): Promise<never> {
-	const { provider, cookies, code, state, loginState, codeVerifier, joinCarrySigned } = args;
+	const { provider, cookies, code, state, loginState, codeVerifier, joinCarrySigned, userAgent } =
+		args;
 
 	const carry = verify<JoinCarry>(joinCarrySigned);
 	// No valid carry → can't know which invite this was; bounce to login.
@@ -270,7 +280,7 @@ async function handleJoin(args: {
 		joinError('signup_failed');
 	}
 
-	const { token, expiresAt } = createSession(userId);
+	const { token, expiresAt } = createSession(userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
 	throw redirect(302, '/');
@@ -326,8 +336,9 @@ async function handleLogin(args: {
 	state: string | null;
 	loginState: string | undefined;
 	codeVerifier: string | null;
+	userAgent: string | null;
 }): Promise<never> {
-	const { provider, cookies, code, state, loginState, codeVerifier } = args;
+	const { provider, cookies, code, state, loginState, codeVerifier, userAgent } = args;
 
 	if (!code || !state || !loginState || state !== loginState) {
 		loginError('invalid_oauth_state');
@@ -371,7 +382,7 @@ async function handleLogin(args: {
 	});
 	bumpUserLastLogin(binding.userId);
 
-	const { token, expiresAt } = createSession(binding.userId);
+	const { token, expiresAt } = createSession(binding.userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
 	throw redirect(302, '/');

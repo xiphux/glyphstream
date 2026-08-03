@@ -198,7 +198,8 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 ### Self-hosting & polish
 
 - **OAuth (GitHub, Google, generic OIDC) + passkeys**, together or alone;
-  first-run setup wizard; one-flag account revocation
+  token-gated first-run setup wizard; a signed-in device list with per-session
+  revoke and "sign out everywhere else"; one-flag account revocation
   ([guide](docs/authentication.md)).
 - **Invite-only multi-user** — the setup-wizard account is the admin; everyone
   else joins via an admin-issued `/join` link (any OAuth provider or passkey). Per-user

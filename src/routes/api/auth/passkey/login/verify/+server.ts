@@ -113,7 +113,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	updateCredentialCounterAndLastUsed(credential.id, newCounter, now);
 	bumpUserLastLogin(owner.userId);
 
-	const { token, expiresAt } = createSession(owner.userId);
+	const { token, expiresAt } = createSession(owner.userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
 	return json({ ok: true });

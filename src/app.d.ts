@@ -6,6 +6,13 @@ declare global {
 		// interface Error {}
 		interface Locals {
 			user: SessionUser | null;
+			/**
+			 * The sha256 of the presented session token, or null when
+			 * unauthenticated. Lets /settings/security mark which row in the
+			 * device list is the one you're reading it on, and lets
+			 * "sign out everywhere else" spare it.
+			 */
+			sessionId: string | null;
 		}
 		// interface PageData {}
 		// interface PageState {}

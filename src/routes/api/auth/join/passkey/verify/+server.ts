@@ -73,7 +73,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		throw e;
 	}
 
-	const { token, expiresAt } = createSession(userId);
+	const { token, expiresAt } = createSession(userId, request.headers.get('user-agent'));
 	setSessionCookie(cookies, token, expiresAt);
 
 	return json({ ok: true });
