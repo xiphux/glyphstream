@@ -136,6 +136,26 @@ export function publicBaseUrl(): string {
 	return readString('EXTERNAL_BASE_URL', 'http://localhost:5173').replace(/\/+$/, '');
 }
 
+/**
+ * Whether auth cookies get the `Secure` attribute.
+ *
+ * Derived from EXTERNAL_BASE_URL's scheme rather than NODE_ENV, which is what
+ * this used to key off. NODE_ENV is set by the Dockerfile but by nothing else
+ * — a `node build` under systemd or pm2 silently shipped session, WebAuthn
+ * challenge, and OAuth carry cookies with no `Secure` at all, with no warning.
+ * That's failing open on the strength of a variable nobody thinks of as
+ * security-relevant.
+ *
+ * EXTERNAL_BASE_URL has to be correct already: the WebAuthn RP ID and the
+ * OAuth redirect URI are both derived from it, and both break loudly when it's
+ * wrong. Keying the cookie flag to the same value means a deployment serving
+ * HTTPS gets Secure cookies however it was started, and a local http:// dev
+ * server still works.
+ */
+export function cookiesSecure(): boolean {
+	return publicBaseUrl().startsWith('https://');
+}
+
 function readBool(name: string, fallback: boolean): boolean {
 	const raw = env[name];
 	if (raw === undefined || raw === '') return fallback;

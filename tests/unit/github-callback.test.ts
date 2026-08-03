@@ -56,6 +56,10 @@ vi.mock('$lib/server/auth/oauth/registry', () => ({
 
 vi.mock('$lib/server/env', () => ({
 	authSecret: () => 'test-secret-do-not-use-in-prod',
+	// Reached via setSessionCookie when the callback mints a session. False
+	// here so the fake cookie jar sees the same shape a local http:// dev
+	// server would produce.
+	cookiesSecure: () => false,
 	// Other env getters aren't called by the callback path — the provider's
 	// client construction is bypassed because the registry is mocked.
 }));

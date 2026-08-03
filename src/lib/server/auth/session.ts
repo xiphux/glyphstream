@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, desc, eq, gt, isNull, ne } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 import { getDb } from '../db/client';
+import { cookiesSecure } from '../env';
 import { sessions, users } from '../db/schema';
 
 const SESSION_COOKIE = 'glyphstream_session';
@@ -257,7 +258,7 @@ export function setSessionCookie(cookies: Cookies, token: string, expiresAt: num
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
+		secure: cookiesSecure(),
 		expires: new Date(expiresAt),
 	});
 }

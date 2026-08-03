@@ -360,3 +360,30 @@ describe('session listing + revocation', () => {
 		expect(listSessionsForUser(b.id)).toHaveLength(1);
 	});
 });
+
+describe('cookie Secure attribute', () => {
+	it('is derived from EXTERNAL_BASE_URL, not NODE_ENV', async () => {
+		// It used to key off NODE_ENV, which the Dockerfile sets but nothing
+		// else does — a `node build` under systemd shipped session cookies
+		// with no Secure attribute and no warning. EXTERNAL_BASE_URL has to be
+		// right already (the WebAuthn RP ID and OAuth redirect both derive
+		// from it), so keying to it fails safe instead.
+		const { cookiesSecure } = await import('$lib/server/env');
+		const previous = process.env.EXTERNAL_BASE_URL;
+		const previousNodeEnv = process.env.NODE_ENV;
+		try {
+			process.env.NODE_ENV = 'development';
+			process.env.EXTERNAL_BASE_URL = 'https://chat.example.com';
+			expect(cookiesSecure()).toBe(true);
+
+			process.env.NODE_ENV = 'production';
+			process.env.EXTERNAL_BASE_URL = 'http://localhost:5173';
+			expect(cookiesSecure()).toBe(false);
+		} finally {
+			if (previous === undefined) delete process.env.EXTERNAL_BASE_URL;
+			else process.env.EXTERNAL_BASE_URL = previous;
+			if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+			else process.env.NODE_ENV = previousNodeEnv;
+		}
+	});
+});

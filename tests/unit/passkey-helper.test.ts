@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('$lib/server/env', () => ({
 	publicBaseUrl: () => mocks.baseUrl,
+	// Derived from the base URL's scheme in the real module; mirroring that
+	// here keeps the challenge-cookie assertions honest about when `Secure`
+	// is set.
+	cookiesSecure: () => mocks.baseUrl.startsWith('https://'),
 }));
 
 // Stub @simplewebauthn/server so we can assert on the pass-through

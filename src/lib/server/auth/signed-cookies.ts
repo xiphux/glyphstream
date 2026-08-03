@@ -17,7 +17,7 @@
  */
 import type { Cookies } from '@sveltejs/kit';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { authSecret } from '../env';
+import { authSecret, cookiesSecure } from '../env';
 
 function hmac(payloadB64: string): string {
 	return createHmac('sha256', authSecret()).update(payloadB64).digest('base64url');
@@ -78,7 +78,7 @@ export function setCarryCookie(
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
+		secure: cookiesSecure(),
 		maxAge: maxAgeSeconds,
 	});
 }

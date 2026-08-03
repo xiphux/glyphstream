@@ -28,7 +28,7 @@ import type {
 	WebAuthnCredential,
 } from '@simplewebauthn/server';
 import { type Cookies, error } from '@sveltejs/kit';
-import { publicBaseUrl } from '../env';
+import { cookiesSecure, publicBaseUrl } from '../env';
 import type { SessionUser } from './session';
 import {
 	pickKnownTransports,
@@ -249,7 +249,7 @@ function writeChallengeCookie(cookies: Cookies, name: string, challenge: string)
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
-		secure: process.env.NODE_ENV === 'production',
+		secure: cookiesSecure(),
 		maxAge: CHALLENGE_TTL_SECONDS,
 	});
 }
