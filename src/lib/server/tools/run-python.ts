@@ -156,6 +156,7 @@ export const runPythonTool: Tool = {
 		try {
 			const result = await runPython({
 				conversationId: ctx.conversationId,
+				userId: ctx.userId,
 				code,
 				disabledFeatures: ctx.disabledFeatures,
 				preFiles,

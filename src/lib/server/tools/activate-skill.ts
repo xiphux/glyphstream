@@ -250,6 +250,7 @@ export const runSkillScriptTool: Tool = {
 		try {
 			const result = await runPython({
 				conversationId: ctx.conversationId,
+				userId: ctx.userId,
 				code: buildScriptBootstrap(materialized.value.entryBasename, parsed.argv),
 				disabledFeatures: ctx.disabledFeatures,
 				preFiles,

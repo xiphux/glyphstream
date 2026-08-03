@@ -97,6 +97,7 @@ class Mutex {
 interface ReadyEntry {
 	state: 'ready';
 	conversationId: string;
+	userId: string;
 	worker: ManagedWorker;
 	mutex: Mutex;
 	lastUsedAt: number;
@@ -118,6 +119,7 @@ interface FailedEntry {
 interface StartingEntry {
 	state: 'starting';
 	conversationId: string;
+	userId: string;
 	promise: Promise<ReadyEntry | FailedEntry>;
 }
 
@@ -149,6 +151,9 @@ export interface RunPythonPostFile {
 
 export interface RunPythonParams {
 	conversationId: string;
+	/** Owner of the conversation — the per-user slot cap keys on this so one
+	 *  account can't hold every worker in the pool. */
+	userId: string;
 	code: string;
 	disabledFeatures: readonly string[];
 	/** Files to materialize into the worker's `/workspace/` before
@@ -201,7 +206,7 @@ export async function runPython(params: RunPythonParams): Promise<WorkerRunResul
 	// or produces a FailedEntry).
 	const MAX_RETRIES = 1;
 	for (let attempt = 0; ; attempt++) {
-		const entry = await ensureReady(params.conversationId, params.onStatus);
+		const entry = await ensureReady(params.conversationId, params.userId, params.onStatus);
 		const release = await entry.mutex.acquire();
 
 		// Re-check that this entry is still valid after the (potentially
@@ -315,6 +320,7 @@ export function listWorkerStates(): WorkerStateView[] {
 
 async function ensureReady(
 	conversationId: string,
+	userId: string,
 	onStatus?: (status: string) => void,
 ): Promise<ReadyEntry> {
 	const existing = entries.get(conversationId);
@@ -326,19 +332,21 @@ async function ensureReady(
 	}
 	// 'idle' or 'failed' or absent: try to (re)spawn. Concurrent callers
 	// coalesce via a single `starting` entry.
-	return startWorker(conversationId, onStatus);
+	return startWorker(conversationId, userId, onStatus);
 }
 
 async function startWorker(
 	conversationId: string,
+	userId: string,
 	onStatus?: (status: string) => void,
 ): Promise<ReadyEntry> {
-	enforcePoolCap();
+	enforcePoolCap(userId);
 
 	const starting: StartingEntry = {
 		state: 'starting',
 		conversationId,
-		promise: doStart(conversationId, onStatus),
+		userId,
+		promise: doStart(conversationId, userId, onStatus),
 	};
 	entries.set(conversationId, starting);
 
@@ -355,6 +363,7 @@ async function startWorker(
 
 async function doStart(
 	conversationId: string,
+	userId: string,
 	onStatus?: (status: string) => void,
 ): Promise<ReadyEntry | FailedEntry> {
 	const cfg = getCodeInterpreterConfig();
@@ -451,6 +460,7 @@ async function doStart(
 		const ready: ReadyEntry = {
 			state: 'ready',
 			conversationId,
+			userId,
 			worker,
 			mutex: new Mutex(),
 			lastUsedAt: Date.now(),
@@ -466,11 +476,49 @@ async function doStart(
 	}
 }
 
-function enforcePoolCap(): void {
+/**
+ * Terminate the least-recently-used worker among `candidates` that has no
+ * in-flight call, and report whether one was freed. Shared by the per-user and
+ * global caps so both evict on identical terms.
+ */
+function evictIdle(candidates: readonly (ReadyEntry | StartingEntry)[]): boolean {
+	// `starting` entries are skipped: someone is actively awaiting them.
+	const idle = candidates.filter(
+		(e): e is ReadyEntry => e.state === 'ready' && e.pendingResolvers.size === 0,
+	);
+	if (idle.length === 0) return false;
+	idle.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+	const victim = idle[0];
+	if (victim.idleTimerId) clearTimeout(victim.idleTimerId);
+	void victim.worker.terminate().catch(() => {});
+	entries.delete(victim.conversationId);
+	return true;
+}
+
+function enforcePoolCap(userId: string): void {
 	const cap = getCodeInterpreterConfig().poolMax;
 	const liveEntries = Array.from(entries.values()).filter(
-		(e) => e.state === 'ready' || e.state === 'starting',
+		(e): e is ReadyEntry | StartingEntry => e.state === 'ready' || e.state === 'starting',
 	);
+
+	// Per-user ceiling first. The pool cap alone is global, so one account
+	// opening `poolMax` conversations and running Python in each could hold
+	// every worker slot and lock everyone else out — each worker is also a
+	// Pyodide runtime, so the memory cost lands on the shared process too. Half
+	// the pool (min 1) leaves room for at least one other user at any size.
+	const perUserCap = Math.max(1, Math.floor(cap / 2));
+	const mine = liveEntries.filter((e) => e.userId === userId);
+	if (mine.length >= perUserCap) {
+		// Evict the caller's OWN least-recently-used idle worker rather than
+		// erroring — from their point of view this is the same LRU behaviour
+		// the global cap already has, just bounded to their own slots.
+		if (evictIdle(mine)) return;
+		throw new Error(
+			`code_interpreter: you already have ${perUserCap} interpreter sessions running. ` +
+				`Wait for one to finish.`,
+		);
+	}
+
 	if (liveEntries.length < cap) return;
 
 	// LRU-evict a ready entry whose mutex isn't currently held. Skip
@@ -479,17 +527,7 @@ function enforcePoolCap(): void {
 	// silently queueing.
 	const ready = liveEntries.filter((e): e is ReadyEntry => e.state === 'ready');
 
-	// Only consider truly idle workers — those with no in-flight calls.
-	const idle = ready.filter((e) => e.pendingResolvers.size === 0);
-	if (idle.length > 0) {
-		// Sort by lastUsedAt ascending so the oldest is first.
-		idle.sort((a, b) => a.lastUsedAt - b.lastUsedAt);
-		const victim = idle[0];
-		if (victim.idleTimerId) clearTimeout(victim.idleTimerId);
-		void victim.worker.terminate().catch(() => {});
-		entries.delete(victim.conversationId);
-		return;
-	}
+	if (evictIdle(ready)) return;
 
 	// All ready entries are busy — or every slot is still starting up.
 	if (ready.length > 0) {

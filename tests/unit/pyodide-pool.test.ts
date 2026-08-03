@@ -125,6 +125,7 @@ describe('runPython — happy path + isolation', () => {
 
 		const result = await runPython({
 			conversationId: 'c1',
+			userId: 'u-c1',
 			code: 'x = 42',
 			disabledFeatures: [],
 		});
@@ -160,7 +161,7 @@ describe('runPython — happy path + isolation', () => {
 		});
 
 		await expect(
-			runPython({ conversationId: 'boom', code: '1', disabledFeatures: [] }),
+			runPython({ conversationId: 'boom', userId: 'u-boom', code: '1', disabledFeatures: [] }),
 		).rejects.toThrow(/pyodide boom|failed to start/i);
 
 		expect(createdWorkers).toHaveLength(1);
@@ -182,7 +183,7 @@ describe('runPython — happy path + isolation', () => {
 
 		for (let i = 0; i < 3; i++) {
 			await expect(
-				runPython({ conversationId: 'retry', code: '1', disabledFeatures: [] }),
+				runPython({ conversationId: 'retry', userId: 'u-retry', code: '1', disabledFeatures: [] }),
 			).rejects.toThrow();
 		}
 		// Each retry spawned a fresh worker, and every one was terminated.
@@ -198,9 +199,24 @@ describe('runPython — happy path + isolation', () => {
 			return w;
 		});
 
-		await runPython({ conversationId: 'same', code: '1+1', disabledFeatures: [] });
-		await runPython({ conversationId: 'same', code: '2+2', disabledFeatures: [] });
-		await runPython({ conversationId: 'same', code: '3+3', disabledFeatures: [] });
+		await runPython({
+			conversationId: 'same',
+			userId: 'u-same',
+			code: '1+1',
+			disabledFeatures: [],
+		});
+		await runPython({
+			conversationId: 'same',
+			userId: 'u-same',
+			code: '2+2',
+			disabledFeatures: [],
+		});
+		await runPython({
+			conversationId: 'same',
+			userId: 'u-same',
+			code: '3+3',
+			disabledFeatures: [],
+		});
 
 		// Exactly one MockWorker should have been constructed.
 		expect(createdWorkers).toHaveLength(1);
@@ -215,8 +231,8 @@ describe('runPython — happy path + isolation', () => {
 		});
 
 		await Promise.all([
-			runPython({ conversationId: 'a', code: '1', disabledFeatures: [] }),
-			runPython({ conversationId: 'b', code: '2', disabledFeatures: [] }),
+			runPython({ conversationId: 'a', userId: 'u-a', code: '1', disabledFeatures: [] }),
+			runPython({ conversationId: 'b', userId: 'u-b', code: '2', disabledFeatures: [] }),
 		]);
 
 		expect(createdWorkers).toHaveLength(2);
@@ -252,6 +268,7 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 		const settled: Array<{ tag: string; value?: unknown; error?: string }> = [];
 		void runPython({
 			conversationId: 'c',
+			userId: 'u-c',
 			code: 'first',
 			disabledFeatures: [],
 			callTimeoutMs: 30_000,
@@ -261,6 +278,7 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 		);
 		void runPython({
 			conversationId: 'c',
+			userId: 'u-c',
 			code: 'second',
 			disabledFeatures: [],
 			callTimeoutMs: 30_000,
@@ -310,8 +328,18 @@ describe('starting-state coalescing', () => {
 		});
 
 		await Promise.all([
-			runPython({ conversationId: 'coalesce', code: '1', disabledFeatures: [] }),
-			runPython({ conversationId: 'coalesce', code: '2', disabledFeatures: [] }),
+			runPython({
+				conversationId: 'coalesce',
+				userId: 'u-coalesce',
+				code: '1',
+				disabledFeatures: [],
+			}),
+			runPython({
+				conversationId: 'coalesce',
+				userId: 'u-coalesce',
+				code: '2',
+				disabledFeatures: [],
+			}),
 		]);
 
 		expect(createdWorkers).toHaveLength(1);
@@ -332,6 +360,7 @@ describe('timeout — terminate and transition to failed', () => {
 
 		const p = runPython({
 			conversationId: 'stuck',
+			userId: 'u-stuck',
 			code: 'while True: pass',
 			disabledFeatures: [],
 			callTimeoutMs: 50,
@@ -370,6 +399,7 @@ describe('timeout — terminate and transition to failed', () => {
 		await expect(
 			runPython({
 				conversationId: 'stuck',
+				userId: 'u-stuck',
 				code: '1',
 				disabledFeatures: [],
 			}),
@@ -391,6 +421,7 @@ describe('idle reaper', () => {
 
 		const p = runPython({
 			conversationId: 'idle',
+			userId: 'u-idle',
 			code: '1',
 			disabledFeatures: [],
 		});
@@ -417,17 +448,17 @@ describe('LRU eviction', () => {
 			return w;
 		});
 
-		await runPython({ conversationId: 'a', code: '1', disabledFeatures: [] });
+		await runPython({ conversationId: 'a', userId: 'u-a', code: '1', disabledFeatures: [] });
 		await new Promise((r) => setTimeout(r, 1));
-		await runPython({ conversationId: 'b', code: '2', disabledFeatures: [] });
+		await runPython({ conversationId: 'b', userId: 'u-b', code: '2', disabledFeatures: [] });
 		await new Promise((r) => setTimeout(r, 1));
-		await runPython({ conversationId: 'c', code: '3', disabledFeatures: [] });
+		await runPython({ conversationId: 'c', userId: 'u-c', code: '3', disabledFeatures: [] });
 		await new Promise((r) => setTimeout(r, 1));
 		expect(createdWorkers).toHaveLength(3);
 		expect(createdWorkers.every((w) => !w.terminated)).toBe(true);
 
 		// Fourth call — 'a' was the oldest, should be the evicted one.
-		await runPython({ conversationId: 'd', code: '4', disabledFeatures: [] });
+		await runPython({ conversationId: 'd', userId: 'u-d', code: '4', disabledFeatures: [] });
 		expect(createdWorkers).toHaveLength(4);
 		expect(createdWorkers[0].terminated).toBe(true); // 'a' evicted
 		expect(createdWorkers[1].terminated).toBe(false);
@@ -456,17 +487,20 @@ describe('LRU eviction', () => {
 		});
 
 		// 'a' runs and completes (idle).
-		await runPython({ conversationId: 'a', code: 'a', disabledFeatures: [] });
+		await runPython({ conversationId: 'a', userId: 'u-a', code: 'a', disabledFeatures: [] });
 		await new Promise((r) => setTimeout(r, 1));
 		// 'b' runs with 'park' — this call never resolves. Swallow the
 		// eventual rejection so afterEach cleanup (worker termination)
 		// doesn't surface as an unhandled rejection.
-		const inFlightB = runPython({ conversationId: 'b', code: 'park', disabledFeatures: [] }).catch(
-			() => {},
-		);
+		const inFlightB = runPython({
+			conversationId: 'b',
+			userId: 'u-b',
+			code: 'park',
+			disabledFeatures: [],
+		}).catch(() => {});
 		await new Promise((r) => setTimeout(r, 10));
 		// 'c' runs and completes (idle).
-		await runPython({ conversationId: 'c', code: 'c', disabledFeatures: [] });
+		await runPython({ conversationId: 'c', userId: 'u-c', code: 'c', disabledFeatures: [] });
 		await new Promise((r) => setTimeout(r, 1));
 
 		expect(createdWorkers).toHaveLength(3);
@@ -474,7 +508,7 @@ describe('LRU eviction', () => {
 
 		// Fourth call — 'a' is the oldest idle worker and should be evicted.
 		// 'b' is busy (parked call) and must NOT be terminated.
-		await runPython({ conversationId: 'd', code: 'd', disabledFeatures: [] });
+		await runPython({ conversationId: 'd', userId: 'u-d', code: 'd', disabledFeatures: [] });
 		expect(createdWorkers).toHaveLength(4);
 		expect(createdWorkers[0].terminated).toBe(true); // 'a' (oldest idle) evicted
 		expect(createdWorkers[1].terminated).toBe(false); // 'b' (busy) preserved
@@ -496,12 +530,18 @@ describe('LRU eviction', () => {
 		// Start two in-flight calls that never complete. Swallow their
 		// eventual rejections so afterEach cleanup doesn't surface as
 		// unhandled rejections.
-		const inFlightA = runPython({ conversationId: 'a', code: 'hang', disabledFeatures: [] }).catch(
-			() => {},
-		);
-		const inFlightB = runPython({ conversationId: 'b', code: 'hang', disabledFeatures: [] }).catch(
-			() => {},
-		);
+		const inFlightA = runPython({
+			conversationId: 'a',
+			userId: 'u-a',
+			code: 'hang',
+			disabledFeatures: [],
+		}).catch(() => {});
+		const inFlightB = runPython({
+			conversationId: 'b',
+			userId: 'u-b',
+			code: 'hang',
+			disabledFeatures: [],
+		}).catch(() => {});
 
 		// Wait for both workers to boot and reach 'ready' with pending resolvers.
 		await new Promise((r) => setTimeout(r, 30));
@@ -512,12 +552,72 @@ describe('LRU eviction', () => {
 
 		// Third call — pool at capacity, all workers busy — should throw.
 		await expect(
-			runPython({ conversationId: 'c', code: 'overflow', disabledFeatures: [] }),
+			runPython({ conversationId: 'c', userId: 'u-c', code: 'overflow', disabledFeatures: [] }),
 		).rejects.toThrow(/pool at capacity.*busy/);
 
 		// Assert neither busy worker was terminated.
 		expect(createdWorkers[0].terminated).toBe(false);
 		expect(createdWorkers[1].terminated).toBe(false);
+	});
+
+	it('caps the slots ONE user can hold, leaving room for everybody else', async () => {
+		// The pool cap alone is global, so one account opening poolMax
+		// conversations and running Python in each could hold every worker slot
+		// — and every worker is a Pyodide runtime, so the memory lands on the
+		// shared process too. Per-user ceiling is half the pool (min 1).
+		testConfig.poolMax = 4; // → per-user cap of 2
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = () => {}; // Park — never reply
+			createdWorkers.push(w);
+			return w;
+		});
+
+		const hog = ['h1', 'h2'].map((c) =>
+			runPython({ conversationId: c, userId: 'hog', code: 'hang', disabledFeatures: [] }).catch(
+				() => {},
+			),
+		);
+		await new Promise((r) => setTimeout(r, 30));
+		expect(createdWorkers).toHaveLength(2);
+
+		// Third concurrent session for the SAME user is refused, even though
+		// the global pool still has two free slots.
+		await expect(
+			runPython({ conversationId: 'h3', userId: 'hog', code: 'more', disabledFeatures: [] }),
+		).rejects.toThrow(/interpreter sessions running/);
+
+		// ...and those free slots are still there for someone else.
+		const other = runPython({
+			conversationId: 'o1',
+			userId: 'other',
+			code: 'hang',
+			disabledFeatures: [],
+		}).catch(() => {});
+		await new Promise((r) => setTimeout(r, 30));
+		expect(createdWorkers).toHaveLength(3);
+
+		void hog;
+		void other;
+	});
+
+	it('evicts the caller’s own idle worker rather than refusing them', async () => {
+		// Hitting your own ceiling with an IDLE session behaves like the global
+		// LRU cap — reclaim the stale one instead of erroring.
+		testConfig.poolMax = 2; // → per-user cap of 1
+		setWorkerFactoryForTests(() => {
+			const w = new MockWorker();
+			w.onRun = ({ callId }) => replyOk(w, callId);
+			createdWorkers.push(w);
+			return w;
+		});
+
+		await runPython({ conversationId: 'first', userId: 'solo', code: '1', disabledFeatures: [] });
+		expect(createdWorkers).toHaveLength(1);
+
+		await runPython({ conversationId: 'second', userId: 'solo', code: '2', disabledFeatures: [] });
+		expect(createdWorkers).toHaveLength(2);
+		expect(createdWorkers[0].terminated).toBe(true);
 	});
 });
 
@@ -535,7 +635,7 @@ describe('worker exit propagation', () => {
 		});
 
 		await expect(
-			runPython({ conversationId: 'oom', code: '[]*999', disabledFeatures: [] }),
+			runPython({ conversationId: 'oom', userId: 'u-oom', code: '[]*999', disabledFeatures: [] }),
 		).rejects.toThrow(/worker exited with code 134/);
 		// We didn't call .terminate(); the worker self-exited.
 		expect(createdWorkers[0].terminated).toBe(false);
@@ -554,6 +654,7 @@ describe('ctxSignal — abort terminates the worker', () => {
 		const ctrl = new AbortController();
 		const p = runPython({
 			conversationId: 'abort',
+			userId: 'u-abort',
 			code: 'stuck',
 			disabledFeatures: [],
 			ctxSignal: ctrl.signal,
@@ -583,7 +684,7 @@ describe('stale entry recovery — B5', () => {
 		});
 
 		await expect(
-			runPython({ conversationId: 'smoke', code: 'x', disabledFeatures: [] }),
+			runPython({ conversationId: 'smoke', userId: 'u-smoke', code: 'x', disabledFeatures: [] }),
 		).rejects.toThrow(/worker exited/);
 	});
 
@@ -625,6 +726,7 @@ describe('stale entry recovery — B5', () => {
 		// Park both promises with .catch() to prevent unhandled rejections.
 		const p1 = runPython({
 			conversationId: 'c',
+			userId: 'u-c',
 			code: 'a',
 			disabledFeatures: [],
 		}).then(
@@ -634,6 +736,7 @@ describe('stale entry recovery — B5', () => {
 
 		const p2 = runPython({
 			conversationId: 'c',
+			userId: 'u-c',
 			code: 'b',
 			disabledFeatures: [],
 		}).then(

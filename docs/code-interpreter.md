@@ -71,6 +71,24 @@ which packages got loaded, so the default `pool_max = 10` plus
 saturated. Tighten `pool_max` on lower-spec hosts; tighten
 `idle_timeout_seconds` to reclaim memory faster between bursts of use.
 
+`pool_max` is a global ceiling. A single user is additionally capped at half
+of it (minimum 1), so one account running Python in many conversations at
+once can't hold every slot and lock everyone else out.
+
+> **`worker_memory_mb` does not bound what Python can allocate.** It sets
+> `maxOldGenerationSizeMb` on the worker thread, which caps the V8 heap — but
+> Pyodide's Python heap is WebAssembly linear memory, allocated outside that
+> budget. A worker capped at 64 MB can still commit a gigabyte of WASM memory,
+> and `call_timeout_seconds` doesn't catch it because a large allocation is
+> fast. On a multi-user instance, enforce the real limit at the process level:
+> `mem_limit` in docker-compose, or `MemoryMax=` under systemd. Everything in
+> the config block above is cooperative; that isn't.
+
+Files attached to a conversation are mounted into `/workspace/` on every call,
+capped at 25 MB per file and 50 MB per call. Anything over budget is skipped
+with a server-log warning and simply isn't there for the model — which is how
+a missing file already behaves.
+
 ## Per-conversation gating
 
 `run_python` lives in its own `code_interpreter` feature category — one

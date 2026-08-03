@@ -37,6 +37,19 @@ import { getMediaStore } from '../media/disk-store';
 import type { RunPythonPreFile, RunPythonPostFile } from './pool';
 
 /**
+ * Caps on what a single call may mount into `/workspace/`.
+ *
+ * Mirrors the outbound caps in worker.ts, which already carried a comment
+ * explaining why an unbounded transfer is dangerous — the inbound direction
+ * just never got them. Every eligible file on the branch is read fully into
+ * the Node heap and structured-cloned to the worker on EVERY call, so without
+ * a ceiling one conversation of large attachments costs ~1 GB per invocation
+ * in the main process alone.
+ */
+const MAX_PREFILE_BYTES = 25 * 1024 * 1024;
+const MAX_PREFILE_TOTAL_BYTES = 50 * 1024 * 1024;
+
+/**
  * Returns the conversation's attached + Python-generated files, packaged
  * for materialization into `/workspace/`. Filenames are deduped — if two
  * uploads share the same filename, the most recently created one wins
@@ -61,6 +74,7 @@ export async function collectConversationFiles(
 			storagePath: media.storagePath,
 			originalFilename: media.originalFilename,
 			contentType: media.contentType,
+			byteSize: media.byteSize,
 			origin: media.origin,
 			sourceModel: media.sourceModel,
 			createdAt: media.createdAt,
@@ -98,7 +112,29 @@ export async function collectConversationFiles(
 
 	const store = getMediaStore();
 	const out: RunPythonPreFile[] = [];
+	let totalBytes = 0;
 	for (const [filename, r] of byFilename) {
+		// Same caps the outbound direction enforces (worker.ts), for the same
+		// reason and in the asymmetric direction that was missing them. Every
+		// eligible file on the branch is read fully into the Node heap and then
+		// structured-cloned to the worker on EVERY call, so a conversation with
+		// 40 attachments at the 25 MB upload ceiling costs ~1 GB in the main
+		// process plus another copy in the worker — per call, from one request.
+		// Over-budget files are skipped rather than failing the call: the model
+		// sees them absent from /workspace/ and can adjust, which is how a
+		// missing file already behaves here.
+		if (r.byteSize > MAX_PREFILE_BYTES) {
+			console.warn(
+				`[code_interpreter] skipping "${filename}" (${r.byteSize} bytes) — over the per-file mount cap`,
+			);
+			continue;
+		}
+		if (totalBytes + r.byteSize > MAX_PREFILE_TOTAL_BYTES) {
+			console.warn(
+				`[code_interpreter] skipping "${filename}" — would exceed the ${MAX_PREFILE_TOTAL_BYTES}-byte mount budget`,
+			);
+			continue;
+		}
 		try {
 			const result = await store.open(r.storagePath, r.contentType);
 			if (!result) continue;
@@ -107,6 +143,7 @@ export async function collectConversationFiles(
 				chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 			}
 			const bytes = Buffer.concat(chunks);
+			totalBytes += bytes.byteLength;
 			const u8 = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 			out.push({
 				filename,
