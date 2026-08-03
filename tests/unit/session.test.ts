@@ -24,6 +24,7 @@ vi.mock('$lib/server/db/client', () => ({
 import {
 	clearSessionCookie,
 	createSession,
+	SESSION_ABSOLUTE_MAX_MS,
 	invalidateSession,
 	readSessionCookie,
 	setSessionCookie,
@@ -112,7 +113,7 @@ describe('validateSessionToken', () => {
 		const sessionId = hash(rawToken);
 		mocks.testDb
 			.insert(sessions)
-			.values({ id: sessionId, userId: u.id, expiresAt: Date.now() - 1000 })
+			.values({ id: sessionId, userId: u.id, expiresAt: Date.now() - 1000, createdAt: Date.now() })
 			.run();
 
 		expect(validateSessionToken(rawToken)).toBeNull();
@@ -128,7 +129,7 @@ describe('validateSessionToken', () => {
 		const aboutToExpire = Date.now() + 24 * 60 * 60 * 1000;
 		mocks.testDb
 			.insert(sessions)
-			.values({ id: sessionId, userId: u.id, expiresAt: aboutToExpire })
+			.values({ id: sessionId, userId: u.id, expiresAt: aboutToExpire, createdAt: Date.now() })
 			.run();
 
 		const ctx = validateSessionToken(rawToken);
@@ -191,5 +192,74 @@ describe('cookie helpers', () => {
 		clearSessionCookie(c as never);
 		expect(c.store.has('glyphstream_session')).toBe(false);
 		expect(readSessionCookie(c as never)).toBeUndefined();
+	});
+});
+
+describe('absolute session lifetime', () => {
+	const DAY = 24 * 60 * 60 * 1000;
+
+	/** Insert a session with explicit issue + expiry instants. */
+	function seedSession(userId: string, createdAt: number, expiresAt: number) {
+		const rawToken = randomBytes(20).toString('base64url');
+		mocks.testDb
+			.insert(sessions)
+			.values({ id: hash(rawToken), userId, expiresAt, createdAt })
+			.run();
+		return rawToken;
+	}
+
+	it('signals renewal so the caller can re-issue the cookie', () => {
+		// Renewal used to slide expires_at in the DB while nothing re-issued
+		// the cookie, so the browser kept its original `expires`. The
+		// legitimate user got signed out 30 days after issue however active
+		// they were, while an exfiltrated raw token — bound by no cookie
+		// attribute at all — kept renewing its row indefinitely.
+		const u = seedUser();
+		const token = seedSession(u.id, Date.now(), Date.now() + DAY);
+		expect(validateSessionToken(token)!.renewed).toBe(true);
+	});
+
+	it('does not signal renewal when outside the threshold', () => {
+		const u = seedUser();
+		const { token } = createSession(u.id);
+		expect(validateSessionToken(token)!.renewed).toBe(false);
+	});
+
+	it('refuses a session kept warm past the absolute ceiling', () => {
+		// The whole point: sliding renewal has no ceiling of its own, so a
+		// token used once every 23 days lives forever. That asymmetry favours
+		// an attacker holding a stolen token over the real user.
+		const u = seedUser();
+		const issued = Date.now() - SESSION_ABSOLUTE_MAX_MS - 1;
+		const token = seedSession(u.id, issued, Date.now() + 10 * DAY);
+		expect(validateSessionToken(token)).toBeNull();
+	});
+
+	it('purges the row when the ceiling retires a session', () => {
+		const u = seedUser();
+		const issued = Date.now() - SESSION_ABSOLUTE_MAX_MS - 1;
+		const token = seedSession(u.id, issued, Date.now() + 10 * DAY);
+		validateSessionToken(token);
+		expect(mocks.testDb.select().from(sessions).all()).toHaveLength(0);
+	});
+
+	it('clamps a renewal to the ceiling instead of stepping over it', () => {
+		// Approaching the deadline, renewal should taper to land exactly on
+		// it rather than granting another full 30 days past it.
+		const u = seedUser();
+		const issued = Date.now() - (SESSION_ABSOLUTE_MAX_MS - 2 * DAY);
+		const token = seedSession(u.id, issued, Date.now() + DAY);
+		const ctx = validateSessionToken(token)!;
+		expect(ctx.expiresAt).toBe(issued + SESSION_ABSOLUTE_MAX_MS);
+		expect(ctx.expiresAt).toBeLessThan(Date.now() + 30 * DAY);
+	});
+
+	it('stamps created_at on a freshly issued session', () => {
+		const u = seedUser();
+		const before = Date.now();
+		createSession(u.id);
+		const row = mocks.testDb.select().from(sessions).all()[0];
+		expect(row.createdAt).toBeGreaterThanOrEqual(before);
+		expect(row.createdAt).toBeLessThanOrEqual(Date.now());
 	});
 });

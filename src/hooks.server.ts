@@ -1,5 +1,9 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit';
-import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
+import {
+	readSessionCookie,
+	setSessionCookie,
+	validateSessionToken,
+} from '$lib/server/auth/session';
 import { maybeCompressResponse } from '$lib/server/compression';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { consumeRateLimitToken } from '$lib/server/rate-limit';
@@ -231,6 +235,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 	const ctx = token ? validateSessionToken(token) : null;
 	event.locals.user = ctx?.user ?? null;
+	// Renewal slid `expires_at` in the DB; push the same date to the browser.
+	// Without this the cookie keeps its original `expires`, so the row and the
+	// cookie drift apart and the sliding window only ever benefits a raw token
+	// held outside a browser. Same token value, later expiry — not a rotation.
+	if (ctx?.renewed) setSessionCookie(event.cookies, token!, ctx.expiresAt);
 
 	// Apply the saved theme to <html> before first paint so there's no
 	// flash of the default theme. The `gs-theme` cookie mirrors the DB pref

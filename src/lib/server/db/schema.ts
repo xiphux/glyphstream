@@ -140,12 +140,19 @@ export const invites = sqliteTable(
 	],
 );
 
+// `created_at` is what bounds a session's ABSOLUTE life. `expires_at` slides
+// forward on every renewal, so on its own it lets a token live indefinitely as
+// long as it keeps being used — which is the attacker's situation, not the
+// legitimate user's. Pinning the issue time gives renewal something it can't
+// push past. Defaulted to 0 for rows that predate the column, which reads as
+// "issued at the epoch" and so retires them at their next renewal check.
 export const sessions = sqliteTable('sessions', {
 	id: text('id').primaryKey(),
 	userId: text('user_id')
 		.notNull()
 		.references(() => users.id, { onDelete: 'cascade' }),
 	expiresAt: integer('expires_at').notNull(),
+	createdAt: integer('created_at').notNull().default(0),
 });
 
 // WebAuthn / passkey credentials. Bound to an existing user (always

@@ -121,7 +121,13 @@ export default async function globalSetup() {
 	const mintSessionState = (userId: string, statePath: string) => {
 		const token = randomBytes(20).toString('base64url');
 		const sessionId = createHash('sha256').update(token).digest('hex');
-		db.insert(schema.sessions).values({ id: sessionId, userId, expiresAt }).run();
+		// `created_at` must be stamped, not left to its 0 default: 0 reads as
+		// "issued at the epoch", which the absolute-lifetime check in
+		// session.ts treats as long past its ceiling — every seeded session
+		// would be rejected on its first request.
+		db.insert(schema.sessions)
+			.values({ id: sessionId, userId, expiresAt, createdAt: Date.now() })
+			.run();
 		const storageState = {
 			cookies: [
 				{
