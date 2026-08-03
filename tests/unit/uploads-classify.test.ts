@@ -29,6 +29,29 @@ describe('classifyUpload', () => {
 		expect(classifyUpload('image/svg+xml')).toBeNull();
 	});
 
+	it('rejects SVG declared with MIME parameters or odd casing', () => {
+		// The refusal used to be an `===` compare against the bare essence,
+		// but the stored type is the raw multipart part header and `File.type`
+		// preserves parameters verbatim. `image/svg+xml; charset=utf-8` failed
+		// the equality check while still matching `startsWith('image/')`, so a
+		// scriptable SVG was stored as an ordinary image and later served
+		// inline from our origin. Classification runs on the essence now.
+		expect(classifyUpload('image/svg+xml; charset=utf-8')).toBeNull();
+		expect(classifyUpload('image/svg+xml;charset=utf-8')).toBeNull();
+		expect(classifyUpload('image/svg+xml ; charset=utf-8')).toBeNull();
+		expect(classifyUpload('IMAGE/SVG+XML')).toBeNull();
+		expect(classifyUpload('Image/SVG+XML; charset=UTF-8')).toBeNull();
+		expect(classifyUpload('  image/svg+xml  ')).toBeNull();
+	});
+
+	it('still accepts legitimate types that carry a parameter', () => {
+		// Normalizing must not turn a parameterized-but-fine upload into a
+		// rejection — browsers do send `text/plain; charset=utf-8`.
+		expect(classifyUpload('text/plain; charset=utf-8')?.kind).toBe('file');
+		expect(classifyUpload('image/png; foo=bar')?.kind).toBe('image');
+		expect(classifyUpload('video/mp4; codecs="avc1.42E01E"')?.kind).toBe('video');
+	});
+
 	it('returns kind:video for any video/* MIME', () => {
 		expect(classifyUpload('video/mp4')?.kind).toBe('video');
 		expect(classifyUpload('video/quicktime')?.kind).toBe('video');

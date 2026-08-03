@@ -5,6 +5,11 @@ import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
+import {
+	attachmentDisposition,
+	isNeverInlineType,
+	normalizeContentType,
+} from '$lib/server/media/content-type';
 import type { RequestHandler } from './$types';
 
 /**
@@ -54,13 +59,20 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	const store = getMediaStore();
 	const fallback = await store.open(row.storagePath, row.contentType);
 	if (!fallback) throw error(404, 'Media not found');
+	const headers: Record<string, string> = {
+		'Content-Type': normalizeContentType(fallback.contentType),
+		'Content-Length': String(fallback.contentLength),
+		'Cache-Control': 'private, max-age=31536000, immutable',
+	};
+	// The fallback streams the ORIGINAL bytes, so it inherits /content's
+	// obligation to refuse an inline disposition for scriptable types. This
+	// path is the easier one to reach: sharp fails on an oversized or
+	// namespace-malformed SVG, and the code-interpreter maps a written `.svg`
+	// to `kind: 'image'` — so a model coaxed into writing one lands here
+	// rather than at /content, which already had the rule.
+	if (isNeverInlineType(row.contentType)) {
+		headers['Content-Disposition'] = attachmentDisposition(row.originalFilename ?? row.id);
+	}
 	const stream = Readable.toWeb(fallback.stream) as unknown as ReadableStream;
-	return new Response(stream, {
-		status: 200,
-		headers: {
-			'Content-Type': fallback.contentType,
-			'Content-Length': String(fallback.contentLength),
-			'Cache-Control': 'private, max-age=31536000, immutable',
-		},
-	});
+	return new Response(stream, { status: 200, headers });
 };

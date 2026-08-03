@@ -19,6 +19,7 @@
  */
 
 import type { MediaKind } from '$lib/server/db/queries/media';
+import { normalizeContentType, SVG_CONTENT_TYPE } from '$lib/server/media/content-type';
 
 /** Photos can be large (full-resolution iPhone photo on Pro models is
  *  well into double-digit MB). 20 MB matches the prior cap. */
@@ -58,14 +59,24 @@ export interface UploadClassification {
 	maxBytes: number;
 }
 
-/** Returns null when the content type isn't accepted. */
-export function classifyUpload(contentType: string): UploadClassification | null {
+/**
+ * Returns null when the content type isn't accepted.
+ *
+ * Classifies on the *essence* rather than the raw header value. The raw value
+ * can carry parameters (`image/svg+xml; charset=utf-8`), and matching those
+ * against the SVG refusal with `===` used to fail while `startsWith('image/')`
+ * still matched — storing a scriptable SVG as an ordinary image. Normalizing
+ * here rather than at the call site keeps the guarantee even if a future
+ * caller forgets.
+ */
+export function classifyUpload(rawContentType: string): UploadClassification | null {
+	const contentType = normalizeContentType(rawContentType);
 	// SVG is the only image format that can carry executable script
 	// content. We serve media bytes from same-origin under the user's
 	// session, so an SVG opened directly at /api/media/{id}/content would
 	// run scripts in our origin. No legitimate chat-app upload flow needs
 	// SVG, so we refuse outright rather than trying to sanitize.
-	if (contentType === 'image/svg+xml') return null;
+	if (contentType === SVG_CONTENT_TYPE) return null;
 	if (contentType.startsWith('image/')) {
 		return { kind: 'image', maxBytes: MAX_UPLOAD_BYTES_IMAGE };
 	}

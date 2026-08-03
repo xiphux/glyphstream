@@ -13,6 +13,7 @@ import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { mediaDir } from '../env';
+import { normalizeContentType } from './content-type';
 import { thumbStoragePath } from './thumbnail';
 import { visionStoragePath } from './vision-variant';
 import type {
@@ -86,8 +87,13 @@ function pathFor(id: string, ext: string): string {
 
 export class DiskMediaStore implements MediaStore {
 	async put(input: MediaPutInput): Promise<MediaStoredRef> {
+		// Normalize here rather than trusting callers: `contentType` may have
+		// come straight off a multipart part header, parameters and all, and
+		// the returned ref is what lands on the media row. Normalizing at the
+		// single write choke point keeps every persisted row an essence.
+		const contentType = normalizeContentType(input.contentType);
 		const id = randomUUID().replace(/-/g, '');
-		const ext = extFor(input.contentType);
+		const ext = extFor(contentType);
 		const storagePath = pathFor(id, ext);
 		const absolute = resolve(root(), storagePath);
 		mkdirSync(dirname(absolute), { recursive: true });
@@ -98,13 +104,14 @@ export class DiskMediaStore implements MediaStore {
 		return {
 			storagePath,
 			byteSize: input.bytes.byteLength,
-			contentType: input.contentType,
+			contentType,
 		};
 	}
 
 	async putStream(input: MediaPutStreamInput): Promise<MediaStoredRef> {
+		const contentType = normalizeContentType(input.contentType);
 		const id = randomUUID().replace(/-/g, '');
-		const ext = extFor(input.contentType);
+		const ext = extFor(contentType);
 		const storagePath = pathFor(id, ext);
 		const absolute = resolve(root(), storagePath);
 		mkdirSync(dirname(absolute), { recursive: true });
@@ -121,7 +128,7 @@ export class DiskMediaStore implements MediaStore {
 		return {
 			storagePath,
 			byteSize: st.size,
-			contentType: input.contentType,
+			contentType,
 		};
 	}
 

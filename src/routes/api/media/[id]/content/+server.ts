@@ -3,6 +3,11 @@ import { requireUser } from '$lib/server/auth/guard';
 import { Readable } from 'node:stream';
 import { getMediaForUser } from '$lib/server/db/queries/media';
 import { getMediaStore } from '$lib/server/media/disk-store';
+import {
+	attachmentDisposition,
+	isNeverInlineType,
+	normalizeContentType,
+} from '$lib/server/media/content-type';
 import type { RequestHandler } from './$types';
 
 /**
@@ -17,10 +22,15 @@ import type { RequestHandler } from './$types';
  * videos still serve inline so the gallery / chat surfaces work.
  *
  * SVG also forces attachment even though it nominally has `kind: 'image'`
- * — classifyUpload refuses SVG at the user-upload entry, but a future
- * code-interpreter path (matplotlib's SVG backend) could still land one
- * with `kind: 'image'`, and SVG opened inline executes scripts in our
- * origin under the user's session.
+ * — classifyUpload refuses SVG at the user-upload entry, but the
+ * code-interpreter path maps a written `.svg` to `image/svg+xml` with
+ * `kind: 'image'`, and SVG opened inline executes scripts in our origin
+ * under the user's session.
+ *
+ * The disposition test runs against the *normalized* essence, not the stored
+ * string. Rows written before content types were normalized on write can
+ * carry a parameter (`image/svg+xml; charset=utf-8`), and an `===` compare
+ * against the bare essence missed exactly those — the bypass this guards.
  */
 export const GET: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
@@ -35,7 +45,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 
 	const status = result.contentRange ? 206 : 200;
 	const headers: Record<string, string> = {
-		'Content-Type': result.contentType,
+		'Content-Type': normalizeContentType(result.contentType),
 		'Content-Length': String(result.contentLength),
 		'Accept-Ranges': 'bytes',
 		'Cache-Control': 'private, max-age=31536000, immutable',
@@ -45,7 +55,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 			`bytes ${result.contentRange.start}-${result.contentRange.end}/${result.contentRange.total}`;
 	}
 
-	const forceAttachment = row.kind === 'file' || row.contentType === 'image/svg+xml';
+	const forceAttachment = row.kind === 'file' || isNeverInlineType(row.contentType);
 	if (forceAttachment) {
 		headers['Content-Disposition'] = attachmentDisposition(row.originalFilename ?? row.id);
 	}
@@ -53,24 +63,6 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 	const webStream = Readable.toWeb(result.stream) as unknown as ReadableStream;
 	return new Response(webStream, { status, headers });
 };
-
-/**
- * Build an RFC 6266 `Content-Disposition: attachment` header value with
- * both a 7-bit ASCII `filename=` fallback (for the handful of clients
- * that still don't grok RFC 5987) and a UTF-8 `filename*=` variant so
- * non-ASCII names round-trip correctly. The two forms can disagree —
- * modern browsers prefer `filename*=`.
- */
-function attachmentDisposition(filename: string): string {
-	const ascii = filename.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
-	// encodeURIComponent leaves a few chars (' ( ) *) that aren't valid
-	// in RFC 5987's attr-char production. Percent-encode them too.
-	const utf8 = encodeURIComponent(filename).replace(
-		/['()*]/g,
-		(c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
-	);
-	return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
-}
 
 /**
  * Parse a single-range `Range: bytes=A-B` header. Suffix-only ranges
