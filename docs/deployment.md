@@ -53,6 +53,28 @@ unchanged. Tested with:
 > and sirv negotiates via `Accept-Encoding`. Re-compressing at the proxy
 > double-compresses.
 
+## Client IP + auth rate limiting (`ADDRESS_HEADER`)
+
+`/api/auth/*` is rate limited per client address — 60 requests per minute by
+default (`AUTH_RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`; `0`
+disables). The point isn't credential guessing — session and invite tokens are
+far too large to guess — it's CPU. Passkey login verification runs a full
+WebAuthn signature check on the same single Node event loop that serves chat
+streaming, so unbounded volume there degrades live conversations.
+
+**Set `ADDRESS_HEADER=X-Forwarded-For` whenever a proxy is in front.** Without
+it adapter-node reads the socket peer, which behind a proxy is the proxy on
+every request — so the limiter collapses to one shared bucket for the entire
+instance rather than isolating clients. The default limit is set high enough
+that this degraded mode still won't touch a real household, but it's much
+weaker than per-client limiting.
+
+Make sure the proxy **overwrites** `X-Forwarded-For` rather than appending to
+it. If a client-supplied value survives, an attacker picks their own bucket
+key and the limit means nothing. Caddy and Synology's reverse proxy do this by
+default; for nginx use `proxy_set_header X-Forwarded-For $remote_addr;` (not
+`$proxy_add_x_forwarded_for`, which appends).
+
 ## Dynamic-response compression (`COMPRESS_DYNAMIC`)
 
 Off by default — most reverse proxies (Caddy, nginx with proper config,

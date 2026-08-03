@@ -2,6 +2,7 @@ import type { Handle, HandleServerError } from '@sveltejs/kit';
 import { readSessionCookie, validateSessionToken } from '$lib/server/auth/session';
 import { maybeCompressResponse } from '$lib/server/compression';
 import { applySecurityHeaders } from '$lib/server/security-headers';
+import { consumeRateLimitToken } from '$lib/server/rate-limit';
 import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
@@ -131,6 +132,26 @@ const ALWAYS_REVALIDATE_PATHS = new Set(['/service-worker.js', '/manifest.webman
  */
 const STATE_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** Subtree the auth rate limiter covers — see the check inside `handle`. */
+const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
+
+/**
+ * Bucket key for the rate limiter.
+ *
+ * `getClientAddress()` throws when the platform can't determine an address
+ * (adapter-node with no `ADDRESS_HEADER` and no socket peer — reachable in
+ * some test and edge runtimes). Falling back to a single shared key keeps the
+ * limiter closed rather than silently off: an address we can't identify still
+ * gets counted, just collectively.
+ */
+function clientKey(event: Parameters<Handle>[0]['event']): string {
+	try {
+		return event.getClientAddress();
+	} catch {
+		return 'unknown';
+	}
+}
+
 /**
  * Populate event.locals.user on every request from the session cookie.
  * Routes/layouts decide whether to require it; this hook just *reads*.
@@ -173,6 +194,25 @@ export const handle: Handle = async ({ event, resolve }) => {
 			if (origin !== event.url.origin) {
 				return new Response('Forbidden: origin mismatch', { status: 403 });
 			}
+		}
+	}
+
+	// Rate-limit the unauthenticated auth surface. Sits after the CSRF gate so
+	// a cross-origin request is refused on its own terms rather than eating a
+	// token, and before session resolution so a flood costs no DB work.
+	//
+	// The target is CPU, not credential guessing: passkey login/verify runs a
+	// full WebAuthn signature verification on the same event loop that serves
+	// chat SSE, so unbounded volume degrades live conversations. Applied to the
+	// whole `/api/auth/*` subtree — none of it is polled, so a limit generous
+	// enough to be invisible to real sign-ins still blunts a flood.
+	if (event.url.pathname.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
+		const decision = consumeRateLimitToken(clientKey(event));
+		if (!decision.allowed) {
+			return new Response('Too many requests', {
+				status: 429,
+				headers: { 'Retry-After': String(decision.retryAfterSeconds) },
+			});
 		}
 	}
 

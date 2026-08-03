@@ -274,3 +274,40 @@ export function compressDynamicResponses(): boolean {
 	const v = readString('COMPRESS_DYNAMIC', '').toLowerCase();
 	return v === '1' || v === 'true' || v === 'yes' || v === 'on';
 }
+
+/**
+ * Read a non-negative integer env var, falling back on absent/malformed input.
+ *
+ * Deliberately lenient: a typo in a rate-limit knob should degrade to the
+ * documented default, not crash the process at boot. The auth-method gate is
+ * where a misconfiguration that could lock everyone out belongs.
+ */
+function readNonNegativeInt(name: string, fallback: number): number {
+	const raw = env[name];
+	if (raw === undefined || raw.trim() === '') return fallback;
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+	return Math.floor(parsed);
+}
+
+/**
+ * Requests allowed per {@link authRateLimitWindowSeconds} per client address
+ * on `/api/auth/*`. 0 disables rate limiting entirely.
+ *
+ * The default is deliberately high. Nothing under `/api/auth/*` is polled and
+ * a full sign-in is a handful of requests, but the bucket key comes from
+ * `getClientAddress()` — which is the *proxy* for every request unless the
+ * operator sets `ADDRESS_HEADER`. The ceiling has to stay clear of what a
+ * whole household generates through one apparent address.
+ */
+export function authRateLimitMax(): number {
+	return readNonNegativeInt('AUTH_RATE_LIMIT_MAX', 60);
+}
+
+/** Window over which {@link authRateLimitMax} refills. */
+export function authRateLimitWindowSeconds(): number {
+	const seconds = readNonNegativeInt('AUTH_RATE_LIMIT_WINDOW_SECONDS', 60);
+	// A zero-length window would divide by zero in the refill math; treat it
+	// as the default rather than letting it reach the bucket.
+	return seconds > 0 ? seconds : 60;
+}
