@@ -53,11 +53,32 @@ export function getDb(): DB {
 	// had no way to know `origin = 'generated'` matches nearly the whole table
 	// while `user_id` matches a fraction of it.
 	//
-	// `optimize` rather than a bare `ANALYZE`: it's the incremental form, so it
-	// does the work once and then no-ops. Measured on a 30k-media DB with no
-	// prior stats — 68ms on the first open (populating 43 stat rows even with no
-	// queries yet run on the connection), 0.55ms on every open after.
-	sqlite.exec('PRAGMA optimize');
+	// `optimize = 0x10012` rather than a bare `PRAGMA optimize`, because this
+	// connection is memoized for the life of the process. Bare optimize only
+	// *refreshes* stats for tables the connection has already queried — and here,
+	// right after migrate(), nothing has been. It does still write stats for
+	// never-analyzed tables, which is why the first open populates them: without
+	// 0x10000 the numbers then freeze at whatever the DB looked like the first
+	// time it was opened non-empty, for the life of the process and across every
+	// restart after it. On a fresh install that's a handful of rows, and stale
+	// tiny stats can be worse than no stats at all: on the real
+	// schema at 30k media, a frozen 5-row snapshot was measured re-planning both
+	// `listMediaNeedingEmbedding` and the purger's sweep from index seeks to
+	// `SCAN media`, defeating the two partial indexes added to serve them — while
+	// with no stats at all the planner picked those indexes correctly. Whether a
+	// given frozen snapshot actually flips a plan depends on the ratios it
+	// captured, so don't expect every install to show it; the point is that the
+	// numbers stop tracking the data at all.
+	//   0x10000 — consider every table, not just ones this connection has used.
+	//   0x00010 — bound each ANALYZE with a temporary analysis_limit. On by
+	//             default for a bare `optimize`, but an explicit mask clears every
+	//             bit it doesn't name, so it has to be restated: leaving it off
+	//             scans every row instead of sampling 2001 per index (6.1ms vs
+	//             2.2ms at 30k media).
+	//   0x00002 — actually run ANALYZE.
+	// SQLite re-analyzes a table only once its row count has moved ~10x since the
+	// last run, so steady-state boots stay a ~0.04ms no-op.
+	sqlite.exec('PRAGMA optimize = 0x10012');
 
 	cached = { db, sqlite };
 	return db;
