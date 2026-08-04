@@ -237,10 +237,11 @@ docker compose up -d --build
 curl http://localhost:3000/api/health
 ```
 
-Grab the one-time setup URL from the log (`docker compose logs | grep
-'\[setup\]'`) — the first-run wizard requires a token so an instance that's
-reachable before you finish can't be claimed by someone else. Opening it
-creates your operator account (any OAuth provider or passkey). Put a reverse
+Open the app once to mint the one-time setup URL, then grab it from the log
+(`docker compose logs | grep '\[setup\]'`) — the first-run wizard requires a
+token, so an instance that's reachable before you finish can't be claimed by
+someone else. Opening that URL creates your operator account (any OAuth
+provider or passkey). Put a reverse
 proxy in front for TLS — see the [deployment guide](docs/deployment.md).
 
 ### Local development

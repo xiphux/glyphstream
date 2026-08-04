@@ -575,7 +575,8 @@
 				</div>
 				<p class="mt-1 text-xs text-fg-muted">
 					Every device currently signed in to your account. Sign one out if you don't recognize it.
-					Sessions expire 30 days after their last use, and always within 90 days of signing in.
+					Sessions expire after up to 30 days of inactivity, and always within 90 days of signing
+					in.
 				</p>
 
 				<ul class="mt-3 flex flex-col gap-2">

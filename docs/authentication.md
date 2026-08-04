@@ -39,16 +39,26 @@ invalidates every session and refuses every login method at the next request.
 On a fresh install with no users, visiting any page redirects to `/setup` —
 which requires a one-time token, so the wizard can't be claimed by whoever
 reaches the host first. If you didn't set `SETUP_TOKEN` yourself, GlyphStream
-mints one at first boot and prints the URL to the log:
+mints one the first time something requests `/setup`, and prints the URL to
+the log:
 
 ```
+$ curl -s http://localhost:3000/setup > /dev/null   # mints it
 $ docker compose logs | grep '\[setup\]'
 [setup] No SETUP_TOKEN configured. First-run setup requires this one-time URL:
 [setup]   https://chat.example.com/setup?token=Xq3f...
 ```
 
-Open that URL. (Set `SETUP_TOKEN` in `.env` beforehand to pin your own value
-instead — a minted token is regenerated whenever the process restarts.)
+Open that URL. The `curl` is what triggers the mint — the token comes from the
+`/setup` gate, not from startup, so the log line doesn't exist until something
+has asked for the page. Opening the app in a browser does the same thing.
+
+The link's host comes from `EXTERNAL_BASE_URL`, which must be set before first
+boot anyway — with passkeys enabled, production won't start on the default
+`http://localhost:5173`. If you're reaching a configured instance through a
+different origin, just substitute that host; the token is correct either way.
+(Set `SETUP_TOKEN` in `.env` beforehand to pin your own value instead — a
+minted token is regenerated whenever the process restarts.)
 
 Pick a display name (and optionally an email), then continue with any enabled
 OAuth provider or set up a passkey:
@@ -198,11 +208,15 @@ in, and when it was last active. The one you're reading it on is marked
   previously the only option was for an admin to disable the whole account,
   which locked you out along with them.
 
-Two expiries apply. A session lapses 30 days after its last use, sliding
-forward as you keep using it, and lapses unconditionally 90 days after it was
-created. The absolute ceiling is what bounds a token that's been copied off
-your machine: without it, anything that keeps a session warm keeps it alive
-indefinitely.
+Two expiries apply. A session is issued with 30 days on the clock; using it
+within the final week pushes that back to 30 days from the moment of use. So
+an idle session lapses somewhere between one week and 30 days after its last
+use, depending on where in the cycle that use landed — a use with three weeks
+still on the clock doesn't extend anything.
+
+Regardless of use, a session lapses unconditionally 90 days after it was
+created. That ceiling is what bounds a token copied off your machine: without
+it, anything keeping a session warm keeps it alive forever.
 
 Sessions are not passkeys. Removing a passkey stops it being used to sign
 _in_; it doesn't sign out sessions already established with it. Revoke those

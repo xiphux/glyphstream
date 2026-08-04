@@ -13,12 +13,26 @@ cp /path/to/repo/config.toml.example config.toml  # then edit
 cp /path/to/repo/docker-compose.yml .
 docker compose up -d --build
 curl http://localhost:3000/api/health
-docker compose logs | grep '\[setup\]'   # one-time /setup?token=… URL
+curl -s http://localhost:3000/setup > /dev/null   # mints the setup token
+docker compose logs | grep '\[setup\]'           # one-time /setup?token=… URL
 ```
 
 First-run setup requires that token — see the
 [authentication guide](authentication.md) — so an instance that's reachable
 before you finish setting it up can't be claimed by someone else.
+
+The token is minted by the `/setup` gate on the first request that reaches it,
+not at startup — which is why the `curl` above comes before the `grep`.
+Opening the app in a browser does the same thing.
+
+**Set `EXTERNAL_BASE_URL` in `.env` before the first `docker compose up`.**
+With passkeys enabled (the default) the server refuses to start in production
+while it's still the `.env.example` value `http://localhost:5173` — the
+WebAuthn RP ID derives from it — so you'd get a crash loop rather than a setup
+link. Once it's set, you can still reach the instance through some other origin
+(`localhost:3000` before the proxy is up, say); the printed link will carry the
+configured host, and substituting the one you're actually using is fine — the
+token is correct either way.
 
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.
@@ -60,25 +74,44 @@ unchanged. Tested with:
 
 ## Client IP + auth rate limiting (`ADDRESS_HEADER`)
 
-`/api/auth/*` is rate limited per client address — 60 requests per minute by
-default (`AUTH_RATE_LIMIT_MAX`, `AUTH_RATE_LIMIT_WINDOW_SECONDS`; `0`
-disables). The point isn't credential guessing — session and invite tokens are
-far too large to guess — it's CPU. Passkey login verification runs a full
-WebAuthn signature check on the same single Node event loop that serves chat
-streaming, so unbounded volume there degrades live conversations.
+Requests to `/api/auth/*` that **aren't already signed in** are rate limited
+per client address — 60 per minute by default (`AUTH_RATE_LIMIT_MAX`,
+`AUTH_RATE_LIMIT_WINDOW_SECONDS`; `0` disables). The point isn't credential
+guessing — session and invite tokens are far too large to guess — it's CPU.
+Passkey login verification runs a full WebAuthn signature check on the same
+single Node event loop that serves chat streaming, so unbounded volume there
+degrades live conversations.
+
+Signed-in requests are exempt deliberately: sharing one bucket (see below)
+would otherwise let an unauthenticated flood lock real users out of logout and
+the session-revocation endpoints — the controls you'd reach for during exactly
+that incident. Sizing the limit against your users' normal traffic will
+overshoot; size it against signed-out traffic only.
 
 **Set `ADDRESS_HEADER=X-Forwarded-For` whenever a proxy is in front.** Without
 it adapter-node reads the socket peer, which behind a proxy is the proxy on
 every request — so the limiter collapses to one shared bucket for the entire
 instance rather than isolating clients. The default limit is set high enough
 that this degraded mode still won't touch a real household, but it's much
-weaker than per-client limiting.
+weaker than per-client limiting, and it does leave sign-in itself deniable by
+a determined flood.
 
-Make sure the proxy **overwrites** `X-Forwarded-For` rather than appending to
-it. If a client-supplied value survives, an attacker picks their own bucket
-key and the limit means nothing. Caddy and Synology's reverse proxy do this by
-default; for nginx use `proxy_set_header X-Forwarded-For $remote_addr;` (not
-`$proxy_add_x_forwarded_for`, which appends).
+Make sure the proxy **sets** `X-Forwarded-For` itself rather than passing the
+client's copy through untouched. adapter-node reads the **rightmost** entry at
+the default `XFF_DEPTH=1`, so a proxy that appends its own view of the peer is
+safe — any client-supplied prefix is ignored. For nginx that's
+`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. What's unsafe
+is forwarding the header unmodified, which is what nginx does if you set no
+`proxy_set_header` for it at all: the whole value is then attacker-controlled.
+
+With **more than one hop in front** (Cloudflare Tunnel or a CDN ahead of
+nginx), keep appending and set `XFF_DEPTH` to the number of proxies between
+the client and the app — `XFF_DEPTH=2` for that example. Do **not** use
+`proxy_set_header X-Forwarded-For $remote_addr;` there: `$remote_addr` is the
+CDN edge, so every client would collapse into one bucket, silently. If a
+request ever arrives with fewer entries than `XFF_DEPTH` (a health check
+hitting the origin directly, say), the address lookup fails and that request
+falls back to the shared bucket rather than erroring.
 
 ## Dynamic-response compression (`COMPRESS_DYNAMIC`)
 
