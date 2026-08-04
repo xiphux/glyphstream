@@ -24,9 +24,11 @@
  * griefingly silence another user's notifications. (This is why the heartbeat
  * endpoint needs no ownership DB read.)
  *
- * `viewerId` is a per-page-load id the client mints (App.Locals carries no
- * session identity, and a per-tab id is more precise than a shared session
- * cookie anyway — two tabs on different threads report independently).
+ * `viewerId` is a per-page-load id the client mints. Per-tab precision is the
+ * point: two tabs on different threads have to report independently, and a
+ * session id is shared by every tab in the browser — too coarse to tell them
+ * apart. (App.Locals does now carry a `sessionId`; it just isn't the right
+ * granularity for this.)
  *
  * Module-level Map, single-process — same tradeoff the in-flight registry
  * documents. Multiple replicas would need a shared store; a v2 concern.

@@ -18,8 +18,8 @@
 	// per-device SW arbiter can't see across devices. We report only while
 	// generating (not merely parked-visible on the thread): a parked tab holds
 	// no stream and would show stale content, so suppressing its other devices
-	// would silence a completion nobody sees. viewerId is per-page-load
-	// (per-tab precision; App.Locals carries no session identity anyway).
+	// would silence a completion nobody sees. viewerId is per-page-load, for
+	// per-tab precision — a session id is shared by every tab in the browser.
 	const HEARTBEAT_MS = 25_000;
 	let presenceViewerId: string | null = null;
 	// The conversation we last posted `true` for — diffed against the desired

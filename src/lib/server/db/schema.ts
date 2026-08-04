@@ -197,10 +197,12 @@ export const passkeyCredentials = sqliteTable(
 // Web Push subscriptions. One row per (user, browser-endpoint) pair: users
 // may have several devices (laptop + phone + tablet), each producing its own
 // endpoint URL from the push service. The endpoint is UNIQUE — resubscribing
-// from the same device produces the same endpoint, so we upsert on it and
-// reassign user_id if the device's account has changed. p256dh + auth are
-// the per-endpoint encryption material the Web Push spec requires; the
-// server uses them to encrypt payloads to the push service.
+// from the same device produces the same endpoint, so we upsert on it. A
+// device that was previously subscribed under a DIFFERENT account gets a
+// fresh row: the prior owner's row is deleted and replaced, rather than
+// having its user_id reassigned in place — see upsertPushSubscription for
+// why. p256dh + auth are the per-endpoint encryption material the Web Push
+// spec requires; the server uses them to encrypt payloads to the push service.
 export const pushSubscriptions = sqliteTable(
 	'push_subscriptions',
 	{
