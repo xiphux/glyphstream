@@ -84,19 +84,35 @@ describe('POST /api/mcp/servers/[id]/reconnect', () => {
 		expect(retryMcpServerMock).toHaveBeenCalledWith('srv', 'u1');
 	});
 
-	it('withholds a global server’s handshake error from non-admins', async () => {
-		// The raw error names operator-configured infrastructure — upstream
-		// host, port, HTTP status. An admin can read config.toml already.
-		mocks.cfg = { auth: 'per_user' };
+	it('passes the handshake error through to callers allowed to retry', async () => {
+		// Both callers who can reach the response body are entitled to the
+		// detail: the owner of a per_user server is looking at their own
+		// credential, and an admin can read config.toml already.
 		retryMcpServerMock.mockResolvedValue({
 			state: 'failed',
 			error: 'connect ECONNREFUSED 10.0.0.5:8931',
 		});
+
+		mocks.cfg = { auth: 'per_user' };
 		const ownRetry = (await POST(mkEvent('user') as never)) as Response;
 		expect((await ownRetry.json()).error).toContain('ECONNREFUSED');
 
 		mocks.cfg = { auth: 'global' };
 		const adminRetry = (await POST(mkEvent('admin') as never)) as Response;
 		expect((await adminRetry.json()).error).toContain('ECONNREFUSED');
+	});
+
+	it('never reaches the response body for a non-admin on a global server', async () => {
+		// This is what actually withholds a global server's infrastructure
+		// detail — the 403, not any redaction downstream of it. Pinning it here
+		// so a future relaxation of the guard doesn't quietly start leaking the
+		// error text with nothing behind it.
+		mocks.cfg = { auth: 'global' };
+		retryMcpServerMock.mockResolvedValue({
+			state: 'failed',
+			error: 'connect ECONNREFUSED 10.0.0.5:8931',
+		});
+		expect(await statusOf(() => POST(mkEvent('user') as never))).toBe(403);
+		expect(retryMcpServerMock).not.toHaveBeenCalled();
 	});
 });

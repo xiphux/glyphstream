@@ -45,10 +45,11 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		registerMcpServerTools(id);
 	}
 
-	// A global server's handshake error describes operator-configured
-	// infrastructure — upstream host, port, HTTP status. Only an admin, who
-	// can already read config.toml, gets the detail; the caller of a per_user
-	// retry is looking at their own credential, so that passes through.
-	const detail = isGlobal && locals.user.role !== 'admin' ? 'Connection failed' : result.error;
-	return json({ state: result.state, error: detail });
+	// The handshake error passes through as-is. A global server's error names
+	// operator infrastructure — upstream host, port, HTTP status — but the only
+	// callers who reach this line are an admin, or the owner of a per_user
+	// server looking at their own credential. Non-admins never see a global
+	// server's error because the 403 above returns first; redacting here too
+	// would be dead code dressed up as a second layer.
+	return json({ state: result.state, error: result.error });
 };
