@@ -41,6 +41,10 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 		connectBudgetMs: MCP_SETTINGS_CONNECT_BUDGET_MS,
 	});
 	return {
+		// Retrying a `global` server closes the one connection every user
+		// shares, so the API restricts it to admins. Surface the role here so
+		// the page can hide a button that would only ever 403.
+		isAdmin: locals.user.role === 'admin',
 		servers: states.map((s) => ({
 			id: s.id,
 			displayName: s.displayName,
