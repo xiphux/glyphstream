@@ -35,10 +35,15 @@
 			// applying `data-blur` before first paint is what avoids a FOUC on every
 			// repeat visit. The WebGL PROBE does not: acquiring a WebGL context costs
 			// ~10-30ms on desktop and 50-100ms+ on mobile, where the GPU process may
-			// have to spin up, and it ran before %sveltekit.head% on the one load
-			// where nothing else is cached either. Deferred to idle: the only cost is
-			// that the very first visit ever paints in the readable default style for
-			// a frame before upgrading, and the default is the safe one anyway.
+			// have to spin up, and it ran before the SvelteKit head placeholder at the
+			// end of this <head> on the one load where nothing else is cached either.
+			// Deferred to idle: the only cost is that the very first visit ever paints
+			// in the readable default style for a frame before upgrading, and the
+			// default is the safe one anyway.
+			// NB: never write that placeholder's literal token above where it actually
+			// belongs. Kit substitutes the template with a single string .replace, so
+			// the FIRST occurrence wins — a mention in a comment swallows the head and
+			// leaves the real tag to render as visible text at the top of every page.
 			(function () {
 				function apply(blur) {
 					if (blur === 'rich') document.documentElement.dataset.blur = 'rich';
