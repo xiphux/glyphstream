@@ -286,6 +286,13 @@ db.insert(schema.sessions)
 		id: createHash('sha256').update(token).digest('hex'),
 		userId: USER_ID,
 		expiresAt: NOW + 30 * 24 * HOUR,
+		// `created_at` must be stamped, not left to its 0 default: validateSessionToken
+		// retires a session at created_at + 90 days, and 0 reads as the epoch — the
+		// seeded session would be deleted on its first request and capture.ts would
+		// shoot every screenshot logged out. `last_seen_at` likewise, so the session
+		// renders as active rather than "unknown" in the signed-in devices list.
+		createdAt: NOW,
+		lastSeenAt: NOW,
 	})
 	.run();
 
