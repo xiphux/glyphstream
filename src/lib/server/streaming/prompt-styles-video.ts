@@ -20,10 +20,13 @@
  *     camera-motion vocabulary (MiniMax H3). The only bucket that models AUDIO
  *     as its own axis, because H3 generates picture and sound together.
  *
- * `multimodal-script` is the reason {@link VIDEO_ENHANCER_BASE} says "no labels
- * beyond any the target style requires" rather than a flat "no labels": the
- * labels ARE the format there, and a flat ban would have the base fighting the
- * style instruction — which small utility enhancer models resolve badly.
+ * `multimodal-script` is why {@link VIDEO_ENHANCER_BASE} defers to the style on
+ * labels, quotes, and camera vocabulary rather than banning or prescribing them
+ * outright: in that bucket the labels ARE the format, on-screen text has to be
+ * quoted, and H3 accepts only its own motion verbs (no dolly/crane). A flat base
+ * rule would have the base fighting the style instruction — which small utility
+ * enhancer models resolve badly. When adding a style, check the base's rules for
+ * this same class of conflict rather than assuming they're medium-wide truths.
  *
  * Per-model nuance the bucket template can't carry rides on the freeform
  * per-model `prompt_hint` (appended after the style instruction by
@@ -107,12 +110,12 @@ export function normalizeVideoStyle(raw: unknown): VideoPromptStyle | null {
 export const VIDEO_ENHANCER_BASE = `You are a text-to-video prompt engineer and cinematographer. You are given a user's video prompt and must rewrite it to get the best result from a specific text-to-video model.
 
 Rules:
-- Describe MOTION over time, not a frozen still: what the subject does, and how the camera moves (dolly, pan, track, orbit, crane, push/pull) with its speed. A video prompt without motion is a wasted prompt.
+- Describe MOTION over time, not a frozen still: what the subject does, and how the camera moves (dolly, pan, track, orbit, crane, push/pull — unless the target style below fixes its own motion vocabulary, which then wins) with its speed. A video prompt without motion is a wasted prompt.
 - Write in PRESENT TENSE ("she walks", not "she walked" or "make her walk").
 - If the prompt is already vivid and detailed, mostly REFORMAT it into the target style; only add detail when the prompt is genuinely vague.
 - Never change the subject, intent, or content of the prompt. Do not invent a different scene. Do not add people, text, or objects the user did not ask for.
 - Do NOT write a negative prompt, settings, step counts, resolution tags, or any commentary.
-- Output ONLY the final prompt text — no quotes, no preamble, no explanation, and no labels beyond any the target style below explicitly requires.`;
+- Output ONLY the final prompt text — no preamble, no explanation, no wrapping quotes around the whole thing, and no labels beyond any the target style below explicitly requires. (Quotation marks WITHIN the prompt are fine when the target style asks for them.)`;
 
 /**
  * Per-style formatting instruction. Composed after {@link VIDEO_ENHANCER_BASE}
@@ -128,14 +131,16 @@ Write ONE flowing paragraph of present-tense description — like a director's n
 Write descriptive sentences in chronological shot order, front-loading what the camera first captures, then how the shot develops. Cover, in order: the subject (with detail) → the scene/environment → the motion, describing its amplitude and speed and using progression markers ("begins by…, then…") → aesthetic control (light source and quality, shot size, camera angle, lens, camera movement) → any named stylization (e.g. cyberpunk, claymation, time-lapse). Aim for roughly 80–120 words of vivid detail. Still prose, not tags — the temporal relationships between clauses carry meaning a tag list can't.`,
 
 	'multimodal-script': `Target style: MULTIMODAL SHOT SCRIPT (three labeled fields).
-Output exactly three fields, in this order, each starting on its own line with a blank line between them. The labels are literal and required — write them exactly as shown:
+Output exactly three fields, in this order, each starting on its own line with a blank line between them. The labels are literal and required — write them exactly as shown, including the blank lines:
 
 integrated_multimodal_description: …
+
 overall_soundscape: …
+
 non_diegetic_music: …
 
-integrated_multimodal_description — open with "[Shot 1] " followed by the visual style and composition (e.g. "Live-action, cinematic, a medium-wide shot frames…"), then describe the action chronologically in present tense. NEVER put a timestamp on the first shot. Use a SINGLE shot unless the user's prompt clearly asks for a cut or scene change; only then add "[Shot 2] At 00:05.000, the camera cuts to…" with a strictly increasing timestamp. Describe camera motion as motion type + amplitude + speed, woven into the sentence ("The camera pushes in with small amplitude at slow speed toward…"). Use only these motion types: Zoom In/Out, Push In/Pull Out, Pan Left/Right, Truck Left/Right, Tilt Up/Down, Pedestal Up/Down, Arc Shot, Tracking Shot, Static Shot, Shake Slightly/Strongly, POV, Roll Clockwise/Counterclockwise. Amplitude is "with small amplitude" or "with large amplitude"; speed is "at slow speed" or "at fast speed". Put any on-screen text verbatim inside quotation marks.
-Only if the user's prompt contains or clearly implies spoken or sung words: give each vocalizing character a stable ID — (S1), (S2) — and wrap their words in <d>[English] …</d>, preserving the user's wording and punctuation exactly. If the prompt has no speech, emit no speaker IDs and no <d> tags, and do not invent dialogue.
+integrated_multimodal_description — open with "[Shot 1] " followed by the visual style and composition (e.g. "Live-action, cinematic, a medium-wide shot frames…"), then describe the action chronologically in present tense. NEVER put a timestamp on the first shot. Use a SINGLE shot unless the user's prompt clearly asks for a cut or scene change; only then add a second shot in the form "[Shot 2] At 00:02.400, the camera cuts to…" with a strictly increasing timestamp. You are NOT told the clip's duration, so keep any cut early — under 00:03.000 — rather than guessing a later time that may fall past the end of a short clip. Describe camera motion as motion type + amplitude + speed, woven into the sentence ("The camera pushes in with small amplitude at slow speed toward…"). Use only these motion types: Zoom In/Out, Push In/Pull Out, Pan Left/Right, Truck Left/Right, Tilt Up/Down, Pedestal Up/Down, Arc Shot, Tracking Shot, Static Shot, Shake Slightly/Strongly, POV, Roll Clockwise/Counterclockwise. Amplitude is "with small amplitude" or "with large amplitude"; speed is "at slow speed" or "at fast speed". Put any on-screen text verbatim inside quotation marks.
+Only if the user's prompt contains or clearly implies spoken or sung words: give each vocalizing character a stable ID — (S1), (S2) — and wrap their words in <d>[Language] …</d>, preserving the user's wording and punctuation exactly. Replace "Language" with the language the speech is actually written in — <d>[English] …</d> for English, <d>[Spanish] …</d> for Spanish — never relabel it into a language the user did not write. If the prompt has no speech, emit no speaker IDs and no <d> tags, and do not invent dialogue.
 
 overall_soundscape — 1–4 sentences as one continuous paragraph covering ambient sound, physical action sounds, and non-verbal human sounds (wind, traffic, footsteps, fabric, impacts, breathing, laughter). Always write a real soundscape; do NOT write "N/A" here unless the user explicitly asked for silence. Never repeat the dialogue in this field.
 

@@ -128,6 +128,24 @@ describe('VIDEO_STYLE_INSTRUCTIONS', () => {
 		expect(t).toContain('only if the user');
 	});
 
+	// The language tag selects the spoken track's language, so hardcoding
+	// [English] mislabels any non-English prompt while the same sentence tells the
+	// enhancer to preserve the user's words verbatim.
+	it('multimodal-script keeps the dialogue language tag variable', () => {
+		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'];
+		expect(t).toContain('<d>[Language] …</d>');
+		expect(t.toLowerCase()).toContain('never relabel it into a language the user did not write');
+	});
+
+	// The enhancer is never told the clip duration (EnhancePromptInput carries no
+	// such field), so an unbounded example timestamp is one a short clip can fall
+	// short of. The cap is what keeps the opt-in cut path in range.
+	it('multimodal-script bounds the opt-in cut timestamp', () => {
+		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'];
+		expect(t).toContain('00:03.000');
+		expect(t).toContain('NOT told the clip');
+	});
+
 	it('multimodal-script splits the N/A rule between the two audio fields', () => {
 		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'];
 		// Soundscape: never N/A (barring explicit silence). Music: N/A is valid.

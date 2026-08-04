@@ -486,17 +486,26 @@ and length that scales with clip duration — so video has its own three styles:
 ```
 
 `multimodal-script` needs no `prompt_hint` in the common case — unlike `json` on
-the image side, the field schema is fixed by the model rather than per-
-deployment, so it lives in the style itself. Two behaviours worth knowing:
+the image side, the field schema is fixed by the model rather than
+per-deployment, so it lives in the style itself. Three behaviours worth knowing:
 
 - **Single-shot by default.** The enhancer isn't told the clip duration, and H3
   requires shot-2+ timestamps to fall inside it. The style therefore emits one
   `[Shot 1]` (which takes no timestamp) unless the user's own prompt asks for a
-  cut — that keeps it from inventing out-of-range timestamps.
-- **Dialogue is opt-in.** Speaker IDs (`(S1)`) and `<d>[English] …</d>` tags only
-  appear when the prompt actually contains speech; silent prompts get no speaker
-  markup, which is H3's own no-dialogue shape. A scene with no score is written
-  `non_diegetic_music: N/A`, but the soundscape is always filled in.
+  cut. When a prompt does ask for one, the style caps the cut under `00:03.000`
+  rather than guessing — that keeps it inside even a short clip, but it's a
+  bound, not a guarantee: GlyphStream never learns the real duration, so an
+  explicitly multi-shot prompt against a very short clip is the one case worth
+  eyeballing.
+- **Dialogue is opt-in.** Speaker IDs (`(S1)`) and `<d>[Language] …</d>` tags
+  only appear when the prompt actually contains speech; silent prompts get no
+  speaker markup, which is H3's own no-dialogue shape. The language tag follows
+  what the user actually wrote, so a Spanish line is tagged `[Spanish]`, not
+  relabeled into English.
+- **Audio is always described, but a score is optional.** The soundscape field
+  is always filled in (`N/A` there is a don't, barring explicitly requested
+  silence), while a scene with no background music is written
+  `non_diegetic_music: N/A`.
 
 Make sure the workflow's prompt field passes the text through intact — the
 labels and `<d>` tags are part of the prompt H3 expects, so anything that strips

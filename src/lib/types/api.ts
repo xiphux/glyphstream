@@ -292,8 +292,8 @@ export interface ModelEntry {
 	 * prefers, driving the optional prompt-enhancement pass. One of the canonical
 	 * image `PromptStyle` keys (`natural-language` | `booru-tags` | `keyword-soup`
 	 * | `hybrid` | `json`, see `prompt-styles.ts`) for an image model, or a video
-	 * style key (`cinematic-prose` | `structured-cinematic`, see
-	 * `prompt-styles-video.ts`) for a video model, or null when unknown.
+	 * style key (`cinematic-prose` | `structured-cinematic` | `multimodal-script`,
+	 * see `prompt-styles-video.ts`) for a video model, or null when unknown.
 	 *
 	 * Resolution order (in `normalizeUpstreamModel`, KIND-AWARE):
 	 *   endpoint per-model override (config `model_prompt_styles`)  →
