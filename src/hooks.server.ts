@@ -7,6 +7,7 @@ import {
 import { maybeCompressResponse } from '$lib/server/compression';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { consumeRateLimitToken } from '$lib/server/rate-limit';
+import { routedPathname } from '$lib/server/util/request-path';
 import { compressDynamicResponses, validateAuthMethodsEnabled } from '$lib/server/env';
 import { ensureAdminBootstrap } from '$lib/server/db/queries/users';
 import { startMediaPurger, stopMediaPurger } from '$lib/server/media/purger';
@@ -164,6 +165,13 @@ function clientKey(event: Parameters<Handle>[0]['event']): string {
  * locals.user itself — done in each +server.ts to keep the hook simple.
  */
 export const handle: Handle = async ({ event, resolve }) => {
+	// Every path-prefix gate below compares against THIS, never against
+	// `event.url.pathname`. The raw pathname is still percent-encoded here while
+	// SvelteKit routes on a decoded copy, so matching the raw form lets
+	// `/api/%61uth/…` (or `/%61pi/…`) reach the real handler while sliding past
+	// the gate. See routedPathname's docstring.
+	const path = routedPathname(event.url.pathname);
+
 	// CSRF gate for /api/* state-mutating requests. SvelteKit's built-in
 	// csrf.checkOrigin only fires on form-encoded submissions, not the
 	// JSON POST/PATCH/DELETE traffic our API actually uses. SameSite=Lax
@@ -183,7 +191,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// consistently sent on them. The OAuth callback flows
 	// (/api/auth/github/callback and /api/auth/oauth/<provider>/callback)
 	// are GET only and protected separately via their state cookie.
-	if (STATE_MUTATING_METHODS.has(event.request.method) && event.url.pathname.startsWith('/api/')) {
+	if (STATE_MUTATING_METHODS.has(event.request.method) && path.startsWith('/api/')) {
 		const fetchSite = event.request.headers.get('sec-fetch-site');
 		if (fetchSite) {
 			// Browser-set. Acceptable values: same-origin (trust),
@@ -198,25 +206,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 			if (origin !== event.url.origin) {
 				return new Response('Forbidden: origin mismatch', { status: 403 });
 			}
-		}
-	}
-
-	// Rate-limit the unauthenticated auth surface. Sits after the CSRF gate so
-	// a cross-origin request is refused on its own terms rather than eating a
-	// token, and before session resolution so a flood costs no DB work.
-	//
-	// The target is CPU, not credential guessing: passkey login/verify runs a
-	// full WebAuthn signature verification on the same event loop that serves
-	// chat SSE, so unbounded volume degrades live conversations. Applied to the
-	// whole `/api/auth/*` subtree — none of it is polled, so a limit generous
-	// enough to be invisible to real sign-ins still blunts a flood.
-	if (event.url.pathname.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
-		const decision = consumeRateLimitToken(clientKey(event));
-		if (!decision.allowed) {
-			return new Response('Too many requests', {
-				status: 429,
-				headers: { 'Retry-After': String(decision.retryAfterSeconds) },
-			});
 		}
 	}
 
@@ -242,6 +231,43 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// held outside a browser. Same token value, later expiry — not a rotation.
 	if (ctx?.renewed) setSessionCookie(event.cookies, token!, ctx.expiresAt);
 
+	// Rate-limit the UNAUTHENTICATED auth surface.
+	//
+	// The target is CPU, not credential guessing: passkey login/verify runs a
+	// full WebAuthn signature verification on the same event loop that serves
+	// chat SSE, so unbounded volume degrades live conversations. Applied to the
+	// whole `/api/auth/*` subtree — none of it is polled, so a limit generous
+	// enough to be invisible to real sign-ins still blunts a flood.
+	//
+	// Deliberately AFTER session resolution, and skipped for a request that
+	// resolved to a user. The bucket key is the client address, which behind a
+	// reverse proxy with no `ADDRESS_HEADER` is the proxy for everyone — one
+	// shared bucket for the whole instance. Limiting signed-in requests too
+	// would hand any unauthenticated client an instance-wide auth kill switch:
+	// hold the shared bucket empty and every real user gets 429 on login, the
+	// OAuth callbacks, logout, and — worst — the session-revocation endpoints,
+	// which is precisely the lever an operator reaches for during the incident
+	// that flood might be covering.
+	//
+	// Ordering costs nothing on the attack path: `validateSessionToken` only
+	// runs when a cookie is actually present, so a cookieless flood still
+	// reaches the limiter having done zero DB work. A flood that DOES carry
+	// cookies pays one indexed lookup per request — far cheaper than the
+	// WebAuthn verification this exists to bound.
+	//
+	// An authenticated user can still exhaust the bucket for the signed-out
+	// surface, but they have an account the operator can disable, which is the
+	// accountability an anonymous flooder lacks.
+	if (!event.locals.user && path.startsWith(AUTH_RATE_LIMIT_PATH_PREFIX)) {
+		const decision = consumeRateLimitToken(clientKey(event));
+		if (!decision.allowed) {
+			return new Response('Too many requests', {
+				status: 429,
+				headers: { 'Retry-After': String(decision.retryAfterSeconds) },
+			});
+		}
+	}
+
 	// Apply the saved theme to <html> before first paint so there's no
 	// flash of the default theme. The `gs-theme` cookie mirrors the DB pref
 	// (written by the prefs PATCH) and is readable here even pre-auth /
@@ -260,7 +286,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
-	applySecurityHeaders(response, event.url.pathname);
+	applySecurityHeaders(response, path);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
 	}
