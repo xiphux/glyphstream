@@ -94,7 +94,7 @@
 # ── Optional: [image_enhancement] ────────────────────────────────────
 # Rewrites image AND video prompts into the target model's preferred format
 # (image: natural-language, booru tags, keyword soup, hybrid, json; video:
-# cinematic-prose, structured-cinematic) before generating — and expands them
+# cinematic-prose, structured-cinematic, multimodal-script) before generating — and expands them
 # when they're vague. One block + one enhancer LLM drives both media (it keeps
 # its historical name). Off when this block is absent (prompts pass through
 # verbatim); non-fatal if the model errors. Runs per generation (each fan-out
@@ -248,7 +248,7 @@
 # top-level [image_enhancement] block above). Keyed by the upstream model id,
 # like model_context_windows. `prompt_style` for an IMAGE model is one of
 # natural-language | booru-tags | keyword-soup | hybrid | json; for a VIDEO model
-# it's cinematic-prose | structured-cinematic. `prompt_hint` is freeform per-model
+# it's cinematic-prose | structured-cinematic | multimodal-script. `prompt_hint` is freeform per-model
 # nuance appended to the enhancer instructions (and for `json`, where the exact
 # field schema goes — e.g. Ideogram 4). A style from the wrong medium is ignored
 # (clarify-only fallback). These win over any prompt_style/prompt_hint the bridge
@@ -259,6 +259,7 @@
 #   "ideogram-4"     = "json"
 #   "ltx-2.3"        = "cinematic-prose"      # video
 #   "wan-2.2"        = "structured-cinematic" # video
+#   "minimax-h3"     = "multimodal-script"    # video
 # [endpoints.model_prompt_hints]
 #   "illustrious-xl" = "prefix: masterpiece, best quality, amazing quality; no score_N tags"
 #   "z-image-turbo"  = "keep under ~60 words, front-load the subject"

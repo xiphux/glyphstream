@@ -135,7 +135,8 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers: for images (natural-language
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video
-  (cinematic prose or structured shot description, adding camera motion and
+  (cinematic prose, structured shot description, or a labeled multimodal script
+  with its own soundscape, adding camera motion and
   pacing). Per-model, fans out per-branch in a multi-model compare, and the
   original prompt is kept and shown alongside the
   result ([configuration](docs/configuration.md#prompt-enhancement-image_enhancement)).

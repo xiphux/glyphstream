@@ -403,8 +403,9 @@ The set of valid styles depends on the model's **kind**:
 - **Image** — `natural-language`, `booru-tags`, `keyword-soup`, `hybrid`, `json`
   (aliases like `narrative`/`prose`, `danbooru`/`tags`, `keywords`, `structured`
   are accepted).
-- **Video** — `cinematic-prose`, `structured-cinematic` (aliases like `cinematic`,
-  `narrative`/`prose`, `ltx`, `sulphur`; `structured`, `formula`, `wan` are
+- **Video** — `cinematic-prose`, `structured-cinematic`, `multimodal-script`
+  (aliases like `cinematic`, `narrative`/`prose`, `ltx`, `sulphur`; `structured`,
+  `formula`, `shot-list`, `wan`; `minimax`, `h3`, `t2va`, `shot-script` are
   accepted).
 
 A style is resolved against the model's **own kind**, so an alias that means
@@ -451,7 +452,7 @@ complex JSON scenes.)
 
 Video prompting adds a temporal axis image styles don't model — camera
 _movement_ (dolly/pan/track/orbit) with speed, present-tense action over time,
-and length that scales with clip duration — so video has its own two styles:
+and length that scales with clip duration — so video has its own three styles:
 
 - **`cinematic-prose`** — one flowing present-tense paragraph, a single clean
   camera move, concrete physical detail. This is the sweet spot for **LTX 2.3**
@@ -459,22 +460,47 @@ and length that scales with clip duration — so video has its own two styles:
 - **`structured-cinematic`** — chronological shot-order formula written as prose
   (`entity → scene → motion+pacing → aesthetic[light/lens/shot] → stylization`),
   ~80–120 words. This is what **WAN 2.2** rewards.
+- **`multimodal-script`** — three literally-labeled fields
+  (`integrated_multimodal_description` / `overall_soundscape` /
+  `non_diegetic_music`), `[Shot N]` markers, and a fixed camera-motion
+  vocabulary with amplitude and speed. This is **MiniMax H3**'s native format.
+  The only style that treats audio as its own axis, because H3 generates picture
+  and sound together.
 
-| Model(s)  | `prompt_style`         | hint highlights                                                                                             |
-| --------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
-| LTX 2.3   | `cinematic-prose`      | generates synchronized audio — end with a brief ambient-sound / SFX cue                                     |
-| Sulphur 2 | `cinematic-prose`      | photoreal human focus; concrete/anatomical description, avoid metaphor & over-complex scenes (motion smear) |
-| WAN 2.2   | `structured-cinematic` | emphasize chronological progression ("begins… then…"); amplitude + speed of motion                          |
+| Model(s)   | `prompt_style`         | hint highlights                                                                                             |
+| ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------- |
+| LTX 2.3    | `cinematic-prose`      | generates synchronized audio — end with a brief ambient-sound / SFX cue                                     |
+| Sulphur 2  | `cinematic-prose`      | photoreal human focus; concrete/anatomical description, avoid metaphor & over-complex scenes (motion smear) |
+| WAN 2.2    | `structured-cinematic` | emphasize chronological progression ("begins… then…"); amplitude + speed of motion                          |
+| MiniMax H3 | `multimodal-script`    | usually none — the style carries the whole format                                                           |
 
 ```toml
 [endpoints.model_prompt_styles]
-  "ltx-2.3"   = "cinematic-prose"
-  "sulphur-2" = "cinematic-prose"
-  "wan-2.2"   = "structured-cinematic"
+  "ltx-2.3"    = "cinematic-prose"
+  "sulphur-2"  = "cinematic-prose"
+  "wan-2.2"    = "structured-cinematic"
+  "minimax-h3" = "multimodal-script"
 [endpoints.model_prompt_hints]
   "ltx-2.3"   = "This model generates synchronized audio — end with a brief explicit ambient-sound or SFX cue."
   "sulphur-2" = "Photoreal human focus. Concrete, literal, anatomical description; avoid abstract metaphor; keep the scene simple to avoid motion smearing."
 ```
+
+`multimodal-script` needs no `prompt_hint` in the common case — unlike `json` on
+the image side, the field schema is fixed by the model rather than per-
+deployment, so it lives in the style itself. Two behaviours worth knowing:
+
+- **Single-shot by default.** The enhancer isn't told the clip duration, and H3
+  requires shot-2+ timestamps to fall inside it. The style therefore emits one
+  `[Shot 1]` (which takes no timestamp) unless the user's own prompt asks for a
+  cut — that keeps it from inventing out-of-range timestamps.
+- **Dialogue is opt-in.** Speaker IDs (`(S1)`) and `<d>[English] …</d>` tags only
+  appear when the prompt actually contains speech; silent prompts get no speaker
+  markup, which is H3's own no-dialogue shape. A scene with no score is written
+  `non_diegetic_music: N/A`, but the soundscape is always filled in.
+
+Make sure the workflow's prompt field passes the text through intact — the
+labels and `<d>` tags are part of the prompt H3 expects, so anything that strips
+newlines or angle brackets upstream will break the format.
 
 For an [openai-api-bridge](https://github.com/xiphux/openai-api-bridge) ComfyUI
 video model you can equivalently declare `prompt_style` / `prompt_hint` in the

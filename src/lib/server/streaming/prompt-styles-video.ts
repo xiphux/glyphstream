@@ -7,7 +7,7 @@
  * so reusing the image styles (booru tags, JSON captions, …) or the image
  * enhancer base ("image-generation prompt engineer") would misfire.
  *
- * Two style buckets, from the real regimes today's text-to-video models use:
+ * Three style buckets, from the real regimes today's text-to-video models use:
  *
  *   - cinematic-prose      — one flowing present-tense paragraph, a single
  *     clean camera move, concrete physical detail (Lightricks LTX-2.3 and its
@@ -15,6 +15,15 @@
  *   - structured-cinematic — chronological shot-order formula written as prose:
  *     entity → scene → motion(+pacing) → aesthetic(light/lens/shot) →
  *     stylization (Alibaba Wan 2.2). "Begins… then…" progression markers.
+ *   - multimodal-script    — three literally-labeled fields (video description,
+ *     soundscape, non-diegetic music) with `[Shot N]` markers and a fixed
+ *     camera-motion vocabulary (MiniMax H3). The only bucket that models AUDIO
+ *     as its own axis, because H3 generates picture and sound together.
+ *
+ * `multimodal-script` is the reason {@link VIDEO_ENHANCER_BASE} says "no labels
+ * beyond any the target style requires" rather than a flat "no labels": the
+ * labels ARE the format there, and a flat ban would have the base fighting the
+ * style instruction — which small utility enhancer models resolve badly.
  *
  * Per-model nuance the bucket template can't carry rides on the freeform
  * per-model `prompt_hint` (appended after the style instruction by
@@ -28,7 +37,11 @@
  * browser bundle.
  */
 
-export const VIDEO_PROMPT_STYLES = ['cinematic-prose', 'structured-cinematic'] as const;
+export const VIDEO_PROMPT_STYLES = [
+	'cinematic-prose',
+	'structured-cinematic',
+	'multimodal-script',
+] as const;
 
 export type VideoPromptStyle = (typeof VIDEO_PROMPT_STYLES)[number];
 
@@ -40,8 +53,9 @@ export function isVideoPromptStyle(v: unknown): v is VideoPromptStyle {
 /**
  * Map a loose, operator- or upstream-supplied style string onto a canonical
  * video style key, or null when nothing matches. Tolerant of the aliases people
- * reach for (`cinematic`, `prose`, `ltx`; `structured`, `formula`, `wan`) and
- * of separator/case noise (`Cinematic Prose`, `structured_cinematic`).
+ * reach for (`cinematic`, `prose`, `ltx`; `structured`, `formula`, `wan`;
+ * `minimax`, `h3`, `t2va`) and of separator/case noise (`Cinematic Prose`,
+ * `structured_cinematic`).
  */
 export function normalizeVideoStyle(raw: unknown): VideoPromptStyle | null {
 	if (typeof raw !== 'string') return null;
@@ -69,6 +83,15 @@ export function normalizeVideoStyle(raw: unknown): VideoPromptStyle | null {
 		case 'wan':
 		case 'wan2.2':
 			return 'structured-cinematic';
+		case 'multimodal':
+		case 'script':
+		case 'shot-script':
+		case 'av-script':
+		case 'minimax':
+		case 'minimax-h3':
+		case 'h3':
+		case 't2va':
+			return 'multimodal-script';
 		default:
 			return null;
 	}
@@ -89,7 +112,7 @@ Rules:
 - If the prompt is already vivid and detailed, mostly REFORMAT it into the target style; only add detail when the prompt is genuinely vague.
 - Never change the subject, intent, or content of the prompt. Do not invent a different scene. Do not add people, text, or objects the user did not ask for.
 - Do NOT write a negative prompt, settings, step counts, resolution tags, or any commentary.
-- Output ONLY the final prompt text — no quotes, no labels, no preamble, no explanation.`;
+- Output ONLY the final prompt text — no quotes, no preamble, no explanation, and no labels beyond any the target style below explicitly requires.`;
 
 /**
  * Per-style formatting instruction. Composed after {@link VIDEO_ENHANCER_BASE}
@@ -103,6 +126,20 @@ Write ONE flowing paragraph of present-tense description — like a director's n
 
 	'structured-cinematic': `Target style: STRUCTURED CINEMATOGRAPHIC (written as prose).
 Write descriptive sentences in chronological shot order, front-loading what the camera first captures, then how the shot develops. Cover, in order: the subject (with detail) → the scene/environment → the motion, describing its amplitude and speed and using progression markers ("begins by…, then…") → aesthetic control (light source and quality, shot size, camera angle, lens, camera movement) → any named stylization (e.g. cyberpunk, claymation, time-lapse). Aim for roughly 80–120 words of vivid detail. Still prose, not tags — the temporal relationships between clauses carry meaning a tag list can't.`,
+
+	'multimodal-script': `Target style: MULTIMODAL SHOT SCRIPT (three labeled fields).
+Output exactly three fields, in this order, each starting on its own line with a blank line between them. The labels are literal and required — write them exactly as shown:
+
+integrated_multimodal_description: …
+overall_soundscape: …
+non_diegetic_music: …
+
+integrated_multimodal_description — open with "[Shot 1] " followed by the visual style and composition (e.g. "Live-action, cinematic, a medium-wide shot frames…"), then describe the action chronologically in present tense. NEVER put a timestamp on the first shot. Use a SINGLE shot unless the user's prompt clearly asks for a cut or scene change; only then add "[Shot 2] At 00:05.000, the camera cuts to…" with a strictly increasing timestamp. Describe camera motion as motion type + amplitude + speed, woven into the sentence ("The camera pushes in with small amplitude at slow speed toward…"). Use only these motion types: Zoom In/Out, Push In/Pull Out, Pan Left/Right, Truck Left/Right, Tilt Up/Down, Pedestal Up/Down, Arc Shot, Tracking Shot, Static Shot, Shake Slightly/Strongly, POV, Roll Clockwise/Counterclockwise. Amplitude is "with small amplitude" or "with large amplitude"; speed is "at slow speed" or "at fast speed". Put any on-screen text verbatim inside quotation marks.
+Only if the user's prompt contains or clearly implies spoken or sung words: give each vocalizing character a stable ID — (S1), (S2) — and wrap their words in <d>[English] …</d>, preserving the user's wording and punctuation exactly. If the prompt has no speech, emit no speaker IDs and no <d> tags, and do not invent dialogue.
+
+overall_soundscape — 1–4 sentences as one continuous paragraph covering ambient sound, physical action sounds, and non-verbal human sounds (wind, traffic, footsteps, fabric, impacts, breathing, laughter). Always write a real soundscape; do NOT write "N/A" here unless the user explicitly asked for silence. Never repeat the dialogue in this field.
+
+non_diegetic_music — 1–3 sentences naming instrumentation, tempo, and dynamics of the background score the characters cannot hear. Avoid abstract mood words, and never put dialogue or diegetic sound here. If the scene calls for no score, write exactly "N/A".`,
 };
 
 /**

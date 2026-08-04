@@ -3,6 +3,7 @@ import {
 	isVideoPromptStyle,
 	normalizeVideoStyle,
 	VIDEO_CLARIFY_ONLY_INSTRUCTION,
+	VIDEO_ENHANCER_BASE,
 	VIDEO_PROMPT_STYLES,
 	VIDEO_STYLE_INSTRUCTIONS,
 } from '$lib/server/streaming/prompt-styles-video';
@@ -23,6 +24,17 @@ describe('normalizeVideoStyle', () => {
 		expect(normalizeVideoStyle('structured')).toBe('structured-cinematic');
 		expect(normalizeVideoStyle('formula')).toBe('structured-cinematic');
 		expect(normalizeVideoStyle('wan')).toBe('structured-cinematic');
+		expect(normalizeVideoStyle('minimax')).toBe('multimodal-script');
+		expect(normalizeVideoStyle('h3')).toBe('multimodal-script');
+		expect(normalizeVideoStyle('t2va')).toBe('multimodal-script');
+		expect(normalizeVideoStyle('shot-script')).toBe('multimodal-script');
+	});
+
+	it('keeps shot-list on structured-cinematic, not the H3 script bucket', () => {
+		// `shot-list` predates multimodal-script and means "Wan-style prose in shot
+		// order", NOT MiniMax's literally-labeled field format. Reassigning it would
+		// silently change the output format for any operator already using it.
+		expect(normalizeVideoStyle('shot-list')).toBe('structured-cinematic');
 	});
 
 	it('is tolerant of case and separator noise', () => {
@@ -95,6 +107,38 @@ describe('VIDEO_STYLE_INSTRUCTIONS', () => {
 		const t = VIDEO_STYLE_INSTRUCTIONS['structured-cinematic'].toLowerCase();
 		expect(t).toContain('chronological');
 		expect(t).toContain('motion');
+	});
+
+	it('multimodal-script demands the three literal field labels', () => {
+		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'];
+		expect(t).toContain('integrated_multimodal_description:');
+		expect(t).toContain('overall_soundscape:');
+		expect(t).toContain('non_diegetic_music:');
+		expect(t).toContain('[Shot 1]');
+	});
+
+	// The two clauses most likely to be trimmed as redundant by a later edit, and
+	// the two that carry the no-dialogue case. Without the first, a small enhancer
+	// invents speech for silent prompts; without the second, it fabricates a score
+	// for every clip (H3's own no-dialogue example uses `non_diegetic_music: N/A`,
+	// while an N/A soundscape is explicitly a don't).
+	it('multimodal-script guards against invented dialogue', () => {
+		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'].toLowerCase();
+		expect(t).toContain('do not invent dialogue');
+		expect(t).toContain('only if the user');
+	});
+
+	it('multimodal-script splits the N/A rule between the two audio fields', () => {
+		const t = VIDEO_STYLE_INSTRUCTIONS['multimodal-script'];
+		// Soundscape: never N/A (barring explicit silence). Music: N/A is valid.
+		expect(t).toMatch(/do NOT write "N\/A" here unless the user explicitly asked for silence/);
+		expect(t).toMatch(/no score, write exactly "N\/A"/);
+	});
+
+	// multimodal-script's labels are the format, so the shared base must not ban
+	// labels outright — a flat ban would contradict the style instruction.
+	it('the base prompt permits style-required labels', () => {
+		expect(VIDEO_ENHANCER_BASE).toContain('no labels beyond any the target style');
 	});
 
 	it('clarify-only template preserves the format and adds motion when missing', () => {
