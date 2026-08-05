@@ -298,7 +298,7 @@
 			 pointer-events-none so the underlying drop event still fires. -->
 		<div
 			aria-hidden="true"
-			class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-neutral-500 bg-neutral-100/85 text-sm text-fg-secondary backdrop-blur-sm dark:border-neutral-400 dark:bg-neutral-900/85"
+			class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-fg-muted bg-surface-panel/85 text-sm text-fg-secondary backdrop-blur-sm"
 		>
 			Drop image to attach
 		</div>

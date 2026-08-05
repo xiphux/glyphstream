@@ -79,7 +79,7 @@
 							onclick={() => attachments.remove(a.clientId)}
 							aria-label="Remove attachment"
 							title="Remove"
-							class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-900/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-neutral-900 focus-visible:opacity-100"
+							class="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-media-scrim/80 text-white opacity-0 transition group-hover/thumb:opacity-100 hover:bg-media-scrim focus-visible:opacity-100"
 						>
 							<X size={12} strokeWidth={2.5} />
 						</button>

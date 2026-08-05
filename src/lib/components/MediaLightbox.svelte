@@ -541,7 +541,9 @@
 			if (e.target === e.currentTarget) onClose();
 		}}
 	>
-		<div class="flex shrink-0 items-center justify-between gap-3 pb-3 text-sm text-neutral-200">
+		<div
+			class="flex shrink-0 items-center justify-between gap-3 pb-3 text-sm text-media-fg-secondary"
+		>
 			<div class="flex flex-col text-xs">
 				<span class="font-medium">
 					{m.sourceModel ?? 'Unknown model'}
@@ -562,7 +564,7 @@
 					disabled={savingId === m.id}
 					title={useShareSheet ? 'Share / Save' : 'Download'}
 					aria-label={useShareSheet ? 'Share or save' : 'Download'}
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover disabled:opacity-50"
 				>
 					{#if useShareSheet}
 						<Share size={14} strokeWidth={2.25} />
@@ -587,7 +589,7 @@
 					onclick={onClose}
 					title="Close"
 					aria-label="Close"
-					class="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-600 bg-neutral-800 text-neutral-200 transition hover:bg-neutral-700"
+					class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface text-media-fg-secondary transition hover:bg-media-surface-hover"
 				>
 					<X size={14} strokeWidth={2.25} />
 				</button>
@@ -672,7 +674,7 @@
 						disabled={displayIndex <= 0}
 						aria-label="Previous"
 						title="Previous"
-						class="absolute left-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
+						class="absolute left-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-media-fg transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
 					>
 						<ChevronLeft size={22} strokeWidth={2.25} />
 					</button>
@@ -682,7 +684,7 @@
 						disabled={displayIndex >= siblings!.length - 1}
 						aria-label="Next"
 						title="Next"
-						class="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-neutral-100 transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
+						class="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-media-fg transition hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0"
 					>
 						<ChevronRight size={22} strokeWidth={2.25} />
 					</button>
@@ -710,7 +712,7 @@
 		{/if}
 		{#if m.promptExcerpt}
 			<div class="mx-auto mt-3 max-w-3xl shrink-0 text-center">
-				<p class="text-xs text-neutral-300 line-clamp-3">
+				<p class="text-xs text-media-fg-muted line-clamp-3">
 					{m.promptExcerpt}
 				</p>
 				{#if m.originalPrompt}
@@ -718,13 +720,13 @@
 					     Offer the user's original behind a toggle. -->
 					<button
 						type="button"
-						class="mt-1 text-[11px] text-neutral-400 underline decoration-dotted underline-offset-2 hover:text-neutral-200"
+						class="mt-1 text-[11px] text-media-fg-subtle underline decoration-dotted underline-offset-2 hover:text-media-fg-secondary"
 						onclick={() => (showOriginal = !showOriginal)}
 					>
 						{showOriginal ? 'Hide original' : 'Enhanced — show original'}
 					</button>
 					{#if showOriginal}
-						<p class="mt-1 text-xs text-neutral-400 italic line-clamp-4">
+						<p class="mt-1 text-xs text-media-fg-subtle italic line-clamp-4">
 							{m.originalPrompt}
 						</p>
 					{/if}
@@ -752,7 +754,7 @@
 							type="button"
 							onclick={() => regenerateWith(m, m.originalPrompt)}
 							title="Start a new conversation from your original prompt (it will be enhanced again)"
-							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							Regenerate (original)
@@ -761,7 +763,7 @@
 							type="button"
 							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
 							title="Start a new conversation from the exact enhanced prompt that made this image"
-							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							Regenerate (enhanced)
@@ -771,7 +773,7 @@
 							type="button"
 							onclick={() => regenerateWith(m, enhancedPromptOf(m))}
 							title="Start a new conversation pre-filled with this prompt"
-							class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
 						>
 							<RotateCcw size={13} strokeWidth={2.25} />
 							{inConversation ? 'Regenerate in a new chat' : 'Regenerate with this prompt'}
@@ -783,7 +785,7 @@
 						type="button"
 						onclick={() => useAsStartingImage(m)}
 						title="Start a new conversation with this image attached"
-						class="inline-flex items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-3 py-1.5 text-xs font-medium text-neutral-100 transition hover:bg-neutral-700"
+						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover"
 					>
 						<ImagePlus size={13} strokeWidth={2.25} />
 						{inConversation ? 'Edit in a new chat' : 'Use as starting image'}
@@ -792,7 +794,7 @@
 			</div>
 		{/if}
 		{#if conversationsUsingThis !== undefined}
-			<div class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-xs text-neutral-300">
+			<div class="mx-auto mt-3 w-full max-w-3xl shrink-0 text-xs text-media-fg-muted">
 				{#if conversationsUsingThis === null}
 					<p class="text-center opacity-60">Loading conversations…</p>
 				{:else if conversationsError}
@@ -815,7 +817,7 @@
 						<span class="opacity-60">In conversation: </span>
 						<a
 							href="/chat/{c.id}"
-							class="inline-block max-w-full truncate align-bottom text-neutral-200 underline decoration-neutral-600 underline-offset-2 hover:decoration-neutral-300"
+							class="inline-block max-w-full truncate align-bottom text-media-fg-secondary underline decoration-media-border underline-offset-2 hover:decoration-media-fg-muted"
 						>
 							{c.title ?? 'Untitled'}
 						</a>
@@ -832,7 +834,7 @@
 							<li>
 								<a
 									href="/chat/{c.id}"
-									class="block truncate rounded px-2 py-1 text-center text-neutral-200 hover:bg-neutral-800"
+									class="block truncate rounded px-2 py-1 text-center text-media-fg-secondary hover:bg-media-surface"
 								>
 									{c.title ?? 'Untitled'}
 									{#if c.archivedAt !== null}

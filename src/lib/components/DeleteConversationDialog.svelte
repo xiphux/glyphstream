@@ -127,7 +127,7 @@
 				outcome for this delete only.
 			-->
 			<label
-				class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-neutral-50 p-3 text-sm dark:bg-neutral-800/40"
+				class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-md border border-border bg-surface-sunken p-3 text-sm"
 			>
 				<input type="checkbox" bind:checked={deleteMediaToo} class="mt-0.5" />
 				<span>

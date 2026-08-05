@@ -865,7 +865,7 @@
 								</div>
 								{#if !searching}
 									<label
-										class="flex cursor-pointer items-center justify-between gap-3 rounded-md p-2 transition hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+										class="flex cursor-pointer items-center justify-between gap-3 rounded-md p-2 transition hover:bg-surface-raised"
 									>
 										<span class="font-medium text-fg">Stack related media</span>
 										<Switch.Root

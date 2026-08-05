@@ -18,11 +18,15 @@
  * only the variable's value changes. That's the same mechanism shiki already
  * uses for code-block colors (see the `--shiki-*` swap further down).
  *
- * Today only the default (glyphstream) light + dark values exist; per-theme
- * `[data-theme='claude' | 'chatgpt']` overrides land in a later phase. The
- * default values equal Tailwind's stock `neutral` palette EXACTLY, so moving
- * the components off hardcoded `neutral-*` onto these tokens is a pure
- * refactor — identical pixels in both light and dark.
+ * The `[data-theme='claude' | 'chatgpt']` overrides have since landed (below),
+ * so a component that hardcodes `neutral-*` is no longer merely inconsistent —
+ * it is unreachable by the theme, and stays cool-grey while everything around
+ * it turns Claude's warm cream. The default values also no longer equal
+ * Tailwind's stock `neutral` (the Signature palette is cool-tinted, hue ~250),
+ * so that swap is not the pixel-identical no-op this comment used to promise.
+ * Chrome that sits on top of user MEDIA rather than the app canvas is the one
+ * legitimate exception, and it has its own scheme-independent token family —
+ * see `--color-media-*` further down.
  */
 @theme {
 	/* GlyphStream Signature palette. Cool-tinted neutrals (a faint blue,
@@ -420,6 +424,32 @@
 	background-color: var(--glass-bg-soft);
 	backdrop-filter: blur(var(--blur-surface));
 	-webkit-backdrop-filter: blur(var(--blur-surface));
+}
+
+/* Media chrome — the controls that sit ON TOP of user media: the lightbox's
+ * toolbar/buttons/captions and the attachment thumbnail's dismiss button.
+ *
+ * Deliberately scheme-INDEPENDENT. These surfaces overlay photos and video, not
+ * the app canvas, so they must stay dark in light mode too or they'd wash out
+ * against a bright image. That's why `surface-inverse` is wrong here: it flips
+ * with the scheme (light chip in dark mode), which is right for a button on the
+ * canvas and wrong for one on a photograph.
+ *
+ * They were 35 hardcoded `neutral-*` classes across MediaLightbox and
+ * AttachmentThumbnails. Defined as the stock Tailwind neutral vars they already
+ * resolved to, so the swap is pixel-identical — but the concept now has a name,
+ * and a theme can tune its media chrome by overriding these under
+ * `[data-theme=…]` instead of not being able to reach it at all. */
+@theme {
+	--color-media-surface: var(--color-neutral-800);
+	--color-media-surface-hover: var(--color-neutral-700);
+	--color-media-border: var(--color-neutral-600);
+	/* Scrim behind a control floating directly on an image (no panel under it). */
+	--color-media-scrim: var(--color-neutral-900);
+	--color-media-fg: var(--color-neutral-100);
+	--color-media-fg-secondary: var(--color-neutral-200);
+	--color-media-fg-muted: var(--color-neutral-300);
+	--color-media-fg-subtle: var(--color-neutral-400);
 }
 
 /* The standard raised panel: a bordered card on the app canvas. This chrome

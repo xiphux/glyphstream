@@ -165,7 +165,7 @@
 							<label
 								class="flex items-center gap-1.5 rounded-md px-2 py-1.5 transition {sealed
 									? 'cursor-not-allowed opacity-60'
-									: 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}"
+									: 'cursor-pointer hover:bg-surface-raised'}"
 							>
 								<Switch.Root
 									checked={enabled}
