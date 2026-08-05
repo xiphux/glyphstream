@@ -942,9 +942,7 @@
 					aria-hidden="true"
 				>
 					{#each range(0, 18) as i (i)}
-						<li
-							class="aspect-square w-full animate-pulse rounded-lg border border-border bg-surface-panel"
-						></li>
+						<li class="panel-card aspect-square w-full animate-pulse"></li>
 					{/each}
 				</ul>
 			{:else if isEmpty}

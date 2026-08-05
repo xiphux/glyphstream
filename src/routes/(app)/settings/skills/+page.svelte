@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Trash2, Upload, FolderUp } from '@lucide/svelte';
 	import type { Skill } from '$lib/types/api';
@@ -131,133 +132,128 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-	<header class="shrink-0 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Skills</h1>
-		<p class="text-xs text-fg-muted">
-			Reusable capability bundles (a <code>SKILL.md</code> plus optional bundled files). The assistant
-			sees a catalog of your enabled skills and loads a skill's full instructions on demand when a task
-			matches. Gated per-conversation by the “Agent skills” toggle.
-		</p>
-	</header>
+<SettingsPage title="Skills">
+	{#snippet description()}
+		Reusable capability bundles (a <code>SKILL.md</code> plus optional bundled files). The assistant sees
+		a catalog of your enabled skills and loads a skill's full instructions on demand when a task matches.
+		Gated per-conversation by the “Agent skills” toggle.
+	{/snippet}
 
-	<div class="flex-1 overflow-y-auto px-4 py-4">
-		<div class="mx-auto flex max-w-2xl flex-col gap-4">
-			<!-- Import -->
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<h2 class="mb-2 text-sm font-medium">Import a skill</h2>
-				<textarea
-					bind:value={pasteText}
-					placeholder={'Paste a SKILL.md here…\n\n---\nname: my-skill\ndescription: When to use this skill.\n---\n\nInstructions…'}
-					rows="6"
-					class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs outline-none focus:border-accent"
-				></textarea>
-				<div class="mt-2 flex flex-wrap items-center gap-2">
-					<button
-						type="button"
-						disabled={busy || pasteText.trim().length === 0}
-						onclick={importPaste}
-						class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
-					>
-						Import pasted SKILL.md
-					</button>
-					<span class="text-xs text-fg-muted">or</span>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => filesInput?.click()}
-						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
-					>
-						<Upload size={14} strokeWidth={2.25} /> Choose files
-					</button>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => folderInput?.click()}
-						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
-					>
-						<FolderUp size={14} strokeWidth={2.25} /> Choose folder
-					</button>
-					<input
-						bind:this={filesInput}
-						type="file"
-						multiple
-						class="hidden"
-						onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
-					/>
-					<input
-						bind:this={folderInput}
-						type="file"
-						multiple
-						class="hidden"
-						use:directoryPicker
-						onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
-					/>
-				</div>
-				<p class="mt-2 text-xs text-fg-muted">
-					A multi-file bundle must contain a <code>SKILL.md</code> at its root. Python
-					<code>scripts/*.py</code> can be run on demand in the sandboxed interpreter (a script and
-					its same-folder <code>.py</code> files); other files are read-only.
+	<div class="mx-auto flex max-w-2xl flex-col gap-4">
+		<!-- Import -->
+		<section class="panel-card p-4">
+			<h2 class="mb-2 text-sm font-medium">Import a skill</h2>
+			<textarea
+				bind:value={pasteText}
+				placeholder={'Paste a SKILL.md here…\n\n---\nname: my-skill\ndescription: When to use this skill.\n---\n\nInstructions…'}
+				rows="6"
+				class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+			></textarea>
+			<div class="mt-2 flex flex-wrap items-center gap-2">
+				<button
+					type="button"
+					disabled={busy || pasteText.trim().length === 0}
+					onclick={importPaste}
+					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+				>
+					Import pasted SKILL.md
+				</button>
+				<span class="text-xs text-fg-muted">or</span>
+				<button
+					type="button"
+					disabled={busy}
+					onclick={() => filesInput?.click()}
+					class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
+				>
+					<Upload size={14} strokeWidth={2.25} /> Choose files
+				</button>
+				<button
+					type="button"
+					disabled={busy}
+					onclick={() => folderInput?.click()}
+					class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
+				>
+					<FolderUp size={14} strokeWidth={2.25} /> Choose folder
+				</button>
+				<input
+					bind:this={filesInput}
+					type="file"
+					multiple
+					class="hidden"
+					onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
+				/>
+				<input
+					bind:this={folderInput}
+					type="file"
+					multiple
+					class="hidden"
+					use:directoryPicker
+					onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
+				/>
+			</div>
+			<p class="mt-2 text-xs text-fg-muted">
+				A multi-file bundle must contain a <code>SKILL.md</code> at its root. Python
+				<code>scripts/*.py</code> can be run on demand in the sandboxed interpreter (a script and
+				its same-folder <code>.py</code> files); other files are read-only.
+			</p>
+		</section>
+
+		<!-- List -->
+		<section class="panel-card p-4">
+			{#if data.skills.length === 0}
+				<p class="py-8 text-center text-sm text-fg-muted">
+					No skills yet. Import one above to get started.
 				</p>
-			</section>
-
-			<!-- List -->
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				{#if data.skills.length === 0}
-					<p class="py-8 text-center text-sm text-fg-muted">
-						No skills yet. Import one above to get started.
-					</p>
-				{:else}
-					<ul class="flex flex-col gap-0.5">
-						{#each data.skills as s (s.id)}
-							<li>
-								<div
-									class="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm transition hover:bg-surface-sunken/70"
-									class:opacity-50={!s.enabled}
-								>
-									<div class="min-w-0 flex-1">
-										<div class="flex items-center gap-2">
-											<span class="font-mono text-[13px] font-medium">{s.name}</span>
-											{#if !s.enabled}
-												<span
-													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
-													>disabled</span
-												>
-											{/if}
-										</div>
-										<p class="mt-0.5 break-words text-xs text-fg-muted">{s.description}</p>
+			{:else}
+				<ul class="flex flex-col gap-0.5">
+					{#each data.skills as s (s.id)}
+						<li>
+							<div
+								class="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm transition hover:bg-surface-sunken/70"
+								class:opacity-50={!s.enabled}
+							>
+								<div class="min-w-0 flex-1">
+									<div class="flex items-center gap-2">
+										<span class="font-mono text-[13px] font-medium">{s.name}</span>
+										{#if !s.enabled}
+											<span
+												class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
+												>disabled</span
+											>
+										{/if}
 									</div>
-									<div class="flex shrink-0 flex-col items-end gap-1.5">
-										<span class="text-xs text-fg-muted">{formatDate(s.createdAt)}</span>
-										<div class="flex items-center gap-1">
-											<button
-												type="button"
-												disabled={busyId === s.id}
-												onclick={() => toggleEnabled(s)}
-												title={s.enabled ? 'Disable skill' : 'Enable skill'}
-												aria-label={s.enabled ? 'Disable skill' : 'Enable skill'}
-												class="rounded border border-border bg-transparent px-2 py-1 text-[11px] text-fg-muted transition hover:bg-surface-sunken disabled:opacity-50"
-											>
-												{s.enabled ? 'Disable' : 'Enable'}
-											</button>
-											<button
-												type="button"
-												disabled={busyId === s.id}
-												onclick={() => requestDelete(s)}
-												title="Delete skill"
-												aria-label="Delete skill"
-												class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
-											>
-												<Trash2 size={14} strokeWidth={2.25} />
-											</button>
-										</div>
+									<p class="mt-0.5 break-words text-xs text-fg-muted">{s.description}</p>
+								</div>
+								<div class="flex shrink-0 flex-col items-end gap-1.5">
+									<span class="text-xs text-fg-muted">{formatDate(s.createdAt)}</span>
+									<div class="flex items-center gap-1">
+										<button
+											type="button"
+											disabled={busyId === s.id}
+											onclick={() => toggleEnabled(s)}
+											title={s.enabled ? 'Disable skill' : 'Enable skill'}
+											aria-label={s.enabled ? 'Disable skill' : 'Enable skill'}
+											class="rounded border border-border bg-transparent px-2 py-1 text-[11px] text-fg-muted transition hover:bg-surface-sunken disabled:opacity-50"
+										>
+											{s.enabled ? 'Disable' : 'Enable'}
+										</button>
+										<button
+											type="button"
+											disabled={busyId === s.id}
+											onclick={() => requestDelete(s)}
+											title="Delete skill"
+											aria-label="Delete skill"
+											class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+										>
+											<Trash2 size={14} strokeWidth={2.25} />
+										</button>
 									</div>
 								</div>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</section>
-		</div>
+							</div>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</section>
 	</div>
-</div>
+</SettingsPage>

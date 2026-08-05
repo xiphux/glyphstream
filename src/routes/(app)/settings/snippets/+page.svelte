@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Trash2, Upload, Download, Pencil, Plus, X } from '@lucide/svelte';
 	import { SNIPPET_KINDS, type PromptSnippet, type SnippetKind } from '$lib/types/api';
@@ -244,278 +245,273 @@ clean and highly readable linework, appealing
 character-focused design language…`;
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-	<header class="shrink-0 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Prompt snippets</h1>
-		<p class="text-xs text-fg-muted">
-			Reusable pieces of a prompt — a visual style, a tone instruction, a recurring character. Type <code
-				>{SNIPPET_TRIGGER}</code
-			> in the message box to insert one at the cursor, then keep typing around it. Several can be stacked
-			in a single prompt.
-		</p>
-	</header>
+<SettingsPage title="Prompt snippets">
+	{#snippet description()}
+		Reusable pieces of a prompt — a visual style, a tone instruction, a recurring character. Type <code
+			>{SNIPPET_TRIGGER}</code
+		> in the message box to insert one at the cursor, then keep typing around it. Several can be stacked
+		in a single prompt.
+	{/snippet}
 
-	<div class="flex-1 overflow-y-auto px-4 py-4">
-		<div class="mx-auto flex max-w-2xl flex-col gap-4">
-			<!-- Editor -->
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<!-- The bottom margin is what separates this header from the editor
-				     form, so it only applies when that form is open. With the form
-				     closed this row is the section's only child, and an
-				     unconditional `mb-2` collapsed into nothing to separate — it
-				     just added 8px under a row already sitting in 16px of padding,
-				     which read as the header being off-centre in its own box. -->
-				<div class="flex items-center justify-between {editing === null ? '' : 'mb-2'}">
-					<h2 class="text-sm font-medium">
-						{editing === null ? 'Your library' : editing ? 'Edit snippet' : 'New snippet'}
-					</h2>
-					{#if editing === null}
-						<button
-							type="button"
-							onclick={openCreate}
-							class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90"
-						>
-							<Plus size={14} strokeWidth={2.25} /> New snippet
-						</button>
-					{:else}
-						<button
-							type="button"
-							onclick={() => (editing = null)}
-							aria-label="Close editor"
-							class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken"
-						>
-							<X size={14} strokeWidth={2.25} />
-						</button>
-					{/if}
-				</div>
+	<div class="mx-auto flex max-w-2xl flex-col gap-4">
+		<!-- Editor -->
+		<section class="panel-card p-4">
+			<!-- The bottom margin is what separates this header from the editor
+			     form, so it only applies when that form is open. With the form
+			     closed this row is the section's only child, and an
+			     unconditional `mb-2` collapsed into nothing to separate — it
+			     just added 8px under a row already sitting in 16px of padding,
+			     which read as the header being off-centre in its own box. -->
+			<div class="flex items-center justify-between {editing === null ? '' : 'mb-2'}">
+				<h2 class="text-sm font-medium">
+					{editing === null ? 'Your library' : editing ? 'Edit snippet' : 'New snippet'}
+				</h2>
+				{#if editing === null}
+					<button
+						type="button"
+						onclick={openCreate}
+						class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90"
+					>
+						<Plus size={14} strokeWidth={2.25} /> New snippet
+					</button>
+				{:else}
+					<button
+						type="button"
+						onclick={() => (editing = null)}
+						aria-label="Close editor"
+						class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken"
+					>
+						<X size={14} strokeWidth={2.25} />
+					</button>
+				{/if}
+			</div>
 
-				{#if editing !== null}
-					<div class="flex flex-col gap-3">
-						<label class="flex flex-col gap-1">
-							<span class="text-xs text-fg-muted">Name</span>
-							<input
-								bind:value={formName}
-								maxlength="200"
-								placeholder="Akira Toriyama Style"
-								class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
-							/>
-						</label>
-						<label class="flex flex-col gap-1">
-							<span class="text-xs text-fg-muted">Body</span>
-							<textarea
-								bind:value={formBody}
-								rows="6"
-								placeholder="clean and highly readable linework, appealing character-focused design language…"
-								class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
-							></textarea>
-						</label>
-						<div class="flex flex-col gap-1">
-							<span class="text-xs text-fg-muted">
-								Applies to — leave all unchecked to offer it everywhere
-							</span>
-							<div class="flex flex-wrap gap-2">
-								{#each SNIPPET_KINDS as k (k)}
-									<label
-										class="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs transition hover:bg-surface-sunken"
-									>
-										<input
-											type="checkbox"
-											checked={formKinds.includes(k)}
-											onchange={() => toggleKind(k)}
-										/>
-										{k}
-									</label>
-								{/each}
-							</div>
-						</div>
-						<label class="flex flex-col gap-1">
-							<span class="text-xs text-fg-muted">Tags (comma-separated, searchable)</span>
-							<input
-								bind:value={formTags}
-								placeholder="anime, character"
-								class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
-							/>
-						</label>
-						<div>
-							<button
-								type="button"
-								disabled={busy || !formName.trim() || !formBody.trim()}
-								onclick={save}
-								class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
-							>
-								{editing ? 'Save changes' : 'Create snippet'}
-							</button>
+			{#if editing !== null}
+				<div class="flex flex-col gap-3">
+					<label class="flex flex-col gap-1">
+						<span class="text-xs text-fg-muted">Name</span>
+						<input
+							bind:value={formName}
+							maxlength="200"
+							placeholder="Akira Toriyama Style"
+							class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+						/>
+					</label>
+					<label class="flex flex-col gap-1">
+						<span class="text-xs text-fg-muted">Body</span>
+						<textarea
+							bind:value={formBody}
+							rows="6"
+							placeholder="clean and highly readable linework, appealing character-focused design language…"
+							class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+						></textarea>
+					</label>
+					<div class="flex flex-col gap-1">
+						<span class="text-xs text-fg-muted">
+							Applies to — leave all unchecked to offer it everywhere
+						</span>
+						<div class="flex flex-wrap gap-2">
+							{#each SNIPPET_KINDS as k (k)}
+								<label
+									class="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs transition hover:bg-surface-sunken"
+								>
+									<input
+										type="checkbox"
+										checked={formKinds.includes(k)}
+										onchange={() => toggleKind(k)}
+									/>
+									{k}
+								</label>
+							{/each}
 						</div>
 					</div>
-				{/if}
-			</section>
-
-			<!-- List -->
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				{#if data.promptSnippets.length === 0}
-					<p class="py-8 text-center text-sm text-fg-muted">
-						No snippets yet. Create one above, or import a library below.
-					</p>
-				{:else}
-					<input
-						bind:value={filter}
-						placeholder="Filter {data.promptSnippets.length} snippets…"
-						class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
-					/>
-					<!-- Modality quick-filter. With a large single-modality library
-					     (hundreds of image styles) the text box alone can't answer
-					     "what do I actually have for chat?" — the counts here do it
-					     at a glance, before any clicking. -->
-					<div class="mt-2 mb-3 flex flex-wrap items-center gap-1.5">
-						<span class="text-xs text-fg-muted">Applies to</span>
+					<label class="flex flex-col gap-1">
+						<span class="text-xs text-fg-muted">Tags (comma-separated, searchable)</span>
+						<input
+							bind:value={formTags}
+							placeholder="anime, character"
+							class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+						/>
+					</label>
+					<div>
 						<button
 							type="button"
-							aria-pressed={kindFilter === null}
-							onclick={() => (kindFilter = null)}
-							class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === null
+							disabled={busy || !formName.trim() || !formBody.trim()}
+							onclick={save}
+							class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+						>
+							{editing ? 'Save changes' : 'Create snippet'}
+						</button>
+					</div>
+				</div>
+			{/if}
+		</section>
+
+		<!-- List -->
+		<section class="panel-card p-4">
+			{#if data.promptSnippets.length === 0}
+				<p class="py-8 text-center text-sm text-fg-muted">
+					No snippets yet. Create one above, or import a library below.
+				</p>
+			{:else}
+				<input
+					bind:value={filter}
+					placeholder="Filter {data.promptSnippets.length} snippets…"
+					class="w-full rounded-md border border-border bg-surface-sunken px-3 py-2 text-sm outline-none focus:border-accent"
+				/>
+				<!-- Modality quick-filter. With a large single-modality library
+				     (hundreds of image styles) the text box alone can't answer
+				     "what do I actually have for chat?" — the counts here do it
+				     at a glance, before any clicking. -->
+				<div class="mt-2 mb-3 flex flex-wrap items-center gap-1.5">
+					<span class="text-xs text-fg-muted">Applies to</span>
+					<button
+						type="button"
+						aria-pressed={kindFilter === null}
+						onclick={() => (kindFilter = null)}
+						class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === null
+							? 'border-accent bg-accent text-on-accent'
+							: 'border-border text-fg-muted hover:bg-surface-sunken'}"
+					>
+						All {data.promptSnippets.length}
+					</button>
+					{#each SNIPPET_KINDS as k (k)}
+						<button
+							type="button"
+							aria-pressed={kindFilter === k}
+							onclick={() => (kindFilter = kindFilter === k ? null : k)}
+							class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === k
 								? 'border-accent bg-accent text-on-accent'
 								: 'border-border text-fg-muted hover:bg-surface-sunken'}"
 						>
-							All {data.promptSnippets.length}
+							{k}
+							{kindCounts.get(k) ?? 0}
 						</button>
-						{#each SNIPPET_KINDS as k (k)}
-							<button
-								type="button"
-								aria-pressed={kindFilter === k}
-								onclick={() => (kindFilter = kindFilter === k ? null : k)}
-								class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === k
-									? 'border-accent bg-accent text-on-accent'
-									: 'border-border text-fg-muted hover:bg-surface-sunken'}"
-							>
-								{k}
-								{kindCounts.get(k) ?? 0}
-							</button>
-						{/each}
-					</div>
-					{#if filtered.length === 0}
-						<!-- Name the filter that actually emptied the list. "Nothing
-						     matches ''" for a kind-only filter would read as a bug. -->
-						<p class="py-6 text-center text-sm text-fg-muted">
-							{#if filter.trim() && kindFilter}
-								No {kindFilter} snippets match “{filter}”.
-							{:else if kindFilter}
-								No snippets apply to {kindFilter}.
-							{:else}
-								Nothing matches “{filter}”.
-							{/if}
-						</p>
-					{:else}
-						<ul class="flex flex-col gap-0.5">
-							{#each filtered as s (s.id)}
-								<li>
-									<div
-										class="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm transition hover:bg-surface-sunken/70"
-									>
-										<div class="min-w-0 flex-1">
-											<div class="flex flex-wrap items-center gap-1.5">
-												<span class="font-medium">{s.name}</span>
-												{#each s.kinds as k (k)}
-													<span
-														class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
-														>{k}</span
-													>
-												{/each}
-												{#if s.kinds.length === 0}
-													<!-- No kinds means generic, and that's exactly what the
-													     modality chips count it under. Rendering nothing here
-													     left it indistinguishable from a row whose chips
-													     failed to load. -->
-													<span
-														class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted italic"
-														>everywhere</span
-													>
-												{/if}
-												{#each s.tags as t (t)}
-													<span class="text-[10px] text-fg-muted">#{t}</span>
-												{/each}
-											</div>
-											<p class="mt-0.5 line-clamp-2 break-words text-xs text-fg-muted">{s.body}</p>
-										</div>
-										<div class="flex shrink-0 items-center gap-1">
-											<button
-												type="button"
-												disabled={busyId === s.id}
-												onclick={() => openEdit(s)}
-												title="Edit snippet"
-												aria-label="Edit snippet"
-												class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken disabled:opacity-50"
-											>
-												<Pencil size={14} strokeWidth={2.25} />
-											</button>
-											<button
-												type="button"
-												disabled={busyId === s.id}
-												onclick={() => requestDelete(s)}
-												title="Delete snippet"
-												aria-label="Delete snippet"
-												class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
-											>
-												<Trash2 size={14} strokeWidth={2.25} />
-											</button>
-										</div>
-									</div>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/if}
-			</section>
-
-			<!-- Import / export -->
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<h2 class="mb-2 text-sm font-medium">Import or export a library</h2>
-				<p class="mb-2 text-xs text-fg-muted">
-					One Markdown file. Each snippet is a <code>## Name</code> heading, optional
-					<code>kinds:</code> / <code>tags:</code> lines, a blank line, then the body.
-				</p>
-				<textarea
-					bind:value={pasteText}
-					placeholder={PLACEHOLDER}
-					rows="6"
-					class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs outline-none focus:border-accent"
-				></textarea>
-				<div class="mt-2 flex flex-wrap items-center gap-2">
-					<button
-						type="button"
-						disabled={busy || pasteText.trim().length === 0}
-						onclick={importPaste}
-						class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
-					>
-						Import pasted text
-					</button>
-					<span class="text-xs text-fg-muted">or</span>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={() => fileInput?.click()}
-						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
-					>
-						<Upload size={14} strokeWidth={2.25} /> Choose a .md file
-					</button>
-					<input
-						bind:this={fileInput}
-						type="file"
-						accept=".md,text/markdown,text/plain"
-						class="hidden"
-						onchange={(e) => importFile((e.currentTarget as HTMLInputElement).files)}
-					/>
-					<a
-						href="/api/user/prompt-snippets/export"
-						class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken"
-					>
-						<Download size={14} strokeWidth={2.25} /> Export
-					</a>
-					<label class="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
-						<input type="checkbox" bind:checked={overwrite} />
-						Overwrite snippets with the same name
-					</label>
+					{/each}
 				</div>
-			</section>
-		</div>
+				{#if filtered.length === 0}
+					<!-- Name the filter that actually emptied the list. "Nothing
+					     matches ''" for a kind-only filter would read as a bug. -->
+					<p class="py-6 text-center text-sm text-fg-muted">
+						{#if filter.trim() && kindFilter}
+							No {kindFilter} snippets match “{filter}”.
+						{:else if kindFilter}
+							No snippets apply to {kindFilter}.
+						{:else}
+							Nothing matches “{filter}”.
+						{/if}
+					</p>
+				{:else}
+					<ul class="flex flex-col gap-0.5">
+						{#each filtered as s (s.id)}
+							<li>
+								<div
+									class="flex items-start gap-3 rounded-md px-3 py-2.5 text-sm transition hover:bg-surface-sunken/70"
+								>
+									<div class="min-w-0 flex-1">
+										<div class="flex flex-wrap items-center gap-1.5">
+											<span class="font-medium">{s.name}</span>
+											{#each s.kinds as k (k)}
+												<span
+													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted"
+													>{k}</span
+												>
+											{/each}
+											{#if s.kinds.length === 0}
+												<!-- No kinds means generic, and that's exactly what the
+												     modality chips count it under. Rendering nothing here
+												     left it indistinguishable from a row whose chips
+												     failed to load. -->
+												<span
+													class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] text-fg-muted italic"
+													>everywhere</span
+												>
+											{/if}
+											{#each s.tags as t (t)}
+												<span class="text-[10px] text-fg-muted">#{t}</span>
+											{/each}
+										</div>
+										<p class="mt-0.5 line-clamp-2 break-words text-xs text-fg-muted">{s.body}</p>
+									</div>
+									<div class="flex shrink-0 items-center gap-1">
+										<button
+											type="button"
+											disabled={busyId === s.id}
+											onclick={() => openEdit(s)}
+											title="Edit snippet"
+											aria-label="Edit snippet"
+											class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken disabled:opacity-50"
+										>
+											<Pencil size={14} strokeWidth={2.25} />
+										</button>
+										<button
+											type="button"
+											disabled={busyId === s.id}
+											onclick={() => requestDelete(s)}
+											title="Delete snippet"
+											aria-label="Delete snippet"
+											class="flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+										>
+											<Trash2 size={14} strokeWidth={2.25} />
+										</button>
+									</div>
+								</div>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
+		</section>
+
+		<!-- Import / export -->
+		<section class="panel-card p-4">
+			<h2 class="mb-2 text-sm font-medium">Import or export a library</h2>
+			<p class="mb-2 text-xs text-fg-muted">
+				One Markdown file. Each snippet is a <code>## Name</code> heading, optional
+				<code>kinds:</code> / <code>tags:</code> lines, a blank line, then the body.
+			</p>
+			<textarea
+				bind:value={pasteText}
+				placeholder={PLACEHOLDER}
+				rows="6"
+				class="w-full resize-y rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs outline-none focus:border-accent"
+			></textarea>
+			<div class="mt-2 flex flex-wrap items-center gap-2">
+				<button
+					type="button"
+					disabled={busy || pasteText.trim().length === 0}
+					onclick={importPaste}
+					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+				>
+					Import pasted text
+				</button>
+				<span class="text-xs text-fg-muted">or</span>
+				<button
+					type="button"
+					disabled={busy}
+					onclick={() => fileInput?.click()}
+					class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken disabled:opacity-50"
+				>
+					<Upload size={14} strokeWidth={2.25} /> Choose a .md file
+				</button>
+				<input
+					bind:this={fileInput}
+					type="file"
+					accept=".md,text/markdown,text/plain"
+					class="hidden"
+					onchange={(e) => importFile((e.currentTarget as HTMLInputElement).files)}
+				/>
+				<a
+					href="/api/user/prompt-snippets/export"
+					class="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm transition hover:bg-surface-sunken"
+				>
+					<Download size={14} strokeWidth={2.25} /> Export
+				</a>
+				<label class="flex cursor-pointer items-center gap-1.5 text-xs text-fg-muted">
+					<input type="checkbox" bind:checked={overwrite} />
+					Overwrite snippets with the same name
+				</label>
+			</div>
+		</section>
 	</div>
-</div>
+</SettingsPage>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
 	import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
@@ -277,322 +278,316 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-	<header class="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Preferences</h1>
-	</header>
+<SettingsPage title="Preferences">
+	<form
+		onsubmit={(e) => e.preventDefault()}
+		class="panel-card mx-auto flex max-w-2xl flex-col gap-6 p-4"
+	>
+		<section class="flex flex-col gap-3">
+			<div>
+				<h2 class="text-sm font-semibold">Personalization</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">
+					Composed into a system prompt for new conversations (when not using a custom-model
+					preset). Doesn't change existing chats — only future ones. Empty fields are omitted
+					entirely.
+				</p>
+			</div>
 
-	<div class="flex-1 overflow-y-auto px-4 py-4">
-		<form
-			onsubmit={(e) => e.preventDefault()}
-			class="mx-auto flex max-w-2xl flex-col gap-6 rounded-lg border border-border bg-surface-panel p-4"
-		>
-			<section class="flex flex-col gap-3">
-				<div>
-					<h2 class="text-sm font-semibold">Personalization</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">
-						Composed into a system prompt for new conversations (when not using a custom-model
-						preset). Doesn't change existing chats — only future ones. Empty fields are omitted
-						entirely.
-					</p>
-				</div>
+			<div class="flex flex-col gap-1.5">
+				<label class="text-xs font-medium" for="pref-name">Name</label>
+				<input
+					id="pref-name"
+					bind:value={name}
+					type="text"
+					maxlength={100}
+					onblur={() => saveTextField('name', name)}
+					placeholder="Your name or nickname"
+					class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+				/>
+			</div>
 
-				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-name">Name</label>
+			<div class="flex flex-col gap-1.5">
+				<label class="text-xs font-medium" for="pref-about">About you</label>
+				<textarea
+					id="pref-about"
+					bind:value={aboutYou}
+					rows="3"
+					maxlength={2000}
+					onblur={() => saveTextField('aboutYou', aboutYou)}
+					placeholder="Background, interests, or other standing context to keep in mind"
+					class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+				></textarea>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label class="text-xs font-medium" for="pref-custom">Custom instructions</label>
+				<textarea
+					id="pref-custom"
+					bind:value={customInstructions}
+					rows="6"
+					maxlength={4000}
+					onblur={() => saveTextField('customInstructions', customInstructions)}
+					placeholder="Response style, tone, or formatting preferences"
+					class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+				></textarea>
+			</div>
+		</section>
+
+		<div class="border-t border-border"></div>
+
+		<section class="flex flex-col gap-2">
+			<div>
+				<h2 class="text-sm font-semibold">Composer</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">How the message composer treats the Enter key.</p>
+			</div>
+			<div class="flex flex-col gap-2 text-sm">
+				<label class="flex cursor-pointer items-start gap-2">
 					<input
-						id="pref-name"
-						bind:value={name}
-						type="text"
-						maxlength={100}
-						onblur={() => saveTextField('name', name)}
-						placeholder="Your name or nickname"
-						class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
-					/>
-				</div>
-
-				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-about">About you</label>
-					<textarea
-						id="pref-about"
-						bind:value={aboutYou}
-						rows="3"
-						maxlength={2000}
-						onblur={() => saveTextField('aboutYou', aboutYou)}
-						placeholder="Background, interests, or other standing context to keep in mind"
-						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
-					></textarea>
-				</div>
-
-				<div class="flex flex-col gap-1.5">
-					<label class="text-xs font-medium" for="pref-custom">Custom instructions</label>
-					<textarea
-						id="pref-custom"
-						bind:value={customInstructions}
-						rows="6"
-						maxlength={4000}
-						onblur={() => saveTextField('customInstructions', customInstructions)}
-						placeholder="Response style, tone, or formatting preferences"
-						class="w-full resize-y rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
-					></textarea>
-				</div>
-			</section>
-
-			<div class="border-t border-border"></div>
-
-			<section class="flex flex-col gap-2">
-				<div>
-					<h2 class="text-sm font-semibold">Composer</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">How the message composer treats the Enter key.</p>
-				</div>
-				<div class="flex flex-col gap-2 text-sm">
-					<label class="flex cursor-pointer items-start gap-2">
-						<input
-							type="radio"
-							name="enter-behavior"
-							value="send"
-							checked={enterBehavior === 'send'}
-							onchange={() => {
-								enterBehavior = 'send';
-								void saveField({ enterBehavior: 'send' });
-							}}
-							class="mt-0.5"
-						/>
-						<span>
-							<span class="font-medium">Enter sends</span>
-							<span class="text-fg-muted"> — Shift+Enter inserts a newline. (Default.) </span>
-						</span>
-					</label>
-					<label class="flex cursor-pointer items-start gap-2">
-						<input
-							type="radio"
-							name="enter-behavior"
-							value="newline"
-							checked={enterBehavior === 'newline'}
-							onchange={() => {
-								enterBehavior = 'newline';
-								void saveField({ enterBehavior: 'newline' });
-							}}
-							class="mt-0.5"
-						/>
-						<span>
-							<span class="font-medium">Enter inserts a newline</span>
-							<span class="text-fg-muted"> — Cmd/Ctrl+Enter sends. </span>
-						</span>
-					</label>
-				</div>
-			</section>
-
-			<div class="border-t border-border"></div>
-
-			<section class="flex flex-col gap-2">
-				<h2 class="text-sm font-semibold">New chat page</h2>
-				<label class="flex cursor-pointer items-start gap-2 text-sm">
-					<input
-						type="checkbox"
-						bind:checked={showGreeting}
-						onchange={() => void saveField({ showGreeting })}
+						type="radio"
+						name="enter-behavior"
+						value="send"
+						checked={enterBehavior === 'send'}
+						onchange={() => {
+							enterBehavior = 'send';
+							void saveField({ enterBehavior: 'send' });
+						}}
 						class="mt-0.5"
 					/>
 					<span>
-						<span class="font-medium">Show greeting</span>
-						<span class="text-fg-muted">
-							— "Good morning, Chris" header above the message composer.
-						</span>
+						<span class="font-medium">Enter sends</span>
+						<span class="text-fg-muted"> — Shift+Enter inserts a newline. (Default.) </span>
 					</span>
 				</label>
-			</section>
-
-			<div class="border-t border-border"></div>
-
-			<section class="flex flex-col gap-2">
-				<div>
-					<h2 class="text-sm font-semibold">Context compaction</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">
-						When a conversation fills up the model's context window, GlyphStream can summarize the
-						older messages so the chat keeps going. The real messages stay in the thread (the
-						summary is collapsed); only what's sent to the model is trimmed. You can always compact
-						a conversation by hand from its header.
-					</p>
-				</div>
-				<label class="flex cursor-pointer items-start gap-2 text-sm">
+				<label class="flex cursor-pointer items-start gap-2">
 					<input
-						type="checkbox"
-						bind:checked={autoCompactionEnabled}
-						onchange={() => void saveField({ autoCompactionEnabled })}
+						type="radio"
+						name="enter-behavior"
+						value="newline"
+						checked={enterBehavior === 'newline'}
+						onchange={() => {
+							enterBehavior = 'newline';
+							void saveField({ enterBehavior: 'newline' });
+						}}
 						class="mt-0.5"
 					/>
 					<span>
-						<span class="font-medium">Compact automatically</span>
-						<span class="text-fg-muted">
-							— before your next message, if the conversation has crossed the threshold below. Only
-							applies when the model's context window is known.
-						</span>
+						<span class="font-medium">Enter inserts a newline</span>
+						<span class="text-fg-muted"> — Cmd/Ctrl+Enter sends. </span>
 					</span>
 				</label>
-				<div class="flex items-center gap-2 text-sm" class:opacity-50={!autoCompactionEnabled}>
-					<label for="pref-compact-threshold">Compact at</label>
-					<input
-						id="pref-compact-threshold"
-						type="number"
-						min="1"
-						max="100"
-						step="5"
-						bind:value={autoCompactionThreshold}
-						disabled={!autoCompactionEnabled}
-						onchange={() => void saveThreshold(autoCompactionThreshold)}
-						class="w-20 rounded-md border border-border bg-surface-panel px-2 py-1 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
-					/>
-					<span class="text-fg-muted">% of the context window</span>
-				</div>
-			</section>
+			</div>
+		</section>
 
-			<div class="border-t border-border"></div>
+		<div class="border-t border-border"></div>
 
-			<section class="flex flex-col gap-2">
-				<div>
-					<h2 class="text-sm font-semibold">Theme</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">
-						Pick a visual style. Light vs dark within each follows your system setting. Applies
-						instantly.
-					</p>
-				</div>
-				<div class="grid grid-cols-3 gap-2">
-					{#each THEMES as t (t.id)}
-						<button
-							type="button"
-							onclick={() => selectTheme(t.id)}
-							aria-pressed={theme === t.id}
-							class="flex flex-col gap-1 rounded-lg border p-3 text-left transition {theme === t.id
-								? 'border-border-focus bg-surface-sunken'
-								: 'border-border hover:bg-surface-raised'}"
-						>
-							<span class="text-sm font-medium">{t.label}</span>
-							<span class="text-xs text-fg-muted">{t.description}</span>
-						</button>
-					{/each}
-				</div>
-				<div class="mt-1 flex items-center gap-2">
-					<span class="text-xs text-fg-muted">Mode:</span>
-					{#each SCHEMES as s (s.id)}
-						<button
-							type="button"
-							onclick={() => selectScheme(s.id)}
-							aria-pressed={colorScheme === s.id}
-							class="rounded-md border px-3 py-1 text-xs transition {colorScheme === s.id
-								? 'border-border-focus bg-surface-sunken'
-								: 'border-border hover:bg-surface-raised'}"
-						>
-							{s.label}
-						</button>
-					{/each}
-				</div>
-				{#if themeError}
-					<p class="text-xs text-danger">{themeError}</p>
-				{/if}
-			</section>
-
-			<div class="border-t border-border"></div>
-
-			<section class="flex flex-col gap-3">
-				<div>
-					<h2 class="text-sm font-semibold">Notifications</h2>
-					<p class="mt-0.5 text-xs text-fg-muted">
-						Ping you when an assistant message finishes — toast when you're in the app on a
-						different page, OS notification when you've switched apps or locked your phone. On iOS
-						this needs the PWA installed to the Home Screen first.
-					</p>
-				</div>
-
-				<label class="flex cursor-pointer items-start gap-2 text-sm">
-					<input
-						type="checkbox"
-						checked={notificationsEnabled}
-						onchange={(e) => toggleMaster(e.currentTarget.checked)}
-						disabled={masterDisabled}
-						class="mt-0.5"
-					/>
-					<span>
-						<span class="font-medium">Enable notifications</span>
-						<span class="text-fg-muted">
-							— receive push notifications on this device when a message completes.
-						</span>
+		<section class="flex flex-col gap-2">
+			<h2 class="text-sm font-semibold">New chat page</h2>
+			<label class="flex cursor-pointer items-start gap-2 text-sm">
+				<input
+					type="checkbox"
+					bind:checked={showGreeting}
+					onchange={() => void saveField({ showGreeting })}
+					class="mt-0.5"
+				/>
+				<span>
+					<span class="font-medium">Show greeting</span>
+					<span class="text-fg-muted">
+						— "Good morning, Chris" header above the message composer.
 					</span>
-				</label>
+				</span>
+			</label>
+		</section>
 
-				{#if masterDisabledReason}
-					<div class="rounded-md border px-3 py-2 text-xs alert-warning">
-						{masterDisabledReason}
-					</div>
-				{:else if pushSupported}
-					<div class="text-xs text-fg-muted">
-						Permission: <span class="font-mono">{permissionState}</span>
-					</div>
-				{/if}
+		<div class="border-t border-border"></div>
 
-				<label
-					class="flex cursor-pointer items-start gap-2 text-sm"
-					class:opacity-50={!notificationsEnabled}
-				>
-					<input
-						type="checkbox"
-						checked={notificationsShowContent}
-						onchange={(e) => toggleShowContent(e.currentTarget.checked)}
-						disabled={!notificationsEnabled || notifBusy}
-						class="mt-0.5"
-					/>
-					<span>
-						<span class="font-medium">Show message preview</span>
-						<span class="text-fg-muted">
-							— include a snippet of the assistant's reply in the notification body. Turn off if
-							your threads are private to the device.
-						</span>
+		<section class="flex flex-col gap-2">
+			<div>
+				<h2 class="text-sm font-semibold">Context compaction</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">
+					When a conversation fills up the model's context window, GlyphStream can summarize the
+					older messages so the chat keeps going. The real messages stay in the thread (the summary
+					is collapsed); only what's sent to the model is trimmed. You can always compact a
+					conversation by hand from its header.
+				</p>
+			</div>
+			<label class="flex cursor-pointer items-start gap-2 text-sm">
+				<input
+					type="checkbox"
+					bind:checked={autoCompactionEnabled}
+					onchange={() => void saveField({ autoCompactionEnabled })}
+					class="mt-0.5"
+				/>
+				<span>
+					<span class="font-medium">Compact automatically</span>
+					<span class="text-fg-muted">
+						— before your next message, if the conversation has crossed the threshold below. Only
+						applies when the model's context window is known.
 					</span>
-				</label>
+				</span>
+			</label>
+			<div class="flex items-center gap-2 text-sm" class:opacity-50={!autoCompactionEnabled}>
+				<label for="pref-compact-threshold">Compact at</label>
+				<input
+					id="pref-compact-threshold"
+					type="number"
+					min="1"
+					max="100"
+					step="5"
+					bind:value={autoCompactionThreshold}
+					disabled={!autoCompactionEnabled}
+					onchange={() => void saveThreshold(autoCompactionThreshold)}
+					class="w-20 rounded-md border border-border bg-surface-panel px-2 py-1 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
+				/>
+				<span class="text-fg-muted">% of the context window</span>
+			</div>
+		</section>
 
-				<label
-					class="flex cursor-pointer items-start gap-2 text-sm"
-					class:opacity-50={!notificationsEnabled}
-				>
-					<input
-						type="checkbox"
-						checked={notificationsForegroundToast}
-						onchange={(e) => toggleForegroundToast(e.currentTarget.checked)}
-						disabled={!notificationsEnabled || notifBusy}
-						class="mt-0.5"
-					/>
-					<span>
-						<span class="font-medium">In-app toast for other threads</span>
-						<span class="text-fg-muted">
-							— pop a toast when a thread completes while you're on a different page. Turn off to
-							only get OS-level notifications when the app is backgrounded.
-						</span>
+		<div class="border-t border-border"></div>
+
+		<section class="flex flex-col gap-2">
+			<div>
+				<h2 class="text-sm font-semibold">Theme</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">
+					Pick a visual style. Light vs dark within each follows your system setting. Applies
+					instantly.
+				</p>
+			</div>
+			<div class="grid grid-cols-3 gap-2">
+				{#each THEMES as t (t.id)}
+					<button
+						type="button"
+						onclick={() => selectTheme(t.id)}
+						aria-pressed={theme === t.id}
+						class="flex flex-col gap-1 rounded-lg border p-3 text-left transition {theme === t.id
+							? 'border-border-focus bg-surface-sunken'
+							: 'border-border hover:bg-surface-raised'}"
+					>
+						<span class="text-sm font-medium">{t.label}</span>
+						<span class="text-xs text-fg-muted">{t.description}</span>
+					</button>
+				{/each}
+			</div>
+			<div class="mt-1 flex items-center gap-2">
+				<span class="text-xs text-fg-muted">Mode:</span>
+				{#each SCHEMES as s (s.id)}
+					<button
+						type="button"
+						onclick={() => selectScheme(s.id)}
+						aria-pressed={colorScheme === s.id}
+						class="rounded-md border px-3 py-1 text-xs transition {colorScheme === s.id
+							? 'border-border-focus bg-surface-sunken'
+							: 'border-border hover:bg-surface-raised'}"
+					>
+						{s.label}
+					</button>
+				{/each}
+			</div>
+			{#if themeError}
+				<p class="text-xs text-danger">{themeError}</p>
+			{/if}
+		</section>
+
+		<div class="border-t border-border"></div>
+
+		<section class="flex flex-col gap-3">
+			<div>
+				<h2 class="text-sm font-semibold">Notifications</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">
+					Ping you when an assistant message finishes — toast when you're in the app on a different
+					page, OS notification when you've switched apps or locked your phone. On iOS this needs
+					the PWA installed to the Home Screen first.
+				</p>
+			</div>
+
+			<label class="flex cursor-pointer items-start gap-2 text-sm">
+				<input
+					type="checkbox"
+					checked={notificationsEnabled}
+					onchange={(e) => toggleMaster(e.currentTarget.checked)}
+					disabled={masterDisabled}
+					class="mt-0.5"
+				/>
+				<span>
+					<span class="font-medium">Enable notifications</span>
+					<span class="text-fg-muted">
+						— receive push notifications on this device when a message completes.
 					</span>
-				</label>
+				</span>
+			</label>
 
-				{#if notifError}
-					<div class="rounded-md border px-3 py-2 text-xs alert-danger">
-						{notifError}
-					</div>
-				{/if}
-			</section>
-
-			{#if saveError}
-				<div class="rounded-md border px-3 py-2 text-sm alert-danger">
-					{saveError}
+			{#if masterDisabledReason}
+				<div class="rounded-md border px-3 py-2 text-xs alert-warning">
+					{masterDisabledReason}
+				</div>
+			{:else if pushSupported}
+				<div class="text-xs text-fg-muted">
+					Permission: <span class="font-mono">{permissionState}</span>
 				</div>
 			{/if}
 
-			<!-- Auto-save confirmation flash. Fixed height so the row doesn't
-				 jump when "Saved" appears/clears; no resting-state label since
-				 the absence of a Save button already implies auto-save. -->
-			<div class="flex h-5 items-center justify-end text-xs">
-				{#if savedFlash}
-					<span class="flex items-center gap-1 text-success">
-						<Check size={14} strokeWidth={2.5} />
-						Saved
+			<label
+				class="flex cursor-pointer items-start gap-2 text-sm"
+				class:opacity-50={!notificationsEnabled}
+			>
+				<input
+					type="checkbox"
+					checked={notificationsShowContent}
+					onchange={(e) => toggleShowContent(e.currentTarget.checked)}
+					disabled={!notificationsEnabled || notifBusy}
+					class="mt-0.5"
+				/>
+				<span>
+					<span class="font-medium">Show message preview</span>
+					<span class="text-fg-muted">
+						— include a snippet of the assistant's reply in the notification body. Turn off if your
+						threads are private to the device.
 					</span>
-				{/if}
+				</span>
+			</label>
+
+			<label
+				class="flex cursor-pointer items-start gap-2 text-sm"
+				class:opacity-50={!notificationsEnabled}
+			>
+				<input
+					type="checkbox"
+					checked={notificationsForegroundToast}
+					onchange={(e) => toggleForegroundToast(e.currentTarget.checked)}
+					disabled={!notificationsEnabled || notifBusy}
+					class="mt-0.5"
+				/>
+				<span>
+					<span class="font-medium">In-app toast for other threads</span>
+					<span class="text-fg-muted">
+						— pop a toast when a thread completes while you're on a different page. Turn off to only
+						get OS-level notifications when the app is backgrounded.
+					</span>
+				</span>
+			</label>
+
+			{#if notifError}
+				<div class="rounded-md border px-3 py-2 text-xs alert-danger">
+					{notifError}
+				</div>
+			{/if}
+		</section>
+
+		{#if saveError}
+			<div class="rounded-md border px-3 py-2 text-sm alert-danger">
+				{saveError}
 			</div>
-		</form>
-	</div>
-</div>
+		{/if}
+
+		<!-- Auto-save confirmation flash. Fixed height so the row doesn't
+			 jump when "Saved" appears/clears; no resting-state label since
+			 the absence of a Save button already implies auto-save. -->
+		<div class="flex h-5 items-center justify-end text-xs">
+			{#if savedFlash}
+				<span class="flex items-center gap-1 text-success">
+					<Check size={14} strokeWidth={2.5} />
+					Saved
+				</span>
+			{/if}
+		</div>
+	</form>
+</SettingsPage>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
@@ -359,272 +360,268 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-	<header class="shrink-0 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Security</h1>
-		<p class="text-xs text-fg-muted">Manage how you sign in to this instance.</p>
-	</header>
+<SettingsPage title="Security">
+	{#snippet description()}
+		Manage how you sign in to this instance.
+	{/snippet}
 
-	<div class="flex-1 overflow-y-auto px-4 py-4">
-		<div class="mx-auto flex max-w-2xl flex-col gap-4">
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<h2 class="text-sm font-semibold">Linked accounts</h2>
-				<p class="mt-1 text-xs text-fg-muted">
-					OAuth providers bound to this account. Each binding is an independent sign-in method.
+	<div class="mx-auto flex max-w-2xl flex-col gap-4">
+		<section class="panel-card p-4">
+			<h2 class="text-sm font-semibold">Linked accounts</h2>
+			<p class="mt-1 text-xs text-fg-muted">
+				OAuth providers bound to this account. Each binding is an independent sign-in method.
+			</p>
+			{#if data.oauthAccounts.length === 0}
+				<p class="mt-4 py-6 text-center text-sm text-fg-muted">
+					No OAuth accounts linked. You sign in via passkey only.
 				</p>
-				{#if data.oauthAccounts.length === 0}
+			{:else}
+				<ul class="mt-3 flex flex-col gap-2">
+					{#each data.oauthAccounts as a (a.provider + ':' + a.externalId)}
+						<li
+							class="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5 text-sm"
+						>
+							<div class="flex min-w-0 flex-1 items-center gap-2.5">
+								<ProviderIcon provider={a.provider} size={18} />
+								<div class="min-w-0">
+									<div class="flex items-center gap-2 font-medium">
+										<span class="truncate">{providerLabel(a.provider)}</span>
+										{#if providerDisabled(a.provider)}
+											<span
+												class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+												title="An admin has turned this provider off — the binding stays, but you can't sign in with it."
+												>Sign-in off</span
+											>
+										{/if}
+									</div>
+									<div class="text-xs text-fg-muted">
+										{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
+									</div>
+								</div>
+							</div>
+							{#if canUnlinkOAuth()}
+								<button
+									type="button"
+									onclick={() => unlinkProvider(a.provider)}
+									disabled={linkBusy}
+									aria-label="Unlink provider"
+									class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+								>
+									<Trash2 size={14} strokeWidth={2.25} />
+								</button>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			{#if linkableProviders.length > 0}
+				<div class="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
+					{#each linkableProviders as provider (provider.id)}
+						<a
+							href="/api/auth/oauth/{provider.id}/link/start"
+							class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken"
+						>
+							<Plus size={14} strokeWidth={2.25} />
+							Link {provider.label}
+						</a>
+					{/each}
+				</div>
+			{/if}
+		</section>
+
+		{#if data.passkeyEnabled || data.passkeys.length > 0}
+			<section class="panel-card p-4">
+				<div class="flex items-baseline justify-between">
+					<h2 class="text-sm font-semibold">Passkeys</h2>
+					<span class="text-xs text-fg-muted">{data.passkeys.length} registered</span>
+				</div>
+				{#if !data.passkeyEnabled}
+					<p class="mt-1 text-xs text-fg-muted">
+						An admin has turned passkey sign-in off. These stay registered but can't be used to sign
+						in — remove any you no longer want on file.
+					</p>
+				{/if}
+
+				{#if data.passkeys.length === 0}
 					<p class="mt-4 py-6 text-center text-sm text-fg-muted">
-						No OAuth accounts linked. You sign in via passkey only.
+						No passkeys yet. Add one to sign in without an OAuth provider.
 					</p>
 				{:else}
 					<ul class="mt-3 flex flex-col gap-2">
-						{#each data.oauthAccounts as a (a.provider + ':' + a.externalId)}
+						{#each data.passkeys as p (p.id)}
 							<li
-								class="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5 text-sm"
+								class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
 							>
-								<div class="flex min-w-0 flex-1 items-center gap-2.5">
-									<ProviderIcon provider={a.provider} size={18} />
-									<div class="min-w-0">
-										<div class="flex items-center gap-2 font-medium">
-											<span class="truncate">{providerLabel(a.provider)}</span>
-											{#if providerDisabled(a.provider)}
+								<KeyRound size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
+								<div class="min-w-0 flex-1">
+									{#if renamingId === p.id}
+										<div class="flex items-center gap-2">
+											<input
+												type="text"
+												bind:value={renameDraft}
+												maxlength="60"
+												placeholder="Passkey name"
+												aria-label="Passkey name"
+												onkeydown={(e) => onRenameKeydown(e, p)}
+												class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
+											/>
+											<button
+												type="button"
+												onclick={() => commitRename(p)}
+												aria-label="Save name"
+												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
+											>
+												<Check size={14} strokeWidth={2.25} />
+											</button>
+											<button
+												type="button"
+												onclick={cancelRename}
+												aria-label="Cancel rename"
+												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
+											>
+												<X size={14} strokeWidth={2.25} />
+											</button>
+										</div>
+									{:else}
+										<div class="flex items-center gap-2 text-sm font-medium">
+											<span class="truncate">{displayName(p)}</span>
+											{#if p.backedUp}
 												<span
 													class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-													title="An admin has turned this provider off — the binding stays, but you can't sign in with it."
-													>Sign-in off</span
+													>Synced</span
 												>
 											{/if}
+											<span
+												class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+											>
+												{p.deviceType === 'multiDevice' ? 'Cross-device' : 'This device'}
+											</span>
 										</div>
-										<div class="text-xs text-fg-muted">
-											{a.externalUsername ? `@${a.externalUsername}` : `id ${a.externalId}`}
+										<div class="mt-1 text-xs text-fg-muted">
+											Added {formatDate(p.createdAt)} · Last used
+											{p.lastUsedAt ? formatDate(p.lastUsedAt) : 'never'}
 										</div>
-									</div>
+									{/if}
 								</div>
-								{#if canUnlinkOAuth()}
-									<button
-										type="button"
-										onclick={() => unlinkProvider(a.provider)}
-										disabled={linkBusy}
-										aria-label="Unlink provider"
-										class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
-									>
-										<Trash2 size={14} strokeWidth={2.25} />
-									</button>
+								{#if renamingId !== p.id}
+									<div class="flex shrink-0 items-center gap-1">
+										<button
+											type="button"
+											onclick={() => startRename(p)}
+											disabled={busyId === p.id}
+											aria-label="Rename passkey"
+											class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg disabled:opacity-50"
+										>
+											<Pencil size={14} strokeWidth={2.25} />
+										</button>
+										{#if !(lastMethodLocked && data.passkeys.length === 1)}
+											<button
+												type="button"
+												onclick={() => deletePasskey(p)}
+												disabled={busyId === p.id}
+												aria-label="Delete passkey"
+												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+											>
+												<Trash2 size={14} strokeWidth={2.25} />
+											</button>
+										{/if}
+									</div>
 								{/if}
 							</li>
 						{/each}
 					</ul>
 				{/if}
 
-				{#if linkableProviders.length > 0}
-					<div class="mt-4 flex flex-wrap gap-2 border-t border-border pt-3">
-						{#each linkableProviders as provider (provider.id)}
-							<a
-								href="/api/auth/oauth/{provider.id}/link/start"
-								class="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium text-fg transition hover:bg-surface-sunken"
-							>
-								<Plus size={14} strokeWidth={2.25} />
-								Link {provider.label}
-							</a>
-						{/each}
-					</div>
-				{/if}
-			</section>
-
-			{#if data.passkeyEnabled || data.passkeys.length > 0}
-				<section class="rounded-lg border border-border bg-surface-panel p-4">
-					<div class="flex items-baseline justify-between">
-						<h2 class="text-sm font-semibold">Passkeys</h2>
-						<span class="text-xs text-fg-muted">{data.passkeys.length} registered</span>
-					</div>
-					{#if !data.passkeyEnabled}
-						<p class="mt-1 text-xs text-fg-muted">
-							An admin has turned passkey sign-in off. These stay registered but can't be used to
-							sign in — remove any you no longer want on file.
-						</p>
-					{/if}
-
-					{#if data.passkeys.length === 0}
-						<p class="mt-4 py-6 text-center text-sm text-fg-muted">
-							No passkeys yet. Add one to sign in without an OAuth provider.
-						</p>
-					{:else}
-						<ul class="mt-3 flex flex-col gap-2">
-							{#each data.passkeys as p (p.id)}
-								<li
-									class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
-								>
-									<KeyRound size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
-									<div class="min-w-0 flex-1">
-										{#if renamingId === p.id}
-											<div class="flex items-center gap-2">
-												<input
-													type="text"
-													bind:value={renameDraft}
-													maxlength="60"
-													placeholder="Passkey name"
-													aria-label="Passkey name"
-													onkeydown={(e) => onRenameKeydown(e, p)}
-													class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
-												/>
-												<button
-													type="button"
-													onclick={() => commitRename(p)}
-													aria-label="Save name"
-													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
-												>
-													<Check size={14} strokeWidth={2.25} />
-												</button>
-												<button
-													type="button"
-													onclick={cancelRename}
-													aria-label="Cancel rename"
-													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg"
-												>
-													<X size={14} strokeWidth={2.25} />
-												</button>
-											</div>
-										{:else}
-											<div class="flex items-center gap-2 text-sm font-medium">
-												<span class="truncate">{displayName(p)}</span>
-												{#if p.backedUp}
-													<span
-														class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-														>Synced</span
-													>
-												{/if}
-												<span
-													class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-												>
-													{p.deviceType === 'multiDevice' ? 'Cross-device' : 'This device'}
-												</span>
-											</div>
-											<div class="mt-1 text-xs text-fg-muted">
-												Added {formatDate(p.createdAt)} · Last used
-												{p.lastUsedAt ? formatDate(p.lastUsedAt) : 'never'}
-											</div>
-										{/if}
-									</div>
-									{#if renamingId !== p.id}
-										<div class="flex shrink-0 items-center gap-1">
-											<button
-												type="button"
-												onclick={() => startRename(p)}
-												disabled={busyId === p.id}
-												aria-label="Rename passkey"
-												class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-fg disabled:opacity-50"
-											>
-												<Pencil size={14} strokeWidth={2.25} />
-											</button>
-											{#if !(lastMethodLocked && data.passkeys.length === 1)}
-												<button
-													type="button"
-													onclick={() => deletePasskey(p)}
-													disabled={busyId === p.id}
-													aria-label="Delete passkey"
-													class="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
-												>
-													<Trash2 size={14} strokeWidth={2.25} />
-												</button>
-											{/if}
-										</div>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-
-					{#if data.passkeyEnabled}
-						<div class="mt-4 border-t border-border pt-4">
-							<label class="block text-xs font-medium text-fg-muted" for="passkey-name">
-								Name (optional)
-							</label>
-							<div class="mt-1 flex gap-2">
-								<input
-									id="passkey-name"
-									type="text"
-									bind:value={addName}
-									maxlength="60"
-									placeholder="e.g. iPhone, 1Password"
-									class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
-								/>
-								<button
-									type="button"
-									onclick={addPasskey}
-									disabled={addBusy}
-									class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-								>
-									<KeyRound size={14} strokeWidth={2.25} />
-									{addBusy ? 'Waiting…' : 'Add passkey'}
-								</button>
-							</div>
-							{#if addError}
-								<p class="mt-2 rounded-lg border px-2 py-1.5 text-xs alert-danger">
-									{addError}
-								</p>
-							{/if}
-						</div>
-					{/if}
-				</section>
-			{/if}
-
-			<section class="rounded-lg border border-border bg-surface-panel p-4">
-				<div class="flex items-baseline justify-between">
-					<h2 class="text-sm font-semibold">Signed-in devices</h2>
-					<span class="text-xs text-fg-muted">{data.sessions.length} active</span>
-				</div>
-				<p class="mt-1 text-xs text-fg-muted">
-					Every device currently signed in to your account. Sign one out if you don't recognize it.
-					Sessions expire after up to 30 days of inactivity, and always within 90 days of signing
-					in.
-				</p>
-
-				<ul class="mt-3 flex flex-col gap-2">
-					{#each data.sessions as s (s.id)}
-						<li
-							class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
-						>
-							<Laptop size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
-							<div class="min-w-0 flex-1">
-								<div class="flex items-center gap-2 text-sm font-medium">
-									<span class="truncate">{deviceLabel(s.userAgent)}</span>
-									{#if s.id === data.currentSessionId}
-										<span
-											class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
-											>This device</span
-										>
-									{/if}
-								</div>
-								<div class="mt-1 text-xs text-fg-muted">
-									Signed in {formatDate(s.createdAt)} · Last active {formatLastSeen(s.lastSeenAt)}
-								</div>
-							</div>
+				{#if data.passkeyEnabled}
+					<div class="mt-4 border-t border-border pt-4">
+						<label class="block text-xs font-medium text-fg-muted" for="passkey-name">
+							Name (optional)
+						</label>
+						<div class="mt-1 flex gap-2">
+							<input
+								id="passkey-name"
+								type="text"
+								bind:value={addName}
+								maxlength="60"
+								placeholder="e.g. iPhone, 1Password"
+								class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
+							/>
 							<button
 								type="button"
-								onclick={() => revokeSession(s)}
-								disabled={sessionBusyId === s.id}
-								aria-label="Sign out this device"
-								class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+								onclick={addPasskey}
+								disabled={addBusy}
+								class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
 							>
-								<Trash2 size={14} strokeWidth={2.25} />
+								<KeyRound size={14} strokeWidth={2.25} />
+								{addBusy ? 'Waiting…' : 'Add passkey'}
 							</button>
-						</li>
-					{/each}
-				</ul>
-
-				{#if data.sessions.length > 1}
-					<div class="mt-3 border-t border-border/60 pt-3">
-						<button
-							type="button"
-							onclick={revokeOtherSessions}
-							disabled={revokeAllBusy}
-							class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
-						>
-							{revokeAllBusy ? 'Signing out…' : 'Sign out everywhere else'}
-						</button>
+						</div>
+						{#if addError}
+							<p class="mt-2 rounded-lg border px-2 py-1.5 text-xs alert-danger">
+								{addError}
+							</p>
+						{/if}
 					</div>
 				{/if}
 			</section>
-		</div>
+		{/if}
+
+		<section class="panel-card p-4">
+			<div class="flex items-baseline justify-between">
+				<h2 class="text-sm font-semibold">Signed-in devices</h2>
+				<span class="text-xs text-fg-muted">{data.sessions.length} active</span>
+			</div>
+			<p class="mt-1 text-xs text-fg-muted">
+				Every device currently signed in to your account. Sign one out if you don't recognize it.
+				Sessions expire after up to 30 days of inactivity, and always within 90 days of signing in.
+			</p>
+
+			<ul class="mt-3 flex flex-col gap-2">
+				{#each data.sessions as s (s.id)}
+					<li
+						class="flex items-start gap-3 rounded-md border border-border/60 bg-surface-raised/40 px-3 py-2.5"
+					>
+						<Laptop size={16} strokeWidth={2.25} class="mt-0.5 shrink-0 text-fg-muted" />
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center gap-2 text-sm font-medium">
+								<span class="truncate">{deviceLabel(s.userAgent)}</span>
+								{#if s.id === data.currentSessionId}
+									<span
+										class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-fg-muted"
+										>This device</span
+									>
+								{/if}
+							</div>
+							<div class="mt-1 text-xs text-fg-muted">
+								Signed in {formatDate(s.createdAt)} · Last active {formatLastSeen(s.lastSeenAt)}
+							</div>
+						</div>
+						<button
+							type="button"
+							onclick={() => revokeSession(s)}
+							disabled={sessionBusyId === s.id}
+							aria-label="Sign out this device"
+							class="flex h-7 w-7 shrink-0 items-center justify-center rounded text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+						>
+							<Trash2 size={14} strokeWidth={2.25} />
+						</button>
+					</li>
+				{/each}
+			</ul>
+
+			{#if data.sessions.length > 1}
+				<div class="mt-3 border-t border-border/60 pt-3">
+					<button
+						type="button"
+						onclick={revokeOtherSessions}
+						disabled={revokeAllBusy}
+						class="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						{revokeAllBusy ? 'Signing out…' : 'Sign out everywhere else'}
+					</button>
+				</div>
+			{/if}
+		</section>
 	</div>
-</div>
+</SettingsPage>

@@ -422,6 +422,18 @@
 	-webkit-backdrop-filter: blur(var(--blur-surface));
 }
 
+/* The standard raised panel: a bordered card on the app canvas. This chrome
+ * (rounded-lg + border + border-border + bg-surface-panel) was repeated
+ * verbatim ~18 times across settings, dialogs and the gallery. Padding is
+ * deliberately NOT included — callers use p-3/p-4/p-6 as their density needs,
+ * and the class composes onto <section>, <div> and <form> alike. */
+@utility panel-card {
+	border-radius: var(--radius-lg);
+	border-width: 1px;
+	border-color: var(--color-border);
+	background-color: var(--color-surface-panel);
+}
+
 /* Soft "alert box" fills, derived from the state tokens via color-mix so a
  * single class replaces the old six-class red/amber + dark-variant trio and
  * stays theme-correct. Pair with `border` (width) + your own rounding /

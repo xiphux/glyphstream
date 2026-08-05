@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Copy, Trash2, UserPlus } from '@lucide/svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
@@ -159,164 +160,162 @@
 	}
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-	<header class="shrink-0 px-4 py-3">
-		<h1 class="text-lg font-semibold tracking-tight">Administration</h1>
-		<p class="text-xs text-fg-muted">
-			Invite new users and manage existing accounts. Disabling an account ends its sessions
-			immediately and blocks new sign-ins; deleting removes the account and all of its data.
-		</p>
-	</header>
+<SettingsPage
+	title="Administration"
+	contentClass="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 pb-8"
+>
+	{#snippet description()}
+		Invite new users and manage existing accounts. Disabling an account ends its sessions
+		immediately and blocks new sign-ins; deleting removes the account and all of its data.
+	{/snippet}
 
-	<div class="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 pb-8">
-		<!-- Invite creation -->
-		<section>
-			<h2 class="mb-2 text-sm font-semibold">Invite a user</h2>
-			<div class="flex flex-wrap items-end gap-3">
-				<div class="flex flex-col gap-1">
-					<label class="text-xs font-medium text-fg-muted" for="invite-role">Role</label>
-					<select
-						id="invite-role"
-						bind:value={newInviteRole}
-						class="rounded border border-border bg-surface-panel px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
-					>
-						<option value="user">User</option>
-						<option value="admin">Admin</option>
-					</select>
-				</div>
-				<button
-					type="button"
-					onclick={createInvite}
-					disabled={creating}
-					class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-2 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+	<!-- Invite creation -->
+	<section>
+		<h2 class="mb-2 text-sm font-semibold">Invite a user</h2>
+		<div class="flex flex-wrap items-end gap-3">
+			<div class="flex flex-col gap-1">
+				<label class="text-xs font-medium text-fg-muted" for="invite-role">Role</label>
+				<select
+					id="invite-role"
+					bind:value={newInviteRole}
+					class="rounded border border-border bg-surface-panel px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-fg"
 				>
-					<UserPlus size={15} strokeWidth={2.25} />
-					{creating ? 'Creating…' : 'Create invite'}
-				</button>
+					<option value="user">User</option>
+					<option value="admin">Admin</option>
+				</select>
 			</div>
+			<button
+				type="button"
+				onclick={createInvite}
+				disabled={creating}
+				class="inline-flex items-center gap-2 rounded-lg bg-surface-inverse px-4 py-2 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+			>
+				<UserPlus size={15} strokeWidth={2.25} />
+				{creating ? 'Creating…' : 'Create invite'}
+			</button>
+		</div>
 
-			{#if freshInviteUrl}
-				<div class="mt-3 rounded-lg border border-border bg-surface-raised p-3">
-					<p class="text-xs text-fg-muted">
-						Share this link with the invitee. It's shown only once — copy it now.
-					</p>
-					<div class="mt-2 flex items-center gap-2">
-						<input
-							readonly
-							value={freshInviteUrl}
-							class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 font-mono text-xs"
-						/>
-						<button
-							type="button"
-							onclick={copyInviteUrl}
-							class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-surface-sunken"
-						>
-							<Copy size={14} strokeWidth={2.25} />
-							Copy
-						</button>
-					</div>
+		{#if freshInviteUrl}
+			<div class="mt-3 rounded-lg border border-border bg-surface-raised p-3">
+				<p class="text-xs text-fg-muted">
+					Share this link with the invitee. It's shown only once — copy it now.
+				</p>
+				<div class="mt-2 flex items-center gap-2">
+					<input
+						readonly
+						value={freshInviteUrl}
+						class="min-w-0 flex-1 rounded border border-border bg-surface-panel px-2 py-1.5 font-mono text-xs"
+					/>
+					<button
+						type="button"
+						onclick={copyInviteUrl}
+						class="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition hover:bg-surface-sunken"
+					>
+						<Copy size={14} strokeWidth={2.25} />
+						Copy
+					</button>
 				</div>
-			{/if}
-		</section>
+			</div>
+		{/if}
+	</section>
 
-		<!-- Pending / past invites -->
-		<section>
-			<h2 class="mb-2 text-sm font-semibold">Pending invites</h2>
-			{#if data.invites.length === 0}
-				<p class="text-xs text-fg-muted">No pending invites.</p>
-			{:else}
-				<ul class="divide-y divide-border rounded-lg border border-border">
-					{#each data.invites as inv (inv.id)}
-						{@const status = inviteStatus(inv)}
-						<li class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-							<div class="min-w-0">
-								<span class="font-medium capitalize">{inv.role}</span>
-								<span class="text-fg-muted">
-									· {status === 'active'
-										? `expires ${formatDate(inv.expiresAt)}`
-										: `expired ${formatDate(inv.expiresAt)}`}
-								</span>
-							</div>
-							<div class="flex items-center gap-3">
-								<span
-									class="rounded px-1.5 py-0.5 text-[11px] font-medium {status === 'active'
-										? 'bg-surface-sunken text-fg'
-										: 'text-fg-muted'}"
-								>
-									{status}
-								</span>
-								<button
-									type="button"
-									onclick={() => revokeInvite(inv)}
-									disabled={busyInviteId === inv.id}
-									class="text-fg-muted transition hover:text-danger disabled:opacity-50"
-									aria-label="Revoke invite"
-								>
-									<Trash2 size={15} strokeWidth={2.25} />
-								</button>
-							</div>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
-
-		<!-- Users -->
-		<section>
-			<h2 class="mb-2 text-sm font-semibold">Users</h2>
+	<!-- Pending / past invites -->
+	<section>
+		<h2 class="mb-2 text-sm font-semibold">Pending invites</h2>
+		{#if data.invites.length === 0}
+			<p class="text-xs text-fg-muted">No pending invites.</p>
+		{:else}
 			<ul class="divide-y divide-border rounded-lg border border-border">
-				{#each data.users as u (u.id)}
-					<li class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+				{#each data.invites as inv (inv.id)}
+					{@const status = inviteStatus(inv)}
+					<li class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
 						<div class="min-w-0">
-							<div class="flex items-center gap-2">
-								<span class="truncate font-medium">
-									{u.displayName ?? u.email ?? u.id}
-								</span>
-								<span
-									class="rounded bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium capitalize"
-								>
-									{u.role}
-								</span>
-								{#if u.id === data.me}
-									<span class="text-[11px] text-fg-muted">(you)</span>
-								{/if}
-								{#if u.disabledAt !== null}
-									<span class="rounded px-1.5 py-0.5 text-[11px] font-medium text-danger">
-										disabled
-									</span>
-								{/if}
-							</div>
-							<div class="text-xs text-fg-muted">
-								{u.email ?? 'no email'} · joined {formatDate(u.createdAt)} · last login {formatDate(
-									u.lastLoginAt,
-								)}{#if inviterLabel(u.invitedByUserId)}
-									· invited by {inviterLabel(u.invitedByUserId)}{/if}
-							</div>
+							<span class="font-medium capitalize">{inv.role}</span>
+							<span class="text-fg-muted">
+								· {status === 'active'
+									? `expires ${formatDate(inv.expiresAt)}`
+									: `expired ${formatDate(inv.expiresAt)}`}
+							</span>
 						</div>
-						{#if u.id !== data.me}
-							<div class="flex shrink-0 items-center gap-2">
-								<button
-									type="button"
-									onclick={() => toggleDisabled(u)}
-									disabled={busyUserId === u.id}
-									class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium transition hover:bg-surface-sunken disabled:opacity-50"
-								>
-									{u.disabledAt === null ? 'Disable' : 'Enable'}
-								</button>
-								<button
-									type="button"
-									onclick={() => deleteUser(u)}
-									disabled={busyUserId === u.id}
-									class="text-fg-muted transition hover:text-danger disabled:opacity-50"
-									aria-label="Delete user"
-								>
-									<Trash2 size={15} strokeWidth={2.25} />
-								</button>
-							</div>
-						{/if}
+						<div class="flex items-center gap-3">
+							<span
+								class="rounded px-1.5 py-0.5 text-[11px] font-medium {status === 'active'
+									? 'bg-surface-sunken text-fg'
+									: 'text-fg-muted'}"
+							>
+								{status}
+							</span>
+							<button
+								type="button"
+								onclick={() => revokeInvite(inv)}
+								disabled={busyInviteId === inv.id}
+								class="text-fg-muted transition hover:text-danger disabled:opacity-50"
+								aria-label="Revoke invite"
+							>
+								<Trash2 size={15} strokeWidth={2.25} />
+							</button>
+						</div>
 					</li>
 				{/each}
 			</ul>
-		</section>
-	</div>
-</div>
+		{/if}
+	</section>
+
+	<!-- Users -->
+	<section>
+		<h2 class="mb-2 text-sm font-semibold">Users</h2>
+		<ul class="divide-y divide-border rounded-lg border border-border">
+			{#each data.users as u (u.id)}
+				<li class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+					<div class="min-w-0">
+						<div class="flex items-center gap-2">
+							<span class="truncate font-medium">
+								{u.displayName ?? u.email ?? u.id}
+							</span>
+							<span
+								class="rounded bg-surface-sunken px-1.5 py-0.5 text-[11px] font-medium capitalize"
+							>
+								{u.role}
+							</span>
+							{#if u.id === data.me}
+								<span class="text-[11px] text-fg-muted">(you)</span>
+							{/if}
+							{#if u.disabledAt !== null}
+								<span class="rounded px-1.5 py-0.5 text-[11px] font-medium text-danger">
+									disabled
+								</span>
+							{/if}
+						</div>
+						<div class="text-xs text-fg-muted">
+							{u.email ?? 'no email'} · joined {formatDate(u.createdAt)} · last login {formatDate(
+								u.lastLoginAt,
+							)}{#if inviterLabel(u.invitedByUserId)}
+								· invited by {inviterLabel(u.invitedByUserId)}{/if}
+						</div>
+					</div>
+					{#if u.id !== data.me}
+						<div class="flex shrink-0 items-center gap-2">
+							<button
+								type="button"
+								onclick={() => toggleDisabled(u)}
+								disabled={busyUserId === u.id}
+								class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium transition hover:bg-surface-sunken disabled:opacity-50"
+							>
+								{u.disabledAt === null ? 'Disable' : 'Enable'}
+							</button>
+							<button
+								type="button"
+								onclick={() => deleteUser(u)}
+								disabled={busyUserId === u.id}
+								class="text-fg-muted transition hover:text-danger disabled:opacity-50"
+								aria-label="Delete user"
+							>
+								<Trash2 size={15} strokeWidth={2.25} />
+							</button>
+						</div>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	</section>
+</SettingsPage>
