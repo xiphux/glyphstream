@@ -1,4 +1,4 @@
-import type { MediaListItem } from '$lib/server/db/queries/media';
+import type { MediaListItem } from '$lib/types/api';
 
 /**
  * The minimal media shape the stacking pass needs. `MediaListItem` satisfies it,

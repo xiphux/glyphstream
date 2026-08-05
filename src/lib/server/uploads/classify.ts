@@ -18,7 +18,7 @@
  * footgun.
  */
 
-import type { MediaKind } from '$lib/server/db/queries/media';
+import type { MediaKind } from '$lib/types/api';
 import { normalizeContentType, SVG_CONTENT_TYPE } from '$lib/server/media/content-type';
 
 /** Photos can be large (full-resolution iPhone photo on Pro models is

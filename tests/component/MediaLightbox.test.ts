@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import MediaLightbox from '$lib/components/MediaLightbox.svelte';
-import type { MediaConversationRef, MediaListItem } from '$lib/server/db/queries/media';
+import type { MediaConversationRef, MediaListItem } from '$lib/types/api';
 
 const gotoMock = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('$app/navigation', () => ({

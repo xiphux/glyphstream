@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ORPHAN_GAP_MS, groupGalleryItems, promptRunKey } from '$lib/gallery-stacks';
-import type { MediaListItem } from '$lib/server/db/queries/media';
+import type { MediaListItem } from '$lib/types/api';
 
 // Items are newest-first (descending createdAt), matching the gallery stream.
 // `t` is a "minutes ago" offset so larger = older; we negate into createdAt.

@@ -18,7 +18,7 @@
 		GalleryUnitsPage,
 		MediaConversationRef,
 		MediaListItem,
-	} from '$lib/server/db/queries/media';
+	} from '$lib/types/api';
 
 	let { data } = $props<{
 		data: {

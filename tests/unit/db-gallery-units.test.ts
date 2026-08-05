@@ -10,14 +10,16 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 
 import {
-	computeGalleryLayout,
 	hardDeleteMediaForUser,
 	insertMedia,
 	linkMessageMedia,
+} from '$lib/server/db/queries/media';
+import {
+	computeGalleryLayout,
 	listGalleryUnits,
 	listGalleryUnitMembers,
-	type GalleryUnit,
-} from '$lib/server/db/queries/media';
+} from '$lib/server/gallery/layout';
+import type { GalleryUnit } from '$lib/types/api';
 import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { media } from '$lib/server/db/schema';

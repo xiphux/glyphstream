@@ -69,9 +69,15 @@
 	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
 	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
-	import type { ConversationMediaRef, MediaListItem } from '$lib/server/db/queries/media';
 	import { isSnippetKind } from '$lib/types/api';
-	import type { ChatMessage, FeatureCategory, MessagePart, ModelKind } from '$lib/types/api';
+	import type {
+		ChatMessage,
+		ConversationMediaRef,
+		FeatureCategory,
+		MediaListItem,
+		MessagePart,
+		ModelKind,
+	} from '$lib/types/api';
 
 	let { data } = $props();
 

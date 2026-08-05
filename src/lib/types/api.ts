@@ -1372,3 +1372,111 @@ export interface ContextBreakdown {
 	imageBytes: number;
 	contextWindow: number | null;
 }
+
+/* ---------------------------------------------------------------------------
+ * Media + gallery
+ *
+ * These are wire contracts, not row shapes: the gallery grid, the in-chat
+ * lightbox carousel and the chat page all consume them over /api/media/*.
+ *
+ * They lived in `server/db/queries/media.ts` and were imported straight from
+ * there by client-safe modules (`gallery-stacks.ts`, `gallery-feed.svelte.ts`,
+ * the gallery + chat pages). Type-only, so nothing shipped — but it meant the
+ * browser's contract was whatever a SELECT happened to project, with no
+ * boundary at which a change would be noticed. Every other feature already
+ * declares its DTOs here; media is now consistent with them.
+ * ------------------------------------------------------------------------- */
+
+/** Union of valid `media.kind` values. 'file' covers anything that isn't
+ *  natively image/video (xlsx, csv, pdf, json, txt, ...) — used for user
+ *  attachments and code-interpreter outputs. */
+export type MediaKind = 'image' | 'video' | 'file';
+
+/** One entry in the in-chat lightbox carousel's navigation set. */
+export interface ConversationMediaRef {
+	id: string;
+	kind: MediaKind;
+}
+
+/** A media row as the gallery grid and lightbox consume it. */
+export interface MediaListItem {
+	id: string;
+	kind: MediaKind;
+	contentType: string;
+	byteSize: number;
+	sourceEndpointId: string | null;
+	sourceModel: string | null;
+	/** Truncated preview for caption-strip / thumbnail surfaces. */
+	promptExcerpt: string | null;
+	/** Full prompt for "Regenerate with this prompt" / inspect flows.
+	 *  May equal `promptExcerpt` for legacy rows; equals the original
+	 *  untruncated prompt for anything generated post-migration. When the
+	 *  prompt was enhanced, this is the ENHANCED prompt (what generated the
+	 *  image); see `originalPrompt` for the user's text. */
+	promptFull: string | null;
+	/** The user's pre-enhancement prompt, when the image-prompt enhancer
+	 *  rewrote it. Null when no enhancement happened. Lets the UI surface
+	 *  "Enhanced — show original". */
+	originalPrompt: string | null;
+	createdAt: number;
+	/** Conversation this asset is assigned to for gallery stacking — the
+	 *  earliest message that references it. Null for orphan media whose
+	 *  conversation was deleted (its message_media join rows cascaded away).
+	 *  Media can be referenced from several conversations; we pick one
+	 *  deterministically so grouping is stable. */
+	conversationId: string | null;
+	/** Title of `conversationId` (null when untitled or orphaned). */
+	conversationTitle: string | null;
+}
+
+/** One tile-or-stack in the gallery's newest-first unit stream. */
+export interface GalleryUnit {
+	/** Group identity — the conversation id, or `p:<leaderId>` for a prompt run. */
+	key: string;
+	/** Stack flavor; 'solo' renders a single tile. */
+	groupKind: 'conversation' | 'prompt' | 'solo';
+	/** Newest member — the tile shown for a solo, the card anchor for a stack. */
+	leaderId: string;
+	leaderKind: MediaKind;
+	/** Leader's createdAt — the unit's position in the newest-first stream. */
+	createdAt: number;
+	/** Local-time day bucket (`YYYY-MM-DD`) of the leader, computed with the
+	 *  caller's tz offset so it matches the layout counts exactly. */
+	dayKey: string;
+	/** Total members (drives the "N items" / "+N" affordances). */
+	memberCount: number;
+	/** Newest ≤4 members for the stack-card collage (solo: just the leader). */
+	previews: { id: string; kind: MediaKind }[];
+	/** Leader's truncated prompt for the caption overlay. */
+	excerpt: string | null;
+	/** Human label for a stack card: the conversation title, or the run's shared
+	 *  original prompt. Empty for solos (they show `excerpt` instead). */
+	label: string;
+	conversationId: string | null;
+	title: string | null;
+}
+
+/** Scroll-height reservation for the gallery grid, fetched before any units. */
+export interface GalleryLayout {
+	/** Per-day unit counts, newest-first. The client reserves exact scroll height
+	 *  from these (aggregating days into months for month granularity) before any
+	 *  unit data loads — the counts, not the loaded rows, size the grid. */
+	days: { key: string; units: number }[];
+	/** Total top-level units across the whole (filtered) library. */
+	totalUnits: number;
+}
+
+/** One demand-loaded slice of the unit stream. */
+export interface GalleryUnitsPage {
+	units: GalleryUnit[];
+	/** Total units across the library, so the client can bound its window. */
+	total: number;
+}
+
+/** A conversation that references a given media row (lightbox reverse lookup). */
+export interface MediaConversationRef {
+	id: string;
+	title: string | null;
+	updatedAt: number;
+	archivedAt: number | null;
+}

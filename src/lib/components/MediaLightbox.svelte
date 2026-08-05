@@ -10,11 +10,7 @@
 		Trash2,
 		X,
 	} from '@lucide/svelte';
-	import type {
-		MediaConversationRef,
-		MediaKind,
-		MediaListItem,
-	} from '$lib/server/db/queries/media';
+	import type { MediaConversationRef, MediaKind, MediaListItem } from '$lib/types/api';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
 
 	interface Props {

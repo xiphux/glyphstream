@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
-import { listGalleryUnitMembers } from '$lib/server/db/queries/media';
+import { listGalleryUnitMembers } from '$lib/server/gallery/layout';
 import type { RequestHandler } from './$types';
 
 /**
