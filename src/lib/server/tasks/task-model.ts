@@ -4,66 +4,35 @@
  * retrieval-query extraction, etc. in future). Lives separately from the
  * title generator so other task types can share the resolution.
  *
- * Resolution failure modes are intentionally non-fatal: if `task_model`
- * is unset, or set but unresolvable (typo, removed endpoint), the
- * caller gets `null` and skips its task — falling back to whatever the
- * task's "no task model configured" path is. Boot must not crash on
- * `task_model` misconfiguration; per-call sites must not surface
- * user-visible errors when the task model is gone.
+ * Resolution semantics (unset → null, unresolvable → null + one-time warning,
+ * malformed → throw) are the shared `createModelResolver` contract.
  */
 
 import { loadTaskModel, loadTaskModelConfig, type LoadedEndpoint } from '../endpoints/config';
-import { getEndpoint } from '../endpoints/registry';
-import { parseModelId } from '../endpoints/model-id';
+import { createModelResolver } from '../endpoints/resolve-model';
 
 export interface ResolvedTaskModel {
 	endpoint: LoadedEndpoint;
 	upstreamId: string;
 }
 
-let cached: { resolved: ResolvedTaskModel | null } | null = null;
+// `task_model` is the one slot that's a bare string rather than a table, so the
+// loaded "config" and the model id are the same value and there are no extra
+// knobs to map on.
+const resolver = createModelResolver<string, ResolvedTaskModel>({
+	name: 'task-model',
+	load: loadTaskModel,
+	modelIdOf: (id) => id,
+	build: (base) => base,
+});
 
 /**
  * Resolve the configured task model to an endpoint + upstream id. Memoized
  * on first access; returns null when `task_model` is unset OR when the
- * referenced endpoint isn't in the registry. The latter case logs a
- * one-time warning so misconfigurations are visible without crashing.
+ * referenced endpoint isn't in the registry.
  */
 export function getTaskModel(): ResolvedTaskModel | null {
-	if (cached) return cached.resolved;
-
-	// A malformed task_model (the only thing loadTaskModel throws is
-	// ConfigError) is intentionally left to propagate, so the operator sees the
-	// syntax error at boot/use. Only an *unset* — or a well-formed but
-	// unresolvable — value disables titling (the null/registry checks below).
-	const rawId = loadTaskModel();
-
-	if (!rawId) {
-		cached = { resolved: null };
-		return null;
-	}
-
-	const parsed = parseModelId(rawId);
-	if (!parsed) {
-		// loadTaskModel already validated the shape, so this branch is
-		// theoretically unreachable; guard belt-and-suspenders.
-		console.warn(`[task-model] task_model "${rawId}" failed to parse; ignoring`);
-		cached = { resolved: null };
-		return null;
-	}
-
-	const endpoint = getEndpoint(parsed.endpointId);
-	if (!endpoint) {
-		console.warn(
-			`[task-model] task_model "${rawId}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
-		);
-		cached = { resolved: null };
-		return null;
-	}
-
-	const resolved: ResolvedTaskModel = { endpoint, upstreamId: parsed.upstreamId };
-	cached = { resolved };
-	return resolved;
+	return resolver.get();
 }
 
 /**
@@ -84,6 +53,6 @@ let privateCache: { value: boolean } | null = null;
 
 /** Test/dev only: discard the cached resolution so the next access reloads. */
 export function resetTaskModel(): void {
-	cached = null;
+	resolver.reset();
 	privateCache = null;
 }

@@ -552,6 +552,34 @@ export function loadMemoryModelConfig(path = configPath()): LoadedMemoryModelCon
 	return { model, maxTokens, temperature, activeHours, timezone, overviewMaxChars };
 }
 
+/**
+ * Read one scalar setting out of a TOML table, with a default for both "table
+ * absent" and "key absent".
+ *
+ * The `[tools]` readers below were byte-for-byte identical down to the table
+ * type-check and the missing-key early return, differing only in key, default and
+ * the final predicate. `validate` receives the raw value plus a pre-built `at`
+ * prefix (`'[tools] max_tool_result_chars' in /path/config.toml`) so each reader
+ * still writes its own specific error message — the part that genuinely differs.
+ */
+function readTableScalar<T>(
+	path: string,
+	table: string,
+	key: string,
+	fallback: T,
+	validate: (raw: unknown, at: string) => T,
+): T {
+	const { parsed, absolutePath } = readAndParse(path);
+	const block = parsed[table];
+	if (block === undefined || block === null) return fallback;
+	if (typeof block !== 'object' || Array.isArray(block)) {
+		throw new ConfigError(`'[${table}]' in ${absolutePath} must be a TOML table`);
+	}
+	const raw = (block as Record<string, unknown>)[key];
+	if (raw === undefined || raw === null) return fallback;
+	return validate(raw, `'[${table}] ${key}' in ${absolutePath}`);
+}
+
 /** Default hard cap on upstream round-trips within a single turn's tool loop. */
 export const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
 
@@ -563,20 +591,18 @@ export const DEFAULT_MAX_TOOL_LOOP_ITERATIONS = 8;
  * must be a positive integer.
  */
 export function loadMaxToolLoopIterations(path = configPath()): number {
-	const { parsed, absolutePath } = readAndParse(path);
-	const tools = parsed.tools;
-	if (tools === undefined || tools === null) return DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
-	if (typeof tools !== 'object' || Array.isArray(tools)) {
-		throw new ConfigError(`'[tools]' in ${absolutePath} must be a TOML table`);
-	}
-	const raw = (tools as Record<string, unknown>).max_tool_loop_iterations;
-	if (raw === undefined || raw === null) return DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
-	if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
-		throw new ConfigError(
-			`'[tools] max_tool_loop_iterations' in ${absolutePath} must be a positive integer`,
-		);
-	}
-	return raw;
+	return readTableScalar(
+		path,
+		'tools',
+		'max_tool_loop_iterations',
+		DEFAULT_MAX_TOOL_LOOP_ITERATIONS,
+		(raw, at) => {
+			if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+				throw new ConfigError(`${at} must be a positive integer`);
+			}
+			return raw;
+		},
+	);
 }
 
 let maxToolLoopIterationsCache: number | undefined;
@@ -623,25 +649,23 @@ export const MIN_MAX_TOOL_RESULT_CHARS = 1024;
  * at least {@link MIN_MAX_TOOL_RESULT_CHARS}.
  */
 export function loadMaxToolResultChars(path = configPath()): number {
-	const { parsed, absolutePath } = readAndParse(path);
-	const tools = parsed.tools;
-	if (tools === undefined || tools === null) return DEFAULT_MAX_TOOL_RESULT_CHARS;
-	if (typeof tools !== 'object' || Array.isArray(tools)) {
-		throw new ConfigError(`'[tools]' in ${absolutePath} must be a TOML table`);
-	}
-	const raw = (tools as Record<string, unknown>).max_tool_result_chars;
-	if (raw === undefined || raw === null) return DEFAULT_MAX_TOOL_RESULT_CHARS;
-	if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
-		throw new ConfigError(
-			`'[tools] max_tool_result_chars' in ${absolutePath} must be a non-negative integer (0 disables the cap)`,
-		);
-	}
-	if (raw > 0 && raw < MIN_MAX_TOOL_RESULT_CHARS) {
-		throw new ConfigError(
-			`'[tools] max_tool_result_chars' in ${absolutePath} must be 0 (disabled) or at least ${MIN_MAX_TOOL_RESULT_CHARS} — below that, a capped tool result can't even hold a valid truncation envelope`,
-		);
-	}
-	return raw;
+	return readTableScalar(
+		path,
+		'tools',
+		'max_tool_result_chars',
+		DEFAULT_MAX_TOOL_RESULT_CHARS,
+		(raw, at) => {
+			if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 0) {
+				throw new ConfigError(`${at} must be a non-negative integer (0 disables the cap)`);
+			}
+			if (raw > 0 && raw < MIN_MAX_TOOL_RESULT_CHARS) {
+				throw new ConfigError(
+					`${at} must be 0 (disabled) or at least ${MIN_MAX_TOOL_RESULT_CHARS} — below that, a capped tool result can't even hold a valid truncation envelope`,
+				);
+			}
+			return raw;
+		},
+	);
 }
 
 let maxToolResultCharsCache: number | undefined;

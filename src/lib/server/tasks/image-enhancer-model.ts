@@ -1,18 +1,15 @@
 /**
  * Resolution layer for the `[image_enhancement]` config block — the model used
  * to rewrite image prompts into a target image model's preferred style before
- * generation. Mirrors `task-model.ts`: memoized resolution, non-fatal failure.
+ * generation.
  *
- * Resolution failure modes are intentionally non-fatal: if `[image_enhancement]`
- * is unset, or set but unresolvable (typo / removed endpoint), the caller gets
- * `null` and skips enhancement (the prompt passes through verbatim). Boot must
- * not crash on misconfiguration; per-call sites must not surface user-visible
- * errors when the enhancer model is gone.
+ * Resolution semantics (unset → null, unresolvable → null + one-time warning,
+ * malformed → throw) are the shared `createModelResolver` contract. A null here
+ * means the prompt passes through to the image model verbatim.
  */
 
 import { loadImageEnhancementConfig, type LoadedEndpoint } from '../endpoints/config';
-import { getEndpoint } from '../endpoints/registry';
-import { parseModelId } from '../endpoints/model-id';
+import { createModelResolver } from '../endpoints/resolve-model';
 
 export interface ResolvedImageEnhancerModel {
 	endpoint: LoadedEndpoint;
@@ -22,58 +19,28 @@ export interface ResolvedImageEnhancerModel {
 	styleInstructionOverrides: Record<string, string>;
 }
 
-let cached: { resolved: ResolvedImageEnhancerModel | null } | null = null;
+const resolver = createModelResolver({
+	name: 'image-enhancer',
+	load: loadImageEnhancementConfig,
+	modelIdOf: (cfg) => cfg.model,
+	build: (base, cfg): ResolvedImageEnhancerModel => ({
+		...base,
+		maxTokens: cfg.maxTokens,
+		temperature: cfg.temperature,
+		styleInstructionOverrides: cfg.styleInstructionOverrides,
+	}),
+});
 
 /**
  * Resolve the configured enhancer model to an endpoint + upstream id + knobs.
  * Memoized on first access; returns null when `[image_enhancement]` is unset OR
- * when the referenced endpoint isn't in the registry. The latter logs a
- * one-time warning so misconfigurations are visible without crashing.
+ * when the referenced endpoint isn't in the registry.
  */
 export function getImageEnhancerModel(): ResolvedImageEnhancerModel | null {
-	if (cached) return cached.resolved;
-
-	// A malformed [image_enhancement] block (the only thing
-	// loadImageEnhancementConfig throws is ConfigError) is intentionally left to
-	// propagate, so the operator sees the syntax error at boot/use. Only an
-	// *unset* — or a well-formed but unresolvable — value disables enhancement
-	// (the null/registry checks below).
-	const cfg = loadImageEnhancementConfig();
-
-	if (!cfg) {
-		cached = { resolved: null };
-		return null;
-	}
-
-	const parsed = parseModelId(cfg.model);
-	if (!parsed) {
-		// loadImageEnhancementConfig already validated the shape; belt-and-suspenders.
-		console.warn(`[image-enhancer] model "${cfg.model}" failed to parse; ignoring`);
-		cached = { resolved: null };
-		return null;
-	}
-
-	const endpoint = getEndpoint(parsed.endpointId);
-	if (!endpoint) {
-		console.warn(
-			`[image-enhancer] model "${cfg.model}" references endpoint "${parsed.endpointId}" which is not configured; ignoring`,
-		);
-		cached = { resolved: null };
-		return null;
-	}
-
-	const resolved: ResolvedImageEnhancerModel = {
-		endpoint,
-		upstreamId: parsed.upstreamId,
-		maxTokens: cfg.maxTokens,
-		temperature: cfg.temperature,
-		styleInstructionOverrides: cfg.styleInstructionOverrides,
-	};
-	cached = { resolved };
-	return resolved;
+	return resolver.get();
 }
 
 /** Test/dev only: discard the cached resolution so the next access reloads. */
 export function resetImageEnhancerModel(): void {
-	cached = null;
+	resolver.reset();
 }

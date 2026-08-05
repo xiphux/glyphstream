@@ -5,51 +5,24 @@
  * need the same thing: read the `[embeddings]` block, resolve its endpoint, and
  * hand back a `RelevanceConfig` — or `undefined` when embeddings aren't
  * configured / the endpoint no longer resolves, so the caller degrades to
- * BM25-only (never an error). One memoized read backs both (config.toml doesn't
- * change at runtime), so there's a single cache with a single test reset rather
- * than a per-tool clone.
+ * BM25-only (never an error). One memoized read backs both, so there's a single
+ * cache with a single test reset rather than a per-tool clone.
+ *
+ * Failure handling is the shared `createOptionalEndpointConfig` contract — see
+ * that module for why a malformed block disables the leg instead of throwing.
  */
 
-import { loadEmbeddingsConfig, type LoadedEmbeddingsConfig } from '../endpoints/config';
-import { getEndpoint } from '../endpoints/registry';
+import { loadEmbeddingsConfig } from '../endpoints/config';
+import { createOptionalEndpointConfig } from './optional-endpoint-config';
 import type { RelevanceConfig } from './embed-rank';
 
-let embeddingsConfigCache: { value: LoadedEmbeddingsConfig | null } | undefined;
-
-function getEmbeddingsConfig(): LoadedEmbeddingsConfig | null {
-	if (!embeddingsConfigCache) {
-		let value: LoadedEmbeddingsConfig | null = null;
-		try {
-			value = loadEmbeddingsConfig();
-		} catch (e) {
-			// Embeddings are an optional upgrade, so a missing/unreadable config file
-			// or a malformed [embeddings] block disables semantic retrieval (recall
-			// degrades off, fetch_url falls back to BM25) rather than throwing into
-			// the calling tool — including tool-advertisement, where recall_memory's
-			// isAvailable() runs. Memoized, so this warns at most once.
-			console.warn('[retrieval] could not load [embeddings] config; embeddings disabled:', e);
-		}
-		embeddingsConfigCache = { value };
-	}
-	return embeddingsConfigCache.value;
-}
-
-/** Test hook: clear the memoized embeddings config so the next call re-reads. */
-export function _resetEmbeddingsConfigCacheForTests(): void {
-	embeddingsConfigCache = undefined;
-}
-
-/**
- * Resolve the `[embeddings]` config into a usable `RelevanceConfig`, or undefined
- * when embeddings aren't configured / the named endpoint no longer resolves.
- * Undefined makes the dense leg degrade to BM25-only.
- */
-export function resolveRelevanceConfig(): RelevanceConfig | undefined {
-	const cfg = getEmbeddingsConfig();
-	if (!cfg) return undefined;
-	const endpoint = getEndpoint(cfg.endpointId);
-	if (!endpoint) return undefined;
-	return {
+const embeddingsConfig = createOptionalEndpointConfig({
+	name: 'retrieval',
+	block: '[embeddings]',
+	disabledNote: 'embeddings disabled',
+	load: loadEmbeddingsConfig,
+	endpointIdOf: (cfg) => cfg.endpointId,
+	build: (cfg, endpoint): RelevanceConfig => ({
 		endpoint,
 		modelId: cfg.modelId,
 		timeoutSeconds: cfg.timeoutSeconds,
@@ -57,5 +30,19 @@ export function resolveRelevanceConfig(): RelevanceConfig | undefined {
 		documentPrefix: cfg.documentPrefix,
 		maxInputTokens: cfg.maxInputTokens,
 		gallerySearchMinSimilarity: cfg.gallerySearchMinSimilarity,
-	};
+	}),
+});
+
+/**
+ * Resolve the `[embeddings]` config into a usable `RelevanceConfig`, or undefined
+ * when embeddings aren't configured / the named endpoint no longer resolves.
+ * Undefined makes the dense leg degrade to BM25-only.
+ */
+export function resolveRelevanceConfig(): RelevanceConfig | undefined {
+	return embeddingsConfig.resolve();
+}
+
+/** Test hook: clear the memoized embeddings config so the next call re-reads. */
+export function _resetEmbeddingsConfigCacheForTests(): void {
+	embeddingsConfig.reset();
 }
