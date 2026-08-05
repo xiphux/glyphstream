@@ -9,7 +9,6 @@
 	import { preferredFirstName } from '$lib/greeting';
 	import { ensureLiveMarkdown, renderLiveMarkdown } from '$lib/markdown-live';
 	import { ensureLiveHighlighter } from '$lib/markdown-live-shiki.svelte';
-	import { consumeChatStream } from '$lib/consume-chat-stream';
 	import { buildApprovalDecisionsSnapshot, type ApprovalAction } from '$lib/approval-workflow';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
@@ -66,7 +65,6 @@
 		type FanoutModel,
 	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
-	import { clearTitlePending, markTitlePending } from '$lib/title-pending.svelte';
 	import { isSnippetKind } from '$lib/types/api';
 	import type {
 		ChatMessage,

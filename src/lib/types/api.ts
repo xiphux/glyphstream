@@ -1429,7 +1429,14 @@ export interface MediaListItem {
 	conversationTitle: string | null;
 }
 
-/** One tile-or-stack in the gallery's newest-first unit stream. */
+/**
+ * A single top-level gallery unit — a stack (conversation bucket or same-prompt
+ * run) or a solo tile — as the client's virtualized grid renders it. Thin by
+ * design: the demand-paged grid streams these in for the visible range, so a
+ * unit carries only what a tile / stack-card needs (ids for thumbnails, the
+ * newest few members for the collage, the leader's caption), never full prompt
+ * bodies.
+ */
 export interface GalleryUnit {
 	/** Group identity — the conversation id, or `p:<leaderId>` for a prompt run. */
 	key: string;

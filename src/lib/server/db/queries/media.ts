@@ -8,7 +8,6 @@ import { resolveRelevanceConfig } from '../../retrieval/embeddings-config';
 import { embedQuery } from '../../retrieval/embed-rank';
 import { cosineRank, decodeVector } from '../../retrieval/vector';
 import { fuseRankings } from '../../retrieval/fusion';
-import { groupGalleryItems, type StackableMedia } from '../../../gallery-stacks';
 import type {
 	ConversationMediaRef,
 	MediaConversationRef,
@@ -753,14 +752,6 @@ export function listMediaMonthPeriodsForUser(
 		.all();
 }
 
-/**
- * A single top-level gallery unit — a stack (conversation bucket or same-prompt
- * run) or a solo tile — as the client's virtualized grid renders it. Thin by
- * design: the demand-paged grid streams these in for the visible range, so a
- * unit carries only what a tile / stack-card needs (ids for thumbnails, the
- * newest few members for the collage, the leader's caption), never full prompt
- * bodies.
- */
 /**
  * Every gallery item *assigned* to a conversation, newest-first — the complete
  * member set of one gallery stack. The gallery groups by `assignedConversationId`
