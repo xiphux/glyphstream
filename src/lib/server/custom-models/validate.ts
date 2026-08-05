@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { getEndpoint } from '$lib/server/endpoints/registry';
-import { getRegisteredCategoryIds } from '$lib/server/feature-categories';
+import { getRegisteredCategoryIds } from '$lib/server/feature-catalog';
 import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures,
-} from '$lib/server/util/feature-categories';
+} from '$lib/server/util/validate-features';
 import type {
 	CreateCustomModelRequest,
 	CustomModelParameters,

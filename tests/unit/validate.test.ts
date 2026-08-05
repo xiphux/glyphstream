@@ -9,10 +9,10 @@ vi.mock('$lib/server/endpoints/registry', () => ({
 		id === 'bridge' ? { id: 'bridge', baseUrl: 'http://x', apiKey: null } : undefined,
 }));
 
-// Stub the feature-categories registry so the MCP category check has
+// Stub the feature-catalog registry so the MCP category check has
 // predictable input. v1 registers two built-ins + the categories below
 // for the suite; tests can add more via mockReturnValueOnce when needed.
-vi.mock('$lib/server/feature-categories', () => ({
+vi.mock('$lib/server/feature-catalog', () => ({
 	getRegisteredCategoryIds: () =>
 		new Set(['web', 'personalization', 'code_interpreter', 'mcp:filesystem']),
 }));
@@ -152,8 +152,11 @@ describe('validateCreateInput', () => {
 	});
 
 	it('accepts MCP categories backed by a currently-registered server', () => {
-		// The feature-categories registry mock declares `mcp:filesystem` is
-		// live; the validator passes it through alongside the built-in.
+		// NB: registration is not what makes this pass — the validator `continue`s
+		// on any `mcp:` prefix before consulting the registry, so this and the
+		// not-registered case below take the identical branch. Kept as a named
+		// case because it documents the intended contract, but it does not
+		// discriminate; the registry only decides non-`mcp:` categories.
 		const r = validateCreateInput({
 			...valid,
 			defaultDisabledFeatures: ['personalization', 'mcp:filesystem'],

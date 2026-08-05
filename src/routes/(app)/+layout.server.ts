@@ -6,7 +6,7 @@ import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
 import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
 import { listAllModels } from '$lib/server/endpoints/list-models';
-import { getAllFeatureCategoryLabels } from '$lib/server/feature-categories';
+import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
 import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
 import { filterInFlight } from '$lib/server/streaming/in-flight';
 import type { LayoutServerLoad } from './$types';

@@ -205,7 +205,7 @@ export function featureCategoryAppliesToModelKind(
 
 /**
  * One entry in the dynamic category list assembled by
- * `$lib/server/feature-categories.getAllFeatureCategoryLabels()`. Plain
+ * `$lib/server/feature-catalog.getAllFeatureCategoryLabels()`. Plain
  * data; built once per layout load and shipped to the client.
  */
 export interface FeatureCategoryEntry {

@@ -14,7 +14,7 @@ import {
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
-import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
+import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, params, url }) => {

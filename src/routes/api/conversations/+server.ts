@@ -12,7 +12,7 @@ import { filterInFlight } from '$lib/server/streaming/in-flight';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
 import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
-import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/feature-categories';
+import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ locals, url }) => {

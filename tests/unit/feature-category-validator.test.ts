@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	FeatureCategoryValidationError,
 	validateDisabledFeatures,
-} from '$lib/server/util/feature-categories';
+} from '$lib/server/util/validate-features';
 
 describe('validateDisabledFeatures', () => {
 	it('returns [] for undefined / null / missing', () => {
