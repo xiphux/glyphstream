@@ -28,6 +28,7 @@
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { CompactionController } from '$lib/compaction-controller.svelte';
+	import { EditSession } from '$lib/edit-session.svelte';
 	import { privateView } from '$lib/private-chat.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import {
@@ -56,6 +57,7 @@
 	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { stripSkillCommand } from '$lib/skill-command';
+	import { hasCopyableText, partsToText } from '$lib/message-parts';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
 		expandCompareSelections,
@@ -334,7 +336,7 @@
 		const map = new Map<string, { mergeWithPrev: boolean; mergeWithNext: boolean }>();
 		for (let i = 0; i < visibleMessages.length; i++) {
 			const m = visibleMessages[i];
-			map.set(m.id, computeMergeFlags(visibleMessages, i, editingMessageId, turn.inFlightOpen));
+			map.set(m.id, computeMergeFlags(visibleMessages, i, edit.messageId, turn.inFlightOpen));
 		}
 		return map;
 	});
@@ -721,13 +723,12 @@
 		}
 	}
 
-	// --- drag-drop + paste-from-clipboard ---------------------------------
+	// --- viewport, focus + message-arrival state ---------------------------
 	//
-	// Both desktop niceties; mobile users use the file picker (touch
-	// devices generally can't drag from OS shells, and paste UX is rare).
-	// Both feed into the same `attachments.addFiles()` pipeline as the
-	// file picker, so they get the same upload/progress/error UX for
-	// free.
+	// (Drag-drop and paste-to-attach are NOT here — they live on the composer
+	// itself, in ComposerCore.svelte, feeding the same `attachments.addFiles()`
+	// pipeline as the file picker. This header used to say otherwise.)
+	//
 	// Scroll-to-bottom affordance: shows a floating button just above the
 	// composer when the user has scrolled meaningfully away from the latest
 	// message. Same flag also gates the streaming auto-scroll so we don't
@@ -1228,9 +1229,6 @@
 		// Split-attachments image set (one branch per image) captured before the
 		// strip is cleared below.
 		const splitImageIds = splitAttachments ? attachments.readyImageMediaIds() : null;
-		// Editing: send the new message as a sibling under the same parent
-		// as the original. The original stays in the DB as an alt branch.
-		const editParent = editingParentId;
 		// Fan-out (multi-model and/or split-attachments) takes precedence over a
 		// single send (and over an in-progress edit — comparing is a fresh turn).
 		// Branches = the picked models (or the current single model) crossed with
@@ -1259,12 +1257,13 @@
 			return;
 		}
 
-		// Plain continuation sends only: an edit resend (editParent) parents off an
-		// earlier message, so compacting at the leaf would orphan onto the wrong
-		// branch; fan-out is a fresh comparison turn. Run BEFORE the composer is
-		// cleared so that if compaction fails and the user backs out, their typed
-		// message + attachments are still intact rather than discarded.
-		if (!editParent && !willFanOut) {
+		// Plain continuation sends only: a fan-out is a fresh comparison turn. Run
+		// BEFORE the composer is cleared so that if compaction fails and the user
+		// backs out, their typed message + attachments are still intact rather than
+		// discarded. (An edit resend can't reach here — the composer is unmounted
+		// while an edit session is open, and `edit.save()` goes straight to
+		// `turn.send`.)
+		if (!willFanOut) {
 			const proceed = await compaction.maybeAutoCompact();
 			if (!proceed) return;
 		}
@@ -1278,8 +1277,6 @@
 		draftWriter.cancel();
 		clearDraft(data.conversation.id);
 		attachments.clear();
-		editingMessageId = null;
-		editingParentId = null;
 		if (willFanOut) {
 			resetCompare();
 			splitAttachments = false;
@@ -1294,7 +1291,6 @@
 		}
 		splitAttachments = false;
 		await turn.send(text, attachedMediaIds, {
-			...(editParent ? { parentMessageId: editParent } : {}),
 			...(activatedSkillNames.length ? { activatedSkillNames } : {}),
 		});
 	}
@@ -1398,10 +1394,6 @@
 		}
 	});
 
-	function partsToText(parts: MessagePart[]): string {
-		return parts.map((p) => (p.type === 'text' ? p.text : '')).join('');
-	}
-
 	// Copy-to-clipboard. Tracks the most recently copied message id so the
 	// trigger icon can briefly swap to a check mark as feedback. We use a
 	// single id slot rather than a per-message map because only one copy
@@ -1428,35 +1420,21 @@
 		}
 	}
 
-	/** Whether to show the action bar for a message — only when there's
-	 * something copyable. Skip for media-only messages with no text. */
-	function hasCopyableText(m: ChatMessage): boolean {
-		return partsToText(m.parts).trim().length > 0;
-	}
-
-	/**
-	 * Inline-edit state. When non-null, the message bubble for
-	 * `editingMessageId` re-renders as an in-place editor instead of a
-	 * static bubble. The bottom composer hides during edit so it's
-	 * unambiguous which message you're editing. Save creates a new
-	 * sibling under `editingParentId`; cancel discards.
-	 *
-	 * Edit state is kept separate from the composer's state so a
-	 * partially-typed draft in the composer isn't clobbered by entering
-	 * edit mode.
-	 */
-	let editingMessageId = $state<string | null>(null);
-	let editingParentId = $state<string | null>(null);
-	let editText = $state('');
-	const editAttachments = new AttachmentStore();
-	onDestroy(() => editAttachments.destroy());
+	// Inline message editing. The bubble for `edit.messageId` re-renders as an
+	// in-place editor and the bottom composer hides, so it's unambiguous which
+	// message is being edited. See $lib/edit-session.
+	const edit = new EditSession({
+		generating: () => generating,
+		send: (text, mediaIds, editedMessageId) => turn.send(text, mediaIds, { editedMessageId }),
+	});
+	onDestroy(() => edit.destroy());
 
 	// Restore this conversation's saved composer draft, and close any open
 	// inline-edit session, when navigating to a different conversation. Like
 	// the in-flight turn state, these are component-local and the /chat/[id]
 	// component is reused across conversation switches: without this the
 	// previous chat's half-typed text would bleed into the next, and a stale
-	// `editingMessageId` (whose target message doesn't exist in the new
+	// an open edit session (whose target message doesn't exist in the new
 	// conversation) would hide the composer with no inline editor to replace
 	// it, leaving no way to type. Drafts are per-conversation, so each switch
 	// loads its own (usually empty); see $lib/composer-draft. Guarded on a real
@@ -1468,10 +1446,7 @@
 		if (id === composerResetConvId) return;
 		composerResetConvId = id;
 		composerText = loadDraft(id);
-		editingMessageId = null;
-		editingParentId = null;
-		editText = '';
-		editAttachments.clear();
+		edit.closeForConversationSwitch();
 	});
 
 	// Autosave the in-progress follow-up so it survives a reload (e.g. an iOS
@@ -1482,19 +1457,6 @@
 		draftWriter.save(data.conversation.id, composerText);
 	});
 	onDestroy(() => draftWriter.dispose());
-
-	function beginEdit(m: ChatMessage) {
-		if (generating) return;
-		editText = partsToText(m.parts);
-		editAttachments.clear();
-		for (const p of m.parts) {
-			if (p.type === 'image') {
-				editAttachments.attachExisting(p.mediaId);
-			}
-		}
-		editingMessageId = m.id;
-		editingParentId = m.parentMessageId ?? null;
-	}
 
 	/**
 	 * "New chat from this prompt": stash the prompt + its model selection and
@@ -1539,36 +1501,6 @@
 			// leaves the user on a button that appears to do nothing.
 		}
 		void goto('/');
-	}
-
-	function cancelEdit() {
-		editingMessageId = null;
-		editingParentId = null;
-		editText = '';
-		editAttachments.clear();
-	}
-
-	async function saveEdit() {
-		const text = editText.trim();
-		if ((!text && editAttachments.items.length === 0) || generating) return;
-		if (editAttachments.isBusy) return;
-		const editedId = editingMessageId;
-		if (!editedId) return;
-		const attachedMediaIds = editAttachments.readyMediaIds();
-		// Snapshot then reset state — turn.send does its own UI work
-		// (in-flight bubble, optimistic placeholder swap on 'start') that
-		// we don't want to compete with the dismissed editor.
-		editingMessageId = null;
-		editingParentId = null;
-		editText = '';
-		editAttachments.clear();
-		// Send only `editedMessageId`. The server looks up the edited
-		// message and copies its parent_message_id onto the new sibling
-		// — including the null case (edit of the conversation's root
-		// message), which the older parent-resolved-on-the-client
-		// approach silently dropped on the wire and caused those root
-		// edits to append-instead-of-branch.
-		await turn.send(text, attachedMediaIds, { editedMessageId: editedId });
 	}
 
 	/**
@@ -1754,7 +1686,7 @@
 								m.id === highlightedMessageId && 'bg-amber-200/40 dark:bg-amber-500/15',
 							]}
 						>
-							{#if m.id === editingMessageId}
+							{#if m.id === edit.messageId}
 								<!--
 						Inline editor: replaces the static bubble with an
 						editable surface in the same position so it's
@@ -1763,13 +1695,13 @@
 						original as a branch); Cancel discards.
 					-->
 								<EditMessageForm
-									bind:editText
-									attachments={editAttachments}
+									bind:editText={edit.text}
+									attachments={edit.attachments}
 									{allowAttachments}
 									enterBehavior={data.prefs?.enterBehavior ?? 'send'}
 									activeKind={editSnippetKind}
-									onSave={() => void saveEdit()}
-									onCancel={cancelEdit}
+									onSave={() => void edit.save()}
+									onCancel={() => edit.cancel()}
 								/>
 							{:else}
 								<MessageBubble
@@ -1788,15 +1720,15 @@
 									onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
 								/>
 							{/if}
-							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== editingMessageId && !mergeWithNext}
+							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== edit.messageId && !mergeWithNext}
 								<MessageActions
 									message={m}
 									{generating}
 									recentlyCopied={recentlyCopiedId === m.id}
-									canCopy={hasCopyableText(m)}
+									canCopy={hasCopyableText(m.parts)}
 									userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
 									onCopy={() => copyMessage(m)}
-									onEdit={() => beginEdit(m)}
+									onEdit={() => edit.begin(m)}
 									onReuse={() => reusePrompt(m)}
 									onRetry={() => retryAssistant(m)}
 									onSelectSibling={(id, dir) => selectSibling(id, dir)}
@@ -1814,7 +1746,7 @@
 				{#if showInFlight}
 					{@const last = visibleMessages[visibleMessages.length - 1]}
 					{@const fuseWithPrevAssistant =
-						!!last && last.role === 'assistant' && last.id !== editingMessageId}
+						!!last && last.role === 'assistant' && last.id !== edit.messageId}
 					<div
 						class={fuseWithPrevAssistant ? 'mt-0!' : ''}
 						in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}
@@ -1890,7 +1822,7 @@
 					visible={!isNearBottom}
 					onClick={() => scrollToBottom({ smooth: true })}
 				/>
-				{#if editingMessageId}
+				{#if edit.active}
 					<!-- Composer hidden while editing: the edit happens inline on
 					 the message bubble itself, with its own Save/Cancel
 					 controls. Re-shown when the user dismisses the inline

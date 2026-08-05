@@ -10,6 +10,7 @@
 
 import type { ChatMessage, MessagePart } from '$lib/types/api';
 import { upstreamBranch } from '$lib/chat-compaction';
+import { partsToText } from '$lib/message-parts';
 import { MediaNotAvailableError } from '$lib/server/media/data-url';
 import { getMaxToolResultChars } from './config';
 import type {
@@ -21,15 +22,6 @@ import type {
 /** Resolve a stored media id to a data: URL the upstream can consume.
  *  Injected so tests don't need access to the media filesystem. */
 export type MediaUrlResolver = (mediaId: string) => Promise<string>;
-
-/** Concatenate just the text parts of a message — the cheap path when
- *  no images or tool calls are involved. */
-export function partsToText(parts: MessagePart[]): string {
-	return parts
-		.filter((p): p is Extract<MessagePart, { type: 'text' }> => p.type === 'text')
-		.map((p) => p.text)
-		.join('');
-}
 
 /**
  * A text note naming a message's non-image file attachments (PDFs, CSVs,
