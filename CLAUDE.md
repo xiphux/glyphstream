@@ -77,6 +77,22 @@ tests/e2e/            # playwright (production-build webServer)
 - Media is ref-counted via the `message_media` join table. Generated media
   is kept indefinitely; the background purger only reaps abandoned uploads,
   on a hardcoded cadence (see `src/lib/server/media/purger.ts`).
+- Background sweepers (purger, embedding + topic backfill, dreaming,
+  conversation summaries) mount through `createSweeper`
+  (`server/util/sweeper.ts`) — don't hand-roll another recursive
+  `setTimeout`. Five copies had drifted and two lacked the generation
+  token, so a `stop()` landing during an in-flight sweep re-armed the
+  worker (`clearTimeout` can't cancel a pending promise continuation) and
+  a later `start()` left two live chains. Each `runXSweep` keeps its own
+  `running` re-entrancy guard — those are exported and called directly by
+  tests, so the guard is part of their contract, not the lifecycle's.
+- Wire types live in `$lib/types/api.ts`, never in a `db/queries/*`
+  module. A DTO imported from `$lib/server` by client-safe code
+  type-checks and ships nothing, so nothing catches it — but it makes the
+  browser's contract whatever a `SELECT` happens to project, with no
+  boundary at which changing a query registers as changing an API. The
+  media/gallery feature did exactly this; no client module imports from
+  `$lib/server` now, and that's worth keeping true.
 - Per-endpoint secrets use the `*_env` field convention in `config.toml`:
   the field stores the _name_ of an env var, never the secret itself.
 - MCP servers are `auth = "global"` (one shared `api_key_env` token, the
