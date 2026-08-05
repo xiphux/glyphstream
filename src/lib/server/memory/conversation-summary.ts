@@ -10,8 +10,9 @@
  * watermark). The shared per-endpoint slot (taken per model call inside
  * `summarizeConversation`) is what keeps the two from over-running `max_concurrent`;
  * a distinct `INITIAL_DELAY_MS` phase-offsets their sweeps so they don't reliably
- * start in the same tick. Worker skeleton mirrors `dreaming.ts` (recursive tick,
- * `running` guard, generation-token stop, no-op when no memory model configured).
+ * start in the same tick. Lifecycle is the shared `createSweeper` skeleton; the
+ * `running` re-entrancy guard stays here because the sweep is exported and called
+ * directly by tests.
  */
 
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
@@ -32,6 +33,7 @@ import {
 import { walkActiveBranch } from '../db/queries/messages';
 import { listAllModels } from '../endpoints/list-models';
 import { formatModelId } from '../endpoints/model-id';
+import { createSweeper } from '../util/sweeper';
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 // Phase-offset from dreaming's 30s so their sweeps don't reliably start together
@@ -44,9 +46,7 @@ const SETTLE_MS = 60 * 60 * 1000;
 const MAX_CONVERSATIONS_PER_SWEEP = 20;
 const MAX_USERS_PER_SWEEP = 20;
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
-let generation = 0;
 
 /**
  * One sweep, two phases: (1) summarize each due conversation, then (2) rebuild the
@@ -192,36 +192,25 @@ async function resolveContextWindow(model: ResolvedMemoryModel): Promise<number 
 	return (await listAllModels()).find((m) => m.id === id)?.contextWindow ?? null;
 }
 
+const sweeper = createSweeper({
+	name: 'conversation-summary',
+	intervalMs: SWEEP_INTERVAL_MS,
+	initialDelayMs: INITIAL_DELAY_MS,
+	enabled: () => getMemoryModel() !== null,
+	sweep: runSummarySweep,
+});
+
 /**
  * Mount the periodic summary worker. Idempotent; no-op when no `[memory_model]`
  * is configured. Recurring; the generation token prevents a stop during an
  * in-flight sweep from re-arming.
  */
 export function startConversationSummaryWorker(): void {
-	if (timer) return;
-	if (!getMemoryModel()) return;
-	const myGen = ++generation;
-	function tick() {
-		runSummarySweep()
-			.catch((e) => console.error('[conversation-summary] sweep failed:', e))
-			.finally(() => {
-				if (generation === myGen) {
-					timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-					timer?.unref();
-				}
-			});
-	}
-	timer = setTimeout(tick, INITIAL_DELAY_MS);
-	timer?.unref();
-	console.log(`[conversation-summary] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
+	sweeper.start();
 }
 
 /** Tear down the timer — for tests / clean shutdown. Bumps the generation so an
  *  in-flight sweep won't re-arm. */
 export function stopConversationSummaryWorker(): void {
-	generation++;
-	if (timer) {
-		clearTimeout(timer);
-		timer = null;
-	}
+	sweeper.stop();
 }

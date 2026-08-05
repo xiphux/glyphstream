@@ -46,12 +46,16 @@ import {
 	stampOrphanedZeroRefRows,
 } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
+import { createSweeper } from '../util/sweeper';
 
 const BATCH_SIZE = 500;
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 const GRACE_PERIOD_MS = 30 * 60 * 1000;
+// Run a sweep shortly after boot so a process restart doesn't have to wait the
+// full interval to clean up anything that fell due during the downtime. 10s is
+// enough for the DB connection to be warm.
+const INITIAL_DELAY_MS = 10_000;
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
 
 /**
@@ -112,36 +116,23 @@ export async function runPurgeSweep(): Promise<{
 	}
 }
 
+const sweeper = createSweeper({
+	name: 'purger',
+	intervalMs: SWEEP_INTERVAL_MS,
+	initialDelayMs: INITIAL_DELAY_MS,
+	sweep: runPurgeSweep,
+	startedDetail: `grace ${GRACE_PERIOD_MS / 60000}min (uploads only)`,
+});
+
 /**
  * Mount the periodic sweeper. Idempotent — calling twice is a no-op so
  * SvelteKit's hooks.server.ts can call it freely.
  */
 export function startMediaPurger(): void {
-	if (timer) return;
-	// Run a sweep shortly after boot so a process restart doesn't have to
-	// wait the full interval to clean up anything that fell due during the
-	// downtime. 10s is enough for the DB connection to be warm.
-	const initialDelayMs = 10_000;
-	timer = setTimeout(function tick() {
-		runPurgeSweep()
-			.catch((e) => console.error('[purger] sweep failed:', e))
-			.finally(() => {
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-				timer?.unref();
-			});
-	}, initialDelayMs);
-	timer?.unref();
-	console.log(
-		`[purger] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min, grace ${
-			GRACE_PERIOD_MS / 60000
-		}min (uploads only)`,
-	);
+	sweeper.start();
 }
 
 /** Tear down the timer — useful for tests / clean shutdown. */
 export function stopMediaPurger(): void {
-	if (timer) {
-		clearTimeout(timer);
-		timer = null;
-	}
+	sweeper.stop();
 }

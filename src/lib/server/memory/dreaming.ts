@@ -16,9 +16,9 @@
  * gate live chats use (`acquireEndpointSlot`) — so a dream never preempts or cuts
  * ahead of a chat. It is a fair peer, not a low-priority lane: if a dream call is
  * already in flight when a chat arrives, the chat waits for it (bounded by the
- * endpoint's `max_concurrent`). Worker skeleton mirrors the other background
- * workers (recursive tick, `running` guard, generation-token stop, no-op when no
- * model is configured).
+ * endpoint's `max_concurrent`). Lifecycle is the shared `createSweeper` skeleton;
+ * the `running` re-entrancy guard stays here because the sweep is exported and
+ * called directly by tests.
  */
 
 import { getMemoryModel, type ResolvedMemoryModel } from '../tasks/memory-model';
@@ -40,6 +40,7 @@ import {
 	updateMemoryGuarded,
 	type MemoryForDreaming,
 } from '../db/queries/memories';
+import { createSweeper } from '../util/sweeper';
 
 const SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 const INITIAL_DELAY_MS = 30_000;
@@ -48,9 +49,7 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 // Bound per sweep so a big multi-user instance spreads consolidation across ticks.
 const MAX_USERS_PER_SWEEP = 20;
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
-let generation = 0;
 
 /**
  * One dreaming pass. Purges expired tombstones every tick; then, if within the
@@ -207,36 +206,25 @@ function pickSurvivor(ids: string[], byId: Map<string, MemoryForDreaming>): stri
 	return rows[0].id;
 }
 
+const sweeper = createSweeper({
+	name: 'dreaming',
+	intervalMs: SWEEP_INTERVAL_MS,
+	initialDelayMs: INITIAL_DELAY_MS,
+	enabled: () => getMemoryModel() !== null,
+	sweep: runDreamSweep,
+});
+
 /**
  * Mount the periodic dreaming worker. Idempotent; no-op when no `[memory_model]`
  * is configured. Recurring (dreaming is ongoing — it doesn't self-stop). The
  * generation token means a stop during an in-flight sweep won't re-arm.
  */
 export function startDreamingWorker(): void {
-	if (timer) return;
-	if (!getMemoryModel()) return;
-	const myGen = ++generation;
-	function tick() {
-		runDreamSweep()
-			.catch((e) => console.error('[dreaming] sweep failed:', e))
-			.finally(() => {
-				if (generation === myGen) {
-					timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-					timer?.unref();
-				}
-			});
-	}
-	timer = setTimeout(tick, INITIAL_DELAY_MS);
-	timer?.unref();
-	console.log(`[dreaming] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
+	sweeper.start();
 }
 
 /** Tear down the timer — for tests / clean shutdown. Bumps the generation so an
  *  in-flight sweep won't re-arm. */
 export function stopDreamingWorker(): void {
-	generation++;
-	if (timer) {
-		clearTimeout(timer);
-		timer = null;
-	}
+	sweeper.stop();
 }

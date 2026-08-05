@@ -9,10 +9,11 @@
  * `embedding_model` no longer matches the configured one (operator changed the
  * model) and memory rows whose content was edited (updateMemory nulls the vector).
  *
- * Mirrors the media purger's shape: a recursive setTimeout tick with a `running`
- * re-entrancy guard, an idempotent start, and a directly-callable sweep for
- * tests. When no `[embeddings]` block is configured there's nothing to embed,
- * so the worker doesn't even mount a timer.
+ * Lifecycle is the shared `createSweeper` skeleton (recursive tick, generation
+ * token, idempotent start); the `running` re-entrancy guard stays here because
+ * the sweep is exported and called directly by tests. When no `[embeddings]`
+ * block is configured there's nothing to embed, so the worker never mounts a
+ * timer.
  *
  * Like the `…NeedingEmbedding` queries, the sweep reads across all users — it's a
  * background job, not a request path, so the per-user read-isolation invariant
@@ -26,6 +27,7 @@ import { inputCharCap, truncate } from '../retrieval/embed-rank';
 import { encodeVector } from '../retrieval/vector';
 import { listMemoriesNeedingEmbedding, setMemoryEmbedding } from '../db/queries/memories';
 import { listMediaNeedingEmbedding, setMediaEmbedding } from '../db/queries/media';
+import { createSweeper } from '../util/sweeper';
 
 // Rows per /embeddings request. Kept small to stay within the per-request batch
 // ceilings embedding backends (notably llama-server) enforce — memories are
@@ -39,7 +41,6 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 // fresh import gets embedded promptly.
 const INITIAL_DELAY_MS = 15_000;
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
 
 /**
@@ -149,6 +150,14 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
 	}
 }
 
+const sweeper = createSweeper({
+	name: 'embedding-backfill',
+	intervalMs: SWEEP_INTERVAL_MS,
+	initialDelayMs: INITIAL_DELAY_MS,
+	enabled: () => resolveRelevanceConfig() !== undefined,
+	sweep: runBackfillSweep,
+});
+
 /**
  * Mount the periodic backfiller (memory + media-prompt embeddings). Idempotent.
  * No-op when no embedding model is configured — without one there are no vectors
@@ -156,24 +165,10 @@ export async function runBackfillSweep(): Promise<{ embedded: number }> {
  * do nothing. (A config change needs a restart, which re-runs this.)
  */
 export function startEmbeddingBackfiller(): void {
-	if (timer) return;
-	if (!resolveRelevanceConfig()) return;
-	timer = setTimeout(function tick() {
-		runBackfillSweep()
-			.catch((e) => console.error('[embedding-backfill] sweep failed:', e))
-			.finally(() => {
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-				timer?.unref();
-			});
-	}, INITIAL_DELAY_MS);
-	timer?.unref();
-	console.log(`[embedding-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
+	sweeper.start();
 }
 
 /** Tear down the timer — for tests / clean shutdown. */
 export function stopEmbeddingBackfiller(): void {
-	if (timer) {
-		clearTimeout(timer);
-		timer = null;
-	}
+	sweeper.stop();
 }

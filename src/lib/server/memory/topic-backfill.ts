@@ -5,11 +5,11 @@
  * so nothing produces new null-topic rows: this is a fixed, shrinking queue, and
  * the worker stops itself once it's drained.
  *
- * Mirrors the embedding backfiller's shape — recursive setTimeout tick with a
- * `running` re-entrancy guard, an idempotent start, a directly-callable sweep
- * for tests, and a no-op mount when unconfigured — but uses the task model
- * (title-generation tier) for one short completion per row rather than a batched
- * embeddings call, and self-terminates on a drained sweep.
+ * Lifecycle is the shared `createSweeper` skeleton, including its `isDrained`
+ * self-termination; the `running` re-entrancy guard stays here because the sweep
+ * is exported and called directly by tests. Unlike the embedding backfiller it
+ * uses the task model (title-generation tier) for one short completion per row
+ * rather than a batched embeddings call.
  *
  * It only ever writes the `topic` column (never `content`), so a mislabel can't
  * damage the underlying fact — which is why the modest task model is safe here.
@@ -21,6 +21,7 @@
 import { getTaskModel } from '../tasks/task-model';
 import { generateMemoryTopic, fallbackTopic } from '../tasks/topic-generator';
 import { listMemoriesNeedingTopic, setMemoryTopic } from '../db/queries/memories';
+import { createSweeper } from '../util/sweeper';
 
 // One completion per row (topic gen can't batch cleanly like embeddings), so
 // keep the per-sweep ceiling lower than the embedding backfiller's 400: 8 × 25 =
@@ -32,15 +33,7 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 // both at the same instant.
 const INITIAL_DELAY_MS = 20_000;
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
-// Monotonic token identifying the current worker "generation". start() claims a
-// fresh one; stop() bumps it (and a later start() bumps it again). A sweep
-// already in flight captured its generation, so its completion callback — which
-// clearTimeout can't cancel — can tell it's been superseded and leave the timer
-// alone, rather than re-arming after a stop or clobbering a restart's timer. A
-// shared boolean can't distinguish "stopped" from "stopped then restarted".
-let generation = 0;
 
 /**
  * Run one topic-backfill pass. Returns how many rows were filled and whether the
@@ -93,6 +86,15 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
 	}
 }
 
+const sweeper = createSweeper({
+	name: 'topic-backfill',
+	intervalMs: SWEEP_INTERVAL_MS,
+	initialDelayMs: INITIAL_DELAY_MS,
+	enabled: () => getTaskModel() !== null,
+	sweep: runTopicBackfillSweep,
+	isDrained: (r) => r.drained,
+});
+
 /**
  * Mount the periodic topic backfiller. Idempotent. No-op when no `task_model` is
  * configured — without one there's no way to generate labels, so a timer would
@@ -103,32 +105,7 @@ export async function runTopicBackfillSweep(): Promise<{ filled: number; drained
  * restart also re-runs it and re-checks.
  */
 export function startTopicBackfiller(): void {
-	if (timer) return;
-	if (!getTaskModel()) return;
-	const myGen = ++generation;
-	function tick() {
-		runTopicBackfillSweep().then(
-			(r) => {
-				if (generation !== myGen) return; // superseded by stop()/restart
-				if (r.drained) {
-					timer = null;
-					console.log('[topic-backfill] backlog drained; worker stopped');
-					return;
-				}
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-				timer?.unref();
-			},
-			(e) => {
-				console.error('[topic-backfill] sweep failed:', e);
-				if (generation !== myGen) return; // superseded — don't re-arm
-				timer = setTimeout(tick, SWEEP_INTERVAL_MS);
-				timer?.unref();
-			},
-		);
-	}
-	timer = setTimeout(tick, INITIAL_DELAY_MS);
-	timer?.unref();
-	console.log(`[topic-backfill] started; sweep every ${SWEEP_INTERVAL_MS / 60000}min`);
+	sweeper.start();
 }
 
 /**
@@ -137,9 +114,5 @@ export function startTopicBackfiller(): void {
  * (`clearTimeout` can't cancel the pending promise continuation).
  */
 export function stopTopicBackfiller(): void {
-	generation++;
-	if (timer) {
-		clearTimeout(timer);
-		timer = null;
-	}
+	sweeper.stop();
 }
