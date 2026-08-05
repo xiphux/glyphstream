@@ -27,6 +27,7 @@
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 	import { CanvasController } from '$lib/canvas-controller.svelte';
+	import { CompactionController } from '$lib/compaction-controller.svelte';
 	import { privateView } from '$lib/private-chat.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import {
@@ -49,12 +50,7 @@
 		splitCanvasCards,
 		type RenderBlock,
 	} from '$lib/chat-render';
-	import {
-		compactionWorthwhile,
-		displayContextTokens,
-		isCompactionSummary,
-		shouldAutoCompact,
-	} from '$lib/chat-compaction';
+	import { displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
 	import CompactionSummary from '$lib/components/chat/CompactionSummary.svelte';
 	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
 	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
@@ -515,33 +511,39 @@
 		data.models.find((m) => m.id === modelId)?.contextWindow ?? null,
 	);
 
-	// --- manual compaction -------------------------------------------------
+	// --- compaction ----------------------------------------------------------
 	// Summarize older history through the conversation's own model, then refetch.
-	// Auto-compaction (the preference) reuses the same server engine just-in-time
-	// on the next send. Disabled while a turn is in flight or there's too little
-	// history to fold.
-	let compacting = $state(false);
-	// Not while a fan-out comparison is parked: compaction advances the active
-	// leaf, which resolves/abandons the parked fan-out (appendMessage nulls
-	// fanoutParentMessageId), silently dropping the compare grid. The sibling
-	// branches survive in the tree, but the comparison view would be lost.
-	// `$derived.by` (not a bare expression) so the `fanout` reference sits in a
-	// closure — `fanout` is constructed further down, and a direct expression
-	// would be a use-before-declaration.
-	// `compactable` gates the Compact button on `compactionWorthwhile`, not just
-	// the structural `canCompact`: compaction only shrinks history, so when the
-	// foldable history is tiny (the dominant cost being system prompt + tools +
-	// memories) the button stays disabled rather than running for ~no benefit.
-	const compactable = $derived.by(
-		() => !turn.busy && !compacting && !fanout.comparing && compactionWorthwhile(messages),
-	);
+	// The manual button, the just-in-time auto pass before a send, and undo all
+	// live in CompactionController; the page keeps only the view work — the
+	// scroll-and-highlight below, which needs the DOM ids and `highlightedMessageId`.
+	const compaction = new CompactionController({
+		convId: () => data.conversation.id,
+		getMessages: () => messages,
+		turnBusy: () => turn.busy,
+		fanoutComparing: () => fanout.comparing,
+		contextWindow: () => modelContextWindow,
+		autoCompactionEnabled: () => data.prefs?.autoCompactionEnabled ?? false,
+		autoCompactionThreshold: () => data.prefs?.autoCompactionThreshold ?? 80,
+		onCompacted: (summaryId) => {
+			// Scroll to + briefly highlight the new summary so the result is visible:
+			// the token number barely moves and the divider lands up-thread, so
+			// without this a successful compaction looks like nothing happened.
+			const el = document.getElementById(`summary-${summaryId}`);
+			if (!el) return;
+			el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
+			highlightedMessageId = summaryId;
+			setTimeout(() => {
+				if (highlightedMessageId === summaryId) highlightedMessageId = null;
+			}, 1500);
+		},
+	});
 
 	// The context-budget bar (readout + Compact) lives just above the composer.
 	// Show it once the conversation is actually doing something worth measuring —
 	// a known size or an existing summary — so a fresh chat stays clean. Hidden
 	// for non-chat kinds and during a fan-out comparison (where a single budget
 	// number isn't meaningful and compaction is blocked). `$derived.by` for the
-	// `fanout` forward-reference, as with `compactable`.
+	// `fanout` forward-reference, as with the controller's `compactable`.
 	const showBudgetBar = $derived.by(
 		() =>
 			modelKind !== 'image' &&
@@ -549,177 +551,6 @@
 			!fanout.comparing &&
 			(contextTokenCount > 0 || messages.some(isCompactionSummary)),
 	);
-
-	// Live summary text while a manual compaction streams. `compactionStreaming`
-	// gates the in-flight summary block; it settles back to false once the
-	// persisted collapsed divider lands (or on error/cancel).
-	let compactionStreaming = $state(false);
-	let compactionStreamText = $state('');
-
-	// Outcome of a compaction attempt, so the auto path can tell "freed up space /
-	// nothing to free" (proceed) from "the summarization failed" (ask the user
-	// before sending the full context). `error` carries the upstream message.
-	type CompactionOutcome =
-		{ status: 'compacted' } | { status: 'noop' } | { status: 'error'; error: string };
-
-	// `silent` (the auto path) suppresses ALL user-facing feedback — error toasts
-	// AND the success toast/scroll below. The user never asked for an auto
-	// compaction and we immediately proceed to the message they actually sent, so
-	// yanking the view up to the new summary would be disorienting; a manual
-	// click, by contrast, gets confirmation + a scroll to where the summary landed.
-	// The auto path handles failure itself (a confirm dialog in maybeAutoCompact)
-	// off the returned outcome instead.
-	async function compactConversation(opts: { silent?: boolean } = {}): Promise<CompactionOutcome> {
-		if (compacting || turn.busy || fanout.comparing) return { status: 'noop' };
-		compacting = true;
-		compactionStreaming = false;
-		compactionStreamText = '';
-		let errored: string | null = null;
-		let doneSummaryId: string | null = null;
-		try {
-			const res = await fetch(`/api/conversations/${data.conversation.id}/compact?stream=1`, {
-				method: 'POST',
-				headers: { Accept: 'text/event-stream' },
-			});
-			if (!res.ok || !res.body) {
-				// 409 = nothing worth compacting yet — not a failure on the auto path.
-				if (res.status === 409) {
-					if (!opts.silent) toast.error('Not enough conversation history to compact yet.');
-					return { status: 'noop' };
-				}
-				if (!opts.silent) toast.error("Couldn't compact this conversation.");
-				return { status: 'error', error: "Couldn't reach the model to compact." };
-			}
-			await consumeChatStream(res.body, {
-				onCompactionStart: () => {
-					compactionStreaming = true;
-				},
-				onCompactionText: (chunk) => {
-					compactionStreamText += chunk;
-				},
-				onCompactionDone: async (summaryMessage) => {
-					doneSummaryId = summaryMessage.id;
-					await invalidateAll();
-				},
-				onError: (msg) => {
-					errored = msg;
-				},
-			});
-			if (errored) {
-				if (!opts.silent) toast.error(errored);
-				return { status: 'error', error: errored };
-			}
-			if (doneSummaryId && !opts.silent) {
-				// Confirm the (manual) action: it succeeded even though the token
-				// number barely moves and the divider lands up-thread. Scroll to +
-				// briefly highlight the new summary so the result is visible. The
-				// Undo action covers an accidental tap — it's reversible while the
-				// summary is still the leaf.
-				toast.success('Conversation compacted', {
-					action: { label: 'Undo', handler: undoCompaction },
-				});
-				await tick();
-				const el = document.getElementById(`summary-${doneSummaryId}`);
-				if (el) {
-					el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
-					highlightedMessageId = doneSummaryId;
-					setTimeout(() => {
-						if (highlightedMessageId === doneSummaryId) highlightedMessageId = null;
-					}, 1500);
-				}
-			}
-			return doneSummaryId ? { status: 'compacted' } : { status: 'noop' };
-		} catch {
-			if (!opts.silent) toast.error("Couldn't compact this conversation.");
-			return { status: 'error', error: "Couldn't compact this conversation." };
-		} finally {
-			compacting = false;
-			compactionStreaming = false;
-			compactionStreamText = '';
-		}
-	}
-
-	// Undo the most recent compaction (the "Undo" toast action + the divider's
-	// restore control). Valid only while the summary is still the active leaf;
-	// the server 409s once a later turn has been sent. Reverts the leaf so the
-	// full history serializes again — the summary row stays in the tree.
-	async function undoCompaction() {
-		if (compacting || turn.busy || fanout.comparing) return;
-		let res: Response;
-		try {
-			res = await fetch(`/api/conversations/${data.conversation.id}/compact`, {
-				method: 'DELETE',
-			});
-		} catch {
-			toast.error("Couldn't undo the compaction.");
-			return;
-		}
-		if (!res.ok) {
-			// 409 = the summary is no longer the active leaf: either a later turn was
-			// sent, or a prior undo already landed (e.g. its refresh failed and this
-			// is a retry). Either way there's nothing to revert — stay neutral rather
-			// than asserting a message was sent.
-			toast.error(
-				res.status === 409
-					? 'Nothing to undo — the summary is no longer the latest message.'
-					: "Couldn't undo the compaction.",
-			);
-			return;
-		}
-		// The server commits the revert before replying, so by here the undo has
-		// durably succeeded. Report success independently of the view refresh: if
-		// invalidateAll fails (a transient load re-fetch error), the undo still
-		// happened — ask for a reload instead of falsely claiming it failed.
-		try {
-			await invalidateAll();
-			toast.success('Compaction undone');
-		} catch {
-			toast.info('Compaction undone — reload to refresh the view.');
-		}
-	}
-
-	// The active-leaf compaction summary, if any — i.e. a summary with nothing
-	// sent after it, so it can still be undone. Drives the divider's restore
-	// control (`canUndo`). Null once a later turn advances the leaf past it.
-	const activeLeafSummaryId = $derived.by(() => {
-		const leaf = messages[messages.length - 1];
-		return leaf && isCompactionSummary(leaf) ? leaf.id : null;
-	});
-
-	// Just-in-time auto-compaction, run on the client right before a plain send:
-	// if the conversation has crossed the user's threshold of the model's window,
-	// compact first (streaming the summary for live feedback) so the next message
-	// continues with reclaimed space. Triggering here (vs. server-side mid-send) is
-	// what lets the summary stream instead of the send hanging on a spinner.
-	//
-	// Returns whether the caller should go ahead with the send. A success or a
-	// no-op (nothing worth compacting) → true. A *failure*, though, isn't silently
-	// swallowed: sending the full un-compacted context can push the conversation
-	// past the window, so we ask the user whether to send anyway or hold off and
-	// deal with it (e.g. retry, or compact manually) — false means they backed out.
-	async function maybeAutoCompact(): Promise<boolean> {
-		if (!data.prefs?.autoCompactionEnabled || compacting || turn.busy || fanout.comparing)
-			return true;
-		if (
-			!shouldAutoCompact({
-				branch: messages,
-				enabled: true,
-				contextWindow: modelContextWindow,
-				threshold: data.prefs.autoCompactionThreshold ?? 80,
-			})
-		) {
-			return true;
-		}
-		const result = await compactConversation({ silent: true });
-		if (result.status !== 'error') return true;
-		return confirmDialog.ask({
-			title: 'Context could not be compacted',
-			message:
-				`Automatic compaction failed: ${result.error} Send your message anyway with the ` +
-				'full conversation? That may exceed the model’s context limit.',
-			confirmLabel: 'Send anyway',
-		});
-	}
 
 	// Per-user-message "tokens we sent up to and including this turn":
 	// the prompt_tokens of the next assistant message whose backend
@@ -1386,7 +1217,7 @@
 		const { text, activatedSkillNames } = skillsActive
 			? stripSkillCommand(composerText.trim(), data.enabledSkills)
 			: { text: composerText.trim(), activatedSkillNames: [] as string[] };
-		if ((!text && attachments.items.length === 0) || generating || compacting) return;
+		if ((!text && attachments.items.length === 0) || generating || compaction.compacting) return;
 		if (attachments.isBusy) return;
 		// Offline: block the send before anything is cleared. The button is
 		// already disabled, but Enter can still reach here — bail so the typed
@@ -1434,7 +1265,7 @@
 		// cleared so that if compaction fails and the user backs out, their typed
 		// message + attachments are still intact rather than discarded.
 		if (!editParent && !willFanOut) {
-			const proceed = await maybeAutoCompact();
+			const proceed = await compaction.maybeAutoCompact();
 			if (!proceed) return;
 		}
 
@@ -1864,8 +1695,10 @@
 						>
 							<CompactionSummary
 								message={m}
-								canUndo={m.id === activeLeafSummaryId && !turn.busy && !compacting}
-								onUndo={undoCompaction}
+								canUndo={m.id === compaction.activeLeafSummaryId &&
+									!turn.busy &&
+									!compaction.compacting}
+								onUndo={() => compaction.undo()}
 							/>
 						</div>
 					{:else}
@@ -1974,8 +1807,8 @@
 					{/if}
 				{/each}
 
-				{#if compactionStreaming}
-					<CompactionSummaryStreaming text={compactionStreamText} />
+				{#if compaction.streaming}
+					<CompactionSummaryStreaming text={compaction.streamText} />
 				{/if}
 
 				{#if showInFlight}
@@ -2078,9 +1911,9 @@
 						<ContextBudgetBar
 							{contextTokenCount}
 							contextWindow={modelContextWindow}
-							onCompact={compactConversation}
-							canCompact={compactable}
-							{compacting}
+							onCompact={() => compaction.compact()}
+							canCompact={compaction.compactable}
+							compacting={compaction.compacting}
 							conversationId={convId}
 							revision={messages.length}
 						/>
