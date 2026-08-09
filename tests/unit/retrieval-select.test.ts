@@ -1,8 +1,9 @@
+import type { embeddings } from '$lib/server/endpoints/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // select.ts reaches the embeddings + rerank clients in this graph; fully mock
 // both so the dense and rerank legs are hermetic.
-const embeddingsMock = vi.hoisted(() => vi.fn());
+const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 const rerankMock = vi.hoisted(() => vi.fn());
 vi.mock('$lib/server/endpoints/client', () => ({
 	embeddings: embeddingsMock,

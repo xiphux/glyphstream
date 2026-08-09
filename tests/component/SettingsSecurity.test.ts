@@ -14,7 +14,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 
-const invalidateMock = vi.fn();
+const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => invalidateMock(key),
 	goto: vi.fn(),
@@ -34,7 +34,7 @@ import SecurityPage from '../../src/routes/(app)/settings/security/+page.svelte'
 import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 import { confirmDialog } from '$lib/confirm.svelte';
 
-const fetchMock = vi.fn();
+const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>();
 
 // Default baseData has the operator already linked to GitHub. This is
 // the post-/setup-via-GitHub shape — passkey-delete + provider-unlink

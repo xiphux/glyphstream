@@ -1,8 +1,9 @@
+import type { embeddings } from '$lib/server/endpoints/client';
 import { describe, expect, it, vi } from 'vitest';
 
 // embed-rank.ts reaches the backend only through the embeddings client; mock it
 // so we can observe batching without real I/O.
-const embeddingsMock = vi.hoisted(() => vi.fn());
+const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 
 import {

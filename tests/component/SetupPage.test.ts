@@ -17,7 +17,7 @@ vi.mock('@simplewebauthn/browser', () => ({
 
 import SetupPage from '../../src/routes/(auth)/setup/+page.svelte';
 
-const fetchMock = vi.fn();
+const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>();
 
 beforeEach(() => {
 	fetchMock.mockReset();

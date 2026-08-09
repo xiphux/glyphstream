@@ -16,7 +16,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { Memory, DeletedMemory } from '$lib/types/api';
 
-const invalidateMock = vi.fn();
+const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => invalidateMock(key),
 	goto: vi.fn(),
@@ -30,7 +30,7 @@ import MemoriesPage from '../../src/routes/(app)/settings/memories/+page.svelte'
 import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 import { confirmDialog } from '$lib/confirm.svelte';
 
-const fetchMock = vi.fn();
+const fetchMock = vi.fn<(url: string | URL | Request, init?: RequestInit) => Promise<Response>>();
 
 beforeEach(() => {
 	invalidateMock.mockReset();

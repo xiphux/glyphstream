@@ -1,3 +1,4 @@
+import type { chatCompletionSync } from '$lib/server/endpoints/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Control the upstream call without touching the network. The fake error class
@@ -5,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // runs.
 const { syncMock, FakeUpstreamError } = vi.hoisted(() => {
 	class FakeUpstreamError extends Error {}
-	return { syncMock: vi.fn(), FakeUpstreamError };
+	return { syncMock: vi.fn<typeof chatCompletionSync>(), FakeUpstreamError };
 });
 vi.mock('$lib/server/endpoints/client', () => ({
 	chatCompletionSync: syncMock,

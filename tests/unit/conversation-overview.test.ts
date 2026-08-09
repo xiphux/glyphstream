@@ -1,8 +1,9 @@
+import type { callMemoryModel } from '$lib/server/memory/summarize-util';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock only the model call; keep approxTokens/chunkStrings real so the budgeting
 // (one-shot vs iterative fold) is exercised for real.
-const callMock = vi.hoisted(() => vi.fn());
+const callMock = vi.hoisted(() => vi.fn<typeof callMemoryModel>());
 vi.mock('$lib/server/memory/summarize-util', async (orig) => ({
 	...(await orig<typeof import('$lib/server/memory/summarize-util')>()),
 	callMemoryModel: callMock,

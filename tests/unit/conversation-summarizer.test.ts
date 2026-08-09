@@ -1,6 +1,7 @@
+import type { chatCompletionSync } from '$lib/server/endpoints/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const chatMock = vi.hoisted(() => vi.fn());
+const chatMock = vi.hoisted(() => vi.fn<typeof chatCompletionSync>());
 // Mock only the network call; keep the REAL UpstreamError + parseContextOverflow so
 // the overflow-retry path here exercises the actual classifier it branches on.
 vi.mock('$lib/server/endpoints/client', async (importOriginal) => {
