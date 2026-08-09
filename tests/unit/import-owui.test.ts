@@ -307,46 +307,61 @@ describe('importOwuiExport', () => {
  * locally to validate the parser handles the actual export shape, not
  * just our synthetic fixtures. Files are intentionally not committed —
  * they contain personal chat history.
+ *
+ * These get a raised timeout because they're the only tests in the suite
+ * whose input size is a real user's history rather than a fixture we
+ * control: a multi-megabyte `chat-export.json` imports hundreds of
+ * conversations, each rendering markdown through shiki, and legitimately
+ * runs several seconds. Under a loaded parallel run that drifted past
+ * vitest's 5s default and failed intermittently — a slow test, not a hung
+ * one. It only ever reproduced locally, since CI skips the whole block.
+ * Keep the bound finite so a genuine hang still fails rather than stalling
+ * the run.
  */
 const REAL_EXPORTS = ['text-chat.json', 'image-chat.json', 'chat-export.json'];
 const haveRealExports = REAL_EXPORTS.every((f) => existsSync(f));
+const REAL_EXPORT_TIMEOUT_MS = 60_000;
 
-describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
-	it('imports text-chat.json without errors', async () => {
-		const u = seedUser();
-		const json = JSON.parse(readFileSync('text-chat.json', 'utf8')) as unknown;
-		const result = await importOwuiExport(json, u.id, mocks.testDb);
-		expect(result.errors).toEqual([]);
-		expect(result.imported).toBe(1);
-	});
+describe.skipIf(!haveRealExports)(
+	'against real OWUI export fixtures',
+	{ timeout: REAL_EXPORT_TIMEOUT_MS },
+	() => {
+		it('imports text-chat.json without errors', async () => {
+			const u = seedUser();
+			const json = JSON.parse(readFileSync('text-chat.json', 'utf8')) as unknown;
+			const result = await importOwuiExport(json, u.id, mocks.testDb);
+			expect(result.errors).toEqual([]);
+			expect(result.imported).toBe(1);
+		});
 
-	it('imports image-chat.json — image kind detected, file URLs stripped', async () => {
-		const u = seedUser();
-		const json = JSON.parse(readFileSync('image-chat.json', 'utf8')) as unknown;
-		const result = await importOwuiExport(json, u.id, mocks.testDb);
-		expect(result.errors).toEqual([]);
-		expect(result.imported).toBe(1);
-		const conv = listConversations(u.id)[0];
-		const detail = getConversationDetail(conv.id, u.id);
-		expect(detail?.modelKind).toBe('image');
-		const assistant = detail?.messages.find((m) => m.role === 'assistant');
-		const text = (assistant?.parts[0] as { type: 'text'; text: string }).text;
-		expect(text).toContain('image unavailable');
-		expect(text).not.toContain('/api/v1/files/');
-	});
+		it('imports image-chat.json — image kind detected, file URLs stripped', async () => {
+			const u = seedUser();
+			const json = JSON.parse(readFileSync('image-chat.json', 'utf8')) as unknown;
+			const result = await importOwuiExport(json, u.id, mocks.testDb);
+			expect(result.errors).toEqual([]);
+			expect(result.imported).toBe(1);
+			const conv = listConversations(u.id)[0];
+			const detail = getConversationDetail(conv.id, u.id);
+			expect(detail?.modelKind).toBe('image');
+			const assistant = detail?.messages.find((m) => m.role === 'assistant');
+			const text = (assistant?.parts[0] as { type: 'text'; text: string }).text;
+			expect(text).toContain('image unavailable');
+			expect(text).not.toContain('/api/v1/files/');
+		});
 
-	it('imports chat-export.json full export with no errors', async () => {
-		const u = seedUser();
-		const json = JSON.parse(readFileSync('chat-export.json', 'utf8')) as unknown;
-		const result = await importOwuiExport(json, u.id, mocks.testDb);
-		expect(result.errors).toEqual([]);
-		// Just sanity: should import some non-trivial number.
-		expect(result.imported).toBeGreaterThan(0);
-		console.log(
-			`[real-export] imported=${result.imported}, archived=${result.archived}, skipped=${result.skipped.length}`,
-		);
-	});
-});
+		it('imports chat-export.json full export with no errors', async () => {
+			const u = seedUser();
+			const json = JSON.parse(readFileSync('chat-export.json', 'utf8')) as unknown;
+			const result = await importOwuiExport(json, u.id, mocks.testDb);
+			expect(result.errors).toEqual([]);
+			// Just sanity: should import some non-trivial number.
+			expect(result.imported).toBeGreaterThan(0);
+			console.log(
+				`[real-export] imported=${result.imported}, archived=${result.archived}, skipped=${result.skipped.length}`,
+			);
+		});
+	},
+);
 
 describe('extractReasoning', () => {
 	it('returns null reasoning when no <details> block is present', () => {
