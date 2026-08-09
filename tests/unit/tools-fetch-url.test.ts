@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { FetchResult } from '$lib/server/tools/fetch-url';
 
 // Mock node:dns BEFORE importing the tool so the module picks up the mock.
 const lookupMock = vi.hoisted(() => vi.fn());
@@ -62,6 +63,14 @@ afterEach(() => {
 	globalThis.fetch = realFetch;
 });
 
+/**
+ * The tool serialises either a FetchResult or an { error } payload, so the
+ * fields are optional here. Typed rather than left as `any` so a renamed or
+ * dropped field turns the `toBeUndefined()` assertions below into a type
+ * error instead of a silently-passing one.
+ */
+type FetchPayload = FetchResult & { error?: string };
+const payload = (content: string) => JSON.parse(content) as FetchPayload;
 describe('fetch_url tool definition', () => {
 	it('exposes the expected OpenAI function schema', () => {
 		expect(fetchUrlTool.definition.function.name).toBe('fetch_url');
@@ -82,7 +91,7 @@ describe('fetch_url argument validation', () => {
 	it('returns isError when url is missing', async () => {
 		const r = await fetchUrlTool.execute({}, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/url/i);
+		expect(payload(r.content).error).toMatch(/url/i);
 	});
 
 	it('returns isError for non-string url', async () => {
@@ -98,7 +107,7 @@ describe('fetch_url argument validation', () => {
 	it('returns isError for malformed url', async () => {
 		const r = await fetchUrlTool.execute({ url: 'not a url' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/valid URL/i);
+		expect(payload(r.content).error).toMatch(/valid URL/i);
 	});
 });
 
@@ -106,7 +115,7 @@ describe('fetch_url scheme guards', () => {
 	it('refuses file://', async () => {
 		const r = await fetchUrlTool.execute({ url: 'file:///etc/passwd' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/scheme/i);
+		expect(payload(r.content).error).toMatch(/scheme/i);
 	});
 
 	it('refuses data:', async () => {
@@ -125,7 +134,7 @@ describe('fetch_url SSRF guard', () => {
 		privateResolves();
 		const r = await fetchUrlTool.execute({ url: 'http://intranet.example/' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/192\.168\.1\.10/);
+		expect(payload(r.content).error).toMatch(/192\.168\.1\.10/);
 	});
 
 	it('refuses 169.254.169.254 (AWS metadata)', async () => {
@@ -154,7 +163,7 @@ describe('fetch_url SSRF guard', () => {
 		}) as unknown as typeof fetch;
 		const r = await fetchUrlTool.execute({ url: 'http://public.example/' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/10\.0\.0\.1/);
+		expect(payload(r.content).error).toMatch(/10\.0\.0\.1/);
 	});
 });
 
@@ -177,7 +186,7 @@ describe('fetch_url HTML extraction', () => {
 
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.status).toBe(200);
 		expect(parsed.content_type).toMatch(/text\/html/);
 		expect(parsed.content).toContain('Hello & World');
@@ -199,7 +208,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/foo.txt' }, ctx());
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).content).toBe('just some plain text\nwith two lines');
+		expect(payload(r.content).content).toBe('just some plain text\nwith two lines');
 	});
 
 	it('passes application/json through as-is', async () => {
@@ -213,7 +222,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://api.example/' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const content = JSON.parse(r.content).content;
+		const content = payload(r.content).content;
 		expect(content).toBe('{"a":1,"b":[2,3]}');
 	});
 
@@ -228,7 +237,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/x.png' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/image\/png/);
+		expect(payload(r.content).error).toMatch(/image\/png/);
 	});
 
 	it('caps the response body at 2 MB', async () => {
@@ -240,7 +249,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/exceeded/i);
+		expect(payload(r.content).error).toMatch(/exceeded/i);
 	});
 
 	it('uses Readability to extract article text + title, dropping site chrome', async () => {
@@ -281,7 +290,7 @@ describe('fetch_url HTML extraction', () => {
 
 		const r = await fetchUrlTool.execute({ url: 'http://blog.example/best-bread' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.content).toContain('Best Bread of 2026');
 		expect(parsed.content).toContain('Sourdough has continued');
 		expect(parsed.content).toContain('Copenhagen');
@@ -305,7 +314,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.content).toContain('Hello & World');
 		expect(parsed.content).toContain('Short page.');
 	});
@@ -318,7 +327,7 @@ describe('fetch_url HTML extraction', () => {
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.content.length).toBe(20_000);
 		expect(parsed.mode).toBe('truncated');
 	});
@@ -330,7 +339,7 @@ describe('fetch_url HTML extraction', () => {
 				new Response('a short page', { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.mode).toBe('full');
 		expect(parsed.content).toBe('a short page');
 	});
@@ -349,7 +358,7 @@ describe('fetch_url HTML extraction', () => {
 		});
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/redirect/i);
+		expect(payload(r.content).error).toMatch(/redirect/i);
 	});
 
 	it('returns the final URL after redirect chase', async () => {
@@ -369,7 +378,7 @@ describe('fetch_url HTML extraction', () => {
 		}) as unknown as typeof fetch;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/start' }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.url).toBe('http://example.com/end');
 		expect(parsed.content).toBe('done');
 	});
@@ -395,7 +404,7 @@ describe('fetch_url relevance selection (find)', () => {
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.mode).toBe('truncated');
 		expect(parsed.content).not.toContain('quokka');
 	});
@@ -407,7 +416,7 @@ describe('fetch_url relevance selection (find)', () => {
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(r.isError).toBeUndefined();
 		expect(parsed.mode).toBe('relevance');
 		expect(parsed.content.length).toBeLessThanOrEqual(20_000);
@@ -438,7 +447,7 @@ describe('fetch_url relevance selection (find)', () => {
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.mode).toBe('relevance');
 		expect(parsed.content).toContain('quokka');
 		// Embedding may be split across several batched requests; the query goes
@@ -464,7 +473,7 @@ describe('fetch_url relevance selection (find)', () => {
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(r.isError).toBeUndefined();
 		expect(parsed.mode).toBe('relevance');
 		expect(parsed.content).toContain('quokka');
@@ -495,19 +504,19 @@ describe('fetch_url relevance selection (find)', () => {
 				}),
 		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.mode).toBe('relevance');
 
-		expect(Array.isArray(parsed.outline)).toBe(true);
-		expect(Array.isArray(parsed.sections)).toBe(true);
+		const { outline, sections } = parsed;
+		if (!outline || !sections) throw new Error('expected outline + sections on the relevance path');
 		// The full outline lists more sections than were returned (selection is partial).
-		expect(parsed.outline.length).toBeGreaterThan(parsed.sections.length);
+		expect(outline.length).toBeGreaterThan(sections.length);
 		// Every returned section appears in the outline (outline ⊇ sections).
-		for (const s of parsed.sections) expect(parsed.outline).toContain(s);
+		for (const s of sections) expect(outline).toContain(s);
 		// Breadcrumbs carry the page title › heading path, and the Quokkas section
 		// (the needle) is both present in the doc and among what was returned.
-		expect(parsed.outline.some((b: string) => b.includes('Field Notes › Quokkas'))).toBe(true);
-		expect(parsed.sections.some((b: string) => b.includes('Quokkas'))).toBe(true);
+		expect(outline.some((b: string) => b.includes('Field Notes › Quokkas'))).toBe(true);
+		expect(sections.some((b: string) => b.includes('Quokkas'))).toBe(true);
 	});
 
 	it('omits sections/outline on the full and truncated paths', async () => {
@@ -520,7 +529,7 @@ describe('fetch_url relevance selection (find)', () => {
 					headers: { 'content-type': 'text/plain' },
 				}),
 		);
-		const full = JSON.parse(
+		const full = payload(
 			(await fetchUrlTool.execute({ url: 'http://example.com/s' }, ctx())).content,
 		);
 		expect(full.mode).toBe('full');
@@ -532,7 +541,7 @@ describe('fetch_url relevance selection (find)', () => {
 			async () =>
 				new Response(cliffDoc(), { status: 200, headers: { 'content-type': 'text/plain' } }),
 		);
-		const trunc = JSON.parse(
+		const trunc = payload(
 			(await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx())).content,
 		);
 		expect(trunc.mode).toBe('truncated');

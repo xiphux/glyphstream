@@ -39,6 +39,16 @@ afterEach(() => {
 	closeTestDb();
 });
 
+/** What the memory tools serialise into `content`. */
+type MemoryPayload = {
+	id?: string;
+	saved?: boolean;
+	updated?: boolean;
+	forgotten?: boolean;
+	error?: string;
+};
+const payload = (content: string) => JSON.parse(content) as MemoryPayload;
+
 describe('memory tool definitions + metadata', () => {
 	it('all three carry category: personalization', () => {
 		// Same toggle that gates the persona prompt also seals memory access.
@@ -77,7 +87,7 @@ describe('save_memory.execute', () => {
 		const u = seedUser();
 		const r = run(saveMemoryTool, { content: 'prefers metric units', topic: 'Units' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.saved).toBe(true);
 		expect(typeof parsed.id).toBe('string');
 		const list = listMemoriesForUser(u.id);
@@ -120,7 +130,7 @@ describe('save_memory.execute', () => {
 		const tooLong = 'x'.repeat(MEMORY_MAX_CONTENT_CHARS + 1);
 		const r = run(saveMemoryTool, { content: tooLong, topic: 'T' }, ctx(u.id));
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/exceeds/);
+		expect(payload(r.content).error).toMatch(/exceeds/);
 	});
 
 	it('accepts a richer multi-sentence body within the cap', () => {
@@ -152,12 +162,12 @@ describe('save_memory.execute', () => {
 describe('update_memory.execute', () => {
 	it('replaces content for a valid id', () => {
 		const u = seedUser();
-		const saved = JSON.parse(
+		const saved = payload(
 			run(saveMemoryTool, { content: 'original', topic: 'T' }, ctx(u.id)).content,
 		);
 		const r = run(updateMemoryTool, { id: saved.id, content: 'revised', topic: 'T2' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content)).toMatchObject({ id: saved.id, updated: true });
+		expect(payload(r.content)).toMatchObject({ id: saved.id, updated: true });
 		expect(listMemoriesForUser(u.id)[0].content).toBe('revised');
 	});
 
@@ -165,13 +175,13 @@ describe('update_memory.execute', () => {
 		const u = seedUser();
 		const r = run(updateMemoryTool, { id: 'nope', content: 'x', topic: 'T' }, ctx(u.id));
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/No memory with id/);
+		expect(payload(r.content).error).toMatch(/No memory with id/);
 	});
 
 	it('returns isError when the id belongs to another user', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
-		const saved = JSON.parse(
+		const saved = payload(
 			run(saveMemoryTool, { content: 'u1 fact', topic: 'T' }, ctx(u1.id)).content,
 		);
 		// u2 tries to update u1's memory — must surface as a tool error
@@ -223,12 +233,10 @@ describe('personalization category gate', () => {
 describe('forget_memory.execute', () => {
 	it('removes the row for a valid id', () => {
 		const u = seedUser();
-		const saved = JSON.parse(
-			run(saveMemoryTool, { content: 'fact', topic: 'T' }, ctx(u.id)).content,
-		);
+		const saved = payload(run(saveMemoryTool, { content: 'fact', topic: 'T' }, ctx(u.id)).content);
 		const r = run(forgetMemoryTool, { id: saved.id }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content)).toMatchObject({ id: saved.id, forgotten: true });
+		expect(payload(r.content)).toMatchObject({ id: saved.id, forgotten: true });
 		expect(listMemoriesForUser(u.id)).toEqual([]);
 	});
 
@@ -241,7 +249,7 @@ describe('forget_memory.execute', () => {
 	it('returns isError when the id belongs to another user', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
-		const saved = JSON.parse(
+		const saved = payload(
 			run(saveMemoryTool, { content: 'u1 fact', topic: 'T' }, ctx(u1.id)).content,
 		);
 		const r = run(forgetMemoryTool, { id: saved.id }, ctx(u2.id));

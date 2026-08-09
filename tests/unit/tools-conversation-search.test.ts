@@ -68,6 +68,22 @@ afterEach(() => {
 	closeTestDb();
 });
 
+/**
+ * What the tool serialises into `content`. Typed rather than left as `any` so
+ * a renamed field fails these assertions loudly — several are `toEqual([])`,
+ * which passes silently against `undefined`.
+ */
+type SearchPayload = {
+	query: string;
+	results: Array<{
+		conversationId: string;
+		title: string;
+		summary: string | null;
+		text: string | null;
+	}>;
+};
+const payload = (content: string) => JSON.parse(content) as SearchPayload;
+
 describe('timeRangeToCutoff', () => {
 	it('maps each window to now minus its duration', () => {
 		const now = 1_000_000_000_000;
@@ -107,7 +123,7 @@ describe('search_conversations.execute', () => {
 
 		const r = run(searchConversationsTool, { query: 'blue-green deploys' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
-		const { results } = JSON.parse(r.content);
+		const { results } = payload(r.content);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Deploy planning');
 		expect(results[0].text).toContain('blue-green');
@@ -119,9 +135,9 @@ describe('search_conversations.execute', () => {
 		seedConv(u.id, 'Older thread', 'we also discussed widgets last month');
 
 		const r = run(searchConversationsTool, { query: 'widgets' }, ctx(u.id, currentId));
-		const { results } = JSON.parse(r.content);
+		const { results } = payload(r.content);
 		// Only the older thread — the current one is filtered even though it matches.
-		const ids = results.map((x: { conversationId: string }) => x.conversationId);
+		const ids = results.map((x) => x.conversationId);
 		expect(ids).not.toContain(currentId);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Older thread');
@@ -132,10 +148,9 @@ describe('search_conversations.execute', () => {
 		const c = seedConv(u.id, 'Deploy planning', 'We shipped the API.');
 		setConversationSummary(c, 'Planned and shipped the API deploy.', Date.now());
 		const r = run(searchConversationsTool, { query: 'API' }, ctx(u.id));
-		const { results } = JSON.parse(r.content);
-		expect(results.find((x: { conversationId: string }) => x.conversationId === c).summary).toBe(
-			'Planned and shipped the API deploy.',
-		);
+		const { results } = payload(r.content);
+		const hit = results.find((x) => x.conversationId === c);
+		expect(hit?.summary).toBe('Planned and shipped the API deploy.');
 	});
 
 	it('respects the time_range recency filter', () => {
@@ -146,7 +161,7 @@ describe('search_conversations.execute', () => {
 		backdate(old, Date.now() - 10 * 24 * 60 * 60 * 1000);
 
 		const r = run(searchConversationsTool, { query: 'kubernetes', time_range: 'week' }, ctx(u.id));
-		const { results } = JSON.parse(r.content);
+		const { results } = payload(r.content);
 		expect(results).toHaveLength(1);
 		expect(results[0].title).toBe('Recent');
 	});
@@ -158,7 +173,7 @@ describe('search_conversations.execute', () => {
 		const normal = seedConv(u.id, 'Trip notes', 'we ate pineapple in Hawaii');
 
 		const r = run(searchConversationsTool, { query: 'pineapple' }, ctx(u.id));
-		const { results } = JSON.parse(r.content);
+		const { results } = payload(r.content);
 		// Only the normal conversation — the private one is sealed even though it
 		// matches and belongs to the same user (the tool passes excludePrivate).
 		expect(results).toHaveLength(1);
@@ -171,7 +186,7 @@ describe('search_conversations.execute', () => {
 		seedConv(u2.id, 'u2 private', 'u2 secret pineapple plans');
 
 		const r = run(searchConversationsTool, { query: 'pineapple' }, ctx(u1.id));
-		expect(JSON.parse(r.content).results).toEqual([]);
+		expect(payload(r.content).results).toEqual([]);
 	});
 
 	it('returns results:[] (not an error) for an empty query', () => {
@@ -179,7 +194,7 @@ describe('search_conversations.execute', () => {
 		seedConv(u.id, 'Something', 'anything at all');
 		const r = run(searchConversationsTool, { query: '   ' }, ctx(u.id));
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).results).toEqual([]);
+		expect(payload(r.content).results).toEqual([]);
 	});
 
 	it('errors on a missing / non-string query', () => {

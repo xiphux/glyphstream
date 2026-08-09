@@ -104,7 +104,7 @@ function errorResult(message: string): ToolExecution {
 	return { content: JSON.stringify({ error: message }), isError: true };
 }
 
-interface FetchResult {
+export interface FetchResult {
 	url: string;
 	status: number;
 	content_type: string;

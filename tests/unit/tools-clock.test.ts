@@ -34,6 +34,10 @@ function run(t: Tool, args: unknown): ToolExecution {
 	return r;
 }
 
+/** What the tool serialises into `content`. */
+type ClockPayload = { timezone?: string; iso?: string; human?: string; error?: string };
+const payload = (content: string) => JSON.parse(content) as ClockPayload;
+
 describe('get_current_time', () => {
 	it('has the expected OpenAI tool definition', () => {
 		expect(clockTool.definition.function.name).toBe('get_current_time');
@@ -51,7 +55,7 @@ describe('get_current_time', () => {
 		mocks.timezone = 'America/Chicago';
 		const r = run(clockTool, {});
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.timezone).toBe('America/Chicago');
 		expect(typeof parsed.iso).toBe('string');
 		expect(parsed.iso).toMatch(/Z$/);
@@ -60,7 +64,7 @@ describe('get_current_time', () => {
 
 	it('falls back to the server zone when the user has no stored timezone', () => {
 		mocks.timezone = null;
-		expect(JSON.parse(run(clockTool, {}).content).timezone).toBe(SERVER_TZ);
+		expect(payload(run(clockTool, {}).content).timezone).toBe(SERVER_TZ);
 	});
 
 	it('falls back rather than throwing when the stored timezone is unresolvable', () => {
@@ -69,7 +73,7 @@ describe('get_current_time', () => {
 		mocks.timezone = 'Mars/Olympus_Mons';
 		const r = run(clockTool, {});
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).timezone).toBe(SERVER_TZ);
+		expect(payload(r.content).timezone).toBe(SERVER_TZ);
 	});
 
 	it("defaults to the user's timezone when args is null or wrong type", () => {
@@ -77,14 +81,14 @@ describe('get_current_time', () => {
 		for (const args of [null, undefined, 'nope', 42]) {
 			const r = run(clockTool, args);
 			expect(r.isError).toBeUndefined();
-			expect(JSON.parse(r.content).timezone).toBe('Asia/Tokyo');
+			expect(payload(r.content).timezone).toBe('Asia/Tokyo');
 		}
 	});
 
 	it('formats time in a valid IANA timezone', () => {
 		const r = run(clockTool, { timezone: 'America/New_York' });
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.timezone).toBe('America/New_York');
 		expect(parsed.human).toMatch(/E[SD]T|Eastern/);
 	});
@@ -92,14 +96,14 @@ describe('get_current_time', () => {
 	it('returns isError for an invalid IANA timezone', () => {
 		const r = run(clockTool, { timezone: 'Fake/Nowhere' });
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/Unknown IANA timezone/);
-		expect(JSON.parse(r.content).error).toContain('Fake/Nowhere');
+		expect(payload(r.content).error).toMatch(/Unknown IANA timezone/);
+		expect(payload(r.content).error).toContain('Fake/Nowhere');
 	});
 
 	it("falls back to the user's timezone for an empty-string timezone arg", () => {
 		mocks.timezone = 'Europe/London';
 		const r = run(clockTool, { timezone: '' });
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).timezone).toBe('Europe/London');
+		expect(payload(r.content).timezone).toBe('Europe/London');
 	});
 });

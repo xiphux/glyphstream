@@ -29,6 +29,17 @@ afterEach(() => {
 	globalThis.fetch = realFetch;
 });
 
+/** What the tool serialises into `content`. */
+type WebSearchPayload = {
+	query?: string;
+	results?: Array<{ title: string; url: string; content?: string }>;
+	answers?: unknown[];
+	infoboxes?: unknown[];
+	corrections?: unknown[];
+	error?: string;
+};
+const payload = (content: string) => JSON.parse(content) as WebSearchPayload;
+
 describe('web_search tool definition', () => {
 	it('has the expected OpenAI function schema', () => {
 		expect(webSearchTool.definition.function.name).toBe('web_search');
@@ -90,7 +101,7 @@ describe('web_search args validation', () => {
 	it('rejects missing query', async () => {
 		const r = await webSearchTool.execute({}, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/query/i);
+		expect(payload(r.content).error).toMatch(/query/i);
 	});
 
 	it('rejects non-string query', async () => {
@@ -113,7 +124,7 @@ describe('web_search args validation', () => {
 		_resetConfigCacheForTests();
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/not configured/i);
+		expect(payload(r.content).error).toMatch(/not configured/i);
 	});
 });
 
@@ -147,7 +158,7 @@ describe('web_search execute - successful path', () => {
 
 		const r = await webSearchTool.execute({ query: 'how to bake bread', max_results: 2 }, ctx());
 		expect(r.isError).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = payload(r.content);
 		expect(parsed.query).toBe('how to bake bread');
 		expect(parsed.results).toEqual([
 			{ title: 'Result A', url: 'https://a.example/', snippet: 'snippet a' },
@@ -178,7 +189,7 @@ describe('web_search execute - successful path', () => {
 				}),
 		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
-		expect(JSON.parse(r.content).results).toHaveLength(5);
+		expect(payload(r.content).results).toHaveLength(5);
 	});
 
 	it('clamps max_results above 10 to 10', async () => {
@@ -195,7 +206,7 @@ describe('web_search execute - successful path', () => {
 				}),
 		);
 		const r = await webSearchTool.execute({ query: 'x', max_results: 99 }, ctx());
-		expect(JSON.parse(r.content).results).toHaveLength(10);
+		expect(payload(r.content).results).toHaveLength(10);
 	});
 
 	it('clamps max_results below 1 to 1', async () => {
@@ -207,7 +218,7 @@ describe('web_search execute - successful path', () => {
 				),
 		);
 		const r = await webSearchTool.execute({ query: 'x', max_results: -3 }, ctx());
-		expect(JSON.parse(r.content).results).toHaveLength(1);
+		expect(payload(r.content).results).toHaveLength(1);
 	});
 
 	it('tolerates missing fields in SearxNG result rows', async () => {
@@ -225,7 +236,7 @@ describe('web_search execute - successful path', () => {
 		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).results).toEqual([
+		expect(payload(r.content).results).toEqual([
 			{ title: '', url: 'https://only-url/', snippet: '' },
 			{ title: 't', url: '', snippet: 'c' },
 		]);
@@ -241,7 +252,7 @@ describe('web_search execute - successful path', () => {
 		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBeUndefined();
-		expect(JSON.parse(r.content).results).toEqual([]);
+		expect(payload(r.content).results).toEqual([]);
 	});
 });
 
@@ -274,7 +285,7 @@ describe('web_search execute - auth + errors', () => {
 		globalThis.fetch = vi.fn(async () => new Response('', { status: 500 }));
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/500/);
+		expect(payload(r.content).error).toMatch(/500/);
 	});
 
 	it('returns isError when response is not JSON', async () => {
@@ -292,7 +303,7 @@ describe('web_search execute - auth + errors', () => {
 		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/not valid JSON/);
+		expect(payload(r.content).error).toMatch(/not valid JSON/);
 	});
 
 	it('returns isError on fetch failure (network)', async () => {
@@ -306,7 +317,7 @@ describe('web_search execute - auth + errors', () => {
 		});
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/ECONNREFUSED/);
+		expect(payload(r.content).error).toMatch(/ECONNREFUSED/);
 	});
 
 	it('returns isError when caller signal is already aborted', async () => {
@@ -393,7 +404,7 @@ describe('web_search execute — freshness/category controls (B)', () => {
 		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] }));
 		const r = await webSearchTool.execute({ query: 'x', time_range: 'fortnight' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/time_range/);
+		expect(payload(r.content).error).toMatch(/time_range/);
 	});
 
 	it('treats a blank categories/language as absent (no param set)', async () => {
@@ -412,7 +423,7 @@ describe('web_search execute — freshness/category controls (B)', () => {
 		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] }));
 		const r = await webSearchTool.execute({ query: 'x', categories: 42 }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toMatch(/categories/);
+		expect(payload(r.content).error).toMatch(/categories/);
 	});
 });
 
@@ -446,7 +457,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 				corrections: ['quokka', '  ', 42],
 			}),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'quoka' }, ctx())).content);
+		const parsed = payload((await webSearchTool.execute({ query: 'quoka' }, ctx())).content);
 		expect(parsed.answers).toEqual([
 			{ answer: '42', url: 'https://ans/' },
 			{ answer: 'plain string answer' },
@@ -461,7 +472,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 		globalThis.fetch = vi.fn(async () =>
 			jsonResponse({ results: [{ title: 't', url: 'https://e/', content: 'c' }] }),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		const parsed = payload((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed).not.toHaveProperty('answers');
 		expect(parsed).not.toHaveProperty('infoboxes');
 		expect(parsed).not.toHaveProperty('corrections');
@@ -475,7 +486,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 				infoboxes: [null, 'nope', { id: 'https://x/' }], // no title/content → dropped
 			}),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		const parsed = payload((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed).not.toHaveProperty('answers');
 		expect(parsed).not.toHaveProperty('infoboxes');
 	});
@@ -505,11 +516,8 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 				],
 			}),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
-		expect(parsed.results.map((r: { title: string }) => r.title)).toEqual([
-			'Canonical',
-			'Distinct',
-		]);
+		const parsed = payload((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		expect(parsed.results?.map((r) => r.title)).toEqual(['Canonical', 'Distinct']);
 	});
 
 	it('does NOT merge genuinely distinct pages that differ by a content query param', async () => {
@@ -521,7 +529,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 				],
 			}),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		const parsed = payload((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed.results).toHaveLength(2);
 	});
 
@@ -536,11 +544,11 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 				],
 			}),
 		);
-		const parsed = JSON.parse(
+		const parsed = payload(
 			(await webSearchTool.execute({ query: 'x', max_results: 2 }, ctx())).content,
 		);
 		// Without dedupe-before-slice this would be [A, A-mirror]; with it, [A, B].
-		expect(parsed.results.map((r: { title: string }) => r.title)).toEqual(['A', 'B']);
+		expect(parsed.results?.map((r) => r.title)).toEqual(['A', 'B']);
 	});
 
 	it('keeps multiple url-less rows rather than collapsing them', async () => {
@@ -552,7 +560,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 				],
 			}),
 		);
-		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
+		const parsed = payload((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed.results).toHaveLength(2);
 	});
 });
