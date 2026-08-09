@@ -316,6 +316,45 @@ describe('ChatTurnController — approval resume', () => {
 		expect(invalidateAll).toHaveBeenCalledTimes(1);
 		vi.unstubAllGlobals();
 	});
+
+	// The page routes setApprovalError into the same banner as setError. It used
+	// to write a `$state` that nothing rendered, so a resume that failed here was
+	// invisible to the user — they saw the approval prompt sit there, unexplained.
+	it('reports a failed resume through setApprovalError', async () => {
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.endsWith('/tool-approval')) throw new Error('upstream exploded');
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+
+		await turn.submitApproval([{ toolCallId: 't1', action: 'allow' }]);
+
+		expect(state.approvalError).toBe('upstream exploded');
+		// The latch must release, or the prompt stays wedged behind approvalBusy.
+		expect(turn.approvalSubmitting).toBe(false);
+		vi.unstubAllGlobals();
+	});
+
+	it('stays silent when the resume is aborted by Stop', async () => {
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.endsWith('/tool-approval')) {
+				throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+			}
+			throw new Error(`unexpected fetch ${url}`);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+
+		await turn.submitApproval([{ toolCallId: 't1', action: 'allow' }]);
+
+		// Clicking Stop is a deliberate user action, not an error to report.
+		expect(state.approvalError).toBeNull();
+		expect(turn.approvalSubmitting).toBe(false);
+		vi.unstubAllGlobals();
+	});
 });
 
 describe('ChatTurnController — stop / recovery / teardown', () => {

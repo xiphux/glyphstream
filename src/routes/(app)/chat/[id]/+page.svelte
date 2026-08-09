@@ -296,7 +296,11 @@
 		modelId: () => modelId,
 		modelKind: () => modelKind,
 		setError: (m) => (errorMsg = m),
-		setApprovalError: (m) => (approvalError = m),
+		// A failed approval-resume is a turn-level failure — one resume covers the
+		// whole batch of decisions, so there's no single tool block to pin it to.
+		// Route it to the same banner every other turn error uses, which also
+		// gives it the existing clear-on-navigate/branch-switch handling.
+		setApprovalError: (m) => (errorMsg = m),
 		clearApprovalDecisions: () => (approvalDecisions = new Map()),
 		setTitle: (t) => (title = t),
 		applyCanvas: (c) => canvas.apply(c),
@@ -382,12 +386,6 @@
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
-	// The approval-prompt's inline error, written by the controller's resume path
-	// (chat-turn-controller's setApprovalError) — but NOT yet rendered anywhere,
-	// so a failed approval-resume currently fails silently. Kept wired up rather
-	// than deleted because the fix is to surface it, not to drop it.
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	let approvalError = $state<string | null>(null);
 	// `approvalSubmitting` (+ its monotonic latch token) lives on the turn
 	// controller now — it owns the resume state machine.
 
