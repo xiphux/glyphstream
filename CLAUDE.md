@@ -128,16 +128,30 @@ tests/e2e/            # playwright (production-build webServer)
   default to `node`. See `tests/component/README.md` for the bits-ui
   Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
   silently missing portaled content.
-- **`pnpm lint` is `@sveltejs/eslint-config` plus four type-aware rules**
-  (`no-floating-promises`, `no-misused-promises`, `await-thenable`,
-  `no-base-to-string`) — deliberately not all of `recommendedTypeChecked`,
-  which reports ~900 `no-unsafe-*` on the untyped upstream boundary and 246
-  `only-throw-error` on SvelteKit's own `throw error(401)`. Every rule turned
-  off in `eslint.config.js` carries its reason; the load-bearing one is
-  `svelte/no-unused-svelte-ignore`, which **disagrees with the compiler** — it
-  called three live `a11y_click_events_have_key_events` ignores unused, and
-  deleting them made `pnpm check` warn again. `pnpm check` is the authority on
-  which `svelte-ignore`s are live.
+- **`pnpm lint` is `@sveltejs/eslint-config` + the full
+  `recommendedTypeChecked`, and it is at zero — keep it there.** Every rule
+  turned off in `eslint.config.js` carries its reason inline; three are
+  load-bearing enough to restate:
+  - `svelte/no-unused-svelte-ignore` **disagrees with the compiler**. It
+    called three live `a11y_click_events_have_key_events` ignores unused,
+    and deleting them made `pnpm check` warn again. `pnpm check` is the
+    authority on which `svelte-ignore`s are live.
+  - `require-await` can't see _contractual_ async — a function assigned to a
+    `() => Promise<T>` type must be `async` even with nothing to await.
+  - `unbound-method` + `no-unnecessary-type-assertion` are off **for
+    `tests/` only** (`expect(obj.method)` never invokes the reference; a test
+    double's assertion often shapes inference — see the sharp edge below).
+    Both stay on for `src/`.
+- **Page components must annotate `$props()`** with the generated
+  `PageData` / `LayoutData`. Without it `data` is `any` in a plain TS
+  program and every `data.foo` goes unchecked; `svelte-check` hides this because
+  SvelteKit's route-aware inference types it for the language server, so a
+  typo'd field type-checks clean and fails at runtime. Same for optional
+  callback props (`onPick?: (c: FanoutColumn) => void`): ESLint's Svelte
+  parser doesn't resolve those, so annotate the parameter at the call site.
+- **Throw-less `error()` / `redirect()`.** SvelteKit 2 types both as
+  `never` and throws internally — write `error(404, '…')`, not
+  `throw error(404, '…')`. Control flow still narrows after the call.
 - **Docs track user-facing features + config, not fixes.** `README.md` is a
   landing page + feature tour; `docs/<topic>.md` are the per-topic guides.
   Shipping a user-facing feature → add a line to the README feature tour; if
@@ -224,6 +238,27 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   build — by drizzle-kit, the `import-owui` esbuild bundle, and
   Playwright's e2e `global-setup.ts` — none of which resolve the `$lib`
   alias. Import shared code into it with a relative path.
+- **`eslint --fix` can silently break type-checking — use `pnpm lint:fix`,
+  which type-checks afterwards.** `no-unnecessary-type-assertion` asks
+  "does the receiver already accept this expression's type?" and does NOT
+  model generic inference flowing _out_ of the argument. So for a generic
+  receiver the assertion is redundant for assignability but load-bearing for
+  what `T` infers as:
+
+  ```ts
+  vi.fn(() => null as unknown); // T = () => unknown
+  vi.fn(() => null); // T = () => null  ← autofix does this
+  ```
+
+  The mock still compiles; the later `.mockReturnValue({…})` is what fails,
+  in a different place. Applied repo-wide this produced 50 `svelte-check`
+  errors across 11 files, and **`pnpm test` stayed green throughout** —
+  vitest never type-checks. `--fix-type problem,layout` does exclude the
+  rule, but 37 of typescript-eslint's 46 fixable rules are `suggestion`, so
+  that throws away most of the useful fixes; running the type-check after
+  the fix is the better guard. The rule is already off for `tests/`, where
+  every instance of this lived.
+
 - **Tailwind v4, not v3.** Two of v4's syntax changes silently produce
   no CSS instead of erroring, and we've stepped on both:
   - Important modifier moved from prefix to **suffix**: `mt-0!` is
