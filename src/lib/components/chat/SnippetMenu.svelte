@@ -28,11 +28,11 @@
 	items={snippets}
 	{highlightedIndex}
 	label="Prompt snippets"
-	key={(s) => s.id}
+	key={(s: PromptSnippet) => s.id}
 	{onSelect}
 	{onHover}
 >
-	{#snippet row(s)}
+	{#snippet row(s: PromptSnippet)}
 		<span class="flex items-center gap-1.5">
 			<span class="text-[13px] font-medium">{s.name}</span>
 			{#each s.kinds as k (k)}

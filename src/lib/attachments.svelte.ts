@@ -299,7 +299,7 @@ export class AttachmentStore {
 			fd.append('file', uploadFile);
 			const res = await fetch('/api/uploads', { method: 'POST', body: fd });
 			if (!res.ok) {
-				const body = await res.json().catch(() => null);
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
 				// A non-JSON body on a 4xx is the classic reverse-proxy
 				// signature (HTML error page from nginx etc.) — our own
 				// route always responds with structured JSON. Surface that

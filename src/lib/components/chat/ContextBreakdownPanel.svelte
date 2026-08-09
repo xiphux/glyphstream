@@ -70,7 +70,7 @@
 		try {
 			const res = await fetch(`/api/conversations/${conversationId}/context`);
 			if (!res.ok) throw new Error(`${res.status}`);
-			data = await res.json();
+			data = (await res.json()) as ContextBreakdown;
 			loadedRevision = revision;
 		} catch {
 			error = 'Could not measure the context.';

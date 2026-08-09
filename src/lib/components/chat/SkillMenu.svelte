@@ -33,11 +33,11 @@
 	items={skills}
 	{highlightedIndex}
 	label="Skills"
-	key={(s) => s.id}
-	onSelect={(s) => onSelect(s.name)}
+	key={(s: SkillItem) => s.id}
+	onSelect={(s: SkillItem) => onSelect(s.name)}
 	{onHover}
 >
-	{#snippet row(s)}
+	{#snippet row(s: SkillItem)}
 		<span class="font-mono text-[13px] font-medium">/{s.name}</span>
 		<span class="line-clamp-1 text-xs text-fg-muted">{s.description}</span>
 	{/snippet}

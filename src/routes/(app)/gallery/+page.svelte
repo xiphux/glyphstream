@@ -91,7 +91,7 @@
 		p.set('limit', String(limit));
 		const res = await fetchWithTimeout(`/api/media/units?${p}`);
 		if (!res.ok) throw new Error(`Server returned ${res.status}`);
-		return res.json();
+		return (await res.json()) as GalleryUnitsPage;
 	}
 
 	const feed = new GalleryFeed({

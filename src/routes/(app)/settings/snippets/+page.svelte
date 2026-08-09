@@ -63,8 +63,8 @@
 	/** Pull SvelteKit's `{ message }` error body, falling back to the status. */
 	async function errorMessage(res: Response): Promise<string> {
 		try {
-			const body = await res.json();
-			if (body && typeof body.message === 'string') return body.message;
+			const body = (await res.json()) as { message?: unknown };
+			if (typeof body.message === 'string') return body.message;
 		} catch {
 			/* non-JSON body */
 		}
