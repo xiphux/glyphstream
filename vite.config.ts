@@ -138,5 +138,5 @@ export default defineConfig({
 				brotliSize: true,
 				open: false,
 			}) as PluginOption),
-	].filter(Boolean) as PluginOption[],
+	].filter(Boolean),
 });
