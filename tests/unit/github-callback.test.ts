@@ -16,7 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRedirect, type Cookies, type Redirect } from '@sveltejs/kit';
-import { OAuth2RequestError } from 'arctic';
+import { OAuth2RequestError } from '$lib/server/auth/oauth/oauth2';
 import { eq } from 'drizzle-orm';
 import type { OAuthProfile } from '$lib/server/auth/oauth/types';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
@@ -249,12 +249,7 @@ describe('GitHub callback — setup branch', () => {
 	});
 
 	it('refuses with oauth_exchange_failed on an OAuth2RequestError', async () => {
-		mocks.profileError = new OAuth2RequestError(
-			'https://example.com',
-			'bad_code',
-			'description',
-			null,
-		);
+		mocks.profileError = new OAuth2RequestError('bad_verification_code', 'description');
 		const { event } = setupEvent();
 
 		const r = await expectRedirect(() => GET(event as never));
@@ -351,12 +346,7 @@ describe('GitHub callback — link branch', () => {
 
 	it('refuses with ?link=exchange_failed on OAuth2RequestError', async () => {
 		const u = seedUser();
-		mocks.profileError = new OAuth2RequestError(
-			'https://example.com',
-			'bad_code',
-			'description',
-			null,
-		);
+		mocks.profileError = new OAuth2RequestError('bad_verification_code', 'description');
 		const { event } = linkEvent({ userId: u.id });
 
 		const r = await expectRedirect(() => GET(event as never));

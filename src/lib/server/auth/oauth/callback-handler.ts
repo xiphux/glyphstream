@@ -22,7 +22,7 @@
  */
 import { redirect } from '@sveltejs/kit';
 import type { Cookies } from '@sveltejs/kit';
-import { OAuth2RequestError } from 'arctic';
+import { OAuth2RequestError } from './oauth2';
 import { SETUP_OAUTH_CARRY_COOKIE } from '../setup';
 import { JOIN_OAUTH_CARRY_COOKIE, InviteConsumedError, finalizeOAuthJoin } from '../join';
 import { verify } from '../signed-cookies';

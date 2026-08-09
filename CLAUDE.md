@@ -14,9 +14,9 @@ Still optimized for the small-team / household scale, not SaaS.
 ## Stack
 
 SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite,
-dialect-portable) · arctic (GitHub OAuth) + @simplewebauthn (passkeys),
-custom Lucia-style session module · bits-ui (headless) · markdown-it +
-shiki · Vitest + Playwright · pnpm.
+dialect-portable) · in-tree OAuth2 client (`auth/oauth/oauth2.ts`) +
+@simplewebauthn (passkeys), custom Lucia-style session module · bits-ui
+(headless) · markdown-it + shiki · Vitest + Playwright · pnpm.
 
 ## Layout
 
@@ -121,7 +121,7 @@ tests/e2e/            # playwright (production-build webServer)
 - `bits-ui` and `lucide-svelte` belong in `devDependencies` — Vite bundles
   them into the SSR build at compile time. Only packages that run
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
-  `arctic`, `smol-toml`) belong in `dependencies`. (SQLite needs no entry
+  `smol-toml`) belong in `dependencies`. (SQLite needs no entry
   here — it's the built-in `node:sqlite`.)
 - Component tests live under `tests/component/` and require a per-file
   `/* @vitest-environment happy-dom */` header — pure-logic unit tests

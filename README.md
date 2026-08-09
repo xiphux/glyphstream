@@ -281,7 +281,7 @@ of those models show up in the picker alongside your chat backends.
 ## Stack
 
 SvelteKit (adapter-node) · TypeScript · Tailwind v4 · Drizzle ORM (SQLite) ·
-arctic + @simplewebauthn · bits-ui · Vitest + Playwright · pnpm.
+@simplewebauthn · bits-ui · Vitest + Playwright · pnpm.
 
 ## License
 

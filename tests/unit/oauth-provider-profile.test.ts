@@ -3,40 +3,18 @@
  * Both derive their normalized profile from the ID token's claims; these
  * lock the claim → {externalId, username, email, name} mapping (including
  * the username fallback chain) and that both providers carry a PKCE code
- * verifier through `createAuthorizationURL`. `arctic` and `$lib/server/env`
- * are mocked so no network or real credentials are involved.
+ * verifier through `createAuthorizationURL`.
+ *
+ * Only `$lib/server/env` and `fetch` are stubbed. This deliberately does
+ * NOT mock the OAuth2 layer: it used to mock `arctic` wholesale, which
+ * meant the token exchange — the request body, the client-auth header, the
+ * ID-token decode — was the one part of the login path with no coverage at
+ * all. Stubbing at the network boundary instead exercises the real request
+ * construction, so `oauth2-token-exchange.test.ts` and this file together
+ * cover what the mock used to hide.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const tokenState = vi.hoisted(() => ({ claims: {} }));
-
-vi.mock('arctic', () => {
-	class Google {
-		createAuthorizationURL() {
-			return new URL('https://accounts.google.com/o/oauth2/v2/auth');
-		}
-		async validateAuthorizationCode() {
-			return { idToken: () => 'fake.id.token' };
-		}
-	}
-	class OAuth2Client {
-		createAuthorizationURLWithPKCE() {
-			return new URL('https://issuer.example.com/authorize');
-		}
-		async validateAuthorizationCode() {
-			return { idToken: () => 'fake.id.token' };
-		}
-	}
-	return {
-		Google,
-		OAuth2Client,
-		CodeChallengeMethod: { S256: 0, Plain: 1 },
-		generateState: () => 'test-state',
-		generateCodeVerifier: () => 'test-verifier',
-		decodeIdToken: () => tokenState.claims,
-	};
-});
 
 vi.mock('$lib/server/env', () => ({
 	publicBaseUrl: () => 'http://localhost:5173',
@@ -56,28 +34,92 @@ vi.mock('$lib/server/env', () => ({
 import { googleProvider } from '$lib/server/auth/oauth/google';
 import { oidcProvider } from '$lib/server/auth/oauth/oidc';
 
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+
+/**
+ * A structurally valid JWT whose signature is nonsense — the providers
+ * decode the payload without verifying (the token arrives over TLS
+ * straight from the token endpoint), so that's all these need to be.
+ */
+function makeIdToken(claims: Record<string, unknown>): string {
+	const seg = (o: unknown) => Buffer.from(JSON.stringify(o), 'utf8').toString('base64url');
+	return `${seg({ alg: 'RS256', typ: 'JWT' })}.${seg(claims)}.not-a-real-signature`;
+}
+
 const originalFetch = globalThis.fetch;
 
+/**
+ * Every fetch the providers made, in order, for request-shape assertions.
+ * The body is decoded at capture time: the providers only ever send string
+ * bodies, and stringifying the raw `BodyInit` union would silently yield
+ * "[object Object]" if that ever stopped being true.
+ */
+let calls: Array<{ url: string; headers: Headers; body: URLSearchParams }>;
+/** Claims baked into the id_token the stubbed token endpoint returns. */
+let claims: Record<string, unknown>;
+
 beforeEach(() => {
-	tokenState.claims = {};
-	// OIDC discovery fetch — returns the well-known endpoints.
-	globalThis.fetch = vi.fn(async () =>
-		Response.json({
-			authorization_endpoint: 'https://issuer.example.com/authorize',
-			token_endpoint: 'https://issuer.example.com/token',
-		}),
-	);
+	calls = [];
+	claims = {};
+	globalThis.fetch = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+		const url = input instanceof Request ? input.url : String(input);
+		if (init?.body !== undefined && typeof init.body !== 'string') {
+			throw new Error(`expected a string request body, got ${typeof init.body}`);
+		}
+		calls.push({
+			url,
+			headers: new Headers(init?.headers),
+			body: new URLSearchParams(init?.body ?? ''),
+		});
+		if (url.endsWith('/.well-known/openid-configuration')) {
+			return Promise.resolve(
+				Response.json({
+					authorization_endpoint: 'https://issuer.example.com/authorize',
+					token_endpoint: OIDC_TOKEN_URL,
+				}),
+			);
+		}
+		if (url === GOOGLE_TOKEN_URL || url === OIDC_TOKEN_URL) {
+			return Promise.resolve(
+				Response.json({
+					access_token: 'at',
+					token_type: 'Bearer',
+					id_token: makeIdToken(claims),
+				}),
+			);
+		}
+		return Promise.reject(new Error(`unexpected fetch: ${url}`));
+	}) as unknown as typeof fetch;
 });
 
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
+
+function tokenRequest() {
+	const call = calls.find((c) => c.url === GOOGLE_TOKEN_URL || c.url === OIDC_TOKEN_URL);
+	if (!call) throw new Error('no token request was made');
+	return call;
+}
+
 describe('Google provider', () => {
-	it('carries a PKCE code verifier through createAuthorizationURL', async () => {
+	it('carries a PKCE code verifier and state through createAuthorizationURL', async () => {
 		const req = await googleProvider.createAuthorizationURL();
-		expect(req.codeVerifier).toBe('test-verifier');
-		expect(req.state).toBe('test-state');
+		expect(req.codeVerifier).toBeTruthy();
+		expect(req.state).toBeTruthy();
+		// Distinct secrets, not the same value reused for both.
+		expect(req.codeVerifier).not.toBe(req.state);
+		expect(req.url.searchParams.get('code_challenge_method')).toBe('S256');
+		// The challenge is the hash, so it must never equal the raw verifier.
+		expect(req.url.searchParams.get('code_challenge')).not.toBe(req.codeVerifier);
+		expect(req.url.searchParams.get('redirect_uri')).toBe(
+			'http://localhost:5173/api/auth/oauth/google/callback',
+		);
 	});
 
 	it('maps sub→externalId and falls back to email for the username', async () => {
-		tokenState.claims = { sub: 'google-123', email: 'a@example.com', name: 'Ada L' };
+		claims = { sub: 'google-123', email: 'a@example.com', name: 'Ada L' };
 		const profile = await googleProvider.fetchProfile('code', 'verifier');
 		expect(profile).toEqual({
 			externalId: 'google-123',
@@ -87,15 +129,30 @@ describe('Google provider', () => {
 		});
 	});
 
+	it('sends the code verifier and Basic client credentials to the token endpoint', async () => {
+		claims = { sub: 'google-123' };
+		await googleProvider.fetchProfile('the-code', 'the-verifier');
+		const { body, headers } = tokenRequest();
+		expect(body.get('grant_type')).toBe('authorization_code');
+		expect(body.get('code')).toBe('the-code');
+		expect(body.get('code_verifier')).toBe('the-verifier');
+		expect(body.get('redirect_uri')).toBe('http://localhost:5173/api/auth/oauth/google/callback');
+		expect(headers.get('Authorization')).toBe(
+			`Basic ${Buffer.from('g-id:g-sec').toString('base64')}`,
+		);
+		// With a secret in the header, client_id must NOT also ride in the body.
+		expect(body.get('client_id')).toBeNull();
+	});
+
 	it('falls back to name for the username when email is absent', async () => {
-		tokenState.claims = { sub: 'google-123', name: 'Ada L' };
+		claims = { sub: 'google-123', name: 'Ada L' };
 		const profile = await googleProvider.fetchProfile('code', 'verifier');
 		expect(profile.username).toBe('Ada L');
 		expect(profile.email).toBeNull();
 	});
 
 	it('throws when the ID token has no sub claim', async () => {
-		tokenState.claims = { email: 'a@example.com' };
+		claims = { email: 'a@example.com' };
 		await expect(googleProvider.fetchProfile('code', 'verifier')).rejects.toThrow(/sub/);
 	});
 
@@ -106,7 +163,7 @@ describe('Google provider', () => {
 
 describe('Generic OIDC provider', () => {
 	it('prefers preferred_username, then email, then name for the username', async () => {
-		tokenState.claims = {
+		claims = {
 			sub: 'oidc-1',
 			preferred_username: 'ada',
 			email: 'a@example.com',
@@ -122,17 +179,18 @@ describe('Generic OIDC provider', () => {
 	});
 
 	it('falls back to email when preferred_username is absent', async () => {
-		tokenState.claims = { sub: 'oidc-1', email: 'a@example.com' };
+		claims = { sub: 'oidc-1', email: 'a@example.com' };
 		const profile = await oidcProvider.fetchProfile('code', 'verifier');
 		expect(profile.username).toBe('a@example.com');
+	});
+
+	it('exchanges against the discovered token endpoint, not a hardcoded one', async () => {
+		claims = { sub: 'oidc-1' };
+		await oidcProvider.fetchProfile('code', 'verifier');
+		expect(calls.some((c) => c.url === OIDC_TOKEN_URL)).toBe(true);
 	});
 
 	it('uses the operator-configured display name as its label', () => {
 		expect(oidcProvider.label()).toBe('Company SSO');
 	});
-});
-
-// Restore the global fetch so this file doesn't leak its mock.
-afterEach(() => {
-	globalThis.fetch = originalFetch;
 });

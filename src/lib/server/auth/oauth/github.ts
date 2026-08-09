@@ -5,7 +5,7 @@
  * `/api/auth/github/callback` path so existing operators' registered
  * OAuth-app callback URL keeps working with no reconfiguration.
  */
-import { GitHub, generateState } from 'arctic';
+import { buildAuthorizationURL, exchangeAuthorizationCode, generateState } from './oauth2';
 import {
 	githubClientId,
 	githubClientSecret,
@@ -16,22 +16,27 @@ import {
 import type { AuthorizationRequest, OAuthProfile, OAuthProvider } from './types';
 
 export const GITHUB_OAUTH_CALLBACK_PATH = '/api/auth/github/callback';
+const GITHUB_AUTHORIZATION_ENDPOINT = 'https://github.com/login/oauth/authorize';
+const GITHUB_TOKEN_ENDPOINT = 'https://github.com/login/oauth/access_token';
 const GITHUB_USER_API = 'https://api.github.com/user';
 const GITHUB_USER_EMAILS_API = 'https://api.github.com/user/emails';
 const GITHUB_SCOPES = ['read:user', 'user:email'];
 
-let cached: GitHub | null = null;
-
-function getClient(): GitHub {
-	if (!cached) {
-		const callbackUrl = `${publicBaseUrl()}${GITHUB_OAUTH_CALLBACK_PATH}`;
-		cached = new GitHub(githubClientId(), githubClientSecret(), callbackUrl);
-	}
-	return cached;
+function redirectUri(): string {
+	return `${publicBaseUrl()}${GITHUB_OAUTH_CALLBACK_PATH}`;
 }
 
 async function fetchProfile(code: string): Promise<OAuthProfile> {
-	const tokens = await getClient().validateAuthorizationCode(code);
+	// GitHub reports a failed exchange as `200 {"error": ...}` rather than a
+	// 4xx; exchangeAuthorizationCode checks the field on every status, so
+	// that still arrives here as an OAuth2RequestError.
+	const tokens = await exchangeAuthorizationCode({
+		tokenEndpoint: GITHUB_TOKEN_ENDPOINT,
+		clientId: githubClientId(),
+		clientSecret: githubClientSecret(),
+		redirectUri: redirectUri(),
+		code,
+	});
 	const accessToken = tokens.accessToken();
 
 	const userRes = await fetch(GITHUB_USER_API, {
@@ -95,7 +100,13 @@ export const githubProvider: OAuthProvider = {
 	callbackPath: GITHUB_OAUTH_CALLBACK_PATH,
 	createAuthorizationURL(): Promise<AuthorizationRequest> {
 		const state = generateState();
-		const url = getClient().createAuthorizationURL(state, GITHUB_SCOPES);
+		const url = buildAuthorizationURL({
+			authorizationEndpoint: GITHUB_AUTHORIZATION_ENDPOINT,
+			clientId: githubClientId(),
+			redirectUri: redirectUri(),
+			state,
+			scopes: GITHUB_SCOPES,
+		});
 		return Promise.resolve({ url, state, codeVerifier: null });
 	},
 	fetchProfile,

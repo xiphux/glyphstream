@@ -27,7 +27,8 @@ docs.
   loading all shipped; HTTP-only. Remaining:
   - _OAuth per-user._ The 3-legged flow (vs. the static token shipped). New
     `oauth_connections` table; multi-provider abstraction in
-    `src/lib/server/auth/providers/` mirroring arctic's GitHub-login wiring;
+    `src/lib/server/auth/providers/` mirroring the GitHub-login wiring in
+    `auth/oauth/`;
     per-user `/settings/connections` UI with "Connect Gmail"-style affordances;
     `AUTH_SECRET`-keyed AES-256-GCM encryption for refresh tokens. Sits beside
     the static-key path — no rework of v1.

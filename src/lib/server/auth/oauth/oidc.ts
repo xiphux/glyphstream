@@ -1,18 +1,17 @@
 /**
- * Generic OIDC provider, built on arctic's low-level `OAuth2Client` plus a
- * manual fetch of the issuer's `/.well-known/openid-configuration`
- * (arctic ships no generic-OIDC discovery class). Lets an operator wire up
- * any standards-compliant IdP — Authentik, Keycloak, Authelia, Pocket ID,
- * Google Workspace, Microsoft Entra — by setting OIDC_ISSUER + client
- * credentials. Uses PKCE.
+ * Generic OIDC provider: the shared OAuth2 primitives plus a manual fetch
+ * of the issuer's `/.well-known/openid-configuration`. Lets an operator
+ * wire up any standards-compliant IdP — Authentik, Keycloak, Authelia,
+ * Pocket ID, Google Workspace, Microsoft Entra — by setting OIDC_ISSUER +
+ * client credentials. Uses PKCE.
  */
 import {
-	CodeChallengeMethod,
-	OAuth2Client,
+	buildAuthorizationURL,
 	decodeIdToken,
+	exchangeAuthorizationCode,
 	generateCodeVerifier,
 	generateState,
-} from 'arctic';
+} from './oauth2';
 import {
 	hasOidcCredentials,
 	oidcClientId,
@@ -32,15 +31,10 @@ interface Discovery {
 	tokenEndpoint: string;
 }
 
-let cachedClient: OAuth2Client | null = null;
 let cachedDiscovery: Discovery | null = null;
 
-function getClient(): OAuth2Client {
-	if (!cachedClient) {
-		const callbackUrl = `${publicBaseUrl()}${OIDC_OAUTH_CALLBACK_PATH}`;
-		cachedClient = new OAuth2Client(oidcClientId(), oidcClientSecret(), callbackUrl);
-	}
-	return cachedClient;
+function redirectUri(): string {
+	return `${publicBaseUrl()}${OIDC_OAUTH_CALLBACK_PATH}`;
 }
 
 /**
@@ -84,22 +78,30 @@ async function createAuthorizationURL(): Promise<AuthorizationRequest> {
 	const { authorizationEndpoint } = await getDiscovery();
 	const state = generateState();
 	const codeVerifier = generateCodeVerifier();
-	const url = getClient().createAuthorizationURLWithPKCE(
+	const url = buildAuthorizationURL({
 		authorizationEndpoint,
+		clientId: oidcClientId(),
+		redirectUri: redirectUri(),
 		state,
-		CodeChallengeMethod.S256,
+		scopes: oidcScopes(),
 		codeVerifier,
-		oidcScopes(),
-	);
+	});
 	return { url, state, codeVerifier };
 }
 
 async function fetchProfile(code: string, codeVerifier: string | null): Promise<OAuthProfile> {
 	if (!codeVerifier) throw new Error('OIDC requires a PKCE code verifier');
 	const { tokenEndpoint } = await getDiscovery();
-	const tokens = await getClient().validateAuthorizationCode(tokenEndpoint, code, codeVerifier);
-	// ID token comes straight from the token endpoint over TLS — decode the
-	// claims (the standard arctic pattern for the code flow).
+	const tokens = await exchangeAuthorizationCode({
+		tokenEndpoint,
+		clientId: oidcClientId(),
+		clientSecret: oidcClientSecret(),
+		redirectUri: redirectUri(),
+		code,
+		codeVerifier,
+	});
+	// ID token comes straight from the token endpoint over TLS — see the note
+	// on decodeIdToken for why decoding, not verifying, is sufficient here.
 	const claims = decodeIdToken(tokens.idToken()) as {
 		sub?: unknown;
 		email?: unknown;
