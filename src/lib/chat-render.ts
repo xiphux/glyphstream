@@ -696,7 +696,7 @@ export function extractCodeArg(
 	if (!meta || !rawArgs) return null;
 
 	try {
-		const parsed = JSON.parse(rawArgs);
+		const parsed = JSON.parse(rawArgs) as unknown;
 		if (parsed && typeof parsed === 'object') {
 			const code = (parsed as Record<string, unknown>)[meta.codeField];
 			if (typeof code === 'string' && code.length > 0) {
@@ -739,7 +739,7 @@ export interface SkillToolDisplay {
 function extractStringField(rawArgs: string, field: string): string | null {
 	if (!rawArgs) return null;
 	try {
-		const parsed = JSON.parse(rawArgs);
+		const parsed = JSON.parse(rawArgs) as unknown;
 		if (parsed && typeof parsed === 'object') {
 			const v = (parsed as Record<string, unknown>)[field];
 			if (typeof v === 'string' && v.length > 0) return v;
@@ -833,11 +833,12 @@ function parseSkillToolDisplayUncached(
 		if (isError) {
 			// Recoverable tool errors come back as {"error":"…"}.
 			try {
-				const parsed = JSON.parse(result);
-				body =
-					parsed && typeof parsed === 'object' && typeof parsed.error === 'string'
-						? parsed.error
-						: result;
+				const parsed = JSON.parse(result) as unknown;
+				const err =
+					parsed && typeof parsed === 'object'
+						? (parsed as Record<string, unknown>).error
+						: undefined;
+				body = typeof err === 'string' ? err : result;
 			} catch {
 				body = result;
 			}

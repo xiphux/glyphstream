@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
@@ -9,7 +10,7 @@
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 
-	let { children } = $props();
+	let { children }: { children: Snippet } = $props();
 
 	// Presence heartbeat. Reports which conversation this tab is actively
 	// RENDERING a generation for (streamPresence, published by the chat page)
@@ -100,8 +101,6 @@
 		// import keeps this out of the SSR bundle; the virtual module
 		// resolves at client build time via vite-plugin-pwa.
 		if ('serviceWorker' in navigator && import.meta.env.PROD) {
-			// @ts-expect-error virtual:pwa-register has runtime types via the
-			// PWA plugin but isn't resolvable by tsc at lint time.
 			const { registerSW } = await import('virtual:pwa-register');
 			const updateSW = registerSW({
 				immediate: true,
