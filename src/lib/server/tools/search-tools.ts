@@ -16,8 +16,7 @@
  * when the user/conversation actually has deferred tools to find.
  */
 
-import { register } from './registry';
-import { deferredToolCatalog } from './registry';
+import { register, deferredToolCatalog } from './registry';
 import type {
 	DeferredToolEntry,
 	OpenAIToolDefinition,

@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdirSync } from 'node:fs';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
@@ -11,7 +10,7 @@ import { seedUser } from './_helpers/seed';
 // DB and a temp media directory we control.
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
-	mediaDir: '' as string,
+	mediaDir: '',
 	graceMs: 0,
 }));
 

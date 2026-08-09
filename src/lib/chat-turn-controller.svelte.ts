@@ -86,7 +86,12 @@ export interface ChatTurnDeps {
 	modelKind(): ModelKind | null;
 	/** The composer's error banner. */
 	setError(message: string | null): void;
-	/** The approval-prompt's inline error (distinct from the composer banner). */
+	/** The approval-resume's error. The chat page currently routes this to the
+	 *  same composer banner as `setError` — a resume covers the whole batch of
+	 *  decisions, so there's no single tool block to pin it to. Kept as its own
+	 *  hook so a future inline surface can render it without touching the
+	 *  controller; don't collapse it into `setError` on the assumption they're
+	 *  duplicates. */
 	setApprovalError(message: string | null): void;
 	/** Drop the user's per-tool approval selections after a resume commits. */
 	clearApprovalDecisions(): void;
