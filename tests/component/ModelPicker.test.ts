@@ -115,7 +115,7 @@ describe('ModelPicker — trigger', () => {
 		const full = screen.getByLabelText('Select model');
 		expect(full).toHaveClass('w-full');
 
-		rerender({ models: [makeModel()], value: '', inline: true });
+		void rerender({ models: [makeModel()], value: '', inline: true });
 		const inline = screen.getByLabelText('Select model');
 		expect(inline).not.toHaveClass('w-full');
 		expect(inline).toHaveClass('inline-flex');
@@ -560,7 +560,7 @@ describe('ModelPicker — modality pills', () => {
 		render(ModelPicker, { props: { models, value: '' } });
 		await user.click(screen.getByLabelText('Select model'));
 		const option = screen.getByRole('option', { name: /gpt/ });
-		expect(within(option).queryByText(/[📷📹🔢]|2I|2V/)).toBeNull();
+		expect(within(option).queryByText(/[📷📹🔢]|2I|2V/u)).toBeNull();
 	});
 });
 

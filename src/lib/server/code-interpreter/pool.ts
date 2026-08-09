@@ -481,7 +481,7 @@ async function doStart(
  * in-flight call, and report whether one was freed. Shared by the per-user and
  * global caps so both evict on identical terms.
  */
-function evictIdle(candidates: readonly (ReadyEntry | StartingEntry)[]): boolean {
+function evictIdle(candidates: ReadonlyArray<ReadyEntry | StartingEntry>): boolean {
 	// `starting` entries are skipped: someone is actively awaiting them.
 	const idle = candidates.filter(
 		(e): e is ReadyEntry => e.state === 'ready' && e.pendingResolvers.size === 0,

@@ -39,7 +39,7 @@ export interface ToolContext {
 	 * lives in `'code_interpreter'` — read it here. Always an array
 	 * (possibly empty), never undefined.
 	 */
-	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[];
+	disabledFeatures: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
 }
 
 /**

@@ -8,6 +8,7 @@
 //     values in pnpm dev because Vite doesn't populate process.env.
 //   - In CLI scripts (drizzle.config.ts etc.) -> process.env is fine.
 
+import process from 'node:process';
 import { env } from '$env/dynamic/private';
 
 function readString(name: string, fallback: string): string {

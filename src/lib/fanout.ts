@@ -127,7 +127,7 @@ export function expandFanoutBranches(
 	models: readonly FanoutModel[],
 	splitImageIds: readonly string[] | null,
 ): FanoutBranchSpec[] {
-	const groups: (string | null)[] =
+	const groups: Array<string | null> =
 		splitImageIds && splitImageIds.length > 0 ? [...splitImageIds] : [null];
 	const out: FanoutBranchSpec[] = [];
 	for (const inputMediaId of groups) {

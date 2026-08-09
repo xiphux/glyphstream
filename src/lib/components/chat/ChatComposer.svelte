@@ -47,7 +47,7 @@
 		private?: boolean;
 		models: ModelEntry[];
 		/** The user's enabled skills, for the `/skill-name` autocomplete. */
-		enabledSkills?: { id: string; name: string; description: string }[];
+		enabledSkills?: Array<{ id: string; name: string; description: string }>;
 		favoritedIds: string[];
 		allowAttachments: boolean;
 		hasValidModel: boolean;

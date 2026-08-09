@@ -303,7 +303,7 @@
 		if (favs.length === 0) return [];
 		const customById = new Map(data.customModels.map((cm) => [cm.id, cm] as const));
 		const baseById = new Map(data.models.map((m) => [m.id, m] as const));
-		const out: { value: string; label: string; kind: ModelKind }[] = [];
+		const out: Array<{ value: string; label: string; kind: ModelKind }> = [];
 		for (const id of favs) {
 			if (id.startsWith('custom::')) {
 				const cm = customById.get(id.slice('custom::'.length));

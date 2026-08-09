@@ -301,7 +301,7 @@ export class FanoutController {
 		//    Granted branches stream in the background while the rest dispatch, so
 		//    this only orders the sub-millisecond enqueue, not the generation.
 		try {
-			const branchRuns: Promise<ChatMessage | null>[] = [];
+			const branchRuns: Array<Promise<ChatMessage | null>> = [];
 			for (const col of this.columns) {
 				let signalEnqueued!: () => void;
 				const enqueued = new Promise<void>((resolve) => {

@@ -177,7 +177,9 @@ export function deleteSkill(userId: string, id: string): { storagePath: string }
  * progressive-disclosure contract: call activate_skill(name) to load full
  * instructions when a task matches. Keys on `name` (the activation arg + enum).
  */
-export function composeSkillsCatalog(list: Pick<Skill, 'name' | 'description'>[]): string | null {
+export function composeSkillsCatalog(
+	list: Array<Pick<Skill, 'name' | 'description'>>,
+): string | null {
 	if (list.length === 0) return null;
 	// The re-activation clause is phrased against what the model can SEE, not
 	// against what it once did. "Don't re-activate a skill already loaded in this

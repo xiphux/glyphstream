@@ -108,7 +108,7 @@ describe('runPythonTool — metadata + availability', () => {
 		// The getter reads getCodeInterpreterConfig() at access time, so
 		// changing mocks.config.callTimeoutSeconds between reads produces
 		// different values — verify a few points across the valid range.
-		const expectations: { callTimeoutSeconds: number; expected: number }[] = [
+		const expectations: Array<{ callTimeoutSeconds: number; expected: number }> = [
 			{ callTimeoutSeconds: 30, expected: 30 * 1000 + 30_000 },
 			{ callTimeoutSeconds: 120, expected: 120 * 1000 + 30_000 },
 			{ callTimeoutSeconds: 300, expected: 300 * 1000 + 30_000 },

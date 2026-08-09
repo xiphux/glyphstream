@@ -88,7 +88,6 @@ async function call() {
 	const res = await GET({
 		locals: { user: { id: 'u1' } },
 		params: { id: 'c1' },
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	} as any);
 	return res.json();
 }

@@ -23,7 +23,7 @@ describe('signed-cookies', () => {
 
 	it('rejects a payload whose body was tampered with', () => {
 		const signed = sign({ a: 1 }, 60_000);
-		const [body, tag] = signed.split('.');
+		const [_body, tag] = signed.split('.');
 		const fakeBody = Buffer.from('{"a":2,"exp":' + (Date.now() + 60_000) + '}', 'utf8').toString(
 			'base64url',
 		);

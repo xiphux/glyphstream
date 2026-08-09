@@ -143,7 +143,7 @@ async function priceHistory(
 	const resolve: MediaUrlResolver = async (mediaId) => MEDIA_SENTINEL + mediaId;
 	const view = upstreamBranch(input.branch);
 
-	const pairs: { src: ChatMessage; wire: ChatCompletionRequest['messages'][number] }[] = [];
+	const pairs: Array<{ src: ChatMessage; wire: ChatCompletionRequest['messages'][number] }> = [];
 	for (const src of view) {
 		const wire = await serializeMessageForUpstream(src, resolve);
 		if (wire) pairs.push({ src, wire });

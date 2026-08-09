@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

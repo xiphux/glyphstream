@@ -76,7 +76,7 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
-	].filter(Boolean) as Parameters<typeof and>[number][];
+	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	const rows = db
 		.select({

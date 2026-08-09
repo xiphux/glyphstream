@@ -128,6 +128,16 @@ tests/e2e/            # playwright (production-build webServer)
   default to `node`. See `tests/component/README.md` for the bits-ui
   Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
   silently missing portaled content.
+- **`pnpm lint` is `@sveltejs/eslint-config` plus four type-aware rules**
+  (`no-floating-promises`, `no-misused-promises`, `await-thenable`,
+  `no-base-to-string`) — deliberately not all of `recommendedTypeChecked`,
+  which reports ~900 `no-unsafe-*` on the untyped upstream boundary and 246
+  `only-throw-error` on SvelteKit's own `throw error(401)`. Every rule turned
+  off in `eslint.config.js` carries its reason; the load-bearing one is
+  `svelte/no-unused-svelte-ignore`, which **disagrees with the compiler** — it
+  called three live `a11y_click_events_have_key_events` ignores unused, and
+  deleting them made `pnpm check` warn again. `pnpm check` is the authority on
+  which `svelte-ignore`s are live.
 - **Docs track user-facing features + config, not fixes.** `README.md` is a
   landing page + feature tour; `docs/<topic>.md` are the per-topic guides.
   Shipping a user-facing feature → add a line to the README feature tour; if

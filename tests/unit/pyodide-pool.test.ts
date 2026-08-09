@@ -471,13 +471,11 @@ describe('LRU eviction', () => {
 		// one of which has a call still in flight (parked — never replies).
 		// When a 4th conversation starts, enforcePoolCap should skip the
 		// busy worker and evict one of the idle ones instead.
-		let parkedCallId: number | undefined;
 		setWorkerFactoryForTests(() => {
 			const w = new MockWorker();
 			w.onRun = (msg) => {
 				if (msg.code === 'park') {
-					// Record the callId but never reply — stays in flight.
-					parkedCallId = msg.callId;
+					// Never reply — the call stays in flight.
 				} else {
 					replyOk(w, msg.callId);
 				}
@@ -492,7 +490,7 @@ describe('LRU eviction', () => {
 		// 'b' runs with 'park' — this call never resolves. Swallow the
 		// eventual rejection so afterEach cleanup (worker termination)
 		// doesn't surface as an unhandled rejection.
-		const inFlightB = runPython({
+		runPython({
 			conversationId: 'b',
 			userId: 'u-b',
 			code: 'park',
@@ -530,13 +528,13 @@ describe('LRU eviction', () => {
 		// Start two in-flight calls that never complete. Swallow their
 		// eventual rejections so afterEach cleanup doesn't surface as
 		// unhandled rejections.
-		const inFlightA = runPython({
+		runPython({
 			conversationId: 'a',
 			userId: 'u-a',
 			code: 'hang',
 			disabledFeatures: [],
 		}).catch(() => {});
-		const inFlightB = runPython({
+		runPython({
 			conversationId: 'b',
 			userId: 'u-b',
 			code: 'hang',

@@ -41,7 +41,7 @@ function mkTool(name: string, exec: Tool['execute']): Tool {
 }
 
 function seedConversationWithAssistantToolCalls(
-	toolCallParts: Extract<MessagePart, { type: 'tool_call' }>[],
+	toolCallParts: Array<Extract<MessagePart, { type: 'tool_call' }>>,
 ): { userId: string; conversationId: string; assistantMessage: ChatMessage } {
 	const u = seedUser();
 	const conv = createConversation({

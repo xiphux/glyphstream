@@ -33,6 +33,7 @@
  * a future v2 change.
  */
 
+import process from 'node:process';
 import sharp from 'sharp';
 import { mkdirSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';

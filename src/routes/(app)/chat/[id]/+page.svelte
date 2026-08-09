@@ -71,7 +71,6 @@
 		ConversationMediaRef,
 		FeatureCategory,
 		MediaListItem,
-		MessagePart,
 		ModelKind,
 	} from '$lib/types/api';
 
@@ -180,7 +179,7 @@
 	let CanvasPaneComp = $state<
 		| import('svelte').Component<{
 				doc: import('$lib/types/api').CanvasVersion;
-				docs: import('$lib/types/api').CanvasVersion[];
+				docs: Array<import('$lib/types/api').CanvasVersion>;
 				changed: boolean;
 				onClose: () => void;
 				onSwitch: (artifactId: string) => void;
@@ -383,7 +382,11 @@
 	// has one — at which point the Submit button enables and posts the
 	// batch as a single resume request.
 	let approvalDecisions = $state<Map<string, ApprovalAction>>(new Map());
-	// The approval-prompt's inline error, written by the controller's resume path.
+	// The approval-prompt's inline error, written by the controller's resume path
+	// (chat-turn-controller's setApprovalError) — but NOT yet rendered anywhere,
+	// so a failed approval-resume currently fails silently. Kept wired up rather
+	// than deleted because the fix is to surface it, not to drop it.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let approvalError = $state<string | null>(null);
 	// `approvalSubmitting` (+ its monotonic latch token) lives on the turn
 	// controller now — it owns the resume state machine.
@@ -1353,7 +1356,8 @@
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
-					pendingText = String((parsed as { text: unknown }).text ?? '');
+					const rawText = (parsed as { text: unknown }).text;
+					pendingText = typeof rawText === 'string' ? rawText : '';
 					const ids = (parsed as { attachedMediaIds?: unknown }).attachedMediaIds;
 					if (Array.isArray(ids)) {
 						pendingMediaIds = ids.filter((s): s is string => typeof s === 'string');

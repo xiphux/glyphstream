@@ -22,7 +22,6 @@
 		expandCompareSelections,
 		resolveActiveModelKind,
 		type CompareSelection,
-		type FanoutModel,
 	} from '$lib/fanout';
 	import { isSnippetKind } from '$lib/types/api';
 	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';

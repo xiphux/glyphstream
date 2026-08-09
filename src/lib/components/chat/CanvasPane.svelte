@@ -153,6 +153,8 @@
 			class:flash
 		>
 			{#if doc.contentHtml}
+				<!-- Server-rendered markdown; safe because markdown-it runs with html=false. -->
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<div class="gs-prose">{@html doc.contentHtml}</div>
 			{:else}
 				<p class="text-sm italic text-fg-muted">This canvas is empty.</p>

@@ -988,7 +988,7 @@ export interface FanoutRecoveryState {
 	/** When each pending branch began generating (aligned with `pendingModelIds`),
 	 *  or null while still QUEUED behind the gate — drives the recovered grid's
 	 *  QUEUED badge vs. elapsed timer. */
-	pendingStartedAt: (number | null)[];
+	pendingStartedAt: Array<number | null>;
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */
@@ -1351,7 +1351,7 @@ export interface ContextSegment {
 	tokens: number;
 	/** Per-item costs, largest first — the tools in `tools:defs`, the images in
 	 *  `history:images`. Absent for segments with nothing to itemize. */
-	items?: { label: string; chars: number }[];
+	items?: Array<{ label: string; chars: number }>;
 }
 
 export interface ContextBreakdown {
@@ -1453,7 +1453,7 @@ export interface GalleryUnit {
 	/** Total members (drives the "N items" / "+N" affordances). */
 	memberCount: number;
 	/** Newest ≤4 members for the stack-card collage (solo: just the leader). */
-	previews: { id: string; kind: MediaKind }[];
+	previews: Array<{ id: string; kind: MediaKind }>;
 	/** Leader's truncated prompt for the caption overlay. */
 	excerpt: string | null;
 	/** Human label for a stack card: the conversation title, or the run's shared
@@ -1468,7 +1468,7 @@ export interface GalleryLayout {
 	/** Per-day unit counts, newest-first. The client reserves exact scroll height
 	 *  from these (aggregating days into months for month granularity) before any
 	 *  unit data loads — the counts, not the loaded rows, size the grid. */
-	days: { key: string; units: number }[];
+	days: Array<{ key: string; units: number }>;
 	/** Total top-level units across the whole (filtered) library. */
 	totalUnits: number;
 }

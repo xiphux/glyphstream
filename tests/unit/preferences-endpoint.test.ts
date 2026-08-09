@@ -46,7 +46,6 @@ async function patch(body: unknown) {
 			body: JSON.stringify(body),
 		}),
 		cookies,
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	} as any);
 	return forwardedPatch();
 }
@@ -155,7 +154,7 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		// needs a distinct signature like any other, or a future field wired to it would
 		// round-trip green.
 		const signatures = new Map<string, string>();
-		for (const key of Object.keys(fixture(0)) as (keyof UserPreferences)[]) {
+		for (const key of Object.keys(fixture(0)) as Array<keyof UserPreferences>) {
 			const sig = JSON.stringify(PASSES.map((p) => fixture(p)[key]));
 			const clash = [...signatures.entries()].find(([, s]) => s === sig);
 			expect(clash?.[0], `"${key}" is indistinguishable from "${clash?.[0]}"`).toBeUndefined();

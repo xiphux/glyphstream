@@ -53,8 +53,8 @@ export interface ImportOptions {
 export interface ImportResult {
 	imported: number;
 	archived: number;
-	skipped: { id: string; reason: string }[];
-	errors: { id: string; reason: string }[];
+	skipped: Array<{ id: string; reason: string }>;
+	errors: Array<{ id: string; reason: string }>;
 }
 
 interface OwuiExportEntry {
@@ -157,7 +157,7 @@ async function importOne(
 	// messages.parent_message_id (well, the column doesn't have an FK
 	// constraint actually, but topological order keeps the data sane).
 	const idMap = new Map<string, string>(); // owui id -> new uuid
-	const ordered: { owuiId: string; msg: OwuiTreeMessage }[] = [];
+	const ordered: Array<{ owuiId: string; msg: OwuiTreeMessage }> = [];
 	const seen = new Set<string>();
 
 	const roots = Object.values(owuiMessages).filter(

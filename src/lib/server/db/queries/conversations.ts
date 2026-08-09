@@ -548,7 +548,7 @@ export function renameConversation(id: string, userId: string, newTitle: string)
  */
 export interface FirstExchange {
 	userText: string;
-	userMediaKinds: ('image' | 'video')[];
+	userMediaKinds: Array<'image' | 'video'>;
 	assistantText: string | null;
 	assistantHasMedia: boolean;
 }

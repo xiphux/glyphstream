@@ -14,7 +14,7 @@
 	} from '@lucide/svelte';
 	import type { CompareSelection } from '$lib/fanout';
 	import { mergeModelSet } from '$lib/model-sets';
-	import { capabilityPill, acceptsImageInput, imageAttachment } from '$lib/model-capabilities';
+	import { capabilityPill, acceptsImageInput } from '$lib/model-capabilities';
 	import type { ImageAttachment } from '$lib/model-capabilities';
 	import type { CustomModel, ModelEntry, ModelKind, SavedModelSet } from '$lib/types/api';
 
@@ -578,7 +578,7 @@
 		if (search.trim()) {
 			return [{ key: '__flat', label: '', items: filteredItems }];
 		}
-		const out: { key: string; label: string; items: PickerItem[] }[] = [];
+		const out: Array<{ key: string; label: string; items: PickerItem[] }> = [];
 		let current: { key: string; label: string; items: PickerItem[] } | null = null;
 		for (const it of filteredItems) {
 			if (!current || current.key !== it.groupKey) {

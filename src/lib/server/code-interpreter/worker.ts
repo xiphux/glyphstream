@@ -98,7 +98,7 @@ async function followWithRevalidation(
 	call: CurrentCall,
 ): Promise<Response> {
 	let current = initial;
-	let lastBodyInit = init?.body;
+	const lastBodyInit = init?.body;
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
 		assertHttpScheme(current);
 		assertNotForbiddenHost(current);

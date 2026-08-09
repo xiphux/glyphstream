@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const contentType = request.headers.get('content-type') ?? '';
 
 	let content: string;
-	let overwrite = false;
+	let overwrite: boolean;
 
 	if (contentType.includes('application/json')) {
 		const body = await parseJsonBody<{ content?: unknown; overwrite?: unknown }>(request);

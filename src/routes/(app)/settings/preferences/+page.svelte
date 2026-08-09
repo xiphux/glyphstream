@@ -50,7 +50,7 @@
 	// svelte-ignore state_referenced_locally
 	let theme = $state<ThemeName>(data.prefs.theme);
 	let themeError = $state<string | null>(null);
-	const THEMES: { id: ThemeName; label: string; description: string }[] = [
+	const THEMES: Array<{ id: ThemeName; label: string; description: string }> = [
 		{ id: 'glyphstream', label: 'GlyphStream', description: 'Signature frosted glass' },
 		{ id: 'claude', label: 'Claude', description: 'Warm paper, soft edges' },
 		{ id: 'chatgpt', label: 'ChatGPT', description: 'Cool, compact, flat' },
@@ -84,7 +84,7 @@
 	// data-scheme attribute the same way app.html's inline script does.
 	// svelte-ignore state_referenced_locally
 	let colorScheme = $state<ColorScheme>(data.prefs.colorScheme);
-	const SCHEMES: { id: ColorScheme; label: string }[] = [
+	const SCHEMES: Array<{ id: ColorScheme; label: string }> = [
 		{ id: 'system', label: 'System' },
 		{ id: 'light', label: 'Light' },
 		{ id: 'dark', label: 'Dark' },

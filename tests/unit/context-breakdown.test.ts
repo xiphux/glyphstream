@@ -57,7 +57,7 @@ function input(over: Partial<ContextBreakdownInput> = {}): ContextBreakdownInput
 
 /** Chars attributed to a segment, or 0 when the segment is absent. */
 function chars(
-	segments: { key: ContextSegmentKey; chars: number }[],
+	segments: Array<{ key: ContextSegmentKey; chars: number }>,
 	key: ContextSegmentKey,
 ): number {
 	return segments.find((s) => s.key === key)?.chars ?? 0;

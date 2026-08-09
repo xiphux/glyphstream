@@ -103,8 +103,8 @@ function canJoinPromptRun<T extends StackableMedia>(run: Run<T>, item: T): boole
  */
 export function groupGalleryItems<T extends StackableMedia = MediaListItem>(
 	items: T[],
-): GalleryGroup<T>[] {
-	const groups: Run<T>[] = [];
+): Array<GalleryGroup<T>> {
+	const groups: Array<Run<T>> = [];
 	// Conversation buckets are global (one per id), so they're addressed by a
 	// map rather than only the tail of `groups`.
 	const convGroups = new Map<string, Run<T>>();

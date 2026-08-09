@@ -622,7 +622,12 @@ describe('MediaLightbox — carousel navigation', () => {
 		expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
 		expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
 
-		rerender({ media: makeVideo({ id: 'm-3' }), onClose: vi.fn(), siblings, onNavigate: vi.fn() });
+		void rerender({
+			media: makeVideo({ id: 'm-3' }),
+			onClose: vi.fn(),
+			siblings,
+			onNavigate: vi.fn(),
+		});
 		expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
 		expect(screen.getByRole('button', { name: 'Previous' })).not.toBeDisabled();
 	});

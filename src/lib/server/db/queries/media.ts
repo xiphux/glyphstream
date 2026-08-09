@@ -343,7 +343,7 @@ export function listMediaForUser(
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
 		opts.before != null ? lt(media.createdAt, opts.before) : undefined,
 		cursorWhere,
-	].filter(Boolean) as Parameters<typeof and>[number][];
+	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	// Fetch limit+1 to detect whether there's another page.
 	const rows = db
@@ -654,7 +654,7 @@ export function listMediaEmbeddingsForUser(
 		eq(media.embeddingModel, opts.embeddingModel),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
-	].filter(Boolean) as Parameters<typeof and>[number][];
+	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	return getDb()
 		.select({ id: media.id, embedding: media.embedding })
@@ -692,7 +692,7 @@ export function listDistinctSourceModelsForUser(
 		eq(media.origin, 'generated'),
 		isNotNull(media.sourceModel),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
-	].filter(Boolean) as Parameters<typeof and>[number][];
+	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	const rows = db
 		.select({ value: media.sourceModel, count: sql<number>`count(*)` })
@@ -741,7 +741,7 @@ export function listMediaMonthPeriodsForUser(
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
-	].filter(Boolean) as Parameters<typeof and>[number][];
+	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	return db
 		.select({ key: monthExpr, count: sql<number>`count(*)` })
@@ -908,7 +908,7 @@ export function hardDeleteMediaForUser(
 export function bulkHardDeleteMediaForUser(
 	ids: readonly string[],
 	userId: string,
-): { id: string; storagePath: string }[] {
+): Array<{ id: string; storagePath: string }> {
 	if (ids.length === 0) return [];
 	const db = getDb();
 	const result = db.transaction((tx) => {

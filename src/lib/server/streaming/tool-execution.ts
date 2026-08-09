@@ -47,7 +47,7 @@ export interface ExecuteToolCallsParams {
 	 * honor the same conversation switches the model's tool-list filter
 	 * uses. Defaults to `[]` when omitted.
 	 */
-	disabledFeatures?: readonly import('$lib/types/api').FeatureCategory[];
+	disabledFeatures?: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
 	/** SSE writer for executing/result events. Disconnected clients
 	 *  no-op (the underlying writer swallows). */
 	emit: (event: StreamEvent) => void;
@@ -236,7 +236,7 @@ export async function executeOneToolCall(
 	userId: string,
 	conversationId: string,
 	signal: AbortSignal,
-	disabledFeatures: readonly import('$lib/types/api').FeatureCategory[],
+	disabledFeatures: ReadonlyArray<import('$lib/types/api').FeatureCategory>,
 ): Promise<ExecuteOneToolCallResult> {
 	const tool = getTool(part.toolName);
 	if (!tool) {

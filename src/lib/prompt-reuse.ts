@@ -114,7 +114,7 @@ export function resolveIntentSelection(
 export function upgradeToPresetModelId(
 	modelId: string | null,
 	customModelId: string | null,
-	presets: readonly { id: string; baseEndpointId: string; baseModelId: string }[],
+	presets: ReadonlyArray<{ id: string; baseEndpointId: string; baseModelId: string }>,
 ): string | null {
 	if (!modelId || !customModelId) return modelId;
 	const preset = presets.find((p) => p.id === customModelId);

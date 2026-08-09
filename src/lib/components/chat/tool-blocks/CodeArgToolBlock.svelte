@@ -77,6 +77,8 @@
 	{#snippet body()}
 		{#if argumentsHtml}
 			<!-- Server-rendered code (shiki); {@html} safe: markdown-it html=false. -->
+			<!-- Shiki-highlighted code; markdown-it runs with html=false. -->
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			<div class="gs-prose text-xs">{@html argumentsHtml}</div>
 		{:else if streamingCode}
 			<div>
@@ -84,6 +86,8 @@
 					{streamingCode.language}
 				</div>
 				{#if streamingCodeHtml}
+					<!-- Shiki-highlighted code; markdown-it runs with html=false. -->
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 					<div class="gs-prose text-xs">{@html streamingCodeHtml}</div>
 				{:else}
 					<pre

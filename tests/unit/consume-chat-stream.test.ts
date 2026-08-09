@@ -243,7 +243,7 @@ describe('consumeChatStream', () => {
 		await consumeChatStream(body, {
 			onCompactionStart: () => order.push('start'),
 			onCompactionText: (c) => order.push(`text:${c}`),
-			onCompactionDone: onCompactionDone,
+			onCompactionDone,
 		});
 
 		expect(order).toEqual(['start', 'text:Earlier ', 'text:context.']);

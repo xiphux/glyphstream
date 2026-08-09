@@ -11,7 +11,7 @@
  * supplied cancel signal (turn abort) and a local timeout — chat-completion
  * fetches and tool executions (web_search, fetch_url) both fit this shape.
  */
-export function composeSignals(...signals: (AbortSignal | undefined)[]): AbortSignal {
+export function composeSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {
 	const present = signals.filter((s): s is AbortSignal => s !== undefined);
 	if (present.length === 0) return new AbortController().signal;
 	if (present.length === 1) return present[0];

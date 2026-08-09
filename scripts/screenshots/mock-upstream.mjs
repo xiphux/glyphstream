@@ -15,6 +15,7 @@
  * the capture flow sends new messages.
  */
 
+import process from 'node:process';
 import { createServer } from 'node:http';
 
 const PORT = Number(process.env.DEMO_UPSTREAM_PORT ?? 3002);

@@ -57,7 +57,7 @@
 		 * are 2+ entries; omit it (or pass a single-entry list) and the
 		 * lightbox renders exactly as the pre-carousel single-item view.
 		 */
-		siblings?: { id: string; kind: MediaKind }[];
+		siblings?: Array<{ id: string; kind: MediaKind }>;
 		/**
 		 * Called when the user swipes / clicks an arrow / presses an arrow
 		 * key to move to a different sibling. The caller resolves the id to

@@ -123,7 +123,7 @@ interface TaskMessage {
  */
 export function buildTitlePrompt(exchange: {
 	userText: string;
-	userMediaKinds: ('image' | 'video')[];
+	userMediaKinds: Array<'image' | 'video'>;
 	assistantText: string | null;
 	assistantHasMedia: boolean;
 }): TaskMessage[] | null {

@@ -24,7 +24,6 @@ async function post(body: unknown, userId = 'u1'): Promise<Response> {
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(body),
 		}),
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	} as any);
 }
 

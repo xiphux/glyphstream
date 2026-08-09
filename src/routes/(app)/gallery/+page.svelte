@@ -26,7 +26,7 @@
 			searchItems?: MediaListItem[];
 			kind: 'image' | 'video' | null;
 			model: string | null;
-			modelFacets: { value: string; label: string; count: number }[];
+			modelFacets: Array<{ value: string; label: string; count: number }>;
 			q: string | null;
 		};
 	}>();
@@ -174,7 +174,7 @@
 		// change keeps the current grid until the new units land. untrack so reading
 		// the layout doesn't feed back into this effect.
 		if (untrack(() => feed.layout) === null) browseLoading = true;
-		reloadFeed(true);
+		void reloadFeed(true);
 	});
 
 	// --- Filters ------------------------------------------------------------
@@ -190,18 +190,21 @@
 		const url = new URL(page.url);
 		if (k) url.searchParams.set('kind', k);
 		else url.searchParams.delete('kind');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
 	}
 
 	function setModel(m: string | null) {
 		const url = new URL(page.url);
 		if (m) url.searchParams.set('model', m);
 		else url.searchParams.delete('model');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
 	}
 
 	// --- Prompt search box --------------------------------------------------
 	// svelte-ignore state_referenced_locally
+	// The $effect below resyncs from the URL on back-nav; local typing must
+	// survive until then, so this isn't a plain writable $derived.
+	// eslint-disable-next-line svelte/prefer-writable-derived
 	let queryText = $state(data.q ?? '');
 	let queryDebounce: ReturnType<typeof setTimeout> | null = null;
 	let searchOpen = $state(false);
@@ -215,7 +218,7 @@
 
 	function openSearch() {
 		searchOpen = true;
-		tick().then(() => searchInput?.focus());
+		void tick().then(() => searchInput?.focus());
 	}
 	function onSearchBlur() {
 		if (!queryText.trim() && !data.q) searchOpen = false;
@@ -225,7 +228,7 @@
 		const trimmed = q.trim();
 		if (trimmed) url.searchParams.set('q', trimmed);
 		else url.searchParams.delete('q');
-		goto(url, { keepFocus: true, noScroll: true, replaceState: true });
+		void goto(url, { keepFocus: true, noScroll: true, replaceState: true });
 	}
 	function onQueryInput() {
 		if (queryDebounce) clearTimeout(queryDebounce);
@@ -288,7 +291,7 @@
 		if (drillUnit === null && scrollContainer) savedGalleryScroll = scrollContainer.scrollTop;
 		drillUnit = u;
 		void loadDrillMembers(u);
-		tick().then(() => {
+		void tick().then(() => {
 			if (scrollContainer) scrollContainer.scrollTop = 0;
 		});
 	}
@@ -297,7 +300,7 @@
 		drillUnit = null;
 		drillItems = null;
 		drillError = null;
-		tick().then(() => {
+		void tick().then(() => {
 			if (scrollContainer) scrollContainer.scrollTop = savedGalleryScroll;
 		});
 	}
@@ -594,7 +597,7 @@
 		void feed.totalUnits;
 		void (drillItems?.length ?? 0);
 		void searchItems.length;
-		if (scrollContainer) tick().then(measureGrid);
+		if (scrollContainer) void tick().then(measureGrid);
 	});
 
 	// Quantized scroll position, not the raw one.
@@ -989,7 +992,6 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
-									<!-- svelte-ignore a11y_media_has_caption -->
 									<video
 										src="/api/media/{m.id}/content#t=0.1"
 										preload="metadata"
@@ -1068,7 +1070,6 @@
 										class="h-full w-full object-cover"
 									/>
 								{:else}
-									<!-- svelte-ignore a11y_media_has_caption -->
 									<video
 										src="/api/media/{u.leaderId}/content#t=0.1"
 										preload="metadata"
@@ -1142,7 +1143,6 @@
 													class="h-full w-full object-cover"
 												/>
 											{:else}
-												<!-- svelte-ignore a11y_media_has_caption -->
 												<video
 													src="/api/media/{p.id}/content#t=0.1"
 													preload="metadata"
@@ -1265,7 +1265,7 @@
 						type="button"
 						onclick={() => {
 							loadError = null;
-							reloadFeed();
+							void reloadFeed();
 						}}
 						class="shrink-0 rounded-md border border-border-strong bg-surface-panel px-3 py-1 text-xs transition hover:bg-surface-raised"
 					>

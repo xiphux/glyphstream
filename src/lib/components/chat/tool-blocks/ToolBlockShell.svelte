@@ -43,6 +43,9 @@
 	// and clobber user toggles while status is stable.
 	// untrack: intentionally seed with the initial openByDefault (the $effect
 	// below owns ongoing sync); reading it tracked in an initializer would warn.
+	// Not a writable $derived: see the note above — the $effect must depend on
+	// openByDefault alone, and the seed is deliberately untracked.
+	// eslint-disable-next-line svelte/prefer-writable-derived
 	let isOpen = $state(untrack(() => openByDefault));
 	$effect(() => {
 		isOpen = openByDefault;

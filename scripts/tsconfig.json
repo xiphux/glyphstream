@@ -1,0 +1,9 @@
+{
+	// `scripts/` is outside the SvelteKit-generated tsconfig's `include`
+	// (which covers `src/` and `tests/` only), so typescript-eslint's
+	// project service has no program for these files and they fail to
+	// parse. This gives them one. `import-owui.ts` is bundled by
+	// `pnpm build`, so it's shipped code, not a local-only helper.
+	"extends": "../tsconfig.json",
+	"include": ["**/*.ts"]
+}

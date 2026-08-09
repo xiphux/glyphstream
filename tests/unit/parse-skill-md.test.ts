@@ -39,6 +39,8 @@ body`);
 	});
 
 	it('strips a leading UTF-8 BOM', () => {
+		// The BOM below is the fixture — that is the whole point of the test.
+		// eslint-disable-next-line no-irregular-whitespace
 		const skill = ok(`﻿---\nname: x\ndescription: d\n---\nbody`);
 		expect(skill.name).toBe('x');
 	});

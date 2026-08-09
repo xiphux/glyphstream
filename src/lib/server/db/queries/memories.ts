@@ -266,7 +266,7 @@ export function listMemoryRecallVectors(
 	userId: string,
 	embeddingModel: string,
 	limit: number = RECALL_DENSE_CORPUS_CAP,
-): { id: string; embedding: Buffer }[] {
+): Array<{ id: string; embedding: Buffer }> {
 	const db = getDb();
 	const capped = Math.max(1, Math.min(limit, 20000));
 	return db
@@ -282,7 +282,7 @@ export function listMemoryRecallVectors(
 		)
 		.orderBy(desc(memories.createdAt))
 		.limit(capped)
-		.all() as { id: string; embedding: Buffer }[];
+		.all() as Array<{ id: string; embedding: Buffer }>;
 }
 
 /**

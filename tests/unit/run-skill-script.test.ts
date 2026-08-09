@@ -144,7 +144,7 @@ describe('run_skill_script — execution', () => {
 		expect(mocks.runPython).toHaveBeenCalledTimes(1);
 		const call = mocks.runPython.mock.calls[0][0] as {
 			code: string;
-			preFiles: { filename: string }[];
+			preFiles: Array<{ filename: string }>;
 			conversationId: string;
 			ctxSignal: AbortSignal;
 		};
@@ -162,7 +162,7 @@ describe('run_skill_script — execution', () => {
 		]);
 		await run({ name: 'review', path: 'scripts/extract.py' });
 		const call = mocks.runPython.mock.calls[0][0] as {
-			preFiles: { filename: string; bytes: Uint8Array }[];
+			preFiles: Array<{ filename: string; bytes: Uint8Array }>;
 		};
 		const helpers = call.preFiles.find((f) => f.filename === 'helpers.py')!;
 		expect(Buffer.from(helpers.bytes).toString('utf8')).toBe('def go(): return "skill"');

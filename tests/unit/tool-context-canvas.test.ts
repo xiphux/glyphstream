@@ -71,7 +71,7 @@ describe('augmentRequestForCanvas', () => {
 		// The doc text appears ONLY in the tail, never earlier (prefix stays clean).
 		const earlier = out.messages
 			.slice(0, -1)
-			.map((m) => m.content)
+			.map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
 			.join('\n');
 		expect(earlier).not.toContain('body text');
 	});

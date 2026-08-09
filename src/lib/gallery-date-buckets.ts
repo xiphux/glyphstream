@@ -80,7 +80,7 @@ export function groupIntoSections<T>(
 	gran: Granularity,
 	getDate: (u: T) => number,
 	now: number = Date.now(),
-): DateSection<T>[] {
+): Array<DateSection<T>> {
 	const byKey = new Map<string, DateSection<T>>();
 	for (const u of units) {
 		const ms = getDate(u);

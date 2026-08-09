@@ -448,7 +448,7 @@ export class ChatTurnController {
 		// invalidateAll runs after 'done'.
 		const isRetry = !!options.retryFromMessageId;
 		let optimisticId: string | null = null;
-		let sawToolCalls = false;
+		let sawToolCalls: boolean;
 		if (isRetry) {
 			// Trim the retry target AND everything in its multi-iteration tool chain
 			// — walk back from the target through preceding assistant/tool rows until

@@ -756,7 +756,7 @@ export async function fetchUpstreamBytes(
 			await assertHostnameRoutable(current.hostname);
 		} catch (e) {
 			if (e instanceof UrlPolicyError) {
-				throw new Error(`Upstream returned an unsafe media URL: ${e.message}`);
+				throw new Error(`Upstream returned an unsafe media URL: ${e.message}`, { cause: e });
 			}
 			throw e;
 		}

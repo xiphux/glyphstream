@@ -60,7 +60,7 @@
 	}
 
 	function openConversation(id: string) {
-		goto(`/chat/${id}`);
+		void goto(`/chat/${id}`);
 	}
 </script>
 

@@ -82,7 +82,7 @@
 	// streamPresence.conversationId via the chat page's cleanup).
 	$effect(() => {
 		// Track the reactive source, then reconcile.
-		streamPresence.conversationId;
+		void streamPresence.conversationId;
 		syncPresence();
 	});
 

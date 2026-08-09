@@ -1,3 +1,4 @@
+import process from 'node:process';
 import type { Handle, HandleServerError } from '@sveltejs/kit';
 import {
 	readSessionCookie,

@@ -20,6 +20,7 @@
  * header is required.
  */
 
+import process from 'node:process';
 import { createServer } from 'node:http';
 
 const PORT = Number(process.env.MOCK_UPSTREAM_PORT ?? 3001);

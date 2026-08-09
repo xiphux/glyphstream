@@ -29,7 +29,7 @@ export interface FuseOptions {
 	 * absent items contribute nothing from that leg — standard RRF. The "universe"
 	 * is the union of every item appearing in any ranking.
 	 */
-	missingRanks?: (number | undefined)[];
+	missingRanks?: Array<number | undefined>;
 }
 
 export function fuseRankings(rankings: ScoredChunk[][], opts: FuseOptions = {}): ScoredChunk[] {

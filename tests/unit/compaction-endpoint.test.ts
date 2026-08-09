@@ -38,7 +38,7 @@ function call(args: Args = {}) {
 		user: args.userId === undefined ? { id: 'u1' } : args.userId ? { id: args.userId } : null,
 	};
 	const request = { signal: undefined } as unknown as Request;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 	return POST({ locals, params: { id: 'c1' }, request, url } as any);
 }
 

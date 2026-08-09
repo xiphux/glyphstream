@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	let resolvedEndpointId: string;
 	let resolvedModelId: string;
 	let resolvedModelKind: ModelKind | null = null;
-	let resolvedSystemPrompt: string | null = null;
+	let resolvedSystemPrompt: string | null;
 	let resolvedParameters: CustomModelParameters | null = null;
 	let resolvedCustomModelId: string | null = null;
 

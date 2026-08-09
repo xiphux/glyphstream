@@ -191,7 +191,7 @@ function parseArtifactId(args: unknown): string | null {
 }
 
 /** A compact "id (title)" listing for the disambiguation error messages. */
-function describeCanvases(canvases: { id: string; title: string | null }[]): string {
+function describeCanvases(canvases: Array<{ id: string; title: string | null }>): string {
 	return canvases.map((c) => `${c.id} (${c.title ?? 'Canvas'})`).join(', ');
 }
 

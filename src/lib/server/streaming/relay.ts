@@ -180,7 +180,7 @@ export interface RelayParams {
 	 * conversation's switches at execute time, not just request-build
 	 * time.
 	 */
-	disabledFeatures?: readonly import('$lib/types/api').FeatureCategory[];
+	disabledFeatures?: ReadonlyArray<import('$lib/types/api').FeatureCategory>;
 	/**
 	 * Hard cap on tool-loop iterations for this turn. The route handlers pass
 	 * the config-driven value (`[tools] max_tool_loop_iterations`); omitted →

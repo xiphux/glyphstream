@@ -88,6 +88,8 @@ export function buildLayoutSections(
  * rail can never disagree with the reserved section heights). `count` is unit
  * count, matching what the sections reserve.
  */
-export function monthTicksFromLayout(days: readonly LayoutDay[]): { key: string; count: number }[] {
+export function monthTicksFromLayout(
+	days: readonly LayoutDay[],
+): Array<{ key: string; count: number }> {
 	return buildLayoutSections(days, 'month', 0).map((s) => ({ key: s.key, count: s.unitCount }));
 }

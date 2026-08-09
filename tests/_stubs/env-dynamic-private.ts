@@ -15,4 +15,6 @@
  * loaders degrade to their documented defaults. Tests get one deterministic
  * baseline regardless of what's on the developer's disk.
  */
+import process from 'node:process';
+
 export const env = process.env as Record<string, string | undefined>;

@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { test, expect } from '@playwright/test';
 import { resetData, seedSnippet } from './helpers';
 

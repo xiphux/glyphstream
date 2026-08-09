@@ -84,7 +84,7 @@ describe('POST /api/user/skills', () => {
 		expect(await res.json()).toEqual({ skill: { id: 's1', name: 'review' } });
 		const [userId, files] = mocks.importSkillBundle.mock.calls[0] as [
 			string,
-			{ relPath: string; bytes: Buffer }[],
+			Array<{ relPath: string; bytes: Buffer }>,
 		];
 		expect(userId).toBe('u1');
 		expect(files).toHaveLength(1);
@@ -110,7 +110,7 @@ describe('POST /api/user/skills', () => {
 			req('multipart/form-data', { formData: async () => fd }),
 		)) as Response;
 		expect(res.status).toBe(201);
-		const [, files] = mocks.importSkillBundle.mock.calls[0] as [string, { relPath: string }[]];
+		const [, files] = mocks.importSkillBundle.mock.calls[0] as [string, Array<{ relPath: string }>];
 		expect(files.map((f) => f.relPath)).toEqual([
 			'my-skill/SKILL.md',
 			'my-skill/references/api.md',

@@ -220,6 +220,8 @@
 									<div
 										class="mt-0.5 line-clamp-2 text-xs text-fg-muted [&_mark]:bg-amber-200 [&_mark]:text-fg [&_mark]:dark:bg-amber-500/30"
 									>
+										<!-- FTS5 snippet, HTML-escaped by safeSnippet() before its <mark> tags are put back — see db/queries/search.ts. -->
+										<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 										{@html r.snippet}
 									</div>
 								</button>

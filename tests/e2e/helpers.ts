@@ -332,7 +332,7 @@ export function seedMemory(opts: {
  * <img>/heading DOM nodes. Use mid-month, clearly-past dates so local-tz
  * bucketing can't shift the month and "Today"/"Yesterday" never apply.
  */
-export function seedMediaInBuckets(buckets: { createdAt: number; count: number }[]): void {
+export function seedMediaInBuckets(buckets: Array<{ createdAt: number; count: number }>): void {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');
 	db.exec('PRAGMA foreign_keys = ON');

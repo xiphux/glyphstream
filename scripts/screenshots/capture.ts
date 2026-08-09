@@ -14,6 +14,7 @@
  * need lossless fidelity.
  */
 
+import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';

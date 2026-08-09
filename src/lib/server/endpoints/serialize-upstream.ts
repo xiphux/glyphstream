@@ -545,6 +545,9 @@ function fitByElidingLeaves(root: unknown, leaves: StringLeaf[], maxChars: numbe
 		if (best >= 0) {
 			const kept = elide(original, best, leafNote);
 			leaves[i].set(kept);
+			// Dead as written (the unconditional break follows), but kept so the
+			// invariant survives if anyone ever lets the loop continue past here.
+			// eslint-disable-next-line no-useless-assignment
 			budget -= jsonLen(kept) - noteCost;
 		}
 		// Budget is spent; every later leaf stays at its floor note.

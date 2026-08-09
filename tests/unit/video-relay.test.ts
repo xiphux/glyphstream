@@ -212,7 +212,7 @@ describe('startVideoRelay — progress status is display text', () => {
 	// a video generated. The status field is display text; the enum stays server-side.
 	const PROVIDER_ENUM = ['queued', 'in_progress', 'completed', 'failed'];
 
-	function progressStatuses(events: StreamEvent[]): (string | undefined)[] {
+	function progressStatuses(events: StreamEvent[]): Array<string | undefined> {
 		return events
 			.filter((e) => e.type === 'progress')
 			.map((e) => (e as { status?: string }).status);

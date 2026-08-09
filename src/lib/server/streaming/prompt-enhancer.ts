@@ -201,7 +201,7 @@ export function sanitizeEnhanced(raw: string): string {
 	const fence = /^```[a-z]*\n([\s\S]*?)\n```$/i.exec(s);
 	if (fence) s = fence[1].trim();
 	// Strip a leading "Prompt:" / "Enhanced prompt -" style label.
-	s = s.replace(/^\s*(?:enhanced\s+)?prompt\s*[:\-]\s*/i, '');
+	s = s.replace(/^\s*(?:enhanced\s+)?prompt\s*[:-]\s*/i, '');
 	// Strip a single surrounding pair of quotes.
 	if (s.length >= 2) {
 		const pairs: Array<[string, string]> = [

@@ -221,7 +221,7 @@ async function mapBounded<T, R>(
 			results[i] = await fn(items[i]);
 		}
 	}
-	const workers: Promise<void>[] = [];
+	const workers: Array<Promise<void>> = [];
 	for (let w = 0; w < Math.min(limit, items.length); w++) workers.push(worker());
 	await Promise.all(workers);
 	return results;

@@ -72,7 +72,7 @@ function call() {
 	const url = new URL('http://x/api/conversations/c1/messages');
 	const locals = { user: { id: 'u1' } };
 	const request = new Request(url, { method: 'POST' });
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 	return POST({ locals, params: { id: 'c1' }, request, url } as any);
 }
 

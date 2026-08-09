@@ -53,6 +53,8 @@
 		<div class="border-t border-border px-3 py-2">
 			{#if message.contentHtml}
 				<!-- Server-rendered markdown; {@html} safe (markdown-it html=false). -->
+				<!-- Server-rendered markdown; markdown-it runs with html=false. -->
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				<div class="gs-prose">{@html message.contentHtml}</div>
 			{:else}
 				<div class="whitespace-pre-wrap">{text}</div>

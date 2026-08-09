@@ -1,4 +1,4 @@
-# GlyphStream CI — runs unit + e2e tests.
+# GlyphStream CI — runs static analysis + unit + e2e tests.
 #
 # Triggers:
 #   - Direct on push to any branch except `main` and tags. Feature-
@@ -28,8 +28,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Lint, type-check and formatting share one job rather than three: each
+  # takes well under a minute, and they'd otherwise each pay the ~40s
+  # checkout + install to run in parallel. `continue-on-error` is NOT set
+  # anywhere — all three gate the PR.
+  static:
+    name: Lint + type-check + format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 'latest'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build native modules
+        run: pnpm rebuild better-sqlite3 esbuild
+
+      # Independent checks, so `if: always()` keeps a formatting nit from
+      # hiding a type error (and vice versa) — one run reports all three.
+      - name: Type-check
+        run: pnpm check
+
+      - name: Lint
+        if: always()
+        run: pnpm lint
+
+      - name: Format
+        if: always()
+        run: pnpm format:check
+
   unit:
-    name: Unit + type-check
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -49,9 +85,6 @@ jobs:
 
       - name: Build native modules
         run: pnpm rebuild better-sqlite3 esbuild
-
-      - name: Type-check
-        run: pnpm check
 
       - name: Unit tests
         run: pnpm test

@@ -91,7 +91,7 @@ const D: Record<string, Section> = {
 	},
 };
 
-function distractors(...keys: (keyof typeof D)[]): Section[] {
+function distractors(...keys: Array<keyof typeof D>): Section[] {
 	return keys.map((k) => D[k]);
 }
 
@@ -205,13 +205,13 @@ describe('reranker answer-presence eval', () => {
 		const emb = resolveRelevanceConfig();
 		const rr = resolveRerankConfig();
 
-		const configs: { key: ConfigKey; emb: typeof emb; rr: typeof rr }[] = [
+		const configs: Array<{ key: ConfigKey; emb: typeof emb; rr: typeof rr }> = [
 			{ key: 'bm25', emb: undefined, rr: undefined },
 			{ key: 'embed', emb, rr: undefined },
 			{ key: 'rerank', emb, rr },
 		];
 
-		const rows: { name: string; note: string; result: Record<ConfigKey, boolean> }[] = [];
+		const rows: Array<{ name: string; note: string; result: Record<ConfigKey, boolean> }> = [];
 		for (const c of CASES) {
 			const result = {} as Record<ConfigKey, boolean>;
 			for (const cfg of configs) result[cfg.key] = await answerPresent(c, cfg.emb, cfg.rr);

@@ -58,7 +58,7 @@ function state(over: Partial<UserServerState> = {}): UserServerState {
 	};
 }
 
-const names = (defs: { function: { name: string } }[]) => defs.map((d) => d.function.name);
+const names = (defs: Array<{ function: { name: string } }>) => defs.map((d) => d.function.name);
 
 describe('per-user MCP tools survive a transport blip', () => {
 	it('advertises tools for a CONNECTED server', async () => {

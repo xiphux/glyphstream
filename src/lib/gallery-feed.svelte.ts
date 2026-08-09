@@ -127,7 +127,7 @@ export class GalleryFeed {
 
 	/** Loaded units' leader {id, kind} in newest-first index order — the sibling
 	 *  set the top-level lightbox carousels over (spans only what's loaded). */
-	loadedLeaders(): { id: string; kind: GalleryUnit['leaderKind'] }[] {
+	loadedLeaders(): Array<{ id: string; kind: GalleryUnit['leaderKind'] }> {
 		const indices = [...this.#units.keys()].sort((a, b) => a - b);
 		return indices.map((i) => {
 			const u = this.#units.get(i)!;

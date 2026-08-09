@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const attachmentInstances = vi.hoisted(() => [] as MockStore[]);
 
 class MockStore {
-	items: { mediaId: string }[] = [];
+	items: Array<{ mediaId: string }> = [];
 	isBusy = false;
 	cleared = 0;
 	destroyed = 0;
@@ -58,7 +58,7 @@ function msg(overrides: Partial<ChatMessage> = {}): ChatMessage {
 }
 
 function make(overrides: Partial<EditSessionDeps> = {}) {
-	const sends: { text: string; mediaIds: string[]; editedMessageId: string }[] = [];
+	const sends: Array<{ text: string; mediaIds: string[]; editedMessageId: string }> = [];
 	const state = { generating: false };
 	const session = new EditSession({
 		generating: () => state.generating,
