@@ -1,6 +1,8 @@
 <script lang="ts">
+	import type { LayoutData } from './$types';
 	import { browser } from '$app/environment';
 	import { onMount, untrack } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
 	import { syncTimeZone } from '$lib/timezone-sync';
 	import { flip } from 'svelte/animate';
@@ -46,7 +48,7 @@
 	import type { ModelKind } from '$lib/types/api';
 	import { privateView } from '$lib/private-chat.svelte';
 
-	let { data, children } = $props();
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
 	// Heal a lapsed push subscription on load. The settings toggle is the only
 	// thing that *creates* a subscription, so once the OS/push service drops it

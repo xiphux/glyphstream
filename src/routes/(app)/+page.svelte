@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { PageData } from './$types';
 	import { onDestroy, untrack } from 'svelte';
 	import { browser } from '$app/environment';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -41,7 +42,7 @@
 	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 	import { privateView } from '$lib/private-chat.svelte';
 
-	let { data } = $props();
+	let { data }: { data: PageData } = $props();
 
 	// Greeting is computed client-side so it reflects the user's local wall
 	// clock (SSR would use the server's timezone). Each greeting is a template

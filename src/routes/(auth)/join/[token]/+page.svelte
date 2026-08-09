@@ -1,9 +1,10 @@
 <script lang="ts">
+	import type { PageData } from './$types';
 	import { KeyRound } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 
-	let { data } = $props();
+	let { data }: { data: PageData } = $props();
 
 	let displayName = $state('');
 	let email = $state('');

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { PageData } from './$types';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -74,7 +75,7 @@
 		ModelKind,
 	} from '$lib/types/api';
 
-	let { data } = $props();
+	let { data }: { data: PageData } = $props();
 
 	// Friendly bubble labels: the user's preferred name (Preferences ▸ Name
 	// if set, else GitHub display name's first token, else login) +

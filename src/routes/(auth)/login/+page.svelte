@@ -1,10 +1,11 @@
 <script lang="ts">
+	import type { PageData } from './$types';
 	import { KeyRound } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { clearSessionScopedClientState } from '$lib/client-session-state';
 
-	let { data } = $props();
+	let { data }: { data: PageData } = $props();
 
 	// Reaching the login page means there's no live session — an explicit
 	// logout, or an expired/revoked one bounced here by the (app) layout. Wipe
