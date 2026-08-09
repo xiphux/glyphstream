@@ -21,3 +21,9 @@ overrides:
 allowBuilds:
   esbuild: true
   sharp: true
+
+# Enforce package.json's `engines` (node >=26) instead of warning. Used to
+# be `engine-strict=true` in .npmrc; pnpm 11 restricts .npmrc to auth and
+# registry settings and ignores everything else, so it had to move here or
+# it would have quietly stopped applying.
+engineStrict: true

@@ -183,10 +183,10 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   compile, so the Docker/CI stages need no C/C++ toolchain. Driver is
   `drizzle-orm/node-sqlite` (requires drizzle-orm v1, currently an RC).
   Pragmas are set via `db.exec('PRAGMA …')` (node:sqlite has no `.pragma()`
-  helper). better-sqlite3 still resolves as an _optional peer_ of
-  drizzle-orm and lands unbuilt in `node_modules` — inert (never imported),
-  not worth fighting pnpm's `auto-install-peers` to remove.
-- **pnpm 10 + native modules**: install runs with `--ignore-scripts`, then
+  helper). better-sqlite3 used to tag along as an unbuilt _optional peer_ of
+  drizzle-orm; pnpm 11 no longer pulls it in, so it's absent from the tree
+  and the lockfile entirely.
+- **pnpm 11 + native modules**: install runs with `--ignore-scripts`, then
   the only package needing its build script run is esbuild (prebuilt Go
   binary, fetched not compiled): `pnpm install --frozen-lockfile
 --ignore-scripts` then `pnpm rebuild esbuild`. sharp ships prebuilt musl
@@ -197,7 +197,18 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   overrides got disabled once already. It's not a monorepo; the file
   exists only to hold settings. Docker must `COPY` it alongside
   package.json/pnpm-lock.yaml or `--frozen-lockfile` fails on the
-  overrides mismatch.
+  overrides mismatch. `.npmrc` is auth/registry-only under pnpm 11 and
+  everything else in it is ignored, so settings go here, not there.
+- **pnpm 11 refuses packages published in the last 24h**
+  (`minimumReleaseAge`, on by default — it's the "malicious version
+  published twenty minutes ago" guard). So `pnpm update --latest` can
+  resolve a version that then fails verification, and the error appears on
+  every subsequent install because the check runs against the _lockfile_
+  before resolution — which also means you can't fix it with another
+  `pnpm add`/`update`. Lower the range in package.json, then
+  `pnpm clean --lockfile && pnpm install`. Don't take pnpm's offer to
+  auto-add the version to `minimumReleaseAgeExclude`; that's a permanent
+  hole punched in the policy to dodge a problem that expires on its own.
 - **`tsc` is TypeScript 7; `tsc6` is TypeScript 6.** Both are installed,
   as npm aliases. TS7 ships no programmatic API until 7.1, and
   svelte-check, svelte2tsx and typescript-eslint all `import 'typescript'`

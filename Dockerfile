@@ -25,7 +25,7 @@ WORKDIR /app
 
 # Copy lockfile first so cache invalidates only on dep changes.
 # --ignore-scripts skips lifecycle hooks here (the `prepare` script
-# needs svelte.config.js, which we haven't copied yet, and pnpm 10
+# needs svelte.config.js, which we haven't copied yet, and pnpm
 # blocks unapproved native-module builds in non-interactive contexts).
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # node:alpine stopped bundling corepack as of Node 26, so install pnpm
