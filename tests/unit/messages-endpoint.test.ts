@@ -73,7 +73,9 @@ function call() {
 	const locals = { user: { id: 'u1' } };
 	const request = new Request(url, { method: 'POST' });
 
-	return POST({ locals, params: { id: 'c1' }, request, url } as any);
+	return POST({ locals, params: { id: 'c1' }, request, url } as unknown as Parameters<
+		typeof POST
+	>[0]);
 }
 
 // ---- setup / teardown -----------------------------------------------------

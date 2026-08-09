@@ -39,7 +39,9 @@ function call(args: Args = {}) {
 	};
 	const request = { signal: undefined } as unknown as Request;
 
-	return POST({ locals, params: { id: 'c1' }, request, url } as any);
+	return POST({ locals, params: { id: 'c1' }, request, url } as unknown as Parameters<
+		typeof POST
+	>[0]);
 }
 
 async function expectHttpError(fn: () => unknown): Promise<HttpError> {

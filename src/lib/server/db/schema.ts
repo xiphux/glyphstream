@@ -6,6 +6,7 @@ import {
 	index,
 	primaryKey,
 	uniqueIndex,
+	type AnySQLiteColumn,
 } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 // Relative import (not the $lib alias) on purpose: schema.ts is loaded
@@ -280,9 +281,12 @@ export const conversations = sqliteTable(
 		// messages.parent_message_id is null only for the root message).
 		// On message hard-delete, auto-null the pointer; app logic should
 		// already have moved the active leaf elsewhere first.
-		activeLeafMessageId: text('active_leaf_message_id').references((): any => messages.id, {
-			onDelete: 'set null',
-		}),
+		activeLeafMessageId: text('active_leaf_message_id').references(
+			(): AnySQLiteColumn => messages.id,
+			{
+				onDelete: 'set null',
+			},
+		),
 		// When set, this conversation has an UNRESOLVED multi-model fan-out:
 		// the leaf is pinned at this user message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
@@ -295,9 +299,12 @@ export const conversations = sqliteTable(
 		// ACTION, not the `set null` declared here. The app therefore clears
 		// this reference explicitly in the query paths above rather than relying
 		// on the FK; do not assume the DB will null it for you.
-		fanoutParentMessageId: text('fanout_parent_message_id').references((): any => messages.id, {
-			onDelete: 'set null',
-		}),
+		fanoutParentMessageId: text('fanout_parent_message_id').references(
+			(): AnySQLiteColumn => messages.id,
+			{
+				onDelete: 'set null',
+			},
+		),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		archivedAt: integer('archived_at'),
@@ -672,7 +679,7 @@ export const media = sqliteTable(
 		// practice this never bites: media rows are only ever soft-deleted (the
 		// purger clears bytes + sets hard_deleted_at, never DELETEs the row), so
 		// the source row a generated asset points at always survives.
-		sourceMediaId: text('source_media_id').references((): any => media.id, {
+		sourceMediaId: text('source_media_id').references((): AnySQLiteColumn => media.id, {
 			onDelete: 'set null',
 		}),
 		// promptExcerpt: a truncated (500 char) preview, used everywhere the
@@ -850,9 +857,12 @@ export const artifacts = sqliteTable(
 		// Forward FK to artifact_versions.id; nullable until the first version
 		// exists. Insert the version row first, then update this pointer, inside
 		// one transaction.
-		currentVersionId: text('current_version_id').references((): any => artifactVersions.id, {
-			onDelete: 'set null',
-		}),
+		currentVersionId: text('current_version_id').references(
+			(): AnySQLiteColumn => artifactVersions.id,
+			{
+				onDelete: 'set null',
+			},
+		),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 		// Soft-delete tombstone (the `media` pattern). Every request-path reader
@@ -893,9 +903,12 @@ export const artifactVersions = sqliteTable(
 		// The message whose turn produced this version (the active leaf at edit
 		// time). Captured for future branch-aware restore; null for user edits
 		// that don't originate from a message and for legacy rows.
-		createdByMessageId: text('created_by_message_id').references((): any => messages.id, {
-			onDelete: 'set null',
-		}),
+		createdByMessageId: text('created_by_message_id').references(
+			(): AnySQLiteColumn => messages.id,
+			{
+				onDelete: 'set null',
+			},
+		),
 		editSource: text('edit_source', { enum: ['agent', 'user'] })
 			.notNull()
 			.default('agent'),

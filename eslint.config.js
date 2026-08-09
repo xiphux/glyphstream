@@ -1,7 +1,32 @@
 import sveltejs from '@sveltejs/eslint-config';
 import { defineConfig } from 'eslint/config';
+import svelteParser from 'svelte-eslint-parser';
 import ts from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
+
+/**
+ * Shared by the `.ts` and `.svelte` blocks below. `projectService` is what
+ * gives the type-aware rules a TS program per file.
+ */
+const parserOptions = {
+	extraFileExtensions: ['.svelte'],
+	svelteConfig,
+	projectService: {
+		// Files with no owning tsconfig: these four config files, and
+		// `service-worker.ts`, which SvelteKit deliberately excludes from the
+		// app program (different globals/lib). `scripts/` gets its own tsconfig
+		// instead — see scripts/tsconfig.json. `vite.config.ts` is NOT listed:
+		// SvelteKit's generated tsconfig already includes it, and a file may
+		// not be in both.
+		allowDefaultProject: [
+			'drizzle.config.ts',
+			'playwright.config.ts',
+			'vitest.config.ts',
+			'vitest.eval.config.ts',
+			'src/service-worker.ts',
+		],
+	},
+};
 
 export default defineConfig([
 	{
@@ -19,8 +44,9 @@ export default defineConfig([
 	},
 
 	// The Svelte team's shared config: eslint + typescript-eslint
-	// `recommended` (deliberately NOT `recommendedTypeChecked`) +
-	// eslint-plugin-svelte, with prettier's formatting rules switched off.
+	// `recommended` + eslint-plugin-svelte, with prettier's formatting rules
+	// switched off. The `**/*.{ts,svelte}` block below layers the full
+	// `recommendedTypeChecked` on top of it.
 	sveltejs,
 
 	{
@@ -35,39 +61,9 @@ export default defineConfig([
 
 	{
 		files: ['**/*.{ts,svelte}'],
-		languageOptions: {
-			parserOptions: {
-				parser: ts.parser,
-				extraFileExtensions: ['.svelte'],
-				svelteConfig,
-				projectService: {
-					// Files with no owning tsconfig: these four config files, and
-					// `service-worker.ts`, which SvelteKit deliberately excludes
-					// from the app program (different globals/lib). `scripts/`
-					// gets its own tsconfig instead — see scripts/tsconfig.json.
-					// `vite.config.ts` is NOT listed: SvelteKit's generated
-					// tsconfig already includes it, and a file may not be in both.
-					allowDefaultProject: [
-						'drizzle.config.ts',
-						'playwright.config.ts',
-						'vitest.config.ts',
-						'vitest.eval.config.ts',
-						'src/service-worker.ts',
-					],
-				},
-			},
-		},
+		extends: [ts.configs.recommendedTypeChecked],
+		languageOptions: { parserOptions },
 		rules: {
-			// Type-aware rules added back on top of the non-type-checked base.
-			// Deliberately a short list: these four catch real defects (a
-			// dropped promise, an async callback passed where a void return is
-			// expected). The rest of `recommendedTypeChecked` is ~900
-			// `no-unsafe-*` reports on the untyped upstream/JSON boundary plus
-			// 246 `only-throw-error` on SvelteKit's own `throw error(401)` /
-			// `throw redirect(302)` idiom, which is not fixable.
-			'@typescript-eslint/await-thenable': 'error',
-			'@typescript-eslint/no-base-to-string': 'error',
-			'@typescript-eslint/no-floating-promises': 'error',
 			// `checksVoidReturn` is off: every hit was an async callback handed
 			// to an event/timer API that ignores the return value
 			// (`setInterval`, `parentPort.on`, `process.on('sveltekit:shutdown')`),
@@ -101,9 +97,12 @@ export default defineConfig([
 			// A quoted attribute can't carry `\n` — `{'a\nb'}` and "a\nb" are
 			// different strings, so a mustache holding escapes isn't useless.
 			'svelte/no-useless-mustaches': ['error', { ignoreStringEscape: true }],
-			// Fires on `import { x }` + `import type { X }` from one module.
-			// The core rule predates `import type` and can't tell them apart.
-			'no-duplicate-imports': 'off',
+			// The shared config enables this with no options, so it fires on
+			// `import { x }` + `import type { X }` from one module — a split we
+			// use deliberately. `allowSeparateTypeImports` exempts exactly that
+			// pair, so keep the rule on: two *value* imports from one module is
+			// still worth catching.
+			'no-duplicate-imports': ['error', { allowSeparateTypeImports: true }],
 			// Wants every `<a href>` and `goto()` wrapped in `resolve()`, which
 			// only matters under a non-empty `paths.base`. We don't set one.
 			'svelte/no-navigation-without-resolve': 'off',
@@ -124,7 +123,35 @@ export default defineConfig([
 	},
 
 	{
+		files: ['tests/**/*.ts'],
+		rules: {
+			// `expect(obj.method)` hands the reference to a matcher that only
+			// inspects it — it is never invoked, so there is no `this` to lose.
+			// The rule can't see that; it's the documented false positive with
+			// jest/vitest-style assertions. Still on for src/.
+			'@typescript-eslint/unbound-method': 'off',
+			// In test doubles an assertion often exists to shape INFERENCE, not
+			// to change the expression's own type — `vi.fn(() => null as unknown)`
+			// widens the mock's return type so a later call can hand it an
+			// object. The rule judges the expression in isolation and calls that
+			// redundant; deleting the 51 it flags makes `pnpm check` fail with 50
+			// errors across 11 files (verified). `pnpm check` is the authority
+			// here, same as with svelte-ignore. Still on for src/.
+			'@typescript-eslint/no-unnecessary-type-assertion': 'off',
+		},
+	},
+
+	// MUST stay after the `recommendedTypeChecked` block. That preset's base
+	// config sets `languageOptions.parser` to the TS parser for every file it
+	// matches, which clobbers the Svelte parser and makes every `.svelte` file
+	// fail to parse ("Type expected" on the markup). Re-assert it here:
+	// svelte-eslint-parser for the file, TS for the `<script lang="ts">` block.
+	{
 		files: ['**/*.svelte'],
+		languageOptions: {
+			parser: svelteParser,
+			parserOptions: { ...parserOptions, parser: ts.parser },
+		},
 		rules: {
 			// Svelte 5 requires `let` for the `$props()` destructure; props are
 			// reassignable from the parent. ESLint sees bindings that are never

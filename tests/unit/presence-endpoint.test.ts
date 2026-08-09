@@ -24,7 +24,7 @@ async function post(body: unknown, userId = 'u1'): Promise<Response> {
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(body),
 		}),
-	} as any);
+	} as unknown as Parameters<typeof POST>[0]);
 }
 
 /** Invoke POST with an invalid body and return the thrown HttpError status. */

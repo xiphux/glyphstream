@@ -154,7 +154,10 @@ describe('selectRelevant — hybrid (embeddings + RRF)', () => {
 		// 31 inputs (query + 30) → ceil(31/8) = 4 batches.
 		expect(calls.length).toBe(4);
 		for (const [, body] of calls) expect(body.input.length).toBeLessThanOrEqual(8);
-		const total = calls.reduce((n: number, [, body]: any) => n + body.input.length, 0);
+		const total = calls.reduce(
+			(n: number, call) => n + (call[1] as { input: unknown[] }).input.length,
+			0,
+		);
 		expect(total).toBe(31);
 		expect(calls[0][1].input[0]).toBe('quokka');
 	});

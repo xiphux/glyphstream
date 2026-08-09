@@ -46,7 +46,7 @@ async function patch(body: unknown) {
 			body: JSON.stringify(body),
 		}),
 		cookies,
-	} as any);
+	} as unknown as Parameters<typeof PATCH>[0]);
 	return forwardedPatch();
 }
 

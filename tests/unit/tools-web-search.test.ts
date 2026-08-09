@@ -129,8 +129,9 @@ describe('web_search execute - successful path', () => {
 	it('hits /search with the expected query params and returns terse results', async () => {
 		let capturedUrl: URL | undefined;
 		let capturedInit: RequestInit | undefined;
-		globalThis.fetch = vi.fn(async (input: any, init: any) => {
-			capturedUrl = input instanceof URL ? input : new URL(String(input));
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			capturedUrl =
+				input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
 			capturedInit = init;
 			return new Response(
 				JSON.stringify({
@@ -142,7 +143,7 @@ describe('web_search execute - successful path', () => {
 				}),
 				{ status: 200, headers: { 'content-type': 'application/json' } },
 			);
-		}) as any;
+		}) as unknown as typeof fetch;
 
 		const r = await webSearchTool.execute({ query: 'how to bake bread', max_results: 2 }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -252,13 +253,13 @@ describe('web_search execute - auth + errors', () => {
 			timeoutSeconds: 10,
 		});
 		let capturedInit: RequestInit | undefined;
-		globalThis.fetch = vi.fn(async (_input: any, init: any) => {
+		globalThis.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
 			capturedInit = init;
 			return new Response(JSON.stringify({ results: [] }), {
 				status: 200,
 				headers: { 'content-type': 'application/json' },
 			});
-		}) as any;
+		}) as unknown as typeof fetch;
 		await webSearchTool.execute({ query: 'x' }, ctx());
 		const headers = capturedInit?.headers as Record<string, string>;
 		expect(headers.authorization).toBe('Bearer super-secret');
@@ -316,12 +317,12 @@ describe('web_search execute - auth + errors', () => {
 		});
 		const ac = new AbortController();
 		ac.abort();
-		globalThis.fetch = vi.fn(async (_url: any, init: any) => {
+		globalThis.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
 			if (init?.signal?.aborted) {
 				throw new DOMException('aborted', 'AbortError');
 			}
 			return new Response('{}', { status: 200 });
-		}) as any;
+		}) as unknown as typeof fetch;
 		const r = await webSearchTool.execute({ query: 'x' }, { ...ctx(), signal: ac.signal });
 		expect(r.isError).toBe(true);
 	});
@@ -336,7 +337,11 @@ function jsonResponse(body: unknown): Response {
 
 describe('web_search definition — freshness/category params', () => {
 	it('advertises time_range as an enum plus categories and language', () => {
-		const props = (webSearchTool.definition.function.parameters as any).properties;
+		const props = (
+			webSearchTool.definition.function.parameters as {
+				properties: Record<string, Record<string, unknown>>;
+			}
+		).properties;
 		expect(props.time_range).toMatchObject({
 			type: 'string',
 			enum: ['day', 'week', 'month', 'year'],
@@ -357,10 +362,11 @@ describe('web_search execute — freshness/category controls (B)', () => {
 
 	it('forwards time_range, categories, and language as query params when given', async () => {
 		let captured: URL | undefined;
-		globalThis.fetch = vi.fn(async (input: any) => {
-			captured = input instanceof URL ? input : new URL(String(input));
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			captured =
+				input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
 			return jsonResponse({ results: [] });
-		}) as any;
+		}) as unknown as typeof fetch;
 		await webSearchTool.execute(
 			{ query: 'x', time_range: 'week', categories: 'news,science', language: 'en-US' },
 			ctx(),
@@ -372,10 +378,11 @@ describe('web_search execute — freshness/category controls (B)', () => {
 
 	it('omits the optional params entirely when not provided', async () => {
 		let captured: URL | undefined;
-		globalThis.fetch = vi.fn(async (input: any) => {
-			captured = input instanceof URL ? input : new URL(String(input));
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			captured =
+				input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
 			return jsonResponse({ results: [] });
-		}) as any;
+		}) as unknown as typeof fetch;
 		await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(captured?.searchParams.has('time_range')).toBe(false);
 		expect(captured?.searchParams.has('categories')).toBe(false);
@@ -391,10 +398,11 @@ describe('web_search execute — freshness/category controls (B)', () => {
 
 	it('treats a blank categories/language as absent (no param set)', async () => {
 		let captured: URL | undefined;
-		globalThis.fetch = vi.fn(async (input: any) => {
-			captured = input instanceof URL ? input : new URL(String(input));
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			captured =
+				input instanceof URL ? input : new URL(typeof input === 'string' ? input : input.url);
 			return jsonResponse({ results: [] });
-		}) as any;
+		}) as unknown as typeof fetch;
 		await webSearchTool.execute({ query: 'x', categories: '   ', language: '' }, ctx());
 		expect(captured?.searchParams.has('categories')).toBe(false);
 		expect(captured?.searchParams.has('language')).toBe(false);
@@ -498,7 +506,10 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 			}),
 		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
-		expect(parsed.results.map((r: any) => r.title)).toEqual(['Canonical', 'Distinct']);
+		expect(parsed.results.map((r: { title: string }) => r.title)).toEqual([
+			'Canonical',
+			'Distinct',
+		]);
 	});
 
 	it('does NOT merge genuinely distinct pages that differ by a content query param', async () => {
@@ -529,7 +540,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 			(await webSearchTool.execute({ query: 'x', max_results: 2 }, ctx())).content,
 		);
 		// Without dedupe-before-slice this would be [A, A-mirror]; with it, [A, B].
-		expect(parsed.results.map((r: any) => r.title)).toEqual(['A', 'B']);
+		expect(parsed.results.map((r: { title: string }) => r.title)).toEqual(['A', 'B']);
 	});
 
 	it('keeps multiple url-less rows rather than collapsing them', async () => {

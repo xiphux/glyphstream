@@ -142,8 +142,8 @@ describe('fetch_url SSRF guard', () => {
 		lookupMock
 			.mockResolvedValueOnce([{ address: '8.8.8.8', family: 4 }])
 			.mockResolvedValueOnce([{ address: '10.0.0.1', family: 4 }]);
-		globalThis.fetch = vi.fn(async (input: any) => {
-			const u = String(input);
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 			if (u.startsWith('http://public.example')) {
 				return new Response(null, {
 					status: 302,
@@ -151,7 +151,7 @@ describe('fetch_url SSRF guard', () => {
 				});
 			}
 			throw new Error('should not fetch private host');
-		}) as any;
+		}) as unknown as typeof fetch;
 		const r = await fetchUrlTool.execute({ url: 'http://public.example/' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/10\.0\.0\.1/);
@@ -354,8 +354,8 @@ describe('fetch_url HTML extraction', () => {
 
 	it('returns the final URL after redirect chase', async () => {
 		lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
-		globalThis.fetch = vi.fn(async (input: any) => {
-			const u = String(input);
+		globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+			const u = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 			if (u.endsWith('/start')) {
 				return new Response(null, {
 					status: 301,
@@ -366,7 +366,7 @@ describe('fetch_url HTML extraction', () => {
 				status: 200,
 				headers: { 'content-type': 'text/plain' },
 			});
-		}) as any;
+		}) as unknown as typeof fetch;
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/start' }, ctx());
 		expect(r.isError).toBeUndefined();
 		const parsed = JSON.parse(r.content);

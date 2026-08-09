@@ -88,7 +88,7 @@ async function call() {
 	const res = await GET({
 		locals: { user: { id: 'u1' } },
 		params: { id: 'c1' },
-	} as any);
+	} as unknown as Parameters<typeof GET>[0]);
 	return res.json();
 }
 
