@@ -17,8 +17,11 @@
 declare module 'virtual:pwa-register' {
 	export interface RegisterSWOptions {
 		immediate?: boolean;
+		/** Fires when the SW has taken control and the page would normally reload. */
+		onNeedReload?: () => void;
 		onNeedRefresh?: () => void;
 		onOfflineReady?: () => void;
+		/** @deprecated Upstream prefers `onRegisteredSW`. */
 		onRegistered?: (registration: ServiceWorkerRegistration | undefined) => void;
 		onRegisteredSW?: (
 			swScriptUrl: string,

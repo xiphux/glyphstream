@@ -58,7 +58,6 @@
 			</div>
 		{:else if display.kind === 'activate'}
 			<!-- Instructions as markdown. {@html} safe: markdown-it html=false. -->
-			<!-- Server-rendered markdown; markdown-it runs with html=false. -->
 			<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 			<div class="gs-prose text-xs">{@html bodyHtml ?? ''}</div>
 			{#if display.resources.length > 0}

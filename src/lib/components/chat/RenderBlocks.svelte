@@ -68,7 +68,6 @@
 		<!-- HTML is either server-rendered (shiki, persisted assistant)
 		     or client-rendered via renderLiveMarkdown (in-flight).
 		     Both pass through markdown-it with html=false; safe to {@html}. -->
-		<!-- Server- or live-rendered markdown; both run markdown-it with html=false. -->
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		<div class="gs-prose mt-1">{@html block.html}</div>
 	{:else if block.type === 'plain-text'}
