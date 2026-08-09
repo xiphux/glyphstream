@@ -257,7 +257,9 @@
 				addError = await errorMessageFromResponse(optionsRes);
 				return;
 			}
-			const optionsJSON = await optionsRes.json();
+			const optionsJSON = (await optionsRes.json()) as Parameters<
+				typeof startRegistration
+			>[0]['optionsJSON'];
 
 			let regResponse;
 			try {

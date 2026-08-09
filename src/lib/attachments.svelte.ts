@@ -304,7 +304,7 @@ export class AttachmentStore {
 				// signature (HTML error page from nginx etc.) — our own
 				// route always responds with structured JSON. Surface that
 				// hint so future you knows to check the proxy, not the app.
-				const msg = (body as { message?: string } | null)?.message;
+				const msg = body?.message;
 				const proxyHint =
 					!body && (res.status === 413 || res.status === 400)
 						? ' (likely the reverse proxy rejecting the body — check its size limit)'

@@ -77,7 +77,7 @@ async function readBytes(mediaId: string, row: InlineableMedia): Promise<Buffer>
 	const result = await store.open(row.storagePath, row.contentType);
 	if (!result) throw new MediaNotAvailableError(mediaId, 'file not found');
 	const chunks: Buffer[] = [];
-	for await (const chunk of result.stream) {
+	for await (const chunk of result.stream as AsyncIterable<Buffer | Uint8Array | string>) {
 		chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 	}
 	return Buffer.concat(chunks);

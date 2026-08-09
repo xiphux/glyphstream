@@ -246,7 +246,7 @@ parentPort.on('message', async (msg: HostMessage) => {
 
 			let result: unknown = null;
 			try {
-				const raw = await py.runPythonAsync(msg.code);
+				const raw = (await py.runPythonAsync(msg.code)) as unknown;
 				// pyodide's PyProxy needs explicit conversion for the host;
 				// `toJs` recursively maps to native JS. Primitives pass
 				// through unchanged.

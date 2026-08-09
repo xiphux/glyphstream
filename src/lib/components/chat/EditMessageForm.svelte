@@ -42,7 +42,11 @@
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let fileInputEl = $state<HTMLInputElement | null>(null);
-	let snippetMenu = $state<SnippetAutocomplete | null>(null);
+	// Typed by the surface actually used rather than the component class:
+	// ESLint's parser doesn't resolve a .svelte instance's exported
+	// functions, so `snippetMenu.handleKeydown` reads as `any` there
+	// (svelte-check resolves it fine). bind:this still accepts this.
+	let snippetMenu = $state<{ handleKeydown: (e: KeyboardEvent) => boolean } | null>(null);
 
 	// Auto-resize as the draft grows.
 	$effect(() => {

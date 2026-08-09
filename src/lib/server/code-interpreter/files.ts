@@ -140,7 +140,7 @@ export async function collectConversationFiles(
 			const result = await store.open(r.storagePath, r.contentType);
 			if (!result) continue;
 			const chunks: Buffer[] = [];
-			for await (const chunk of result.stream) {
+			for await (const chunk of result.stream as AsyncIterable<Buffer | Uint8Array | string>) {
 				chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
 			}
 			const bytes = Buffer.concat(chunks);

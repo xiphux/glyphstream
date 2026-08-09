@@ -35,7 +35,9 @@
 				passkeyError = await errorMessageFromResponse(optionsRes);
 				return;
 			}
-			const optionsJSON = await optionsRes.json();
+			const optionsJSON = (await optionsRes.json()) as Parameters<
+				typeof startAuthentication
+			>[0]['optionsJSON'];
 
 			let authResponse;
 			try {

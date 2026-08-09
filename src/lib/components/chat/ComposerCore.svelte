@@ -83,7 +83,11 @@
 
 	let textareaEl = $state<HTMLTextAreaElement | null>(null);
 	let fileInputEl = $state<HTMLInputElement | null>(null);
-	let snippetMenu = $state<SnippetAutocomplete | null>(null);
+	// Typed by the surface actually used rather than the component class:
+	// ESLint's parser doesn't resolve a .svelte instance's exported
+	// functions, so `snippetMenu.handleKeydown` reads as `any` there
+	// (svelte-check resolves it fine). bind:this still accepts this.
+	let snippetMenu = $state<{ handleKeydown: (e: KeyboardEvent) => boolean } | null>(null);
 
 	/** Focus the textarea. The consumer owns the *when* (e.g. on
 	 *  conversation-ready, or autofocus on mount, skipping touch); the
@@ -243,7 +247,7 @@
 			skills={filteredSkills}
 			highlightedIndex={skillHighlight}
 			onSelect={selectSkill}
-			onHover={(i) => (skillHighlight = i)}
+			onHover={(i: number) => (skillHighlight = i)}
 		/>
 	{:else}
 		<SnippetAutocomplete

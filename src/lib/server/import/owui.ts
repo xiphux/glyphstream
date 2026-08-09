@@ -402,7 +402,9 @@ function decodeHtmlEntities(s: string): string {
 		.replace(/&quot;/g, '"')
 		.replace(/&apos;/g, "'")
 		.replace(/&nbsp;/g, ' ')
-		.replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(Number(dec)))
-		.replace(/&#x([0-9a-f]+);/gi, (_m, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+		.replace(/&#(\d+);/g, (_m: string, dec: string) => String.fromCodePoint(Number(dec)))
+		.replace(/&#x([0-9a-f]+);/gi, (_m: string, hex: string) =>
+			String.fromCodePoint(Number.parseInt(hex, 16)),
+		)
 		.replace(/&amp;/g, '&');
 }

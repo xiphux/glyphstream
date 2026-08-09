@@ -776,7 +776,7 @@
 					modelKind={activeKind}
 					disabled={busy}
 					private={isPrivate}
-					onChange={(next) => (disabledFeatures = next)}
+					onChange={(next: FeatureCategory[]) => (disabledFeatures = next)}
 				/>
 				<div class="flex-1"></div>
 				<!--
@@ -793,14 +793,15 @@
 					disabled={busy}
 					inline
 					favoritedIds={data.prefs?.favoriteModels ?? []}
-					onToggleFavorite={(id) => void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
+					onToggleFavorite={(id: string) =>
+						void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
 					allowCompare
 					bind:compareSelections
 					bind:compareMode
 					modelSets={data.prefs?.modelSets ?? []}
-					onSaveModelSet={(name, sels) =>
+					onSaveModelSet={(name: string, sels: CompareSelection[]) =>
 						void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
-					onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
+					onDeleteModelSet={(id: string) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
 				/>
 				<button
 					type="submit"

@@ -155,6 +155,6 @@
 		snippets={filtered}
 		highlightedIndex={highlight}
 		onSelect={insert}
-		onHover={(i) => (highlight = i)}
+		onHover={(i: number) => (highlight = i)}
 	/>
 {/if}

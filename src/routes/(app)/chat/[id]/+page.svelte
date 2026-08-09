@@ -63,6 +63,7 @@
 		expandCompareSelections,
 		expandFanoutBranches,
 		type CompareSelection,
+		type FanoutColumn,
 		type FanoutModel,
 	} from '$lib/fanout';
 	import { toast } from '$lib/toast.svelte';
@@ -1721,7 +1722,7 @@
 									approvalBusy={turn.approvalSubmitting}
 									{onApprovalSelect}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
-									onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
+									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 								/>
 							{/if}
 							{#if (m.role === 'user' || m.role === 'assistant') && m.id !== edit.messageId && !mergeWithNext}
@@ -1735,7 +1736,7 @@
 									onEdit={() => edit.begin(m)}
 									onReuse={() => reusePrompt(m)}
 									onRetry={() => retryAssistant(m)}
-									onSelectSibling={(id, dir) => selectSibling(id, dir)}
+									onSelectSibling={(id: string, dir: 1 | -1) => selectSibling(id, dir)}
 									onDeleteBranch={() => deleteBranch(m)}
 								/>
 							{/if}
@@ -1770,7 +1771,7 @@
 							{onApprovalSelect}
 							mergeWithPrev={fuseWithPrevAssistant}
 							mcpUnavailable={turn.inFlightMcpUnavailable}
-							onOpenCanvas={(artifactId) => canvas.show(artifactId ?? undefined)}
+							onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 						/>
 					</div>
 				{/if}
@@ -1780,9 +1781,11 @@
 					     discard duds + regenerate, no single pick. -->
 						<FanoutColumns
 							columns={fanout.columns}
-							onPick={fanout.isMedia ? undefined : (c) => void fanout.pick(c)}
-							onDiscard={fanout.isMedia ? (c) => void fanout.discard(c) : undefined}
-							onRegenerate={fanout.isMedia ? (c) => void fanout.regenerate(c) : undefined}
+							onPick={fanout.isMedia ? undefined : (c: FanoutColumn) => void fanout.pick(c)}
+							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
+							onRegenerate={fanout.isMedia
+								? (c: FanoutColumn) => void fanout.regenerate(c)
+								: undefined}
 							onImageClick={openImageInLightbox}
 							busy={fanout.picking}
 						/>
@@ -1883,12 +1886,12 @@
 						presetModelId={activePresetModelId}
 						onSend={() => void send()}
 						onStop={stop}
-						onFeaturesChange={(next) => void persistDisabledFeatures(next)}
-						onToggleFavorite={(id) =>
+						onFeaturesChange={(next: FeatureCategory[]) => void persistDisabledFeatures(next)}
+						onToggleFavorite={(id: string) =>
 							void toggleFavoriteModel(data.prefs?.favoriteModels ?? [], id)}
-						onSaveModelSet={(name, sels) =>
+						onSaveModelSet={(name: string, sels: CompareSelection[]) =>
 							void saveModelSet(data.prefs?.modelSets ?? [], name, sels)}
-						onDeleteModelSet={(id) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
+						onDeleteModelSet={(id: string) => void deleteModelSet(data.prefs?.modelSets ?? [], id)}
 					/>
 				{/if}
 			</div>
