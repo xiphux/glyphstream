@@ -147,9 +147,14 @@ export default defineConfig([
 			// to change the expression's own type — `vi.fn(() => null as unknown)`
 			// widens the mock's return type so a later call can hand it an
 			// object. The rule judges the expression in isolation and calls that
-			// redundant; deleting the 51 it flags makes `pnpm check` fail with 50
-			// errors across 11 files (verified). `pnpm check` is the authority
-			// here, same as with svelte-ignore. Still on for src/.
+			// redundant. Deleting what it flags is NOT safe: when this exemption
+			// landed, doing so broke `pnpm check` with 50 errors across 11 files.
+			// The flagged count tracks how much typing `tests/` carries and grows
+			// with it, so re-measure rather than trusting a number here:
+			//   eslint 'tests/**/*.ts' --rule \
+			//     '{"@typescript-eslint/no-unnecessary-type-assertion":"error"}'
+			// `pnpm check` is the authority, same as with svelte-ignore. Still on
+			// for src/.
 			'@typescript-eslint/no-unnecessary-type-assertion': 'off',
 		},
 	},

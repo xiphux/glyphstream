@@ -14,7 +14,7 @@
 		"analyze": "ANALYZE=1 vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo '' ; husky || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p scripts/tsconfig.json --noEmit",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "svelte-kit sync && eslint .",
 		"lint:fix": "svelte-kit sync && eslint . --fix && svelte-check --tsconfig ./tsconfig.json",

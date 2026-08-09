@@ -142,13 +142,18 @@ tests/e2e/            # playwright (production-build webServer)
     `tests/` only** (`expect(obj.method)` never invokes the reference; a test
     double's assertion often shapes inference — see the sharp edge below).
     Both stay on for `src/`.
-- **Page components must annotate `$props()`** with the generated
-  `PageData` / `LayoutData`. Without it `data` is `any` in a plain TS
-  program and every `data.foo` goes unchecked; `svelte-check` hides this because
-  SvelteKit's route-aware inference types it for the language server, so a
-  typo'd field type-checks clean and fails at runtime. Same for optional
-  callback props (`onPick?: (c: FanoutColumn) => void`): ESLint's Svelte
-  parser doesn't resolve those, so annotate the parameter at the call site.
+- **Never leave `$props()` unannotated in a page component.** A bare
+  `let { data } = $props()` makes `data` `any` in a plain TS program, so
+  every `data.foo` goes unchecked — and `svelte-check` hides it, because
+  SvelteKit's route-aware inference types `data` for the language server.
+  A typo'd field then type-checks clean and fails at runtime. Both forms in
+  the tree are annotated and safe: the generated `PageData` / `LayoutData`
+  (6 routes) and an inline `$props<{ data: … }>()` shape (11). Prefer
+  `PageData` for new pages — it follows the load function instead of a
+  hand-maintained duplicate — but converting the inline ones buys type
+  safety they already have. Same for optional callback props
+  (`onPick?: (c: FanoutColumn) => void`): ESLint's Svelte parser doesn't
+  resolve those, so annotate the parameter at the call site.
 - **Throw-less `error()` / `redirect()`.** SvelteKit 2 types both as
   `never` and throws internally — write `error(404, '…')`, not
   `throw error(404, '…')`. Control flow still narrows after the call.
@@ -251,9 +256,10 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   ```
 
   The mock still compiles; the later `.mockReturnValue({…})` is what fails,
-  in a different place. Applied repo-wide this produced 50 `svelte-check`
-  errors across 11 files, and **`pnpm test` stayed green throughout** —
-  vitest never type-checks. `--fix-type problem,layout` does exclude the
+  in a different place. When this was first measured, applying it repo-wide
+  produced 50 `svelte-check` errors across 11 files, and **`pnpm test` stayed
+  green throughout** — vitest never type-checks. (Don't treat that count as
+  current; it grows with `tests/`.) `--fix-type problem,layout` does exclude the
   rule, but 37 of typescript-eslint's 46 fixable rules are `suggestion`, so
   that throws away most of the useful fixes; running the type-check after
   the fix is the better guard. The rule is already off for `tests/`, where
