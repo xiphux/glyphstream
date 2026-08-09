@@ -71,6 +71,16 @@ export default defineConfig([
 			// ones that catch real bugs — a bare Promise used as a condition
 			// (`if (maybeAsync())`, always truthy) or spread.
 			'@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
+			// Off: the rule doesn't understand *contractual* async. Nearly every
+			// one of the 213 hits is a function that MUST return a promise to
+			// satisfy a type it's assigned to, but whose body happens not to
+			// await — `const r: MediaUrlResolver = async (id) => …` where the
+			// type is `(id: string) => Promise<string>`, `vi.fn(async () => new
+			// Response(…))` standing in for `fetch`, `startStreamingRelay()`
+			// declaring `Promise<ReadableStream>`. Dropping `async` at those
+			// sites is a type error, so the rule can only be satisfied by
+			// contorting the code it flags.
+			'@typescript-eslint/require-await': 'off',
 		},
 	},
 
