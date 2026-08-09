@@ -10,18 +10,18 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const getInFlightEntries = vi.fn();
-const getSiblingAssistants = vi.fn();
-const notifyConversationComplete = vi.fn();
+const getInFlightEntries = vi.hoisted(() => vi.fn());
+const getSiblingAssistants = vi.hoisted(() => vi.fn());
+const notifyConversationComplete = vi.hoisted(() => vi.fn());
 
 vi.mock('$lib/server/streaming/in-flight', () => ({
-	getInFlightEntries: (...a: unknown[]) => getInFlightEntries(...a),
+	getInFlightEntries,
 }));
 vi.mock('$lib/server/db/queries/messages', () => ({
-	getSiblingAssistants: (...a: unknown[]) => getSiblingAssistants(...a),
+	getSiblingAssistants,
 }));
 vi.mock('$lib/server/push/notify', () => ({
-	notifyConversationComplete: (...a: unknown[]) => notifyConversationComplete(...a),
+	notifyConversationComplete,
 }));
 
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';

@@ -119,7 +119,11 @@ describe('notifyConversationComplete', () => {
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
 		expect(mocks.sendCalls).toHaveLength(1);
-		const payload = JSON.parse(mocks.sendCalls[0].payload);
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
+			preview?: string;
+			conversationTitle?: string;
+			foregroundToast?: boolean;
+		};
 		expect(payload).not.toHaveProperty('preview');
 		expect(payload).toMatchObject({
 			type: 'message_complete',
@@ -138,7 +142,11 @@ describe('notifyConversationComplete', () => {
 		});
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
-		const payload = JSON.parse(mocks.sendCalls[0].payload);
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
+			preview?: string;
+			conversationTitle?: string;
+			foregroundToast?: boolean;
+		};
 		expect(payload.preview).toBe('Cats are mysterious creatures.');
 	});
 
@@ -148,9 +156,13 @@ describe('notifyConversationComplete', () => {
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		const longTitle = 'x'.repeat(100);
 		await notifyConversationComplete({ ...baseInput(u.id), conversationTitle: longTitle });
-		const payload = JSON.parse(mocks.sendCalls[0].payload);
-		expect(payload.conversationTitle.length).toBe(60);
-		expect(payload.conversationTitle.endsWith('…')).toBe(true);
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
+			preview?: string;
+			conversationTitle?: string;
+			foregroundToast?: boolean;
+		};
+		expect(payload.conversationTitle?.length).toBe(60);
+		expect(payload.conversationTitle?.endsWith('…')).toBe(true);
 	});
 
 	it('fans out to every subscription in parallel', async () => {
@@ -223,7 +235,11 @@ describe('notifyConversationComplete', () => {
 		});
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		await notifyConversationComplete(baseInput(u.id));
-		const payload = JSON.parse(mocks.sendCalls[0].payload);
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as {
+			preview?: string;
+			conversationTitle?: string;
+			foregroundToast?: boolean;
+		};
 		expect(payload.foregroundToast).toBe(false);
 	});
 });

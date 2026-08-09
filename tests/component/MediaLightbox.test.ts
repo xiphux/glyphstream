@@ -361,7 +361,10 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		});
 		render(MediaLightbox, { props: { media, onClose } });
 		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
-		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!);
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+			sourceModelId?: string | null;
+		};
 		expect(stashed).toEqual({
 			kind: 'regenerate',
 			prompt: 'big sky',
@@ -381,7 +384,10 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		});
 		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
 		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
-		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!);
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+			sourceModelId?: string | null;
+		};
 		expect(stashed.prompt).toBe('excerpt only');
 	});
 
@@ -395,7 +401,10 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		});
 		render(MediaLightbox, { props: { media, onClose } });
 		await user.click(screen.getByRole('button', { name: 'Use as starting image' }));
-		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!);
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+			sourceModelId?: string | null;
+		};
 		expect(stashed).toEqual({
 			kind: 'starting-image',
 			mediaId: 'm-7',
@@ -413,7 +422,10 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		});
 		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
 		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
-		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!);
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			prompt?: string;
+			sourceModelId?: string | null;
+		};
 		expect(stashed.sourceModelId).toBeNull();
 	});
 });

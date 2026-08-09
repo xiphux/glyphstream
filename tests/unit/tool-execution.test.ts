@@ -206,7 +206,7 @@ describe('executeToolCalls', () => {
 		expect(toolMessages).toHaveLength(1);
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
-		expect(JSON.parse(part.result).error).toMatch(/Unknown tool/);
+		expect((JSON.parse(part.result) as { error: string }).error).toMatch(/Unknown tool/);
 		// The error result SSE event also carries isError: true
 		const last = events[events.length - 1];
 		expect(last).toMatchObject({ type: 'tool_call_result', isError: true });
@@ -230,7 +230,7 @@ describe('executeToolCalls', () => {
 		});
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
-		expect(JSON.parse(part.result).error).toMatch(/did not parse as JSON/);
+		expect((JSON.parse(part.result) as { error: string }).error).toMatch(/did not parse as JSON/);
 	});
 
 	it('returns isError when the tool throws', async () => {
@@ -250,7 +250,7 @@ describe('executeToolCalls', () => {
 		});
 		const part = toolMessages[0].parts[0] as Extract<MessagePart, { type: 'tool_result' }>;
 		expect(part.isError).toBe(true);
-		expect(JSON.parse(part.result).error).toMatch(/intentional/);
+		expect((JSON.parse(part.result) as { error: string }).error).toMatch(/intentional/);
 	});
 
 	it('respects the isError flag from a tool that returns it directly', async () => {

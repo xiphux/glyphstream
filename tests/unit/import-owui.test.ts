@@ -314,7 +314,7 @@ const haveRealExports = REAL_EXPORTS.every((f) => existsSync(f));
 describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 	it('imports text-chat.json without errors', async () => {
 		const u = seedUser();
-		const json = JSON.parse(readFileSync('text-chat.json', 'utf8'));
+		const json = JSON.parse(readFileSync('text-chat.json', 'utf8')) as unknown;
 		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		expect(result.imported).toBe(1);
@@ -322,7 +322,7 @@ describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 
 	it('imports image-chat.json — image kind detected, file URLs stripped', async () => {
 		const u = seedUser();
-		const json = JSON.parse(readFileSync('image-chat.json', 'utf8'));
+		const json = JSON.parse(readFileSync('image-chat.json', 'utf8')) as unknown;
 		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		expect(result.imported).toBe(1);
@@ -337,7 +337,7 @@ describe.skipIf(!haveRealExports)('against real OWUI export fixtures', () => {
 
 	it('imports chat-export.json full export with no errors', async () => {
 		const u = seedUser();
-		const json = JSON.parse(readFileSync('chat-export.json', 'utf8'));
+		const json = JSON.parse(readFileSync('chat-export.json', 'utf8')) as unknown;
 		const result = await importOwuiExport(json, u.id, mocks.testDb);
 		expect(result.errors).toEqual([]);
 		// Just sanity: should import some non-trivial number.

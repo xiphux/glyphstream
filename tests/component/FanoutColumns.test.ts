@@ -61,7 +61,7 @@ describe('FanoutColumns', () => {
 	});
 
 	it('gates "Continue with this" to settled columns and reports the pick', async () => {
-		const onPick = vi.fn();
+		const onPick = vi.fn<(column: FanoutColumn) => void>();
 		render(FanoutColumns, {
 			props: {
 				columns: [
@@ -144,7 +144,7 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 	});
 
 	it('reports the picked column to onRegenerate', async () => {
-		const onRegenerate = vi.fn();
+		const onRegenerate = vi.fn<(column: FanoutColumn) => void>();
 		render(FanoutColumns, {
 			props: {
 				columns: [mediaCol('b0'), mediaCol('b1')],

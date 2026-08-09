@@ -116,7 +116,7 @@ async function drain(stream: ReadableStream<Uint8Array>): Promise<StreamEvent[]>
 				.split('\n')
 				.find((l) => l.startsWith('data: '));
 			buf = buf.slice(idx + 2);
-			if (line) events.push(JSON.parse(line.slice(6)));
+			if (line) events.push(JSON.parse(line.slice(6)) as StreamEvent);
 		}
 	}
 	return events;

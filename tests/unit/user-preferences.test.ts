@@ -342,7 +342,7 @@ describe('setUserPreferences', () => {
 			.from(users)
 			.where(eq(users.id, u.id))
 			.get();
-		const parsed = JSON.parse(row?.preferencesJson ?? '{}');
+		const parsed = JSON.parse(row?.preferencesJson ?? '{}') as Record<string, unknown>;
 		// Exactly the known fields, no extras leaking through.
 		expect(Object.keys(parsed).sort()).toEqual([
 			'aboutYou',

@@ -1,8 +1,9 @@
+import type { embeddings } from '$lib/server/endpoints/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // tool-search.ts reaches the embeddings client only through embed-rank.ts;
 // mock it so the dense leg is hermetic (same approach as retrieval-select).
-const embeddingsMock = vi.hoisted(() => vi.fn());
+const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 vi.mock('$lib/server/endpoints/client', () => ({ embeddings: embeddingsMock }));
 
 import { searchToolCatalog, clearToolDocVecCache } from '$lib/server/retrieval/tool-search';

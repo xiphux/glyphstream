@@ -17,7 +17,7 @@
  * BETWEEN two correct components. So the assertion lives here, at the seam.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChatMessage } from '$lib/types/api';
+import type { ChatMessage, ContextBreakdown } from '$lib/types/api';
 
 const mocks = vi.hoisted(() => ({
 	walkActiveBranch: vi.fn<(...a: unknown[]) => unknown[]>(),
@@ -89,7 +89,7 @@ async function call() {
 		locals: { user: { id: 'u1' } },
 		params: { id: 'c1' },
 	} as unknown as Parameters<typeof GET>[0]);
-	return res.json();
+	return (await res.json()) as ContextBreakdown;
 }
 
 beforeEach(() => {

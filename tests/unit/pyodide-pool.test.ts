@@ -274,7 +274,7 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 			callTimeoutMs: 30_000,
 		}).then(
 			(v) => settled.push({ tag: 'first', value: v.result }),
-			(e) => settled.push({ tag: 'first', error: e.message }),
+			(e: unknown) => settled.push({ tag: 'first', error: (e as Error).message }),
 		);
 		void runPython({
 			conversationId: 'c',
@@ -284,7 +284,7 @@ describe('mutex — serializes concurrent calls in the same conversation', () =>
 			callTimeoutMs: 30_000,
 		}).then(
 			(v) => settled.push({ tag: 'second', value: v.result }),
-			(e) => settled.push({ tag: 'second', error: e.message }),
+			(e: unknown) => settled.push({ tag: 'second', error: (e as Error).message }),
 		);
 
 		// Let the worker boot + the first call dispatch.

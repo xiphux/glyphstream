@@ -120,7 +120,7 @@ describe('parseSSEStream — chunk boundaries', () => {
 		const bytes = new TextEncoder().encode('data: 🚀\n\n');
 		const first = bytes.slice(0, 8); // "data: " + 0xF0 0x9F
 		const second = bytes.slice(8); // 0x9A 0x80 + "\n\n"
-		const stream = new ReadableStream({
+		const stream = new ReadableStream<Uint8Array>({
 			start(controller) {
 				controller.enqueue(first);
 				controller.enqueue(second);

@@ -125,7 +125,7 @@ describe('SetupPage — passkey validation', () => {
 		expect(fetchMock).toHaveBeenCalled();
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe('/api/auth/setup/passkey/options');
-		const body = JSON.parse(((init as RequestInit).body as string) ?? '{}');
+		const body = JSON.parse(((init as RequestInit).body as string) ?? '{}') as unknown;
 		expect(body).toEqual({ displayName: 'Operator', email: '' });
 	});
 

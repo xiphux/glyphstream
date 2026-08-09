@@ -112,7 +112,7 @@ describe('buildScriptBootstrap', () => {
 		expect(code.trimEnd().endsWith('None')).toBe(true);
 		// Nothing is string-interpolated — entry + argv ride a base64 JSON blob.
 		const b64 = /base64\.b64decode\('([^']+)'\)/.exec(code)![1];
-		const cfg = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+		const cfg = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')) as unknown;
 		expect(cfg).toEqual({ entry: 'extract.py', args: ['--flag', 'v'] });
 	});
 

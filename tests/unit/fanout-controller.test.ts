@@ -405,7 +405,7 @@ describe('FanoutController — actions', () => {
 		let branchBody: { reroll?: unknown; replacesMessageId?: unknown } = {};
 		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
 			if (url.includes('?stream=1')) {
-				branchBody = JSON.parse(init?.body ?? '{}');
+				branchBody = JSON.parse(init?.body ?? '{}') as typeof branchBody;
 				return sseResponse([
 					{ type: 'start', userMessage: imageSibling('u1', '', null), assistantMessageId: '' },
 					{ type: 'done', assistantMessage: imageSibling('new', 'bridge::sdxl', null) },
@@ -679,7 +679,7 @@ describe('FanoutController — actions', () => {
 		const bodies: Array<{ modelId?: string; inputMediaIds?: string[] }> = [];
 		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
 			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
-			bodies.push(JSON.parse(init?.body ?? '{}'));
+			bodies.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>);
 			return sseResponse([
 				{ type: 'start', userMessage: user, assistantMessageId: '' },
 				{ type: 'done', assistantMessage: imageSibling(`r${bodies.length}`, 'bridge::sdxl', 'x') },

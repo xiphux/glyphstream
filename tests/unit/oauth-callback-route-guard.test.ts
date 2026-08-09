@@ -9,14 +9,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isHttpError, type Cookies } from '@sveltejs/kit';
 
-const getProviderMock = vi.fn();
-const handleOAuthCallbackMock = vi.fn();
+const getProviderMock = vi.hoisted(() => vi.fn());
+const handleOAuthCallbackMock = vi.hoisted(() => vi.fn());
 
 vi.mock('$lib/server/auth/oauth/registry', () => ({
-	getProvider: (id: string) => getProviderMock(id),
+	getProvider: getProviderMock,
 }));
 vi.mock('$lib/server/auth/oauth/callback-handler', () => ({
-	handleOAuthCallback: (...args: unknown[]) => handleOAuthCallbackMock(...args),
+	handleOAuthCallback: handleOAuthCallbackMock,
 }));
 
 import { GET } from '../../src/routes/api/auth/oauth/[provider]/callback/+server';

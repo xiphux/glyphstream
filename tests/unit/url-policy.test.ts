@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock node:dns BEFORE importing url-policy so the module picks it up.
 // Each test's beforeEach swaps the resolver behavior.
-const dnsLookupMock = vi.fn();
+const dnsLookupMock = vi.hoisted(() => vi.fn());
 vi.mock('node:dns', () => ({
-	default: { promises: { lookup: (...args: unknown[]) => dnsLookupMock(...args) } },
-	promises: { lookup: (...args: unknown[]) => dnsLookupMock(...args) },
+	default: { promises: { lookup: dnsLookupMock } },
+	promises: { lookup: dnsLookupMock },
 }));
 
 // Mock endpoints/search config so the configured-backend test can shape

@@ -1,3 +1,4 @@
+import type { embeddings } from '$lib/server/endpoints/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FetchResult } from '$lib/server/tools/fetch-url';
 
@@ -13,7 +14,7 @@ vi.mock('node:dns', () => ({
 // configured → relevance selection runs BM25-only and never hits the network.
 const loadEmbeddingsConfigMock = vi.hoisted(() => vi.fn());
 const getEndpointMock = vi.hoisted(() => vi.fn());
-const embeddingsMock = vi.hoisted(() => vi.fn());
+const embeddingsMock = vi.hoisted(() => vi.fn<typeof embeddings>());
 vi.mock('$lib/server/endpoints/config', async (orig) => ({
 	...(await orig<typeof import('$lib/server/endpoints/config')>()),
 	loadEmbeddingsConfig: loadEmbeddingsConfigMock,

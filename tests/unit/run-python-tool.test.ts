@@ -197,7 +197,7 @@ describe('runPythonTool — file round-trip', () => {
 		expect(r.attachedMediaIds).toEqual(['media-1', 'media-2']);
 		// The content payload also exposes the file list so the model
 		// can reference the files by name in its follow-up.
-		const parsed = JSON.parse(r.content);
+		const parsed = JSON.parse(r.content) as { files?: unknown };
 		expect(parsed.files).toEqual([
 			{ media_id: 'media-1', filename: 'out.png' },
 			{ media_id: 'media-2', filename: 'out.csv' },
@@ -207,7 +207,7 @@ describe('runPythonTool — file round-trip', () => {
 	it('omits attachedMediaIds when no files were generated', async () => {
 		const r = await runPythonTool.execute({ code: 'print(1)' }, ctx());
 		expect(r.attachedMediaIds).toBeUndefined();
-		const parsed = JSON.parse(r.content);
+		const parsed = JSON.parse(r.content) as { files?: unknown };
 		expect(parsed.files).toBeUndefined();
 	});
 

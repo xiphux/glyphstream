@@ -438,7 +438,7 @@ describe('Security settings page — rename flow', () => {
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(url).toBe('/api/auth/passkey/cred-1');
 		expect((init as RequestInit | undefined)?.method).toBe('PATCH');
-		const body = JSON.parse(((init as RequestInit).body as string) ?? '{}');
+		const body = JSON.parse(((init as RequestInit).body as string) ?? '{}') as unknown;
 		expect(body).toEqual({ name: 'iPhone' });
 		expect(invalidateMock).toHaveBeenCalledWith('settings:passkeys');
 	});

@@ -101,14 +101,16 @@ describe('activate_skill.execute', () => {
 		mocks.getEnabledSkillByName.mockReturnValue(null);
 		const r = await activateSkillTool.execute({ name: 'ghost' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toContain('No enabled skill named "ghost"');
+		expect((JSON.parse(r.content) as { error: string }).error).toContain(
+			'No enabled skill named "ghost"',
+		);
 	});
 
 	it('errors when the row exists but the bundle has no SKILL.md on disk', async () => {
 		mocks.store.readSkillMd.mockResolvedValue(null);
 		const r = await activateSkillTool.execute({ name: 'review' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toContain('has no SKILL.md');
+		expect((JSON.parse(r.content) as { error: string }).error).toContain('has no SKILL.md');
 	});
 });
 
@@ -148,13 +150,15 @@ describe('read_skill_file.execute', () => {
 		mocks.store.readFile.mockRejectedValue(new Error('path escapes the skill directory'));
 		const r = await readSkillFileTool.execute({ name: 'review', path: '../../etc/passwd' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toContain('escapes the skill directory');
+		expect((JSON.parse(r.content) as { error: string }).error).toContain(
+			'escapes the skill directory',
+		);
 	});
 
 	it('errors when the file does not exist in the bundle', async () => {
 		mocks.store.readFile.mockResolvedValue(null);
 		const r = await readSkillFileTool.execute({ name: 'review', path: 'nope.md' }, ctx());
 		expect(r.isError).toBe(true);
-		expect(JSON.parse(r.content).error).toContain('No file at "nope.md"');
+		expect((JSON.parse(r.content) as { error: string }).error).toContain('No file at "nope.md"');
 	});
 });
