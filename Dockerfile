@@ -27,7 +27,7 @@ WORKDIR /app
 # --ignore-scripts skips lifecycle hooks here (the `prepare` script
 # needs svelte.config.js, which we haven't copied yet, and pnpm 10
 # blocks unapproved native-module builds in non-interactive contexts).
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # node:alpine stopped bundling corepack as of Node 26, so install pnpm
 # directly. Read the version from package.json's `packageManager` field
 # (the same field corepack consults) so the Dockerfile stays in sync
@@ -62,7 +62,7 @@ WORKDIR /app
 # they would have pulled in (typescript via runed→kit, vite/rolldown
 # via kit, lightningcss via tailwind, etc). The result is a much
 # leaner /app/node_modules without needing a manual trim list.
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # No --ignore-scripts follow-up rebuild needed: the only prod dep with a
 # native component is sharp, which ships prebuilt musl binaries (no build
 # script), and SQLite is the built-in node:sqlite.

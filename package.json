@@ -97,17 +97,5 @@
 		"workbox-core": "^7.4.1",
 		"workbox-precaching": "^7.4.1",
 		"workbox-window": "^7.4.1"
-	},
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"esbuild",
-			"sharp"
-		],
-		"overrides": {
-			"fast-uri": ">=3.1.5",
-			"ip-address": ">=10.3.1",
-			"hono": ">=4.12.34",
-			"@hono/node-server": ">=2.0.5"
-		}
 	}
 }

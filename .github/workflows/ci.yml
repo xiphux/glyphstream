@@ -78,8 +78,8 @@ jobs:
           cache: pnpm
 
       # --ignore-scripts: pnpm 10 blocks unapproved native-module
-      # builds in CI even when pnpm.onlyBuiltDependencies lists them.
-      # Rebuild explicitly afterward — that's the documented bypass.
+      # builds in CI even when pnpm-workspace.yaml's `allowBuilds` lists
+      # them. Rebuild explicitly afterward — that's the documented bypass.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 

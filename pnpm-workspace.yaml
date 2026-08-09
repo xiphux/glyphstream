@@ -1,0 +1,23 @@
+# pnpm settings. NOT a monorepo — there's no `packages:` list; this file
+# exists because pnpm stopped reading the `pnpm` field of package.json
+# (it warns and *silently ignores* the keys, which quietly dropped the
+# security overrides below). This is their new home.
+
+# Transitive-dependency floors, all security-advisory driven. These are
+# not direct deps — they arrive under @modelcontextprotocol/sdk and
+# friends — so a plain upgrade can't move them.
+overrides:
+  fast-uri: '>=3.1.5'
+  ip-address: '>=10.3.1'
+  hono: '>=4.12.34'
+  '@hono/node-server': '>=2.0.5'
+
+# Packages allowed to run install scripts. Replaces the old
+# `onlyBuiltDependencies` list, which pnpm 11 removes.
+#   esbuild — fetches a prebuilt Go binary (no compile).
+#   sharp   — fetches prebuilt libvips binaries.
+# CI and Docker still install with --ignore-scripts and `pnpm rebuild`
+# esbuild explicitly; this covers local installs.
+allowBuilds:
+  esbuild: true
+  sharp: true
