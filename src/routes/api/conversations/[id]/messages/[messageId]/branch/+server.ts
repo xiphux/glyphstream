@@ -41,7 +41,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 		'Message not found in this conversation',
 	);
 	if ('refusedReason' in result) {
-		throw error(400, 'Cannot delete a branch that has no siblings');
+		error(400, 'Cannot delete a branch that has no siblings');
 	}
 
 	// Unlink orphaned media bytes after the txn commits (see the file

@@ -58,15 +58,15 @@ interface CallbackContext {
 }
 
 function loginError(reason: string): never {
-	throw redirect(302, `/login?error=${encodeURIComponent(reason)}`);
+	redirect(302, `/login?error=${encodeURIComponent(reason)}`);
 }
 
 function setupError(reason: string): never {
-	throw redirect(302, `/setup?error=${encodeURIComponent(reason)}`);
+	redirect(302, `/setup?error=${encodeURIComponent(reason)}`);
 }
 
 function linkBack(reason: string): never {
-	throw redirect(302, `/settings/security?link=${encodeURIComponent(reason)}`);
+	redirect(302, `/settings/security?link=${encodeURIComponent(reason)}`);
 }
 
 /**
@@ -171,7 +171,7 @@ async function handleSetup(args: {
 	// provider's redirect URI doesn't carry `?token=…`. The carry is
 	// HMAC-signed with AUTH_SECRET and TTL'd to 10 min, so it can't be
 	// forged or replayed past expiry.
-	if (countUsers() > 0) throw redirect(302, '/login');
+	if (countUsers() > 0) redirect(302, '/login');
 
 	const profile = await fetchProfileOr(
 		provider,
@@ -198,7 +198,7 @@ async function handleSetup(args: {
 	const { token, expiresAt } = createSession(userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
-	throw redirect(302, '/');
+	redirect(302, '/');
 }
 
 async function handleJoin(args: {
@@ -216,14 +216,11 @@ async function handleJoin(args: {
 
 	const carry = verify<JoinCarry>(joinCarrySigned);
 	// No valid carry → can't know which invite this was; bounce to login.
-	if (!carry) throw redirect(302, '/login?error=invalid_oauth_state');
+	if (!carry) redirect(302, '/login?error=invalid_oauth_state');
 	const inviteToken = carry.inviteToken;
 
 	function joinError(reason: string): never {
-		throw redirect(
-			302,
-			`/join/${encodeURIComponent(inviteToken)}?error=${encodeURIComponent(reason)}`,
-		);
+		redirect(302, `/join/${encodeURIComponent(inviteToken)}?error=${encodeURIComponent(reason)}`);
 	}
 
 	if (!code || !state || !loginState || state !== loginState) {
@@ -283,7 +280,7 @@ async function handleJoin(args: {
 	const { token, expiresAt } = createSession(userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
-	throw redirect(302, '/');
+	redirect(302, '/');
 }
 
 async function handleLink(args: {
@@ -298,7 +295,7 @@ async function handleLink(args: {
 
 	if (!locals.user) {
 		// Session expired mid-flow. Bounce to login; nothing to bind to.
-		throw redirect(302, '/login');
+		redirect(302, '/login');
 	}
 	if (!code || !state || state !== linkState) {
 		linkBack('invalid_state');
@@ -385,5 +382,5 @@ async function handleLogin(args: {
 	const { token, expiresAt } = createSession(binding.userId, userAgent);
 	setSessionCookie(cookies, token, expiresAt);
 
-	throw redirect(302, '/');
+	redirect(302, '/');
 }

@@ -91,7 +91,7 @@ function mkSession(over: Partial<(typeof baseData.sessions)[number]> = {}) {
 beforeEach(() => {
 	invalidateMock.mockReset();
 	fetchMock.mockReset();
-	globalThis.fetch = fetchMock as unknown as typeof fetch;
+	globalThis.fetch = fetchMock;
 });
 
 afterEach(() => {

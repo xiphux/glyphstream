@@ -103,7 +103,7 @@ describe('reconcileGenerating', () => {
 		markGenerating('c1');
 		markGenerating('c2');
 		for (const bad of [undefined, null, {}, 'c1', 42]) {
-			reconcileGenerating(bad as unknown as string[]);
+			reconcileGenerating(bad as string[]);
 		}
 		expect(isGenerating('c1')).toBe(true);
 		expect(isGenerating('c2')).toBe(true);

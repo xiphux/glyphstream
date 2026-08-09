@@ -92,7 +92,7 @@ async function drainQueue(
 		for (const d of data) {
 			const v = d.embedding;
 			if (typeof d.index === 'number' && Array.isArray(v) && v.length > 0) {
-				vecByIndex.set(d.index, v as number[]);
+				vecByIndex.set(d.index, v);
 			}
 		}
 

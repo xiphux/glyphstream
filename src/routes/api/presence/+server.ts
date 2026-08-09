@@ -33,10 +33,10 @@ const MAX_ID_LEN = 200;
 
 function requireId(v: unknown, field: string): string {
 	if (typeof v !== 'string' || v.length === 0) {
-		throw error(400, `Field "${field}" must be a non-empty string`);
+		error(400, `Field "${field}" must be a non-empty string`);
 	}
 	if (v.length > MAX_ID_LEN) {
-		throw error(400, `Field "${field}" is too long`);
+		error(400, `Field "${field}" is too long`);
 	}
 	return v;
 }
@@ -48,7 +48,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	const conversationId = requireId(body.conversationId, 'conversationId');
 	const viewerId = requireId(body.viewerId, 'viewerId');
 	if (typeof body.visible !== 'boolean') {
-		throw error(400, 'Field "visible" must be a boolean');
+		error(400, 'Field "visible" must be a boolean');
 	}
 
 	recordPresence(locals.user.id, conversationId, viewerId, body.visible);

@@ -89,7 +89,7 @@ export const fetchUrlTool: Tool = {
 
 function parseUrlArg(args: unknown): string | null {
 	if (!args || typeof args !== 'object' || !('url' in args)) return null;
-	const u = (args as { url: unknown }).url;
+	const u = args.url;
 	return typeof u === 'string' && u.length > 0 ? u : null;
 }
 
@@ -342,7 +342,7 @@ export interface ArticleStructured {
 export function extractArticleStructured(html: string): ArticleStructured | null {
 	try {
 		const { document } = parseHTML(html);
-		const article = new Readability(document as never).parse();
+		const article = new Readability(document).parse();
 		const text = article?.textContent?.trim();
 		if (text && text.length >= 200) {
 			const title = article?.title?.trim() ?? '';

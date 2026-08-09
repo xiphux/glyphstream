@@ -75,7 +75,7 @@ function assertNotForbiddenHost(url: URL): void {
 const realFetch = globalThis.fetch.bind(globalThis);
 const MAX_REDIRECTS = 3;
 
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
 	if (!currentCall) {
 		throw new UrlPolicyError('Refused: network call outside an authorized run_python invocation.');
 	}
@@ -90,7 +90,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 	}
 
 	return followWithRevalidation(target, init, currentCall);
-}) as typeof fetch;
+};
 
 async function followWithRevalidation(
 	initial: URL,

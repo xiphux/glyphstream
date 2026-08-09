@@ -60,7 +60,7 @@ beforeEach(() => {
 describe('GET /api/user/skills', () => {
 	it('returns the caller’s skills', async () => {
 		mocks.listSkillsForUser.mockReturnValue([{ id: 's1', name: 'review' }]);
-		const res = (await GET({ locals: userLocals } as never)) as Response;
+		const res = await GET({ locals: userLocals } as never);
 		expect(mocks.listSkillsForUser).toHaveBeenCalledWith('u1');
 		expect(await res.json()).toEqual({ skills: [{ id: 's1', name: 'review' }] });
 	});
@@ -76,10 +76,10 @@ describe('POST /api/user/skills', () => {
 
 	it('imports a pasted SKILL.md (application/json)', async () => {
 		mocks.importSkillBundle.mockResolvedValue({ ok: true, skill: { id: 's1', name: 'review' } });
-		const res = (await call(
+		const res = await call(
 			userLocals,
 			req('application/json', { json: async () => ({ content: 'SKILL BODY' }) }),
-		)) as Response;
+		);
 		expect(res.status).toBe(201);
 		expect(await res.json()).toEqual({ skill: { id: 's1', name: 'review' } });
 		const [userId, files] = mocks.importSkillBundle.mock.calls[0] as [
@@ -105,10 +105,7 @@ describe('POST /api/user/skills', () => {
 		const fd = new FormData();
 		fd.append('file', new File([Buffer.from('---\nname: x\n---\nb')], 'my-skill/SKILL.md'));
 		fd.append('file', new File([Buffer.from('# api')], 'my-skill/references/api.md'));
-		const res = (await call(
-			userLocals,
-			req('multipart/form-data', { formData: async () => fd }),
-		)) as Response;
+		const res = await call(userLocals, req('multipart/form-data', { formData: async () => fd }));
 		expect(res.status).toBe(201);
 		const [, files] = mocks.importSkillBundle.mock.calls[0] as [string, Array<{ relPath: string }>];
 		expect(files.map((f) => f.relPath)).toEqual([
@@ -184,7 +181,7 @@ describe('PATCH /api/user/skills/:id', () => {
 
 	it('toggles enabled and returns ok', async () => {
 		mocks.setSkillEnabled.mockReturnValue(true);
-		const res = (await call(userLocals, 's1', false)) as Response;
+		const res = await call(userLocals, 's1', false);
 		expect(mocks.setSkillEnabled).toHaveBeenCalledWith('u1', 's1', false);
 		expect(await res.json()).toEqual({ ok: true });
 	});
@@ -207,7 +204,7 @@ describe('DELETE /api/user/skills/:id', () => {
 
 	it('deletes the row then the bundle and returns 204', async () => {
 		mocks.deleteSkill.mockReturnValue({ storagePath: 'u1/review' });
-		const res = (await call(userLocals, 's1')) as Response;
+		const res = await call(userLocals, 's1');
 		expect(res.status).toBe(204);
 		expect(mocks.deleteSkill).toHaveBeenCalledWith('u1', 's1');
 		expect(mocks.deleteBundle).toHaveBeenCalledWith('u1/review');

@@ -28,9 +28,9 @@ const CARRY_TTL_MS = STATE_TTL_SECONDS * 1000;
 
 export const POST: RequestHandler = async ({ request, cookies, url, params }) => {
 	const provider = getEnabledProvider(params.provider);
-	if (!provider) throw error(404, 'Unknown or disabled provider');
+	if (!provider) error(404, 'Unknown or disabled provider');
 	const verdict = setupGate(url);
-	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
+	if (verdict !== 'allowed') error(403, 'Setup is not currently allowed');
 
 	const { displayName, email } = parseIdentityInput(
 		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),

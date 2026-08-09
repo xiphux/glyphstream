@@ -75,7 +75,7 @@ export const clockTool: Tool = {
  */
 function parseTimezone(args: unknown, userId: string): string {
 	if (args && typeof args === 'object' && 'timezone' in args) {
-		const tz = (args as { timezone: unknown }).timezone;
+		const tz = args.timezone;
 		if (typeof tz === 'string' && tz.length > 0) return tz;
 	}
 	return resolveTimeZone(getUserPreferences(userId)?.timezone ?? null);

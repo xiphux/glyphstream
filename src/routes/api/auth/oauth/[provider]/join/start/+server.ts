@@ -28,7 +28,7 @@ const CARRY_TTL_MS = STATE_TTL_SECONDS * 1000;
 
 export const POST: RequestHandler = async ({ request, cookies, params }) => {
 	const provider = getEnabledProvider(params.provider);
-	if (!provider) throw error(404, 'Unknown or disabled provider');
+	if (!provider) error(404, 'Unknown or disabled provider');
 
 	const body = await parseJsonBody<{
 		displayName?: unknown;
@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ request, cookies, params }) => {
 	}>(request);
 	const inviteToken = typeof body.inviteToken === 'string' ? body.inviteToken : '';
 	if (!findValidInvite(inviteToken)) {
-		throw error(403, 'This invite link is invalid or has expired');
+		error(403, 'This invite link is invalid or has expired');
 	}
 
 	const { displayName, email } = parseIdentityInput(body);

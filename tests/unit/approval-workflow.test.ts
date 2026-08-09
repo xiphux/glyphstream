@@ -82,7 +82,7 @@ describe('runApprovalResume', () => {
 
 	it('POSTs to the resume endpoint with the right URL, headers, body, and signal', async () => {
 		const fetchMock = vi.fn(async () => makeResponse({}));
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
+		globalThis.fetch = fetchMock;
 		const consumeStream = vi.fn(async () => ({ sawToolCalls: false }));
 		const signal = new AbortController().signal;
 
@@ -104,7 +104,7 @@ describe('runApprovalResume', () => {
 	});
 
 	it('returns the result of consumeStream', async () => {
-		globalThis.fetch = (async () => makeResponse({})) as unknown as typeof fetch;
+		globalThis.fetch = async () => makeResponse({});
 		const result = await runApprovalResume(
 			'conv-1',
 			[],
@@ -115,13 +115,13 @@ describe('runApprovalResume', () => {
 	});
 
 	it('throws with the server message on !res.ok', async () => {
-		globalThis.fetch = (async () =>
+		globalThis.fetch = async () =>
 			makeResponse({
 				ok: false,
 				status: 409,
 				// SvelteKit's `error(409, msg)` surfaces as `{ message }` at the top level.
 				jsonBody: { message: 'No pending tool calls matched' },
-			})) as unknown as typeof fetch;
+			});
 
 		await expect(
 			runApprovalResume('conv-1', [], new AbortController().signal, async () => ({
@@ -131,7 +131,7 @@ describe('runApprovalResume', () => {
 	});
 
 	it('throws on a missing response body', async () => {
-		globalThis.fetch = (async () => makeResponse({ body: null })) as unknown as typeof fetch;
+		globalThis.fetch = async () => makeResponse({ body: null });
 		await expect(
 			runApprovalResume('conv-1', [], new AbortController().signal, async () => ({
 				sawToolCalls: false,
@@ -140,8 +140,7 @@ describe('runApprovalResume', () => {
 	});
 
 	it('does not call consumeStream when the fetch errors', async () => {
-		globalThis.fetch = (async () =>
-			makeResponse({ ok: false, status: 500 })) as unknown as typeof fetch;
+		globalThis.fetch = async () => makeResponse({ ok: false, status: 500 });
 		const consumeStream = vi.fn();
 		await expect(
 			runApprovalResume('conv-1', [], new AbortController().signal, consumeStream),

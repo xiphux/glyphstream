@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (contentType.includes('application/json')) {
 		const body = await parseJsonBody<{ content?: unknown; overwrite?: unknown }>(request);
 		if (typeof body.content !== 'string') {
-			throw error(400, "Expected a 'content' string (the snippet library text).");
+			error(400, "Expected a 'content' string (the snippet library text).");
 		}
 		content = body.content;
 		overwrite = body.overwrite === true;
@@ -35,23 +35,23 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			// formData() fails on the truncated body — surface a 413, not a 500.
 			const msg = e instanceof Error ? e.message : String(e);
 			if (/body.*too.*large|413|exceeded/i.test(msg)) {
-				throw error(
+				error(
 					413,
 					'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
 				);
 			}
-			throw error(400, 'Body must be multipart/form-data.');
+			error(400, 'Body must be multipart/form-data.');
 		}
 		const file = form.get('file');
-		if (!(file instanceof File)) throw error(400, 'No file in the upload.');
+		if (!(file instanceof File)) error(400, 'No file in the upload.');
 		content = await file.text();
 		overwrite = form.get('overwrite') === 'true';
 	} else {
-		throw error(415, 'Send application/json {content} or multipart/form-data file.');
+		error(415, 'Send application/json {content} or multipart/form-data file.');
 	}
 
 	const result = importSnippets({ userId: locals.user.id, content, overwrite });
-	if (!result.ok) throw error(result.status, result.error);
+	if (!result.ok) error(result.status, result.error);
 	return json({
 		imported: result.imported,
 		updated: result.updated,

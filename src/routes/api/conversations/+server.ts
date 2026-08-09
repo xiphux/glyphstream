@@ -53,16 +53,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// re-fetching upstream /v1/models. Resolve it once here.
 	if (body.modelKind !== undefined) {
 		if (!isModelKind(body.modelKind)) {
-			throw error(400, `Invalid modelKind "${body.modelKind}"`);
+			error(400, `Invalid modelKind "${body.modelKind}"`);
 		}
 		resolvedModelKind = body.modelKind;
 	}
 
 	if (body.customModelId) {
 		const cm = getCustomModelForUser(body.customModelId, locals.user.id);
-		if (!cm) throw error(400, `Unknown custom model "${body.customModelId}"`);
+		if (!cm) error(400, `Unknown custom model "${body.customModelId}"`);
 		if (!getEndpoint(cm.baseEndpointId)) {
-			throw error(
+			error(
 				400,
 				`Custom model references unknown endpoint "${cm.baseEndpointId}" — has it been removed from config.toml?`,
 			);
@@ -74,14 +74,14 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		resolvedCustomModelId = cm.id;
 	} else {
 		const modelId = body.modelId?.trim();
-		if (!modelId) throw error(400, "'modelId' or 'customModelId' is required");
+		if (!modelId) error(400, "'modelId' or 'customModelId' is required");
 
 		const parsed = parseModelId(modelId);
 		if (!parsed) {
-			throw error(400, `Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`);
+			error(400, `Malformed model id "${modelId}" — must be "{endpoint_id}::{upstream_id}"`);
 		}
 		if (!getEndpoint(parsed.endpointId)) {
-			throw error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
+			error(400, `Unknown endpoint "${parsed.endpointId}" — not in config.toml`);
 		}
 		resolvedEndpointId = parsed.endpointId;
 		resolvedModelId = modelId;
@@ -101,7 +101,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// Validate strictly (like disabledFeatures) rather than silently coercing —
 	// e.g. a `{"private": 1}` typo should 400, not quietly create a non-private chat.
 	if (body.private !== undefined && typeof body.private !== 'boolean') {
-		throw error(400, "'private' must be a boolean");
+		error(400, "'private' must be a boolean");
 	}
 
 	const conv = createConversation({

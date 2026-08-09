@@ -27,21 +27,21 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	if (patch.name !== undefined) {
 		const existing = getPromptSnippetForUser(params.id, locals.user.id);
-		if (!existing) throw error(404, 'Snippet not found');
+		if (!existing) error(404, 'Snippet not found');
 		// Renaming onto another snippet's name would hit the unique index;
 		// renaming to its own current name is a no-op, not a conflict.
 		if (patch.name !== existing.name && promptSnippetExistsByName(locals.user.id, patch.name)) {
-			throw error(409, `A snippet named "${patch.name}" already exists.`);
+			error(409, `A snippet named "${patch.name}" already exists.`);
 		}
 	}
 
 	const promptSnippet = updatePromptSnippet(params.id, locals.user.id, patch);
-	if (!promptSnippet) throw error(404, 'Snippet not found');
+	if (!promptSnippet) error(404, 'Snippet not found');
 	return json({ promptSnippet });
 };
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
-	if (!deletePromptSnippet(params.id, locals.user.id)) throw error(404, 'Snippet not found');
+	if (!deletePromptSnippet(params.id, locals.user.id)) error(404, 'Snippet not found');
 	return new Response(null, { status: 204 });
 };

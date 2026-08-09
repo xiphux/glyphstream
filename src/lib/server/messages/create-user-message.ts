@@ -51,7 +51,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	for (const mid of input.attachedMediaIds) {
 		const m = getMediaForUser(mid, input.userId);
 		if (!m || m.hardDeletedAt !== null) {
-			throw error(400, `Attached media "${mid}" not found`);
+			error(400, `Attached media "${mid}" not found`);
 		}
 		attachedMediaById.set(mid, {
 			kind: m.kind,
@@ -72,7 +72,7 @@ export function createUserMessage(input: CreateUserMessageInput): ChatMessage {
 	if (!resolved.ok) {
 		const field =
 			resolved.reason === 'edited-message-not-found' ? 'editedMessageId' : 'parentMessageId';
-		throw error(400, `${field} "${resolved.id}" not found`);
+		error(400, `${field} "${resolved.id}" not found`);
 	}
 
 	// Persist user message + auto-title BEFORE any upstream call so even if the

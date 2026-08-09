@@ -39,7 +39,7 @@ describe('rerank()', () => {
 				],
 			}),
 		);
-		globalThis.fetch = fetchMock as never;
+		globalThis.fetch = fetchMock;
 
 		const out = await rerank(
 			endpoint(),
@@ -69,7 +69,7 @@ describe('rerank()', () => {
 				{ index: 1, score: 0.3 },
 			]),
 		);
-		globalThis.fetch = fetchMock as never;
+		globalThis.fetch = fetchMock;
 
 		const out = await rerank(
 			endpoint(),
@@ -95,7 +95,7 @@ describe('rerank()', () => {
 					{ index: 2 }, // no score
 				],
 			}),
-		) as never;
+		);
 		const out = await rerank(
 			endpoint(),
 			{ model: 'm', query: 'q', documents: ['a', 'b', 'c'], topN: 3 },
@@ -112,7 +112,7 @@ describe('rerank()', () => {
 					{ index: 1, relevance_score: null }, // null → not a number, dropped
 				],
 			}),
-		) as never;
+		);
 		const out = await rerank(
 			endpoint(),
 			{ model: 'm', query: 'q', documents: ['a', 'b'], topN: 2 },
@@ -123,7 +123,7 @@ describe('rerank()', () => {
 
 	it('sends an Authorization header when the endpoint has an apiKey', async () => {
 		const fetchMock = vi.fn(async () => jsonResponse({ results: [] }));
-		globalThis.fetch = fetchMock as never;
+		globalThis.fetch = fetchMock;
 		await rerank(
 			endpoint({ apiKey: 'secret' }),
 			{ model: 'm', query: 'q', documents: ['x'], topN: 1 },
@@ -134,7 +134,7 @@ describe('rerank()', () => {
 	});
 
 	it('wraps an HTTP error as UpstreamError carrying the status', async () => {
-		globalThis.fetch = vi.fn(async () => new Response('nope', { status: 503 })) as never;
+		globalThis.fetch = vi.fn(async () => new Response('nope', { status: 503 }));
 		await expect(
 			rerank(endpoint(), { model: 'm', query: 'q', documents: ['x'], topN: 1 }, undefined),
 		).rejects.toMatchObject({ status: 503 });
@@ -143,7 +143,7 @@ describe('rerank()', () => {
 	it('wraps a network failure as UpstreamError', async () => {
 		globalThis.fetch = vi.fn(async () => {
 			throw new Error('ECONNREFUSED');
-		}) as never;
+		});
 		await expect(
 			rerank(endpoint(), { model: 'm', query: 'q', documents: ['x'], topN: 1 }, undefined),
 		).rejects.toBeInstanceOf(UpstreamError);

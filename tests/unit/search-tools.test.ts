@@ -71,7 +71,7 @@ function ctx(disabledFeatures: string[] = []): ToolContext {
 		userId: 'u1',
 		conversationId: 'c1',
 		signal: new AbortController().signal,
-		disabledFeatures: disabledFeatures as never,
+		disabledFeatures,
 	};
 }
 

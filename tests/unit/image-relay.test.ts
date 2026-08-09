@@ -176,7 +176,7 @@ describe('startImageRelay — happy path', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					onStarted,
 					onComplete,
 				}),
@@ -212,7 +212,7 @@ describe('startImageRelay — happy path', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					onGenerationSettled,
 					onComplete,
 				}),
@@ -239,7 +239,7 @@ describe('startImageRelay — happy path', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					dispatchMediaIds: ['src-1'],
 				}),
 			),
@@ -258,7 +258,7 @@ describe('startImageRelay — fan-out semantics', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					suppressNotify: true,
 				}),
 			),
@@ -273,7 +273,7 @@ describe('startImageRelay — fan-out semantics', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					suppressNotify: false,
 				}),
 			),
@@ -288,7 +288,7 @@ describe('startImageRelay — fan-out semantics', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					advanceActiveLeaf: false,
 				}),
 			),
@@ -314,7 +314,7 @@ describe('startImageRelay — fan-out semantics', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					advanceActiveLeaf: false,
 				}),
 			),
@@ -335,7 +335,7 @@ describe('startImageRelay — fan-out semantics', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					suppressTitleTask: true,
 				}),
 			),
@@ -353,7 +353,7 @@ describe('startImageRelay — backpressure + failure', () => {
 			baseParams({
 				conversationId: conv.id,
 				userId: user.id,
-				userMessage: userMessage as ChatMessage,
+				userMessage,
 				endpoint: endpoint(1),
 			}),
 		);
@@ -377,7 +377,7 @@ describe('startImageRelay — backpressure + failure', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					advanceActiveLeaf: false,
 					onComplete,
 				}),
@@ -406,7 +406,7 @@ describe('startImageRelay — backpressure + failure', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					abortSignal: ctrl.signal,
 					advanceActiveLeaf: false,
 				}),
@@ -442,7 +442,7 @@ describe('startImageRelay — prompt enhancement', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					promptStyle: 'booru-tags',
 					enhancementEnabled: true,
 				}),
@@ -481,7 +481,7 @@ describe('startImageRelay — prompt enhancement', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					endpoint: endpoint(1),
 					promptStyle: 'natural-language',
 					enhancementEnabled: true,
@@ -514,7 +514,7 @@ describe('startImageRelay — prompt enhancement', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					promptStyle: 'natural-language',
 					enhancementEnabled: true,
 					onComplete,
@@ -550,7 +550,7 @@ describe('startImageRelay — prompt enhancement', () => {
 				baseParams({
 					conversationId: conv.id,
 					userId: user.id,
-					userMessage: userMessage as ChatMessage,
+					userMessage,
 					endpoint: endpoint(1),
 					promptStyle: 'natural-language',
 					enhancementEnabled: true,

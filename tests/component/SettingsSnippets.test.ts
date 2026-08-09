@@ -31,7 +31,7 @@ function mk(over: Partial<PromptSnippet> = {}): PromptSnippet {
 		createdAt: 0,
 		updatedAt: 0,
 		...over,
-	} as PromptSnippet;
+	};
 }
 
 const LIB: PromptSnippet[] = [
@@ -57,7 +57,7 @@ function chip(label: string): HTMLElement {
 }
 
 beforeEach(() => {
-	globalThis.fetch = vi.fn() as unknown as typeof fetch;
+	globalThis.fetch = vi.fn();
 });
 
 describe('snippets settings — modality quick-filter', () => {

@@ -25,7 +25,7 @@ function sanitizeName(raw: unknown): string | null {
 }
 
 export const POST: RequestHandler = async ({ locals, cookies, request }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 	requireUser(locals);
 
 	const { credential, backedUp, deviceType, transports, body } = await verifyRegistrationCeremony(
@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 		// shouldn't happen but we shouldn't assume) lands here.
 		const message = e instanceof Error ? e.message : String(e);
 		if (/UNIQUE|PRIMARY KEY/i.test(message)) {
-			throw error(409, 'This credential is already registered');
+			error(409, 'This credential is already registered');
 		}
 		throw e;
 	}

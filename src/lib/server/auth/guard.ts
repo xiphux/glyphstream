@@ -17,7 +17,7 @@ import { countUsers } from '../db/queries/users';
 export function requireUser(
 	locals: App.Locals,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 }
 
 /**
@@ -47,8 +47,8 @@ export function requireUserPage(
 		// Fresh-install bootstrap — same branch the layout takes, so a direct
 		// hit on a deep link during first-run setup lands on the wizard rather
 		// than a login page with no account to log into.
-		if (countUsers() === 0) throw redirect(302, '/setup');
-		throw redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
+		if (countUsers() === 0) redirect(302, '/setup');
+		redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
 	}
 }
 
@@ -64,8 +64,8 @@ export function requireUserPage(
 export function requireAdmin(
 	locals: App.Locals,
 ): asserts locals is App.Locals & { user: NonNullable<App.Locals['user']> } {
-	if (!locals.user) throw error(401, 'Authentication required');
-	if (locals.user.role !== 'admin') throw error(403, 'Administrator access required');
+	if (!locals.user) error(401, 'Authentication required');
+	if (locals.user.role !== 'admin') error(403, 'Administrator access required');
 }
 
 /**
@@ -75,7 +75,7 @@ export function requireAdmin(
  *
  *   requireUser(locals);
  *   const x = getXForUser(params.id, locals.user.id);
- *   if (!x) throw error(404, 'X not found');
+ *   if (!x) error(404, 'X not found');
  *
  * `requireFound` collapses the last two lines, and chains cleanly when a
  * handler needs more than one ownership-scoped lookup (e.g. message
@@ -88,6 +88,6 @@ export function requireAdmin(
  * case.
  */
 export function requireFound<T>(value: T | null | undefined, notFoundMessage: string): T {
-	if (!value) throw error(404, notFoundMessage);
+	if (!value) error(404, notFoundMessage);
 	return value;
 }

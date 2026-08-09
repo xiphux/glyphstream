@@ -44,23 +44,23 @@ import type { RequestHandler } from './$types';
 function parseModelsBody(raw: unknown): CompareSelection[] | undefined {
 	if (raw === undefined) return undefined;
 	if (!Array.isArray(raw) || raw.length === 0) {
-		throw error(400, "'models' must be a non-empty array when present");
+		error(400, "'models' must be a non-empty array when present");
 	}
 	let total = 0;
 	const out: CompareSelection[] = [];
 	for (const entry of raw) {
 		const { modelId, count } = (entry ?? {}) as Partial<CompareSelection>;
 		if (typeof modelId !== 'string' || !parseModelId(modelId)) {
-			throw error(400, `models: modelId "${String(modelId)}" is malformed`);
+			error(400, `models: modelId "${String(modelId)}" is malformed`);
 		}
 		if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
-			throw error(400, `models: count for "${modelId}" must be a positive integer`);
+			error(400, `models: count for "${modelId}" must be a positive integer`);
 		}
 		total += count;
 		out.push({ modelId, count });
 	}
 	if (total > MAX_FANOUT_BRANCHES_PER_CONVERSATION) {
-		throw error(400, `models: at most ${MAX_FANOUT_BRANCHES_PER_CONVERSATION} branches`);
+		error(400, `models: at most ${MAX_FANOUT_BRANCHES_PER_CONVERSATION} branches`);
 	}
 	return out;
 }
@@ -79,7 +79,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];
 	if (!text && attachedMediaIds.length === 0) {
-		throw error(400, "'text' or 'attachedMediaIds' is required");
+		error(400, "'text' or 'attachedMediaIds' is required");
 	}
 	const dispatchedModels = parseModelsBody(body.models);
 
@@ -105,6 +105,6 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// invalidate, not via this response.
 	void startTitleTaskIfFirstExchange(params.id, locals.user.id);
 
-	const response: PrepareFanoutResponse = { userMessage: userMessage as ChatMessage };
+	const response: PrepareFanoutResponse = { userMessage };
 	return json(response);
 };

@@ -108,7 +108,7 @@ export async function generateRegistrationOptionsForUser(
 		},
 		excludeCredentials: existing.map((c) => ({
 			id: c.id,
-			transports: (c.transports ?? undefined) as AuthenticatorTransportFuture[] | undefined,
+			transports: c.transports ?? undefined,
 		})),
 		timeout: 60_000,
 	});
@@ -157,26 +157,26 @@ export async function verifyRegistrationCeremony(
 ): Promise<RegistrationCeremonyResult> {
 	const challenge = readRegistrationChallengeCookie(cookies);
 	clearRegistrationChallengeCookie(cookies);
-	if (!challenge) throw error(400, 'Missing or expired challenge');
+	if (!challenge) error(400, 'Missing or expired challenge');
 
 	let body: { response?: RegistrationResponseJSON; name?: unknown };
 	try {
 		body = (await request.json()) as { response?: RegistrationResponseJSON; name?: unknown };
 	} catch {
-		throw error(400, 'Malformed JSON body');
+		error(400, 'Malformed JSON body');
 	}
 	if (!body.response || typeof body.response !== 'object') {
-		throw error(400, 'Missing registration response');
+		error(400, 'Missing registration response');
 	}
 
 	let verification: VerifiedRegistrationResponse;
 	try {
 		verification = await verifyRegistration(body.response, challenge);
 	} catch (e) {
-		throw error(400, e instanceof Error ? e.message : 'Verification failed');
+		error(400, e instanceof Error ? e.message : 'Verification failed');
 	}
 	if (!verification.verified || !verification.registrationInfo) {
-		throw error(400, 'Passkey verification failed');
+		error(400, 'Passkey verification failed');
 	}
 
 	const { credential, credentialBackedUp, credentialDeviceType } = verification.registrationInfo;

@@ -59,7 +59,7 @@ function seedPasskey(userId: string, id: string): void {
 }
 
 /**
- * The DELETE handler is synchronous — its `throw error(...)` escapes
+ * The DELETE handler is synchronous — the throw from its `error(...)` escapes
  * before any promise wraps it, so a plain `Promise.resolve(DELETE(…))`
  * loses the throw. Run the handler inside an async IIFE so the throw
  * becomes a rejected promise we can await.

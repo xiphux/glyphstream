@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const tokenState = vi.hoisted(() => ({ claims: {} as Record<string, unknown> }));
+const tokenState = vi.hoisted(() => ({ claims: {} }));
 
 vi.mock('arctic', () => {
 	class Google {
@@ -66,7 +66,7 @@ beforeEach(() => {
 			authorization_endpoint: 'https://issuer.example.com/authorize',
 			token_endpoint: 'https://issuer.example.com/token',
 		}),
-	) as unknown as typeof fetch;
+	);
 });
 
 describe('Google provider', () => {

@@ -31,10 +31,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
-	if (!row || row.hardDeletedAt !== null) throw error(404, 'Media not found');
+	if (!row || row.hardDeletedAt !== null) error(404, 'Media not found');
 
 	if (row.kind !== 'image') {
-		throw error(404, 'No thumbnail for this media kind');
+		error(404, 'No thumbnail for this media kind');
 	}
 
 	const thumb = await getOrCreateThumbnail(row.storagePath);
@@ -58,7 +58,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	// gallery is slow today" instead of "the gallery is broken today."
 	const store = getMediaStore();
 	const fallback = await store.open(row.storagePath, row.contentType);
-	if (!fallback) throw error(404, 'Media not found');
+	if (!fallback) error(404, 'Media not found');
 	const headers: Record<string, string> = {
 		'Content-Type': normalizeContentType(fallback.contentType),
 		'Content-Length': String(fallback.contentLength),

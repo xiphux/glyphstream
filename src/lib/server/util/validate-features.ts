@@ -43,7 +43,7 @@ export function validateDisabledFeaturesOrThrow400(raw: unknown): FeatureCategor
 	try {
 		return validateDisabledFeatures(raw);
 	} catch (e) {
-		if (e instanceof FeatureCategoryValidationError) throw error(400, e.message);
+		if (e instanceof FeatureCategoryValidationError) error(400, e.message);
 		throw e;
 	}
 }

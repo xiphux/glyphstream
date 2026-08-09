@@ -16,6 +16,6 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 	const matched = restoreMemory(locals.user.id, params.id);
-	if (!matched) throw error(404, 'Memory not found');
+	if (!matched) error(404, 'Memory not found');
 	return new Response(null, { status: 204 });
 };

@@ -91,9 +91,7 @@ export async function sendPushNotification(
 		// web-push throws a WebPushError with statusCode on HTTP failures;
 		// other errors (DNS, libcurl) come through as plain Errors.
 		const statusCode =
-			typeof e === 'object' && e !== null && 'statusCode' in e
-				? Number((e as { statusCode: unknown }).statusCode)
-				: undefined;
+			typeof e === 'object' && e !== null && 'statusCode' in e ? Number(e.statusCode) : undefined;
 		return { ok: false, statusCode };
 	}
 }

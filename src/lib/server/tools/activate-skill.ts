@@ -177,7 +177,7 @@ function parseRunScriptArgs(
 		if (!Array.isArray(a.args) || !a.args.every((v) => typeof v === 'string')) {
 			return { error: '`args` must be an array of strings.' };
 		}
-		argv = a.args as string[];
+		argv = a.args;
 	}
 	return { name: parsed.name, path: parsed.path, argv };
 }

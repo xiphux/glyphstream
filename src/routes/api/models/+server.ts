@@ -23,9 +23,9 @@ export const GET: RequestHandler = async ({ locals }) => {
 			// is path/name disclosure, not a credential leak.) Admins can
 			// already read config.toml; non-admins get the bare fact.
 			if (locals.user.role === 'admin') {
-				throw error(500, `Endpoint configuration is invalid: ${e.message}`);
+				error(500, `Endpoint configuration is invalid: ${e.message}`);
 			}
-			throw error(500, 'Endpoint configuration is invalid. Ask an administrator to check it.');
+			error(500, 'Endpoint configuration is invalid. Ask an administrator to check it.');
 		}
 		throw e;
 	}

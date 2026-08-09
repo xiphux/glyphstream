@@ -24,7 +24,7 @@ import type { RequestHandler } from './$types';
 const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 
 	const body = await parseJsonBody<{
 		displayName?: unknown;
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}>(request);
 	const inviteToken = typeof body.inviteToken === 'string' ? body.inviteToken : '';
 	if (!findValidInvite(inviteToken)) {
-		throw error(403, 'This invite link is invalid or has expired');
+		error(403, 'This invite link is invalid or has expired');
 	}
 
 	const { displayName, email } = parseIdentityInput(body);

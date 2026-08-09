@@ -15,7 +15,7 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async ({ params, locals }) => {
 	requireUser(locals);
 	const id = params.id;
-	if (!id) throw error(400, 'Missing server id in path');
+	if (!id) error(400, 'Missing server id in path');
 
 	// A `global` server has ONE process-wide connection that every user
 	// shares, and retry closes it before re-handshaking. Any signed-in user
@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 	const cfg = getMcpServerCfg(id);
 	const isGlobal = cfg?.auth !== 'per_user';
 	if (isGlobal && locals.user.role !== 'admin') {
-		throw error(403, 'Only an administrator can reconnect a shared MCP server');
+		error(403, 'Only an administrator can reconnect a shared MCP server');
 	}
 
 	let result;
@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ params, locals }) => {
 		result = await retryMcpServer(id, locals.user.id);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
-		if (msg.startsWith('mcp: unknown server')) throw error(404, msg);
+		if (msg.startsWith('mcp: unknown server')) error(404, msg);
 		throw err;
 	}
 

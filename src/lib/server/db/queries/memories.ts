@@ -232,7 +232,7 @@ export function listMemoriesForRecall(userId: string): MemoryRecallRow[] {
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
 		.orderBy(asc(memories.createdAt))
-		.all() as MemoryRecallRow[];
+		.all();
 }
 
 /** Newest-first cap on the recall dense corpus, mirroring media's

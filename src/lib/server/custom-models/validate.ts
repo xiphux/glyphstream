@@ -23,17 +23,17 @@ export interface ValidatedCreate {
 
 export function validateCreateInput(body: CreateCustomModelRequest): ValidatedCreate {
 	const name = body.name?.trim();
-	if (!name) throw error(400, "'name' is required");
-	if (name.length > 200) throw error(400, "'name' must be 200 characters or fewer");
+	if (!name) error(400, "'name' is required");
+	if (name.length > 200) error(400, "'name' must be 200 characters or fewer");
 
 	const baseEndpointId = body.baseEndpointId?.trim();
-	if (!baseEndpointId) throw error(400, "'baseEndpointId' is required");
+	if (!baseEndpointId) error(400, "'baseEndpointId' is required");
 	if (!getEndpoint(baseEndpointId)) {
-		throw error(400, `Unknown endpoint "${baseEndpointId}" — not in config.toml`);
+		error(400, `Unknown endpoint "${baseEndpointId}" — not in config.toml`);
 	}
 
 	const baseModelId = body.baseModelId?.trim();
-	if (!baseModelId) throw error(400, "'baseModelId' is required");
+	if (!baseModelId) error(400, "'baseModelId' is required");
 
 	const description = body.description?.trim() || null;
 	const systemPrompt = body.systemPrompt?.trim() || null;
@@ -66,7 +66,7 @@ export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[]
 		normalized = validateDisabledFeatures(raw);
 	} catch (e) {
 		if (e instanceof FeatureCategoryValidationError) {
-			throw error(400, `defaultDisabledFeatures: ${e.message}`);
+			error(400, `defaultDisabledFeatures: ${e.message}`);
 		}
 		throw e;
 	}
@@ -74,7 +74,7 @@ export function validateDefaultDisabledFeatures(raw: unknown): FeatureCategory[]
 	for (const entry of normalized) {
 		if (known.has(entry)) continue;
 		if (entry.startsWith('mcp:')) continue; // opaque MCP preservation
-		throw error(400, `defaultDisabledFeatures: unknown category "${entry}"`);
+		error(400, `defaultDisabledFeatures: unknown category "${entry}"`);
 	}
 	return normalized;
 }
@@ -92,13 +92,13 @@ export function validateParameters(
 	const out: CustomModelParameters = {};
 	if (raw.temperature !== undefined) {
 		if (typeof raw.temperature !== 'number' || raw.temperature < 0 || raw.temperature > 2) {
-			throw error(400, "'temperature' must be a number between 0 and 2");
+			error(400, "'temperature' must be a number between 0 and 2");
 		}
 		out.temperature = raw.temperature;
 	}
 	if (raw.top_p !== undefined) {
 		if (typeof raw.top_p !== 'number' || raw.top_p < 0 || raw.top_p > 1) {
-			throw error(400, "'top_p' must be a number between 0 and 1");
+			error(400, "'top_p' must be a number between 0 and 1");
 		}
 		out.top_p = raw.top_p;
 	}
@@ -108,7 +108,7 @@ export function validateParameters(
 			!Number.isInteger(raw.max_tokens) ||
 			raw.max_tokens < 1
 		) {
-			throw error(400, "'max_tokens' must be a positive integer");
+			error(400, "'max_tokens' must be a positive integer");
 		}
 		out.max_tokens = raw.max_tokens;
 	}

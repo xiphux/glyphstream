@@ -39,7 +39,7 @@ beforeEach(() => {
 	mocks.invalidate.mockClear();
 	mocks.toastError.mockClear();
 	mocks.toastSuccess.mockClear();
-	global.fetch = vi.fn(async () => new Response(null, { status: 200 })) as never;
+	global.fetch = vi.fn(async () => new Response(null, { status: 200 }));
 	// Deterministic ids so we can assert the saved-set payload.
 	vi.stubGlobal('crypto', { randomUUID: () => 'fixed-uuid' });
 });
@@ -100,7 +100,7 @@ describe('saveModelSet', () => {
 	});
 
 	it('shows an error toast and does NOT invalidate on non-ok response', async () => {
-		global.fetch = vi.fn(async () => new Response('{"message":"bad"}', { status: 400 })) as never;
+		global.fetch = vi.fn(async () => new Response('{"message":"bad"}', { status: 400 }));
 		await saveModelSet([], 'X', [{ modelId: 'a', count: 1 }]);
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/Couldn't update model sets/i);
@@ -110,7 +110,7 @@ describe('saveModelSet', () => {
 	it('shows an error toast on thrown fetch (network failure)', async () => {
 		global.fetch = vi.fn(async () => {
 			throw new Error('network down');
-		}) as never;
+		});
 		await saveModelSet([], 'X', [{ modelId: 'a', count: 1 }]);
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/network down/);

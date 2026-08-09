@@ -52,7 +52,7 @@
 	 */
 	const kindCounts = $derived.by(() => {
 		const counts = new Map<SnippetKind, number>(SNIPPET_KINDS.map((k) => [k, 0]));
-		for (const s of data.promptSnippets as PromptSnippet[]) {
+		for (const s of data.promptSnippets) {
 			for (const k of SNIPPET_KINDS) {
 				if (snippetAppliesToKind(s, k)) counts.set(k, counts.get(k)! + 1);
 			}
@@ -499,7 +499,7 @@ character-focused design language…`;
 					type="file"
 					accept=".md,text/markdown,text/plain"
 					class="hidden"
-					onchange={(e) => importFile((e.currentTarget as HTMLInputElement).files)}
+					onchange={(e) => importFile(e.currentTarget.files)}
 				/>
 				<a
 					href="/api/user/prompt-snippets/export"

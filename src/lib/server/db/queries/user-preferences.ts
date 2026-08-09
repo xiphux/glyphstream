@@ -70,7 +70,7 @@ function coerceFavoriteModels(input: unknown, fallback: string[]): string[] {
 	if (!input.every((v) => typeof v === 'string')) return fallback;
 	const seen = new Set<string>();
 	const out: string[] = [];
-	for (const v of input as string[]) {
+	for (const v of input) {
 		if (seen.has(v)) continue;
 		seen.add(v);
 		out.push(v);
@@ -203,7 +203,7 @@ function coerceStringArray(input: unknown, fallback: string[]): string[] {
 	if (!input.every((v) => typeof v === 'string')) return fallback;
 	const seen = new Set<string>();
 	const out: string[] = [];
-	for (const v of input as string[]) {
+	for (const v of input) {
 		if (seen.has(v)) continue;
 		seen.add(v);
 		out.push(v);
@@ -222,7 +222,7 @@ export function parseUserPreferences(raw: string | null): UserPreferences {
 		return { ...DEFAULTS };
 	}
 	if (typeof parsed !== 'object' || parsed === null) return { ...DEFAULTS };
-	return coerceUserPreferences(parsed as Record<string, unknown>, DEFAULTS);
+	return coerceUserPreferences(parsed, DEFAULTS);
 }
 
 /** Read the user's preferences from the DB, returning defaults if the row

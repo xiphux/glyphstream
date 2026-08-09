@@ -11,7 +11,7 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 	// Tagged so the page can `invalidate('settings:memories')` after a
 	// delete to re-run just this load — without re-running the (app)
 	// layout, which would re-send conversations + models + prefs + custom

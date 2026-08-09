@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { Readable } from 'node:stream';
 
 const mocks = vi.hoisted(() => ({
-	mediaDir: '' as string,
+	mediaDir: '',
 }));
 
 vi.mock('$lib/server/env', () => ({

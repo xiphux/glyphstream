@@ -108,7 +108,7 @@ function featureRowLabels(): string[] {
 }
 
 beforeEach(() => {
-	globalThis.fetch = vi.fn() as unknown as typeof fetch;
+	globalThis.fetch = vi.fn();
 });
 
 describe('custom models — default feature toggles', () => {

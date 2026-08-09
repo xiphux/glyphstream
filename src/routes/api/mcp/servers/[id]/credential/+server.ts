@@ -17,9 +17,9 @@ import type { RequestHandler } from './$types';
 
 function requirePerUserServer(id: string): void {
 	const cfg = getMcpServerCfg(id);
-	if (!cfg) throw error(404, 'Unknown MCP server');
+	if (!cfg) error(404, 'Unknown MCP server');
 	if (cfg.auth !== 'per_user') {
-		throw error(400, 'This MCP server does not use per-user credentials');
+		error(400, 'This MCP server does not use per-user credentials');
 	}
 }
 
@@ -30,7 +30,7 @@ export const PUT: RequestHandler = async ({ params, request, locals }) => {
 
 	const body = await parseJsonBody<{ token?: unknown }>(request);
 	const token = typeof body.token === 'string' ? body.token.trim() : '';
-	if (!token) throw error(400, 'A non-empty token is required');
+	if (!token) error(400, 'A non-empty token is required');
 
 	setMcpCredential(locals.user.id, id, token);
 	// Drop any stale connection so the re-handshake uses the new token.

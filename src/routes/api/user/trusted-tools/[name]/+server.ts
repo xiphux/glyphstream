@@ -16,9 +16,9 @@ import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/u
 import type { RequestHandler } from './$types';
 
 export const PUT: RequestHandler = async ({ params, locals }) => {
-	if (!locals.user) throw error(401, 'Sign in to continue.');
+	if (!locals.user) error(401, 'Sign in to continue.');
 	const name = params.name;
-	if (!name) throw error(400, 'Missing tool name in path');
+	if (!name) error(400, 'Missing tool name in path');
 	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];
 	if (trusted.includes(name)) return new Response(null, { status: 204 });
@@ -29,9 +29,9 @@ export const PUT: RequestHandler = async ({ params, locals }) => {
 };
 
 export const DELETE: RequestHandler = async ({ params, locals }) => {
-	if (!locals.user) throw error(401, 'Sign in to continue.');
+	if (!locals.user) error(401, 'Sign in to continue.');
 	const name = params.name;
-	if (!name) throw error(400, 'Missing tool name in path');
+	if (!name) error(400, 'Missing tool name in path');
 	const prefs = getUserPreferences(locals.user.id);
 	const trusted = prefs?.trustedMcpTools ?? [];
 	if (!trusted.includes(name)) return new Response(null, { status: 404 });

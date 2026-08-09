@@ -36,7 +36,7 @@ describe('embeddings()', () => {
 					{ status: 200, headers: { 'content-type': 'application/json' } },
 				),
 		);
-		globalThis.fetch = fetchMock as never;
+		globalThis.fetch = fetchMock;
 
 		const res = await embeddings(endpoint(), { model: 'm', input: ['a', 'b'] });
 
@@ -58,7 +58,7 @@ describe('embeddings()', () => {
 					headers: { 'content-type': 'application/json' },
 				}),
 		);
-		globalThis.fetch = fetchMock as never;
+		globalThis.fetch = fetchMock;
 		await embeddings(endpoint({ apiKey: 'secret' }), { model: 'm', input: ['x'] });
 		const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
 		const headers = init.headers as Record<string, string>;
@@ -66,7 +66,7 @@ describe('embeddings()', () => {
 	});
 
 	it('wraps an HTTP error as UpstreamError carrying the status', async () => {
-		globalThis.fetch = vi.fn(async () => new Response('nope', { status: 500 })) as never;
+		globalThis.fetch = vi.fn(async () => new Response('nope', { status: 500 }));
 		await expect(embeddings(endpoint(), { model: 'm', input: ['x'] })).rejects.toMatchObject({
 			status: 500,
 		});
@@ -75,7 +75,7 @@ describe('embeddings()', () => {
 	it('wraps a network failure as UpstreamError', async () => {
 		globalThis.fetch = vi.fn(async () => {
 			throw new Error('ECONNREFUSED');
-		}) as never;
+		});
 		await expect(embeddings(endpoint(), { model: 'm', input: ['x'] })).rejects.toBeInstanceOf(
 			UpstreamError,
 		);

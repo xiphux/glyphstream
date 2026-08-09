@@ -332,7 +332,7 @@
 		for (const cm of customModels) {
 			const base = baseById.get(`${cm.baseEndpointId}::${cm.baseModelId}`);
 			if (!base) continue;
-			if (filterKinds && !(filterKinds as readonly ModelKind[]).includes(base.kind)) {
+			if (filterKinds && !filterKinds.includes(base.kind)) {
 				continue;
 			}
 			presets.push({

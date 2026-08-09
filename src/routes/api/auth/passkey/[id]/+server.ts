@@ -39,7 +39,7 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	// last-method math, so a fabricated/foreign id surfaces as 404 rather than a
 	// misleading 409.
 	const passkeys = listCredentialSummariesForUser(locals.user.id);
-	if (!passkeys.some((p) => p.id === params.id)) throw error(404, 'Passkey not found');
+	if (!passkeys.some((p) => p.id === params.id)) error(404, 'Passkey not found');
 
 	// Count only OAuth bindings whose provider is actually ENABLED — a github
 	// binding when GITHUB_LOGIN_ENABLED=0 is not a usable fallback. `passkeys.length
@@ -49,7 +49,7 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	).length;
 	const remainingMethods = usableOAuth + (passkeys.length - 1);
 	if (remainingMethods <= 0) {
-		throw error(
+		error(
 			409,
 			"Can't delete your last sign-in method. Add another passkey or link a provider first.",
 		);
@@ -64,11 +64,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	try {
 		body = (await request.json()) as { name?: unknown };
 	} catch {
-		throw error(400, 'Malformed JSON body');
+		error(400, 'Malformed JSON body');
 	}
 	// `name` may be null (clear) or a string. Anything else is rejected.
 	const name = body.name === null ? null : sanitizeName(body.name);
 	const matched = renameCredential(locals.user.id, params.id, name);
-	if (!matched) throw error(404, 'Passkey not found');
+	if (!matched) error(404, 'Passkey not found');
 	return json({ ok: true, name });
 };

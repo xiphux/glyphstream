@@ -962,7 +962,7 @@ export function normalizeRerankResponse(parsed: unknown): RerankResult[] {
 	const rows = Array.isArray(parsed)
 		? parsed
 		: Array.isArray((parsed as { results?: unknown }).results)
-			? ((parsed as { results: unknown[] }).results as unknown[])
+			? (parsed as { results: unknown[] }).results
 			: [];
 	const out: RerankResult[] = [];
 	for (const r of rows) {

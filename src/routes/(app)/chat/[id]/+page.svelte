@@ -1354,7 +1354,7 @@
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
-					const rawText = (parsed as { text: unknown }).text;
+					const rawText = parsed.text;
 					pendingText = typeof rawText === 'string' ? rawText : '';
 					const ids = (parsed as { attachedMediaIds?: unknown }).attachedMediaIds;
 					if (Array.isArray(ids)) {

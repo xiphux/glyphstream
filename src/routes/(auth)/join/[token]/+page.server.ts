@@ -25,7 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
  *    endpoints, which re-validate it on every call.
  */
 export const load: PageServerLoad = ({ params, url, locals }) => {
-	if (locals.user) throw redirect(302, '/');
+	if (locals.user) redirect(302, '/');
 
 	const invite = findValidInvite(params.token);
 	const errorCode = url.searchParams.get('error');

@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// Prefs come from the (app) layout, which already loaded them — see the note
 	// in settings/preferences.
 	const { prefs } = await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 	// Tagged so the page can `invalidate('settings:mcp')` after a retry, a
 	// credential change, or a trust toggle without re-running the (app) layout.
 	depends('settings:mcp');

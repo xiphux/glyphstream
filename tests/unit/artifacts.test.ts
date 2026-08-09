@@ -53,10 +53,10 @@ describe('artifacts queries', () => {
 
 		const active = activeCanvas(convId, user.id);
 		expect(active).not.toBeNull();
-		expect(active!.id).toBe(doc.id);
-		expect(active!.content).toBe('# Hello');
-		expect(active!.title).toBe('Doc');
-		expect(active!.versionNumber).toBe(1);
+		expect(active.id).toBe(doc.id);
+		expect(active.content).toBe('# Hello');
+		expect(active.title).toBe('Doc');
+		expect(active.versionNumber).toBe(1);
 	});
 
 	it('appends a version and advances the pointer (CAS on the current version)', () => {
@@ -86,9 +86,9 @@ describe('artifacts queries', () => {
 		expect(res.doc.content).toBe('v2');
 
 		const active = activeCanvas(convId, user.id);
-		expect(active!.versionNumber).toBe(2);
-		expect(active!.content).toBe('v2');
-		expect(active!.currentVersionId).toBe(res.doc.currentVersionId);
+		expect(active.versionNumber).toBe(2);
+		expect(active.content).toBe('v2');
+		expect(active.currentVersionId).toBe(res.doc.currentVersionId);
 	});
 
 	it('rejects an append whose expected version no longer matches (conflict)', () => {
@@ -126,7 +126,7 @@ describe('artifacts queries', () => {
 			editSource: 'agent',
 		});
 		expect(conflict).toEqual({ ok: false, reason: 'conflict' });
-		expect(activeCanvas(convId, user.id)!.content).toBe('v2');
+		expect(activeCanvas(convId, user.id).content).toBe('v2');
 	});
 
 	it('renames the artifact when a title is passed to appendCanvasVersion', () => {
@@ -151,7 +151,7 @@ describe('artifacts queries', () => {
 			title: 'New Name',
 		});
 		expect(res.ok && res.doc.title).toBe('New Name');
-		expect(activeCanvas(convId, user.id)!.title).toBe('New Name');
+		expect(activeCanvas(convId, user.id).title).toBe('New Name');
 	});
 
 	it('leaves the title unchanged when no title is passed', () => {
@@ -174,7 +174,7 @@ describe('artifacts queries', () => {
 			createdByMessageId: null,
 			editSource: 'agent',
 		});
-		expect(activeCanvas(convId, user.id)!.title).toBe('Keep Me');
+		expect(activeCanvas(convId, user.id).title).toBe('Keep Me');
 	});
 
 	it('scopes canvases to their owner', () => {
@@ -281,7 +281,7 @@ describe('update_canvas targeting (multiple canvases)', () => {
 			ctx(convId, user.id),
 		);
 		expect(res.isError).toBeFalsy();
-		expect(activeCanvas(convId, user.id)!.content).toBe('hello there');
+		expect(activeCanvas(convId, user.id).content).toBe('hello there');
 	});
 
 	it('requires an artifact_id when more than one canvas is open', async () => {

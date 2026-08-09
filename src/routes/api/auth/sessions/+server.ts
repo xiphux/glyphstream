@@ -19,7 +19,7 @@ export const DELETE: RequestHandler = ({ locals }) => {
 	// came from a resolved session, so this is a defensive 401 rather than a
 	// reachable one. Without the guard we'd pass undefined as the id to keep
 	// and sign the caller out of their own session too.
-	if (!locals.sessionId) throw error(401, 'Authentication required');
+	if (!locals.sessionId) error(401, 'Authentication required');
 	const revoked = revokeOtherSessionsForUser(locals.user.id, locals.sessionId);
 	return json({ revoked });
 };

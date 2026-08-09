@@ -14,7 +14,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	// coerceUserPreferences walk and serialized a *second* copy of the blob into
 	// this page's data.
 	const { prefs } = await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
-	if (!prefs) throw error(404, 'User not found');
+	if (!locals.user) error(401, 'Authentication required');
+	if (!prefs) error(404, 'User not found');
 	return { prefs };
 };

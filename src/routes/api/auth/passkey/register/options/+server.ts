@@ -19,7 +19,7 @@ import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, cookies }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 	requireUser(locals);
 	const existing = listCredentialsForUser(locals.user.id);
 	const options = await generateRegistrationOptionsForUser(locals.user, existing);

@@ -94,11 +94,11 @@ describe('POST /api/mcp/servers/[id]/reconnect', () => {
 		});
 
 		mocks.cfg = { auth: 'per_user' };
-		const ownRetry = (await POST(mkEvent('user') as never)) as Response;
+		const ownRetry = await POST(mkEvent('user') as never);
 		expect((await ownRetry.json()).error).toContain('ECONNREFUSED');
 
 		mocks.cfg = { auth: 'global' };
-		const adminRetry = (await POST(mkEvent('admin') as never)) as Response;
+		const adminRetry = await POST(mkEvent('admin') as never);
 		expect((await adminRetry.json()).error).toContain('ECONNREFUSED');
 	});
 

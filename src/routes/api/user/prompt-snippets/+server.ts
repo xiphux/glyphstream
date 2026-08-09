@@ -31,7 +31,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// Pre-flight so a duplicate reads as a 409 with a useful message rather
 	// than surfacing the raw unique-index violation as a 500.
 	if (promptSnippetExistsByName(locals.user.id, input.name)) {
-		throw error(409, `A snippet named "${input.name}" already exists.`);
+		error(409, `A snippet named "${input.name}" already exists.`);
 	}
 
 	const promptSnippet = createPromptSnippet({ userId: locals.user.id, ...input });

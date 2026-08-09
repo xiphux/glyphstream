@@ -50,7 +50,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// catch below). It costs one header read and removes the common case.
 	const declaredLength = Number(request.headers.get('content-length'));
 	if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES_FILE + MULTIPART_SLACK) {
-		throw error(413, `File too large (${declaredLength} bytes; max ${MAX_UPLOAD_BYTES_FILE})`);
+		error(413, `File too large (${declaredLength} bytes; max ${MAX_UPLOAD_BYTES_FILE})`);
 	}
 
 	let form: FormData;
@@ -66,34 +66,34 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		// would otherwise hit this for any non-trivial photo.
 		const msg = e instanceof Error ? e.message : String(e);
 		if (/body.*too.*large|413|exceeded/i.test(msg)) {
-			throw error(
+			error(
 				413,
 				'Upload exceeded the request body size limit. Raise BODY_SIZE_LIMIT in the environment.',
 			);
 		}
-		throw error(400, 'Body must be multipart/form-data');
+		error(400, 'Body must be multipart/form-data');
 	}
 
 	const file = form.get('file');
 	if (!(file instanceof File)) {
-		throw error(400, 'Missing "file" field');
+		error(400, 'Missing "file" field');
 	}
 
 	const contentType = file.type || 'application/octet-stream';
 	const classification = classifyUpload(contentType);
 	if (!classification) {
-		throw error(415, `Unsupported content type: ${contentType}`);
+		error(415, `Unsupported content type: ${contentType}`);
 	}
 
 	if (file.size > classification.maxBytes) {
-		throw error(413, `File too large (${file.size} bytes; max ${classification.maxBytes})`);
+		error(413, `File too large (${file.size} bytes; max ${classification.maxBytes})`);
 	}
 
 	// `file.size` is reliable but `file.arrayBuffer()` may yield zero bytes
 	// for an empty file or a corrupted upload. Check after read.
 	const bytes = Buffer.from(await file.arrayBuffer());
 	if (bytes.byteLength === 0) {
-		throw error(400, 'Empty file');
+		error(400, 'Empty file');
 	}
 
 	const store = getMediaStore();

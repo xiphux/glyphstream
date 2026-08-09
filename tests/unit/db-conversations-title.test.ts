@@ -340,7 +340,7 @@ describe('getConversationFirstExchange', () => {
 			.where(eq(messages.parentMessageId, user.id))
 			.all()
 			.sort((a, b) => (a.id < b.id ? -1 : 1));
-		const expected = JSON.parse(tied[0].contentJson!)[0].text as string;
+		const expected = JSON.parse(tied[0].contentJson)[0].text as string;
 		const seen = new Set<string>();
 		for (let i = 0; i < 5; i++) {
 			seen.add(getConversationFirstExchange(conv.id, u.id)!.assistantText!);

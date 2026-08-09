@@ -961,7 +961,7 @@ describe('in-flight registry release boundary', () => {
 			requestBody: {
 				model: 'bridge::test',
 				messages: [{ role: 'user', content: 'hi' }],
-			} as ChatCompletionRequest,
+			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
 			onGenerationSettled,

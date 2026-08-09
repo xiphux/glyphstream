@@ -61,7 +61,7 @@ const defaultWorkerUrl = new URL('./worker.js', import.meta.url);
 const defaultWorkerFactory: WorkerFactory = ({ memoryMb }) =>
 	new NodeWorker(defaultWorkerUrl, {
 		resourceLimits: { maxOldGenerationSizeMb: memoryMb },
-	}) as unknown as ManagedWorker;
+	});
 
 let workerFactory: WorkerFactory = defaultWorkerFactory;
 

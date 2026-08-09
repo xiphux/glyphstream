@@ -23,7 +23,7 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireUser(locals);
 	const accounts = listOAuthAccountsForUser(locals.user.id);
 	const bound = accounts.some((a) => a.provider === params.provider);
-	if (!bound) throw error(404, 'OAuth binding not found');
+	if (!bound) error(404, 'OAuth binding not found');
 
 	const passkeyCount = countCredentialsForUser(locals.user.id);
 	// Remaining viable methods after this unlink: passkeys + OAuth bindings that
@@ -33,10 +33,7 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 		(a) => a.provider !== params.provider && isProviderEnabled(a.provider),
 	).length;
 	if (remainingOAuth + passkeyCount <= 0) {
-		throw error(
-			409,
-			"Can't unlink your last sign-in method. Add a passkey or another provider first.",
-		);
+		error(409, "Can't unlink your last sign-in method. Add a passkey or another provider first.");
 	}
 
 	deleteOAuthAccount(locals.user.id, params.provider);

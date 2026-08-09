@@ -91,7 +91,7 @@ describe('POST /compact — stream path', () => {
 
 	it('returns an SSE response when a plan exists', async () => {
 		mocks.prepareCompaction.mockResolvedValue({ endpoint: { id: 'e' } });
-		const res = (await call({ stream: true })) as Response;
+		const res = await call({ stream: true });
 		expect(res.headers.get('Content-Type')).toBe('text/event-stream');
 		expect(mocks.streamCompaction).toHaveBeenCalledOnce();
 	});
@@ -106,7 +106,7 @@ describe('POST /compact — sync path', () => {
 
 	it('returns ok JSON when compacted', async () => {
 		mocks.runCompaction.mockResolvedValue({ status: 'compacted', summaryMessageId: 's1' });
-		const res = (await call()) as Response;
+		const res = await call();
 		expect(res.status).toBe(200);
 		await expect(res.json()).resolves.toEqual({ ok: true, summaryMessageId: 's1' });
 	});

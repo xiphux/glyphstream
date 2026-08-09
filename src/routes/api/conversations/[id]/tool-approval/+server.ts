@@ -58,19 +58,19 @@ function isToolResultPart(p: MessagePart): p is Extract<MessagePart, { type: 'to
 }
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	if (!locals.user) throw error(401, 'Sign in to continue.');
+	if (!locals.user) error(401, 'Sign in to continue.');
 	const userId = locals.user.id;
 
 	const body = await parseJsonBody<ApprovalBody>(request);
 	if (!body || !Array.isArray(body.decisions) || body.decisions.length === 0) {
-		throw error(400, 'Expected { decisions: [{ toolCallId, action }, ...] }');
+		error(400, 'Expected { decisions: [{ toolCallId, action }, ...] }');
 	}
 	for (const d of body.decisions) {
 		if (typeof d.toolCallId !== 'string' || d.toolCallId.length === 0) {
-			throw error(400, 'Each decision needs a non-empty toolCallId');
+			error(400, 'Each decision needs a non-empty toolCallId');
 		}
 		if (d.action !== 'allow' && d.action !== 'allow_always' && d.action !== 'reject') {
-			throw error(400, `Unknown action "${d.action}"`);
+			error(400, `Unknown action "${d.action}"`);
 		}
 	}
 
@@ -81,7 +81,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const disabledFeatures = resolveDisabledFeatures(meta);
 	const endpoint = getEndpoint(meta.endpointId);
 	if (!endpoint) {
-		throw error(409, `Endpoint "${meta.endpointId}" is no longer in config.toml`);
+		error(409, `Endpoint "${meta.endpointId}" is no longer in config.toml`);
 	}
 
 	await awaitMcpReady();
@@ -140,7 +140,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	if (!updatedAny) {
-		throw error(409, 'No pending tool calls matched the decisions in this body.');
+		error(409, 'No pending tool calls matched the decisions in this body.');
 	}
 
 	// Persist newly-trusted tools before continuing the relay so the
@@ -158,7 +158,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	const parsed = parseModelId(meta.modelId);
-	if (!parsed) throw error(500, `Conversation modelId "${meta.modelId}" is malformed`);
+	if (!parsed) error(500, `Conversation modelId "${meta.modelId}" is malformed`);
 
 	const allModels = await listAllModels();
 	const modelEntry = allModels.find(
@@ -169,7 +169,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		// Should be impossible — we only got here because a turn earlier
 		// reached pending_approval, which means tools were enabled. Defend
 		// loudly.
-		throw error(500, 'Tools no longer enabled for this conversation; cannot resume.');
+		error(500, 'Tools no longer enabled for this conversation; cannot resume.');
 	}
 
 	// Assemble the system prompt + tool list + approval gate exactly as the
@@ -247,7 +247,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	// branch as a no-op placeholder; the client ignores it on resume.
 	const updatedBranch = walkActiveBranch(params.id, { columns: 'serialization' });
 	const lastUserMessage = [...updatedBranch].reverse().find((m) => m.role === 'user');
-	if (!lastUserMessage) throw error(500, 'No user message anchor for resume');
+	if (!lastUserMessage) error(500, 'No user message anchor for resume');
 
 	// CRITICAL: parent the resumed assistant message to the current
 	// active_leaf (the just-completed tool result), not to the user
@@ -268,7 +268,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		endpoint,
 		providerQuirk: endpoint.providerQuirk,
 		requestBody: initialRequestBody,
-		userMessage: lastUserMessage as ChatMessage,
+		userMessage: lastUserMessage,
 		storedModelId: meta.modelId,
 		abortSignal: inFlight.controller.signal,
 		// Free the registry entry when the generation settles, ahead of the

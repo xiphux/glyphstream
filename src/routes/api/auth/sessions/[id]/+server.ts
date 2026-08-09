@@ -20,7 +20,7 @@ export const DELETE: RequestHandler = ({ locals, params, cookies }) => {
 	// — the same "don't distinguish gone from not-yours" shape the media and
 	// conversation routes use.
 	if (!revokeSessionForUser(locals.user.id, params.id)) {
-		throw error(404, 'Session not found');
+		error(404, 'Session not found');
 	}
 	const self = params.id === locals.sessionId;
 	// Revoking your own session leaves a cookie pointing at a deleted row.

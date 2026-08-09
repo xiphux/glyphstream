@@ -27,19 +27,19 @@ interface CarryPayload {
 }
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 
 	// Read the carry state before the ceremony (which throws on a missing
 	// challenge first); both short-lived cookies are cleared either way.
 	const carrySigned = cookies.get(JOIN_PASSKEY_CARRY_COOKIE);
 	cookies.delete(JOIN_PASSKEY_CARRY_COOKIE, { path: '/' });
 	const carry = verify<CarryPayload>(carrySigned);
-	if (!carry) throw error(400, 'Missing or expired join state');
+	if (!carry) error(400, 'Missing or expired join state');
 
 	// Re-validate the invite at consume time — it may have expired or been
 	// redeemed during the registration ceremony.
 	const invite = findValidInvite(carry.inviteToken);
-	if (!invite) throw error(403, 'This invite link is invalid or has expired');
+	if (!invite) error(403, 'This invite link is invalid or has expired');
 
 	const { credential, backedUp, deviceType, transports } = await verifyRegistrationCeremony(
 		cookies,
@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	} catch (e) {
 		// Lost the single-use race between findValidInvite and the consume.
 		if (e instanceof InviteConsumedError) {
-			throw error(409, 'This invite has already been used');
+			error(409, 'This invite has already been used');
 		}
 		throw e;
 	}

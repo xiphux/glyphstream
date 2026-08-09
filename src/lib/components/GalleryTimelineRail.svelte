@@ -26,7 +26,7 @@
 	let bubbleY = $state(0);
 	const DRAG_THRESHOLD = 4; // px before a press becomes a scrub
 
-	const monthLabel = (key: string) => bucketLabel(monthStartMs(key), 'month' as Granularity);
+	const monthLabel = (key: string) => bucketLabel(monthStartMs(key), 'month');
 	const yearOf = (key: string) => key.slice(0, 4);
 
 	// Index of the period nearest a clientY within the rail (ticks are evenly

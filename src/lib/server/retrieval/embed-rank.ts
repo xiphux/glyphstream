@@ -84,7 +84,7 @@ export async function embedAndRank(
 	];
 	const vecs = await embedInputs(inputs, cfg, signal);
 	if (!vecs) return null;
-	return cosineRank(vecs[0] as Vec, vecs.slice(1) as Vec[]);
+	return cosineRank(vecs[0], vecs.slice(1));
 }
 
 /**
@@ -118,7 +118,7 @@ export async function embedAndRankCached(
 		const inputs = [queryInput, ...missIdx.map((i) => docInputs[i])];
 		const vecs = await embedInputs(inputs, cfg, signal);
 		if (!vecs) return null;
-		missIdx.forEach((i, j) => cache.set(keyFor(docInputs[i]), vecs[j + 1] as Vec));
+		missIdx.forEach((i, j) => cache.set(keyFor(docInputs[i]), vecs[j + 1]));
 
 		const queryVec = vecs[0] as Vec;
 		const docVecs = docInputs.map((d) => cache.get(keyFor(d)) as Vec);
@@ -149,7 +149,7 @@ export async function embedQuery(
 		const resp = await embeddings(cfg.endpoint, { model: cfg.modelId, input: [input] }, sig);
 		const vec = resp.data?.[0]?.embedding;
 		if (!Array.isArray(vec) || vec.length === 0) return null;
-		return vec as Vec;
+		return vec;
 	} catch (e) {
 		console.warn('[retrieval] query embedding failed, falling back to BM25:', e);
 		return null;

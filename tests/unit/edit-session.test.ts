@@ -39,7 +39,7 @@ vi.mock('$lib/attachments.svelte', () => ({
 		constructor() {
 			const s = new MockStore();
 			attachmentInstances.push(s);
-			return s as unknown as object;
+			return s;
 		}
 	},
 }));

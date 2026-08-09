@@ -29,7 +29,7 @@ function deferredSweep() {
 	const fn = vi.fn(() => {
 		calls++;
 		return new Promise((res, rej) => {
-			release = res as (v?: unknown) => void;
+			release = res;
 			reject = rej;
 		});
 	});

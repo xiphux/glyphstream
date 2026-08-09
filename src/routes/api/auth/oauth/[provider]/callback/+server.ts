@@ -15,7 +15,7 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async ({ url, cookies, locals, params, request }) => {
 	const provider = getProvider(params.provider);
 	if (!provider || provider.callbackPath !== `/api/auth/oauth/${params.provider}/callback`) {
-		throw error(404, 'Unknown provider');
+		error(404, 'Unknown provider');
 	}
 	await handleOAuthCallback(provider, {
 		url,

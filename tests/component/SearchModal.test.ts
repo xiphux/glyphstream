@@ -61,7 +61,7 @@ describe('SearchModal — debounced search', () => {
 		searchModal.show();
 		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
-		const input = screen.getByPlaceholderText('Search your chats…') as HTMLInputElement;
+		const input = screen.getByPlaceholderText('Search your chats…');
 		await userEvent.type(input, 'hello');
 		// 250ms debounce window. Advancing 100ms should not have fired.
 		vi.advanceTimersByTime(100);
@@ -92,7 +92,7 @@ describe('SearchModal — debounced search', () => {
 		searchModal.show();
 		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
-		const input = screen.getByPlaceholderText('Search your chats…') as HTMLInputElement;
+		const input = screen.getByPlaceholderText('Search your chats…');
 		await userEvent.type(input, 'recipe');
 		vi.advanceTimersByTime(300);
 		await waitFor(() => expect(screen.getByText('Cooking with onions')).toBeInTheDocument());
@@ -110,7 +110,7 @@ describe('SearchModal — debounced search', () => {
 		searchModal.show();
 		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
-		const input = screen.getByPlaceholderText('Search your chats…') as HTMLInputElement;
+		const input = screen.getByPlaceholderText('Search your chats…');
 		await userEvent.type(input, 'no-results-here');
 		vi.advanceTimersByTime(300);
 		await waitFor(() => expect(screen.getByText(/no matches/i)).toBeInTheDocument());
@@ -142,7 +142,7 @@ describe('SearchModal — activation', () => {
 		searchModal.show();
 		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
-		const input = screen.getByPlaceholderText('Search your chats…') as HTMLInputElement;
+		const input = screen.getByPlaceholderText('Search your chats…');
 		await userEvent.type(input, 'hit');
 		vi.advanceTimersByTime(300);
 
@@ -178,7 +178,7 @@ describe('SearchModal — activation', () => {
 		searchModal.show();
 		await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
 
-		const input = screen.getByPlaceholderText('Search your chats…') as HTMLInputElement;
+		const input = screen.getByPlaceholderText('Search your chats…');
 		await userEvent.type(input, 'hit');
 		vi.advanceTimersByTime(300);
 

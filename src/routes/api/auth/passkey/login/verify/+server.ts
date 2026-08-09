@@ -36,25 +36,25 @@ import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ cookies, request }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 
 	const challenge = readLoginChallengeCookie(cookies);
 	clearLoginChallengeCookie(cookies);
-	if (!challenge) throw error(400, 'Missing or expired login challenge');
+	if (!challenge) error(400, 'Missing or expired login challenge');
 
 	let body: { response?: AuthenticationResponseJSON };
 	try {
 		body = (await request.json()) as { response?: AuthenticationResponseJSON };
 	} catch {
-		throw error(400, 'Malformed JSON body');
+		error(400, 'Malformed JSON body');
 	}
 	const response = body.response;
 	if (!response || typeof response !== 'object' || typeof response.id !== 'string') {
-		throw error(400, 'Missing authentication response');
+		error(400, 'Missing authentication response');
 	}
 
 	const credential = findCredentialById(response.id);
-	if (!credential) throw error(401, 'Unknown credential');
+	if (!credential) error(401, 'Unknown credential');
 
 	// The authenticator echoes back the `userID` we set at registration.
 	// If it disagrees with the credential row's user_id, something is
@@ -64,11 +64,11 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		console.warn(
 			`[passkey/login] userHandle mismatch on credential ${credential.id}: ${handleUserId} vs row ${credential.userId}`,
 		);
-		throw error(401, 'Credential identity mismatch');
+		error(401, 'Credential identity mismatch');
 	}
 
 	const owner = findUserForCredential(credential.id);
-	if (!owner) throw error(401, 'Unknown credential');
+	if (!owner) error(401, 'Unknown credential');
 
 	// Disabled-flag check mirrors the GitHub callback's behavior:
 	// revocation applies uniformly across login methods. Existing
@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 	// are refused here.
 	if (owner.disabledAt !== null) {
 		console.warn(`[passkey/login] Rejecting credential ${credential.id} — bound user is disabled`);
-		throw error(403, 'This account is not authorized to use this instance.');
+		error(403, 'This account is not authorized to use this instance.');
 	}
 
 	let verification;
@@ -96,9 +96,9 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		});
 	} catch (e) {
 		const message = e instanceof Error ? e.message : 'Verification failed';
-		throw error(401, message);
+		error(401, message);
 	}
-	if (!verification.verified) throw error(401, 'Passkey verification failed');
+	if (!verification.verified) error(401, 'Passkey verification failed');
 
 	const newCounter = verification.authenticationInfo.newCounter;
 	// `> 0` on the stored side is intentional — see file header.
@@ -106,7 +106,7 @@ export const POST: RequestHandler = async ({ cookies, request }) => {
 		console.warn(
 			`[passkey/login] Counter regression on credential ${credential.id}: stored=${credential.counter} new=${newCounter}. Possible clone.`,
 		);
-		throw error(401, 'Possible cloned credential');
+		error(401, 'Possible cloned credential');
 	}
 
 	const now = Date.now();

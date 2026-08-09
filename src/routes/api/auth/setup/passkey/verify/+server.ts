@@ -23,20 +23,20 @@ interface CarryPayload {
 }
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 	// Re-check gate to close the parallel-tab race where two browsers
 	// both run /setup and the second tries to land here after the first
 	// already created the user.
 	const verdict = setupGate(url);
-	if (verdict === 'closed') throw error(409, 'Setup is already complete');
-	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
+	if (verdict === 'closed') error(409, 'Setup is already complete');
+	if (verdict !== 'allowed') error(403, 'Setup is not currently allowed');
 
 	// Read the carry state before the ceremony (which throws on a missing
 	// challenge first); both short-lived cookies are cleared either way.
 	const carrySigned = cookies.get(SETUP_PASSKEY_CARRY_COOKIE);
 	cookies.delete(SETUP_PASSKEY_CARRY_COOKIE, { path: '/' });
 	const carry = verify<CarryPayload>(carrySigned);
-	if (!carry) throw error(400, 'Missing or expired setup state');
+	if (!carry) error(400, 'Missing or expired setup state');
 
 	const { credential, backedUp, deviceType, transports } = await verifyRegistrationCeremony(
 		cookies,

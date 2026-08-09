@@ -28,17 +28,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 	const body = await parseJsonBody<{ ids?: unknown }>(request);
 	if (!Array.isArray(body.ids)) {
-		throw error(400, "'ids' must be an array of media id strings");
+		error(400, "'ids' must be an array of media id strings");
 	}
 	const ids: string[] = [];
 	for (const v of body.ids) {
 		if (typeof v !== 'string' || v.length === 0) {
-			throw error(400, "'ids' entries must be non-empty strings");
+			error(400, "'ids' entries must be non-empty strings");
 		}
 		ids.push(v);
 	}
 	if (ids.length > MAX_BULK_DELETE) {
-		throw error(400, `Too many ids in one request (max ${MAX_BULK_DELETE})`);
+		error(400, `Too many ids in one request (max ${MAX_BULK_DELETE})`);
 	}
 
 	const deleted = bulkHardDeleteMediaForUser(ids, locals.user.id);

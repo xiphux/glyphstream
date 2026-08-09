@@ -14,5 +14,5 @@ export const POST: RequestHandler = ({ cookies }) => {
 		if (ctx) invalidateSession(ctx.sessionId);
 	}
 	clearSessionCookie(cookies);
-	throw redirect(302, '/login');
+	redirect(302, '/login');
 };

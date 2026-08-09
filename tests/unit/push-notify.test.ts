@@ -5,7 +5,7 @@ import { seedUser } from './_helpers/seed';
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	sendCalls: [] as Array<{ subscription: unknown; payload: string }>,
-	sendResult: { ok: true } as { ok: boolean; statusCode?: number },
+	sendResult: { ok: true },
 	sendResultsByEndpoint: new Map<string, { ok: boolean; statusCode?: number }>(),
 }));
 

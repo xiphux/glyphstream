@@ -10,6 +10,6 @@ import type { RequestHandler } from './$types';
 
 export const DELETE: RequestHandler = ({ locals, params }) => {
 	requireAdmin(locals);
-	if (!deleteInvite(params.id)) throw error(404, 'Invite not found');
+	if (!deleteInvite(params.id)) error(404, 'Invite not found');
 	return json({ ok: true });
 };

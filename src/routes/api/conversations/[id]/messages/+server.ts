@@ -77,10 +77,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
 		: [];
 	if (!isRetry && !isFanout && !text && attachedMediaIds.length === 0) {
-		throw error(400, "'text' or 'attachedMediaIds' is required");
+		error(400, "'text' or 'attachedMediaIds' is required");
 	}
 	if (isFanout && isRetry) {
-		throw error(400, 'fanoutBranch and regenerateFromMessageId are mutually exclusive');
+		error(400, 'fanoutBranch and regenerateFromMessageId are mutually exclusive');
 	}
 
 	const meta = requireFound(
@@ -106,11 +106,11 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	if (typeof body.modelId === 'string' && body.modelId && body.modelId !== meta.modelId) {
 		const newParsed = parseModelId(body.modelId);
 		if (!newParsed) {
-			throw error(400, `modelId "${body.modelId}" is malformed`);
+			error(400, `modelId "${body.modelId}" is malformed`);
 		}
 		const newEndpoint = getEndpoint(newParsed.endpointId);
 		if (!newEndpoint) {
-			throw error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
+			error(400, `Endpoint "${newParsed.endpointId}" is not configured`);
 		}
 		const newKind = isModelKind(body.modelKind) ? body.modelKind : meta.modelKind;
 		// A fan-out branch's model is TRANSIENT (persist:false in
@@ -147,7 +147,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// actionable message rather than a 500 so the UI can surface it.
 	const parsed = parseModelId(meta.modelId);
 	if (!parsed || !getEndpoint(parsed.endpointId)) {
-		throw error(
+		error(
 			400,
 			'This conversation has no valid model. Pick one from the model picker before sending.',
 		);
@@ -173,12 +173,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// references it as the parent for its sibling assistant response.
 		const parentId = body.parentMessageId;
 		if (typeof parentId !== 'string' || !parentId) {
-			throw error(400, 'fanoutBranch requires parentMessageId (the shared user message)');
+			error(400, 'fanoutBranch requires parentMessageId (the shared user message)');
 		}
 		const parent = getMessage(params.id, parentId);
-		if (!parent) throw error(404, `Message "${parentId}" not found`);
+		if (!parent) error(404, `Message "${parentId}" not found`);
 		if (parent.role !== 'user') {
-			throw error(400, 'fanoutBranch parentMessageId must reference a user message');
+			error(400, 'fanoutBranch parentMessageId must reference a user message');
 		}
 		userMessage = parent;
 		// Deliberately do NOT setActiveLeafMessageId here. /prepare pinned the
@@ -187,12 +187,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// remain reachable branches until the user selects one.
 	} else if (isRetry) {
 		const target = getMessage(params.id, body.regenerateFromMessageId!);
-		if (!target) throw error(404, `Message "${body.regenerateFromMessageId}" not found`);
+		if (!target) error(404, `Message "${body.regenerateFromMessageId}" not found`);
 		if (target.role !== 'assistant') {
-			throw error(400, 'regenerateFromMessageId must reference an assistant message');
+			error(400, 'regenerateFromMessageId must reference an assistant message');
 		}
 		if (!target.parentMessageId) {
-			throw error(400, 'Cannot retry a root message');
+			error(400, 'Cannot retry a root message');
 		}
 		// Multi-iteration tool turns produce a chain like
 		//   user → assistant_0 (tool_call) → tool_0 → assistant_1 (final).
@@ -205,7 +205,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// user-message parent" because the immediate parent was a tool.
 		userMessage = findUserMessageAncestor(params.id, target.id) ?? undefined;
 		if (!userMessage) {
-			throw error(400, 'Retry target has no user-message ancestor');
+			error(400, 'Retry target has no user-message ancestor');
 		}
 		// Re-anchor the active branch at the user message — walks from
 		// here build the upstream request from history-up-to-the-retry-
@@ -276,7 +276,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// can't race past the limit. The client mirrors it, so a legitimate user never
 	// reaches this. (Per-conversation only — a global cap is a noted follow-up.)
 	if (isFanout && conversationFanoutAtCapacity(params.id)) {
-		throw error(429, 'Too many concurrent generations for this conversation');
+		error(429, 'Too many concurrent generations for this conversation');
 	}
 	const inFlight = registerInFlight(
 		params.id,
@@ -352,7 +352,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				storedModelId: meta.modelId,
 				upstreamModelId: parsed.upstreamId,
 				prompt: promptText,
-				userMessage: userMessage as ChatMessage,
+				userMessage,
 				dispatchMediaIds,
 				sourceMediaId,
 				promptStyle,
@@ -383,7 +383,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 					loaded = await loadMediaBytes(dispatchMediaIds[0], locals.user.id);
 				} catch (e) {
 					if (e instanceof MediaNotAvailableError) {
-						throw error(400, 'The source image was deleted and is no longer available');
+						error(400, 'The source image was deleted and is no longer available');
 					}
 					throw e;
 				}
@@ -413,7 +413,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				endpoint,
 				storedModelId: meta.modelId,
 				prompt: promptText,
-				userMessage: userMessage as ChatMessage,
+				userMessage,
 				inputReference,
 				sourceMediaId,
 				promptStyle,
@@ -668,7 +668,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				endpoint,
 				providerQuirk: endpoint.providerQuirk,
 				requestBody,
-				userMessage: userMessage as ChatMessage,
+				userMessage,
 				storedModelId: meta.modelId,
 				abortSignal: inFlight.controller.signal,
 				// When the turn opened with an explicit skill activation, the model's
@@ -727,7 +727,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			});
 		} catch (e) {
 			clearInFlight(params.id, inFlight);
-			if (inFlight.controller.signal.aborted) throw error(499, 'Client closed request');
+			if (inFlight.controller.signal.aborted) error(499, 'Client closed request');
 			throw e;
 		}
 		try {
@@ -736,10 +736,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				upstream = await chatCompletionSync(endpoint, requestBody, inFlight.controller.signal);
 			} catch (e) {
 				clearInFlight(params.id, inFlight);
-				if (inFlight.controller.signal.aborted) throw error(499, 'Client closed request');
+				if (inFlight.controller.signal.aborted) error(499, 'Client closed request');
 				if (e instanceof UpstreamError) {
 					const status = mapUpstreamStatus(e.status);
-					throw error(status, `Upstream error: ${formatUpstreamError(e)}`);
+					error(status, `Upstream error: ${formatUpstreamError(e)}`);
 				}
 				throw e;
 			}
@@ -786,8 +786,8 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			);
 
 			const response: SendMessageResponse = {
-				userMessage: userMessage as ChatMessage,
-				assistantMessage: assistantMessage as ChatMessage,
+				userMessage,
+				assistantMessage,
 				...(syncTitle ? { title: syncTitle } : {}),
 			};
 			return json(response);

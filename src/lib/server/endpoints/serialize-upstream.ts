@@ -128,7 +128,7 @@ export async function serializeMessageForUpstream(
 		// exist and can reference them by name (they're mounted in /workspace/).
 		if (fileNote) content.push({ type: 'text', text: fileNote });
 		const out: ChatCompletionRequest['messages'][number] = {
-			role: m.role as 'system' | 'user' | 'assistant',
+			role: m.role,
 			content,
 		};
 		if (toolCalls.length > 0) out.tool_calls = toolCalls;
@@ -148,7 +148,7 @@ export async function serializeMessageForUpstream(
 	}
 
 	return {
-		role: m.role as 'system' | 'user' | 'assistant',
+		role: m.role,
 		content: text,
 	};
 }
@@ -475,7 +475,7 @@ function collectArrays(node: unknown, out: unknown[][]): void {
 		return;
 	}
 	if (node !== null && typeof node === 'object') {
-		for (const k of Object.keys(node as Record<string, unknown>)) {
+		for (const k of Object.keys(node)) {
 			collectArrays((node as Record<string, unknown>)[k], out);
 		}
 	}

@@ -180,7 +180,7 @@
 					type="file"
 					multiple
 					class="hidden"
-					onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
+					onchange={(e) => uploadFiles(e.currentTarget.files)}
 				/>
 				<input
 					bind:this={folderInput}
@@ -188,7 +188,7 @@
 					multiple
 					class="hidden"
 					use:directoryPicker
-					onchange={(e) => uploadFiles((e.currentTarget as HTMLInputElement).files)}
+					onchange={(e) => uploadFiles(e.currentTarget.files)}
 				/>
 			</div>
 			<p class="mt-2 text-xs text-fg-muted">

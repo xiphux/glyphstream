@@ -12,12 +12,12 @@ export async function parseJsonBody<T>(request: Request): Promise<T> {
 	try {
 		parsed = await request.json();
 	} catch {
-		throw error(400, 'Request body must be JSON');
+		error(400, 'Request body must be JSON');
 	}
 	// Every caller expects a JSON object; reject null / scalar bodies up
 	// front so a handler never dereferences a non-object `body`.
 	if (parsed === null || typeof parsed !== 'object') {
-		throw error(400, 'Request body must be a JSON object');
+		error(400, 'Request body must be a JSON object');
 	}
 	return parsed as T;
 }

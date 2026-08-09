@@ -17,11 +17,11 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ cookies, params }) => {
 	const provider = getEnabledProvider(params.provider);
-	if (!provider) throw error(404, 'Unknown or disabled provider');
+	if (!provider) error(404, 'Unknown or disabled provider');
 
 	const { url, state, codeVerifier } = await provider.createAuthorizationURL();
 	setCarryCookie(cookies, STATE_COOKIE, state, STATE_TTL_SECONDS);
 	if (codeVerifier) setCarryCookie(cookies, CODE_VERIFIER_COOKIE, codeVerifier, STATE_TTL_SECONDS);
 
-	throw redirect(302, url.toString());
+	redirect(302, url.toString());
 };

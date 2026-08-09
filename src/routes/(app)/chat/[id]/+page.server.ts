@@ -37,7 +37,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// confirm a row exists; this diverges deliberately, and safely, because
 	// getConversationDetail(id, userId) has already collapsed "gone" and "not
 	// yours" into the same null — the redirect discloses nothing the 404 didn't.
-	if (!conversation) throw redirect(302, `/?notice=${CONVERSATION_MISSING_NOTICE}`);
+	if (!conversation) redirect(302, `/?notice=${CONVERSATION_MISSING_NOTICE}`);
 
 	// Whether a generation is running for this conversation right now,
 	// per the server's in-flight registry — the source of truth the

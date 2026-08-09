@@ -82,7 +82,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	const hasDisabledFeatures = body.disabledFeatures !== undefined;
 	const presentCount = [hasArchived, hasTitle, hasDisabledFeatures].filter(Boolean).length;
 	if (presentCount !== 1) {
-		throw error(
+		error(
 			400,
 			'Body must be exactly one of { archived: boolean }, { title: string }, or { disabledFeatures: string[] }',
 		);
@@ -90,32 +90,32 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
 	if (hasArchived) {
 		if (typeof body.archived !== 'boolean') {
-			throw error(400, 'archived must be a boolean');
+			error(400, 'archived must be a boolean');
 		}
 		const ok = body.archived
 			? archiveConversation(params.id, locals.user.id)
 			: unarchiveConversation(params.id, locals.user.id);
-		if (!ok) throw error(404, 'Conversation not found');
+		if (!ok) error(404, 'Conversation not found');
 		return new Response(null, { status: 204 });
 	}
 
 	if (hasDisabledFeatures) {
 		const features = validateDisabledFeaturesOrThrow400(body.disabledFeatures);
 		const ok = setDisabledFeatures(params.id, locals.user.id, features);
-		if (!ok) throw error(404, 'Conversation not found');
+		if (!ok) error(404, 'Conversation not found');
 		return new Response(null, { status: 204 });
 	}
 
 	// Rename path
 	if (typeof body.title !== 'string') {
-		throw error(400, 'title must be a string');
+		error(400, 'title must be a string');
 	}
 	try {
 		const ok = renameConversation(params.id, locals.user.id, body.title);
-		if (!ok) throw error(404, 'Conversation not found');
+		if (!ok) error(404, 'Conversation not found');
 	} catch (e) {
 		if (e instanceof RenameValidationError) {
-			throw error(400, e.message);
+			error(400, e.message);
 		}
 		throw e;
 	}
@@ -132,7 +132,7 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 	const { ok, toUnlink } = deleteConversation(params.id, locals.user.id, {
 		deleteMedia,
 	});
-	if (!ok) throw error(404, 'Conversation not found');
+	if (!ok) error(404, 'Conversation not found');
 
 	// File unlinks happen *after* the DB transaction commits — doing them
 	// inside the txn would let a rollback strand files deleted from disk

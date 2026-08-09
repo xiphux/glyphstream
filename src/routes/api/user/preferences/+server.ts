@@ -29,7 +29,7 @@ const COLOR_SCHEMES: readonly ColorScheme[] = ['system', 'light', 'dark'];
 export const GET: RequestHandler = ({ locals }) => {
 	requireUser(locals);
 	const prefs = getUserPreferences(locals.user.id);
-	if (!prefs) throw error(404, 'User not found');
+	if (!prefs) error(404, 'User not found');
 	return json(prefs);
 };
 
@@ -50,24 +50,24 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 	}
 	if (body.enterBehavior !== undefined) {
 		if (body.enterBehavior !== 'send' && body.enterBehavior !== 'newline') {
-			throw error(400, `Invalid enterBehavior "${body.enterBehavior as string}"`);
+			error(400, `Invalid enterBehavior "${body.enterBehavior as string}"`);
 		}
-		patch.enterBehavior = body.enterBehavior as EnterBehavior;
+		patch.enterBehavior = body.enterBehavior;
 	}
 	if (typeof body.showGreeting === 'boolean') {
 		patch.showGreeting = body.showGreeting;
 	}
 	if (body.theme !== undefined) {
-		if (!THEME_NAMES.includes(body.theme as ThemeName)) {
-			throw error(400, `Invalid theme "${body.theme as string}"`);
+		if (!THEME_NAMES.includes(body.theme)) {
+			error(400, `Invalid theme "${body.theme as string}"`);
 		}
-		patch.theme = body.theme as ThemeName;
+		patch.theme = body.theme;
 	}
 	if (body.colorScheme !== undefined) {
-		if (!COLOR_SCHEMES.includes(body.colorScheme as ColorScheme)) {
-			throw error(400, `Invalid colorScheme "${body.colorScheme as string}"`);
+		if (!COLOR_SCHEMES.includes(body.colorScheme)) {
+			error(400, `Invalid colorScheme "${body.colorScheme as string}"`);
 		}
-		patch.colorScheme = body.colorScheme as ColorScheme;
+		patch.colorScheme = body.colorScheme;
 	}
 	if (typeof body.notificationsEnabled === 'boolean') {
 		patch.notificationsEnabled = body.notificationsEnabled;
@@ -83,7 +83,7 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 			!Array.isArray(body.favoriteModels) ||
 			!body.favoriteModels.every((v): v is string => typeof v === 'string')
 		) {
-			throw error(400, 'favoriteModels must be a string[]');
+			error(400, 'favoriteModels must be a string[]');
 		}
 		patch.favoriteModels = body.favoriteModels;
 	}
@@ -98,11 +98,11 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 				(s): s is SavedModelSet =>
 					typeof s === 'object' &&
 					s !== null &&
-					typeof (s as SavedModelSet).id === 'string' &&
-					typeof (s as SavedModelSet).name === 'string' &&
-					(s as SavedModelSet).name.trim() !== '' &&
-					Array.isArray((s as SavedModelSet).models) &&
-					(s as SavedModelSet).models.every(
+					typeof s.id === 'string' &&
+					typeof s.name === 'string' &&
+					s.name.trim() !== '' &&
+					Array.isArray(s.models) &&
+					s.models.every(
 						(m) =>
 							typeof m === 'object' &&
 							m !== null &&
@@ -113,7 +113,7 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 					),
 			)
 		) {
-			throw error(400, 'modelSets must be { id, name, models: {modelId, count>=1}[] }[]');
+			error(400, 'modelSets must be { id, name, models: {modelId, count>=1}[] }[]');
 		}
 		patch.modelSets = body.modelSets;
 	}
@@ -123,7 +123,7 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 	if (body.autoCompactionThreshold !== undefined) {
 		const t = body.autoCompactionThreshold;
 		if (typeof t !== 'number' || !Number.isFinite(t) || t < 1 || t > 100) {
-			throw error(400, 'autoCompactionThreshold must be a number between 1 and 100');
+			error(400, 'autoCompactionThreshold must be a number between 1 and 100');
 		}
 		patch.autoCompactionThreshold = Math.round(t);
 	}

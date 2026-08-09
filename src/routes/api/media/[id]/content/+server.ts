@@ -36,12 +36,12 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
 
 	const row = getMediaForUser(params.id, locals.user.id);
-	if (!row || row.hardDeletedAt !== null) throw error(404, 'Media not found');
+	if (!row || row.hardDeletedAt !== null) error(404, 'Media not found');
 
 	const range = parseRange(request.headers.get('range'), row.byteSize);
 	const store = getMediaStore();
 	const result = await store.open(row.storagePath, row.contentType, range ?? undefined);
-	if (!result) throw error(404, 'Media not found');
+	if (!result) error(404, 'Media not found');
 
 	const status = result.contentRange ? 206 : 200;
 	const headers: Record<string, string> = {

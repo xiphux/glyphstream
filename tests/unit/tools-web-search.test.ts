@@ -71,7 +71,7 @@ describe('web_search isAvailable()', () => {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				}),
-		) as any;
+		);
 		expect(webSearchTool.isAvailable?.()).toBe(true);
 		await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(loadSearchConfigMock).toHaveBeenCalledTimes(1);
@@ -175,7 +175,7 @@ describe('web_search execute - successful path', () => {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				}),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(JSON.parse(r.content).results).toHaveLength(5);
 	});
@@ -192,7 +192,7 @@ describe('web_search execute - successful path', () => {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				}),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x', max_results: 99 }, ctx());
 		expect(JSON.parse(r.content).results).toHaveLength(10);
 	});
@@ -204,7 +204,7 @@ describe('web_search execute - successful path', () => {
 					JSON.stringify({ results: [{ title: 't', url: 'https://e/', content: 'c' }] }),
 					{ status: 200, headers: { 'content-type': 'application/json' } },
 				),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x', max_results: -3 }, ctx());
 		expect(JSON.parse(r.content).results).toHaveLength(1);
 	});
@@ -221,7 +221,7 @@ describe('web_search execute - successful path', () => {
 					}),
 					{ status: 200, headers: { 'content-type': 'application/json' } },
 				),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBeUndefined();
 		expect(JSON.parse(r.content).results).toEqual([
@@ -237,7 +237,7 @@ describe('web_search execute - successful path', () => {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				}),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBeUndefined();
 		expect(JSON.parse(r.content).results).toEqual([]);
@@ -270,7 +270,7 @@ describe('web_search execute - auth + errors', () => {
 			apiKey: null,
 			timeoutSeconds: 10,
 		});
-		globalThis.fetch = vi.fn(async () => new Response('', { status: 500 })) as any;
+		globalThis.fetch = vi.fn(async () => new Response('', { status: 500 }));
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/500/);
@@ -288,7 +288,7 @@ describe('web_search execute - auth + errors', () => {
 					status: 200,
 					headers: { 'content-type': 'text/html' },
 				}),
-		) as any;
+		);
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/not valid JSON/);
@@ -302,7 +302,7 @@ describe('web_search execute - auth + errors', () => {
 		});
 		globalThis.fetch = vi.fn(async () => {
 			throw new TypeError('ECONNREFUSED');
-		}) as any;
+		});
 		const r = await webSearchTool.execute({ query: 'x' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/ECONNREFUSED/);
@@ -383,7 +383,7 @@ describe('web_search execute — freshness/category controls (B)', () => {
 	});
 
 	it('rejects an invalid time_range', async () => {
-		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] })) as any;
+		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] }));
 		const r = await webSearchTool.execute({ query: 'x', time_range: 'fortnight' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/time_range/);
@@ -401,7 +401,7 @@ describe('web_search execute — freshness/category controls (B)', () => {
 	});
 
 	it('rejects a non-string categories', async () => {
-		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] })) as any;
+		globalThis.fetch = vi.fn(async () => jsonResponse({ results: [] }));
 		const r = await webSearchTool.execute({ query: 'x', categories: 42 }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/categories/);
@@ -437,7 +437,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 				],
 				corrections: ['quokka', '  ', 42],
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'quoka' }, ctx())).content);
 		expect(parsed.answers).toEqual([
 			{ answer: '42', url: 'https://ans/' },
@@ -452,7 +452,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 	it('omits the blocks entirely when SearxNG returns none', async () => {
 		globalThis.fetch = vi.fn(async () =>
 			jsonResponse({ results: [{ title: 't', url: 'https://e/', content: 'c' }] }),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed).not.toHaveProperty('answers');
 		expect(parsed).not.toHaveProperty('infoboxes');
@@ -466,7 +466,7 @@ describe('web_search execute — answers / infoboxes / corrections (A)', () => {
 				answers: [null, 123, { noanswer: true }],
 				infoboxes: [null, 'nope', { id: 'https://x/' }], // no title/content → dropped
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed).not.toHaveProperty('answers');
 		expect(parsed).not.toHaveProperty('infoboxes');
@@ -496,7 +496,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 					{ title: 'Distinct', url: 'https://example.com/other', content: 'keep' },
 				],
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed.results.map((r: any) => r.title)).toEqual(['Canonical', 'Distinct']);
 	});
@@ -509,7 +509,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 					{ title: 'Item 2', url: 'https://shop.example/item?id=2', content: 'b' },
 				],
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed.results).toHaveLength(2);
 	});
@@ -524,7 +524,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 					{ title: 'C', url: 'https://c.example/', content: '3' },
 				],
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse(
 			(await webSearchTool.execute({ query: 'x', max_results: 2 }, ctx())).content,
 		);
@@ -540,7 +540,7 @@ describe('web_search execute — near-duplicate dedupe (C)', () => {
 					{ title: 'no url two', content: 'b' },
 				],
 			}),
-		) as any;
+		);
 		const parsed = JSON.parse((await webSearchTool.execute({ query: 'x' }, ctx())).content);
 		expect(parsed.results).toHaveLength(2);
 	});

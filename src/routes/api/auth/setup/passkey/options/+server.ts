@@ -24,9 +24,9 @@ import type { RequestHandler } from './$types';
 const CARRY_TTL_MS = 5 * 60 * 1000; // 5 min — matches the challenge cookie
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
-	if (!passkeyLoginEnabled()) throw error(403, 'Passkey login is disabled');
+	if (!passkeyLoginEnabled()) error(403, 'Passkey login is disabled');
 	const verdict = setupGate(url);
-	if (verdict !== 'allowed') throw error(403, 'Setup is not currently allowed');
+	if (verdict !== 'allowed') error(403, 'Setup is not currently allowed');
 
 	const { displayName, email } = parseIdentityInput(
 		await parseJsonBody<{ displayName?: unknown; email?: unknown }>(request),

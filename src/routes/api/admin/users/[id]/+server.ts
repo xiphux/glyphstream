@@ -43,16 +43,16 @@ function assertCanMutateTargetUser(
 	targetId: string,
 	opts: { selfMessage: string; strand: boolean; strandMessage: string },
 ): void {
-	if (targetId === actorId) throw error(400, opts.selfMessage);
-	if (getUserRole(targetId) === null) throw error(404, 'User not found');
-	if (opts.strand && wouldStrandAdmins(targetId)) throw error(409, opts.strandMessage);
+	if (targetId === actorId) error(400, opts.selfMessage);
+	if (getUserRole(targetId) === null) error(404, 'User not found');
+	if (opts.strand && wouldStrandAdmins(targetId)) error(409, opts.strandMessage);
 }
 
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	requireAdmin(locals);
 	const body = await parseJsonBody<{ disabled?: unknown }>(request);
 	if (typeof body.disabled !== 'boolean') {
-		throw error(400, '`disabled` must be a boolean');
+		error(400, '`disabled` must be a boolean');
 	}
 	assertCanMutateTargetUser(locals.user.id, params.id, {
 		selfMessage: 'You cannot change your own account from the admin panel',
@@ -60,7 +60,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 		strand: body.disabled,
 		strandMessage: 'Cannot disable the last active administrator',
 	});
-	if (!setUserDisabled(params.id, body.disabled)) throw error(404, 'User not found');
+	if (!setUserDisabled(params.id, body.disabled)) error(404, 'User not found');
 	return json({ ok: true });
 };
 
@@ -71,6 +71,6 @@ export const DELETE: RequestHandler = ({ locals, params }) => {
 		strand: true,
 		strandMessage: 'Cannot delete the last active administrator',
 	});
-	if (!deleteUser(params.id)) throw error(404, 'User not found');
+	if (!deleteUser(params.id)) error(404, 'User not found');
 	return json({ ok: true });
 };

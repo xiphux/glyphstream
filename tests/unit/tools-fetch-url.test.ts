@@ -173,7 +173,7 @@ describe('fetch_url HTML extraction', () => {
 				</body></html>`,
 					{ status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } },
 				),
-		) as any;
+		);
 
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -196,7 +196,7 @@ describe('fetch_url HTML extraction', () => {
 					status: 200,
 					headers: { 'content-type': 'text/plain' },
 				}),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/foo.txt' }, ctx());
 		expect(r.isError).toBeUndefined();
 		expect(JSON.parse(r.content).content).toBe('just some plain text\nwith two lines');
@@ -210,7 +210,7 @@ describe('fetch_url HTML extraction', () => {
 					status: 200,
 					headers: { 'content-type': 'application/json' },
 				}),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://api.example/' }, ctx());
 		expect(r.isError).toBeUndefined();
 		const content = JSON.parse(r.content).content;
@@ -225,7 +225,7 @@ describe('fetch_url HTML extraction', () => {
 					status: 200,
 					headers: { 'content-type': 'image/png' },
 				}),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/x.png' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/image\/png/);
@@ -237,7 +237,7 @@ describe('fetch_url HTML extraction', () => {
 		const big = new Uint8Array(3 * 1024 * 1024).fill(65);
 		globalThis.fetch = vi.fn(
 			async () => new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/exceeded/i);
@@ -277,7 +277,7 @@ describe('fetch_url HTML extraction', () => {
 					status: 200,
 					headers: { 'content-type': 'text/html; charset=utf-8' },
 				}),
-		) as any;
+		);
 
 		const r = await fetchUrlTool.execute({ url: 'http://blog.example/best-bread' }, ctx());
 		expect(r.isError).toBeUndefined();
@@ -302,7 +302,7 @@ describe('fetch_url HTML extraction', () => {
 					status: 200,
 					headers: { 'content-type': 'text/html' },
 				}),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
 		const parsed = JSON.parse(r.content);
@@ -315,7 +315,7 @@ describe('fetch_url HTML extraction', () => {
 		const big = 'a'.repeat(25_000);
 		globalThis.fetch = vi.fn(
 			async () => new Response(big, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBeUndefined();
 		const parsed = JSON.parse(r.content);
@@ -328,7 +328,7 @@ describe('fetch_url HTML extraction', () => {
 		globalThis.fetch = vi.fn(
 			async () =>
 				new Response('a short page', { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(parsed.mode).toBe('full');
@@ -346,7 +346,7 @@ describe('fetch_url HTML extraction', () => {
 				status: 302,
 				headers: { location: `http://example.com/hop${hop}` },
 			});
-		}) as any;
+		});
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/' }, ctx());
 		expect(r.isError).toBe(true);
 		expect(JSON.parse(r.content).error).toMatch(/redirect/i);
@@ -393,7 +393,7 @@ describe('fetch_url relevance selection (find)', () => {
 		expect(doc.length).toBeGreaterThan(20_000);
 		globalThis.fetch = vi.fn(
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(parsed.mode).toBe('truncated');
@@ -405,7 +405,7 @@ describe('fetch_url relevance selection (find)', () => {
 		const doc = cliffDoc();
 		globalThis.fetch = vi.fn(
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(r.isError).toBeUndefined();
@@ -436,7 +436,7 @@ describe('fetch_url relevance selection (find)', () => {
 		const doc = cliffDoc();
 		globalThis.fetch = vi.fn(
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(parsed.mode).toBe('relevance');
@@ -462,7 +462,7 @@ describe('fetch_url relevance selection (find)', () => {
 		const doc = cliffDoc();
 		globalThis.fetch = vi.fn(
 			async () => new Response(doc, { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(r.isError).toBeUndefined();
@@ -493,7 +493,7 @@ describe('fetch_url relevance selection (find)', () => {
 					status: 200,
 					headers: { 'content-type': 'text/html; charset=utf-8' },
 				}),
-		) as any;
+		);
 		const r = await fetchUrlTool.execute({ url: 'http://example.com/long', find: 'quokka' }, ctx());
 		const parsed = JSON.parse(r.content);
 		expect(parsed.mode).toBe('relevance');
@@ -519,7 +519,7 @@ describe('fetch_url relevance selection (find)', () => {
 					status: 200,
 					headers: { 'content-type': 'text/plain' },
 				}),
-		) as any;
+		);
 		const full = JSON.parse(
 			(await fetchUrlTool.execute({ url: 'http://example.com/s' }, ctx())).content,
 		);
@@ -531,7 +531,7 @@ describe('fetch_url relevance selection (find)', () => {
 		globalThis.fetch = vi.fn(
 			async () =>
 				new Response(cliffDoc(), { status: 200, headers: { 'content-type': 'text/plain' } }),
-		) as any;
+		);
 		const trunc = JSON.parse(
 			(await fetchUrlTool.execute({ url: 'http://example.com/long' }, ctx())).content,
 		);

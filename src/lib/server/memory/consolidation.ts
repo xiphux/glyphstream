@@ -132,7 +132,7 @@ function validateOp(
 			if (!o.ids.every(known)) return null;
 			if (new Set(o.ids).size !== o.ids.length) return null; // no repeats within the op
 			if (!content || !topic) return null;
-			return { type: 'merge', ids: o.ids as string[], content, topic };
+			return { type: 'merge', ids: o.ids, content, topic };
 		}
 		case 'reword':
 			if (!known(o.id) || !content || !topic) return null;

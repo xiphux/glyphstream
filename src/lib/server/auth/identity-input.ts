@@ -26,8 +26,8 @@ export function parseIdentityInput(body: {
 }): ProspectiveIdentity {
 	const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
 	const email = typeof body.email === 'string' ? body.email.trim() : '';
-	if (displayName.length === 0) throw error(400, 'Display name is required');
-	if (displayName.length > MAX_DISPLAY_NAME) throw error(400, 'Display name too long');
-	if (email.length > MAX_EMAIL) throw error(400, 'Email too long');
+	if (displayName.length === 0) error(400, 'Display name is required');
+	if (displayName.length > MAX_DISPLAY_NAME) error(400, 'Display name too long');
+	if (email.length > MAX_EMAIL) error(400, 'Email too long');
 	return { displayName, email: email || null };
 }

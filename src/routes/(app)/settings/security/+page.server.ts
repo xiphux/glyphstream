@@ -18,7 +18,7 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 	depends('settings:passkeys');
 	depends('settings:oauth-accounts');
 	depends('settings:sessions');

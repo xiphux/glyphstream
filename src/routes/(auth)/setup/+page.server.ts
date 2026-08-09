@@ -32,7 +32,7 @@ const ERROR_MESSAGES: Record<string, string> = {
  */
 export const load: PageServerLoad = ({ url }) => {
 	const verdict = setupGate(url);
-	if (verdict === 'closed') throw redirect(302, '/login');
+	if (verdict === 'closed') redirect(302, '/login');
 	const token = url.searchParams.get('token') ?? '';
 	const errorCode = url.searchParams.get('error');
 	const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? 'Setup failed.') : null;

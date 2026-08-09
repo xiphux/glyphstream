@@ -26,14 +26,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// leaf, which clears the parked fan-out marker and drops the compare grid. The
 	// client also disables the button, but this guards the API directly.
 	if (getFanoutParent(params.id, locals.user.id)) {
-		throw error(409, 'Finish or dismiss the model comparison before compacting.');
+		error(409, 'Finish or dismiss the model comparison before compacting.');
 	}
 
 	if (url.searchParams.get('stream') === '1') {
 		// Plan first (cheap, no model call) so "nothing to compact" is a clean
 		// 409 rather than an SSE error frame after the stream has opened.
 		const plan = await prepareCompaction(params.id, locals.user.id);
-		if (!plan) throw error(409, 'Not enough conversation history to compact yet.');
+		if (!plan) error(409, 'Not enough conversation history to compact yet.');
 		return sseResponse(
 			streamCompaction({ conversationId: params.id, plan, abortSignal: request.signal }),
 		);
@@ -42,12 +42,12 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	try {
 		const result = await runCompaction(params.id, locals.user.id);
 		if (result.status === 'noop') {
-			throw error(409, 'Not enough conversation history to compact yet.');
+			error(409, 'Not enough conversation history to compact yet.');
 		}
 		return json({ ok: true, summaryMessageId: result.summaryMessageId });
 	} catch (e) {
 		if (e instanceof UpstreamError) {
-			throw error(502, formatUpstreamError(e));
+			error(502, formatUpstreamError(e));
 		}
 		throw e;
 	}
@@ -65,7 +65,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 
 	const result = undoCompaction(params.id, locals.user.id);
 	if (result.status === 'noop') {
-		throw error(409, 'Nothing to undo — messages were added after the summary.');
+		error(409, 'Nothing to undo — messages were added after the summary.');
 	}
 	return json({ ok: true });
 };

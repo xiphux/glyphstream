@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
 	// Prefs come from the (app) layout, which already loaded them — see the note
 	// in settings/preferences.
 	const { prefs } = await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 	// Tagged so the page can `invalidate('settings:permissions')` after a revoke
 	// without the (app) layout's payload being re-serialized to the client — the
 	// trust grants this page lists are independent of the layout's sidebar/picker

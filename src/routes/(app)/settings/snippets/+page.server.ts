@@ -10,6 +10,6 @@ import type { PageServerLoad } from './$types';
 // page call `invalidateSnippets()` rather than `invalidate('app:…')`.
 export const load: PageServerLoad = async ({ locals, parent }) => {
 	await parent();
-	if (!locals.user) throw error(401, 'Authentication required');
+	if (!locals.user) error(401, 'Authentication required');
 	return { promptSnippets: listPromptSnippetsForUser(locals.user.id) };
 };

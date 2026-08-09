@@ -71,7 +71,7 @@ describe('chatCompletionStream idle watchdog', () => {
 		const res = await chatCompletionStream(endpoint(30), {
 			model: 'm',
 			messages: [],
-		} as never);
+		});
 
 		// Attach the rejection handler up front so there's no unhandled-rejection
 		// window while fake timers advance.
@@ -100,7 +100,7 @@ describe('chatCompletionStream idle watchdog', () => {
 		const res = await chatCompletionStream(endpoint(30), {
 			model: 'm',
 			messages: [],
-		} as never);
+		});
 
 		const drained = drain(res);
 		await vi.advanceTimersByTimeAsync(6_000);
@@ -125,7 +125,7 @@ describe('chatCompletionStream idle watchdog', () => {
 		const res = await chatCompletionStream(endpoint(30), {
 			model: 'm',
 			messages: [],
-		} as never);
+		});
 
 		const drained = drain(res);
 		await vi.advanceTimersByTimeAsync(95_000);

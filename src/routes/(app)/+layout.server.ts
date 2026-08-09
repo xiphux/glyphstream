@@ -15,8 +15,8 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	if (!locals.user) {
 		// Fresh-install bootstrap: route the operator to the first-run
 		// wizard instead of a /login page they can't sign in at yet.
-		if (countUsers() === 0) throw redirect(302, '/setup');
-		throw redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
+		if (countUsers() === 0) redirect(302, '/setup');
+		redirect(302, `/login?from=${encodeURIComponent(url.pathname)}`);
 	}
 	// Load prefs at the layout level so every (app) page has them on
 	// first paint — the composer's enter-key handler needs to branch on

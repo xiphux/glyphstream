@@ -44,7 +44,7 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.animate !== 'func
 			ready: Promise.resolve(),
 			effect: null,
 		} as unknown as Animation;
-	} as Element['animate'];
+	};
 }
 
 /**
@@ -79,11 +79,11 @@ if (typeof window !== 'undefined') {
 		pending.add(id);
 		return id;
 	}) as typeof setTimeout;
-	globalThis.clearTimeout = ((...args: Parameters<typeof globalThis.clearTimeout>) => {
+	globalThis.clearTimeout = (...args: Parameters<typeof globalThis.clearTimeout>) => {
 		const id = args[0];
 		if (id !== undefined) pending.delete(id as TimerId);
 		return realClearTimeout(...args);
-	}) as typeof clearTimeout;
+	};
 	afterEach(() => {
 		for (const id of pending) realClearTimeout(id);
 		pending.clear();

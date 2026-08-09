@@ -27,7 +27,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	if (ttlMs > MAX_TTL_MS) ttlMs = MAX_TTL_MS;
 
 	const invite = createInvite({ createdByUserId: locals.user.id, role, ttlMs });
-	if (!invite) throw error(500, 'Failed to create invite');
+	if (!invite) error(500, 'Failed to create invite');
 
 	// The raw token is returned only here; the client assembles the join URL
 	// from its own origin so this endpoint needs no base-URL config.

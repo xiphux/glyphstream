@@ -39,7 +39,7 @@ beforeEach(() => {
 	mocks.invalidate.mockClear();
 	mocks.toastError.mockClear();
 	mocks.toastSuccess.mockClear();
-	global.fetch = vi.fn(async () => new Response(null, { status: 200 })) as never;
+	global.fetch = vi.fn(async () => new Response(null, { status: 200 }));
 });
 
 afterEach(() => {
@@ -104,7 +104,7 @@ describe('toggleFavoriteModel — failure paths', () => {
 	it('shows an error toast and does NOT invalidate on non-ok response', async () => {
 		global.fetch = vi.fn(
 			async () => new Response('{"error":"validation failed"}', { status: 400 }),
-		) as never;
+		);
 		await toggleFavoriteModel(['a'], 'b');
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/Couldn't update favorites/i);
@@ -114,7 +114,7 @@ describe('toggleFavoriteModel — failure paths', () => {
 	it('shows an error toast on thrown fetch (network failure)', async () => {
 		global.fetch = vi.fn(async () => {
 			throw new Error('network down');
-		}) as never;
+		});
 		await toggleFavoriteModel(['a'], 'b');
 		expect(mocks.toastError).toHaveBeenCalledOnce();
 		expect(mocks.toastError.mock.calls[0][0]).toMatch(/network down/);

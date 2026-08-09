@@ -19,9 +19,9 @@ export interface ValidatedSnippet {
 
 function validateName(raw: unknown): string {
 	const name = typeof raw === 'string' ? raw.trim() : '';
-	if (!name) throw error(400, "'name' is required");
+	if (!name) error(400, "'name' is required");
 	if (name.length > MAX_NAME_LENGTH) {
-		throw error(400, `'name' must be ${MAX_NAME_LENGTH} characters or fewer`);
+		error(400, `'name' must be ${MAX_NAME_LENGTH} characters or fewer`);
 	}
 	// A name occupies exactly one `## <name>` heading line in the library
 	// format, so a line break in it can't be represented: on export it would
@@ -30,7 +30,7 @@ function validateName(raw: unknown): string {
 	// string — and an HTML input only strips LF/CR, so a name pasted from a
 	// word processor or PDF can still carry U+2028. LINE_BREAKS is the full set
 	// the format's line model recognizes; see its definition for why.
-	if (LINE_BREAKS.test(name)) throw error(400, "'name' must not contain line breaks");
+	if (LINE_BREAKS.test(name)) error(400, "'name' must not contain line breaks");
 	return name;
 }
 
@@ -43,9 +43,9 @@ function validateBody(raw: unknown): string {
 	// keeps the character out of the database, that one keeps a row already
 	// holding it from splitting a snippet.
 	const body = typeof raw === 'string' ? normalizeLineBreaks(raw).trim() : '';
-	if (!body) throw error(400, "'body' is required");
+	if (!body) error(400, "'body' is required");
 	if (body.length > MAX_BODY_LENGTH) {
-		throw error(400, `'body' must be ${MAX_BODY_LENGTH} characters or fewer`);
+		error(400, `'body' must be ${MAX_BODY_LENGTH} characters or fewer`);
 	}
 	return body;
 }
@@ -55,10 +55,10 @@ function validateBody(raw: unknown): string {
  *  everywhere", the opposite of what the user asked for. */
 export function validateKinds(raw: unknown): SnippetKind[] {
 	if (raw === undefined || raw === null) return [];
-	if (!Array.isArray(raw)) throw error(400, "'kinds' must be an array");
+	if (!Array.isArray(raw)) error(400, "'kinds' must be an array");
 	const out: SnippetKind[] = [];
 	for (const entry of raw) {
-		if (!isSnippetKind(entry)) throw error(400, `'kinds': unknown kind "${String(entry)}"`);
+		if (!isSnippetKind(entry)) error(400, `'kinds': unknown kind "${String(entry)}"`);
 		if (!out.includes(entry)) out.push(entry);
 	}
 	return out;
@@ -66,14 +66,14 @@ export function validateKinds(raw: unknown): SnippetKind[] {
 
 export function validateTags(raw: unknown): string[] {
 	if (raw === undefined || raw === null) return [];
-	if (!Array.isArray(raw)) throw error(400, "'tags' must be an array");
+	if (!Array.isArray(raw)) error(400, "'tags' must be an array");
 	const out: string[] = [];
 	for (const entry of raw) {
-		if (typeof entry !== 'string') throw error(400, "'tags' entries must be strings");
+		if (typeof entry !== 'string') error(400, "'tags' entries must be strings");
 		const tag = entry.trim();
 		if (!tag) continue;
 		if (tag.length > MAX_TAG_LENGTH) {
-			throw error(400, `'tags' entries must be ${MAX_TAG_LENGTH} characters or fewer`);
+			error(400, `'tags' entries must be ${MAX_TAG_LENGTH} characters or fewer`);
 		}
 		// Same reasoning as validateName, and for the same reason: the library
 		// format gives tags exactly one line (`tags: a, b`), comma-separated. A
@@ -82,20 +82,20 @@ export function validateTags(raw: unknown): string[] {
 		// over the cap, making an exported library un-re-importable). The
 		// settings form can produce neither — it reads a single-line input and
 		// splits on commas — but the API accepts any string.
-		if (LINE_BREAKS.test(tag)) throw error(400, "'tags' entries must not contain line breaks");
+		if (LINE_BREAKS.test(tag)) error(400, "'tags' entries must not contain line breaks");
 		if (tag.includes(',')) {
-			throw error(400, "'tags' entries must not contain commas — commas separate tags");
+			error(400, "'tags' entries must not contain commas — commas separate tags");
 		}
 		if (!out.includes(tag)) out.push(tag);
 	}
-	if (out.length > MAX_TAGS) throw error(400, `At most ${MAX_TAGS} tags`);
+	if (out.length > MAX_TAGS) error(400, `At most ${MAX_TAGS} tags`);
 	return out;
 }
 
 /**
  * Non-throwing size check for the bulk-import path.
  *
- * Import can't use the validators above: they `throw error(400, …)`, which
+ * Import can't use the validators above: they call `error(400, …)`, which throws, and
  * would fail a whole 100-entry library over one oversized row, against that
  * path's forgiving-by-design contract. But the caps still have to apply there
  * — a row imported over the limit can't afterwards be saved from the settings
@@ -139,6 +139,6 @@ export function validateUpdateSnippet(body: Record<string, unknown>): Partial<Va
 	if (body.body !== undefined) out.body = validateBody(body.body);
 	if (body.kinds !== undefined) out.kinds = validateKinds(body.kinds);
 	if (body.tags !== undefined) out.tags = validateTags(body.tags);
-	if (Object.keys(out).length === 0) throw error(400, 'No fields to update');
+	if (Object.keys(out).length === 0) error(400, 'No fields to update');
 	return out;
 }

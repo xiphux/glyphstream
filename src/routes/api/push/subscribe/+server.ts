@@ -34,7 +34,7 @@ interface SubscribeBody {
 
 function requireString(v: unknown, field: string): string {
 	if (typeof v !== 'string' || v.length === 0) {
-		throw error(400, `Field "${field}" must be a non-empty string`);
+		error(400, `Field "${field}" must be a non-empty string`);
 	}
 	return v;
 }
@@ -61,13 +61,13 @@ async function validatePushEndpoint(raw: string): Promise<void> {
 	try {
 		url = new URL(raw);
 	} catch {
-		throw error(400, 'Push endpoint is not a valid URL');
+		error(400, 'Push endpoint is not a valid URL');
 	}
 	try {
 		assertHttpScheme(url);
 		await assertHostnameRoutable(url.hostname);
 	} catch (e) {
-		if (e instanceof UrlPolicyError) throw error(400, e.message);
+		if (e instanceof UrlPolicyError) error(400, e.message);
 		throw e;
 	}
 }
@@ -79,7 +79,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// to it. Better to refuse the subscription than to silently store a
 	// row we'd never use.
 	if (getVapidPublicKey() === null) {
-		throw error(503, 'Push notifications are not configured on this server');
+		error(503, 'Push notifications are not configured on this server');
 	}
 
 	const body = await parseJsonBody<SubscribeBody>(request);
@@ -108,6 +108,6 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 	const endpoint = requireString(body.endpoint, 'endpoint');
 
 	const removed = deletePushSubscriptionByEndpoint(endpoint, locals.user.id);
-	if (!removed) throw error(404, 'No matching subscription');
+	if (!removed) error(404, 'No matching subscription');
 	return json({ ok: true });
 };
