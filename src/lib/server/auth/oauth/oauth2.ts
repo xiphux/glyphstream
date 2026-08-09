@@ -244,12 +244,25 @@ export async function exchangeAuthorizationCode(
 	}
 	const parsed = data as Record<string, unknown>;
 
-	// Checked on EVERY status, including 200, and that is load-bearing:
-	// GitHub answers a failed exchange with `200 {"error": "bad_verification_code"}`
-	// rather than a 4xx. arctic needed a whole separate GitHub code path for
-	// this. Testing the field instead of the status covers both shapes with
-	// one branch — and a spec-compliant success response can never contain
-	// `error` (RFC 6749 §5.1), so there's no ambiguity to trade away.
+	// Checked on 200 as well as the two error statuses, and the 200 case is
+	// load-bearing: GitHub answers a failed exchange with
+	// `200 {"error": "bad_verification_code"}` rather than a 4xx, which is why
+	// arctic needed a whole separate GitHub code path. Testing the field
+	// rather than the status covers both shapes in one branch — and a
+	// spec-compliant success response can never carry `error`
+	// (RFC 6749 §5.1), so there's no ambiguity to trade away.
+	//
+	// Statuses outside the {200, 400, 401} set above never reach here, so an
+	// IdP that returns an error document under some other code (403, 429)
+	// surfaces as OAuth2ResponseError — an outage — rather than a rejected
+	// login. arctic's generic client drew the line in the same place, so
+	// widening it is a deliberate change to make, not an oversight to fix in
+	// passing.
+	//
+	// GitHub is the one place classification did move: arctic's GitHub-specific
+	// path threw on ANY non-200 without reading the body, so a GitHub 4xx error
+	// document used to reach the user as `upstream_failure` and now correctly
+	// reaches it as `oauth_exchange_failed`.
 	if (typeof parsed.error === 'string') {
 		throw new OAuth2RequestError(
 			parsed.error,

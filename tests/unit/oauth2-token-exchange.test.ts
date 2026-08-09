@@ -114,6 +114,12 @@ describe('buildAuthorizationURL', () => {
 		// Scopes are a space-delimited list, per RFC 6749.
 		expect(withPkce.searchParams.get('scope')).toBe('openid email');
 		expect(withPkce.searchParams.get('response_type')).toBe('code');
+		// Without `state` on the URL the IdP echoes nothing back, every
+		// callback fails its state comparison, and no one can log in — so
+		// pin it here rather than only checking the value we returned.
+		expect(withPkce.searchParams.get('state')).toBe('st');
+		expect(withPkce.searchParams.get('client_id')).toBe('cid');
+		expect(withPkce.searchParams.get('redirect_uri')).toBe('https://app.example.com/cb');
 
 		const withoutPkce = buildAuthorizationURL({
 			authorizationEndpoint: 'https://github.com/login/oauth/authorize',
@@ -218,9 +224,27 @@ describe('exchangeAuthorizationCode — error classification', () => {
 		await expect(exchangeAuthorizationCode(baseParams)).rejects.toBeInstanceOf(OAuth2ResponseError);
 	});
 
+	/**
+	 * Okta, Keycloak and Entra all answer `invalid_client` with a 401 rather
+	 * than a 400, so 401 has to reach the error-document parse. Asserting the
+	 * code (not just the type) is what makes this test fail if 401 were ever
+	 * dropped from that set — otherwise it would still throw, just an
+	 * OAuth2ResponseError from the unexpected-status branch instead.
+	 */
+	it('maps a 401 error document to a request error (the invalid_client shape)', async () => {
+		stubToken(401, { error: 'invalid_client', error_description: 'bad secret' });
+		const err = await exchangeAuthorizationCode(baseParams).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(OAuth2RequestError);
+		expect((err as OAuth2RequestError).code).toBe('invalid_client');
+	});
+
 	it('rejects a 401 with no usable error field', async () => {
 		stubToken(401, { message: 'nope' });
-		await expect(exchangeAuthorizationCode(baseParams)).rejects.toBeInstanceOf(OAuth2ResponseError);
+		const err = await exchangeAuthorizationCode(baseParams).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(OAuth2ResponseError);
+		// Pin which branch threw: the body WAS parsed and found to carry no
+		// `error`, rather than the status being rejected before the parse.
+		expect((err as OAuth2ResponseError).message).toMatch(/without an `error` field/);
 	});
 
 	it('throws a readable error when a 200 response omits the token', async () => {

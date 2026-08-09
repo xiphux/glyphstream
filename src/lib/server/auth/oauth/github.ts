@@ -28,8 +28,8 @@ function redirectUri(): string {
 
 async function fetchProfile(code: string): Promise<OAuthProfile> {
 	// GitHub reports a failed exchange as `200 {"error": ...}` rather than a
-	// 4xx; exchangeAuthorizationCode checks the field on every status, so
-	// that still arrives here as an OAuth2RequestError.
+	// 4xx; exchangeAuthorizationCode checks the field on a 200 too, so that
+	// still arrives here as an OAuth2RequestError.
 	const tokens = await exchangeAuthorizationCode({
 		tokenEndpoint: GITHUB_TOKEN_ENDPOINT,
 		clientId: githubClientId(),
