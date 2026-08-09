@@ -70,9 +70,9 @@ export function sseResponse(stream: ReadableStream<Uint8Array>): Response {
  */
 export interface SseWriter {
 	/** Enqueue a StreamEvent frame; a disconnected client is swallowed. */
-	write(event: StreamEvent): void;
+	write(this: void, event: StreamEvent): void;
 	/** Close the stream; closing an already-closed stream is swallowed. */
-	close(): void;
+	close(this: void): void;
 }
 
 /**

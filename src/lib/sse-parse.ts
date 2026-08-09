@@ -52,7 +52,12 @@ export async function* parseSSEStream(
 	const decoder = new TextDecoder('utf-8');
 
 	const pending: SSERecord[] = [];
-	let overflow: SSEBufferOverflowError | null = null;
+	// Boxed in an object rather than a bare `let`: the only write happens in
+	// the onError callback below, and TypeScript's flow analysis does not model
+	// closure writes — it would narrow a `let` to `null` for the whole function
+	// and type the overflow branch as dead. A property read re-widens after any
+	// intervening call, so the check below sees the real type.
+	const state: { overflow: SSEBufferOverflowError | null } = { overflow: null };
 
 	const parser = createParser({
 		onEvent(event) {
@@ -62,7 +67,7 @@ export async function* parseSSEStream(
 			// Only the buffer cap is fatal. unknown-field / invalid-retry are
 			// non-fatal: the field is ignored, exactly as the prior parser did.
 			if (err.type === 'max-buffer-size-exceeded') {
-				overflow = new SSEBufferOverflowError(MAX_SSE_BUFFER_BYTES);
+				state.overflow = new SSEBufferOverflowError(MAX_SSE_BUFFER_BYTES);
 			}
 		},
 		maxBufferSize: MAX_SSE_BUFFER_BYTES,
@@ -74,16 +79,16 @@ export async function* parseSSEStream(
 			if (done) {
 				// Flush a final block that never got its terminating blank line.
 				// Feeding one dispatches it; a no-op when nothing is pending.
-				if (!overflow) parser.feed('\n\n');
+				if (!state.overflow) parser.feed('\n\n');
 				yield* drain(pending);
-				if (overflow) throw overflow;
+				if (state.overflow) throw state.overflow;
 				return;
 			}
 
 			parser.feed(decoder.decode(value, { stream: true }));
 			// Surface whatever parsed cleanly before the overflow, then abort.
 			yield* drain(pending);
-			if (overflow) throw overflow;
+			if (state.overflow) throw state.overflow;
 		}
 	} finally {
 		reader.releaseLock();

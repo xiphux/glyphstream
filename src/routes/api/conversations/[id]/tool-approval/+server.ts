@@ -70,7 +70,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			error(400, 'Each decision needs a non-empty toolCallId');
 		}
 		if (d.action !== 'allow' && d.action !== 'allow_always' && d.action !== 'reject') {
-			error(400, `Unknown action "${d.action}"`);
+			error(400, `Unknown action "${String(d.action)}"`);
 		}
 	}
 

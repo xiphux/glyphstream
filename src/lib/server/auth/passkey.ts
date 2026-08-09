@@ -21,7 +21,6 @@ import {
 } from '@simplewebauthn/server';
 import type {
 	AuthenticationResponseJSON,
-	AuthenticatorTransportFuture,
 	PublicKeyCredentialCreationOptionsJSON,
 	PublicKeyCredentialRequestOptionsJSON,
 	RegistrationResponseJSON,

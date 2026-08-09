@@ -788,10 +788,13 @@
 			void ensureLiveHighlighter();
 			void ensureLiveMarkdown();
 		};
-		const idle = (
-			window as Window & { requestIdleCallback?: (cb: () => void, o?: object) => number }
-		).requestIdleCallback;
-		if (idle) idle(warmLiveRenderers, { timeout: 2000 });
+		// Called through `window` rather than via a detached reference: WebIDL
+		// does fall back to the global for a `this`-less Window operation, but
+		// leaning on that reads as a bug and trips `unbound-method`.
+		const w = window as Window & {
+			requestIdleCallback?: (cb: () => void, o?: object) => number;
+		};
+		if (w.requestIdleCallback) w.requestIdleCallback(warmLiveRenderers, { timeout: 2000 });
 		else setTimeout(warmLiveRenderers, 200);
 		// Deep-link from the search modal: URL hash like `#msg-<id>`.
 		// Wait for the message wrappers to be in the DOM before scrolling.

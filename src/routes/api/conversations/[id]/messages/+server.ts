@@ -60,7 +60,7 @@ const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
 import { isModelKind } from '$lib/types/api';
-import type { ChatMessage, SendMessageRequest, SendMessageResponse } from '$lib/types/api';
+import type { SendMessageRequest, SendMessageResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {

@@ -31,7 +31,7 @@ import { createUserMessage } from '$lib/server/messages/create-user-message';
 import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 import type { CompareSelection } from '$lib/fanout';
-import type { ChatMessage, PrepareFanoutRequest, PrepareFanoutResponse } from '$lib/types/api';
+import type { PrepareFanoutRequest, PrepareFanoutResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
 /**

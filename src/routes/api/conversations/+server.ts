@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	// re-fetching upstream /v1/models. Resolve it once here.
 	if (body.modelKind !== undefined) {
 		if (!isModelKind(body.modelKind)) {
-			error(400, `Invalid modelKind "${body.modelKind}"`);
+			error(400, `Invalid modelKind "${String(body.modelKind)}"`);
 		}
 		resolvedModelKind = body.modelKind;
 	}

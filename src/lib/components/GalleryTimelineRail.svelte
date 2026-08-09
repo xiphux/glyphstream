@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { bucketLabel, monthStartMs, type Granularity } from '$lib/gallery-date-buckets';
+	import { bucketLabel, monthStartMs } from '$lib/gallery-date-buckets';
 
 	interface Period {
 		key: string; // 'YYYY-MM', newest-first

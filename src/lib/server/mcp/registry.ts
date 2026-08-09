@@ -592,9 +592,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 				clearTimeout(timer);
 				resolve(v);
 			},
-			(e) => {
+			(e: unknown) => {
 				clearTimeout(timer);
-				reject(e);
+				reject(e instanceof Error ? e : new Error(String(e)));
 			},
 		);
 	});
