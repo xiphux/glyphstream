@@ -12,6 +12,9 @@ const parserOptions = {
 	extraFileExtensions: ['.svelte'],
 	svelteConfig,
 	projectService: {
+		// Compiler options for the allowDefaultProject files below; without it
+		// they get an inferred project with no node types (process.env -> any).
+		defaultProject: 'tsconfig.node.json',
 		// Files with no owning tsconfig: these four config files, and
 		// `service-worker.ts`, which SvelteKit deliberately excludes from the
 		// app program (different globals/lib). `scripts/` gets its own tsconfig

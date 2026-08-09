@@ -1,0 +1,30 @@
+{
+	// Compiler options for the files ESLint lints under
+	// `projectService.allowDefaultProject` — the root *.config.ts files and
+	// src/service-worker.ts, none of which belong to the SvelteKit program.
+	// Without this they get an inferred project with no `@types/node`, so
+	// `process.env` and every `node:*` import resolve to `any` and the whole
+	// no-unsafe-* family fires on them.
+	//
+	// Not referenced by a build: tsc/vite/drizzle-kit never read it. It exists
+	// so typechecked lint has real types for those files.
+	"compilerOptions": {
+		"target": "esnext",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"lib": ["esnext", "dom", "webworker"],
+		"types": ["node"],
+		"strict": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"allowJs": true,
+		// service-worker.ts imports through `$lib`. SvelteKit's generated
+		// tsconfig maps it, but that config excludes the service worker, so the
+		// mapping has to be repeated here or its imports resolve to `any`.
+		"baseUrl": ".",
+		"paths": {
+			"$lib": ["./src/lib"],
+			"$lib/*": ["./src/lib/*"]
+		}
+	}
+}
