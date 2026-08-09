@@ -22,6 +22,15 @@ const GITHUB_USER_API = 'https://api.github.com/user';
 const GITHUB_USER_EMAILS_API = 'https://api.github.com/user/emails';
 const GITHUB_SCOPES = ['read:user', 'user:email'];
 
+/**
+ * Budget for the two api.github.com profile calls below, matching the
+ * token exchange and the OIDC discovery fetch. Without it a stalled
+ * GitHub API holds the login request open until the OS TCP timeout —
+ * the same hang the token exchange already bounds, one step further
+ * along the same code path.
+ */
+const GITHUB_API_TIMEOUT_MS = 10_000;
+
 function redirectUri(): string {
 	return `${publicBaseUrl()}${GITHUB_OAUTH_CALLBACK_PATH}`;
 }
@@ -39,12 +48,16 @@ async function fetchProfile(code: string): Promise<OAuthProfile> {
 	});
 	const accessToken = tokens.accessToken();
 
+	// A timeout here rejects with an AbortError, which is not an
+	// OAuth2RequestError, so the callback handler reports it as
+	// `upstream_failure` — correct, since we can't identify the user.
 	const userRes = await fetch(GITHUB_USER_API, {
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			Accept: 'application/vnd.github+json',
 			'User-Agent': 'glyphstream',
 		},
+		signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
 	});
 	if (!userRes.ok) {
 		throw new Error(`GitHub /user returned HTTP ${userRes.status}`);
@@ -62,7 +75,9 @@ async function fetchProfile(code: string): Promise<OAuthProfile> {
 	let email: string | null = typeof user.email === 'string' ? user.email : null;
 	if (!email) {
 		// User has hidden their public email; fetch the verified primary from
-		// /user/emails. Best-effort — don't block login if this fails.
+		// /user/emails. Best-effort — don't block login if this fails. A
+		// timeout lands in the catch below like any other failure, so a slow
+		// GitHub costs the email address rather than the whole login.
 		try {
 			const emailsRes = await fetch(GITHUB_USER_EMAILS_API, {
 				headers: {
@@ -70,6 +85,7 @@ async function fetchProfile(code: string): Promise<OAuthProfile> {
 					Accept: 'application/vnd.github+json',
 					'User-Agent': 'glyphstream',
 				},
+				signal: AbortSignal.timeout(GITHUB_API_TIMEOUT_MS),
 			});
 			if (emailsRes.ok) {
 				const list = (await emailsRes.json()) as Array<{
