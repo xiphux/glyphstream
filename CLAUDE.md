@@ -191,6 +191,24 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   binary, fetched not compiled): `pnpm install --frozen-lockfile
 --ignore-scripts` then `pnpm rebuild esbuild`. sharp ships prebuilt musl
   binaries, so it needs no rebuild. Same in Docker; same in CI.
+- **pnpm settings live in `pnpm-workspace.yaml`** (`overrides`,
+  `allowBuilds`), not package.json's `pnpm` field — pnpm stopped reading
+  that field and _silently ignores_ it, which is how the security
+  overrides got disabled once already. It's not a monorepo; the file
+  exists only to hold settings. Docker must `COPY` it alongside
+  package.json/pnpm-lock.yaml or `--frozen-lockfile` fails on the
+  overrides mismatch.
+- **`tsc` is TypeScript 7; `tsc6` is TypeScript 6.** Both are installed,
+  as npm aliases. TS7 ships no programmatic API until 7.1, and
+  svelte-check, svelte2tsx and typescript-eslint all `import 'typescript'`
+  — so `node_modules/typescript` must stay v6. It's aliased to
+  `@typescript/typescript6`, which re-exports the v6 API and renames its
+  binary to `tsc6`; real `typescript@7` is aliased to `@typescript/native`
+  and owns `tsc`. Installing both un-aliased does NOT work — each claims
+  the `tsc` bin. So `pnpm check` checks `src/` with v6 (through
+  svelte-check) and `scripts/` with the native compiler, and a bare `tsc`
+  is not the compiler that gates `src/`. Collapse this back to a plain
+  `typescript` dep once the tooling moves to the 7.1 API.
 - **node:sqlite won't auto-promote a nested `db.transaction()` to a
   SAVEPOINT** the way better-sqlite3 did. A helper that opens its own
   `getDb().transaction()` while a caller already holds one throws "cannot
