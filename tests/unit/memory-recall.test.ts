@@ -44,12 +44,12 @@ function mockQueryVec(vec: number[]) {
 
 async function run(query: unknown) {
 	const res = await recallMemoryTool.execute({ query }, ctx);
-	return { res, parsed: res.isError ? null : JSON.parse(res.content) };
+	return { res, parsed: res.isError ? null : payload(res.content) };
 }
 
 async function runArgs(args: unknown) {
 	const res = await recallMemoryTool.execute(args, ctx);
-	return { res, parsed: res.isError ? null : JSON.parse(res.content) };
+	return { res, parsed: res.isError ? null : payload(res.content) };
 }
 
 beforeEach(() => {
@@ -60,6 +60,11 @@ beforeEach(() => {
 });
 
 afterEach(() => closeTestDb());
+
+/** What recall_memory serialises into `content`. Typed so the many
+ *  `toEqual([])` assertions below can not pass against an absent field. */
+type RecallPayload = { matches: Array<{ id: string; content: string; topic?: string | null }> };
+const payload = (content: string) => JSON.parse(content) as RecallPayload;
 
 describe('recallMemoryTool availability', () => {
 	it('is always advertised (no embeddings gate) — the ids path needs no model', () => {
@@ -75,7 +80,7 @@ describe('recallMemoryTool.execute', () => {
 		const { res, parsed } = await run('anything');
 		void u;
 		expect(res.isError).toBeFalsy();
-		expect(parsed.matches).toEqual([]);
+		expect(parsed?.matches).toEqual([]);
 		// No memories → no point hitting the embedding endpoint.
 		expect(embeddingsMock).not.toHaveBeenCalled();
 	});
@@ -91,7 +96,7 @@ describe('recallMemoryTool.execute', () => {
 		mockQueryVec([0.9, 0.1]);
 
 		const { parsed } = await run('unrelated wording');
-		expect(parsed.matches[0].id).toBe(a.id);
+		expect(parsed?.matches[0].id).toBe(a.id);
 	});
 
 	it('finds a not-yet-embedded memory via the BM25 leg', async () => {
@@ -101,7 +106,7 @@ describe('recallMemoryTool.execute', () => {
 		mockQueryVec([1, 0]); // dense leg has nothing to compare → BM25 only
 
 		const { parsed } = await run('quokka');
-		expect(parsed.matches.map((m: { content: string }) => m.content)).toContain(
+		expect(parsed?.matches.map((m: { content: string }) => m.content)).toContain(
 			'the quokka migration plan',
 		);
 	});
@@ -115,7 +120,7 @@ describe('recallMemoryTool.execute', () => {
 
 		const { res, parsed } = await run('quokka');
 		expect(res.isError).toBeFalsy();
-		expect(parsed.matches.map((m: { id: string }) => m.id)).toContain(a.id);
+		expect(parsed?.matches.map((m: { id: string }) => m.id)).toContain(a.id);
 	});
 
 	it('ignores rows embedded by a different model (incomparable vector space)', async () => {
@@ -129,7 +134,7 @@ describe('recallMemoryTool.execute', () => {
 		// throw; BM25 still returns it. The point: no crash, result still comes.
 		const { res, parsed } = await run('stale');
 		expect(res.isError).toBeFalsy();
-		expect(parsed.matches.map((m: { id: string }) => m.id)).toContain(a.id);
+		expect(parsed?.matches.map((m: { id: string }) => m.id)).toContain(a.id);
 	});
 
 	it('runs the BM25 query path (no error) when no embedding model is configured', async () => {
@@ -140,7 +145,7 @@ describe('recallMemoryTool.execute', () => {
 
 		const { res, parsed } = await run('quokka');
 		expect(res.isError).toBeFalsy();
-		expect(parsed.matches.map((m: { content: string }) => m.content)).toContain(
+		expect(parsed?.matches.map((m: { content: string }) => m.content)).toContain(
 			'the quokka migration plan',
 		);
 		// The dense leg must not be attempted without a model.
@@ -153,7 +158,7 @@ describe('recallMemoryTool.execute', () => {
 		createMemory(u.id, 'the quokka migration plan', 'Quokka');
 		mockQueryVec([1, 0]);
 		const { parsed } = await run('quokka');
-		expect(parsed.matches[0].topic).toBe('Quokka');
+		expect(parsed?.matches[0].topic).toBe('Quokka');
 	});
 
 	describe('ids path', () => {
@@ -167,7 +172,7 @@ describe('recallMemoryTool.execute', () => {
 
 			const { res, parsed } = await runArgs({ ids: [a.id, c.id] });
 			expect(res.isError).toBeFalsy();
-			expect(parsed.matches.map((m: { id: string }) => m.id).sort()).toEqual([a.id, c.id].sort());
+			expect(parsed?.matches.map((m: { id: string }) => m.id).sort()).toEqual([a.id, c.id].sort());
 			expect(embeddingsMock).not.toHaveBeenCalled();
 		});
 
@@ -179,7 +184,7 @@ describe('recallMemoryTool.execute', () => {
 			const theirs = createMemory(u2.id, 'theirs', 'Theirs');
 
 			const { parsed } = await runArgs({ ids: [mine.id, theirs.id, 'fabricated'] });
-			expect(parsed.matches.map((m: { id: string }) => m.id)).toEqual([mine.id]);
+			expect(parsed?.matches.map((m: { id: string }) => m.id)).toEqual([mine.id]);
 		});
 
 		it('takes precedence over a query when both are supplied', async () => {
@@ -189,7 +194,7 @@ describe('recallMemoryTool.execute', () => {
 			createMemory(u.id, 'beta note', 'Beta');
 
 			const { parsed } = await runArgs({ ids: [a.id], query: 'beta' });
-			expect(parsed.matches.map((m: { id: string }) => m.id)).toEqual([a.id]);
+			expect(parsed?.matches.map((m: { id: string }) => m.id)).toEqual([a.id]);
 			expect(embeddingsMock).not.toHaveBeenCalled();
 		});
 	});
@@ -229,7 +234,7 @@ describe('recallMemoryTool — the lexical leg must not drown the dense leg', ()
 
 		// Every decoy outranks the answer lexically (they were saved first), so the
 		// old behaviour surfaced them ahead of it.
-		expect(parsed.matches[0].id).toBe(answer.id);
+		expect(parsed?.matches[0].id).toBe(answer.id);
 	});
 
 	it('still lets a lexical-only hit win when there is no embedding model', async () => {
@@ -242,7 +247,7 @@ describe('recallMemoryTool — the lexical leg must not drown the dense leg', ()
 		resolveMock.mockReturnValue(undefined); // no embeddings configured
 
 		const { parsed } = await run('shellfish');
-		expect(parsed.matches[0].id).toBe(hit.id);
+		expect(parsed?.matches[0].id).toBe(hit.id);
 		expect(embeddingsMock).not.toHaveBeenCalled();
 	});
 
@@ -256,7 +261,7 @@ describe('recallMemoryTool — the lexical leg must not drown the dense leg', ()
 		resolveMock.mockReturnValue(undefined);
 
 		const { parsed } = await run('zzzz nonexistent tokens qqqq');
-		expect(parsed.matches).toEqual([]);
+		expect(parsed?.matches).toEqual([]);
 	});
 
 	it('finds an un-embedded memory lexically, so a fresh save is still recallable', async () => {
@@ -271,6 +276,6 @@ describe('recallMemoryTool — the lexical leg must not drown the dense leg', ()
 		mockQueryVec([0, 1]);
 
 		const { parsed } = await run('Wren');
-		expect(parsed.matches[0].id).toBe(fresh.id);
+		expect(parsed?.matches[0].id).toBe(fresh.id);
 	});
 });

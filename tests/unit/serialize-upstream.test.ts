@@ -35,6 +35,14 @@ const noMedia = async () => {
 	throw new Error('media resolver should not have been called');
 };
 
+/**
+ * `truncateToolResult` re-emits whatever shape it was handed, minus what it
+ * elided, so each test states the shape it probes. Typed rather than `any`:
+ * several assertions here are `toBe(true)` / `toContain(...)` on fields that
+ * would read `undefined` if the capper ever stopped emitting them.
+ */
+const parseCapped = <T>(capped: string) => JSON.parse(capped) as T;
+
 describe('serializeMessageForUpstream', () => {
 	it('serializes a plain user message as bare-string content', async () => {
 		const out = await serializeMessageForUpstream(
@@ -469,7 +477,7 @@ describe('collapseSupersededSkillActivations', () => {
 		expect(out[2]).toMatchObject({
 			role: 'tool',
 			tool_call_id: 'c2',
-			content: expect.stringContaining('duplicate="true"'),
+			content: expect.stringContaining('duplicate="true"') as unknown as string,
 		});
 		expect(out[2].content).not.toContain('do the thing');
 		expect(out[2].content).toMatch(/earlier in this conversation/i);
@@ -708,7 +716,9 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const capped = truncateToolResult(result, CAP);
 		expect(capped.length).toBeLessThanOrEqual(CAP);
 
-		const parsed = JSON.parse(capped); // would have thrown before
+		const parsed = parseCapped<{ url: string; status: number; mode: string; content: string }>(
+			capped,
+		); // would have thrown before
 		// The envelope survives — the model can still see what it fetched and that
 		// the call succeeded. Only the bulky leaf shrank.
 		expect(parsed.url).toBe('https://x.test/a');
@@ -729,7 +739,9 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const result = JSON.stringify({ matches });
 		expect(result.length).toBeGreaterThan(CAP);
 
-		const parsed = JSON.parse(truncateToolResult(result, CAP));
+		const parsed = parseCapped<{ matches: Array<{ id: string; topic: string }> }>(
+			truncateToolResult(result, CAP),
+		);
 		// Every record is still a whole record with an intact id.
 		expect(parsed.matches).toHaveLength(60);
 		for (const [i, m] of parsed.matches.entries()) {
@@ -744,7 +756,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const result = JSON.stringify({ content: body });
 		const capped = truncateToolResult(result, CAP);
 
-		const parsed = JSON.parse(capped);
+		const parsed = parseCapped<{ content: string }>(capped);
 		expect(parsed.content).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/); // lone high
 		expect(parsed.content).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/); // lone low
 	});
@@ -780,8 +792,9 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const capped = truncateToolResult(result, CAP);
 		expect(capped.length).toBeLessThanOrEqual(CAP);
 
-		const parsed = JSON.parse(capped); // invalid JSON before
-		const kept = parsed.results.filter((r: unknown) => typeof r === 'object');
+		// The array holds whole records plus a trailing '…more items truncated' marker.
+		const parsed = parseCapped<{ results: Array<{ id: string } | string> }>(capped); // invalid JSON before
+		const kept = parsed.results.filter((r): r is { id: string } => typeof r === 'object');
 		expect(kept.length).toBeGreaterThan(0);
 		expect(kept.length).toBeLessThan(300);
 		// Every surviving record is WHOLE — no half-cut ids.
@@ -803,7 +816,9 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const capped = truncateToolResult(result, CAP);
 		expect(capped.length).toBeLessThanOrEqual(CAP);
 
-		const parsed = JSON.parse(capped);
+		const parsed = parseCapped<{ truncated: boolean; original_chars: number; preview: string }>(
+			capped,
+		);
 		expect(parsed.truncated).toBe(true);
 		expect(parsed.original_chars).toBe(result.length);
 		expect(typeof parsed.preview).toBe('string');
@@ -817,7 +832,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const capped = truncateToolResult(result, CAP);
 
 		expect(capped.length).toBeLessThanOrEqual(CAP);
-		const parsed = JSON.parse(capped);
+		const parsed = parseCapped<string>(capped);
 		expect(typeof parsed).toBe('string');
 		expect(parsed).toContain('characters truncated');
 	});
@@ -844,7 +859,8 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 				// Deterministic: byte-identical every turn, or the prefix cache dies.
 				expect(truncateToolResult(payload, cap), `${name} @ ${cap} deterministic`).toBe(out);
 				// JSON in → JSON out. Always.
-				if (name !== 'text') expect(() => JSON.parse(out), `${name} @ ${cap} JSON`).not.toThrow();
+				if (name !== 'text')
+					expect(() => JSON.parse(out) as unknown, `${name} @ ${cap} JSON`).not.toThrow();
 			}
 		}
 	});
@@ -859,7 +875,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 
 		const out = truncateToolResult(payload, CAP); // threw before
 		expect(out.length).toBeLessThanOrEqual(CAP);
-		const parsed = JSON.parse(out);
+		const parsed = parseCapped<{ v: string[] }>(out);
 		expect(parsed.v.at(-1)).toContain('more items truncated');
 	});
 
@@ -878,18 +894,18 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		// The id must survive as the EXACT literal, not a rounded double.
 		expect(capped).toContain('"id":12345678901234567890');
 		expect(capped).not.toContain('12345678901234567000');
-		expect(() => JSON.parse(capped)).not.toThrow();
+		expect(() => JSON.parse(capped) as unknown).not.toThrow();
 	});
 
 	it('emits a valid envelope for a bare JSON scalar rather than slicing a number', () => {
 		// A 40 kB bare number can't be "shortened" and still be that number, so a
 		// character slice spliced a prose note into the middle of a digit string.
 		const raw = `1${'0'.repeat(40_000)}`;
-		expect(() => JSON.parse(raw)).not.toThrow();
+		expect(() => JSON.parse(raw) as unknown).not.toThrow();
 
 		const capped = truncateToolResult(raw, CAP);
 		expect(capped.length).toBeLessThanOrEqual(CAP);
-		const parsed = JSON.parse(capped);
+		const parsed = parseCapped<{ truncated: boolean; matches: unknown[]; v: string[] }>(capped);
 		expect(parsed.truncated).toBe(true);
 	});
 
@@ -914,7 +930,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		expect(new Set(outputs).size, 'output must not depend on caller stack depth').toBe(1);
 		// And whatever it is, it's still valid JSON within the cap.
 		expect(outputs[0].length).toBeLessThanOrEqual(CAP);
-		expect(() => JSON.parse(outputs[0])).not.toThrow();
+		expect(() => JSON.parse(outputs[0]) as unknown).not.toThrow();
 	});
 
 	it('takes the envelope rather than recursing into a pathologically nested payload', () => {
@@ -927,7 +943,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		// — a hard crash on the send path.
 		const capped = truncateToolResult(payload, CAP);
 		expect(capped.length).toBeLessThanOrEqual(CAP);
-		expect(JSON.parse(capped).truncated).toBe(true);
+		expect(parseCapped<{ truncated: boolean }>(capped).truncated).toBe(true);
 	});
 
 	it('stays fast on a large many-leaf payload (no event-loop stall)', () => {
@@ -949,7 +965,7 @@ describe('truncateToolResult — JSON results stay parseable', () => {
 		const out = truncateToolResult(payload, CAP);
 		const elapsed = performance.now() - started;
 
-		expect(() => JSON.parse(out)).not.toThrow();
+		expect(() => JSON.parse(out) as unknown).not.toThrow();
 		// Generous ceiling — the point is "milliseconds, not seconds". It was 4,605 ms.
 		expect(elapsed).toBeLessThan(400);
 	});

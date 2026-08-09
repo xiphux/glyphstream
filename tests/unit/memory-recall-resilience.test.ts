@@ -37,6 +37,11 @@ beforeEach(() => {
 });
 afterEach(() => closeTestDb());
 
+/** What recall_memory serialises into `content`. Typed so the many
+ *  `toEqual([])` assertions below can not pass against an absent field. */
+type RecallPayload = { matches: Array<{ id: string; content: string; topic?: string | null }> };
+const payload = (content: string) => JSON.parse(content) as RecallPayload;
+
 describe('recall resilience: recall-frequency write is a non-essential side effect', () => {
 	it('still returns the fetched memories when recordMemoryRecall throws', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -51,7 +56,7 @@ describe('recall resilience: recall-frequency write is a non-essential side effe
 
 		// The telemetry write failed, but the read the model asked for must survive.
 		expect(res.isError).toBeFalsy();
-		expect(JSON.parse(res.content).matches.map((m: { id: string }) => m.id)).toEqual([a.id]);
+		expect(payload(res.content).matches.map((m: { id: string }) => m.id)).toEqual([a.id]);
 		expect(recordMock).toHaveBeenCalled();
 		warn.mockRestore();
 	});

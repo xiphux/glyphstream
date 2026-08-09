@@ -15,15 +15,20 @@ vi.mock('$lib/server/env', () => ({
 // parameters without involving real crypto. The wrappers are the unit
 // under test here; the SDK's verification correctness is its own
 // responsibility.
-const generateRegistrationOptionsMock = vi.fn();
-const verifyRegistrationResponseMock = vi.fn();
-const generateAuthenticationOptionsMock = vi.fn();
-const verifyAuthenticationResponseMock = vi.fn();
+// The wrappers under test only ever hand the SDK a plain options object, and
+// these assertions read individual fields off it. Giving the doubles a call
+// signature keeps `mock.calls[0][0]` typed instead of `any`, so a renamed
+// pass-through field fails here rather than silently comparing undefined.
+type SdkOptions = Record<string, unknown>;
+const generateRegistrationOptionsMock = vi.fn<(opts: SdkOptions) => unknown>();
+const verifyRegistrationResponseMock = vi.fn<(opts: SdkOptions) => unknown>();
+const generateAuthenticationOptionsMock = vi.fn<(opts: SdkOptions) => unknown>();
+const verifyAuthenticationResponseMock = vi.fn<(opts: SdkOptions) => unknown>();
 vi.mock('@simplewebauthn/server', () => ({
-	generateRegistrationOptions: (...args: unknown[]) => generateRegistrationOptionsMock(...args),
-	verifyRegistrationResponse: (...args: unknown[]) => verifyRegistrationResponseMock(...args),
-	generateAuthenticationOptions: (...args: unknown[]) => generateAuthenticationOptionsMock(...args),
-	verifyAuthenticationResponse: (...args: unknown[]) => verifyAuthenticationResponseMock(...args),
+	generateRegistrationOptions: (opts: SdkOptions) => generateRegistrationOptionsMock(opts),
+	verifyRegistrationResponse: (opts: SdkOptions) => verifyRegistrationResponseMock(opts),
+	generateAuthenticationOptions: (opts: SdkOptions) => generateAuthenticationOptionsMock(opts),
+	verifyAuthenticationResponse: (opts: SdkOptions) => verifyAuthenticationResponseMock(opts),
 }));
 
 import {
@@ -119,7 +124,7 @@ describe('generateRegistrationOptionsForUser', () => {
 		await generateRegistrationOptionsForUser(user, []);
 		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
 		expect(opts.userID).toBeInstanceOf(Uint8Array);
-		const decoded = Buffer.from(opts.userID).toString('utf8');
+		const decoded = Buffer.from(opts.userID as Uint8Array).toString('utf8');
 		expect(decoded).toBe('abc-123');
 	});
 
@@ -139,8 +144,9 @@ describe('generateRegistrationOptionsForUser', () => {
 	it('requires user verification and sets attestation to none', async () => {
 		await generateRegistrationOptionsForUser(user, []);
 		const opts = generateRegistrationOptionsMock.mock.calls[0][0];
-		expect(opts.authenticatorSelection?.userVerification).toBe('required');
-		expect(opts.authenticatorSelection?.residentKey).toBe('preferred');
+		const sel = opts.authenticatorSelection as { userVerification?: string; residentKey?: string };
+		expect(sel.userVerification).toBe('required');
+		expect(sel.residentKey).toBe('preferred');
 		expect(opts.attestationType).toBe('none');
 	});
 
@@ -197,7 +203,7 @@ describe('verifyAuthentication', () => {
 		expect(opts.expectedRPID).toBe('chat.example.com');
 		expect(opts.expectedOrigin).toBe('https://chat.example.com');
 		expect(opts.requireUserVerification).toBe(true);
-		expect(opts.credential.id).toBe('c');
+		expect((opts.credential as { id: string }).id).toBe('c');
 	});
 });
 
