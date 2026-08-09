@@ -11,7 +11,9 @@
  * lifetime of the process.
  */
 
-import MarkdownIt from 'markdown-it';
+// markdown-it 15's default export is a callable value, not a class binding
+// that doubles as a type — the instance type is a separate named export.
+import MarkdownItCtor, { type MarkdownIt } from 'markdown-it';
 import { createHighlighter, type Highlighter } from 'shiki';
 
 const LIGHT_THEME = 'github-light';
@@ -86,7 +88,7 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
 		const highlighter = await getHighlighter();
 		const loaded = new Set(highlighter.getLoadedLanguages());
 
-		const md = new MarkdownIt({
+		const md = new MarkdownItCtor({
 			html: false, // raw HTML in source markdown is escaped
 			linkify: true,
 			typographer: false,

@@ -58,6 +58,34 @@ describe('renderMarkdown — link rewrite', () => {
 		expect(out).toContain('href="https://example.com"');
 		expect(out).toContain('target="_blank"');
 	});
+
+	/**
+	 * markdown-it 15 (linkify-it 6) turned `fuzzyLink` OFF by default, and we
+	 * deliberately left it off. Under 14 it was on, and because `.md`, `.py`,
+	 * `.sh` and `.io` are all real TLDs, ordinary assistant prose about files
+	 * got mangled — `README.md` rendered as a link to `http://README.md`.
+	 * Filenames are far more common than schemeless domains in this app's
+	 * output, so the new default is the one we want. Explicit-scheme URLs and
+	 * emails are unaffected (covered above / below).
+	 *
+	 * Turning it back on is a one-liner (`md.linkify.set({ fuzzyLink: true })`
+	 * in render.ts + markdown-live.ts) — this test is here so that flip has to
+	 * be deliberate rather than arriving with a dependency bump.
+	 */
+	it('does not linkify filenames whose extension is also a TLD', async () => {
+		const out = (await renderMarkdown('See README.md and run main.py or build.sh'))!;
+		expect(out).not.toContain('<a ');
+	});
+
+	it('does not linkify schemeless domains', async () => {
+		const out = (await renderMarkdown('Visit example.com or www.example.com'))!;
+		expect(out).not.toContain('<a ');
+	});
+
+	it('still linkifies bare emails', async () => {
+		const out = (await renderMarkdown('mail me at foo@example.com'))!;
+		expect(out).toContain('href="mailto:foo@example.com"');
+	});
 });
 
 describe('renderMarkdown — shiki syntax highlighting', () => {

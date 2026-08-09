@@ -24,7 +24,12 @@
  * tokens arrive after the import.
  */
 
-import type MarkdownIt from 'markdown-it';
+// markdown-it 15 ships its own types (the @types/markdown-it package stopped
+// at 14 and is gone). Its default export is a *callable* value, not a class
+// binding that doubles as a type — so the instance type is a separate named
+// export and the constructor type has to come from `typeof` the default.
+import type MarkdownItCtor from 'markdown-it';
+import type { MarkdownIt } from 'markdown-it';
 import {
 	getLiveHighlighter,
 	resolveLiveLang,
@@ -34,9 +39,9 @@ import {
 const LIGHT_THEME = 'github-light';
 const DARK_THEME = 'github-dark';
 
-let markdownItCtor: typeof MarkdownIt | null = null;
+let markdownItCtor: typeof MarkdownItCtor | null = null;
 let cached: MarkdownIt | null = null;
-let loadingPromise: Promise<typeof MarkdownIt | null> | null = null;
+let loadingPromise: Promise<typeof MarkdownItCtor | null> | null = null;
 
 /**
  * Kick off the markdown-it lazy import. Idempotent — subsequent calls
@@ -47,7 +52,7 @@ let loadingPromise: Promise<typeof MarkdownIt | null> | null = null;
  * gracefully until the module lands and the next streaming tick picks
  * it up automatically.
  */
-export function ensureLiveMarkdown(): Promise<typeof MarkdownIt | null> {
+export function ensureLiveMarkdown(): Promise<typeof MarkdownItCtor | null> {
 	if (loadingPromise) return loadingPromise;
 	loadingPromise = (async () => {
 		try {
@@ -117,7 +122,7 @@ function cachedHighlight(owner: object, key: string, compute: () => string): str
 	return html;
 }
 
-function build(Ctor: typeof MarkdownIt): MarkdownIt {
+function build(Ctor: typeof MarkdownItCtor): MarkdownIt {
 	const md = new Ctor({
 		html: false,
 		linkify: true,
