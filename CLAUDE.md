@@ -118,6 +118,18 @@ tests/e2e/            # playwright (production-build webServer)
   _and_ every tab refocus refetch the entire conversation (measured 35 KB → 4 KB
   on a 40-turn thread; megabytes on a long code-heavy one). If you re-add
   `await parent()` there, that regresses silently.
+- **Module singletons under `$lib/*.svelte.ts` may only be written from
+  effects, event handlers, or functions those call** — never at
+  component-init depth. `toast`, `confirmDialog`, `searchModal`,
+  `privateView`, `streamPresence`, the `generating` / `title-pending` sets
+  and the snippet cache are one instance per _server process_, shared by
+  every concurrent request. Component init _does_ run during SSR, so a write
+  at init depth publishes one user's state into another user's render;
+  effects don't run on the server, which is the only reason the SSR copies
+  stay empty. Context would enforce this structurally but doesn't fit here:
+  several are page→layout publication channels (context flows down, not up),
+  and `toast` is called from plain `.ts` modules where `getContext` is
+  unavailable.
 - `bits-ui` and `lucide-svelte` belong in `devDependencies` — Vite bundles
   them into the SSR build at compile time. Only packages that run
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
