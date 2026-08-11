@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		ChevronLeft,
 		ChevronRight,
@@ -424,24 +425,26 @@
 	// perfectly good direct download — there the share sheet is just extra
 	// taps. So we additionally require a touch-primary device via
 	// `(pointer: coarse)`: true on phones/tablets (incl. iOS PWAs), false
-	// on a Mac with a trackpad/mouse. Detected in an effect (not at module
-	// scope) so SSR renders the Download icon and the client upgrades to
-	// Share without a hydration mismatch.
-	let useShareSheet = $state(false);
+	// on a Mac with a trackpad/mouse.
+	//
+	// MediaQuery's `false` fallback is the SSR value, so the server renders the
+	// Download icon and the client upgrades to Share without a hydration
+	// mismatch. Unlike the one-shot matchMedia probe this replaces, it also stays
+	// live: pairing a mouse to a tablet (or unpairing one) re-resolves both flags
+	// instead of leaving them stuck at whatever was true when the lightbox
+	// mounted.
+	const coarse = new MediaQuery('pointer: coarse', false);
 	// Touch-primary devices already get swipe + scroll-snap; the on-image
 	// arrow buttons are a desktop (mouse/trackpad) affordance, so we hide
-	// them on coarse pointers to keep the image unobstructed there. Same
-	// `(pointer: coarse)` probe as the share-sheet decision.
-	let coarsePointer = $state(false);
-	$effect(() => {
-		const apiSupported =
-			typeof navigator !== 'undefined' &&
+	// them on coarse pointers to keep the image unobstructed there.
+	const coarsePointer = $derived(coarse.current);
+	// `coarse.current` first so the navigator probes are short-circuited away
+	// during SSR, where `navigator` doesn't exist.
+	const useShareSheet = $derived(
+		coarse.current &&
 			typeof navigator.canShare === 'function' &&
-			typeof navigator.share === 'function';
-		const touchPrimary = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-		useShareSheet = apiSupported && touchPrimary;
-		coarsePointer = touchPrimary;
-	});
+			typeof navigator.share === 'function',
+	);
 
 	// id of the media whose content is currently being fetched, used to
 	// disable the button so a double-tap can't kick off two downloads.

@@ -7,6 +7,8 @@
 	import { syncTimeZone } from '$lib/timezone-sync';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { goto, invalidate, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
@@ -156,13 +158,14 @@
 	// activity it jumps to the top of Recents, and a favorites drag reorders
 	// the list — `animate:flip` slides the moved rows to their new slot rather
 	// than teleporting them, so the reordering reads as motion. Honors
-	// prefers-reduced-motion by collapsing the duration to 0 (read once at
-	// mount, matching the chat page's reduceMotion pattern). cubicOut decel
-	// feels right for a short positional settle.
-	const reduceMotion =
-		typeof window !== 'undefined' &&
-		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	const flipParams = { duration: reduceMotion ? 0 : 220, easing: cubicOut };
+	// prefers-reduced-motion by collapsing the duration to 0. cubicOut decel
+	// feels right for a short positional settle. `prefersReducedMotion` is
+	// Svelte's built-in reactive query, so toggling the OS setting takes effect
+	// live rather than only on the next full load.
+	const flipParams = $derived({
+		duration: prefersReducedMotion.current ? 0 : 220,
+		easing: cubicOut,
+	});
 
 	// Keep <html data-theme> in sync with the authoritative theme pref.
 	// hooks.server.ts sets it from the gs-theme cookie before first paint
@@ -186,20 +189,20 @@
 	// invalidate) so both a forced light/dark and OS flips under 'system'
 	// behave correctly. app.html's inline script does the same resolution
 	// before first paint; this keeps it live afterward.
+	const systemDark = new MediaQuery('prefers-color-scheme: dark', false);
 	$effect(() => {
 		const pref = data.prefs?.colorScheme ?? 'system';
 		document.cookie = `gs-scheme=${pref}; path=/; max-age=31536000; samesite=lax`;
-		const mql = window.matchMedia('(prefers-color-scheme: dark)');
-		const apply = () => {
-			const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
-			const p = m ? m[1] : 'system';
-			const dark = p === 'dark' || (p !== 'light' && mql.matches);
-			document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
-			syncThemeColorMeta();
-		};
-		apply();
-		mql.addEventListener('change', apply);
-		return () => mql.removeEventListener('change', apply);
+		// Read unconditionally (not inside the `p !== 'light'` short-circuit below)
+		// so this effect always subscribes to the query — matching the old
+		// always-registered `change` listener. Otherwise a forced-light cookie
+		// would unsubscribe, and a later OS flip wouldn't re-read the cookie.
+		const dark = systemDark.current;
+		const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
+		const p = m ? m[1] : 'system';
+		document.documentElement.dataset.scheme =
+			p === 'dark' || (p !== 'light' && dark) ? 'dark' : 'light';
+		syncThemeColorMeta();
 	});
 
 	// Incognito re-tint. The single owner of the `data-private` attribute (app.css

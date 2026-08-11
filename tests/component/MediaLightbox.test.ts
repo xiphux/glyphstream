@@ -46,6 +46,33 @@ function makeVideo(overrides: Partial<MediaListItem> = {}): MediaListItem {
 	return makeImage({ kind: 'video', contentType: 'video/mp4', ...overrides });
 }
 
+/**
+ * Stub `matchMedia` so `(pointer: coarse)` reports `coarse`.
+ *
+ * The component reads the pointer type through Svelte's `MediaQuery`, which
+ * SUBSCRIBES to the MediaQueryList (`addEventListener('change', …)`) rather than
+ * just reading `.matches` once. A `{ matches, media }` literal is therefore no
+ * longer a sufficient double — it throws "dom.addEventListener is not a
+ * function" at render, and because that kills the render before the test's
+ * trailing `unstubAllGlobals()`, the thin stub leaks into every later test in
+ * the file. Hence the no-op listener pair.
+ */
+function stubPointerQuery(coarse: boolean) {
+	vi.stubGlobal(
+		'matchMedia',
+		vi.fn((q: string) => ({
+			matches: coarse && q.includes('coarse'),
+			media: q,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		})),
+	);
+}
+
 afterEach(() => {
 	gotoMock.mockClear();
 	window.sessionStorage.clear();
@@ -190,10 +217,7 @@ describe('MediaLightbox — save button', () => {
 		vi.stubGlobal('navigator', { ...navigator, share, canShare });
 		// Simulate a touch-primary device (pointer: coarse) so the share
 		// sheet path is taken — desktop (pointer: fine) downloads directly.
-		vi.stubGlobal(
-			'matchMedia',
-			vi.fn((q: string) => ({ matches: q.includes('coarse'), media: q })),
-		);
+		stubPointerQuery(true);
 
 		render(MediaLightbox, {
 			props: { media: makeImage({ id: 'xyz', contentType: 'image/webp' }), onClose: vi.fn() },
@@ -223,10 +247,7 @@ describe('MediaLightbox — save button', () => {
 		// macOS Safari case: share API present, but a fine pointer (mouse /
 		// trackpad) means we should download directly, not pop the sheet.
 		// `(pointer: coarse)` does not match on this device.
-		vi.stubGlobal(
-			'matchMedia',
-			vi.fn((q: string) => ({ matches: false, media: q })),
-		);
+		stubPointerQuery(false);
 		const createObjectURL = vi.fn(() => 'blob:fake');
 		const revokeObjectURL = vi.fn();
 		vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });

@@ -3,6 +3,7 @@
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
@@ -816,9 +817,10 @@
 			}, 1500);
 		});
 	});
-	const reduceMotion =
-		typeof window !== 'undefined' &&
-		!!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+	// Svelte's built-in reactive query — SSR-safe (false on the server) and live,
+	// so toggling the OS setting takes effect without a reload. Read as a
+	// $derived so the transitions and scroll calls below can use it directly.
+	const reduceMotion = $derived(prefersReducedMotion.current);
 
 	// Branch-switch direction. selectSibling sets this (+1 for "next" / ‹›,
 	// -1 for "previous") just before the invalidate that swaps the active
