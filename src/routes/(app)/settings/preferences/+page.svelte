@@ -425,7 +425,7 @@
 					</span>
 				</span>
 			</label>
-			<div class="flex items-center gap-2 text-sm" class:opacity-50={!autoCompactionEnabled}>
+			<div class={['flex items-center gap-2 text-sm', !autoCompactionEnabled && 'opacity-50']}>
 				<label for="pref-compact-threshold">Compact at</label>
 				<input
 					id="pref-compact-threshold"
@@ -526,8 +526,10 @@
 			{/if}
 
 			<label
-				class="flex cursor-pointer items-start gap-2 text-sm"
-				class:opacity-50={!notificationsEnabled}
+				class={[
+					'flex cursor-pointer items-start gap-2 text-sm',
+					!notificationsEnabled && 'opacity-50',
+				]}
 			>
 				<input
 					type="checkbox"
@@ -546,8 +548,10 @@
 			</label>
 
 			<label
-				class="flex cursor-pointer items-start gap-2 text-sm"
-				class:opacity-50={!notificationsEnabled}
+				class={[
+					'flex cursor-pointer items-start gap-2 text-sm',
+					!notificationsEnabled && 'opacity-50',
+				]}
 			>
 				<input
 					type="checkbox"

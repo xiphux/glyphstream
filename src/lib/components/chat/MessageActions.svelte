@@ -110,12 +110,14 @@
 			disabled={pos === 1 || generating}
 			aria-label="Previous sibling"
 			title="Previous"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
-			class:order-first={isUser}
+			class={[
+				'flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent',
+				isUser && 'order-first',
+			]}
 		>
 			<ChevronLeft size={14} strokeWidth={2.25} />
 		</button>
-		<span class="text-xs tabular-nums text-fg-muted" class:order-first={isUser}>
+		<span class={['text-xs tabular-nums text-fg-muted', isUser && 'order-first']}>
 			{pos} / {siblingCount}
 		</span>
 		<button
@@ -124,8 +126,10 @@
 			disabled={pos === siblingCount || generating}
 			aria-label="Next sibling"
 			title="Next"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent"
-			class:order-first={isUser}
+			class={[
+				'flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary disabled:opacity-30 disabled:hover:bg-transparent',
+				isUser && 'order-first',
+			]}
 		>
 			<ChevronRight size={14} strokeWidth={2.25} />
 		</button>
@@ -139,8 +143,10 @@
 			disabled={generating}
 			aria-label="Delete this branch"
 			title="Delete branch"
-			class="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-danger/10 hover:text-danger disabled:opacity-30 disabled:hover:bg-transparent"
-			class:order-first={isUser}
+			class={[
+				'flex h-7 w-7 items-center justify-center rounded-md text-fg-muted transition hover:bg-danger/10 hover:text-danger disabled:opacity-30 disabled:hover:bg-transparent',
+				isUser && 'order-first',
+			]}
 		>
 			<Trash2 size={14} strokeWidth={2.25} />
 		</button>

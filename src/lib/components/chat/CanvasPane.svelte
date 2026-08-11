@@ -149,8 +149,7 @@
 		</header>
 
 		<div
-			class="min-h-0 flex-1 overflow-y-auto px-5 py-4 transition-colors duration-500"
-			class:flash
+			class={['min-h-0 flex-1 overflow-y-auto px-5 py-4 transition-colors duration-500', { flash }]}
 		>
 			{#if doc.contentHtml}
 				<!-- Server-rendered markdown; safe because markdown-it runs with html=false. -->
