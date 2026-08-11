@@ -754,12 +754,15 @@
 	// math on every onscroll event, and the browser typically runs the
 	// observation off the main thread.
 	let isNearBottom = $state(true);
-	let bottomSentinel = $state<HTMLElement | null>(null);
-	$effect(() =>
-		observeSentinel(scrollContainer, bottomSentinel, (v) => (isNearBottom = v), {
+	// An attachment rather than `bind:this` + a separate $effect: observeSentinel
+	// already returns a disconnect cleanup, which is exactly an attachment's
+	// contract, so the observer lives on the element it observes and the ref
+	// state disappears. Reading `scrollContainer` inside still re-runs it if the
+	// container changes, as the effect did.
+	const observeNearBottom = (node: HTMLElement) =>
+		observeSentinel(scrollContainer, node, (v) => (isNearBottom = v), {
 			rootMargin: '0px 0px 100px 0px',
-		}),
-	);
+		});
 
 	// Reference to the ChatComposer instance so the focus effect below
 	// can land focus in its textarea. The composer owns the ref + the
@@ -1817,7 +1820,7 @@
 				user is scrolled within ~100px of it (see effect above).
 				1px tall + aria-hidden so it's invisible / inaudible to AT.
 			-->
-				<div bind:this={bottomSentinel} aria-hidden="true" class="h-px"></div>
+				<div {@attach observeNearBottom} aria-hidden="true" class="h-px"></div>
 			</div>
 		</div>
 
