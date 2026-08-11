@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { LayoutData } from './$types';
 	import { browser } from '$app/environment';
+	import { resolve } from '$app/paths';
 	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
@@ -470,7 +471,7 @@
 					 "you have to be looking for it" affordance for confirming
 					 a service-worker refresh or which build is loaded. -->
 				<div class="flex items-baseline gap-1.5">
-					<a href="/" class="font-semibold tracking-tight">GlyphStream</a>
+					<a href={resolve('/')} class="font-semibold tracking-tight">GlyphStream</a>
 					<span class="text-[10px] tabular-nums text-fg-subtle">
 						v{__APP_VERSION__}
 					</span>
@@ -493,7 +494,7 @@
 
 		<div class="px-2">
 			<a
-				href="/"
+				href={resolve('/')}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {newChatPending
 					? 'bg-surface-sunken text-accent'
 					: 'hover:bg-surface-sunken/70'} {collapsed ? 'sm:justify-center sm:px-0' : ''}"
@@ -526,7 +527,7 @@
 				{/if}
 			</button>
 			<a
-				href="/gallery"
+				href={resolve('/gallery')}
 				title={collapsed ? 'Gallery' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {galleryActive
 					? 'bg-surface-sunken text-accent'
@@ -536,7 +537,7 @@
 				{#if !collapsed}<span>Gallery</span>{/if}
 			</a>
 			<a
-				href="/settings/models"
+				href={resolve('/settings/models')}
 				title={collapsed ? 'Custom models' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {customModelsActive
 					? 'bg-surface-sunken text-accent'
@@ -546,7 +547,7 @@
 				{#if !collapsed}<span>Custom models</span>{/if}
 			</a>
 			<a
-				href="/archived"
+				href={resolve('/archived')}
 				title={collapsed ? 'Archived' : ''}
 				class="flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition active:bg-surface-sunken {archivedActive
 					? 'bg-surface-sunken text-accent'
@@ -606,7 +607,7 @@
 							>
 								<a
 									draggable="false"
-									href="/?model={encodeURIComponent(fav.value)}"
+									href={resolve(`/?model=${encodeURIComponent(fav.value)}`)}
 									title={fav.label}
 									class="flex cursor-grab items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-sm transition hover:bg-surface-sunken/70 active:cursor-grabbing active:bg-surface-sunken {collapsed
 										? 'sm:justify-center sm:px-0'

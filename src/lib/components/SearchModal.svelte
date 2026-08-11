@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Search as SearchIcon } from '@lucide/svelte';
 	import { searchModal } from '$lib/search-modal.svelte';
 
@@ -118,8 +119,8 @@
 		searchModal.hide();
 		const href =
 			r.kind === 'message' && r.messageId
-				? `/chat/${r.conversationId}#msg-${r.messageId}`
-				: `/chat/${r.conversationId}`;
+				? resolve(`/chat/${r.conversationId}#msg-${r.messageId}`)
+				: resolve(`/chat/${r.conversationId}`);
 		void goto(href);
 	}
 

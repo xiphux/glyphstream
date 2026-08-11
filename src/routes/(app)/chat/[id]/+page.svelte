@@ -58,6 +58,7 @@
 	import CompactionSummaryStreaming from '$lib/components/chat/CompactionSummaryStreaming.svelte';
 	import ContextBudgetBar from '$lib/components/chat/ContextBudgetBar.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { resolve } from '$app/paths';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { hasCopyableText, partsToText } from '$lib/message-parts';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
@@ -1509,7 +1510,7 @@
 			// opens an ordinary new chat, which beats an onclick that throws and
 			// leaves the user on a button that appears to do nothing.
 		}
-		void goto('/');
+		void goto(resolve('/'));
 	}
 
 	/**

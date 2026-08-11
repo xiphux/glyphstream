@@ -41,6 +41,7 @@
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
 	import { loadDraft, clearDraft, createDraftWriter } from '$lib/composer-draft';
 	import { privateView } from '$lib/private-chat.svelte';
+	import { resolve } from '$app/paths';
 
 	let { data }: { data: PageData } = $props();
 
@@ -584,7 +585,7 @@
 			// would otherwise only clear it on the next debounced commit).
 			draftWriter.cancel();
 			clearDraft(null);
-			await goto(`/chat/${conversation.id}`, { invalidateAll: true });
+			await goto(resolve(`/chat/${conversation.id}`), { invalidateAll: true });
 		} catch (e) {
 			errorMsg = e instanceof Error ? e.message : String(e);
 		} finally {

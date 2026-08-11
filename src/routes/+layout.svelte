@@ -9,6 +9,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
+	import { resolve } from '$app/paths';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -173,11 +174,11 @@
 					toast.info(conversationTitle, {
 						// Fan-out's "N ready" count, when present.
 						...(summary ? { description: summary } : {}),
-						action: { label: 'Open', handler: () => goto(`/chat/${conversationId}`) },
+						action: { label: 'Open', handler: () => goto(resolve(`/chat/${conversationId}`)) },
 						duration: 6000,
 					});
 				} else if (data.kind === 'navigate_to_conversation') {
-					void goto(`/chat/${data.conversationId}`);
+					void goto(resolve(`/chat/${data.conversationId}`));
 				}
 			});
 		}

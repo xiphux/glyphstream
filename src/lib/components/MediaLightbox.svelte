@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		ChevronLeft,
@@ -397,7 +398,7 @@
 			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
-		await goto('/');
+		await goto(resolve('/'));
 	}
 
 	async function useAsStartingImage(m: MediaListItem) {
@@ -411,7 +412,7 @@
 			sourceModelId: sourceModelIdFor(m),
 		});
 		onClose();
-		await goto('/');
+		await goto(resolve('/'));
 	}
 
 	// Whether to route saving through the native share sheet. iOS Safari
@@ -819,7 +820,7 @@
 					<p class="text-center">
 						<span class="opacity-60">In conversation: </span>
 						<a
-							href="/chat/{c.id}"
+							href={resolve(`/chat/${c.id}`)}
 							class="inline-block max-w-full truncate align-bottom text-media-fg-secondary underline decoration-media-border underline-offset-2 hover:decoration-media-fg-muted"
 						>
 							{c.title ?? 'Untitled'}
@@ -836,7 +837,7 @@
 						{#each conversationsUsingThis as c (c.id)}
 							<li>
 								<a
-									href="/chat/{c.id}"
+									href={resolve(`/chat/${c.id}`)}
 									class="block truncate rounded px-2 py-1 text-center text-media-fg-secondary hover:bg-media-surface"
 								>
 									{c.title ?? 'Untitled'}

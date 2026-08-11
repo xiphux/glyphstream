@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidate } from '$app/navigation';
 	import { Switch } from 'bits-ui';
@@ -159,7 +160,7 @@
 	{#snippet description()}
 		MCP servers configured in <code class="font-mono">config.toml</code> and the tools they
 		advertise. Per-tool approval lives at
-		<a href="/settings/permissions" class="underline hover:text-fg">Permissions</a>.
+		<a href={resolve('/settings/permissions')} class="underline hover:text-fg">Permissions</a>.
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-3">

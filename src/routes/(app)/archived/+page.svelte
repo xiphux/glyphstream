@@ -6,6 +6,7 @@
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { setArchived, deleteConversation } from '$lib/conversation-actions';
+	import { resolve } from '$app/paths';
 
 	let { data } = $props<{ data: { archivedConversations: ConversationSummary[] } }>();
 
@@ -60,7 +61,7 @@
 	}
 
 	function openConversation(id: string) {
-		void goto(`/chat/${id}`);
+		void goto(resolve(`/chat/${id}`));
 	}
 </script>
 

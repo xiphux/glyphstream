@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
+	import { resolve } from '$app/paths';
 	import {
 		Brain,
 		KeyRound,
@@ -36,49 +37,49 @@
 		class="z-50 min-w-[180px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 	>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/preferences')}
+			onSelect={() => goto(resolve('/settings/preferences'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Settings size={14} strokeWidth={2.25} />
 			<span>Preferences</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/memories')}
+			onSelect={() => goto(resolve('/settings/memories'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Brain size={14} strokeWidth={2.25} />
 			<span>Memories</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/skills')}
+			onSelect={() => goto(resolve('/settings/skills'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Sparkles size={14} strokeWidth={2.25} />
 			<span>Skills</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/snippets')}
+			onSelect={() => goto(resolve('/settings/snippets'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<TextQuote size={14} strokeWidth={2.25} />
 			<span>Prompt snippets</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/mcp')}
+			onSelect={() => goto(resolve('/settings/mcp'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<Plug size={14} strokeWidth={2.25} />
 			<span>MCP servers</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/permissions')}
+			onSelect={() => goto(resolve('/settings/permissions'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<ShieldCheck size={14} strokeWidth={2.25} />
 			<span>Permissions</span>
 		</DropdownMenu.Item>
 		<DropdownMenu.Item
-			onSelect={() => goto('/settings/security')}
+			onSelect={() => goto(resolve('/settings/security'))}
 			class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 		>
 			<KeyRound size={14} strokeWidth={2.25} />
@@ -86,7 +87,7 @@
 		</DropdownMenu.Item>
 		{#if isAdmin}
 			<DropdownMenu.Item
-				onSelect={() => goto('/settings/admin')}
+				onSelect={() => goto(resolve('/settings/admin'))}
 				class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
 			>
 				<Users size={14} strokeWidth={2.25} />
