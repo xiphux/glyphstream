@@ -477,17 +477,15 @@
 	// Every section header stays mounted (only tiles are windowed), so the rail's
 	// header-measurement logic works unchanged.
 	const sectionHeaders = new Map<string, HTMLElement>();
-	function registerHeader(node: HTMLElement, key: string) {
-		sectionHeaders.set(key, node);
-		return {
-			update(newKey: string) {
-				sectionHeaders.delete(key);
-				key = newKey;
-				sectionHeaders.set(key, node);
-			},
-			destroy() {
-				sectionHeaders.delete(key);
-			},
+	// An attachment (Svelte's modern replacement for `use:`). The action this
+	// replaced needed an explicit `update`/`destroy` pair to re-key the map;
+	// here a changed `key` just re-runs the attachment, and the returned
+	// teardown drops the old entry first — so the same re-keying falls out of
+	// the normal lifecycle.
+	function registerHeader(key: string) {
+		return (node: HTMLElement) => {
+			sectionHeaders.set(key, node);
+			return () => sectionHeaders.delete(key);
 		};
 	}
 
@@ -1192,7 +1190,7 @@
 				     scroll container's `pt-4` so it pins flush. -->
 				{#snippet sectionHeader(label: string, key: string)}
 					<h2
-						use:registerHeader={key}
+						{@attach registerHeader(key)}
 						data-section-header
 						class="sticky -top-4 z-10 -mx-4 mb-3 bg-surface px-4 py-2 text-sm font-semibold text-fg-secondary"
 					>

@@ -125,7 +125,11 @@
 		}
 	}
 
-	/** Set the non-standard `webkitdirectory` attribute (folder picker). */
+	/**
+	 * Set the non-standard `webkitdirectory` attribute (folder picker).
+	 * An attachment rather than an action — Svelte's modern replacement for
+	 * `use:`, and it composes with spread props.
+	 */
 	function directoryPicker(node: HTMLInputElement) {
 		node.setAttribute('webkitdirectory', '');
 		node.setAttribute('directory', '');
@@ -187,7 +191,7 @@
 					type="file"
 					multiple
 					class="hidden"
-					use:directoryPicker
+					{@attach directoryPicker}
 					onchange={(e) => uploadFiles(e.currentTarget.files)}
 				/>
 			</div>
