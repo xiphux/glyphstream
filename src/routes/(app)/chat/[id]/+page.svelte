@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { browser } from '$app/environment';
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -892,8 +893,12 @@
 	// typed message stays in the box (and its draft) instead of being cleared
 	// into a "Load failed". navigator.onLine === false is reliable; a true is
 	// only a hint, so we never over-block — a stale-true just falls through to
-	// the existing error handling. Seeded + kept current in the $effect below.
-	let isOffline = $state(false);
+	// the existing error handling.
+	//
+	// Writable $derived: no reactive dependencies, so it seeds once per instance
+	// (false during SSR, where `navigator.onLine` doesn't exist) and then holds
+	// whatever the <svelte:window> online/offline handlers assign.
+	let isOffline = $derived(browser && !navigator.onLine);
 
 	// Multi-model fan-out controller (state + orchestration extracted to
 	// $lib/fanout-controller for testability). The page owns the composer/picker
@@ -925,11 +930,7 @@
 	// image/video generation, where the server keeps generating even
 	// after the client's fetch dies) shows up immediately rather than
 	// only after the user navigates away and back to force a refetch.
-	// Bound via <svelte:window>/<svelte:document> at the top of the template;
-	// this effect only seeds the initial connectivity value on mount.
-	$effect(() => {
-		isOffline = !navigator.onLine;
-	});
+	// Bound via <svelte:window>/<svelte:document> at the top of the template.
 	function onVisibilityChange() {
 		// A fan-out releases `busy` early (so the grid can show), so also
 		// track its branch streams as in-flight work worth recovering.

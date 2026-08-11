@@ -58,10 +58,16 @@
 	//     time/holiday. Switching away and back leaves a still-valid greeting
 	//     untouched, so it doesn't churn — but a night line you return to in
 	//     the morning gets refreshed.
-	let greetingPick = $state({ greeting: 'Hello, {name}', key: '' });
-	$effect(() => {
-		greetingPick = pickGreeting(new Date());
-	});
+	//
+	// A *writable* $derived: it has no reactive dependencies, so it evaluates
+	// once per component instance (the mount roll) and then holds whatever
+	// refreshGreeting() assigns. Unlike an effect it also runs during SSR, which
+	// is why the `browser` guard is here rather than inside a body — the server
+	// must render the neutral fallback, since pickGreeting rolls Math.random()
+	// against the local wall clock.
+	let greetingPick = $derived(
+		browser ? pickGreeting(new Date()) : { greeting: 'Hello, {name}', key: '' },
+	);
 	// Re-pick on resume, but only when the time-of-day bucket actually rolled
 	// over — otherwise every tab switch would reshuffle the greeting. Bound via
 	// <svelte:window>/<svelte:document> at the top of the template.
@@ -283,12 +289,10 @@
 	// the typed prompt stays in the box (and its draft) instead of clearing
 	// into a "Load failed". navigator.onLine === false is reliable; a true is
 	// only a hint, so we never over-block. Seeded + kept current below.
-	// Starts false so SSR renders the non-offline shell; the effect seeds the
-	// real value on mount and <svelte:window> below keeps it current.
-	let isOffline = $state(false);
-	$effect(() => {
-		isOffline = !navigator.onLine;
-	});
+	// Writable $derived: seeds from navigator on the client (false during SSR, so
+	// the server renders the non-offline shell) and then holds whatever the
+	// online/offline handlers on <svelte:window> assign.
+	let isOffline = $derived(browser && !navigator.onLine);
 
 	// Attachments are picked here and travel into the chat-id page via
 	// sessionStorage along with the first-message text — the chat-id page
