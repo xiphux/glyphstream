@@ -104,8 +104,9 @@
 	let browseLoading = $state(data.mode === 'browse');
 
 	// Search results (flat, ranked). Only used in search mode.
+	// `.raw` — replaced wholesale whenever the search payload changes.
 	// svelte-ignore state_referenced_locally
-	let searchItems = $state<MediaListItem[]>(
+	let searchItems = $state.raw<MediaListItem[]>(
 		data.mode === 'search' ? [...(data.searchItems ?? [])] : [],
 	);
 

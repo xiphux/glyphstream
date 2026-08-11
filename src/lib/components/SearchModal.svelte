@@ -32,7 +32,8 @@
 
 	let inputEl = $state<HTMLInputElement | null>(null);
 	let query = $state('');
-	let results = $state<SearchResult[]>([]);
+	// `.raw` — assigned whole from the search response or cleared; never mutated.
+	let results = $state.raw<SearchResult[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let highlightedIdx = $state(0);

@@ -177,7 +177,10 @@ interface UploadResponse {
 }
 
 export class AttachmentStore {
-	items = $state<AttachedItem[]>([]);
+	// `.raw`: per-item updates go through `.map()` with a spread, so an edited
+	// item is a new object and the array is a new array — nothing is mutated in
+	// place, and the deep proxy would only cost a wrapper per attachment.
+	items = $state.raw<AttachedItem[]>([]);
 
 	/**
 	 * Reset the store to empty, revoking any blob URLs.

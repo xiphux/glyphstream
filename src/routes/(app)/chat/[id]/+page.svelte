@@ -99,8 +99,15 @@
 	// below re-syncs on subsequent navigation invalidation. The warning
 	// about capturing the initial value is intentional here — that IS the
 	// behavior we want.
+	//
+	// `.raw`, not plain `$state`: every write to this array is a whole-array
+	// reassign (`setMessages([...])`, `.slice`, the re-seed below) and nothing
+	// anywhere mutates a ChatMessage in place, so the deep proxy buys nothing
+	// and costs a proxy per message and per nested `parts[]` entry. On a long
+	// code-heavy thread that's the difference between proxying the entire
+	// conversation on every turn and not.
 	// svelte-ignore state_referenced_locally
-	let messages = $state<ChatMessage[]>(data.conversation.messages);
+	let messages = $state.raw<ChatMessage[]>(data.conversation.messages);
 	// svelte-ignore state_referenced_locally
 	let title = $state<string | null>(data.conversation.title);
 	// svelte-ignore state_referenced_locally
@@ -691,7 +698,8 @@
 	// only one sits on the active leaf path, so the message list would
 	// surface just one image per generation point. `openImageInLightbox`
 	// doubles as the resolver, fetching each swiped-to row's metadata.
-	let conversationMedia = $state<ConversationMediaRef[]>([]);
+	// `.raw` — replaced wholesale by the fetch below, never mutated in place.
+	let conversationMedia = $state.raw<ConversationMediaRef[]>([]);
 	async function loadConversationMedia() {
 		try {
 			const res = await fetch(`/api/conversations/${data.conversation.id}/media`);

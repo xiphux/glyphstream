@@ -118,7 +118,10 @@ export class ChatTurnController {
 	 *  we splice the canonical persisted ChatMessage into messages. Content is a
 	 *  single ordered list of segments — reasoning, text, and tool_call
 	 *  interleaved in arrival order. */
-	inFlightSegments = $state<InFlightSegment[]>([]);
+	// `.raw`: every mutation goes through the chat-render helpers (appendText,
+	// pushToolCall, ...), which all return a NEW array. Deep-proxying it would
+	// mean re-proxying the whole segment list on every single stream chunk.
+	inFlightSegments = $state.raw<InFlightSegment[]>([]);
 	inFlightOpen = $state(false);
 	inFlightProgress = $state<number | null>(null);
 	inFlightStatus = $state<string | null>(null);
@@ -127,7 +130,8 @@ export class ChatTurnController {
 	inFlightQueued = $state<{ ahead: number } | null>(null);
 	/** Set when the server emits an `mcp_unavailable` event (a conversation-
 	 *  enabled per-user MCP server is down and its tools were skipped). */
-	inFlightMcpUnavailable = $state<McpUnavailableServer[]>([]);
+	// `.raw` — only ever assigned whole (cleared, or set from a stream event).
+	inFlightMcpUnavailable = $state.raw<McpUnavailableServer[]>([]);
 
 	/** The per-turn busy flag: a local generation this client is driving. */
 	busy = $state(false);
