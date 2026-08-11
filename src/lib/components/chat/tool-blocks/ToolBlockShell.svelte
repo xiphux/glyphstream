@@ -13,7 +13,7 @@
 	this.
 -->
 <script lang="ts">
-	import { untrack, type Snippet } from 'svelte';
+	import type { Snippet } from 'svelte';
 	import { ShieldCheck } from '@lucide/svelte';
 	import FileAttachmentChip from '$lib/components/FileAttachmentChip.svelte';
 	import type { ToolResultAttachment } from '$lib/chat-render';
@@ -37,19 +37,14 @@
 		status === 'executing' || status === 'error' || status === 'pending_approval',
 	);
 	// `isOpen` drives both the <details> (two-way via bind:open, so user toggles
-	// are captured) AND the lazy body gate. The effect re-syncs it to
-	// openByDefault when STATUS changes (executing→done auto-collapses, etc.). It
-	// MUST read ONLY openByDefault, never isOpen — reading isOpen here would loop
-	// and clobber user toggles while status is stable.
-	// untrack: intentionally seed with the initial openByDefault (the $effect
-	// below owns ongoing sync); reading it tracked in an initializer would warn.
-	// Not a writable $derived: see the note above — the $effect must depend on
-	// openByDefault alone, and the seed is deliberately untracked.
-	// eslint-disable-next-line svelte/prefer-writable-derived
-	let isOpen = $state(untrack(() => openByDefault));
-	$effect(() => {
-		isOpen = openByDefault;
-	});
+	// are captured) AND the lazy body gate.
+	//
+	// A *writable* $derived does all three jobs at once: it seeds from
+	// openByDefault, re-derives when STATUS changes (executing→done
+	// auto-collapses), and holds a user's toggle in between, since openByDefault
+	// is its only dependency and a re-render that leaves status alone doesn't
+	// invalidate it. ToolBlockShellOpenState.test.ts pins all three.
+	let isOpen = $derived(openByDefault);
 
 	const badgeColorClass = $derived(
 		status === 'executing'
