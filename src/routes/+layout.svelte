@@ -61,23 +61,22 @@
 		if (want) postPresence(want, true);
 	}
 
-	// One-time setup + teardown. Reads no reactive state, so it runs once on
-	// mount and cleans up on destroy (browser-only — effects don't run in SSR).
-	// Defined before the tracking effect so the viewerId exists on first sync.
+	// Bound via <svelte:window>/<svelte:document> at the bottom of the template.
+	function onPresenceVisibility() {
+		syncPresence();
+	}
+	function onPresencePageHide() {
+		if (reportedConv) postPresence(reportedConv, false);
+	}
+
+	// One-time setup + teardown for the parts that aren't plain listeners. Reads
+	// no reactive state, so it runs once on mount and cleans up on destroy
+	// (browser-only — effects don't run in SSR). Defined before the tracking
+	// effect so the viewerId exists on first sync.
 	$effect(() => {
 		presenceViewerId ??= crypto.randomUUID();
-		const onVisibility = () => syncPresence();
-		const onPageHide = () => {
-			if (reportedConv) postPresence(reportedConv, false);
-		};
-		document.addEventListener('visibilitychange', onVisibility);
-		window.addEventListener('pagehide', onPageHide);
 		const heartbeat = setInterval(syncPresence, HEARTBEAT_MS);
-		return () => {
-			clearInterval(heartbeat);
-			document.removeEventListener('visibilitychange', onVisibility);
-			window.removeEventListener('pagehide', onPageHide);
-		};
+		return () => clearInterval(heartbeat);
 	});
 
 	// React to generation start/stop (and thread switches, which null out
@@ -188,6 +187,9 @@
 		updateAvailable = false;
 	}
 </script>
+
+<svelte:window onpagehide={onPresencePageHide} />
+<svelte:document onvisibilitychange={onPresenceVisibility} />
 
 <svelte:head>
 	<link rel="icon" href={favicon} />

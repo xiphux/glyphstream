@@ -324,15 +324,13 @@
 
 	// Pick up any pending gallery-launch intent stashed by MediaLightbox.
 	// Consume-and-clear: the key is removed on first read so a back-
-	// navigation or accidental remount can't re-trigger. SSR-safe
-	// (sessionStorage doesn't exist on the server); the effect won't
-	// pull anything until hydration runs.
+	// navigation or accidental remount can't re-trigger. Effects don't run
+	// during SSR, so this only ever touches sessionStorage after hydration.
 	//
 	// Reads of `data.models` happen inside `untrack` so a model-list
 	// refresh doesn't re-run this effect — the intent is consumed once
 	// at mount and that's it.
 	$effect(() => {
-		if (typeof window === 'undefined') return;
 		const raw = window.sessionStorage.getItem(GALLERY_LAUNCH_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(GALLERY_LAUNCH_KEY);
@@ -371,7 +369,6 @@
 	// (different entry points). Never submits — the prompt lands in the box for
 	// the user to tweak.
 	$effect(() => {
-		if (typeof window === 'undefined') return;
 		const raw = window.sessionStorage.getItem(PROMPT_REUSE_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(PROMPT_REUSE_KEY);
