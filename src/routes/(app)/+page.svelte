@@ -61,21 +61,18 @@
 	let greetingPick = $state({ greeting: 'Hello, {name}', key: '' });
 	$effect(() => {
 		greetingPick = pickGreeting(new Date());
-		const onRefocus = () => {
-			if (greetingContextKey(new Date()) !== greetingPick.key) {
-				greetingPick = pickGreeting(new Date());
-			}
-		};
-		const onVisibility = () => {
-			if (document.visibilityState === 'visible') onRefocus();
-		};
-		document.addEventListener('visibilitychange', onVisibility);
-		window.addEventListener('focus', onRefocus);
-		return () => {
-			document.removeEventListener('visibilitychange', onVisibility);
-			window.removeEventListener('focus', onRefocus);
-		};
 	});
+	// Re-pick on resume, but only when the time-of-day bucket actually rolled
+	// over — otherwise every tab switch would reshuffle the greeting. Bound via
+	// <svelte:window>/<svelte:document> at the top of the template.
+	function refreshGreeting() {
+		if (greetingContextKey(new Date()) !== greetingPick.key) {
+			greetingPick = pickGreeting(new Date());
+		}
+	}
+	function onGreetingVisibility() {
+		if (document.visibilityState === 'visible') refreshGreeting();
+	}
 	const userFirstName = $derived(
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
@@ -286,18 +283,11 @@
 	// the typed prompt stays in the box (and its draft) instead of clearing
 	// into a "Load failed". navigator.onLine === false is reliable; a true is
 	// only a hint, so we never over-block. Seeded + kept current below.
+	// Starts false so SSR renders the non-offline shell; the effect seeds the
+	// real value on mount and <svelte:window> below keeps it current.
 	let isOffline = $state(false);
 	$effect(() => {
-		if (!browser) return;
 		isOffline = !navigator.onLine;
-		const onOffline = () => (isOffline = true);
-		const onOnline = () => (isOffline = false);
-		window.addEventListener('offline', onOffline);
-		window.addEventListener('online', onOnline);
-		return () => {
-			window.removeEventListener('offline', onOffline);
-			window.removeEventListener('online', onOnline);
-		};
 	});
 
 	// Attachments are picked here and travel into the chat-id page via
@@ -598,6 +588,13 @@
 		}
 	}
 </script>
+
+<svelte:window
+	onoffline={() => (isOffline = true)}
+	ononline={() => (isOffline = false)}
+	onfocus={refreshGreeting}
+/>
+<svelte:document onvisibilitychange={onGreetingVisibility} />
 
 <div class="zero-state relative flex h-full flex-col items-center overflow-hidden">
 	<!--

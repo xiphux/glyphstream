@@ -74,35 +74,27 @@
 	// doesn't fire. Targeted `invalidate` re-runs only this layout load — an
 	// in-flight chat page load / stream stays untouched. Skipped while hidden or
 	// offline; the resume event fires again once we're actually foregrounded.
-	onMount(() => {
-		let inFlight = false;
-		const refresh = () => {
-			if (document.visibilityState !== 'visible' || !navigator.onLine) return;
-			// Coalesce the visibilitychange + focus pair a single resume fires.
-			if (inFlight) return;
-			inFlight = true;
-			void invalidate('app:conversations')
-				.catch(() => {})
-				.finally(() => {
-					inFlight = false;
-				});
-		};
-		const onVisibility = () => {
-			if (document.visibilityState === 'visible') refresh();
-		};
-		// Only bfcache restores — a fresh load's pageshow already has current data.
-		const onPageShow = (e: PageTransitionEvent) => {
-			if (e.persisted) refresh();
-		};
-		document.addEventListener('visibilitychange', onVisibility);
-		window.addEventListener('focus', refresh);
-		window.addEventListener('pageshow', onPageShow);
-		return () => {
-			document.removeEventListener('visibilitychange', onVisibility);
-			window.removeEventListener('focus', refresh);
-			window.removeEventListener('pageshow', onPageShow);
-		};
-	});
+	// Bound via <svelte:window>/<svelte:document> at the bottom of the template.
+	// Non-$state: this only coalesces concurrent refreshes, nothing renders it.
+	let resumeInFlight = false;
+	function refreshConversations() {
+		if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+		// Coalesce the visibilitychange + focus pair a single resume fires.
+		if (resumeInFlight) return;
+		resumeInFlight = true;
+		void invalidate('app:conversations')
+			.catch(() => {})
+			.finally(() => {
+				resumeInFlight = false;
+			});
+	}
+	function onResumeVisibility() {
+		if (document.visibilityState === 'visible') refreshConversations();
+	}
+	// Only bfcache restores — a fresh load's pageshow already has current data.
+	function onPageShow(e: PageTransitionEvent) {
+		if (e.persisted) refreshConversations();
+	}
 
 	// Seed the sidebar's generating dots from the server's in-flight registry.
 	// The flag set is in-memory, so a reload / cold PWA launch would otherwise
@@ -922,4 +914,5 @@
 	{/await}
 {/if}
 
-<svelte:window onkeydown={onGlobalKey} />
+<svelte:window onkeydown={onGlobalKey} onfocus={refreshConversations} onpageshow={onPageShow} />
+<svelte:document onvisibilitychange={onResumeVisibility} />

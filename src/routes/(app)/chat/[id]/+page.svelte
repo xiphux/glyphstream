@@ -917,51 +917,44 @@
 		scrollToBottom: () => scrollToBottom(),
 	});
 
-	// Visibility-change + connectivity listeners: tracks interruptions
+	// Visibility-change + connectivity handlers: tracks interruptions
 	// during in-flight sends, and re-invalidates on return so any work
 	// that completed in the background (the most common case for
 	// image/video generation, where the server keeps generating even
 	// after the client's fetch dies) shows up immediately rather than
 	// only after the user navigates away and back to force a refetch.
+	// Bound via <svelte:window>/<svelte:document> at the top of the template;
+	// this effect only seeds the initial connectivity value on mount.
 	$effect(() => {
-		if (typeof document === 'undefined') return;
 		isOffline = !navigator.onLine;
-		function onVisibilityChange() {
-			// A fan-out releases `busy` early (so the grid can show), so also
-			// track its branch streams as in-flight work worth recovering.
-			if (document.visibilityState === 'hidden' && (turn.busy || fanout.streaming)) {
-				turn.markHidden();
-			} else if (document.visibilityState === 'visible' && turn.wasHiddenDuringFetch) {
-				// Reconcile against server state — if a single generation completed
-				// while we were backgrounded, the new message arrives via the load.
-				// A live fan-out's streams are NOT eagerly handed off here: a desktop
-				// tab-switch fires visibilitychange without killing the SSE
-				// connections, and aborting them would needlessly drop a healthy live
-				// grid (losing the QUEUED badge + timer). If the connections actually
-				// died (iOS suspend), the branch fetches error and runBranch hands the
-				// fan-out off to recovery itself.
-				void invalidateAll();
-			}
-		}
-		function onOffline() {
-			isOffline = true;
-			if (turn.busy || fanout.streaming) turn.markOffline();
-		}
-		function onOnline() {
-			isOffline = false;
-			// Same reasoning as the visibility path — don't pre-emptively abort a
-			// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-			if (turn.wasOfflineDuringFetch) void invalidateAll();
-		}
-		document.addEventListener('visibilitychange', onVisibilityChange);
-		window.addEventListener('offline', onOffline);
-		window.addEventListener('online', onOnline);
-		return () => {
-			document.removeEventListener('visibilitychange', onVisibilityChange);
-			window.removeEventListener('offline', onOffline);
-			window.removeEventListener('online', onOnline);
-		};
 	});
+	function onVisibilityChange() {
+		// A fan-out releases `busy` early (so the grid can show), so also
+		// track its branch streams as in-flight work worth recovering.
+		if (document.visibilityState === 'hidden' && (turn.busy || fanout.streaming)) {
+			turn.markHidden();
+		} else if (document.visibilityState === 'visible' && turn.wasHiddenDuringFetch) {
+			// Reconcile against server state — if a single generation completed
+			// while we were backgrounded, the new message arrives via the load.
+			// A live fan-out's streams are NOT eagerly handed off here: a desktop
+			// tab-switch fires visibilitychange without killing the SSE
+			// connections, and aborting them would needlessly drop a healthy live
+			// grid (losing the QUEUED badge + timer). If the connections actually
+			// died (iOS suspend), the branch fetches error and runBranch hands the
+			// fan-out off to recovery itself.
+			void invalidateAll();
+		}
+	}
+	function onOffline() {
+		isOffline = true;
+		if (turn.busy || fanout.streaming) turn.markOffline();
+	}
+	function onOnline() {
+		isOffline = false;
+		// Same reasoning as the visibility path — don't pre-emptively abort a
+		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
+		if (turn.wasOfflineDuringFetch) void invalidateAll();
+	}
 
 	// In-flight assistant render state (segments + open/progress/status/queued/
 	// mcp-unavailable) lives on `turn` — while streaming it shows a transient
@@ -1599,6 +1592,9 @@
 		}
 	}
 </script>
+
+<svelte:window onoffline={onOffline} ononline={onOnline} />
+<svelte:document onvisibilitychange={onVisibilityChange} />
 
 <div class="flex h-full min-w-0">
 	<div class="relative flex h-full min-w-0 flex-1 flex-col">
