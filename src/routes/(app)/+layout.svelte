@@ -179,7 +179,6 @@
 	// changed on another device — and rewrites the cookie to match.
 	// 'glyphstream' is the default and carries no attribute.
 	$effect(() => {
-		if (!browser) return;
 		const theme = data.prefs?.theme ?? 'glyphstream';
 		const root = document.documentElement;
 		if (theme === 'glyphstream') delete root.dataset.theme;
@@ -196,7 +195,6 @@
 	// behave correctly. app.html's inline script does the same resolution
 	// before first paint; this keeps it live afterward.
 	$effect(() => {
-		if (!browser) return;
 		const pref = data.prefs?.colorScheme ?? 'system';
 		document.cookie = `gs-scheme=${pref}; path=/; max-age=31536000; samesite=lax`;
 		const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -218,7 +216,6 @@
 	// private conversation — and clear it on unmount, so navigating to any
 	// non-private view drops the re-tint automatically.
 	$effect(() => {
-		if (!browser) return;
 		const root = document.documentElement;
 		if (privateView.active) root.dataset.private = '';
 		else delete root.dataset.private;
@@ -372,7 +369,7 @@
 	const COLLAPSE_KEY = 'glyphstream:sidebarCollapsed';
 	let collapsed = $state(browser ? localStorage.getItem(COLLAPSE_KEY) === '1' : false);
 	$effect(() => {
-		if (browser) localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+		localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
 	});
 
 	$effect(() => {
