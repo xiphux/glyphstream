@@ -115,7 +115,10 @@
 	// Last-persisted snapshot. Text fields compare against it on blur so a
 	// no-op blur doesn't fire a redundant PATCH.
 	// svelte-ignore state_referenced_locally
-	let saved = $state<UserPreferences>({ ...data.prefs });
+	// Plain `let`, not $state — the last-known-server value, compared against
+	// inside the save handlers to skip no-op PATCHes and to revert on failure.
+	// Nothing renders it, so $state would only deep-proxy the object for nothing.
+	let saved: UserPreferences = { ...data.prefs };
 	let savedFlash = $state(false);
 	let saveError = $state<string | null>(null);
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;

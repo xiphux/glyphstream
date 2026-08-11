@@ -19,7 +19,9 @@
 	} = $props();
 
 	let railEl = $state<HTMLElement | null>(null);
-	let pressing = $state(false);
+	// Plain `let`, not $state — only ever read inside the pointer handlers
+	// below, never from the template or a derivation.
+	let pressing = false;
 	let dragMoved = $state(false);
 	let startY = 0;
 	let bubbleKey = $state<string | null>(null);

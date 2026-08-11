@@ -61,7 +61,8 @@
 	let data = $state<ContextBreakdown | null>(null);
 	let error = $state<string | null>(null);
 	let loading = $state(false);
-	let loadedRevision = $state(-1);
+	// Plain `let`, not $state — a re-fetch guard read only inside the loader.
+	let loadedRevision = -1;
 
 	async function load() {
 		if (loading || loadedRevision === revision) return;
