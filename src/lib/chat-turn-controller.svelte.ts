@@ -118,10 +118,17 @@ export class ChatTurnController {
 	 *  we splice the canonical persisted ChatMessage into messages. Content is a
 	 *  single ordered list of segments — reasoning, text, and tool_call
 	 *  interleaved in arrival order. */
-	// `.raw`: every mutation goes through the chat-render helpers (appendText,
-	// pushToolCall, ...), which all return a NEW array. Deep-proxying it would
-	// mean re-proxying the whole segment list on every single stream chunk.
-	inFlightSegments = $state.raw<InFlightSegment[]>([]);
+	// Deep `$state`, NOT `$state.raw`. The stream hooks below only ever reassign
+	// (appendText, pushToolCall, ... all return a new array), which makes this
+	// look like a `.raw` candidate — but the chat page's rAF markdown pump
+	// deliberately mutates `s.html` / `s.htmlFromText` IN PLACE and relies on the
+	// element proxies to publish that write (see the comment on the rAF effect in
+	// chat/[id]/+page.svelte). Under `.raw` those writes signal nothing, so
+	// `inFlightBlocks` only recomputes on the next SSE event and the streaming
+	// bubble renders a chunk behind — with the newest text invisible, since
+	// `inFlightToBlocks` stops falling back to plain text once `seg.html` is set.
+	// Covered by tests/component/InFlightSegmentsReactivity.test.ts.
+	inFlightSegments = $state<InFlightSegment[]>([]);
 	inFlightOpen = $state(false);
 	inFlightProgress = $state<number | null>(null);
 	inFlightStatus = $state<string | null>(null);
