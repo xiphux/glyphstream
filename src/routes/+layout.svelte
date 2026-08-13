@@ -61,7 +61,7 @@
 		if (want) postPresence(want, true);
 	}
 
-	// Bound via <svelte:window>/<svelte:document> at the bottom of the template.
+	// Bound via <svelte:window>/<svelte:document> at the top of the template.
 	function onPresenceVisibility() {
 		syncPresence();
 	}

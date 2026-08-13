@@ -429,11 +429,20 @@
 	// on a Mac with a trackpad/mouse.
 	//
 	// MediaQuery's `false` fallback is the SSR value, so the server renders the
-	// Download icon and the client upgrades to Share without a hydration
-	// mismatch. Unlike the one-shot matchMedia probe this replaces, it also stays
-	// live: pairing a mouse to a tablet (or unpairing one) re-resolves both flags
-	// instead of leaving them stuck at whatever was true when the lightbox
+	// Download icon. Unlike the one-shot matchMedia probe this replaces, it also
+	// stays live: pairing a mouse to a tablet (or unpairing one) re-resolves both
+	// flags instead of leaving them stuck at whatever was true when the lightbox
 	// mounted.
+	//
+	// CAVEAT: the probe this replaced ran in a mount-deferred $effect specifically
+	// so the client upgraded to Share AFTER hydration. A $derived resolves during
+	// the hydration pass instead, which would be an `{#if}` structure mismatch —
+	// but only if this component's `media`-gated subtree were ever server-rendered.
+	// It isn't: every caller seeds `media`/`lightbox` to null and only fills it
+	// from a click handler or an async fetch, so the gated markup never joins the
+	// hydration walk. If you ever SSR the lightbox already open (a deep link
+	// straight to a media item, say), move `coarsePointer`/`useShareSheet` back
+	// behind a post-mount gate.
 	const coarse = new MediaQuery('pointer: coarse', false);
 	// Touch-primary devices already get swipe + scroll-snap; the on-image
 	// arrow buttons are a desktop (mouse/trackpad) affordance, so we hide

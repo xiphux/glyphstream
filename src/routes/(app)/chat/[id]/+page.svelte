@@ -788,10 +788,16 @@
 		listMounted = true;
 		// Start the lazy live-render chunks: the shiki subset (~72 KB gzip) and
 		// markdown-it (~45 KB gzip). Both are route-lazy and idempotent; results
-		// are ignored — the shiki module flips its own reactive
-		// `liveHighlighterReady` signal once loaded, which the rAF-driven
-		// inFlightSegments effect picks up automatically, and until markdown-it
-		// lands `renderLiveMarkdown` falls back to an escaped <p>.
+		// are ignored — until markdown-it lands `renderLiveMarkdown` returns an
+		// escaped <p> and the next chunk picks up the real render.
+		//
+		// `renderLiveMarkdown` also does a tracked read of the shiki module's
+		// `liveHighlighterReady`, but that only helps its `$derived` callers
+		// (SkillToolBlock). The rAF callback below is NOT a tracking context, so
+		// shiki landing mid-stream does not retroactively re-highlight the
+		// in-flight bubble: a text segment that stopped growing first stays plain
+		// until the next chunk grows it, or until the turn ends and the server's
+		// full-coverage HTML swaps in. Narrow and self-healing, hence left alone.
 		//
 		// Kicked off at idle rather than straight away. These are only needed to
 		// render a *streaming* reply, so opening an existing thread to read it
@@ -1817,7 +1823,8 @@
 				<!--
 				Bottom sentinel for IntersectionObserver. Pinned to the very
 				end of the message list so the observer can tell when the
-				user is scrolled within ~100px of it (see effect above).
+				user is scrolled within ~100px of it (see the observeNearBottom
+				attachment above).
 				1px tall + aria-hidden so it's invisible / inaudible to AT.
 			-->
 				<div {@attach observeNearBottom} aria-hidden="true" class="h-px"></div>

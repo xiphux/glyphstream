@@ -114,10 +114,16 @@
 
 	// Last-persisted snapshot. Text fields compare against it on blur so a
 	// no-op blur doesn't fire a redundant PATCH.
-	// svelte-ignore state_referenced_locally
 	// Plain `let`, not $state — the last-known-server value, compared against
 	// inside the save handlers to skip no-op PATCHes and to revert on failure.
 	// Nothing renders it, so $state would only deep-proxy the object for nothing.
+	//
+	// The svelte-ignore below is STILL LIVE and must stay, despite `saved` no
+	// longer being a rune: `state_referenced_locally` fires on the *read* of
+	// `data.prefs` — `data` is a prop binding, read here at top-level script
+	// depth — not on what it is assigned to. Delete it and `pnpm check` warns.
+	// (Three separate reviewers have mis-read this as vestigial; it isn't.)
+	// svelte-ignore state_referenced_locally
 	let saved: UserPreferences = { ...data.prefs };
 	let savedFlash = $state(false);
 	let saveError = $state<string | null>(null);

@@ -7,9 +7,15 @@
 	mechanics — but the menu items and their lucide icons only get
 	pulled in when this menu actually opens.
 
-	`goto` is passed in (rather than imported) so this component has no
-	dependency on the routing surface; it's a thin presentational shell
-	around DropdownMenu primitives.
+	`goto` is passed in rather than imported from `$app/navigation`, so the
+	layout owns *navigation* and this stays a thin presentational shell around
+	DropdownMenu primitives. Note that is no longer a claim of zero routing
+	dependency: the destinations are resolved here via `$app/paths`, which
+	type-checks them against the generated route table. That's a deliberate
+	trade — a renamed route fails the build instead of 404ing — and it is safe
+	here because nothing under tests/ imports this component. Contrast
+	`conversation-ui-actions.svelte.ts`, which keeps its injected `goto` free of
+	`$app/paths` precisely because a node-env test imports it.
 -->
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
