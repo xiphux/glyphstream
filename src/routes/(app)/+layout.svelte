@@ -183,22 +183,44 @@
 		syncThemeColorMeta();
 	});
 
-	// Color-scheme (light/dark/system). On load/nav, sync the gs-scheme
-	// cookie from the authoritative DB pref (heals a stale cross-device
-	// cookie). The matchMedia listener re-resolves data-scheme from the
-	// COOKIE (which the Preferences switcher updates instantly, without an
-	// invalidate) so both a forced light/dark and OS flips under 'system'
-	// behave correctly. app.html's inline script does the same resolution
-	// before first paint; this keeps it live afterward.
+	// Color-scheme (light/dark/system). Deliberately TWO effects, because the
+	// cookie and the resolution have different triggers:
+	//
+	//   1. Sync the gs-scheme cookie from the authoritative DB pref, which heals
+	//      a stale cross-device cookie. Depends on `data.prefs` ONLY.
+	//   2. Resolve data-scheme from the COOKIE plus the live media query.
+	//
+	// Keeping the write out of the resolver is load-bearing. The Preferences
+	// switcher updates the cookie instantly and does NOT invalidate, so between
+	// the switch and the next layout load the cookie is fresher than
+	// `data.prefs`. If the write shared an effect with the `systemDark.current`
+	// read, an OS scheme flip would re-run the whole body and rewrite the cookie
+	// from the stale pref — silently reverting the choice the user just made and
+	// leaving a year-long cookie that disagrees with the DB, which app.html's
+	// inline script then pre-paints from on the next cold load.
+	//
+	// (Guarding the write with "only if it differs" does NOT fix that: on the
+	// flip the cookie says `light` and the stale pref says `system`, so they do
+	// differ and the clobbering write still happens.)
 	const systemDark = new MediaQuery('prefers-color-scheme: dark', false);
 	$effect(() => {
 		const pref = data.prefs?.colorScheme ?? 'system';
 		document.cookie = `gs-scheme=${pref}; path=/; max-age=31536000; samesite=lax`;
-		// Read unconditionally (not inside the `p !== 'light'` short-circuit below)
-		// so this effect always subscribes to the query — matching the old
+	});
+	$effect(() => {
+		// Track the pref too — NOT to resolve from, but so a genuine load (the
+		// cross-device heal above) re-resolves. Effects run in declaration order,
+		// so the cookie write has already landed when this reads it back. Without
+		// this dep the split would fix the clobber but leave `data-scheme` stale
+		// on a prefs change, since the media query alone wouldn't have fired.
+		void data.prefs?.colorScheme;
+		// Read unconditionally (not inside the `p !== 'light'` short-circuit
+		// below) so this effect always subscribes to the query — matching the old
 		// always-registered `change` listener. Otherwise a forced-light cookie
-		// would unsubscribe, and a later OS flip wouldn't re-read the cookie.
+		// would unsubscribe, and a later OS flip wouldn't re-resolve.
 		const dark = systemDark.current;
+		// Resolve from the COOKIE, not the pref: the Preferences switcher writes
+		// it directly without invalidating, so it can be the fresher of the two.
 		const m = document.cookie.match(/(?:^|;\s*)gs-scheme=([^;]+)/);
 		const p = m ? m[1] : 'system';
 		document.documentElement.dataset.scheme =
