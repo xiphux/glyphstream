@@ -3,7 +3,8 @@
 	delete-branch), copy, edit + reuse-in-new-chat (user msgs), retry
 	(assistant msgs), and a token-usage popover. Sits directly below a message
 	bubble, aligned to the same side (right for user, left for assistant),
-	revealed on hover at sm+.
+	hover-revealed wherever the device can hover (`can-hover:`, any width) and
+	permanently visible where it can't — a touch device never fires the reveal.
 
 	Purely presentational — every action is a callback the page wires to
 	its copy/edit/reuse/retry/select-sibling/delete handlers.
@@ -92,7 +93,7 @@
 </script>
 
 <div
-	class="mt-1 flex items-center gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 {isUser
+	class="mt-1 flex items-center gap-1 opacity-100 transition-opacity can-hover:opacity-0 group-hover:opacity-100 {isUser
 		? 'justify-end'
 		: 'justify-start'}"
 >

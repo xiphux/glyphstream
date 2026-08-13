@@ -752,7 +752,7 @@
 											disabled={convUi.busyId === c.id}
 											title="Conversation options"
 											aria-label="Options for conversation {c.title ?? 'Untitled'}"
-											class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 sm:opacity-0 sm:group-hover:opacity-100 data-[state=open]:opacity-100"
+											class="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary focus-visible:opacity-100 disabled:opacity-50 can-hover:opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
 										>
 											<MoreVertical size={14} strokeWidth={2.25} />
 										</DropdownMenu.Trigger>

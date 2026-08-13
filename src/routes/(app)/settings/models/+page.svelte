@@ -256,7 +256,7 @@
 									disabled={deletingId === m.id}
 									title="Delete preset"
 									aria-label="Delete preset {m.name}"
-									class="rounded p-1 text-xs text-fg-muted opacity-0 transition group-hover:opacity-100 hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+									class="rounded p-1 text-xs text-fg-muted transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-surface-sunken hover:text-danger focus-visible:opacity-100 disabled:opacity-50"
 								>
 									{deletingId === m.id ? '…' : '×'}
 								</button>

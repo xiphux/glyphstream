@@ -115,7 +115,7 @@
 							onclick={() => requestForget(m)}
 							title="Forget this memory"
 							aria-label="Forget memory"
-							class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted opacity-0 transition hover:bg-surface-sunken hover:text-danger focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100"
+							class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition can-hover:opacity-0 hover:bg-surface-sunken hover:text-danger focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100"
 						>
 							<Trash2 size={14} strokeWidth={2.25} />
 						</button>
@@ -161,7 +161,7 @@
 							onclick={() => restore(m)}
 							title="Restore this memory"
 							aria-label="Restore memory"
-							class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted opacity-0 transition hover:bg-surface-sunken hover:text-fg focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100"
+							class="absolute right-1 top-1.5 flex h-7 w-7 items-center justify-center rounded border-0 bg-transparent text-fg-muted transition can-hover:opacity-0 hover:bg-surface-sunken hover:text-fg focus-visible:opacity-100 disabled:opacity-50 group-hover:opacity-100"
 						>
 							<RotateCcw size={14} strokeWidth={2.25} />
 						</button>

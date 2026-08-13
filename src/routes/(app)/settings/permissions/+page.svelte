@@ -77,7 +77,7 @@
 									onclick={() => void revoke(tool)}
 									title="Revoke 'always allow'"
 									aria-label="Revoke {tool}"
-									class="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface-panel px-2 py-1 text-xs text-fg-muted opacity-0 transition hover:bg-surface-raised hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 group-hover:opacity-100"
+									class="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-surface-panel px-2 py-1 text-xs text-fg-muted transition can-hover:opacity-0 hover:bg-surface-raised hover:text-fg focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 group-hover:opacity-100"
 								>
 									<Undo2 size={12} strokeWidth={2.25} />
 									Revoke

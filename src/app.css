@@ -11,6 +11,21 @@
 @custom-variant dark (&:where([data-scheme='dark'], [data-scheme='dark'] *));
 
 /*
+ * Hover-reveal controls (a row's delete button, an overflow menu) must hide
+ * behind THIS, never a bare `opacity-0` or a `sm:` breakpoint. Tailwind v4
+ * wraps every `hover:` / `group-hover:` variant in `@media (hover: hover)`,
+ * so on a touch device the reveal rule does not merely lose a race — it is
+ * never emitted. A bare `opacity-0` is therefore permanent: the control keeps
+ * its hit area and stays invisible forever, which is exactly how the memories
+ * and archive pages became unusable in the iOS PWA. A `sm:` breakpoint fails
+ * the same way on any tablet, which is `sm:`-and-up AND `hover: none`.
+ * Gate on the capability instead: visible by default, hidden only where a
+ * hover can actually bring it back. `group-hover:opacity-100` then wins on
+ * specificity (0,2,0 vs 0,1,0), so source order doesn't matter.
+ */
+@custom-variant can-hover (@media (hover: hover));
+
+/*
  * Semantic design tokens. Tailwind v4 `@theme` registers these and
  * generates utilities (`bg-surface`, `text-fg-muted`, `border-border`, …)
  * that resolve to the CSS vars below. Runtime theme/scheme swapping is done

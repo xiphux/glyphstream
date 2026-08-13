@@ -917,8 +917,11 @@
 									stays visible on hover or when already favorited;
 									otherwise it fades to keep unfilled rows quiet —
 									the picker is busy enough without a column of grey
-									stars in every row. Hidden in compare mode to keep
-									the add-to-comparison target unambiguous.
+									stars in every row. That quiet is hover-only: touch
+									gets the grey column, because `can-hover:` is what
+									keeps the star reachable at all there. Hidden in
+									compare mode to keep the add-to-comparison target
+									unambiguous.
 								-->
 								<button
 									type="button"
@@ -930,7 +933,7 @@
 									title={isFavorited ? 'Unfavorite' : 'Favorite'}
 									class="shrink-0 rounded p-1 text-fg-subtle transition hover:bg-surface-sunken hover:text-favorite focus:opacity-100 focus-visible:opacity-100 {isFavorited
 										? 'text-favorite opacity-100'
-										: 'opacity-0 group-hover/row:opacity-100'}"
+										: 'can-hover:opacity-0 group-hover/row:opacity-100'}"
 								>
 									<Star size={14} strokeWidth={2.25} fill={isFavorited ? 'currentColor' : 'none'} />
 								</button>

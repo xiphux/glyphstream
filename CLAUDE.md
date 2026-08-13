@@ -321,14 +321,23 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   the fix is the better guard. The rule is already off for `tests/`, where
   every instance of this lived.
 
-- **Tailwind v4, not v3.** Two of v4's syntax changes silently produce
-  no CSS instead of erroring, and we've stepped on both:
+- **Tailwind v4, not v3.** Three of v4's changes silently produce no CSS
+  instead of erroring, and we've stepped on all three:
   - Important modifier moved from prefix to **suffix**: `mt-0!` is
     correct, `!mt-0` (v3) silently emits nothing.
   - `space-y-*` now sets `margin-block-end` on _every_ child (v3 set
     `margin-top` on subsequent siblings via `* + *`). Closing a gap
     between two specific siblings means overriding `mb-0!` on the
     upper child, not `mt-0!` on the lower one.
+  - **`hover:` and `group-hover:` are wrapped in `@media (hover: hover)`.**
+    So a control hidden by a bare `opacity-0` and revealed by
+    `group-hover:opacity-100` is not "hard to reach" on touch — the reveal
+    rule is never emitted, leaving it permanently invisible while it keeps
+    its hit area. Hide it with the `can-hover:` variant (`app.css`) instead:
+    visible by default, hidden only where a hover can restore it. A `sm:`
+    breakpoint is not a fix — a tablet is `sm:`-and-up _and_ `hover: none`,
+    which is how two already-"mobile-fixed" sites stayed broken on iPad.
+    `tests/unit/hover-reveal-touch-reachable.test.ts` holds the line.
     When something visual doesn't apply, check the generated CSS in
     the inline `<style data-sveltekit>` to confirm Tailwind picked the
     class up — silent no-op is the failure mode here.

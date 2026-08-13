@@ -1027,7 +1027,7 @@
 								type="button"
 								onclick={() => deleteOne(m.id)}
 								disabled={deletingId === m.id}
-								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
+								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-danger-emphasis focus-visible:opacity-100 disabled:opacity-50"
 								aria-label="Delete this media"
 								title="Delete"
 							>
@@ -1105,7 +1105,7 @@
 								type="button"
 								onclick={() => deleteOne(u.leaderId)}
 								disabled={deletingId === u.leaderId}
-								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg opacity-0 transition group-hover:opacity-100 hover:bg-danger-emphasis disabled:opacity-50"
+								class="absolute left-1.5 top-1.5 rounded bg-danger-emphasis/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-danger-fg transition can-hover:opacity-0 group-hover:opacity-100 hover:bg-danger-emphasis focus-visible:opacity-100 disabled:opacity-50"
 								aria-label="Delete this media"
 								title="Delete"
 							>

@@ -88,7 +88,7 @@
 			onclick={onRemove}
 			aria-label="Remove attachment"
 			title="Remove"
-			class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-fg-muted opacity-0 transition group-hover/chip:opacity-100 hover:bg-surface focus-visible:opacity-100"
+			class="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-fg-muted transition can-hover:opacity-0 group-hover/chip:opacity-100 hover:bg-surface focus-visible:opacity-100"
 		>
 			<X size={12} strokeWidth={2.5} />
 		</button>
