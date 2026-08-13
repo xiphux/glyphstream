@@ -257,6 +257,21 @@ pnpm analyze      # production build with rollup-plugin-visualizer
   `drizzle/*_media_prompt_search` for the clean pattern. (The older
   `*_message_search_index` does carry a `snapshot.json` — added by the
   `drizzle-kit up` flat→per-dir conversion — so it's not an example of this.)
+- **`$state.raw` only if nothing mutates an element in place.** `.raw` skips
+  the per-element proxy, so `arr[i].foo = x` signals nothing and dependents
+  recompute only on the next whole-array reassign — silently, one event behind.
+  Six collections in the tree qualify (they're only ever reassigned).
+  `ChatTurnController.inFlightSegments` looks like it qualifies and does not:
+  the chat page's rAF markdown pump writes `s.html` in place on purpose, and
+  reassigning there would re-trigger its own effect at 60Hz. Before converting
+  a field, grep its _consumers_ (not just its declaring module) for
+  element-level writes — the pump lives in the page, not the controller, which
+  is how this got shipped once. Nothing catches it: not `pnpm lint`, not
+  `pnpm check`, and not a node-env test, since Svelte resolves to the SSR
+  runtime there and effects never run. `tests/component/InFlightSegmentsReactivity.test.ts`
+  is the regression guard, and shows the shape such a test needs (happy-dom +
+  a real `$effect` subscriber; reading a `$derived` outside an effect owner
+  recomputes eagerly and hides the bug).
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.
