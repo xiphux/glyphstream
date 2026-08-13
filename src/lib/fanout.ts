@@ -170,6 +170,21 @@ export interface FanoutColumn {
 	persisted: ChatMessage | null;
 	/** Error text when status === 'error'. */
 	error: string | null;
+	/** Id of the durable error sibling a FAILED branch was recorded as, from the
+	 *  `error` frame's `messageId` (or the recovered row's own id). A failure is
+	 *  a real server-side row, so discarding the column has to delete it — with
+	 *  only a local removal the "discarded" failure reappears the moment the grid
+	 *  rebuilds from server truth (reload / iOS suspend).
+	 *
+	 *  Null when the branch hasn't failed and when it failed before anything was
+	 *  persisted — but ALSO, on the live path, for a chat branch: the chat relay
+	 *  persists an error sibling too (`persistTurnErrorSibling`), it just doesn't
+	 *  report the row's id on the frame, because chat fan-out is pick-one and no
+	 *  column offers discard. So null does NOT imply "nothing to delete", and
+	 *  wiring discard for chat means plumbing `messageId` through `relay.ts`
+	 *  first. Recovery is unaffected either way — it reads the id straight off
+	 *  the persisted row, for both modalities. */
+	errorMessageId: string | null;
 }
 
 /** True once every column has reached a terminal state. */

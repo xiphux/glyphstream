@@ -659,13 +659,19 @@ describe('startVideoRelay — backpressure + failure', () => {
 				}),
 			),
 		);
-		// The live error frame still goes out (unchanged client UX)...
-		const err = events.find((e) => e.type === 'error') as { message: string } | undefined;
-		expect(err?.message).toBe('render crashed');
 		// ...and a durable error sibling now records the failure for recovery.
 		const siblings = getSiblingAssistants(conv.id, userMessage.id);
 		expect(siblings).toHaveLength(1);
-		expect(siblings[0].parts).toEqual([{ type: 'error', message: 'render crashed' }]);
+		expect(siblings[0].parts).toEqual([
+			{ type: 'error', message: 'render crashed', sourceMediaId: null },
+		]);
+		// The live error frame still goes out — emitted AFTER the insert, carrying
+		// the sibling's id so the fan-out grid's discard can delete the row rather
+		// than only hiding the column.
+		const err = events.find((e) => e.type === 'error') as
+			{ message: string; messageId?: string } | undefined;
+		expect(err?.message).toBe('render crashed');
+		expect(err?.messageId).toBe(siblings[0].id);
 		expect(siblings[0].modelUsed).toBe('bridge::sora');
 		// The failed branch produced no media, so nothing is linked.
 		expect(mocks.linkMessageMedia).not.toHaveBeenCalled();

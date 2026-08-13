@@ -99,6 +99,7 @@ describe('FanoutController — server recovery', () => {
 			// Both branches have acquired their slot (server always reports start
 			// times) → "streaming" placeholders with timers, labelled by model.
 			pendingStartedAt: [2000, 3000],
+			pendingSourceMediaIds: [null, null],
 		};
 		fc.syncFromServer(server);
 
@@ -129,6 +130,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 2,
 			pendingModelIds: ['bridge::sdxl', 'bridge::claude'],
 			pendingStartedAt: [1000, null], // first acquired its slot, second waiting
+			pendingSourceMediaIds: [null, null],
 		});
 		const [generating, queued] = fc.columns;
 		expect(generating).toMatchObject({ status: 'streaming', startedAt: 1000, label: 'SDXL' });
@@ -146,6 +148,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 3,
 			pendingModelIds: ['', '', ''],
 			pendingStartedAt: [1000, 1000, 1000],
+			pendingSourceMediaIds: [null, null, null],
 		});
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.hasRecoveredPending).toBe(false); // gated on !live
@@ -161,6 +164,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.columns).toHaveLength(1);
 		// Marker cleared server-side (pick/dismiss elsewhere) → grid clears.
@@ -171,6 +175,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.userMessageId).toBeNull();
@@ -191,6 +196,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.columns).toHaveLength(2);
 		expect(fc.columns[0]).toMatchObject({
@@ -208,6 +214,34 @@ describe('FanoutController — server recovery', () => {
 		expect(fc.hasRecoveredPending).toBe(false);
 	});
 
+	it('keeps every split branch its input thumbnail — failed, generating, or done', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		// A split fan-out (one prompt, N input images): each column's thumbnail is
+		// the only thing saying which input it belongs to, so a reload must not
+		// blank it. Three provenance sources, one per column state.
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			kind: 'image',
+			siblings: [
+				// done → off the output media row
+				imageSibling('ok', 'bridge::sdxl', 'in-a'),
+				// failed → off the error part (there is no output media row)
+				mediaSibling('bad', 'bridge::sdxl', 'in-b', [
+					{ type: 'error', message: 'upstream said no' },
+				]),
+			],
+			pending: 1,
+			pendingModelIds: ['bridge::sdxl'],
+			pendingStartedAt: [1000],
+			// still generating → off the in-flight registry
+			pendingSourceMediaIds: ['in-c'],
+		});
+		expect(fc.columns.map((c) => c.inputMediaId)).toEqual(['in-a', 'in-b', 'in-c']);
+		// The failed column also carries the handle discard needs.
+		expect(fc.columns[1]).toMatchObject({ status: 'error', errorMessageId: 'bad' });
+	});
+
 	it('derives a recovered column kind from the persisted media when the model id no longer resolves', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
@@ -221,6 +255,7 @@ describe('FanoutController — server recovery', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.columns[0]).toMatchObject({ status: 'done', modelKind: 'video' });
 		expect(fc.isMedia).toBe(true);
@@ -240,6 +275,7 @@ describe('FanoutController — derived grid state', () => {
 			pending: 1,
 			pendingModelIds: [''],
 			pendingStartedAt: [1000],
+			pendingSourceMediaIds: [null],
 		});
 		expect(fc.comparing).toBe(true);
 		expect(fc.streaming).toBe(true); // the pending placeholder
@@ -253,6 +289,7 @@ describe('FanoutController — derived grid state', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.streaming).toBe(false);
 		expect(fc.columnsSettled).toBe(true);
@@ -270,6 +307,7 @@ describe('FanoutController — teardown + handoff', () => {
 			pending: 2,
 			pendingModelIds: ['', ''],
 			pendingStartedAt: [1000, 1000],
+			pendingSourceMediaIds: [null, null],
 		});
 		fc.live = true;
 		fc.teardown();
@@ -326,6 +364,7 @@ describe('FanoutController — actions', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		await fc.discard(fc.columns[0]);
 		expect(fetchMock).toHaveBeenCalledWith(
@@ -337,6 +376,43 @@ describe('FanoutController — actions', () => {
 		await fc.discard(fc.columns[0]);
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.userMessageId).toBeNull();
+		vi.unstubAllGlobals();
+	});
+
+	it('discarding a FAILED live column deletes the persisted error sibling', async () => {
+		// The regression: a failure is a real server-side row, but the live column
+		// only ever held red text — so discard dropped the column locally and the
+		// "deleted" failures all came back the next time the grid rebuilt from
+		// server truth (reload / iOS suspend). The relay hands the row id back on
+		// the error frame; discard must use it.
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		const done = imageSibling('a1', 'bridge::sdxl', null);
+		let branch = 0;
+		const fetchMock = vi.fn(async (url: string) => {
+			if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+			if (url.endsWith('/branch')) return { ok: true } as unknown as Response;
+			branch += 1;
+			return branch === 1
+				? sseResponse([{ type: 'error', message: 'upstream said no', messageId: 'err-1' }])
+				: sseResponse([{ type: 'done', assistantMessage: done }]);
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const models: FanoutModel[] = [
+			{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+			{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+		];
+		await fc.send('cartoon', [], expandFanoutBranches(models, null), models);
+		expect(fc.columns[0]).toMatchObject({ status: 'error', errorMessageId: 'err-1' });
+
+		await fc.discard(fc.columns[0]);
+		expect(fetchMock).toHaveBeenCalledWith(
+			'/api/conversations/c1/messages/err-1/branch',
+			expect.objectContaining({ method: 'DELETE' }),
+		);
+		expect(fc.columns).toHaveLength(1);
 		vi.unstubAllGlobals();
 	});
 
@@ -392,6 +468,7 @@ describe('FanoutController — actions', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		expect(fc.live).toBe(false);
 		await fc.regenerate(fc.columns[0]);
@@ -423,6 +500,7 @@ describe('FanoutController — actions', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 		await fc.regenerate(fc.columns[0]);
 		// Flagged as a re-roll (keeps its own notify), and NOT a destructive replace.
@@ -467,6 +545,7 @@ describe('FanoutController — actions', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 
 		const reroll = fc.regenerate(fc.columns[0]);

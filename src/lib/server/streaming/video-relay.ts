@@ -52,9 +52,6 @@ export interface VideoRelayParams extends MediaRelayParams {
 	 * multipart field on POST /v1/videos.
 	 */
 	inputReference?: { bytes: Buffer; contentType: string };
-	/** Media id of the I2V input image (the `inputReference`'s source row), so
-	 *  the persisted video records its provenance for the split grid. */
-	sourceMediaId?: string | null;
 	/**
 	 * Fires with the bridge-side job id as soon as POST /v1/videos returns,
 	 * so the route can stash it on the in-flight entry for cancellation
@@ -132,8 +129,9 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 			}
 			const msg = errorMessage(e);
 			console.error(`[video-relay] videoCreate failed:`, msg);
+			// No `error` frame here — the scaffold emits it after persisting the
+			// durable error sibling, so it can carry that row's id (see MediaFailure).
 			const message = `Could not start video job: ${msg}`;
-			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };
 		}
 
@@ -160,7 +158,6 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				// Best-effort cancel of the bridge job, mirroring the abort path above
 				await videoCancel(params.endpoint, job.id);
 				const message = `Video job ${job.id} did not complete within ${MAX_WAIT_MS / 60_000} minutes`;
-				write({ type: 'error', message } satisfies StreamErrorEvent);
 				return { error: message };
 			}
 			await sleep(pollInterval);
@@ -179,7 +176,6 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				if (isPermanentRequestError(e)) {
 					await videoCancel(params.endpoint, job.id).catch(() => {});
 					const message = `Video job ${job.id} failed: ${errorMessage(e)}`;
-					write({ type: 'error', message } satisfies StreamErrorEvent);
 					return { error: message };
 				}
 				// Transient upstream blip — keep polling unless we've burned the budget.
@@ -191,7 +187,6 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 
 		if (job.status === 'failed') {
 			const message = job.error?.message ?? 'Video generation failed';
-			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };
 		}
 
@@ -210,7 +205,6 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				return null;
 			}
 			const message = `Could not fetch video content: ${errorMessage(e)}`;
-			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };
 		}
 
@@ -234,7 +228,6 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 				return null;
 			}
 			const message = `Could not persist video: ${errorMessage(e)}`;
-			write({ type: 'error', message } satisfies StreamErrorEvent);
 			return { error: message };
 		}
 

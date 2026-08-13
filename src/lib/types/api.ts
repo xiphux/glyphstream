@@ -444,6 +444,15 @@ export type MessagePart =
 			// — cancellation bails quietly.
 			type: 'error';
 			message: string;
+			/**
+			 * Split-attachments provenance: the input image this failed branch was
+			 * editing / animating, or null/absent for text-to-media. The successful
+			 * path recovers this from the OUTPUT media row's `source_media_id`, which
+			 * a failure never produces — so without it a reloaded split grid loses
+			 * exactly the thumbnails that tell the user which input each failed
+			 * column belongs to. Read back by `getSiblingAssistants`.
+			 */
+			sourceMediaId?: string | null;
 	  }
 	| {
 			type: 'tool_call';
@@ -547,10 +556,12 @@ export interface ChatMessage {
 	compactionResumeFromMessageId?: string | null;
 	/**
 	 * Input image this message's generated media was edited / animated from
-	 * (i2i edit, i2v) — the provenance recorded on the output media row.
-	 * Populated by `getSiblingAssistants` for the split-attachments grid, so a
-	 * reloaded fan-out keeps each result's input thumbnail + can regenerate it.
-	 * Undefined elsewhere.
+	 * (i2i edit, i2v). Populated by `getSiblingAssistants` for the
+	 * split-attachments grid, so a reloaded fan-out keeps each result's input
+	 * thumbnail + can regenerate it. Two sources, since a branch that failed
+	 * never produced media to hang the provenance off: a result reads it from
+	 * its OUTPUT media row, a failure from its `error` part's own
+	 * `sourceMediaId`. Undefined elsewhere.
 	 */
 	sourceMediaId?: string | null;
 }
@@ -989,6 +1000,11 @@ export interface FanoutRecoveryState {
 	 *  or null while still QUEUED behind the gate — drives the recovered grid's
 	 *  QUEUED badge vs. elapsed timer. */
 	pendingStartedAt: Array<number | null>;
+	/** Split-attachments input image of each pending branch (aligned with
+	 *  `pendingModelIds`), or null when it isn't editing/animating one — so a grid
+	 *  recovered mid-generation keeps each placeholder's input thumbnail and the
+	 *  user can still tell which column belongs to which source image. */
+	pendingSourceMediaIds: Array<string | null>;
 }
 
 /** POST /api/conversations/:id/messages response (sync mode). */
@@ -1061,6 +1077,17 @@ export interface StreamTitleEvent {
 export interface StreamErrorEvent {
 	type: 'error';
 	message: string;
+	/**
+	 * Id of the durable error sibling this failure was recorded as (the `error`
+	 * MessagePart row), when one was persisted. Set by the MEDIA relay, which
+	 * emits this frame *after* the insert precisely so the id can ride along —
+	 * a fan-out column that fails is still a real server-side row, and the
+	 * grid's discard button has to delete it or the "removed" failure comes
+	 * back on the next reload. Absent for a cancellation (nothing is persisted),
+	 * for a failed insert, and on the chat relay (whose fan-out grid is
+	 * pick-one, with no per-column discard).
+	 */
+	messageId?: string;
 }
 
 /**

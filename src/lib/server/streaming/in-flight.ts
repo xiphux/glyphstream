@@ -53,6 +53,11 @@ export interface InFlightEntry {
 	 *  while still queued behind the gate. Lets a recovered fan-out distinguish
 	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
 	generationStartedAt: number | null;
+	/** Split-attachments input image this branch is editing / animating, or null
+	 *  for text-to-media. Lets a recovered fan-out keep the input thumbnail on
+	 *  branches that are still generating — until one persists there's no output
+	 *  media row to read the provenance off. */
+	sourceMediaId: string | null;
 }
 
 const inFlight = new Map<string, Map<string, InFlightEntry>>();
@@ -70,6 +75,7 @@ export function registerInFlight(
 	branchKey: string = DEFAULT_BRANCH,
 	modelKind: ModelKind | null = null,
 	modelId: string | null = null,
+	sourceMediaId: string | null = null,
 ): InFlightEntry {
 	let byBranch = inFlight.get(conversationId);
 	if (!byBranch) {
@@ -85,6 +91,7 @@ export function registerInFlight(
 		branchKey,
 		modelKind,
 		modelId,
+		sourceMediaId,
 		// Null until the relay acquires its slot + starts generating (it sets
 		// this when it emits `start`); a recovered fan-out uses it to tell a
 		// QUEUED branch from a generating one + restore the elapsed timer.

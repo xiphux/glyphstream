@@ -59,6 +59,7 @@ import { raceTitle, startTitleTaskIfFirstExchange } from '$lib/server/tasks/titl
 const TITLE_DELIVERY_BUDGET_MS = 5000;
 
 const DEBUG = logLevel() === 'debug';
+import { isMediaKind } from '$lib/fanout';
 import { isModelKind } from '$lib/types/api';
 import type { SendMessageRequest, SendMessageResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
@@ -260,7 +261,13 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// Provenance for an image-input generation (i2i edit / i2v): record the
 	// (first) source image so the split grid can label each result by its input
 	// and a reload can rebuild that pairing. Null for text-to-image/video.
-	const sourceMediaId = dispatchMediaIds[0] ?? null;
+	//
+	// Media kinds only. Splitting is a media affordance — a chat fan-out never
+	// sets a per-branch input — so a chat turn with an attached image must report
+	// no provenance. Otherwise the in-flight registry carries one, and a chat
+	// grid recovered mid-generation would draw an input thumbnail on its pending
+	// columns that neither its own settled columns nor the live grid show.
+	const sourceMediaId = isMediaKind(meta.modelKind) ? (dispatchMediaIds[0] ?? null) : null;
 
 	// Register this generation so POST /api/conversations/:id/cancel can
 	// reach the upstream call and abort it. We pass the signal down through
@@ -284,6 +291,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		isFanout ? generateId() : undefined,
 		meta.modelKind,
 		meta.modelId,
+		sourceMediaId,
 	);
 
 	// Every fan-out branch — the initial dispatch AND any additive re-roll

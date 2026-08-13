@@ -36,6 +36,7 @@ export function getFanoutRecoveryState(
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		};
 	}
 	const entries = getInFlightEntries(conversationId);
@@ -49,5 +50,6 @@ export function getFanoutRecoveryState(
 		pending: entries.length,
 		pendingModelIds: entries.map((e) => e.modelId ?? ''),
 		pendingStartedAt: entries.map((e) => e.generationStartedAt),
+		pendingSourceMediaIds: entries.map((e) => e.sourceMediaId),
 	};
 }

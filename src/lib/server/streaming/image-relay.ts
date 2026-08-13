@@ -29,7 +29,9 @@ export interface ImageRelayParams extends MediaRelayParams {
 	prompt: string;
 	/** Image ids to forward as i2i input (empty = text-to-image). */
 	dispatchMediaIds: string[];
-	/** Provenance: the (first) input image, for the split grid. Null for t2i. */
+	/** Narrows the base's optional `sourceMediaId` to REQUIRED here: an image
+	 *  dispatch always knows whether it has an input, so state it (`null` for
+	 *  t2i) rather than letting a future call site omit it silently. */
 	sourceMediaId: string | null;
 	/** Target model's preferred prompt style (canonical key) or null when
 	 *  unknown — null runs the enhancer's format-preserving clarify-only pass. */
@@ -127,16 +129,15 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 		} catch (e) {
 			// A Stop click aborts the upstream fetch — treat as a cancellation (no
 			// noisy "failed" message) and bail quietly (return null). A genuine
-			// failure emits the error event AND returns a MediaFailure so the
-			// scaffold persists a durable error sibling (recoverable after a
-			// disconnect, same as the video path).
+			// failure returns a MediaFailure and leaves the `error` frame to the
+			// scaffold, which persists a durable error sibling first and emits the
+			// frame with that row's id (same as the video path).
 			if (isAbortError(e) || abortSignal?.aborted) {
 				write({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
 				return null;
 			}
 			const msg = errorMessage(e);
 			if (DEBUG) console.error('[image-relay] generation failed:', msg);
-			write({ type: 'error', message: msg } satisfies StreamErrorEvent);
 			return { error: msg };
 		}
 	});

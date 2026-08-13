@@ -40,6 +40,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		inputMediaId: overrides.inputMediaId ?? null,
 		persisted: overrides.persisted ?? null,
 		error: overrides.error ?? null,
+		errorMessageId: overrides.errorMessageId ?? null,
 	};
 }
 
@@ -266,6 +267,38 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 			},
 		});
 		expect(screen.getByText('47%')).toBeTruthy();
+	});
+
+	it('renders a failure identically live and recovered from server truth', () => {
+		// Same failed branch, two representations: live it's only the SSE error
+		// text; rebuilt from server truth it ALSO carries the persisted `error`
+		// part. Routing the persisted one through RenderBlocks rendered it a size
+		// up (text-sm + icon), so a reload visibly changed the grid it restored.
+		const failure = { status: 'error' as const, error: 'upstream said no' };
+		const errorText = (c: HTMLElement) =>
+			[...c.querySelectorAll('p')].find((p) => p.textContent?.includes('upstream said no'));
+
+		const { container: live } = render(FanoutColumns, {
+			props: { columns: [col({ branchId: 'b0', ...failure })], onImageClick: vi.fn() },
+		});
+		const { container: recovered } = render(FanoutColumns, {
+			props: {
+				columns: [
+					col({
+						branchId: 'b0',
+						...failure,
+						errorMessageId: 'bad',
+						persisted: {
+							...persisted('bad', ''),
+							parts: [{ type: 'error', message: 'upstream said no' }],
+						},
+					}),
+				],
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(errorText(live)?.className).toBe(errorText(recovered)?.className);
+		expect(errorText(recovered)?.className).toContain('text-xs');
 	});
 
 	it('lays images out as a vertical grid, text as a horizontal strip', () => {

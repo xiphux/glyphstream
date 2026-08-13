@@ -49,10 +49,18 @@
 	// never tool_result rows to thread in — an empty map is correct.
 	const EMPTY_TOOL_RESULTS = new Map<string, ToolResultEntry>();
 
+	// A failed branch is rendered from the column's own `error` text (below), in
+	// the grid's compact scale — never as a message block. The two are the same
+	// failure seen from different sides: live, it's only the SSE `error` frame;
+	// recovered from server truth, it's also a persisted `error` part. Letting
+	// the persisted one through RenderBlocks is what made a reloaded grid render
+	// its failures a size larger (text-sm + icon) than the session that produced
+	// them.
 	function blocksFor(c: FanoutColumn): RenderBlock[] {
-		return c.persisted
+		const blocks = c.persisted
 			? messageToBlocks(c.persisted, EMPTY_TOOL_RESULTS)
 			: inFlightToBlocks(c.segments);
+		return blocks.filter((b) => b.type !== 'error');
 	}
 
 	// "Continue with this" is only meaningful once a column has a persisted
@@ -172,30 +180,37 @@
 				<div class={bodyClass}>
 					{#if blocks.length > 0}
 						<RenderBlocks {blocks} {onImageClick} />
-					{:else if c.status === 'error'}
+					{/if}
+					{#if c.status === 'error'}
+						<!-- Rendered from `c.error` in both directions (live frame and
+						     recovered row) so the same failure reads identically before and
+						     after a reload. Sits below any partial output the branch had
+						     already streamed. -->
 						<p class="text-xs text-danger">{c.error ?? 'Generation failed'}</p>
-					{:else if c.status === 'queued'}
-						<!-- Waiting on the per-endpoint concurrency slot (e.g. a single-GPU
-						     backend running one branch at a time). -->
-						<p class="flex items-center gap-1.5 text-xs text-fg-muted">
-							<span
-								class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-secondary"
-							>
-								Queued
-							</span>
-							{#if c.queuedAhead > 0}<span>{c.queuedAhead} ahead</span>{/if}
-						</p>
-					{:else}
-						<!-- Actively generating: count up from when this branch acquired
-						     its slot (the live one of a serialized fan-out), like single
-						     image generation. `statusLabel` surfaces a transient sub-phase
-						     (e.g. "Enhancing prompt…") in place of "Generating…". -->
-						<p class="flex items-center gap-2 text-xs text-fg-muted">
-							<span>{c.statusLabel ?? 'Generating…'}</span>
-							{#if c.startedAt !== null && elapsed(c) >= 0.3}
-								<span class="font-mono tabular-nums">{elapsed(c).toFixed(1)}s</span>
-							{/if}
-						</p>
+					{:else if blocks.length === 0}
+						{#if c.status === 'queued'}
+							<!-- Waiting on the per-endpoint concurrency slot (e.g. a single-GPU
+							     backend running one branch at a time). -->
+							<p class="flex items-center gap-1.5 text-xs text-fg-muted">
+								<span
+									class="rounded bg-surface-sunken px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-fg-secondary"
+								>
+									Queued
+								</span>
+								{#if c.queuedAhead > 0}<span>{c.queuedAhead} ahead</span>{/if}
+							</p>
+						{:else}
+							<!-- Actively generating: count up from when this branch acquired
+							     its slot (the live one of a serialized fan-out), like single
+							     image generation. `statusLabel` surfaces a transient sub-phase
+							     (e.g. "Enhancing prompt…") in place of "Generating…". -->
+							<p class="flex items-center gap-2 text-xs text-fg-muted">
+								<span>{c.statusLabel ?? 'Generating…'}</span>
+								{#if c.startedAt !== null && elapsed(c) >= 0.3}
+									<span class="font-mono tabular-nums">{elapsed(c).toFixed(1)}s</span>
+								{/if}
+							</p>
+						{/if}
 					{/if}
 				</div>
 

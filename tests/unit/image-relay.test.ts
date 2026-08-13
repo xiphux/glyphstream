@@ -397,6 +397,37 @@ describe('startImageRelay — backpressure + failure', () => {
 		expect(onComplete).toHaveBeenCalledOnce(); // slot still released
 	});
 
+	it('a failed i2i branch keeps its input provenance + hands back the row id', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		mocks.imageGeneration.mockRejectedValue(new Error('bridge exploded'));
+		mocks.imageEdit.mockRejectedValue(new Error('bridge exploded'));
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					// A split-attachments fan-out branch: this column edits ONE input.
+					dispatchMediaIds: ['media-in'],
+					sourceMediaId: 'media-in',
+					advanceActiveLeaf: false,
+				}),
+			),
+		);
+		const sibs = getSiblingAssistants(conv.id, userMessage.id);
+		expect(sibs).toHaveLength(1);
+		// There's no output media row to read the provenance off, so the error part
+		// carries it — this is what keeps the input thumbnail on a failed column
+		// when the grid is rebuilt from server truth after a reload.
+		expect(sibs[0].parts[0]).toMatchObject({ type: 'error', sourceMediaId: 'media-in' });
+		expect(sibs[0].sourceMediaId).toBe('media-in');
+		// The error frame is emitted after the insert and carries the row id, so
+		// the live grid's discard deletes the failure instead of just hiding it.
+		const err = events.find((e) => e.type === 'error') as
+			{ message: string; messageId?: string } | undefined;
+		expect(err?.messageId).toBe(sibs[0].id);
+	});
+
 	it('reports a pre-aborted generation as Cancelled (not a failure) and persists nothing', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		const ctrl = new AbortController();

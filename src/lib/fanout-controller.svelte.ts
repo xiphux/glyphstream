@@ -77,6 +77,9 @@ interface PendingBranch {
 	status: 'queued' | 'streaming';
 	/** Generation start, for the timer; null while queued / unknown. */
 	startedAt: number | null;
+	/** Split-attachments input image, for the column's thumbnail; null when the
+	 *  branch isn't editing/animating one (or the payload predates the field). */
+	sourceMediaId: string | null;
 }
 
 /** Per-pending-branch descriptors (aligned with `pendingModelIds`/`pending`):
@@ -85,7 +88,12 @@ interface PendingBranch {
 function pendingBranches(f: FanoutRecoveryState): PendingBranch[] {
 	return f.pendingModelIds.map((modelId, i) => {
 		const startedAt = f.pendingStartedAt[i] ?? null;
-		return { modelId, status: startedAt !== null ? 'streaming' : 'queued', startedAt };
+		return {
+			modelId,
+			status: startedAt !== null ? 'streaming' : 'queued',
+			startedAt,
+			sourceMediaId: f.pendingSourceMediaIds[i] ?? null,
+		};
 	});
 }
 
@@ -174,9 +182,13 @@ export class FanoutController {
 				progress: null,
 				statusLabel: null,
 				startedAt: null,
+				// Split-attachments provenance. For a result this comes off the output
+				// media row; for a FAILED branch, off its error part (there is no
+				// output) — either way the column keeps its input thumbnail.
 				inputMediaId: m.sourceMediaId ?? null,
 				persisted: m,
 				error: errPart?.message ?? null,
+				errorMessageId: errPart ? m.id : null,
 			};
 		});
 		const generating: FanoutColumn[] = pending.map((pb, i) => ({
@@ -194,9 +206,13 @@ export class FanoutController {
 			progress: null,
 			statusLabel: null,
 			startedAt: pb.startedAt,
-			inputMediaId: null,
+			// The in-flight registry carries the branch's input image, so a grid
+			// recovered mid-generation keeps the "this input → this model" pairing
+			// instead of blanking the thumbnails until the branches land.
+			inputMediaId: pb.sourceMediaId,
 			persisted: null,
 			error: null,
+			errorMessageId: null,
 		}));
 		return [...done, ...generating];
 	}
@@ -286,6 +302,7 @@ export class FanoutController {
 			inputMediaId: b.inputMediaId,
 			persisted: null,
 			error: null,
+			errorMessageId: null,
 		}));
 		await tick();
 		this.#deps.scrollToBottom();
@@ -442,9 +459,13 @@ export class FanoutController {
 					col.startedAt = null;
 					col.status = 'done';
 				},
-				onError(message) {
+				onError(message, persistedMessageId) {
 					col.error = message;
 					col.status = 'error';
+					// The media relay persists a durable error sibling before emitting
+					// this frame and hands back its id — keep it so discarding the column
+					// deletes the row instead of just hiding it from this session's grid.
+					col.errorMessageId = persistedMessageId ?? null;
 				},
 			});
 			// consumeChatStream can resolve on a clean body EOF WITHOUT a terminal
@@ -586,14 +607,15 @@ export class FanoutController {
 		if (this.picking) return;
 		this.picking = true;
 		const convId = this.#deps.convId();
+		// A FAILED column is a persisted row too (`errorMessageId`), not just a
+		// client-side scrap of red text — deleting only the local column would let
+		// every discarded failure come back on the next rebuild from server truth.
+		const branchId = col.persisted?.id ?? col.errorMessageId;
 		try {
-			if (col.persisted) {
-				const res = await fetch(
-					`/api/conversations/${convId}/messages/${col.persisted.id}/branch`,
-					{
-						method: 'DELETE',
-					},
-				);
+			if (branchId) {
+				const res = await fetch(`/api/conversations/${convId}/messages/${branchId}/branch`, {
+					method: 'DELETE',
+				});
 				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			}
 			this.columns = this.columns.filter((c) => c.branchId !== col.branchId);
@@ -641,6 +663,7 @@ export class FanoutController {
 			inputMediaId: col.inputMediaId,
 			persisted: null,
 			error: null,
+			errorMessageId: null,
 		};
 		// Insert immediately after its source so the original and its re-roll read
 		// as a pair rather than scattering the re-roll to the end of a growing grid.

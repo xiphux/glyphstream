@@ -54,6 +54,12 @@ export interface MediaRelayParams {
 	/** The conversation-facing model id (recorded via modelUsed). */
 	storedModelId: string;
 	userMessage: ChatMessage;
+	/** Split-attachments provenance: the (first) input image this generation
+	 *  edits / animates, or null for text-to-media. Recorded on the durable error
+	 *  sibling so a FAILED branch keeps its input thumbnail in a recovered grid —
+	 *  the success path carries the same provenance on the output media row, which
+	 *  a failure never produces. */
+	sourceMediaId?: string | null;
 	abortSignal?: AbortSignal;
 	/** Fan-out branch: persist as a sibling without advancing active_leaf. */
 	advanceActiveLeaf?: boolean;
@@ -100,10 +106,13 @@ export interface GeneratedMedia {
 }
 
 /** What a modality's generate step yields when it FAILED (as opposed to a
- *  user-initiated cancel). The step has already emitted the live `error` SSE
- *  frame; the scaffold additionally persists a durable error sibling so a
- *  fan-out grid recovered after a disconnect can show the branch as a failed
- *  column rather than dropping it. `message` matches the emitted frame's text. */
+ *  user-initiated cancel). The step does NOT emit the `error` frame itself: the
+ *  scaffold persists a durable error sibling first (so a fan-out grid recovered
+ *  after a disconnect shows the branch as a failed column rather than dropping
+ *  it) and then emits the frame carrying that row's id, which is what lets the
+ *  live grid's discard button delete the failure instead of only hiding it.
+ *  A user-initiated cancel still writes its own `Cancelled` frame and returns
+ *  null — nothing is persisted, so there's no id to wait for. */
 export interface MediaFailure {
 	error: string;
 }
@@ -111,10 +120,11 @@ export interface MediaFailure {
 /** The modality-specific core. Runs with the endpoint slot held and after
  *  `start` has been emitted: do the upstream generation (one-shot, or a poll
  *  loop emitting `progress` via `write`), persist the bytes through the
- *  MediaStore, and return the produced media. On a genuine failure, emit the
- *  `error` event and return a {@link MediaFailure} so the scaffold persists a
- *  durable error sibling. On a user-initiated cancel (Stop), emit the cancel
- *  event and return null to bail quietly without persisting anything. */
+ *  MediaStore, and return the produced media. On a genuine failure, return a
+ *  {@link MediaFailure} WITHOUT writing an `error` frame — the scaffold persists
+ *  the durable error sibling and then emits the frame carrying its id. On a
+ *  user-initiated cancel (Stop), emit the cancel event and return null to bail
+ *  quietly without persisting anything. */
 export type MediaGenerate = (ctx: {
 	write: SseWriter['write'];
 	abortSignal?: AbortSignal;
@@ -186,37 +196,56 @@ export function startMediaRelay(
 
 				// Modality-specific: produce + persist the media bytes. Returns null
 				// after emitting its own cancel event — bail quietly. Returns a
-				// MediaFailure after emitting its own error event — persist a durable
-				// error sibling (below) so a recovered fan-out can still show it.
+				// MediaFailure WITHOUT emitting an error event — the scaffold below
+				// persists a durable error sibling (so a recovered fan-out can still
+				// show it) and only then emits the frame, carrying that row's id.
 				const produced = await generate({ write: safeWrite, abortSignal: params.abortSignal });
 				if (!produced) {
 					safeClose();
 					return;
 				}
 				if ('error' in produced) {
-					// A genuine failure (not a Stop). The live `error` frame is already
-					// out; persist a durable record so the branch survives a client
-					// disconnect. Without this, the relay's `finally` clears the
-					// in-flight slot and the branch leaves no trace — a fan-out grid
-					// recovered after an iOS suspend would silently drop the column
-					// (and a lone branch's grid would evaporate to just the prompt).
-					// advanceActiveLeaf mirrors the success path: a fan-out branch stays
-					// a pinned sibling (recovery rebuilds the failed column); a single
-					// send advances the leaf so the failure shows in the thread.
+					// A genuine failure (not a Stop). Persist a durable record so the
+					// branch survives a client disconnect. Without this, the relay's
+					// `finally` clears the in-flight slot and the branch leaves no trace
+					// — a fan-out grid recovered after an iOS suspend would silently drop
+					// the column (and a lone branch's grid would evaporate to just the
+					// prompt). advanceActiveLeaf mirrors the success path: a fan-out
+					// branch stays a pinned sibling (recovery rebuilds the failed column);
+					// a single send advances the leaf so the failure shows in the thread.
+					// `sourceMediaId` is the split-attachments input, which only the error
+					// part can carry — the success path reads it off the output media row.
+					let persistedId: string | undefined;
 					try {
-						appendMessage({
+						persistedId = appendMessage({
 							conversationId: params.conversationId,
 							parentMessageId: params.userMessage.id,
 							role: 'assistant',
-							parts: [{ type: 'error', message: produced.error }],
+							parts: [
+								{
+									type: 'error',
+									message: produced.error,
+									sourceMediaId: params.sourceMediaId ?? null,
+								},
+							],
 							modelUsed: params.storedModelId,
 							genMs: Date.now() - genStartedAt,
 							advanceActiveLeaf: params.advanceActiveLeaf ?? true,
-						});
+						}).id;
 					} catch (e) {
-						// Best-effort durability — the live client already saw the error.
+						// Best-effort durability — the client still gets the error frame
+						// below, just without a handle to the (absent) row.
 						console.warn('[media-relay] failed to persist error sibling:', errorMessage(e));
 					}
+					// The terminal `error` frame is emitted HERE, not by the generate step,
+					// so it can carry the persisted row's id: a fan-out column that fails
+					// is a real server-side row, and the grid's discard button has to
+					// delete it or a "removed" failure reappears on the next reload.
+					safeWrite({
+						type: 'error',
+						message: produced.error,
+						messageId: persistedId,
+					} satisfies StreamErrorEvent);
 					safeClose();
 					return;
 				}

@@ -65,7 +65,11 @@ export interface ConsumeChatStreamCallbacks {
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
 	 *  just the LAST iteration's row (intermediate rows arrive via invalidate). */
 	onDone?(args: { assistantMessage: ChatMessage; sawToolCalls: boolean }): void;
-	onError?(message: string): void;
+	/** The turn failed. `persistedMessageId` is the durable error sibling the
+	 *  server recorded for it, when it recorded one (media relay only) — the
+	 *  handle a fan-out column needs to delete the failure server-side rather
+	 *  than just dropping it from the grid. */
+	onError?(message: string, persistedMessageId?: string): void;
 }
 
 export interface ConsumeChatStreamResult {
@@ -153,7 +157,7 @@ export async function consumeChatStream(
 				cb.onDone?.({ assistantMessage: event.assistantMessage, sawToolCalls });
 				break;
 			case 'error':
-				cb.onError?.(event.message);
+				cb.onError?.(event.message, event.messageId);
 				break;
 		}
 	}

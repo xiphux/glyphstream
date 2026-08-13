@@ -2019,6 +2019,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 			pending: 0,
 			pendingModelIds: [],
 			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
 		});
 
 		setFanoutParent(conv.id, u.id, user.id);
@@ -2032,8 +2033,8 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		// reflect the in-flight entries (so the recovered grid labels each
 		// placeholder by model, like the live grid). One has acquired its slot
 		// (generationStartedAt set → timer); the other is still QUEUED (null).
-		const e0 = registerInFlight(conv.id, fakeEndpoint, 'br0', 'image', 'bridge::sdxl');
-		registerInFlight(conv.id, fakeEndpoint, 'br1', 'image', 'bridge::flux');
+		const e0 = registerInFlight(conv.id, fakeEndpoint, 'br0', 'image', 'bridge::sdxl', 'in-a');
+		registerInFlight(conv.id, fakeEndpoint, 'br1', 'image', 'bridge::flux', 'in-b');
 		e0.generationStartedAt = 1234;
 		const inflightState = getFanoutRecoveryState(conv.id, u.id, user.id);
 		expect(inflightState.pending).toBe(2);
@@ -2043,6 +2044,13 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		);
 		expect(byModel.get('bridge::sdxl')).toBe(1234); // generating → timer origin
 		expect(byModel.get('bridge::flux')).toBeNull(); // still queued
+		// Each pending branch also reports the split input image it's working on,
+		// so a grid recovered mid-generation keeps its per-column thumbnails.
+		const inputByModel = new Map(
+			inflightState.pendingModelIds.map((id, i) => [id, inflightState.pendingSourceMediaIds[i]]),
+		);
+		expect(inputByModel.get('bridge::sdxl')).toBe('in-a');
+		expect(inputByModel.get('bridge::flux')).toBe('in-b');
 		resetInFlight();
 
 		// Marker that no longer matches the active leaf isn't surfaced.

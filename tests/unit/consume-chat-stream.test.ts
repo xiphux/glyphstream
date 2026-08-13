@@ -173,7 +173,8 @@ describe('consumeChatStream', () => {
 		);
 		expect(cb.onProgress).toHaveBeenCalledWith(50, 'rendering');
 		expect(cb.onTitle).toHaveBeenCalledWith('A Title');
-		expect(cb.onError).toHaveBeenCalledWith('boom');
+		// Second arg is the persisted error sibling's id — absent on this frame.
+		expect(cb.onError).toHaveBeenCalledWith('boom', undefined);
 		expect(cb.onDone).toHaveBeenCalledTimes(1);
 	});
 

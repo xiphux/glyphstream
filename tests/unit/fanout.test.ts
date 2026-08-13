@@ -130,6 +130,7 @@ describe('allColumnsSettled', () => {
 		inputMediaId: null,
 		persisted: null,
 		error: null,
+		errorMessageId: null,
 	});
 
 	it('is false while any column is queued or streaming', () => {

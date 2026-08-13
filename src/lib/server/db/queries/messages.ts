@@ -445,6 +445,15 @@ export function getSiblingAssistants(
 	// Resolve each result's source image (split-attachments provenance) from its
 	// output media row, in one batched lookup — so a reloaded split grid keeps
 	// the per-result input thumbnail and regenerate re-rolls the right input.
+	//
+	// A FAILED branch has no output media to read it off, so its error part
+	// carries the provenance directly (see the `error` MessagePart). Without this
+	// fallback a grid recovered after a batch of failures loses exactly the
+	// thumbnails that say which input each dead column belongs to.
+	for (const m of msgs) {
+		const errPart = m.parts.find((p) => p.type === 'error');
+		if (errPart?.type === 'error') m.sourceMediaId = errPart.sourceMediaId ?? null;
+	}
 	const outputMediaId = (m: ChatMessage): string | null => {
 		const part = m.parts.find((p) => p.type === 'image' || p.type === 'video');
 		return part && (part.type === 'image' || part.type === 'video') ? part.mediaId : null;
