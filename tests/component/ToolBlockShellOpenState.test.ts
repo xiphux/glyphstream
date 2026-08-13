@@ -93,12 +93,37 @@ describe('ToolBlockShell — user toggles vs. status sync', () => {
 
 	// The load-bearing one: a re-render that does NOT change status must not
 	// clobber the toggle back to openByDefault.
+	//
+	// Vary a prop that actually REACHES ToolBlockShell. `attachments` is a real
+	// shell prop (ToolCallBlock → GenericToolBlock → shell); `argumentsJson`,
+	// used here previously, is consumed by the per-kind block to build its body
+	// snippet and never lands on the shell.
+	//
+	// Both forms do catch a clobbering regression (verified by mutation: making
+	// isOpen re-sync on any re-render fails this case either way) — the old one
+	// only via the fresh snippet identities a parent re-render hands down, which
+	// is incidental. Driving a genuine shell prop pins it directly instead of
+	// depending on that.
 	it('survives a re-render that leaves status unchanged', async () => {
 		const { container, rerender } = render(ToolCallBlock, {
 			props: { ...base, status: 'done' },
 		});
 		await userToggle(container, true);
-		await rerender({ ...base, status: 'done', argumentsJson: '{"tz":"UTC"}' });
+		await rerender({
+			...base,
+			status: 'done',
+			attachments: [{ type: 'image' as const, mediaId: 'm-1' }],
+		});
+		await tick();
+		expect(isOpen(container)).toBe(true);
+
+		// And again with a different attachment set, to be sure the first pass
+		// wasn't a no-op re-render.
+		await rerender({
+			...base,
+			status: 'done',
+			attachments: [{ type: 'image' as const, mediaId: 'm-2' }],
+		});
 		await tick();
 		expect(isOpen(container)).toBe(true);
 	});
