@@ -16,6 +16,8 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import DebugPanel from '$lib/components/DebugPanel.svelte';
+	import { createDoubleActivate } from '$lib/double-activate';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
@@ -416,6 +418,12 @@
 			searchModal.show();
 		}
 	}
+
+	// The debug panel's hidden entry point: activate the version number twice
+	// in quick succession. A single stray click does nothing and leaves no
+	// trace, so the header keeps behaving exactly as it looks.
+	let debugOpen = $state(false);
+	const onVersionActivate = createDoubleActivate(() => (debugOpen = true));
 </script>
 
 <div class="app-shell flex overflow-hidden">
@@ -494,9 +502,22 @@
 					 a service-worker refresh or which build is loaded. -->
 				<div class="flex items-baseline gap-1.5">
 					<a href={resolve('/')} class="font-semibold tracking-tight">GlyphStream</a>
-					<span class="text-[10px] tabular-nums text-fg-subtle">
+					<!-- Double-activate for the debug panel ("stats for nerds").
+						 A button, not the old span: it's interactive now, and that
+						 keeps it focusable so two quick Enter presses reach the
+						 panel the same way two taps do — counting click events
+						 gets keyboard parity for free, which a `dblclick`
+						 listener would not. Styled to stay exactly as
+						 unremarkable as it was; touch-manipulation so a
+						 double-tap opens the panel instead of zooming the page. -->
+					<button
+						type="button"
+						onclick={onVersionActivate}
+						aria-label="GlyphStream version {__APP_VERSION__}. Activate twice for debug info."
+						class="cursor-default touch-manipulation border-0 bg-transparent p-0 text-[10px] tabular-nums text-fg-subtle"
+					>
 						v{__APP_VERSION__}
-					</span>
+					</button>
 				</div>
 			{/if}
 			<button
@@ -923,6 +944,12 @@
 	custom-model / branch deletes drive it instead of window.confirm().
 -->
 <ConfirmDialog />
+
+<!--
+	"Stats for nerds". No affordance points at it — the only way in is
+	double-activating the version number above.
+-->
+<DebugPanel open={debugOpen} onClose={() => (debugOpen = false)} />
 
 <!--
 	Host for the app-wide search modal (searchModal.show()). Sidebar

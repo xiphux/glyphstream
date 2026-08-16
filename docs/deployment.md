@@ -151,3 +151,31 @@ concurrent huge responses can still queue behind each other.) If you have
 threads that big, the durable fix is not serving a payload that size — see the
 `ROADMAP.md` "Virtualized message list" entry, which measures where this
 actually starts to matter.
+
+## Diagnosing a slow load (the debug panel)
+
+**Double-click (or double-tap) the version number** next to "GlyphStream" in
+the sidebar header. Nothing points at it and it never appears on its own — it's
+a "stats for nerds" readout, not a feature.
+
+It reports the load that started the current session: how much of the wait was
+the server (`Server (SSR)`, from a `Server-Timing` header) versus the network,
+how long the service worker took to boot, when the page first painted, and how
+many hashed app chunks came off the network rather than out of cache. **Copy**
+puts the whole thing on the clipboard as text.
+
+The reason it exists is the one load you can't attach a debugger to: an **iOS
+home-screen app's cold launch**. Safari Web Inspector needs a Mac and a cable,
+and by the time you're attached the launch is already over. The panel works
+after the fact because the timings describe the _document_, and client-side
+navigation never replaces it — so a cold launch, then a few taps to open the
+panel, still shows the cold launch.
+
+Two things it can't tell you:
+
+- **Everything before the first byte of the page is invisible to it** — the icon
+  tap, the WebKit process starting, the app's own launch image. If the numbers
+  add up to far less than the delay you felt, that gap _is_ iOS process startup,
+  and no amount of app-side tuning moves it.
+- A reverse proxy that strips `Server-Timing` will blank the `Server (SSR)` and
+  `Network` rows. The combined `TTFB` is still shown next to `Network`.

@@ -1,13 +1,16 @@
 <!--
-	Shared shell for app-wide destructive-action dialogs (ConfirmDialog,
-	DeleteConversationDialog). Owns the alertdialog role + aria-modal,
+	Shared shell for app-wide dialogs (ConfirmDialog,
+	DeleteConversationDialog, DebugPanel). Owns the role + aria-modal,
 	the backdrop, the Escape-key handler, and the panel chrome. Callers
 	supply the title and body content (including action buttons) via
 	props + a snippet.
 
-	role=alertdialog (not dialog) because every caller is a destructive-
-	action confirmation — assistive tech then requires explicit user
-	input before dismissal. Backdrop click and Escape both cancel.
+	role defaults to alertdialog, which is right for a destructive-action
+	confirmation — assistive tech then requires explicit user input before
+	dismissal. A dialog that only PRESENTS something (DebugPanel) must pass
+	role="dialog" instead: alertdialog on a panel with nothing to confirm
+	interrupts a screen-reader user for no reason. Backdrop click and
+	Escape both cancel either way.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -18,17 +21,20 @@
 		titleId,
 		title,
 		children,
+		role = 'alertdialog',
 	}: {
 		/** Render the dialog when true; render nothing when false. */
 		open: boolean;
 		/** Called on Escape or backdrop click. */
 		onCancel: () => void;
-		/** Per-dialog id used by aria-labelledby on the alertdialog. */
+		/** Per-dialog id used by aria-labelledby on the dialog. */
 		titleId: string;
 		/** Plain-text title rendered as the <h2>. */
 		title: string;
 		/** Body content (description, optional form controls, action buttons). */
 		children: Snippet;
+		/** 'dialog' for panels that only present; see the comment above. */
+		role?: 'alertdialog' | 'dialog';
 	} = $props();
 
 	function onWindowKey(e: KeyboardEvent): void {
@@ -41,7 +47,7 @@
 {#if open}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
-		role="alertdialog"
+		{role}
 		aria-modal="true"
 		aria-labelledby={titleId}
 		tabindex="-1"

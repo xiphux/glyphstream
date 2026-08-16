@@ -278,6 +278,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const themeCookie = event.cookies.get('gs-theme');
 	const theme = themeCookie === 'claude' || themeCookie === 'chatgpt' ? themeCookie : null;
 
+	const ssrStart = performance.now();
 	const response = await resolve(
 		event,
 		theme
@@ -287,6 +288,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
+	// Server-Timing on documents only. This is what splits a slow cold launch
+	// into "the server was cold" vs "the network was slow" — the browser files
+	// it on the navigation timing entry, so it's readable from the device with
+	// no proxy log and no cable (see the debug panel behind the sidebar version
+	// number). Documents only because that's the entry that carries it; an API
+	// response's timing shows up nowhere the client can correlate. Same-origin,
+	// so no Timing-Allow-Origin is needed.
+	if (response.headers.get('content-type')?.startsWith('text/html')) {
+		response.headers.set('Server-Timing', `ssr;dur=${(performance.now() - ssrStart).toFixed(1)}`);
+	}
 	applySecurityHeaders(response, path);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
