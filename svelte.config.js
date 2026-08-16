@@ -54,10 +54,14 @@ const config = {
 				// (and dropping it to an external file would cost a
 				// render-blocking request and reintroduce a FOUC window).
 				//
-				// If you edit that inline script, this hash goes stale and
-				// the browser console will print the new expected hash in
-				// the next CSP violation report — copy it back here.
-				'script-src': ['self', 'sha256-zDStjHdKrEZbvvMjU3DTG6VQNdNJybPV2z/de+vq88A='],
+				// If you edit that inline script, this hash goes stale and the
+				// script is silently BLOCKED — the page still works, because the
+				// layout re-applies the scheme after hydration, so the only
+				// symptom is the FOUC this pin exists to prevent, plus a blur
+				// probe that never runs. It went stale once exactly that way.
+				// `tests/unit/csp-inline-script-hash.test.ts` recomputes it from
+				// app.html and fails with the value to paste here.
+				'script-src': ['self', 'sha256-Ar3Hg1mVpvhki2BhDuALtdbJXW94wX8y3ugNbQnpA3A='],
 				'style-src': ['self', 'unsafe-inline'],
 				'img-src': ['self', 'data:', 'blob:'],
 				'media-src': ['self', 'blob:'],
