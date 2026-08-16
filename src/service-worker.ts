@@ -40,16 +40,55 @@ import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/pus
 // addEventListener and clients/registration narrow correctly.
 declare const self: ServiceWorkerGlobalScope & {
 	__WB_MANIFEST: Array<{ url: string; revision: string | null }>;
+	__GLYPHSTREAM_BUILD__: string;
 };
+
+// Declared here rather than taken from app.d.ts's `declare global`: SvelteKit
+// excludes this file from the app's TS program (different globals/lib — see
+// the allowDefaultProject list in eslint.config.js), so that global does not
+// reach it and the constant lands as an error type. The value still arrives —
+// vite-plugin-pwa builds the worker in its own Vite pass, which inherits the
+// root config's `define`.
+declare const __APP_VERSION__: string;
 
 precacheAndRoute(self.__WB_MANIFEST);
 
-// Activate the new SW immediately on install rather than waiting for
-// every controlling client to close. registerType='prompt' in
-// vite.config.ts means the user has already opted in to the refresh
-// via UpdateBanner by the time we get here.
-self.addEventListener('install', () => {
-	void self.skipWaiting();
+// Build stamp. Nothing reads it. Its job is to BE BYTES, and to differ
+// between releases.
+//
+// A service-worker update is a byte-for-byte comparison of the newly fetched
+// script against the installed one — identical bytes and the browser aborts
+// the update before `updatefound`, so registerSW never calls onNeedRefresh
+// and UpdateBanner never appears. Every other byte in this worker is stable
+// across a release, and since the precache narrowed to seven root-level
+// assets that don't change between releases either (0eff6c02), so is the
+// injected `__WB_MANIFEST`. The compiled worker was byte-identical across a
+// version bump plus a client rebuild, which had quietly retired the update
+// prompt: an iOS PWA resumed after a deploy would go on running the old
+// client against the new server indefinitely, since a resume re-checks the
+// worker but never reloads the page.
+//
+// Assigning onto `self` rather than leaving an unused const is what keeps a
+// minifier from dropping it. The side benefit is that `__GLYPHSTREAM_BUILD__`
+// in a DevTools service-worker console says which build is actually active.
+self.__GLYPHSTREAM_BUILD__ = __APP_VERSION__;
+
+// Do NOT skipWaiting() on install. `install` fires as soon as the browser
+// notices a new worker — long before the user has seen anything — so calling
+// it there activates the new worker immediately and the worker never enters
+// the `waiting` state. registerType='prompt' (vite.config.ts) is implemented
+// by workbox-window, which raises the event behind onNeedRefresh ONLY for a
+// waiting worker: skipWaiting here meant the new SW silently claimed the open
+// page, UpdateBanner never rendered, and the page went on running the old
+// client bundle against the new server until something else reloaded it.
+//
+// Instead we wait, and let the user's click drive activation: workbox-window's
+// updateSW(true) posts SKIP_WAITING to the waiting worker and reloads once the
+// controller changes. Dismissing the banner leaves the worker waiting, which
+// is what UpdateBanner's own comment already promised.
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+	const data = event.data as { type?: string } | undefined;
+	if (data?.type === 'SKIP_WAITING') void self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
 	event.waitUntil(self.clients.claim());
