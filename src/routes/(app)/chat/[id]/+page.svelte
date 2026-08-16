@@ -972,6 +972,37 @@
 		void dismissConversationNotifications(conversationId);
 	}
 
+	// The visibility path defers instead of acknowledging inline, because the
+	// pending-navigation check above is only meaningful once the navigation has
+	// actually started. On Chromium the SW's `navigate_to_conversation` message
+	// is queued before focus() flips visibility, so `navigating` is already set
+	// by the time we look. On an iOS standalone PWA the OS foregrounds the app
+	// and `notificationclick` may not have posted yet — an inline check would
+	// see a null `navigating` and acknowledge the thread the window merely
+	// happened to be parked on, which is the exact case the guard exists to
+	// prevent, on the exact platform this feature is for. (Task sources aren't
+	// ordered against each other by spec, so the Chromium ordering is
+	// convention, not guarantee.) A beat is enough for the message to land and
+	// start its navigation.
+	//
+	// Safe to defer: acknowledgeNotifications re-reads visibilityState itself,
+	// and reading data.conversation.id inside the callback means a navigation
+	// that completed meanwhile acknowledges the thread we actually ended up on.
+	// The delay is invisible — nothing on screen depends on it, only the tray.
+	const ACK_DEFER_MS = 150;
+	let ackTimer: ReturnType<typeof setTimeout> | null = null;
+	function scheduleAcknowledge() {
+		if (ackTimer !== null) clearTimeout(ackTimer);
+		ackTimer = setTimeout(() => {
+			ackTimer = null;
+			acknowledgeNotifications(data.conversation.id);
+		}, ACK_DEFER_MS);
+	}
+	onDestroy(() => {
+		// Don't let a pending ack fire against a page that's been torn down.
+		if (ackTimer !== null) clearTimeout(ackTimer);
+	});
+
 	// Fires on mount and on every genuine conversation change. The sentinel
 	// starts at null (not at the current id) so the first run isn't skipped —
 	// arriving by full page load, which is exactly what tapping a notification
@@ -996,9 +1027,10 @@
 		// Swiping back into a thread you were notified about counts as seeing
 		// it, independently of whether there's in-flight work to reconcile —
 		// the notification was raised precisely BECAUSE this window was hidden,
-		// so this is the path that clears it in the common iOS case.
+		// so this is the path that clears it in the common iOS case. Deferred;
+		// see scheduleAcknowledge.
 		if (document.visibilityState === 'visible') {
-			acknowledgeNotifications(data.conversation.id);
+			scheduleAcknowledge();
 		}
 		// A fan-out releases `busy` early (so the grid can show), so also
 		// track its branch streams as in-flight work worth recovering.

@@ -213,8 +213,9 @@ async function focusOrOpen(conversationId: string): Promise<void> {
 				// conversation and lets it dismiss a notification the user never
 				// looked at. Posting first means the navigation is already
 				// pending by the time visibility flips, which is the signal the
-				// route checks. Pure ordering: the openWindow fallback below is
-				// untouched and still runs with no extra awaits in front of it.
+				// route checks. The openWindow fallback below gains no awaits in
+				// front of it, so it keeps its user activation — but note it is
+				// no longer reachable from a focus failure; see just below.
 				c.postMessage({ kind: 'navigate_to_conversation', conversationId });
 				// A focus() rejection (rare — some platforms refuse it without
 				// user activation) no longer falls through to openWindow: the

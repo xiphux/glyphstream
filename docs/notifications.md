@@ -78,8 +78,8 @@ leaves the badge alone, since the question it answers ("did that thing
 finish?") hasn't been answered yet. Tapping the notification clears that
 thread's share of the count as a side effect of taking you there.
 Swiping a notification away without opening it also counts. Where the
-browser fires a usable dismissal event that lands immediately; support
-for it is uneven (WebKit especially), so the badge is also re-derived
+browser fires a usable dismissal event, that lands immediately — but
+support is uneven (WebKit especially), so the badge is also re-derived
 whenever the app comes to the foreground, which is what covers the
 platforms that stay silent.
 
