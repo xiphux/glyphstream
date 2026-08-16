@@ -80,8 +80,11 @@ export default defineConfig({
 				icons: [
 					// SVG is the "any" form — Android/Chrome honor it and it
 					// stays crisp at any size. (iOS ignores manifest icons
-					// entirely; its home-screen icon + launch splash come from
-					// the apple-touch-icon PNG declared in app.html.)
+					// entirely: its home-screen icon comes from the
+					// apple-touch-icon PNG in app.html, and its launch image
+					// from the apple-touch-startup-image block there — iOS
+					// synthesises no splash from `background_color` the way
+					// Chrome does, so these icons never feed one.)
 					{
 						src: '/icon.svg',
 						sizes: 'any',

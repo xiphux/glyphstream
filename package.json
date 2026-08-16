@@ -20,6 +20,7 @@
 		"lint:fix": "svelte-kit sync && eslint . --fix && svelte-check --tsconfig ./tsconfig.json",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
+		"gen:splash": "tsx scripts/generate-pwa-splash.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",

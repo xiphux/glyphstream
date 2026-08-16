@@ -187,7 +187,14 @@ pnpm test         # vitest unit tests
 pnpm test:e2e     # playwright (auto-builds + boots production server)
 pnpm db:generate  # generate a drizzle migration after schema edits
 pnpm analyze      # production build with rollup-plugin-visualizer
+pnpm gen:splash   # regenerate static/splash/ + app.html's iOS launch images
 ```
+
+`gen:splash` is manual, not part of `pnpm build` — re-run it after editing
+`static/icon.svg` or adding a device row. iOS synthesises no launch screen from
+the manifest the way Chrome does (that assumption shipped a release of blank
+white cold launches), so every panel size needs its own committed PNG and an
+exact-match `apple-touch-startup-image` media query.
 
 ## Sharp edges
 
