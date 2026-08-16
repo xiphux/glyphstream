@@ -47,3 +47,34 @@ test('double-activating the version number opens the debug panel', async ({ page
 	await panel.getByRole('button', { name: 'Close' }).click();
 	await expect(panel).toBeHidden();
 });
+
+test('the copy confirmation renders above the panel, not behind its backdrop', async ({
+	page,
+	isMobile,
+	context,
+}) => {
+	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+	await page.goto('/');
+	await openSidebar(page, !!isMobile);
+	await page.getByRole('button', { name: /GlyphStream version/ }).dblclick();
+
+	const panel = page.getByRole('dialog');
+	await expect(panel).toBeVisible();
+	await panel.getByRole('button', { name: 'Copy' }).click();
+
+	const toast = page.getByText('Debug info copied');
+	await expect(toast).toBeVisible();
+
+	// toBeVisible() is NOT the assertion that matters here, and asserting only
+	// that is what let this ship broken: at z-50 the toast tied with the
+	// dialog's full-screen backdrop, lost on paint order, and rendered behind
+	// bg-black/60 + backdrop-blur — laid out, unoccluded by any DOM check,
+	// reported visible by Playwright, and unreadable to a human. So ask the
+	// browser what is actually topmost at the toast's own centre point.
+	const topmost = await toast.evaluate((el) => {
+		const r = el.getBoundingClientRect();
+		const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+		return hit === el || el.contains(hit);
+	});
+	expect(topmost, 'the toast is painted under the dialog backdrop').toBe(true);
+});

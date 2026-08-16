@@ -40,6 +40,7 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		standalone: true,
 		serviceWorker: 'controlled',
 		online: true,
+		dev: false,
 		...over,
 	};
 }
@@ -114,6 +115,29 @@ describe('buildDebugSections', () => {
 		expect(rowsOf(sources({ navigation: undefined }), 'Environment')['Version'].value).toBe(
 			'1.2.3',
 		);
+	});
+
+	it('refuses to report dev-server asset counts as if they were real', () => {
+		// There is no /_app/immutable/ on the dev server — Vite serves unhashed
+		// modules — so the honest answer is "n/a", not "0 chunks, 0 B". The
+		// latter reads as "nothing was downloaded", which is the opposite of
+		// true and sends you looking for a caching win that doesn't exist.
+		const rows = rowsOf(sources({ dev: true, resources: [] }), 'Assets');
+		expect(rows['App chunks'].value).toBe('n/a');
+		expect(rows['App chunks'].note).toMatch(/dev server/);
+		expect(rows['Downloaded']).toBeUndefined();
+	});
+
+	it('flags that a dev-server SSR time includes Vite compilation', () => {
+		// A multi-second dev SSR is Vite compiling the route on demand, not a
+		// slow app. Unannotated, it looks like a production-grade problem.
+		expect(rowsOf(sources({ dev: true }), 'This load')['Server (SSR)'].note).toMatch(/Vite/);
+		expect(rowsOf(sources(), 'This load')['Server (SSR)'].note).toBeUndefined();
+	});
+
+	it('names which build the numbers came from', () => {
+		expect(rowsOf(sources({ dev: true }), 'Environment')['Mode'].value).toBe('development');
+		expect(rowsOf(sources(), 'Environment')['Mode'].value).toBe('production');
 	});
 
 	it('surfaces the environment the load happened in', () => {

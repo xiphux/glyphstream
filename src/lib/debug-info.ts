@@ -50,6 +50,10 @@ export interface DebugSources {
 	standalone: boolean;
 	serviceWorker: 'controlled' | 'registered' | 'unsupported' | 'none';
 	online: boolean;
+	/** Vite dev server rather than a production build. Changes what half of
+	 *  these numbers MEAN, so the panel says so rather than letting a dev-server
+	 *  reading get compared against a production one. */
+	dev: boolean;
 }
 
 export interface DebugRow {
@@ -104,7 +108,15 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		const network = ttfb !== null && ssr !== null ? Math.max(0, ttfb - ssr) : null;
 
 		load.push(
-			{ label: 'Server (SSR)', value: orDash(ssr) },
+			{
+				label: 'Server (SSR)',
+				value: orDash(ssr),
+				// On the dev server this is dominated by Vite compiling the
+				// route on demand — seconds, routinely, and nothing to do with
+				// how the deployed app behaves. Saying so beats letting a 5s
+				// dev reading get taken for a production problem.
+				...(s.dev ? { note: 'incl. Vite compile' } : {}),
+			},
 			{ label: 'Network', value: orDash(network), note: ttfb !== null ? `${ms(ttfb)} TTFB` : '' },
 			{
 				label: 'HTML',
@@ -144,19 +156,26 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		{ title: 'This load', rows: load },
 		{
 			title: 'Assets',
-			rows: [
-				{
-					label: 'App chunks',
-					value: String(chunks.length),
-					note: chunks.length ? `${fromNetwork.length} from network` : '',
-				},
-				{ label: 'Downloaded', value: kb(downloaded) },
-			],
+			// The dev server has no /_app/immutable/ at all — Vite serves
+			// unhashed ES modules — so the counts are structurally 0 there, not
+			// "nothing was downloaded". Reporting 0 chunks / 0 B on a dev load
+			// is the panel lying by omission about which build it's looking at.
+			rows: s.dev
+				? [{ label: 'App chunks', value: 'n/a', note: 'dev server serves unhashed modules' }]
+				: [
+						{
+							label: 'App chunks',
+							value: String(chunks.length),
+							note: chunks.length ? `${fromNetwork.length} from network` : '',
+						},
+						{ label: 'Downloaded', value: kb(downloaded) },
+					],
 		},
 		{
 			title: 'Environment',
 			rows: [
 				{ label: 'Version', value: s.version },
+				{ label: 'Mode', value: s.dev ? 'development' : 'production' },
 				{ label: 'Display', value: s.standalone ? 'standalone' : 'browser' },
 				{ label: 'Service worker', value: s.serviceWorker },
 				{ label: 'Connection', value: s.online ? 'online' : 'offline' },
@@ -187,5 +206,6 @@ export function readDebugSources(version: string): DebugSources {
 		standalone: window.matchMedia('(display-mode: standalone)').matches,
 		serviceWorker,
 		online: navigator.onLine,
+		dev: import.meta.env.DEV,
 	};
 }
