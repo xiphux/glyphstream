@@ -20,6 +20,7 @@
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
 	import { dismissConversationNotifications } from '$lib/notification-dismiss';
+	import { NotificationAck } from '$lib/notification-ack';
 	import {
 		deriveReuseModels,
 		upgradeToPresetModelId,
@@ -944,76 +945,29 @@
 		scrollToBottom: () => scrollToBottom(),
 	});
 
-	// Looking at the thread IS the acknowledgment the notification was
-	// asking for, so retract it and re-derive the app-icon badge from
-	// what's left in the tray. Scoped to this conversation rather than
-	// "the app was opened": the badge answers "did that thing finish?",
-	// and opening the app to start an unrelated chat doesn't answer it —
-	// clearing there would drop the signal before it had done its job.
-	//
-	// Gated on actually being visible. A backgrounded desktop tab parked
-	// on this conversation is precisely the case the SW arbiter raises an
-	// OS notification for (see pickAction: same thread but not visible ->
-	// 'os'), so dismissing from a hidden window would retract the
-	// notification we just showed.
-	//
-	// A window being focused on its way somewhere else is also not a visit.
-	// Tapping thread A's notification focuses a window still parked on thread
-	// B, and that focus is what flips visibility — so without the pending-
-	// navigation check below, B's notification would be dismissed by a user
-	// who only ever asked to see A. Compared by id rather than merely "is a
-	// navigation in flight" so the acknowledgment still fires for the thread
-	// we're actually heading to, whether or not `navigating` has settled by
-	// the time this runs.
-	function acknowledgeNotifications(conversationId: string) {
-		if (document.visibilityState !== 'visible') return;
-		const pendingId = navigating.to?.params?.id;
-		if (pendingId !== undefined && pendingId !== conversationId) return;
-		void dismissConversationNotifications(conversationId);
-	}
-
-	// The visibility path defers instead of acknowledging inline, because the
-	// pending-navigation check above is only meaningful once the navigation has
-	// actually started. On Chromium the SW's `navigate_to_conversation` message
-	// is queued before focus() flips visibility, so `navigating` is already set
-	// by the time we look. On an iOS standalone PWA the OS foregrounds the app
-	// and `notificationclick` may not have posted yet — an inline check would
-	// see a null `navigating` and acknowledge the thread the window merely
-	// happened to be parked on, which is the exact case the guard exists to
-	// prevent, on the exact platform this feature is for. (Task sources aren't
-	// ordered against each other by spec, so the Chromium ordering is
-	// convention, not guarantee.) A beat is enough for the message to land and
-	// start its navigation.
-	//
-	// Safe to defer: acknowledgeNotifications re-reads visibilityState itself,
-	// and reading data.conversation.id inside the callback means a navigation
-	// that completed meanwhile acknowledges the thread we actually ended up on.
-	// The delay is invisible — nothing on screen depends on it, only the tray.
-	const ACK_DEFER_MS = 150;
-	let ackTimer: ReturnType<typeof setTimeout> | null = null;
-	function scheduleAcknowledge() {
-		if (ackTimer !== null) clearTimeout(ackTimer);
-		ackTimer = setTimeout(() => {
-			ackTimer = null;
-			acknowledgeNotifications(data.conversation.id);
-		}, ACK_DEFER_MS);
-	}
-	onDestroy(() => {
-		// Don't let a pending ack fire against a page that's been torn down.
-		if (ackTimer !== null) clearTimeout(ackTimer);
+	// Looking at a thread is the acknowledgment its notification was asking
+	// for: retract the tray entry and re-derive the app-icon badge. The rules
+	// for when that counts — visible only, and not while being focused on the
+	// way to a *different* thread — live in NotificationAck, along with the
+	// deferral the visibility path needs. See there for why; they're subtle
+	// enough to be worth testing away from this component.
+	const notificationAck = new NotificationAck({
+		conversationId: () => data.conversation.id,
+		visible: () => document.visibilityState === 'visible',
+		pendingConversationId: () => navigating.to?.params?.id,
+		dismiss: (id) => void dismissConversationNotifications(id),
 	});
+	onDestroy(() => notificationAck.destroy());
 
-	// Fires on mount and on every genuine conversation change. The sentinel
-	// starts at null (not at the current id) so the first run isn't skipped —
-	// arriving by full page load, which is exactly what tapping a notification
-	// does when no window is open, has to count as a visit. Comparing rather
-	// than just reading keeps a layout-only invalidation from re-querying the
-	// tray on every completed turn.
-	let acknowledgedConvId: string | null = null;
+	// Fires on mount and on every genuine conversation change — the controller
+	// keeps its own sentinel, so a layout-only invalidation costs a string
+	// compare rather than a tray query. `data.conversation.id` is read
+	// explicitly as well as through the getter: the getter's read is what
+	// currently establishes the dependency, and a refactor that made
+	// conversationChanged() defer its read would silently stop tracking.
 	$effect(() => {
-		if (data.conversation.id === acknowledgedConvId) return;
-		acknowledgedConvId = data.conversation.id;
-		acknowledgeNotifications(data.conversation.id);
+		void data.conversation.id;
+		notificationAck.conversationChanged();
 	});
 
 	// Visibility-change + connectivity handlers: tracks interruptions
@@ -1027,10 +981,9 @@
 		// Swiping back into a thread you were notified about counts as seeing
 		// it, independently of whether there's in-flight work to reconcile —
 		// the notification was raised precisely BECAUSE this window was hidden,
-		// so this is the path that clears it in the common iOS case. Deferred;
-		// see scheduleAcknowledge.
+		// so this is the path that clears it in the common iOS case.
 		if (document.visibilityState === 'visible') {
-			scheduleAcknowledge();
+			notificationAck.becameVisible();
 		}
 		// A fan-out releases `busy` early (so the grid can show), so also
 		// track its branch streams as in-flight work worth recovering.
