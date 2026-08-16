@@ -30,15 +30,19 @@ export async function dismissConversationNotifications(conversationId: string): 
 		// getRegistration(), not `ready` — `ready` never settles when no SW
 		// is registered (dev builds), which would leak a pending promise.
 		registration = await navigator.serviceWorker.getRegistration();
-		if (!registration?.getNotifications) return;
-		const notifications = await registration.getNotifications({ tag: conversationId });
-		for (const notification of notifications) notification.close();
+		// Nested rather than an early return, so every path reaches the badge
+		// resync below — an early return here would skip it.
+		if (registration?.getNotifications) {
+			const notifications = await registration.getNotifications({ tag: conversationId });
+			for (const notification of notifications) notification.close();
+		}
 	} catch {
 		// Best-effort: a stale tray entry is a nuisance, not a failure worth
 		// surfacing over the delete that just succeeded.
 	}
-	// After the closes, not before — the badge counts what remains. Safe on
-	// the failure paths above: an undefined registration reads as "unknown"
-	// and leaves the badge untouched rather than clearing it.
+	// After the closes, not before — the badge counts what remains. Reached on
+	// the failure paths too, where it's a no-op by construction: a registration
+	// that's undefined or can't be queried reads as "unknown", which leaves the
+	// badge untouched rather than clearing it.
 	await syncAppBadge(registration);
 }

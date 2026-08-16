@@ -77,9 +77,11 @@ when you open the app. Launching GlyphStream to start an unrelated chat
 leaves the badge alone, since the question it answers ("did that thing
 finish?") hasn't been answered yet. Tapping the notification clears that
 thread's share of the count as a side effect of taking you there.
-Swiping a notification away without opening it also counts; that one is
-picked up the next time the app comes to the foreground, because the
-event browsers fire for a dismissal isn't reliable enough to depend on.
+Swiping a notification away without opening it also counts. Where the
+browser fires a usable dismissal event that lands immediately; support
+for it is uneven (WebKit especially), so the badge is also re-derived
+whenever the app comes to the foreground, which is what covers the
+platforms that stay silent.
 
 Like the sidebar dot, this is not a durable unread mark — it tracks
 notifications that were delivered to _this_ device, so clearing it on

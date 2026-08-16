@@ -8,7 +8,7 @@
 	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	import { toast } from '$lib/toast.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
-	import { syncAppBadge } from '$lib/sw/badge';
+	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
 
@@ -73,18 +73,7 @@
 		// cheap self-heal — and because it counts the tray rather than
 		// decrementing a tally, it can't clear a badge that's still earned
 		// just because the app was opened.
-		if (document.visibilityState === 'visible') void resyncAppBadge();
-	}
-
-	async function resyncAppBadge() {
-		if (!('serviceWorker' in navigator)) return;
-		try {
-			// getRegistration(), not `ready` — `ready` never settles when no SW
-			// is registered (dev builds), leaking a pending promise.
-			await syncAppBadge(await navigator.serviceWorker.getRegistration());
-		} catch {
-			// Best-effort; syncAppBadge itself already swallows its own failures.
-		}
+		if (document.visibilityState === 'visible') void syncAppBadgeFromWindow();
 	}
 	function onPresencePageHide() {
 		if (reportedConv) postPresence(reportedConv, false);

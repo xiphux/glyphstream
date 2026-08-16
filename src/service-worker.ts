@@ -4,7 +4,7 @@
 /**
  * GlyphStream service worker.
  *
- * Two responsibilities:
+ * Three responsibilities:
  *
  * 1. Precache the built static shell so cold loads survive a flaky
  *    network. Only the URLs in `self.__WB_MANIFEST` (injected by
@@ -22,6 +22,13 @@
  *    The arbiter is a pure function exercised by unit tests; this
  *    file is the thin worker-glue that maps that decision onto the
  *    SW APIs (clients.postMessage, registration.showNotification).
+ *
+ * 3. Keep the home-screen app-icon badge in step with the notification
+ *    tray, across the whole notification lifecycle — raised when one is
+ *    shown, re-derived when one is tapped or dismissed. The counting
+ *    rules live in src/lib/sw/badge.ts; this file just calls them from
+ *    the three lifecycle events. Note the badge is not driven by the
+ *    arbiter: only the 'os' branch ever puts anything in the tray.
  */
 
 import { precacheAndRoute } from 'workbox-precaching';
@@ -199,8 +206,21 @@ async function focusOrOpen(conversationId: string): Promise<void> {
 		// Same-origin check so we don't try to drive a window we don't own.
 		try {
 			if (new URL(c.url).origin === self.location.origin) {
-				await c.focus();
+				// Tell the page where it's going BEFORE focusing it. focus() is
+				// what makes the window visible, and the chat route reads "I
+				// became visible" as the user having seen whatever thread it's
+				// parked on — so focusing first briefly presents the OLD
+				// conversation and lets it dismiss a notification the user never
+				// looked at. Posting first means the navigation is already
+				// pending by the time visibility flips, which is the signal the
+				// route checks. Pure ordering: the openWindow fallback below is
+				// untouched and still runs with no extra awaits in front of it.
 				c.postMessage({ kind: 'navigate_to_conversation', conversationId });
+				// A focus() rejection (rare — some platforms refuse it without
+				// user activation) no longer falls through to openWindow: the
+				// page has already been told to navigate, so a new window would
+				// just duplicate a thread that's already loading.
+				await c.focus().catch(() => {});
 				return;
 			}
 		} catch {

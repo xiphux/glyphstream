@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
+import { raiseAppBadge, syncAppBadge, syncAppBadgeFromWindow } from '$lib/sw/badge';
 
 /**
  * The badge is derived from the notification tray rather than from a
@@ -102,6 +102,45 @@ describe('syncAppBadge', () => {
 		await syncAppBadge({} as unknown as ServiceWorkerRegistration);
 		expect(nav.clearAppBadge).not.toHaveBeenCalled();
 		expect(nav.setAppBadge).not.toHaveBeenCalled();
+	});
+});
+
+describe('syncAppBadgeFromWindow', () => {
+	it('resolves the registration itself and counts against it', async () => {
+		vi.stubGlobal('navigator', {
+			...nav,
+			serviceWorker: { getRegistration: () => Promise.resolve(registrationWith(2)) },
+		});
+		await syncAppBadgeFromWindow();
+		expect(nav.setAppBadge).toHaveBeenCalledWith(2);
+	});
+
+	it('no-ops where there is no serviceWorker container at all', async () => {
+		await syncAppBadgeFromWindow();
+		expect(nav.setAppBadge).not.toHaveBeenCalled();
+		expect(nav.clearAppBadge).not.toHaveBeenCalled();
+	});
+
+	it('leaves the badge alone when no SW is registered (dev builds)', async () => {
+		// getRegistration resolves undefined rather than rejecting — the badge
+		// must read that as "unknown", not as an empty tray.
+		vi.stubGlobal('navigator', {
+			...nav,
+			serviceWorker: { getRegistration: () => Promise.resolve(undefined) },
+		});
+		await syncAppBadgeFromWindow();
+		expect(nav.clearAppBadge).not.toHaveBeenCalled();
+		expect(nav.setAppBadge).not.toHaveBeenCalled();
+	});
+
+	it('never rejects when getRegistration throws', async () => {
+		vi.stubGlobal('navigator', {
+			...nav,
+			serviceWorker: {
+				getRegistration: () => Promise.reject(new Error('no')),
+			},
+		});
+		await expect(syncAppBadgeFromWindow()).resolves.toBeUndefined();
 	});
 });
 

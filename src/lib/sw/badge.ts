@@ -118,3 +118,35 @@ export async function syncAppBadge(
 		// As above — best-effort.
 	}
 }
+
+/**
+ * `syncAppBadge` for a caller that doesn't already hold a registration —
+ * i.e. a page rather than the worker, which has `self.registration` in
+ * hand and should pass it directly.
+ *
+ * Lives here rather than in the page so the "how do I get a registration
+ * to count against" answer exists once. It's a real answer with a
+ * gotcha attached (below), and the last thing this should become is two
+ * copies of that comment drifting apart.
+ */
+export async function syncAppBadgeFromWindow(): Promise<void> {
+	// Structural, like BadgeNavigator above: naming the DOM lib's
+	// ServiceWorkerContainer here would make this module stop compiling in
+	// the worker build, which also imports it.
+	const nav = (
+		globalThis as {
+			navigator?: {
+				serviceWorker?: { getRegistration(): Promise<ServiceWorkerRegistration | undefined> };
+			};
+		}
+	).navigator;
+	if (!nav?.serviceWorker) return;
+	try {
+		// getRegistration(), not `ready` — `ready` never settles when no SW is
+		// registered (dev builds), which would leak a pending promise.
+		await syncAppBadge(await nav.serviceWorker.getRegistration());
+	} catch {
+		// Best-effort; syncAppBadge swallows its own failures, so this only
+		// catches getRegistration itself.
+	}
+}

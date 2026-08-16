@@ -6,6 +6,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { goto, invalidateAll } from '$app/navigation';
+	import { navigating } from '$app/state';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
 	import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
@@ -955,8 +956,19 @@
 	// OS notification for (see pickAction: same thread but not visible ->
 	// 'os'), so dismissing from a hidden window would retract the
 	// notification we just showed.
+	//
+	// A window being focused on its way somewhere else is also not a visit.
+	// Tapping thread A's notification focuses a window still parked on thread
+	// B, and that focus is what flips visibility — so without the pending-
+	// navigation check below, B's notification would be dismissed by a user
+	// who only ever asked to see A. Compared by id rather than merely "is a
+	// navigation in flight" so the acknowledgment still fires for the thread
+	// we're actually heading to, whether or not `navigating` has settled by
+	// the time this runs.
 	function acknowledgeNotifications(conversationId: string) {
 		if (document.visibilityState !== 'visible') return;
+		const pendingId = navigating.to?.params?.id;
+		if (pendingId !== undefined && pendingId !== conversationId) return;
 		void dismissConversationNotifications(conversationId);
 	}
 
