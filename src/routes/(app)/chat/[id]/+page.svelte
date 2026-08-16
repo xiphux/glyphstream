@@ -18,6 +18,7 @@
 	import { imageAttachment } from '$lib/model-capabilities';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { pendingFirstMessageKey } from '$lib/pending-first-message';
+	import { dismissConversationNotifications } from '$lib/notification-dismiss';
 	import {
 		deriveReuseModels,
 		upgradeToPresetModelId,
@@ -942,6 +943,36 @@
 		scrollToBottom: () => scrollToBottom(),
 	});
 
+	// Looking at the thread IS the acknowledgment the notification was
+	// asking for, so retract it and re-derive the app-icon badge from
+	// what's left in the tray. Scoped to this conversation rather than
+	// "the app was opened": the badge answers "did that thing finish?",
+	// and opening the app to start an unrelated chat doesn't answer it —
+	// clearing there would drop the signal before it had done its job.
+	//
+	// Gated on actually being visible. A backgrounded desktop tab parked
+	// on this conversation is precisely the case the SW arbiter raises an
+	// OS notification for (see pickAction: same thread but not visible ->
+	// 'os'), so dismissing from a hidden window would retract the
+	// notification we just showed.
+	function acknowledgeNotifications(conversationId: string) {
+		if (document.visibilityState !== 'visible') return;
+		void dismissConversationNotifications(conversationId);
+	}
+
+	// Fires on mount and on every genuine conversation change. The sentinel
+	// starts at null (not at the current id) so the first run isn't skipped —
+	// arriving by full page load, which is exactly what tapping a notification
+	// does when no window is open, has to count as a visit. Comparing rather
+	// than just reading keeps a layout-only invalidation from re-querying the
+	// tray on every completed turn.
+	let acknowledgedConvId: string | null = null;
+	$effect(() => {
+		if (data.conversation.id === acknowledgedConvId) return;
+		acknowledgedConvId = data.conversation.id;
+		acknowledgeNotifications(data.conversation.id);
+	});
+
 	// Visibility-change + connectivity handlers: tracks interruptions
 	// during in-flight sends, and re-invalidates on return so any work
 	// that completed in the background (the most common case for
@@ -950,6 +981,13 @@
 	// only after the user navigates away and back to force a refetch.
 	// Bound via <svelte:window>/<svelte:document> at the top of the template.
 	function onVisibilityChange() {
+		// Swiping back into a thread you were notified about counts as seeing
+		// it, independently of whether there's in-flight work to reconcile —
+		// the notification was raised precisely BECAUSE this window was hidden,
+		// so this is the path that clears it in the common iOS case.
+		if (document.visibilityState === 'visible') {
+			acknowledgeNotifications(data.conversation.id);
+		}
 		// A fan-out releases `busy` early (so the grid can show), so also
 		// track its branch streams as in-flight work worth recovering.
 		if (document.visibilityState === 'hidden' && (turn.busy || fanout.streaming)) {

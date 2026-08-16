@@ -55,6 +55,42 @@ have finished (its poll never adds), so one started elsewhere after this
 page loaded stays invisible until the next load. That gap is the missing
 standing per-user channel, deferred in `ROADMAP.md`.
 
+## The app icon badge
+
+When an OS notification is raised, the installed app's home-screen icon
+also gets the usual count bubble. It shows **how many threads are waiting
+on you**, not how many messages: notifications are tagged per
+conversation, so a thread that finishes twice before you look at it
+replaces its own notification rather than stacking a second one.
+
+The count is derived from the notification tray itself
+(`getNotifications()`), not from a tally we keep. That means there's no
+separate state to drift out of sync with the notifications you can
+actually see, and nothing to persist — the tray belongs to the OS, so it
+survives iOS reclaiming the app's process. Where the Badging API is
+missing (Firefox, iOS before 16.4, or a browser tab that was never
+installed to the home screen) everything else still works; there's just
+no badge.
+
+It clears **per conversation, when you open that conversation** — not
+when you open the app. Launching GlyphStream to start an unrelated chat
+leaves the badge alone, since the question it answers ("did that thing
+finish?") hasn't been answered yet. Tapping the notification clears that
+thread's share of the count as a side effect of taking you there.
+Swiping a notification away without opening it also counts; that one is
+picked up the next time the app comes to the foreground, because the
+event browsers fire for a dismissal isn't reliable enough to depend on.
+
+Like the sidebar dot, this is not a durable unread mark — it tracks
+notifications that were delivered to _this_ device, so clearing it on
+your laptop doesn't clear it on your phone. Cross-device read state is
+noted in `ROADMAP.md`.
+
+Implementation: `src/lib/sw/badge.ts` (unit-tested in
+`tests/unit/sw-badge.test.ts`), called from the service worker on push
+and on notification tap, from the chat route on visit, and from the root
+layout when the app returns to the foreground.
+
 ## Operator setup
 
 The feature is **off by default** — a fresh GlyphStream install has no

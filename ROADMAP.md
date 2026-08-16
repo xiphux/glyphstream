@@ -842,8 +842,11 @@ read before anyone re-optimizes from an estimate.
   (opening the thread at all, vs. scrolling the new message into view — the
   latter matters for a long fan-out grid); whether a badge on a conversation you
   yourself just generated in is noise; and whether the count is per-conversation
-  or a single app-level dot (the PWA badging API, `navigator.setAppBadge`, is the
-  natural extension and is iOS-supported for installed PWAs).
+  or a single app-level dot. Note the app-icon badge already ships
+  (`src/lib/sw/badge.ts`) — but it counts the _notification tray_, so it only
+  knows about threads this device was pushed about, and it inherits the tray's
+  per-device scope. It is not a substitute for durable read state; if that
+  lands, the badge should be re-derived from it instead.
 
 - **Background sync / offline composition.** Auto-_resend_ a message composed
   offline the moment connectivity returns. The data-loss half of this is now

@@ -26,6 +26,7 @@
 
 import { precacheAndRoute } from 'workbox-precaching';
 import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
+import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
 import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
 
 // SW context: redeclare `self` with the correct worker-scope type so
@@ -112,6 +113,11 @@ async function handlePush(event: PushEvent): Promise<void> {
 		badge: '/badge-96.png',
 		renotify: true,
 	} as NotificationOptions);
+
+	// Home-screen icon badge, counted from the tray we just added to. Note
+	// this is only on the 'os' branch: 'silent' and 'toast' mean the user is
+	// already looking at the app, so there is nothing to badge them about.
+	await raiseAppBadge(self.registration);
 }
 
 /**
@@ -152,9 +158,34 @@ function queryClient(client: Client, timeoutMs = 500): Promise<ActiveConversatio
 self.addEventListener('notificationclick', (event: NotificationEvent) => {
 	event.notification.close();
 	const data = event.notification.data as { conversationId?: string } | undefined;
-	const conversationId = data?.conversationId;
-	if (!conversationId) return;
-	event.waitUntil(focusOrOpen(conversationId));
+	event.waitUntil(handleNotificationClick(data?.conversationId));
+});
+
+/**
+ * The badge resync runs even when there's no conversation to open, and
+ * even if focusing throws — `close()` above already changed the tray, so
+ * leaving the badge un-re-derived would strand a count the user can no
+ * longer see the notifications behind. The focused window will also
+ * acknowledge the thread when it arrives, but that depends on the page
+ * loading; this doesn't.
+ */
+async function handleNotificationClick(conversationId: string | undefined): Promise<void> {
+	try {
+		if (conversationId) await focusOrOpen(conversationId);
+	} finally {
+		await syncAppBadge(self.registration);
+	}
+}
+
+/**
+ * The user swiped the notification away without opening it. Supported
+ * unevenly (WebKit in particular), which is why the app-visible resync in
+ * the root layout exists as a backstop rather than this being the only
+ * path — but where it does fire, it updates the badge immediately instead
+ * of at the next app open.
+ */
+self.addEventListener('notificationclose', (event: NotificationEvent) => {
+	event.waitUntil(syncAppBadge(self.registration));
 });
 
 async function focusOrOpen(conversationId: string): Promise<void> {
