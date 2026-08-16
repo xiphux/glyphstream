@@ -37,7 +37,7 @@
  */
 
 /**
- * How long the visibility path waits before acknowledging.
+ * How long the deferred paths wait before acknowledging.
  *
  * The pending-navigation check only means anything once the navigation has
  * actually started. On Chromium it has by then: the SW queues
@@ -49,10 +49,18 @@
  * feature is for. Task sources aren't ordered against each other by spec, so
  * the Chromium ordering is convention rather than guarantee either way.
  *
- * A beat is enough for the message to land and start its navigation. The delay
- * is invisible: nothing on screen depends on it, only the notification tray.
+ * Sized for a **cold** service worker, which is the normal case rather than the
+ * unlucky one: a SW is killed soon after the event that woke it, so by the time
+ * you tap a notification it raised minutes ago, its script almost certainly has
+ * to be evaluated again before `notificationclick` runs at all. That routinely
+ * costs 100-300ms on iOS, so the first guess here (150ms) would have lost the
+ * race in the common case and silently dismissed the wrong thread.
+ *
+ * Erring long is close to free and erring short is not: too long means a tray
+ * entry clears a fraction of a second later, which nobody is looking at; too
+ * short permanently destroys a completion signal the user never saw.
  */
-export const ACK_DEFER_MS = 150;
+export const ACK_DEFER_MS = 500;
 
 export interface NotificationAckDeps {
 	/** The conversation this window is currently showing. */
@@ -85,8 +93,18 @@ export class NotificationAck {
 
 	/**
 	 * The page's conversation may have changed — mount, or navigation to
-	 * another thread. Acknowledges immediately: by the time a conversation is
-	 * current there is no ordering left to wait on.
+	 * another thread.
+	 *
+	 * A *navigation* acknowledges immediately: the conversation became current
+	 * because the user went there, so there is no ordering left to wait on. The
+	 * first call — mount — defers instead, because "current" can also mean
+	 * "where the app happened to be parked". If iOS has reclaimed the process
+	 * and the user taps thread A's notification, it may relaunch the PWA at
+	 * thread B and let the SW drive the navigation from that restored window;
+	 * SvelteKit does not set `navigating` for that initial entry, so an
+	 * immediate acknowledgment would dismiss B before the SW's message could
+	 * arrive to say otherwise. Deferring gives mount the same beat the
+	 * visibility path gets.
 	 *
 	 * Cheap to over-call. The page drives this from an effect that re-runs on
 	 * any invalidation, and the sentinel makes every repeat a string compare
@@ -95,32 +113,48 @@ export class NotificationAck {
 	conversationChanged(): void {
 		const id = this.#deps.conversationId();
 		if (id === this.#acknowledged) return;
+		const mounting = this.#acknowledged === null;
 		this.#acknowledged = id;
-		this.#acknowledge(id);
+		if (mounting) this.#schedule();
+		else this.#acknowledge(id);
 	}
 
-	/**
-	 * The window became visible. Deferred by `ACK_DEFER_MS`; a second call
-	 * before the timer fires replaces it rather than stacking, so rapid
-	 * focus/blur cycling costs one acknowledgment, not one per flip.
-	 *
-	 * Safe to defer because the conversation id and visibility are both re-read
-	 * when the timer fires: a navigation that completed in the meantime
-	 * acknowledges the thread we actually ended up on, and a window that went
-	 * hidden again acknowledges nothing.
-	 */
+	/** The window became visible. Deferred; see `#schedule`. */
 	becameVisible(): void {
-		if (this.#timer !== null) clearTimeout(this.#timer);
-		this.#timer = setTimeout(() => {
-			this.#timer = null;
-			this.#acknowledge(this.#deps.conversationId());
-		}, ACK_DEFER_MS);
+		this.#schedule();
 	}
 
 	/** Drop a pending acknowledgment so it can't fire against a torn-down page. */
 	destroy(): void {
 		if (this.#timer !== null) clearTimeout(this.#timer);
 		this.#timer = null;
+	}
+
+	/**
+	 * Acknowledge after `ACK_DEFER_MS`. A second call before the timer fires
+	 * replaces it rather than stacking, so rapid focus/blur cycling costs one
+	 * acknowledgment, not one per flip.
+	 *
+	 * Safe to defer because the conversation id and visibility are both re-read
+	 * when the timer fires: a navigation that completed in the meantime
+	 * acknowledges the thread we actually ended up on, and a window that went
+	 * hidden again acknowledges nothing.
+	 *
+	 * A pending timer is deliberately NOT cancelled when `conversationChanged`
+	 * acknowledges synchronously. It would only save a duplicate dismissal —
+	 * which is idempotent, since dismissal closes already-closed notifications
+	 * for free and the badge is recounted from the tray afterwards either way —
+	 * and cancelling has a real edge to get wrong: the SW posts its navigate
+	 * message to a *hidden* window, so a synchronous acknowledgment can be
+	 * skipped for invisibility while cancelling the timer that would have
+	 * covered it.
+	 */
+	#schedule(): void {
+		if (this.#timer !== null) clearTimeout(this.#timer);
+		this.#timer = setTimeout(() => {
+			this.#timer = null;
+			this.#acknowledge(this.#deps.conversationId());
+		}, ACK_DEFER_MS);
 	}
 
 	#acknowledge(conversationId: string): void {
