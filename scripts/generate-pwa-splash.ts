@@ -82,13 +82,16 @@ const DEVICES: readonly Device[] = [
  * therefore what the launch image has to hand off to.
  *
  * Do NOT substitute the brand navy `#0f172a` here, however tempting the match
- * with icon.svg's tile and the manifest's background_color. That is Tailwind
- * slate-900 — chroma 0.04 at hue 266, nowhere on the Signature ramp — and it
- * sat here through a release: against the real `#080b10` surface it measures
- * ΔE2000 9.5, roughly 4.5x the deliberate surface-to-sidebar step, as a
- * lightness jump. It flashed on exactly the cold launch this file exists to
- * smooth. `tests/unit/pwa-splash-colors.test.ts` re-derives both values from
- * app.css and now holds the line.
+ * with icon.svg's tile. (The manifest's background_color used to be that navy
+ * too and was moved to `#080b10` alongside this — Chrome synthesises its
+ * launch screen from it, so it is the Android counterpart of these images, not
+ * a reason to change them back.) The navy is Tailwind slate-900 — chroma 0.04
+ * at hue 266, nowhere on the Signature ramp — and it sat here through a
+ * release: against the real `#080b10` surface it measures ΔE2000 9.5, where
+ * the deliberate surface-to-sidebar step measures 2.2, and the difference is
+ * mostly lightness, the most visible kind. It flashed on exactly the cold
+ * launch this file exists to smooth. `tests/unit/pwa-splash-colors.test.ts`
+ * re-derives both values from app.css and now holds the line.
  *
  * Two mismatches remain unavoidable, and both do cost a flash:
  *
@@ -213,6 +216,9 @@ async function main(): Promise<void> {
 }
 
 async function generate(): Promise<void> {
+	// Reset so the flag means "mid-swap", not "a swap happened once" — it is
+	// module state, and a second call in one process would otherwise inherit it.
+	swapping = false;
 	const mark = await loadMark();
 	// Render into a staging directory and swap it in only once every image has
 	// been written. Wiping static/splash/ up front instead would mean a single

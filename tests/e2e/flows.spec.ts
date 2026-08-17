@@ -183,6 +183,12 @@ test.describe('flow: theme switcher', () => {
 		await page.getByRole('button', { name: /^Claude/ }).click();
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude');
 		await expect(meta).toHaveAttribute('content', /^rgb\(/);
+
+		// Reset, and WAIT for it. selectTheme() applies the DOM/cookie change
+		// before awaiting its PATCH, so the click resolves with the write still
+		// in flight — returning here would tear the context down mid-request and
+		// leave `claude` in the shared e2e DB for whatever project runs next.
 		await page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click();
+		await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);
 	});
 });

@@ -62,6 +62,8 @@ scripts/screenshots/.demo-data/
 
 # Splash-image staging dir. `pnpm gen:splash` renames it over static/splash/ on
 # success and removes it on failure, so it should never be seen — but a partial
-# set stranded here would otherwise be committable AND get copied into
-# build/client/ and served, since adapter-node ships all of static/ verbatim.
+# set stranded here (a SIGKILL mid-run outruns the cleanup) would otherwise be
+# committable. Note this only stops it being COMMITTED: adapter-node ships all
+# of static/ verbatim, so a stranded copy on a build machine still gets served
+# until the next successful run removes it.
 static/.splash-staging/

@@ -17,6 +17,7 @@
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { createDoubleActivate } from '$lib/double-activate';
+	import { toast } from '$lib/toast.svelte';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
@@ -421,8 +422,28 @@
 	// The debug panel's hidden entry point: activate the version number twice
 	// in quick succession. A single stray click does nothing and leaves no
 	// trace, so the header keeps behaving exactly as it looks.
+	//
+	// The import is driven from here rather than an `{#await}` in the template
+	// for two reasons: the failure path needs to raise a toast, and `toast` is a
+	// module singleton that may only be written from an event handler (a
+	// `{#await}` `:catch` would be render depth); and a failed import has to put
+	// `debugOpen` back, or the double-activate becomes a permanent no-op with no
+	// way back but a reload. The chunk isn't precached, so a first open on a
+	// dead connection is exactly the case that fails — and it's a plausible one,
+	// since a flaky connection is a reason to open this panel.
 	let debugOpen = $state(false);
-	const onVersionActivate = createDoubleActivate(() => (debugOpen = true));
+	let DebugPanel = $state<typeof import('$lib/components/DebugPanel.svelte').default | null>(null);
+
+	const onVersionActivate = createDoubleActivate(() => {
+		void (async () => {
+			try {
+				DebugPanel ??= (await import('$lib/components/DebugPanel.svelte')).default;
+				debugOpen = true;
+			} catch {
+				toast.error('Debug info unavailable offline');
+			}
+		})();
+	});
 </script>
 
 <div class="app-shell flex overflow-hidden">
@@ -432,7 +453,7 @@
 		 The second case defends against an iOS Safari quirk: tapping the
 		 trigger inside the translated aside opens the menu via
 		 a portal'd popover, and the browser-synthesized click that
-		 follows the touch can end up dispatched to the z-30 backdrop
+		 follows the touch can end up dispatched to the z-drawer-backdrop scrim
 		 instead of staying on the trigger — closing the drawer the
 		 moment the menu opens. Going inert until the menu closes
 		 sidesteps that race entirely. The click handler carries the
@@ -964,10 +985,8 @@
 	also keeps BaseDialog's window-keydown listener — which sits outside its
 	own {#if open} — from being installed for the whole session.
 -->
-{#if debugOpen}
-	{#await import('$lib/components/DebugPanel.svelte') then { default: DebugPanel }}
-		<DebugPanel open onClose={() => (debugOpen = false)} />
-	{/await}
+{#if debugOpen && DebugPanel}
+	<DebugPanel open onClose={() => (debugOpen = false)} />
 {/if}
 
 <!--

@@ -40,10 +40,20 @@ function toLegacyRgb(value: string): string {
 		canvas.height = 1;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return value;
-		// Sentinel: an unparseable assignment leaves fillStyle untouched, which
-		// would otherwise silently paint the default black and report it as the
-		// theme colour.
+		// The sentinel does double duty. Painted and read back first, it proves
+		// the READBACK is honest: Firefox with privacy.resistFingerprinting
+		// (default in Tor Browser) blanks getImageData to opaque white, and
+		// Brave farbles the bytes. Either would sail past the alpha check below
+		// and write a confidently wrong colour — a white status bar over the
+		// dark surface, which is worse than the oklch string this replaced,
+		// since an unparseable theme-color is merely ignored.
 		ctx.fillStyle = '#010203';
+		ctx.fillRect(0, 0, 1, 1);
+		const probe = ctx.getImageData(0, 0, 1, 1).data;
+		if (probe[0] !== 1 || probe[1] !== 2 || probe[2] !== 3) return value;
+		// Second duty: an unparseable assignment leaves fillStyle untouched, so
+		// comparing against the sentinel catches a value the engine rejected
+		// rather than silently painting it black.
 		ctx.fillStyle = value;
 		if (ctx.fillStyle === '#010203') return value;
 		ctx.fillRect(0, 0, 1, 1);

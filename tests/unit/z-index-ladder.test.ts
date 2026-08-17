@@ -8,9 +8,15 @@
  * Playwright, invisible to a human. Nothing could have caught that, because
  * there was nowhere for "toast outranks modals" to be written down as code.
  *
- * So: no arbitrary `z-[N]` in components. A new surface has to pick a tier
- * from the ladder, or add one — which is a diff someone reviews, rather than a
- * number nobody compares against the other eleven.
+ * So: no arbitrary bracketed z-index values in components. A new surface has
+ * to pick a tier from the ladder, or add one — which is a diff someone
+ * reviews, rather than a number nobody compares against the other eleven.
+ *
+ * (Deliberately not spelling that pattern out literally anywhere in this file:
+ * Tailwind's scanner treats source text as class candidates, so a literal
+ * example here gets compiled into a real — and in that case invalid — rule in
+ * the shipped stylesheet. Same reason the tier names below appear only inside
+ * string literals the regexes build.)
  *
  * Bare Tailwind steps (`z-0`, `z-10`, `z-20`) are still allowed: those are
  * local stacking inside a component's own `relative` parent (the home page's
@@ -73,7 +79,7 @@ describe('global stacking ladder', () => {
 		expect(values.length).toBe(new Set(values).size);
 	});
 
-	it('uses no arbitrary z-[N] in components', () => {
+	it('uses no arbitrary bracketed z-index values in components', () => {
 		const offenders = files
 			.filter((f) => /class="[^"]*\bz-\[\d+\]/.test(f.text))
 			.map((f) => f.path);
@@ -83,7 +89,7 @@ describe('global stacking ladder', () => {
 		).toEqual([]);
 	});
 
-	it('uses no bare z-30 or above in components', () => {
+	it('uses no bare numeric tier at 30 or above in components', () => {
 		// 30+ is where viewport-level surfaces start; below that is local.
 		const offenders = files
 			.filter((f) => /class="[^"]*\bz-(3\d|[4-9]\d|\d{3,})\b/.test(f.text))
