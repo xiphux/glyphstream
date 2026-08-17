@@ -9,6 +9,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
+	import { syncThemeColorMeta } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
 
@@ -95,6 +96,27 @@
 		// Track the reactive source, then reconcile.
 		void streamPresence.conversationId;
 		syncPresence();
+	});
+
+	// Bring the browser chrome in step with whatever this page actually
+	// painted. Here, in the ROOT layout, because the `(auth)` group has no
+	// layout of its own: /login, /join/<token> and /setup were keeping
+	// app.html's static default for their whole lifetime, so a dark-scheme
+	// user got a near-white iOS status bar over a dark page — on the first
+	// screens a new or re-authenticating user sees.
+	//
+	// One call at mount, not a live subscription, and that is deliberate: those
+	// pages resolve `data-scheme` once from app.html's pre-paint script and
+	// nothing re-resolves it afterwards, so if the OS scheme flips underneath
+	// them the PAGE doesn't re-theme either. A meta that stayed in step with
+	// the OS would then disagree with the pixels. Matching the page is the
+	// property that matters.
+	//
+	// `(app)` re-runs this from its own theme/scheme effects, which own the
+	// authoritative prefs; parent effects run before child ones, so this is
+	// simply re-affirmed there. syncThemeColorMeta is idempotent.
+	$effect(() => {
+		syncThemeColorMeta();
 	});
 
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and

@@ -153,4 +153,40 @@ test.describe('unauthenticated', () => {
 		await expect(page.getByRole('link', { name: /Sign in with GitHub/i })).toBeVisible();
 		await ctx.close();
 	});
+
+	test('a dark-scheme /login tints the browser chrome to match the page', async ({ browser }) => {
+		// The `(auth)` group has no layout of its own, so nothing here used to
+		// call syncThemeColorMeta() — /login kept app.html's static light
+		// default for its whole lifetime and a dark-scheme user got a near-white
+		// status bar over a dark page. Unauthenticated + dark is a combination
+		// no other spec covers, which is why it went unnoticed.
+		const ctx = await browser.newContext({
+			storageState: { cookies: [], origins: [] },
+			colorScheme: 'dark',
+		});
+		const page = await ctx.newPage();
+		await page.goto('/login');
+		await expect(page.locator('html')).toHaveAttribute('data-scheme', 'dark');
+
+		// Resolved through one canvas so the assertion is about the COLOUR, not
+		// about how either side happens to serialise it.
+		await expect
+			.poll(async () =>
+				page.evaluate(() => {
+					const meta = document.querySelector('meta[name="theme-color"]')?.getAttribute('content');
+					if (!meta) return false;
+					const resolve = (color: string) => {
+						const cv = document.createElement('canvas');
+						cv.width = cv.height = 1;
+						const ctx2 = cv.getContext('2d')!;
+						ctx2.fillStyle = color;
+						ctx2.fillRect(0, 0, 1, 1);
+						return [...ctx2.getImageData(0, 0, 1, 1).data].join(',');
+					};
+					return resolve(meta) === resolve(getComputedStyle(document.body).backgroundColor);
+				}),
+			)
+			.toBe(true);
+		await ctx.close();
+	});
 });
