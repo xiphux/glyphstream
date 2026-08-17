@@ -54,18 +54,50 @@ vi.mock('sharp', () => {
 import { getOrCreateThumbnail } from '$lib/server/media/thumbnail';
 
 /**
- * Let queued sharp jobs finish. Polls rather than draining once: a job only
- * reaches the mocked `toFile` after several awaits (stat, semaphore, re-stat),
- * and the semaphore admits later jobs only as earlier ones release, so the
- * queue refills between ticks.
+ * Release mocked sharp jobs until `work` settles, then return its value.
+ *
+ * Keyed on the promise under test rather than on the queue looking idle, and
+ * that distinction is the whole point. The queue is legitimately empty at two
+ * different times: before the first job arrives, and in the gaps while the
+ * semaphore hands a slot to the next waiter — and a waiter still has an
+ * `fs.stat` to get through before it reaches the mocked `toFile`. Any rule
+ * phrased as "quiet for N ticks" has to tell those apart from "finished", and
+ * can't: this test hung to a 5s timeout on a loaded machine because a
+ * six-tick quiet window was ALSO what the start of every run looked like.
+ * Watching the promise removes the guess — nothing is idle-timed, and the
+ * loop stops exactly when the thing the test awaits is done.
+ *
+ * The tick ceiling is only a runaway backstop; it should never be reached.
  */
-async function drain(ticks = 200) {
-	for (let i = 0; i < ticks; i++) {
-		const batch = state.pending.splice(0);
-		for (const release of batch) release();
+async function drainUntil<T>(work: Promise<T>, ticks = 2000): Promise<T> {
+	let settled = false;
+	const tracked = work.then(
+		(v) => {
+			settled = true;
+			return v;
+		},
+		(e) => {
+			settled = true;
+			throw e;
+		},
+	);
+	// Claim the rejection now so a failing `work` can't surface as an unhandled
+	// rejection before the caller awaits the value we return.
+	tracked.catch(() => {});
+	for (let i = 0; i < ticks && !settled; i++) {
+		for (const release of state.pending.splice(0)) release();
 		await new Promise((r) => setTimeout(r, 0));
-		if (batch.length === 0 && state.live === 0 && state.pending.length === 0 && i > 5) return;
 	}
+	return tracked;
+}
+
+/** Spin macrotasks until `predicate` holds. Returns false if it never does. */
+async function waitFor(predicate: () => boolean, ticks = 200) {
+	for (let i = 0; i < ticks; i++) {
+		if (predicate()) return true;
+		await new Promise((r) => setTimeout(r, 0));
+	}
+	return false;
 }
 
 function seedSource(relPath: string) {
@@ -89,10 +121,9 @@ afterEach(() => {
 describe('getOrCreateThumbnail', () => {
 	it('collapses concurrent requests for the same media into one generation', async () => {
 		seedSource('ab/cd/one.png');
-		const all = Promise.all(Array.from({ length: 8 }, () => getOrCreateThumbnail('ab/cd/one.png')));
-		await new Promise((r) => setTimeout(r, 0));
-		await drain();
-		const results = await all;
+		const results = await drainUntil(
+			Promise.all(Array.from({ length: 8 }, () => getOrCreateThumbnail('ab/cd/one.png'))),
+		);
 
 		expect(state.started, 'each concurrent request started its own sharp pipeline').toBe(1);
 		// Every caller still gets a usable ref.
@@ -107,23 +138,25 @@ describe('getOrCreateThumbnail', () => {
 		const all = Promise.all(
 			Array.from({ length: 12 }, (_, i) => getOrCreateThumbnail(`ab/cd/m${i}.png`)),
 		);
-		await new Promise((r) => setTimeout(r, 0));
+		// Wait for the semaphore to saturate before reading the peak. A bare tick
+		// let this pass vacuously: if the fs stats hadn't resolved yet nothing had
+		// started, and `0 <= 3` is true for a cap that isn't working at all.
+		expect(
+			await waitFor(() => state.started >= 3),
+			'no generation ever started, so the cap below would assert nothing',
+		).toBe(true);
 		expect(
 			state.peakConcurrent,
 			'a burst of misses ran unbounded sharp pipelines',
 		).toBeLessThanOrEqual(3);
-		await drain();
-		const results = await all;
+		const results = await drainUntil(all);
 		expect(results.every((r) => r !== null)).toBe(true);
 		expect(state.started).toBe(12);
 	});
 
 	it('serves the cached file without regenerating', async () => {
 		seedSource('ab/cd/two.png');
-		const first = getOrCreateThumbnail('ab/cd/two.png');
-		await new Promise((r) => setTimeout(r, 0));
-		await drain();
-		await first;
+		await drainUntil(getOrCreateThumbnail('ab/cd/two.png'));
 		expect(state.started).toBe(1);
 
 		const second = await getOrCreateThumbnail('ab/cd/two.png');
@@ -138,10 +171,7 @@ describe('getOrCreateThumbnail', () => {
 
 	it('leaves no temp files behind', async () => {
 		seedSource('ab/cd/three.png');
-		const p = getOrCreateThumbnail('ab/cd/three.png');
-		await new Promise((r) => setTimeout(r, 0));
-		await drain();
-		await p;
+		await drainUntil(getOrCreateThumbnail('ab/cd/three.png'));
 		const dir = resolve(state.root, 'ab/cd');
 		const leftovers = existsSync(dir)
 			? (await import('node:fs')).readdirSync(dir).filter((f) => f.endsWith('.tmp'))
