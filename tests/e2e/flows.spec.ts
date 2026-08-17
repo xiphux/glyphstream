@@ -184,11 +184,17 @@ test.describe('flow: theme switcher', () => {
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude');
 		await expect(meta).toHaveAttribute('content', /^rgb\(/);
 
-		// Reset, and WAIT for it. selectTheme() applies the DOM/cookie change
-		// before awaiting its PATCH, so the click resolves with the write still
-		// in flight — returning here would tear the context down mid-request and
-		// leave `claude` in the shared e2e DB for whatever project runs next.
-		await page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click();
+		// Reset, and wait for the WRITE, not just the DOM. selectTheme() strips
+		// data-theme before it even calls fetch(), so asserting on the attribute
+		// is satisfied on the first poll and proves nothing about the PATCH —
+		// the context could still tear down mid-request and strand `claude` in
+		// the shared e2e DB for whatever project runs next.
+		await Promise.all([
+			page.waitForResponse(
+				(r) => r.request().method() === 'PATCH' && r.url().includes('/api/user/preferences'),
+			),
+			page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click(),
+		]);
 		await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/);
 	});
 });

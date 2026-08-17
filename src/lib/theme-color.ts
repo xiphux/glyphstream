@@ -43,10 +43,10 @@ function toLegacyRgb(value: string): string {
 		// The sentinel does double duty. Painted and read back first, it proves
 		// the READBACK is honest: Firefox with privacy.resistFingerprinting
 		// (default in Tor Browser) blanks getImageData to opaque white, and
-		// Brave farbles the bytes. Either would sail past the alpha check below
-		// and write a confidently wrong colour — a white status bar over the
-		// dark surface, which is worse than the oklch string this replaced,
-		// since an unparseable theme-color is merely ignored.
+		// Brave farbles the bytes. Either would otherwise be written out as a
+		// confidently wrong colour — a white status bar over the dark surface,
+		// which is worse than the oklch string this replaced, since an
+		// unparseable theme-color is merely ignored.
 		ctx.fillStyle = '#010203';
 		ctx.fillRect(0, 0, 1, 1);
 		const probe = ctx.getImageData(0, 0, 1, 1).data;
@@ -56,6 +56,14 @@ function toLegacyRgb(value: string): string {
 		// rather than silently painting it black.
 		ctx.fillStyle = value;
 		if (ctx.fillStyle === '#010203') return value;
+		// Wipe the sentinel before measuring. fillRect composites source-over,
+		// so painting onto the probe pixel would blend a translucent `value`
+		// with #010203 and read back a === 255 — making the alpha guard below
+		// unreachable and emitting an opaque colour that is neither the surface
+		// nor the real composite. Measured at rgb(4, 7, 9) in Chromium and
+		// rgb(5, 7, 10) in WebKit for a 50%-alpha surface, versus passing the
+		// value through untouched once the canvas is cleared.
+		ctx.clearRect(0, 0, 1, 1);
 		ctx.fillRect(0, 0, 1, 1);
 		const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
 		// A translucent surface can't be restated as opaque rgb() without

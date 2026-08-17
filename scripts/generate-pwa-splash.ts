@@ -88,8 +88,8 @@ const DEVICES: readonly Device[] = [
  * a reason to change them back.) The navy is Tailwind slate-900 — chroma 0.04
  * at hue 266, nowhere on the Signature ramp — and it sat here through a
  * release: against the real `#080b10` surface it measures ΔE2000 9.5, where
- * the deliberate surface-to-sidebar step measures 2.2, and the difference is
- * mostly lightness, the most visible kind. It flashed on exactly the cold
+ * the deliberate surface-to-sidebar step — a separation the design relies on
+ * to tell two panels apart — measures 2.2. It flashed on exactly the cold
  * launch this file exists to smooth. `tests/unit/pwa-splash-colors.test.ts`
  * re-derives both values from app.css and now holds the line.
  *
@@ -193,12 +193,22 @@ function linkTag(d: Device, orientation: 'portrait' | 'landscape', scheme: strin
 	return `<link rel="apple-touch-startup-image" media="${media}" href="/splash/${fileName(px, py, scheme)}">`;
 }
 
-/** Set once `generate()` has begun replacing static/splash/. See main(). */
-let swapping = false;
+/**
+ * Whether `generate()` has begun replacing static/splash/. Passed in rather
+ * than held as module state so it means "this run is mid-swap" — a module-level
+ * flag only ever transitions one way, so it would decay into "a swap happened
+ * at some point", and resetting it at the top of generate() is worse still:
+ * that path then continues into the staging `rm` below, which is exactly the
+ * surviving copy the finally block refuses to delete.
+ */
+interface SwapState {
+	swapping: boolean;
+}
 
 async function main(): Promise<void> {
+	const state: SwapState = { swapping: false };
 	try {
-		await generate();
+		await generate(state);
 	} finally {
 		// Clean up a partial render, which would otherwise sit in `static/` —
 		// where `pnpm build` copies it wholesale into `build/client/` and serves
@@ -211,14 +221,11 @@ async function main(): Promise<void> {
 		// turn a recoverable failure into total loss. Leave it for the operator
 		// (`mv static/.splash-staging static/splash`), or just re-run: `git
 		// checkout -- static/splash` restores the committed set either way.
-		if (!swapping) await rm(fileURLToPath(stagingDir), { recursive: true, force: true });
+		if (!state.swapping) await rm(fileURLToPath(stagingDir), { recursive: true, force: true });
 	}
 }
 
-async function generate(): Promise<void> {
-	// Reset so the flag means "mid-swap", not "a swap happened once" — it is
-	// module state, and a second call in one process would otherwise inherit it.
-	swapping = false;
+async function generate(state: SwapState): Promise<void> {
 	const mark = await loadMark();
 	// Render into a staging directory and swap it in only once every image has
 	// been written. Wiping static/splash/ up front instead would mean a single
@@ -275,9 +282,9 @@ async function generate(): Promise<void> {
 
 	// Everything that can fail has now succeeded. Commit both halves. `rename`
 	// needs the destination gone first, so there is an unavoidable instant with
-	// no static/splash/ — `swapping` tells the cleanup in main() to keep its
+	// no static/splash/ — `state.swapping` tells the cleanup in main() to keep its
 	// hands off the staged copy from here on.
-	swapping = true;
+	state.swapping = true;
 	await rm(fileURLToPath(outDir), { recursive: true, force: true });
 	await rename(fileURLToPath(stagingDir), fileURLToPath(outDir));
 	await writeFile(appHtmlPath, formatted);

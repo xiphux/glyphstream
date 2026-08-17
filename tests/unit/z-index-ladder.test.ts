@@ -12,11 +12,14 @@
  * to pick a tier from the ladder, or add one — which is a diff someone
  * reviews, rather than a number nobody compares against the other eleven.
  *
- * (Deliberately not spelling that pattern out literally anywhere in this file:
- * Tailwind's scanner treats source text as class candidates, so a literal
- * example here gets compiled into a real — and in that case invalid — rule in
- * the shipped stylesheet. Same reason the tier names below appear only inside
- * string literals the regexes build.)
+ * (Deliberately not spelling that pattern out literally anywhere in this file.
+ * Tailwind's scanner is a raw-text extractor: it reads comments and string
+ * literals alike, with no notion of which is which, so a literal example
+ * anywhere in the repo gets compiled into a real rule in the shipped
+ * stylesheet — and for an arbitrary-value shape, an invalid one. The tier names
+ * that DO appear below, in an assertion message, are harmless for a different
+ * reason: they're valid utilities already emitted for real usage, so they cost
+ * nothing extra. Being quoted is not what saves them.)
  *
  * Bare Tailwind steps (`z-0`, `z-10`, `z-20`) are still allowed: those are
  * local stacking inside a component's own `relative` parent (the home page's

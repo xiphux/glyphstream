@@ -75,8 +75,8 @@ test('the copy confirmation renders above the panel, not behind its backdrop', a
 	await expect(toast).toBeVisible();
 
 	// toBeVisible() is NOT the assertion that matters here, and asserting only
-	// that is what let this ship broken: at z-50 the toast tied with the
-	// dialog's full-screen backdrop, lost on paint order, and rendered behind
+	// that is what let this ship broken: on the overlay tier the toast tied with
+	// the dialog's full-screen backdrop, lost on paint order, and rendered behind
 	// bg-black/60 + backdrop-blur — laid out, unoccluded by any DOM check,
 	// reported visible by Playwright, and unreadable to a human. So ask the
 	// browser what is actually topmost at the toast's own centre point.

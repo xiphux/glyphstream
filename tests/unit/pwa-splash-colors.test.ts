@@ -110,4 +110,22 @@ describe('iOS launch-image colours', () => {
 				`scripts/generate-pwa-splash.ts and re-run \`pnpm gen:splash\``,
 		).toEqual(expected);
 	});
+
+	it("app.html's cold-load theme-color matches the light surface", () => {
+		// The fourth hand-copy of this token, and the one with no other guard.
+		// It is not merely a pre-hydration value: syncThemeColorMeta() only runs
+		// from the root layout onward, so a route that errors before hydration
+		// keeps whatever this says. Retuning --color-surface without updating it
+		// reintroduces exactly the drift the rest of this file exists to catch.
+		const appHtml = readFileSync(
+			fileURLToPath(new URL('../../src/app.html', import.meta.url)),
+			'utf-8',
+		);
+		const declared = /<meta name="theme-color" content="(#[0-9a-f]{6})"/i.exec(appHtml)?.[1];
+		const [l, c, h] = surfaceOklch('light');
+		const expected = `#${oklchToRgb(l, c, h)
+			.map((v) => v.toString(16).padStart(2, '0'))
+			.join('')}`;
+		expect(declared, `set app.html's theme-color to '${expected}'`).toBe(expected);
+	});
 });
