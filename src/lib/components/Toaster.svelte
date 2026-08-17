@@ -32,18 +32,11 @@
 	role=status + aria-live=polite is the right level for transient
 	confirmations: announced to assistive tech but doesn't steal focus.
 
-	z-[70] outranks every modal surface (dialogs and SearchModal are z-50)
-	because this is the app's global notification layer — a toast raised by
-	something still on screen has to be readable over it. At z-50 it lost the
-	tie to whichever full-screen backdrop painted later and ended up *behind*
-	bg-black/60 + backdrop-blur: still "visible" to the DOM and to Playwright,
-	just unreadable, which is how DebugPanel's Copy looked like a dead button.
-	Anything new that covers the viewport belongs below this, not above.
-
-	The one deliberate exception above it is UpdateBanner (z-[80]), which shares
-	this exact bottom anchor and is a persistent, actionable prompt rather than
-	a transient one — see its comment. Current ladder: content < sidebar (40)
-	< modals/popovers (50) < nested tooltip (60) < toast (70) < update (80).
+	z-toast sits above z-overlay: this is the app's global notification layer,
+	and a toast raised by something still on screen has to be readable over it.
+	Sharing the overlay tier is what once left it behind a bg-black/60
+	backdrop-blur, and made DebugPanel's Copy look like a dead button. Only
+	z-update outranks it. The full ladder lives in app.css.
 -->
 {#if toast.current}
 	{@const t = toast.current}
@@ -51,7 +44,7 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="gs-pop fixed left-4 right-4 z-[70] flex items-center gap-3 rounded-md border border-border surface-glass px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
+		class="gs-pop fixed left-4 right-4 z-toast flex items-center gap-3 rounded-md border border-border surface-glass px-3 py-2.5 text-sm shadow-lg sm:left-auto sm:right-4 sm:max-w-md"
 		style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 	>
 		<Icon size={16} strokeWidth={2.25} class="shrink-0 {kindIconClass[t.kind]}" />

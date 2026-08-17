@@ -100,7 +100,7 @@
 						avoidCollisions
 						collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
 						onOpenAutoFocus={(e) => e.preventDefault()}
-						class="z-50 max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-lg border border-border surface-glass gs-pop shadow-lg"
+						class="z-overlay max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-lg border border-border surface-glass gs-pop shadow-lg"
 					>
 						<ContextBreakdownPanel {conversationId} {revision} />
 					</Popover.Content>

@@ -635,7 +635,7 @@
 			<!-- At-a-glance preview of the comparison cart on hover, so you don't
 			     have to open the picker to recall what's selected. -->
 			<div
-				class="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 hidden group-hover/preview:block"
+				class="pointer-events-none absolute bottom-full right-0 z-overlay mb-1.5 hidden group-hover/preview:block"
 			>
 				<div
 					class="min-w-[11rem] max-w-[18rem] rounded-lg border border-border surface-glass gs-pop px-2.5 py-2 text-xs shadow-lg"
@@ -673,7 +673,7 @@
 					e.preventDefault();
 				}
 			}}
-			class="z-50 flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
+			class="z-overlay flex w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg max-h-[min(60vh,var(--bits-popover-content-available-height))]"
 		>
 			<!-- Search row. Auto-focuses on open via Popover's focus-trap on
 				 pointer:fine devices; tap-to-focus on touch (see onOpenAutoFocus

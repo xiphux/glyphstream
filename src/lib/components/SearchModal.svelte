@@ -162,7 +162,7 @@
 		aria-modal="true"
 		aria-label="Search chats"
 		tabindex="-1"
-		class="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[10vh] backdrop-blur-sm"
+		class="fixed inset-0 z-overlay flex items-start justify-center bg-black/60 p-4 pt-[10vh] backdrop-blur-sm"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) searchModal.hide();
 		}}

@@ -140,7 +140,7 @@
 				avoidCollisions
 				collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
 				onOpenAutoFocus={(e) => e.preventDefault()}
-				class="z-50 flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
+				class="z-overlay flex max-h-[min(70vh,var(--bits-popover-content-available-height))] w-[min(320px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-border surface-glass gs-pop shadow-lg"
 			>
 				<Tooltip.Provider delayDuration={150} disableHoverableContent>
 					<div
@@ -196,7 +196,7 @@
 											side="top"
 											sideOffset={6}
 											collisionPadding={12}
-											class="z-[60] max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
+											class="z-popover-nested max-w-[16rem] rounded-md border border-border surface-glass gs-pop px-2.5 py-1.5 text-xs leading-snug text-fg-secondary shadow-lg"
 										>
 											{sealed ? 'Off in private chat — this chat is sealed off.' : meta.description}
 										</Tooltip.Content>

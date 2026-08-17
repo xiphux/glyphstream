@@ -547,7 +547,7 @@
 		aria-modal="true"
 		aria-label="Media preview"
 		tabindex="-1"
-		class="fixed inset-0 z-50 flex flex-col bg-black/90 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur"
+		class="fixed inset-0 z-overlay flex flex-col bg-black/90 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur"
 		onclick={(e) => {
 			// Backdrop-only close: ignore clicks that bubbled from a
 			// child (the image, prompt text, conversation list, etc.).

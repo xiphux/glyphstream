@@ -51,7 +51,7 @@
 		aria-modal="true"
 		aria-labelledby={titleId}
 		tabindex="-1"
-		class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+		class="fixed inset-0 z-overlay flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
 		onclick={(e) => {
 			if (e.target === e.currentTarget) onCancel();
 		}}

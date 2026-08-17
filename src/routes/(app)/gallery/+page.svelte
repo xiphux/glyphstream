@@ -839,7 +839,7 @@
 								align="end"
 								avoidCollisions
 								collisionPadding={{ top: 60, right: 12, bottom: 12, left: 12 }}
-								class="z-50 flex w-72 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
+								class="z-overlay flex w-72 flex-col gap-1 rounded-lg border border-border surface-glass gs-pop p-2 text-sm shadow-lg"
 							>
 								<!-- Filter section: mobile only (desktop shows these inline). -->
 								<div class="flex flex-col gap-1 sm:hidden">

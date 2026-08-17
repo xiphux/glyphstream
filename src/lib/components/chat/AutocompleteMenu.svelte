@@ -47,7 +47,7 @@
 		bind:this={listEl}
 		role="listbox"
 		aria-label={label}
-		class="surface-glass gs-pop absolute bottom-full left-1 z-50 mb-2 max-h-64 w-[min(28rem,calc(100%-0.5rem))] overflow-y-auto rounded-lg border border-border py-1 shadow-lg"
+		class="surface-glass gs-pop absolute bottom-full left-1 z-overlay mb-2 max-h-64 w-[min(28rem,calc(100%-0.5rem))] overflow-y-auto rounded-lg border border-border py-1 shadow-lg"
 	>
 		{#each items as item, i (key(item))}
 			<button

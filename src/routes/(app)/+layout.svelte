@@ -446,7 +446,7 @@
 			if (sidebarMenuOpen) return;
 			drawerOpen = false;
 		}}
-		class="fixed inset-0 z-30 bg-black/40 transition-opacity sm:hidden {drawerOpen
+		class="fixed inset-0 z-drawer-backdrop bg-black/40 transition-opacity sm:hidden {drawerOpen
 			? 'opacity-100'
 			: 'opacity-0'} {drawerOpen && !sidebarMenuOpen
 			? 'pointer-events-auto'
@@ -475,7 +475,7 @@
 		Archived sidebar link.
 	-->
 	<aside
-		class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[translate,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
+		class="fixed inset-y-0 left-0 z-sidebar flex w-64 shrink-0 flex-col overflow-x-hidden border-r border-border bg-surface-sidebar transition-[translate,width] duration-200 sm:static sm:translate-x-0 {drawerOpen
 			? 'translate-x-0'
 			: '-translate-x-full sm:translate-x-0'} {collapsed ? 'sm:w-14' : 'sm:w-64'} {convUi.busyId !==
 		null
@@ -790,7 +790,7 @@
 											<DropdownMenu.Content
 												sideOffset={4}
 												align="end"
-												class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
+												class="z-overlay min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 											>
 												<DropdownMenu.Item
 													onSelect={() => convUi.startRename(c.id, c.title)}

@@ -99,7 +99,7 @@
 								<DropdownMenu.Content
 									sideOffset={4}
 									align="end"
-									class="z-50 min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
+									class="z-overlay min-w-[160px] overflow-hidden rounded-md border border-border surface-glass gs-pop py-1 shadow-lg"
 								>
 									<DropdownMenu.Item
 										onSelect={() => unarchive(c.id)}

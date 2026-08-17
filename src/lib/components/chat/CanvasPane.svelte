@@ -91,7 +91,7 @@
 </script>
 
 <aside
-	class="fixed inset-0 z-40 flex h-full flex-col overflow-hidden border-border-strong bg-surface-panel md:relative md:inset-auto md:z-auto md:w-[45%] md:min-w-[22rem] md:max-w-2xl md:border-l"
+	class="fixed inset-0 z-sidebar flex h-full flex-col overflow-hidden border-border-strong bg-surface-panel md:relative md:inset-auto md:z-auto md:w-[45%] md:min-w-[22rem] md:max-w-2xl md:border-l"
 	aria-label="Canvas"
 	transition:slidePane
 >

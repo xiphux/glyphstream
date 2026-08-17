@@ -49,7 +49,7 @@
 	     model picker's compare preview). Desktop-only — no hover on touch, where
 	     the icon + tap-to-toggle is the affordance. -->
 	<div
-		class="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 hidden w-max max-w-[16rem] group-hover/split:block"
+		class="pointer-events-none absolute bottom-full right-0 z-overlay mb-1.5 hidden w-max max-w-[16rem] group-hover/split:block"
 	>
 		<div
 			class="surface-glass gs-pop rounded-lg border border-border px-2.5 py-1.5 text-xs shadow-lg"

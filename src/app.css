@@ -467,6 +467,43 @@
 	--color-media-fg-subtle: var(--color-neutral-400);
 }
 
+/* --- global stacking ladder ---------------------------------------------- *
+ *
+ * Every VIEWPORT-LEVEL surface — anything `fixed` that can cover another
+ * surface — picks its layer from here, lowest first:
+ *
+ *   drawer-backdrop  the mobile sidebar's scrim
+ *   sidebar          the sidebar itself, and CanvasPane's mobile sheet
+ *   overlay          modals, popovers, menus, the lightbox: the busy tier
+ *   popover-nested   a tooltip opened from inside something already at overlay
+ *   toast            transient notifications, which must stay readable over a
+ *                    modal backdrop that is still on screen
+ *   update           the new-version prompt: not transient, not dismissible by
+ *                    waiting, shares the toast's bottom anchor, and is the one
+ *                    control the service-worker update flow exists to reach
+ *
+ * These exist because the ordering was previously carried only by bare numbers
+ * scattered across a dozen components, and it broke: the toast and the dialog
+ * backdrop both sat at 50, the tie fell to paint order, and the toast rendered
+ * *behind* a `bg-black/60 backdrop-blur` — laid out, reported visible by the
+ * DOM and by Playwright, and unreadable to a human. Naming the tiers puts the
+ * order in one place; `tests/unit/z-index-ladder.test.ts` stops the next
+ * surface from inventing a number instead of a tier.
+ *
+ * NOT in scope: `z-0/10/20` inside a component's own `relative` parent. Those
+ * are local stacking contexts (the home page's aura behind its content, the
+ * gallery rail over its list) and have no relationship to this ladder —
+ * folding them in would imply one that doesn't exist.
+ */
+@theme {
+	--z-index-drawer-backdrop: 30;
+	--z-index-sidebar: 40;
+	--z-index-overlay: 50;
+	--z-index-popover-nested: 60;
+	--z-index-toast: 70;
+	--z-index-update: 80;
+}
+
 /* The standard raised panel: a bordered card on the app canvas. This chrome
  * (rounded-lg + border + border-border + bg-surface-panel) was repeated
  * verbatim ~18 times across settings, dialogs and the gallery. Padding is
