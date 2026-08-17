@@ -129,12 +129,27 @@ test.describe('flow: theme switcher', () => {
 		await expect(html).toHaveAttribute('data-theme', 'claude');
 
 		// theme-color meta tracks the active surface (PWA status-bar tint).
+		// Compared as resolved COLOURS, not as strings: the meta is deliberately
+		// normalised to legacy rgb() (see toLegacyRgb — iOS before 15.4 can't
+		// parse the oklch that getComputedStyle now returns), so a string
+		// comparison would assert a serialisation that is not the contract and
+		// would fail on exactly the correct behaviour.
 		await expect
-			.poll(async () => {
-				const meta = await page.locator('meta[name="theme-color"]').getAttribute('content');
-				const bodyBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-				return meta === bodyBg && !!bodyBg;
-			})
+			.poll(async () =>
+				page.evaluate(() => {
+					const meta = document.querySelector('meta[name="theme-color"]')?.getAttribute('content');
+					if (!meta) return false;
+					const resolve = (color: string) => {
+						const cv = document.createElement('canvas');
+						cv.width = cv.height = 1;
+						const ctx = cv.getContext('2d')!;
+						ctx.fillStyle = color;
+						ctx.fillRect(0, 0, 1, 1);
+						return [...ctx.getImageData(0, 0, 1, 1).data].join(',');
+					};
+					return resolve(meta) === resolve(getComputedStyle(document.body).backgroundColor);
+				}),
+			)
 			.toBe(true);
 
 		// Reload: the gs-theme cookie → hooks transformPageChunk means the
@@ -144,8 +159,30 @@ test.describe('flow: theme switcher', () => {
 		await expect(html).toHaveAttribute('data-theme', 'claude');
 
 		// Switching back to the default clears the attribute again (and
-		// leaves the DB pref clean for other tests).
-		await page.getByRole('button', { name: /^GlyphStream/ }).click();
+		// leaves the DB pref clean for other tests). Named in full rather
+		// than as a `/^GlyphStream/` prefix: the sidebar is on this page too,
+		// so a prefix match is one product-named control away from a
+		// strict-mode violation — and when this step fails, the DB pref stays
+		// dirty for every later test.
+		await page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click();
 		await expect(html).not.toHaveAttribute('data-theme', /.+/);
+	});
+
+	test('the theme-color meta lands as rgb(), not the raw oklch token', async ({ page }) => {
+		// --color-surface is authored in oklch, and both Chromium and WebKit now
+		// return getComputedStyle colours in their own space — so without
+		// normalisation this meta gets `oklch(...)` verbatim. That parses on
+		// current engines but not on iOS before 15.4, where an unparseable
+		// theme-color is dropped and the PWA status bar falls back to default.
+		// Nothing else would notice: the tag is still present and still wrong.
+		await page.goto('/settings/preferences');
+		const meta = page.locator('meta[name="theme-color"]');
+		await expect(meta).toHaveAttribute('content', /^rgb\(/);
+
+		// And it must still track a theme change, not just be right once.
+		await page.getByRole('button', { name: /^Claude/ }).click();
+		await expect(page.locator('html')).toHaveAttribute('data-theme', 'claude');
+		await expect(meta).toHaveAttribute('content', /^rgb\(/);
+		await page.getByRole('button', { name: 'GlyphStream Signature frosted glass' }).click();
 	});
 });

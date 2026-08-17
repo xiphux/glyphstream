@@ -16,10 +16,19 @@ import { openSidebar } from './helpers';
  * for something meant to stay invisible.
  */
 
+/**
+ * The button carries no aria-label, so its accessible name is the rendered
+ * "v1.2.3" — deliberately, since a product-prefixed label collided with the
+ * theme picker's "GlyphStream Signature frosted glass" on /settings/preferences
+ * and broke an unrelated spec. Matched by shape rather than a literal so the
+ * suite doesn't need editing on every release.
+ */
+const VERSION_BUTTON = /^v\d+\.\d+\.\d+/;
+
 test('the version number stays inert on a single click', async ({ page, isMobile }) => {
 	await page.goto('/');
 	await openSidebar(page, !!isMobile);
-	await page.getByRole('button', { name: /GlyphStream version/ }).click();
+	await page.getByRole('button', { name: VERSION_BUTTON }).click();
 	// Deliberately longer than the 450ms pairing window: a second click after
 	// this wait must not complete a pair either.
 	await page.waitForTimeout(900);
@@ -30,7 +39,7 @@ test('double-activating the version number opens the debug panel', async ({ page
 	await page.goto('/');
 	await openSidebar(page, !!isMobile);
 
-	const version = page.getByRole('button', { name: /GlyphStream version/ });
+	const version = page.getByRole('button', { name: VERSION_BUTTON });
 	await version.dblclick();
 
 	const panel = page.getByRole('dialog');
@@ -56,7 +65,7 @@ test('the copy confirmation renders above the panel, not behind its backdrop', a
 	await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 	await page.goto('/');
 	await openSidebar(page, !!isMobile);
-	await page.getByRole('button', { name: /GlyphStream version/ }).dblclick();
+	await page.getByRole('button', { name: VERSION_BUTTON }).dblclick();
 
 	const panel = page.getByRole('dialog');
 	await expect(panel).toBeVisible();

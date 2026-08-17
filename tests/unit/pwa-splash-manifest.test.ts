@@ -131,7 +131,9 @@ describe('iOS PWA launch images', () => {
 		// The generator wipes static/splash/ each run, so a leftover here means
 		// the images and the HTML came from different runs.
 		const referenced = new Set(images.map((i) => i.href.replace('/splash/', '')));
-		const orphans = readdirSync(splashDir).filter((f) => !referenced.has(f));
+		// `.png` only: on macOS a stray .DS_Store would otherwise fail this with
+		// something that has nothing to do with the invariant being asserted.
+		const orphans = readdirSync(splashDir).filter((f) => f.endsWith('.png') && !referenced.has(f));
 		expect(orphans).toEqual([]);
 	});
 });

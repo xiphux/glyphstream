@@ -25,7 +25,40 @@
 	let sections = $state<DebugSection[]>([]);
 
 	$effect(() => {
-		if (open) sections = buildDebugSections(readDebugSources(__APP_VERSION__));
+		if (!open) return;
+		// `cancelled` guards the async hop in readDebugSources (it awaits the
+		// service-worker registration): without it, a close-then-reopen could
+		// land the first read's results over the second's.
+		let cancelled = false;
+		void readDebugSources(__APP_VERSION__)
+			.then((sources) => {
+				if (!cancelled) sections = buildDebugSections(sources);
+			})
+			// readDebugSources guards its one await, but the synchronous reads
+			// ahead of it (performance, matchMedia, navigator) are whatever the
+			// device provides — a hardened WebView can throw on any of them.
+			// Without this the panel would show an empty dialog forever and put
+			// an unhandled rejection in a console nobody has open, which is the
+			// "throws instead of printing a dash" outcome debug-info.ts's own
+			// contract rules out. Surface it in the panel instead.
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				sections = [
+					{
+						title: 'This load',
+						rows: [
+							{
+								label: 'Unavailable',
+								value: 'read failed',
+								note: err instanceof Error ? err.message : String(err),
+							},
+						],
+					},
+				];
+			});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	/** Plain text, for pasting into an issue. */

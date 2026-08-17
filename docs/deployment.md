@@ -131,6 +131,13 @@ on modern CPUs; the fallbacks cover older browsers. SSE
 events as they arrive. Static `/_app/immutable/*` assets are already
 precompressed at build time and aren't affected by this flag.
 
+The iOS launch-image block in `app.html` raises the stakes here. It adds ~21 KB
+of `<link>` markup to **every** HTML document — that's most of a short page, and
+it can push the response from two slow-start flights to four on a cold mobile
+connection. Compressed it collapses to ~750 bytes brotli / ~1.3 KB gzip, so it's
+effectively free the moment either the proxy or `COMPRESS_DYNAMIC=1` is
+compressing. Uncompressed, it's a per-document floor you pay forever.
+
 **Checking whether anything is compressing at all.** Open a long conversation,
 then DevTools → Network → click the `/chat/<id>` _document_ request → Response
 Headers. No `content-encoding` (or a "Transferred" size equal to "Size") means

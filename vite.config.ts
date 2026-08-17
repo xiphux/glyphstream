@@ -72,8 +72,20 @@ export default defineConfig({
 				name: 'GlyphStream',
 				short_name: 'GlyphStream',
 				description: 'Lightweight chat over multiple OpenAI-compatible backends.',
+				// theme_color tints Android's browser/toolbar chrome before the
+				// page loads; syncThemeColorMeta() takes over from there.
 				theme_color: '#0f172a',
-				background_color: '#0f172a',
+				// background_color is Chrome's synthesised launch screen — the
+				// Android counterpart of the apple-touch-startup-image set, so it
+				// gets the same treatment: the dark `--color-surface` the app
+				// actually paints (see scripts/generate-pwa-splash.ts), not the
+				// brand navy, which measured ΔE2000 9.5 away from it and flashed.
+				// The manifest has no scheme variants, so one value has to serve
+				// both; dark is the one that can match exactly, and a light-scheme
+				// user's launch is no worse than it already was. The icon's own
+				// navy tile now reads as a faint square against this — accepted,
+				// it's far below the flash it replaces.
+				background_color: '#080b10',
 				display: 'standalone',
 				start_url: '/',
 				scope: '/',

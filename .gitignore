@@ -59,3 +59,9 @@ scripts/screenshots/.demo-data/
 
 # OpenCode deepwork session state — local progress notes, never committed
 .slim/deepwork/
+
+# Splash-image staging dir. `pnpm gen:splash` renames it over static/splash/ on
+# success and removes it on failure, so it should never be seen — but a partial
+# set stranded here would otherwise be committable AND get copied into
+# build/client/ and served, since adapter-node ships all of static/ verbatim.
+static/.splash-staging/

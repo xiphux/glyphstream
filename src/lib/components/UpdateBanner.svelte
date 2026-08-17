@@ -19,11 +19,18 @@
 
 	role + aria-live=polite announces the update to screen readers without
 	stealing focus from whatever the user is doing.
+
+	z-[80] outranks even the toast layer (z-[70]). The two share an anchor —
+	identical `bottom: max(1rem, safe-area + 0.5rem)`, and on mobile they
+	overlap horizontally — and this one is neither transient nor dismissible by
+	waiting: it's a single actionable prompt. A toast painting over Refresh
+	(and, having pointer events, swallowing the tap) would obstruct exactly the
+	control the service worker's update flow exists to deliver the user to.
 -->
 <div
 	role="status"
 	aria-live="polite"
-	class="fixed bottom-4 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border surface-glass px-3 py-2 text-sm shadow-lg"
+	class="fixed bottom-4 left-1/2 z-[80] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border surface-glass px-3 py-2 text-sm shadow-lg"
 	style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 >
 	<RefreshCw size={14} strokeWidth={2.25} class="shrink-0 opacity-70" />

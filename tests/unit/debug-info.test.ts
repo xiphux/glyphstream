@@ -18,7 +18,7 @@ const nav: NavTimingLike = {
 	workerStart: 100,
 	fetchStart: 140, // 40ms of service-worker startup
 	requestStart: 150,
-	responseStart: 950, // 800ms TTFB
+	responseStart: 950, // 810ms TTFB, measured from fetchStart (140)
 	responseEnd: 1000, // 50ms of HTML transfer
 	domInteractive: 1400,
 	loadEventEnd: 1800,
@@ -32,10 +32,10 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		navigation: nav,
 		paint: [{ name: 'first-contentful-paint', startTime: 1150 }],
 		resources: [
-			{ name: 'https://x/_app/immutable/nodes/0.abc.js', transferSize: 12_000 },
-			{ name: 'https://x/_app/immutable/chunks/a.def.js', transferSize: 0 }, // cached
-			{ name: 'https://x/_app/immutable/assets/app.ghi.css', transferSize: 4_000 },
-			{ name: 'https://x/api/conversations', transferSize: 9_999 }, // not a chunk
+			{ name: 'https://x/_app/immutable/nodes/0.abc.js', transferSize: 12_000, startTime: 10 },
+			{ name: 'https://x/_app/immutable/chunks/a.def.js', transferSize: 0, startTime: 10 }, // cached
+			{ name: 'https://x/_app/immutable/assets/app.ghi.css', transferSize: 4_000, startTime: 10 },
+			{ name: 'https://x/api/conversations', transferSize: 9_999, startTime: 10 }, // not a chunk
 		],
 		standalone: true,
 		serviceWorker: 'controlled',
@@ -56,9 +56,9 @@ describe('buildDebugSections', () => {
 	it('splits TTFB into server and network using Server-Timing', () => {
 		const rows = rowsOf(sources(), 'This load');
 		expect(rows['Server (SSR)'].value).toBe('620 ms');
-		// 800ms TTFB - 620ms of server = 180ms actually on the wire.
-		expect(rows['Network'].value).toBe('180 ms');
-		expect(rows['Network'].note).toBe('800 ms TTFB');
+		// 810ms TTFB - 620ms of server = 190ms of connection setup + flight.
+		expect(rows['Network'].value).toBe('190 ms');
+		expect(rows['Network'].note).toBe('810 ms TTFB');
 	});
 
 	it('reports the service-worker startup gap, not the whole fetch', () => {
@@ -81,7 +81,19 @@ describe('buildDebugSections', () => {
 		expect(rows['Server (SSR)'].value).toBe('—');
 		expect(rows['Network'].value).toBe('—');
 		// TTFB is still known and still the useful number.
-		expect(rows['Network'].note).toBe('800 ms TTFB');
+		expect(rows['Network'].note).toBe('810 ms TTFB');
+	});
+
+	it('bills connection setup to Network rather than dropping it', () => {
+		// requestStart (150) is stamped after DNS/TCP/TLS; fetchStart (140) is
+		// before. Measuring TTFB from requestStart would silently lose that
+		// window from both rows — on a cold cellular launch it's the biggest
+		// single component of the wait, and the panel would read "wire is fine".
+		const s = sources({ navigation: { ...nav, fetchStart: 140, requestStart: 640 } });
+		const rows = rowsOf(s, 'This load');
+		// 950 - 140 = 810 total, of which 620 was the server.
+		expect(rows['Network'].note).toBe('810 ms TTFB');
+		expect(rows['Network'].value).toBe('190 ms');
 	});
 
 	it('never reports negative network time when the clocks disagree', () => {
@@ -99,9 +111,41 @@ describe('buildDebugSections', () => {
 		expect(rows['Downloaded'].value).toBe('16 KB');
 	});
 
+	it('counts only chunks from the initial load, not the whole session', () => {
+		// The document outlives every client-side navigation, so the resource
+		// buffer keeps growing: route chunks pulled later (settings, gallery,
+		// shiki) would otherwise be billed to a cold start that never paid for
+		// them. This also covers the panel's OWN chunk, which is lazy-loaded at
+		// open time — well after loadEventEnd (1800) — so a fully-cached launch
+		// still honestly reports zero from network instead of counting itself.
+		const s = sources({
+			resources: [
+				{ name: 'https://x/_app/immutable/nodes/0.abc.js', transferSize: 0, startTime: 10 },
+				// The panel's own chunk, fetched when the user opened it.
+				{
+					name: 'https://x/_app/immutable/chunks/DebugPanel.z.js',
+					transferSize: 4_400,
+					startTime: 90_000,
+				},
+				// A route visited mid-session.
+				{
+					name: 'https://x/_app/immutable/nodes/9.gallery.js',
+					transferSize: 30_000,
+					startTime: 50_000,
+				},
+			],
+		});
+		const rows = rowsOf(s, 'Assets');
+		expect(rows['App chunks'].value).toBe('1');
+		expect(rows['App chunks'].note).toBe('0 from network');
+		expect(rows['Downloaded'].value).toBe('0 B');
+	});
+
 	it('reports a fully cached load as zero downloaded', () => {
 		const s = sources({
-			resources: [{ name: 'https://x/_app/immutable/nodes/0.abc.js', transferSize: 0 }],
+			resources: [
+				{ name: 'https://x/_app/immutable/nodes/0.abc.js', transferSize: 0, startTime: 10 },
+			],
 			navigation: { ...nav, transferSize: 0 },
 		});
 		expect(rowsOf(s, 'Assets')['Downloaded'].value).toBe('0 B');

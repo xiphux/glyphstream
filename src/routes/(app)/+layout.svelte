@@ -16,7 +16,6 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import DeleteConversationDialog from '$lib/components/DeleteConversationDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import DebugPanel from '$lib/components/DebugPanel.svelte';
 	import { createDoubleActivate } from '$lib/double-activate';
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
@@ -509,11 +508,21 @@
 						 gets keyboard parity for free, which a `dblclick`
 						 listener would not. Styled to stay exactly as
 						 unremarkable as it was; touch-manipulation so a
-						 double-tap opens the panel instead of zooming the page. -->
+						 double-tap opens the panel instead of zooming the page.
+
+						 Deliberately NO aria-label: the rendered "v1.2.3" is the
+						 accessible name. An earlier label read "GlyphStream
+						 version … Activate twice for debug info", which broke
+						 three ways at once — it collided with the theme picker's
+						 "GlyphStream Signature frosted glass" button (both are on
+						 /settings/preferences, and a `/^GlyphStream/` role query
+						 then matches two elements), it announced a deliberately
+						 hidden surface to exactly the users who can't see that
+						 it's hidden, and it violated WCAG 2.5.3 Label in Name
+						 because the visible "v1.2.3" was not a substring of it. -->
 					<button
 						type="button"
 						onclick={onVersionActivate}
-						aria-label="GlyphStream version {__APP_VERSION__}. Activate twice for debug info."
 						class="cursor-default touch-manipulation border-0 bg-transparent p-0 text-[10px] tabular-nums text-fg-subtle"
 					>
 						v{__APP_VERSION__}
@@ -948,8 +957,18 @@
 <!--
 	"Stats for nerds". No affordance points at it — the only way in is
 	double-activating the version number above.
+
+	Dynamically imported for the same reasons as SearchModal below, only more
+	so: this is the rarest surface in the app by construction, and it was the
+	one being paid for on every load (12.8% of the layout chunk). The {#if}
+	also keeps BaseDialog's window-keydown listener — which sits outside its
+	own {#if open} — from being installed for the whole session.
 -->
-<DebugPanel open={debugOpen} onClose={() => (debugOpen = false)} />
+{#if debugOpen}
+	{#await import('$lib/components/DebugPanel.svelte') then { default: DebugPanel }}
+		<DebugPanel open onClose={() => (debugOpen = false)} />
+	{/await}
+{/if}
 
 <!--
 	Host for the app-wide search modal (searchModal.show()). Sidebar

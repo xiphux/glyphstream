@@ -34,6 +34,8 @@ export interface NavTimingLike {
 export interface ResourceTimingLike {
 	name: string;
 	transferSize: number;
+	/** When the fetch started, on the same clock as the navigation entry. */
+	startTime: number;
 }
 
 export interface PaintTimingLike {
@@ -101,7 +103,14 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// had just restarted" from "the network was slow" — without it the two
 		// are pooled into one indistinguishable TTFB.
 		const ssr = nav.serverTiming?.find((e) => e.name === 'ssr')?.duration ?? null;
-		const ttfb = span(nav.requestStart, nav.responseStart);
+		// From fetchStart, NOT requestStart. requestStart is stamped after DNS,
+		// TCP and the TLS handshake, so measuring from there drops connection
+		// setup out of both rows — it lands in neither `Server` nor `Network`
+		// and appears nowhere in the panel. On a cold iOS launch over cellular,
+		// the case this whole readout exists for, that is routinely 100-500 ms
+		// of the wait, and its absence makes the wire look fine when it wasn't.
+		// fetchStart is also the conventional TTFB origin.
+		const ttfb = span(nav.fetchStart, nav.responseStart);
 		// Everything in TTFB that wasn't the server: connection setup, request
 		// and response flight time. Clamped at 0 — the two clocks are measured
 		// at different ends and rounding can cross over on a fast local hop.
@@ -145,7 +154,27 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		);
 	}
 
-	const chunks = s.resources.filter((r) => r.name.includes(IMMUTABLE_PREFIX));
+	// Bounded to the initial load, not the whole document lifetime. The resource
+	// buffer keeps accumulating as you browse, and this panel's own premise is
+	// that client-side navigation never replaces the document — so an unbounded
+	// count folds in every route chunk lazy-loaded since (settings, gallery,
+	// shiki, pyodide) and reports a cold start as far more expensive than it
+	// was. It would also count the panel's OWN chunk, which is lazy-loaded on
+	// open: on a fully-cached launch, where the honest answer is "0 from
+	// network", it would say 1. A diagnostic must not be visible in its own
+	// measurement.
+	// `loadEventEnd` is 0 until the load event fires, and one hung subresource
+	// (an <img> pointing at a dead upstream) keeps it there for the life of the
+	// document — so keying on it alone would silently restore the unbounded
+	// count in precisely a degraded session. `domInteractive` is set much
+	// earlier and never rolls back, so it's the fallback; it lands slightly
+	// before the last chunk of the initial load, which under-counts rather than
+	// over-counts. Erring toward "too few" is right for a diagnostic: it can't
+	// invent network traffic that didn't happen.
+	const loadEnd = nav ? nav.loadEventEnd || nav.domInteractive || null : null;
+	const chunks = s.resources.filter(
+		(r) => r.name.includes(IMMUTABLE_PREFIX) && (loadEnd === null || r.startTime <= loadEnd),
+	);
 	// transferSize 0 means it never hit the network. That single number answers
 	// "did this launch re-download the bundle" — the question behind a slow
 	// cold start right after a deploy.
@@ -189,23 +218,44 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
  * runs on whatever the user's device happens to support, and a diagnostic that
  * throws is worse than one that prints a dash.
  */
-export function readDebugSources(version: string): DebugSources {
+export async function readDebugSources(version: string): Promise<DebugSources> {
 	// Down-cast to the concrete DOM types (both extend PerformanceEntry), which
 	// then satisfy the structural *Like interfaces without an `unknown` hop.
+	// Read synchronously, BEFORE the await below, so the timings describe the
+	// moment the panel was opened rather than a tick later.
 	const nav = performance.getEntriesByType('navigation')[0] as
 		PerformanceNavigationTiming | undefined;
+	const paint = performance.getEntriesByType('paint');
+	const resources = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+	const standalone = window.matchMedia('(display-mode: standalone)').matches;
+	const online = navigator.onLine;
+
+	// A controller answers "is a worker driving this page", which is NOT the
+	// same question as "is one installed" — and the gap between them is now a
+	// normal, long-lived state: since the worker stopped calling skipWaiting()
+	// on install, an update sits in `waiting` until the user accepts it. Keying
+	// only off `controller` reported that device as having no worker at all,
+	// which is the wrong answer to the one thing this panel is for. Hence the
+	// async hop: registration state isn't available synchronously.
 	let serviceWorker: DebugSources['serviceWorker'] = 'unsupported';
 	if ('serviceWorker' in navigator) {
-		serviceWorker = navigator.serviceWorker.controller ? 'controlled' : 'none';
+		if (navigator.serviceWorker.controller) {
+			serviceWorker = 'controlled';
+		} else {
+			// Rejects outside a secure context; a dash-equivalent beats a throw.
+			const reg = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+			serviceWorker = reg ? 'registered' : 'none';
+		}
 	}
+
 	return {
 		version,
 		navigation: nav,
-		paint: performance.getEntriesByType('paint'),
-		resources: performance.getEntriesByType('resource') as PerformanceResourceTiming[],
-		standalone: window.matchMedia('(display-mode: standalone)').matches,
+		paint,
+		resources,
+		standalone,
 		serviceWorker,
-		online: navigator.onLine,
+		online,
 		dev: import.meta.env.DEV,
 	};
 }

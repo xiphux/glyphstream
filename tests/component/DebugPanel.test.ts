@@ -62,11 +62,15 @@ describe('DebugPanel', () => {
 		expect(performance.getEntriesByType).not.toHaveBeenCalled();
 	});
 
-	it('shows the split timings once open', () => {
+	it('shows the split timings once open', async () => {
 		render(DebugPanel, { props: { open: true, onClose: () => {} } });
 		const dialog = screen.getByRole('dialog');
-		expect(dialog).toHaveTextContent('620 ms'); // server
-		expect(dialog).toHaveTextContent('180 ms'); // network = TTFB - server
+		// Awaited: readDebugSources resolves the service-worker registration
+		// before the rows exist, so the first paint of the dialog is empty.
+		await vi.waitFor(() => expect(dialog).toHaveTextContent('620 ms')); // server
+		// TTFB runs fetchStart(130)..responseStart(950) = 820, minus 620 of
+		// server = 200 on the wire, connection setup included.
+		expect(dialog).toHaveTextContent('200 ms');
 		expect(dialog).toHaveTextContent('30 ms'); // service-worker startup
 		expect(dialog).toHaveTextContent('9.9.9');
 		expect(dialog).toHaveTextContent('standalone');

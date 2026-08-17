@@ -21,7 +21,7 @@
  * absent from the table below simply gets the old white screen back, which is
  * why the table is exhaustive rather than "the popular ones".
  */
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import { format, resolveConfig } from 'prettier';
@@ -76,16 +76,33 @@ const DEVICES: readonly Device[] = [
 /**
  * Launch surfaces, keyed by the `prefers-color-scheme` they answer to.
  *
- * These track the Signature theme's `--surface` in each scheme (see app.css),
- * which is also what `syncThemeColorMeta()` settles the status bar on, so the
- * splash hands off to the app without a flash. Note iOS matches the *OS*
- * setting here — a user who has forced light or dark in-app via the gs-scheme
- * cookie against their OS setting still gets the OS-matching splash. There is
- * no cookie-aware form of this query; the OS match is the closest available.
+ * These are the sRGB of the DEFAULT (Signature) theme's `--color-surface` in
+ * each scheme, hand-converted from the oklch in app.css — `oklch(15% 0.012 258)`
+ * dark, `oklch(98.5% 0.006 250)` light. That token is what `body` paints and
+ * therefore what the launch image has to hand off to.
+ *
+ * Do NOT substitute the brand navy `#0f172a` here, however tempting the match
+ * with icon.svg's tile and the manifest's background_color. That is Tailwind
+ * slate-900 — chroma 0.04 at hue 266, nowhere on the Signature ramp — and it
+ * sat here through a release: against the real `#080b10` surface it measures
+ * ΔE2000 9.5, roughly 4.5x the deliberate surface-to-sidebar step, as a
+ * lightness jump. It flashed on exactly the cold launch this file exists to
+ * smooth. `tests/unit/pwa-splash-colors.test.ts` re-derives both values from
+ * app.css and now holds the line.
+ *
+ * Two mismatches remain unavoidable, and both do cost a flash:
+ *
+ * - Scheme: iOS matches the *OS* setting, so someone who has forced light or
+ *   dark in-app via the gs-scheme cookie against their OS gets the OS one.
+ *   There is no cookie-aware form of this media query.
+ * - Theme: `--color-surface` varies by `[data-theme]` too, and the Claude and
+ *   ChatGPT palettes are nowhere near this blue-slate. `apple-touch-startup-image`
+ *   can only be selected by media query, and there is no theme media query, so
+ *   a non-Signature user launches into Signature colours regardless.
  */
 const SCHEMES = [
-	{ name: 'dark', bg: '#0f172a' },
-	{ name: 'light', bg: '#fafafa' },
+	{ name: 'dark', bg: '#080b10' },
+	{ name: 'light', bg: '#f7fafe' },
 ] as const;
 
 /**
@@ -99,6 +116,9 @@ const MARK_MAX_PX = 420;
 
 const root = new URL('../', import.meta.url);
 const outDir = new URL('static/splash/', root);
+/** Staged renders; renamed over `outDir` only after the last one succeeds.
+ *  Sibling of the target so the rename stays within one filesystem. */
+const stagingDir = new URL('static/.splash-staging/', root);
 const appHtmlPath = fileURLToPath(new URL('src/app.html', root));
 const iconPath = fileURLToPath(new URL('static/icon.svg', root));
 
@@ -170,15 +190,44 @@ function linkTag(d: Device, orientation: 'portrait' | 'landscape', scheme: strin
 	return `<link rel="apple-touch-startup-image" media="${media}" href="/splash/${fileName(px, py, scheme)}">`;
 }
 
+/** Set once `generate()` has begun replacing static/splash/. See main(). */
+let swapping = false;
+
 async function main(): Promise<void> {
+	try {
+		await generate();
+	} finally {
+		// Clean up a partial render, which would otherwise sit in `static/` —
+		// where `pnpm build` copies it wholesale into `build/client/` and serves
+		// it, and where `git add -A` would happily commit it. The guard test only
+		// reads `static/splash/`, so nothing else would notice.
+		//
+		// But NOT once the swap has started. In that window static/splash/ has
+		// already been removed, so if the rename is what failed then staging
+		// holds the only surviving copy of the images — deleting it here would
+		// turn a recoverable failure into total loss. Leave it for the operator
+		// (`mv static/.splash-staging static/splash`), or just re-run: `git
+		// checkout -- static/splash` restores the committed set either way.
+		if (!swapping) await rm(fileURLToPath(stagingDir), { recursive: true, force: true });
+	}
+}
+
+async function generate(): Promise<void> {
 	const mark = await loadMark();
-	await rm(fileURLToPath(outDir), { recursive: true, force: true });
-	await mkdir(fileURLToPath(outDir), { recursive: true });
+	// Render into a staging directory and swap it in only once every image has
+	// been written. Wiping static/splash/ up front instead would mean a single
+	// failed render — a transient ENOSPC, an OOM on the 2048x2732 iPad canvas —
+	// leaves a tree where EVERY href in app.html dangles, not just the one that
+	// failed. The guard test catches that in CI, but locally it's a broken
+	// commit away.
+	await rm(fileURLToPath(stagingDir), { recursive: true, force: true });
+	await mkdir(fileURLToPath(stagingDir), { recursive: true });
 
 	const tags: string[] = [];
-	// Dedupe the renders: a landscape image for one device is the same pixel
-	// size as the portrait image for none of them, but two devices can share a
-	// geometry across orientations (square-ish iPads don't, but keep it honest).
+	// Guards against rendering the same file twice. In practice that only
+	// happens if DEVICES ever gains a duplicate geometry row — orientations
+	// can't collide with each other, since portrait names always have py > px
+	// and landscape the reverse. Cheap insurance, not an active dedupe.
 	const rendered = new Set<string>();
 
 	for (const scheme of SCHEMES) {
@@ -190,13 +239,19 @@ async function main(): Promise<void> {
 				if (!rendered.has(name)) {
 					rendered.add(name);
 					const buf = await render(mark, px, py, scheme.bg);
-					await writeFile(fileURLToPath(new URL(name, outDir)), buf);
+					await writeFile(fileURLToPath(new URL(name, stagingDir)), buf);
 				}
 				tags.push(linkTag(d, orientation, scheme.name));
 			}
 		}
 	}
 
+	// Build the new app.html IN FULL before touching static/splash/, so that a
+	// missing marker (a bad rebase is the realistic way) aborts with the tree
+	// untouched. Validating after the swap would exit non-zero having already
+	// replaced every PNG — the filenames encode only geometry, so the change
+	// would be invisible in `git status` as anything but "88 files modified",
+	// with no app.html edit to explain it.
 	const html = await readFile(appHtmlPath, 'utf-8');
 	const start = html.indexOf(START_MARKER);
 	const end = html.indexOf(END_MARKER);
@@ -210,7 +265,16 @@ async function main(): Promise<void> {
 	const block = tags.map((t) => `${indent}${t}`).join('\n');
 	const spliced = `${html.slice(0, start)}${START_MARKER}\n${block}\n${indent}${html.slice(end)}`;
 	const config = await resolveConfig(appHtmlPath);
-	await writeFile(appHtmlPath, await format(spliced, { ...config, filepath: appHtmlPath }));
+	const formatted = await format(spliced, { ...config, filepath: appHtmlPath });
+
+	// Everything that can fail has now succeeded. Commit both halves. `rename`
+	// needs the destination gone first, so there is an unavoidable instant with
+	// no static/splash/ — `swapping` tells the cleanup in main() to keep its
+	// hands off the staged copy from here on.
+	swapping = true;
+	await rm(fileURLToPath(outDir), { recursive: true, force: true });
+	await rename(fileURLToPath(stagingDir), fileURLToPath(outDir));
+	await writeFile(appHtmlPath, formatted);
 
 	const names = await readdir(fileURLToPath(outDir));
 	const bytes = (

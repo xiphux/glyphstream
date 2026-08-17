@@ -39,6 +39,11 @@
 	bg-black/60 + backdrop-blur: still "visible" to the DOM and to Playwright,
 	just unreadable, which is how DebugPanel's Copy looked like a dead button.
 	Anything new that covers the viewport belongs below this, not above.
+
+	The one deliberate exception above it is UpdateBanner (z-[80]), which shares
+	this exact bottom anchor and is a persistent, actionable prompt rather than
+	a transient one — see its comment. Current ladder: content < sidebar (40)
+	< modals/popovers (50) < nested tooltip (60) < toast (70) < update (80).
 -->
 {#if toast.current}
 	{@const t = toast.current}

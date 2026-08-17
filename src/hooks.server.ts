@@ -166,6 +166,15 @@ function clientKey(event: Parameters<Handle>[0]['event']): string {
  * locals.user itself — done in each +server.ts to keep the hook simple.
  */
 export const handle: Handle = async ({ event, resolve }) => {
+	// Request entry, for the Server-Timing header set at the bottom. Taken HERE
+	// and not just before resolve(): session validation below is what first
+	// calls getDb(), which opens SQLite and runs migrate() lazily (see the
+	// comment on adminBootstrapChecked). On the first request after a container
+	// restart — the case the debug panel's server/network split exists to
+	// diagnose — that work is substantial, and anything outside this span gets
+	// subtracted into "Network" and read as a slow wire.
+	const requestStart = performance.now();
+
 	// Every path-prefix gate below compares against THIS, never against
 	// `event.url.pathname`. The raw pathname is still percent-encoded here while
 	// SvelteKit routes on a decoded copy, so matching the raw form lets
@@ -278,7 +287,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const themeCookie = event.cookies.get('gs-theme');
 	const theme = themeCookie === 'claude' || themeCookie === 'chatgpt' ? themeCookie : null;
 
-	const ssrStart = performance.now();
 	const response = await resolve(
 		event,
 		theme
@@ -288,16 +296,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
-	// Server-Timing on documents only. This is what splits a slow cold launch
-	// into "the server was cold" vs "the network was slow" — the browser files
-	// it on the navigation timing entry, so it's readable from the device with
-	// no proxy log and no cable (see the debug panel behind the sidebar version
-	// number). Documents only because that's the entry that carries it; an API
-	// response's timing shows up nowhere the client can correlate. Same-origin,
-	// so no Timing-Allow-Origin is needed.
-	if (response.headers.get('content-type')?.startsWith('text/html')) {
-		response.headers.set('Server-Timing', `ssr;dur=${(performance.now() - ssrStart).toFixed(1)}`);
-	}
+	// Whether this response gets a Server-Timing header, decided here because
+	// compression below can hand back a different Response object.
+	const isDocument = !!response.headers.get('content-type')?.startsWith('text/html');
 	applySecurityHeaders(response, path);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
@@ -307,10 +308,26 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
 	// inside maybeCompressResponse — the chat-stream UI depends on
 	// unbuffered delivery.
-	if (SHOULD_COMPRESS_DYNAMIC) {
-		return await maybeCompressResponse(response, event.request);
+	const finalResponse = SHOULD_COMPRESS_DYNAMIC
+		? await maybeCompressResponse(response, event.request)
+		: response;
+
+	// Server-Timing on documents only, stamped LAST so the span covers
+	// everything the server did — from request entry (see requestStart) through
+	// compression, which buffers the whole body and costs tens of milliseconds
+	// on a long chat. Any time left outside this span does not vanish: the debug
+	// panel derives network as TTFB minus this number, so it gets billed to the
+	// wire and sends the reader hunting for a network problem that is actually
+	// brotli, or a cold DB open. Documents only because that's the entry the
+	// browser files it on; an API response's timing shows up nowhere the
+	// client can correlate it. Same-origin, so no Timing-Allow-Origin needed.
+	if (isDocument) {
+		finalResponse.headers.set(
+			'Server-Timing',
+			`ssr;dur=${(performance.now() - requestStart).toFixed(1)}`,
+		);
 	}
-	return response;
+	return finalResponse;
 };
 
 /**
