@@ -12,6 +12,16 @@
 # This split avoids running tests twice on `main` pushes (which would
 # happen if both this workflow's `push` trigger AND docker.yml's
 # trigger fired on the same commit).
+#
+# It does NOT avoid running them twice across a release: the `main` push
+# and the `vX.Y.Z` tag that later points at that same commit are two
+# separate events over identical trees. The `gate` / `record-pass` pair
+# closes that gap — a full green run writes a marker keyed on the commit
+# SHA, and a later run on the same SHA skips straight to the end. Under
+# `workflow_call` the `github` context is the CALLER's, so the tag run
+# and the `main` run agree on `github.sha`, which is the whole trick.
+# (On `pull_request`, `github.sha` is the ephemeral merge commit, so PRs
+# never match a branch run's marker — they always test for real.)
 name: CI
 
 on:
@@ -28,12 +38,79 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Has this exact commit already gone green? `lookup-only` probes for the
+  # marker without downloading it, so this costs one short runner start.
+  #
+  # Cache visibility is what makes this work across the release boundary:
+  # a run on `refs/tags/v*` can restore caches written on the default
+  # branch. That's the same rule the Docker layer cache already leans on.
+  #
+  # This job has no `if:` and must not fail. That matters — it's the only
+  # job left running on a marker hit, and a called workflow whose jobs are
+  # ALL skipped concludes as skipped, which would in turn skip docker.yml's
+  # `build`/`merge`. One unconditional success keeps the conclusion green.
+  # `continue-on-error` on the probe is belt-and-braces, mirroring the save
+  # step below. `actions/cache` swallows a cache-service outage as a warning
+  # and returns no match, so it very likely wouldn't fail `gate` on its own —
+  # but if any probe failure ever did surface as a step failure, it would skip
+  # all three test jobs and fail the called workflow, turning a broken
+  # optimization into a blocked release. Any non-`'true'` outcome (miss or
+  # error) already means "not passed" to every consumer of this output.
+  #
+  # When this actually fires: only once the `main` run's TEST jobs have
+  # finished, since `record-pass` writes the marker immediately after them —
+  # note that's well before the `main` run itself ends, which waits on the
+  # Docker build and merge. Tagging while those tests are still going
+  # (`git push --follow-tags`, or tagging straight after the push) simply
+  # misses and runs the full suite. Most releases in this repo's history
+  # clear that bar, but several by under a minute, so treat it as a race you
+  # can lose rather than a guarantee — and don't go debugging a "broken"
+  # gate that was only ever racing.
+  #
+  # Staleness: the marker asserts "same tree, same lockfile", not "same
+  # toolchain" — `ubuntu-latest` and `node-version: latest` both drift, so
+  # a very old marker vouches for an environment that no longer exists.
+  # GitHub evicts caches untouched for 7 days, which caps that drift window
+  # without any date-bucketing in the key.
+  #
+  # "Re-run all jobs" on an already-green run hits its own marker and skips
+  # the suite — a real capability this costs you. To force a genuine re-test,
+  # delete the marker:
+  #   gh cache delete ci-pass-<full-sha>-v1 --ref refs/heads/main
+  # (the full 40-char sha, NOT the `sha-<7chars>` form docker.yml tags images
+  # with), then re-run. Bumping `-v1` does not do it: the key names a commit,
+  # and every run able to read one resolves this file from that same commit —
+  # push and tag runs use the workflow at the event's SHA, a `./…` reusable
+  # workflow is "from the same commit as the caller", and a re-run keeps the
+  # original `GITHUB_SHA`. A bump therefore renames a key nothing was going
+  # to read, and the re-run still executes the OLD ci.yml. Treat the suffix
+  # as a key-shape reset, not a cache-buster — it would only start busting if
+  # this workflow gained a trigger that decouples `github.sha` from the
+  # workflow file's commit (`release`, `deployment`).
+  gate:
+    name: Check for a recorded pass
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.probe.outputs.cache-hit }}
+    steps:
+      - name: Probe for a pass marker
+        id: probe
+        continue-on-error: true
+        uses: actions/cache/restore@v6
+        with:
+          path: .ci-pass
+          key: ci-pass-${{ github.sha }}-v1
+          lookup-only: true
+
   # Lint, type-check and formatting share one job rather than three: each
   # takes well under a minute, and they'd otherwise each pay the ~40s
-  # checkout + install to run in parallel. `continue-on-error` is NOT set
-  # anywhere — all three gate the PR.
+  # checkout + install to run in parallel. `continue-on-error` is NOT set on
+  # any of these three — all three gate the PR. (The two uses of it in this
+  # file are both on cache bookkeeping, never on a check.)
   static:
     name: Lint + type-check + format
+    needs: gate
+    if: needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -66,6 +143,8 @@ jobs:
 
   unit:
     name: Unit tests
+    needs: gate
+    if: needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -91,6 +170,8 @@ jobs:
 
   e2e:
     name: E2E (Playwright)
+    needs: gate
+    if: needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -149,3 +230,45 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
+
+  # Write the marker only once all three gating jobs are green. The `if:`
+  # carries no status-check function, so the implicit "every `needs` must
+  # have succeeded" still applies — one red job and no marker is written.
+  # Cost, on the `main`-push path: a reusable workflow is complete only when
+  # ALL its jobs terminate, so this job sits between the tests finishing and
+  # docker.yml's `build` starting — as `gate` does at the front. (Measured on
+  # the old graph: `build` started 2s after the *slowest* test job, not the
+  # first.) That's two runner starts' worth of publish latency on every `main`
+  # push, order of tens of seconds — an estimate from runner-provision
+  # overhead, not a measurement, since neither job has run in CI yet. Paid
+  # back many times over on the tag run it lets skip the suite outright.
+  #
+  # Restricted to `main` because that is the ONLY scope whose marker anything
+  # can read. A run reads its own ref's cache scope plus the default branch's,
+  # never a sibling's — so a marker written from a feature branch, a PR (where
+  # `github.sha` is the ephemeral `refs/pull/N/merge` commit anyway), or a tag
+  # ref is unreadable by the `main`/tag pair this exists to serve. Every one of
+  # those writes would be a runner start at the tail of the run to record a
+  # pass nothing can ever read — and this repo double-runs CI on dependabot
+  # PRs, so it'd pay twice. Under `workflow_call` the `github` context is the
+  # caller's, so `main` pushes still record normally; the tag run reads.
+  record-pass:
+    name: Record pass
+    needs: [gate, static, unit, e2e]
+    if: github.ref == 'refs/heads/main' && needs.gate.outputs.passed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write marker
+        run: touch .ci-pass
+
+      # `continue-on-error` because this job is inside the reusable workflow
+      # that docker.yml's build/merge/release hang off. A failed cache upload
+      # would otherwise fail `tests` and block a publish over a bookkeeping
+      # step whose only consequence is that the next run re-tests. The
+      # optimization is allowed to be unavailable; it isn't allowed to be a
+      # new way for a release to break.
+      - uses: actions/cache/save@v6
+        continue-on-error: true
+        with:
+          path: .ci-pass
+          key: ci-pass-${{ github.sha }}-v1
