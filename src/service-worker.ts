@@ -88,7 +88,18 @@ self.__GLYPHSTREAM_BUILD__ = __APP_VERSION__;
 // is what UpdateBanner's own comment already promised.
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
 	const data = event.data as { type?: string } | undefined;
-	if (data?.type === 'SKIP_WAITING') void self.skipWaiting();
+	if (data?.type === 'SKIP_WAITING') {
+		void self.skipWaiting();
+		return;
+	}
+	// Which build is this worker? Asked of a WAITING worker by the root layout
+	// before it raises the update prompt — see $lib/sw/update-prompt.ts for why
+	// a waiting worker is so often the same build as the page that's asking.
+	// Answered over the caller's port so the reply correlates without a shared
+	// bus, the same shape as queryClient below in the other direction.
+	if (data?.type === 'GET_BUILD') {
+		event.ports[0]?.postMessage(self.__GLYPHSTREAM_BUILD__);
+	}
 });
 self.addEventListener('activate', (event) => {
 	event.waitUntil(self.clients.claim());

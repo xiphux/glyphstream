@@ -9,6 +9,7 @@
 	import { toast } from '$lib/toast.svelte';
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
+	import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
@@ -127,6 +128,54 @@
 	let updateAvailable = $state(false);
 	let triggerUpdate: (() => void) | null = $state(null);
 
+	/**
+	 * Ask a worker which build it is. Resolves null if it doesn't answer —
+	 * a worker from before GET_BUILD existed won't, and neither will one that
+	 * fails to boot.
+	 */
+	function askWorkerBuild(worker: ServiceWorker, timeoutMs = 1500): Promise<string | null> {
+		return new Promise((resolve) => {
+			const channel = new MessageChannel();
+			let settled = false;
+			// Single settle path, matching queryClient in service-worker.ts — the
+			// mirror image of this call. Nothing misbehaves without it (a second
+			// resolve is a no-op), but the two are a pair and an asymmetry here
+			// only makes a reader wonder which one is right.
+			const finish = (build: string | null) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				channel.port1.onmessage = null;
+				resolve(build);
+			};
+			const timer = setTimeout(() => finish(null), timeoutMs);
+			channel.port1.onmessage = (ev: MessageEvent) => {
+				finish(typeof ev.data === 'string' ? ev.data : null);
+			};
+			try {
+				worker.postMessage({ type: 'GET_BUILD' }, [channel.port2]);
+			} catch {
+				finish(null);
+			}
+		});
+	}
+
+	/**
+	 * Glue only — the rule itself lives in shouldPromptForUpdate.
+	 *
+	 * Named for the question it answers, not for a version comparison: it is
+	 * also true on a DOWNGRADE, on no waiting worker, and on no answer. Calling
+	 * it "isNewer" would invite someone to make it a `>` and silently break the
+	 * rollback case the rule deliberately covers.
+	 */
+	async function waitingWorkerNeedsPrompt(): Promise<boolean> {
+		const waiting = (await navigator.serviceWorker.getRegistration().catch(() => null))?.waiting;
+		// onNeedRefresh fired, so a worker was waiting a moment ago; if it has
+		// gone by the time we look, prompt rather than guess why.
+		if (!waiting) return true;
+		return shouldPromptForUpdate(__APP_VERSION__, await askWorkerBuild(waiting));
+	}
+
 	onMount(async () => {
 		// Register the service worker (production builds only — the dev
 		// build of the PWA plugin is disabled in vite.config.ts). Dynamic
@@ -137,7 +186,9 @@
 			const updateSW = registerSW({
 				immediate: true,
 				onNeedRefresh() {
-					updateAvailable = true;
+					void waitingWorkerNeedsPrompt().then((needsPrompt) => {
+						if (needsPrompt) updateAvailable = true;
+					});
 				},
 				// onOfflineReady intentionally omitted — we don't want a
 				// "ready offline" toast on the very first SW install; the
