@@ -82,26 +82,43 @@ export async function serializeMessageForUpstream(
 		};
 	}
 
+	// The model-visible subset. A `displayOnly` image (the portrait an avatar
+	// generation produced) is rendered in the thread but has no place in the
+	// request — see the flag's note on why that's decided once, at persist time.
+	//
+	// Filtered ONCE here so every branch below inherits it: the drop checks, the
+	// vision-vs-plain-text fork, `partsToText`, and the file note would each
+	// otherwise need their own copy of the rule, and the one that got missed
+	// would fail silently — as an image quietly re-sent every turn, or an empty
+	// assistant turn.
+	const parts = m.parts.filter((p) => !(p.type === 'image' && p.displayOnly));
+
 	// A failed media branch persists as an assistant message carrying only an
 	// `error` part (see MessagePart 'error'). It exists so a recovered fan-out /
 	// reloaded thread can show the failure — but it has no upstream wire
 	// representation, so drop it from the request rather than send an empty
 	// assistant turn that would pollute the model's context.
 	if (
-		m.parts.some((p) => p.type === 'error') &&
-		!m.parts.some((p) => p.type === 'text' || p.type === 'image' || p.type === 'tool_call')
+		parts.some((p) => p.type === 'error') &&
+		!parts.some((p) => p.type === 'text' || p.type === 'image' || p.type === 'tool_call')
 	) {
 		return null;
 	}
 
-	const toolCalls = m.role === 'assistant' ? extractToolCalls(m.parts) : [];
-	const hasImages = m.parts.some((p) => p.type === 'image');
-	const fileNote = fileAttachmentNote(m.parts);
+	// Same reasoning, reached a different way: an avatar-generation row whose
+	// only content was the portrait has nothing left after the filter. Guard on
+	// the filter having actually removed something so this can't swallow a
+	// genuinely empty message and change behaviour that predates avatars.
+	if (parts.length === 0 && m.parts.length > 0) return null;
+
+	const toolCalls = m.role === 'assistant' ? extractToolCalls(parts) : [];
+	const hasImages = parts.some((p) => p.type === 'image');
+	const fileNote = fileAttachmentNote(parts);
 
 	if (hasImages) {
 		const content: ChatCompletionContentPart[] = [];
 		let hasDeletedImage = false;
-		for (const p of m.parts) {
+		for (const p of parts) {
 			if (p.type === 'text' && p.text) {
 				content.push({ type: 'text', text: p.text });
 			} else if (p.type === 'image') {
@@ -135,7 +152,7 @@ export async function serializeMessageForUpstream(
 		return out;
 	}
 
-	const text = [partsToText(m.parts), fileNote].filter(Boolean).join('\n\n');
+	const text = [partsToText(parts), fileNote].filter(Boolean).join('\n\n');
 
 	if (toolCalls.length > 0) {
 		// OpenAI permits null content alongside tool_calls when the

@@ -443,6 +443,115 @@ describe('serializeBranchForUpstream', () => {
 	});
 });
 
+/**
+ * Display-only images — the avatar portrait case.
+ *
+ * The property under test isn't just "it's excluded"; it's that the branch
+ * serializes IDENTICALLY whether or not an avatar generation happened in it.
+ * That's the prefix-stability contract: a payload that changes when nothing
+ * the user said changed re-prefills the whole conversation.
+ */
+describe('serializeMessageForUpstream — display-only images', () => {
+	const resolverMustNotRun = async () => {
+		throw new Error('a display-only image must never be resolved for the wire');
+	};
+
+	it('never resolves media for a display-only image', async () => {
+		// The resolver throwing IS the assertion: reaching it means we were about
+		// to inline base64 for something that should never leave the browser.
+		const out = await serializeMessageForUpstream(
+			msg('assistant', [
+				{ type: 'text', text: 'Here I am.' },
+				{ type: 'image', mediaId: 'portrait-1', displayOnly: true },
+			]),
+			resolverMustNotRun,
+		);
+		expect(out).toEqual({ role: 'assistant', content: 'Here I am.' });
+	});
+
+	it('does not switch a text message into the vision content-array shape', async () => {
+		// The regression that would otherwise hide here: `hasImages` counting a
+		// display-only part would emit `content: [{type:'text'}]` instead of a
+		// bare string. Same information, different bytes — and different bytes is
+		// exactly what a stable prefix cannot tolerate.
+		const withPortrait = await serializeMessageForUpstream(
+			msg('assistant', [
+				{ type: 'text', text: 'Here I am.' },
+				{ type: 'image', mediaId: 'portrait-1', displayOnly: true },
+			]),
+			resolverMustNotRun,
+		);
+		const withoutPortrait = await serializeMessageForUpstream(
+			msg('assistant', [{ type: 'text', text: 'Here I am.' }]),
+			resolverMustNotRun,
+		);
+		expect(withPortrait).toEqual(withoutPortrait);
+		expect(typeof (withPortrait as { content: unknown }).content).toBe('string');
+	});
+
+	it('drops a message whose only content was the portrait', async () => {
+		// The two-row shape: description in one message, image in the next. The
+		// image row must vanish from the request rather than become an empty
+		// assistant turn.
+		const out = await serializeMessageForUpstream(
+			msg('assistant', [{ type: 'image', mediaId: 'portrait-1', displayOnly: true }]),
+			resolverMustNotRun,
+		);
+		expect(out).toBeNull();
+	});
+
+	it('still sends a normal image on the same message', async () => {
+		// Only the flagged part is withheld — an image the user actually attached
+		// alongside must still ride the vision path.
+		const out = await serializeMessageForUpstream(
+			msg('user', [
+				{ type: 'text', text: 'like this one' },
+				{ type: 'image', mediaId: 'attached-1' },
+				{ type: 'image', mediaId: 'portrait-1', displayOnly: true },
+			]),
+			async (id: string) => `data:image/png;base64,${id}`,
+		);
+		expect(out).toEqual({
+			role: 'user',
+			content: [
+				{ type: 'text', text: 'like this one' },
+				{ type: 'image_url', image_url: { url: 'data:image/png;base64,attached-1' } },
+			],
+		});
+	});
+
+	it('leaves the surrounding branch byte-identical', async () => {
+		// The whole point, stated end to end: inserting an avatar exchange must
+		// not perturb a single byte of what came before or after it.
+		const before: ChatMessage[] = [
+			msg('user', [{ type: 'text', text: 'who are you?' }], 'u1'),
+			msg('assistant', [{ type: 'text', text: 'Ilya.' }], 'a1'),
+			msg('user', [{ type: 'text', text: 'how long?' }], 'u2'),
+		];
+		const after: ChatMessage[] = [
+			before[0],
+			before[1],
+			// The avatar exchange, as the two-row shape persists it.
+			msg('assistant', [{ type: 'text', text: 'A weathered navigator…' }], 'a2'),
+			msg('assistant', [{ type: 'image', mediaId: 'portrait-1', displayOnly: true }], 'a3'),
+			before[2],
+		];
+
+		const outBefore = await serializeBranchForUpstream(before, resolverMustNotRun, 'sys');
+		const outAfter = await serializeBranchForUpstream(after, resolverMustNotRun, 'sys');
+
+		// The description IS sent (it's continuity context the model should keep);
+		// the portrait contributes nothing at all.
+		expect(outAfter).toEqual([
+			outBefore[0],
+			outBefore[1],
+			outBefore[2],
+			{ role: 'assistant', content: 'A weathered navigator…' },
+			outBefore[3],
+		]);
+	});
+});
+
 describe('collapseSupersededSkillActivations', () => {
 	const toolMsg = (name: string, callId: string) => ({
 		role: 'tool' as const,

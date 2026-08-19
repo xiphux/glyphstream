@@ -416,7 +416,26 @@ export interface UpstreamModel {
 
 export type MessagePart =
 	| { type: 'text'; text: string }
-	| { type: 'image'; mediaId: string; alt?: string }
+	| {
+			type: 'image';
+			mediaId: string;
+			alt?: string;
+			/**
+			 * Rendered in the thread, NEVER sent upstream. Set on the portrait an
+			 * avatar generation produces: the user should see what came out at full
+			 * size, but re-sending an image on every subsequent turn is rent for
+			 * something the accompanying description already says in far fewer
+			 * tokens — and a non-vision model can't read it at all.
+			 *
+			 * Deliberately decided at PERSIST time and never revisited. "Payload is
+			 * rent, and its prefix must be stable": what the user did may change the
+			 * payload, timing must not. An image sent for a few turns and then
+			 * dropped once it's no longer recent would re-prefill the whole
+			 * conversation the turn it vanished. Never-sent is the only variant of
+			 * this that's deterministic.
+			 */
+			displayOnly?: boolean;
+	  }
 	| { type: 'video'; mediaId: string }
 	| {
 			// A non-image, non-video file attachment (xlsx, csv, pdf, json, ...).
