@@ -171,7 +171,7 @@ how long the service worker took to boot, when the page first painted, and how
 many hashed app chunks came off the network rather than out of cache. **Copy**
 puts the whole thing on the clipboard as text.
 
-When `Server (SSR)` is the large number, two readings narrow it down:
+When `Server (SSR)` is the large number, several readings narrow it down:
 
 - The breakdown under it splits that total into `auth` (the session lookup,
   which on a process's first request also carries the lazy SQLite open and
@@ -183,6 +183,28 @@ When `Server (SSR)` is the large number, two readings narrow it down:
   database open and the upstream model-list fetch that every later one gets
   free. The same number on a process that has been up for hours is not, and
   points at the `render` phase instead.
+- **Server CPU** is how much processor time the request actually burned as a
+  share of that wall clock, followed in the same row by a count of major page
+  faults. The share settles the question the total can't: near (or above) 100%
+  means the server was genuinely working, and the answer is to make it do less;
+  well under means it spent the difference _waiting_, which no amount of
+  application tuning will fix. Over 100% is normal — the garbage collector and
+  the I/O threadpool burn CPU on other threads alongside the request.
+
+  The fault count then narrows down what it was waiting on: memory the host had
+  evicted while the container sat idle, which the process then had to fetch
+  back. The database is very much included — GlyphStream maps the first 30 MB of
+  it (`PRAGMA mmap_size`, see `src/lib/server/db/client.ts`), and clean
+  file-backed pages need no swap to be reclaimed, so an idle container loses
+  them first. Check **Server uptime** before reading it, though: a process that
+  is seconds old faults in its own binary, its libraries and the first touch of
+  that mapping no matter how healthy the host is, and no memory reservation
+  changes that. The signal is a nonzero count on a process that has been _up_ for
+  hours — that one means the host is taking this container's memory back, and the
+  levers are a memory reservation for it or a volume that isn't spinning down.
+  Read it in one direction only: **zero does not clear it**, because writes, WAL
+  reads and any part of the database past the 30 MB cap use ordinary file reads,
+  which bill to wall time and never appear in this counter.
 
 The reason it exists is the one load you can't attach a debugger to: an **iOS
 home-screen app's cold launch**. Safari Web Inspector needs a Mac and a cable,

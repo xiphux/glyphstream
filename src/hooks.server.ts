@@ -174,6 +174,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// diagnose — that work is substantial, and anything outside this span gets
 	// subtracted into "Network" and read as a slow wire.
 	const requestStart = performance.now();
+	// Alongside the wall clock, the process's own resource counters, so the stamp
+	// at the bottom can say whether a slow request was WORKING or WAITING. One
+	// getrusage(2), taken unconditionally because nothing here knows yet whether
+	// this will end up being a signed-in document; the syscall is cheaper than
+	// the bookkeeping a lazier capture would need.
+	const usageStart = process.resourceUsage();
 	// Sub-spans of the same total (`authMs` / `renderMs` / `zipMs`, declared at
 	// the points they're measured) are reported alongside it. One opaque `ssr`
 	// number said a cold launch spent 2.35s on the server and nothing about
@@ -364,8 +370,50 @@ export const handle: Handle = async ({ event, resolve }) => {
 		// Signed-in only. Uptime is weak but real recon on an internet-facing
 		// box — it dates the last restart, and so the last patch — and the
 		// unauthenticated document surface (/login, /join/<token>) has no debug
-		// panel to read it anyway.
+		// panel to read it anyway. `cpu` and `fault` are gated for the same reason
+		// without being the same kind of number: both are deltas across this one
+		// request's span — which is why the panel files them under "This load"
+		// rather than beside the uptime in Environment — but both are read off
+		// process-wide counters, so they still describe the box, and the surface
+		// that would read them doesn't exist unauthenticated either.
 		if (event.locals.user) {
+			const usage = process.resourceUsage();
+			// CPU actually burned during the span above. When it lands far under
+			// `ssr`, the server spent the difference NOT RUNNING — a wholly
+			// different problem from the same wall time spent on honest work, and
+			// one that `ssr` alone cannot distinguish. The case this exists for is
+			// a container idle for hours on a NAS, whose next request pays to fault
+			// back in whatever the host evicted while nothing was asking.
+			//
+			// `fault` (major page faults) counts exactly that, and the database is
+			// squarely in scope: `db/client.ts` sets `PRAGMA mmap_size` to 30MB, so
+			// the main DB file is mapped read-only and file-backed, and a query
+			// touching a page the host reclaimed faults it in as a MAJOR fault.
+			// That's the point rather than a caveat — clean file-backed pages need
+			// no swap to be evicted, so they're the first thing an idle container
+			// loses and the likeliest source of a nonzero reading here.
+			//
+			// Read it in one direction only. Nonzero means memory that was no
+			// longer resident had to be fetched back; zero does NOT clear the box,
+			// because plenty of waiting never reaches this counter — WAL frames,
+			// writes and any main-DB read past the 30MB cap go through read(2),
+			// which bills to blocked wall time alone, and the JS heap is anonymous
+			// memory that only faults back where the host has swap.
+			//
+			// Both counters are process-wide, so concurrent work inflates them and
+			// `cpu` can even exceed `ssr` — libuv's threadpool and the GC burn CPU
+			// on other threads. Acceptable here because the reading this is built
+			// for is a cold launch's first document, which is essentially alone;
+			// anywhere else, read it as an upper bound.
+			const cpuUs =
+				usage.userCPUTime -
+				usageStart.userCPUTime +
+				(usage.systemCPUTime - usageStart.systemCPUTime);
+			metrics.push(`cpu;dur=${dur(cpuUs / 1000)}`);
+			// A count, not a duration — the same `dur=` abuse as `proc`, for the
+			// same reason: Server-Timing is already plumbed through to the client
+			// and PerformanceServerTiming exposes exactly one numeric field.
+			metrics.push(`fault;dur=${usage.majorPageFault - usageStart.majorPageFault}`);
 			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
 		}
 		finalResponse.headers.set('Server-Timing', metrics.join(', '));

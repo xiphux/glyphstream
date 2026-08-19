@@ -287,3 +287,92 @@ describe('buildDebugSections — server uptime', () => {
 		expect(rowsOf(sources(), 'Environment')['Server uptime']).toBeUndefined();
 	});
 });
+
+/**
+ * The wall clock alone cannot tell "the server did 2.8s of work" from "the
+ * server waited 2.4s to be allowed to work", and those have different fixes.
+ * These cover the row that separates them.
+ */
+describe('buildDebugSections — server CPU vs wall', () => {
+	const withUsage = (entries: Array<{ name: string; duration: number }>) =>
+		sources({ navigation: { ...nav, serverTiming: [{ name: 'ssr', duration: 620 }, ...entries] } });
+
+	it('reports CPU as a share of the wall clock, with the fault count', () => {
+		const rows = rowsOf(
+			withUsage([
+				{ name: 'cpu', duration: 90 },
+				{ name: 'fault', duration: 1203 },
+			]),
+			'This load',
+		);
+		expect(rows['Server CPU'].value).toBe('90 ms');
+		// 90/620 — the whole point of the row. Six-sevenths of that request was
+		// spent not running, and `ssr` on its own said nothing about it.
+		expect(rows['Server CPU'].note).toBe('15% of wall · 1203 major faults');
+	});
+
+	it('does not accuse a busy server of waiting', () => {
+		// The other reading: CPU tracking wall means the time was real work, and
+		// the answer is to do less of it rather than to look at the host.
+		const rows = rowsOf(
+			withUsage([
+				{ name: 'cpu', duration: 605 },
+				{ name: 'fault', duration: 0 },
+			]),
+			'This load',
+		);
+		expect(rows['Server CPU'].note).toBe('98% of wall · 0 major faults');
+	});
+
+	it('explains CPU exceeding the wall clock instead of printing an impossible share', () => {
+		// Routine, not a glitch — the counters are process-wide, so GC and libuv's
+		// threadpool add CPU that ran on other threads. A literal "122% of wall"
+		// reads as a broken measurement and costs the row the credibility it needs
+		// at exactly the moment someone is deciding whether to believe it.
+		const rows = rowsOf(
+			withUsage([
+				{ name: 'cpu', duration: 758 },
+				{ name: 'fault', duration: 0 },
+			]),
+			'This load',
+		);
+		expect(rows['Server CPU'].note).toBe('>100% of wall (other threads) · 0 major faults');
+	});
+
+	it('does not report "1 major faults"', () => {
+		const rows = rowsOf(
+			withUsage([
+				{ name: 'cpu', duration: 90 },
+				{ name: 'fault', duration: 1 },
+			]),
+			'This load',
+		);
+		expect(rows['Server CPU'].note).toBe('15% of wall · 1 major fault');
+	});
+
+	it('keeps the share when the platform reports no fault counter', () => {
+		const rows = rowsOf(withUsage([{ name: 'cpu', duration: 90 }]), 'This load');
+		expect(rows['Server CPU'].note).toBe('15% of wall');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		// Unauthenticated documents don't carry `cpu`, and neither does an older
+		// image. An absent row beats a dash that reads as a broken measurement.
+		expect(rowsOf(sources(), 'This load')['Server CPU']).toBeUndefined();
+	});
+
+	it('leaves the phase breakdown alone', () => {
+		// `cpu` decomposes the same span a second way; it must not leak into the
+		// note whose contract is that its parts sum to the total.
+		const rows = rowsOf(
+			withUsage([
+				{ name: 'auth', duration: 4 },
+				{ name: 'render', duration: 590 },
+				{ name: 'zip', duration: 24 },
+				{ name: 'cpu', duration: 90 },
+			]),
+			'This load',
+		);
+		expect(rows['Server (SSR)'].note).toBe('auth 4 ms · render 590 ms · zip 24 ms');
+	});
+});

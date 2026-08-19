@@ -164,12 +164,52 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// a permanent "zip 0 ms" reads as a measurement rather than an opt-out.
 		if (zip !== null && zip >= 1) breakdown.push(`zip ${ms(zip)}`);
 
+		// CPU the server actually burned, against the wall clock `ssr` reports.
+		// A large gap means the process was WAITING rather than working — cold
+		// SQLite pages coming off the volume, or its own heap being faulted back
+		// in after an idle host reclaimed it — and in `ssr` alone that reads
+		// exactly like honest work. `major faults` names the second mechanism:
+		// nonzero means memory that was no longer resident had to be fetched back.
+		// Its own row rather than another clause on the breakdown note above,
+		// because that note's contract is "these sum to the total" and this is a
+		// second decomposition of the same span, not a fourth part of it.
+		const cpu = timing('cpu');
+		const faults = timing('fault');
+		const cpuRows: DebugRow[] =
+			cpu === null
+				? []
+				: [
+						{
+							label: 'Server CPU',
+							value: ms(cpu),
+							note: [
+								ssr === null || ssr <= 0
+									? null
+									: // Over 100% is normal, not a glitch: these counters are
+										// process-wide, so the GC and libuv's threadpool contribute
+										// CPU that ran on other threads alongside this request. Said
+										// in words rather than printed as "122%", which reads as a
+										// broken measurement and costs the row its credibility right
+										// when someone is deciding whether to trust it. Either way
+										// the reading is unambiguous — over wall means the server was
+										// working, and only a figure well under it means waiting.
+										cpu > ssr
+										? '>100% of wall (other threads)'
+										: `${Math.round((cpu / ssr) * 100)}% of wall`,
+								faults === null ? null : `${faults} major fault${faults === 1 ? '' : 's'}`,
+							]
+								.filter((part): part is string => part !== null)
+								.join(' · '),
+						},
+					];
+
 		load.push(
 			{
 				label: 'Server (SSR)',
 				value: orDash(ssr),
 				...(breakdown.length ? { note: breakdown.join(' · ') } : {}),
 			},
+			...cpuRows,
 			{ label: 'Network', value: orDash(network), note: ttfb !== null ? `${ms(ttfb)} TTFB` : '' },
 			{
 				label: 'HTML',

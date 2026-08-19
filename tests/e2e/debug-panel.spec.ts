@@ -53,6 +53,14 @@ test('double-activating the version number opens the debug panel', async ({ page
 	await expect(panel).toContainText(/\d+ ms/);
 	await expect(panel).toContainText('App chunks');
 
+	// Doubles as the live check on the resourceUsage counters: the row renders
+	// only when the server stamped `cpu`, which it does only for a signed-in
+	// document, so a header that silently lost the field fails here rather than
+	// surfacing months later as a diagnostic that reads blank in the one launch
+	// it was built to explain.
+	await expect(panel).toContainText('Server CPU');
+	await expect(panel).toContainText(/% of wall/);
+
 	await panel.getByRole('button', { name: 'Close' }).click();
 	await expect(panel).toBeHidden();
 });
