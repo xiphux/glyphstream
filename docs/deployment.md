@@ -171,6 +171,19 @@ how long the service worker took to boot, when the page first painted, and how
 many hashed app chunks came off the network rather than out of cache. **Copy**
 puts the whole thing on the clipboard as text.
 
+When `Server (SSR)` is the large number, two readings narrow it down:
+
+- The breakdown under it splits that total into `auth` (the session lookup,
+  which on a process's first request also carries the lazy SQLite open and
+  migration), `render` (load functions plus the SSR render), and `zip`
+  (`COMPRESS_DYNAMIC`, omitted when it isn't on).
+- **Server uptime**, in the Environment section, is how long the Node process
+  had been running when it served that page. A slow render on a process that is
+  seconds old is a cold start — the first request after a restart pays for the
+  database open and the upstream model-list fetch that every later one gets
+  free. The same number on a process that has been up for hours is not, and
+  points at the `render` phase instead.
+
 The reason it exists is the one load you can't attach a debugger to: an **iOS
 home-screen app's cold launch**. Safari Web Inspector needs a Mac and a cable,
 and by the time you're attached the launch is already over. The panel works

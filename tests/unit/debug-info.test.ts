@@ -191,3 +191,99 @@ describe('buildDebugSections', () => {
 		expect(rows['Service worker'].value).toBe('controlled');
 	});
 });
+
+/**
+ * The breakdown behind the headline SSR number, and the server's uptime.
+ *
+ * One opaque `ssr` number reported that a cold launch spent 2.35s on the
+ * server and nothing about where — leaving "the container had just restarted",
+ * "a load blocked on an upstream" and "compressing a big document" impossible
+ * to tell apart from a reading taken hours after the fact, which is the only
+ * kind this panel can get.
+ */
+describe('buildDebugSections — server phase breakdown', () => {
+	const timed = (entries: Array<{ name: string; duration: number }>) =>
+		sources({ navigation: { ...nav, serverTiming: [{ name: 'ssr', duration: 620 }, ...entries] } });
+
+	it('breaks the SSR total into its phases', () => {
+		const rows = rowsOf(
+			timed([
+				{ name: 'auth', duration: 4 },
+				{ name: 'render', duration: 590 },
+				{ name: 'zip', duration: 24 },
+			]),
+			'This load',
+		);
+		// Headline stays the total — the breakdown is the note under it.
+		expect(rows['Server (SSR)'].value).toBe('620 ms');
+		expect(rows['Server (SSR)'].note).toBe('auth 4 ms · render 590 ms · zip 24 ms');
+	});
+
+	it('omits compression when it did no work', () => {
+		// COMPRESS_DYNAMIC is off by default, so `zip` is a sub-millisecond
+		// passthrough on most deployments. A permanent "zip 0 ms" reads as a
+		// measured cost rather than a feature that isn't switched on.
+		const rows = rowsOf(
+			timed([
+				{ name: 'auth', duration: 4 },
+				{ name: 'render', duration: 590 },
+				{ name: 'zip', duration: 0.2 },
+			]),
+			'This load',
+		);
+		expect(rows['Server (SSR)'].note).toBe('auth 4 ms · render 590 ms');
+	});
+
+	it('keeps the dev-server caveat alongside the breakdown', () => {
+		// Both are true on a dev load, and the Vite warning is the one that
+		// stops a 5s reading being taken for a production problem.
+		const s = timed([{ name: 'render', duration: 590 }]);
+		const rows = rowsOf({ ...s, dev: true }, 'This load');
+		expect(rows['Server (SSR)'].note).toBe('incl. Vite compile · render 590 ms');
+	});
+
+	it('degrades to the bare total against a server that sends no phases', () => {
+		// A deployment still running the previous image stamps only `ssr`.
+		const rows = rowsOf(sources(), 'This load');
+		expect(rows['Server (SSR)'].value).toBe('620 ms');
+		expect(rows['Server (SSR)'].note).toBeUndefined();
+	});
+});
+
+describe('buildDebugSections — server uptime', () => {
+	const withProc = (durationMs: number) =>
+		sources({
+			navigation: {
+				...nav,
+				serverTiming: [
+					{ name: 'ssr', duration: 620 },
+					{ name: 'proc', duration: durationMs },
+				],
+			},
+		});
+
+	it('reports a just-restarted process in seconds', () => {
+		// The reading that matters most: a slow SSR on a process this young is
+		// a cold start paying for the SQLite open, the MCP handshakes and the
+		// model-list fetch that every later request gets free.
+		expect(rowsOf(withProc(4_200), 'Environment')['Server uptime'].value).toBe('4 s');
+	});
+
+	it('coarsens longer uptimes', () => {
+		expect(rowsOf(withProc(20 * 60_000), 'Environment')['Server uptime'].value).toBe('20 min');
+		expect(rowsOf(withProc(9.2 * 3_600_000), 'Environment')['Server uptime'].value).toBe(
+			'9 h 12 min',
+		);
+		expect(rowsOf(withProc(6 * 24 * 3_600_000), 'Environment')['Server uptime'].value).toBe('6 d');
+	});
+
+	it('reports a whole number of hours without a stray "0 min"', () => {
+		expect(rowsOf(withProc(3 * 3_600_000), 'Environment')['Server uptime'].value).toBe('3 h');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		// Unauthenticated documents don't carry `proc`, and neither does an
+		// older server. An absent row beats a dash that looks like a failure.
+		expect(rowsOf(sources(), 'Environment')['Server uptime']).toBeUndefined();
+	});
+});

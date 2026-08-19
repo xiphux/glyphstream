@@ -88,9 +88,32 @@ function span(from: number, to: number): number | null {
 
 const orDash = (v: number | null): string => (v === null ? '—' : ms(v));
 
+/**
+ * Coarse, human-scale duration for the server's uptime. Precision is pointless
+ * here — the only readings that matter are "seconds" (this request was served
+ * by a container that had just started, so a slow SSR is a cold start) and
+ * "anything else" (it wasn't, so look elsewhere).
+ */
+function uptime(msTotal: number): string {
+	const secs = Math.round(msTotal / 1000);
+	if (secs < 90) return `${secs} s`;
+	const mins = Math.round(secs / 60);
+	if (mins < 90) return `${mins} min`;
+	const hours = Math.floor(mins / 60);
+	if (hours < 48) {
+		const rem = mins % 60;
+		return rem ? `${hours} h ${rem} min` : `${hours} h`;
+	}
+	return `${Math.floor(hours / 24)} d`;
+}
+
 export function buildDebugSections(s: DebugSources): DebugSection[] {
 	const nav = s.navigation;
 	const load: DebugRow[] = [];
+	// Reported in the Environment section rather than with the load timings —
+	// it describes the server, not this request. Set from Server-Timing below
+	// when the response carried it (signed-in documents only).
+	let procUptimeMs: number | null = null;
 
 	if (!nav) {
 		load.push({
@@ -102,7 +125,10 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// Server-Timing (see hooks.server.ts) is what separates "the container
 		// had just restarted" from "the network was slow" — without it the two
 		// are pooled into one indistinguishable TTFB.
-		const ssr = nav.serverTiming?.find((e) => e.name === 'ssr')?.duration ?? null;
+		const timing = (name: string): number | null =>
+			nav.serverTiming?.find((e) => e.name === name)?.duration ?? null;
+		const ssr = timing('ssr');
+		procUptimeMs = timing('proc');
 		// From fetchStart, NOT requestStart. requestStart is stamped after DNS,
 		// TCP and the TLS handshake, so measuring from there drops connection
 		// setup out of both rows — it lands in neither `Server` nor `Network`
@@ -116,15 +142,33 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// at different ends and rounding can cross over on a fast local hop.
 		const network = ttfb !== null && ssr !== null ? Math.max(0, ttfb - ssr) : null;
 
+		// The parts of that total. Absent from a server predating them, and from
+		// one that never stamped a Server-Timing at all, so each is optional and
+		// the row degrades to the bare headline number.
+		const breakdown: string[] = [];
+		// On the dev server this is dominated by Vite compiling the route on
+		// demand — seconds, routinely, and nothing to do with how the deployed
+		// app behaves. Saying so beats letting a 5s dev reading get taken for a
+		// production problem.
+		if (s.dev) breakdown.push('incl. Vite compile');
+		const auth = timing('auth');
+		const render = timing('render');
+		const zip = timing('zip');
+		// Session lookup, and on a process's first request the lazy SQLite open
+		// + migrate() that rides along with it.
+		if (auth !== null) breakdown.push(`auth ${ms(auth)}`);
+		// Load functions + SSR render — where a load blocking on something
+		// off-box shows up.
+		if (render !== null) breakdown.push(`render ${ms(render)}`);
+		// Omitted below a millisecond: COMPRESS_DYNAMIC is off by default, and
+		// a permanent "zip 0 ms" reads as a measurement rather than an opt-out.
+		if (zip !== null && zip >= 1) breakdown.push(`zip ${ms(zip)}`);
+
 		load.push(
 			{
 				label: 'Server (SSR)',
 				value: orDash(ssr),
-				// On the dev server this is dominated by Vite compiling the
-				// route on demand — seconds, routinely, and nothing to do with
-				// how the deployed app behaves. Saying so beats letting a 5s
-				// dev reading get taken for a production problem.
-				...(s.dev ? { note: 'incl. Vite compile' } : {}),
+				...(breakdown.length ? { note: breakdown.join(' · ') } : {}),
 			},
 			{ label: 'Network', value: orDash(network), note: ttfb !== null ? `${ms(ttfb)} TTFB` : '' },
 			{
@@ -208,6 +252,12 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				{ label: 'Display', value: s.standalone ? 'standalone' : 'browser' },
 				{ label: 'Service worker', value: s.serviceWorker },
 				{ label: 'Connection', value: s.online ? 'online' : 'offline' },
+				// How long the server process had been up when it served this
+				// document — the first thing to check against a slow "Server
+				// (SSR)", since a process's first request pays for the lazy
+				// SQLite open and a cold model-list fetch that every later one
+				// gets free. Absent on a server that doesn't stamp it.
+				...(procUptimeMs !== null ? [{ label: 'Server uptime', value: uptime(procUptimeMs) }] : []),
 			],
 		},
 	];

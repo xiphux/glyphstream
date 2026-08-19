@@ -174,6 +174,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// diagnose — that work is substantial, and anything outside this span gets
 	// subtracted into "Network" and read as a slow wire.
 	const requestStart = performance.now();
+	// Sub-spans of the same total (`authMs` / `renderMs` / `zipMs`, declared at
+	// the points they're measured) are reported alongside it. One opaque `ssr`
+	// number said a cold launch spent 2.35s on the server and nothing about
+	// WHERE, which left "the container had just restarted", "a load blocked on
+	// an upstream" and "compressing a large document" indistinguishable from a
+	// reading taken hours after the fact — the only kind this panel can get.
 
 	// Every path-prefix gate below compares against THIS, never against
 	// `event.url.pathname`. The raw pathname is still percent-encoded here while
@@ -219,6 +225,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
+	const authStart = performance.now();
 	const token = readSessionCookie(event.cookies);
 	// First authenticated request of the process: run the admin-recovery check
 	// once (a token means we're about to hit the DB anyway). Gated on token so
@@ -240,6 +247,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// cookie drift apart and the sliding window only ever benefits a raw token
 	// held outside a browser. Same token value, later expiry — not a rotation.
 	if (ctx?.renewed) setSessionCookie(event.cookies, token!, ctx.expiresAt);
+	// Everything above is the session round trip, and on the first request of a
+	// process it also carries the lazy SQLite open + migrate().
+	const authMs = performance.now() - authStart;
 
 	// Rate-limit the UNAUTHENTICATED auth surface.
 	//
@@ -287,6 +297,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const themeCookie = event.cookies.get('gs-theme');
 	const theme = themeCookie === 'claude' || themeCookie === 'chatgpt' ? themeCookie : null;
 
+	const renderStart = performance.now();
 	const response = await resolve(
 		event,
 		theme
@@ -296,6 +307,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
+	// Load functions plus the SSR render. The `(app)` layout load is the whole
+	// of it for a page under that group, and everything it does is a synchronous
+	// SQLite read except the model-list cache — so a `render` that dwarfs `auth`
+	// means either that cache was cold or the event loop was held by something
+	// else (node:sqlite is synchronous, so a background sweeper mid-batch
+	// blocks the request behind it).
+	const renderMs = performance.now() - renderStart;
 	// Whether this response gets a Server-Timing header, decided here because
 	// compression below can hand back a different Response object.
 	const isDocument = !!response.headers.get('content-type')?.startsWith('text/html');
@@ -308,9 +326,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// COMPRESS_DYNAMIC docstring in env.ts. SSE responses are excluded
 	// inside maybeCompressResponse — the chat-stream UI depends on
 	// unbuffered delivery.
+	const zipStart = performance.now();
 	const finalResponse = SHOULD_COMPRESS_DYNAMIC
 		? await maybeCompressResponse(response, event.request)
 		: response;
+	const zipMs = performance.now() - zipStart;
 
 	// Server-Timing on documents only, stamped LAST so the span covers
 	// everything the server did — from request entry (see requestStart) through
@@ -321,11 +341,32 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// brotli, or a cold DB open. Documents only because that's the entry the
 	// browser files it on; an API response's timing shows up nowhere the
 	// client can correlate it. Same-origin, so no Timing-Allow-Origin needed.
+	//
+	// `ssr` is the total and the other three are its parts, so the panel can
+	// keep showing one headline number and break it down underneath. `proc` is
+	// process uptime, not a duration of this request — it rides along here
+	// because Server-Timing is already plumbed through to the client and the
+	// question it answers is the first one to ask of a slow SSR: was this the
+	// first request a freshly-started container ever served? A 2.3s render on a
+	// process that booted four seconds ago is a cold start; the same number on
+	// one that's been up nine hours is a different bug entirely, and nothing in
+	// the reading distinguished them.
 	if (isDocument) {
-		finalResponse.headers.set(
-			'Server-Timing',
-			`ssr;dur=${(performance.now() - requestStart).toFixed(1)}`,
-		);
+		const dur = (v: number) => v.toFixed(1);
+		const metrics = [
+			`ssr;dur=${dur(performance.now() - requestStart)}`,
+			`auth;dur=${dur(authMs)}`,
+			`render;dur=${dur(renderMs)}`,
+			`zip;dur=${dur(zipMs)}`,
+		];
+		// Signed-in only. Uptime is weak but real recon on an internet-facing
+		// box — it dates the last restart, and so the last patch — and the
+		// unauthenticated document surface (/login, /join/<token>) has no debug
+		// panel to read it anyway.
+		if (event.locals.user) {
+			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
+		}
+		finalResponse.headers.set('Server-Timing', metrics.join(', '));
 	}
 	return finalResponse;
 };
