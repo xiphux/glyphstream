@@ -99,6 +99,42 @@
 		avatarMediaId: data.assistantAvatarMediaId,
 	});
 
+	let settingAvatar = $state(false);
+
+	/**
+	 * Make an image from this conversation a preset's avatar — the manual form
+	 * of "the model drew its own portrait", and the reason the action is offered
+	 * on the chat surface at all and not just in the gallery.
+	 *
+	 * `invalidateAll()` on purpose, despite this page's careful avoidance of it
+	 * elsewhere: the avatar shown in the bubbles comes from THIS page's load
+	 * (`assistantAvatarMediaId`), not the layout's preset list, so a targeted
+	 * `invalidate('app:conversations')` would refresh the picker's checkmarks
+	 * and leave the bubbles showing the old face. The cost this page optimizes
+	 * against is a re-serialization on EVERY completed turn and every tab
+	 * refocus; this is a rare, explicit, one-off action. Don't "fix" it to a
+	 * targeted key without moving the avatar's source first.
+	 */
+	async function setAvatar(customModelId: string, mediaId: string) {
+		if (settingAvatar) return;
+		settingAvatar = true;
+		try {
+			const res = await fetch(`/api/custom-models/${customModelId}/avatar`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ mediaId }),
+			});
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			const name = data.customModels.find((c) => c.id === customModelId)?.name;
+			await invalidateAll();
+			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Failed to set avatar');
+		} finally {
+			settingAvatar = false;
+		}
+	}
+
 	// Per-message assistant identity — keeps a kept fan-out branch (or a per-turn
 	// model override) reading as the model that actually produced it, instead
 	// of the conversation default, once it's flipped to via the ‹N/M› sibling
@@ -2015,6 +2051,9 @@
 			inConversation
 			siblings={conversationMedia}
 			onNavigate={openImageInLightbox}
+			avatarTargets={data.customModels}
+			onSetAvatar={setAvatar}
+			{settingAvatar}
 		/>
 	{/await}
 {/if}

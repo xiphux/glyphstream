@@ -788,3 +788,108 @@ describe('MediaLightbox — slide windowing', () => {
 		expect(eager[0].getAttribute('fetchpriority')).toBe('high');
 	});
 });
+
+/**
+ * "Set as avatar". The component stays presentational — it decides WHETHER to
+ * offer the action and which shape it takes, and hands the change to the
+ * caller (same division as onDelete).
+ */
+describe('MediaLightbox — set as avatar', () => {
+	const preset = (
+		over: Partial<{ id: string; name: string; avatarMediaId: string | null }> = {},
+	) => ({
+		id: over.id ?? 'cm-1',
+		name: over.name ?? 'Ilya',
+		avatarMediaId: over.avatarMediaId ?? null,
+	});
+
+	it('offers nothing when the user has no presets', () => {
+		render(MediaLightbox, {
+			props: { media: makeImage(), onClose: vi.fn(), onSetAvatar: vi.fn(), avatarTargets: [] },
+		});
+		expect(screen.queryByRole('button', { name: /avatar/i })).not.toBeInTheDocument();
+	});
+
+	it('offers nothing for a video', () => {
+		// The avatar surfaces render an <img>; a video has no still to stand in.
+		render(MediaLightbox, {
+			props: {
+				media: makeVideo(),
+				onClose: vi.fn(),
+				onSetAvatar: vi.fn(),
+				avatarTargets: [preset()],
+			},
+		});
+		expect(screen.queryByRole('button', { name: /avatar/i })).not.toBeInTheDocument();
+	});
+
+	it('names the preset in the button when there is exactly one', async () => {
+		const user = userEvent.setup();
+		const onSetAvatar = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-9' }),
+				onClose: vi.fn(),
+				onSetAvatar,
+				avatarTargets: [preset({ id: 'cm-7', name: 'Ilya' })],
+			},
+		});
+
+		// One option needs no menu — a click to open a list of one is a wasted click.
+		await user.click(screen.getByRole('button', { name: 'Set as avatar for Ilya' }));
+		expect(onSetAvatar).toHaveBeenCalledWith('cm-7', 'm-9');
+	});
+
+	it('disables the single-preset button when this image is already the avatar', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-9' }),
+				onClose: vi.fn(),
+				onSetAvatar: vi.fn(),
+				avatarTargets: [preset({ name: 'Ilya', avatarMediaId: 'm-9' })],
+			},
+		});
+		expect(screen.getByRole('button', { name: 'Avatar for Ilya' })).toBeDisabled();
+	});
+
+	it('opens a picker when there is more than one preset', async () => {
+		const user = userEvent.setup();
+		const onSetAvatar = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-9' }),
+				onClose: vi.fn(),
+				onSetAvatar,
+				avatarTargets: [
+					preset({ id: 'cm-1', name: 'Ilya' }),
+					preset({ id: 'cm-2', name: 'Marta', avatarMediaId: 'm-other' }),
+				],
+			},
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Set as avatar…' }));
+		// Portaled to document.body — hence screen.*, not container.querySelector.
+		await user.click(screen.getByRole('button', { name: 'Marta' }));
+		expect(onSetAvatar).toHaveBeenCalledWith('cm-2', 'm-9');
+	});
+
+	it('marks the preset already using this image and lets the others through', async () => {
+		const user = userEvent.setup();
+		const onSetAvatar = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'm-9' }),
+				onClose: vi.fn(),
+				onSetAvatar,
+				avatarTargets: [
+					preset({ id: 'cm-1', name: 'Ilya', avatarMediaId: 'm-9' }),
+					preset({ id: 'cm-2', name: 'Marta' }),
+				],
+			},
+		});
+
+		await user.click(screen.getByRole('button', { name: 'Set as avatar…' }));
+		expect(screen.getByRole('button', { name: 'Ilya' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Marta' })).toBeEnabled();
+	});
+});

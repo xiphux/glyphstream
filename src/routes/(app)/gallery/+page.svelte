@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Popover, Switch } from 'bits-ui';
 	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck } from '@lucide/svelte';
@@ -13,12 +13,14 @@
 	import { GalleryFeed } from '$lib/gallery-feed.svelte';
 	import { computeSectionWindows, type WindowConstants } from '$lib/gallery-window';
 	import type {
+		CustomModel,
 		GalleryLayout,
 		GalleryUnit,
 		GalleryUnitsPage,
 		MediaConversationRef,
 		MediaListItem,
 	} from '$lib/types/api';
+	import { toast } from '$lib/toast.svelte';
 
 	let { data } = $props<{
 		data: {
@@ -28,6 +30,9 @@
 			model: string | null;
 			modelFacets: Array<{ value: string; label: string; count: number }>;
 			q: string | null;
+			/** From the (app) layout — the presets an image can be made the
+			 *  avatar of. */
+			customModels: CustomModel[];
 		};
 	}>();
 
@@ -441,6 +446,36 @@
 			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
 			deletingId = null;
+		}
+	}
+
+	let settingAvatar = $state(false);
+
+	/** Make `mediaId` the avatar of preset `customModelId`.
+	 *
+	 * Re-reads through `invalidate('app:conversations')` rather than patching
+	 * `data.customModels` locally: the layout owns that list, and a local edit
+	 * would drift from what every other surface (chat bubbles, /settings/models)
+	 * reads. This page `await parent()`s, so its own load re-runs either way —
+	 * there's nothing cheaper to reach for here. */
+	async function setAvatar(customModelId: string, mediaId: string) {
+		if (settingAvatar) return;
+		settingAvatar = true;
+		error = null;
+		try {
+			const res = await fetch(`/api/custom-models/${customModelId}/avatar`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ mediaId }),
+			});
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			const name = data.customModels.find((c: CustomModel) => c.id === customModelId)?.name;
+			await invalidate('app:conversations');
+			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to set avatar';
+		} finally {
+			settingAvatar = false;
 		}
 	}
 
@@ -1302,4 +1337,7 @@
 	{conversationsError}
 	siblings={lightboxSiblings}
 	onNavigate={openLightboxById}
+	avatarTargets={data.customModels}
+	onSetAvatar={setAvatar}
+	{settingAvatar}
 />

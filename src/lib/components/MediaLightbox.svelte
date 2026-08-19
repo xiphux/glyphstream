@@ -2,7 +2,9 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { MediaQuery } from 'svelte/reactivity';
+	import { Popover } from 'bits-ui';
 	import {
+		Check,
 		ChevronLeft,
 		ChevronRight,
 		Download,
@@ -10,6 +12,7 @@
 		RotateCcw,
 		Share,
 		Trash2,
+		UserRound,
 		X,
 	} from '@lucide/svelte';
 	import type { MediaConversationRef, MediaKind, MediaListItem } from '$lib/types/api';
@@ -68,6 +71,21 @@
 		 * anything — without it the carousel is inert.
 		 */
 		onNavigate?: (id: string) => void;
+		/**
+		 * Custom-model presets this image can be made the avatar of. Empty /
+		 * omitted hides the action entirely — a user with no presets has nothing
+		 * to attach a face to.
+		 *
+		 * Passed in rather than read from a store because this component is used
+		 * from both the gallery and a conversation, and neither has a reason to
+		 * differ: whoever mounts it already holds the layout's preset list.
+		 */
+		avatarTargets?: Array<{ id: string; name: string; avatarMediaId: string | null }>;
+		/** Performs the change. The caller owns the request + its toast, matching
+		 *  how `onDelete` works — this component stays presentational. */
+		onSetAvatar?: (customModelId: string, mediaId: string) => void | Promise<void>;
+		/** Disables the action while a change is in flight. */
+		settingAvatar?: boolean;
 	}
 
 	let {
@@ -80,6 +98,9 @@
 		inConversation = false,
 		siblings = undefined,
 		onNavigate = undefined,
+		avatarTargets = [],
+		onSetAvatar = undefined,
+		settingAvatar = false,
 	}: Props = $props();
 
 	// --- carousel navigation ---------------------------------------------
@@ -541,6 +562,9 @@
 	{@const m = media}
 	{@const hasPrompt = (m.promptFull ?? m.promptExcerpt) !== null}
 	{@const canUseAsStarting = m.kind === 'image'}
+	<!-- Images only: a video has no still to stand in for a preset, and the
+	     avatar surfaces render an <img>. -->
+	{@const canSetAvatar = m.kind === 'image' && !!onSetAvatar && avatarTargets.length > 0}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
 	<div
 		role="dialog"
@@ -743,6 +767,85 @@
 							{m.originalPrompt}
 						</p>
 					{/if}
+				{/if}
+			</div>
+		{/if}
+		{#if canSetAvatar}
+			<!--
+				"Set as avatar" — the cheapest path to a preset portrait: generate
+				one however you like (including a fan-out of variants), then keep
+				the one you want. Sits with the other act-on-this-image actions
+				rather than in the top toolbar, which is reserved for
+				share/delete/close.
+			-->
+			<div class="mx-auto mt-3 flex shrink-0 flex-wrap justify-center gap-2">
+				{#if avatarTargets.length === 1}
+					<!-- One preset: a menu to choose between one option is a wasted
+					     click, so name it in the button instead. -->
+					{@const only = avatarTargets[0]}
+					<button
+						type="button"
+						disabled={settingAvatar || only.avatarMediaId === m.id}
+						onclick={() => onSetAvatar?.(only.id, m.id)}
+						title={only.avatarMediaId === m.id
+							? `Already ${only.name}'s avatar`
+							: `Show this image beside ${only.name}'s replies`}
+						class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
+					>
+						<UserRound size={13} strokeWidth={2.25} />
+						{only.avatarMediaId === m.id
+							? `Avatar for ${only.name}`
+							: `Set as avatar for ${only.name}`}
+					</button>
+				{:else}
+					<Popover.Root>
+						<Popover.Trigger
+							disabled={settingAvatar}
+							title="Show this image beside a preset's replies"
+							class="inline-flex items-center gap-1.5 rounded-md border border-media-border bg-media-surface px-3 py-1.5 text-xs font-medium text-media-fg transition hover:bg-media-surface-hover disabled:opacity-50"
+						>
+							<UserRound size={13} strokeWidth={2.25} />
+							Set as avatar…
+						</Popover.Trigger>
+						<Popover.Portal>
+							<Popover.Content
+								sideOffset={4}
+								class="z-overlay max-h-72 w-64 overflow-y-auto rounded-md border border-border surface-glass gs-pop p-1 shadow-lg"
+							>
+								<p
+									class="px-2 py-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
+								>
+									Set as avatar for
+								</p>
+								{#each avatarTargets as t (t.id)}
+									{@const current = t.avatarMediaId === m.id}
+									<button
+										type="button"
+										disabled={settingAvatar || current}
+										onclick={() => onSetAvatar?.(t.id, m.id)}
+										class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
+									>
+										{#if t.avatarMediaId}
+											<img
+												src="/api/media/{t.avatarMediaId}/thumbnail"
+												alt=""
+												loading="lazy"
+												class="size-5 shrink-0 rounded-full object-cover"
+											/>
+										{:else}
+											<span
+												class="size-5 shrink-0 rounded-full border border-dashed border-border-strong"
+											></span>
+										{/if}
+										<span class="min-w-0 flex-1 truncate">{t.name}</span>
+										{#if current}
+											<Check size={13} strokeWidth={2.25} class="shrink-0 text-fg-muted" />
+										{/if}
+									</button>
+								{/each}
+							</Popover.Content>
+						</Popover.Portal>
+					</Popover.Root>
 				{/if}
 			</div>
 		{/if}
