@@ -197,7 +197,8 @@ export interface UserServerState {
  * waiting on it. The settle handlers swallow a late rejection so it can't
  * surface as an unhandled rejection after we've already moved on.
  *
- * Exported for unit testing; not part of the registry's public surface.
+ * Exported for unit testing, and used by /api/mcp/ready to cap how long it
+ * will hold a request open waiting on bootstrap.
  */
 export function withSoftDeadline(p: Promise<unknown>, ms: number): Promise<void> {
 	return new Promise<void>((resolve) => {

@@ -70,6 +70,37 @@
 		void syncTimeZone(data.prefs);
 	});
 
+	// Cold-start catch-up for the MCP-derived half of `featureCategories`. The
+	// layout load no longer blocks on MCP discovery (see isMcpReady) — doing so
+	// put a remote server's handshake in front of the first page render of a
+	// cold start, to learn a tool count. So the first load after a process
+	// restart renders with the catalog as it stood, reports `mcpSettled: false`,
+	// and we come back for the rest here, off the critical path.
+	//
+	// The endpoint holds the request until bootstrap settles rather than being
+	// polled, so this is one request that resolves when there's actually
+	// something new. It answers `ready: false` if it gave up waiting on a
+	// hanging server, and then we leave the stale counts alone — re-pulling
+	// would just re-serialize the same numbers.
+	//
+	// `app:mcp-credentials` is already the key for "the MCP-derived layout data
+	// changed" — the same one /settings/mcp fires after connecting a server —
+	// so re-pulling through it lands the tool counts in every consumer at once.
+	//
+	// Steady state costs nothing: `mcpSettled` is true on every load after the
+	// window closes and this never runs. A failure is silent by design; being
+	// wrong about a tool count for one session is not worth a toast.
+	onMount(() => {
+		if (data.mcpSettled) return;
+		void fetch('/api/mcp/ready')
+			.then(async (res) => {
+				if (!res.ok) return;
+				const body = (await res.json()) as { ready?: boolean };
+				if (body.ready) await invalidate('app:mcp-credentials');
+			})
+			.catch(() => {});
+	});
+
 	// Pull the conversation list forward when the app resumes from the
 	// background. The sidebar is SSR load data (see +layout.server.ts), so a
 	// conversation started on another client (desktop → this phone's PWA) stays

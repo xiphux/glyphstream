@@ -7,7 +7,7 @@ import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
 import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
-import { awaitMcpReady } from '$lib/server/mcp/bootstrap';
+import { isMcpReady } from '$lib/server/mcp/bootstrap';
 import { filterInFlight } from '$lib/server/streaming/in-flight';
 import type { LayoutServerLoad } from './$types';
 
@@ -29,10 +29,13 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// chat pages then read them via `await parent()` instead of running
 	// their own copy of the same fetch loop.
 	//
-	// Block once on MCP discovery so featureCategories carries the
-	// `mcp:<id>` entries discovered at boot. Subsequent loads hit the
-	// memoized ready promise immediately.
-	await awaitMcpReady();
+	// NOT awaited on MCP discovery. featureCategories reads the server catalog,
+	// which is fully populated before bootstrap connects to anything — only the
+	// per-server tool count and the hide-a-failed-server flag need the
+	// handshakes, and blocking the render on those put a remote MCP server's
+	// round trip in front of the first page of a cold start. `mcpSettled` below
+	// tells the client whether to come back for them. See isMcpReady.
+	//
 	// Tagged so a skill mutation on /settings/skills can `invalidate('app:skills')`
 	// to refresh `enabledSkills` (the composer's /skill autocomplete) without a
 	// full reload — the layout load otherwise only re-runs on navigation.
@@ -89,6 +92,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		featureCategories: getAllFeatureCategoryLabels({
 			configuredPerUserServerIds: new Set(listConfiguredServerIds(locals.user.id)),
 		}),
+		// Whether the featureCategories above are final. False only during the
+		// cold-start window, where the tool counts aren't known yet and a global
+		// server that turns out to be down is still listed; the (app) layout
+		// waits for /api/mcp/ready and re-pulls this data once when it flips.
+		// True on every steady-state load, and then the client does nothing.
+		mcpSettled: isMcpReady(),
 		// Enabled skills (name + description) for the composer's /skill-name
 		// autocomplete. Catalog-index shape only — bodies stay server-side.
 		enabledSkills: listEnabledSkillsForUser(locals.user.id).map((s) => ({
