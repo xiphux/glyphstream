@@ -41,6 +41,14 @@ export interface ImageRelayParams extends MediaRelayParams {
 	/** Whether image-prompt enhancement is enabled for this send (the feature
 	 *  category is not in the conversation's disabledFeatures). */
 	enhancementEnabled?: boolean;
+	/**
+	 * Persist the result as a display-only image — rendered in the thread but
+	 * never sent upstream. Set by avatar generation: the portrait should be
+	 * visible at full size (32px tells you nothing), but re-sending it every
+	 * turn is rent for what the description beside it already says in text.
+	 * See the `displayOnly` note on the image MessagePart.
+	 */
+	displayOnly?: boolean;
 }
 
 export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8Array> {
@@ -121,7 +129,9 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 				sourceMediaId: params.sourceMediaId,
 			});
 			return {
-				part: { type: 'image', mediaId },
+				part: params.displayOnly
+					? { type: 'image', mediaId, displayOnly: true }
+					: { type: 'image', mediaId },
 				mediaId,
 				rawResponseJson: JSON.stringify(upstream),
 				modality: 'image',

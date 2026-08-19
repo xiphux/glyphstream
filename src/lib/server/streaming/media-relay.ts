@@ -53,6 +53,16 @@ export interface MediaRelayParams {
 	endpoint: LoadedEndpoint;
 	/** The conversation-facing model id (recorded via modelUsed). */
 	storedModelId: string;
+	/**
+	 * The message this generation hangs off: the new assistant row is appended
+	 * as its child, and it's echoed on the `start` frame so the client can
+	 * render the turn optimistically.
+	 *
+	 * Normally the user message that prompted the generation. Avatar generation
+	 * passes the ASSISTANT message holding the appearance description instead —
+	 * the portrait belongs under the description it was drawn from, and the two
+	 * then merge into one bubble (see computeMergeFlags).
+	 */
 	userMessage: ChatMessage;
 	/** Split-attachments provenance: the (first) input image this generation
 	 *  edits / animates, or null for text-to-media. Recorded on the durable error

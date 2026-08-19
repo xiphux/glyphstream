@@ -160,11 +160,71 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
 		suppressNotify: over.suppressNotify ?? false,
+		displayOnly: over.displayOnly,
 		onStarted: over.onStarted,
 		onGenerationSettled: over.onGenerationSettled,
 		onComplete: over.onComplete ?? vi.fn(),
 	} satisfies ImageRelayParams;
 }
+
+/**
+ * Avatar generation drives the same relay with two differences: the portrait is
+ * marked display-only, and the anchor it hangs under is the ASSISTANT message
+ * holding the appearance description rather than a user message.
+ */
+describe('startImageRelay — avatar generation', () => {
+	it('marks the persisted part display-only when asked', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		const events = await drain(
+			startImageRelay(
+				baseParams({ conversationId: conv.id, userId: user.id, userMessage, displayOnly: true }),
+			),
+		);
+
+		const done = events.find((e) => e.type === 'done')!;
+		const parts = (done as { assistantMessage: ChatMessage }).assistantMessage.parts;
+		expect(parts).toEqual([{ type: 'image', mediaId: 'media-out', displayOnly: true }]);
+	});
+
+	it('leaves the part unflagged by default, so ordinary generations are untouched', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		const events = await drain(
+			startImageRelay(baseParams({ conversationId: conv.id, userId: user.id, userMessage })),
+		);
+
+		const done = events.find((e) => e.type === 'done')!;
+		const parts = (done as { assistantMessage: ChatMessage }).assistantMessage.parts;
+		expect(parts).toEqual([{ type: 'image', mediaId: 'media-out' }]);
+	});
+
+	it('parents the portrait under an assistant anchor, not just a user message', async () => {
+		// The two-row shape: description, then portrait beneath it. Nothing in the
+		// relay requires the anchor to be a user message, and this is what keeps
+		// the pair fused into one bubble in the thread.
+		const { conv, user, userMessage } = seedConvWithUser();
+		const description = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: userMessage.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'a weathered navigator in an orange coat' }],
+		});
+
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage: description,
+					displayOnly: true,
+				}),
+			),
+		);
+
+		const done = events.find((e) => e.type === 'done')!;
+		const persisted = (done as { assistantMessage: ChatMessage }).assistantMessage;
+		expect(getSiblingAssistants(conv.id, description.id).map((s) => s.id)).toEqual([persisted.id]);
+	});
+});
 
 describe('startImageRelay — happy path', () => {
 	it('emits start → done, persists the assistant sibling, and fires onStarted/onComplete', async () => {
