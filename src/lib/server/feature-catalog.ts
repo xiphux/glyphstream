@@ -5,8 +5,12 @@
  * the live MCP registry.
  *
  * Must run server-side — the MCP registry isn't exposed to the browser
- * bundle. The (app) layout loader awaits MCP readiness before calling
- * this and ships the result to every (app) page.
+ * bundle. The (app) layout loader calls this WITHOUT waiting on MCP
+ * readiness and ships the result to every (app) page: `serverConfigs` is
+ * filled synchronously, so ids, names and transports are right immediately,
+ * and only `toolCount` and `available` need the boot handshakes. The layout
+ * reports `mcpSettled` so the client can re-pull once those land — see
+ * isMcpReady in $lib/server/mcp/bootstrap.
  */
 
 import {

@@ -307,12 +307,14 @@ export const handle: Handle = async ({ event, resolve }) => {
 				}
 			: undefined,
 	);
-	// Load functions plus the SSR render. The `(app)` layout load is the whole
-	// of it for a page under that group, and everything it does is a synchronous
-	// SQLite read except the model-list cache — so a `render` that dwarfs `auth`
-	// means either that cache was cold or the event loop was held by something
-	// else (node:sqlite is synchronous, so a background sweeper mid-batch
-	// blocks the request behind it).
+	// Load functions plus the SSR render — the `(app)` layout load, and then the
+	// page's own. Most of that is synchronous SQLite, so the candidates for a
+	// `render` that dwarfs `auth` are the few things that aren't: a cold
+	// model-list cache in the layout, the gallery's search leg when an
+	// `[embeddings]` endpoint is configured (that one is a real network round
+	// trip), or the event loop held by something else entirely — node:sqlite is
+	// synchronous, so a background sweeper mid-batch blocks the request behind
+	// it.
 	const renderMs = performance.now() - renderStart;
 	// Whether this response gets a Server-Timing header, decided here because
 	// compression below can hand back a different Response object.

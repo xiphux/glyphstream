@@ -45,7 +45,10 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// capability list (featureCategories) reflects the newly-connected (or
 	// removed) server right away. Kept separate from the page's own
 	// `settings:mcp` key so frequent trust toggles / retries don't re-serialize
-	// this layout's payload to the client — only the rare credential change does.
+	// this layout's payload to the client. Two things fire it, both rare: a
+	// credential change, and the cold-start catch-up in `+layout.svelte` once
+	// MCP bootstrap settles (once per client per process start, and only when
+	// `mcpSettled` below went out false).
 	// (The load body still re-runs whenever a page that `await parent()`s is
 	// invalidated; the key controls what's sent, not what executes.)
 	depends('app:mcp-credentials');

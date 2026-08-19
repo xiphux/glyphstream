@@ -47,8 +47,12 @@ export interface McpConnection {
  * return a connection wrapper. Throws on any failure (caller catches and
  * records).
  *
- * For Streamable HTTP transports this auto-retries the handshake once on
- * a "Session not found" response. Per the MCP spec, the client is meant
+ * For Streamable HTTP transports this re-rolls the handshake on a "Session
+ * not found" response, up to MAX_CONNECT_ATTEMPTS times in total. That
+ * constant is load-bearing beyond this function: each attempt carries the
+ * full `connectTimeoutMs`, so it sets how long a healthy connect can take,
+ * and healthyBootstrapBudgetMs in registry.ts prices the readiness wait off
+ * it. Changing it changes that budget. Per the MCP spec, the client is meant
  * to discard a stale session ID and re-initialize when it sees this; the
  * @modelcontextprotocol/sdk doesn't do that automatically. At boot we
  * have no session ID of our own to clear, but the upstream's session
@@ -58,18 +62,24 @@ export interface McpConnection {
  * the first one just minted. Rebuilding the Client + transport and
  * trying again clears the SDK's internal `_sessionId` for free.
  */
+export const MAX_CONNECT_ATTEMPTS = 2;
+
 export async function connectMcpServer(
 	cfg: LoadedMcpServer,
 	connectTimeoutMs: number,
 ): Promise<McpConnection> {
-	try {
-		return await openMcpConnection(cfg, connectTimeoutMs);
-	} catch (err) {
-		if (cfg.transport === 'http' && isSessionLostError(err)) {
+	let lastErr: unknown;
+	for (let attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt++) {
+		try {
 			return await openMcpConnection(cfg, connectTimeoutMs);
+		} catch (err) {
+			lastErr = err;
+			// Anything that isn't a retryable session-loss fails now, on any
+			// attempt. Only the session-lost case falls through to another roll.
+			if (!(cfg.transport === 'http' && isSessionLostError(err))) throw err;
 		}
-		throw err;
 	}
+	throw lastErr;
 }
 
 /**

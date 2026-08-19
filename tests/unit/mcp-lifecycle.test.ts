@@ -21,7 +21,11 @@ vi.mock('$lib/server/mcp/config', () => ({
 	loadMcpServers: () => mocks.servers,
 }));
 
-vi.mock('$lib/server/mcp/client', () => ({
+// Partial mock so real exports registry.ts depends on (MAX_CONNECT_ATTEMPTS)
+// stay present. A bare factory omitting them passes right up until something
+// in this file touches one, then fails as a mock error rather than a real one.
+vi.mock('$lib/server/mcp/client', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/server/mcp/client')>()),
 	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 

@@ -264,8 +264,8 @@ describe('buildDebugSections — server uptime', () => {
 
 	it('reports a just-restarted process in seconds', () => {
 		// The reading that matters most: a slow SSR on a process this young is
-		// a cold start paying for the SQLite open, the MCP handshakes and the
-		// model-list fetch that every later request gets free.
+		// a cold start paying for the lazy SQLite open and a cold model-list
+		// fetch that every later request gets free.
 		expect(rowsOf(withProc(4_200), 'Environment')['Server uptime'].value).toBe('4 s');
 	});
 

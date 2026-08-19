@@ -3,6 +3,7 @@ import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamable
 import { loadMcpServers, type LoadedMcpServer, type McpAuthMode } from './config';
 import {
 	connectMcpServer,
+	MAX_CONNECT_ATTEMPTS,
 	type McpConnection,
 	type McpToolDescriptor,
 	type McpCallResult,
@@ -139,6 +140,39 @@ export function getMcpServerTools(serverId: string): McpToolDescriptor[] {
 	if (!e || e.state === 'failed') return [];
 	if (e.state === 'reconnecting' && e.tools === null) return [];
 	return e.tools ?? [];
+}
+
+/**
+ * The longest a HEALTHY bootstrap can take, in ms.
+ *
+ * `initializeMcpServers` connects every global server in parallel, so the
+ * ceiling is the slowest single server's — and one server spends its own
+ * `timeout_seconds` on each of `MAX_CONNECT_ATTEMPTS` handshake rolls (the
+ * session-lost retry, the Fastmail case client.ts describes), plus one more
+ * for the `listTools` call `doConnect` bounds by the same budget. Both terms
+ * are referenced, not hardcoded: the attempt count is imported so a change
+ * there can't silently leave this short, and the `+ 1` is doConnect's own
+ * `withTimeout`, right below in this file.
+ *
+ * The retry is http-only, so a stdio-only deployment is priced roughly 1.5x
+ * longer than it can actually need — deliberately. Erring long only means
+ * waiting a little past a hang; erring short means declaring a healthy
+ * bootstrap failed, which is the mistake this function exists to avoid.
+ *
+ * `timeout_seconds` is per-server with a floor and no ceiling, so this cannot
+ * be a constant derived from `DEFAULT_TIMEOUT_SECONDS` — an operator who
+ * raises it on one server would push a perfectly healthy bootstrap past any
+ * such guess.
+ *
+ * 0 when no global servers are configured, which is correct: there is nothing
+ * to connect, so there is nothing to wait for.
+ */
+export function healthyBootstrapBudgetMs(): number {
+	let slowestSeconds = 0;
+	for (const cfg of serverConfigs.values()) {
+		if (cfg.auth === 'global') slowestSeconds = Math.max(slowestSeconds, cfg.timeoutSeconds);
+	}
+	return slowestSeconds * (MAX_CONNECT_ATTEMPTS + 1) * 1000;
 }
 
 /** Server ids of all GLOBAL servers — the boot tool-registration set. */

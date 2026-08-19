@@ -21,14 +21,21 @@ vi.mock('$lib/server/mcp/config', () => ({
 	loadMcpServers: () => mocks.servers,
 }));
 
-vi.mock('$lib/server/mcp/client', () => ({
+// Partial mock: `connectMcpServer` is stubbed, but everything else — notably
+// MAX_CONNECT_ATTEMPTS, which healthyBootstrapBudgetMs prices off — comes from
+// the real module. Pinning the budget against a mocked constant would assert
+// nothing.
+vi.mock('$lib/server/mcp/client', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/server/mcp/client')>()),
 	connectMcpServer: (...args: unknown[]) => mocks.connectImpl(...args),
 }));
 
+import { MAX_CONNECT_ATTEMPTS } from '$lib/server/mcp/client';
 import { McpError } from '@modelcontextprotocol/sdk/types.js';
 import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import {
+	healthyBootstrapBudgetMs,
 	initializeMcpServers,
 	listGlobalServerStates,
 	getMcpServerTools,
@@ -306,5 +313,69 @@ describe('callMcpTool retry narrowing', () => {
 		expect(conn2.callTool).toHaveBeenCalledTimes(1);
 		// connectImpl was called twice: init + reconnect
 		expect(mocks.connectImpl).toHaveBeenCalledTimes(2);
+	});
+});
+
+/**
+ * The budget /api/mcp/ready uses to decide it has waited long enough.
+ *
+ * It must be derived, not a constant: `timeout_seconds` is per-server with a
+ * floor and no ceiling, and one server can burn three of them (connectMcpServer
+ * retries once on a session-lost error, then doConnect bounds listTools by the
+ * same budget). A cap keyed off DEFAULT_TIMEOUT_SECONDS understates the real
+ * ceiling by 3x and gives up on bootstraps that were never unhealthy.
+ */
+describe('healthyBootstrapBudgetMs', () => {
+	const server = (over: Partial<(typeof mocks.servers)[number]>) => ({
+		id: 'a',
+		displayName: 'A',
+		transport: 'http' as const,
+		auth: 'global' as const,
+		url: 'http://x',
+		timeoutSeconds: 30,
+		idleTimeoutSeconds: 300,
+		...over,
+	});
+
+	it('allows one timeout per handshake attempt, plus one for listTools', async () => {
+		mocks.servers = [server({ id: 'a', timeoutSeconds: 30 })];
+		mocks.connectImpl.mockResolvedValue(fakeConnection([]));
+		await initializeMcpServers();
+		expect(healthyBootstrapBudgetMs()).toBe(90_000);
+		// Pinned to the real constant, not to the 3 it currently multiplies out
+		// to. connectMcpServer's retry count and this budget have to move
+		// together — the budget going short is silent, and shows up much later
+		// as /api/mcp/ready giving up on bootstraps that were never unhealthy.
+		expect(healthyBootstrapBudgetMs()).toBe(30 * (MAX_CONNECT_ATTEMPTS + 1) * 1000);
+	});
+
+	it('tracks an operator-raised timeout rather than the default', async () => {
+		// The case a hardcoded 30s cap gets wrong: this bootstrap is healthy for
+		// up to 180s, and giving up at 30s would report `ready: false` for it.
+		mocks.servers = [
+			server({ id: 'a', timeoutSeconds: 30 }),
+			server({ id: 'b', timeoutSeconds: 60 }),
+		];
+		mocks.connectImpl.mockResolvedValue(fakeConnection([]));
+		await initializeMcpServers();
+		expect(healthyBootstrapBudgetMs()).toBe(180_000);
+	});
+
+	it('ignores per-user servers, which bootstrap never connects', async () => {
+		// Bootstrap only connects globals; a per-user server's timeout can't
+		// lengthen it, so it must not inflate the budget either.
+		mocks.servers = [
+			server({ id: 'a', timeoutSeconds: 10 }),
+			server({ id: 'b', auth: 'per_user', timeoutSeconds: 120 }),
+		];
+		mocks.connectImpl.mockResolvedValue(fakeConnection([]));
+		await initializeMcpServers();
+		expect(healthyBootstrapBudgetMs()).toBe(30_000);
+	});
+
+	it('is zero with no global servers — nothing to connect, nothing to wait for', async () => {
+		mocks.servers = [];
+		await initializeMcpServers();
+		expect(healthyBootstrapBudgetMs()).toBe(0);
 	});
 });
