@@ -5,7 +5,7 @@
 	the bare label row it has always had.
 
 	Points at the existing /thumbnail variant rather than a bespoke avatar
-	endpoint. It maxes out at 512px, which is oversized for a 28px circle, but
+	endpoint. It maxes out at 512px, which is oversized for a 32px circle, but
 	it's ONE url shared by every bubble in the conversation — the browser
 	fetches it once and reuses it from cache down the whole thread — and it
 	arrives with the same long Cache-Control as /content. A dedicated small
@@ -52,12 +52,12 @@
 		src="/api/media/{mediaId}/thumbnail"
 		alt=""
 		title={onClick ? undefined : label}
-		width="28"
-		height="28"
+		width="32"
+		height="32"
 		loading="lazy"
 		decoding="async"
 		onerror={() => (failedFor = mediaId)}
-		class="size-7 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+		class="size-8 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
 	/>
 {/snippet}
 
