@@ -88,7 +88,7 @@
 		     the portrait mid-bubble would read as a second speaker. -->
 		<div class="flex items-center gap-1.5">
 			{#if avatarMediaId}
-				<AssistantAvatar mediaId={avatarMediaId} label={roleLabel} />
+				<AssistantAvatar mediaId={avatarMediaId} label={roleLabel} onClick={onImageClick} />
 			{/if}
 			<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
 		</div>

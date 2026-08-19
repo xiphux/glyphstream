@@ -5,7 +5,7 @@
 	the bare label row it has always had.
 
 	Points at the existing /thumbnail variant rather than a bespoke avatar
-	endpoint. It maxes out at 512px, which is oversized for a 20px circle, but
+	endpoint. It maxes out at 512px, which is oversized for a 28px circle, but
 	it's ONE url shared by every bubble in the conversation — the browser
 	fetches it once and reuses it from cache down the whole thread — and it
 	arrives with the same long Cache-Control as /content. A dedicated small
@@ -23,9 +23,13 @@
 		 *  the accessibility tree already gets it from the adjacent label, which
 		 *  is why `alt` is empty. */
 		label: string;
+		/** Opens the media lightbox for this avatar. Omit on surfaces with no
+		 *  lightbox mounted (the settings list) and it renders as a plain,
+		 *  non-interactive image. */
+		onClick?: (mediaId: string) => void;
 	}
 
-	let { mediaId, label }: Props = $props();
+	let { mediaId, label, onClick }: Props = $props();
 
 	// Records WHICH avatar failed rather than a bare boolean, so `failed`
 	// re-derives to false the moment the bubble is reused for a different
@@ -36,22 +40,39 @@
 	const failed = $derived(failedFor === mediaId);
 </script>
 
-{#if !failed}
+{#snippet portrait()}
 	<!--
 		alt="" on purpose: the label sits immediately beside it in the same row,
 		so announcing the name twice is noise. `title` gives a hover affordance
 		without adding anything to the accessibility tree that the text doesn't
-		already say.
+		already say — and when this is wrapped in a button below, the button
+		carries the accessible name instead.
 	-->
 	<img
 		src="/api/media/{mediaId}/thumbnail"
 		alt=""
-		title={label}
-		width="20"
-		height="20"
+		title={onClick ? undefined : label}
+		width="28"
+		height="28"
 		loading="lazy"
 		decoding="async"
 		onerror={() => (failedFor = mediaId)}
-		class="size-5 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+		class="size-7 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
 	/>
+{/snippet}
+
+{#if !failed}
+	{#if onClick}
+		<button
+			type="button"
+			onclick={() => onClick(mediaId)}
+			title={label}
+			aria-label="View avatar"
+			class="shrink-0 cursor-zoom-in rounded-full transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus"
+		>
+			{@render portrait()}
+		</button>
+	{:else}
+		{@render portrait()}
+	{/if}
 {/if}

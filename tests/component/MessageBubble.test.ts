@@ -10,6 +10,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
+import userEvent from '@testing-library/user-event';
 import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 
@@ -178,9 +179,29 @@ describe('MessageBubble — preset avatar', () => {
 		});
 		expect(screen.getByText('Ilya')).toBeInTheDocument();
 		expect(avatar()).toHaveAttribute('src', '/api/media/media-7/thumbnail');
-		// Empty alt + the name in `title`: decorative, not announced twice.
+		// Empty alt: the label sits beside it, so announcing the name twice is
+		// noise. The accessible name lives on the wrapping button instead.
 		expect(avatar()).toHaveAttribute('alt', '');
-		expect(avatar()).toHaveAttribute('title', 'Ilya');
+		expect(screen.getByRole('button', { name: 'View avatar' })).toHaveAttribute('title', 'Ilya');
+	});
+
+	it('opens the lightbox for the avatar when clicked', async () => {
+		// Same handler the inline generated images use — an avatar IS a media
+		// row, so clicking it should behave like clicking any other image.
+		const user = userEvent.setup();
+		const onImageClick = vi.fn();
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				onImageClick,
+				assistantLabel: 'Ilya',
+				assistantAvatarMediaId: 'media-7',
+				message: makeMessage('assistant', [{ type: 'text', text: 'hi' }]),
+			},
+		});
+
+		await user.click(screen.getByRole('button', { name: 'View avatar' }));
+		expect(onImageClick).toHaveBeenCalledWith('media-7');
 	});
 
 	it('renders label-only when there is no avatar', () => {

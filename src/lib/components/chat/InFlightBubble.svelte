@@ -89,7 +89,11 @@
 	{#if !mergeWithPrev}
 		<div class="flex items-center gap-1.5">
 			{#if assistantAvatarMediaId}
-				<AssistantAvatar mediaId={assistantAvatarMediaId} label={assistantLabel} />
+				<AssistantAvatar
+					mediaId={assistantAvatarMediaId}
+					label={assistantLabel}
+					onClick={onImageClick}
+				/>
 			{/if}
 			<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
 		</div>
