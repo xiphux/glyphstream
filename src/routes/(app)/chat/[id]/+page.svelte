@@ -31,6 +31,7 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
+	import { AVATAR_DESCRIPTION_PROMPT } from '$lib/avatar-prompt';
 	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { CompactionController } from '$lib/compaction-controller.svelte';
 	import { EditSession } from '$lib/edit-session.svelte';
@@ -143,6 +144,38 @@
 		} finally {
 			settingAvatar = false;
 		}
+	}
+
+	/**
+	 * Step one of avatar generation: put the description request in the composer
+	 * rather than sending it.
+	 *
+	 * Prefilling instead of auto-sending is the whole point of the two-step
+	 * flow — the user reads the prompt, adjusts it (an avatar for a Postgres
+	 * chat wants different wording than one for a roleplay), and sends when
+	 * ready. From there it's an ordinary turn: it streams, it persists, and
+	 * Edit / Retry work on it because nothing about it is special.
+	 *
+	 * Offered only where a model can actually answer in prose — an image or
+	 * video conversation has nothing to ask.
+	 */
+	const canGenerateAvatar = $derived(
+		data.conversation.modelKind !== 'image' && data.conversation.modelKind !== 'video',
+	);
+
+	async function beginAvatarDescription() {
+		if (generating) return;
+		// Don't silently eat a draft the user was in the middle of writing.
+		if (composerText.trim()) {
+			const ok = await confirmDialog.ask({
+				title: 'Replace what you were writing?',
+				message: 'The avatar request will go in the composer in its place.',
+				confirmLabel: 'Replace',
+			});
+			if (!ok) return;
+		}
+		composerText = AVATAR_DESCRIPTION_PROMPT;
+		composerRef?.focus();
 	}
 
 	/**
@@ -1732,7 +1765,11 @@
 
 <div class="flex h-full min-w-0">
 	<div class="relative flex h-full min-w-0 flex-1 flex-col">
-		<ChatHeader {title} private={isPrivate} />
+		<ChatHeader
+			{title}
+			private={isPrivate}
+			onGenerateAvatar={canGenerateAvatar ? beginAvatarDescription : undefined}
+		/>
 
 		<!--
 		Scroll area fills the full height *behind* the floating composer
