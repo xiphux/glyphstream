@@ -10,6 +10,7 @@
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CanvasCard from './CanvasCard.svelte';
+	import AssistantAvatar from './AssistantAvatar.svelte';
 	import { splitCanvasCards, type RenderBlock } from '$lib/chat-render';
 	import type { ApprovalAction } from '$lib/approval-workflow';
 	import type { McpUnavailableServer } from '$lib/types/api';
@@ -18,6 +19,12 @@
 		blocks: RenderBlock[];
 		/** Bubble header label (the assistant/model name). */
 		assistantLabel: string;
+		/** Avatar beside that label, or null. Tracks the CONVERSATION's identity
+		 *  rather than a per-turn one, matching `assistantLabel` — the live
+		 *  bubble already shows the conversation label under a per-turn model
+		 *  override, and the two must not disagree about who is speaking. The
+		 *  persisted view re-resolves both per message once the turn lands. */
+		assistantAvatarMediaId?: string | null;
 		/** Placeholder verb: "Thinking" / "Generating image" / "Generating video". */
 		label: string;
 		status: string | null;
@@ -49,6 +56,7 @@
 	let {
 		blocks,
 		assistantLabel,
+		assistantAvatarMediaId = null,
 		label,
 		status,
 		progress,
@@ -79,7 +87,12 @@
 	]}
 >
 	{#if !mergeWithPrev}
-		<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
+		<div class="flex items-center gap-1.5">
+			{#if assistantAvatarMediaId}
+				<AssistantAvatar mediaId={assistantAvatarMediaId} label={assistantLabel} />
+			{/if}
+			<div class="text-[11px] font-medium tracking-wide opacity-60">{assistantLabel}</div>
+		</div>
 	{/if}
 	{#if mcpUnavailable.length > 0}
 		<div class="mt-1 mb-2 rounded-md border px-3 py-2 text-xs alert-danger">

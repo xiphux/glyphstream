@@ -160,3 +160,67 @@ describe('MessageBubble — body rendering', () => {
 		expect(screen.getByText('let me think')).toBeInTheDocument();
 	});
 });
+
+describe('MessageBubble — preset avatar', () => {
+	// The avatar is presentational duplication of the label, so it's queried
+	// by role+title rather than alt text: `alt` is deliberately empty so screen
+	// readers hear the name once, from the label beside it.
+	const avatar = () => document.querySelector('img[src^="/api/media/"]');
+
+	it('renders the avatar beside the label when the message has one', () => {
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				assistantLabel: 'Ilya',
+				assistantAvatarMediaId: 'media-7',
+				message: makeMessage('assistant', [{ type: 'text', text: 'hi' }]),
+			},
+		});
+		expect(screen.getByText('Ilya')).toBeInTheDocument();
+		expect(avatar()).toHaveAttribute('src', '/api/media/media-7/thumbnail');
+		// Empty alt + the name in `title`: decorative, not announced twice.
+		expect(avatar()).toHaveAttribute('alt', '');
+		expect(avatar()).toHaveAttribute('title', 'Ilya');
+	});
+
+	it('renders label-only when there is no avatar', () => {
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				assistantLabel: 'gpt-4o',
+				message: makeMessage('assistant', [{ type: 'text', text: 'hi' }]),
+			},
+		});
+		expect(screen.getByText('gpt-4o')).toBeInTheDocument();
+		expect(avatar()).toBeNull();
+	});
+
+	it('suppresses the avatar on a merged continuation row', () => {
+		// A multi-iteration tool turn renders as ONE bubble; repeating the
+		// portrait mid-bubble would read as a second speaker joining in.
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				assistantLabel: 'Ilya',
+				assistantAvatarMediaId: 'media-7',
+				mergeWithPrev: true,
+				message: makeMessage('assistant', [{ type: 'text', text: 'continued' }]),
+			},
+		});
+		expect(screen.queryByText('Ilya')).not.toBeInTheDocument();
+		expect(avatar()).toBeNull();
+	});
+
+	it('never puts the avatar on a non-assistant row', () => {
+		// Belt-and-braces against a caller passing the conversation's avatar
+		// down indiscriminately: a tool row borrows neither name nor face.
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				assistantAvatarMediaId: 'media-7',
+				message: makeMessage('tool', [{ type: 'text', text: 'result' }]),
+			},
+		});
+		expect(avatar()).toBeNull();
+	});
+});

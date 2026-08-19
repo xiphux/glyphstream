@@ -46,13 +46,23 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// null when nothing is in flight.
 	const inFlightSince = getInFlightSince(params.id);
 
-	// Friendly label for the assistant in message bubbles. Custom models
+	// Friendly identity for the assistant in message bubbles. Custom models
 	// win because the user named them; otherwise we strip the verbose
 	// "endpoint::owner/model" prefix down to just the recognizable slug.
+	//
+	// The avatar can only come from a preset — there's no per-base-model
+	// avatar — so a plain base-model conversation carries a null and renders
+	// exactly as it did before. It's a bare media id, not an expanded row: the
+	// client turns it into a `/api/media/:id/thumbnail` URL, and this payload
+	// is on the critical path for the whole conversation.
 	let assistantLabel = friendlyModelName(conversation.modelId);
+	let assistantAvatarMediaId: string | null = null;
 	if (conversation.customModelId) {
 		const cm = getCustomModelForUser(conversation.customModelId, locals.user.id);
-		if (cm) assistantLabel = cm.name;
+		if (cm) {
+			assistantLabel = cm.name;
+			assistantAvatarMediaId = cm.avatarMediaId;
+		}
 	}
 
 	// Multi-model fan-out recovery: a conversation with an unresolved fan-out
@@ -75,5 +85,5 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// is the durable seed, in stable creation order.
 	const canvases = listActiveCanvases(params.id, locals.user.id);
 
-	return { conversation, assistantLabel, inFlightSince, fanout, canvases };
+	return { conversation, assistantLabel, assistantAvatarMediaId, inFlightSince, fanout, canvases };
 };

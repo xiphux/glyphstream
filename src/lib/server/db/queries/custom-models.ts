@@ -1,9 +1,10 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CustomModel, CustomModelParameters, FeatureCategory } from '$lib/types/api';
 import { getDb } from '../client';
-import { customModels } from '../schema';
+import { customModels, media } from '../schema';
 import { parseDisabledFeatures, parseModelParameters } from './json-columns';
+import { linkAvatarMedia, unlinkAvatarMedia } from './media';
 
 interface CreateInput {
 	userId: string;
@@ -37,6 +38,7 @@ function rowToCustomModel(row: typeof customModels.$inferSelect): CustomModel {
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		defaultDisabledFeatures: parseDisabledFeatures(row.defaultDisabledFeaturesJson),
+		avatarMediaId: row.avatarMediaId,
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
@@ -98,6 +100,10 @@ export function createCustomModel(input: CreateInput): CustomModel {
 		systemPrompt: input.systemPrompt,
 		parameters: input.parameters,
 		defaultDisabledFeatures,
+		// Avatars are never set at create time — the editor uploads or picks one
+		// against an existing preset, so the single ref-counted write path
+		// (`setCustomModelAvatar`) is the only thing that ever populates this.
+		avatarMediaId: null,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -142,13 +148,90 @@ export function updateCustomModel(
 	});
 }
 
+/**
+ * Outcome of a `setCustomModelAvatar` call. Explicit rather than
+ * `CustomModel | null` so the route can tell "no such preset" (404) from
+ * "that media isn't yours / is tombstoned" (400) — collapsing them would make
+ * a cross-user avatar id indistinguishable from a typo'd preset id.
+ */
+export type SetAvatarResult =
+	{ ok: true; model: CustomModel } | { ok: false; reason: 'not_found' | 'media_not_found' };
+
+/**
+ * Set (or clear, with `mediaId = null`) a preset's avatar.
+ *
+ * The ONLY write path for `avatar_media_id` — deliberately not folded into
+ * `updateCustomModel`, because every change here has to move a reference count
+ * with it (`linkAvatarMedia` / `unlinkAvatarMedia`), and two ways to set the
+ * column would be two places to get that bookkeeping wrong.
+ *
+ * Setting the avatar it already has is a no-op that still returns ok: the
+ * ref-count helpers aren't idempotent (no join-table PK to absorb a repeat), so
+ * a double-set would otherwise inflate the count and pin the media forever.
+ */
+export function setCustomModelAvatar(
+	id: string,
+	userId: string,
+	mediaId: string | null,
+): SetAvatarResult {
+	const db = getDb();
+	return db.transaction((tx): SetAvatarResult => {
+		const existing = tx
+			.select()
+			.from(customModels)
+			.where(and(eq(customModels.id, id), eq(customModels.userId, userId)))
+			.get();
+		if (!existing) return { ok: false, reason: 'not_found' };
+		if (existing.avatarMediaId === mediaId) return { ok: true, model: rowToCustomModel(existing) };
+
+		if (mediaId !== null) {
+			// Scoped to the caller AND to a live row, in the same transaction that
+			// takes the reference. The user-scoping is the multi-user isolation
+			// invariant (an avatar id is user-supplied); the `hard_deleted_at`
+			// check stops a preset adopting a tombstone whose bytes are gone.
+			const row = tx
+				.select({ id: media.id })
+				.from(media)
+				.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
+				.get();
+			if (!row) return { ok: false, reason: 'media_not_found' };
+		}
+
+		if (existing.avatarMediaId !== null) unlinkAvatarMedia(tx, existing.avatarMediaId);
+		if (mediaId !== null) linkAvatarMedia(tx, mediaId);
+
+		tx.update(customModels)
+			.set({ avatarMediaId: mediaId, updatedAt: Date.now() })
+			.where(eq(customModels.id, id))
+			.run();
+		const refreshed = tx.select().from(customModels).where(eq(customModels.id, id)).get();
+		return refreshed
+			? { ok: true, model: rowToCustomModel(refreshed) }
+			: { ok: false, reason: 'not_found' };
+	});
+}
+
 export function deleteCustomModel(id: string, userId: string): boolean {
 	const db = getDb();
-	const r = db
-		.delete(customModels)
-		.where(and(eq(customModels.id, id), eq(customModels.userId, userId)))
-		.run();
-	// Existing conversations.customModelId FK has ON DELETE SET NULL, so
-	// historical chats keep working but lose the back-link to the preset.
-	return r.changes > 0;
+	return db.transaction((tx) => {
+		// Read the avatar before the row goes, so the reference is released rather
+		// than stranded. Skipping this would pin an uploaded avatar in the store
+		// forever (ref_count never returns to zero, so the purger never sees it)
+		// and keep it excluded from the conversation-delete orphan analysis on
+		// behalf of a preset that no longer exists.
+		const existing = tx
+			.select({ avatarMediaId: customModels.avatarMediaId })
+			.from(customModels)
+			.where(and(eq(customModels.id, id), eq(customModels.userId, userId)))
+			.get();
+		const r = tx
+			.delete(customModels)
+			.where(and(eq(customModels.id, id), eq(customModels.userId, userId)))
+			.run();
+		if (r.changes === 0) return false;
+		if (existing?.avatarMediaId) unlinkAvatarMedia(tx, existing.avatarMediaId);
+		// Existing conversations.customModelId FK has ON DELETE SET NULL, so
+		// historical chats keep working but lose the back-link to the preset.
+		return true;
+	});
 }

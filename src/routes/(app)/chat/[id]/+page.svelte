@@ -47,13 +47,14 @@
 	import MessageBubble from '$lib/components/chat/MessageBubble.svelte';
 	import ScrollToBottomButton from '$lib/components/chat/ScrollToBottomButton.svelte';
 	import {
-		assistantLabelForMessage,
+		assistantIdentityForMessage,
 		buildRenderedConversation,
 		CANVAS_TOOLS,
 		computeMergeFlags,
 		messageToBlocks,
 		parseCanvasAck,
 		splitCanvasCards,
+		type AssistantIdentity,
 		type RenderBlock,
 	} from '$lib/chat-render';
 	import { displayContextTokens, isCompactionSummary } from '$lib/chat-compaction';
@@ -91,13 +92,20 @@
 		preferredFirstName(data.prefs?.name, data.user.displayName, data.user.email ?? 'You'),
 	);
 	const assistantLabel = $derived(data.assistantLabel);
+	// The conversation's own identity — the preset's name + avatar, or the
+	// friendly base-model name with no avatar.
+	const conversationIdentity = $derived({
+		label: assistantLabel,
+		avatarMediaId: data.assistantAvatarMediaId,
+	});
 
-	// Per-message assistant label — keeps a kept fan-out branch (or a per-turn
+	// Per-message assistant identity — keeps a kept fan-out branch (or a per-turn
 	// model override) reading as the model that actually produced it, instead
 	// of the conversation default, once it's flipped to via the ‹N/M› sibling
-	// nav. See assistantLabelForMessage for the fallback rules.
-	const assistantLabelFor = (m: ChatMessage): string =>
-		assistantLabelForMessage(m, data.conversation.modelId, assistantLabel, data.models);
+	// nav. The avatar follows the same attribution, so a re-attributed sibling
+	// doesn't wear the preset's face. See assistantIdentityForMessage.
+	const assistantIdentityFor = (m: ChatMessage): AssistantIdentity =>
+		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, data.models);
 
 	// Read data eagerly so SSR includes messages on first paint; $effect
 	// below re-syncs on subsequent navigation invalidation. The warning
@@ -1761,11 +1769,13 @@
 									onCancel={() => edit.cancel()}
 								/>
 							{:else}
+								{@const identity = assistantIdentityFor(m)}
 								<MessageBubble
 									message={m}
 									{toolResultsByCallId}
 									{userLabel}
-									assistantLabel={assistantLabelFor(m)}
+									assistantLabel={identity.label}
+									assistantAvatarMediaId={identity.avatarMediaId}
 									{mergeWithPrev}
 									{mergeWithNext}
 									onImageClick={openImageInLightbox}
@@ -1811,6 +1821,7 @@
 						<InFlightBubble
 							blocks={turn.inFlightBlocks}
 							{assistantLabel}
+							assistantAvatarMediaId={data.assistantAvatarMediaId}
 							label={inFlightLabel}
 							status={turn.inFlightStatus}
 							progress={turn.inFlightProgress}

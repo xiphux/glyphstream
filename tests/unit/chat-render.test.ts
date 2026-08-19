@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	appendReasoning,
 	appendText,
-	assistantLabelForMessage,
+	assistantIdentityForMessage,
 	buildToolResultsMap,
 	computeMergeFlags,
 	extractCodeArg,
@@ -1023,50 +1023,67 @@ describe('extractCodeArg — streaming-tolerant partial JSON extraction', () => 
 	});
 });
 
-describe('assistantLabelForMessage', () => {
+describe('assistantIdentityForMessage', () => {
 	const models = [
 		{ id: 'bridge::a', displayName: 'Model A' },
 		{ id: 'bridge::b', displayName: 'Model B' },
-	] as unknown as Parameters<typeof assistantLabelForMessage>[3];
+	] as unknown as Parameters<typeof assistantIdentityForMessage>[3];
 
 	const asst = (modelUsed: string | null) =>
-		({ role: 'assistant', modelUsed }) as Parameters<typeof assistantLabelForMessage>[0];
+		({ role: 'assistant', modelUsed }) as Parameters<typeof assistantIdentityForMessage>[0];
 
-	it('uses the conversation label for the conversation default model', () => {
+	const preset = { label: 'My Preset', avatarMediaId: 'media-1' };
+	const bare = { label: 'Model A', avatarMediaId: null };
+
+	it('uses the conversation identity for the conversation default model', () => {
 		// This is the path that preserves custom-preset naming: the preset's
 		// modelUsed equals the stored base model id.
-		expect(assistantLabelForMessage(asst('bridge::a'), 'bridge::a', 'My Preset', models)).toBe(
-			'My Preset',
-		);
+		expect(assistantIdentityForMessage(asst('bridge::a'), 'bridge::a', preset, models)).toEqual({
+			label: 'My Preset',
+			avatarMediaId: 'media-1',
+		});
 	});
 
-	it('labels a kept fan-out branch by its own model, not the conversation default', () => {
-		// Conversation default is bridge::a; this sibling was model B.
-		expect(assistantLabelForMessage(asst('bridge::b'), 'bridge::a', 'Model A', models)).toBe(
-			'Model B',
-		);
+	it('labels a kept fan-out branch by its own model, and strips the avatar', () => {
+		// Conversation default is bridge::a; this sibling was model B. The avatar
+		// MUST drop with the label — a preset's face on another model's reply is
+		// the exact mismatch the paired return value exists to prevent.
+		expect(assistantIdentityForMessage(asst('bridge::b'), 'bridge::a', preset, models)).toEqual({
+			label: 'Model B',
+			avatarMediaId: null,
+		});
 	});
 
-	it('falls back to the conversation label when modelUsed is absent', () => {
-		expect(assistantLabelForMessage(asst(null), 'bridge::a', 'Model A', models)).toBe('Model A');
+	it('falls back to the conversation identity when modelUsed is absent', () => {
+		expect(assistantIdentityForMessage(asst(null), 'bridge::a', preset, models)).toEqual({
+			label: 'My Preset',
+			avatarMediaId: 'media-1',
+		});
 	});
 
-	it('uses the conversation label for non-assistant rows', () => {
+	it('uses the conversation identity for non-assistant rows', () => {
 		const user = { role: 'user', modelUsed: 'bridge::b' } as Parameters<
-			typeof assistantLabelForMessage
+			typeof assistantIdentityForMessage
 		>[0];
-		expect(assistantLabelForMessage(user, 'bridge::a', 'You-conv', models)).toBe('You-conv');
+		expect(assistantIdentityForMessage(user, 'bridge::a', bare, models).label).toBe('Model A');
 	});
 
 	it('strips endpoint + owner prefixes for an unknown (removed) model', () => {
 		expect(
-			assistantLabelForMessage(
+			assistantIdentityForMessage(
 				asst('gone::meta-llama/Llama-3-70b'),
 				'bridge::a',
-				'Model A',
+				preset,
 				models,
 			),
-		).toBe('Llama-3-70b');
+		).toEqual({ label: 'Llama-3-70b', avatarMediaId: null });
+	});
+
+	it('carries a null avatar through untouched for a preset-less conversation', () => {
+		expect(assistantIdentityForMessage(asst('bridge::a'), 'bridge::a', bare, models)).toEqual({
+			label: 'Model A',
+			avatarMediaId: null,
+		});
 	});
 });
 

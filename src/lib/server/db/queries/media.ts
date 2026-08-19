@@ -108,6 +108,52 @@ export function linkMessageMedia(messageId: string, mediaId: string): void {
 	});
 }
 
+/**
+ * Take / release a NON-message reference on a media row.
+ *
+ * Ref-counting was built around `message_media`, but `media.ref_count` is a
+ * plain decrement-based counter, not a cached COUNT(*) over that join table
+ * (see `decrementMediaForMessages`, which subtracts a per-message tally rather
+ * than recomputing). So a referrer that isn't a message can participate simply
+ * by holding a count, and two things then work with no further plumbing:
+ *
+ *   - the purger leaves the row alone (`findPurgeCandidates` only reaps
+ *     uploaded rows whose `unreferenced_since` is set, and taking a reference
+ *     clears it) — without this, an uploaded avatar is swept 30 minutes later;
+ *   - the delete-conversation orphan analysis stops offering the row, because
+ *     it only counts a media as orphaned when the conversation's own join rows
+ *     account for the row's ENTIRE ref_count. The avatar's +1 makes them
+ *     unequal, so "also delete media" can't pull the face out from under a
+ *     preset that's still using it.
+ *
+ * Both take the caller's `tx`: node:sqlite won't promote a nested
+ * `db.transaction()` to a savepoint, and the only caller
+ * (`setCustomModelAvatar`) is already inside one. Neither is idempotent —
+ * unlike `linkMessageMedia`, there's no join-table PK to absorb a double call,
+ * so the caller must only invoke these when the avatar actually changes.
+ */
+export function linkAvatarMedia(tx: Tx, mediaId: string): void {
+	tx.update(media)
+		.set({ refCount: sql`${media.refCount} + 1`, unreferencedSince: null })
+		.where(eq(media.id, mediaId))
+		.run();
+}
+
+/** Release an avatar's reference. Mirrors `decrementMediaForMessages`: clamp at
+ *  zero, and stamp `unreferenced_since` on the way to zero so an uploaded row
+ *  re-enters the purger's grace-period clock (a generated one is still never
+ *  reaped — that's the library model, enforced in `findPurgeCandidates`). */
+export function unlinkAvatarMedia(tx: Tx, mediaId: string): void {
+	const now = Date.now();
+	tx.update(media)
+		.set({
+			refCount: sql`MAX(${media.refCount} - 1, 0)`,
+			unreferencedSince: sql`CASE WHEN MAX(${media.refCount} - 1, 0) = 0 THEN ${now} ELSE ${media.unreferencedSince} END`,
+		})
+		.where(eq(media.id, mediaId))
+		.run();
+}
+
 /** Look up a media row owned by `userId` (returns null on not-found / ownership mismatch). */
 export function getMediaForUser(
 	mediaId: string,

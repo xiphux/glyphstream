@@ -459,6 +459,39 @@ export const customModels = sqliteTable(
 		// gates — e.g. a code-review preset that shouldn't pull in personal
 		// context, or a URL-summarizer where web access is redundant.
 		defaultDisabledFeaturesJson: text('default_disabled_features'),
+		// The preset's avatar — a media row shown beside the model name above
+		// each of its replies, so a preset roleplaying a character reads as a
+		// someone rather than a name. NULL = no avatar (the label renders alone,
+		// exactly as before).
+		//
+		// A real, fully-live FK — worth stating explicitly because three older
+		// columns here (`invited_by_user_id`, `sourceMediaId`,
+		// `fanout_parent_message_id`) carry a note that an ALTER TABLE-added
+		// reference degrades to NO ACTION. That was true of the drizzle-kit
+		// version that generated THOSE migrations, not of ADD COLUMN itself:
+		// drizzle-kit v1 emits the clause (see this column's migration), and
+		// SQLite honors it. Verified on node:sqlite with `foreign_keys = ON` —
+		// a bogus avatar id is rejected, and deleting the media row nulls the
+		// column. Don't propagate the old note to new columns without checking.
+		//
+		// The action is belt-and-braces regardless: media rows are only ever
+		// SOFT deleted (the purger clears bytes and stamps `hard_deleted_at`,
+		// it never DELETEs the row), so in practice the referenced row always
+		// survives and a stale avatar degrades to a 404 the UI hides, not a
+		// dangling id.
+		//
+		// Lifetime: setting an avatar takes a REFERENCE on the media row
+		// (`linkAvatarMedia` bumps `ref_count` and clears `unreferenced_since`,
+		// exactly as `linkMessageMedia` does for an attachment). Without that
+		// the purger would reap an uploaded avatar 30 minutes later — its
+		// candidate query only knows about zero-ref uploaded rows and can't see
+		// a referrer that isn't `message_media`. The same +1 is what keeps the
+		// conversation-delete orphan analysis from offering a live avatar for
+		// deletion, since that compares a conversation's join count against the
+		// row's total ref_count.
+		avatarMediaId: text('avatar_media_id').references((): AnySQLiteColumn => media.id, {
+			onDelete: 'set null',
+		}),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 	},

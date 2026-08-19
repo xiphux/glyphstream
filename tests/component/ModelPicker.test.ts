@@ -55,6 +55,7 @@ function makeCustom(overrides: Partial<CustomModel> = {}): CustomModel {
 		systemPrompt: overrides.systemPrompt ?? null,
 		parameters: overrides.parameters ?? null,
 		defaultDisabledFeatures: overrides.defaultDisabledFeatures ?? [],
+		avatarMediaId: overrides.avatarMediaId ?? null,
 		createdAt: 0,
 		updatedAt: 0,
 	};

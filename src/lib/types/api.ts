@@ -820,6 +820,11 @@ export interface CustomModel {
 	 *  picks the preset. Empty array means "all features on", same as the
 	 *  global default. */
 	defaultDisabledFeatures: FeatureCategory[];
+	/** Media id of the preset's avatar, shown beside the model name above its
+	 *  replies. Null when unset. Not part of Create/Update — it moves a media
+	 *  ref_count with it, so it has its own single write path
+	 *  (`setCustomModelAvatar`). */
+	avatarMediaId: string | null;
 	createdAt: number;
 	updatedAt: number;
 }

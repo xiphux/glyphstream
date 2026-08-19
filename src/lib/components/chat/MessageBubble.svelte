@@ -12,6 +12,7 @@
 <script lang="ts">
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CanvasCard from './CanvasCard.svelte';
+	import AssistantAvatar from './AssistantAvatar.svelte';
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '$lib/chat-render';
 	import type { ChatMessage } from '$lib/types/api';
 	import type { ApprovalAction } from '$lib/approval-workflow';
@@ -21,6 +22,11 @@
 		toolResultsByCallId: Map<string, ToolResultEntry>;
 		userLabel: string;
 		assistantLabel: string;
+		/** Avatar for THIS message's assistant, already resolved by
+		 *  `assistantIdentityForMessage` — null for a user/tool row, for a
+		 *  message re-attributed to another model, and for a conversation whose
+		 *  model has no avatar. */
+		assistantAvatarMediaId?: string | null;
 		mergeWithPrev: boolean;
 		mergeWithNext: boolean;
 		onImageClick: (mediaId: string) => void;
@@ -40,6 +46,7 @@
 		toolResultsByCallId,
 		userLabel,
 		assistantLabel,
+		assistantAvatarMediaId = null,
 		mergeWithPrev,
 		mergeWithNext,
 		onImageClick,
@@ -58,6 +65,9 @@
 				? assistantLabel
 				: message.role,
 	);
+
+	// Assistant rows only — a tool row borrows neither the label nor the face.
+	const avatarMediaId = $derived(message.role === 'assistant' ? assistantAvatarMediaId : null);
 </script>
 
 <article
@@ -73,7 +83,15 @@
 	]}
 >
 	{#if !mergeWithPrev}
-		<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
+		<!-- The avatar lives INSIDE the label row's mergeWithPrev guard: a
+		     multi-iteration tool turn renders as one visual bubble, so repeating
+		     the portrait mid-bubble would read as a second speaker. -->
+		<div class="flex items-center gap-1.5">
+			{#if avatarMediaId}
+				<AssistantAvatar mediaId={avatarMediaId} label={roleLabel} />
+			{/if}
+			<div class="text-[11px] font-medium tracking-wide opacity-60">{roleLabel}</div>
+		</div>
 	{/if}
 	<RenderBlocks
 		blocks={messageToBlocks(message, toolResultsByCallId)}
