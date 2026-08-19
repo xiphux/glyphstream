@@ -50,20 +50,26 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// win because the user named them; otherwise we strip the verbose
 	// "endpoint::owner/model" prefix down to just the recognizable slug.
 	//
-	// The avatar can only come from a preset — there's no per-base-model
-	// avatar — so a plain base-model conversation carries a null and renders
-	// exactly as it did before. It's a bare media id, not an expanded row: the
-	// client turns it into a `/api/media/:id/thumbnail` URL, and this payload
-	// is on the critical path for the whole conversation.
+	// Avatar resolution, most specific first: the conversation's own override,
+	// else its preset's, else none. The override is what lets one roleplay
+	// preset wear a different face per chat — and, because nothing about it
+	// requires a preset, what lets a plain base-model conversation have a face
+	// at all. It's a bare media id, not an expanded row: the client turns it
+	// into a `/api/media/:id/thumbnail` URL, and this payload is on the
+	// critical path for the whole conversation.
+	//
+	// Only the LABEL still depends on the preset, deliberately: a conversation
+	// avatar changes what the model looks like, not what it's called.
 	let assistantLabel = friendlyModelName(conversation.modelId);
-	let assistantAvatarMediaId: string | null = null;
+	let presetAvatarMediaId: string | null = null;
 	if (conversation.customModelId) {
 		const cm = getCustomModelForUser(conversation.customModelId, locals.user.id);
 		if (cm) {
 			assistantLabel = cm.name;
-			assistantAvatarMediaId = cm.avatarMediaId;
+			presetAvatarMediaId = cm.avatarMediaId;
 		}
 	}
+	const assistantAvatarMediaId = conversation.avatarMediaId ?? presetAvatarMediaId;
 
 	// Multi-model fan-out recovery: a conversation with an unresolved fan-out
 	// carries an explicit marker (fanout_parent_message_id, set by .../prepare,

@@ -268,6 +268,20 @@ export const conversations = sqliteTable(
 		customModelId: text('custom_model_id').references(() => customModels.id, {
 			onDelete: 'set null',
 		}),
+		// Per-conversation avatar, overriding the preset's when set. Two reasons
+		// it lives here and not only on the preset: a roleplay preset often
+		// invents a persona WITHIN one conversation that its own avatar doesn't
+		// depict, and a conversation with no preset at all can still have a face
+		// (nothing here requires custom_model_id).
+		//
+		// Same reference discipline as `custom_models.avatar_media_id` — see the
+		// long note there. Setting one takes a ref via `linkAvatarMedia`;
+		// `deleteConversation` releases it BEFORE its orphan analysis runs, or
+		// that analysis would see the extra count and decline to reap an image
+		// the user asked to delete along with the conversation.
+		avatarMediaId: text('avatar_media_id').references((): AnySQLiteColumn => media.id, {
+			onDelete: 'set null',
+		}),
 		systemPrompt: text('system_prompt'),
 		// Sampling/generation params snapshotted from the custom model at
 		// conversation-create time (or null when the user picked a base model

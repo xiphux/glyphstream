@@ -1,0 +1,1 @@
+ALTER TABLE `conversations` ADD `avatar_media_id` text REFERENCES media(id) ON DELETE SET NULL;

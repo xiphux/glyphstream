@@ -33,7 +33,11 @@ import {
 	insertMedia,
 	linkMessageMedia,
 } from '$lib/server/db/queries/media';
-import { createConversation } from '$lib/server/db/queries/conversations';
+import {
+	createConversation,
+	deleteConversation,
+	setConversationAvatar,
+} from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import { media } from '$lib/server/db/schema';
 
@@ -250,5 +254,109 @@ describe('custom-model avatars — interaction with the orphan analysis', () => 
 		// …and it goes back to being offered once the preset lets go of it.
 		setCustomModelAvatar(cm.id, u.id, null);
 		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({ images: 1, videos: 0 });
+	});
+});
+
+/**
+ * The per-conversation override. Same reference discipline as the preset side,
+ * plus one ordering rule that only shows up on delete.
+ */
+describe('conversation avatars', () => {
+	function seedConversation(userId: string) {
+		return createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+	}
+
+	function generatedImage(userId: string) {
+		return insertMedia({
+			userId,
+			storagePath: `ab/cd/${Math.random().toString(36).slice(2)}.png`,
+			contentType: 'image/png',
+			byteSize: 2048,
+			kind: 'image',
+			origin: 'generated',
+			sourceEndpointId: 'bridge',
+			sourceModel: 'comfyui/sdxl',
+			promptExcerpt: 'a portrait',
+		}).id;
+	}
+
+	it('takes and releases a reference like the preset path', () => {
+		const u = seedUser();
+		const conv = seedConversation(u.id);
+		const m = makeUpload(u.id);
+
+		expect(setConversationAvatar(conv.id, u.id, m)).toEqual({ ok: true });
+		expect(mediaRow(m)).toMatchObject({ refCount: 1, unreferencedSince: null });
+
+		expect(setConversationAvatar(conv.id, u.id, null)).toEqual({ ok: true });
+		expect(mediaRow(m)?.refCount).toBe(0);
+	});
+
+	it('re-setting the same avatar does not double-count', () => {
+		const u = seedUser();
+		const conv = seedConversation(u.id);
+		const m = makeUpload(u.id);
+		setConversationAvatar(conv.id, u.id, m);
+		setConversationAvatar(conv.id, u.id, m);
+		expect(mediaRow(m)?.refCount).toBe(1);
+	});
+
+	it("refuses another user's media and another user's conversation", () => {
+		const owner = seedUser();
+		const other = seedUser();
+		const conv = seedConversation(owner.id);
+		expect(setConversationAvatar(conv.id, owner.id, makeUpload(other.id))).toEqual({
+			ok: false,
+			reason: 'media_not_found',
+		});
+		expect(setConversationAvatar(conv.id, other.id, makeUpload(other.id))).toEqual({
+			ok: false,
+			reason: 'not_found',
+		});
+	});
+
+	it("still deletes the conversation's own portrait when asked to delete its media", () => {
+		// The ordering rule. `deleteConversation` decides what to reap by asking
+		// whether a media's ENTIRE ref_count is accounted for by links inside the
+		// conversation — so the avatar's extra +1 would make its own portrait look
+		// shared and spare it, against an explicit "delete media too". The delete
+		// path releases the avatar reference BEFORE that analysis runs; this is
+		// the regression guard for that order.
+		const u = seedUser();
+		const conv = seedConversation(u.id);
+		const msg = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'here I am' }],
+		});
+		const portrait = generatedImage(u.id);
+		linkMessageMedia(msg.id, portrait);
+		setConversationAvatar(conv.id, u.id, portrait);
+		expect(mediaRow(portrait)?.refCount).toBe(2);
+
+		const { ok, toUnlink } = deleteConversation(conv.id, u.id, { deleteMedia: true });
+
+		expect(ok).toBe(true);
+		expect(toUnlink.map((r) => r.id)).toContain(portrait);
+		expect(mediaRow(portrait)?.hardDeletedAt).not.toBeNull();
+	});
+
+	it('releases the reference when the conversation is deleted without its media', () => {
+		// The avatar was an upload from elsewhere, not generated here — deleting
+		// the conversation must not strand it at a permanent +1.
+		const u = seedUser();
+		const conv = seedConversation(u.id);
+		const m = makeUpload(u.id);
+		setConversationAvatar(conv.id, u.id, m);
+
+		expect(deleteConversation(conv.id, u.id).ok).toBe(true);
+		expect(mediaRow(m)?.refCount).toBe(0);
+		expect(findPurgeCandidates(Date.now() + 1).map((c) => c.id)).toContain(m);
 	});
 });

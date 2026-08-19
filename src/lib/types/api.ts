@@ -755,6 +755,9 @@ export interface ConversationDetail extends ConversationSummary {
 	parameters: CustomModelParameters | null;
 	endpointId: string;
 	customModelId: string | null;
+	/** Per-conversation avatar override. When set it wins over the preset's;
+	 *  null falls back to the preset (or to no avatar at all). */
+	avatarMediaId: string | null;
 	activeLeafMessageId: string | null;
 	messages: ChatMessage[];
 	/**

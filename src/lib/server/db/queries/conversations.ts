@@ -9,14 +9,16 @@ import type {
 	ModelKind,
 } from '$lib/types/api';
 import { getDb } from '../client';
-import { conversations, messages } from '../schema';
+import { conversations, media, messages } from '../schema';
 import { reconcileOverviewAfterConversationDelete } from './users';
 import { parseDisabledFeatures, parseMessageParts, parseModelParameters } from './json-columns';
 import { walkActiveBranch } from './messages';
 import {
 	decrementMediaForMessages,
 	hardDeleteOrphanGeneratedMediaForMessages,
+	linkAvatarMedia,
 	listMessageIdsForConversation,
+	unlinkAvatarMedia,
 } from './media';
 
 /**
@@ -76,6 +78,10 @@ export function createConversation(input: CreateInput): ConversationDetail {
 		modelKind: input.modelKind,
 		endpointId: input.endpointId,
 		customModelId: input.customModelId ?? null,
+		// Never set at create time — an avatar is chosen (or generated) against
+		// an existing conversation, so `setConversationAvatar` is the only thing
+		// that ever populates it, keeping the ref-count bookkeeping in one place.
+		avatarMediaId: null,
 		systemPrompt: input.systemPrompt ?? null,
 		parameters: input.parameters ?? null,
 		activeLeafMessageId: null,
@@ -242,6 +248,7 @@ export function getConversationDetail(id: string, userId: string): ConversationD
 			modelKind: conversations.modelKind,
 			endpointId: conversations.endpointId,
 			customModelId: conversations.customModelId,
+			avatarMediaId: conversations.avatarMediaId,
 			systemPrompt: conversations.systemPrompt,
 			parametersJson: conversations.parametersJson,
 			activeLeafMessageId: conversations.activeLeafMessageId,
@@ -262,6 +269,7 @@ export function getConversationDetail(id: string, userId: string): ConversationD
 		modelKind: row.modelKind,
 		endpointId: row.endpointId,
 		customModelId: row.customModelId,
+		avatarMediaId: row.avatarMediaId,
 		systemPrompt: row.systemPrompt,
 		parameters: parseModelParameters(row.parametersJson),
 		activeLeafMessageId: row.activeLeafMessageId,
@@ -643,6 +651,54 @@ export function getConversationFirstExchange(id: string, userId: string): FirstE
  * the MediaStore — see the DELETE handler in
  * src/routes/api/conversations/[id]/+server.ts.
  */
+/**
+ * Outcome of `setConversationAvatar`. Mirrors `SetAvatarResult` on the preset
+ * side so the two routes can map identically to 404 / 400.
+ */
+export type SetConversationAvatarResult =
+	{ ok: true } | { ok: false; reason: 'not_found' | 'media_not_found' };
+
+/**
+ * Set (or clear) a conversation's avatar — the per-conversation override of
+ * whatever face its preset supplies.
+ *
+ * Same contract as `setCustomModelAvatar`: single write path, ownership
+ * validated in the same transaction that takes the reference, and setting the
+ * avatar it already has is a no-op, because the ref-count helpers aren't
+ * idempotent and a double-set would pin the media forever.
+ */
+export function setConversationAvatar(
+	id: string,
+	userId: string,
+	mediaId: string | null,
+): SetConversationAvatarResult {
+	const db = getDb();
+	return db.transaction((tx): SetConversationAvatarResult => {
+		const existing = tx
+			.select({ avatarMediaId: conversations.avatarMediaId })
+			.from(conversations)
+			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+			.get();
+		if (!existing) return { ok: false, reason: 'not_found' };
+		if (existing.avatarMediaId === mediaId) return { ok: true };
+
+		if (mediaId !== null) {
+			const row = tx
+				.select({ id: media.id })
+				.from(media)
+				.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
+				.get();
+			if (!row) return { ok: false, reason: 'media_not_found' };
+		}
+
+		if (existing.avatarMediaId !== null) unlinkAvatarMedia(tx, existing.avatarMediaId);
+		if (mediaId !== null) linkAvatarMedia(tx, mediaId);
+
+		tx.update(conversations).set({ avatarMediaId: mediaId }).where(eq(conversations.id, id)).run();
+		return { ok: true };
+	});
+}
+
 export function deleteConversation(
 	id: string,
 	userId: string,
@@ -654,11 +710,26 @@ export function deleteConversation(
 		// Grab `summary` too: if this conversation contributed to the user's topic
 		// overview, we reconcile it after the delete.
 		const owned = tx
-			.select({ id: conversations.id, summary: conversations.summary })
+			.select({
+				id: conversations.id,
+				summary: conversations.summary,
+				avatarMediaId: conversations.avatarMediaId,
+			})
 			.from(conversations)
 			.where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
 			.get();
 		if (!owned) return { ok: false, toUnlink: [] };
+
+		// Release this conversation's avatar reference BEFORE the orphan pass
+		// below, not after. The orphan rule asks whether a media's ENTIRE
+		// ref_count is accounted for by links inside this conversation; an
+		// avatar's extra +1 makes that false, so a portrait generated in this
+		// very conversation would survive a "delete media too" the user
+		// explicitly asked for — and then sit at zero refs, which the library
+		// model never reaps for generated rows. Releasing first restores the
+		// pre-avatar arithmetic. The conversation row is about to be deleted,
+		// so there is nothing to keep the reference on behalf of.
+		if (owned.avatarMediaId !== null) unlinkAvatarMedia(tx, owned.avatarMediaId);
 
 		// Order matters: identify-and-mark orphan media FIRST (while
 		// ref_counts still reflect the pre-decrement state — the orphan

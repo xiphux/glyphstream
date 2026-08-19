@@ -115,17 +115,27 @@
 	 * refocus; this is a rare, explicit, one-off action. Don't "fix" it to a
 	 * targeted key without moving the avatar's source first.
 	 */
-	async function setAvatar(customModelId: string, mediaId: string) {
+	async function setAvatar(
+		target: { kind: 'preset' | 'conversation'; id: string },
+		mediaId: string,
+	) {
 		if (settingAvatar) return;
 		settingAvatar = true;
 		try {
-			const res = await fetch(`/api/custom-models/${customModelId}/avatar`, {
+			const url =
+				target.kind === 'conversation'
+					? `/api/conversations/${target.id}/avatar`
+					: `/api/custom-models/${target.id}/avatar`;
+			const res = await fetch(url, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ mediaId }),
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			const name = data.customModels.find((c) => c.id === customModelId)?.name;
+			const name =
+				target.kind === 'conversation'
+					? 'this conversation'
+					: data.customModels.find((c) => c.id === target.id)?.name;
 			await invalidateAll();
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
 		} catch (e) {
@@ -134,6 +144,30 @@
 			settingAvatar = false;
 		}
 	}
+
+	/**
+	 * Avatar targets offered from inside a conversation: this conversation
+	 * first, then every preset.
+	 *
+	 * The conversation leads because it's the more specific — and more
+	 * reversible — choice. Setting it affects this chat only; setting the
+	 * preset's repaints every conversation built on it, including ones the user
+	 * isn't looking at.
+	 */
+	const avatarTargets = $derived([
+		{
+			kind: 'conversation' as const,
+			id: data.conversation.id,
+			name: 'This conversation',
+			avatarMediaId: data.conversation.avatarMediaId,
+		},
+		...data.customModels.map((c) => ({
+			kind: 'preset' as const,
+			id: c.id,
+			name: c.name,
+			avatarMediaId: c.avatarMediaId,
+		})),
+	]);
 
 	// Per-message assistant identity — keeps a kept fan-out branch (or a per-turn
 	// model override) reading as the model that actually produced it, instead
@@ -2051,7 +2085,7 @@
 			inConversation
 			siblings={conversationMedia}
 			onNavigate={openImageInLightbox}
-			avatarTargets={data.customModels}
+			{avatarTargets}
 			onSetAvatar={setAvatar}
 			{settingAvatar}
 		/>

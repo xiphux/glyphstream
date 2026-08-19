@@ -458,18 +458,25 @@
 	 * would drift from what every other surface (chat bubbles, /settings/models)
 	 * reads. This page `await parent()`s, so its own load re-runs either way —
 	 * there's nothing cheaper to reach for here. */
-	async function setAvatar(customModelId: string, mediaId: string) {
+	async function setAvatar(
+		target: { kind: 'preset' | 'conversation'; id: string },
+		mediaId: string,
+	) {
 		if (settingAvatar) return;
+		// The gallery only ever offers presets — it has no conversation in scope —
+		// but the callback shape is shared with the chat surface, so route on kind
+		// rather than assuming.
+		if (target.kind !== 'preset') return;
 		settingAvatar = true;
 		error = null;
 		try {
-			const res = await fetch(`/api/custom-models/${customModelId}/avatar`, {
+			const res = await fetch(`/api/custom-models/${target.id}/avatar`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({ mediaId }),
 			});
 			if (!res.ok) throw new Error(`Server returned ${res.status}`);
-			const name = data.customModels.find((c: CustomModel) => c.id === customModelId)?.name;
+			const name = data.customModels.find((c: CustomModel) => c.id === target.id)?.name;
 			await invalidate('app:conversations');
 			toast.success(name ? `Avatar set for ${name}` : 'Avatar set');
 		} catch (e) {
@@ -1337,7 +1344,12 @@
 	{conversationsError}
 	siblings={lightboxSiblings}
 	onNavigate={openLightboxById}
-	avatarTargets={data.customModels}
+	avatarTargets={data.customModels.map((c: CustomModel) => ({
+		kind: 'preset' as const,
+		id: c.id,
+		name: c.name,
+		avatarMediaId: c.avatarMediaId,
+	}))}
 	onSetAvatar={setAvatar}
 	{settingAvatar}
 />

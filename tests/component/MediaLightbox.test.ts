@@ -798,6 +798,7 @@ describe('MediaLightbox — set as avatar', () => {
 	const preset = (
 		over: Partial<{ id: string; name: string; avatarMediaId: string | null }> = {},
 	) => ({
+		kind: 'preset' as const,
 		id: over.id ?? 'cm-1',
 		name: over.name ?? 'Ilya',
 		avatarMediaId: over.avatarMediaId ?? null,
@@ -837,7 +838,7 @@ describe('MediaLightbox — set as avatar', () => {
 
 		// One option needs no menu — a click to open a list of one is a wasted click.
 		await user.click(screen.getByRole('button', { name: 'Set as avatar for Ilya' }));
-		expect(onSetAvatar).toHaveBeenCalledWith('cm-7', 'm-9');
+		expect(onSetAvatar).toHaveBeenCalledWith({ kind: 'preset', id: 'cm-7' }, 'm-9');
 	});
 
 	it('disables the single-preset button when this image is already the avatar', () => {
@@ -870,7 +871,7 @@ describe('MediaLightbox — set as avatar', () => {
 		await user.click(screen.getByRole('button', { name: 'Set as avatar…' }));
 		// Portaled to document.body — hence screen.*, not container.querySelector.
 		await user.click(screen.getByRole('button', { name: 'Marta' }));
-		expect(onSetAvatar).toHaveBeenCalledWith('cm-2', 'm-9');
+		expect(onSetAvatar).toHaveBeenCalledWith({ kind: 'preset', id: 'cm-2' }, 'm-9');
 	});
 
 	it('marks the preset already using this image and lets the others through', async () => {

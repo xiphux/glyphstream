@@ -72,18 +72,31 @@
 		 */
 		onNavigate?: (id: string) => void;
 		/**
-		 * Custom-model presets this image can be made the avatar of. Empty /
-		 * omitted hides the action entirely — a user with no presets has nothing
-		 * to attach a face to.
+		 * Things this image can be made the avatar of — custom-model presets, and
+		 * (from a conversation) that conversation itself. Empty / omitted hides
+		 * the action entirely.
+		 *
+		 * `kind` is what the caller routes on: the two land on different
+		 * endpoints because they're different rows with different lifetimes, and
+		 * collapsing them here would make this component decide something it has
+		 * no business deciding.
 		 *
 		 * Passed in rather than read from a store because this component is used
-		 * from both the gallery and a conversation, and neither has a reason to
-		 * differ: whoever mounts it already holds the layout's preset list.
+		 * from both the gallery and a conversation, and only the latter has a
+		 * conversation to offer.
 		 */
-		avatarTargets?: Array<{ id: string; name: string; avatarMediaId: string | null }>;
+		avatarTargets?: Array<{
+			kind: 'preset' | 'conversation';
+			id: string;
+			name: string;
+			avatarMediaId: string | null;
+		}>;
 		/** Performs the change. The caller owns the request + its toast, matching
 		 *  how `onDelete` works — this component stays presentational. */
-		onSetAvatar?: (customModelId: string, mediaId: string) => void | Promise<void>;
+		onSetAvatar?: (
+			target: { kind: 'preset' | 'conversation'; id: string },
+			mediaId: string,
+		) => void | Promise<void>;
 		/** Disables the action while a change is in flight. */
 		settingAvatar?: boolean;
 	}
@@ -786,7 +799,7 @@
 					<button
 						type="button"
 						disabled={settingAvatar || only.avatarMediaId === m.id}
-						onclick={() => onSetAvatar?.(only.id, m.id)}
+						onclick={() => onSetAvatar?.({ kind: only.kind, id: only.id }, m.id)}
 						title={only.avatarMediaId === m.id
 							? `Already ${only.name}'s avatar`
 							: `Show this image beside ${only.name}'s replies`}
@@ -817,12 +830,12 @@
 								>
 									Set as avatar for
 								</p>
-								{#each avatarTargets as t (t.id)}
+								{#each avatarTargets as t (t.kind + ':' + t.id)}
 									{@const current = t.avatarMediaId === m.id}
 									<button
 										type="button"
 										disabled={settingAvatar || current}
-										onclick={() => onSetAvatar?.(t.id, m.id)}
+										onclick={() => onSetAvatar?.({ kind: t.kind, id: t.id }, m.id)}
 										class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-60"
 									>
 										{#if t.avatarMediaId}
