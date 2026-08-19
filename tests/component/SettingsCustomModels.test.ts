@@ -12,7 +12,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import type { CustomModel, FeatureCategoryEntry, ModelEntry } from '$lib/types/api';
 
@@ -149,5 +149,134 @@ describe('custom models — default feature toggles', () => {
 		await user.click(screen.getByText('Embedder'));
 
 		expect(screen.queryByText('Default feature toggles (optional)')).not.toBeInTheDocument();
+	});
+});
+
+/**
+ * Avatar editing. The contract worth pinning is that avatar changes are
+ * STAGED: nothing about a picked file reaches the network until Save, and Save
+ * sends the preset, the upload, and the link in that order — the link needs
+ * both the preset's id (which on create doesn't exist until the POST answers)
+ * and the upload's media id.
+ */
+describe('custom models — avatar', () => {
+	interface Call {
+		url: string;
+		method: string;
+		body: unknown;
+	}
+
+	/** Records every request and answers each endpoint with its real shape. */
+	function stubFetch(): Call[] {
+		const calls: Call[] = [];
+		globalThis.fetch = vi.fn((url: string, init?: RequestInit) => {
+			const method = init?.method ?? 'GET';
+			calls.push({
+				url,
+				method,
+				body: typeof init?.body === 'string' ? JSON.parse(init.body) : (init?.body ?? null),
+			});
+			// Mirror the real bodies: /api/uploads answers with the new media id,
+			// the preset endpoints with the saved row (the create path reads its
+			// id back off this).
+			const payload =
+				url === '/api/uploads' ? { id: 'media-new' } : { customModel: { id: 'cm-1' } };
+			return Promise.resolve({
+				ok: true,
+				status: 200,
+				json: () => Promise.resolve(payload),
+			});
+		}) as unknown as typeof fetch;
+		return calls;
+	}
+
+	function pickFile(container: HTMLElement, file: File) {
+		const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+		// Set `files` directly rather than userEvent.upload: the input is
+		// `class="hidden"` (display:none), which userEvent refuses to click.
+		Object.defineProperty(input, 'files', { value: [file], configurable: true });
+		return fireEvent.change(input);
+	}
+
+	const png = () => new File(['x'], 'face.png', { type: 'image/png' });
+
+	it('shows a saved avatar in the list and loads it into the form', async () => {
+		const user = userEvent.setup();
+		const { container } = renderPage([makeCustom({ name: 'Ilya', avatarMediaId: 'media-1' })]);
+
+		expect(container.querySelector('img[src="/api/media/media-1/thumbnail"]')).toBeInTheDocument();
+
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+		// Two now: the list row and the form preview.
+		expect(container.querySelectorAll('img[src="/api/media/media-1/thumbnail"]')).toHaveLength(2);
+		expect(screen.getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+	});
+
+	it('stages a picked file without sending anything until save', async () => {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		const { container } = renderPage([makeCustom({ name: 'Ilya' })]);
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+
+		await pickFile(container, png());
+
+		expect(calls).toHaveLength(0);
+		expect(screen.getByText('Applied when you save')).toBeInTheDocument();
+	});
+
+	it('saves the preset, then uploads, then links the returned media id', async () => {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		const { container } = renderPage([makeCustom({ id: 'cm-1', name: 'Ilya' })]);
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+		await pickFile(container, png());
+
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+			'PATCH /api/custom-models/cm-1',
+			'POST /api/uploads',
+			'PUT /api/custom-models/cm-1/avatar',
+		]);
+		expect(calls[2].body).toEqual({ mediaId: 'media-new' });
+	});
+
+	it('sends a DELETE when a saved avatar is removed', async () => {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		renderPage([makeCustom({ id: 'cm-1', name: 'Ilya', avatarMediaId: 'media-1' })]);
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+
+		await user.click(screen.getByRole('button', { name: 'Remove' }));
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+			'PATCH /api/custom-models/cm-1',
+			'DELETE /api/custom-models/cm-1/avatar',
+		]);
+	});
+
+	it('rejects a non-image before it can be staged', async () => {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		const { container } = renderPage([makeCustom({ name: 'Ilya' })]);
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+
+		await pickFile(container, new File(['x'], 'notes.pdf', { type: 'application/pdf' }));
+
+		expect(screen.getByText('An avatar must be an image')).toBeInTheDocument();
+		expect(calls).toHaveLength(0);
+	});
+
+	it('leaves the avatar alone when nothing was staged', async () => {
+		const user = userEvent.setup();
+		const calls = stubFetch();
+		renderPage([makeCustom({ id: 'cm-1', name: 'Ilya', avatarMediaId: 'media-1' })]);
+		await user.click(screen.getByRole('button', { name: /^Ilya/ }));
+
+		await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+		// No avatar call at all — a plain edit must not disturb the reference.
+		expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['PATCH /api/custom-models/cm-1']);
 	});
 });

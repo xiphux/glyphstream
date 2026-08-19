@@ -220,7 +220,8 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
 - Personalization: structured persona fields (name, about you, custom
   instructions) and rotating greetings.
 - **Custom models** — saved presets of base model + system prompt + params,
-  like custom GPTs, with per-preset feature-toggle defaults.
+  like custom GPTs, with per-preset feature-toggle defaults and an optional
+  avatar shown beside the preset's name above each of its replies.
 - **Docker deployment** in a ~200 MB image, automatic migrations, any
   reverse proxy in front ([guide](docs/deployment.md)).
 - **Open WebUI import** ([guide](docs/import-owui.md)).

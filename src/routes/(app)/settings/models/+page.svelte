@@ -2,6 +2,7 @@
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import ModelPicker from '$lib/components/chat/ModelPicker.svelte';
+	import { ImagePlus } from '@lucide/svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import {
@@ -33,7 +34,18 @@
 	let topPStr = $state('');
 	let maxTokensStr = $state('');
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([]);
+	// Avatar edits are staged, not applied on pick: everything else in this form
+	// commits on Save, and a portrait that silently persisted the moment it was
+	// chosen — surviving "Clear (new)" — would be the odd one out.
+	// `avatarMediaId` is what's saved on the row; `avatarFile` is a pending
+	// upload; `avatarCleared` is a pending removal. The last two are mutually
+	// exclusive by construction (each setter clears the other).
+	let avatarMediaId = $state<string | null>(null);
+	let avatarFile = $state<File | null>(null);
+	let avatarObjectUrl = $state<string | null>(null);
+	let avatarCleared = $state(false);
 	let busy = $state(false);
+	let avatarInput = $state<HTMLInputElement | null>(null);
 	let error = $state<string | null>(null);
 	let deletingId = $state<string | null>(null);
 
@@ -71,6 +83,9 @@
 		topPStr = '';
 		maxTokensStr = '';
 		defaultDisabledFeatures = [];
+		setAvatarFile(null);
+		avatarMediaId = null;
+		avatarCleared = false;
 		error = null;
 	}
 
@@ -85,7 +100,78 @@
 		topPStr = m.parameters?.top_p !== undefined ? String(m.parameters.top_p) : '';
 		maxTokensStr = m.parameters?.max_tokens !== undefined ? String(m.parameters.max_tokens) : '';
 		defaultDisabledFeatures = [...m.defaultDisabledFeatures];
+		setAvatarFile(null);
+		avatarMediaId = m.avatarMediaId;
+		avatarCleared = false;
 		error = null;
+	}
+
+	/** Swap the pending avatar file, revoking the previous preview's object URL.
+	 *  Done here rather than in an $effect because it's a resource whose
+	 *  lifetime is exactly this assignment — an effect would only add a second
+	 *  place for the revoke to be missed. */
+	function setAvatarFile(file: File | null): void {
+		if (avatarObjectUrl) URL.revokeObjectURL(avatarObjectUrl);
+		avatarObjectUrl = file ? URL.createObjectURL(file) : null;
+		avatarFile = file;
+	}
+
+	function onAvatarPicked(e: Event): void {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0] ?? null;
+		// Reset the input so re-picking the SAME file after a failed save still
+		// fires a change event.
+		input.value = '';
+		if (!file) return;
+		if (!file.type.startsWith('image/')) {
+			error = 'An avatar must be an image';
+			return;
+		}
+		error = null;
+		avatarCleared = false;
+		setAvatarFile(file);
+	}
+
+	function clearAvatar(): void {
+		setAvatarFile(null);
+		// Only a saved avatar needs a removal staged; discarding an unsaved pick
+		// just leaves whatever was already on the row.
+		avatarCleared = avatarMediaId !== null;
+	}
+
+	/** The image to show in the form right now: a pending pick wins, then the
+	 *  saved avatar unless removal is staged. */
+	const avatarPreviewSrc = $derived(
+		avatarObjectUrl ??
+			(avatarMediaId && !avatarCleared ? `/api/media/${avatarMediaId}/thumbnail` : null),
+	);
+
+	/**
+	 * Apply any staged avatar change to `id`. Runs AFTER the preset itself is
+	 * saved, because both paths need an id to attach to — including create,
+	 * where the id doesn't exist until the POST returns.
+	 *
+	 * Upload first, then link: /api/uploads owns the size/content-type rules, so
+	 * this doesn't restate them, and an upload abandoned between the two calls
+	 * is reaped by the purger's grace period rather than leaking.
+	 */
+	async function saveAvatar(id: string): Promise<void> {
+		if (avatarFile) {
+			const form = new FormData();
+			form.append('file', avatarFile);
+			const up = await fetch('/api/uploads', { method: 'POST', body: form });
+			if (!up.ok) throw new Error(await errorMessageFromResponse(up));
+			const { id: mediaId } = (await up.json()) as { id: string };
+			const res = await fetch(`/api/custom-models/${id}/avatar`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ mediaId }),
+			});
+			if (!res.ok) throw new Error(await errorMessageFromResponse(res));
+		} else if (avatarCleared) {
+			const res = await fetch(`/api/custom-models/${id}/avatar`, { method: 'DELETE' });
+			if (!res.ok && res.status !== 404) throw new Error(await errorMessageFromResponse(res));
+		}
 	}
 
 	function buildParameters(): CustomModelParameters | undefined {
@@ -168,6 +254,14 @@
 				if (!res.ok) {
 					throw new Error(await errorMessageFromResponse(res));
 				}
+				// The avatar rides a separate endpoint and needs the preset's id, so
+				// it lands after this. On edit we already hold that id; only create
+				// has to read it back off the response, where it first exists. A
+				// failure here leaves the preset saved and the avatar not — the form
+				// is left intact so the user can retry rather than losing the pick.
+				const savedId =
+					editingId ?? ((await res.json()) as { customModel: CustomModel }).customModel.id;
+				await saveAvatar(savedId);
 				resetForm();
 				await invalidateAll();
 			},
@@ -222,33 +316,47 @@
 								: 'border-border hover:border-border-focus'}"
 						>
 							<div class="flex items-start justify-between gap-2">
-								<button type="button" onclick={() => loadIntoForm(m)} class="flex-1 text-left">
-									<div class="text-sm font-medium">{m.name}</div>
-									{#if m.description}
-										<div class="mt-0.5 text-xs text-fg-muted line-clamp-2">{m.description}</div>
+								<button
+									type="button"
+									onclick={() => loadIntoForm(m)}
+									class="flex flex-1 gap-2.5 text-left"
+								>
+									{#if m.avatarMediaId}
+										<img
+											src="/api/media/{m.avatarMediaId}/thumbnail"
+											alt=""
+											loading="lazy"
+											class="mt-0.5 size-8 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+										/>
 									{/if}
-									<div
-										class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-fg-muted"
-									>
-										<span class="rounded bg-surface-sunken px-1.5 py-0.5">
-											{m.baseEndpointId}::{m.baseModelId}
-										</span>
-										{#if m.parameters?.temperature !== undefined}
-											<span class="rounded bg-surface-sunken px-1.5 py-0.5">
-												temp {m.parameters.temperature}
-											</span>
+									<span class="min-w-0 flex-1">
+										<div class="text-sm font-medium">{m.name}</div>
+										{#if m.description}
+											<div class="mt-0.5 text-xs text-fg-muted line-clamp-2">{m.description}</div>
 										{/if}
-										{#if m.parameters?.top_p !== undefined}
+										<div
+											class="mt-1 flex flex-wrap gap-1.5 text-[10px] uppercase tracking-wide text-fg-muted"
+										>
 											<span class="rounded bg-surface-sunken px-1.5 py-0.5">
-												top_p {m.parameters.top_p}
+												{m.baseEndpointId}::{m.baseModelId}
 											</span>
-										{/if}
-										{#if m.parameters?.max_tokens !== undefined}
-											<span class="rounded bg-surface-sunken px-1.5 py-0.5">
-												max {m.parameters.max_tokens}
-											</span>
-										{/if}
-									</div>
+											{#if m.parameters?.temperature !== undefined}
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
+													temp {m.parameters.temperature}
+												</span>
+											{/if}
+											{#if m.parameters?.top_p !== undefined}
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
+													top_p {m.parameters.top_p}
+												</span>
+											{/if}
+											{#if m.parameters?.max_tokens !== undefined}
+												<span class="rounded bg-surface-sunken px-1.5 py-0.5">
+													max {m.parameters.max_tokens}
+												</span>
+											{/if}
+										</div>
+									</span>
 								</button>
 								<button
 									type="button"
@@ -315,6 +423,60 @@
 						disabled={busy}
 						class="w-full rounded-md border border-border bg-surface-panel px-3 py-2 text-base shadow-sm focus:border-border-focus focus:outline-none disabled:opacity-50 sm:text-sm"
 					/>
+				</div>
+
+				<div>
+					<span class="mb-1 block text-xs font-medium">
+						Avatar <span class="font-normal text-fg-muted">(optional)</span>
+					</span>
+					<div class="flex items-center gap-3">
+						{#if avatarPreviewSrc}
+							<img
+								src={avatarPreviewSrc}
+								alt="Avatar preview"
+								class="size-12 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+							/>
+						{:else}
+							<div
+								class="flex size-12 shrink-0 items-center justify-center rounded-full border border-dashed border-border-strong text-fg-muted"
+							>
+								<ImagePlus size={16} strokeWidth={2} />
+							</div>
+						{/if}
+						<div class="flex flex-wrap items-center gap-2">
+							<button
+								type="button"
+								disabled={busy}
+								onclick={() => avatarInput?.click()}
+								class="rounded-md border border-border px-3 py-1.5 text-xs transition hover:bg-surface-sunken disabled:opacity-50"
+							>
+								{avatarPreviewSrc ? 'Replace' : 'Choose image'}
+							</button>
+							{#if avatarPreviewSrc}
+								<button
+									type="button"
+									disabled={busy}
+									onclick={clearAvatar}
+									class="rounded-md border border-border px-3 py-1.5 text-xs text-fg-muted transition hover:bg-surface-sunken hover:text-danger disabled:opacity-50"
+								>
+									Remove
+								</button>
+							{/if}
+							{#if avatarFile || avatarCleared}
+								<span class="text-[11px] text-fg-muted">Applied when you save</span>
+							{/if}
+						</div>
+					</div>
+					<input
+						bind:this={avatarInput}
+						type="file"
+						accept="image/*"
+						class="hidden"
+						onchange={onAvatarPicked}
+					/>
+					<p class="mt-1.5 text-[11px] text-fg-muted">
+						Shown beside this preset's name above each of its replies.
+					</p>
 				</div>
 
 				<div>
