@@ -81,6 +81,15 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 		patch.favoriteModels = body.favoriteModels;
 	}
+	if (body.avatarModelId !== undefined) {
+		// Null clears it; a string is stored as-is. Existence isn't checked — a
+		// removed endpoint's id is still a valid string and degrades at pick time,
+		// same reasoning as favoriteModels above.
+		if (body.avatarModelId !== null && typeof body.avatarModelId !== 'string') {
+			error(400, 'avatarModelId must be a string or null');
+		}
+		patch.avatarModelId = body.avatarModelId;
+	}
 	if (body.modelSets !== undefined) {
 		// Validate the shape only — model-id existence is intentionally not
 		// checked (a removed endpoint's id is still a valid string; it degrades

@@ -66,6 +66,7 @@
 	import { resolve } from '$app/paths';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { hasCopyableText, partsToText } from '$lib/message-parts';
+	import { consumeChatStream } from '$lib/consume-chat-stream';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
 		expandCompareSelections,
@@ -223,6 +224,97 @@
 	// conversation on every turn and not.
 	// svelte-ignore state_referenced_locally
 	let messages = $state.raw<ChatMessage[]>(data.conversation.messages);
+
+	// The image models this user can draw with, and the one they'll draw with
+	// now: their saved choice if it still resolves, else the first available.
+	// Re-saved on change (below), so picking is a one-time cost.
+	const imageModels = $derived(data.models.filter((m) => m.kind === 'image'));
+	let avatarModelOverride = $state<string | null>(null);
+	const avatarModelId = $derived(
+		avatarModelOverride ??
+			(imageModels.some((m) => m.id === data.prefs?.avatarModelId)
+				? (data.prefs?.avatarModelId ?? '')
+				: (imageModels[0]?.id ?? '')),
+	);
+
+	// The reply the portrait gets drawn from: the most recent assistant message
+	// with text. Right after step 1 that IS the description, which is the whole
+	// sequence — but nothing forces it, so any reply you like can be the source.
+	const avatarSourceMessage = $derived(
+		[...messages].reverse().find((m) => m.role === 'assistant' && partsToText(m.parts).trim()),
+	);
+
+	let avatarStatus = $state<string | null>(null);
+
+	function onAvatarModelChange(id: string) {
+		avatarModelOverride = id;
+		// Persist as the new default. Fire-and-forget: failing to remember a
+		// preference must not block the generation the user is about to run.
+		void fetch('/api/user/preferences', {
+			method: 'PATCH',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ avatarModelId: id }),
+		}).catch(() => {});
+	}
+
+	/**
+	 * Step two: draw the latest reply and make the result this conversation's
+	 * avatar.
+	 *
+	 * Setting the avatar happens HERE, on `done`, rather than server-side in the
+	 * relay — it keeps generation and the avatar endpoint independent, and a
+	 * disconnect mid-generation leaves the portrait in the thread to be applied
+	 * from the lightbox instead of a half-written state.
+	 */
+	async function generateAvatar() {
+		const source = avatarSourceMessage;
+		if (!source || !avatarModelId || avatarStatus) return;
+		avatarStatus = 'Starting…';
+		try {
+			const res = await fetch(`/api/conversations/${convId}/avatar/generate`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sourceMessageId: source.id, modelId: avatarModelId }),
+			});
+			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
+
+			let mediaId: string | null = null;
+			await consumeChatStream(res.body, {
+				onQueued: (ahead) => (avatarStatus = ahead > 0 ? `Queued — ${ahead} ahead…` : 'Queued…'),
+				onProgress: (_percent, statusText) => (avatarStatus = statusText ?? 'Drawing…'),
+				onStart: () => {
+					avatarStatus = 'Drawing…';
+				},
+				onDone: ({ assistantMessage }) => {
+					const part = assistantMessage.parts.find((p) => p.type === 'image');
+					mediaId = part?.type === 'image' ? part.mediaId : null;
+				},
+				onError: (message) => {
+					throw new Error(message);
+				},
+			});
+
+			if (mediaId) {
+				avatarStatus = 'Applying…';
+				const put = await fetch(`/api/conversations/${convId}/avatar`, {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ mediaId }),
+				});
+				if (!put.ok) throw new Error(await errorMessageFromResponse(put));
+			}
+			// Reloads the branch (the new portrait row) AND the avatar the bubbles
+			// render — both come from this page's load. See setAvatar for why the
+			// targeted key isn't enough here.
+			await invalidateAll();
+			toast.success('Avatar updated');
+		} catch (e) {
+			toast.error(e instanceof Error ? e.message : 'Avatar generation failed');
+		} finally {
+			avatarStatus = null;
+		}
+	}
+
 	// svelte-ignore state_referenced_locally
 	let title = $state<string | null>(data.conversation.title);
 	// svelte-ignore state_referenced_locally
@@ -1768,7 +1860,19 @@
 		<ChatHeader
 			{title}
 			private={isPrivate}
-			onGenerateAvatar={canGenerateAvatar ? beginAvatarDescription : undefined}
+			avatar={canGenerateAvatar
+				? {
+						models: imageModels,
+						modelId: avatarModelId,
+						avatarMediaId: data.assistantAvatarMediaId,
+						hasSource: !!avatarSourceMessage,
+						status: avatarStatus,
+						busy: generating || !!avatarStatus,
+						onDescribe: () => void beginAvatarDescription(),
+						onGenerate: () => void generateAvatar(),
+						onModelChange: onAvatarModelChange,
+					}
+				: undefined}
 		/>
 
 		<!--

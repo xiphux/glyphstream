@@ -129,6 +129,7 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 			notificationsShowContent: bits.notificationsShowContent[p],
 			notificationsForegroundToast: bits.notificationsForegroundToast[p],
 			favoriteModels: [['e::a'], ['e::b'], ['e::c']][p],
+			avatarModelId: ['e::img-a', 'e::img-b', null][p],
 			modelSets: [
 				{ id: `set-${p}`, name: `Set ${p}`, models: [{ modelId: `e::m${p}`, count: p + 1 }] },
 			],

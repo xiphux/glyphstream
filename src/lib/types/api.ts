@@ -705,6 +705,19 @@ export interface UserPreferences {
 	 */
 	favoriteModels: string[];
 	/**
+	 * The image model avatar generation draws with, as a picker-shape
+	 * `"<endpointId>::<upstreamId>"` id. Null until the user picks one, and
+	 * re-saved whenever they change it, so the choice sticks without a trip to
+	 * settings — it's a per-user aesthetic call, not operator config, which is
+	 * why it lives here and not in a `config.toml` model slot beside
+	 * `task_model` / `memory_model`.
+	 *
+	 * Not validated on read: an id whose endpoint has since been removed simply
+	 * doesn't resolve in the picker, and the user picks again. Same treatment as
+	 * `favoriteModels`.
+	 */
+	avatarModelId: string | null;
+	/**
 	 * Named groups of models saved from the picker's compare ("Multiple")
 	 * cart. Re-applying a set repopulates the compare selections in one
 	 * click — built for users who routinely fan one prompt out to the same

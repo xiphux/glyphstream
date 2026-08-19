@@ -9,7 +9,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import userEvent from '@testing-library/user-event';
 import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
 
 describe('ChatHeader', () => {
@@ -48,19 +47,26 @@ describe('ChatHeader', () => {
  * can't work" stays the page's decision and this only has to honour it.
  */
 describe('ChatHeader — avatar action', () => {
-	const avatarButton = () =>
-		screen.queryByRole('button', { name: 'Generate an avatar for this conversation' });
+	const avatarButton = () => screen.queryByRole('button', { name: 'Avatar for this conversation' });
 
-	it('offers avatar generation when the page supplies a handler', async () => {
-		const user = userEvent.setup();
-		const onGenerateAvatar = vi.fn();
-		render(ChatHeader, { props: { title: 'With Ilya', onGenerateAvatar } });
+	const avatarProps = {
+		models: [],
+		modelId: '',
+		avatarMediaId: null,
+		hasSource: false,
+		status: null,
+		busy: false,
+		onDescribe: vi.fn(),
+		onGenerate: vi.fn(),
+		onModelChange: vi.fn(),
+	};
 
-		await user.click(avatarButton()!);
-		expect(onGenerateAvatar).toHaveBeenCalledOnce();
+	it('offers the avatar menu when the page supplies its state', () => {
+		render(ChatHeader, { props: { title: 'With Ilya', avatar: avatarProps } });
+		expect(avatarButton()).toBeInTheDocument();
 	});
 
-	it('hides the control when no handler is supplied', () => {
+	it('hides the menu when the page omits it', () => {
 		// How an image / video conversation opts out — there's no model there
 		// that can answer a description request in prose.
 		render(ChatHeader, { props: { title: 'Poster drafts' } });

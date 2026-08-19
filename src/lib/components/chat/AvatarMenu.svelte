@@ -1,0 +1,137 @@
+<!--
+	The conversation-avatar menu, hung off the chat header.
+
+	One entry point for a two-step flow, which is why it's a menu and not two
+	buttons: step 1 asks the model to describe an image of itself, step 2 draws
+	the description. Keeping both here (rather than putting step 2 on a message)
+	means neither step clutters the thread, and the menu can say plainly that
+	step 2 works from the latest reply.
+
+	The gap between the steps is the point, not an implementation detail — you
+	read the description before spending a generation on it, and on a host where
+	the chat model and the image model share a GPU it puts real time between the
+	two calls.
+
+	Presentational: every decision (which model, whether a source reply exists,
+	what the status says) arrives as a prop.
+-->
+<script lang="ts">
+	import { Popover } from 'bits-ui';
+	import { Sparkles } from '@lucide/svelte';
+	import ModelPicker from './ModelPicker.svelte';
+	import type { ModelEntry } from '$lib/types/api';
+
+	interface Props {
+		/** Image-kind models only — the picker is filtered by the caller's data,
+		 *  and again here via `filterKinds`. */
+		models: ModelEntry[];
+		/** Currently selected image model, or '' when the user has never picked
+		 *  one and no default resolved. */
+		modelId: string;
+		/** The conversation's current avatar, shown so the menu reflects state
+		 *  rather than being a pair of blind buttons. */
+		avatarMediaId: string | null;
+		/** False when there's no assistant reply to draw from yet — step 2 is
+		 *  offered but disabled, so the sequence stays legible. */
+		hasSource: boolean;
+		/** Non-null while a generation is running: 'Queued…', 'Drawing…'. */
+		status: string | null;
+		/** True while any turn is in flight — both steps are unavailable. */
+		busy: boolean;
+		onDescribe: () => void;
+		onGenerate: () => void;
+		onModelChange: (id: string) => void;
+	}
+
+	let {
+		models,
+		modelId,
+		avatarMediaId,
+		hasSource,
+		status,
+		busy,
+		onDescribe,
+		onGenerate,
+		onModelChange,
+	}: Props = $props();
+
+	const noImageModels = $derived(models.length === 0);
+</script>
+
+<Popover.Root>
+	<Popover.Trigger
+		aria-label="Avatar for this conversation"
+		title="Generate an avatar for this conversation"
+		class="flex size-8 shrink-0 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary data-[state=open]:bg-surface-sunken data-[state=open]:text-fg-secondary"
+	>
+		<Sparkles size={15} strokeWidth={2.25} />
+	</Popover.Trigger>
+	<Popover.Portal>
+		<Popover.Content
+			sideOffset={6}
+			align="end"
+			class="z-overlay w-72 rounded-md border border-border surface-glass gs-pop p-3 shadow-lg"
+		>
+			<div class="mb-2 flex items-center gap-2">
+				{#if avatarMediaId}
+					<img
+						src="/api/media/{avatarMediaId}/thumbnail"
+						alt=""
+						class="size-8 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+					/>
+				{/if}
+				<p class="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+					{avatarMediaId ? 'Conversation avatar' : 'No avatar yet'}
+				</p>
+			</div>
+
+			<ol class="space-y-2.5">
+				<li>
+					<button
+						type="button"
+						disabled={busy}
+						onclick={onDescribe}
+						class="w-full rounded-md border border-border px-3 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-50"
+					>
+						1. Ask for a description
+					</button>
+					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
+						Puts the request in the composer so you can edit it before sending.
+					</p>
+				</li>
+				<li>
+					<div class="mb-1.5">
+						<ModelPicker
+							{models}
+							filterKinds={['image']}
+							value={modelId}
+							onChange={onModelChange}
+							disabled={busy || noImageModels}
+						/>
+					</div>
+					<button
+						type="button"
+						disabled={busy || !hasSource || !modelId || noImageModels}
+						onclick={onGenerate}
+						class="w-full rounded-md bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
+					>
+						2. Draw the latest reply
+					</button>
+					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
+						{#if noImageModels}
+							No image model is configured.
+						{:else if !hasSource}
+							Send the description request first.
+						{:else}
+							Draws the most recent reply and makes it this conversation's avatar.
+						{/if}
+					</p>
+				</li>
+			</ol>
+
+			{#if status}
+				<p class="mt-2 border-t border-border pt-2 text-[11px] text-fg-secondary">{status}</p>
+			{/if}
+		</Popover.Content>
+	</Popover.Portal>
+</Popover.Root>

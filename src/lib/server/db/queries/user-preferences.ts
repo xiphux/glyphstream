@@ -28,6 +28,7 @@ const DEFAULTS: UserPreferences = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [],
+	avatarModelId: null,
 	modelSets: [],
 	trustedMcpTools: [],
 	// On by default. Without it there is NO windowing at all — the whole branch is
@@ -168,6 +169,10 @@ function coerceUserPreferences(
 			input.favoriteModels === undefined
 				? fallback.favoriteModels
 				: coerceFavoriteModels(input.favoriteModels, fallback.favoriteModels),
+		avatarModelId:
+			typeof input.avatarModelId === 'string' || input.avatarModelId === null
+				? input.avatarModelId
+				: fallback.avatarModelId,
 		modelSets:
 			input.modelSets === undefined
 				? fallback.modelSets

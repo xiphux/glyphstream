@@ -25,6 +25,7 @@ const PREFS: UserPreferences = {
 	notificationsShowContent: false,
 	notificationsForegroundToast: true,
 	favoriteModels: [],
+	avatarModelId: null,
 	modelSets: [],
 	trustedMcpTools: [],
 	autoCompactionEnabled: true,
