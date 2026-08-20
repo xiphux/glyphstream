@@ -1851,6 +1851,10 @@ const fakeEndpoint = {
 	groupBy: 'endpoint',
 	supportsTools: false,
 	maxConcurrent: 4,
+	// A lone endpoint is its own group — what config.ts resolves when
+	// `resource_group` is absent.
+	resourceGroup: 'bridge',
+	resourceGroupMaxConcurrent: 4,
 	contextWindow: null,
 	modelContextWindows: {},
 	modelPromptStyles: {},

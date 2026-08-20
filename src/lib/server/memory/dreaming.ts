@@ -124,7 +124,7 @@ async function dreamUser(model: ResolvedMemoryModel, userId: string): Promise<nu
 	}));
 
 	// Queue behind live chats on the shared endpoint; release even on error/abort.
-	const slot = await acquireEndpointSlot(model.endpoint.id, model.endpoint.maxConcurrent);
+	const slot = await acquireEndpointSlot(model.endpoint);
 	let ops: ConsolidationOp[];
 	try {
 		ops = await proposeConsolidation(model, input);

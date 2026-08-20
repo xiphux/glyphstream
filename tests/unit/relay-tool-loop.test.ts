@@ -48,7 +48,7 @@ import { _resetForTests, register, resolveActivatedToolDefs } from '$lib/server/
 import { startStreamingRelay } from '$lib/server/streaming/relay';
 import {
 	acquireEndpointSlot,
-	getEndpointQueueDepth,
+	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
 import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
@@ -79,6 +79,10 @@ const endpoint: LoadedEndpoint = {
 	groupBy: 'endpoint',
 	supportsTools: true,
 	maxConcurrent: Infinity,
+	// A lone endpoint is its own group — what config.ts resolves when
+	// `resource_group` is absent.
+	resourceGroup: 'bridge',
+	resourceGroupMaxConcurrent: Infinity,
 	contextWindow: null,
 	modelContextWindows: {},
 	modelPromptStyles: {},
@@ -743,10 +747,18 @@ describe('per-endpoint concurrency gate', () => {
 	it('emits `queued` and holds the turn until a slot frees', async () => {
 		mocks.upstreamResponses = [() => sseResponse([textChunk('hello'), finishChunk('stop')])];
 		const { conv, user, userId } = seedConversationWithUserMessage();
-		const gated: LoadedEndpoint = { ...endpoint, id: 'gated', maxConcurrent: 1 };
+		const gated: LoadedEndpoint = {
+			...endpoint,
+			id: 'gated',
+			// Move the group with the id — the gate keys on the group, so a spread
+			// that changes only the id keeps sharing the base fixture's gate.
+			resourceGroup: 'gated',
+			maxConcurrent: 1,
+			resourceGroupMaxConcurrent: 1,
+		};
 
 		// Occupy the endpoint's only slot so the relay must wait in line.
-		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+		const held = await acquireEndpointSlot(gated);
 
 		let completed = false;
 		const stream = await startStreamingRelay({
@@ -769,7 +781,7 @@ describe('per-endpoint concurrency gate', () => {
 		await new Promise((r) => setTimeout(r, 10));
 
 		// The relay is parked in the queue: no upstream call, not complete.
-		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
 		expect(mocks.upstreamCalls).toHaveLength(0);
 		expect(completed).toBe(false);
 
@@ -785,13 +797,21 @@ describe('per-endpoint concurrency gate', () => {
 		expect(mocks.upstreamCalls).toHaveLength(1);
 		expect(completed).toBe(true);
 		// Slot released back to the gate once the turn settled.
-		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 0, waiting: 0 });
+		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 0, waiting: 0 });
 	});
 
 	it('drops a queued turn out of line when the user stops it', async () => {
 		const { conv, user, userId } = seedConversationWithUserMessage();
-		const gated: LoadedEndpoint = { ...endpoint, id: 'gated', maxConcurrent: 1 };
-		const held = await acquireEndpointSlot(gated.id, gated.maxConcurrent);
+		const gated: LoadedEndpoint = {
+			...endpoint,
+			id: 'gated',
+			// Move the group with the id — the gate keys on the group, so a spread
+			// that changes only the id keeps sharing the base fixture's gate.
+			resourceGroup: 'gated',
+			maxConcurrent: 1,
+			resourceGroupMaxConcurrent: 1,
+		};
+		const held = await acquireEndpointSlot(gated);
 		const abort = new AbortController();
 
 		let completed = false;
@@ -813,7 +833,7 @@ describe('per-endpoint concurrency gate', () => {
 
 		const drained = drainEvents(stream);
 		await new Promise((r) => setTimeout(r, 10));
-		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
+		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 1, waiting: 1 });
 
 		// Stop while queued: the relay abandons its place in line, never calls
 		// upstream, and closes without persisting an assistant row.
@@ -823,7 +843,7 @@ describe('per-endpoint concurrency gate', () => {
 		expect(completed).toBe(true);
 		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual(['user']);
 		// The aborted waiter left the queue without taking the held slot.
-		expect(getEndpointQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth(gated.id)).toEqual({ active: 1, waiting: 0 });
 
 		held.release();
 	});
@@ -883,7 +903,15 @@ describe('per-endpoint concurrency gate', () => {
 	});
 
 	it('releases the endpoint slot before the post-done title race', async () => {
-		const solo: LoadedEndpoint = { ...endpoint, id: 'solo', maxConcurrent: 1 };
+		const solo: LoadedEndpoint = {
+			...endpoint,
+			id: 'solo',
+			// The gate keys on the group, so a derived endpoint has to move both
+			// or it keeps sharing the original's gate.
+			resourceGroup: 'solo',
+			maxConcurrent: 1,
+			resourceGroupMaxConcurrent: 1,
+		};
 		const { conv, user, userId } = seedConversationWithUserMessage();
 
 		// A title task that stays pending until we release it; the mocked
@@ -924,9 +952,9 @@ describe('per-endpoint concurrency gate', () => {
 
 		// Slot already freed even though the title hasn't arrived — a fresh
 		// generation can take it immediately instead of waiting out the title budget.
-		expect(getEndpointQueueDepth('solo').active).toBe(0);
-		const next = await acquireEndpointSlot('solo', 1);
-		expect(getEndpointQueueDepth('solo').active).toBe(1);
+		expect(getResourceQueueDepth('solo').active).toBe(0);
+		const next = await acquireEndpointSlot(solo);
+		expect(getResourceQueueDepth('solo').active).toBe(1);
 		next.release();
 
 		// Let the relay finish (title arrives, stream closes).

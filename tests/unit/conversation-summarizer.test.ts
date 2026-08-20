@@ -43,7 +43,7 @@ function overflow400(promptTokens: number, nCtx: number): UpstreamError {
 }
 
 const MODEL = {
-	endpoint: { id: 'gpu', maxConcurrent: 1 },
+	endpoint: { id: 'gpu', maxConcurrent: 1, resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 },
 	upstreamId: 'm',
 	maxTokens: 500,
 	temperature: 0.2,
@@ -211,7 +211,12 @@ describe('summarizeConversation', () => {
 		acquireMock.mockResolvedValue({ release });
 		reply('gist');
 		await summarizeConversation(MODEL, [mkMsg('user', 'a'), mkMsg('assistant', 'b')], 8000);
-		expect(acquireMock).toHaveBeenCalledWith('gpu', 1, expect.anything());
+		// The gate takes the endpoint now — it reads the resource group and that
+		// group's cap off it, so passing an id by hand can't bypass the group.
+		expect(acquireMock).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 }),
+			expect.anything(),
+		);
 		expect(release).toHaveBeenCalledTimes(1);
 	});
 });

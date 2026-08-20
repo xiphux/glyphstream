@@ -63,7 +63,7 @@ import { UpstreamError } from '$lib/server/endpoints/client';
 import { startTitleTaskIfFirstExchange } from '$lib/server/tasks/title-task-runner';
 import {
 	acquireEndpointSlot,
-	getEndpointQueueDepth,
+	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
@@ -95,6 +95,10 @@ afterEach(() => {
 
 const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	id: 'bridge',
+	// A lone endpoint is its own group — what config.ts resolves when
+	// `resource_group` is absent.
+	resourceGroup: 'bridge',
+	resourceGroupMaxConcurrent: maxConcurrent,
 	displayName: 'Bridge',
 	baseUrl: 'http://localhost/v1',
 	apiKey: null,
@@ -443,7 +447,7 @@ describe('startVideoRelay — prompt enhancement', () => {
 				}),
 		);
 		// Occupy the single VIDEO slot ('bridge').
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const drained = drain(
 			startVideoRelay(
 				baseParams({
@@ -511,7 +515,7 @@ describe('startVideoRelay — prompt enhancement', () => {
 		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'enhanced dog', changed: true });
 		// Hold the single shared slot; the relay must wait for it before it can
 		// even enhance (enhancement + generation share the one slot → serial).
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const drained = drain(
 			startVideoRelay(
 				baseParams({
@@ -612,7 +616,7 @@ describe('startVideoRelay — backpressure + failure', () => {
 		}
 		expect(sawDone).toBe(true);
 		// Slot released even though the title race is still pending.
-		expect(getEndpointQueueDepth('bridge').active).toBe(0);
+		expect(getResourceQueueDepth('bridge').active).toBe(0);
 		resolveTitle('A title');
 		for (;;) {
 			const { done } = await reader.read();
@@ -622,7 +626,7 @@ describe('startVideoRelay — backpressure + failure', () => {
 
 	it('emits queued while waiting on a full per-endpoint slot, then proceeds', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const stream = startVideoRelay(
 			baseParams({
 				conversationId: conv.id,

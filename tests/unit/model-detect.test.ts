@@ -19,6 +19,10 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		groupBy: 'endpoint',
 		supportsTools: false,
 		maxConcurrent: Infinity,
+		// A lone endpoint is its own group — what config.ts resolves when
+		// `resource_group` is absent.
+		resourceGroup: 'bridge',
+		resourceGroupMaxConcurrent: Infinity,
 		contextWindow: null,
 		modelContextWindows: {},
 		modelPromptStyles: {},

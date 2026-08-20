@@ -42,7 +42,7 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 				// backend. Emit `queued` while waiting; abort-while-queued
 				// surfaces as a cancellation rather than a partial write.
 				try {
-					slot = await acquireEndpointSlot(plan.endpoint.id, plan.endpoint.maxConcurrent, {
+					slot = await acquireEndpointSlot(plan.endpoint, {
 						signal: abortSignal,
 						onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 					});

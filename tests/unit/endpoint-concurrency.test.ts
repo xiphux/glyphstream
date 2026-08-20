@@ -10,9 +10,33 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	acquireEndpointSlot,
-	getEndpointQueueDepth,
+	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
+import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+
+/** The gate reads only the group key and its cap, so the rest is filler.
+ *  `group` defaults to the id — what the loader resolves for an endpoint that
+ *  didn't opt into a resource group. */
+function ep(id: string, max: number, group = id): LoadedEndpoint {
+	return {
+		id,
+		displayName: id,
+		baseUrl: `http://${id}/v1`,
+		apiKey: null,
+		requestTimeoutSeconds: 120,
+		providerQuirk: 'passthrough',
+		groupBy: 'endpoint',
+		supportsTools: false,
+		maxConcurrent: max,
+		resourceGroup: group,
+		resourceGroupMaxConcurrent: max,
+		contextWindow: null,
+		modelContextWindows: {},
+		modelPromptStyles: {},
+		modelPromptHints: {},
+	};
+}
 
 afterEach(() => {
 	resetEndpointGatesForTests();
@@ -24,17 +48,17 @@ const flush = () => Promise.resolve();
 
 describe('acquireEndpointSlot', () => {
 	it('grants immediately when under capacity', async () => {
-		const slot = await acquireEndpointSlot('ep', 2);
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+		const slot = await acquireEndpointSlot(ep('ep', 2));
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 		slot.release();
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 	});
 
 	it('queues once at capacity and fires onQueued with the count ahead', async () => {
-		const a = await acquireEndpointSlot('ep', 1);
+		const a = await acquireEndpointSlot(ep('ep', 1));
 		const onQueued = vi.fn();
 		let granted = false;
-		const pending = acquireEndpointSlot('ep', 1, { onQueued }).then((s) => {
+		const pending = acquireEndpointSlot(ep('ep', 1), { onQueued }).then((s) => {
 			granted = true;
 			return s;
 		});
@@ -42,32 +66,32 @@ describe('acquireEndpointSlot', () => {
 		await flush();
 		expect(granted).toBe(false);
 		expect(onQueued).toHaveBeenCalledWith({ ahead: 0 });
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 		a.release();
 		const b = await pending;
 		expect(granted).toBe(true);
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 		b.release();
 	});
 
 	it('does not call onQueued on the immediate-grant fast path', async () => {
 		const onQueued = vi.fn();
-		const slot = await acquireEndpointSlot('ep', 2, { onQueued });
+		const slot = await acquireEndpointSlot(ep('ep', 2), { onQueued });
 		expect(onQueued).not.toHaveBeenCalled();
 		slot.release();
 	});
 
 	it('grants queued waiters in FIFO order', async () => {
-		const a = await acquireEndpointSlot('ep', 1);
+		const a = await acquireEndpointSlot(ep('ep', 1));
 		const order: number[] = [];
 		const queued1 = vi.fn();
 		const queued2 = vi.fn();
-		const p1 = acquireEndpointSlot('ep', 1, { onQueued: queued1 }).then((s) => {
+		const p1 = acquireEndpointSlot(ep('ep', 1), { onQueued: queued1 }).then((s) => {
 			order.push(1);
 			return s;
 		});
-		const p2 = acquireEndpointSlot('ep', 1, { onQueued: queued2 }).then((s) => {
+		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: queued2 }).then((s) => {
 			order.push(2);
 			return s;
 		});
@@ -76,7 +100,7 @@ describe('acquireEndpointSlot', () => {
 		// Second waiter sees one ahead of it.
 		expect(queued1).toHaveBeenCalledWith({ ahead: 0 });
 		expect(queued2).toHaveBeenCalledWith({ ahead: 1 });
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 2 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 2 });
 
 		a.release();
 		const s1 = await p1;
@@ -90,13 +114,13 @@ describe('acquireEndpointSlot', () => {
 	it('re-fires onQueued with a decremented count as the line drains', async () => {
 		// One active, three queued behind it (ahead 0, 1, 2). As each active
 		// generation finishes, the remaining waiters move up and must be told.
-		const active = await acquireEndpointSlot('ep', 1);
+		const active = await acquireEndpointSlot(ep('ep', 1));
 		const q0 = vi.fn();
 		const q1 = vi.fn();
 		const q2 = vi.fn();
-		const p0 = acquireEndpointSlot('ep', 1, { onQueued: q0 });
-		const p1 = acquireEndpointSlot('ep', 1, { onQueued: q1 });
-		const p2 = acquireEndpointSlot('ep', 1, { onQueued: q2 });
+		const p0 = acquireEndpointSlot(ep('ep', 1), { onQueued: q0 });
+		const p1 = acquireEndpointSlot(ep('ep', 1), { onQueued: q1 });
+		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: q2 });
 		await flush();
 
 		// Initial positions at enqueue.
@@ -125,10 +149,10 @@ describe('acquireEndpointSlot', () => {
 		// Two slots, two active, one queued. Releasing one active frees a slot the
 		// queued waiter takes — but a SECOND queued waiter mustn't be spuriously
 		// re-notified when nothing further is granted.
-		const a = await acquireEndpointSlot('ep', 2);
-		const b = await acquireEndpointSlot('ep', 2);
+		const a = await acquireEndpointSlot(ep('ep', 2));
+		const b = await acquireEndpointSlot(ep('ep', 2));
 		const q = vi.fn();
-		const pq = acquireEndpointSlot('ep', 2, { onQueued: q });
+		const pq = acquireEndpointSlot(ep('ep', 2), { onQueued: q });
 		await flush();
 		expect(q).toHaveBeenCalledTimes(1); // initial enqueue only
 
@@ -140,14 +164,14 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('refreshes positions when a queued waiter aborts out of the middle', async () => {
-		const active = await acquireEndpointSlot('ep', 1);
+		const active = await acquireEndpointSlot(ep('ep', 1));
 		const c1 = new AbortController();
 		const q0 = vi.fn();
 		const q1 = vi.fn();
 		const q2 = vi.fn();
-		const p0 = acquireEndpointSlot('ep', 1, { onQueued: q0 });
-		const p1 = acquireEndpointSlot('ep', 1, { signal: c1.signal, onQueued: q1 });
-		const p2 = acquireEndpointSlot('ep', 1, { onQueued: q2 });
+		const p0 = acquireEndpointSlot(ep('ep', 1), { onQueued: q0 });
+		const p1 = acquireEndpointSlot(ep('ep', 1), { signal: c1.signal, onQueued: q1 });
+		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: q2 });
 		await flush();
 		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
 
@@ -163,14 +187,14 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('release pumps exactly one waiter, not all', async () => {
-		const a = await acquireEndpointSlot('ep', 1);
+		const a = await acquireEndpointSlot(ep('ep', 1));
 		let g1 = false;
 		let g2 = false;
-		const p1 = acquireEndpointSlot('ep', 1).then((s) => {
+		const p1 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
 			g1 = true;
 			return s;
 		});
-		const p2 = acquireEndpointSlot('ep', 1).then((s) => {
+		const p2 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
 			g2 = true;
 			return s;
 		});
@@ -180,7 +204,7 @@ describe('acquireEndpointSlot', () => {
 		const s1 = await p1;
 		expect(g1).toBe(true);
 		expect(g2).toBe(false); // still queued — only one slot freed
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 		s1.release();
 		await p2;
@@ -189,62 +213,62 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('release is idempotent — a double release frees only one slot', async () => {
-		const a = await acquireEndpointSlot('ep', 2);
-		const b = await acquireEndpointSlot('ep', 2);
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 2, waiting: 0 });
+		const a = await acquireEndpointSlot(ep('ep', 2));
+		const b = await acquireEndpointSlot(ep('ep', 2));
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 2, waiting: 0 });
 
 		a.release();
 		a.release(); // no-op
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 		b.release();
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 	});
 
 	it('Infinity capacity never queues', async () => {
 		const onQueued = vi.fn();
 		const slots = await Promise.all(
-			Array.from({ length: 50 }, () => acquireEndpointSlot('ep', Infinity, { onQueued })),
+			Array.from({ length: 50 }, () => acquireEndpointSlot(ep('ep', Infinity), { onQueued })),
 		);
 		expect(onQueued).not.toHaveBeenCalled();
-		expect(getEndpointQueueDepth('ep')).toEqual({ active: 50, waiting: 0 });
+		expect(getResourceQueueDepth('ep')).toEqual({ active: 50, waiting: 0 });
 		for (const s of slots) s.release();
 	});
 
 	describe('abort', () => {
 		it('rejects synchronously when the signal is already aborted', async () => {
-			const slot = await acquireEndpointSlot('ep', 1); // fill capacity
+			const slot = await acquireEndpointSlot(ep('ep', 1)); // fill capacity
 			const controller = new AbortController();
 			controller.abort();
 			await expect(
-				acquireEndpointSlot('ep', 1, { signal: controller.signal }),
+				acquireEndpointSlot(ep('ep', 1), { signal: controller.signal }),
 			).rejects.toMatchObject({ name: 'AbortError' });
 			// The aborted attempt never entered the queue or took a slot.
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 			slot.release();
 		});
 
 		it('drops a queued waiter out of line without consuming a slot', async () => {
-			const a = await acquireEndpointSlot('ep', 1);
+			const a = await acquireEndpointSlot(ep('ep', 1));
 			const controller = new AbortController();
-			const pending = acquireEndpointSlot('ep', 1, { signal: controller.signal });
+			const pending = acquireEndpointSlot(ep('ep', 1), { signal: controller.signal });
 			await flush();
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 			controller.abort();
 			await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 
 			// Releasing the active slot must NOT try to grant the aborted waiter.
 			a.release();
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 		});
 
 		it('aborting one queued waiter still grants the next in line', async () => {
-			const a = await acquireEndpointSlot('ep', 1);
+			const a = await acquireEndpointSlot(ep('ep', 1));
 			const c1 = new AbortController();
-			const p1 = acquireEndpointSlot('ep', 1, { signal: c1.signal });
+			const p1 = acquireEndpointSlot(ep('ep', 1), { signal: c1.signal });
 			let g2 = false;
-			const p2 = acquireEndpointSlot('ep', 1).then((s) => {
+			const p2 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
 				g2 = true;
 				return s;
 			});
@@ -252,7 +276,7 @@ describe('acquireEndpointSlot', () => {
 
 			c1.abort();
 			await expect(p1).rejects.toMatchObject({ name: 'AbortError' });
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
 			a.release();
 			await p2;
@@ -262,22 +286,82 @@ describe('acquireEndpointSlot', () => {
 
 		it('a granted slot is unaffected by a later abort of its signal', async () => {
 			const controller = new AbortController();
-			const slot = await acquireEndpointSlot('ep', 1, { signal: controller.signal });
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+			const slot = await acquireEndpointSlot(ep('ep', 1), { signal: controller.signal });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 			// Abort after grant — must not corrupt active count or throw.
 			controller.abort();
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 			slot.release();
-			expect(getEndpointQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
+			expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 		});
 	});
 
 	it('isolates queues per endpoint id', async () => {
-		const a = await acquireEndpointSlot('ep-a', 1);
-		const b = await acquireEndpointSlot('ep-b', 1); // different endpoint, immediate
-		expect(getEndpointQueueDepth('ep-a')).toEqual({ active: 1, waiting: 0 });
-		expect(getEndpointQueueDepth('ep-b')).toEqual({ active: 1, waiting: 0 });
+		const a = await acquireEndpointSlot(ep('ep-a', 1));
+		const b = await acquireEndpointSlot(ep('ep-b', 1)); // different endpoint, immediate
+		expect(getResourceQueueDepth('ep-a')).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth('ep-b')).toEqual({ active: 1, waiting: 0 });
 		a.release();
 		b.release();
+	});
+});
+
+describe('resource groups', () => {
+	it('serializes two DIFFERENT endpoints that name the same group', async () => {
+		// The reason the feature exists: a llama.cpp endpoint and a
+		// ComfyUI-bridging endpoint on one GPU. Their own gates each serialize
+		// correctly and know nothing of each other, so without a shared group a
+		// chat turn and an image generation collide over the same VRAM.
+		const llama = ep('llama', 1, 'gpu0');
+		const bridge = ep('bridge', 1, 'gpu0');
+
+		const held = await acquireEndpointSlot(llama);
+		let granted = false;
+		const pending = acquireEndpointSlot(bridge).then((s) => {
+			granted = true;
+			return s;
+		});
+
+		await flush();
+		expect(granted).toBe(false);
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 1 });
+
+		held.release();
+		(await pending).release();
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('leaves ungrouped endpoints independent, as before', async () => {
+		// The default group is the endpoint's own id, so an install that never
+		// heard of resource groups behaves exactly as it did.
+		const a = await acquireEndpointSlot(ep('a', 1));
+		const b = await acquireEndpointSlot(ep('b', 1));
+		expect(getResourceQueueDepth('a')).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth('b')).toEqual({ active: 1, waiting: 0 });
+		a.release();
+		b.release();
+	});
+
+	it('counts queue position across the group, not per endpoint', async () => {
+		// What the user sees as "Queued — N ahead" has to count the whole shared
+		// resource, or the number is a lie whenever the contention is the other
+		// endpoint's. `ahead` counts waiters in front of you, so the first
+		// queuer sees 0 even though the resource is busy.
+		const held = await acquireEndpointSlot(ep('llama', 1, 'gpu0'));
+		const firstQueued = vi.fn();
+		const secondQueued = vi.fn();
+
+		const first = acquireEndpointSlot(ep('bridge', 1, 'gpu0'), { onQueued: firstQueued });
+		const second = acquireEndpointSlot(ep('llama', 1, 'gpu0'), { onQueued: secondQueued });
+		await flush();
+
+		expect(firstQueued).toHaveBeenCalledWith({ ahead: 0 });
+		// The one it's behind is on the OTHER endpoint — the number only comes
+		// out right because both share the group's single line.
+		expect(secondQueued).toHaveBeenCalledWith({ ahead: 1 });
+
+		held.release();
+		(await first).release();
+		(await second).release();
 	});
 });

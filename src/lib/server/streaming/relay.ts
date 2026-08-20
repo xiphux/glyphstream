@@ -265,7 +265,7 @@ export async function startStreamingRelay(
 				// backend serializes instead of thrashing VRAM. Emits `queued`
 				// when the endpoint is at capacity; the await resolves once a
 				// slot frees. Released in the finally alongside onComplete.
-				slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
+				slot = await acquireEndpointSlot(params.endpoint, {
 					signal: params.abortSignal,
 					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 				});

@@ -72,11 +72,7 @@ export async function runPromptEnhancement(
 	ctx.write({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
 	let enhSlot: EndpointSlot | null = null;
 	try {
-		enhSlot = await acquireEndpointSlot(
-			enhancerModel.endpoint.id,
-			enhancerModel.endpoint.maxConcurrent,
-			{ signal: ctx.abortSignal },
-		);
+		enhSlot = await acquireEndpointSlot(enhancerModel.endpoint, { signal: ctx.abortSignal });
 		const normalize = input.medium === 'video' ? normalizeVideoStyle : normalizeStyle;
 		const { enhanced, changed } = await enhancePrompt({
 			prompt: input.prompt,

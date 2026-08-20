@@ -202,7 +202,7 @@ export async function callMemoryModel(
 	signal?: AbortSignal,
 	keepChars: number = Infinity,
 ): Promise<string> {
-	const slot = await acquireEndpointSlot(model.endpoint.id, model.endpoint.maxConcurrent, {
+	const slot = await acquireEndpointSlot(model.endpoint, {
 		signal,
 	});
 	try {

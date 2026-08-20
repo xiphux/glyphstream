@@ -85,6 +85,10 @@ afterEach(() => {
 
 const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	id: 'bridge',
+	// A lone endpoint is its own group — what config.ts resolves when
+	// `resource_group` is absent.
+	resourceGroup: 'bridge',
+	resourceGroupMaxConcurrent: maxConcurrent,
 	displayName: 'Bridge',
 	baseUrl: 'http://localhost/v1',
 	apiKey: null,
@@ -408,7 +412,7 @@ describe('startImageRelay — backpressure + failure', () => {
 	it('emits queued while waiting on a full per-endpoint slot, then proceeds', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
 		// Pre-occupy the single slot so the relay must queue.
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const stream = startImageRelay(
 			baseParams({
 				conversationId: conv.id,
@@ -566,7 +570,7 @@ describe('startImageRelay — prompt enhancement', () => {
 				}),
 		);
 		// Occupy the single IMAGE slot ('bridge').
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const drained = drain(
 			startImageRelay(
 				baseParams({
@@ -635,7 +639,7 @@ describe('startImageRelay — prompt enhancement', () => {
 		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'enhanced cat', changed: true });
 		// Hold the single shared slot; the relay must wait for it before it can
 		// even enhance (enhancement + generation share the one slot → serial).
-		const held = await acquireEndpointSlot('bridge', 1, {});
+		const held = await acquireEndpointSlot(endpoint(1));
 		const drained = drain(
 			startImageRelay(
 				baseParams({

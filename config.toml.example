@@ -224,6 +224,21 @@
 #    concurrency and you want more parallelism.
 # max_concurrent = 1
 
+# Optional: name a resource this endpoint contends for, so endpoints that share
+# it share ONE queue instead of one each. The case this exists for is two
+# endpoints on one GPU — a llama-server for chat and a ComfyUI bridge for
+# images — where each endpoint's own max_concurrent is correct and yet a chat
+# turn and an image generation still collide over the same VRAM.
+#
+# The name is arbitrary; it just has to match on every member. Omitted, an
+# endpoint is its own group (the behaviour before this existed). Members with
+# different max_concurrent values share the LOWEST of them.
+#
+# Note what this does NOT do: it stops them running at the same time, but it
+# can't make an idle backend release VRAM it's still holding. See
+# docs/configuration.md#sharing-one-gpu-between-endpoints-resource_group.
+# resource_group = "gpu0"
+
 # Optional: the model's context-window size, in tokens. Powers the
 # "27,725 / 40,960 tokens" budget readout in the chat header (and, later,
 # compaction). The OpenAI /v1/models row has no context-size field, so when

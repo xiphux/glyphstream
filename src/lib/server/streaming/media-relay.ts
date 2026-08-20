@@ -176,7 +176,7 @@ export function startMediaRelay(
 				// Hold a per-endpoint slot across the whole generation so a
 				// single-GPU backend serializes; emit `queued` while waiting.
 				try {
-					slot = await acquireEndpointSlot(params.endpoint.id, params.endpoint.maxConcurrent, {
+					slot = await acquireEndpointSlot(params.endpoint, {
 						signal: params.abortSignal,
 						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
 					});

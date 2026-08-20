@@ -190,7 +190,7 @@ export async function runCompaction(
 	// Hold a per-endpoint slot so compaction doesn't preempt a live
 	// generation on a single-GPU backend. Release once the upstream
 	// call settles — even on error.
-	const slot = await acquireEndpointSlot(plan.endpoint.id, plan.endpoint.maxConcurrent);
+	const slot = await acquireEndpointSlot(plan.endpoint);
 	try {
 		const resp = await chatCompletionSync(plan.endpoint, {
 			model: plan.upstreamId,

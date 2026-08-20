@@ -24,7 +24,7 @@ import { createConversation } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
 import {
 	acquireEndpointSlot,
-	getEndpointQueueDepth,
+	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
@@ -47,6 +47,10 @@ const soloEndpoint = (requestTimeoutSeconds = 120): LoadedEndpoint =>
 		apiKey: null,
 		requestTimeoutSeconds,
 		maxConcurrent: 1,
+		// The gate reads these two; without them the cast would hand it an
+		// undefined key and every acquire would share one anonymous gate.
+		resourceGroup: 'solo',
+		resourceGroupMaxConcurrent: 1,
 	}) as unknown as LoadedEndpoint;
 
 function seedFirstExchange() {
@@ -79,14 +83,14 @@ describe('title task — endpoint slot serialization', () => {
 		const taskModel = { endpoint: soloEndpoint(), upstreamId: 'title-model' };
 
 		// Occupy the single slot on the shared endpoint.
-		const held = await acquireEndpointSlot('solo', 1);
+		const held = await acquireEndpointSlot(soloEndpoint());
 
 		const titlePromise = generateConversationTitle(convId, userId, { taskModel });
 		// Give the title task a chance to run — it must be parked on the slot,
 		// NOT calling the task model yet.
 		await new Promise((r) => setTimeout(r, 10));
 		expect(mocks.chatCompletionSync).not.toHaveBeenCalled();
-		expect(getEndpointQueueDepth('solo')).toEqual({ active: 1, waiting: 1 });
+		expect(getResourceQueueDepth('solo')).toEqual({ active: 1, waiting: 1 });
 
 		// Free the slot → the title task acquires it, calls the model, completes.
 		held.release();
@@ -94,21 +98,21 @@ describe('title task — endpoint slot serialization', () => {
 		expect(mocks.chatCompletionSync).toHaveBeenCalledTimes(1);
 		expect(result?.title).toBe('A Tidy Title');
 		// Slot released again after the task model call.
-		expect(getEndpointQueueDepth('solo')).toEqual({ active: 0, waiting: 0 });
+		expect(getResourceQueueDepth('solo')).toEqual({ active: 0, waiting: 0 });
 	});
 
 	it('gives up (null) when the slot never frees within the request-timeout wait', async () => {
 		const { userId, convId } = seedFirstExchange();
 		// Tiny slot-wait bound (50ms) so the test doesn't hang on a held slot.
 		const taskModel = { endpoint: soloEndpoint(0.05), upstreamId: 'title-model' };
-		const held = await acquireEndpointSlot('solo', 1); // never released
+		const held = await acquireEndpointSlot(soloEndpoint()); // never released
 
 		const result = await generateConversationTitle(convId, userId, { taskModel });
 		// Couldn't get a slot in time → best-effort drop, no task-model call, and
 		// the abandoned waiter was spliced out of the queue.
 		expect(result).toBeNull();
 		expect(mocks.chatCompletionSync).not.toHaveBeenCalled();
-		expect(getEndpointQueueDepth('solo')).toEqual({ active: 1, waiting: 0 });
+		expect(getResourceQueueDepth('solo')).toEqual({ active: 1, waiting: 0 });
 		held.release();
 	});
 
@@ -120,6 +124,6 @@ describe('title task — endpoint slot serialization', () => {
 		const result = await generateConversationTitle(convId, userId, { taskModel });
 		// Failure is non-fatal (null), and the slot must not leak.
 		expect(result).toBeNull();
-		expect(getEndpointQueueDepth('solo')).toEqual({ active: 0, waiting: 0 });
+		expect(getResourceQueueDepth('solo')).toEqual({ active: 0, waiting: 0 });
 	});
 });

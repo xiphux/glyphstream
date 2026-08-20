@@ -92,6 +92,43 @@ the cloud providers left uncapped — so the VRAM limit applies only where
 it's needed. The bridge is a thin proxy (no model weights live in it), so
 running a second container for this is cheap.
 
+## Sharing one GPU between endpoints (`resource_group`)
+
+`max_concurrent` serializes traffic **within** an endpoint. It can't help when
+two _different_ endpoints sit on the same GPU — a `llama-server` for chat and a
+ComfyUI bridge for images, say. Each gate is doing its job and neither knows the
+other exists, so a chat turn and an image generation can still collide over the
+same VRAM.
+
+Give both endpoints the same `resource_group` and they share one queue:
+
+```toml
+[[endpoints]]
+id = "llama"
+base_url = "http://gpu-box:8081/v1"
+max_concurrent = 1
+resource_group = "gpu0"
+
+[[endpoints]]
+id = "bridge-local"
+base_url = "http://bridge-local:8080/v1"
+max_concurrent = 1
+resource_group = "gpu0"
+```
+
+The name is arbitrary — it just has to match. Omitted, an endpoint is its own
+group, which is exactly how things behaved before this existed. When members
+declare different `max_concurrent` values the group takes the **lowest**: the
+group is a claim about shared hardware, and the strictest member is the one
+describing it.
+
+**What this does and does not fix.** Grouping stops the two from generating at
+the same time. It does **not** make an idle backend hand back VRAM it is merely
+holding — `llama-server` keeps a model resident after a turn finishes, so an
+image generation dispatched straight afterwards can still OOM even though
+nothing is running. Freeing that memory needs the backend to be told to unload,
+which is a separate mechanism.
+
 ## Context window (`context_window`)
 
 A bar above the message composer shows a thread's running size against the

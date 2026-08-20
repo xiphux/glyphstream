@@ -1,5 +1,5 @@
 /**
- * Per-endpoint concurrency gate.
+ * Per-resource concurrency gate.
  *
  * A generation against an endpoint must `acquireEndpointSlot` before it
  * touches the upstream, and `release` when it fully settles. While `active`
@@ -15,14 +15,20 @@
  * operator can approximate with a high `max_concurrent`) makes the fast path
  * always win, turning the gate into a zero-overhead pass-through.
  *
- * Keyed by endpoint id (string). A single backend that hot-swaps models
- * still shares one VRAM pool, so the gate is intentionally endpoint-wide
- * rather than per-(endpoint, model) — see ROADMAP / the Multi-model plan.
+ * Keyed by RESOURCE GROUP (a string), which defaults to the endpoint's id. A
+ * single backend that hot-swaps models still shares one VRAM pool, so the gate
+ * is intentionally endpoint-wide rather than per-(endpoint, model) — and by the
+ * same reasoning, two endpoints on one GPU (a llama.cpp server and a
+ * ComfyUI-bridging endpoint, say) share one gate when the operator names them
+ * as one `resource_group`. Serializing is all this does: it stops them running
+ * at once, but cannot make one of them release VRAM it is merely holding.
  *
  * Module-level state is fine for a single Node process; multi-replica
  * deployments would need a shared store, which is a v2 concern (same caveat
  * as the in-flight registry).
  */
+
+import type { LoadedEndpoint } from './config';
 
 interface Waiter {
 	/** Grant the slot — resolves the caller's pending promise. */
@@ -44,15 +50,15 @@ interface Gate {
 
 const gates = new Map<string, Gate>();
 
-function getGate(endpointId: string, max: number): Gate {
-	const existing = gates.get(endpointId);
+function getGate(resourceGroup: string, max: number): Gate {
+	const existing = gates.get(resourceGroup);
 	if (existing) {
 		// Reflect the latest configured cap (config could have reloaded).
 		existing.max = max;
 		return existing;
 	}
 	const gate: Gate = { active: 0, max, waiters: [] };
-	gates.set(endpointId, gate);
+	gates.set(resourceGroup, gate);
 	return gate;
 }
 
@@ -119,7 +125,8 @@ function abortError(): Error {
 }
 
 /**
- * Acquire a slot on `endpointId`, capped at `max` concurrent. Resolves
+ * Acquire a slot on the endpoint's resource group, capped at that group's
+ * concurrency. Resolves
  * immediately when under capacity, otherwise queues FIFO and resolves once a
  * slot frees. Pass `endpoint.maxConcurrent` for `max`.
  *
@@ -133,12 +140,17 @@ function abortError(): Error {
  * HTTP 499. A new caller should pick the matching option for its medium.
  */
 export function acquireEndpointSlot(
-	endpointId: string,
-	max: number,
+	endpoint: LoadedEndpoint,
 	opts: AcquireOptions = {},
 ): Promise<EndpointSlot> {
 	const { signal, onQueued } = opts;
-	const gate = getGate(endpointId, max);
+	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
+	// didn't opt into a group are the same string, so this is the previous
+	// behaviour exactly. Taking the endpoint rather than `(id, max)` is
+	// deliberate: passing the id by hand is how a caller would silently opt out
+	// of its own group, and the two values have to come from the same place to
+	// stay consistent.
+	const gate = getGate(endpoint.resourceGroup, endpoint.resourceGroupMaxConcurrent);
 
 	if (signal?.aborted) return Promise.reject(abortError());
 
@@ -181,8 +193,8 @@ export function acquireEndpointSlot(
  *  test seam for the queue semantics). The `queued` event's `ahead` value is
  *  computed inline in acquireEndpointSlot, not from this. Returns zeros for an
  *  endpoint never seen. */
-export function getEndpointQueueDepth(endpointId: string): { active: number; waiting: number } {
-	const gate = gates.get(endpointId);
+export function getResourceQueueDepth(resourceGroup: string): { active: number; waiting: number } {
+	const gate = gates.get(resourceGroup);
 	if (!gate) return { active: 0, waiting: 0 };
 	return { active: gate.active, waiting: gate.waiters.length };
 }

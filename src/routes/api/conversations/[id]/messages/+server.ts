@@ -740,7 +740,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// always requests ?stream=1 — but a latent hang otherwise.)
 		let syncSlot;
 		try {
-			syncSlot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
+			syncSlot = await acquireEndpointSlot(endpoint, {
 				signal: inFlight.controller.signal,
 			});
 		} catch (e) {

@@ -31,7 +31,7 @@ import {
 import { memories } from '$lib/server/db/schema';
 
 const MODEL = {
-	endpoint: { id: 'gpu', maxConcurrent: 1 },
+	endpoint: { id: 'gpu', maxConcurrent: 1, resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 },
 	upstreamId: 'm',
 	maxTokens: 2000,
 	temperature: 0.2,
@@ -111,7 +111,9 @@ describe('runDreamSweep', () => {
 		expect(rowOf(b.id).deletedAt).not.toBeNull();
 		expect(rowOf(b.id).superseded).toBe(a.id);
 		// Slot acquired on the model's endpoint and released.
-		expect(acquireMock).toHaveBeenCalledWith('gpu', 1);
+		expect(acquireMock).toHaveBeenCalledWith(
+			expect.objectContaining({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 }),
+		);
 		expect(releaseSpy).toHaveBeenCalled();
 	});
 

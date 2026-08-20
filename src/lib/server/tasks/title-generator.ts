@@ -179,7 +179,7 @@ async function callTaskModel(
 	// best-effort: if it can't get a slot within one request-timeout, drop it and
 	// keep the fallback title. AbortSignal.timeout also splices the waiter out of
 	// the queue on expiry.
-	const slot = await acquireEndpointSlot(endpoint.id, endpoint.maxConcurrent, {
+	const slot = await acquireEndpointSlot(endpoint, {
 		signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 	});
 	try {

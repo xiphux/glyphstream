@@ -1211,3 +1211,83 @@ describe('loadVisionConfig', () => {
 		}
 	});
 });
+
+describe('resource_group', () => {
+	it('defaults each endpoint to its own group, preserving prior behaviour', () => {
+		const eps = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "a"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 2
+
+[[endpoints]]
+id = "b"
+base_url = "http://localhost:8082/v1"
+max_concurrent = 3
+			`),
+		);
+		expect(eps.map((e) => [e.id, e.resourceGroup, e.resourceGroupMaxConcurrent])).toEqual([
+			['a', 'a', 2],
+			['b', 'b', 3],
+		]);
+	});
+
+	it("gives members of a group one shared cap: the strictest member's", () => {
+		// A group is a claim about shared hardware, so the member that says it can
+		// only run one thing is describing that hardware. Taking the max instead
+		// would let the permissive member oversubscribe the GPU it shares.
+		const eps = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "llama"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 4
+resource_group = "gpu0"
+
+[[endpoints]]
+id = "bridge"
+base_url = "http://localhost:8082/v1"
+max_concurrent = 1
+resource_group = "gpu0"
+			`),
+		);
+		expect(eps.map((e) => e.resourceGroupMaxConcurrent)).toEqual([1, 1]);
+		// Each endpoint's OWN cap is untouched — the group cap is a separate fact.
+		expect(eps.map((e) => e.maxConcurrent)).toEqual([4, 1]);
+	});
+
+	it('resolves a group whose members appear in any order', () => {
+		// The strict member comes second here; a single-pass parse would have
+		// already emitted the first endpoint with the wrong cap.
+		const eps = loadEndpoints(
+			writeConfig(`
+[[endpoints]]
+id = "first"
+base_url = "http://localhost:8081/v1"
+max_concurrent = 8
+resource_group = "gpu0"
+
+[[endpoints]]
+id = "second"
+base_url = "http://localhost:8082/v1"
+max_concurrent = 2
+resource_group = "gpu0"
+			`),
+		);
+		expect(eps.map((e) => e.resourceGroupMaxConcurrent)).toEqual([2, 2]);
+	});
+
+	it('rejects a non-string resource_group', () => {
+		expect(() =>
+			loadEndpoints(
+				writeConfig(`
+[[endpoints]]
+id = "a"
+base_url = "http://localhost:8081/v1"
+resource_group = 3
+			`),
+			),
+		).toThrow(ConfigError);
+	});
+});

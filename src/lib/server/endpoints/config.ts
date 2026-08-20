@@ -65,6 +65,7 @@ interface RawEndpoint {
 	group_by?: unknown;
 	supports_tools?: unknown;
 	max_concurrent?: unknown;
+	resource_group?: unknown;
 	context_window?: unknown;
 	model_context_windows?: unknown;
 	model_prompt_styles?: unknown;
@@ -102,6 +103,36 @@ export interface LoadedEndpoint {
 	 * endpoint that handles its own concurrency.
 	 */
 	maxConcurrent: number;
+	/**
+	 * Endpoints that contend for the same physical resource — in practice one
+	 * GPU's VRAM — share a name here, and then share one concurrency gate
+	 * instead of one each. Defaults to the endpoint's own id, which makes every
+	 * endpoint its own group and preserves the pre-existing behaviour exactly.
+	 *
+	 * The case this exists for: a llama.cpp endpoint and a ComfyUI-bridging
+	 * endpoint on one box. Their per-endpoint gates each correctly serialize
+	 * their own traffic and know nothing of each other, so a chat turn and an
+	 * image generation can still collide over the same VRAM. `concurrency.ts`
+	 * already keys its gates by an arbitrary string and says in its own header
+	 * that the gate is endpoint-wide *because* a backend that hot-swaps models
+	 * shares one pool — this widens that reasoning from one endpoint to one
+	 * piece of hardware.
+	 */
+	resourceGroup: string;
+	/**
+	 * The gate capacity for `resourceGroup` — the MINIMUM `maxConcurrent` across
+	 * its members, resolved once at config load so every member passes the same
+	 * number to the same gate.
+	 *
+	 * Minimum because the group can only sustain what its most constrained
+	 * member can: a group is a claim about shared hardware, and the endpoint
+	 * that says it can only run one thing is describing that hardware. It does
+	 * mean a permissive member is held to the strict one's limit even when the
+	 * strict one is idle — the alternative (per-endpoint gate AND group gate)
+	 * buys that back for a configuration that would be strange to write, since
+	 * members of a group are by definition sharing the constraint.
+	 */
+	resourceGroupMaxConcurrent: number;
 	/**
 	 * Endpoint-level fallback for a model's context-window size, in tokens.
 	 * The OpenAI `/v1/models` row carries no context-size field, so for
@@ -229,7 +260,32 @@ export function loadEndpoints(path = configPath()): LoadedEndpoint[] {
 		seenIds.add(ep.id);
 		endpoints.push(ep);
 	}
+	resolveResourceGroups(endpoints);
 	return endpoints;
+}
+
+/**
+ * Fill in each endpoint's `resourceGroupMaxConcurrent` with the minimum
+ * `maxConcurrent` across its group.
+ *
+ * A second pass because the answer isn't knowable while parsing one endpoint —
+ * a group's capacity depends on members that may appear later in the file.
+ * Mutates in place: these objects have just been built here and aren't shared
+ * yet, and threading the value through `validateEndpoint`'s return would mean
+ * constructing every endpoint twice.
+ */
+function resolveResourceGroups(endpoints: LoadedEndpoint[]): void {
+	const capByGroup = new Map<string, number>();
+	for (const ep of endpoints) {
+		const seen = capByGroup.get(ep.resourceGroup);
+		capByGroup.set(
+			ep.resourceGroup,
+			seen === undefined ? ep.maxConcurrent : Math.min(seen, ep.maxConcurrent),
+		);
+	}
+	for (const ep of endpoints) {
+		ep.resourceGroupMaxConcurrent = capByGroup.get(ep.resourceGroup) ?? ep.maxConcurrent;
+	}
 }
 
 /**
@@ -1040,6 +1096,9 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 			? false
 			: requireBoolean(raw.supports_tools, 'supports_tools', at);
 
+	const resourceGroup =
+		raw.resource_group === undefined ? id : requireString(raw.resource_group, 'resource_group', at);
+
 	let maxConcurrent = DEFAULT_MAX_CONCURRENT;
 	if (raw.max_concurrent !== undefined) {
 		maxConcurrent = requireNumber(raw.max_concurrent, 'max_concurrent', at, { min: 1, max: 1024 });
@@ -1126,6 +1185,10 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		groupBy,
 		supportsTools,
 		maxConcurrent,
+		resourceGroup,
+		// Placeholder: the real value needs every member of the group, so it's
+		// resolved by `resolveResourceGroups` once the whole list is parsed.
+		resourceGroupMaxConcurrent: maxConcurrent,
 		contextWindow,
 		modelContextWindows,
 		modelPromptStyles,
