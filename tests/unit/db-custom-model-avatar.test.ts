@@ -360,3 +360,89 @@ describe('conversation avatars', () => {
 		expect(findPurgeCandidates(Date.now() + 1).map((c) => c.id)).toContain(m);
 	});
 });
+
+/**
+ * The delete-conversation dialog's count and the delete itself have to agree.
+ * They're computed by the same orphan rule but at different moments — the count
+ * before the avatar reference is released, the delete after — so an avatar is
+ * exactly the thing that can put them out of step.
+ */
+describe('conversation avatars — the delete dialog counts what delete removes', () => {
+	function seedWithImages(userId: string, n: number) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'image',
+		});
+		const ids: string[] = [];
+		let parent: string | null = null;
+		for (let i = 0; i < n; i++) {
+			const msg = appendMessage({
+				conversationId: conv.id,
+				parentMessageId: parent,
+				role: 'assistant',
+				parts: [{ type: 'text', text: `image ${i}` }],
+			});
+			parent = msg.id;
+			const { id } = insertMedia({
+				userId,
+				storagePath: `ab/cd/${Math.random().toString(36).slice(2)}.png`,
+				contentType: 'image/png',
+				byteSize: 2048,
+				kind: 'image',
+				origin: 'generated',
+				sourceEndpointId: 'bridge',
+				sourceModel: 'comfyui/sdxl',
+				promptExcerpt: 'a portrait',
+			});
+			linkMessageMedia(msg.id, id);
+			ids.push(id);
+		}
+		return { conv, ids };
+	}
+
+	it('counts a portrait that is also the avatar', () => {
+		// The reported symptom: an avatar-only conversation offered to delete
+		// nothing, so the portrait outlived the conversation in the gallery.
+		const u = seedUser();
+		const { conv, ids } = seedWithImages(u.id, 1);
+		setConversationAvatar(conv.id, u.id, ids[0]);
+
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({ images: 1, videos: 0 });
+	});
+
+	it('does not promise fewer than it deletes', () => {
+		// The worse half of the same bug: with a second image present the dialog
+		// said "1" while the delete took both. Silent over-deletion — nothing
+		// surfaces it until the gallery is short an image.
+		const u = seedUser();
+		const { conv, ids } = seedWithImages(u.id, 2);
+		setConversationAvatar(conv.id, u.id, ids[0]);
+
+		const promised = countOrphanMediaInConversation(conv.id, u.id);
+		const { toUnlink } = deleteConversation(conv.id, u.id, { deleteMedia: true });
+
+		expect(promised).toEqual({ images: 2, videos: 0 });
+		expect(toUnlink).toHaveLength(promised.images + promised.videos);
+	});
+
+	it('leaves an avatar drawn in ANOTHER conversation alone', () => {
+		// Not an orphan of this conversation: its message link lives elsewhere, so
+		// deleting this one must neither count nor remove it.
+		const u = seedUser();
+		const { conv: other, ids } = seedWithImages(u.id, 1);
+		const conv = createConversation({
+			userId: u.id,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		setConversationAvatar(conv.id, u.id, ids[0]);
+
+		expect(countOrphanMediaInConversation(conv.id, u.id)).toEqual({ images: 0, videos: 0 });
+		deleteConversation(conv.id, u.id, { deleteMedia: true });
+		expect(mediaRow(ids[0])?.hardDeletedAt).toBeNull();
+		expect(countOrphanMediaInConversation(other.id, u.id)).toEqual({ images: 1, videos: 0 });
+	});
+});

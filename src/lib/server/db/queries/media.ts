@@ -1071,7 +1071,24 @@ export function countOrphanMediaInConversation(
 		.where(and(eq(messages.conversationId, conversationId), eq(media.userId, userId)))
 		.all();
 
-	const orphans = collectOrphanGeneratedMediaIds(rows);
+	// A conversation's own avatar holds a reference that deleting the
+	// conversation RELEASES — `deleteConversation` unlinks it before this same
+	// orphan rule runs. Model that release here or the two disagree: a portrait
+	// drawn in this conversation reads as shared (so the dialog offers to delete
+	// one fewer than it will), and in the avatar-only case the dialog offers
+	// nothing at all while the delete would still have taken it. Deducting the
+	// pending release makes the number the dialog shows the number the delete
+	// removes.
+	const avatar = db
+		.select({ mediaId: conversations.avatarMediaId })
+		.from(conversations)
+		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+		.get();
+	const adjusted = avatar?.mediaId
+		? rows.map((r) => (r.mediaId === avatar.mediaId ? { ...r, refCount: r.refCount - 1 } : r))
+		: rows;
+
+	const orphans = collectOrphanGeneratedMediaIds(adjusted);
 
 	// First-seen kind per media, to split the orphan set into image/video.
 	// `kind: 'file'` rows (xlsx, csv, code-interpreter outputs, ...) are
