@@ -58,6 +58,7 @@ describe('ChatHeader — avatar action', () => {
 		busy: false,
 		onDescribe: vi.fn(),
 		onGenerate: vi.fn(),
+		onViewFullSize: vi.fn(),
 	};
 
 	it('offers the avatar menu when the page supplies its state', () => {

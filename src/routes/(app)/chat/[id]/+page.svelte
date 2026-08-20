@@ -1908,6 +1908,13 @@
 						busy: generating || !!avatarStatus,
 						onDescribe: () => void beginAvatarDescription(),
 						onGenerate: openAvatarDraw,
+						// Reuses the same lightbox any generated image opens, so the
+						// avatar is inspectable from the one place it always is rather
+						// than by scrolling back to the bubble that produced it.
+						onViewFullSize: () => {
+							if (data.assistantAvatarMediaId)
+								void openImageInLightbox(data.assistantAvatarMediaId);
+						},
 					}
 				: undefined}
 		/>

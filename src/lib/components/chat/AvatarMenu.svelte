@@ -1,24 +1,33 @@
 <!--
-	The conversation-avatar menu, hung off the chat header.
+	The conversation's avatar, in the header, doubling as the menu that makes it.
 
-	One entry point for a two-step flow, which is why it's a menu and not two
-	buttons: step 1 asks the model to describe an image of itself, step 2 draws
-	the description. Keeping both here (rather than putting step 2 on a message)
-	means neither step clutters the thread, and the menu can say plainly that
-	step 2 works from the latest reply.
+	The avatar IS the trigger. It's a property of the conversation, not of any one
+	message, so it belongs in the conversation's identity row next to the title —
+	where every messaging app puts the other party's picture. That also makes the
+	control hard to miss without spending a corner on an icon whose meaning you'd
+	have to guess, and gives the empty state somewhere useful to live: a
+	placeholder in the shape of the thing it makes is a better invitation than a
+	sparkle floating on its own.
 
-	The gap between the steps is the point, not an implementation detail — you
-	read the description before spending a generation on it, and on a host where
-	the chat model and the image model share a GPU it puts real time between the
-	two calls.
+	Deliberately NOT a hover-revealed overlay on the avatar. Tailwind v4 wraps
+	`hover:` / `group-hover:` in `@media (hover: hover)`, so a control hidden by
+	`opacity-0` and revealed on group-hover is permanently invisible on touch
+	while keeping its hit area — see CLAUDE.md's `can-hover:` note and
+	`hover-reveal-touch-reachable.test.ts`. Click-opens-menu behaves the same on
+	both.
 
-	Step 2 opens the review dialog rather than drawing straight away — the reply
-	often needs trimming before it's a usable image prompt, and the model and
-	enhancer choices belong next to the prompt they apply to (see
+	One entry point for a two-step flow: step 1 asks the model to describe an
+	image of itself, step 2 draws the description. The gap between them is the
+	point, not an implementation detail — you read the description before
+	spending a generation on it, and on a host where the chat model and the image
+	model share a GPU it puts real time between the two calls.
+
+	Step 2 opens the review dialog rather than drawing straight away, and the
+	model + enhancer choices live there, beside the prompt they apply to (see
 	AvatarDrawDialog). This menu deliberately holds neither.
 
-	Presentational: every decision (which model, whether a source reply exists,
-	what the status says) arrives as a prop.
+	Presentational: every decision (whether a source reply exists, what the
+	status says) arrives as a prop.
 -->
 <script lang="ts">
 	import { Popover } from 'bits-ui';
@@ -29,8 +38,8 @@
 		 *  WHICH — choosing one belongs with the prompt in the draw dialog, where
 		 *  both are reviewed together — only whether step 2 can lead anywhere. */
 		hasImageModel: boolean;
-		/** The conversation's current avatar, shown so the menu reflects state
-		 *  rather than being a pair of blind buttons. */
+		/** The conversation's effective avatar (its own, else its preset's). Null
+		 *  renders the placeholder, which is what advertises the feature. */
 		avatarMediaId: string | null;
 		/** False when there's no assistant reply to draw from yet — step 2 is
 		 *  offered but disabled, so the sequence stays legible. */
@@ -46,6 +55,10 @@
 		busy: boolean;
 		onDescribe: () => void;
 		onGenerate: () => void;
+		/** Opens the avatar in the media lightbox. Offered here so the full-size
+		 *  view is reachable from the one place the avatar always is, instead of
+		 *  by scrolling back to find the bubble that produced it. */
+		onViewFullSize: () => void;
 	}
 
 	let {
@@ -57,59 +70,65 @@
 		busy,
 		onDescribe,
 		onGenerate,
+		onViewFullSize,
 	}: Props = $props();
+
+	const itemClass =
+		'w-full rounded-md border border-border px-3 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-50';
 </script>
 
 <Popover.Root>
 	<Popover.Trigger
 		aria-label="Avatar for this conversation"
-		title="Generate an avatar for this conversation"
-		class="flex size-8 shrink-0 items-center justify-center rounded-md text-fg-muted transition hover:bg-surface-sunken hover:text-fg-secondary data-[state=open]:bg-surface-sunken data-[state=open]:text-fg-secondary"
+		title="Avatar for this conversation"
+		class="shrink-0 rounded-full transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus"
 	>
-		<Sparkles size={15} strokeWidth={2.25} />
+		{#if avatarMediaId}
+			<img
+				src="/api/media/{avatarMediaId}/thumbnail"
+				alt=""
+				width="40"
+				height="40"
+				class="size-10 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
+			/>
+		{:else}
+			<span
+				class="flex size-10 items-center justify-center rounded-full border border-dashed border-border-strong text-fg-muted"
+			>
+				<Sparkles size={16} strokeWidth={2} />
+			</span>
+		{/if}
 	</Popover.Trigger>
 	<Popover.Portal>
 		<Popover.Content
 			sideOffset={6}
-			align="end"
+			align="start"
 			class="z-overlay w-72 rounded-md border border-border surface-glass gs-pop p-3 shadow-lg"
 		>
-			<div class="mb-2 flex items-center gap-2">
-				{#if avatarMediaId}
-					<img
-						src="/api/media/{avatarMediaId}/thumbnail"
-						alt=""
-						class="size-8 shrink-0 rounded-full object-cover ring-1 ring-black/10 dark:ring-white/15"
-					/>
-				{/if}
-				<p class="text-xs font-semibold uppercase tracking-wide text-fg-muted">
-					{avatarMediaId ? 'Conversation avatar' : 'No avatar yet'}
-				</p>
-			</div>
+			<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+				{avatarMediaId ? 'Conversation avatar' : 'No avatar yet'}
+			</p>
 
 			<ol class="space-y-2.5">
 				<li>
-					<button
-						type="button"
-						disabled={busy}
-						onclick={onDescribe}
-						class="w-full rounded-md border border-border px-3 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-50"
-					>
+					<!-- Popover.Close so the menu gets out of its own way: step 1 hands
+					     off to the composer and step 2 opens a modal, and neither is
+					     usable with this still covering it. -->
+					<Popover.Close disabled={busy} onclick={onDescribe} class={itemClass}>
 						1. Ask for a description
-					</button>
+					</Popover.Close>
 					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
 						Puts the request in the composer so you can edit it before sending.
 					</p>
 				</li>
 				<li>
-					<button
-						type="button"
+					<Popover.Close
 						disabled={busy || !hasSource || !hasImageModel}
 						onclick={onGenerate}
 						class="w-full rounded-md bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 					>
 						{alreadyDrawn ? '2. Draw it again' : '2. Draw the latest reply'}
-					</button>
+					</Popover.Close>
 					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
 						{#if !hasImageModel}
 							No image model is configured.
@@ -125,6 +144,12 @@
 					</p>
 				</li>
 			</ol>
+
+			{#if avatarMediaId}
+				<div class="mt-2.5 border-t border-border pt-2.5">
+					<Popover.Close onclick={onViewFullSize} class={itemClass}>View full size</Popover.Close>
+				</div>
+			{/if}
 
 			{#if status}
 				<p class="mt-2 border-t border-border pt-2 text-[11px] text-fg-secondary">{status}</p>

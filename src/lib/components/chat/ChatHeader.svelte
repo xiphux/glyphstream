@@ -30,10 +30,13 @@
 </script>
 
 <header class="flex items-center gap-3 px-4 py-3">
-	<h1 class="min-w-0 flex-1 truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
+	<!-- Avatar first: the conversation's identity reads picture-then-name, the
+	     order every messaging app uses, and it puts the control on the thing it
+	     controls rather than in a spare corner. -->
 	{#if avatar}
 		<AvatarMenu {...avatar} />
 	{/if}
+	<h1 class="min-w-0 flex-1 truncate text-sm font-semibold">{title ?? 'Untitled chat'}</h1>
 	{#if isPrivate}
 		<!-- Desktop only: on mobile the badge moves to the layout's top bar so the
 		     tiny-screen title gets the full row width (see the layout). -->

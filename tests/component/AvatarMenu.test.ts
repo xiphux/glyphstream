@@ -24,6 +24,7 @@ const base: ComponentProps<typeof AvatarMenu> = {
 	busy: false,
 	onDescribe: vi.fn(),
 	onGenerate: vi.fn(),
+	onViewFullSize: vi.fn(),
 };
 
 /** The menu content is portaled, so open it and query the whole document. */
@@ -37,16 +38,46 @@ async function open(props: Partial<ComponentProps<typeof AvatarMenu>> = {}) {
 const drawButton = () => screen.getByRole('button', { name: /^2\./ });
 
 describe('AvatarMenu', () => {
-	it('runs each step through its own callback', async () => {
+	// Each step gets its own open() because acting DISMISSES the menu: step 1
+	// hands off to the composer and step 2 opens a modal, and neither is usable
+	// with the popover still covering it.
+	it('runs step 1 and gets out of the way', async () => {
 		const onDescribe = vi.fn();
-		const onGenerate = vi.fn();
-		const user = await open({ onDescribe, onGenerate });
+		const user = await open({ onDescribe });
 
 		await user.click(screen.getByRole('button', { name: '1. Ask for a description' }));
 		expect(onDescribe).toHaveBeenCalledOnce();
+		expect(screen.queryByRole('button', { name: /^1\./ })).not.toBeInTheDocument();
+	});
+
+	it('runs step 2 and gets out of the way', async () => {
+		const onGenerate = vi.fn();
+		const user = await open({ onGenerate });
 
 		await user.click(drawButton());
 		expect(onGenerate).toHaveBeenCalledOnce();
+		expect(screen.queryByRole('button', { name: /^2\./ })).not.toBeInTheDocument();
+	});
+
+	it('offers the full-size view only once there is an avatar to view', async () => {
+		const onViewFullSize = vi.fn();
+		const user = await open({ avatarMediaId: 'media-1', onViewFullSize });
+
+		await user.click(screen.getByRole('button', { name: 'View full size' }));
+		expect(onViewFullSize).toHaveBeenCalledOnce();
+	});
+
+	it('hides the full-size view when there is no avatar', async () => {
+		await open({ avatarMediaId: null });
+		expect(screen.queryByRole('button', { name: 'View full size' })).not.toBeInTheDocument();
+	});
+
+	it('shows the avatar itself as the trigger', async () => {
+		// The trigger IS the avatar — that's what puts the control on the thing it
+		// controls instead of in a corner.
+		render(AvatarMenu, { props: { ...base, avatarMediaId: 'media-1' } });
+		const trigger = screen.getByRole('button', { name: 'Avatar for this conversation' });
+		expect(trigger.querySelector('img')).toHaveAttribute('src', '/api/media/media-1/thumbnail');
 	});
 
 	it('blocks and explains step 2 before there is anything to draw', async () => {
@@ -69,10 +100,14 @@ describe('AvatarMenu', () => {
 		expect(screen.getByText(/Same description again/)).toBeInTheDocument();
 	});
 
-	it('reports the conversation avatar it already has', async () => {
+	it('names the state it is in', async () => {
 		await open({ avatarMediaId: 'media-1' });
 		expect(screen.getByText('Conversation avatar')).toBeInTheDocument();
-		expect(document.querySelector('img[src="/api/media/media-1/thumbnail"]')).toBeInTheDocument();
+	});
+
+	it('says so when there is no avatar yet', async () => {
+		await open({ avatarMediaId: null });
+		expect(screen.getByText('No avatar yet')).toBeInTheDocument();
 	});
 
 	it('stands both steps down while something is in flight', async () => {
