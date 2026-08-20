@@ -99,6 +99,7 @@ const endpoint = (maxConcurrent = Infinity): LoadedEndpoint => ({
 	// `resource_group` is absent.
 	resourceGroup: 'bridge',
 	resourceGroupMaxConcurrent: maxConcurrent,
+	release: null,
 	displayName: 'Bridge',
 	baseUrl: 'http://localhost/v1',
 	apiKey: null,

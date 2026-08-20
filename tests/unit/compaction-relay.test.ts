@@ -72,6 +72,7 @@ const endpoint: LoadedEndpoint = {
 	// `resource_group` is absent.
 	resourceGroup: 'bridge',
 	resourceGroupMaxConcurrent: Infinity,
+	release: null,
 	contextWindow: null,
 	modelContextWindows: {},
 	modelPromptStyles: {},
@@ -318,6 +319,7 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			resourceGroup: 'compaction-gated',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 		const plan = {
 			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
@@ -364,6 +366,7 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			resourceGroup: 'compaction-error-gated',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 		const plan = {
 			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
@@ -388,6 +391,7 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			resourceGroup: 'compaction-abort-gated',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 		const plan = {
 			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),

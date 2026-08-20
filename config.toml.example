@@ -239,6 +239,20 @@
 # docs/configuration.md#sharing-one-gpu-between-endpoints-resource_group.
 # resource_group = "gpu0"
 
+# Optional: how this endpoint gives up what its resource_group shares. Run
+# BEFORE the group's slot is handed to a DIFFERENT member — so a chat model is
+# evicted when an image generation is next, but not when the next request is
+# another chat turn (which would pay a full model reload for nothing).
+#
+#   "llama-cpp-router"  a llama-server in router mode: lists loaded models,
+#                       waits for any mid-request, unloads each, and waits until
+#                       they are actually gone (the unload call returns success
+#                       before it has finished).
+#
+# Most endpoints need nothing here — ComfyUI already unloads after each
+# generation. Failure is non-fatal: it's logged and the generation proceeds.
+# release = "llama-cpp-router"
+
 # Optional: the model's context-window size, in tokens. Powers the
 # "27,725 / 40,960 tokens" budget readout in the chat header (and, later,
 # compaction). The OpenAI /v1/models row has no context-size field, so when

@@ -122,12 +122,49 @@ declare different `max_concurrent` values the group takes the **lowest**: the
 group is a claim about shared hardware, and the strictest member is the one
 describing it.
 
-**What this does and does not fix.** Grouping stops the two from generating at
-the same time. It does **not** make an idle backend hand back VRAM it is merely
-holding — `llama-server` keeps a model resident after a turn finishes, so an
-image generation dispatched straight afterwards can still OOM even though
-nothing is running. Freeing that memory needs the backend to be told to unload,
-which is a separate mechanism.
+Grouping stops the two from generating at the same time. On its own that is
+**not enough**: `llama-server` keeps a model resident after a turn finishes, so
+an image generation dispatched into an idle group can still OOM on VRAM nothing
+is using. Reclaiming it needs the backend to be told to let go — see `release`.
+
+## Freeing the resource on handover (`release`)
+
+`release` names how an endpoint gives up what its group shares. GlyphStream runs
+it **before** handing the group's slot to a _different_ member — so a chat model
+is evicted when an image generation is next, but not when the next request is
+another chat turn (which would pay a full model reload for nothing).
+
+```toml
+[[endpoints]]
+id = "llama"
+base_url = "http://gpu-box:8081/v1"
+max_concurrent = 1
+resource_group = "gpu0"
+release = "llama-cpp-router"
+```
+
+Only one strategy exists today:
+
+- **`llama-cpp-router`** — for a `llama-server` in router mode (`--models-dir` /
+  `--models-preset`). It lists loaded models, waits for any that are mid-request,
+  unloads each, and waits until they're actually gone.
+
+Most endpoints need nothing here. ComfyUI, for instance, already unloads after
+each generation, so only the side that holds a model resident declares a
+`release`.
+
+**Notes on the llama.cpp strategy specifically.** Its management API lives at the
+server root (`/models`, `/models/unload`), not under `/v1` — GlyphStream derives
+that from `base_url` by dropping a trailing `/v1`, so no extra configuration is
+needed. `POST /models/unload` answers `{"success": true}` _before_ the unload has
+finished, so GlyphStream polls until the model reports `unloaded` rather than
+trusting the response. And a model that is serving a request is left alone until
+it finishes: it can't be GlyphStream's own traffic (the group is idle by then),
+so it's another client, and it's queued behind rather than interrupted.
+
+Failure here is **non-fatal**: if the backend can't be reached or won't let go,
+the warning is logged and the generation proceeds — which is exactly what would
+have happened without any of this.
 
 ## Context window (`context_window`)
 

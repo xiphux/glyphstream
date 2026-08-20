@@ -1855,6 +1855,7 @@ const fakeEndpoint = {
 	// `resource_group` is absent.
 	resourceGroup: 'bridge',
 	resourceGroupMaxConcurrent: 4,
+	release: null,
 	contextWindow: null,
 	modelContextWindows: {},
 	modelPromptStyles: {},

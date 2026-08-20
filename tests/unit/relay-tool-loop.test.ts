@@ -83,6 +83,7 @@ const endpoint: LoadedEndpoint = {
 	// `resource_group` is absent.
 	resourceGroup: 'bridge',
 	resourceGroupMaxConcurrent: Infinity,
+	release: null,
 	contextWindow: null,
 	modelContextWindows: {},
 	modelPromptStyles: {},
@@ -755,6 +756,7 @@ describe('per-endpoint concurrency gate', () => {
 			resourceGroup: 'gated',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 
 		// Occupy the endpoint's only slot so the relay must wait in line.
@@ -810,6 +812,7 @@ describe('per-endpoint concurrency gate', () => {
 			resourceGroup: 'gated',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 		const held = await acquireEndpointSlot(gated);
 		const abort = new AbortController();
@@ -911,6 +914,7 @@ describe('per-endpoint concurrency gate', () => {
 			resourceGroup: 'solo',
 			maxConcurrent: 1,
 			resourceGroupMaxConcurrent: 1,
+			release: null,
 		};
 		const { conv, user, userId } = seedConversationWithUserMessage();
 

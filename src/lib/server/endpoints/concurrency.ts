@@ -29,6 +29,7 @@
  */
 
 import type { LoadedEndpoint } from './config';
+import { releaseEndpointResources } from './release';
 
 interface Waiter {
 	/** Grant the slot — resolves the caller's pending promise. */
@@ -40,12 +41,22 @@ interface Waiter {
 	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
 	 *  initial onQueued. */
 	notifyAhead?: (ahead: number) => void;
+	/** Who is waiting — the grant needs it to decide whether taking the slot is
+	 *  a handover between different members of the group. */
+	endpoint: LoadedEndpoint;
 }
 
 interface Gate {
 	active: number;
 	max: number;
 	waiters: Waiter[];
+	/**
+	 * The last member of this group to be granted a slot. Kept after release so
+	 * a handover can be recognised while the group sits idle — which is exactly
+	 * when it matters, since the resident model that needs evicting is held by
+	 * an endpoint that has already finished.
+	 */
+	lastHolder: LoadedEndpoint | null;
 }
 
 const gates = new Map<string, Gate>();
@@ -57,7 +68,7 @@ function getGate(resourceGroup: string, max: number): Gate {
 		existing.max = max;
 		return existing;
 	}
-	const gate: Gate = { active: 0, max, waiters: [] };
+	const gate: Gate = { active: 0, max, waiters: [], lastHolder: null };
 	gates.set(resourceGroup, gate);
 	return gate;
 }
@@ -80,6 +91,32 @@ export interface AcquireOptions {
 	 *  it emits lets the client count "N ahead" down. Not called on the
 	 *  immediate-grant fast path. */
 	onQueued?: (info: { ahead: number }) => void;
+}
+
+/**
+ * Take the slot for `endpoint`, freeing the previous holder's resource first
+ * when this is a handover between different members of the group.
+ *
+ * Three conditions, all necessary:
+ *  - the group is otherwise IDLE (`active === 1` — the caller's own increment).
+ *    With a cap above 1 another member could still be generating, and evicting
+ *    a model out from under it is worse than the contention we're avoiding.
+ *  - the previous holder is a DIFFERENT endpoint. Handing the slot back to the
+ *    same one must not evict; otherwise every turn pays a full model reload,
+ *    which on a large model is most of the wall clock.
+ *  - that endpoint knows how to let go. Most don't need to — ComfyUI already
+ *    unloads after each generation — and `release: null` keeps this a no-op.
+ *
+ * Done on GRANT rather than on release: releasing eagerly when a generation
+ * finishes would evict a model the very next request probably wants.
+ */
+async function takeSlot(gate: Gate, endpoint: LoadedEndpoint, signal?: AbortSignal) {
+	const previous = gate.lastHolder;
+	gate.lastHolder = endpoint;
+	if (gate.active === 1 && previous && previous.id !== endpoint.id && previous.release) {
+		await releaseEndpointResources(previous, signal);
+	}
+	return makeSlot(gate);
 }
 
 function makeSlot(gate: Gate): EndpointSlot {
@@ -156,8 +193,11 @@ export function acquireEndpointSlot(
 
 	// Fast path: capacity available (always true for an effectively-unlimited max).
 	if (gate.active < gate.max) {
+		// Increment BEFORE any await in `takeSlot`: the slot is ours from this
+		// moment, so a concurrent acquire queues behind us rather than slipping in
+		// while we're freeing the resource.
 		gate.active++;
-		return Promise.resolve(makeSlot(gate));
+		return takeSlot(gate, endpoint, signal);
 	}
 
 	// Slow path: enqueue. Report how many are already waiting before pushing.
@@ -166,11 +206,14 @@ export function acquireEndpointSlot(
 
 	return new Promise<EndpointSlot>((resolve, reject) => {
 		const waiter: Waiter = {
-			grant: () => resolve(makeSlot(gate)),
+			// `resolve` adopts the promise, so a waiter granted during a handover
+			// stays pending until the previous holder has actually let go.
+			grant: () => resolve(takeSlot(gate, endpoint, signal)),
 			reject,
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.
 			notifyAhead: onQueued ? (ahead) => onQueued({ ahead }) : undefined,
+			endpoint,
 		};
 		if (signal) {
 			const onAbort = () => {

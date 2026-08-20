@@ -23,6 +23,7 @@ function ep(overrides: Partial<LoadedEndpoint> = {}): LoadedEndpoint {
 		// `resource_group` is absent.
 		resourceGroup: 'bridge',
 		resourceGroupMaxConcurrent: Infinity,
+		release: null,
 		contextWindow: null,
 		modelContextWindows: {},
 		modelPromptStyles: {},

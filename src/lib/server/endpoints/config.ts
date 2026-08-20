@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { parse as parseToml } from 'smol-toml';
 import { configPath } from '../env';
 import { parseModelId } from './model-id';
+import { isReleaseStrategy, RELEASE_STRATEGIES, type ReleaseStrategy } from './release';
 import { normalizeStyle, PROMPT_STYLES } from '../streaming/prompt-styles';
 import { normalizeVideoStyle, VIDEO_PROMPT_STYLES } from '../streaming/prompt-styles-video';
 
@@ -66,6 +67,7 @@ interface RawEndpoint {
 	supports_tools?: unknown;
 	max_concurrent?: unknown;
 	resource_group?: unknown;
+	release?: unknown;
 	context_window?: unknown;
 	model_context_windows?: unknown;
 	model_prompt_styles?: unknown;
@@ -133,6 +135,19 @@ export interface LoadedEndpoint {
 	 * members of a group are by definition sharing the constraint.
 	 */
 	resourceGroupMaxConcurrent: number;
+	/**
+	 * How to make this endpoint let go of the resource its group shares, run
+	 * before the group's slot is handed to a DIFFERENT member. Null (the
+	 * default) means it has no way to, or needs none — ComfyUI already unloads
+	 * after every generation, so only the endpoint that holds a model resident
+	 * needs this.
+	 *
+	 * Grouping alone stops two endpoints generating at once; it can't reclaim
+	 * memory an idle backend is still holding, which is the case that actually
+	 * OOMs. See `endpoints/release.ts` for why this is a named strategy rather
+	 * than a configurable webhook.
+	 */
+	release: ReleaseStrategy | null;
 	/**
 	 * Endpoint-level fallback for a model's context-window size, in tokens.
 	 * The OpenAI `/v1/models` row carries no context-size field, so for
@@ -1099,6 +1114,16 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 	const resourceGroup =
 		raw.resource_group === undefined ? id : requireString(raw.resource_group, 'resource_group', at);
 
+	let release: ReleaseStrategy | null = null;
+	if (raw.release !== undefined) {
+		if (!isReleaseStrategy(raw.release)) {
+			throw new ConfigError(
+				`${at}: 'release' must be one of ${RELEASE_STRATEGIES.map((r) => `"${r}"`).join(', ')}`,
+			);
+		}
+		release = raw.release;
+	}
+
 	let maxConcurrent = DEFAULT_MAX_CONCURRENT;
 	if (raw.max_concurrent !== undefined) {
 		maxConcurrent = requireNumber(raw.max_concurrent, 'max_concurrent', at, { min: 1, max: 1024 });
@@ -1189,6 +1214,7 @@ function validateEndpoint(raw: RawEndpoint, index: number, path: string): Loaded
 		// Placeholder: the real value needs every member of the group, so it's
 		// resolved by `resolveResourceGroups` once the whole list is parsed.
 		resourceGroupMaxConcurrent: maxConcurrent,
+		release,
 		contextWindow,
 		modelContextWindows,
 		modelPromptStyles,

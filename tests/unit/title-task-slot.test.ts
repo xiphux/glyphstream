@@ -51,6 +51,7 @@ const soloEndpoint = (requestTimeoutSeconds = 120): LoadedEndpoint =>
 		// undefined key and every acquire would share one anonymous gate.
 		resourceGroup: 'solo',
 		resourceGroupMaxConcurrent: 1,
+		release: null,
 	}) as unknown as LoadedEndpoint;
 
 function seedFirstExchange() {

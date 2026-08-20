@@ -8,6 +8,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// The gate calls this when a group changes hands; stubbing it lets the ordering
+// be observed without a backend, and lets a slow release be simulated.
+const releaseMock = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
 	getResourceQueueDepth,
@@ -18,7 +23,12 @@ import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 /** The gate reads only the group key and its cap, so the rest is filler.
  *  `group` defaults to the id — what the loader resolves for an endpoint that
  *  didn't opt into a resource group. */
-function ep(id: string, max: number, group = id): LoadedEndpoint {
+function ep(
+	id: string,
+	max: number,
+	group = id,
+	release: LoadedEndpoint['release'] = null,
+): LoadedEndpoint {
 	return {
 		id,
 		displayName: id,
@@ -31,6 +41,7 @@ function ep(id: string, max: number, group = id): LoadedEndpoint {
 		maxConcurrent: max,
 		resourceGroup: group,
 		resourceGroupMaxConcurrent: max,
+		release,
 		contextWindow: null,
 		modelContextWindows: {},
 		modelPromptStyles: {},
@@ -40,6 +51,8 @@ function ep(id: string, max: number, group = id): LoadedEndpoint {
 
 afterEach(() => {
 	resetEndpointGatesForTests();
+	releaseMock.mockClear();
+	releaseMock.mockImplementation(async () => {});
 });
 
 /** A promise that resolves on the next microtask — lets a queued waiter's
@@ -363,5 +376,99 @@ describe('resource groups', () => {
 		held.release();
 		(await first).release();
 		(await second).release();
+	});
+});
+
+describe('freeing a shared resource on handover', () => {
+	it('frees the previous holder before granting to a different member', async () => {
+		// The case the whole mechanism exists for: llama.cpp finished its turn and
+		// is sitting on the VRAM, and ComfyUI is next.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+
+		(await acquireEndpointSlot(llama)).release();
+		expect(releaseMock).not.toHaveBeenCalled();
+
+		const slot = await acquireEndpointSlot(bridge);
+		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
+		slot.release();
+	});
+
+	it('does NOT free when the same endpoint takes the slot again', async () => {
+		// Otherwise every consecutive chat turn pays a full model reload, which on
+		// a large model is most of the wall clock.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		(await acquireEndpointSlot(llama)).release();
+		(await acquireEndpointSlot(llama)).release();
+		expect(releaseMock).not.toHaveBeenCalled();
+	});
+
+	it('does nothing for an endpoint with no release strategy', async () => {
+		const a = ep('a', 1, 'gpu0');
+		const b = ep('b', 1, 'gpu0');
+		(await acquireEndpointSlot(a)).release();
+		(await acquireEndpointSlot(b)).release();
+		expect(releaseMock).not.toHaveBeenCalled();
+	});
+
+	it('frees before a QUEUED waiter from another member is granted', async () => {
+		// The handover often happens through the queue, not the fast path, and a
+		// waiter must not start generating until the resource is actually free.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		let freed = false;
+		releaseMock.mockImplementation(async () => {
+			await Promise.resolve();
+			freed = true;
+		});
+
+		const held = await acquireEndpointSlot(llama);
+		let grantedBeforeFree: boolean | null = null;
+		const pending = acquireEndpointSlot(bridge).then((s) => {
+			grantedBeforeFree = !freed;
+			return s;
+		});
+
+		held.release();
+		(await pending).release();
+		expect(releaseMock).toHaveBeenCalledOnce();
+		expect(grantedBeforeFree).toBe(false);
+	});
+
+	it('holds the slot while freeing, so nobody slips in', async () => {
+		// The slot is taken before the (awaited) release, so a concurrent acquire
+		// queues rather than starting a generation onto a GPU mid-eviction.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		let resolveRelease!: () => void;
+		releaseMock.mockImplementation(() => new Promise<void>((r) => (resolveRelease = r)));
+
+		(await acquireEndpointSlot(llama)).release();
+		const first = acquireEndpointSlot(bridge);
+		await flush();
+
+		// Mid-release: the slot is already accounted for.
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
+		let secondGranted = false;
+		const second = acquireEndpointSlot(bridge).then((s) => {
+			secondGranted = true;
+			return s;
+		});
+		await flush();
+		expect(secondGranted).toBe(false);
+
+		resolveRelease();
+		(await first).release();
+		(await second).release();
+	});
+
+	it('leaves an idle group alone until someone else actually wants it', async () => {
+		// Releasing eagerly when a turn finishes would evict a model the next
+		// request probably wants — the release is tied to the handover, not to
+		// going idle.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		(await acquireEndpointSlot(llama)).release();
+		await flush();
+		expect(releaseMock).not.toHaveBeenCalled();
 	});
 });
