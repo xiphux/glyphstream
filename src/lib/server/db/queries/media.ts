@@ -127,8 +127,10 @@ export function linkMessageMedia(messageId: string, mediaId: string): void {
  *     preset that's still using it.
  *
  * Both take the caller's `tx`: node:sqlite won't promote a nested
- * `db.transaction()` to a savepoint, and the only caller
- * (`setCustomModelAvatar`) is already inside one. Neither is idempotent —
+ * `db.transaction()` to a savepoint, and every caller already holds one —
+ * releasing an avatar reference is always part of a larger write (setting or
+ * clearing an avatar, or deleting the preset / conversation that held it),
+ * never a standalone one. Neither is idempotent —
  * unlike `linkMessageMedia`, there's no join-table PK to absorb a double call,
  * so the caller must only invoke these when the avatar actually changes.
  */

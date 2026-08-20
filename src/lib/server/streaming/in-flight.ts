@@ -29,7 +29,29 @@ import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
  *  conversation, matching the pre-fan-out behavior. */
 export const DEFAULT_BRANCH = 'default';
 
+/**
+ * Key for an avatar generation — a side errand, not part of the conversation's
+ * turn. Distinct from DEFAULT_BRANCH so an ordinary send doesn't abort a
+ * drawing (and vice versa), and stable rather than per-call so a second draw
+ * supersedes the first.
+ *
+ * Named here rather than written as a literal at the route because two readers
+ * have to agree it isn't a turn — see `conversationTurnEntries`.
+ */
+export const AVATAR_BRANCH = 'avatar';
+
 export interface InFlightEntry {
+	/**
+	 * Whether this entry is part of the conversation's TURN — a plain send or a
+	 * fan-out branch — as opposed to a side errand like an avatar draw.
+	 *
+	 * An explicit field rather than a test on `branchKey`, because there is no
+	 * positive test available there: fan-out keys are `generateId()`, so key
+	 * matching can only ever say "not avatar", and the next side errand would be
+	 * silently readmitted as a turn. Defaults to true so every existing
+	 * registrant keeps its meaning without opting in.
+	 */
+	isTurn: boolean;
 	controller: AbortController;
 	endpoint: LoadedEndpoint;
 	/** Unix ms when the generation was registered. Surfaced to the client
@@ -76,6 +98,7 @@ export function registerInFlight(
 	modelKind: ModelKind | null = null,
 	modelId: string | null = null,
 	sourceMediaId: string | null = null,
+	isTurn = true,
 ): InFlightEntry {
 	let byBranch = inFlight.get(conversationId);
 	if (!byBranch) {
@@ -89,6 +112,7 @@ export function registerInFlight(
 		endpoint,
 		startedAt: Date.now(),
 		branchKey,
+		isTurn,
 		modelKind,
 		modelId,
 		sourceMediaId,
@@ -110,8 +134,31 @@ export function clearInFlight(conversationId: string, entry: InFlightEntry): voi
 	if (byBranch.size === 0) inFlight.delete(conversationId);
 }
 
+/**
+ * The entries that belong to the conversation's own TURN — a plain send or a
+ * fan-out's branches — excluding side errands like an avatar draw.
+ *
+ * Three consumers reason about "is the turn finished": the fan-out recovery
+ * state (how many columns are still generating), the aggregate fan-out
+ * notification (am I the last branch), and `getInFlightSince` (is this client
+ * looking at a generation it should be rendering). All were written when every
+ * entry was necessarily part of one dispatch, and each breaks differently on a
+ * foreign entry — the grid grows a phantom column that flips it to a media
+ * layout and blocks picking, the "N ready" push is dropped entirely because no
+ * branch ever finds the registry empty, and the recovery poll never terminates.
+ *
+ * Deliberately NOT the callers that ask a different question:
+ * `conversationFanoutAtCapacity` is a resource cap and a draw really does hold
+ * a slot, and `filterInFlight` drives the sidebar's "still cooking" dot, which
+ * a background draw genuinely is — it's the only signal for work started on
+ * another device.
+ */
+export function conversationTurnEntries(conversationId: string): InFlightEntry[] {
+	return getInFlightEntries(conversationId).filter((e) => e.isTurn);
+}
+
 /** All in-flight entries for a conversation (one for a plain send, N during a
- *  fan-out). Empty array when nothing is running. */
+ *  fan-out, plus any side errand). Empty array when nothing is running. */
 export function getInFlightEntries(conversationId: string): InFlightEntry[] {
 	const byBranch = inFlight.get(conversationId);
 	return byBranch ? [...byBranch.values()] : [];
@@ -143,7 +190,12 @@ export function filterInFlight(conversationIds: readonly string[]): string[] {
  *  null when none — the truthful "generating since" for the recovery
  *  indicator regardless of how many branches are running. */
 export function getInFlightSince(conversationId: string): number | null {
-	const entries = getInFlightEntries(conversationId);
+	// Turn-scoped: this feeds the client's recovered-turn bubble and the poll
+	// that waits for it to clear. An avatar draw isn't a turn this client should
+	// be rendering, and counting it wedges that poll — it terminates only on
+	// null — leaving a phantom "Generating…" and a disabled composer for the
+	// whole draw.
+	const entries = conversationTurnEntries(conversationId);
 	if (entries.length === 0) return null;
 	let earliest = entries[0].startedAt;
 	for (const e of entries) if (e.startedAt < earliest) earliest = e.startedAt;

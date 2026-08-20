@@ -261,7 +261,18 @@
 				// is left intact so the user can retry rather than losing the pick.
 				const savedId =
 					editingId ?? ((await res.json()) as { customModel: CustomModel }).customModel.id;
-				await saveAvatar(savedId);
+				try {
+					await saveAvatar(savedId);
+				} catch (e) {
+					// The preset itself is already saved. Flip the form into edit mode
+					// before rethrowing so a retry PATCHes that row instead of POSTing a
+					// second one — nothing enforces name uniqueness (see the index note
+					// on `custom_models` in schema.ts), and with `invalidateAll` skipped
+					// below the list doesn't show the first one either, so a duplicate
+					// looks like the retry working.
+					editingId = savedId;
+					throw e;
+				}
 				resetForm();
 				await invalidateAll();
 			},

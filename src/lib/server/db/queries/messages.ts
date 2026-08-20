@@ -38,6 +38,21 @@ interface AppendInput {
 	 * branches and corrupt the others' upstream context.
 	 */
 	advanceActiveLeaf?: boolean;
+	/**
+	 * Compare-and-swap guard for `advanceActiveLeaf`: move the leaf only if it
+	 * is STILL this message id at write time.
+	 *
+	 * For a normal send the anchor is created microseconds earlier and is the
+	 * leaf by construction, so nothing needs this. An avatar generation is the
+	 * exception — it anchors on an assistant reply that already existed and can
+	 * take minutes, during which the user may send another turn and move the
+	 * leaf on. Advancing unconditionally then rewinds the branch onto the older
+	 * anchor and the newer exchange drops out of the rendered thread.
+	 *
+	 * When the guard fails the row still persists, as a sibling the ‹N/M› arrows
+	 * expose — the same shape a fan-out branch already has.
+	 */
+	advanceActiveLeafIfCurrent?: string;
 }
 
 /**
@@ -76,14 +91,36 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			.run();
 
 		if (input.advanceActiveLeaf ?? true) {
-			tx.update(conversations)
-				// Advancing the leaf off a parked fan-out resolves/abandons it
-				// (a normal send, edit, or retry after the comparison), so clear
-				// the marker. A no-op when none is set. Fan-out branches take the
-				// else-branch below and leave it pinned.
+			// Advancing the leaf off a parked fan-out resolves/abandons it
+			// (a normal send, edit, or retry after the comparison), so clear
+			// the marker. A no-op when none is set. Fan-out branches take the
+			// else-branch below and leave it pinned.
+			//
+			// `advanceActiveLeafIfCurrent` adds the leaf to the WHERE, making this
+			// a compare-and-swap: a caller whose anchor went stale while it worked
+			// leaves the branch where the user left it. Absent (every caller but
+			// avatar generation), the predicate is just the conversation id, as
+			// before.
+			const guard =
+				input.advanceActiveLeafIfCurrent === undefined
+					? eq(conversations.id, input.conversationId)
+					: and(
+							eq(conversations.id, input.conversationId),
+							eq(conversations.activeLeafMessageId, input.advanceActiveLeafIfCurrent),
+						);
+			const advanced = tx
+				.update(conversations)
 				.set({ activeLeafMessageId: id, updatedAt: now, fanoutParentMessageId: null })
-				.where(eq(conversations.id, input.conversationId))
+				.where(guard)
 				.run();
+			// The guard failed: the leaf moved on. Still bump updated_at so the
+			// conversation sorts correctly, matching the pinned-sibling path below.
+			if (Number(advanced.changes) === 0) {
+				tx.update(conversations)
+					.set({ updatedAt: now })
+					.where(eq(conversations.id, input.conversationId))
+					.run();
+			}
 		} else {
 			// Fan-out sibling: leave active_leaf pinned at the shared user
 			// message, but still bump updated_at so the conversation sorts to

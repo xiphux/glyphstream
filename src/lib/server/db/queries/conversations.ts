@@ -686,7 +686,20 @@ export function setConversationAvatar(
 			const row = tx
 				.select({ id: media.id })
 				.from(media)
-				.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
+				.where(
+					and(
+						eq(media.id, mediaId),
+						eq(media.userId, userId),
+						// Every avatar surface renders an <img> against
+						// /api/media/:id/thumbnail, which 404s a non-image kind — so a
+						// video or a spreadsheet here is a permanently broken avatar AND
+						// a permanent ref_count on an upload the purger can then never
+						// reap. The clients already filter to images; this is the server
+						// not taking their word for it.
+						eq(media.kind, 'image'),
+						isNull(media.hardDeletedAt),
+					),
+				)
 				.get();
 			if (!row) return { ok: false, reason: 'media_not_found' };
 		}

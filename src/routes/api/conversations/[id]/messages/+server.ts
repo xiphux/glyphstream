@@ -21,7 +21,10 @@ import { acquireEndpointSlot } from '$lib/server/endpoints/concurrency';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { generateId } from '$lib/server/util/id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
-import { serializeBranchForUpstream } from '$lib/server/endpoints/serialize-upstream';
+import {
+	isModelVisiblePart,
+	serializeBranchForUpstream,
+} from '$lib/server/endpoints/serialize-upstream';
 import { upstreamBranch } from '$lib/chat-compaction';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
@@ -566,7 +569,14 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// rejection for the real await.
 		for (const m of upstreamBranch(branch)) {
 			for (const p of m.parts) {
-				if (p.type === 'image') void resolveMediaDataUrl(p.mediaId).catch(() => {});
+				// `isModelVisiblePart` for the same reason this walks `upstreamBranch`:
+				// don't read+pin images the serializer won't send. A display-only
+				// avatar portrait sits on the branch permanently, so without this it
+				// would be re-read and re-encoded every turn for a part that never
+				// ships.
+				if (p.type === 'image' && isModelVisiblePart(p)) {
+					void resolveMediaDataUrl(p.mediaId).catch(() => {});
+				}
 			}
 		}
 

@@ -257,7 +257,6 @@
 			),
 	);
 
-	let avatarStatus = $state<string | null>(null);
 	// The draw dialog's editable prompt. Seeded from the source reply when the
 	// dialog opens, then owned by the user — a model that answers in character
 	// before complying leaves prose to trim, and `extractAvatarPrompt` only
@@ -274,7 +273,12 @@
 		const source = avatarSourceMessage;
 		if (!source) return;
 		avatarPrompt = extractAvatarPrompt(partsToText(source.parts));
-		avatarEnhance = !data.conversation.disabledFeatures.includes('image_prompt_enhancement');
+		// A private chat seals prompt enhancement (it ships the prompt to a second
+		// model), and the seal is derived server-side rather than stored — so the
+		// conversation's own list won't mention it. Mirror that here instead of
+		// offering a switch the server is going to refuse.
+		avatarEnhance =
+			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement');
 		avatarDrawOpen = true;
 	}
 
@@ -301,9 +305,15 @@
 	async function generateAvatar() {
 		const source = avatarSourceMessage;
 		if (!source || !avatarModelId || avatarStatus) return;
-		avatarStatus = 'Starting…';
+		// Snapshot the conversation ONCE. Everything below runs across awaits that
+		// span the whole generation, and `convId` is reassigned when the user
+		// navigates to another chat — reading it again afterwards is how A's
+		// portrait ends up as B's avatar.
+		const cid = convId;
+		const setStatus = (status: string) => (avatarDraw = { conversationId: cid, status });
+		setStatus('Starting…');
 		try {
-			const res = await fetch(`/api/conversations/${convId}/avatar/generate`, {
+			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -326,10 +336,10 @@
 
 			let mediaId: string | null = null;
 			await consumeChatStream(res.body, {
-				onQueued: (ahead) => (avatarStatus = ahead > 0 ? `Queued — ${ahead} ahead…` : 'Queued…'),
-				onProgress: (_percent, statusText) => (avatarStatus = statusText ?? 'Drawing…'),
+				onQueued: (ahead) => setStatus(ahead > 0 ? `Queued — ${ahead} ahead…` : 'Queued…'),
+				onProgress: (_percent, statusText) => setStatus(statusText ?? 'Drawing…'),
 				onStart: () => {
-					avatarStatus = 'Drawing…';
+					setStatus('Drawing…');
 				},
 				onDone: ({ assistantMessage }) => {
 					const part = assistantMessage.parts.find((p) => p.type === 'image');
@@ -341,23 +351,30 @@
 			});
 
 			if (mediaId) {
-				avatarStatus = 'Applying…';
-				const put = await fetch(`/api/conversations/${convId}/avatar`, {
+				setStatus('Applying…');
+				// `cid`, not `convId`: the portrait belongs to the conversation that
+				// asked for it. Applying it wherever the user happens to be standing
+				// is exactly the bug this snapshot exists to prevent.
+				const put = await fetch(`/api/conversations/${cid}/avatar`, {
 					method: 'PUT',
 					headers: { 'Content-Type': 'application/json' },
 					body: JSON.stringify({ mediaId }),
 				});
 				if (!put.ok) throw new Error(await errorMessageFromResponse(put));
 			}
-			// Reloads the branch (the new portrait row) AND the avatar the bubbles
-			// render — both come from this page's load. See setAvatar for why the
-			// targeted key isn't enough here.
-			await invalidateAll();
-			toast.success('Avatar updated');
+			// Only refresh and announce if the user is still looking at the chat this
+			// belongs to. Reloading a conversation they've moved on from — and
+			// telling them its avatar changed — would be noise about someone else's
+			// thread. Navigating back re-runs the load anyway.
+			if (convId === cid) {
+				await invalidateAll();
+				toast.success('Avatar updated');
+			}
 		} catch (e) {
-			toast.error(e instanceof Error ? e.message : 'Avatar generation failed');
+			if (convId === cid) toast.error(e instanceof Error ? e.message : 'Avatar generation failed');
 		} finally {
-			avatarStatus = null;
+			// Clear only our own draw — a newer one started elsewhere owns the slot now.
+			if (avatarDraw?.conversationId === cid) avatarDraw = null;
 		}
 	}
 
@@ -419,6 +436,18 @@
 	}
 	// svelte-ignore state_referenced_locally
 	let convId = $state(data.conversation.id);
+
+	// Scoped to the conversation it belongs to, not a bare string. The page
+	// component is REUSED across /chat/[a] → /chat/[b] (see the teardown effect
+	// below), so a draw started in A is still running with its closure intact
+	// after the user switches to B. Deriving the status against the current
+	// `convId` means B shows nothing and A shows its progress again on return,
+	// without the switch effect having to null it — which would race the old
+	// closure's own writes.
+	let avatarDraw = $state<{ conversationId: string; status: string } | null>(null);
+	const avatarStatus = $derived(
+		avatarDraw && avatarDraw.conversationId === convId ? avatarDraw.status : null,
+	);
 	// svelte-ignore state_referenced_locally
 	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
 	// Server's in-flight registry start time for this conversation (unix
@@ -1421,6 +1450,14 @@
 		// conversation's columns (if any) re-hydrate from its load data below.
 		fanout.teardown();
 		resetCompare();
+		// Close the avatar dialog and drop its staged prompt: it was written
+		// against the conversation we're leaving, and pressing Draw here would
+		// send the old chat's text with this chat's source message. The DRAW's own
+		// status needs no reset — `avatarStatus` derives against `convId`, so an
+		// in-flight one is simply invisible from here and reappears if the user
+		// navigates back.
+		avatarDrawOpen = false;
+		avatarPrompt = '';
 	});
 
 	// Publish "this tab is rendering a generation for convId" so the root

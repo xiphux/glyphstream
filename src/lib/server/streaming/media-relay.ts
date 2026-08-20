@@ -73,6 +73,10 @@ export interface MediaRelayParams {
 	abortSignal?: AbortSignal;
 	/** Fan-out branch: persist as a sibling without advancing active_leaf. */
 	advanceActiveLeaf?: boolean;
+	/** Compare-and-swap guard for the leaf advance — see `appendMessage`. Set by
+	 *  avatar generation, whose anchor is an existing reply that the user may
+	 *  have moved past during the minutes a draw takes. */
+	advanceActiveLeafIfCurrent?: string;
 	/** Skip the first-exchange title task (a fan-out runs it once in /prepare). */
 	suppressTitleTask?: boolean;
 	/** Skip this branch's own completion notification. An initial fan-out branch
@@ -241,6 +245,7 @@ export function startMediaRelay(
 							modelUsed: params.storedModelId,
 							genMs: Date.now() - genStartedAt,
 							advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+							advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 						}).id;
 					} catch (e) {
 						// Best-effort durability — the client still gets the error frame
@@ -271,6 +276,7 @@ export function startMediaRelay(
 						rawResponseJson: produced.rawResponseJson,
 						genMs: Date.now() - genStartedAt,
 						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+						advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
 					});
 					linkMessageMedia(assistantMessage.id, produced.mediaId);
 				} catch (e) {

@@ -17,7 +17,7 @@
 
 import { getFanoutParent } from '../db/queries/conversations';
 import { getSiblingAssistants } from '../db/queries/messages';
-import { getInFlightEntries } from '../streaming/in-flight';
+import { conversationTurnEntries } from '../streaming/in-flight';
 import type { FanoutRecoveryState } from '$lib/types/api';
 
 export type { FanoutRecoveryState };
@@ -39,7 +39,10 @@ export function getFanoutRecoveryState(
 			pendingSourceMediaIds: [],
 		};
 	}
-	const entries = getInFlightEntries(conversationId);
+	// Turn-scoped: an avatar draw running alongside a parked fan-out is not one
+	// of its branches, and counting it grows a phantom image-kind column that
+	// flips the grid to a media layout and takes the pick action away.
+	const entries = conversationTurnEntries(conversationId);
 	// Re-rolls are additive (a new sibling next to the original, deleting
 	// nothing), so every persisted sibling is a real column — no shadowing.
 	const siblings = getSiblingAssistants(conversationId, parent);

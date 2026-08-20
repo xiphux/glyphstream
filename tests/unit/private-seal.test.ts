@@ -71,3 +71,52 @@ describe('resolveDisabledFeatures', () => {
 		expect(sealed).toContain('mcp:github');
 	});
 });
+
+/**
+ * The rule the avatar-generate route has to follow, pinned here because that
+ * route is the one that got it wrong: the client may express a preference
+ * WITHIN what the conversation permits, never past it.
+ *
+ * Extracted as the same expression the route computes so a change to one side
+ * fails here rather than silently reopening the hole. The seal is derived, not
+ * stored, so a private conversation's own `disabledFeatures` looks permissive —
+ * reading it raw is exactly how the leak happened.
+ */
+function enhancementEnabledFor(
+	meta: { private: boolean; disabledFeatures: FeatureCategory[] },
+	bodyEnhance: unknown,
+): boolean {
+	const allowed = !resolveDisabledFeatures(meta).includes('image_prompt_enhancement');
+	return allowed && (typeof bodyEnhance !== 'boolean' || bodyEnhance);
+}
+
+describe('prompt enhancement is sealed in a private chat', () => {
+	it('refuses even an explicit enhance:true from the client', () => {
+		catalog();
+		// The reported shape: the client seeds its checkbox from the RAW list,
+		// which never mentions the category, so it sends true in good faith.
+		expect(enhancementEnabledFor({ private: true, disabledFeatures: [] }, true)).toBe(false);
+	});
+
+	it('refuses when the client says nothing at all', () => {
+		catalog();
+		expect(enhancementEnabledFor({ private: true, disabledFeatures: [] }, undefined)).toBe(false);
+	});
+
+	it('still lets a normal chat enhance, and still lets the user turn it off', () => {
+		catalog();
+		expect(enhancementEnabledFor({ private: false, disabledFeatures: [] }, undefined)).toBe(true);
+		expect(enhancementEnabledFor({ private: false, disabledFeatures: [] }, true)).toBe(true);
+		expect(enhancementEnabledFor({ private: false, disabledFeatures: [] }, false)).toBe(false);
+	});
+
+	it('honours a normal chat that disabled the category itself', () => {
+		catalog();
+		expect(
+			enhancementEnabledFor(
+				{ private: false, disabledFeatures: ['image_prompt_enhancement'] },
+				true,
+			),
+		).toBe(false);
+	});
+});

@@ -36,6 +36,7 @@ import {
 import {
 	createConversation,
 	deleteConversation,
+	getConversationDetail,
 	setConversationAvatar,
 } from '$lib/server/db/queries/conversations';
 import { appendMessage } from '$lib/server/db/queries/messages';
@@ -444,5 +445,91 @@ describe('conversation avatars — the delete dialog counts what delete removes'
 		deleteConversation(conv.id, u.id, { deleteMedia: true });
 		expect(mediaRow(ids[0])?.hardDeletedAt).toBeNull();
 		expect(countOrphanMediaInConversation(other.id, u.id)).toEqual({ images: 1, videos: 0 });
+	});
+});
+
+/**
+ * The leaf compare-and-swap.
+ *
+ * Every other caller of `appendMessage` anchors on a message it just created,
+ * so the anchor is the leaf by construction. Avatar generation is the one that
+ * anchors on an existing reply and then takes minutes, with the composer live
+ * throughout — so it's the one that can find the branch moved on underneath it.
+ */
+describe('appendMessage — advanceActiveLeafIfCurrent', () => {
+	function seedBranch(userId: string) {
+		const conv = createConversation({
+			userId,
+			endpointId: 'bridge',
+			modelId: 'bridge::x',
+			modelKind: 'chat',
+		});
+		const description = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: null,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'a navigator in an orange coat' }],
+		});
+		return { conv, description };
+	}
+
+	it('advances the leaf when the anchor is still current', () => {
+		// The ordinary case: nothing else happened while the portrait drew, so it
+		// lands on the branch and is visible.
+		const u = seedUser();
+		const { conv, description } = seedBranch(u.id);
+
+		const portrait = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'm-1', displayOnly: true }],
+			advanceActiveLeafIfCurrent: description.id,
+		});
+
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(portrait.id);
+	});
+
+	it('leaves a branch that moved on alone, and still persists the row', () => {
+		// The user sent another turn while the portrait drew. Advancing here would
+		// rewind the branch onto the description and drop that exchange out of the
+		// rendered thread.
+		const u = seedUser();
+		const { conv, description } = seedBranch(u.id);
+		const laterTurn = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'actually, where are we headed?' }],
+		});
+
+		const portrait = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'm-1', displayOnly: true }],
+			advanceActiveLeafIfCurrent: description.id,
+		});
+
+		const detail = getConversationDetail(conv.id, u.id);
+		// Leaf untouched — the user's turn is still what the thread shows.
+		expect(detail?.activeLeafMessageId).toBe(laterTurn.id);
+		// The portrait is not lost: it's a sibling of that turn under the same
+		// parent, which is what the ‹N/M› arrows navigate.
+		expect(portrait.id).toBeTruthy();
+		expect(mocks.testDb).toBeTruthy();
+	});
+
+	it('advances unconditionally when no guard is supplied', () => {
+		// Every pre-existing caller relies on this — the guard is opt-in.
+		const u = seedUser();
+		const { conv, description } = seedBranch(u.id);
+		const later = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'user',
+			parts: [{ type: 'text', text: 'hi' }],
+		});
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(later.id);
 	});
 });

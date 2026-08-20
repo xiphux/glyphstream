@@ -34,7 +34,8 @@ import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import type { ModelEntry } from '$lib/types/api';
 import { startImageRelay } from '$lib/server/streaming/image-relay';
-import { clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
+import { AVATAR_BRANCH, clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
+import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { partsToText } from '$lib/message-parts';
 import type { RequestHandler } from './$types';
@@ -107,7 +108,38 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		error(400, `"${body.modelId}" is not an image model`);
 	}
 
-	const inFlight = registerInFlight(params.id, endpoint, undefined, 'image', body.modelId, null);
+	// Its OWN branch key, not the default one. `registerInFlight` aborts whoever
+	// currently holds a key, and the default is what an ordinary send registers
+	// under — so sharing it would mean the next chat message the user types kills
+	// the drawing, which is precisely the thing this flow backgrounds itself to
+	// let them do. A stable key (rather than a fresh id per call, as fan-out
+	// uses) also self-limits: starting a second avatar draw supersedes the first,
+	// which is the wanted behaviour for a conversation that has one avatar.
+	// Through `resolveDisabledFeatures`, not the raw column. A private chat's
+	// seal is DERIVED, never persisted — so the stored list doesn't contain
+	// `image_prompt_enhancement` and a raw read says "enabled". That category is
+	// sealed precisely because the enhancer ships the prompt to a SECOND model on
+	// a possibly-third-party endpoint, which is the one thing a private chat
+	// promises not to do.
+	//
+	// The client's flag may only turn enhancement OFF from there, never back on:
+	// it's a preference within what the conversation permits, not an override of
+	// it.
+	const enhancementAllowed = !resolveDisabledFeatures(meta).includes('image_prompt_enhancement');
+	const enhancementEnabled =
+		enhancementAllowed && (typeof body.enhance !== 'boolean' || body.enhance);
+
+	const inFlight = registerInFlight(
+		params.id,
+		endpoint,
+		AVATAR_BRANCH,
+		'image',
+		body.modelId,
+		null,
+		// Not a turn: the recovery poll, the fan-out grid and the aggregate
+		// notification must not count this as one of the conversation's branches.
+		false,
+	);
 	const onComplete = () => clearInFlight(params.id, inFlight);
 
 	const stream = startImageRelay({
@@ -127,16 +159,20 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		sourceMediaId: null,
 		// The description is prose, not a formatted image prompt, so the enhancer
 		// earns its keep here more than anywhere: it restyles into whatever this
-		// model prefers. Honors the conversation's own toggle.
+		// model prefers.
 		promptStyle: modelEntry?.promptStyle ?? null,
 		promptHint: modelEntry?.promptHint ?? null,
-		enhancementEnabled:
-			typeof body.enhance === 'boolean'
-				? body.enhance
-				: !meta.disabledFeatures.includes('image_prompt_enhancement'),
+		enhancementEnabled,
 		displayOnly: true,
 		abortSignal: inFlight.controller.signal,
 		advanceActiveLeaf: true,
+		// …but only if the branch hasn't moved on. A draw takes minutes and the
+		// composer stays live throughout (that's the point of backgrounding it),
+		// so the user may well have sent another turn by the time the portrait
+		// lands. Without this guard the leaf snaps back to the description and
+		// that exchange drops out of the thread. If the guard fails the portrait
+		// still persists as a sibling, reachable by the ‹N/M› arrows.
+		advanceActiveLeafIfCurrent: source.id,
 		// The conversation already has a title by now (it has a description turn
 		// in it), and an avatar is a side errand — not the thing to name the
 		// thread after.

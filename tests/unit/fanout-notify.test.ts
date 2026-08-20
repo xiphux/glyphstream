@@ -14,8 +14,13 @@ const getInFlightEntries = vi.hoisted(() => vi.fn());
 const getSiblingAssistants = vi.hoisted(() => vi.fn());
 const notifyConversationComplete = vi.hoisted(() => vi.fn());
 
+// `conversationTurnEntries` is what the notifier actually calls — the
+// turn-scoped view that excludes side errands like an avatar draw. Mocked as
+// the same stub so these tests keep controlling "how many branches are still
+// in flight" directly; the exclusion itself is covered in in-flight.test.ts.
 vi.mock('$lib/server/streaming/in-flight', () => ({
 	getInFlightEntries,
+	conversationTurnEntries: getInFlightEntries,
 }));
 vi.mock('$lib/server/db/queries/messages', () => ({
 	getSiblingAssistants,

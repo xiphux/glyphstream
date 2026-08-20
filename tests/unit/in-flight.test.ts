@@ -15,6 +15,8 @@ import {
 	DEFAULT_BRANCH,
 	filterInFlight,
 	getInFlightEntries,
+	conversationTurnEntries,
+	AVATAR_BRANCH,
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
@@ -191,5 +193,42 @@ describe('resetInFlight', () => {
 		expect(c.controller.signal.aborted).toBe(true);
 		expect(getInFlightEntries('c1')).toEqual([]);
 		expect(getInFlightEntries('c2')).toEqual([]);
+	});
+});
+
+describe('conversationTurnEntries', () => {
+	it("excludes an avatar draw from the conversation's turn", () => {
+		// Two consumers ask "is the turn done": the fan-out recovery grid and the
+		// aggregate notification. Counting a side errand makes the grid grow a
+		// phantom column that blocks picking, and makes the notification never
+		// fire — no branch ever finds the registry empty.
+		const branch = registerInFlight('c1', endpoint('a'), 'br0', 'chat', 'e::m');
+		// Registered exactly as the avatar route does: its own key AND isTurn=false.
+		// The key alone is not what excludes it — the flag is, so the next side
+		// errand is excluded by default rather than silently readmitted.
+		const avatar = registerInFlight(
+			'c1',
+			endpoint('a'),
+			AVATAR_BRANCH,
+			'image',
+			'e::img',
+			null,
+			false,
+		);
+
+		expect(new Set(getInFlightEntries('c1'))).toEqual(new Set([branch, avatar]));
+		expect(conversationTurnEntries('c1')).toEqual([branch]);
+	});
+
+	it('is empty once only the avatar draw remains', () => {
+		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
+		expect(conversationTurnEntries('c1')).toEqual([]);
+	});
+
+	it('still counts an entry that only carries a distinct key', () => {
+		// A fan-out branch has its own key too — being non-default is not what
+		// makes something a side errand.
+		const branch = registerInFlight('c1', endpoint('a'), 'br7', 'chat', 'e::m');
+		expect(conversationTurnEntries('c1')).toEqual([branch]);
 	});
 });

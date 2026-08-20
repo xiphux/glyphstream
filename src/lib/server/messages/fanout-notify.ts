@@ -34,7 +34,7 @@
  */
 
 import { getSiblingAssistants } from '../db/queries/messages';
-import { getInFlightEntries } from '../streaming/in-flight';
+import { conversationTurnEntries } from '../streaming/in-flight';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
 
 export interface FanoutNotifyInput {
@@ -61,7 +61,10 @@ export interface FanoutNotifyInput {
  *  exactly-once. */
 export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// Not the last branch — another is still generating; it will fire instead.
-	if (getInFlightEntries(input.conversationId).length > 0) return;
+	// Turn-scoped: a concurrent avatar draw is not a branch, and counting it
+	// means NO branch ever finds the registry empty — the aggregate notification
+	// is then dropped entirely rather than merely delayed.
+	if (conversationTurnEntries(input.conversationId).length > 0) return;
 
 	// Count what actually LANDED — successful results only. A failed branch now
 	// persists a durable error sibling (see the `error` MessagePart) so a

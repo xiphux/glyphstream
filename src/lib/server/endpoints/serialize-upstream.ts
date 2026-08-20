@@ -66,6 +66,23 @@ function extractToolCalls(parts: MessagePart[]): ChatCompletionRequestToolCall[]
  *    content array, inlining bytes as data URLs via `resolveMediaUrl`.
  *  - Everything else — bare-string content from concatenated text parts.
  */
+/**
+ * Whether a part reaches the model at all.
+ *
+ * A `displayOnly` image (the portrait an avatar generation produced) is
+ * rendered in the thread but has no place in the request — see the flag's note
+ * on why that's decided once, at persist time.
+ *
+ * Exported because the serializer is not the only place that has to know. The
+ * messages route pre-warms image reads for the branch it's about to send, and
+ * warming an image the serializer then discards is exactly the rent the flag
+ * exists to avoid. One predicate, both call sites — a second copy of the rule
+ * is how they drift.
+ */
+export function isModelVisiblePart(p: MessagePart): boolean {
+	return !(p.type === 'image' && p.displayOnly);
+}
+
 export async function serializeMessageForUpstream(
 	m: ChatMessage,
 	resolveMediaUrl: MediaUrlResolver,
@@ -82,16 +99,11 @@ export async function serializeMessageForUpstream(
 		};
 	}
 
-	// The model-visible subset. A `displayOnly` image (the portrait an avatar
-	// generation produced) is rendered in the thread but has no place in the
-	// request — see the flag's note on why that's decided once, at persist time.
-	//
-	// Filtered ONCE here so every branch below inherits it: the drop checks, the
-	// vision-vs-plain-text fork, `partsToText`, and the file note would each
-	// otherwise need their own copy of the rule, and the one that got missed
-	// would fail silently — as an image quietly re-sent every turn, or an empty
-	// assistant turn.
-	const parts = m.parts.filter((p) => !(p.type === 'image' && p.displayOnly));
+	// The model-visible subset. Filtered ONCE here so every branch below inherits
+	// it: the drop checks, the vision-vs-plain-text fork, `partsToText`, and the
+	// file note would each otherwise need their own copy of the rule, and the one
+	// that got missed would fail silently.
+	const parts = m.parts.filter(isModelVisiblePart);
 
 	// A failed media branch persists as an assistant message carrying only an
 	// `error` part (see MessagePart 'error'). It exists so a recovered fan-out /
