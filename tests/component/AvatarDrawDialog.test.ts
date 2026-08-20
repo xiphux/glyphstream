@@ -40,8 +40,10 @@ const base: ComponentProps<typeof AvatarDrawDialog> = {
 	prompt: 'A weathered navigator in an orange coat.',
 	models: [imageModel()],
 	modelId: 'mock::flux',
+	enhance: true,
 	status: null,
 	onPromptChange: vi.fn(),
+	onEnhanceChange: vi.fn(),
 	onModelChange: vi.fn(),
 	onDraw: vi.fn(),
 	onCancel: vi.fn(),
@@ -95,5 +97,19 @@ describe('AvatarDrawDialog', () => {
 
 		await user.click(screen.getByRole('button', { name: 'Cancel' }));
 		expect(onCancel).not.toHaveBeenCalled();
+	});
+
+	it('lets the enhancer be turned off, which is unreachable anywhere else', async () => {
+		// image_prompt_enhancement is kind-scoped to image conversations, so in
+		// the chat conversation an avatar is drawn from the toggle never renders.
+		// This checkbox is the only way to say "send exactly what I wrote".
+		const user = userEvent.setup();
+		const onEnhanceChange = vi.fn();
+		render(AvatarDrawDialog, { props: { ...base, enhance: true, onEnhanceChange } });
+
+		const box = screen.getByRole('checkbox');
+		expect(box).toBeChecked();
+		await user.click(box);
+		expect(onEnhanceChange).toHaveBeenCalledWith(false);
 	});
 });

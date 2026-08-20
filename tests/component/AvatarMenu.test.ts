@@ -14,29 +14,9 @@ import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import AvatarMenu from '$lib/components/chat/AvatarMenu.svelte';
 import type { ComponentProps } from 'svelte';
-import type { ModelEntry } from '$lib/types/api';
-
-function imageModel(id = 'mock::flux'): ModelEntry {
-	return {
-		id,
-		endpointId: 'mock',
-		upstreamId: id.split('::')[1],
-		displayName: 'Flux',
-		ownedBy: null,
-		kind: 'image',
-		kindKnown: true,
-		group: 'Mock',
-		groupKey: 'mock',
-		supportsTools: false,
-		contextWindow: null,
-		promptStyle: null,
-		promptHint: null,
-	};
-}
 
 const base: ComponentProps<typeof AvatarMenu> = {
-	models: [imageModel()],
-	modelId: 'mock::flux',
+	hasImageModel: true,
 	avatarMediaId: null,
 	hasSource: true,
 	alreadyDrawn: false,
@@ -44,7 +24,6 @@ const base: ComponentProps<typeof AvatarMenu> = {
 	busy: false,
 	onDescribe: vi.fn(),
 	onGenerate: vi.fn(),
-	onModelChange: vi.fn(),
 };
 
 /** The menu content is portaled, so open it and query the whole document. */
@@ -77,7 +56,7 @@ describe('AvatarMenu', () => {
 	});
 
 	it('blocks and explains step 2 when no image model is configured', async () => {
-		await open({ models: [], modelId: '' });
+		await open({ hasImageModel: false });
 		expect(drawButton()).toBeDisabled();
 		expect(screen.getByText('No image model is configured.')).toBeInTheDocument();
 	});

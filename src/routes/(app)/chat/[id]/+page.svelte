@@ -264,11 +264,17 @@
 	// removes what it can identify.
 	let avatarDrawOpen = $state(false);
 	let avatarPrompt = $state('');
+	// Seeded from the conversation's own setting each time the dialog opens, so
+	// it starts where the rest of the app would put it — but it's the only place
+	// the choice is reachable at all, since the feature toggle is kind-scoped to
+	// image conversations and this is a chat one.
+	let avatarEnhance = $state(true);
 
 	function openAvatarDraw() {
 		const source = avatarSourceMessage;
 		if (!source) return;
 		avatarPrompt = extractAvatarPrompt(partsToText(source.parts));
+		avatarEnhance = !data.conversation.disabledFeatures.includes('image_prompt_enhancement');
 		avatarDrawOpen = true;
 	}
 
@@ -304,6 +310,7 @@
 					sourceMessageId: source.id,
 					modelId: avatarModelId,
 					prompt: avatarPrompt,
+					enhance: avatarEnhance,
 				}),
 			});
 			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
@@ -1893,8 +1900,7 @@
 			private={isPrivate}
 			avatar={canGenerateAvatar
 				? {
-						models: imageModels,
-						modelId: avatarModelId,
+						hasImageModel: imageModels.length > 0,
 						avatarMediaId: data.assistantAvatarMediaId,
 						hasSource: !!avatarSourceMessage,
 						alreadyDrawn: avatarAlreadyDrawn,
@@ -1902,7 +1908,6 @@
 						busy: generating || !!avatarStatus,
 						onDescribe: () => void beginAvatarDescription(),
 						onGenerate: openAvatarDraw,
-						onModelChange: onAvatarModelChange,
 					}
 				: undefined}
 		/>
@@ -2255,8 +2260,10 @@
 	prompt={avatarPrompt}
 	models={imageModels}
 	modelId={avatarModelId}
+	enhance={avatarEnhance}
 	status={avatarStatus}
 	onPromptChange={(v: string) => (avatarPrompt = v)}
+	onEnhanceChange={(v: boolean) => (avatarEnhance = v)}
 	onModelChange={onAvatarModelChange}
 	onDraw={() => void generateAvatar()}
 	onCancel={() => (avatarDrawOpen = false)}

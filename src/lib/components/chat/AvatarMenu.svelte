@@ -13,8 +13,9 @@
 	two calls.
 
 	Step 2 opens the review dialog rather than drawing straight away — the reply
-	often needs trimming before it's a usable image prompt (see
-	AvatarDrawDialog).
+	often needs trimming before it's a usable image prompt, and the model and
+	enhancer choices belong next to the prompt they apply to (see
+	AvatarDrawDialog). This menu deliberately holds neither.
 
 	Presentational: every decision (which model, whether a source reply exists,
 	what the status says) arrives as a prop.
@@ -22,16 +23,12 @@
 <script lang="ts">
 	import { Popover } from 'bits-ui';
 	import { Sparkles } from '@lucide/svelte';
-	import ModelPicker from './ModelPicker.svelte';
-	import type { ModelEntry } from '$lib/types/api';
 
 	interface Props {
-		/** Image-kind models only — the picker is filtered by the caller's data,
-		 *  and again here via `filterKinds`. */
-		models: ModelEntry[];
-		/** Currently selected image model, or '' when the user has never picked
-		 *  one and no default resolved. */
-		modelId: string;
+		/** Whether any image model is configured. The menu doesn't need to know
+		 *  WHICH — choosing one belongs with the prompt in the draw dialog, where
+		 *  both are reviewed together — only whether step 2 can lead anywhere. */
+		hasImageModel: boolean;
 		/** The conversation's current avatar, shown so the menu reflects state
 		 *  rather than being a pair of blind buttons. */
 		avatarMediaId: string | null;
@@ -49,12 +46,10 @@
 		busy: boolean;
 		onDescribe: () => void;
 		onGenerate: () => void;
-		onModelChange: (id: string) => void;
 	}
 
 	let {
-		models,
-		modelId,
+		hasImageModel,
 		avatarMediaId,
 		hasSource,
 		alreadyDrawn,
@@ -62,10 +57,7 @@
 		busy,
 		onDescribe,
 		onGenerate,
-		onModelChange,
 	}: Props = $props();
-
-	const noImageModels = $derived(models.length === 0);
 </script>
 
 <Popover.Root>
@@ -110,25 +102,16 @@
 					</p>
 				</li>
 				<li>
-					<div class="mb-1.5">
-						<ModelPicker
-							{models}
-							filterKinds={['image']}
-							value={modelId}
-							onChange={onModelChange}
-							disabled={busy || noImageModels}
-						/>
-					</div>
 					<button
 						type="button"
-						disabled={busy || !hasSource || !modelId || noImageModels}
+						disabled={busy || !hasSource || !hasImageModel}
 						onclick={onGenerate}
 						class="w-full rounded-md bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 					>
 						{alreadyDrawn ? '2. Draw it again' : '2. Draw the latest reply'}
 					</button>
 					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
-						{#if noImageModels}
+						{#if !hasImageModel}
 							No image model is configured.
 						{:else if !hasSource}
 							Send the description request first.

@@ -56,6 +56,16 @@ interface GenerateAvatarBody {
 	 * endpoint usable on its own and matches what it did before editing existed.
 	 */
 	prompt?: unknown;
+	/**
+	 * Whether to run the prompt through the image-prompt enhancer.
+	 *
+	 * Explicit here because the conversation-level `image_prompt_enhancement`
+	 * toggle is kind-scoped to image conversations, so it never renders in the
+	 * chat conversation an avatar is drawn from — the client is the only place
+	 * the choice can be made. Omitted falls back to the conversation's setting,
+	 * which keeps the endpoint honest on its own.
+	 */
+	enhance?: unknown;
 }
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -120,7 +130,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// model prefers. Honors the conversation's own toggle.
 		promptStyle: modelEntry?.promptStyle ?? null,
 		promptHint: modelEntry?.promptHint ?? null,
-		enhancementEnabled: !meta.disabledFeatures.includes('image_prompt_enhancement'),
+		enhancementEnabled:
+			typeof body.enhance === 'boolean'
+				? body.enhance
+				: !meta.disabledFeatures.includes('image_prompt_enhancement'),
 		displayOnly: true,
 		abortSignal: inFlight.controller.signal,
 		advanceActiveLeaf: true,

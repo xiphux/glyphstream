@@ -50,8 +50,7 @@ describe('ChatHeader — avatar action', () => {
 	const avatarButton = () => screen.queryByRole('button', { name: 'Avatar for this conversation' });
 
 	const avatarProps = {
-		models: [],
-		modelId: '',
+		hasImageModel: true,
 		avatarMediaId: null,
 		hasSource: false,
 		alreadyDrawn: false,
@@ -59,7 +58,6 @@ describe('ChatHeader — avatar action', () => {
 		busy: false,
 		onDescribe: vi.fn(),
 		onGenerate: vi.fn(),
-		onModelChange: vi.fn(),
 	};
 
 	it('offers the avatar menu when the page supplies its state', () => {

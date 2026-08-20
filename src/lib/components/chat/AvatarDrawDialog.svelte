@@ -24,10 +24,24 @@
 		/** Image-kind models only. */
 		models: ModelEntry[];
 		modelId: string;
+		/**
+		 * Run the prompt through the image-prompt enhancer before generating.
+		 *
+		 * Offered here because it can't be reached anywhere else: the
+		 * `image_prompt_enhancement` feature toggle is kind-scoped to image
+		 * conversations (`featureCategoryAppliesToModelKind`), so in the chat
+		 * conversation where an avatar gets drawn it never renders — leaving the
+		 * enhancer permanently on with no way to say otherwise. It's usually
+		 * wanted: the description is prose, and the enhancer restyles it into
+		 * whatever the target model prefers. But a description the user has just
+		 * hand-tuned is exactly the case for sending it verbatim.
+		 */
+		enhance: boolean;
 		/** Non-null while drawing — the dialog stays up and reports progress
 		 *  rather than closing on a request the user can't see the result of. */
 		status: string | null;
 		onPromptChange: (value: string) => void;
+		onEnhanceChange: (value: boolean) => void;
 		onModelChange: (id: string) => void;
 		onDraw: () => void;
 		onCancel: () => void;
@@ -38,8 +52,10 @@
 		prompt,
 		models,
 		modelId,
+		enhance,
 		status,
 		onPromptChange,
+		onEnhanceChange,
 		onModelChange,
 		onDraw,
 		onCancel,
@@ -81,6 +97,23 @@
 			disabled={!!status}
 		/>
 	</div>
+
+	<label class="mt-3 flex items-start gap-2 text-xs">
+		<input
+			type="checkbox"
+			checked={enhance}
+			disabled={!!status}
+			onchange={(e) => onEnhanceChange(e.currentTarget.checked)}
+			class="mt-0.5"
+		/>
+		<span>
+			Rewrite for this model
+			<span class="block text-fg-muted">
+				Restyles the prompt into the model's preferred format. Turn off to send exactly what's
+				above.
+			</span>
+		</span>
+	</label>
 
 	{#if status}
 		<p class="mt-3 text-xs text-fg-secondary">{status}</p>
