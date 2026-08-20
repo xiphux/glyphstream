@@ -91,6 +91,17 @@ export interface AcquireOptions {
 	 *  it emits lets the client count "N ahead" down. Not called on the
 	 *  immediate-grant fast path. */
 	onQueued?: (info: { ahead: number }) => void;
+	/**
+	 * The slot is ours, but the group's previous holder is being asked to free
+	 * the shared resource first — see `takeSlot`. Fires at most once, and only
+	 * on a handover that actually has something to free.
+	 *
+	 * Distinct from `onQueued` because it is not queueing: nobody is ahead of
+	 * us and there is no position to count down. Without it an eviction plus a
+	 * cold model reload reads as "Generating…" with nothing happening, which on
+	 * a large model is tens of seconds of apparent hang.
+	 */
+	onReleasing?: () => void;
 }
 
 /**
@@ -110,10 +121,16 @@ export interface AcquireOptions {
  * Done on GRANT rather than on release: releasing eagerly when a generation
  * finishes would evict a model the very next request probably wants.
  */
-async function takeSlot(gate: Gate, endpoint: LoadedEndpoint, signal?: AbortSignal) {
+async function takeSlot(
+	gate: Gate,
+	endpoint: LoadedEndpoint,
+	signal?: AbortSignal,
+	onReleasing?: () => void,
+) {
 	const previous = gate.lastHolder;
 	gate.lastHolder = endpoint;
 	if (gate.active === 1 && previous && previous.id !== endpoint.id && previous.release) {
+		onReleasing?.();
 		await releaseEndpointResources(previous, signal);
 	}
 	return makeSlot(gate);
@@ -180,7 +197,7 @@ export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,
 	opts: AcquireOptions = {},
 ): Promise<EndpointSlot> {
-	const { signal, onQueued } = opts;
+	const { signal, onQueued, onReleasing } = opts;
 	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
 	// didn't opt into a group are the same string, so this is the previous
 	// behaviour exactly. Taking the endpoint rather than `(id, max)` is
@@ -197,7 +214,7 @@ export function acquireEndpointSlot(
 		// moment, so a concurrent acquire queues behind us rather than slipping in
 		// while we're freeing the resource.
 		gate.active++;
-		return takeSlot(gate, endpoint, signal);
+		return takeSlot(gate, endpoint, signal, onReleasing);
 	}
 
 	// Slow path: enqueue. Report how many are already waiting before pushing.
@@ -208,7 +225,7 @@ export function acquireEndpointSlot(
 		const waiter: Waiter = {
 			// `resolve` adopts the promise, so a waiter granted during a handover
 			// stays pending until the previous holder has actually let go.
-			grant: () => resolve(takeSlot(gate, endpoint, signal)),
+			grant: () => resolve(takeSlot(gate, endpoint, signal, onReleasing)),
 			reject,
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.

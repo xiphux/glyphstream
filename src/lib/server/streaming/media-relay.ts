@@ -179,6 +179,8 @@ export function startMediaRelay(
 					slot = await acquireEndpointSlot(params.endpoint, {
 						signal: params.abortSignal,
 						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
+						onReleasing: () =>
+							safeWrite({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
 					});
 				} catch (e) {
 					// Stop clicked while queued — nothing started; surface as a

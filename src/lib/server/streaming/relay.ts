@@ -268,6 +268,10 @@ export async function startStreamingRelay(
 				slot = await acquireEndpointSlot(params.endpoint, {
 					signal: params.abortSignal,
 					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
+					// Not queued — the slot is ours; we're waiting on the endpoint that
+					// shares this GPU to unload. Reads as a hang otherwise.
+					onReleasing: () =>
+						write({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
 				});
 				// Slot acquired → generation begins; stamp the in-flight entry so a
 				// recovered fan-out shows this branch's timer (vs a still-QUEUED one).

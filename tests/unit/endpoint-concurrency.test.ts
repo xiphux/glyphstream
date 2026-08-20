@@ -471,4 +471,44 @@ describe('freeing a shared resource on handover', () => {
 		await flush();
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
+
+	it('announces the wait, and only when there is something to free', async () => {
+		// A handover with an eviction is not queueing — nobody is ahead — so it
+		// gets its own signal. Without it, an unload plus a cold reload renders as
+		// "Generating…" with nothing happening.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+
+		const onReleasing = vi.fn();
+		const onQueued = vi.fn();
+		(await acquireEndpointSlot(llama)).release();
+		(await acquireEndpointSlot(bridge, { onReleasing, onQueued })).release();
+
+		expect(onReleasing).toHaveBeenCalledOnce();
+		// Not queued: the slot was free, we just had to wait for the eviction.
+		expect(onQueued).not.toHaveBeenCalled();
+	});
+
+	it('stays silent when the same endpoint takes the slot back', async () => {
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const onReleasing = vi.fn();
+		(await acquireEndpointSlot(llama)).release();
+		(await acquireEndpointSlot(llama, { onReleasing })).release();
+		expect(onReleasing).not.toHaveBeenCalled();
+	});
+
+	it('fires before the release, not after', async () => {
+		// It exists to explain a wait, so it has to arrive at the start of it.
+		const order: string[] = [];
+		releaseMock.mockImplementation(async () => {
+			order.push('release');
+		});
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+
+		(await acquireEndpointSlot(llama)).release();
+		(await acquireEndpointSlot(bridge, { onReleasing: () => order.push('announce') })).release();
+
+		expect(order).toEqual(['announce', 'release']);
+	});
 });
