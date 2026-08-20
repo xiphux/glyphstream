@@ -244,6 +244,18 @@
 		[...messages].reverse().find((m) => m.role === 'assistant' && partsToText(m.parts).trim()),
 	);
 
+	// Whether this description has already been drawn on the active branch. A
+	// second generation appends another portrait under the SAME description, so
+	// the variants land as siblings and the ‹N/M› arrows compare them for free —
+	// nothing about re-rolling needed building, only saying.
+	const avatarAlreadyDrawn = $derived(
+		!!avatarSourceMessage &&
+			messages.some(
+				(m) =>
+					m.parentMessageId === avatarSourceMessage.id && m.parts.some((p) => p.type === 'image'),
+			),
+	);
+
 	let avatarStatus = $state<string | null>(null);
 
 	function onAvatarModelChange(id: string) {
@@ -1866,6 +1878,7 @@
 						modelId: avatarModelId,
 						avatarMediaId: data.assistantAvatarMediaId,
 						hasSource: !!avatarSourceMessage,
+						alreadyDrawn: avatarAlreadyDrawn,
 						status: avatarStatus,
 						busy: generating || !!avatarStatus,
 						onDescribe: () => void beginAvatarDescription(),

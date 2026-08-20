@@ -34,6 +34,11 @@
 		/** False when there's no assistant reply to draw from yet — step 2 is
 		 *  offered but disabled, so the sequence stays legible. */
 		hasSource: boolean;
+		/** The reply step 2 would draw has already been drawn on this branch, so
+		 *  the action is a re-roll rather than a first attempt. Only changes the
+		 *  wording: the call is identical either way, and the new portrait lands
+		 *  beside the old one as a sibling. */
+		alreadyDrawn: boolean;
 		/** Non-null while a generation is running: 'Queued…', 'Drawing…'. */
 		status: string | null;
 		/** True while any turn is in flight — both steps are unavailable. */
@@ -48,6 +53,7 @@
 		modelId,
 		avatarMediaId,
 		hasSource,
+		alreadyDrawn,
 		status,
 		busy,
 		onDescribe,
@@ -115,13 +121,16 @@
 						onclick={onGenerate}
 						class="w-full rounded-md bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 					>
-						2. Draw the latest reply
+						{alreadyDrawn ? '2. Draw it again' : '2. Draw the latest reply'}
 					</button>
 					<p class="mt-1 text-[11px] leading-snug text-fg-muted">
 						{#if noImageModels}
 							No image model is configured.
 						{:else if !hasSource}
 							Send the description request first.
+						{:else if alreadyDrawn}
+							Draws the same description again. The new one becomes the avatar; compare them with
+							the ‹ › arrows on the bubble.
 						{:else}
 							Draws the most recent reply and makes it this conversation's avatar.
 						{/if}

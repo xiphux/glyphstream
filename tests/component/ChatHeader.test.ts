@@ -54,6 +54,7 @@ describe('ChatHeader — avatar action', () => {
 		modelId: '',
 		avatarMediaId: null,
 		hasSource: false,
+		alreadyDrawn: false,
 		status: null,
 		busy: false,
 		onDescribe: vi.fn(),
