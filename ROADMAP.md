@@ -479,6 +479,36 @@ scrollHeight` to be silently wrong. So options 1 and 2 below share the same
   frontend cost are decoupled — relieving the former does nothing for the latter,
   and a long-lived compacted thread keeps accumulating rows indefinitely.
 
+- **Endpoints that share a GPU should share a queue — and be able to evict.**
+  `acquireEndpointSlot` (`endpoints/concurrency.ts`) serializes generations so a
+  single-GPU backend doesn't thrash, and its own header says the gate is
+  endpoint-wide _because_ "a single backend that hot-swaps models still shares
+  one VRAM pool". But the gate is keyed by endpoint id, so two DIFFERENT
+  endpoints on one GPU — a llama.cpp chat endpoint and a ComfyUI image endpoint,
+  the common self-hosted shape — queue independently and can collide. Two
+  halves, and only the first is cheap:
+
+  - _Serialize._ A `resource_group = "gpu0"` field on `[[endpoints]]`, defaulting
+    to the endpoint id, used as the gate key. `getGate` already takes a string
+    key over a `Map`, so this is a config field and a one-line change — not a
+    subsystem.
+  - _Evict._ The harder half, and the one that actually bites: a shared gate
+    stops two generations running at once, but releasing a slot doesn't free
+    VRAM. llama.cpp keeps the model resident on its idle timer, so an image
+    generation dispatched right after a chat turn can still OOM. llama.cpp's
+    router mode exposes `POST /models/unload` (`{"model": "..."}`) and an LRU
+    `--models-max`; the shape that fits here is an optional per-endpoint release
+    hook the gate can call before granting a slot to a different resource-group
+    member. Alternatively the bridge does it — it's the only component that sees
+    both sides.
+
+  _Why it surfaced:_ conversation-avatar generation (below) makes a chat call
+  and an image call adjacent BY DESIGN, turning an occasional race into a
+  reliable one. It isn't avatar-specific though — two people in one household,
+  one GPU, one chatting while the other generates, is the same collision. The
+  avatar flow's two-step UI (read the description, then draw) is a mitigation,
+  not a fix: it buys idle-timer time, it doesn't guarantee anything.
+
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
 
