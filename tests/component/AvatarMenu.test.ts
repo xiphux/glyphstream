@@ -31,7 +31,9 @@ const base: ComponentProps<typeof AvatarMenu> = {
 async function open(props: Partial<ComponentProps<typeof AvatarMenu>> = {}) {
 	const user = userEvent.setup();
 	render(AvatarMenu, { props: { ...base, ...props } });
-	await user.click(screen.getByRole('button', { name: 'Avatar for this conversation' }));
+	// Anchored, not exact: the trigger's label carries the status when a
+	// generation is running.
+	await user.click(screen.getByRole('button', { name: /^Avatar for this conversation/ }));
 	return user;
 }
 
@@ -115,5 +117,25 @@ describe('AvatarMenu', () => {
 		expect(screen.getByRole('button', { name: '1. Ask for a description' })).toBeDisabled();
 		expect(drawButton()).toBeDisabled();
 		expect(screen.getByText('Drawing…')).toBeInTheDocument();
+	});
+
+	it('reports a running generation on the avatar itself', async () => {
+		// The dialog closes as soon as the request is accepted, so this is the
+		// only thing left saying a drawing is in progress — and it stays clickable,
+		// because the menu carries the same status in words.
+		const user = userEvent.setup();
+		render(AvatarMenu, { props: { ...base, avatarMediaId: 'media-1', status: 'Drawing…' } });
+
+		const trigger = screen.getByRole('button', { name: /Drawing…/ });
+		expect(trigger.querySelector('.animate-spin')).toBeInTheDocument();
+
+		await user.click(trigger);
+		expect(screen.getByText('Drawing…')).toBeInTheDocument();
+	});
+
+	it('shows no spinner when nothing is running', () => {
+		render(AvatarMenu, { props: { ...base, avatarMediaId: 'media-1' } });
+		const trigger = screen.getByRole('button', { name: 'Avatar for this conversation' });
+		expect(trigger.querySelector('.animate-spin')).not.toBeInTheDocument();
 	});
 });

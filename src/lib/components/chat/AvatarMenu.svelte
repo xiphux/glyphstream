@@ -79,10 +79,22 @@
 
 <Popover.Root>
 	<Popover.Trigger
-		aria-label="Avatar for this conversation"
-		title="Avatar for this conversation"
-		class="shrink-0 rounded-full transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus"
+		aria-label={status
+			? `Avatar for this conversation — ${status}`
+			: 'Avatar for this conversation'}
+		title={status ?? 'Avatar for this conversation'}
+		class="relative shrink-0 rounded-full transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus"
 	>
+		{#if status}
+			<!-- Progress rides the avatar rather than holding the dialog open: the
+			     generation is a background errand, and this is the spot the result
+			     lands in, so it's where "still working" belongs. Kept clickable —
+			     the menu shows the same status in words. -->
+			<span
+				class="absolute -inset-1 animate-spin rounded-full border-2 border-accent border-t-transparent"
+				aria-hidden="true"
+			></span>
+		{/if}
 		{#if avatarMediaId}
 			<img
 				src="/api/media/{avatarMediaId}/thumbnail"
@@ -95,7 +107,7 @@
 			<span
 				class="flex size-10 items-center justify-center rounded-full border border-dashed border-border-strong text-fg-muted"
 			>
-				<Sparkles size={16} strokeWidth={2} />
+				<Sparkles size={16} strokeWidth={2} class={status ? 'animate-pulse' : ''} />
 			</span>
 		{/if}
 	</Popover.Trigger>

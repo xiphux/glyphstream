@@ -313,7 +313,16 @@
 					enhance: avatarEnhance,
 				}),
 			});
+			// A rejection (bad model, message gone) lands here with the dialog still
+			// up, so the prompt the user just edited survives to be retried.
 			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
+
+			// Accepted — the request is the server's problem now. Close and let the
+			// drawing finish in the background, reported on the header avatar, so a
+			// minute of ComfyUI doesn't hold the UI hostage. The relay is already
+			// decoupled from this connection; only the avatar-apply below needs the
+			// page to still be here.
+			avatarDrawOpen = false;
 
 			let mediaId: string | null = null;
 			await consumeChatStream(res.body, {
@@ -343,7 +352,6 @@
 			// Reloads the branch (the new portrait row) AND the avatar the bubbles
 			// render — both come from this page's load. See setAvatar for why the
 			// targeted key isn't enough here.
-			avatarDrawOpen = false;
 			await invalidateAll();
 			toast.success('Avatar updated');
 		} catch (e) {
