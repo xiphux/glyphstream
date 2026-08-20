@@ -277,68 +277,48 @@ docs.
   tables / links before synthesis.
 
 - **Model avatars — a face on the bubble, and the persona that draws its own.**
-  Phase 1 shipped: `custom_models.avatar_media_id`, an avatar beside the model
-  name in the persisted + in-flight bubbles, upload/replace/remove in
-  `/settings/models`, and "Set as avatar" from the lightbox on both the gallery
-  and chat surfaces (so a fan-out of variants doubles as an avatar picker —
-  generate four, keep one). Three things settled there that phase 2 inherits:
+  Both phases shipped. Phase 1: `custom_models.avatar_media_id`, the avatar
+  beside the model name, upload/replace/remove in `/settings/models`, and "Set
+  as avatar" from the lightbox on the gallery and chat surfaces. Phase 2:
+  `conversations.avatar_media_id` overriding it, a header menu that asks the
+  model to describe an image of itself and then draws that description with a
+  chosen image model, and re-roll. Four decisions there are load-bearing enough
+  to restate, because each looks like an implementation detail and isn't:
 
   - `assistantIdentityForMessage` (`chat-render.ts`) resolves label + avatar
     together from ONE attribution test, so a fan-out sibling or per-turn
     override can't wear a preset's face while its label says otherwise.
-  - Media lifetime absorbed a non-message referrer without changing the
-    purger: `ref_count` is a plain decrement-based counter, so
-    `linkAvatarMedia`/`unlinkAvatarMedia` are enough to keep an uploaded avatar
-    off the reaper AND off the conversation-delete orphan list.
-  - `setCustomModelAvatar` is the single write path (its own endpoint, not a
-    field on the preset PATCH) precisely because each change moves that count.
+  - Media lifetime absorbs a non-message referrer without touching the purger:
+    `ref_count` is a plain decrement-based counter, so
+    `linkAvatarMedia`/`unlinkAvatarMedia` suffice — and `deleteConversation`
+    releases its avatar BEFORE its orphan pass, or a portrait drawn in that
+    conversation survives a "delete media too" the user asked for.
+  - The portrait persists `displayOnly` and is decided so at persist time, never
+    revisited. Sending an image for a few turns and dropping it when it stops
+    being recent would re-prefill the whole conversation the turn it vanished;
+    never-sent is the only deterministic variant. The description text stays,
+    which is the continuity the model actually needs.
+  - The description is an ordinary turn, not an auxiliary call — the
+    conversation's own model already holds the branch and invented the persona,
+    the user can edit the request before sending and Retry the result, and the
+    gap before drawing is the review step.
 
-  Remaining — _phase 2, the conversation designs its own face._ A roleplay
-  preset often invents a persona _within_ the conversation that the preset's
-  own avatar doesn't depict. So: the model writes an appearance description
-  (features, hair, build, dress — whatever the role settled into), that goes to
-  an image model, and the result becomes this conversation's avatar, overriding
-  the preset's. `conversations.avatar_media_id` is the override, so one preset
-  can wear a different face per chat. Where the description comes from is the
-  real fork, and the two options have very different costs:
-  - _User-initiated (the recommended default)._ A "generate an avatar for this
-    character" action in the chat header runs a `memory_model`-class pass over
-    the branch to write the appearance description, then generates. Zero
-    payload cost, and the user is already the one who decides a face is wanted.
-  - _Model-initiated (the magical version, opt-in)._ A tool the model calls
-    when it has settled into a persona. Nicer to experience, but a tool
-    definition is re-sent every turn forever for something used once per
-    conversation — so it can't ride the static registry. It'd register
-    `isAvailable:false` and be appended per request only when the
-    conversation's preset opts in, the same trick per-user MCP tools and
-    `activate_skill` use.
-
-  Generation reuses what's there rather than growing a parallel path: an
-  image-kind model (a new config slot, or just let the user pick one), the
-  existing `image_enhancement` enhancer to rewrite the appearance description
-  into that model's preferred `prompt_style`, and `persistGeneratedImage` so
-  the result is an ordinary generated media row — gallery-visible, kept
-  indefinitely, user-deletable. The manual half of this already works today
-  (generate a portrait in a chat, "Set as avatar"), which is worth trying
-  before building the automation: it may turn out to be most of the value.
-
-  Open questions: whether a persona that changes mid-roleplay (transformation,
-  costume change) regenerates in place or wants a per-message avatar snapshot
-  ("which face was it wearing at message 40" is a real question in a long
-  thread, but a media ref per assistant row is a lot of schema for it); whether
-  to store the appearance _description_ (a `persona_appearance` column) so
-  regeneration doesn't re-derive it from the branch each time; and framing/crop
-  consistency across regenerations.
-
-  _Overlaps with the **Character / asset consistency** sub-item under the
-  **multimodal pipeline** bet_ — both want a saved (reference image + text
-  descriptor) pair. If both land, a conversation avatar should _be_ an asset
-  row, not a second table that means the same thing.
-
-  (Scope kept deliberately out: user avatars. The user bubble has a label too,
-  and GitHub OAuth hands us an avatar URL for free, but that's an
-  account-identity feature with its own privacy question in a multi-user
-  install — it doesn't ride along with this one.)
+  Remaining, all optional:
+  - _Per-message avatar snapshots._ "Which face was it wearing at message 40" is
+    a real question in a long roleplay. Mostly answered for free — each
+    generation is a real message, so the transcript IS the history and the
+    column only ever means "current" — but nothing renders an older face
+    alongside the messages it was current for.
+  - _Storing the appearance description separately_ (a `persona_appearance`
+    column) so a re-roll doesn't re-read it off the branch, and so the
+    **Character / asset consistency** sub-item under the **multimodal pipeline**
+    bet can share it. If both land, a conversation avatar should _be_ an asset
+    row rather than a second table meaning the same thing.
+  - _Framing/crop consistency_ across re-rolls, which today is whatever the
+    image model felt like.
+  - _User avatars._ The user bubble has a label too, and GitHub OAuth hands us
+    an avatar URL for free — but that's account identity with its own privacy
+    question in a multi-user install, and it doesn't ride along with this.
 
 - **Multi-user — nice-to-haves.** Role + invite flow, admin UI, and data
   isolation shipped. Remaining: a per-user storage-quota / usage view; bulk user
