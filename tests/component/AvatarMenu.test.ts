@@ -87,7 +87,7 @@ describe('AvatarMenu', () => {
 		// second generation lands as a sibling rather than replacing anything.
 		await open({ alreadyDrawn: true, avatarMediaId: 'media-1' });
 		expect(screen.getByRole('button', { name: '2. Draw it again' })).toBeEnabled();
-		expect(screen.getByText(/Draws the same description again/)).toBeInTheDocument();
+		expect(screen.getByText(/Same description again/)).toBeInTheDocument();
 	});
 
 	it('reports the conversation avatar it already has', async () => {

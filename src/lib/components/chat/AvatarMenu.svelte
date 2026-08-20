@@ -12,6 +12,10 @@
 	the chat model and the image model share a GPU it puts real time between the
 	two calls.
 
+	Step 2 opens the review dialog rather than drawing straight away — the reply
+	often needs trimming before it's a usable image prompt (see
+	AvatarDrawDialog).
+
 	Presentational: every decision (which model, whether a source reply exists,
 	what the status says) arrives as a prop.
 -->
@@ -129,10 +133,11 @@
 						{:else if !hasSource}
 							Send the description request first.
 						{:else if alreadyDrawn}
-							Draws the same description again. The new one becomes the avatar; compare them with
-							the ‹ › arrows on the bubble.
+							Same description again — the new one becomes the avatar, and the ‹ › arrows on the
+							bubble compare them.
 						{:else}
-							Draws the most recent reply and makes it this conversation's avatar.
+							Shows the image prompt for review, then draws it and makes it this conversation's
+							avatar.
 						{/if}
 					</p>
 				</li>

@@ -31,7 +31,8 @@
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import ChatComposer from '$lib/components/chat/ChatComposer.svelte';
 	import ChatHeader from '$lib/components/chat/ChatHeader.svelte';
-	import { AVATAR_DESCRIPTION_PROMPT } from '$lib/avatar-prompt';
+	import { AVATAR_DESCRIPTION_PROMPT, extractAvatarPrompt } from '$lib/avatar-prompt';
+	import AvatarDrawDialog from '$lib/components/chat/AvatarDrawDialog.svelte';
 	import { CanvasController } from '$lib/canvas-controller.svelte';
 	import { CompactionController } from '$lib/compaction-controller.svelte';
 	import { EditSession } from '$lib/edit-session.svelte';
@@ -257,6 +258,19 @@
 	);
 
 	let avatarStatus = $state<string | null>(null);
+	// The draw dialog's editable prompt. Seeded from the source reply when the
+	// dialog opens, then owned by the user — a model that answers in character
+	// before complying leaves prose to trim, and `extractAvatarPrompt` only
+	// removes what it can identify.
+	let avatarDrawOpen = $state(false);
+	let avatarPrompt = $state('');
+
+	function openAvatarDraw() {
+		const source = avatarSourceMessage;
+		if (!source) return;
+		avatarPrompt = extractAvatarPrompt(partsToText(source.parts));
+		avatarDrawOpen = true;
+	}
 
 	function onAvatarModelChange(id: string) {
 		avatarModelOverride = id;
@@ -286,7 +300,11 @@
 			const res = await fetch(`/api/conversations/${convId}/avatar/generate`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ sourceMessageId: source.id, modelId: avatarModelId }),
+				body: JSON.stringify({
+					sourceMessageId: source.id,
+					modelId: avatarModelId,
+					prompt: avatarPrompt,
+				}),
 			});
 			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
 
@@ -318,6 +336,7 @@
 			// Reloads the branch (the new portrait row) AND the avatar the bubbles
 			// render — both come from this page's load. See setAvatar for why the
 			// targeted key isn't enough here.
+			avatarDrawOpen = false;
 			await invalidateAll();
 			toast.success('Avatar updated');
 		} catch (e) {
@@ -1882,7 +1901,7 @@
 						status: avatarStatus,
 						busy: generating || !!avatarStatus,
 						onDescribe: () => void beginAvatarDescription(),
-						onGenerate: () => void generateAvatar(),
+						onGenerate: openAvatarDraw,
 						onModelChange: onAvatarModelChange,
 					}
 				: undefined}
@@ -2231,6 +2250,18 @@
 	~100-200 ms after the tap — easily long enough for the import chunk
 	to land in parallel on the first open.
 -->
+<AvatarDrawDialog
+	open={avatarDrawOpen}
+	prompt={avatarPrompt}
+	models={imageModels}
+	modelId={avatarModelId}
+	status={avatarStatus}
+	onPromptChange={(v: string) => (avatarPrompt = v)}
+	onModelChange={onAvatarModelChange}
+	onDraw={() => void generateAvatar()}
+	onCancel={() => (avatarDrawOpen = false)}
+/>
+
 {#if lightbox}
 	{#await import('$lib/components/MediaLightbox.svelte') then { default: MediaLightbox }}
 		<MediaLightbox

@@ -40,10 +40,22 @@ import { partsToText } from '$lib/message-parts';
 import type { RequestHandler } from './$types';
 
 interface GenerateAvatarBody {
-	/** The assistant message whose text is the appearance description. */
+	/** The assistant message the portrait hangs under. Still required when
+	 *  `prompt` is supplied — it's the anchor, not just the text source. */
 	sourceMessageId?: unknown;
 	/** Composite `endpoint::model` of the image model to draw with. */
 	modelId?: unknown;
+	/**
+	 * The image prompt to draw, when the client has one. Normally the
+	 * description extracted from the source message and then reviewed by the
+	 * user, so it may differ from that message's text — models that stay in
+	 * character tend to wrap the description in prose, and the user gets the
+	 * final say either way.
+	 *
+	 * Omitted (or blank) falls back to the message's full text, which keeps the
+	 * endpoint usable on its own and matches what it did before editing existed.
+	 */
+	prompt?: unknown;
 }
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
@@ -65,7 +77,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const source = getMessage(params.id, body.sourceMessageId);
 	if (!source) error(404, 'Message not found');
 
-	const prompt = partsToText(source.parts).trim();
+	// A supplied prompt wins; the message's own text is the fallback. Whatever
+	// is used ends up on the media row as `promptFull`, so the lightbox shows
+	// what actually drew the portrait rather than what the model happened to say.
+	const supplied = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+	const prompt = supplied || partsToText(source.parts).trim();
 	if (!prompt) error(400, 'That message has no text to draw from');
 
 	const parsed = parseModelId(body.modelId);
