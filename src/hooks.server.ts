@@ -158,16 +158,26 @@ const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
  * measured from the last activity — not from process start, which `proc` already
  * reports and which the readings have already ruled out.
  *
- * Static assets never reach here (sirv serves them ahead of the SSR handler), so
- * this tracks real application work rather than resetting on every chunk fetch.
- * Any client resets it, including another user and a presence heartbeat — at
- * household scale that is the intended meaning ("was anyone using this?"), not a
- * flaw, but it does mean the number is a floor on true idleness.
+ * Two things do NOT reset it: static assets, which sirv serves ahead of the SSR
+ * handler and which therefore never reach this hook, and the container's health
+ * probe (see HEALTH_PROBE_PATH). Enumerating only the first of those is what
+ * shipped this field capped at 30 seconds — if another unattended poller is ever
+ * added, it belongs on that list too.
+ *
+ * Any real client resets it, including another user and a presence heartbeat —
+ * at household scale that is the intended meaning ("was anyone using this?"),
+ * not a flaw. So it is a floor on CLIENT traffic, and not a measure of process
+ * idleness at all: five sweepers run on 5- and 15-minute cadences and touch
+ * SQLite without resetting anything, so a large reading here does not mean the
+ * process was quiet or that a volume was ever allowed to spin down.
  *
  * Starts at 0 so the process's first request reports its idle gap as the whole
  * uptime, which is what it is.
  */
 let lastRequestAt = 0;
+
+/** The path the Dockerfile's HEALTHCHECK polls; excluded from `lastRequestAt`. */
+const HEALTH_PROBE_PATH = '/api/health';
 
 /**
  * Bucket key for the rate limiter.
@@ -208,10 +218,6 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// this will end up being a signed-in document; the syscall is cheaper than
 	// the bookkeeping a lazier capture would need.
 	const usageStart = process.resourceUsage();
-	// Read before the update below, so this request sees the gap that preceded
-	// it rather than zero.
-	const idleMs = lastRequestAt === 0 ? process.uptime() * 1000 : Date.now() - lastRequestAt;
-	lastRequestAt = Date.now();
 	// Sub-spans of the same total (`authMs` / `renderMs` / `zipMs`, declared at
 	// the points they're measured) are reported alongside it. One opaque `ssr`
 	// number said a cold launch spent 2.35s on the server and nothing about
@@ -225,6 +231,20 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// `/api/%61uth/…` (or `/%61pi/…`) reach the real handler while sliding past
 	// the gate. See routedPathname's docstring.
 	const path = routedPathname(event.url.pathname);
+
+	// Read before the update below, so this request sees the gap that preceded
+	// it rather than zero. Clamped because the two ends are wall-clock reads and
+	// an NTP step backwards between them would otherwise emit a negative `dur=`.
+	const idleMs =
+		lastRequestAt === 0 ? process.uptime() * 1000 : Math.max(0, Date.now() - lastRequestAt);
+	// The container's own HEALTHCHECK must not count as activity. `/api/health`
+	// is a dynamic route, so unlike a static asset it DOES reach this hook, and
+	// the Dockerfile polls it every 30s — which silently capped this metric at
+	// the probe interval, in exactly the containerised deployment it was written
+	// for. It kept rendering a plausible number that was never the real one.
+	// Only the write is skipped: a probe response is not a document, so it never
+	// reports `idleMs` in the first place.
+	if (path !== HEALTH_PROBE_PATH) lastRequestAt = Date.now();
 
 	// CSRF gate for /api/* state-mutating requests. SvelteKit's built-in
 	// csrf.checkOrigin only fires on form-encoded submissions, not the
@@ -359,8 +379,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const isDocument = !!response.headers.get('content-type')?.startsWith('text/html');
 
 	// Drop SvelteKit's `Link:` preload header. It restates, in ~3.2KB of header,
-	// the `<link rel=modulepreload>` tags already in the document head — one
-	// entry per client chunk, 46 of them on the chat route — and it is emitted
+	// hints the document head already carries — a modulepreload entry per client
+	// chunk, 46 of them on the chat route, plus a stylesheet preload whose target
+	// gets an ordinary render-blocking `<link rel=stylesheet>` regardless — and
+	// it is emitted
 	// with `nopush`, so there is no HTTP/2 push to lose and nothing here speaks
 	// 103 Early Hints. The browser gets the identical hint list from the head,
 	// which streams in the first packet of the body.

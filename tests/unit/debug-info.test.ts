@@ -489,10 +489,23 @@ describe('buildDebugSections — launch image', () => {
 		expect(rows['Launch image'].value).toBe('matched');
 	});
 
+	it('reports zero declared rather than vanishing', () => {
+		// The regression this row exists to catch: the splash block gone from
+		// app.html, or gen:splash never re-run. Suppressing the row for an empty
+		// list would hide exactly that.
+		const rows = rowsOf(
+			sources({ launchImage: { candidates: 0, matched: 0, device: '430x932 @3x' } }),
+			'Environment',
+		);
+		expect(rows['Launch image'].value).toBe('no match');
+		expect(rows['Launch image'].note).toBe('430x932 @3x · 0 declared');
+	});
+
 	it('omits the row when the question does not apply', () => {
-		// Not a standalone launch, or no candidates declared. A "no match" here
-		// would be a true statement about an irrelevant question, which is the
-		// kind of row that sends someone chasing a non-bug.
+		// Not an iOS home-screen launch — the only case that's genuinely
+		// inapplicable. A "no match" here would be a true statement about an
+		// irrelevant question, which is the kind of row that sends someone
+		// chasing a non-bug. (Zero candidates is NOT this case; see above.)
 		expect(rowsOf(sources(), 'Environment')['Launch image']).toBeUndefined();
 	});
 });

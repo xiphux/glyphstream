@@ -57,8 +57,10 @@ export interface DebugSources {
 	 *  reading get compared against a production one. */
 	dev: boolean;
 	/** Whether any `apple-touch-startup-image` in the document matches THIS
-	 *  hardware. Null when the question doesn't apply (not a standalone launch,
-	 *  or no candidates declared). See the row this feeds. */
+	 *  hardware. Null only when the question doesn't apply — not an iOS
+	 *  home-screen launch. A document declaring NO candidates still reports
+	 *  `{candidates: 0}` rather than null; that's the regression the row exists
+	 *  to catch, so it must not look like "not applicable". */
 	launchImage: LaunchImageMatch | null;
 }
 
@@ -67,7 +69,9 @@ export interface LaunchImageMatch {
 	candidates: number;
 	/** How many of them match this device's media query. Should be exactly 1. */
 	matched: number;
-	/** Hardware, for filling a gap in the geometry list: `1290x2796 @3x`. */
+	/** Hardware, for filling a gap in the geometry list — CSS pixels plus the
+	 *  ratio (`430x932 @3x`), the vocabulary the media queries are written in,
+	 *  NOT the physical pixels the splash filenames use. */
 	device: string;
 }
 
@@ -413,9 +417,22 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
  * Ask the device itself which `apple-touch-startup-image` iOS would have had to
  * choose from, by running each link's own media query through `matchMedia`.
  *
- * Only for a standalone launch — in a browser tab there is no launch image to
- * get wrong, and reporting "no match" on a desktop (which has no startup images
- * declared for it, correctly) would read as a bug that isn't one.
+ * Gated twice, because either gate alone reports a defect that isn't one.
+ * `display-mode: standalone` is not iOS-specific — it is equally true of an
+ * installed Android or desktop PWA, where the 88 startup-image links are still
+ * in the document (they are unconditional in app.html) and none of them can
+ * match. That device would be told its geometry is missing and sent to add
+ * splash rows for hardware iOS will never launch on. `navigator.standalone` is
+ * the second gate: a non-standard property Safari alone defines, so testing for
+ * its PRESENCE (not its value — that's false in a tab) identifies the engine
+ * without parsing a user-agent string. If a future iOS drops it the row simply
+ * stops rendering, which fails toward silence rather than toward a false alarm.
+ *
+ * A zero count is reported rather than suppressed. "No startup images declared
+ * at all" is not the same as "not applicable", and it is the exact regression
+ * this exists to catch — the splash block going missing from app.html, or
+ * `gen:splash` never being re-run — so it must render as `0 declared` instead of
+ * quietly taking the row away.
  *
  * Defensive to the point of paranoia because it runs on whatever the device is:
  * a malformed media string makes `matchMedia` throw in some engines, and one bad
@@ -423,10 +440,10 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
  */
 function readLaunchImageMatch(standalone: boolean): LaunchImageMatch | null {
 	if (!standalone) return null;
+	if (!('standalone' in navigator)) return null;
 	const links = document.querySelectorAll<HTMLLinkElement>(
 		'link[rel="apple-touch-startup-image"][media]',
 	);
-	if (links.length === 0) return null;
 	let matched = 0;
 	for (const link of links) {
 		try {

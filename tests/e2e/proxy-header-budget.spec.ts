@@ -24,6 +24,15 @@ import { seedConversation } from './helpers';
  */
 const NGINX_DEFAULT_PROXY_BUFFER_BYTES = 4096;
 
+/**
+ * Headroom for a `Set-Cookie` this particular request didn't happen to trigger.
+ * A session renewal adds one, and it is what spent the last 20 bytes in
+ * production — so a budget measured against a request that skipped it would sit
+ * green right up to the cliff it exists to keep us away from.
+ */
+const SET_COOKIE_RESERVE_BYTES = 256;
+const BUDGET_BYTES = NGINX_DEFAULT_PROXY_BUFFER_BYTES - SET_COOKIE_RESERVE_BYTES;
+
 /** What nginx actually counts: status line + each `Name: value` CRLF + the
  *  terminating CRLF. Playwright's headersArray() preserves duplicates, which
  *  matters because `Set-Cookie` can legitimately repeat. */
@@ -53,12 +62,12 @@ test('a chat document fits inside a reverse proxy default header buffer', async 
 	).toBeUndefined();
 
 	const bytes = headerBlockBytes(headers);
-	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(NGINX_DEFAULT_PROXY_BUFFER_BYTES);
+	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(BUDGET_BYTES);
 });
 
 test('the home document fits too', async ({ request }) => {
 	const res = await request.get('/');
 	expect(res.status()).toBe(200);
 	const bytes = headerBlockBytes(res.headersArray());
-	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(NGINX_DEFAULT_PROXY_BUFFER_BYTES);
+	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(BUDGET_BYTES);
 });

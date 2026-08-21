@@ -15,7 +15,12 @@
  *     the whole investigation is looking for, and it is invisible to `cpu`,
  *     which reads near-zero for it, exactly like an idle server.
  *   not stalled + low cpu — this request waited on something that left the loop
- *     free (an awaited network call), or the host descheduled the process.
+ *     free, such as an awaited network call.
+ *
+ * Host descheduling belongs in the SECOND bucket, not the third: `performance.now()`
+ * keeps advancing while the container is denied CPU, so a deschedule long enough
+ * to explain a slow request overshoots the tick and reads as a stall like any
+ * other. Only jitter too brief to overshoot the sample interval hides here.
  *
  * Sampled on a timer rather than measured per request, because a blocked loop is
  * by definition not running the code that would measure it. A recurring timer
