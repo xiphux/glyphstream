@@ -72,7 +72,15 @@ export async function runPromptEnhancement(
 	ctx.write({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
 	let enhSlot: EndpointSlot | null = null;
 	try {
-		enhSlot = await acquireEndpointSlot(enhancerModel.endpoint, { signal: ctx.abortSignal });
+		enhSlot = await acquireEndpointSlot(enhancerModel.endpoint, {
+			signal: ctx.abortSignal,
+			// Same reason the relays pass this: if the enhancer shares a resource
+			// group, the eviction happens here, and leaving "Enhancing prompt…" up
+			// for a model unload reads as a hang on the one step that should be
+			// quick. The generation phase re-emits its own status after this.
+			onReleasing: () =>
+				ctx.write({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
+		});
 		const normalize = input.medium === 'video' ? normalizeVideoStyle : normalizeStyle;
 		const { enhanced, changed } = await enhancePrompt({
 			prompt: input.prompt,

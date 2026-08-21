@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // The gate calls this when a group changes hands; stubbing it lets the ordering
 // be observed without a backend, and lets a slow release be simulated.
-const releaseMock = vi.hoisted(() => vi.fn(async () => {}));
+const releaseMock = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
@@ -52,7 +52,7 @@ function ep(
 afterEach(() => {
 	resetEndpointGatesForTests();
 	releaseMock.mockClear();
-	releaseMock.mockImplementation(async () => {});
+	releaseMock.mockImplementation(async () => true);
 });
 
 /** A promise that resolves on the next microtask — lets a queued waiter's
@@ -420,6 +420,7 @@ describe('freeing a shared resource on handover', () => {
 		releaseMock.mockImplementation(async () => {
 			await Promise.resolve();
 			freed = true;
+			return true;
 		});
 
 		const held = await acquireEndpointSlot(llama);
@@ -441,7 +442,9 @@ describe('freeing a shared resource on handover', () => {
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 		let resolveRelease!: () => void;
-		releaseMock.mockImplementation(() => new Promise<void>((r) => (resolveRelease = r)));
+		releaseMock.mockImplementation(
+			() => new Promise<boolean>((r) => (resolveRelease = () => r(true))),
+		);
 
 		(await acquireEndpointSlot(llama)).release();
 		const first = acquireEndpointSlot(bridge);
@@ -472,10 +475,12 @@ describe('freeing a shared resource on handover', () => {
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
 
-	it('announces the wait, and only when there is something to free', async () => {
+	it('announces the wait on a handover to a release-capable member', async () => {
 		// A handover with an eviction is not queueing — nobody is ahead — so it
 		// gets its own signal. Without it, an unload plus a cold reload renders as
-		// "Generating…" with nothing happening.
+		// "Generating…" with nothing happening. It fires on the configuration,
+		// not on confirmed residency — checking would cost the round-trip the
+		// signal exists to cover.
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 
@@ -502,6 +507,7 @@ describe('freeing a shared resource on handover', () => {
 		const order: string[] = [];
 		releaseMock.mockImplementation(async () => {
 			order.push('release');
+			return true;
 		});
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
@@ -510,5 +516,191 @@ describe('freeing a shared resource on handover', () => {
 		(await acquireEndpointSlot(bridge, { onReleasing: () => order.push('announce') })).release();
 
 		expect(order).toEqual(['announce', 'release']);
+	});
+});
+
+describe('a handover that fails or is aborted', () => {
+	/** What `releaseEndpointResources` rethrows on the user's Stop. */
+	const aborted = () => new DOMException('Aborted while releasing endpoint', 'AbortError');
+
+	it('gives the slot back when the release is aborted mid-eviction', async () => {
+		// The slot is taken BEFORE the release is awaited, and the only thing that
+		// ever decrements is the slot's own release() — which a rejected acquire
+		// never hands out. Without an explicit unwind the count leaks for the life
+		// of the process, and on this cap-1 group that wedges everything behind a
+		// slot nobody holds. The abort window is the eviction wait itself, which
+		// is exactly when someone hits Stop.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockRejectedValueOnce(aborted());
+
+		(await acquireEndpointSlot(llama)).release();
+		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('lets the next request straight through afterwards', async () => {
+		// The leak's real symptom: not the rejection, but every LATER request
+		// queueing forever behind the slot it stranded.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockRejectedValueOnce(aborted());
+
+		(await acquireEndpointSlot(llama)).release();
+		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+
+		const next = await acquireEndpointSlot(bridge);
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
+		next.release();
+	});
+
+	it('unwinds on the queued path too, and pumps the line', async () => {
+		// The grant path increments in `pump`, so it leaks by the same route — and
+		// there a stranded slot also strands everyone already in line behind it.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockRejectedValueOnce(aborted());
+
+		const held = await acquireEndpointSlot(llama);
+		const doomed = acquireEndpointSlot(bridge);
+		const behind = acquireEndpointSlot(bridge);
+		held.release();
+
+		await expect(doomed).rejects.toThrow(/Aborted/);
+		// The waiter behind it must still be granted rather than inheriting a gate
+		// that can never drain.
+		(await behind).release();
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('leaves the group pointed at whoever still holds the resource', async () => {
+		// We never evicted llama, so recording bridge as the holder would both
+		// suppress the next real eviction and aim one at an endpoint that never
+		// generated — the OOM this exists to prevent, one handover later.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockRejectedValueOnce(aborted());
+
+		(await acquireEndpointSlot(llama)).release();
+		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+
+		releaseMock.mockClear();
+		(await acquireEndpointSlot(bridge)).release();
+		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
+	});
+
+	it('unwinds on any failure, not just an abort', async () => {
+		// `releaseEndpointResources` swallows non-abort failures today, so this is
+		// defence in depth: the gate's own accounting must not depend on which
+		// errors another module happens to let through.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockRejectedValueOnce(new Error('boom'));
+
+		(await acquireEndpointSlot(llama)).release();
+		await expect(acquireEndpointSlot(bridge)).rejects.toThrow('boom');
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
+	});
+});
+
+describe('a release that does not actually free anything', () => {
+	it('leaves the group pointed at the endpoint that still holds the model', async () => {
+		// The retry is the request that most needs the eviction. Recording a failed
+		// handover as a completed one makes it the one request that skips it — so
+		// it OOMs again, and keeps OOMing until something else happens to run on
+		// the endpoint that's actually holding the GPU.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockResolvedValueOnce(false);
+
+		(await acquireEndpointSlot(llama)).release();
+		// First handover: attempted, reported as not freed.
+		(await acquireEndpointSlot(bridge)).release();
+		expect(releaseMock).toHaveBeenCalledOnce();
+
+		// The retry must try again rather than assume the handover already happened.
+		releaseMock.mockClear();
+		(await acquireEndpointSlot(bridge)).release();
+		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
+	});
+
+	it('still hands over the slot — the failure is non-fatal', async () => {
+		// Failing the generation because an unrelated backend wouldn't let go is
+		// worse than the status quo, where it would simply have been attempted.
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+		releaseMock.mockResolvedValueOnce(false);
+
+		(await acquireEndpointSlot(llama)).release();
+		const slot = await acquireEndpointSlot(bridge);
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
+		slot.release();
+	});
+
+	it('records the handover normally when the release succeeds', async () => {
+		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 1, 'gpu0');
+
+		(await acquireEndpointSlot(llama)).release();
+		(await acquireEndpointSlot(bridge)).release();
+		releaseMock.mockClear();
+		// llama is gone, bridge holds the group — nothing left to evict.
+		(await acquireEndpointSlot(bridge)).release();
+		expect(releaseMock).not.toHaveBeenCalled();
+	});
+});
+
+describe('a group whose cap is above 1', () => {
+	it('grants nobody while an eviction is in flight', async () => {
+		// The idleness check is a point-in-time read and the unload that follows it
+		// takes as long as it takes. At cap 1 the caller's own increment saturates
+		// the gate, which hid this; above 1 a request could be handed the GPU that
+		// is mid-unload — including one aimed at the endpoint being unloaded.
+		const llama = ep('llama', 2, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 2, 'gpu0');
+		let finishRelease!: () => void;
+		releaseMock.mockImplementation(
+			() => new Promise<boolean>((r) => (finishRelease = () => r(true))),
+		);
+
+		(await acquireEndpointSlot(llama)).release();
+		const first = acquireEndpointSlot(bridge);
+		await flush();
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
+
+		// Mid-eviction, aimed at the endpoint being unloaded.
+		let granted = false;
+		const second = acquireEndpointSlot(llama).then((s) => {
+			granted = true;
+			return s;
+		});
+		await flush();
+		expect(granted).toBe(false);
+
+		finishRelease();
+		(await first).release();
+		(await second).release();
+		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
+	});
+
+	it('does not forget who holds the model when an overlap skips the eviction', async () => {
+		// Skipping while another member generates is correct. Taking the group's
+		// name anyway is not: it discards the only record of who is resident, and
+		// every later handover then matches itself and skips too — so one overlap
+		// disables the eviction permanently.
+		const llama = ep('llama', 2, 'gpu0', 'llama-cpp-router');
+		const bridge = ep('bridge', 2, 'gpu0');
+
+		const chat = await acquireEndpointSlot(llama);
+		// Overlaps the chat turn, so the eviction is (correctly) skipped.
+		const image = await acquireEndpointSlot(bridge);
+		expect(releaseMock).not.toHaveBeenCalled();
+		image.release();
+		chat.release();
+
+		// llama's model is still resident, so the next image must still evict it.
+		(await acquireEndpointSlot(bridge)).release();
+		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
 	});
 });

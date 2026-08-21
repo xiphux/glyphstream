@@ -122,7 +122,13 @@ declare different `max_concurrent` values the group takes the **lowest**: the
 group is a claim about shared hardware, and the strictest member is the one
 describing it.
 
-Grouping stops the two from generating at the same time. On its own that is
+**Set `max_concurrent = 1` on at least one member if the group is one GPU.** The
+group's cap is the lowest member's, and `max_concurrent` defaults to 4 — so
+grouping two endpoints and setting nothing else gives you a shared queue four
+generations wide, which is not what a single GPU wants. One member setting it to
+`1` is enough; the minimum covers the group.
+
+Grouping serializes the members up to that cap. On its own that is
 **not enough**: `llama-server` keeps a model resident after a turn finishes, so
 an image generation dispatched into an idle group can still OOM on VRAM nothing
 is using. Reclaiming it needs the backend to be told to let go — see `release`.
@@ -160,11 +166,16 @@ needed. `POST /models/unload` answers `{"success": true}` _before_ the unload ha
 finished, so GlyphStream polls until the model reports `unloaded` rather than
 trusting the response. And a model that is serving a request is left alone until
 it finishes: it can't be GlyphStream's own traffic (the group is idle by then),
-so it's another client, and it's queued behind rather than interrupted.
+so it's another client, and it's queued behind rather than interrupted. These
+management calls carry the endpoint's `api_key_env` key like every other request
+to it, so a `llama-server` started with `--api-key` needs nothing extra.
 
-Failure here is **non-fatal**: if the backend can't be reached or won't let go,
-the warning is logged and the generation proceeds — which is exactly what would
-have happened without any of this.
+Failure here is **non-fatal**: if the backend can't be reached, or a model stays
+busy or won't unload, a warning is logged and the generation proceeds — which is
+exactly what would have happened without any of this. A model that fails to
+unload doesn't take the others with it; each is attempted on its own. And a
+handover that didn't actually free anything isn't recorded as one, so the next
+request retries the eviction rather than assuming it already happened.
 
 ## Context window (`context_window`)
 

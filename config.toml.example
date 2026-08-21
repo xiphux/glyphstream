@@ -232,9 +232,11 @@
 #
 # The name is arbitrary; it just has to match on every member. Omitted, an
 # endpoint is its own group (the behaviour before this existed). Members with
-# different max_concurrent values share the LOWEST of them.
+# different max_concurrent values share the LOWEST of them — so set
+# max_concurrent = 1 on at least one member when the group is a single GPU,
+# or you get a shared queue four wide (the default) rather than a serialized one.
 #
-# Note what this does NOT do: it stops them running at the same time, but it
+# Note what this does NOT do: it serializes them up to that cap, but it
 # can't make an idle backend release VRAM it's still holding. See
 # docs/configuration.md#sharing-one-gpu-between-endpoints-resource_group.
 # resource_group = "gpu0"

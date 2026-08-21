@@ -116,6 +116,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   image models, say) and re-apply it to a new prompt in one click.
 - Per-endpoint concurrency caps queue requests instead of OOMing your
   single-GPU box ([configuration](docs/configuration.md#limiting-concurrency-max_concurrent)).
+- Endpoints that share one GPU can share a queue — and hand the VRAM over,
+  unloading the chat model before an image generation starts
+  ([configuration](docs/configuration.md#sharing-one-gpu-between-endpoints-resource_group)).
 
 ### Images & video
 

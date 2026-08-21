@@ -3,7 +3,7 @@
  *
  * A generation against an endpoint must `acquireEndpointSlot` before it
  * touches the upstream, and `release` when it fully settles. While `active`
- * slots are below the endpoint's `max_concurrent`, acquisition is immediate;
+ * slots are below the resource group's cap, acquisition is immediate;
  * once at capacity, callers queue FIFO and are granted as slots free.
  *
  * The slot is held for the WHOLE generation (acquire before dispatch,
@@ -41,9 +41,6 @@ interface Waiter {
 	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
 	 *  initial onQueued. */
 	notifyAhead?: (ahead: number) => void;
-	/** Who is waiting — the grant needs it to decide whether taking the slot is
-	 *  a handover between different members of the group. */
-	endpoint: LoadedEndpoint;
 }
 
 interface Gate {
@@ -57,6 +54,16 @@ interface Gate {
 	 * an endpoint that has already finished.
 	 */
 	lastHolder: LoadedEndpoint | null;
+	/**
+	 * True while a handover eviction is in flight. Both grant paths treat it as
+	 * zero capacity, which is what actually makes `takeSlot`'s idleness check
+	 * mean something: the check is a point-in-time read, and the await after it
+	 * runs for as long as an unload takes. Without this, a group with a cap
+	 * above 1 can grant a generation mid-eviction — onto the very endpoint being
+	 * unloaded. Reserving capacity instead of a flag doesn't work, because `max`
+	 * may be Infinity.
+	 */
+	evicting: boolean;
 }
 
 const gates = new Map<string, Gate>();
@@ -68,7 +75,7 @@ function getGate(resourceGroup: string, max: number): Gate {
 		existing.max = max;
 		return existing;
 	}
-	const gate: Gate = { active: 0, max, waiters: [], lastHolder: null };
+	const gate: Gate = { active: 0, max, waiters: [], lastHolder: null, evicting: false };
 	gates.set(resourceGroup, gate);
 	return gate;
 }
@@ -83,7 +90,10 @@ export interface EndpointSlot {
 export interface AcquireOptions {
 	/** Aborting (client Stop / disconnect) drops a still-queued request out of
 	 *  the line and rejects with an AbortError. A request that has already been
-	 *  granted is unaffected — its own release frees the slot. */
+	 *  granted is unaffected — its own release frees the slot. The one exception
+	 *  is a handover eviction: `takeSlot` awaits it after taking the slot, so an
+	 *  abort landing there rejects too. It unwinds the slot before rethrowing, so
+	 *  "rejected means not holding one" holds either way. */
 	signal?: AbortSignal;
 	/** Fires when the request had to queue (capacity was full): once
 	 *  synchronously with the initial count ahead, then again with the updated
@@ -93,8 +103,12 @@ export interface AcquireOptions {
 	onQueued?: (info: { ahead: number }) => void;
 	/**
 	 * The slot is ours, but the group's previous holder is being asked to free
-	 * the shared resource first — see `takeSlot`. Fires at most once, and only
-	 * on a handover that actually has something to free.
+	 * the shared resource first — see `takeSlot`. Fires at most once, on a
+	 * handover to a member that is CONFIGURED to release — not on confirmation
+	 * that something is actually resident. Deliberately eager: finding out costs
+	 * a round-trip to the backend, and this exists to explain a wait, so it has
+	 * to arrive at the start of one. The cost is that a handover onto a backend
+	 * that already unloaded by itself flashes the status for a no-op.
 	 *
 	 * Distinct from `onQueued` because it is not queueing: nobody is ahead of
 	 * us and there is no position to count down. Without it an eviction plus a
@@ -128,10 +142,60 @@ async function takeSlot(
 	onReleasing?: () => void,
 ) {
 	const previous = gate.lastHolder;
+	const handover = gate.active === 1 && previous && previous.id !== endpoint.id && previous.release;
+
+	if (!handover) {
+		// Claim the group only when nobody else is still holding the resource.
+		// The skipped-eviction case (`active > 1`) is the trap: taking the name
+		// there discards the only record of who has a model resident, and every
+		// later handover then sees `previous.id === endpoint.id` and skips too —
+		// so one overlap between a chat turn and an image request permanently
+		// disables the eviction this feature exists to perform.
+		if (!previous?.release || previous.id === endpoint.id) gate.lastHolder = endpoint;
+		return makeSlot(gate);
+	}
+
 	gate.lastHolder = endpoint;
-	if (gate.active === 1 && previous && previous.id !== endpoint.id && previous.release) {
-		onReleasing?.();
-		await releaseEndpointResources(previous, signal);
+	gate.evicting = true;
+	{
+		try {
+			// Inside the try: the increment has already happened, so a callback that
+			// throws would leak exactly the slot this catch exists to protect. No
+			// current caller can (they all write through the SSE writer, which
+			// swallows), but the next one shouldn't have to know that.
+			onReleasing?.();
+			if (!(await releaseEndpointResources(previous, signal))) {
+				// It didn't let go. Leave the group pointed at the endpoint that still
+				// has the model resident, so the NEXT handover tries again — otherwise
+				// the failure is recorded as a completed handover and the retry, which
+				// is exactly the request that needs the eviction most, skips it and
+				// OOMs again. Non-fatal either way: we still hand over the slot,
+				// because the generation would have been attempted regardless.
+				gate.lastHolder = previous;
+			}
+		} catch (e) {
+			// The caller's increment happened before this await, and the only thing
+			// that ever decrements is the slot's own `release()` — which we are
+			// about to not return. So unwind it here or it is leaked for the life
+			// of the process: on a cap-1 group (the single-GPU case this exists
+			// for) that wedges every later request behind a slot nobody holds.
+			//
+			// Reachable in normal use: `releaseEndpointResources` rethrows aborts,
+			// and the eviction wait is exactly when a user is most likely to hit
+			// Stop — it's the phase `onReleasing` exists to make visible.
+			gate.active--;
+			// Hand the group back to whoever still actually holds the resource. We
+			// never evicted `previous`, so recording ourselves as the holder would
+			// suppress the next legitimate eviction and mis-target one at an
+			// endpoint that never generated.
+			gate.lastHolder = previous;
+			throw e;
+		} finally {
+			// Reopen before pumping, or the waiters this eviction held back stay
+			// held back — `pump` reads the same flag.
+			gate.evicting = false;
+			pump(gate);
+		}
 	}
 	return makeSlot(gate);
 }
@@ -150,7 +214,7 @@ function makeSlot(gate: Gate): EndpointSlot {
 
 function pump(gate: Gate): void {
 	let granted = 0;
-	while (gate.active < gate.max && gate.waiters.length > 0) {
+	while (gate.active < gate.max && !gate.evicting && gate.waiters.length > 0) {
 		const waiter = gate.waiters.shift()!;
 		if (waiter.signal && waiter.onAbort) {
 			waiter.signal.removeEventListener('abort', waiter.onAbort);
@@ -170,7 +234,16 @@ function pump(gate: Gate): void {
  *  or an abort splices one out — so a waiting caller's "N ahead" stays live. */
 function notifyWaiterPositions(gate: Gate): void {
 	for (let i = 0; i < gate.waiters.length; i++) {
-		gate.waiters[i].notifyAhead?.(i);
+		try {
+			gate.waiters[i].notifyAhead?.(i);
+		} catch {
+			// Caller-supplied, and `pump` runs from the eviction's finally — where a
+			// throw would escape on the SUCCESS path, with the slot counted and no
+			// slot object returned. That's the permanent wedge the eviction's own
+			// catch exists to prevent, arriving through a different door. Nobody can
+			// today (they all write through the SSE writer, which swallows), but a
+			// position update is not worth the group for the life of the process.
+		}
 	}
 }
 
@@ -180,9 +253,10 @@ function abortError(): Error {
 
 /**
  * Acquire a slot on the endpoint's resource group, capped at that group's
- * concurrency. Resolves
- * immediately when under capacity, otherwise queues FIFO and resolves once a
- * slot frees. Pass `endpoint.maxConcurrent` for `max`.
+ * concurrency. Resolves immediately when under capacity, otherwise queues FIFO
+ * and resolves once a slot frees. The cap is `endpoint.resourceGroupMaxConcurrent`
+ * — resolved at config load, and NOT `endpoint.maxConcurrent`, which is this
+ * endpoint's own limit and diverges from it as soon as a group has members.
  *
  * If `opts.signal` aborts before the slot is granted, the returned promise
  * rejects with an `AbortError` and the request leaves the queue without ever
@@ -208,11 +282,12 @@ export function acquireEndpointSlot(
 
 	if (signal?.aborted) return Promise.reject(abortError());
 
-	// Fast path: capacity available (always true for an effectively-unlimited max).
-	if (gate.active < gate.max) {
+	// Fast path: capacity available (always true for an effectively-unlimited max)
+	// and no eviction in flight.
+	if (gate.active < gate.max && !gate.evicting) {
 		// Increment BEFORE any await in `takeSlot`: the slot is ours from this
-		// moment, so a concurrent acquire queues behind us rather than slipping in
-		// while we're freeing the resource.
+		// moment. At a cap of 1 that alone makes a concurrent acquire queue; above
+		// 1 it doesn't, which is what `gate.evicting` is for.
 		gate.active++;
 		return takeSlot(gate, endpoint, signal, onReleasing);
 	}
@@ -230,7 +305,6 @@ export function acquireEndpointSlot(
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.
 			notifyAhead: onQueued ? (ahead) => onQueued({ ahead }) : undefined,
-			endpoint,
 		};
 		if (signal) {
 			const onAbort = () => {
@@ -249,10 +323,10 @@ export function acquireEndpointSlot(
 	});
 }
 
-/** Live counts for an endpoint — a future diagnostics surface (and the
+/** Live counts for a resource group — a future diagnostics surface (and the
  *  test seam for the queue semantics). The `queued` event's `ahead` value is
- *  computed inline in acquireEndpointSlot, not from this. Returns zeros for an
- *  endpoint never seen. */
+ *  computed inline in acquireEndpointSlot, not from this. Returns zeros for a
+ *  group never seen. */
 export function getResourceQueueDepth(resourceGroup: string): { active: number; waiting: number } {
 	const gate = gates.get(resourceGroup);
 	if (!gate) return { active: 0, waiting: 0 };
