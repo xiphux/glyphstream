@@ -2,8 +2,11 @@ import { test, expect } from '@playwright/test';
 import { seedConversation } from './helpers';
 
 /**
- * The response header block has to survive a reverse proxy, and the ceiling is
- * lower than it looks.
+ * The response header block has to survive a reverse proxy — while still
+ * carrying the preload hints, which is the part that makes this a squeeze rather
+ * than a deletion.
+ *
+ * The ceiling is lower than it looks.
  *
  * nginx buffers an upstream's entire header block in a single `proxy_buffer_size`
  * — 4096 bytes by default, which is what a Synology reverse proxy ships. Go past
@@ -56,10 +59,17 @@ test('a chat document fits inside a reverse proxy default header buffer', async 
 	expect(res.status()).toBe(200);
 
 	const headers = res.headersArray();
+	// The header must SURVIVE, trimmed. Deleting it is the tempting fix and it is
+	// wrong: in this app the modulepreload hints exist nowhere else — the head
+	// carries two stylesheets and an inline bootstrap, nothing more — so dropping
+	// it leaves the browser walking the import graph for 45 chunks, and `load`
+	// fires long before the page can hydrate. That shipped once, and it surfaced
+	// as four unrelated-looking e2e failures where a click focused a button whose
+	// handler was not attached yet.
 	expect(
 		headers.find((h) => h.name.toLowerCase() === 'link'),
-		'the Link preload header is back; it costs ~3.2KB and the head tags already carry it',
-	).toBeUndefined();
+		'the Link preload header is gone; hydration will lag because nothing else hints the chunks',
+	).toBeDefined();
 
 	const bytes = headerBlockBytes(headers);
 	expect(bytes, `header block is ${bytes} bytes`).toBeLessThan(BUDGET_BYTES);
