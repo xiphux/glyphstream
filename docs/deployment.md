@@ -206,6 +206,31 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   reads and any part of the database past the 30 MB cap use ordinary file reads,
   which bill to wall time and never appear in this counter.
 
+- **Event loop** is the longest stretch the server was unable to run anything
+  while this request was open, and it is what makes the CPU share readable.
+  Stalled with CPU to match means synchronous JavaScript held the process —
+  either this request's own render or a background sweep it was queued behind.
+  Stalled with almost no CPU means a blocking system call: `node:sqlite` reads
+  synchronously, so a query that misses the page cache freezes the whole process
+  for the length of the physical read while burning nothing, which the CPU share
+  alone reports as an idle server. Not stalled and low CPU means the request
+  waited on something that left the loop free, or the host descheduled the
+  container.
+- **Idle before this load**, in the Environment section, is how long the server
+  had gone without serving anything before this request. Read it with **Server
+  uptime**: a process up for a day that was busy throughout is a different
+  machine from one up for a day that sat still for eight hours, because a host
+  reclaims an idle container's memory and a volume that hibernates stays spun
+  down. Any client resets it, including a background tab, so treat it as a floor.
+- **Launch image** answers whether iOS had a splash image matching this exact
+  device, by running each declared `apple-touch-startup-image` media query
+  through `matchMedia` on the hardware itself. `no match` means the geometry list
+  is missing this device — add a row and re-run `pnpm gen:splash`, using the CSS
+  geometry printed beside it. `matched` means the image exists and iOS chose not
+  to use it, which no amount of adding images will fix; the usual cause is iOS
+  restoring a saved snapshot instead of performing a true cold launch. Shown only
+  for a standalone (home-screen) launch, since a browser tab has no launch image.
+
 The reason it exists is the one load you can't attach a debugger to: an **iOS
 home-screen app's cold launch**. Safari Web Inspector needs a Mac and a cable,
 and by the time you're attached the launch is already over. The panel works
