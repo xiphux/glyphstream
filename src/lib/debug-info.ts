@@ -56,6 +56,19 @@ export interface DebugSources {
 	 *  these numbers MEAN, so the panel says so rather than letting a dev-server
 	 *  reading get compared against a production one. */
 	dev: boolean;
+	/** Whether any `apple-touch-startup-image` in the document matches THIS
+	 *  hardware. Null when the question doesn't apply (not a standalone launch,
+	 *  or no candidates declared). See the row this feeds. */
+	launchImage: LaunchImageMatch | null;
+}
+
+export interface LaunchImageMatch {
+	/** How many startup-image links the document declares. */
+	candidates: number;
+	/** How many of them match this device's media query. Should be exactly 1. */
+	matched: number;
+	/** Hardware, for filling a gap in the geometry list: `1290x2796 @3x`. */
+	device: string;
 }
 
 export interface DebugRow {
@@ -326,6 +339,23 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				// have spun down. This is the variable that separates the slow launches
 				// from the quick ones when uptime does not.
 				...(idleMs !== null ? [{ label: 'Idle before this load', value: uptime(idleMs) }] : []),
+				// Whether iOS had a launch image to show for THIS device, which is
+				// otherwise unanswerable from the outside: a blank white launch and a
+				// launch image iOS declined to use look identical, and they have
+				// nothing in common as bugs. Zero matches means the geometry list has
+				// a hole and `pnpm gen:splash` needs a row for the device named in the
+				// note. Exactly one match means the image exists and iOS chose not to
+				// use it — most likely restoring a saved app snapshot instead of doing
+				// a true cold launch — and no amount of adding PNGs will help.
+				...(s.launchImage === null
+					? []
+					: [
+							{
+								label: 'Launch image',
+								value: s.launchImage.matched > 0 ? 'matched' : 'no match',
+								note: `${s.launchImage.device} · ${s.launchImage.candidates} declared`,
+							},
+						]),
 			],
 		},
 	];
@@ -375,5 +405,43 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		serviceWorker,
 		online,
 		dev: import.meta.env.DEV,
+		launchImage: readLaunchImageMatch(standalone),
+	};
+}
+
+/**
+ * Ask the device itself which `apple-touch-startup-image` iOS would have had to
+ * choose from, by running each link's own media query through `matchMedia`.
+ *
+ * Only for a standalone launch — in a browser tab there is no launch image to
+ * get wrong, and reporting "no match" on a desktop (which has no startup images
+ * declared for it, correctly) would read as a bug that isn't one.
+ *
+ * Defensive to the point of paranoia because it runs on whatever the device is:
+ * a malformed media string makes `matchMedia` throw in some engines, and one bad
+ * link must not cost the whole panel.
+ */
+function readLaunchImageMatch(standalone: boolean): LaunchImageMatch | null {
+	if (!standalone) return null;
+	const links = document.querySelectorAll<HTMLLinkElement>(
+		'link[rel="apple-touch-startup-image"][media]',
+	);
+	if (links.length === 0) return null;
+	let matched = 0;
+	for (const link of links) {
+		try {
+			if (window.matchMedia(link.media).matches) matched++;
+		} catch {
+			// Skip it; a query this device can't parse is one it can't match either.
+		}
+	}
+	const dpr = window.devicePixelRatio || 1;
+	return {
+		candidates: links.length,
+		matched,
+		// CSS pixels + ratio, which is the vocabulary the media queries are
+		// written in — so a missing row can be added from this string directly,
+		// without converting from the physical pixels the filenames use.
+		device: `${window.screen.width}x${window.screen.height} @${dpr}x`,
 	};
 }

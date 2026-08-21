@@ -41,6 +41,7 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		serviceWorker: 'controlled',
 		online: true,
 		dev: false,
+		launchImage: null,
 		...over,
 	};
 }
@@ -457,5 +458,41 @@ describe('buildDebugSections — event loop stall', () => {
 		const rows = rowsOf(withLag([{ name: 'lag', duration: 120 }]), 'This load');
 		expect(rows['Event loop'].value).toBe('120 ms');
 		expect(rows['Server CPU']).toBeUndefined();
+	});
+});
+
+/**
+ * A blank white iOS launch and a launch image iOS declined to use look
+ * identical from the outside, and they are unrelated bugs with unrelated fixes.
+ * This row is the only thing that separates them.
+ */
+describe('buildDebugSections — launch image', () => {
+	it('names the device when nothing matched, so the gap can be filled', () => {
+		// Zero matches means the geometry list is missing this hardware. The note
+		// has to carry enough to add the row without owning the device.
+		const rows = rowsOf(
+			sources({ launchImage: { candidates: 88, matched: 0, device: '440x956 @3x' } }),
+			'Environment',
+		);
+		expect(rows['Launch image'].value).toBe('no match');
+		expect(rows['Launch image'].note).toBe('440x956 @3x · 88 declared');
+	});
+
+	it('reports a match, which redirects the investigation entirely', () => {
+		// One match means the PNG exists and iOS had it — so adding more images
+		// cannot help, and the answer is on the OS side (a restored snapshot
+		// rather than a true cold launch).
+		const rows = rowsOf(
+			sources({ launchImage: { candidates: 88, matched: 1, device: '430x932 @3x' } }),
+			'Environment',
+		);
+		expect(rows['Launch image'].value).toBe('matched');
+	});
+
+	it('omits the row when the question does not apply', () => {
+		// Not a standalone launch, or no candidates declared. A "no match" here
+		// would be a true statement about an irrelevant question, which is the
+		// kind of row that sends someone chasing a non-bug.
+		expect(rowsOf(sources(), 'Environment')['Launch image']).toBeUndefined();
 	});
 });
