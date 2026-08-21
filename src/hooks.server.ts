@@ -325,6 +325,28 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Whether this response gets a Server-Timing header, decided here because
 	// compression below can hand back a different Response object.
 	const isDocument = !!response.headers.get('content-type')?.startsWith('text/html');
+
+	// Drop SvelteKit's `Link:` preload header. It restates, in ~3.2KB of header,
+	// the `<link rel=modulepreload>` tags already in the document head — one
+	// entry per client chunk, 46 of them on the chat route — and it is emitted
+	// with `nopush`, so there is no HTTP/2 push to lose and nothing here speaks
+	// 103 Early Hints. The browser gets the identical hint list from the head,
+	// which streams in the first packet of the body.
+	//
+	// It is deleted rather than suppressed at the source: SvelteKit gates the
+	// header and the head tags on the SAME `preload` filter (see
+	// `resolve_opts.preload` in kit's render.js), so turning it off there would
+	// take the tags with it and genuinely delay chunk discovery.
+	//
+	// This is a proxy-compatibility fix, not a micro-optimisation. nginx buffers
+	// the whole upstream header block in one `proxy_buffer_size`, which defaults
+	// to 4096 bytes, and a chat document measured 4076 — 20 bytes of margin. A
+	// single `Set-Cookie` from a session renewal, or one more chunk after a
+	// deploy, tips it past and nginx answers the request with its own 502 while
+	// this server logs a clean 200. That reads as a broken app with a silent
+	// server, and it is what "upstream sent too big header while reading response
+	// header" in a Synology reverse-proxy log means.
+	response.headers.delete('link');
 	applySecurityHeaders(response, path);
 	if (ALWAYS_REVALIDATE_PATHS.has(event.url.pathname)) {
 		response.headers.set('cache-control', 'no-cache');
