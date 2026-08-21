@@ -142,6 +142,27 @@ const STATE_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const AUTH_RATE_LIMIT_PATH_PREFIX = '/api/auth/';
 
 /**
+ * When `handle` last ran, for the `idle` Server-Timing field.
+ *
+ * The slow cold launches this instrumentation chases are intermittent, and the
+ * variable that best predicts them is not anything the panel could see: how long
+ * the process had been doing nothing before the request arrived. A host reclaims
+ * an idle container's pages, and a spun-down volume stays spun down, on a clock
+ * measured from the last activity — not from process start, which `proc` already
+ * reports and which the readings have already ruled out.
+ *
+ * Static assets never reach here (sirv serves them ahead of the SSR handler), so
+ * this tracks real application work rather than resetting on every chunk fetch.
+ * Any client resets it, including another user and a presence heartbeat — at
+ * household scale that is the intended meaning ("was anyone using this?"), not a
+ * flaw, but it does mean the number is a floor on true idleness.
+ *
+ * Starts at 0 so the process's first request reports its idle gap as the whole
+ * uptime, which is what it is.
+ */
+let lastRequestAt = 0;
+
+/**
  * Bucket key for the rate limiter.
  *
  * `getClientAddress()` throws when the platform can't determine an address
@@ -180,6 +201,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// this will end up being a signed-in document; the syscall is cheaper than
 	// the bookkeeping a lazier capture would need.
 	const usageStart = process.resourceUsage();
+	// Read before the update below, so this request sees the gap that preceded
+	// it rather than zero.
+	const idleMs = lastRequestAt === 0 ? process.uptime() * 1000 : Date.now() - lastRequestAt;
+	lastRequestAt = Date.now();
 	// Sub-spans of the same total (`authMs` / `renderMs` / `zipMs`, declared at
 	// the points they're measured) are reported alongside it. One opaque `ssr`
 	// number said a cold launch spent 2.35s on the server and nothing about
@@ -436,6 +461,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// same reason: Server-Timing is already plumbed through to the client
 			// and PerformanceServerTiming exposes exactly one numeric field.
 			metrics.push(`fault;dur=${usage.majorPageFault - usageStart.majorPageFault}`);
+			metrics.push(`idle;dur=${dur(idleMs)}`);
 			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
 		}
 		finalResponse.headers.set('Server-Timing', metrics.join(', '));

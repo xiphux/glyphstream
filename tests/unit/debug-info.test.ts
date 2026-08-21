@@ -376,3 +376,44 @@ describe('buildDebugSections — server CPU vs wall', () => {
 		expect(rows['Server (SSR)'].note).toBe('auth 4 ms · render 590 ms · zip 24 ms');
 	});
 });
+
+/**
+ * Uptime says the process wasn't freshly started; it says nothing about whether
+ * the process had been sitting still. On a host that reclaims an idle
+ * container's pages, that second number is the one that predicts a slow load.
+ */
+describe('buildDebugSections — idle before this load', () => {
+	const withIdle = (entries: Array<{ name: string; duration: number }>) =>
+		sources({ navigation: { ...nav, serverTiming: [{ name: 'ssr', duration: 620 }, ...entries] } });
+
+	it('reports the gap on the same coarse scale as uptime', () => {
+		const rows = rowsOf(withIdle([{ name: 'idle', duration: 8 * 3_600_000 }]), 'Environment');
+		expect(rows['Idle before this load'].value).toBe('8 h');
+	});
+
+	it('does not hide a back-to-back request behind a rounding', () => {
+		// Zero is a real reading — the server was serving something a moment ago,
+		// so nothing had a chance to be reclaimed, and a slow load here needs a
+		// different explanation entirely.
+		const rows = rowsOf(withIdle([{ name: 'idle', duration: 120 }]), 'Environment');
+		expect(rows['Idle before this load'].value).toBe('0 s');
+	});
+
+	it('stands alongside uptime rather than replacing it', () => {
+		// The pair is the diagnostic: up for a day, idle for eight hours is a very
+		// different box from up for a day and busy throughout.
+		const rows = rowsOf(
+			withIdle([
+				{ name: 'proc', duration: 26 * 3_600_000 },
+				{ name: 'idle', duration: 3 * 3_600_000 },
+			]),
+			'Environment',
+		);
+		expect(rows['Server uptime'].value).toBe('26 h');
+		expect(rows['Idle before this load'].value).toBe('3 h');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		expect(rowsOf(sources(), 'Environment')['Idle before this load']).toBeUndefined();
+	});
+});

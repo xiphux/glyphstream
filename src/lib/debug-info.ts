@@ -114,6 +114,9 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 	// it describes the server, not this request. Set from Server-Timing below
 	// when the response carried it (signed-in documents only).
 	let procUptimeMs: number | null = null;
+	// Same placement rationale as procUptimeMs: it describes the server's state
+	// going into this request, not a phase of it.
+	let idleMs: number | null = null;
 
 	if (!nav) {
 		load.push({
@@ -129,6 +132,7 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 			nav.serverTiming?.find((e) => e.name === name)?.duration ?? null;
 		const ssr = timing('ssr');
 		procUptimeMs = timing('proc');
+		idleMs = timing('idle');
 		// From fetchStart, NOT requestStart. requestStart is stamped after DNS,
 		// TCP and the TLS handshake, so measuring from there drops connection
 		// setup out of both rows — it lands in neither `Server` nor `Network`
@@ -298,6 +302,14 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				// SQLite open and a cold model-list fetch that every later one
 				// gets free. Absent on a server that doesn't stamp it.
 				...(procUptimeMs !== null ? [{ label: 'Server uptime', value: uptime(procUptimeMs) }] : []),
+				// How long the server had gone without serving a request before this
+				// one. Reported next to uptime because it answers the question uptime
+				// cannot: a slow load on a process that has been up for a day is not a
+				// cold start, but if that same process had been idle for eight hours,
+				// its pages have been reclaimable that whole time and its volume may
+				// have spun down. This is the variable that separates the slow launches
+				// from the quick ones when uptime does not.
+				...(idleMs !== null ? [{ label: 'Idle before this load', value: uptime(idleMs) }] : []),
 			],
 		},
 	];
