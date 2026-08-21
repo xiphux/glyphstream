@@ -485,6 +485,38 @@ scrollHeight` to be silently wrong. So options 1 and 2 below share the same
     member) — only worth building if it shows up in practice.
   - _Nothing coordinates across GlyphStream instances._ The gate is per process,
     like the in-flight registry. Two GlyphStreams on one GPU still collide.
+  - _`BUSY_WAIT_MS` is a guess, and the wrong kind of knob._ When a model is
+    mid-request the release waits up to 60s for it, gives up, and hands over
+    anyway. The other two budgets are bounded by physics — how long a model
+    takes to drop, measured at ~300ms — so they're ceilings that never bind.
+    This one is bounded by another client's behaviour, which has no ceiling.
+    Because a failed handover is deliberately not recorded as one (else the
+    retry, the request that most needs the eviction, is the one that skips it),
+    every later request that crosses between group members re-pays the wait.
+    The tempting fix is a consecutive-failure counter with a backoff; resist it.
+    Waiting only pays off if the other client finishes inside the window — miss
+    it and we burned 60s _and_ still OOM — so under sustained contention a
+    SHORTER wait strictly dominates a longer one plus a backoff, and "still
+    busy → skip this model" may beat waiting at all. Needs one real report to
+    decide, not speculation: the operator symptom is a repeated
+    `[release] <id>: <model> still busy after …ms, leaving it loaded`.
+    Unreachable on a llama-server reserved for GlyphStream, since embeddings and
+    rerank — the only paths that bypass the gate — are configured onto their own
+    endpoint, and `/slots?model=` is scoped per model.
+  - _Compaction doesn't announce the handover._ `relay.ts`, `media-relay.ts` and
+    `media-enhance.ts` all pass `onReleasing`; `compaction-relay.ts` doesn't,
+    so a compaction that triggers an eviction sits silent between `queued` and
+    `compaction_start`. Not a one-line fix like the others: the compaction
+    controller wires only `onCompactionStart/Text/Done/Error`, so the event
+    would be dropped — it needs `onProgress` threaded through and somewhere in
+    the compaction UI to render it.
+  - _A background task's own deadline doesn't survive a handover._ The title
+    generator passes `AbortSignal.timeout(...)` to bound its wait for a slot,
+    but once granted into an eviction the timeout fires as a `TimeoutError`,
+    which the release deliberately swallows (only a real Stop rethrows). So it
+    can be handed a slot past its budget. Self-limiting, since the generation
+    that follows carries its own timeout. Fixing it means re-checking
+    `signal.aborted` after the release await and unwinding.
 
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
