@@ -26,6 +26,7 @@ import { bootstrapMcp } from '$lib/server/mcp/bootstrap';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import { stopMcp } from '$lib/server/mcp/registry';
 import { stopPool } from '$lib/server/code-interpreter/pool';
+import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
 
 // Refuse to start if the auth-method toggles leave no way in. Better to
 // crash at boot with a clear message than serve a /login page with zero
@@ -76,6 +77,12 @@ startDreamingWorker();
 // Separate worker from dreaming; the shared endpoint slot keeps them within
 // `max_concurrent`.
 startConversationSummaryWorker();
+
+// Sample event-loop stalls from boot, so a request that was queued behind a
+// synchronous sweeper can be told apart from one that did the work itself —
+// `cpu` reads the same either way, because it counts the whole process. Unref'd,
+// so it adds nothing to shutdown.
+startLoopLagSampler();
 
 // Kick off MCP server connections in parallel with whatever the first
 // request happens to need. The chat-completion handler awaits readiness
@@ -461,6 +468,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// same reason: Server-Timing is already plumbed through to the client
 			// and PerformanceServerTiming exposes exactly one numeric field.
 			metrics.push(`fault;dur=${usage.majorPageFault - usageStart.majorPageFault}`);
+			// Longest stretch the loop was unavailable while this request was open.
+			// Only meaningful against `cpu`: stalled with cpu to match is synchronous
+			// JavaScript, stalled with almost no cpu is a blocking syscall — which is
+			// what a synchronous SQLite read off a cold page cache looks like, and
+			// what `cpu` alone reports as an idle server.
+			metrics.push(`lag;dur=${dur(maxLoopLagSince(requestStart))}`);
 			metrics.push(`idle;dur=${dur(idleMs)}`);
 			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
 		}

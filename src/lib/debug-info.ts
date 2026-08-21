@@ -179,6 +179,13 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// second decomposition of the same span, not a fourth part of it.
 		const cpu = timing('cpu');
 		const faults = timing('fault');
+		// Read against `cpu` rather than on its own. A stall with `cpu` to match is
+		// synchronous JavaScript holding the loop. A stall with almost NO cpu is a
+		// blocking syscall — node:sqlite is synchronous, so a read that misses the
+		// page cache stalls the entire process for the length of the physical I/O
+		// while burning nothing, which `cpu` alone reports as an idle server. That
+		// pairing is the one the panel exists to surface.
+		const lag = timing('lag');
 		const cpuRows: DebugRow[] =
 			cpu === null
 				? []
@@ -214,6 +221,15 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				...(breakdown.length ? { note: breakdown.join(' · ') } : {}),
 			},
 			...cpuRows,
+			...(lag === null
+				? []
+				: [
+						{
+							label: 'Event loop',
+							value: ms(lag),
+							note: 'longest stall while this load was open — read against Server CPU',
+						},
+					]),
 			{ label: 'Network', value: orDash(network), note: ttfb !== null ? `${ms(ttfb)} TTFB` : '' },
 			{
 				label: 'HTML',

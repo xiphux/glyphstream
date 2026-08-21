@@ -417,3 +417,45 @@ describe('buildDebugSections — idle before this load', () => {
 		expect(rowsOf(sources(), 'Environment')['Idle before this load']).toBeUndefined();
 	});
 });
+
+/**
+ * The row that makes `Server CPU` interpretable. A stall with no CPU behind it
+ * is a blocking syscall, which `cpu` reports as an idle server.
+ */
+describe('buildDebugSections — event loop stall', () => {
+	const withLag = (entries: Array<{ name: string; duration: number }>) =>
+		sources({ navigation: { ...nav, serverTiming: [{ name: 'ssr', duration: 620 }, ...entries] } });
+
+	it('reports the stall alongside the CPU share', () => {
+		const rows = rowsOf(
+			withLag([
+				{ name: 'cpu', duration: 40 },
+				{ name: 'lag', duration: 560 },
+			]),
+			'This load',
+		);
+		// The diagnostic pairing: the loop was unavailable for most of the request
+		// while burning 6% of it in CPU — a blocking read, not work.
+		expect(rows['Server CPU'].value).toBe('40 ms');
+		expect(rows['Event loop'].value).toBe('560 ms');
+	});
+
+	it('reports a responsive loop as zero rather than hiding the row', () => {
+		// Zero is the reading that clears the loop and sends you to the host, so it
+		// has to be visible. An absent row would read as "not measured".
+		const rows = rowsOf(withLag([{ name: 'lag', duration: 0 }]), 'This load');
+		expect(rows['Event loop'].value).toBe('0 ms');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		expect(rowsOf(sources(), 'This load')['Event loop']).toBeUndefined();
+	});
+
+	it('stands independent of the CPU row', () => {
+		// An older server sending `lag` but not `cpu`, or the reverse, must not
+		// take the other row down with it.
+		const rows = rowsOf(withLag([{ name: 'lag', duration: 120 }]), 'This load');
+		expect(rows['Event loop'].value).toBe('120 ms');
+		expect(rows['Server CPU']).toBeUndefined();
+	});
+});
