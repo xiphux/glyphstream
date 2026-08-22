@@ -70,6 +70,24 @@
 		void syncTimeZone(data.prefs);
 	});
 
+	// Pull the deferred half of the layout payload. The initial document ships
+	// without the sidebar list, custom models, skills and feature categories —
+	// see the note in +layout.server.ts for why each is safe to leave out — so
+	// this is what turns them up, one navigation-shaped fetch after first paint.
+	//
+	// `invalidate` rather than a bespoke endpoint: the load already knows how to
+	// produce the full shape, and `app:conversations` is already the key meaning
+	// "the sidebar's data changed" (tab refocus fires it too), so every consumer
+	// updates through the path it already uses. The re-run is a `__data.json`
+	// request, which is exactly the `isDataRequest` the server keys off.
+	//
+	// Runs once per cold document and never again: `deferredLoaded` comes back
+	// true and this returns immediately on every subsequent load.
+	onMount(() => {
+		if (data.deferredLoaded) return;
+		void invalidate('app:conversations');
+	});
+
 	// Cold-start catch-up for the MCP-derived half of `featureCategories`. The
 	// layout load no longer blocks on MCP discovery (see isMcpReady) — doing so
 	// put a remote server's handshake in front of the first page render of a
@@ -150,7 +168,17 @@
 	// Skipping rather than racing: this layout's effects flush before the child
 	// page's, so seeding the displayed id here would only be overwritten a moment
 	// later, and the page's verdict is the one we want anyway.
-	onMount(() => {
+	//
+	// Once, but keyed on the first load that actually CARRIES the registry rather
+	// than on mount. `generatingIds` is derived from `conversations`, which the
+	// initial document defers — so mounting with an empty list and never looking
+	// again would drop the dot entirely on a hard load, which is the one case
+	// this seeding exists for. On an already-hydrated navigation `deferredLoaded`
+	// is true on the first flush and this behaves exactly as the old onMount did.
+	let seededGenerating = false;
+	$effect(() => {
+		if (seededGenerating || !data.deferredLoaded) return;
+		seededGenerating = true;
 		for (const id of data.generatingIds) {
 			if (id !== page.params.id) markGenerating(id);
 		}
@@ -755,7 +783,13 @@
 			<h2 class="px-5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-fg-muted">
 				Recents
 			</h2>
-			{#if data.conversations.length === 0}
+			{#if !data.deferredLoaded}
+				<!-- In flight, not empty. Saying "No conversations yet" here would be
+					 a confident wrong answer for the fraction of a second before the
+					 real list lands, and on a cold container that fraction is the
+					 whole reason the list was deferred. -->
+				<p class="px-5 py-2 text-xs text-fg-muted">Loading…</p>
+			{:else if data.conversations.length === 0}
 				<p class="px-5 py-2 text-xs text-fg-muted">No conversations yet.</p>
 			{:else}
 				<ScrollPane class="min-h-0 flex-1 px-2" bind:scrollEl={recentsScrollEl}>

@@ -12,7 +12,7 @@ import { filterInFlight } from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
+export const load: LayoutServerLoad = async ({ locals, url, depends, isDataRequest }) => {
 	if (!locals.user) {
 		// Fresh-install bootstrap: route the operator to the first-run
 		// wizard instead of a /login page they can't sign in at yet.
@@ -75,7 +75,26 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// `requireUserPage` instead of `await parent()` and so stays untouched — and
 	// that's the one whose payload is the entire conversation.
 	depends('app:prefs');
-	const conversations = timeDb(locals, () => listConversations(locals.user!.id));
+	// Everything below that nothing on screen needs YET is skipped on the initial
+	// document and fetched by the client right after mount, via the
+	// `invalidate('app:conversations')` in `+layout.svelte`.
+	//
+	// The measurement that motivated it: on a cold container the Database span
+	// read 751ms of a 1000ms render — three quarters of it — because
+	// `node:sqlite` is synchronous and the page cache had dropped the mapping.
+	// Every one of these is interaction-only. The sidebar list is a CLOSED DRAWER
+	// on the mobile PWA that this whole investigation is about; skills are needed
+	// when you type `/`; custom models and the feature categories when a menu
+	// opens. `prefs` is the one that cannot move — the composer's enter-key
+	// handler branches on it synchronously, and a late arrival would race the
+	// first keystroke.
+	//
+	// `isDataRequest` is the discriminator rather than a flag we invent: it is
+	// false exactly for the SSR document and true for the `__data.json` fetch a
+	// client-side invalidation makes, so a navigation never lands on the empty
+	// shape.
+	const deferred = !isDataRequest;
+	const conversations = deferred ? [] : timeDb(locals, () => listConversations(locals.user!.id));
 	return {
 		user: locals.user,
 		conversations,
@@ -89,15 +108,17 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		generatingIds: filterInFlight(conversations.map((c) => c.id)),
 		prefs: timeDb(locals, () => getUserPreferences(locals.user!.id)),
 		models: await listAllModels(),
-		customModels: timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
+		customModels: deferred ? [] : timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
 		// Hide per-user MCP servers the user hasn't connected — an inert toggle
 		// is confusing; they connect in Settings → MCP servers. Global servers
 		// always show.
-		featureCategories: getAllFeatureCategoryLabels({
-			configuredPerUserServerIds: new Set(
-				timeDb(locals, () => listConfiguredServerIds(locals.user!.id)),
-			),
-		}),
+		featureCategories: deferred
+			? []
+			: getAllFeatureCategoryLabels({
+					configuredPerUserServerIds: new Set(
+						timeDb(locals, () => listConfiguredServerIds(locals.user!.id)),
+					),
+				}),
 		// Whether the featureCategories above are final. False only during the
 		// cold-start window, where the tool counts aren't known yet and a global
 		// server that turns out to be down is still listed; the (app) layout
@@ -106,10 +127,17 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		mcpSettled: isMcpReady(),
 		// Enabled skills (name + description) for the composer's /skill-name
 		// autocomplete. Catalog-index shape only — bodies stay server-side.
-		enabledSkills: timeDb(locals, () => listEnabledSkillsForUser(locals.user!.id)).map((s) => ({
-			id: s.id,
-			name: s.name,
-			description: s.description,
-		})),
+		enabledSkills: deferred
+			? []
+			: timeDb(locals, () => listEnabledSkillsForUser(locals.user!.id)).map((s) => ({
+					id: s.id,
+					name: s.name,
+					description: s.description,
+				})),
+		// False only on the initial document, and only until the client's
+		// follow-up lands. Consumers use it to tell "nothing yet" from "nothing at
+		// all" — an empty sidebar that says "No conversations yet" while the real
+		// list is in flight is worse than one that says nothing.
+		deferredLoaded: !deferred,
 	};
 };
