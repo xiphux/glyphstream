@@ -426,9 +426,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 			`auth;dur=${dur(authMs)}`,
 			`render;dur=${dur(renderMs)}`,
 			`zip;dur=${dur(zipMs)}`,
-			// A slice OF `render`, not a fourth part of `ssr` — the loads' time
-			// inside synchronous SQLite. Absent means no timed query ran, which is
-			// genuinely zero rather than unmeasured.
+			// A slice OF `render`, not a fourth part of `ssr` — time inside
+			// synchronous SQLite, summed over the loads that opted in via `timeDb`.
+			// Zero means no WRAPPED query ran, which is not the same as none did:
+			// see db-timing.ts for which loads are covered and why the async legs
+			// (the gallery's embedding call, MCP's handshakes) are deliberately not.
 			`db;dur=${dur(event.locals.dbMs ?? 0)}`,
 		];
 		// Signed-in only. Uptime is weak but real recon on an internet-facing

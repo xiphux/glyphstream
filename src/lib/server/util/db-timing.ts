@@ -18,6 +18,27 @@
  * Accumulated on `locals` rather than returned, because the loads that matter
  * run in two places (the `(app)` layout and the page) and the value is stamped
  * by the hook after both have finished.
+ *
+ * COVERAGE, since this is opt-in per call site and the reported number is only
+ * as honest as its scope. Instrumented: the `(app)` layout, and `chat/[id]`.
+ * Between them those cover the two readings the panel exists for — an iOS cold
+ * launch, which lands on `start_url: '/'` where the page load itself does no DB
+ * work, and a hard-loaded conversation. Every other route therefore reports the
+ * layout's share alone; that is stated in docs/deployment.md rather than left
+ * for a reader to discover.
+ *
+ * Deliberately NOT extended to the async loads — the gallery's `searchMediaForUser`
+ * awaits an embedding endpoint, `settings/mcp` awaits handshakes, `settings/models`
+ * awaits the model list. Timing those here would fold network latency into a
+ * number whose whole purpose is to identify the event loop being blocked by
+ * synchronous reads, which would make it wrong rather than merely partial. If
+ * those ever need measuring they want a span of their own.
+ *
+ * A central alternative was considered and rejected: drizzle v1's `logQuery` is
+ * fire-and-forget with no completion callback, so covering everything would take
+ * AsyncLocalStorage plus a proxy on `DatabaseSync.prepare` — `getDb()` is a
+ * process-wide singleton with no request identity — and it would start counting
+ * the background sweepers this deliberately excludes.
  */
 
 /** Run a synchronous query, adding its duration to this request's total. */

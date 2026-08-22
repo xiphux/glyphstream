@@ -481,7 +481,13 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		online,
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
-		workerBuild: controller ? await askWorkerBuild(controller) : null,
+		// Short deadline, unlike the layout's. This await is the last thing between
+		// opening the panel and seeing it, so the cost of a slow answer is a blank
+		// dialog — and the worker that can't answer at all is the OLD one, which is
+		// exactly the case a long wait punishes. A live worker replies in about a
+		// millisecond; anything past this is a null the row already renders
+		// honestly as "build unknown".
+		workerBuild: controller ? await askWorkerBuild(controller, 400) : null,
 	};
 }
 

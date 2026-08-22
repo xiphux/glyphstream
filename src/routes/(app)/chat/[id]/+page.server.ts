@@ -63,10 +63,14 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// avatar changes what the model looks like, not what it's called.
 	let assistantLabel = friendlyModelName(conversation.modelId);
 	let presetAvatarMediaId: string | null = null;
-	// Hoisted to a const before the closure: narrowing a PROPERTY doesn't survive
-	// into a callback, so reading it inside `timeDb` would be `string | null`
-	// again — while a `!` there is exactly the assertion eslint's
-	// no-unnecessary-type-assertion calls redundant. A local const satisfies both.
+	// Hoisted to a const before the closure because narrowing a PROPERTY doesn't
+	// survive into a callback: reading `conversation.customModelId` inside
+	// `timeDb` is `string | null` again, and TS2345s. Narrowing a VARIABLE does
+	// survive, which is why the const works — and why `locals.user.id` below
+	// needs no `!` after `requireUserPage`, whose assertion signature narrows
+	// `locals` itself. (A `!` on the property would also compile and is NOT what
+	// no-unnecessary-type-assertion flags — verified — since it genuinely changes
+	// the type. The const is preferred here only for reading without one.)
 	const presetId = conversation.customModelId;
 	if (presetId) {
 		const cm = timeDb(locals, () => getCustomModelForUser(presetId, locals.user.id));

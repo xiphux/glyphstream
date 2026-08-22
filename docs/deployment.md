@@ -217,10 +217,17 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   waited on something that left the loop free, such as an awaited network call.
   (Host descheduling shows up as a stall, not here — the clock keeps running
   while the container is denied CPU.)
-- **Database** is how much of that server time was spent inside SQLite. It is a
-  slice of the render, not another part of the total, and it is what makes a
-  large `render` answerable: a big number here against a small **Server CPU** is
-  the database blocking the event loop on reads that missed the page cache.
+- **Database** is how much of that server time was spent inside synchronous
+  SQLite. It is a slice of the render, not another part of the total, and it is
+  what makes a large `render` answerable: a big number here against a small
+  **Server CPU** is the database blocking the event loop on reads that missed the
+  page cache. Scope worth knowing before you read it as a total: it covers the
+  shared `(app)` layout and the conversation page, which between them account for
+  a cold launch (which always lands on the new-chat page) and a hard-loaded
+  conversation. On other routes it reports the layout's share only, and it
+  deliberately excludes asynchronous work such as the gallery's embedding call —
+  the number exists to identify a blocked event loop, and network latency in it
+  would defeat that.
   Worth knowing that only part of such a wait shows up as major faults —
   GlyphStream maps the first 30 MB of the database file, so a database grown past
   that size serves its tail through ordinary file reads, which cost wall time and

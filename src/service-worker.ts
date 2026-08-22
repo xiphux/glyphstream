@@ -128,9 +128,12 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 		void self.skipWaiting();
 		return;
 	}
-	// Which build is this worker? Asked of a WAITING worker by the root layout
-	// before it raises the update prompt — see $lib/sw/update-prompt.ts for why
-	// a waiting worker is so often the same build as the page that's asking.
+	// Which build is this worker? Two callers, asking different workers. The root
+	// layout asks the WAITING one before raising an update prompt — see
+	// $lib/sw/update-prompt.ts for why a waiting worker is so often the same
+	// build as the page that's asking. The debug panel asks the CONTROLLING one,
+	// because "controlled" says a worker drives the page and never which, and
+	// those diverge for as long as a prompt goes untapped.
 	// Answered over the caller's port so the reply correlates without a shared
 	// bus, the same shape as queryClient below in the other direction.
 	if (data?.type === 'GET_BUILD') {
