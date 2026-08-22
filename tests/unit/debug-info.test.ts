@@ -603,12 +603,13 @@ describe('buildDebugSections — which worker is in charge', () => {
 		expect(rowsOf(controlled('1.2.3'), 'Environment')['Service worker'].note).toBe('build 1.2.3');
 	});
 
-	it('distinguishes "did not answer" from "same build"', () => {
-		// A worker predating GET_BUILD stays silent. Printing nothing would read
-		// as agreement, which is the opposite of the truth precisely where that
-		// silence is most likely.
+	it('distinguishes "did not answer" from "same build", without naming a cause', () => {
+		// Printing nothing would read as agreement, which is the opposite of what
+		// a non-answer means. But the note must not claim WHY either: an old
+		// worker and a live one that missed the deadline both arrive as the same
+		// silent timeout, and this string ships through Copy into bug reports.
 		expect(rowsOf(controlled(null), 'Environment')['Service worker'].note).toBe(
-			'build unknown — worker predates the build query',
+			'build unknown — no reply (old build, or slow to wake)',
 		);
 	});
 

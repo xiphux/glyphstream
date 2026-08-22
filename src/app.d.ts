@@ -15,10 +15,11 @@ declare global {
 			sessionId: string | null;
 			/**
 			 * Milliseconds this request spent inside synchronous SQLite, summed
-			 * across every load that opted in via `timeDb`. Undefined until the
-			 * first such call, which is why the hook treats absent as zero rather
-			 * than as "not measured": a request that ran no timed query really did
-			 * spend no time in one.
+			 * across every load that opted in via `timeDb` — which is not every
+			 * load. Zero therefore means no WRAPPED query ran, NOT that the request
+			 * touched no database; see db-timing.ts for what is covered and why.
+			 * Undefined until the first such call, and the hook reports that as
+			 * zero for the same reason.
 			 */
 			dbMs?: number;
 		}

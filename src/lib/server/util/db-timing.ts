@@ -27,12 +27,22 @@
  * layout's share alone; that is stated in docs/deployment.md rather than left
  * for a reader to discover.
  *
- * Deliberately NOT extended to the async loads — the gallery's `searchMediaForUser`
- * awaits an embedding endpoint, `settings/mcp` awaits handshakes, `settings/models`
- * awaits the model list. Timing those here would fold network latency into a
- * number whose whole purpose is to identify the event loop being blocked by
- * synchronous reads, which would make it wrong rather than merely partial. If
- * those ever need measuring they want a span of their own.
+ * The remaining loads are uninstrumented for two different reasons, and it is
+ * worth not blurring them. Most (`archived`, and the `settings/*` pages) await
+ * nothing but `parent()` and are a one-line `timeDb` away — they are simply not
+ * done, on the grounds that the panel reads the DOCUMENT navigation entry, so a
+ * client-side navigation to one of those routes shows the launch document's
+ * numbers anyway and only a hard reload would consult its own.
+ *
+ * The gallery's search path is the one that needs thought rather than typing.
+ * `searchMediaForUser` is `async`, but its expensive legs — the FTS5 rank and a
+ * scan of up to `DENSE_CORPUS_CAP` stored embedding blobs — are synchronous, and
+ * are exactly the blocked-loop case this metric exists to surface. Reaching them
+ * means threading request identity into a query module that has none. Note this
+ * helper could not have gone wrong by simply wrapping the outer call: it takes a
+ * SYNCHRONOUS callback and never awaits, so timing an async function would
+ * measure its prefix and quietly report near-zero — a useless number, not a
+ * misleading one made of network latency.
  *
  * A central alternative was considered and rejected: drizzle v1's `logQuery` is
  * fire-and-forget with no completion callback, so covering everything would take

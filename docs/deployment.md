@@ -223,11 +223,12 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   **Server CPU** is the database blocking the event loop on reads that missed the
   page cache. Scope worth knowing before you read it as a total: it covers the
   shared `(app)` layout and the conversation page, which between them account for
-  a cold launch (which always lands on the new-chat page) and a hard-loaded
-  conversation. On other routes it reports the layout's share only, and it
-  deliberately excludes asynchronous work such as the gallery's embedding call —
-  the number exists to identify a blocked event loop, and network latency in it
-  would defeat that.
+  a cold launch — normally the new-chat page, or a conversation when the launch
+  came from tapping a notification — and a hard-loaded conversation. Other routes
+  report the layout's share only. That matters less than it sounds, because the
+  panel reads the document that started the session: navigating to `/gallery`
+  in-app shows the launch document's numbers regardless, and only a hard reload
+  there would under-report.
   Worth knowing that only part of such a wait shows up as major faults —
   GlyphStream maps the first 30 MB of the database file, so a database grown past
   that size serves its tail through ordinary file reads, which cost wall time and

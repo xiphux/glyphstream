@@ -145,10 +145,14 @@ function workerNote(
 	pageVersion: string,
 ): string {
 	if (state !== 'controlled') return '';
-	// A worker predating GET_BUILD can't answer. Say so rather than printing
-	// nothing, which would read as "same build" — the opposite of the truth on
-	// the one deployment where that silence is most likely.
-	if (build === null) return 'build unknown — worker predates the build query';
+	// Null is a non-answer, and the two causes are indistinguishable from here:
+	// a worker predating GET_BUILD never replies, and a live one can miss the
+	// deadline while waking. Both arrive as the same silent timeout, so the row
+	// must not name one — this text ships through the Copy button into pasted
+	// bug reports, and "predates the build query" would also decay from true to
+	// false over successive releases. Printing nothing is worse still: an empty
+	// note reads as "same build", the opposite of what a non-answer means.
+	if (build === null) return 'build unknown — no reply (old build, or slow to wake)';
 	if (build !== pageVersion) return `build ${build}, page ${pageVersion} — update not applied yet`;
 	return `build ${build}`;
 }
@@ -485,8 +489,8 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		// opening the panel and seeing it, so the cost of a slow answer is a blank
 		// dialog — and the worker that can't answer at all is the OLD one, which is
 		// exactly the case a long wait punishes. A live worker replies in about a
-		// millisecond; anything past this is a null the row already renders
-		// honestly as "build unknown".
+		// millisecond; anything past this is a null, which the row reports as a
+		// non-answer without guessing which kind.
 		workerBuild: controller ? await askWorkerBuild(controller, 400) : null,
 	};
 }
