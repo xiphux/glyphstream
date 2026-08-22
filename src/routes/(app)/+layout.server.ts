@@ -9,6 +9,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
 import { isMcpReady } from '$lib/server/mcp/bootstrap';
 import { filterInFlight } from '$lib/server/streaming/in-flight';
+import { timeDb } from '$lib/server/util/db-timing';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
@@ -74,7 +75,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 	// `requireUserPage` instead of `await parent()` and so stays untouched — and
 	// that's the one whose payload is the entire conversation.
 	depends('app:prefs');
-	const conversations = listConversations(locals.user.id);
+	const conversations = timeDb(locals, () => listConversations(locals.user!.id));
 	return {
 		user: locals.user,
 		conversations,
@@ -86,14 +87,16 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		// scoped by construction, since it can only answer for rows this user
 		// already owns.
 		generatingIds: filterInFlight(conversations.map((c) => c.id)),
-		prefs: getUserPreferences(locals.user.id),
+		prefs: timeDb(locals, () => getUserPreferences(locals.user!.id)),
 		models: await listAllModels(),
-		customModels: listCustomModelsForUser(locals.user.id),
+		customModels: timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
 		// Hide per-user MCP servers the user hasn't connected — an inert toggle
 		// is confusing; they connect in Settings → MCP servers. Global servers
 		// always show.
 		featureCategories: getAllFeatureCategoryLabels({
-			configuredPerUserServerIds: new Set(listConfiguredServerIds(locals.user.id)),
+			configuredPerUserServerIds: new Set(
+				timeDb(locals, () => listConfiguredServerIds(locals.user!.id)),
+			),
 		}),
 		// Whether the featureCategories above are final. False only during the
 		// cold-start window, where the tool counts aren't known yet and a global
@@ -103,7 +106,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends }) => {
 		mcpSettled: isMcpReady(),
 		// Enabled skills (name + description) for the composer's /skill-name
 		// autocomplete. Catalog-index shape only — bodies stay server-side.
-		enabledSkills: listEnabledSkillsForUser(locals.user.id).map((s) => ({
+		enabledSkills: timeDb(locals, () => listEnabledSkillsForUser(locals.user!.id)).map((s) => ({
 			id: s.id,
 			name: s.name,
 			description: s.description,

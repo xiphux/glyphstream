@@ -7,6 +7,7 @@
 // resource URL with `includes`, the route tests a pathname with `startsWith` —
 // so only the literal is shared.
 import { IMMUTABLE_PREFIX } from '$lib/sw/asset-route';
+import { askWorkerBuild } from '$lib/sw/ask-build';
 
 /**
  * "Stats for nerds" — the numbers behind a page load, formatted for the panel
@@ -72,6 +73,9 @@ export interface DebugSources {
 	 *  `{candidates: 0}` rather than null; that's the regression the row exists
 	 *  to catch, so it must not look like "not applicable". */
 	launchImage: LaunchImageMatch | null;
+	/** Which build the CONTROLLING worker is, or null if it didn't answer.
+	 *  See the note on the Service worker row for why "controlled" isn't enough. */
+	workerBuild: string | null;
 }
 
 export interface LaunchImageMatch {
@@ -132,6 +136,21 @@ function uptime(msTotal: number): string {
 		return rem ? `${hours} h ${rem} min` : `${hours} h`;
 	}
 	return `${Math.floor(hours / 24)} d`;
+}
+
+/** Qualifies the worker state with the build actually in charge. */
+function workerNote(
+	state: DebugSources['serviceWorker'],
+	build: string | null,
+	pageVersion: string,
+): string {
+	if (state !== 'controlled') return '';
+	// A worker predating GET_BUILD can't answer. Say so rather than printing
+	// nothing, which would read as "same build" — the opposite of the truth on
+	// the one deployment where that silence is most likely.
+	if (build === null) return 'build unknown — worker predates the build query';
+	if (build !== pageVersion) return `build ${build}, page ${pageVersion} — update not applied yet`;
+	return `build ${build}`;
 }
 
 export function buildDebugSections(s: DebugSources): DebugSection[] {
@@ -207,6 +226,14 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		// Its own row rather than another clause on the breakdown note above,
 		// because that note's contract is "these sum to the total" and this is a
 		// second decomposition of the same span, not a fourth part of it.
+		// Time inside synchronous SQLite, a SLICE of `render` rather than another
+		// part of the total — which is why it's a row and not a clause on the
+		// breakdown note, whose contract is that its parts sum to `ssr`. It answers
+		// the question `render` on its own can't: a big number here with a small
+		// Server CPU is the database blocking the loop on reads that miss the page
+		// cache, which on a database grown past the 30MB mmap cap goes through
+		// read(2) and never registers as a major fault.
+		const db = timing('db');
 		const cpu = timing('cpu');
 		const faults = timing('fault');
 		// Read against `cpu` rather than on its own. A stall with `cpu` to match is
@@ -250,6 +277,18 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				value: orDash(ssr),
 				...(breakdown.length ? { note: breakdown.join(' · ') } : {}),
 			},
+			...(db === null
+				? []
+				: [
+						{
+							label: 'Database',
+							value: ms(db),
+							note:
+								ssr !== null && ssr > 0
+									? `${Math.round((db / ssr) * 100)}% of the server time`
+									: 'synchronous SQLite, inside render',
+						},
+					]),
 			...cpuRows,
 			...(lag === null
 				? []
@@ -340,7 +379,19 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				{ label: 'Version', value: s.version },
 				{ label: 'Mode', value: s.dev ? 'development' : 'production' },
 				{ label: 'Display', value: s.standalone ? 'standalone' : 'browser' },
-				{ label: 'Service worker', value: s.serviceWorker },
+				// "controlled" answers whether A worker drives this page, not WHICH —
+				// and those diverge for as long as the user leaves an update prompt
+				// untapped, because the worker deliberately doesn't skipWaiting. The
+				// page always comes fresh from the server, so it can sit on a new
+				// build for days while an old worker still handles its fetches. That
+				// gap is invisible without this: a caching or offline behaviour the
+				// new worker introduced simply won't be in effect, and nothing else
+				// in the panel would say so.
+				{
+					label: 'Service worker',
+					value: s.serviceWorker,
+					note: workerNote(s.serviceWorker, s.workerBuild, s.version),
+				},
 				{ label: 'Connection', value: s.online ? 'online' : 'offline' },
 				// How long the server process had been up when it served this
 				// document — the first thing to check against a slow "Server
@@ -409,8 +460,9 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 	// which is the wrong answer to the one thing this panel is for. Hence the
 	// async hop: registration state isn't available synchronously.
 	let serviceWorker: DebugSources['serviceWorker'] = 'unsupported';
+	const controller = 'serviceWorker' in navigator ? navigator.serviceWorker.controller : null;
 	if ('serviceWorker' in navigator) {
-		if (navigator.serviceWorker.controller) {
+		if (controller) {
 			serviceWorker = 'controlled';
 		} else {
 			// Rejects outside a secure context; a dash-equivalent beats a throw.
@@ -429,6 +481,7 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		online,
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
+		workerBuild: controller ? await askWorkerBuild(controller) : null,
 	};
 }
 

@@ -217,6 +217,15 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   waited on something that left the loop free, such as an awaited network call.
   (Host descheduling shows up as a stall, not here — the clock keeps running
   while the container is denied CPU.)
+- **Database** is how much of that server time was spent inside SQLite. It is a
+  slice of the render, not another part of the total, and it is what makes a
+  large `render` answerable: a big number here against a small **Server CPU** is
+  the database blocking the event loop on reads that missed the page cache.
+  Worth knowing that only part of such a wait shows up as major faults —
+  GlyphStream maps the first 30 MB of the database file, so a database grown past
+  that size serves its tail through ordinary file reads, which cost wall time and
+  register no fault at all. A `Database` number with no faults behind it is that
+  case.
 - **Server memory**, in the Environment section beneath **Server uptime**, is the
   process's resident set. Read it against the major-fault count, across readings
   taken days apart: a footprint that climbs is a leak in GlyphStream, while one
@@ -233,6 +242,13 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   sweepers wake on 5- and 15-minute cadences and touch the database without
   resetting it, so a large reading here does not mean the process was quiet or
   that a disk was ever allowed to spin down.
+- **Service worker** carries the build of the worker actually in charge, which
+  is not always the build the page came from. A new worker waits for you to
+  accept the update prompt, while the page itself arrives fresh from the server
+  on every launch — so the panel can read `0.36.0` while an older worker still
+  handles the app's fetches, and anything that worker introduced (caching,
+  offline behaviour) is simply not in effect yet. The row says so explicitly
+  when they differ.
 - **Launch image** answers whether iOS had a splash image matching this exact
   device, by running each declared `apple-touch-startup-image` media query
   through `matchMedia` on the hardware itself. `no match` means the geometry list

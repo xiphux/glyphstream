@@ -42,6 +42,7 @@ function sources(over: Partial<DebugSources> = {}): DebugSources {
 		online: true,
 		dev: false,
 		launchImage: null,
+		workerBuild: null,
 		...over,
 	};
 }
@@ -547,5 +548,73 @@ describe('buildDebugSections — server memory', () => {
 
 	it('omits the row entirely when the server did not send it', () => {
 		expect(rowsOf(sources(), 'Environment')['Server memory']).toBeUndefined();
+	});
+});
+
+/**
+ * `render` is the biggest span and the least specific. These two rows are what
+ * make it answerable: how much of it was SQLite, and whether the worker driving
+ * the page is even the build the page came from.
+ */
+describe('buildDebugSections — database time', () => {
+	const withDb = (dbMs: number, ssr = 620) =>
+		sources({
+			navigation: {
+				...nav,
+				serverTiming: [
+					{ name: 'ssr', duration: ssr },
+					{ name: 'db', duration: dbMs },
+				],
+			},
+		});
+
+	it('reports the share of server time spent in SQLite', () => {
+		const rows = rowsOf(withDb(465), 'This load');
+		expect(rows['Database'].value).toBe('465 ms');
+		expect(rows['Database'].note).toBe('75% of the server time');
+	});
+
+	it('shows a zero reading rather than hiding it', () => {
+		// Zero is the reading that clears the database and sends you to the
+		// render itself, so it has to be visible.
+		expect(rowsOf(withDb(0), 'This load')['Database'].value).toBe('0 ms');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		expect(rowsOf(sources(), 'This load')['Database']).toBeUndefined();
+	});
+});
+
+describe('buildDebugSections — which worker is in charge', () => {
+	const controlled = (workerBuild: string | null, version = '1.2.3') =>
+		sources({ serviceWorker: 'controlled', workerBuild, version });
+
+	it('calls out a worker still running the previous build', () => {
+		// The case that matters: the page comes fresh from the server every
+		// launch, so it can sit on a new build for days while an old worker still
+		// handles its fetches — and anything that worker introduced is not in
+		// effect. Nothing else in the panel would say so.
+		const rows = rowsOf(controlled('1.2.2'), 'Environment');
+		expect(rows['Service worker'].value).toBe('controlled');
+		expect(rows['Service worker'].note).toBe('build 1.2.2, page 1.2.3 — update not applied yet');
+	});
+
+	it('says so plainly when the worker matches the page', () => {
+		expect(rowsOf(controlled('1.2.3'), 'Environment')['Service worker'].note).toBe('build 1.2.3');
+	});
+
+	it('distinguishes "did not answer" from "same build"', () => {
+		// A worker predating GET_BUILD stays silent. Printing nothing would read
+		// as agreement, which is the opposite of the truth precisely where that
+		// silence is most likely.
+		expect(rowsOf(controlled(null), 'Environment')['Service worker'].note).toBe(
+			'build unknown — worker predates the build query',
+		);
+	});
+
+	it('adds no note when no worker is driving the page', () => {
+		const rows = rowsOf(sources({ serviceWorker: 'registered', workerBuild: null }), 'Environment');
+		expect(rows['Service worker'].value).toBe('registered');
+		expect(rows['Service worker'].note).toBe('');
 	});
 });

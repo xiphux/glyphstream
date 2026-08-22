@@ -13,6 +13,14 @@ declare global {
 			 * "sign out everywhere else" spare it.
 			 */
 			sessionId: string | null;
+			/**
+			 * Milliseconds this request spent inside synchronous SQLite, summed
+			 * across every load that opted in via `timeDb`. Undefined until the
+			 * first such call, which is why the hook treats absent as zero rather
+			 * than as "not measured": a request that ran no timed query really did
+			 * spend no time in one.
+			 */
+			dbMs?: number;
 		}
 		// interface PageData {}
 		// interface PageState {}

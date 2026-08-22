@@ -7,6 +7,7 @@ import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
+import { timeDb } from '$lib/server/util/db-timing';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
@@ -27,7 +28,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// dropping it costs nothing and restores the targeted invalidation the
 	// layout's `depends('app:conversations')` comment already describes.
 	requireUserPage(locals, url);
-	const conversation = getConversationDetail(params.id, locals.user.id);
+	const conversation = timeDb(locals, () => getConversationDetail(params.id, locals.user.id));
 	// Send the user home rather than 404, and let the new-chat page raise a
 	// toast. A 404 here is a dead end in the standalone PWA — no back button,
 	// no chrome, nothing to tap — and the most common way to reach one is a
@@ -62,8 +63,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// avatar changes what the model looks like, not what it's called.
 	let assistantLabel = friendlyModelName(conversation.modelId);
 	let presetAvatarMediaId: string | null = null;
-	if (conversation.customModelId) {
-		const cm = getCustomModelForUser(conversation.customModelId, locals.user.id);
+	// Hoisted to a const before the closure: narrowing a PROPERTY doesn't survive
+	// into a callback, so reading it inside `timeDb` would be `string | null`
+	// again — while a `!` there is exactly the assertion eslint's
+	// no-unnecessary-type-assertion calls redundant. A local const satisfies both.
+	const presetId = conversation.customModelId;
+	if (presetId) {
+		const cm = timeDb(locals, () => getCustomModelForUser(presetId, locals.user.id));
 		if (cm) {
 			assistantLabel = cm.name;
 			presetAvatarMediaId = cm.avatarMediaId;
@@ -79,17 +85,15 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// the completed images plus "generating" placeholders, and the poll fills
 	// the rest in as they land. The explicit marker means a retry/truncate
 	// parked on a user message can't masquerade as a fan-out.
-	const fanout = getFanoutRecoveryState(
-		conversation.id,
-		locals.user.id,
-		conversation.activeLeafMessageId,
+	const fanout = timeDb(locals, () =>
+		getFanoutRecoveryState(conversation.id, locals.user.id, conversation.activeLeafMessageId),
 	);
 
 	// The conversation's open canvases (if any), so the side-by-side pane
 	// rehydrates on load / after a reload. Empty when the conversation has none.
 	// The live pane is driven by canvas_version stream events during a turn; this
 	// is the durable seed, in stable creation order.
-	const canvases = listActiveCanvases(params.id, locals.user.id);
+	const canvases = timeDb(locals, () => listActiveCanvases(params.id, locals.user.id));
 
 	return { conversation, assistantLabel, assistantAvatarMediaId, inFlightSince, fanout, canvases };
 };

@@ -10,6 +10,7 @@
 	import { streamPresence } from '$lib/stream-presence.svelte';
 	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
 	import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
+	import { askWorkerBuild } from '$lib/sw/ask-build';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
@@ -127,38 +128,6 @@
 	// in-flight streams or unsaved drafts out from under the user.
 	let updateAvailable = $state(false);
 	let triggerUpdate: (() => void) | null = $state(null);
-
-	/**
-	 * Ask a worker which build it is. Resolves null if it doesn't answer —
-	 * a worker from before GET_BUILD existed won't, and neither will one that
-	 * fails to boot.
-	 */
-	function askWorkerBuild(worker: ServiceWorker, timeoutMs = 1500): Promise<string | null> {
-		return new Promise((resolve) => {
-			const channel = new MessageChannel();
-			let settled = false;
-			// Single settle path, matching queryClient in service-worker.ts — the
-			// mirror image of this call. Nothing misbehaves without it (a second
-			// resolve is a no-op), but the two are a pair and an asymmetry here
-			// only makes a reader wonder which one is right.
-			const finish = (build: string | null) => {
-				if (settled) return;
-				settled = true;
-				clearTimeout(timer);
-				channel.port1.onmessage = null;
-				resolve(build);
-			};
-			const timer = setTimeout(() => finish(null), timeoutMs);
-			channel.port1.onmessage = (ev: MessageEvent) => {
-				finish(typeof ev.data === 'string' ? ev.data : null);
-			};
-			try {
-				worker.postMessage({ type: 'GET_BUILD' }, [channel.port2]);
-			} catch {
-				finish(null);
-			}
-		});
-	}
 
 	/**
 	 * Glue only — the rule itself lives in shouldPromptForUpdate.

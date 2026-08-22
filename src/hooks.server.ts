@@ -426,6 +426,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 			`auth;dur=${dur(authMs)}`,
 			`render;dur=${dur(renderMs)}`,
 			`zip;dur=${dur(zipMs)}`,
+			// A slice OF `render`, not a fourth part of `ssr` — the loads' time
+			// inside synchronous SQLite. Absent means no timed query ran, which is
+			// genuinely zero rather than unmeasured.
+			`db;dur=${dur(event.locals.dbMs ?? 0)}`,
 		];
 		// Signed-in only. Uptime is weak but real recon on an internet-facing
 		// box — it dates the last restart, and so the last patch — and the
