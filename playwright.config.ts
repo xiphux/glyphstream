@@ -50,7 +50,18 @@ export default defineConfig({
 	use: {
 		baseURL,
 		storageState: './tests/.e2e-data/auth.json',
-		trace: 'on-first-retry',
+		// `on-first-retry` was a no-op: `retries` is unset, so it defaults to 0 and
+		// there is never a first retry. A CI failure therefore arrived with page
+		// snapshots and nothing else — no network waterfall, no timeline — and
+		// diagnosing it took a round trip through the maintainer to fetch artifacts
+		// that could not contain the answer.
+		//
+		// `retain-on-failure` records every test and keeps only the ones that
+		// failed. Gated on CI because that is where a failure cannot be reproduced
+		// interactively; locally you can just re-run the spec, and recording costs
+		// wall time on a suite that already builds a production bundle. The CI
+		// workflow already uploads `test-results/`, which is where traces land.
+		trace: process.env.CI ? 'retain-on-failure' : 'off',
 	},
 	globalSetup: './tests/e2e/global-setup.ts',
 	projects: [
