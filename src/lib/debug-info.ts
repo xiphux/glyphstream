@@ -1,3 +1,13 @@
+// The service worker's cache route keys off this same prefix. Shared rather
+// than restated because the two are load-bearing for each other: the row below
+// counts how many chunks came from the network, and that count is the gauge
+// used to tell whether the SW route is working. If the build layout ever moves
+// and only one of them followed, the panel would report a healthy zero with
+// nothing failing. The MATCHERS differ on purpose — this one tests a full
+// resource URL with `includes`, the route tests a pathname with `startsWith` —
+// so only the literal is shared.
+import { IMMUTABLE_PREFIX } from '$lib/sw/asset-route';
+
 /**
  * "Stats for nerds" — the numbers behind a page load, formatted for the panel
  * behind the sidebar version number.
@@ -86,9 +96,6 @@ export interface DebugSection {
 	title: string;
 	rows: DebugRow[];
 }
-
-/** Hashed client bundles. Matching on the path keeps CSS in the count too. */
-const IMMUTABLE_PREFIX = '/_app/immutable/';
 
 const ms = (v: number): string => `${Math.round(v)} ms`;
 

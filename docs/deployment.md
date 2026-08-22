@@ -217,11 +217,12 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   waited on something that left the loop free, such as an awaited network call.
   (Host descheduling shows up as a stall, not here — the clock keeps running
   while the container is denied CPU.)
-- **Server memory**, beside it, is the process's resident set. Read the pair
-  across readings taken days apart: a footprint that climbs is a leak in
-  GlyphStream, while one that holds steady while the major-fault count climbs is
-  a healthy process being squeezed by a host short on memory. The fault count
-  proves memory was reclaimed but says nothing about whose doing that was.
+- **Server memory**, in the Environment section beneath **Server uptime**, is the
+  process's resident set. Read it against the major-fault count, across readings
+  taken days apart: a footprint that climbs is a leak in GlyphStream, while one
+  that holds steady while the fault count climbs is a healthy process being
+  squeezed by a host short on memory. The fault count proves memory was
+  reclaimed but says nothing about whose fault that is.
 - **Idle before this load**, in the Environment section, is how long the server
   had gone without serving anything before this request. Read it with **Server
   uptime**: a process up for a day that was busy throughout is a different

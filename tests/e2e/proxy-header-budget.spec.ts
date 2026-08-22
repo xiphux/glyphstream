@@ -20,10 +20,13 @@ import { seedConversation } from './helpers';
  * A `Set-Cookie` from a session renewal spent them.
  *
  * So this asserts the budget rather than just the absence of the header that
- * blew it: anything that grows the block back toward the cliff (a new security
- * header, another `Server-Timing` field, a longer CSP) fails here first, in a
- * run that takes seconds, instead of intermittently in production behind a proxy
- * whose logs the app cannot see.
+ * blew it. Note what that now catches and what it doesn't: the `Link` trimmer
+ * prices its budget from the other headers, so another `Server-Timing` field or
+ * a longer CSP does NOT fail here — it silently costs a preload hint instead,
+ * and the budget stays green. What still fails here is the block growing past
+ * the cliff for a reason the trimmer can't absorb, which is the case that would
+ * otherwise surface intermittently in production behind a proxy whose logs the
+ * app cannot see.
  */
 const NGINX_DEFAULT_PROXY_BUFFER_BYTES = 4096;
 

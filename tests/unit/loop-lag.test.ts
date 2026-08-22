@@ -43,7 +43,8 @@ describe('createLagWindow', () => {
 	});
 
 	it('clips a stall that began before the window opened', () => {
-		// The 600ms stall ended at t=1000, but the window only opened at t=900, so
+		// A tick taking 600ms on a 100ms schedule is a 500ms stall. It ended at
+		// t=1000, but the window only opened at t=900, so
 		// this request witnessed 100ms of it. Reporting the full 600 against a
 		// request that could not have been alive for it is how a stall ends up
 		// longer than the request containing it — which reads as a broken gauge and

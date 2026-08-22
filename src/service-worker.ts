@@ -6,12 +6,15 @@
  *
  * Three responsibilities:
  *
- * 1. Precache the built static shell so cold loads survive a flaky
- *    network. Only the URLs in `self.__WB_MANIFEST` (injected by
- *    @vite-pwa/sveltekit at build time) are intercepted; /api/*,
- *    SSE streams, and SSR'd HTML pass straight through to the
- *    network. This is the "default route is no route" behavior that
- *    makes injectManifest cleaner than generateSW for our shape.
+ * 1. Serve the static bundle from Cache Storage. Two mechanisms, and the
+ *    difference is load-bearing: the root-level shell (`self.__WB_MANIFEST`,
+ *    injected by @vite-pwa/sveltekit) is PRECACHED at install, while the hashed
+ *    `/_app/immutable/*` chunks are cached at RUNTIME as they're fetched (see
+ *    $lib/sw/asset-route for why that split, and why precaching the chunks was
+ *    the wrong tool). Those two routes are the whole interception surface:
+ *    /api/*, SSE streams and SSR'd HTML still pass straight through to the
+ *    network, which is the "default route is no route" behavior that makes
+ *    injectManifest cleaner than generateSW for our shape.
  *
  * 2. Receive Web Push events from the server's notify pipeline and
  *    arbitrate between three outcomes (see src/lib/sw/arbiter.ts):
@@ -35,12 +38,7 @@ import { precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import {
-	CHUNK_CACHE_MAX_AGE_SECONDS,
-	CHUNK_CACHE_MAX_ENTRIES,
-	CHUNK_CACHE_NAME,
-	isImmutableAsset,
-} from '$lib/sw/asset-route';
+import { CHUNK_CACHE_MAX_ENTRIES, CHUNK_CACHE_NAME, isImmutableAsset } from '$lib/sw/asset-route';
 import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
 import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
 import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
@@ -75,11 +73,16 @@ registerRoute(
 		cacheName: CHUNK_CACHE_NAME,
 		plugins: [
 			new ExpirationPlugin({
+				// Entry cap only — no `maxAgeSeconds`. See asset-route.ts: workbox
+				// measures that against the response's `Date` header rather than last
+				// use, so any value there schedules a full-bundle re-download.
 				maxEntries: CHUNK_CACHE_MAX_ENTRIES,
-				maxAgeSeconds: CHUNK_CACHE_MAX_AGE_SECONDS,
-				// iOS evicts under storage pressure and reports it as a quota error;
-				// dropping this cache is the correct response, since every entry is
-				// re-fetchable and nothing here is user data.
+				// Fires when `cache.put` itself throws QuotaExceededError — a device
+				// genuinely out of room — at which point dropping this cache and
+				// starting empty is right, since every entry is re-fetchable and none
+				// of it is user data. Note this does NOT cover WebKit reclaiming
+				// storage in the background, which happens silently with no exception
+				// for anything to catch; that path just looks like a cache miss.
 				purgeOnQuotaError: true,
 			}),
 		],

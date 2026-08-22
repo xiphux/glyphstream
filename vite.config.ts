@@ -123,9 +123,11 @@ export default defineConfig({
 			},
 			injectManifest: {
 				// Precache ONLY the root-level, non-hashed assets — the icons the SW
-				// itself renders into notifications, plus the manifest. We register no
-				// other routes in the SW, so /api/*, SSE streams and SSR'd HTML pass
-				// straight through to the network.
+				// itself renders into notifications, plus the manifest. The hashed
+				// chunks are cached too, but by a runtime route rather than from this
+				// list — see the note at the end of this block. Between them those are
+				// the only two routes the SW registers, so /api/*, SSE streams and
+				// SSR'd HTML pass straight through to the network.
 				//
 				// Deliberately NOT `client/**` over js/css. That swept in every hashed
 				// chunk — ~380 KB gzip across ~89 entries, including the markdown-it

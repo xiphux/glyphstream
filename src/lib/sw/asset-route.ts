@@ -1,6 +1,6 @@
 /**
- * Which requests the service worker serves from Cache Storage, and how long it
- * keeps them.
+ * Which requests the service worker serves from Cache Storage, and how many of
+ * them it keeps. Deliberately not how LONG — see the note on the entry cap.
  *
  * Split out from the worker itself so the predicate is a pure function a node
  * test can exercise — the worker is built in its own Vite pass with worker
@@ -30,12 +30,27 @@ export const CHUNK_CACHE_NAME = 'glyphstream-app-chunks';
 /**
  * Roughly two builds' worth (~89 entries each), so a deploy can land without
  * evicting the chunks the still-open page is running from. Past that, least
- * recently used goes first, which is the right order: it's the previous build's.
+ * recently used goes first — genuinely last-used, off workbox's IndexedDB
+ * timestamp — which is the right order: it's the previous build's.
  */
 export const CHUNK_CACHE_MAX_ENTRIES = 200;
 
-/** A chunk untouched for a month belongs to a build nobody is running. */
-export const CHUNK_CACHE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+// There is deliberately no `maxAgeSeconds` companion to the entry cap, and it is
+// worth saying why, because adding one reads as obvious housekeeping.
+//
+// Workbox does not gate a hit on when an entry was last USED — its
+// `cachedResponseWillBeUsed` computes freshness from the cached response's
+// `Date` header, the wall-clock moment it was first fetched, and forces a miss
+// past the limit however recently it was served. The last-used timestamp only
+// drives eviction; it never rescues an entry the date check rejected. So any
+// value here is a scheduled re-download of the whole bundle on that cadence, for
+// every user — precisely the thing this route exists to stop, and worst on a
+// self-hosted box running one build for months. It also makes the worker refuse
+// to serve bytes it physically holds when the network is down and the entry has
+// aged out.
+//
+// Content-hashed URLs cannot go stale, so age bounds nothing worth bounding.
+// The entry cap above is the only limit, and it evicts on last use.
 
 /**
  * True for the hashed client bundle, and nothing else.

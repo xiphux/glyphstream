@@ -6,12 +6,7 @@
  * silently gives back the 41-requests-per-launch this route exists to remove.
  */
 import { describe, expect, it } from 'vitest';
-import {
-	CHUNK_CACHE_MAX_AGE_SECONDS,
-	CHUNK_CACHE_MAX_ENTRIES,
-	IMMUTABLE_PREFIX,
-	isImmutableAsset,
-} from '../../src/lib/sw/asset-route';
+import { IMMUTABLE_PREFIX, isImmutableAsset } from '../../src/lib/sw/asset-route';
 
 const at = (path: string, origin = 'https://ai.example.test') =>
 	({ url: new URL(path, origin), sameOrigin: true }) as const;
@@ -56,11 +51,12 @@ describe('isImmutableAsset', () => {
 		expect(isImmutableAsset(at('/media/_app/immutable/x.js'))).toBe(false);
 	});
 
-	it('keeps room for more than one build', () => {
-		// A deploy must not evict the chunks the still-open page is running from;
-		// a build is ~89 entries.
-		expect(CHUNK_CACHE_MAX_ENTRIES).toBeGreaterThan(89 * 2 - 1);
-		expect(CHUNK_CACHE_MAX_AGE_SECONDS).toBeGreaterThan(60 * 60 * 24 * 7);
+	it('is a prefix, so `startsWith` means what it looks like', () => {
 		expect(IMMUTABLE_PREFIX.endsWith('/')).toBe(true);
 	});
+
+	// Whether CHUNK_CACHE_MAX_ENTRIES is actually big enough is asserted in
+	// tests/e2e/asset-cache.spec.ts, against the real build output. A literal
+	// here would keep passing as the bundle grew past it, which is exactly when
+	// the number stops being safe.
 });
