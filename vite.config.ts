@@ -136,12 +136,21 @@ export default defineConfig({
 				// on every deploy, competing with foreground traffic
 				// (`registerSW({ immediate: true })` starts right after page load).
 				//
-				// It bought very little. `/_app/immutable/*` is content-hashed and
-				// already served `max-age=31536000, immutable` (see hooks.server.ts),
-				// so the browser's own HTTP cache covers repeat loads. And there's no
-				// navigation fallback here by design — an offline navigation needs SSR
-				// HTML that isn't precached either way — so precached JS couldn't make
-				// a cold offline load work regardless.
+				// And there's no navigation fallback here by design — an offline
+				// navigation needs SSR HTML that isn't precached either way — so
+				// precached JS couldn't make a cold offline load work regardless.
+				//
+				// This block used to close by saying it bought very little, because
+				// `/_app/immutable/*` is content-hashed and already served
+				// `max-age=31536000, immutable`, so the browser's own HTTP cache would
+				// cover repeat loads. That last part is false on the platform this app
+				// is built for: the debug panel reported 41 of 41 chunks coming from
+				// the network on three consecutive cold launches of an unchanged build,
+				// hours apart, because WebKit does not reliably keep a standalone web
+				// app's disk cache across termination. The chunks ARE cached now — by a
+				// cache-first RUNTIME route in src/service-worker.ts, which stores only
+				// what the app actually fetched and so avoids every cost catalogued
+				// above. Precaching is still the wrong tool; caching was not.
 				globPatterns: ['client/*.{ico,png,svg,webmanifest}'],
 			},
 		}),

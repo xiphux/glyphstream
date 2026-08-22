@@ -32,6 +32,15 @@
  */
 
 import { precacheAndRoute } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { CacheFirst } from 'workbox-strategies';
+import { ExpirationPlugin } from 'workbox-expiration';
+import {
+	CHUNK_CACHE_MAX_AGE_SECONDS,
+	CHUNK_CACHE_MAX_ENTRIES,
+	CHUNK_CACHE_NAME,
+	isImmutableAsset,
+} from '$lib/sw/asset-route';
 import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
 import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
 import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
@@ -52,6 +61,30 @@ declare const self: ServiceWorkerGlobalScope & {
 declare const __APP_VERSION__: string;
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+// Serve the hashed client bundle from Cache Storage. `CacheFirst` with no
+// revalidation is the aggressive strategy and also the safe one here: the URLs
+// are content-hashed, so a given URL's bytes never change and a hit can never be
+// stale. A new build asks for new URLs and simply misses.
+//
+// This is a RUNTIME route, not a precache entry — see asset-route.ts for why the
+// distinction is the whole point, and for the measurement that motivated it.
+registerRoute(
+	({ url, sameOrigin }) => isImmutableAsset({ url, sameOrigin }),
+	new CacheFirst({
+		cacheName: CHUNK_CACHE_NAME,
+		plugins: [
+			new ExpirationPlugin({
+				maxEntries: CHUNK_CACHE_MAX_ENTRIES,
+				maxAgeSeconds: CHUNK_CACHE_MAX_AGE_SECONDS,
+				// iOS evicts under storage pressure and reports it as a quota error;
+				// dropping this cache is the correct response, since every entry is
+				// re-fetchable and nothing here is user data.
+				purgeOnQuotaError: true,
+			}),
+		],
+	}),
+);
 
 // Build stamp. Nothing reads it. Its job is to BE BYTES, and to differ
 // between releases.
