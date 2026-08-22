@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openSidebar, resetData, seedConversation } from './helpers';
+import { openSidebar, resetData, seedConversation, seedCustomModel } from './helpers';
 
 /**
  * The shared `(app)` layout ships without its interaction-only data and fetches
@@ -10,8 +10,9 @@ import { openSidebar, resetData, seedConversation } from './helpers';
  * render — `node:sqlite` is synchronous, so every one of those queries blocked
  * the event loop while the page cache was cold. None of what's deferred is on
  * screen at that moment: the sidebar is a closed drawer on the mobile PWA this
- * exists for, skills matter when you type `/`, custom models and feature
- * categories when a menu opens.
+ * exists for, skills matter when you type `/`, and the feature categories when a
+ * menu opens. `customModels` is the exception and has its own test below: the
+ * home page resolves it once and latches, so it cannot arrive late.
  *
  * Both halves are asserted, because either alone is satisfiable by a bug. That
  * it's ABSENT from the document is the optimisation; that it ARRIVES is the part
@@ -47,4 +48,19 @@ test('an empty Recents says so only once it knows', async ({ page, isMobile }) =
 	await page.goto('/');
 	await openSidebar(page, !!isMobile);
 	await expect(page.getByText('No conversations yet.')).toBeVisible();
+});
+
+test('custom models are NOT deferred, because the home page latches on them', async ({
+	request,
+}) => {
+	// The exception to the rule above, and the reason it is one. `+page.svelte`
+	// resolves a `custom::` favourite once and guards with `if (modelId) return`,
+	// so a preset missing from the FIRST render is skipped for a base model and
+	// never reconsidered — the user loses its system prompt and params silently,
+	// on every cold launch. `prefs.favoriteModels` isn't deferred either, so
+	// deferring this side of the pair is what creates the asymmetry.
+	const name = 'Preset On First Paint';
+	seedCustomModel(name);
+	const html = await (await request.get('/')).text();
+	expect(html, 'custom models were deferred; the home page cannot recover').toContain(name);
 });

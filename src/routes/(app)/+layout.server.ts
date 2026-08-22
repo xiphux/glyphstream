@@ -58,8 +58,10 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// to pull in conversations created on *other* clients since it last loaded.
 	// Targeted key rather than invalidateAll() so the chat page's own load +
 	// in-flight stream stay untouched — only this layout load re-runs. (That
-	// re-runs the whole load body, not just listConversations, but it's cheap:
-	// cached models + local SQLite.)
+	// re-runs the whole load body, not just listConversations. Cheap while WARM —
+	// cached models + local SQLite — but the deferral note below measures that
+	// same body at 751ms on a COLD container, which is why part of it now runs
+	// after first paint instead of before.)
 	depends('app:conversations');
 	// Preferences that live on `prefs` and are mutated from surfaces outside
 	// /settings/preferences — favorite models (the picker's star, the sidebar's
@@ -82,17 +84,33 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// The measurement that motivated it: on a cold container the Database span
 	// read 751ms of a 1000ms render — three quarters of it — because
 	// `node:sqlite` is synchronous and the page cache had dropped the mapping.
-	// Every one of these is interaction-only. The sidebar list is a CLOSED DRAWER
-	// on the mobile PWA that this whole investigation is about; skills are needed
-	// when you type `/`; custom models and the feature categories when a menu
-	// opens. `prefs` is the one that cannot move — the composer's enter-key
-	// handler branches on it synchronously, and a late arrival would race the
-	// first keystroke.
+	// Every one of these is interaction-only, though not equally invisible. The
+	// sidebar list is a CLOSED DRAWER on the mobile PWA this exists for — but it
+	// is on screen at first paint on desktop, which pays a "Loading…" flash for
+	// the mobile win. Skills are needed when you type `/`, and the feature
+	// categories when a menu opens. `prefs` cannot move at all: the composer's
+	// enter-key handler branches on it synchronously, and a late arrival would
+	// race the first keystroke.
+	//
+	// The trade is not free, and the accounting is worth stating. `__data.json` is
+	// per-NODE, not per-field, so the follow-up re-serializes this whole payload —
+	// `models` included, which is the largest field on a multi-endpoint setup —
+	// and re-runs `getUserPreferences`, `listAllModels` and
+	// `listCustomModelsForUser` a second time. It also re-runs the CURRENT PAGE's
+	// server load — every `(app)` page `await parent()`s except `chat/[id]`, and
+	// CLAUDE.md's own note says a node whose parent re-ran is marked invalid — so
+	// a cold `/archived` re-lists and re-serializes its conversations, and a cold
+	// `/gallery?q=…` re-runs the search. `/` is free: its page load returns `{}`,
+	// which is also the launch route this exists for. Total bytes and total
+	// server work per cold load go UP; what goes down is the time before first
+	// paint, which on a cold container was 751ms of blocked event loop. Anyone
+	// sizing a future field against this should price both sides.
 	//
 	// `isDataRequest` is the discriminator rather than a flag we invent: it is
 	// false exactly for the SSR document and true for the `__data.json` fetch a
-	// client-side invalidation makes, so a navigation never lands on the empty
-	// shape.
+	// client-side invalidation makes, so a CLIENT-SIDE navigation never lands on
+	// the empty shape. Every full-document load does — hard reload, external
+	// link, notification deep-link — which is the design, not an exception.
 	const deferred = !isDataRequest;
 	const conversations = deferred ? [] : timeDb(locals, () => listConversations(locals.user!.id));
 	return {
@@ -108,7 +126,16 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		generatingIds: filterInFlight(conversations.map((c) => c.id)),
 		prefs: timeDb(locals, () => getUserPreferences(locals.user!.id)),
 		models: await listAllModels(),
-		customModels: deferred ? [] : timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
+		// NOT deferred, unlike its neighbours, and the exception is load-bearing.
+		// Three consumers resolve a `custom::` id against this at mount, and the
+		// home page's model-default effect latches — it picks a base model when the
+		// lookup misses and then returns early on every later run, so an empty
+		// first render is permanent for the life of the page. Since `prefs` (and so
+		// `favoriteModels`) is not deferred either, deferring this produced exactly
+		// the asymmetry that silently drops a favourited preset's system prompt on
+		// the PWA's cold launch. It is also the cheapest query here — a handful of
+		// rows per user — so it buys almost none of the win it would cost.
+		customModels: timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
 		// Hide per-user MCP servers the user hasn't connected — an inert toggle
 		// is confusing; they connect in Settings → MCP servers. Global servers
 		// always show.

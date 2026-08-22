@@ -212,6 +212,36 @@ export function seedConversation(title: string): string {
 }
 
 /**
+ * Seed a custom-model preset for the test user.
+ *
+ * Exists so a spec can assert that presets reach the FIRST render — the home
+ * page resolves a `custom::` favourite once and latches, so a preset that
+ * arrives late is a preset silently never applied.
+ *
+ * `base_model_id` is the BARE upstream id — consumers compose the full id as
+ * `${baseEndpointId}::${baseModelId}`, so storing the composite here yields
+ * `mock::mock::mock-chat` and every lookup drops the row. The neighbouring
+ * seedConversation legitimately stores a composite, because `model_id` IS one.
+ */
+export function seedCustomModel(name: string): string {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	db.exec('PRAGMA foreign_keys = ON');
+	try {
+		const id = `e2e-cm-${name.replace(/\W+/g, '-').toLowerCase()}`;
+		const now = Date.now();
+		db.prepare(
+			`INSERT INTO custom_models
+			   (id, user_id, name, base_endpoint_id, base_model_id, created_at, updated_at)
+			 VALUES (?, ?, ?, 'mock', 'mock-chat', ?, ?)`,
+		).run(id, TEST_USER.id, name, now, now);
+		return id;
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Fill a seeded conversation with `pairs` user/assistant turns on one linear
  * branch, and point `active_leaf_message_id` at the newest reply. Assistant
  * rows carry a deliberately TALL `content_html` so the thread is many viewports

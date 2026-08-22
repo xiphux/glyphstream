@@ -71,8 +71,9 @@
 	});
 
 	// Pull the deferred half of the layout payload. The initial document ships
-	// without the sidebar list, custom models, skills and feature categories —
-	// see the note in +layout.server.ts for why each is safe to leave out — so
+	// without the sidebar list, skills and feature categories — see the note in
+	// +layout.server.ts for why each is safe to leave out, and why customModels
+	// deliberately is NOT among them — so
 	// this is what turns them up, one navigation-shaped fetch after first paint.
 	//
 	// `invalidate` rather than a bespoke endpoint: the load already knows how to
@@ -85,6 +86,20 @@
 	// true and this returns immediately on every subsequent load.
 	onMount(() => {
 		if (data.deferredLoaded) return;
+		// Offline-guarded like the resume refresh below, and for a sharper reason
+		// than politeness: `invalidate` is a navigation primitive, so a rejected
+		// `__data.json` doesn't no-op. Kit hands it to `load_root_error_page` and
+		// `root.$set`s the result, which swaps the ENTIRE app for the root error
+		// component — `(app)/+error.svelte` is never consulted on this path — and
+		// there is no way back short of a manual reload. (It does not, as an
+		// earlier version of this comment claimed, trigger a native reload loop:
+		// that branch needs `app.server_loads[0] === 0` and this app's only server
+		// load is the `(app)` layout.) A `.catch()` wouldn't help either; the swap
+		// happens inside `_invalidate`.
+		//
+		// So: skip while offline, and recover on `online` or the next foreground —
+		// both routed through `refreshConversations`, which re-guards internally.
+		if (!navigator.onLine) return;
 		void invalidate('app:conversations');
 	});
 
@@ -1070,5 +1085,16 @@
 	{/await}
 {/if}
 
-<svelte:window onkeydown={onGlobalKey} onfocus={refreshConversations} onpageshow={onPageShow} />
+<!-- `ononline` matters specifically for the deferred pull above: skipping it
+	 leaves the layout on its empty payload, and nothing else would come back for
+	 it. A client-side navigation won't — this layout's load reads `url` only in
+	 the unauthenticated branch, so `uses.url` is never set and Kit reuses the
+	 payload — and the other three events all require a focus change that a tab
+	 which merely regained connectivity never gets. -->
+<svelte:window
+	onkeydown={onGlobalKey}
+	onfocus={refreshConversations}
+	ononline={refreshConversations}
+	onpageshow={onPageShow}
+/>
 <svelte:document onvisibilitychange={onResumeVisibility} />
