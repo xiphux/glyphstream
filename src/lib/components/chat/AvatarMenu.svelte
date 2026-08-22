@@ -73,8 +73,12 @@
 		onViewFullSize,
 	}: Props = $props();
 
+	// Centred, like every other button in the app — `text-left` is for rows you
+	// pick from (model picker, autocomplete, search results), not for buttons.
+	// Step 2 is styled as the primary action so it can't share this wholesale;
+	// keep the box identical (padding, width, alignment) and vary only the fill.
 	const itemClass =
-		'w-full rounded-md border border-border px-3 py-1.5 text-left text-xs transition hover:bg-surface-sunken disabled:opacity-50';
+		'w-full rounded-md border border-border px-3 py-1.5 text-xs transition hover:bg-surface-sunken disabled:opacity-50';
 </script>
 
 <Popover.Root>
