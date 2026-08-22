@@ -486,11 +486,11 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
 		// Short deadline, unlike the layout's. This await is the last thing between
-		// opening the panel and seeing it, so the cost of a slow answer is a blank
-		// dialog — and the worker that can't answer at all is the OLD one, which is
-		// exactly the case a long wait punishes. A live worker replies in about a
-		// millisecond; anything past this is a null, which the row reports as a
-		// non-answer without guessing which kind.
+		// opening the panel and seeing it, so a slow answer costs a blank dialog —
+		// and waiting longer buys nothing, because a worker that hasn't replied by
+		// now is either one that never will or one still waking, and the row says
+		// exactly that either way without needing to tell them apart. A live worker
+		// replies in about a millisecond.
 		workerBuild: controller ? await askWorkerBuild(controller, 400) : null,
 	};
 }

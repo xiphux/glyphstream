@@ -15,40 +15,29 @@
  * quarter of it beyond the mapping — with a 2.2s stall that only 200 faults
  * could not account for. This span is what tells those apart.
  *
- * Accumulated on `locals` rather than returned, because the loads that matter
- * run in two places (the `(app)` layout and the page) and the value is stamped
- * by the hook after both have finished.
+ * Accumulated on `locals` rather than returned, because more than one load runs
+ * per request and the hook stamps the total after all of them finish.
  *
- * COVERAGE, since this is opt-in per call site and the reported number is only
- * as honest as its scope. Instrumented: the `(app)` layout, and `chat/[id]`.
- * Between them those cover the two readings the panel exists for — an iOS cold
- * launch, which lands on `start_url: '/'` where the page load itself does no DB
- * work, and a hard-loaded conversation. Every other route therefore reports the
- * layout's share alone; that is stated in docs/deployment.md rather than left
- * for a reader to discover.
+ * TWO PROPERTIES A READER NEEDS, both true of this file alone:
  *
- * The remaining loads are uninstrumented for two different reasons, and it is
- * worth not blurring them. Most (`archived`, and the `settings/*` pages) await
- * nothing but `parent()` and are a one-line `timeDb` away — they are simply not
- * done, on the grounds that the panel reads the DOCUMENT navigation entry, so a
- * client-side navigation to one of those routes shows the launch document's
- * numbers anyway and only a hard reload would consult its own.
+ * 1. Coverage is opt-in per call site, so the reported number is a FLOOR, not a
+ *    total — a request can touch the database in places nothing here counts.
+ *    `grep -rn timeDb src/routes` is the current answer to "what's covered";
+ *    earlier revisions of this comment kept an inventory of other files and kept
+ *    being wrong about it.
  *
- * The gallery's search path is the one that needs thought rather than typing.
- * `searchMediaForUser` is `async`, but its expensive legs — the FTS5 rank and a
- * scan of up to `DENSE_CORPUS_CAP` stored embedding blobs — are synchronous, and
- * are exactly the blocked-loop case this metric exists to surface. Reaching them
- * means threading request identity into a query module that has none. Note this
- * helper could not have gone wrong by simply wrapping the outer call: it takes a
- * SYNCHRONOUS callback and never awaits, so timing an async function would
- * measure its prefix and quietly report near-zero — a useless number, not a
- * misleading one made of network latency.
+ * 2. The callback is SYNCHRONOUS and this never awaits, so it measures exactly
+ *    the work before the wrapped function's first `await`. For an async function
+ *    that can be anything from all of it to none — `searchMediaForUser` does its
+ *    whole FTS5 rank first and, without `[embeddings]` configured, returns
+ *    without awaiting at all. So wrapping one does not fold in its network time,
+ *    but it does risk reporting a partial as though it were the whole call.
  *
- * A central alternative was considered and rejected: drizzle v1's `logQuery` is
- * fire-and-forget with no completion callback, so covering everything would take
- * AsyncLocalStorage plus a proxy on `DatabaseSync.prepare` — `getDb()` is a
- * process-wide singleton with no request identity — and it would start counting
- * the background sweepers this deliberately excludes.
+ * No central alternative to reach for: drizzle v1's `logQuery` is fire-and-forget
+ * with no completion hook, so covering everything would take AsyncLocalStorage
+ * plus a proxy on `DatabaseSync.prepare` — `getDb()` is a process-wide singleton
+ * with no request identity — and would start counting the background sweepers
+ * this deliberately excludes.
  */
 
 /** Run a synchronous query, adding its duration to this request's total. */

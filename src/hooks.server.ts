@@ -427,10 +427,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 			`render;dur=${dur(renderMs)}`,
 			`zip;dur=${dur(zipMs)}`,
 			// A slice OF `render`, not a fourth part of `ssr` — time inside
-			// synchronous SQLite, summed over the loads that opted in via `timeDb`.
-			// Zero means no WRAPPED query ran, which is not the same as none did:
-			// see db-timing.ts for which loads are covered and why the async legs
-			// (the gallery's embedding call, MCP's handshakes) are deliberately not.
+			// synchronous SQLite, summed over the call sites that opted in via
+			// `timeDb`. Read it as a FLOOR: zero means no wrapped query ran, which
+			// is not the same as none did. See db-timing.ts for the helper's
+			// semantics and how to find what's currently covered.
 			`db;dur=${dur(event.locals.dbMs ?? 0)}`,
 		];
 		// Signed-in only. Uptime is weak but real recon on an internet-facing

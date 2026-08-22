@@ -221,14 +221,12 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   SQLite. It is a slice of the render, not another part of the total, and it is
   what makes a large `render` answerable: a big number here against a small
   **Server CPU** is the database blocking the event loop on reads that missed the
-  page cache. Scope worth knowing before you read it as a total: it covers the
-  shared `(app)` layout and the conversation page, which between them account for
-  a cold launch — normally the new-chat page, or a conversation when the launch
-  came from tapping a notification — and a hard-loaded conversation. Other routes
-  report the layout's share only. That matters less than it sounds, because the
-  panel reads the document that started the session: navigating to `/gallery`
-  in-app shows the launch document's numbers regardless, and only a hard reload
-  there would under-report.
+  page cache. Read it as a floor rather than a total: only instrumented queries
+  are counted, and that covers the launch path and the conversation page, so a
+  small number on some other route may just mean nobody wrapped its queries. It
+  matters less than it sounds either way — the panel reports the document that
+  started the session, so navigating around in-app keeps showing the launch
+  document's numbers regardless.
   Worth knowing that only part of such a wait shows up as major faults —
   GlyphStream maps the first 30 MB of the database file, so a database grown past
   that size serves its tail through ordinary file reads, which cost wall time and
