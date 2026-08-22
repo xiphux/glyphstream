@@ -509,3 +509,43 @@ describe('buildDebugSections — launch image', () => {
 		expect(rowsOf(sources(), 'Environment')['Launch image']).toBeUndefined();
 	});
 });
+
+/**
+ * The fault counter proves memory was taken back; it cannot say whether the
+ * process's own footprint is growing. Read against uptime, this row separates a
+ * leak in here from pressure out there.
+ */
+describe('buildDebugSections — server memory', () => {
+	const withRss = (bytes: number, extra: Array<{ name: string; duration: number }> = []) =>
+		sources({
+			navigation: {
+				...nav,
+				serverTiming: [{ name: 'ssr', duration: 620 }, { name: 'rss', duration: bytes }, ...extra],
+			},
+		});
+
+	it('reports whole mebibytes', () => {
+		expect(rowsOf(withRss(268_435_456), 'Environment')['Server memory'].value).toBe('256 MB');
+	});
+
+	it('rounds rather than truncating', () => {
+		// 199.6 MB reading as "199 MB" would understate a footprint right at a
+		// threshold someone is watching.
+		expect(rowsOf(withRss(209_300_000), 'Environment')['Server memory'].value).toBe('200 MB');
+	});
+
+	it('sits next to uptime, which is what makes it readable', () => {
+		// Neither number means much alone: the question is whether the footprint
+		// climbs across readings taken days apart.
+		const rows = rowsOf(
+			withRss(268_435_456, [{ name: 'proc', duration: 19 * 3_600_000 }]),
+			'Environment',
+		);
+		expect(rows['Server uptime'].value).toBe('19 h');
+		expect(rows['Server memory'].value).toBe('256 MB');
+	});
+
+	it('omits the row entirely when the server did not send it', () => {
+		expect(rowsOf(sources(), 'Environment')['Server memory']).toBeUndefined();
+	});
+});

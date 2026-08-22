@@ -40,13 +40,19 @@ export interface LagWindow {
 	/** Record a tick that landed at `at` having taken `observedIntervalMs`. */
 	record(at: number, observedIntervalMs: number): void;
 	/**
-	 * Longest stall overlapping [`since`, `now`], in ms.
+	 * Longest stall overlapping [`since`, `now`], in ms — CLIPPED to that window.
 	 *
-	 * `now` is not decoration. A stall that is still unwinding has not been
+	 * Clipping matters because a tick records a stall that ENDED at its
+	 * timestamp, so a stall straddling the start of the window would otherwise
+	 * report its full length against a request that only witnessed the tail. That
+	 * shipped once and produced a 388ms stall on a 286ms request, which reads as a
+	 * broken measurement.
+	 *
+	 * `now` is not decoration either. A stall that is still unwinding has not been
 	 * recorded yet — when the loop frees up it may run this request's own
 	 * continuation (a microtask) before the sampler's timer callback, so reading
 	 * only the ring would report zero for the very stall that caused the delay.
-	 * The gap between the last recorded tick and `now` closes that hole.
+	 * The gap after the last recorded tick closes that hole.
 	 */
 	maxSince(since: number, now: number): number;
 }
@@ -74,11 +80,16 @@ export function createLagWindow(intervalMs = SAMPLE_INTERVAL_MS, capacity = CAPA
 		maxSince(since, now) {
 			let max = 0;
 			for (let i = 0; i < capacity; i++) {
-				// A tick recorded at T reports a stall that ended at T, so it counts
-				// for any window still open at T.
-				if (at[i] >= since && lag[i] > max) max = lag[i];
+				// A tick recorded at T reports a stall spanning [T - lag, T], so it
+				// counts for a window still open at T — but only for the part that
+				// actually falls inside it.
+				if (at[i] < since) continue;
+				const overlap = Math.min(lag[i], at[i] - since);
+				if (overlap > max) max = overlap;
 			}
-			const stillStalling = seen ? now - lastTickAt - intervalMs : 0;
+			// The in-progress stall began when the next tick was due, so it's clipped
+			// the same way rather than measured from the last tick unconditionally.
+			const stillStalling = seen ? now - Math.max(since, lastTickAt + intervalMs) : 0;
 			return Math.max(0, max, stillStalling);
 		},
 	};

@@ -92,6 +92,9 @@ const IMMUTABLE_PREFIX = '/_app/immutable/';
 
 const ms = (v: number): string => `${Math.round(v)} ms`;
 
+/** Whole mebibytes — the scale a process footprint is read at. */
+const mib = (bytes: number): string => `${Math.round(bytes / 1_048_576)} MB`;
+
 function kb(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
@@ -134,6 +137,8 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 	// Same placement rationale as procUptimeMs: it describes the server's state
 	// going into this request, not a phase of it.
 	let idleMs: number | null = null;
+	// Same placement rationale again: it describes the server, not this request.
+	let rssBytes: number | null = null;
 
 	if (!nav) {
 		load.push({
@@ -150,6 +155,7 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		const ssr = timing('ssr');
 		procUptimeMs = timing('proc');
 		idleMs = timing('idle');
+		rssBytes = timing('rss');
 		// From fetchStart, NOT requestStart. requestStart is stamped after DNS,
 		// TCP and the TLS handshake, so measuring from there drops connection
 		// setup out of both rows — it lands in neither `Server` nor `Network`
@@ -335,6 +341,12 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				// SQLite open and a cold model-list fetch that every later one
 				// gets free. Absent on a server that doesn't stamp it.
 				...(procUptimeMs !== null ? [{ label: 'Server uptime', value: uptime(procUptimeMs) }] : []),
+				// Resident memory, read against the uptime directly above it. A
+				// footprint that climbs across readings taken days apart is a leak in
+				// here; one that holds steady while major faults climb is the host
+				// squeezing a well-behaved process. The fault counter proves memory was
+				// taken back but says nothing about whose fault that is.
+				...(rssBytes !== null ? [{ label: 'Server memory', value: mib(rssBytes) }] : []),
 				// How long the server had gone without serving a request before this
 				// one. Reported next to uptime because it answers the question uptime
 				// cannot: a slow load on a process that has been up for a day is not a

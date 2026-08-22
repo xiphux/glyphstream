@@ -480,6 +480,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// what a synchronous SQLite read off a cold page cache looks like, and
 			// what `cpu` alone reports as an idle server.
 			metrics.push(`lag;dur=${dur(maxLoopLagSince(requestStart))}`);
+			// Current resident set, in bytes. The fault counter says memory was
+			// reclaimed; it cannot say whether the process's own footprint is growing
+			// over days or whether a steady footprint is simply being squeezed harder
+			// by the host. Those have opposite fixes — one is a leak here, the other
+			// is memory pressure there — and read against `proc` this separates them.
+			// `memoryUsage.rss()` is the cheap single-value path, and unlike
+			// getrusage's maxRSS it reports CURRENT usage in bytes on every platform
+			// rather than a high-water mark in platform-dependent units.
+			metrics.push(`rss;dur=${process.memoryUsage.rss()}`);
 			metrics.push(`idle;dur=${dur(idleMs)}`);
 			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
 		}

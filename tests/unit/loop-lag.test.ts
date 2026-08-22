@@ -42,6 +42,32 @@ describe('createLagWindow', () => {
 		expect(w.maxSince(100, 2_600)).toBe(2_400);
 	});
 
+	it('clips a stall that began before the window opened', () => {
+		// The 600ms stall ended at t=1000, but the window only opened at t=900, so
+		// this request witnessed 100ms of it. Reporting the full 600 against a
+		// request that could not have been alive for it is how a stall ends up
+		// longer than the request containing it — which reads as a broken gauge and
+		// costs the row its credibility.
+		const w = createLagWindow(100, 10);
+		w.record(1_000, 600);
+		expect(w.maxSince(900, 1_000)).toBe(100);
+	});
+
+	it('still reports a stall fully inside the window at full length', () => {
+		// The clipping must not shave anything off the case that matters most.
+		const w = createLagWindow(100, 10);
+		w.record(1_000, 600);
+		expect(w.maxSince(0, 1_000)).toBe(500);
+	});
+
+	it('clips the still-unwinding stall to the window too', () => {
+		// Same reasoning on the tail: the loop has been stuck since the tick that
+		// was due at 200, but a window opened at 1_000 only saw from there.
+		const w = createLagWindow(100, 10);
+		w.record(100, 100);
+		expect(w.maxSince(1_000, 2_600)).toBe(1_600);
+	});
+
 	it('does not invent a stall before the first tick ever lands', () => {
 		// Nothing recorded yet must not read as "stalled since the epoch" — that
 		// would make every request on a young process look catastrophic.
