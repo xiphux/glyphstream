@@ -224,9 +224,10 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   page cache. Read it as a floor rather than a total: only instrumented queries
   are counted, and that covers the launch path and the conversation page, so a
   small number on some other route may just mean nobody wrapped its queries. It
-  matters less than it sounds either way — the panel reports the document that
-  started the session, so navigating around in-app keeps showing the launch
-  document's numbers regardless.
+  matters less than it sounds for ordinary use — the panel reports the document
+  that started the session, so navigating around in-app keeps showing the launch
+  document's numbers regardless. A hard reload of another route is the case where
+  a low number could mislead.
   Worth knowing that only part of such a wait shows up as major faults —
   GlyphStream maps the first 30 MB of the database file, so a database grown past
   that size serves its tail through ordinary file reads, which cost wall time and

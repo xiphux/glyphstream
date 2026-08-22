@@ -485,12 +485,14 @@ export async function readDebugSources(version: string): Promise<DebugSources> {
 		online,
 		dev: import.meta.env.DEV,
 		launchImage: readLaunchImageMatch(standalone),
-		// Short deadline, unlike the layout's. This await is the last thing between
-		// opening the panel and seeing it, so a slow answer costs a blank dialog —
-		// and waiting longer buys nothing, because a worker that hasn't replied by
-		// now is either one that never will or one still waking, and the row says
-		// exactly that either way without needing to tell them apart. A live worker
-		// replies in about a millisecond.
+		// Short deadline, unlike the layout's 1500ms — and the difference is what a
+		// null COSTS at each site, not how likely one is. There, a null flips
+		// shouldPromptForUpdate to "prompt", so waiting buys the difference between
+		// a real update prompt and a spurious one. Here it changes the wording of
+		// one diagnostic row, while the await is the last thing between opening the
+		// panel and seeing it — so a still-waking worker's answer is worth less
+		// than the blank dialog spent waiting for it. A live worker replies in
+		// about a millisecond; this is the tail, not the common case.
 		workerBuild: controller ? await askWorkerBuild(controller, 400) : null,
 	};
 }

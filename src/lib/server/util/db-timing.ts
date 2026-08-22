@@ -18,11 +18,11 @@
  * Accumulated on `locals` rather than returned, because more than one load runs
  * per request and the hook stamps the total after all of them finish.
  *
- * TWO PROPERTIES A READER NEEDS, both true of this file alone:
+ * TWO PROPERTIES A READER NEEDS:
  *
  * 1. Coverage is opt-in per call site, so the reported number is a FLOOR, not a
  *    total — a request can touch the database in places nothing here counts.
- *    `grep -rn timeDb src/routes` is the current answer to "what's covered";
+ *    `grep -rn 'timeDb(' src/` is the current answer to "what's covered";
  *    earlier revisions of this comment kept an inventory of other files and kept
  *    being wrong about it.
  *
