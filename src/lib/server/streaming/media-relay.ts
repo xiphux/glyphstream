@@ -95,6 +95,25 @@ export interface MediaRelayParams {
 	/** Fires when generation actually begins (slot acquired) — the route stamps
 	 *  the in-flight entry so a recovered fan-out can show QUEUED vs timer. */
 	onStarted?: () => void;
+	/**
+	 * Fires once the produced media is durably the conversation's — row appended,
+	 * media linked — and BEFORE `done` goes out. For a caller whose generation
+	 * exists to be applied somewhere (avatar generation: the portrait becomes the
+	 * conversation's face), this is where the apply belongs.
+	 *
+	 * It belongs on the SERVER side of the relay because the relay deliberately
+	 * outlives the client connection (see the module header): an iOS PWA gets
+	 * suspended a few seconds after the screen locks, which kills the fetch while
+	 * the draw keeps running here. An apply the client performs on `done` is
+	 * therefore an apply that silently doesn't happen for exactly the generations
+	 * slow enough for the user to put the phone down during — which is all of
+	 * them. Anything the caller can only do with a live client (refreshing its
+	 * view, toasting) still belongs there.
+	 *
+	 * A throw is logged and swallowed: failing to apply must not turn a portrait
+	 * that persisted fine into an `error` frame.
+	 */
+	onMediaPersisted?: (mediaId: string) => void;
 	/** Fires when the relay truly finishes — the route clears the in-flight slot. */
 	onComplete: () => void;
 	/**
@@ -285,6 +304,15 @@ export function startMediaRelay(
 					safeWrite({ type: 'error', message: errorMessage(e) } satisfies StreamErrorEvent);
 					safeClose();
 					return;
+				}
+
+				// Whatever this generation was FOR, now that it durably exists. Outside
+				// the append's try: a failure to apply is not a failure to generate,
+				// and must not be reported as one.
+				try {
+					params.onMediaPersisted?.(produced.mediaId);
+				} catch (e) {
+					console.warn('[media-relay] onMediaPersisted failed:', errorMessage(e));
 				}
 
 				// A fan-out branch suppresses its own notify; the route fires one

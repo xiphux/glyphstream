@@ -17,6 +17,7 @@ import {
 	getInFlightEntries,
 	conversationTurnEntries,
 	AVATAR_BRANCH,
+	getAvatarDrawSince,
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
@@ -230,5 +231,78 @@ describe('conversationTurnEntries', () => {
 		// makes something a side errand.
 		const branch = registerInFlight('c1', endpoint('a'), 'br7', 'chat', 'e::m');
 		expect(conversationTurnEntries('c1')).toEqual([branch]);
+	});
+});
+
+describe('getAvatarDrawSince', () => {
+	// The two readings are complementary by design and the pair is the contract:
+	// a draw must be invisible to the turn machinery (or it raises a phantom
+	// "Generating…" bubble and wedges that poll) and visible to the header ring
+	// (or a suspended draw silently disappears for the minutes it has left).
+	it('reports a draw that getInFlightSince deliberately hides', () => {
+		const before = Date.now();
+		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
+
+		expect(getInFlightSince('c1')).toBeNull();
+		expect(getAvatarDrawSince('c1')).toBeGreaterThanOrEqual(before);
+	});
+
+	it('is null for a conversation whose only work IS a turn', () => {
+		registerInFlight('c1', endpoint('a'));
+		expect(getInFlightSince('c1')).not.toBeNull();
+		expect(getAvatarDrawSince('c1')).toBeNull();
+	});
+
+	it('is null for a conversation with nothing running', () => {
+		expect(getAvatarDrawSince('nope')).toBeNull();
+	});
+
+	it('reports each conversation separately', () => {
+		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, 'image', 'e::img', null, false);
+		expect(getAvatarDrawSince('c2')).toBeNull();
+	});
+
+	it('goes back to null once the draw is cleared', () => {
+		// The client's poll terminates only on null, so a lingering entry is a
+		// permanently spinning ring and a permanently disabled Draw button.
+		const avatar = registerInFlight(
+			'c1',
+			endpoint('a'),
+			AVATAR_BRANCH,
+			'image',
+			'e::img',
+			null,
+			false,
+		);
+		clearInFlight('c1', avatar);
+		expect(getAvatarDrawSince('c1')).toBeNull();
+	});
+
+	it('follows the superseding draw when a second one takes the slot', () => {
+		const first = registerInFlight(
+			'c1',
+			endpoint('a'),
+			AVATAR_BRANCH,
+			'image',
+			'e::img',
+			null,
+			false,
+		);
+		const second = registerInFlight(
+			'c1',
+			endpoint('a'),
+			AVATAR_BRANCH,
+			'image',
+			'e::img',
+			null,
+			false,
+		);
+		expect(first.controller.signal.aborted).toBe(true);
+		expect(getAvatarDrawSince('c1')).toBe(second.startedAt);
+
+		// And the loser's clear is a no-op — identity-guarded, so the aborted
+		// first draw's `finally` can't switch the ring off on the live second one.
+		clearInFlight('c1', first);
+		expect(getAvatarDrawSince('c1')).toBe(second.startedAt);
 	});
 });

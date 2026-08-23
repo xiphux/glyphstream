@@ -167,6 +167,7 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		suppressNotify: over.suppressNotify ?? false,
 		displayOnly: over.displayOnly,
 		onStarted: over.onStarted,
+		onMediaPersisted: over.onMediaPersisted,
 		onGenerationSettled: over.onGenerationSettled,
 		onComplete: over.onComplete ?? vi.fn(),
 	} satisfies ImageRelayParams;
@@ -228,6 +229,115 @@ describe('startImageRelay — avatar generation', () => {
 		const done = events.find((e) => e.type === 'done')!;
 		const persisted = (done as { assistantMessage: ChatMessage }).assistantMessage;
 		expect(getSiblingAssistants(conv.id, description.id).map((s) => s.id)).toEqual([persisted.id]);
+	});
+
+	// `onMediaPersisted` is where the portrait BECOMES the avatar. It has to run
+	// server-side because the relay outlives the client connection on purpose:
+	// iOS suspends a PWA seconds after the screen locks, and a draw on a shared
+	// GPU takes minutes, so an apply the client performs on `done` is an apply
+	// that doesn't happen for the ordinary way this feature gets used.
+	it('hands the persisted media id to onMediaPersisted, exactly once', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		const onMediaPersisted = vi.fn();
+		await drain(
+			startImageRelay(
+				baseParams({ conversationId: conv.id, userId: user.id, userMessage, onMediaPersisted }),
+			),
+		);
+
+		expect(onMediaPersisted.mock.calls).toEqual([['media-out']]);
+	});
+
+	it('runs it only after the row exists, so an apply sees a consistent thread', async () => {
+		const { conv, user, userMessage } = seedConvWithUser();
+		let messagesAtApply = -1;
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					onMediaPersisted: () => {
+						messagesAtApply = getConversationDetail(conv.id, user.id)!.messages.length;
+					},
+				}),
+			),
+		);
+
+		// The seeded user message + the portrait. Applying against a thread that
+		// doesn't yet contain the portrait is how an avatar and its bubble drift.
+		expect(messagesAtApply).toBe(2);
+	});
+
+	it('applies before the in-flight entry is freed, not after', async () => {
+		// Ordering that a recovered client depends on. `onGenerationSettled` is
+		// what clears the registry, and the client's avatar-draw poll terminates
+		// the instant that read comes back null — so an apply sequenced after it
+		// races a reload that would find the old avatar and then stop looking.
+		const { conv, user, userMessage } = seedConvWithUser();
+		const order: string[] = [];
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					onMediaPersisted: () => order.push('applied'),
+					onGenerationSettled: () => order.push('settled'),
+					onComplete: () => order.push('complete'),
+				}),
+			),
+		);
+
+		expect(order).toEqual(['applied', 'settled', 'complete']);
+		expect(events.some((e) => e.type === 'done')).toBe(true);
+	});
+
+	it('does not call it when the generation failed', async () => {
+		// A durable error sibling is persisted on this path, but no media is —
+		// there is nothing to apply, and applying the previous draw's portrait a
+		// second time would be worse than doing nothing.
+		const { conv, user, userMessage } = seedConvWithUser();
+		mocks.imageGeneration.mockRejectedValue(new Error('upstream exploded'));
+		const onMediaPersisted = vi.fn();
+		const events = await drain(
+			startImageRelay(
+				baseParams({ conversationId: conv.id, userId: user.id, userMessage, onMediaPersisted }),
+			),
+		);
+
+		expect(onMediaPersisted).not.toHaveBeenCalled();
+		expect(events.some((e) => e.type === 'error')).toBe(true);
+	});
+
+	it('survives a throwing apply: the portrait still lands and `done` still goes out', async () => {
+		// Failing to hang the portrait on the conversation must not be reported as
+		// failing to draw it — the image is persisted and in the thread either way,
+		// and an `error` frame here would tell the user they lost work they still
+		// have.
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const { conv, user, userMessage } = seedConvWithUser();
+		const events = await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					onMediaPersisted: () => {
+						throw new Error('conversation vanished');
+					},
+				}),
+			),
+		);
+
+		expect(events.some((e) => e.type === 'error')).toBe(false);
+		const done = events.find((e) => e.type === 'done')!;
+		expect((done as { assistantMessage: ChatMessage }).assistantMessage.parts).toEqual([
+			{ type: 'image', mediaId: 'media-out' },
+		]);
+		expect(getConversationDetail(conv.id, user.id)!.messages).toHaveLength(2);
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
 	});
 });
 

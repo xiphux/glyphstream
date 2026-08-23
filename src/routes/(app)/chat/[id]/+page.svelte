@@ -355,10 +355,13 @@
 	 * Step two: draw the latest reply and make the result this conversation's
 	 * avatar.
 	 *
-	 * Setting the avatar happens HERE, on `done`, rather than server-side in the
-	 * relay — it keeps generation and the avatar endpoint independent, and a
-	 * disconnect mid-generation leaves the portrait in the thread to be applied
-	 * from the lightbox instead of a half-written state.
+	 * Applying the portrait is the SERVER's job now (the relay's
+	 * `onMediaPersisted` — see the generate route). This used to do it here on
+	 * `done`, which meant the apply only happened for a draw the client survived;
+	 * iOS suspends a PWA seconds after the screen locks, and a draw takes minutes,
+	 * so the common case was the portrait landing with no avatar to show for it.
+	 * What's left here is the part that genuinely needs a live client: the
+	 * progress ring, and pulling the result into view.
 	 */
 	async function generateAvatar() {
 		const source = avatarSourceMessage;
@@ -370,6 +373,7 @@
 		const cid = convId;
 		const setStatus = (status: string) => (avatarDraw = { conversationId: cid, status });
 		setStatus('Starting…');
+		avatarDrawInterrupted = false;
 		try {
 			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
 				method: 'POST',
@@ -385,14 +389,17 @@
 			// up, so the prompt the user just edited survives to be retried.
 			if (!res.ok || !res.body) throw new Error(await errorMessageFromResponse(res));
 
-			// Accepted — the request is the server's problem now. Close and let the
-			// drawing finish in the background, reported on the header avatar, so a
-			// minute of ComfyUI doesn't hold the UI hostage. The relay is already
-			// decoupled from this connection; only the avatar-apply below needs the
-			// page to still be here.
+			// Accepted — the request is the server's problem now, apply included. Close
+			// and let the drawing finish in the background, reported on the header
+			// avatar, so a minute of ComfyUI doesn't hold the UI hostage. Nothing
+			// below this point is load-bearing: losing the connection costs the ring
+			// and the toast, not the portrait or the avatar.
 			avatarDrawOpen = false;
 
-			let mediaId: string | null = null;
+			// `drew` rather than a bare "the stream ended": a generation that
+			// produced no image part applied no avatar either, so it must not be
+			// announced as one.
+			let drew: boolean | null = null;
 			await consumeChatStream(res.body, {
 				onQueued: (ahead) => setStatus(ahead > 0 ? `Queued — ${ahead} ahead…` : 'Queued…'),
 				onProgress: (_percent, statusText) => setStatus(statusText ?? 'Drawing…'),
@@ -400,39 +407,45 @@
 					setStatus('Drawing…');
 				},
 				onDone: ({ assistantMessage }) => {
-					const part = assistantMessage.parts.find((p) => p.type === 'image');
-					mediaId = part?.type === 'image' ? part.mediaId : null;
+					// The server has already applied it by the time `done` is written
+					// (`onMediaPersisted` runs before the frame goes out), so there's
+					// nothing to do here but notice.
+					drew = assistantMessage.parts.some((p) => p.type === 'image');
 				},
 				onError: (message) => {
 					throw new Error(message);
 				},
 			});
 
-			if (mediaId) {
-				setStatus('Applying…');
-				// `cid`, not `convId`: the portrait belongs to the conversation that
-				// asked for it. Applying it wherever the user happens to be standing
-				// is exactly the bug this snapshot exists to prevent.
-				const put = await fetch(`/api/conversations/${cid}/avatar`, {
-					method: 'PUT',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ mediaId }),
-				});
-				if (!put.ok) throw new Error(await errorMessageFromResponse(put));
-			}
 			// Only refresh and announce if the user is still looking at the chat this
 			// belongs to. Reloading a conversation they've moved on from — and
 			// telling them its avatar changed — would be noise about someone else's
 			// thread. Navigating back re-runs the load anyway.
 			if (convId === cid) {
 				await invalidateAll();
-				toast.success('Avatar updated');
+				if (drew) toast.success('Avatar updated');
 			}
 		} catch (e) {
-			if (convId === cid) toast.error(e instanceof Error ? e.message : 'Avatar generation failed');
+			if (convId !== cid) return;
+			// A suspension is not a failure. iOS kills the fetch a few seconds after
+			// the screen locks and a wifi↔cellular handoff drops it mid-flight; both
+			// arrive here as an indistinguishable "Load failed" TypeError while the
+			// draw — and the apply — carry on server-side. Re-syncing is the truthful
+			// response; a toast claiming the generation failed is not, and was what
+			// the user saw. Same latch the turn controller keeps for sends, kept
+			// separately because a draw is not a turn: `turn.busy` is false for its
+			// whole duration, so its flags never see one.
+			if (avatarDrawInterrupted) void invalidateAll();
+			else toast.error(e instanceof Error ? e.message : 'Avatar generation failed');
 		} finally {
 			// Clear only our own draw — a newer one started elsewhere owns the slot now.
 			if (avatarDraw?.conversationId === cid) avatarDraw = null;
+			// The latch belongs to this draw and dies with it. Leaving it set would
+			// make every subsequent return-to-foreground re-run invalidateAll —
+			// re-serializing the whole branch, `content_html` included, on a page
+			// that goes to real lengths not to (see the `await parent()` note in
+			// CLAUDE.md).
+			avatarDrawInterrupted = false;
 		}
 	}
 
@@ -503,8 +516,33 @@
 	// without the switch effect having to null it — which would race the old
 	// closure's own writes.
 	let avatarDraw = $state<{ conversationId: string; status: string } | null>(null);
-	const avatarStatus = $derived(
-		avatarDraw && avatarDraw.conversationId === convId ? avatarDraw.status : null,
+	// The page went hidden / offline while a draw's fetch was live. Plain `let`,
+	// not `$state`: only the visibility+connectivity handlers write it and only
+	// `generateAvatar`'s catch reads it, so nothing renders from it. The turn
+	// controller keeps the same pair of latches for sends and won't do here — an
+	// avatar draw leaves `turn.busy` false throughout, and `send()` clears those
+	// flags at the top of every turn, which is precisely the composer the draw
+	// backgrounds itself to keep usable.
+	let avatarDrawInterrupted = false;
+	// Server truth for a draw this client isn't driving: its fetch died (iOS
+	// suspended the PWA mid-draw) but the drawing didn't. Mirrored from the load
+	// and re-read by the poll below. Kept apart from `serverInFlightSince`, which
+	// is turn-scoped and deliberately blind to this.
+	// svelte-ignore state_referenced_locally
+	let serverAvatarDrawSince = $state<number | null>(data.avatarDrawSince);
+	// A draw this client isn't driving still gets the ring. Without that fallback
+	// a draw goes invisible the moment iOS kills the connection, leaving a header
+	// that claims nothing is happening for the several minutes it has left.
+	const avatarStatus = $derived.by(() => {
+		if (avatarDraw && avatarDraw.conversationId === convId) return avatarDraw.status;
+		return serverAvatarDrawSince !== null ? 'Drawing…' : null;
+	});
+	/** Some local closure is following a draw right now — in this conversation, or
+	 *  in one the user has since navigated away from (its `catch` still runs). */
+	const localAvatarDraw = $derived(avatarDraw !== null);
+	/** A draw is running server-side that no local closure is following. */
+	const recoveredAvatarDraw = $derived(
+		serverAvatarDrawSince !== null && avatarDraw?.conversationId !== convId,
 	);
 	// svelte-ignore state_referenced_locally
 	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
@@ -599,6 +637,7 @@
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
+		serverAvatarDrawSince = data.avatarDrawSince;
 		// Re-seed the canvas ONLY when switching conversations. A mid-turn
 		// invalidateAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
@@ -1328,9 +1367,15 @@
 		}
 		// A fan-out releases `busy` early (so the grid can show), so also
 		// track its branch streams as in-flight work worth recovering.
-		if (document.visibilityState === 'hidden' && (turn.busy || fanout.streaming)) {
-			turn.markHidden();
-		} else if (document.visibilityState === 'visible' && turn.wasHiddenDuringFetch) {
+		if (document.visibilityState === 'hidden') {
+			if (turn.busy || fanout.streaming) turn.markHidden();
+			// An avatar draw rides its own latch: it isn't a turn, so `turn.busy` is
+			// false for its whole duration and the flags above never see it. It's
+			// also the longest-lived fetch the app makes — minutes, on a shared GPU
+			// — which makes it the one most likely to be alive when iOS suspends
+			// the PWA, i.e. exactly the case this reconciliation exists for.
+			if (localAvatarDraw) avatarDrawInterrupted = true;
+		} else if (turn.wasHiddenDuringFetch || avatarDrawInterrupted) {
 			// Reconcile against server state — if a single generation completed
 			// while we were backgrounded, the new message arrives via the load.
 			// A live fan-out's streams are NOT eagerly handed off here: a desktop
@@ -1339,18 +1384,25 @@
 			// grid (losing the QUEUED badge + timer). If the connections actually
 			// died (iOS suspend), the branch fetches error and runBranch hands the
 			// fan-out off to recovery itself.
+			//
+			// The draw's latch is deliberately NOT cleared here: `generateAvatar`'s
+			// catch is what reads it, and iOS gives no ordering guarantee between
+			// this event and the killed fetch's rejection. The draw's own `finally`
+			// owns it — same lifetime as the draw, so a stale latch can't turn every
+			// later refocus into a full reload.
 			void invalidateAll();
 		}
 	}
 	function onOffline() {
 		isOffline = true;
 		if (turn.busy || fanout.streaming) turn.markOffline();
+		if (localAvatarDraw) avatarDrawInterrupted = true;
 	}
 	function onOnline() {
 		isOffline = false;
 		// Same reasoning as the visibility path — don't pre-emptively abort a
 		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
-		if (turn.wasOfflineDuringFetch) void invalidateAll();
+		if (turn.wasOfflineDuringFetch || avatarDrawInterrupted) void invalidateAll();
 	}
 
 	// In-flight assistant render state (segments + open/progress/status/queued/
@@ -1587,6 +1639,38 @@
 	$effect(() => {
 		if (!turn.recoveredInFlight) return;
 		return turn.startRecoveryPoll();
+	});
+
+	// Same, for an avatar draw whose client connection died. Its own poll rather
+	// than a flag on the turn controller's: `inFlightSince` excludes the draw on
+	// purpose (a draw isn't a turn, and counting it would raise a phantom
+	// "Generating…" bubble and disable the composer for the whole draw — see
+	// getInFlightSince), so the two have to terminate on different fields.
+	$effect(() => {
+		if (!recoveredAvatarDraw) return;
+		const id = convId;
+		let stopped = false;
+		const interval = setInterval(() => {
+			void (async () => {
+				try {
+					const res = await fetch(`/api/conversations/${id}?fanout=1`);
+					if (stopped || !res.ok) return;
+					const body = (await res.json()) as { avatarDrawSince: number | null };
+					if (body.avatarDrawSince !== null || stopped) return;
+					stopped = true;
+					clearInterval(interval);
+					// The portrait — and the avatar, applied server-side — landed while
+					// we weren't watching. One reload brings in both.
+					await invalidateAll();
+				} catch {
+					// Transient — the next tick retries.
+				}
+			})();
+		}, 4000);
+		return () => {
+			stopped = true;
+			clearInterval(interval);
+		};
 	});
 
 	// Recovery poll for a RECOVERED fan-out (rebuilt from server truth after a

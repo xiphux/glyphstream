@@ -17,17 +17,25 @@
  * to an image model. That's the same transient-override rule a fan-out branch
  * follows, reached without needing the fan-out machinery.
  *
- * The portrait persists as `displayOnly` — see the flag's note. The client sets
- * it as the conversation's avatar once `done` lands; doing it there rather than
- * in the relay keeps the generation and the (already existing) avatar endpoint
- * independent, and a disconnect mid-generation degrades to "the portrait is in
- * the thread, set it from the lightbox" rather than a half-applied write.
+ * The portrait persists as `displayOnly` — see the flag's note — and becomes the
+ * conversation's avatar HERE, via the relay's `onMediaPersisted` hook, in the
+ * same breath as the row that holds it.
+ *
+ * It used to be the client that applied it, on `done`, on the theory that a
+ * disconnect mid-generation degrades to "the portrait is in the thread, set it
+ * from the lightbox". In practice that theory had the failure backwards. iOS
+ * suspends a PWA seconds after the screen locks, killing the fetch — and a draw
+ * on a shared GPU takes minutes, so putting the phone down during one is the
+ * NORMAL way to use this, not an edge case. What the user got was a portrait
+ * sitting in the thread, no avatar, and a "Load failed" toast for a generation
+ * that had in fact succeeded. The relay already outlives the client connection
+ * by design; the apply now does too.
  */
 
 import { error } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta } from '$lib/server/db/queries/conversations';
+import { getConversationMeta, setConversationAvatar } from '$lib/server/db/queries/conversations';
 import { getMessage } from '$lib/server/db/queries/messages';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
@@ -179,6 +187,20 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		suppressTitleTask: true,
 		onStarted: () => {
 			inFlight.generationStartedAt = Date.now();
+		},
+		// The whole point of the draw, and unconditional. A second draw started
+		// since supersedes this one at the registry (they share AVATAR_BRANCH) and
+		// aborts it, so in the ordinary case a superseded draw never reaches here
+		// at all; if it squeaked past the abort it applies first and loses to the
+		// newer one, which is the order the user pressed the buttons in either way.
+		onMediaPersisted: (mediaId) => {
+			const result = setConversationAvatar(params.id, locals.user.id, mediaId);
+			// Both reasons are unreachable-in-practice races (the conversation
+			// deleted, or the media reaped, between persist and now) — worth a line
+			// in the log, not worth failing a generation that otherwise worked.
+			if (!result.ok) {
+				console.warn(`[avatar] could not apply portrait to ${params.id}: ${result.reason}`);
+			}
 		},
 		onGenerationSettled: onComplete,
 		onComplete,

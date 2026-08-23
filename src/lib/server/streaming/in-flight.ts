@@ -202,6 +202,21 @@ export function getInFlightSince(conversationId: string): number | null {
 	return earliest;
 }
 
+/**
+ * When the conversation's avatar draw started, or null when none is running.
+ *
+ * The mirror image of `getInFlightSince`, which deliberately EXCLUDES this
+ * entry: a draw isn't a turn, so it must not raise the recovered-turn bubble or
+ * wedge that poll. But it is still minutes of server-side work whose client
+ * connection iOS will happily kill, and the header ring is the only thing that
+ * reports it — so the client needs its own truth for it, kept separate for the
+ * same reason the registry entry is.
+ */
+export function getAvatarDrawSince(conversationId: string): number | null {
+	const entry = inFlight.get(conversationId)?.get(AVATAR_BRANCH);
+	return entry ? entry.startedAt : null;
+}
+
 /** Test/dev only. */
 export function resetInFlight(): void {
 	for (const byBranch of inFlight.values()) {

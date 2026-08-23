@@ -8,7 +8,7 @@ import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { getInFlightSince } from '$lib/server/streaming/in-flight';
+import { getAvatarDrawSince, getInFlightSince } from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
 import type { PageServerLoad } from './$types';
 
@@ -48,6 +48,12 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// iOS suspension killed the client's fetch. Unix ms start time, or
 	// null when nothing is in flight.
 	const inFlightSince = getInFlightSince(params.id);
+
+	// The same question for an avatar draw, which `getInFlightSince` deliberately
+	// excludes (it isn't a turn — see the note there). Reported separately so the
+	// header ring can come back after a suspension instead of the draw silently
+	// becoming invisible for the minutes it has left to run.
+	const avatarDrawSince = getAvatarDrawSince(params.id);
 
 	// Friendly identity for the assistant in message bubbles. Custom models
 	// win because the user named them; otherwise we strip the verbose
@@ -170,6 +176,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		assistantLabel,
 		assistantAvatarMediaId,
 		inFlightSince,
+		avatarDrawSince,
 		fanout,
 		canvases,
 	};

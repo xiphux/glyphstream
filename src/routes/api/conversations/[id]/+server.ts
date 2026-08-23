@@ -13,7 +13,7 @@ import {
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { getInFlightSince } from '$lib/server/streaming/in-flight';
+import { getAvatarDrawSince, getInFlightSince } from '$lib/server/streaming/in-flight';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
@@ -23,7 +23,8 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// The recovery polls (`?fanout=1`) — TWO callers, wanting different halves:
 	// the fan-out controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild
 	// the compare grid as branches land, and the single-turn recovery poll reads
-	// ONLY `inFlightSince`. Neither wants the message list, so skip
+	// ONLY `inFlightSince`. (A third, the avatar-draw poll, reads only
+	// `avatarDrawSince`.) None wants the message list, so skip
 	// getConversationDetail's walkActiveBranch (+ content_html serialization)
 	// entirely here; a poll over a long thread would otherwise re-fetch the whole
 	// thing each tick. getConversationMeta is the light, ownership-checked fetch
@@ -40,6 +41,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		);
 		return json({
 			inFlightSince: getInFlightSince(params.id),
+			avatarDrawSince: getAvatarDrawSince(params.id),
 			fanout: getFanoutRecoveryState(params.id, locals.user.id, meta.activeLeafMessageId),
 		});
 	}
@@ -52,8 +54,9 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// without the heavyweight page reload — when a generation it's tracking has
 	// finished (it needs the message list to see the assistant row land).
 	const inFlightSince = getInFlightSince(params.id);
+	const avatarDrawSince = getAvatarDrawSince(params.id);
 	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
-	return json({ conversation: conv, inFlightSince, fanout });
+	return json({ conversation: conv, inFlightSince, avatarDrawSince, fanout });
 };
 
 /**
