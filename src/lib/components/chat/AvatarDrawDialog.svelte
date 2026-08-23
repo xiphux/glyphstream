@@ -23,6 +23,8 @@
 		prompt: string;
 		/** Image-kind models only. */
 		models: ModelEntry[];
+		/** Forwarded to the model picker — see its `loading`. */
+		loading?: boolean;
 		modelId: string;
 		/**
 		 * Run the prompt through the image-prompt enhancer before generating.
@@ -51,6 +53,7 @@
 		open,
 		prompt,
 		models,
+		loading = false,
 		modelId,
 		enhance,
 		status,
@@ -91,6 +94,7 @@
 		<span class="mb-1 block text-xs font-medium">Image model</span>
 		<ModelPicker
 			{models}
+			{loading}
 			filterKinds={['image']}
 			value={modelId}
 			onChange={onModelChange}

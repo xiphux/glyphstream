@@ -2256,6 +2256,7 @@
 						private={isPrivate}
 						models={catalogue.all}
 						onPickerOpen={() => void catalogue.ensureAll()}
+						pickerLoading={catalogue.status === 'loading'}
 						enabledSkills={data.enabledSkills}
 						favoritedIds={data.prefs?.favoriteModels ?? []}
 						{allowAttachments}
@@ -2335,6 +2336,7 @@
 	open={avatarDrawOpen}
 	prompt={avatarPrompt}
 	models={imageModels}
+	loading={catalogue.status === 'loading'}
 	modelId={avatarModelId}
 	enhance={avatarEnhance}
 	status={avatarStatus}

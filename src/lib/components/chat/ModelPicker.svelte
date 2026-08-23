@@ -105,11 +105,21 @@
 		 * so a late arrival simply re-renders the list.
 		 */
 		onOpen?: () => void;
+		/**
+		 * Whether the caller is still fetching the rest of the catalogue.
+		 *
+		 * `models` is usable throughout — it starts as the first-paint slice and
+		 * widens — so this drives what the picker CLAIMS, not whether it renders.
+		 * Without it an empty filter reads "No matches for …", which is a confident
+		 * wrong answer about a model that is seconds from arriving.
+		 */
+		loading?: boolean;
 	}
 
 	let {
 		models,
 		onOpen,
+		loading = false,
 		customModels = [],
 		filterKinds,
 		value = $bindable(''),
@@ -710,6 +720,12 @@
 					onkeydown={onSearchKeydown}
 					class="flex-1 border-0 bg-transparent text-base focus:outline-none sm:text-sm"
 				/>
+				{#if loading}
+					<span
+						class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-border-focus border-t-transparent"
+						aria-label="Loading models"
+					></span>
+				{/if}
 			</div>
 
 			{#if allowCompare}
@@ -847,10 +863,27 @@
 				{/if}
 			{/if}
 
-			<div bind:this={listEl} role="listbox" class="flex-1 overflow-y-auto overscroll-contain py-1">
+			<div
+				bind:this={listEl}
+				role="listbox"
+				aria-busy={loading}
+				class="flex-1 overflow-y-auto overscroll-contain py-1"
+			>
 				{#if filteredItems.length === 0}
+					<!--
+						While the catalogue is still arriving, "no matches" is a claim we
+						cannot support — the list holds only the first-paint slice, so a
+						search for any other model legitimately finds nothing yet. Say what
+						is actually true instead.
+					-->
 					<p class="px-3 py-3 text-xs text-fg-muted">
-						{items.length === 0 ? 'No models available.' : `No matches for "${search.trim()}"`}
+						{#if loading}
+							Loading models…
+						{:else if items.length === 0}
+							No models available.
+						{:else}
+							No matches for "{search.trim()}"
+						{/if}
 					</p>
 				{/if}
 

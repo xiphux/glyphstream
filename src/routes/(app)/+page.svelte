@@ -828,6 +828,7 @@
 				<ModelPicker
 					models={catalogue.all}
 					onOpen={() => void catalogue.ensureAll()}
+					loading={catalogue.status === 'loading'}
 					customModels={data.customModels}
 					bind:value={modelId}
 					filterKinds={['chat', 'image', 'video']}

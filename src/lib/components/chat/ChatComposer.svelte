@@ -48,6 +48,8 @@
 		models: ModelEntry[];
 		/** Forwarded to the model picker — see its `onOpen`. */
 		onPickerOpen?: () => void;
+		/** Forwarded to the model picker — see its `loading`. */
+		pickerLoading?: boolean;
 		/** The user's enabled skills, for the `/skill-name` autocomplete. */
 		enabledSkills?: Array<{ id: string; name: string; description: string }>;
 		favoritedIds: string[];
@@ -97,6 +99,7 @@
 		private: isPrivate = false,
 		models,
 		onPickerOpen,
+		pickerLoading = false,
 		enabledSkills = [],
 		favoritedIds,
 		allowAttachments,
@@ -299,6 +302,7 @@
 			<ModelPicker
 				{models}
 				onOpen={onPickerOpen}
+				loading={pickerLoading}
 				bind:value={modelId}
 				filterKinds={['chat', 'image', 'video']}
 				disabled={generating}

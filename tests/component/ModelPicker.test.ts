@@ -951,3 +951,57 @@ describe('ModelPicker — saved sets', () => {
 		expect(screen.queryByText('Click models below to compare them…')).toBeNull();
 	});
 });
+
+describe('partial catalogue', () => {
+	// The picker is fed a first-paint slice and the rest arrives after `onOpen`
+	// fires (see ModelCatalogue). Everything here is about what the picker is
+	// entitled to CLAIM in that window — on a LAN it lasts milliseconds, which is
+	// exactly why it needs a test rather than a look.
+	const models = [makeModel({ id: 'bridge::gpt-4o', displayName: 'gpt-4o' })];
+
+	it('asks for the rest of the catalogue when it opens', async () => {
+		const user = userEvent.setup();
+		const onOpen = vi.fn();
+		render(ModelPicker, { props: { models, onOpen } });
+		expect(onOpen, 'fetched before anyone opened the picker').not.toHaveBeenCalled();
+		await user.click(screen.getByLabelText('Select model'));
+		expect(onOpen).toHaveBeenCalled();
+	});
+
+	it('does not claim "no matches" while the catalogue is still loading', async () => {
+		// The failure this guards: searching for a model that exists, is not in the
+		// slice, and is seconds from arriving — and being told it does not exist.
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models, loading: true } });
+		await user.click(screen.getByLabelText('Select model'));
+		await user.type(screen.getByPlaceholderText('Search models…'), 'claude');
+		expect(screen.getByText('Loading models…')).toBeInTheDocument();
+		expect(screen.queryByText(/No matches for/)).not.toBeInTheDocument();
+	});
+
+	it('says "no matches" once the catalogue is complete', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models, loading: false } });
+		await user.click(screen.getByLabelText('Select model'));
+		await user.type(screen.getByPlaceholderText('Search models…'), 'claude');
+		expect(screen.getByText('No matches for "claude"')).toBeInTheDocument();
+		expect(screen.queryByText('Loading models…')).not.toBeInTheDocument();
+	});
+
+	it('shows a spinner and marks the list busy while loading', async () => {
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models, loading: true } });
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.getByLabelText('Loading models')).toBeInTheDocument();
+		expect(screen.getByRole('listbox')).toHaveAttribute('aria-busy', 'true');
+	});
+
+	it('still lists the slice it already has, rather than blanking', async () => {
+		// Nothing about loading should hide what is already usable — the favourite
+		// you launched to talk to is in that slice.
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models, loading: true } });
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.getByRole('option', { name: /gpt-4o/ })).toBeInTheDocument();
+	});
+});
