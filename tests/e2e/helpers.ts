@@ -63,6 +63,15 @@ export function resetData(): void {
 		]) {
 			db.prepare(`DELETE FROM ${table}`).run();
 		}
+		// The test user itself is KEPT (every spec authenticates as them), so their
+		// preferences are the one piece of per-user state a DELETE sweep can't
+		// reach — and they are cross-cutting: favourited models decide the home
+		// page's default selection, the theme decides rendered colors. A spec that
+		// seeds either was silently configuring every spec that ran after it,
+		// including the second browser project's pass over the files before it.
+		// NULL is "never touched preferences", which the parser fills in with
+		// defaults — the same state a fresh install has.
+		db.prepare(`UPDATE users SET preferences_json = NULL`).run();
 	} finally {
 		db.close();
 	}
@@ -223,6 +232,31 @@ export function seedConversation(title: string): string {
  * `mock::mock::mock-chat` and every lookup drops the row. The neighbouring
  * seedConversation legitimately stores a composite, because `model_id` IS one.
  */
+/**
+ * Set the test user's favorited model ids.
+ *
+ * Preferences are a schemaless JSON blob on `users.preferences_json`, so this
+ * merges rather than overwrites — a test that seeds favourites shouldn't
+ * silently reset whatever else a fixture put there.
+ */
+export function seedFavoriteModels(favoriteModels: string[]): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		const row = db
+			.prepare('SELECT preferences_json AS json FROM users WHERE id = ?')
+			.get(TEST_USER.id) as { json: string | null } | undefined;
+		const prefs = JSON.parse(row?.json ?? '{}') as Record<string, unknown>;
+		prefs.favoriteModels = favoriteModels;
+		db.prepare('UPDATE users SET preferences_json = ? WHERE id = ?').run(
+			JSON.stringify(prefs),
+			TEST_USER.id,
+		);
+	} finally {
+		db.close();
+	}
+}
+
 export function seedCustomModel(name: string): string {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');

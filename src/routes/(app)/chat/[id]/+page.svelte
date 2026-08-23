@@ -88,6 +88,27 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// The model catalogue this page reads, which is NOT simply `data.models`.
+	//
+	// On a document load the (app) layout trims that list to the entries first
+	// paint needs — the new-chat composer's default plus the sidebar's favourites
+	// — and streams the rest in a follow-up, because an aggregator endpoint's full
+	// catalogue is hundreds of KB in every single document. A conversation's own
+	// model is not in that slice, so its page load carries the entry separately and
+	// it gets merged back in here.
+	//
+	// What that buys is the pre-interaction surface: header name, context window,
+	// and the submit gate all resolve on first paint. What it does not cover is
+	// every OTHER model — the image-model chooser, per-branch attribution in a
+	// fan-out, the per-turn picker's list. Those read as raw ids (or come up empty)
+	// until the follow-up lands, which is acceptable only because reaching any of
+	// them takes a click, and the follow-up is issued at layout mount.
+	const catalogue = $derived(
+		data.conversationModel && !data.models.some((m) => m.id === data.conversationModel!.id)
+			? [...data.models, data.conversationModel]
+			: data.models,
+	);
+
 	// Friendly bubble labels: the user's preferred name (Preferences ▸ Name
 	// if set, else GitHub display name's first token, else login) +
 	// the model's friendly name (server resolves custom-model name).
@@ -210,7 +231,7 @@
 	// nav. The avatar follows the same attribution, so a re-attributed sibling
 	// doesn't wear the preset's face. See assistantIdentityForMessage.
 	const assistantIdentityFor = (m: ChatMessage): AssistantIdentity =>
-		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, data.models);
+		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, catalogue);
 
 	// Read data eagerly so SSR includes messages on first paint; $effect
 	// below re-syncs on subsequent navigation invalidation. The warning
@@ -229,7 +250,7 @@
 	// The image models this user can draw with, and the one they'll draw with
 	// now: their saved choice if it still resolves, else the first available.
 	// Re-saved on change (below), so picking is a one-time cost.
-	const imageModels = $derived(data.models.filter((m) => m.kind === 'image'));
+	const imageModels = $derived(catalogue.filter((m) => m.kind === 'image'));
 	let avatarModelOverride = $state<string | null>(null);
 	const avatarModelId = $derived(
 		avatarModelOverride ??
@@ -745,14 +766,14 @@
 	});
 
 	// Per-turn picker re-binds modelId; whenever the user picks a different
-	// model, derive the new modelKind from data.models so the composer's
+	// model, derive the new modelKind from catalogue so the composer's
 	// modality-driven affordances (placeholder, attachment allowance) update.
 	// If the new model doesn't permit attachments, drop any in-flight ones —
 	// otherwise the user could ship an upload that the new model rejects.
 	// untrack the actions so this effect's dep set stays as just (modelId).
 	$effect(() => {
 		void modelId;
-		const next = data.models.find((m) => m.id === modelId);
+		const next = catalogue.find((m) => m.id === modelId);
 		if (!next) return;
 		untrack(() => {
 			modelKind = next.kind;
@@ -780,7 +801,7 @@
 	// Without this gate the user could type+submit and the server would 500
 	// on `parseModelId(...) === null`. Gating the submit means the picker
 	// is the obvious next step.
-	const hasValidModel = $derived(data.models.some((m) => m.id === modelId));
+	const hasValidModel = $derived(catalogue.some((m) => m.id === modelId));
 
 	// Conversation context size: tokens_in + tokens_out of the most
 	// recent assistant turn with usage populated. That sum is roughly
@@ -802,7 +823,7 @@
 	// ChatHeader shows just the raw token count, as before. See
 	// extractContextWindow (server side).
 	const modelContextWindow = $derived(
-		data.models.find((m) => m.id === modelId)?.contextWindow ?? null,
+		catalogue.find((m) => m.id === modelId)?.contextWindow ?? null,
 	);
 
 	// --- compaction ----------------------------------------------------------
@@ -1205,7 +1226,7 @@
 	// page state through these getters/setters.
 	const fanout: FanoutController = new FanoutController({
 		convId: () => convId,
-		models: () => data.models,
+		models: () => catalogue,
 		messageCount: () => messages.length,
 		busy: () => turn.busy,
 		appendUserMessage: (m) => (messages = [...messages, m]),
@@ -1309,14 +1330,14 @@
 	let splitAttachments = $state(false);
 	const fanoutModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
-			const m = data.models.find((x) => x.id === id);
+			const m = catalogue.find((x) => x.id === id);
 			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
 		}),
 	);
 
 	function modelDisplayName(modelId: string | null): string {
 		if (!modelId) return 'Model';
-		return data.models.find((m) => m.id === modelId)?.displayName ?? modelId;
+		return catalogue.find((m) => m.id === modelId)?.displayName ?? modelId;
 	}
 
 	/** Reset the compare cart + mode (after a fan-out kicks off, or on nav). */
@@ -1589,7 +1610,7 @@
 		if (
 			attachments.readyImageCount === 0 &&
 			baseModels.some((b) => {
-				const m = data.models.find((x) => x.id === b.modelId);
+				const m = catalogue.find((x) => x.id === b.modelId);
 				return m ? imageAttachment(m) === 'required' : false;
 			})
 		) {
@@ -1814,7 +1835,7 @@
 		const { modelId: derivedModelId, compareSelections } = deriveReuseModels(
 			m.dispatchedModels,
 			activeReply?.modelUsed ?? data.conversation.modelId,
-			(id) => data.models.find((x) => x.id === id),
+			(id) => catalogue.find((x) => x.id === id),
 		);
 		// A cart resolves against base models only, so the preset upgrade is a
 		// single-model concern.
@@ -2231,7 +2252,7 @@
 						{disabledFeatures}
 						featureCategories={data.featureCategories}
 						private={isPrivate}
-						models={data.models}
+						models={catalogue}
 						enabledSkills={data.enabledSkills}
 						favoritedIds={data.prefs?.favoriteModels ?? []}
 						{allowAttachments}

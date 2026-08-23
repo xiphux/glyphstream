@@ -5,6 +5,7 @@ import { listActiveCanvases } from '$lib/server/db/queries/artifacts';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
+import { listAllModels } from '$lib/server/endpoints/list-models';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
@@ -99,5 +100,26 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// is the durable seed, in stable creation order.
 	const canvases = timeDb(locals, () => listActiveCanvases(params.id, locals.user.id));
 
-	return { conversation, assistantLabel, assistantAvatarMediaId, inFlightSince, fanout, canvases };
+	// This conversation's own catalogue entry, carried on the page's payload rather
+	// than looked up in the layout's `models`. That list is trimmed to first-paint
+	// entries on a document load (see the (app) layout), and the entries this page
+	// needs BEFORE any interaction all hang off this one id: the header's display
+	// name, the context-window readout, and the submit gate — which would otherwise
+	// sit disabled until the full catalogue arrived, silently swallowing a send.
+	//
+	// Costs nothing: listAllModels is an in-memory stale-while-revalidate cache, and
+	// this is one lookup in it. Null when the conversation names a model the config
+	// no longer serves (or an OWUI import's bare id), which is exactly the state the
+	// submit gate exists to catch — so a miss here stays a real miss.
+	const conversationModel =
+		(await listAllModels()).find((m) => m.id === conversation.modelId) ?? null;
+	return {
+		conversation,
+		conversationModel,
+		assistantLabel,
+		assistantAvatarMediaId,
+		inFlightSince,
+		fanout,
+		canvases,
+	};
 };

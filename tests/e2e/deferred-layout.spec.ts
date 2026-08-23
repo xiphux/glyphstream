@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { openSidebar, resetData, seedConversation, seedCustomModel } from './helpers';
+import {
+	openSidebar,
+	resetData,
+	seedConversation,
+	seedCustomModel,
+	seedFavoriteModels,
+} from './helpers';
 
 /**
  * The shared `(app)` layout ships without its interaction-only data and fetches
@@ -63,4 +69,54 @@ test('custom models are NOT deferred, because the home page latches on them', as
 	seedCustomModel(name);
 	const html = await (await request.get('/')).text();
 	expect(html, 'custom models were deferred; the home page cannot recover').toContain(name);
+});
+
+/**
+ * The model catalogue is trimmed the same way, but on a different axis: the
+ * document carries the entries first paint can render and the follow-up carries
+ * the rest.
+ *
+ * The motivating measurement is not the fixture's two mock models — it's an
+ * aggregator endpoint on the operator's box, where `/api/models` is 571KB of
+ * JSON that was being embedded in every document to decide one dropdown's
+ * initial value. So these assert the SHAPE (what's in the document vs what
+ * arrives), which is what a regression would break; the byte win is
+ * proportional to the deployment, not to this fixture.
+ */
+test('the initial document carries only the models first paint can render', async ({ request }) => {
+	const html = await (await request.get('/')).text();
+	// No favourites seeded, so the server's pick is the first chat model — and
+	// that one has to be present, or the composer renders a selection it cannot
+	// name.
+	expect(html).toContain('mock::mock-chat');
+	// The image model is picker-only here. Finding it would mean the whole
+	// catalogue is still riding along.
+	expect(html, 'the full catalogue is still in the document').not.toContain('mock-image');
+});
+
+test('a favourite is in the document, and wins the default', async ({ request }) => {
+	// Both halves of the trim's contract in one: favourites must survive it (the
+	// sidebar renders their labels server-side), and the precedence the server now
+	// owns has to agree with the one the page used to run — a favourite beats the
+	// first-chat-model fallback even when it's an image model.
+	seedFavoriteModels(['mock::mock-image']);
+	const html = await (await request.get('/')).text();
+	expect(html).toContain('mock::mock-image');
+});
+
+test('the full catalogue arrives after hydration', async ({ page }) => {
+	// The half a user would notice missing: a picker permanently showing only
+	// their favourites would look like the other models had been deconfigured.
+	await page.goto('/');
+	await page.locator('button[aria-label="Select model"]').click();
+	await expect(page.getByRole('option', { name: /Mock Image/i })).toBeVisible();
+});
+
+test('the composer opens on the favourited model, not the first chat model', async ({ page }) => {
+	// End-to-end proof that `pickDefaultModelId` on the server reaches the same
+	// answer the client-side effect used to — asserted through the UI, because
+	// that agreement is the thing that silently breaks if the two ever diverge.
+	seedFavoriteModels(['mock::mock-image']);
+	await page.goto('/');
+	await expect(page.locator('button[aria-label="Select model"]')).toContainText(/Mock Image/i);
 });

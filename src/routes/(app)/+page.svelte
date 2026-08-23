@@ -134,6 +134,15 @@
 	$effect(() => {
 		const urlModel = page.url.searchParams.get('model');
 		if (!urlModel) return;
+		// Wait for the full catalogue before judging the id. A cold document ships
+		// `data.models` trimmed to what first paint needs, so an id absent from it
+		// means "hasn't arrived", and this effect only ever decides once per URL
+		// value — concluding "unknown" here would silently drop a valid deep link
+		// with nothing to re-open the question. Client-side navigation (where these
+		// links come from — the sidebar's favourites) already has it true, so the
+		// common path is unchanged; a cold `/?model=…` shows the server's default
+		// for the length of the follow-up first.
+		if (!data.deferredLoaded) return;
 		untrack(() => {
 			const isKnown = urlModel.startsWith('custom::')
 				? data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))
@@ -143,35 +152,17 @@
 	});
 
 	// Fallback default — fires when nothing else (URL param, gallery-launch
-	// pickup) has set a model yet. Prefers the user's top favorite (the
-	// first favorited model still resolvable to one of the kinds this
-	// composer supports); falls back to "first chat-then-image-then-video
-	// from the model list" if no favorite qualifies.
+	// pickup) has set a model yet.
+	//
+	// The precedence itself (top qualifying favorite, else first chat-then-image-
+	// then-video) now runs on the SERVER, in `pickDefaultModelId`, so the composer
+	// can render its selection without the full catalogue having reached the
+	// browser. Keeping the rule in one shared function is the point: computing it
+	// here as well would be a second copy free to disagree with the one the server
+	// trimmed `data.models` for.
 	$effect(() => {
 		if (modelId) return;
-		const favs = data.prefs?.favoriteModels ?? [];
-		for (const fav of favs) {
-			let baseKind: string | undefined;
-			if (fav.startsWith('custom::')) {
-				const cmId = fav.slice('custom::'.length);
-				const cm = data.customModels.find((m) => m.id === cmId);
-				if (!cm) continue;
-				baseKind = data.models.find(
-					(m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`,
-				)?.kind;
-			} else {
-				baseKind = data.models.find((m) => m.id === fav)?.kind;
-			}
-			if (baseKind === 'chat' || baseKind === 'image' || baseKind === 'video') {
-				modelId = fav;
-				return;
-			}
-		}
-		modelId =
-			data.models.find((m) => m.kind === 'chat')?.id ??
-			data.models.find((m) => m.kind === 'image')?.id ??
-			data.models.find((m) => m.kind === 'video')?.id ??
-			'';
+		modelId = data.defaultModelId;
 	});
 
 	// Resolve the selection back to its underlying base ModelEntry so we
@@ -331,6 +322,12 @@
 	// refresh doesn't re-run this effect — the intent is consumed once
 	// at mount and that's it.
 	$effect(() => {
+		// Not until the catalogue is whole. This effect resolves model ids and then
+		// DELETES the key, so running it against the document's trimmed `models`
+		// would discard the intent's model on a miss with no second chance. Reached
+		// by client-side navigation in practice (where this is already true), so the
+		// guard costs nothing and closes the reload path.
+		if (!data.deferredLoaded) return;
 		const raw = window.sessionStorage.getItem(GALLERY_LAUNCH_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(GALLERY_LAUNCH_KEY);
@@ -369,6 +366,10 @@
 	// (different entry points). Never submits — the prompt lands in the box for
 	// the user to tweak.
 	$effect(() => {
+		// Same consume-and-clear hazard as the gallery intent above, and worse here:
+		// `resolveIntentSelection` validates every cart entry against `data.models`,
+		// so a trimmed list would silently drop a whole compare selection.
+		if (!data.deferredLoaded) return;
 		const raw = window.sessionStorage.getItem(PROMPT_REUSE_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(PROMPT_REUSE_KEY);
@@ -827,7 +828,13 @@
 			{/snippet}
 		</ComposerCore>
 
-		{#if data.models.length === 0}
+		<!--
+			Misconfiguration notice, not a loading state — so it waits for the full
+			catalogue. While deferred `data.models` is trimmed to first-paint
+			entries, and a user whose favourites are all stale would otherwise be
+			told to check config.toml for the length of one fetch.
+		-->
+		{#if data.deferredLoaded && data.models.length === 0}
 			<p class="mt-3 text-center text-xs text-warning">
 				No models available — check <code>config.toml</code> and your endpoints.
 			</p>

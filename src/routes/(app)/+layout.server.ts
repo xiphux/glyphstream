@@ -6,6 +6,7 @@ import { getUserPreferences } from '$lib/server/db/queries/user-preferences';
 import { listEnabledSkillsForUser } from '$lib/server/db/queries/skills';
 import { listConfiguredServerIds } from '$lib/server/db/queries/mcp-credentials';
 import { listAllModels } from '$lib/server/endpoints/list-models';
+import { firstPaintModelIds, pickDefaultModelId } from '$lib/model-default';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
 import { isMcpReady } from '$lib/server/mcp/bootstrap';
 import { filterInFlight } from '$lib/server/streaming/in-flight';
@@ -113,6 +114,26 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// link, notification deep-link — which is the design, not an exception.
 	const deferred = !isDataRequest;
 	const conversations = deferred ? [] : timeDb(locals, () => listConversations(locals.user!.id));
+	const prefs = timeDb(locals, () => getUserPreferences(locals.user!.id));
+	const customModels = timeDb(locals, () => listCustomModelsForUser(locals.user!.id));
+	const allModels = await listAllModels();
+	// Which model the composer starts on, decided HERE rather than on the client.
+	// The page used to derive this from the full catalogue, which meant the whole
+	// catalogue had to be in the document before the composer could render — and
+	// an aggregator endpoint advertises thousands of models. Measured on the
+	// operator's box: /api/models is 571KB of JSON, and essentially all of it was
+	// embedded in every single document to answer a question about ~3 entries.
+	//
+	// Shared with the client through one pure function rather than reimplemented,
+	// because a second copy of the precedence rule drifts silently: the server
+	// would trim for one model and the page would select another, and the only
+	// symptom is a picker showing something the user never chose.
+	const favorites = prefs?.favoriteModels ?? [];
+	const defaultModelId = pickDefaultModelId({
+		favorites,
+		presets: customModels,
+		models: allModels,
+	});
 	return {
 		user: locals.user,
 		conversations,
@@ -124,8 +145,30 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// scoped by construction, since it can only answer for rows this user
 		// already owns.
 		generatingIds: filterInFlight(conversations.map((c) => c.id)),
-		prefs: timeDb(locals, () => getUserPreferences(locals.user!.id)),
-		models: await listAllModels(),
+		prefs,
+		defaultModelId,
+		// Trimmed on the document to the entries first paint can actually render —
+		// the starting selection and the sidebar's favourites — with the full
+		// catalogue arriving on the same follow-up as the fields above.
+		//
+		// Unlike its neighbours this one is not simply absent while deferred, and
+		// that distinction matters to consumers: a SHORT list is not an empty one,
+		// so "id not found here" means "not here yet", never "unknown". Anything
+		// that turns a miss into a decision it can't revisit — a consume-once
+		// sessionStorage intent, an untracked one-shot effect, a submit gate — has
+		// to wait for `deferredLoaded` rather than conclude from this. Interaction-
+		// only surfaces (the picker's list, menus) need no guard: the follow-up
+		// lands long before a menu opens.
+		models: deferred
+			? (() => {
+					const wanted = firstPaintModelIds({
+						favorites,
+						presets: customModels,
+						defaultModelId,
+					});
+					return allModels.filter((m) => wanted.has(m.id));
+				})()
+			: allModels,
 		// NOT deferred, unlike its neighbours, and the exception is load-bearing.
 		// Three consumers resolve a `custom::` id against this at mount, and the
 		// home page's model-default effect latches — it picks a base model when the
@@ -135,7 +178,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// the asymmetry that silently drops a favourited preset's system prompt on
 		// the PWA's cold launch. It is also the cheapest query here — a handful of
 		// rows per user — so it buys almost none of the win it would cost.
-		customModels: timeDb(locals, () => listCustomModelsForUser(locals.user!.id)),
+		customModels,
 		// Hide per-user MCP servers the user hasn't connected — an inert toggle
 		// is confusing; they connect in Settings → MCP servers. Global servers
 		// always show.
