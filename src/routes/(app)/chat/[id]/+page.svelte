@@ -93,14 +93,39 @@
 	// holds is a first-paint slice plus whatever has been resolved since — never,
 	// by default, the whole thing (see ModelCatalogue).
 	//
-	// `conversationModel` is adopted into it because this page's own load resolved
-	// it server-side: the header's display name, the context-window readout and the
-	// submit gate all key off the conversation's model, and none of them may wait
-	// on a fetch. Adoption rather than a local merge so every other consumer on the
-	// page — the per-turn picker, branch attribution — sees it too.
+	// Everything this page renders a model NAME for is merged in from its own load,
+	// which resolved those ids server-side: the conversation's model, the models of
+	// individual turns, and the fan-out branches. `answeredModelIds` is what makes a
+	// MISS authoritative — the submit gate has to tell "that model is gone" from
+	// "not fetched yet", and only the server knows. It omits ids whose endpoint was
+	// unreachable, so an outage leaves them 'unsure' rather than latching 'no'.
 	const catalogue = getModelCatalogue();
+	function adoptFromLoad(models: typeof data.referencedModels, ids: typeof data.answeredModelIds) {
+		catalogue.adopt(models, ids);
+	}
+	// Called at init AND from an effect, deliberately. Effects don't run during SSR,
+	// so an effect alone leaves the server-rendered document without these entries —
+	// the composer's picker paints "Choose a model…" for any conversation whose
+	// model isn't a favourite, then snaps to the real name at hydration. Init alone
+	// is equally wrong: this component is reused across chat→chat navigation, so it
+	// would keep the first conversation's models and never adopt the next one's.
+	// `adopt` is idempotent, so doing both costs nothing. Safe at init depth because
+	// this is a per-tree context instance, not one of CLAUDE.md's module singletons.
+	// Capturing the INITIAL value is the point: this call exists to put the entries
+	// into the catalogue before SSR renders, and the effect below handles every
+	// subsequent payload.
+	// svelte-ignore state_referenced_locally
+	adoptFromLoad(data.referencedModels, data.answeredModelIds);
 	$effect(() => {
-		catalogue.adopt([data.conversationModel]);
+		// Tracks the PAYLOAD, not the catalogue — which is what `untrack` below is
+		// for. `adopt` reads the catalogue to decide what changed, so WITHOUT the
+		// untrack this effect would take a dependency on it and re-fire on every
+		// write: re-adopting this page load's snapshot over whatever the picker's
+		// full listing had just brought in, quietly reverting a refreshed
+		// `contextWindow` until the next navigation.
+		const models = data.referencedModels;
+		const ids = data.answeredModelIds;
+		untrack(() => adoptFromLoad(models, ids));
 	});
 
 	// Friendly bubble labels: the user's preferred name (Preferences ▸ Name
@@ -246,12 +271,25 @@
 	// Re-saved on change (below), so picking is a one-time cost.
 	const imageModels = $derived(catalogue.all.filter((m) => m.kind === 'image'));
 	let avatarModelOverride = $state<string | null>(null);
-	const avatarModelId = $derived(
-		avatarModelOverride ??
-			(imageModels.some((m) => m.id === data.prefs?.avatarModelId)
-				? (data.prefs?.avatarModelId ?? '')
-				: (imageModels[0]?.id ?? '')),
-	);
+	const avatarModelId = $derived.by(() => {
+		if (avatarModelOverride) return avatarModelOverride;
+		const saved = data.prefs?.avatarModelId;
+		if (saved && imageModels.some((m) => m.id === saved)) return saved;
+		// A saved choice we cannot see YET is not a saved choice we can override.
+		// `openAvatarDraw` fires `ensureAll()` and opens in the same tick, so until it
+		// lands `imageModels` holds only the image models in the first-paint slice —
+		// substituting one of those would arm Draw on a model the user never picked,
+		// and a click inside that window would generate on it. Empty disables Draw
+		// (see generateAvatar's guard) for the moment it takes to resolve.
+		//
+		// Keyed on the load being in flight, NOT on `membership(saved) !== 'no'`: that
+		// stays true forever for a saved model whose endpoint is down, and true even
+		// once the catalogue is loaded and has simply reclassified the model as
+		// non-image — both of which would leave Draw permanently disabled with no
+		// fallback, where the old code offered the first available image model.
+		if (saved && catalogue.status === 'loading') return '';
+		return imageModels[0]?.id ?? '';
+	});
 
 	// The reply the portrait gets drawn from: the most recent assistant message
 	// with text. Right after step 1 that IS the description, which is the whole
@@ -288,9 +326,9 @@
 		const source = avatarSourceMessage;
 		if (!source) return;
 		// The dialog renders a model list and picks a default from it, and the
-		// catalogue holds neither by default. Fire-and-forget: the dialog opens
-		// immediately and its picker fills in, which is the same shape as the
-		// lazy-imported dialog chunk landing just after the tap.
+		// catalogue holds neither by default. Fire-and-forget: the dialog is a static
+		// import so it opens on the tap regardless, and its picker fills in when this
+		// resolves — `loading` is threaded through so the wait is visible.
 		void catalogue.ensureAll();
 		avatarPrompt = extractAvatarPrompt(partsToText(source.parts));
 		// A private chat seals prompt enhancement (it ships the prompt to a second
@@ -803,8 +841,10 @@
 	// `!== 'no'` rather than `=== 'yes'`: the catalogue is partial by default, and
 	// blocking a send because a model merely hasn't been fetched would be the same
 	// silent dead end this gate exists to prevent (an OWUI import's bare id, which
-	// the server WILL reject). `conversationModel` is adopted above, so the
-	// conversation's own model answers 'yes' or 'no' definitively on first paint.
+	// the server WILL reject). The conversation's own model is adopted above with
+	// `answeredModelIds`, so it answers 'yes' or 'no' definitively on first paint —
+	// except when its endpoint was unreachable, which is withheld there on purpose
+	// so an outage reads as 'unsure' rather than as a model that no longer exists.
 	const hasValidModel = $derived(catalogue.membership(modelId) !== 'no');
 
 	// Conversation context size: tokens_in + tokens_out of the most
@@ -1831,12 +1871,36 @@
 	 * the active reply's `modelUsed`, then the conversation's model, then
 	 * nothing — at which point the new-chat page picks its own default.
 	 */
-	function reusePrompt(m: ChatMessage) {
+	async function reusePrompt(m: ChatMessage) {
 		if (generating) return;
 		const activeReply = messages.find((x) => x.parentMessageId === m.id);
+		const fallbackId = activeReply?.modelUsed ?? data.conversation.modelId;
+		// Resolve BEFORE deriving. `deriveReuseModels` uses its resolver as a
+		// legitimacy filter — an id it can't resolve is dropped from the cart, and
+		// the fallback is filtered the same way, so an unresolved everything yields
+		// `{modelId: null, compareSelections: null}`. A fan-out's models are picked
+		// from the full catalogue and are typically not favourites, so on a freshly
+		// loaded conversation none of them are held and the entire comparison the
+		// user asked to reuse would vanish here — before the intent is written, where
+		// the receiving page's careful re-reconciliation can no longer see it.
+		//
+		// One batched request behind a click, mirroring what the receiving side does
+		// with the same list. Awaiting is free here: the navigation below is already
+		// async, and every id but a stale one is usually already held.
+		const named = [...(m.dispatchedModels ?? []).map((d) => d.modelId), fallbackId].filter(
+			(id): id is string => !!id,
+		);
+		await catalogue.ensure(named);
 		const { modelId: derivedModelId, compareSelections } = deriveReuseModels(
 			m.dispatchedModels,
-			activeReply?.modelUsed ?? data.conversation.modelId,
+			fallbackId,
+			// A plain lookup, now that everything named has been asked for. Not the
+			// `membership !== 'no'` fail-open the receiving side uses: this resolver's
+			// return value supplies the KIND that the cart's homogeneity filter keys
+			// off, and inventing one for an id we couldn't resolve would build a
+			// mixed-kind cart the picker rejects on arrival. If `ensure` failed
+			// outright the models drop, as they did before — a network failure, not
+			// the ordinary partial-catalogue state this whole path is about.
 			(id) => catalogue.entry(id),
 		);
 		// A cart resolves against base models only, so the preset upgrade is a
@@ -1968,6 +2032,11 @@
 			private={isPrivate}
 			avatar={canGenerateAvatar
 				? {
+						// Server-computed, deliberately NOT `imageModels.length > 0` like the
+						// list two lines below. This gates whether the affordance appears
+						// at all, and the client holds a first-paint slice — it would
+						// count zero on a perfectly healthy install and silently remove
+						// the feature. The list behind the button is fetched on click.
 						hasImageModel: data.hasImageModel,
 						avatarMediaId: data.assistantAvatarMediaId,
 						hasSource: !!avatarSourceMessage,
@@ -2119,7 +2188,7 @@
 									userSentTokens={m.role === 'user' ? (userSentTokens.get(m.id) ?? null) : null}
 									onCopy={() => copyMessage(m)}
 									onEdit={() => edit.begin(m)}
-									onReuse={() => reusePrompt(m)}
+									onReuse={() => void reusePrompt(m)}
 									onRetry={() => retryAssistant(m)}
 									onSelectSibling={(id: string, dir: 1 | -1) => selectSibling(id, dir)}
 									onDeleteBranch={() => deleteBranch(m)}
@@ -2257,6 +2326,8 @@
 						models={catalogue.all}
 						onPickerOpen={() => void catalogue.ensureAll()}
 						pickerLoading={catalogue.status === 'loading'}
+						pickerLoadError={catalogue.loadFailed}
+						baseIsGone={(id: string) => catalogue.membership(id) === 'no'}
 						enabledSkills={data.enabledSkills}
 						favoritedIds={data.prefs?.favoriteModels ?? []}
 						{allowAttachments}
@@ -2337,6 +2408,7 @@
 	prompt={avatarPrompt}
 	models={imageModels}
 	loading={catalogue.status === 'loading'}
+	loadError={catalogue.loadFailed}
 	modelId={avatarModelId}
 	enhance={avatarEnhance}
 	status={avatarStatus}

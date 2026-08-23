@@ -202,7 +202,7 @@ export function seedCanvas(conversationId: string, title: string, content: strin
  * makes the row assertable in Recents. Safe standalone connection for the
  * same reason as resetData/seedMedia — workers=1, no request in flight.
  */
-export function seedConversation(title: string): string {
+export function seedConversation(title: string, modelId = 'mock::mock-chat'): string {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');
 	db.exec('PRAGMA foreign_keys = ON');
@@ -212,26 +212,14 @@ export function seedConversation(title: string): string {
 		db.prepare(
 			`INSERT INTO conversations
 			   (id, user_id, title, title_source, endpoint_id, model_id, created_at, updated_at)
-			 VALUES (?, ?, ?, 'fallback', 'mock', 'mock::mock-chat', ?, ?)`,
-		).run(id, TEST_USER.id, title, now, now);
+			 VALUES (?, ?, ?, 'fallback', 'mock', ?, ?, ?)`,
+		).run(id, TEST_USER.id, title, modelId, now, now);
 		return id;
 	} finally {
 		db.close();
 	}
 }
 
-/**
- * Seed a custom-model preset for the test user.
- *
- * Exists so a spec can assert that presets reach the FIRST render — the home
- * page resolves a `custom::` favourite once and latches, so a preset that
- * arrives late is a preset silently never applied.
- *
- * `base_model_id` is the BARE upstream id — consumers compose the full id as
- * `${baseEndpointId}::${baseModelId}`, so storing the composite here yields
- * `mock::mock::mock-chat` and every lookup drops the row. The neighbouring
- * seedConversation legitimately stores a composite, because `model_id` IS one.
- */
 /**
  * Set the test user's favorited model ids.
  *
@@ -257,6 +245,18 @@ export function seedFavoriteModels(favoriteModels: string[]): void {
 	}
 }
 
+/**
+ * Seed a custom-model preset for the test user.
+ *
+ * Exists so a spec can assert that presets reach the FIRST render — the home
+ * page resolves a `custom::` favourite once and latches, so a preset that
+ * arrives late is a preset silently never applied.
+ *
+ * `base_model_id` is the BARE upstream id — consumers compose the full id as
+ * `${baseEndpointId}::${baseModelId}`, so storing the composite here yields
+ * `mock::mock::mock-chat` and every lookup drops the row. The neighbouring
+ * seedConversation legitimately stores a composite, because `model_id` IS one.
+ */
 export function seedCustomModel(name: string): string {
 	const db = new DatabaseSync(DB_PATH);
 	db.exec('PRAGMA busy_timeout = 5000');

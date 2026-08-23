@@ -89,6 +89,53 @@ test.describe('flow: new chat from this prompt', () => {
 		await expect(page.getByRole('button', { name: 'Send to 2 models' })).toBeEnabled();
 	});
 
+	test('restores the cart after a RELOAD, with the catalogue never loaded', async ({ page }) => {
+		// The same restore as above, but reached the way a user actually reaches it:
+		// come back to an old conversation and click reuse without having opened the
+		// model picker.
+		//
+		// That distinction is the entire test. The client holds a first-paint slice
+		// of the catalogue, and a fan-out's models are chosen from the full picker —
+		// so they are typically NOT favourites and NOT held. `deriveReuseModels`
+		// uses its resolver as a legitimacy filter, so an unresolved id is DROPPED,
+		// and the fallback is filtered the same way: the whole comparison silently
+		// became "the user's default model, compare mode off". The loss happened
+		// before the intent reached sessionStorage, where the receiving page's
+		// careful re-reconciliation could no longer see it.
+		//
+		// The test above passes either way, because building the fan-out opens the
+		// picker and loads the catalogue in the same session.
+		const prompt = 'Compare across a reload';
+		await page.goto('/');
+		await expect(page.getByRole('button', { name: 'Select model' })).toContainText('Mock Chat');
+		await page.getByRole('button', { name: 'Select model' }).click();
+		await page.getByRole('button', { name: 'Multiple' }).click();
+		await page.getByRole('option', { name: /^Mock Chat Slow$/ }).click();
+		await page.keyboard.press('Escape');
+		await page.locator('textarea').first().fill(prompt);
+		await page.getByRole('button', { name: 'Send to 2 models' }).click();
+		await page.waitForURL(/\/chat\/[^/]+$/);
+
+		const continueButtons = page.getByRole('button', { name: /continue with this/i });
+		await expect(continueButtons).toHaveCount(2);
+		await continueButtons.first().click();
+		await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+
+		// Full document load: the catalogue resets to the first-paint slice, and
+		// nothing here opens the picker again.
+		await page.reload();
+		await expect(page.getByRole('button', { name: REUSE }).first()).toBeVisible();
+
+		await reuseFirstPrompt(page);
+
+		await expect(page.locator('textarea').first()).toHaveValue(prompt);
+		await expect(
+			page.getByRole('button', { name: 'Select model' }),
+			'the compare cart was dropped resolving it against a partial catalogue',
+		).toContainText('2 models');
+		await expect(page.getByRole('button', { name: 'Send to 2 models' })).toBeEnabled();
+	});
+
 	// The handler is a synchronous onclick with no error boundary behind it, so an
 	// unguarded throw here would abort before `goto('/')` and leave the button
 	// looking inert. Degrade to an ordinary new chat instead.

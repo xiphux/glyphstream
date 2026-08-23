@@ -25,6 +25,15 @@
 		models: ModelEntry[];
 		/** Forwarded to the model picker — see its `loading`. */
 		loading?: boolean;
+		/**
+		 * Forwarded to the model picker — see its `loadError`.
+		 *
+		 * Matters more here than anywhere else: this picker filters to image models,
+		 * and the layout's first-paint seed carries none unless the user favourited
+		 * one. A failed catalogue load therefore leaves the list genuinely empty, and
+		 * without this it reads "No models available." — which is false.
+		 */
+		loadError?: boolean;
 		modelId: string;
 		/**
 		 * Run the prompt through the image-prompt enhancer before generating.
@@ -54,6 +63,7 @@
 		prompt,
 		models,
 		loading = false,
+		loadError = false,
 		modelId,
 		enhance,
 		status,
@@ -95,6 +105,7 @@
 		<ModelPicker
 			{models}
 			{loading}
+			{loadError}
 			filterKinds={['image']}
 			value={modelId}
 			onChange={onModelChange}

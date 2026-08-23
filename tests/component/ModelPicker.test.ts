@@ -979,6 +979,18 @@ describe('partial catalogue', () => {
 		expect(screen.queryByText(/No matches for/)).not.toBeInTheDocument();
 	});
 
+	it('says the load FAILED rather than claiming no matches', async () => {
+		// A failed fetch also leaves a short list and `loading` false, so without a
+		// separate signal it is indistinguishable from a completed load — and the
+		// picker confidently reports a real model as nonexistent.
+		const user = userEvent.setup();
+		render(ModelPicker, { props: { models, loading: false, loadError: true } });
+		await user.click(screen.getByLabelText('Select model'));
+		await user.type(screen.getByPlaceholderText('Search models…'), 'claude');
+		expect(screen.getByText(/Couldn't load the model list/)).toBeInTheDocument();
+		expect(screen.queryByText(/No matches for/)).not.toBeInTheDocument();
+	});
+
 	it('says "no matches" once the catalogue is complete', async () => {
 		const user = userEvent.setup();
 		render(ModelPicker, { props: { models, loading: false } });
@@ -1003,5 +1015,49 @@ describe('partial catalogue', () => {
 		render(ModelPicker, { props: { models, loading: true } });
 		await user.click(screen.getByLabelText('Select model'));
 		expect(screen.getByRole('option', { name: /gpt-4o/ })).toBeInTheDocument();
+	});
+});
+
+describe('presets under a partial catalogue', () => {
+	// A preset's base model is a separate catalogue entry, and on a partial
+	// catalogue it may simply not have arrived. Dropping the preset then takes the
+	// user's OWN SELECTION out of the list, and the trigger falls back to "Choose a
+	// model…" for a model that is in fact selected.
+	const preset = makeCustom({ id: 'p1', name: 'Roleplay', baseModelId: 'gpt-4o' });
+
+	it('still lists a preset whose base model has not arrived yet', async () => {
+		// `baseIsGone` answers "is this absence meaningful?" — false here means the
+		// base simply hasn't been fetched, which must not remove the preset.
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: { models: [], customModels: [preset], baseIsGone: () => false },
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.getByRole('option', { name: /Roleplay/ })).toBeInTheDocument();
+	});
+
+	it('shows the preset name on the trigger rather than "Choose a model…"', async () => {
+		render(ModelPicker, {
+			props: {
+				models: [],
+				customModels: [preset],
+				baseIsGone: () => false,
+				value: 'custom::p1',
+			},
+		});
+		expect(screen.getByLabelText('Select model')).toHaveTextContent('Roleplay');
+		expect(screen.getByLabelText('Select model')).not.toHaveTextContent('Choose a model');
+	});
+
+	it('DOES drop a preset whose base is genuinely gone', async () => {
+		// The other direction: the catalogue has definitively answered that this base
+		// no longer exists, so offering the preset would be offering a send the
+		// server will reject.
+		const user = userEvent.setup();
+		render(ModelPicker, {
+			props: { models: [], customModels: [preset], baseIsGone: () => true },
+		});
+		await user.click(screen.getByLabelText('Select model'));
+		expect(screen.queryByRole('option', { name: /Roleplay/ })).not.toBeInTheDocument();
 	});
 });

@@ -147,3 +147,43 @@ test('the composer opens on the favourited model, not the first chat model', asy
 	await page.goto('/');
 	await expect(page.locator('button[aria-label="Select model"]')).toContainText(/Mock Image/i);
 });
+
+/**
+ * The catalogue must be complete enough at SSR time, not merely after hydration.
+ *
+ * These assert the RAW server document, which is the gap every other test in this
+ * file left open: a Playwright page assertion passes the moment hydration repairs
+ * things, so a chat page can first-paint claiming the conversation has no model
+ * and still look green. It did, for a while — Svelte's server runtime memoizes a
+ * `$derived` created during a render, so the catalogue's index froze at whatever
+ * the first reader saw, and a page adopting its own models at init depth wrote
+ * into a snapshot nobody read again.
+ */
+test('a chat page server-renders its model, even when it is not in the seed', async ({
+	request,
+}) => {
+	// The conversation is on an image model while the favourite (and therefore the
+	// first-paint seed) is a chat one — so the conversation's model reaches the
+	// catalogue only through the page's own load.
+	seedFavoriteModels(['mock::mock-chat']);
+	const id = seedConversation('SSR model name', 'mock::mock-image');
+	const html = await (await request.get(`/chat/${id}`)).text();
+
+	expect(html, 'the composer server-rendered as having no model').not.toContain(
+		'Pick a model to send',
+	);
+	expect(html, 'the model picker server-rendered its empty-selection fallback').not.toContain(
+		'Choose a model',
+	);
+	expect(html).toContain('Mock Image');
+});
+
+test('...and when the user has no favourites at all', async ({ request }) => {
+	// The same failure with a different route in: with no favourites the seed is
+	// just the default chat model, so an image conversation is again absent from it.
+	seedFavoriteModels([]);
+	const id = seedConversation('SSR no favourites', 'mock::mock-image');
+	const html = await (await request.get(`/chat/${id}`)).text();
+	expect(html).not.toContain('Pick a model to send');
+	expect(html).toContain('Mock Image');
+});

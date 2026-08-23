@@ -1,5 +1,6 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 import type { SessionUser } from '$lib/server/auth/session';
+import type { ModelEntry } from '$lib/types/api';
 
 declare global {
 	namespace App {
@@ -23,7 +24,27 @@ declare global {
 			 */
 			dbMs?: number;
 		}
-		// interface PageData {}
+		interface PageData {
+			/**
+			 * Model entries a route resolved server-side for its own first paint.
+			 *
+			 * Declared here, rather than left to the route's generated `PageData`,
+			 * because the `(app)` LAYOUT reads it off `page.data` to seed the model
+			 * catalogue — Svelte memoizes a `$derived` created during SSR, so the
+			 * catalogue's index freezes at its first read and a page adopting its own
+			 * models afterwards writes into a snapshot nobody looks at again. Seeding
+			 * is order-independent; adopting is not.
+			 *
+			 * Declared rather than cast so the layout's read is typed
+			 * (`ModelEntry[] | undefined`) instead of `any`. Note what that does NOT
+			 * buy: `page.data` is `App.PageData & Record<string, any>`, so a typo on
+			 * the READING side still compiles and silently seeds nothing. A rename on
+			 * the supplying side is caught today only because `chat/[id]` also reads
+			 * the field through its own generated `PageData`. Optional because only
+			 * that route supplies it.
+			 */
+			referencedModels?: ModelEntry[];
+		}
 		// interface PageState {}
 		// interface Platform {}
 	}

@@ -401,7 +401,30 @@
 	// cross-request state to leak during SSR. The seed is a thunk rather than a
 	// snapshot so the store keeps tracking `data.models` — favouriting a model
 	// re-runs this layout load and widens the slice.
-	const catalogue = setModelCatalogue(new ModelCatalogue(() => data.models));
+	const catalogue = setModelCatalogue(
+		new ModelCatalogue(() => [
+			...data.models,
+			// The open page's own server-resolved models, folded into the SEED rather
+			// than left to the page's `adopt()`.
+			//
+			// A layout reaching into a child route's payload is not the arrangement
+			// this codebase prefers, and it is here for a specific reason: Svelte's
+			// server runtime memoizes a `$derived` created during a render, so the
+			// catalogue's index freezes at whatever the FIRST reader saw. This layout
+			// reads it (favourites, below) long before `{@render children()}`, so a
+			// page adopting at init depth writes into a snapshot nobody will look at
+			// again — the chat page's model then rendered as "Choose a model…" with
+			// Send disabled in the server HTML. Seeding is order-independent: the
+			// frozen snapshot is already correct whoever reads first.
+			//
+			// `page.data` is populated before render (SvelteKit resolves every load
+			// first) and is per-request, and this thunk is lazy, so there is nothing
+			// to leak and nothing to sequence. Absent on other routes → nothing added.
+			// Typed via `App.PageData` (src/app.d.ts) rather than cast, so renaming the
+			// field on the route breaks the build instead of quietly undoing this.
+			...(page.data.referencedModels ?? []),
+		]),
+	);
 
 	const favoriteEntries = $derived.by(() => {
 		const favs = data.prefs?.favoriteModels ?? [];

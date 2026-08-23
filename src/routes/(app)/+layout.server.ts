@@ -94,10 +94,11 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// race the first keystroke.
 	//
 	// The trade is not free, and the accounting is worth stating. `__data.json` is
-	// per-NODE, not per-field, so the follow-up re-serializes this whole payload —
-	// `models` included, which is the largest field on a multi-endpoint setup —
-	// and re-runs `getUserPreferences`, `listAllModels` and
-	// `listCustomModelsForUser` a second time. It also re-runs the CURRENT PAGE's
+	// per-NODE, not per-field, so the follow-up re-serializes this whole payload and
+	// re-runs `getUserPreferences`, `listAllModels` and `listCustomModelsForUser` a
+	// second time. `models` used to dominate that cost and no longer does — it is
+	// trimmed on every load now, follow-up included (see below) — so what's left is
+	// the two DB reads and a cache lookup. It also re-runs the CURRENT PAGE's
 	// server load — every `(app)` page `await parent()`s except `chat/[id]`, and
 	// CLAUDE.md's own note says a node whose parent re-ran is marked invalid — so
 	// a cold `/archived` re-lists and re-serializes its conversations, and a cold
@@ -163,8 +164,10 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// conclude an id is unknown; that question belongs to
 		// `ModelCatalogue.membership`, which can answer `unsure`. Pages that need a
 		// specific entry on first paint resolve it in their OWN load, where the full
-		// list is a cached in-memory lookup away — see `conversationModel` in
-		// chat/[id].
+		// list is a cached in-memory lookup away — see `referencedModels` in
+		// chat/[id]. (Which this layout then folds into the catalogue's seed, for an
+		// SSR-ordering reason documented at that call site — the page still owns the
+		// resolving; the layout only owns the seeding.)
 		models: (() => {
 			const wanted = firstPaintModelIds({ favorites, presets: customModels, defaultModelId });
 			return allModels.filter((m) => wanted.has(m.id));

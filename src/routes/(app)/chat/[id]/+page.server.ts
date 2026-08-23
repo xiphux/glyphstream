@@ -5,7 +5,8 @@ import { listActiveCanvases } from '$lib/server/db/queries/artifacts';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
-import { listAllModels } from '$lib/server/endpoints/list-models';
+import { parseModelId } from '$lib/server/endpoints/model-id';
+import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
 import { getInFlightSince } from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
@@ -100,30 +101,71 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// is the durable seed, in stable creation order.
 	const canvases = timeDb(locals, () => listActiveCanvases(params.id, locals.user.id));
 
-	// This conversation's own catalogue entry, carried on the page's payload rather
-	// than looked up in the layout's `models`. That list is trimmed to first-paint
-	// entries on a document load (see the (app) layout), and the entries this page
-	// needs BEFORE any interaction all hang off this one id: the header's display
-	// name, the context-window readout, and the submit gate — which would otherwise
-	// sit disabled until the full catalogue arrived, silently swallowing a send.
+	// Every model id this conversation refers to, and the entries for those that
+	// resolve — carried on the page's payload rather than looked up in the layout's
+	// `models`, which is trimmed to first-paint entries (see the (app) layout).
 	//
-	// Costs nothing: listAllModels is an in-memory stale-while-revalidate cache, and
-	// this is one lookup in it. Null when the conversation names a model the config
-	// no longer serves (or an OWUI import's bare id), which is exactly the state the
-	// submit gate exists to catch — so a miss here stays a real miss.
-	const allModels = await listAllModels();
-	const conversationModel = allModels.find((m) => m.id === conversation.modelId) ?? null;
-	// Whether ANY image model is configured, which gates the "draw a portrait"
-	// affordance in the header.
+	// Not the header, despite the obvious guess — it deliberately carries no model
+	// name at all (see ChatHeader's own comment: one name would be misleading in a
+	// multi-model thread). `assistantLabel`, resolved from `friendlyModelName`
+	// above, feeds the assistant bubbles and the in-flight bubble instead, and is
+	// independent of the catalogue.
 	//
-	// Answered here rather than by counting image models on the client, because the
-	// client holds a first-paint slice and would count zero on a perfectly healthy
-	// install — silently removing a feature. The affordance is a button; the list
-	// behind it is fetched when it's pressed.
+	// It is the composer's picker trigger (which falls back to the alarming "Choose
+	// a model…" when it can't resolve its own value), the context-window readout,
+	// the submit gate, and anything rendering a per-MESSAGE id: `assistantIdentityForMessage` for a turn answered
+	// by something other than the conversation default, and the recovered fan-out
+	// columns, whose header labels are baked at rebuild time inside an `untrack` and
+	// so never re-render if the entry shows up later. Resolving those on the client
+	// would leave both showing raw `endpoint::owner/model` ids until something else
+	// happened to load the catalogue — permanently, for the columns.
+	//
+	// Cheap and bounded: `listAllModels` is an in-memory stale-while-revalidate
+	// cache, the ids come from rows already loaded above, and a conversation refers
+	// to a handful of distinct models (one, until you switch mid-thread or fan out).
+	// That is the trade — a few hundred bytes per conversation against the catalogue
+	// itself, which stays off the payload entirely.
+	const modelResults = await listAllModelsWithErrors();
+	const allModels = modelResults.flatMap((r) => r.models);
+	const referencedModelIds = [
+		...new Set(
+			[
+				conversation.modelId,
+				...conversation.messages.map((m) => m.modelUsed),
+				...fanout.siblings.map((m) => m.modelUsed),
+				...fanout.pendingModelIds,
+			].filter((id): id is string => !!id),
+		),
+	];
+	const referencedSet = new Set(referencedModelIds);
+	const referencedModels = allModels.filter((m) => referencedSet.has(m.id));
+	// Which of those ids the client may treat as ANSWERED.
+	//
+	// `listAllModelsWithErrors` degrades a cold, unreachable endpoint to zero
+	// models, so an id missing from `referencedModels` means either "not
+	// configured" or "its endpoint is down right now" — and the client caches the
+	// first reading permanently. Ids belonging to a failed endpoint are therefore
+	// withheld from the authoritative list: the client leaves them 'unsure' and can
+	// ask again, instead of disabling Send on a conversation whose model is fine.
+	//
+	// This is why the load reads `listAllModelsWithErrors` rather than the flat
+	// `listAllModels`, which discards the error and would make an outage
+	// indistinguishable from a deconfigured model.
+	const failedEndpoints = new Set(modelResults.filter((r) => r.error).map((r) => r.endpointId));
+	const answeredModelIds = failedEndpoints.size
+		? referencedModelIds.filter((id) => {
+				const endpointId = parseModelId(id)?.endpointId;
+				// An unparseable id (an OWUI import's bare model name) belongs to no
+				// endpoint, so no outage can explain its absence — it stays answered,
+				// which is what keeps the submit gate firing for exactly that case.
+				return endpointId === undefined || !failedEndpoints.has(endpointId);
+			})
+		: referencedModelIds;
 	const hasImageModel = allModels.some((m) => m.kind === 'image');
 	return {
 		conversation,
-		conversationModel,
+		referencedModels,
+		answeredModelIds,
 		hasImageModel,
 		assistantLabel,
 		assistantAvatarMediaId,

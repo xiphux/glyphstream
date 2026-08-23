@@ -12,6 +12,7 @@
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
+	import { baseIdOf } from '$lib/model-default';
 	import { imageAttachment } from '$lib/model-capabilities';
 	import type { ImageAttachment } from '$lib/model-capabilities';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
@@ -144,9 +145,16 @@
 			if (urlModel.startsWith('custom::')) {
 				// Presets are never in the catalogue — they live on `customModels`,
 				// which the layout ships in full precisely because this kind of lookup
-				// latches. Answerable immediately.
-				if (data.customModels.some((m) => m.id === urlModel.slice('custom::'.length)))
-					modelId = urlModel;
+				// latches. So whether the preset EXISTS is answerable immediately.
+				if (!data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))) return;
+				modelId = urlModel;
+				// Its base model is a different question. Nothing else fetches it, and
+				// without it the picker cannot render the preset at all — it drops any
+				// preset whose base is missing — so the composer would read "Choose a
+				// model…" while this very preset is selected, with the kind (and the
+				// image-required gate) defaulting to chat.
+				const baseId = baseIdOf(urlModel, data.customModels);
+				if (baseId) void catalogue.ensure([baseId]);
 				return;
 			}
 			// A base model may simply not be held yet: the client keeps a first-paint
@@ -406,7 +414,14 @@
 				...(intent.modelId ? [intent.modelId] : []),
 				...(intent.compareSelections ?? []).map((c) => c.modelId),
 			];
-			void catalogue.ensure(named).then(() => applyPromptReuse(intent));
+			// Through `baseIdOf`, because `intent.modelId` may name a PRESET and
+			// `ensure` (correctly) refuses `custom::` ids — they are not catalogue
+			// entries. What has to be fetched is the model underneath, which is what
+			// the picker row, the kind and the capability gates all read.
+			const wanted = named
+				.map((id) => baseIdOf(id, data.customModels))
+				.filter((id): id is string => !!id);
+			void catalogue.ensure(wanted).then(() => applyPromptReuse(intent));
 		});
 	});
 
@@ -829,6 +844,8 @@
 					models={catalogue.all}
 					onOpen={() => void catalogue.ensureAll()}
 					loading={catalogue.status === 'loading'}
+					loadError={catalogue.loadFailed}
+					baseIsGone={(id: string) => catalogue.membership(id) === 'no'}
 					customModels={data.customModels}
 					bind:value={modelId}
 					filterKinds={['chat', 'image', 'video']}

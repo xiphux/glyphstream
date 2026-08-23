@@ -106,6 +106,18 @@
 		 */
 		onOpen?: () => void;
 		/**
+		 * Whether a base model absent from `models` is KNOWN not to exist.
+		 *
+		 * A predicate rather than a flag, because "we finished loading" and "this
+		 * id's absence is meaningful" are different questions and diverge exactly
+		 * when they matter: with an endpoint down, the catalogue is as complete as it
+		 * will get while that endpoint's models are still unknown. Answering the
+		 * second with the first drops a preset built on the downed endpoint — which
+		 * is the case this exists to prevent. Defaults to "yes, it's gone" for
+		 * callers (like /settings/models) that load the full list themselves.
+		 */
+		baseIsGone?: (baseModelId: string) => boolean;
+		/**
 		 * Whether the caller is still fetching the rest of the catalogue.
 		 *
 		 * `models` is usable throughout — it starts as the first-paint slice and
@@ -114,12 +126,22 @@
 		 * wrong answer about a model that is seconds from arriving.
 		 */
 		loading?: boolean;
+		/**
+		 * Whether the last attempt to load the full catalogue failed.
+		 *
+		 * Distinct from `loading` because the empty state has to say different
+		 * things: "still coming" versus "we tried and couldn't". Without it a failed
+		 * load looks identical to a completed one holding a short list.
+		 */
+		loadError?: boolean;
 	}
 
 	let {
 		models,
 		onOpen,
 		loading = false,
+		loadError = false,
+		baseIsGone = () => true,
 		customModels = [],
 		filterKinds,
 		value = $bindable(''),
@@ -209,6 +231,14 @@
 	 *  cart is empty or already locked to that same kind (applying can never
 	 *  create a mixed-modality comparison). */
 	function canApplySet(set: SavedModelSet): boolean {
+		// Not while the catalogue is still arriving. A set's models are picked from
+		// the full list and are typically not favourites, so mid-load `setKind` sees
+		// none of them and this would answer a confident false — rendering the chip
+		// disabled with "Doesn't match the current comparison", about a set that is
+		// about to become applicable. Worse, a set with ONE member already held would
+		// apply as a silently truncated cart, and the comparison the user asked for
+		// would never happen. Both resolve themselves a moment later.
+		if (loading) return false;
 		const k = setKind(set);
 		if (!k || !COMPARE_KINDS.includes(k)) return false;
 		return !compareKind || compareKind === k;
@@ -350,21 +380,30 @@
 		// in `favoritedIds`).
 		const presets: PickerItem[] = [];
 		for (const cm of customModels) {
-			const base = baseById.get(`${cm.baseEndpointId}::${cm.baseModelId}`);
-			if (!base) continue;
-			if (filterKinds && !filterKinds.includes(base.kind)) {
+			const baseId = `${cm.baseEndpointId}::${cm.baseModelId}`;
+			const base = baseById.get(baseId);
+			// A missing base drops the preset only when we KNOW it is missing. Under a
+			// partial catalogue "not held" is not "not configured", and dropping would
+			// take the user's selected preset out of the list — leaving the trigger
+			// reading "Choose a model…" for a model that is in fact selected. Degrade
+			// to the base model's id and a chat kind instead, which is what the
+			// sidebar's favourites already do.
+			if (!base && baseIsGone(baseId)) continue;
+			const baseKind = base?.kind ?? 'chat';
+			if (filterKinds && !filterKinds.includes(baseKind)) {
 				continue;
 			}
 			presets.push({
 				value: `custom::${cm.id}`,
 				label: cm.name,
-				sublabel: base.displayName,
-				kind: base.kind,
-				capabilities: base.capabilities,
+				sublabel: base?.displayName ?? cm.baseModelId,
+				kind: baseKind,
+				capabilities: base?.capabilities,
 				isCustom: true,
 				groupKey: '__custom',
 				groupLabel: 'Your presets',
-				searchText: `${cm.name} ${base.displayName} ${cm.description ?? ''}`.toLowerCase(),
+				searchText:
+					`${cm.name} ${base?.displayName ?? cm.baseModelId} ${cm.description ?? ''}`.toLowerCase(),
 			});
 		}
 
@@ -794,7 +833,9 @@
 									onclick={() => applyModelSet(set)}
 									title={applicable
 										? `Apply "${set.name}"`
-										: "Doesn't match the current comparison"}
+										: loading
+											? 'Loading models…'
+											: "Doesn't match the current comparison"}
 									class="flex items-center gap-1 py-0.5 pl-2 {onDeleteModelSet
 										? 'pr-1'
 										: 'pr-2'} transition hover:text-accent disabled:cursor-not-allowed disabled:hover:text-current"
@@ -879,6 +920,8 @@
 					<p class="px-3 py-3 text-xs text-fg-muted">
 						{#if loading}
 							Loading models…
+						{:else if loadError}
+							Couldn't load the model list — close and reopen to retry.
 						{:else if items.length === 0}
 							No models available.
 						{:else}

@@ -50,6 +50,10 @@
 		onPickerOpen?: () => void;
 		/** Forwarded to the model picker — see its `loading`. */
 		pickerLoading?: boolean;
+		/** Forwarded to the model picker — see its `loadError`. */
+		pickerLoadError?: boolean;
+		/** Forwarded to the model picker — see its `baseIsGone`. */
+		baseIsGone?: (baseModelId: string) => boolean;
 		/** The user's enabled skills, for the `/skill-name` autocomplete. */
 		enabledSkills?: Array<{ id: string; name: string; description: string }>;
 		favoritedIds: string[];
@@ -100,6 +104,8 @@
 		models,
 		onPickerOpen,
 		pickerLoading = false,
+		pickerLoadError = false,
+		baseIsGone,
 		enabledSkills = [],
 		favoritedIds,
 		allowAttachments,
@@ -303,6 +309,8 @@
 				{models}
 				onOpen={onPickerOpen}
 				loading={pickerLoading}
+				loadError={pickerLoadError}
+				{baseIsGone}
 				bind:value={modelId}
 				filterKinds={['chat', 'image', 'video']}
 				disabled={generating}
