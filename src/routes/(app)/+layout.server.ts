@@ -147,28 +147,28 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		generatingIds: filterInFlight(conversations.map((c) => c.id)),
 		prefs,
 		defaultModelId,
-		// Trimmed on the document to the entries first paint can actually render —
-		// the starting selection and the sidebar's favourites — with the full
-		// catalogue arriving on the same follow-up as the fields above.
+		// The entries first paint can render — the starting selection and the
+		// sidebar's favourites — and NOT the catalogue, on any load.
 		//
-		// Unlike its neighbours this one is not simply absent while deferred, and
-		// that distinction matters to consumers: a SHORT list is not an empty one,
-		// so "id not found here" means "not here yet", never "unknown". Anything
-		// that turns a miss into a decision it can't revisit — a consume-once
-		// sessionStorage intent, an untracked one-shot effect, a submit gate — has
-		// to wait for `deferredLoaded` rather than conclude from this. Interaction-
-		// only surfaces (the picker's list, menus) need no guard: the follow-up
-		// lands long before a menu opens.
-		models: deferred
-			? (() => {
-					const wanted = firstPaintModelIds({
-						favorites,
-						presets: customModels,
-						defaultModelId,
-					});
-					return allModels.filter((m) => wanted.has(m.id));
-				})()
-			: allModels,
+		// Note this one does not follow the deferral pattern above: it is trimmed on
+		// the follow-up too, so the rest is never pushed at all. Most sessions never
+		// need it (launch, talk to your default model, close), and pushing ~600KB on
+		// the chance that they might is the cost this exists to avoid. The client
+		// pulls what it needs through `ModelCatalogue` — the whole list when the
+		// picker opens, single entries by id when a conversation or a restored
+		// intent names one.
+		//
+		// So a SHORT list here is not an empty one, and — unlike the fields above —
+		// it does not become complete a round trip later. Nothing may read this and
+		// conclude an id is unknown; that question belongs to
+		// `ModelCatalogue.membership`, which can answer `unsure`. Pages that need a
+		// specific entry on first paint resolve it in their OWN load, where the full
+		// list is a cached in-memory lookup away — see `conversationModel` in
+		// chat/[id].
+		models: (() => {
+			const wanted = firstPaintModelIds({ favorites, presets: customModels, defaultModelId });
+			return allModels.filter((m) => wanted.has(m.id));
+		})(),
 		// NOT deferred, unlike its neighbours, and the exception is load-bearing.
 		// Three consumers resolve a `custom::` id against this at mount, and the
 		// home page's model-default effect latches — it picks a base model when the

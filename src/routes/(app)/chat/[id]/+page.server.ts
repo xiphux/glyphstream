@@ -111,11 +111,20 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// this is one lookup in it. Null when the conversation names a model the config
 	// no longer serves (or an OWUI import's bare id), which is exactly the state the
 	// submit gate exists to catch — so a miss here stays a real miss.
-	const conversationModel =
-		(await listAllModels()).find((m) => m.id === conversation.modelId) ?? null;
+	const allModels = await listAllModels();
+	const conversationModel = allModels.find((m) => m.id === conversation.modelId) ?? null;
+	// Whether ANY image model is configured, which gates the "draw a portrait"
+	// affordance in the header.
+	//
+	// Answered here rather than by counting image models on the client, because the
+	// client holds a first-paint slice and would count zero on a perfectly healthy
+	// install — silently removing a feature. The affordance is a button; the list
+	// behind it is fetched when it's pressed.
+	const hasImageModel = allModels.some((m) => m.kind === 'image');
 	return {
 		conversation,
 		conversationModel,
+		hasImageModel,
 		assistantLabel,
 		assistantAvatarMediaId,
 		inFlightSince,

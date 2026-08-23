@@ -104,12 +104,39 @@ test('a favourite is in the document, and wins the default', async ({ request })
 	expect(html).toContain('mock::mock-image');
 });
 
-test('the full catalogue arrives after hydration', async ({ page }) => {
-	// The half a user would notice missing: a picker permanently showing only
-	// their favourites would look like the other models had been deconfigured.
+test('the catalogue is never pushed — it is pulled when the picker opens', async ({ page }) => {
+	// Both halves of the laziness. Nobody fetches the catalogue on the user's
+	// behalf (the whole saving, for a session that just talks to its default
+	// model), and the picker still shows every model (a picker stuck on the
+	// favourites would look like the other endpoints had been deconfigured).
+	const fetched: string[] = [];
+	page.on('request', (r) => {
+		if (r.url().includes('/api/models')) fetched.push(r.url());
+	});
+
 	await page.goto('/');
+	// Wait for something that proves hydration and the deferred follow-up both
+	// completed, so "no request yet" is a real observation and not just earliness.
+	await expect(page.locator('button[aria-label="Select model"]')).toContainText(/Mock Chat/i);
+	expect(fetched, 'the catalogue was fetched with nobody asking for it').toEqual([]);
+
 	await page.locator('button[aria-label="Select model"]').click();
 	await expect(page.getByRole('option', { name: /Mock Image/i })).toBeVisible();
+	expect(fetched.length, 'opening the picker did not fetch the catalogue').toBeGreaterThan(0);
+});
+
+test('a ?model= deep link resolves a model the client never held', async ({ page }) => {
+	// The on-demand single resolve, end to end. `mock-image` is not a favourite
+	// and not the default, so it is genuinely absent from the first-paint slice —
+	// honouring this link requires going and asking for it by id.
+	const byId: string[] = [];
+	page.on('request', (r) => {
+		if (r.url().includes('/api/models?ids=')) byId.push(r.url());
+	});
+
+	await page.goto('/?model=mock%3A%3Amock-image');
+	await expect(page.locator('button[aria-label="Select model"]')).toContainText(/Mock Image/i);
+	expect(byId.length, 'the id was resolved some other way than by asking for it').toBe(1);
 });
 
 test('the composer opens on the favourited model, not the first chat model', async ({ page }) => {

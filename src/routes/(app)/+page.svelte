@@ -11,6 +11,7 @@
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
+	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { imageAttachment } from '$lib/model-capabilities';
 	import type { ImageAttachment } from '$lib/model-capabilities';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
@@ -90,6 +91,11 @@
 	//   - "custom::{customModelId}" → saved preset
 	let modelId = $state('');
 
+	// The (app) layout's catalogue store. `data.models` is only its first-paint
+	// seed; anything resolving an arbitrary id goes through here so it can fetch
+	// what it doesn't hold.
+	const catalogue = getModelCatalogue();
+
 	// Multi-model compare "cart" from the picker. When non-empty on send, the
 	// first message fans out to these models instead of a single send.
 	let compareSelections = $state<CompareSelection[]>([]);
@@ -97,7 +103,7 @@
 	let splitAttachments = $state(false);
 	const fanoutFirstModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
-			const m = data.models.find((x) => x.id === id);
+			const m = catalogue.entry(id);
 			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
 		}),
 	);
@@ -134,20 +140,30 @@
 	$effect(() => {
 		const urlModel = page.url.searchParams.get('model');
 		if (!urlModel) return;
-		// Wait for the full catalogue before judging the id. A cold document ships
-		// `data.models` trimmed to what first paint needs, so an id absent from it
-		// means "hasn't arrived", and this effect only ever decides once per URL
-		// value — concluding "unknown" here would silently drop a valid deep link
-		// with nothing to re-open the question. Client-side navigation (where these
-		// links come from — the sidebar's favourites) already has it true, so the
-		// common path is unchanged; a cold `/?model=…` shows the server's default
-		// for the length of the follow-up first.
-		if (!data.deferredLoaded) return;
 		untrack(() => {
-			const isKnown = urlModel.startsWith('custom::')
-				? data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))
-				: data.models.some((m) => m.id === urlModel);
-			if (isKnown) modelId = urlModel;
+			if (urlModel.startsWith('custom::')) {
+				// Presets are never in the catalogue — they live on `customModels`,
+				// which the layout ships in full precisely because this kind of lookup
+				// latches. Answerable immediately.
+				if (data.customModels.some((m) => m.id === urlModel.slice('custom::'.length)))
+					modelId = urlModel;
+				return;
+			}
+			// A base model may simply not be held yet: the client keeps a first-paint
+			// slice, not the catalogue. Resolving the id costs one small request and
+			// is the difference between honouring a deep link and silently ignoring
+			// it — this effect decides once per URL value and never revisits it.
+			// Favourites (where these links come from) are in the seed, so `ensure`
+			// returns without a request on the common path.
+			void catalogue.ensure([urlModel]).then(() => {
+				// Applied unconditionally, as the synchronous version was — the server's
+				// default has already landed by now, and the URL is the more specific
+				// instruction. The one thing re-checked is that the URL still SAYS this:
+				// tapping two favourites in quick succession would otherwise let the
+				// first one's slower resolve overwrite the second.
+				if (page.url.searchParams.get('model') !== urlModel) return;
+				if (catalogue.membership(urlModel) === 'yes') modelId = urlModel;
+			});
 		});
 	});
 
@@ -172,9 +188,9 @@
 			const cmId = modelId.slice('custom::'.length);
 			const cm = data.customModels.find((m) => m.id === cmId);
 			if (!cm) return undefined;
-			return data.models.find((m) => m.id === `${cm.baseEndpointId}::${cm.baseModelId}`);
+			return catalogue.entry(`${cm.baseEndpointId}::${cm.baseModelId}`);
 		}
-		return data.models.find((m) => m.id === modelId);
+		return catalogue.entry(modelId);
 	});
 
 	// A launch intent's own feature toggles, awaiting the seeding effect below.
@@ -264,7 +280,7 @@
 				? fanoutFirstModels.map((m) => m.modelId)
 				: [modelId];
 		return ids.some((id) => {
-			const m = id.startsWith('custom::') ? resolvedBase : data.models.find((x) => x.id === id);
+			const m = id.startsWith('custom::') ? resolvedBase : catalogue.entry(id);
 			return m ? imageAttachment(m) === 'required' : false;
 		});
 	});
@@ -318,16 +334,9 @@
 	// navigation or accidental remount can't re-trigger. Effects don't run
 	// during SSR, so this only ever touches sessionStorage after hydration.
 	//
-	// Reads of `data.models` happen inside `untrack` so a model-list
-	// refresh doesn't re-run this effect — the intent is consumed once
-	// at mount and that's it.
+	// Catalogue reads happen inside `untrack` so a model-list refresh doesn't
+	// re-run this effect — the intent is consumed once at mount and that's it.
 	$effect(() => {
-		// Not until the catalogue is whole. This effect resolves model ids and then
-		// DELETES the key, so running it against the document's trimmed `models`
-		// would discard the intent's model on a miss with no second chance. Reached
-		// by client-side navigation in practice (where this is already true), so the
-		// guard costs nothing and closes the reload path.
-		if (!data.deferredLoaded) return;
 		const raw = window.sessionStorage.getItem(GALLERY_LAUNCH_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(GALLERY_LAUNCH_KEY);
@@ -340,15 +349,8 @@
 		}
 
 		untrack(() => {
-			// Suggested model wins if it's actually available right now.
-			// If the user removed the originating endpoint from config
-			// since the media was generated, the lookup fails and we
-			// fall through to the default-modelId effect's choice.
-			if (intent.sourceModelId) {
-				const found = data.models.find((m) => m.id === intent.sourceModelId);
-				if (found) modelId = found.id;
-			}
-
+			// The prompt and the attachment don't depend on the catalogue, so they
+			// land now instead of behind a request.
 			if (intent.kind === 'regenerate') {
 				// ComposerCore's own auto-resize $effect reacts to the bound
 				// `text` change and runs post-DOM-flush, so it sizes to the
@@ -357,6 +359,17 @@
 			} else if (intent.kind === 'starting-image') {
 				attachments.attachExisting(intent.mediaId);
 			}
+
+			// The suggested model wins if it's real. It usually won't be held yet —
+			// it's whatever generated the media, not necessarily a favourite — so
+			// this resolves it rather than reading a list that was never going to
+			// contain it. If the user removed the originating endpoint since, the
+			// resolve comes back empty and we leave the server's default in place.
+			const wanted = intent.sourceModelId;
+			if (!wanted) return;
+			void catalogue.ensure([wanted]).then(() => {
+				if (catalogue.membership(wanted) === 'yes') modelId = wanted;
+			});
 		});
 	});
 
@@ -366,10 +379,6 @@
 	// (different entry points). Never submits — the prompt lands in the box for
 	// the user to tweak.
 	$effect(() => {
-		// Same consume-and-clear hazard as the gallery intent above, and worse here:
-		// `resolveIntentSelection` validates every cart entry against `data.models`,
-		// so a trimmed list would silently drop a whole compare selection.
-		if (!data.deferredLoaded) return;
 		const raw = window.sessionStorage.getItem(PROMPT_REUSE_KEY);
 		if (!raw) return;
 		window.sessionStorage.removeItem(PROMPT_REUSE_KEY);
@@ -386,10 +395,41 @@
 			// click time, but config can change before this page mounts — so
 			// re-reconcile the whole selection against the live lists at once.
 			// Presets live in `customModels`; cart entries are always base models.
-			const selection = resolveIntentSelection(intent, (id) =>
-				id.startsWith('custom::')
-					? data.customModels.some((m) => m.id === id.slice('custom::'.length))
-					: data.models.some((m) => m.id === id),
+			//
+			// Resolved in ONE request, not one per entry: a fan-out's cart can name
+			// half a dozen models and none of them need be favourites, so this is the
+			// call `ensure` is batched for. The rest of the intent — features,
+			// attachments, private flag, the prompt itself — is applied inside the
+			// same continuation so the whole restore lands as one visible step
+			// rather than the text appearing before its cart.
+			const named = [
+				...(intent.modelId ? [intent.modelId] : []),
+				...(intent.compareSelections ?? []).map((c) => c.modelId),
+			];
+			void catalogue.ensure(named).then(() => applyPromptReuse(intent));
+		});
+	});
+
+	/**
+	 * Apply a prompt-reuse intent once every model it names has been resolved.
+	 *
+	 * Split out of the effect above only because it runs in a continuation — an
+	 * effect body cannot be async without its return value being read as a
+	 * cleanup function.
+	 */
+	function applyPromptReuse(intent: PromptReuseIntent) {
+		untrack(() => {
+			const selection = resolveIntentSelection(
+				intent,
+				// `!== 'no'` rather than `=== 'yes'`: after `ensure`, an id is 'no'
+				// only when the server was asked and didn't have it. Anything still
+				// 'unsure' means the request failed, and dropping a model because the
+				// network blinked is the silent-loss failure this whole path is
+				// written to avoid — better to keep it and let the send report.
+				(id) =>
+					id.startsWith('custom::')
+						? data.customModels.some((m) => m.id === id.slice('custom::'.length))
+						: catalogue.membership(id) !== 'no',
 			);
 			if (selection.modelId) {
 				// Arm the baton only when this write will actually re-fire the
@@ -427,7 +467,7 @@
 				});
 			}
 		});
-	});
+	}
 
 	// Prefill the composer from a `#q=` URL fragment so an external entry
 	// point (e.g. an iOS share-sheet Shortcut, which iOS won't let target a
@@ -786,7 +826,8 @@
 					chat from a saved persona is a primary entry point.
 				-->
 				<ModelPicker
-					models={data.models}
+					models={catalogue.all}
+					onOpen={() => void catalogue.ensureAll()}
 					customModels={data.customModels}
 					bind:value={modelId}
 					filterKinds={['chat', 'image', 'video']}
@@ -829,12 +870,17 @@
 		</ComposerCore>
 
 		<!--
-			Misconfiguration notice, not a loading state — so it waits for the full
-			catalogue. While deferred `data.models` is trimmed to first-paint
-			entries, and a user whose favourites are all stale would otherwise be
-			told to check config.toml for the length of one fetch.
+			Misconfiguration notice, not a loading state.
+			
+			Gated on the server's own answer rather than on the catalogue being
+			loaded, because it never will be here: the client holds a first-paint
+			slice and only fetches the rest when the picker opens. An empty slice
+			means the server had no model to start the composer on, which is the
+			condition this warns about — whereas waiting for `status === 'full'`
+			would hide the warning from precisely the misconfigured install that
+			needs it, since a user with no models has no reason to open the picker.
 		-->
-		{#if data.deferredLoaded && data.models.length === 0}
+		{#if !data.defaultModelId && catalogue.all.length === 0}
 			<p class="mt-3 text-center text-xs text-warning">
 				No models available — check <code>config.toml</code> and your endpoints.
 			</p>

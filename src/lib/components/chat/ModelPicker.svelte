@@ -96,10 +96,20 @@
 		presetLabel?: string | null;
 		/** Resolved base model id (`endpointId::upstreamId`) of the preset above. */
 		presetModelId?: string | null;
+		/**
+		 * Called when the dropdown opens, before the list renders.
+		 *
+		 * The caller may hold only part of the catalogue — the (app) layout ships a
+		 * first-paint slice and fetches the rest on demand — and opening this is the
+		 * moment the rest becomes worth having. Fire-and-forget: `models` is a prop,
+		 * so a late arrival simply re-renders the list.
+		 */
+		onOpen?: () => void;
 	}
 
 	let {
 		models,
+		onOpen,
 		customModels = [],
 		filterKinds,
 		value = $bindable(''),
@@ -500,6 +510,15 @@
 			const idx = filteredItems.findIndex((i) => i.value === value);
 			highlightedIndex = idx >= 0 ? idx : 0;
 		}
+	});
+
+	// Opening is the signal that the rest of the catalogue is wanted. Kept in its
+	// own effect rather than folded into the highlight one above: that reads
+	// `filteredItems`, which this call is about to change, and re-running the
+	// fetch on every list change would defeat the store's de-duplication in the
+	// noisiest possible way.
+	$effect(() => {
+		if (open) untrack(() => onOpen?.());
 	});
 	$effect(() => {
 		void search;

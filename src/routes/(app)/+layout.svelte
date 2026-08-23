@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
+	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
 	import { syncTimeZone } from '$lib/timezone-sync';
 	import { flip } from 'svelte/animate';
@@ -391,11 +392,22 @@
 		prevConvCount = count;
 	});
 
+	// The catalogue every (app) page reads from. `data.models` is only its seed —
+	// the first-paint slice — and the store pulls the rest on demand.
+	//
+	// Constructed at component-init depth, which the module-singleton rule in
+	// CLAUDE.md forbids for `toast` and friends but permits here for the reason
+	// that rule exists: this is a fresh instance per component tree, so there is no
+	// cross-request state to leak during SSR. The seed is a thunk rather than a
+	// snapshot so the store keeps tracking `data.models` — favouriting a model
+	// re-runs this layout load and widens the slice.
+	const catalogue = setModelCatalogue(new ModelCatalogue(() => data.models));
+
 	const favoriteEntries = $derived.by(() => {
 		const favs = data.prefs?.favoriteModels ?? [];
 		if (favs.length === 0) return [];
 		const customById = new Map(data.customModels.map((cm) => [cm.id, cm] as const));
-		const baseById = new Map(data.models.map((m) => [m.id, m] as const));
+		const baseById = new Map(catalogue.all.map((m) => [m.id, m] as const));
 		const out: Array<{ value: string; label: string; kind: ModelKind }> = [];
 		for (const id of favs) {
 			if (id.startsWith('custom::')) {

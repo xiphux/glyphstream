@@ -46,6 +46,8 @@
 		 *  toggles off in the feature menu. */
 		private?: boolean;
 		models: ModelEntry[];
+		/** Forwarded to the model picker — see its `onOpen`. */
+		onPickerOpen?: () => void;
 		/** The user's enabled skills, for the `/skill-name` autocomplete. */
 		enabledSkills?: Array<{ id: string; name: string; description: string }>;
 		favoritedIds: string[];
@@ -94,6 +96,7 @@
 		featureCategories,
 		private: isPrivate = false,
 		models,
+		onPickerOpen,
 		enabledSkills = [],
 		favoritedIds,
 		allowAttachments,
@@ -295,6 +298,7 @@
 			-->
 			<ModelPicker
 				{models}
+				onOpen={onPickerOpen}
 				bind:value={modelId}
 				filterKinds={['chat', 'image', 'video']}
 				disabled={generating}

@@ -7,6 +7,7 @@
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { navigating } from '$app/state';
+	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { observeSentinel } from '$lib/observe-sentinel';
 	import { FanoutController } from '$lib/fanout-controller.svelte';
 	import { ChatTurnController } from '$lib/chat-turn-controller.svelte';
@@ -88,26 +89,19 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// The model catalogue this page reads, which is NOT simply `data.models`.
+	// The model catalogue, shared with the rest of the (app) tree. What this page
+	// holds is a first-paint slice plus whatever has been resolved since — never,
+	// by default, the whole thing (see ModelCatalogue).
 	//
-	// On a document load the (app) layout trims that list to the entries first
-	// paint needs — the new-chat composer's default plus the sidebar's favourites
-	// — and streams the rest in a follow-up, because an aggregator endpoint's full
-	// catalogue is hundreds of KB in every single document. A conversation's own
-	// model is not in that slice, so its page load carries the entry separately and
-	// it gets merged back in here.
-	//
-	// What that buys is the pre-interaction surface: header name, context window,
-	// and the submit gate all resolve on first paint. What it does not cover is
-	// every OTHER model — the image-model chooser, per-branch attribution in a
-	// fan-out, the per-turn picker's list. Those read as raw ids (or come up empty)
-	// until the follow-up lands, which is acceptable only because reaching any of
-	// them takes a click, and the follow-up is issued at layout mount.
-	const catalogue = $derived(
-		data.conversationModel && !data.models.some((m) => m.id === data.conversationModel!.id)
-			? [...data.models, data.conversationModel]
-			: data.models,
-	);
+	// `conversationModel` is adopted into it because this page's own load resolved
+	// it server-side: the header's display name, the context-window readout and the
+	// submit gate all key off the conversation's model, and none of them may wait
+	// on a fetch. Adoption rather than a local merge so every other consumer on the
+	// page — the per-turn picker, branch attribution — sees it too.
+	const catalogue = getModelCatalogue();
+	$effect(() => {
+		catalogue.adopt([data.conversationModel]);
+	});
 
 	// Friendly bubble labels: the user's preferred name (Preferences ▸ Name
 	// if set, else GitHub display name's first token, else login) +
@@ -231,7 +225,7 @@
 	// nav. The avatar follows the same attribution, so a re-attributed sibling
 	// doesn't wear the preset's face. See assistantIdentityForMessage.
 	const assistantIdentityFor = (m: ChatMessage): AssistantIdentity =>
-		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, catalogue);
+		assistantIdentityForMessage(m, data.conversation.modelId, conversationIdentity, catalogue.all);
 
 	// Read data eagerly so SSR includes messages on first paint; $effect
 	// below re-syncs on subsequent navigation invalidation. The warning
@@ -250,7 +244,7 @@
 	// The image models this user can draw with, and the one they'll draw with
 	// now: their saved choice if it still resolves, else the first available.
 	// Re-saved on change (below), so picking is a one-time cost.
-	const imageModels = $derived(catalogue.filter((m) => m.kind === 'image'));
+	const imageModels = $derived(catalogue.all.filter((m) => m.kind === 'image'));
 	let avatarModelOverride = $state<string | null>(null);
 	const avatarModelId = $derived(
 		avatarModelOverride ??
@@ -293,6 +287,11 @@
 	function openAvatarDraw() {
 		const source = avatarSourceMessage;
 		if (!source) return;
+		// The dialog renders a model list and picks a default from it, and the
+		// catalogue holds neither by default. Fire-and-forget: the dialog opens
+		// immediately and its picker fills in, which is the same shape as the
+		// lazy-imported dialog chunk landing just after the tap.
+		void catalogue.ensureAll();
 		avatarPrompt = extractAvatarPrompt(partsToText(source.parts));
 		// A private chat seals prompt enhancement (it ships the prompt to a second
 		// model), and the seal is derived server-side rather than stored — so the
@@ -773,7 +772,7 @@
 	// untrack the actions so this effect's dep set stays as just (modelId).
 	$effect(() => {
 		void modelId;
-		const next = catalogue.find((m) => m.id === modelId);
+		const next = catalogue.entry(modelId);
 		if (!next) return;
 		untrack(() => {
 			modelKind = next.kind;
@@ -801,7 +800,12 @@
 	// Without this gate the user could type+submit and the server would 500
 	// on `parseModelId(...) === null`. Gating the submit means the picker
 	// is the obvious next step.
-	const hasValidModel = $derived(catalogue.some((m) => m.id === modelId));
+	// `!== 'no'` rather than `=== 'yes'`: the catalogue is partial by default, and
+	// blocking a send because a model merely hasn't been fetched would be the same
+	// silent dead end this gate exists to prevent (an OWUI import's bare id, which
+	// the server WILL reject). `conversationModel` is adopted above, so the
+	// conversation's own model answers 'yes' or 'no' definitively on first paint.
+	const hasValidModel = $derived(catalogue.membership(modelId) !== 'no');
 
 	// Conversation context size: tokens_in + tokens_out of the most
 	// recent assistant turn with usage populated. That sum is roughly
@@ -822,9 +826,7 @@
 	// or the 60s stale-while-revalidate refresh), not mid-session. Null →
 	// ChatHeader shows just the raw token count, as before. See
 	// extractContextWindow (server side).
-	const modelContextWindow = $derived(
-		catalogue.find((m) => m.id === modelId)?.contextWindow ?? null,
-	);
+	const modelContextWindow = $derived(catalogue.entry(modelId)?.contextWindow ?? null);
 
 	// --- compaction ----------------------------------------------------------
 	// Summarize older history through the conversation's own model, then refetch.
@@ -1226,7 +1228,7 @@
 	// page state through these getters/setters.
 	const fanout: FanoutController = new FanoutController({
 		convId: () => convId,
-		models: () => catalogue,
+		models: () => catalogue.all,
 		messageCount: () => messages.length,
 		busy: () => turn.busy,
 		appendUserMessage: (m) => (messages = [...messages, m]),
@@ -1330,14 +1332,14 @@
 	let splitAttachments = $state(false);
 	const fanoutModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
-			const m = catalogue.find((x) => x.id === id);
+			const m = catalogue.entry(id);
 			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
 		}),
 	);
 
 	function modelDisplayName(modelId: string | null): string {
 		if (!modelId) return 'Model';
-		return catalogue.find((m) => m.id === modelId)?.displayName ?? modelId;
+		return catalogue.entry(modelId)?.displayName ?? modelId;
 	}
 
 	/** Reset the compare cart + mode (after a fan-out kicks off, or on nav). */
@@ -1610,7 +1612,7 @@
 		if (
 			attachments.readyImageCount === 0 &&
 			baseModels.some((b) => {
-				const m = catalogue.find((x) => x.id === b.modelId);
+				const m = catalogue.entry(b.modelId);
 				return m ? imageAttachment(m) === 'required' : false;
 			})
 		) {
@@ -1835,7 +1837,7 @@
 		const { modelId: derivedModelId, compareSelections } = deriveReuseModels(
 			m.dispatchedModels,
 			activeReply?.modelUsed ?? data.conversation.modelId,
-			(id) => catalogue.find((x) => x.id === id),
+			(id) => catalogue.entry(id),
 		);
 		// A cart resolves against base models only, so the preset upgrade is a
 		// single-model concern.
@@ -1966,7 +1968,7 @@
 			private={isPrivate}
 			avatar={canGenerateAvatar
 				? {
-						hasImageModel: imageModels.length > 0,
+						hasImageModel: data.hasImageModel,
 						avatarMediaId: data.assistantAvatarMediaId,
 						hasSource: !!avatarSourceMessage,
 						alreadyDrawn: avatarAlreadyDrawn,
@@ -2252,7 +2254,8 @@
 						{disabledFeatures}
 						featureCategories={data.featureCategories}
 						private={isPrivate}
-						models={catalogue}
+						models={catalogue.all}
+						onPickerOpen={() => void catalogue.ensureAll()}
 						enabledSkills={data.enabledSkills}
 						favoritedIds={data.prefs?.favoriteModels ?? []}
 						{allowAttachments}
