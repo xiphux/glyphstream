@@ -68,6 +68,7 @@
 	import { resolve } from '$app/paths';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { hasCopyableText, partsToText } from '$lib/message-parts';
+	import { AvatarDrawController } from '$lib/avatar-draw-controller.svelte';
 	import { consumeChatStream } from '$lib/consume-chat-stream';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
@@ -371,7 +372,7 @@
 		// navigates to another chat — reading it again afterwards is how A's
 		// portrait ends up as B's avatar.
 		const cid = convId;
-		const setStatus = (status: string) => (avatarDraw = { conversationId: cid, status });
+		const setStatus = (status: string) => avatarDraw.setStatus(cid, status);
 		setStatus('Starting…');
 		// Whether the failure we end up in the catch with was one the SERVER told us
 		// about, as opposed to the connection simply going away. The two are
@@ -379,7 +380,7 @@
 		// are entirely distinguishable by where they were raised, so record it at
 		// the two places that know. See the catch for what it decides.
 		let serverReported = false;
-		if (avatarDrawInterruptedFor === cid) avatarDrawInterruptedFor = null;
+		avatarDraw.begin(cid);
 		try {
 			const res = await fetch(`/api/conversations/${cid}/avatar/generate`, {
 				method: 'POST',
@@ -442,7 +443,7 @@
 			// overlapping draw may own the slot by now, and a draw that finishes
 			// while the user is elsewhere is exactly the case that would otherwise
 			// strand its debt.
-			if (avatarReconcileOwedFor === cid) avatarReconcileOwedFor = null;
+			avatarDraw.completed(cid);
 
 			// Only refresh and announce if the user is still looking at the chat this
 			// belongs to. Reloading a conversation they've moved on from — and
@@ -461,10 +462,10 @@
 			// `visibilitychange` or `offline` event to latch on. One cheap probe
 			// settles it: the registry is the only party that knows.
 			//
-			// This is also why nothing here writes `serverAvatarDrawSince`. Nulling
-			// the mirror on the assumption that a failure freed the registry entry is
-			// wrong for exactly the interruptions that don't latch, and it's the write
-			// that stops `recoveredAvatarDraw` from ever flipping true — turning a
+			// This is also why nothing here touches the controller's server-truth
+			// mirror. Nulling it on the assumption that a failure freed the registry
+			// entry is wrong for exactly the interruptions that don't latch, and it's
+			// the write that stops `recovered` from ever flipping true — turning a
 			// draw the poll would have recovered into the "failed toast, no avatar"
 			// pair this whole change exists to remove.
 			//
@@ -485,114 +486,13 @@
 			// our own connection dropping, and the user would be told nothing. The
 			// server having reached us to report the failure is proof that no
 			// interruption explains it.
-			const suppress = !serverReported && avatarDrawInterruptedFor === cid;
-			avatarReconcileOwedFor = cid;
-			void reconcileAvatarDraw(
+			const suppress = !serverReported && avatarDraw.wasInterrupted(cid);
+			avatarDraw.reportFailure(
 				cid,
 				suppress ? undefined : e instanceof Error ? e.message : 'Avatar generation failed',
 			);
 		} finally {
-			// Clear only our own draw — a newer one started elsewhere owns the slot now.
-			if (avatarDraw?.conversationId === cid) avatarDraw = null;
-			// Same ownership test for the latch, and for the same reason. Two draws
-			// can overlap (start one in A, navigate to B, start another — the guard
-			// at the top of this function is `convId`-scoped, so B's is allowed), and
-			// they share this one slot. Clearing unconditionally is how A's `finally`
-			// wipes B's latch out from under it, so B's catch stops recognising its
-			// own interruption and hands the probe a message — surfacing the false
-			// "Load failed" this whole change exists to stop showing.
-			if (avatarDrawInterruptedFor === cid) avatarDrawInterruptedFor = null;
-		}
-	}
-
-	/**
-	 * Ask the server whether a draw is still running, and reconcile to the answer
-	 * WITHOUT reloading the page unless there is something to reload for.
-	 *
-	 * `invalidateAll()` re-runs this route's load, which ships the entire active
-	 * branch with `content_html` — the payload the load drops `await parent()` to
-	 * keep off every refocus (measured 35 KB on a 40-turn thread, megabytes on a
-	 * code-heavy one; see its header). A draw runs for minutes and the user is
-	 * expected to go elsewhere during it, so paying that per return-to-foreground
-	 * is the wrong trade: it re-downloads a conversation that by construction
-	 * cannot have changed, because the thing we're waiting on hasn't finished.
-	 *
-	 * The branch-walk-free `?fanout=1` variant answers the only question that
-	 * matters. Still running: seed the mirror, which restores the ring and arms
-	 * the poll, at no further cost. Finished: one reload.
-	 *
-	 * Every caller routes through here — the interruption handlers, the draw's own
-	 * catch, and each tick of the poll — so the in-flight guard is what keeps a
-	 * single resume from costing several probes and several reloads. On iOS the
-	 * `visible` event and the killed fetch's rejection both land, in no guaranteed
-	 * order, and each used to buy its own full reload.
-	 *
-	 * `failureMessage` is the error the draw's own catch would otherwise have
-	 * toasted. It is reported only once the probe CONFIRMS the draw is over —
-	 * toasting before that is how a proxy timeout gets reported as a failed
-	 * generation that is in fact still running. Any OTHER outcome — the request
-	 * threw, or the server answered but not with an answer (a 5xx from a proxy
-	 * mid-restart, a 401 from a session that expired during a long draw) — leaves
-	 * us knowing nothing, so the message is reported there too: it is the best
-	 * information available, and the debt keeps the retry alive regardless. The
-	 * message must not be swallowed on any path where we have stopped looking,
-	 * because it is a one-shot — the draw's catch is the only caller that ever
-	 * supplies one, and every retry passes none. It IS dropped where dropping it
-	 * is the point: both conversation-switch exits (never toast into a thread the
-	 * user has left) and the still-running branch (never report a failure for a
-	 * draw that hasn't failed).
-	 */
-	async function reconcileAvatarDraw(cid: string, failureMessage?: string) {
-		if (avatarReconcileInFlightFor === cid) return;
-		avatarReconcileInFlightFor = cid;
-		// Set once the message has been shown, so the paths below can't show it
-		// twice — `invalidateAll()` rejecting after a toast would otherwise fall
-		// into the catch and repeat it.
-		let reported = false;
-		try {
-			const res = await fetch(`/api/conversations/${cid}?fanout=1`);
-			if (convId !== cid) return;
-			if (!res.ok) {
-				// Reached the server and learned nothing — epistemically the same
-				// position as not reaching it at all, so report the same way rather
-				// than returning in silence, which would lose the message for good.
-				//
-				// The debt and the mirror are deliberately left alone: a non-2xx says
-				// nothing about the draw either way. That does mean a PERSISTENT
-				// non-2xx (conversation deleted elsewhere → 404, session expired
-				// mid-draw → 401) still leaves the poll without a terminating answer,
-				// so the ring spins and `avatarStatus` keeps the Draw action disabled.
-				// That's a separate problem and silence here would not have helped it.
-				if (failureMessage) toast.error(failureMessage);
-				return;
-			}
-			const body = (await res.json()) as { avatarDrawSince: number | null };
-			if (convId !== cid) return;
-			// Answered — the debt is discharged whichever way it went.
-			if (avatarReconcileOwedFor === cid) avatarReconcileOwedFor = null;
-			if (body.avatarDrawSince === null) {
-				if (failureMessage) {
-					toast.error(failureMessage);
-					reported = true;
-				}
-				await invalidateAll();
-			} else {
-				serverAvatarDrawSince = body.avatarDrawSince;
-			}
-		} catch {
-			// Either the request itself failed — most often because the network
-			// hasn't actually come back yet — or the reload after a confirmed answer
-			// did. In the first case `avatarReconcileOwedFor` is deliberately still
-			// set, so the next `visible` / `online` tries again; clearing it there
-			// (or letting the draw's `finally` clear it) is how an offline
-			// interruption ends up silently abandoned, because the retry hook is gone
-			// and the poll can't take over — the mirror that arms it is the very
-			// thing a successful probe would have seeded. In the second case the debt
-			// is already discharged and the mirror is still set, so the poll retries
-			// the reload instead.
-			if (failureMessage && !reported && convId === cid) toast.error(failureMessage);
-		} finally {
-			if (avatarReconcileInFlightFor === cid) avatarReconcileInFlightFor = null;
+			avatarDraw.end(cid);
 		}
 	}
 
@@ -655,94 +555,15 @@
 	// svelte-ignore state_referenced_locally
 	let convId = $state(data.conversation.id);
 
-	// Scoped to the conversation it belongs to, not a bare string. The page
-	// component is REUSED across /chat/[a] → /chat/[b] (see the teardown effect
-	// below), so a draw started in A is still running with its closure intact
-	// after the user switches to B. Deriving the status against the current
-	// `convId` means B shows nothing and A shows its progress again on return,
-	// without the switch effect having to null it — which would race the old
-	// closure's own writes.
-	let avatarDraw = $state<{ conversationId: string; status: string } | null>(null);
-	// Two flags rather than one, because they answer different questions and must
-	// die at different times.
+	// Avatar-draw recovery: the ring, the interruption latches, the reconcile
+	// probe and its poll. Extracted for the same reason the turn and fan-out
+	// controllers were — see its header, and the tests that exist because this
+	// used to live here untestable.
 	//
-	// `avatarDrawInterruptedFor` — "this conversation's draw lost its connection to
-	// an OUTSIDE cause": the page went hidden, or went offline. Consulted for a
-	// decision in exactly one place, the draw's catch, and only to decide whether to
-	// hand the probe a fallback message — a probe that can't reach the server
-	// reports what it was given, which is right when we know nothing and wrong when
-	// we know the connection was taken away from us. (The touches at the top of
-	// `generateAvatar` and in its `finally` are ownership-gated clears, not decision
-	// reads.) Armed by the two handlers; cleared by the draw at both of those points
-	// — the first in case a previous draw's fetch never settled to run its `finally`
-	// — so a later draw can't inherit it.
-	//
-	// Deliberately coarse, and NOT cleared on the way back to the foreground: doing
-	// that would race the killed fetch's rejection, which is the whole reason the
-	// latch exists. The cost of that coarseness is that it stays set for the rest of
-	// a long draw after a single tab switch, so the catch overrides it whenever the
-	// server itself reported the failure.
-	//
-	// `avatarReconcileOwedFor` — "this conversation is still owed a reconcile".
-	// Cleared by a probe that actually got an answer, or by the draw running to
-	// completion — never merely by attempting a probe. That distinction is the
-	// whole point: an interruption's first probe often fails because the network
-	// hasn't really come back, and a debt cleared on attempt leaves nothing for the
-	// next `visible` / `online` to retry — while the poll can't step in either,
-	// because what arms it is the mirror only a successful probe can seed. The draw
-	// then finishes server-side against a page that shows the old face and claims
-	// nothing is happening.
-	//
-	// Both are ids, not booleans: `avatarDraw` is a single slot and two draws can
-	// overlap — start one in A, navigate to B, start another — so an unowned flag
-	// lets whichever settles first clear the other's. Every clear is therefore
-	// ownership-tested, and the debt's readers require it to match the conversation
-	// on screen, since a debt for a thread the user has left can't be discharged
-	// from here anyway.
-	//
-	// Plain `let`, not `$state`: armed by the visibility/connectivity handlers,
-	// disarmed by `generateAvatar` and `reconcileAvatarDraw`, read by those same
-	// three. Never in a derived or a template, so nothing renders from them. The
-	// turn controller keeps an equivalent pair of latches for sends and won't do
-	// here — an avatar draw leaves `turn.busy` false throughout, and `send()`
-	// clears those flags at the top of every turn, which is precisely the composer
-	// a draw backgrounds itself to keep usable.
-	let avatarDrawInterruptedFor: string | null = null;
-	let avatarReconcileOwedFor: string | null = null;
-	/** A probe is already in flight for this conversation. Collapses the several
-	 *  callers that can fire on one resume — the `visible` handler, the draw's
-	 *  catch, a poll tick — into one request and at most one reload. */
-	let avatarReconcileInFlightFor: string | null = null;
-	// Server truth for a draw this client isn't driving: its fetch died (iOS
-	// suspended the PWA mid-draw) but the drawing didn't. Mirrored from the load
-	// and re-read by the poll below. Kept apart from `serverInFlightSince`, which
-	// is turn-scoped and deliberately blind to this.
 	// svelte-ignore state_referenced_locally
-	let serverAvatarDrawSince = $state<number | null>(data.avatarDrawSince);
-	// A draw this client isn't driving still gets the ring. Without that fallback
-	// a draw goes invisible the moment iOS kills the connection, leaving a header
-	// that claims nothing is happening for the several minutes it has left.
-	const avatarStatus = $derived.by(() => {
-		if (avatarDraw && avatarDraw.conversationId === convId) return avatarDraw.status;
-		return serverAvatarDrawSince !== null ? 'Drawing…' : null;
-	});
-	/**
-	 * A local closure is following a draw belonging to THE CONVERSATION ON SCREEN.
-	 *
-	 * Scoped against `convId` like its two neighbours, and for a sharper reason
-	 * than symmetry: `avatarDraw` deliberately survives a conversation switch (see
-	 * its note, and the teardown effect's), so an unscoped read stays true while
-	 * the user stands in some other thread. Every hide would then latch, and every
-	 * return to the foreground would reconcile — against the conversation they're
-	 * standing in, which the draw cannot touch. The draw's own conversation is
-	 * reconciled when they navigate back to it: that load carries `avatarDrawSince`,
-	 * which is the same fact by a cheaper route.
-	 */
-	const localAvatarDraw = $derived(avatarDraw?.conversationId === convId);
-	/** A draw is running server-side that no local closure is following. */
-	const recoveredAvatarDraw = $derived(
-		serverAvatarDrawSince !== null && avatarDraw?.conversationId !== convId,
-	);
+	const avatarDraw = new AvatarDrawController({ convId: () => convId }, data.avatarDrawSince);
+	const avatarStatus = $derived(avatarDraw.status);
+
 	// svelte-ignore state_referenced_locally
 	let modelKind = $state<ModelKind | null>(data.conversation.modelKind);
 	// Server's in-flight registry start time for this conversation (unix
@@ -836,7 +657,7 @@
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
-		serverAvatarDrawSince = data.avatarDrawSince;
+		avatarDraw.syncFromServer(data.avatarDrawSince);
 		// Re-seed the canvas ONLY when switching conversations. A mid-turn
 		// invalidateAll refreshes `data` with the same id — re-hydrating then
 		// would reopen a pane the user closed and clobber the just-applied live
@@ -1573,10 +1394,7 @@
 			// also the longest-lived fetch the app makes — minutes, on a shared GPU
 			// — which makes it the one most likely to be alive when iOS suspends
 			// the PWA, i.e. exactly the case this reconciliation exists for.
-			if (localAvatarDraw) {
-				avatarDrawInterruptedFor = convId;
-				avatarReconcileOwedFor = convId;
-			}
+			avatarDraw.markInterrupted();
 		} else if (turn.wasHiddenDuringFetch) {
 			// Reconcile against server state — if a single generation completed
 			// while we were backgrounded, the new message arrives via the load.
@@ -1587,42 +1405,26 @@
 			// died (iOS suspend), the branch fetches error and runBranch hands the
 			// fan-out off to recovery itself.
 			void invalidateAll();
-		} else if (avatarReconcileOwedFor === convId) {
+		} else {
 			// A draw reconciles through the cheap probe, not a reload: a turn is over
 			// in seconds, a draw takes minutes, and a full `invalidateAll()` per
 			// refocus across those minutes re-downloads a branch that cannot have
-			// changed. See reconcileAvatarDraw.
-			//
-			// `=== convId`, not `!== null`: a debt pointing at a conversation the user
-			// has left cannot be discharged from here — the probe's own scope checks
-			// would throw the answer away — so probing it is a request made to be
-			// discarded, on every focus, for as long as they stay away. That
-			// conversation reconciles the cheaper way when they return: its load
-			// carries `avatarDrawSince`, which arms the poll with the same fact.
-			//
-			// Neither flag is cleared here. The interruption latch is read by the
-			// draw's catch, and iOS gives no ordering guarantee between this event
-			// and the killed fetch's rejection — clearing it here is how the catch
-			// ends up handing the probe a message and toasting "Load failed" for a
-			// draw that is completing fine. The debt is cleared by a probe that got
-			// an answer, or by the draw completing.
-			void reconcileAvatarDraw(convId);
+			// changed. The controller owns the scoping and the no-clear-here rule —
+			// see `reconcileIfOwed`.
+			avatarDraw.reconcileIfOwed();
 		}
 	}
 	function onOffline() {
 		isOffline = true;
 		if (turn.busy || fanout.streaming) turn.markOffline();
-		if (localAvatarDraw) {
-			avatarDrawInterruptedFor = convId;
-			avatarReconcileOwedFor = convId;
-		}
+		avatarDraw.markInterrupted();
 	}
 	function onOnline() {
 		isOffline = false;
 		// Same reasoning as the visibility path — don't pre-emptively abort a
 		// live fan-out; an actually-dropped branch fetch recovers via runBranch.
 		if (turn.wasOfflineDuringFetch) void invalidateAll();
-		else if (avatarReconcileOwedFor === convId) void reconcileAvatarDraw(convId);
+		else avatarDraw.reconcileIfOwed();
 	}
 
 	// In-flight assistant render state (segments + open/progress/status/queued/
@@ -1866,22 +1668,9 @@
 	// purpose (a draw isn't a turn, and counting it would raise a phantom
 	// "Generating…" bubble and disable the composer for the whole draw — see
 	// getInFlightSince), so the two have to terminate on different fields.
-	//
-	// Each tick is the same probe the interruption handlers use, which is what
-	// makes a tick overlapping one of them cost a single request rather than two
-	// reloads. Termination is the effect's own: a probe that finds the draw
-	// finished reloads, the reload nulls the mirror, `recoveredAvatarDraw` goes
-	// false and this tears down. Deliberately NOT a self-managed stop flag — the
-	// obvious shape clears its own interval *before* awaiting the reload, so a
-	// reload that rejects leaves the ring spinning with nothing left to re-arm it,
-	// and `avatarStatus` gates the Draw action, so the feature stays disabled until
-	// the user navigates away. Here a rejected reload just leaves the mirror set
-	// and the next tick retries.
 	$effect(() => {
-		if (!recoveredAvatarDraw) return;
-		const id = convId;
-		const interval = setInterval(() => void reconcileAvatarDraw(id), 4000);
-		return () => clearInterval(interval);
+		if (!avatarDraw.recovered) return;
+		return avatarDraw.startRecoveryPoll();
 	});
 
 	// Recovery poll for a RECOVERED fan-out (rebuilt from server truth after a

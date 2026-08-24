@@ -19,6 +19,30 @@
 import { flushSync } from 'svelte';
 
 /**
+ * A reactive `{ value }` box, for stubbing a dep the controller under test reads
+ * through a getter.
+ *
+ * A plain object won't do when the test needs the reactive graph to NOTICE the
+ * change: controllers take their page state as getters (`convId: () => convId`),
+ * and in the real page that closes over a `$state` binding. Stub it with a plain
+ * field and a write is invisible to any derived or effect that depends on it —
+ * so a test asserting "this republishes when the page navigates" would fail
+ * against correct code, and one asserting the opposite would pass against
+ * broken code.
+ */
+export function reactiveBox<T>(initial: T): { value: T } {
+	let value = $state(initial);
+	return {
+		get value() {
+			return value;
+		},
+		set value(next: T) {
+			value = next;
+		},
+	};
+}
+
+/**
  * Subscribe to `read()` from inside a real `$effect` and record every value the
  * reactive graph publishes.
  *
