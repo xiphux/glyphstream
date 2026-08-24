@@ -758,8 +758,10 @@ export class FanoutController {
 		let stopped = false;
 		const interval = setInterval(async () => {
 			try {
-				// `?fanout=1` returns just { inFlightSince, fanout } — skips the
-				// conversation's message walk this poll has no use for.
+				// `?fanout=1` skips the conversation's message walk this poll has no
+				// use for. It carries a few small fields for its several callers
+				// (`fanout`, `inFlightSince`, `avatarDrawSince`); only `fanout` is
+				// read here.
 				const res = await fetch(`/api/conversations/${id}?fanout=1`);
 				if (stopped || !res.ok || this.#deps.convId() !== id) return;
 				const body = (await res.json()) as { fanout?: FanoutRecoveryState };

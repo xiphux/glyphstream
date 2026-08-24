@@ -20,11 +20,12 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = ({ locals, params, url }) => {
 	requireUser(locals);
 
-	// The recovery polls (`?fanout=1`) — TWO callers, wanting different halves:
-	// the fan-out controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild
-	// the compare grid as branches land, and the single-turn recovery poll reads
-	// ONLY `inFlightSince`. (A third, the avatar-draw poll, reads only
-	// `avatarDrawSince`.) None wants the message list, so skip
+	// The recovery readers (`?fanout=1`), wanting different halves: the fan-out
+	// controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild the compare
+	// grid as branches land; the single-turn recovery poll reads ONLY
+	// `inFlightSince`; and the chat page's `reconcileAvatarDraw` — called from its
+	// avatar poll, its visibility/online handlers and a draw's own catch — reads
+	// ONLY `avatarDrawSince`. None wants the message list, so skip
 	// getConversationDetail's walkActiveBranch (+ content_html serialization)
 	// entirely here; a poll over a long thread would otherwise re-fetch the whole
 	// thing each tick. getConversationMeta is the light, ownership-checked fetch

@@ -8,6 +8,7 @@
  *   → first-exchange title task (suppressed for fan-out — /prepare owns it)
  *   → [modality-specific generate: produce + persist the media bytes]
  *   → append as a sibling (active_leaf pinned for fan-out) + link media
+ *   → onMediaPersisted (apply what the generation was FOR, e.g. the avatar)
  *   → push notify
  *   → `done` + race the title → `title`
  *   → finally: release the slot + onComplete

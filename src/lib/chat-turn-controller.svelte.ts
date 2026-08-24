@@ -717,7 +717,8 @@ export class ChatTurnController {
 	 * the branch — `content_html` included, 5-20x the source for code blocks — on
 	 * every tick, to answer a yes/no question; a recovered tool-using turn can run
 	 * for minutes, so that's the whole thread re-serialized dozens of times and
-	 * discarded. (`fanout` comes along unused; the fan-out grid has its own poll.)
+	 * discarded. (`fanout` and `avatarDrawSince` come along unused; the fan-out
+	 * grid and the avatar draw each have their own reader.)
 	 */
 	startRecoveryPoll(): () => void {
 		const id = this.#deps.convId();
