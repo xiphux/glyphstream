@@ -27,6 +27,8 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { stopMcp } from '$lib/server/mcp/registry';
 import { stopPool } from '$lib/server/code-interpreter/pool';
 import { maxLoopLagSince, startLoopLagSampler } from '$lib/server/util/loop-lag';
+import { swapBytes } from '$lib/server/util/proc-swap';
+import { dbFileBytes, mmapBytes } from '$lib/server/db/client';
 import {
 	HEADER_BUDGET_RESERVE_BYTES,
 	PROXY_HEADER_BUFFER_BYTES,
@@ -495,6 +497,23 @@ export const handle: Handle = async ({ event, resolve }) => {
 			// getrusage's maxRSS it reports CURRENT usage in bytes on every platform
 			// rather than a high-water mark in platform-dependent units.
 			metrics.push(`rss;dur=${process.memoryUsage.rss()}`);
+			// How much of the process is currently swapped out. `fault` proves
+			// memory was fetched back but not from WHERE, and the two sources have
+			// opposite fixes — see util/proc-swap.ts. Null off Linux, where the
+			// panel drops the row rather than printing a zero it can't stand behind.
+			const swapped = swapBytes();
+			if (swapped !== null) metrics.push(`swap;dur=${swapped}`);
+			// Database size against the mapping actually in force. Together these
+			// answer the one question the panel has been inferring: whether reads are
+			// being served from the mapping or through `read(2)`, which bills to
+			// blocked wall time and registers no fault at all. `mmap` is the value
+			// SQLite reported back after the PRAGMA, not the one we asked for — it
+			// clamps at a compile-time maximum, silently.
+			const dbFile = dbFileBytes();
+			if (dbFile.main !== null) metrics.push(`dbsize;dur=${dbFile.main}`);
+			if (dbFile.wal !== null) metrics.push(`walsize;dur=${dbFile.wal}`);
+			const mmap = mmapBytes();
+			if (mmap !== null) metrics.push(`mmap;dur=${mmap}`);
 			metrics.push(`idle;dur=${dur(idleMs)}`);
 			metrics.push(`proc;dur=${dur(process.uptime() * 1000)}`);
 		}

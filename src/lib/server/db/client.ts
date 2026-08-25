@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { dbPath } from '../env';
 import * as schema from './schema';
@@ -16,6 +16,9 @@ export type DB = NodeSQLiteDatabase<typeof schema>;
 export type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 
 let cached: { db: DB; sqlite: DatabaseSync } | null = null;
+
+/** Effective `mmap_size` after the PRAGMA, read back at open. See mmapBytes(). */
+let effectiveMmapBytes: number | null = null;
 
 /**
  * Open (and memoize) the SQLite connection. PRAGMAs are set on first open;
@@ -36,10 +39,34 @@ export function getDb(): DB {
 	// cache. Default is 2 MiB, which on a busy install fills up fast and
 	// pushes the working set out to disk on every chat-page load.
 	sqlite.exec('PRAGMA cache_size = -64000');
-	// 30 MiB of memory-mapped I/O lets SQLite skip the syscall path on
-	// reads that hit the mapping. Cheap on 64-bit; effectively free when
-	// the file is small enough to fit, no harm when it isn't.
-	sqlite.exec('PRAGMA mmap_size = 30000000');
+	// Map the whole database, with room to grow. SQLite's own default is 0 —
+	// mmap OFF entirely (`DEFAULT_MMAP_SIZE=0` in node's build) — so any value
+	// here is ours, and the previous 30MB was not a considered ceiling. It had
+	// become one: a production database measured at 40.6MB served its last
+	// quarter through `read(2)`, which is the worst shape for this deployment.
+	//
+	// The distinction that matters is not syscall-vs-no-syscall, it's WHICH KIND
+	// of memory holds the pages. Mapped pages are file-backed and clean, so a
+	// host under pressure reclaims them for free and a later read faults one
+	// page back off the volume. Pages read through `read(2)` land in SQLite's
+	// own heap cache — anonymous memory, which can only be reclaimed by writing
+	// it to SWAP and can only be recovered by reading it back. On a NAS sharing
+	// RAM with other containers, that difference is the whole cost of an idle
+	// container's next request.
+	//
+	// The ceiling is a compile-time `MAX_MMAP_SIZE=0x7fff0000` (~2GB), which
+	// silently CLAMPS rather than erroring, so the effective value is read back
+	// below rather than assumed. Sharp edges worth knowing, both of them the
+	// reason SQLite ships this off by default:
+	//   - A read error on a mapped page raises SIGBUS and kills the process,
+	//     where `read(2)` would have returned SQLITE_IOERR for SQLite to handle.
+	//   - The file is writable through the process's address space, so a stray
+	//     pointer can corrupt the database rather than a heap copy of it.
+	// Neither is new here: 30MB was already mapped, and it held the hot pages.
+	// This widens existing exposure rather than opening a new kind. It does
+	// assume the database is on a LOCAL filesystem — mmap over NFS/SMB is not
+	// reliable, so a DB_PATH pointing at a mounted share wants this back at 0.
+	sqlite.exec('PRAGMA mmap_size = 268435456');
 
 	const db = drizzle({ client: sqlite, schema });
 
@@ -80,8 +107,49 @@ export function getDb(): DB {
 	// last run, so steady-state boots stay a ~0.04ms no-op.
 	sqlite.exec('PRAGMA optimize = 0x10012');
 
+	// Read the mapping back rather than trusting the write. `mmap_size` clamps
+	// silently at the compile-time maximum, and a build with mmap disabled
+	// accepts the PRAGMA and keeps 0 — so the number we asked for says nothing
+	// about the number in force. The debug panel reports THIS one.
+	const row = sqlite.prepare('PRAGMA mmap_size').all()[0] as { mmap_size?: number } | undefined;
+	effectiveMmapBytes = typeof row?.mmap_size === 'number' ? row.mmap_size : null;
+
 	cached = { db, sqlite };
 	return db;
+}
+
+/** Effective `mmap_size` in bytes, as SQLite reported it after the PRAGMA —
+ *  null before the first `getDb()`, or where the pragma returned no row. */
+export function mmapBytes(): number | null {
+	return effectiveMmapBytes;
+}
+
+/**
+ * On-disk size of the database and its write-ahead log.
+ *
+ * Reported by the debug panel so "is the file past the mapping?" is a reading
+ * rather than an inference — the question that decides whether reads are being
+ * served from the mapping or through `read(2)`, and one nothing else in the
+ * panel can answer. The WAL is separate because it is never mapped at all: WAL
+ * frames always go through `read(2)`, so a log that has grown large is read
+ * traffic the major-fault counter cannot see, for the same reason a database
+ * past the cap is.
+ *
+ * Both are `statSync` calls on the request path. Cheap (a stat, not a read) and
+ * gated to signed-in document responses, but not free — if this ever needs to
+ * run per-API-request, cache it behind a clock.
+ */
+export function dbFileBytes(): { main: number | null; wal: number | null } {
+	const path = resolve(dbPath());
+	const size = (p: string): number | null => {
+		try {
+			return statSync(p).size;
+		} catch {
+			// Absent WAL is the normal case between checkpoints, not an error.
+			return null;
+		}
+	};
+	return { main: size(path), wal: size(`${path}-wal`) };
 }
 
 /** Close the SQLite connection (test/teardown only). */

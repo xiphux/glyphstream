@@ -169,6 +169,13 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 	let idleMs: number | null = null;
 	// Same placement rationale again: it describes the server, not this request.
 	let rssBytes: number | null = null;
+	// Where reclaimed memory came back FROM, and whether the database still fits
+	// its mapping. Both describe the server rather than this request, so they sit
+	// with uptime/rss in Environment; see the rows below for what they decide.
+	let swapBytesVal: number | null = null;
+	let dbSizeBytes: number | null = null;
+	let walSizeBytes: number | null = null;
+	let mmapSizeBytes: number | null = null;
 
 	if (!nav) {
 		load.push({
@@ -186,6 +193,10 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 		procUptimeMs = timing('proc');
 		idleMs = timing('idle');
 		rssBytes = timing('rss');
+		swapBytesVal = timing('swap');
+		dbSizeBytes = timing('dbsize');
+		walSizeBytes = timing('walsize');
+		mmapSizeBytes = timing('mmap');
 		// From fetchStart, NOT requestStart. requestStart is stamped after DNS,
 		// TCP and the TLS handshake, so measuring from there drops connection
 		// setup out of both rows — it lands in neither `Server` nor `Network`
@@ -409,6 +420,62 @@ export function buildDebugSections(s: DebugSources): DebugSection[] {
 				// squeezing a well-behaved process. The fault counter proves memory was
 				// taken back but says nothing about whose fault that is.
 				...(rssBytes !== null ? [{ label: 'Server memory', value: mib(rssBytes) }] : []),
+				// Which memory the host took, read against `Server memory` above and
+				// the fault counter under "This load". Major faults count clean
+				// file-backed pages and swapped anonymous memory alike, so a nonzero
+				// fault reading proves memory came back without saying from where —
+				// and the two have different fixes. Nonzero here means the process
+				// itself was pushed to swap, which on a NAS is the same volume the
+				// database sits on: that is the reading that argues for shrinking the
+				// anonymous footprint (SQLite's `cache_size`) or reserving memory for
+				// the container. Zero across several slow loads sends you to the page
+				// cache instead, where there is much less to do about it.
+				// Absent off Linux — /proc/self/status has no portable equivalent.
+				...(swapBytesVal !== null
+					? [
+							{
+								label: 'Server swap',
+								value: mib(swapBytesVal),
+								note:
+									swapBytesVal === 0
+										? 'none — reclaimed memory was page cache, not swap'
+										: 'of this process, currently swapped out',
+							},
+						]
+					: []),
+				// The database against the mapping actually in force, which decides
+				// how the rest of the panel should be read. SQLite serves mapped pages
+				// by touching memory — a miss is a MAJOR FAULT and the counter sees it
+				// — but anything past the mapping goes through read(2), which bills to
+				// blocked wall time and registers nothing at all. So a file larger than
+				// its mapping means the fault counter is undercounting by an unknown
+				// amount, and a big `Database` span with few faults stops being a
+				// contradiction. `mmap` is what SQLite reported after the PRAGMA, not
+				// what was requested: it clamps at a compile-time ceiling silently, and
+				// a build with mmap compiled out accepts the write and keeps 0.
+				...(dbSizeBytes !== null
+					? [
+							{
+								label: 'Database file',
+								value: mib(dbSizeBytes),
+								note: [
+									mmapSizeBytes === null
+										? null
+										: mmapSizeBytes === 0
+											? 'not mapped — every read goes through read(2)'
+											: dbSizeBytes <= mmapSizeBytes
+												? `mapped in full (${mib(mmapSizeBytes)} cap)`
+												: `${mib(mmapSizeBytes)} mapped — the rest reads through read(2)`,
+									// The WAL is never mapped at whatever the cap is, so its
+									// reads are always read(2). Worth seeing when it has grown:
+									// that is invisible I/O the fault counter cannot report.
+									walSizeBytes === null || walSizeBytes === 0 ? null : `WAL ${mib(walSizeBytes)}`,
+								]
+									.filter((part): part is string => part !== null)
+									.join(' · '),
+							},
+						]
+					: []),
 				// How long the server had gone without serving a request before this
 				// one. Reported next to uptime because it answers the question uptime
 				// cannot: a slow load on a process that has been up for a day is not a

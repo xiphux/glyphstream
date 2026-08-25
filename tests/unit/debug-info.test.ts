@@ -619,3 +619,103 @@ describe('buildDebugSections — which worker is in charge', () => {
 		expect(rows['Service worker'].note).toBe('');
 	});
 });
+
+/**
+ * The two rows added to tell page-cache pressure from swap, and to say whether
+ * the database still fits its mapping.
+ *
+ * These exist because the panel had been INFERRING both. A large `Database`
+ * span with a small `Server CPU` proves the server was waiting; the major-fault
+ * counter proves memory was fetched back. Neither says whether it came from the
+ * page cache or from swap, and neither can see a read past the mmap cap at all
+ * — `read(2)` bills to blocked wall time and registers no fault. So the shape
+ * worth pinning here is that each row states which of those is happening rather
+ * than printing a number and leaving the reader to do the arithmetic.
+ */
+describe('memory-pressure and mapping rows', () => {
+	const env = (extra: ReadonlyArray<{ name: string; duration: number }>) =>
+		rowsOf(
+			sources({
+				navigation: { ...nav, serverTiming: [{ name: 'ssr', duration: 620 }, ...extra] },
+			}),
+			'Environment',
+		);
+
+	it('says plainly when nothing is swapped, rather than printing a bare 0 MB', () => {
+		// Zero is the READING that matters most here — it's what rules swap out and
+		// sends you to the page cache — so it has to be legible as a finding rather
+		// than looking like a field that failed to populate.
+		const row = env([{ name: 'swap', duration: 0 }])['Server swap'];
+		expect(row.value).toBe('0 MB');
+		expect(row.note).toContain('page cache, not swap');
+	});
+
+	it('reports a nonzero swap level as belonging to this process', () => {
+		const row = env([{ name: 'swap', duration: 64 * 1_048_576 }])['Server swap'];
+		expect(row.value).toBe('64 MB');
+		expect(row.note).toContain('swapped out');
+	});
+
+	it('drops the swap row off Linux instead of reporting a misleading zero', () => {
+		// hooks.server.ts omits the metric entirely where /proc/self/status has no
+		// equivalent. A zero here would read as "nothing is swapped", which is a
+		// claim the panel cannot make on a host it can't measure.
+		expect(env([])['Server swap']).toBeUndefined();
+	});
+
+	it('says the database is mapped in full when it fits the cap', () => {
+		const row = env([
+			{ name: 'dbsize', duration: 40 * 1_048_576 },
+			{ name: 'mmap', duration: 256 * 1_048_576 },
+		])['Database file'];
+		expect(row.value).toBe('40 MB');
+		expect(row.note).toContain('mapped in full');
+		expect(row.note).toContain('256 MB');
+	});
+
+	it('calls out the part served through read(2) when the file outgrew the cap', () => {
+		// The regression this guards: at 30MB of mapping a 40.6MB database served
+		// its last quarter through read(2), which the fault counter cannot see. The
+		// row has to name that, or the panel keeps under-reporting I/O silently.
+		const row = env([
+			{ name: 'dbsize', duration: 41 * 1_048_576 },
+			{ name: 'mmap', duration: 30 * 1_048_576 },
+		])['Database file'];
+		expect(row.note).toContain('30 MB mapped');
+		expect(row.note).toContain('read(2)');
+	});
+
+	it('reports mmap compiled out or disabled as such, not as a 0 MB cap', () => {
+		// SQLite accepts `PRAGMA mmap_size` on a build with mmap compiled out and
+		// keeps 0. Since the panel reports the value read BACK, that case reaches
+		// here and must not render as "0 MB mapped".
+		const row = env([
+			{ name: 'dbsize', duration: 41 * 1_048_576 },
+			{ name: 'mmap', duration: 0 },
+		])['Database file'];
+		expect(row.note).toContain('not mapped');
+		expect(row.note).toContain('read(2)');
+	});
+
+	it('appends the WAL size only when there is one', () => {
+		const withWal = env([
+			{ name: 'dbsize', duration: 40 * 1_048_576 },
+			{ name: 'mmap', duration: 256 * 1_048_576 },
+			{ name: 'walsize', duration: 12 * 1_048_576 },
+		])['Database file'];
+		expect(withWal.note).toContain('WAL 12 MB');
+
+		// A checkpointed WAL is the normal steady state, and a permanent "WAL 0 MB"
+		// reads as a measurement of something rather than the absence of it.
+		const checkpointed = env([
+			{ name: 'dbsize', duration: 40 * 1_048_576 },
+			{ name: 'mmap', duration: 256 * 1_048_576 },
+			{ name: 'walsize', duration: 0 },
+		])['Database file'];
+		expect(checkpointed.note).not.toContain('WAL');
+	});
+
+	it('drops the database row entirely when the server stamped no size', () => {
+		expect(env([{ name: 'mmap', duration: 256 * 1_048_576 }])['Database file']).toBeUndefined();
+	});
+});

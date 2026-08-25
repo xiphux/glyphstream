@@ -193,10 +193,11 @@ When `Server (SSR)` is the large number, several readings narrow it down:
 
   The fault count then narrows down what it was waiting on: memory the host had
   evicted while the container sat idle, which the process then had to fetch
-  back. The database is very much included — GlyphStream maps the first 30 MB of
-  it (`PRAGMA mmap_size`, see `src/lib/server/db/client.ts`), and clean
-  file-backed pages need no swap to be reclaimed, so an idle container loses
-  them first. Check **Server uptime** before reading it, though: a process that
+  back. The database is very much included — GlyphStream memory-maps it
+  (`PRAGMA mmap_size`, see `src/lib/server/db/client.ts`), and clean file-backed
+  pages need no swap to be reclaimed, so an idle container loses them first.
+  **Server swap** and **Database file**, both below, say which memory was taken
+  and whether the whole database was mapped in the first place. Check **Server uptime** before reading it, though: a process that
   is seconds old faults in its own binary, its libraries and the first touch of
   that mapping no matter how healthy the host is, and no memory reservation
   changes that. The signal is a nonzero count on a process that has been _up_ for
@@ -228,17 +229,39 @@ When `Server (SSR)` is the large number, several readings narrow it down:
   that started the session, so navigating around in-app keeps showing the launch
   document's numbers regardless. A hard reload of another route is the case where
   a low number could mislead.
-  Worth knowing that only part of such a wait shows up as major faults —
-  GlyphStream maps the first 30 MB of the database file, so a database grown past
-  that size serves its tail through ordinary file reads, which cost wall time and
+  Worth knowing that only part of such a wait shows up as major faults. Reads
+  served from the memory-mapped region register a fault when they miss; anything
+  past the mapping goes through ordinary file reads, which cost wall time and
   register no fault at all. A `Database` number with no faults behind it is that
-  case.
+  case — and **Database file** below tells you whether it applies.
 - **Server memory**, in the Environment section beneath **Server uptime**, is the
   process's resident set. Read it against the major-fault count, across readings
   taken days apart: a footprint that climbs is a leak in GlyphStream, while one
   that holds steady while the fault count climbs is a healthy process being
   squeezed by a host short on memory. The fault count proves memory was
   reclaimed but says nothing about whose fault that is.
+- **Server swap**, in the Environment section, is how much of the process is
+  currently swapped out. It exists to finish the sentence the fault counter
+  starts: major faults prove memory had to be fetched back, but count evicted
+  file pages and swapped-out memory alike, and those have opposite fixes. A `0 MB`
+  reading says the host reclaimed clean file-backed pages, which is cheap and
+  largely a fact of life on a shared box. A nonzero one says the process itself
+  was written out to disk and read back — worth acting on, by giving the
+  container a memory reservation so the host stops choosing it, or by reducing
+  what GlyphStream keeps in anonymous memory. The row is absent on non-Linux
+  hosts, where there is nothing to read it from; it is never shown as a
+  misleading zero.
+- **Database file**, in the Environment section, is the database's size on disk
+  against the memory mapping actually in force, plus the write-ahead log when one
+  has built up. This is what decides how to read `Database` and the fault count
+  above it. While the file fits its mapping the row says so, and a slow read
+  shows up as a major fault. Once the file outgrows the mapping the row names the
+  part that doesn't fit, and reads to that part go through `read(2)` — billed to
+  wall time, invisible to the fault counter. The WAL is never mapped at all, so a
+  log that has grown large is more of the same invisible I/O. The mapping figure
+  is what SQLite reported back rather than what GlyphStream asked for: it clamps
+  silently at a compile-time ceiling, and a build with mmap compiled out accepts
+  the setting and stays at zero, which the row reports as `not mapped`.
 - **Idle before this load**, in the Environment section, is how long the server
   had gone without serving anything before this request. Read it with **Server
   uptime**: a process up for a day that was busy throughout is a different
