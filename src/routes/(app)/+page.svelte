@@ -131,58 +131,55 @@
 		return () => privateView.reset();
 	});
 
-	// Apply `?model=` from the URL whenever it changes. Sidebar favorites
-	// link to `/?model=…`, and SvelteKit SPA-navigates between favorites
-	// without remounting — so this needs to re-run on every URL change,
-	// not just initial mount. The customModels/models lookup is untracked
-	// so the effect's only dep is the URL value itself; otherwise a
-	// `data.customModels` refresh would re-clobber a manually-picked
-	// selection by re-applying whatever the URL param still said.
+	// Apply `?model=` from the URL. Sidebar favorites link to `/?model=…`, and
+	// SvelteKit SPA-navigates between favorites without remounting this page, so
+	// this has to run on every navigation and not just at mount — which is what
+	// `afterNavigate` is (it fires once on enter too, so a cold load into a deep
+	// link is covered). The `?notice=` handler further down already uses it.
 	//
-	// Which is what it did, because reading `page.url` inside the effect was
-	// never a dep on the *value*: `page.url` is a `$state.raw` holding a URL
-	// object, and SvelteKit commits a `new URL(...)` on every load re-run whose
-	// data changed — every `invalidate()`, since it compares node data by
-	// reference. So the resume refresh in the (app) layout re-ran this and
-	// re-applied the param over a manual pick. Derive the param (a string, so
-	// an unchanged value doesn't propagate) and latch on the value applied, so
-	// the effect can only act when the URL actually says something new.
-	const urlModel = $derived(page.url.searchParams.get('model'));
-	let lastAppliedUrlModel: string | null = null;
-	$effect(() => {
-		if (!urlModel || urlModel === lastAppliedUrlModel) return;
-		lastAppliedUrlModel = urlModel;
-		untrack(() => {
-			if (urlModel.startsWith('custom::')) {
-				// Presets are never in the catalogue — they live on `customModels`,
-				// which the layout ships in full precisely because this kind of lookup
-				// latches. So whether the preset EXISTS is answerable immediately.
-				if (!data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))) return;
-				modelId = urlModel;
-				// Its base model is a different question. Nothing else fetches it, and
-				// without it the picker cannot render the preset at all — it drops any
-				// preset whose base is missing — so the composer would read "Choose a
-				// model…" while this very preset is selected, with the kind (and the
-				// image-required gate) defaulting to chat.
-				const baseId = baseIdOf(urlModel, data.customModels);
-				if (baseId) void catalogue.ensure([baseId]);
-				return;
-			}
-			// A base model may simply not be held yet: the client keeps a first-paint
-			// slice, not the catalogue. Resolving the id costs one small request and
-			// is the difference between honouring a deep link and silently ignoring
-			// it — this effect decides once per URL value and never revisits it.
-			// Favourites (where these links come from) are in the seed, so `ensure`
-			// returns without a request on the common path.
-			void catalogue.ensure([urlModel]).then(() => {
-				// Applied unconditionally, as the synchronous version was — the server's
-				// default has already landed by now, and the URL is the more specific
-				// instruction. The one thing re-checked is that the URL still SAYS this:
-				// tapping two favourites in quick succession would otherwise let the
-				// first one's slower resolve overwrite the second.
-				if (page.url.searchParams.get('model') !== urlModel) return;
-				if (catalogue.membership(urlModel) === 'yes') modelId = urlModel;
-			});
+	// NOT an `$effect` reading `page.url`, which is the same thing only by
+	// accident: `page.url` is a `$state.raw` holding a URL *object*, and
+	// SvelteKit publishes a fresh one on every commit — `invalidate()` included,
+	// which never navigated. So the (app) layout's resume refresh re-ran this
+	// and re-applied the param over a model the user had picked by hand, the
+	// exact clobber the old comment here said it was untracking to avoid. A
+	// navigation is what this wants, and a navigation is what it now asks for.
+	//
+	// Nothing below needs `untrack` any more, for the same reason: a callback is
+	// not a reactive context, so reading `data` or the catalogue creates no
+	// dependency there is any need to hide.
+	afterNavigate(() => {
+		const urlModel = page.url.searchParams.get('model');
+		if (!urlModel) return;
+		if (urlModel.startsWith('custom::')) {
+			// Presets are never in the catalogue — they live on `customModels`,
+			// which the layout ships in full precisely because this kind of lookup
+			// latches. So whether the preset EXISTS is answerable immediately.
+			if (!data.customModels.some((m) => m.id === urlModel.slice('custom::'.length))) return;
+			modelId = urlModel;
+			// Its base model is a different question. Nothing else fetches it, and
+			// without it the picker cannot render the preset at all — it drops any
+			// preset whose base is missing — so the composer would read "Choose a
+			// model…" while this very preset is selected, with the kind (and the
+			// image-required gate) defaulting to chat.
+			const baseId = baseIdOf(urlModel, data.customModels);
+			if (baseId) void catalogue.ensure([baseId]);
+			return;
+		}
+		// A base model may simply not be held yet: the client keeps a first-paint
+		// slice, not the catalogue. Resolving the id costs one small request and is
+		// the difference between honouring a deep link and silently ignoring it —
+		// decided once per navigation, and not revisited until the next. Favourites
+		// (where these links come from) are in the seed, so `ensure` returns
+		// without a request on the common path.
+		void catalogue.ensure([urlModel]).then(() => {
+			// Applied unconditionally, as the synchronous version was — the server's
+			// default has already landed by now, and the URL is the more specific
+			// instruction. The one thing re-checked is that the URL still SAYS this:
+			// tapping two favourites in quick succession would otherwise let the
+			// first one's slower resolve overwrite the second.
+			if (page.url.searchParams.get('model') !== urlModel) return;
+			if (catalogue.membership(urlModel) === 'yes') modelId = urlModel;
 		});
 	});
 

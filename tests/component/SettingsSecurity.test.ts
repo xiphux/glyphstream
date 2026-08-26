@@ -18,6 +18,10 @@ const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => invalidateMock(key),
 	goto: vi.fn(),
+	// The page announces its `?link=` result from an afterNavigate; nothing in
+	// this file navigates, so registering is enough — the announcement itself is
+	// covered by SettingsSecurityLinkToast.test.ts, which drives the dispatch.
+	afterNavigate: vi.fn(),
 }));
 
 // The page dynamic-imports @simplewebauthn/browser inside addPasskey().

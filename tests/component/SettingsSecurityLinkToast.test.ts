@@ -5,32 +5,43 @@
  *
  * The security page reads the OAuth link outcome off the query string, toasts
  * it, and strips the param with a raw `window.history.replaceState` — which the
- * router never sees, so SvelteKit's `page.url` keeps carrying `?link=`. That is
- * only safe while nothing re-runs the effect, and something does: `page.url` is
- * a `$state.raw` holding a URL object, and SvelteKit publishes a `new URL(...)`
- * on every load re-run whose data changed — every `invalidate()`, including the
- * (app) layout's refresh on resume. Without a latch on the value, returning to
- * a backgrounded app re-announced a link that completed long ago.
+ * router never sees, so SvelteKit's `page.url` keeps carrying `?link=` for as
+ * long as the page is mounted. That is only safe while nothing re-runs the
+ * announcement, and a COMMIT is not a navigation: `page.url` is a `$state.raw`
+ * holding a URL object that SvelteKit republishes on every load re-run,
+ * `invalidate()` included — the (app) layout fires one on every resume. Reading
+ * it from an `$effect` re-announced a link that had completed long ago.
  *
  * Lives beside SettingsSecurity.test.ts rather than in it because it needs the
- * `$app/state` page stubbed, and that mock is file-wide.
+ * `$app/state` page and `$app/navigation` stubbed, and those mocks are
+ * file-wide.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { flushSync } from 'svelte';
-import type { createPageStub } from './_helpers/page-state-stub.svelte';
+import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
-const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createPageStub> | null }));
+const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
 
-vi.mock('$app/navigation', () => ({ invalidate: vi.fn(async () => {}), goto: vi.fn() }));
+function stub() {
+	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
+	return holder.current;
+}
+
+vi.mock('$app/navigation', () => ({
+	invalidate: vi.fn(async () => {}),
+	goto: vi.fn(),
+	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
+		stub().afterNavigate(callback),
+}));
 vi.mock('@simplewebauthn/browser', () => ({
 	startRegistration: vi.fn(),
 	startAuthentication: vi.fn(),
 }));
 vi.mock('$app/state', async () => {
-	const { createPageStub } = await import('./_helpers/page-state-stub.svelte');
-	holder.current = createPageStub('http://localhost:3000/settings/security?link=success');
+	const { createKitStub } = await import('./_helpers/kit-runtime-stub.svelte');
+	holder.current = createKitStub('http://localhost:3000/settings/security?link=success');
 	return { page: holder.current.page, navigating: holder.current.navigating };
 });
 
@@ -54,12 +65,11 @@ const data = {
 	currentSessionId: null,
 };
 
-function stub() {
-	if (!holder.current) throw new Error('$app/state stub was never built');
-	return holder.current;
-}
-
 beforeEach(() => {
+	// `vi.spyOn` on an already-spied method hands back the SAME mock, call
+	// history included — without this the second test starts at one call.
+	vi.restoreAllMocks();
+	stub().reset();
 	globalThis.fetch = vi.fn(async () => new Response('{}', { status: 200 }));
 });
 
@@ -67,15 +77,33 @@ describe('security page — ?link= result toast', () => {
 	it('announces the result once, and not again when a refresh re-commits the URL', () => {
 		const success = vi.spyOn(toast, 'success');
 		render(SecurityPage, { props: { data: data as never } });
+		// The provider redirects the browser here, so the page arrives on an
+		// `enter` navigation carrying the param.
+		stub().enter();
 		flushSync();
 		expect(success).toHaveBeenCalledTimes(1);
 		expect(success).toHaveBeenCalledWith('Provider linked.');
 
-		// What `invalidate()` commits: same href — the raw replaceState above
-		// never reached the router — with a new URL object.
+		// What `invalidate()` commits: same href — the raw replaceState in the
+		// page never reached the router, so `page.url` still says `link=success`
+		// — with a new URL object, and no navigation.
 		stub().refreshData();
 		flushSync();
 		stub().refreshData();
+		flushSync();
+		expect(success).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not replay it on a later navigation back to the stripped URL', () => {
+		const success = vi.spyOn(toast, 'success');
+		render(SecurityPage, { props: { data: data as never } });
+		stub().enter();
+		flushSync();
+		expect(success).toHaveBeenCalledTimes(1);
+
+		// A real navigation builds its URL from the link that was followed, which
+		// carries no `?link=` — so there is nothing left to announce.
+		stub().navigate('http://localhost:3000/settings/security');
 		flushSync();
 		expect(success).toHaveBeenCalledTimes(1);
 	});

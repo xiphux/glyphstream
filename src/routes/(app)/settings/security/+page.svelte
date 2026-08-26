@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
-	import { invalidate } from '$app/navigation';
+	import { afterNavigate, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
@@ -35,21 +35,19 @@
 
 	// Surface the link-flow result from the callback's ?link= redirect.
 	//
-	// Latched on the value, not merely triggered by the effect running. Two
-	// things make an untracked re-run possible: `page.url` is a `$state.raw`
-	// holding a URL object, so SvelteKit publishes a `new URL(...)` on every
-	// load re-run whose data changed — every `invalidate()`, including the
-	// (app) layout's resume refresh — and the strip below is a raw
-	// `history.replaceState`, which the router never sees, so `page.url` still
-	// carries `?link=` afterwards. Without the latch, coming back to a
-	// backgrounded app on this page re-toasts the result of a link that
-	// completed long ago.
-	let toastedLinkResult: string | null = null;
-	const linkResult = $derived(page.url.searchParams.get('link'));
-	$effect(() => {
-		const result = linkResult;
-		if (!result || result === toastedLinkResult) return;
-		toastedLinkResult = result;
+	// `afterNavigate`, not an `$effect` reading `page.url`. The provider sends
+	// the browser here with the param attached, so this fires on enter, once —
+	// whereas an effect fires on every COMMIT, and `page.url` is a `$state.raw`
+	// holding a URL object that SvelteKit republishes on each one, `invalidate()`
+	// included. That made the announcement outlive its link flow: the strip below
+	// is a raw `history.replaceState` the router never sees, so `page.url` keeps
+	// carrying `?link=` for as long as this page is mounted, and the (app)
+	// layout's resume refresh re-toasted a link that had completed long ago.
+	// Any later navigation here carries a URL built from the link that was
+	// followed, which no longer has the param.
+	afterNavigate(() => {
+		const result = page.url.searchParams.get('link');
+		if (!result) return;
 		if (result === 'success') toast.success('Provider linked.');
 		else if (result === 'already_linked') toast.error('That provider is already linked.');
 		else if (result === 'invalid_state') toast.error('Link attempt failed (state mismatch).');
