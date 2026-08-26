@@ -100,14 +100,25 @@ const selected = () => screen.getByLabelText('Select model').textContent?.trim()
 
 /** Render, then dispatch the `enter` navigation a hydrated document gets. */
 function renderPage() {
-	render(Harness, { props: { data } });
+	const { rerender } = render(Harness, { props: { data } });
 	stub().enter();
+	/**
+	 * Both halves of what `invalidate()` commits: the stub republishes `page.*`,
+	 * and `rerender` pushes the fresh `data` prop that Kit's `root.$set` would —
+	 * a new object every time, as Kit hands over. Neither is a navigation.
+	 */
+	return {
+		refresh: async () => {
+			stub().refreshData();
+			await rerender({ data: { ...data } });
+		},
+	};
 }
 
 describe('new-chat page — ?model= from the URL', () => {
-	it('applies the param, then leaves a manual pick alone across a page republish', async () => {
+	it('applies the param, then leaves a manual pick alone across a data refresh', async () => {
 		const user = userEvent.setup();
-		renderPage();
+		const page = renderPage();
 		// The apply resolves the id through the catalogue first, so it lands a
 		// microtask after mount rather than synchronously.
 		await vi.waitFor(() => expect(selected()).toContain('alpha'));
@@ -116,10 +127,9 @@ describe('new-chat page — ?model= from the URL', () => {
 		await user.click(screen.getByRole('option', { name: /beta/ }));
 		expect(selected()).toContain('beta');
 
-		// What `invalidate()` commits: same href, new URL + data objects, no
+		// What `invalidate()` commits: same href, new URL and new data, no
 		// navigation. The query string still says `alpha`; the user's pick wins.
-		stub().refreshData({ conversations: [] });
-		flushSync();
+		await page.refresh();
 		// A re-applied param would land through the same async catalogue resolve
 		// the initial apply used, so give it more than a microtask to appear.
 		await new Promise((resolve) => setTimeout(resolve, 20));

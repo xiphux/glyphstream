@@ -32,14 +32,47 @@ class PageStub {
 	error = $state.raw<unknown>(null);
 }
 
-class NavigatingStub {
-	current = $state.raw<unknown>(null);
-	to = $state.raw<{ url: URL } | null>(null);
+/** Where a navigation came from or went to, trimmed to what components read. */
+export interface StubNavigationTarget {
+	url: URL;
 }
 
-/** The shape `afterNavigate` callbacks receive, trimmed to what we dispatch. */
+/** The shape `afterNavigate` callbacks receive. */
 export interface StubNavigation {
-	type: 'enter' | 'link';
+	from: StubNavigationTarget | null;
+	to: StubNavigationTarget | null;
+	/** The real union — a callback branching on `popstate` must be expressible. */
+	type: 'enter' | 'link' | 'goto' | 'form' | 'popstate';
+	willUnload: boolean;
+	complete: Promise<void>;
+}
+
+/**
+ * `$app/state`'s `navigating`, non-null only while a navigation is in flight.
+ *
+ * Everything derives from one field, as it does in Kit — a test that models an
+ * in-flight navigation writes `current` and the rest follows, rather than
+ * setting `to` and wondering why `type` disagrees. The real object hides
+ * `current` behind a getter that throws in DEV; here it is the writable field,
+ * which is the only workable inversion for a stub.
+ */
+class NavigatingStub {
+	current = $state.raw<StubNavigation | null>(null);
+	get from() {
+		return this.current?.from ?? null;
+	}
+	get to() {
+		return this.current?.to ?? null;
+	}
+	get type() {
+		return this.current?.type ?? null;
+	}
+	get willUnload() {
+		return this.current?.willUnload ?? false;
+	}
+	get complete() {
+		return this.current?.complete ?? null;
+	}
 }
 
 export function createKitStub(href: string, data: Record<string, unknown> = {}) {
@@ -55,8 +88,12 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 		page.data = { ...page.data, ...patch };
 	}
 
-	function dispatch(type: StubNavigation['type']) {
-		for (const cb of [...afterNavigateCallbacks]) cb({ type });
+	function target(): StubNavigationTarget {
+		return { url: new URL(page.url.href) };
+	}
+
+	function dispatch(navigation: StubNavigation) {
+		for (const cb of [...afterNavigateCallbacks]) cb(navigation);
 	}
 
 	return {
@@ -77,6 +114,7 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 		 */
 		reset(nextHref: string = href, nextData: Record<string, unknown> = data) {
 			afterNavigateCallbacks.clear();
+			navigating.current = null;
 			page.url = new URL(nextHref);
 			page.data = nextData;
 		},
@@ -88,17 +126,39 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 		afterNavigate(callback: (nav: StubNavigation) => void) {
 			afterNavigateCallbacks.add(callback);
 		},
-		/** The initial load's `type: 'enter'` dispatch, after hydration. */
+		/**
+		 * The initial load's `type: 'enter'` dispatch, after hydration. `from` is
+		 * null and `navigating` stays null, as on the real enter path.
+		 */
 		enter() {
-			dispatch('enter');
+			dispatch({
+				from: null,
+				to: target(),
+				type: 'enter',
+				willUnload: false,
+				complete: Promise.resolve(),
+			});
 		},
 		/**
 		 * A completed navigation: commit, then dispatch — Kit's order. Pass the
 		 * current href to model tapping a link for the page you are already on.
 		 */
-		navigate(nextHref: string) {
+		navigate(nextHref: string, type: Exclude<StubNavigation['type'], 'enter'> = 'link') {
+			const from = target();
 			commit(nextHref);
-			dispatch('link');
+			// Kit clears `navigating` AFTER the callbacks, so it is still readable
+			// from inside one — that's what the sidebar's pending-link highlight
+			// reads. Restored to null once the dispatch is done.
+			const navigation: StubNavigation = {
+				from,
+				to: target(),
+				type,
+				willUnload: false,
+				complete: Promise.resolve(),
+			};
+			navigating.current = navigation;
+			dispatch(navigation);
+			navigating.current = null;
 		},
 		/**
 		 * The half of `invalidate()` this stub models: republish `page.*`. No

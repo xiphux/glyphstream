@@ -102,7 +102,7 @@ const layoutData = {
 };
 
 function renderLayout() {
-	render(AppLayout, {
+	const { rerender } = render(AppLayout, {
 		props: {
 			data: layoutData as never,
 			children: createRawSnippet(() => ({ render: () => '<main>page</main>' })),
@@ -117,6 +117,15 @@ function renderLayout() {
 	return {
 		aside,
 		isOpen: () => aside.classList.contains('translate-x-0'),
+		/**
+		 * Both halves of what `invalidate()` commits: the stub republishes
+		 * `page.*`, and `rerender` pushes the fresh `data` prop that Kit's
+		 * `root.$set` would. Neither is a navigation.
+		 */
+		refresh: async (patch: Record<string, unknown> = {}) => {
+			stub().refreshData(patch);
+			await rerender({ data: { ...layoutData, ...patch } as never });
+		},
 	};
 }
 
@@ -154,7 +163,7 @@ describe('mobile drawer', () => {
 		expect(drawer.isOpen()).toBe(false);
 	});
 
-	it('stays open when an invalidation republishes the page at the same URL', async () => {
+	it('stays open when an invalidation commits fresh data at the same URL', async () => {
 		const user = userEvent.setup();
 		const drawer = renderLayout();
 
@@ -162,16 +171,14 @@ describe('mobile drawer', () => {
 		expect(drawer.isOpen()).toBe(true);
 
 		// What `invalidate('app:conversations')` commits on resume: same href,
-		// new URL + data objects, no navigation. The drawer they just opened
-		// must still be open.
-		stub().refreshData({ conversations: [] });
-		flushSync();
+		// new URL and new data, no navigation. The drawer they just opened must
+		// still be open.
+		await drawer.refresh({ conversations: [] });
 		expect(drawer.isOpen()).toBe(true);
 
 		// A second one — the deferred-payload pull and the resume refresh both
 		// land, and neither may take the drawer down.
-		stub().refreshData({ conversations: [] });
-		flushSync();
+		await drawer.refresh({ conversations: [] });
 		expect(drawer.isOpen()).toBe(true);
 	});
 
@@ -184,8 +191,7 @@ describe('mobile drawer', () => {
 		await user.click(screen.getByLabelText('Open menu'));
 		expect(drawer.isOpen()).toBe(true);
 
-		stub().refreshData();
-		flushSync();
+		await drawer.refresh();
 
 		// Sidebar favourites navigate to `/?model=…`, which changes only the
 		// search string when the user is already on `/`.
