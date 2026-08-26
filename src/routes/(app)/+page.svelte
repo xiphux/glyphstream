@@ -138,9 +138,20 @@
 	// so the effect's only dep is the URL value itself; otherwise a
 	// `data.customModels` refresh would re-clobber a manually-picked
 	// selection by re-applying whatever the URL param still said.
+	//
+	// Which is what it did, because reading `page.url` inside the effect was
+	// never a dep on the *value*: `page.url` is a `$state.raw` holding a URL
+	// object, and SvelteKit commits a `new URL(...)` on every load re-run whose
+	// data changed — every `invalidate()`, since it compares node data by
+	// reference. So the resume refresh in the (app) layout re-ran this and
+	// re-applied the param over a manual pick. Derive the param (a string, so
+	// an unchanged value doesn't propagate) and latch on the value applied, so
+	// the effect can only act when the URL actually says something new.
+	const urlModel = $derived(page.url.searchParams.get('model'));
+	let lastAppliedUrlModel: string | null = null;
 	$effect(() => {
-		const urlModel = page.url.searchParams.get('model');
-		if (!urlModel) return;
+		if (!urlModel || urlModel === lastAppliedUrlModel) return;
+		lastAppliedUrlModel = urlModel;
 		untrack(() => {
 			if (urlModel.startsWith('custom::')) {
 				// Presets are never in the catalogue — they live on `customModels`,

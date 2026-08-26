@@ -85,17 +85,29 @@ code we wrote — surface normally. Drop the filter when bits-ui or
 Svelte addresses the underlying source.
 
 **`$app/*` mocking**. SvelteKit's `$app/state`, `$app/navigation`, and
-friends aren't auto-stubbed. The first component test that imports a
-component depending on them will need something like:
+friends aren't auto-stubbed, so a component that imports them needs a
+`vi.mock` per test file. For `$app/state`, use
+`_helpers/page-state-stub.svelte.ts` rather than a plain object:
 
 ```ts
-vi.mock('$app/state', () => ({
-	page: { url: new URL('http://localhost/'), data: {} },
-}));
+// The component under test imports `$app/state` at module scope, so the stub
+// has to be built inside the factory and handed back through a hoisted holder.
+const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createPageStub> | null }));
+vi.mock('$app/state', async () => {
+	const { createPageStub } = await import('./_helpers/page-state-stub.svelte');
+	holder.current = createPageStub('http://localhost:3000/chat/abc');
+	return { page: holder.current.page, navigating: holder.current.navigating };
+});
 ```
 
-Doing it once and exporting from a helper here is fine when more than
-one test needs the same stub.
+A plain object is inert, and the difference matters beyond "the DOM
+doesn't update": the real `page` holds `$state.raw`, so a load re-run
+publishes a NEW `URL` and `data` even at an unchanged href — which is
+what an effect reading `page.url` actually subscribes to. `navigate()`
+and `refreshData()` on the stub are those two cases, kept apart
+deliberately. Match happy-dom's origin (`http://localhost:3000`) if the
+component touches `history.replaceState`, which rejects a cross-origin
+URL.
 
 **`$state` mutations need `await tick()` before assertions**. Svelte 5
 batches reactive updates, so directly mutating a `$state` field (e.g.

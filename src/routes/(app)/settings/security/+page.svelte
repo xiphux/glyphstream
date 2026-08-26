@@ -34,9 +34,22 @@
 	let linkBusy = $state(false);
 
 	// Surface the link-flow result from the callback's ?link= redirect.
+	//
+	// Latched on the value, not merely triggered by the effect running. Two
+	// things make an untracked re-run possible: `page.url` is a `$state.raw`
+	// holding a URL object, so SvelteKit publishes a `new URL(...)` on every
+	// load re-run whose data changed — every `invalidate()`, including the
+	// (app) layout's resume refresh — and the strip below is a raw
+	// `history.replaceState`, which the router never sees, so `page.url` still
+	// carries `?link=` afterwards. Without the latch, coming back to a
+	// backgrounded app on this page re-toasts the result of a link that
+	// completed long ago.
+	let toastedLinkResult: string | null = null;
+	const linkResult = $derived(page.url.searchParams.get('link'));
 	$effect(() => {
-		const result = page.url.searchParams.get('link');
-		if (!result) return;
+		const result = linkResult;
+		if (!result || result === toastedLinkResult) return;
+		toastedLinkResult = result;
 		if (result === 'success') toast.success('Provider linked.');
 		else if (result === 'already_linked') toast.error('That provider is already linked.');
 		else if (result === 'invalid_state') toast.error('Link attempt failed (state mismatch).');

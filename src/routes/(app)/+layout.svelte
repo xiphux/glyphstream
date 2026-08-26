@@ -501,15 +501,35 @@
 		localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
 	});
 
+	// The URL this effect last acted on. Compared rather than merely depended
+	// on, because "the effect ran" is NOT the same question as "the URL
+	// changed": `page.url` is a `$state.raw` holding a URL *object*, and
+	// SvelteKit hands back a `new URL(...)` on every load re-run whose data
+	// changed — which is every `invalidate()`, since it compares node data by
+	// reference. So reading `page.url` inside an effect subscribes it to that
+	// object's identity, and the effect fires when nothing navigated at all.
+	//
+	// That is a background data refresh reaching in and closing the drawer the
+	// user just opened. Two of them land right after an app resume: the
+	// post-first-paint pull of the deferred layout payload, and
+	// `refreshConversations` on visibilitychange/pageshow — each one a network
+	// round trip after the tap that opened the drawer, which is why it only
+	// reproduced when the drawer was opened within a beat of the app coming
+	// back, and never once things had settled.
+	//
+	// Both the pathname and the search string are part of the key: sidebar
+	// favorites navigate via `/?model=...`, which changes only the search when
+	// the user is already on `/`, so a pathname-only key would leave the drawer
+	// open after tapping a favorite on mobile.
+	//
+	// Not `$state` — nothing renders it, and a write here must not re-trigger
+	// this effect.
+	let lastUrlKey: string | null = null;
+	const urlKey = $derived(currentPath + page.url.search);
 	$effect(() => {
-		// Re-runs whenever the URL changes; collapse the mobile drawer.
-		// Both pathname and search are tracked: sidebar favorites navigate
-		// via `/?model=...` which only changes the search string when the
-		// user is already on `/`, so pathname alone would leave the drawer
-		// open after tapping a favorite on mobile.
-		void currentPath;
-		void page.url.search;
-		// untrack the read so this effect's dep set stays as just the URL.
+		if (urlKey === lastUrlKey) return;
+		lastUrlKey = urlKey;
+		// untrack the read so this effect's dep set stays as just the URL key.
 		// Otherwise dismissing the overflow menu would itself trigger the
 		// close — we only want URL changes to do that.
 		if (untrack(() => openOverflowFor) !== null) return;

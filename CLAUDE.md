@@ -279,6 +279,23 @@ exact-match `apple-touch-startup-image` media query.
   is the regression guard, and shows the shape such a test needs (happy-dom +
   a real `$effect` subscriber; reading a `$derived` outside an effect owner
   recomputes eagerly and hides the bug).
+- **An `$effect` that reads `page.url` tracks the URL OBJECT, not the URL.**
+  `page.url` / `page.data` / `page.params` are `$state.raw`, and SvelteKit
+  commits a `new URL(...)` plus fresh `data` on every load re-run whose data
+  changed — which is every `invalidate()`, since Kit compares node data by
+  reference. So the effect fires when nothing navigated, and a _background_
+  refresh reaches in: the post-first-paint deferred pull and the resume
+  `invalidate('app:conversations')` both land a network round trip after the
+  user's last tap. That closed the mobile drawer moments after they opened it
+  on an iOS PWA resume, re-applied `?model=` over a hand-picked model, and
+  re-toasted a `?link=` that finished long ago. Read the VALUE through a
+  `$derived` (an unchanged string doesn't propagate) _and_ latch on it, so the
+  effect acts on a real change rather than on "the effect ran" — a later read
+  of `page.something` can otherwise re-subscribe it silently. Nothing else
+  catches this: it type-checks, it lints, and both spellings return the same
+  string. `tests/component/{MobileDrawerBackgroundRefresh,NewChatUrlModel,SettingsSecurityLinkToast}.test.ts`
+  hold the line; `tests/component/_helpers/page-state-stub.svelte.ts` is how a
+  test commits a URL the way Kit does.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.
