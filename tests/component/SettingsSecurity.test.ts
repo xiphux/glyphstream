@@ -17,7 +17,9 @@ import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => invalidateMock(key),
-	// The page strips `?link=` with a replacing goto; it awaits the result.
+	// The page strips `?link=` with a replacing goto and attaches a `.catch`, so
+	// the mock returns a thenable. Defensive here — nothing in this file
+	// dispatches the afterNavigate that would call it.
 	goto: vi.fn(async () => {}),
 	// The page announces its `?link=` result from an afterNavigate; nothing in
 	// this file navigates, so registering is enough — the announcement itself is

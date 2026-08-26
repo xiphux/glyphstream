@@ -38,27 +38,32 @@
 	// `afterNavigate`, not an `$effect` reading `page.url`. The provider sends
 	// the browser here with the param attached, so this fires on enter, once —
 	// whereas an effect fires on every COMMIT, and `page.url` is a `$state.raw`
-	// holding a URL object that SvelteKit republishes on each one, `invalidate()`
-	// included. That made the announcement outlive its link flow: the strip below
-	// is a raw `history.replaceState` the router never sees, so `page.url` keeps
-	// carrying `?link=` for as long as this page is mounted, and the (app)
-	// layout's resume refresh re-toasted a link that had completed long ago.
-	// The strip below is a replacing `goto`, and neither of the two shortcuts
-	// works here. The raw `history.replaceState` replaces the entry's state
-	// object wholesale, dropping the router's own history keys, so a later
-	// popstate onto that entry misses its scroll and snapshot restore. Kit's
-	// `replaceState` is the SHALLOW-routing API: it changes the address bar
-	// while recording the page's real URL — `?link=` and all — in the entry's
-	// `PAGE_URL_KEY`, so pressing Back onto it later replays the whole
-	// navigation and announces the link a second time. Neither one updates
-	// `page.url`, which is written only from a navigation.
+	// holding a URL object SvelteKit republishes on each one, `invalidate()`
+	// included. That made the announcement outlive its link flow: the (app)
+	// layout's resume refresh re-toasted a link completed long ago.
 	//
-	// So navigate. It costs this page's load a re-run, once, on the tail of an
-	// OAuth redirect that already paid for a full document load, and in exchange
-	// the param is gone everywhere it could be read from again. Deferred a
-	// microtask because on the initial load afterNavigate fires just *before*
-	// SvelteKit flags the router "started"; best-effort, and a lingering param
-	// only means a manual reload would re-announce.
+	// The strip is a replacing `goto`, and neither shortcut works. A raw
+	// `history.replaceState` swaps the entry's state object wholesale, dropping
+	// the router's own history keys, so a later popstate onto that entry misses
+	// its scroll and snapshot restore. Kit's `replaceState` is the SHALLOW-
+	// routing API: it rewrites the address bar while recording the page's real
+	// URL — `?link=` and all — in the entry's `PAGE_URL_KEY`, which a Back onto
+	// that entry then navigates to, announcing the link a second time. (Only
+	// once another navigation has moved the navigation index; a Back Kit still
+	// treats as shallow re-poisons `page.url` without dispatching.) Neither
+	// updates `page.url`, which is written only from a navigation.
+	//
+	// So navigate — and it is not the round trip it looks like. Nothing on this
+	// route reads `url` in a way that invalidates a node (the layout's server
+	// load touches `url.pathname` only on the unauthenticated path), so no
+	// `__data.json` is fetched and every branch node is reused: a client-side
+	// URL swap.
+	//
+	// The microtask is load-bearing, and for a sharper reason than the two
+	// deferred `replaceState`s on the new-chat page: `goto` has no not-started
+	// guard at all, so calling it before `initialize()` sets `started` re-enters
+	// that function and mounts a SECOND app root — silently, in production, not
+	// only in dev. By the next microtask `started` is true.
 	afterNavigate(() => {
 		const result = page.url.searchParams.get('link');
 		if (!result) return;
@@ -78,7 +83,7 @@
 				noScroll: true,
 				keepFocus: true,
 			}).catch(() => {
-				/* router not ready — leave the param */
+				/* same-origin and started by now — belt-and-braces */
 			});
 		});
 	});

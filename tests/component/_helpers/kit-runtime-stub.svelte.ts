@@ -35,7 +35,11 @@ class PageStub {
 /** Where a navigation came from or went to, trimmed to what components read. */
 export interface StubNavigationTarget {
 	url: URL;
-	/** `chat/[id]` reads `navigating.to?.params?.id`; supply it when it matters. */
+	/**
+	 * `chat/[id]` reads `navigating.to?.params?.id`. `navigate()` doesn't fill
+	 * this in — a test that needs it hand-builds the navigation and dispatches
+	 * through `navigating.current` itself.
+	 */
 	params?: Record<string, string>;
 }
 

@@ -4,13 +4,14 @@
  * Holds the line on the `?link=` result toast firing once per link attempt.
  *
  * The security page reads the OAuth link outcome off the query string, toasts
- * it, and strips the param with a raw `window.history.replaceState` — which the
- * router never sees, so SvelteKit's `page.url` keeps carrying `?link=` for as
- * long as the page is mounted. That is only safe while nothing re-runs the
- * announcement, and a COMMIT is not a navigation: `page.url` is a `$state.raw`
- * holding a URL object that SvelteKit republishes on every load re-run,
- * `invalidate()` included — the (app) layout fires one on every resume. Reading
- * it from an `$effect` re-announced a link that had completed long ago.
+ * it, and strips the param. Both halves have been wrong. A COMMIT is not a
+ * navigation: `page.url` is a `$state.raw` holding a URL object that SvelteKit
+ * republishes on every load re-run, `invalidate()` included — the (app) layout
+ * fires one on every resume — so reading it from an `$effect` re-announced a
+ * link completed long ago. And a strip that leaves the param on `page.url` (a
+ * raw `history.replaceState`) or records it into the history entry (Kit's
+ * shallow `replaceState`) puts the announcement back within reach of a later
+ * commit or a Back. Only a real navigation takes it off both.
  *
  * Lives beside SettingsSecurity.test.ts rather than in it because it needs the
  * `$app/state` page and `$app/navigation` stubbed, and those mocks are
@@ -31,7 +32,8 @@ function stub() {
 
 vi.mock('$app/navigation', () => ({
 	invalidate: vi.fn(async () => {}),
-	// The page strips `?link=` with a replacing goto; it awaits the result.
+	// The page strips `?link=` with a replacing goto and attaches a `.catch`,
+	// so the mock has to return a thenable.
 	goto: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
@@ -71,6 +73,10 @@ beforeEach(() => {
 	// `vi.spyOn` on an already-spied method hands back the SAME mock, call
 	// history included — without this the second test starts at one call.
 	vi.restoreAllMocks();
+	// `restoreAllMocks` doesn't touch a bare `vi.fn()` — it only restores spies
+	// — and the mock is built once per FILE, so without this the goto assertion
+	// below could resolve on the previous test's call.
+	vi.mocked(goto).mockClear();
 	stub().reset();
 	globalThis.fetch = vi.fn(async () => new Response('{}', { status: 200 }));
 });
@@ -86,9 +92,9 @@ describe('security page — ?link= result toast', () => {
 		expect(success).toHaveBeenCalledTimes(1);
 		expect(success).toHaveBeenCalledWith('Provider linked.');
 
-		// What `invalidate()` commits: same href — the raw replaceState in the
-		// page never reached the router, so `page.url` still says `link=success`
-		// — with a new URL object, and no navigation.
+		// What `invalidate()` commits: same href — the strip is mocked out here,
+		// so the stub's `page.url` still says `link=success` — with a new URL
+		// object, and no navigation.
 		stub().refreshData();
 		flushSync();
 		stub().refreshData();
@@ -103,9 +109,10 @@ describe('security page — ?link= result toast', () => {
 
 		// Deliberately a `goto`, not `replaceState`. Kit's `replaceState` is the
 		// shallow-routing API: it records the page's REAL url — `?link=` and all
-		// — in the history entry, so a later Back onto it replays the navigation
-		// and announces the link a second time. Only a navigation takes the
-		// param off `page.url` and off the entry.
+		// — in the history entry, so a Back onto it once another navigation has
+		// moved the navigation index replays that navigation and announces the
+		// link a second time. Only a real navigation takes the param off
+		// `page.url` and off the entry.
 		await vi.waitFor(() =>
 			expect(vi.mocked(goto)).toHaveBeenCalledWith(
 				'/settings/security',
