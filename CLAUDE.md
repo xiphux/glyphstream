@@ -280,25 +280,20 @@ exact-match `apple-touch-startup-image` media query.
   a real `$effect` subscriber; reading a `$derived` outside an effect owner
   recomputes eagerly and hides the bug).
 - **Closing on navigation is `afterNavigate`, never an `$effect` on `page.url`.**
-  Kit COMMITS a page — republishing `page.url` / `page.data` / `page.params`,
-  which are `$state.raw`, as fresh objects — on every load re-run, and it
-  DISPATCHES `afterNavigate` only when something navigated. Neither implies the
-  other, and both gaps have shipped bugs. An effect reading `page.url` fires on
-  a commit that never navigated, so the resume pair (`refreshConversations` plus
-  the post-first-paint deferred pull) closed the mobile drawer a round trip after
-  the user opened it, re-applied `?model=` over a hand-picked model, and
-  re-toasted a finished `?link=`. Narrowing the dep to a URL-derived string then
-  loses the other half: a navigation to the href you are already on commits an
-  equal URL with every node reused (`page_changed` is false; `load_route` stamps
-  `new URL(url)` in regardless), so nothing about the URL's value changes even
-  though the user did navigate — that one left the drawer covering the
-  conversation they had just tapped in Recents. `afterNavigate` answers the
-  question actually being asked, fires on enter too, and `_invalidate()` never
-  dispatches it. Nothing else catches either failure: both type-check, both lint,
-  and in the second case both spellings return the identical string.
+  Kit republishes `page.url` / `page.data` / `page.params` — all `$state.raw` —
+  on every commit, `invalidate()` included, and dispatches `afterNavigate` only
+  when something navigated. Neither implies the other, and both gaps have
+  shipped bugs: an effect reading `page.url` fires on a commit that never
+  navigated (the resume refresh closed the mobile drawer the user had just
+  opened, re-applied `?model=` over a hand-picked model, re-toasted a finished
+  `?link=`), while narrowing the dep to a URL-derived string misses a
+  navigation to the href you are already on — `navigate()` assigns the nav's own
+  `URL` object in before `root.$set`, so the object is fresh but the value is
+  not. `afterNavigate` fires on enter too, and `_invalidate()` never dispatches
+  it. Details at the three call sites;
   `tests/component/{MobileDrawerBackgroundRefresh,NewChatUrlModel,SettingsSecurityLinkToast}.test.ts`
-  hold the line; `tests/component/_helpers/kit-runtime-stub.svelte.ts` is what
-  lets a test commit and navigate as two separate events.
+  hold the line, and `tests/component/_helpers/kit-runtime-stub.svelte.ts` is
+  what lets a test commit and navigate as two separate events.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.

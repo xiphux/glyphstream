@@ -506,16 +506,17 @@
 	// `afterNavigate` rather than an `$effect` reading `page.url`, because those
 	// answer different questions and BOTH differences bite here. `page.url` is a
 	// `$state.raw` holding a URL *object*, and SvelteKit publishes a fresh one
-	// on every commit — including `invalidate()`, which never navigated. This
-	// app fires two of those moments after each resume (the post-first-paint
-	// pull of the deferred layout payload, and `refreshConversations` on
-	// visibilitychange/pageshow), so the effect closed the drawer a network
-	// round trip after the user opened it, and only if they opened it that
-	// quickly. Narrowing the dep to a URL-derived string then loses the other
-	// half: a navigation to the URL you are ALREADY on publishes an equal href,
-	// and `load_route` reuses every node, so nothing about the URL changes —
-	// yet tapping the active conversation in Recents, or Gallery while on
-	// Gallery, is exactly when the drawer most needs to get out of the way.
+	// on every commit — including `invalidate()`, which never navigated. Two of
+	// those land moments after a launch: the post-first-paint pull of the
+	// deferred layout payload (once per cold document) and `refreshConversations`
+	// on visibilitychange/pageshow (once per resume). Either one closed the
+	// drawer a network round trip after the user opened it, and only if they
+	// opened it that quickly. Narrowing the dep to a URL-derived string then
+	// loses the other half: a navigation to the URL you are ALREADY on reuses
+	// every node and gets the nav's own `URL` object assigned in, so the object
+	// is fresh but its value is unchanged — yet tapping the active conversation
+	// in Recents, or Gallery while on Gallery, is exactly when the drawer most
+	// needs to get out of the way.
 	//
 	// `afterNavigate` is the question actually being asked: it runs once per
 	// completed navigation, same-URL ones included, plus once on enter — and

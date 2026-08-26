@@ -105,7 +105,7 @@ function renderPage() {
 }
 
 describe('new-chat page — ?model= from the URL', () => {
-	it('applies the param, then leaves a manual pick alone across a data refresh', async () => {
+	it('applies the param, then leaves a manual pick alone across a page republish', async () => {
 		const user = userEvent.setup();
 		renderPage();
 		// The apply resolves the id through the catalogue first, so it lands a

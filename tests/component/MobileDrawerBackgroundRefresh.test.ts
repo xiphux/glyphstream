@@ -154,7 +154,7 @@ describe('mobile drawer', () => {
 		expect(drawer.isOpen()).toBe(false);
 	});
 
-	it('stays open when an invalidation commits fresh data at the same URL', async () => {
+	it('stays open when an invalidation republishes the page at the same URL', async () => {
 		const user = userEvent.setup();
 		const drawer = renderLayout();
 

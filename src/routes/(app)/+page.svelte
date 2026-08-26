@@ -148,6 +148,12 @@
 	// Nothing below needs `untrack` any more, for the same reason: a callback is
 	// not a reactive context, so reading `data` or the catalogue creates no
 	// dependency there is any need to hide.
+	//
+	// One ordering change comes with that: a callback runs after the mount
+	// effects, not before them, so on a cold deep link the fallback default
+	// below paints first and this overwrites it, where an effect declared above
+	// it used to win outright. Benign — every `modelId` consumer is idempotent —
+	// but it is why the selection can flip once on arrival.
 	afterNavigate(() => {
 		const urlModel = page.url.searchParams.get('model');
 		if (!urlModel) return;

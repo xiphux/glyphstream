@@ -101,8 +101,15 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 			dispatch('link');
 		},
 		/**
-		 * What `invalidate()` does: commit only. No navigation happened, so
-		 * nothing is dispatched — that asymmetry is the point of the stub.
+		 * The half of `invalidate()` this stub models: republish `page.*`. No
+		 * navigation happened, so nothing is dispatched — that asymmetry is the
+		 * point of the stub.
+		 *
+		 * It does NOT push fresh `data_N` props into the mounted components the
+		 * way Kit's `root.$set` does, so the rendered `data` prop stays frozen.
+		 * A test that needs a component to SEE new load data must drive
+		 * `rerender()` itself; what these assertions cover is the page-state
+		 * republication, which is what the URL-reading code subscribes to.
 		 */
 		refreshData(patch: Record<string, unknown> = {}) {
 			commit(undefined, patch);
