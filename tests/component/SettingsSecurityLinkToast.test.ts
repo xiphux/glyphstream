@@ -31,8 +31,8 @@ function stub() {
 
 vi.mock('$app/navigation', () => ({
 	invalidate: vi.fn(async () => {}),
-	goto: vi.fn(),
-	replaceState: vi.fn(),
+	// The page strips `?link=` with a replacing goto; it awaits the result.
+	goto: vi.fn(async () => {}),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 }));
@@ -47,6 +47,7 @@ vi.mock('$app/state', async () => {
 });
 
 import SecurityPage from '../../src/routes/(app)/settings/security/+page.svelte';
+import { goto } from '$app/navigation';
 import { toast } from '$lib/toast.svelte';
 
 const data = {
@@ -93,6 +94,24 @@ describe('security page — ?link= result toast', () => {
 		stub().refreshData();
 		flushSync();
 		expect(success).toHaveBeenCalledTimes(1);
+	});
+
+	it('strips the param with a replacing navigation, not a shallow one', async () => {
+		render(SecurityPage, { props: { data: data as never } });
+		stub().enter();
+		flushSync();
+
+		// Deliberately a `goto`, not `replaceState`. Kit's `replaceState` is the
+		// shallow-routing API: it records the page's REAL url — `?link=` and all
+		// — in the history entry, so a later Back onto it replays the navigation
+		// and announces the link a second time. Only a navigation takes the
+		// param off `page.url` and off the entry.
+		await vi.waitFor(() =>
+			expect(vi.mocked(goto)).toHaveBeenCalledWith(
+				'/settings/security',
+				expect.objectContaining({ replaceState: true }),
+			),
+		);
 	});
 
 	it('does not replay it on a later navigation back to the stripped URL', () => {

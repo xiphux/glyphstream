@@ -17,8 +17,8 @@ import type { PasskeySummary } from '$lib/server/db/queries/passkey';
 const invalidateMock = vi.fn<(key: string) => Promise<void>>();
 vi.mock('$app/navigation', () => ({
 	invalidate: (key: string) => invalidateMock(key),
-	goto: vi.fn(),
-	replaceState: vi.fn(),
+	// The page strips `?link=` with a replacing goto; it awaits the result.
+	goto: vi.fn(async () => {}),
 	// The page announces its `?link=` result from an afterNavigate; nothing in
 	// this file navigates, so registering is enough — the announcement itself is
 	// covered by SettingsSecurityLinkToast.test.ts, which drives the dispatch.

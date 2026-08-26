@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
-	import { afterNavigate, invalidate, replaceState } from '$app/navigation';
+	import { afterNavigate, goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
@@ -43,15 +43,22 @@
 	// is a raw `history.replaceState` the router never sees, so `page.url` keeps
 	// carrying `?link=` for as long as this page is mounted, and the (app)
 	// layout's resume refresh re-toasted a link that had completed long ago.
-	// The strip below goes through SvelteKit's `replaceState`, not the raw
-	// History API. The raw call replaces the entry's state object wholesale,
-	// dropping the router's own history keys — a later popstate onto that entry
-	// then misses its scroll and snapshot restore — and it leaves `page.url`
-	// still carrying the param, since the router never saw it. Deferred a
+	// The strip below is a replacing `goto`, and neither of the two shortcuts
+	// works here. The raw `history.replaceState` replaces the entry's state
+	// object wholesale, dropping the router's own history keys, so a later
+	// popstate onto that entry misses its scroll and snapshot restore. Kit's
+	// `replaceState` is the SHALLOW-routing API: it changes the address bar
+	// while recording the page's real URL — `?link=` and all — in the entry's
+	// `PAGE_URL_KEY`, so pressing Back onto it later replays the whole
+	// navigation and announces the link a second time. Neither one updates
+	// `page.url`, which is written only from a navigation.
+	//
+	// So navigate. It costs this page's load a re-run, once, on the tail of an
+	// OAuth redirect that already paid for a full document load, and in exchange
+	// the param is gone everywhere it could be read from again. Deferred a
 	// microtask because on the initial load afterNavigate fires just *before*
-	// SvelteKit flags the router "started", and replaceState throws until then;
-	// best-effort, and a lingering param is harmless now that nothing re-reads
-	// it without a navigation.
+	// SvelteKit flags the router "started"; best-effort, and a lingering param
+	// only means a manual reload would re-announce.
 	afterNavigate(() => {
 		const result = page.url.searchParams.get('link');
 		if (!result) return;
@@ -61,15 +68,18 @@
 		else if (result === 'exchange_failed') toast.error('Could not complete sign-in.');
 		else if (result === 'upstream_failure') toast.error('The provider is unreachable right now.');
 		else toast.error(`Link failed (${result}).`);
-		// Strip the query so a reload doesn't replay the toast.
+		// Strip the query so a reload — or a Back onto this entry — doesn't
+		// replay the toast.
 		const next = new URL(page.url);
 		next.searchParams.delete('link');
 		queueMicrotask(() => {
-			try {
-				replaceState(next.pathname + next.search + next.hash, page.state);
-			} catch {
-				/* router not ready / state unserializable — leave the param */
-			}
+			void goto(next.pathname + next.search + next.hash, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true,
+			}).catch(() => {
+				/* router not ready — leave the param */
+			});
 		});
 	});
 

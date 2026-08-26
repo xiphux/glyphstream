@@ -35,6 +35,8 @@ class PageStub {
 /** Where a navigation came from or went to, trimmed to what components read. */
 export interface StubNavigationTarget {
 	url: URL;
+	/** `chat/[id]` reads `navigating.to?.params?.id`; supply it when it matters. */
+	params?: Record<string, string>;
 }
 
 /** The shape `afterNavigate` callbacks receive. */
@@ -146,9 +148,11 @@ export function createKitStub(href: string, data: Record<string, unknown> = {}) 
 		navigate(nextHref: string, type: Exclude<StubNavigation['type'], 'enter'> = 'link') {
 			const from = target();
 			commit(nextHref);
-			// Kit clears `navigating` AFTER the callbacks, so it is still readable
-			// from inside one — that's what the sidebar's pending-link highlight
-			// reads. Restored to null once the dispatch is done.
+			// Kit clears `navigating` AFTER the callbacks, so a callback can still
+			// read it. Only a callback: set and clear are synchronous with nothing
+			// flushed between them, so no `$derived` or DOM consumer observes the
+			// window — a test that wants to see the sidebar's pending-link
+			// highlight must hold `navigating.current` itself.
 			const navigation: StubNavigation = {
 				from,
 				to: target(),
