@@ -3,7 +3,13 @@
 ## Docker
 
 Multi-stage Alpine Docker image, ~200 MB final size. Bind-mount `data/` for
-persistence and mount `config.toml` read-only:
+persistence and mount `config.toml` read-only. **Put `data/` on an SSD if you
+have one** — SQLite reads are synchronous, so every one that misses the page
+cache blocks the whole process for the length of the physical read, and on
+spinning disks that is the dominant cost of a cold load. Do not put it on an
+NFS/SMB share: SQLite's locking is unreliable over network filesystems, and
+GlyphStream memory-maps the database (see `PRAGMA mmap_size` in
+`src/lib/server/db/client.ts`), which is unreliable over them too.
 
 ```bash
 mkdir -p /srv/glyphstream/{data,imports}
