@@ -518,6 +518,15 @@
 		// load afterNavigate fires just *before* SvelteKit flags the router
 		// "started", and replaceState throws until then; by the next microtask
 		// it's safe. Best-effort — a lingering fragment is harmless.
+		//
+		// `replaceState` and not a `goto`, unlike the `?notice=` strip below,
+		// and the difference is this handler's FIRST line. Kit's `replaceState`
+		// records the page's pre-strip URL in the history entry, so a later Back
+		// onto it restores `page.url` with the fragment still attached while the
+		// address bar stays clean — and what this reads is the address bar. A
+		// navigation would buy nothing and cost a focus reset on every
+		// share-sheet entry. (Nothing here may start reading `page.url.hash`
+		// without revisiting that.)
 		queueMicrotask(() => {
 			try {
 				replaceState(window.location.pathname + window.location.search, page.state);
@@ -529,9 +538,30 @@
 
 	// Surface a `?notice=` handed to us by a load function that redirected
 	// here instead of erroring — today, a chat route whose conversation is
-	// gone. Strip the param afterwards so a refresh doesn't replay the toast;
-	// same deferred replaceState dance as the fragment above, and other params
-	// (`?model=`) are preserved.
+	// gone. Strip the param afterwards so nothing replays the toast; other
+	// params (`?model=`) are preserved.
+	//
+	// A replacing `goto`, where the fragment handler above correctly uses
+	// `replaceState`, because this one reads `page.url` and that one reads the
+	// address bar. Kit's `replaceState` is the shallow-routing API: it rewrites
+	// the bar while recording the page's REAL url — `?notice=` included — in the
+	// entry's `PAGE_URL_KEY`, and never updates `page.url`. So a Back onto that
+	// entry once another navigation has moved the navigation index takes Kit's
+	// full popstate path, which restores `page.url` from `PAGE_URL_KEY` and
+	// dispatches afterNavigate: the toast fires again, and because this handler
+	// then re-strips, it re-poisons the entry and does it again on every Back
+	// and Forward, forever. The user gets an error about a conversation they
+	// deleted long ago, from a page whose URL never showed the param.
+	//
+	// A navigation writes a fresh entry with no `PAGE_URL_KEY` at all, and
+	// updates `page.url`. It is cheap here: nothing on this route reads `url` in
+	// a way that invalidates a node, so no `__data.json` is fetched. `keepFocus`
+	// is load-bearing, not decoration — the composer's autofocus is a MOUNT
+	// effect and won't re-run on a same-route navigation, so without it the goto
+	// would blur the box this page exists to put the cursor in. The target keeps
+	// using `window.location.hash` rather than `page.url`'s: by now the handler
+	// above has stripped the fragment from the bar, and re-injecting it would
+	// re-trigger that handler for nothing.
 	afterNavigate(() => {
 		const message = noticeMessage(page.url.searchParams.get('notice'));
 		if (!message) return;
@@ -540,11 +570,13 @@
 		params.delete('notice');
 		const query = params.size > 0 ? `?${params}` : '';
 		queueMicrotask(() => {
-			try {
-				replaceState(page.url.pathname + query + window.location.hash, page.state);
-			} catch {
-				/* router not ready / state unserializable — leave the param */
-			}
+			void goto(page.url.pathname + query + window.location.hash, {
+				replaceState: true,
+				noScroll: true,
+				keepFocus: true,
+			}).catch(() => {
+				/* same-origin and started by now — belt-and-braces */
+			});
 		});
 	});
 
