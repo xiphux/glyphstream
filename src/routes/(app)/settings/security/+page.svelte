@@ -1,6 +1,6 @@
 <script lang="ts">
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
-	import { afterNavigate, invalidate } from '$app/navigation';
+	import { afterNavigate, invalidate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Check, KeyRound, Laptop, Pencil, Plus, Trash2, X } from '@lucide/svelte';
 	import ProviderIcon from '$lib/components/ProviderIcon.svelte';
@@ -43,8 +43,15 @@
 	// is a raw `history.replaceState` the router never sees, so `page.url` keeps
 	// carrying `?link=` for as long as this page is mounted, and the (app)
 	// layout's resume refresh re-toasted a link that had completed long ago.
-	// Any later navigation here carries a URL built from the link that was
-	// followed, which no longer has the param.
+	// The strip below goes through SvelteKit's `replaceState`, not the raw
+	// History API. The raw call replaces the entry's state object wholesale,
+	// dropping the router's own history keys — a later popstate onto that entry
+	// then misses its scroll and snapshot restore — and it leaves `page.url`
+	// still carrying the param, since the router never saw it. Deferred a
+	// microtask because on the initial load afterNavigate fires just *before*
+	// SvelteKit flags the router "started", and replaceState throws until then;
+	// best-effort, and a lingering param is harmless now that nothing re-reads
+	// it without a navigation.
 	afterNavigate(() => {
 		const result = page.url.searchParams.get('link');
 		if (!result) return;
@@ -57,7 +64,13 @@
 		// Strip the query so a reload doesn't replay the toast.
 		const next = new URL(page.url);
 		next.searchParams.delete('link');
-		window.history.replaceState({}, '', next.toString());
+		queueMicrotask(() => {
+			try {
+				replaceState(next.pathname + next.search + next.hash, page.state);
+			} catch {
+				/* router not ready / state unserializable — leave the param */
+			}
+		});
 	});
 
 	const linkedProviders = $derived(

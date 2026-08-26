@@ -32,6 +32,7 @@ function stub() {
 vi.mock('$app/navigation', () => ({
 	invalidate: vi.fn(async () => {}),
 	goto: vi.fn(),
+	replaceState: vi.fn(),
 	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
 		stub().afterNavigate(callback),
 }));
