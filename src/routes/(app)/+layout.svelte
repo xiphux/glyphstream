@@ -2,7 +2,7 @@
 	import type { LayoutData } from './$types';
 	import { browser } from '$app/environment';
 	import { resolve } from '$app/paths';
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import { ModelCatalogue, setModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { reconcileSubscription } from '$lib/push-subscribe';
@@ -11,7 +11,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { goto, invalidate, invalidateAll } from '$app/navigation';
+	import { afterNavigate, goto, invalidate, invalidateAll } from '$app/navigation';
 	import { navigating, page } from '$app/state';
 	import { DropdownMenu } from 'bits-ui';
 	import Toaster from '$lib/components/Toaster.svelte';
@@ -501,38 +501,32 @@
 		localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
 	});
 
-	// The URL this effect last acted on. Compared rather than merely depended
-	// on, because "the effect ran" is NOT the same question as "the URL
-	// changed": `page.url` is a `$state.raw` holding a URL *object*, and
-	// SvelteKit hands back a `new URL(...)` on every load re-run whose data
-	// changed — which is every `invalidate()`, since it compares node data by
-	// reference. So reading `page.url` inside an effect subscribes it to that
-	// object's identity, and the effect fires when nothing navigated at all.
+	// Collapse the mobile drawer when the user navigates.
 	//
-	// That is a background data refresh reaching in and closing the drawer the
-	// user just opened. Two of them land right after an app resume: the
-	// post-first-paint pull of the deferred layout payload, and
-	// `refreshConversations` on visibilitychange/pageshow — each one a network
-	// round trip after the tap that opened the drawer, which is why it only
-	// reproduced when the drawer was opened within a beat of the app coming
-	// back, and never once things had settled.
+	// `afterNavigate` rather than an `$effect` reading `page.url`, because those
+	// answer different questions and BOTH differences bite here. `page.url` is a
+	// `$state.raw` holding a URL *object*, and SvelteKit publishes a fresh one
+	// on every commit — including `invalidate()`, which never navigated. This
+	// app fires two of those moments after each resume (the post-first-paint
+	// pull of the deferred layout payload, and `refreshConversations` on
+	// visibilitychange/pageshow), so the effect closed the drawer a network
+	// round trip after the user opened it, and only if they opened it that
+	// quickly. Narrowing the dep to a URL-derived string then loses the other
+	// half: a navigation to the URL you are ALREADY on publishes an equal href,
+	// and `load_route` reuses every node, so nothing about the URL changes —
+	// yet tapping the active conversation in Recents, or Gallery while on
+	// Gallery, is exactly when the drawer most needs to get out of the way.
 	//
-	// Both the pathname and the search string are part of the key: sidebar
-	// favorites navigate via `/?model=...`, which changes only the search when
-	// the user is already on `/`, so a pathname-only key would leave the drawer
-	// open after tapping a favorite on mobile.
-	//
-	// Not `$state` — nothing renders it, and a write here must not re-trigger
-	// this effect.
-	let lastUrlKey: string | null = null;
-	const urlKey = $derived(currentPath + page.url.search);
-	$effect(() => {
-		if (urlKey === lastUrlKey) return;
-		lastUrlKey = urlKey;
-		// untrack the read so this effect's dep set stays as just the URL key.
-		// Otherwise dismissing the overflow menu would itself trigger the
-		// close — we only want URL changes to do that.
-		if (untrack(() => openOverflowFor) !== null) return;
+	// `afterNavigate` is the question actually being asked: it runs once per
+	// completed navigation, same-URL ones included, plus once on enter — and
+	// `_invalidate()` never dispatches it.
+	afterNavigate(() => {
+		// Held open while a conversation's overflow menu is showing: the menu
+		// portals out of the drawer, so sliding the drawer away mid-navigation
+		// would leave it floating over the page (see `openOverflowFor`). Plain
+		// read — a callback is not a reactive context, so there is no dep set to
+		// keep narrow.
+		if (openOverflowFor !== null) return;
 		drawerOpen = false;
 	});
 

@@ -1,35 +1,43 @@
 /* @vitest-environment happy-dom */
 
 /**
- * Holds the line on the mobile sidebar drawer surviving a background data
- * refresh.
+ * Holds the line on when the mobile sidebar drawer closes itself.
  *
- * The drawer auto-closes on navigation — tapping a conversation should not
- * leave the drawer covering the thread it just opened. That rule lives in an
- * `$effect`, and the trap is what the effect depends on: `page.url` is a
- * `$state.raw` holding a URL *object*, and SvelteKit commits a `new URL(...)`
- * (plus new `data`) on every load re-run whose data changed — which is every
- * `invalidate()`, since it compares node data by reference. An effect that
- * reads `page.url` therefore fires when nothing navigated at all.
+ * Two events look alike from inside a component and are not: SvelteKit COMMITS
+ * a page — fresh `URL` and `data` objects into `$state.raw` fields — on every
+ * load re-run, `invalidate()` included, and DISPATCHES `afterNavigate` only
+ * when something navigated. The drawer must close on the second and sit still
+ * through the first, and each edge has drawn blood:
  *
- * Two invalidations land moments after an app resume — the post-first-paint
- * pull of the deferred layout payload, and `refreshConversations` on
- * visibilitychange/pageshow — so on the iOS PWA the drawer would close itself a
- * beat after the user opened it, but only if they opened it fast enough to
- * still be inside that window. Nothing else catches this: it type-checks, it
- * lints, and both readings return the identical string.
+ *   - A commit with no navigation is what the post-first-paint pull of the
+ *     deferred layout payload and `refreshConversations` on
+ *     visibilitychange/pageshow do, both landing a network round trip after an
+ *     app resume. An `$effect` reading `page.url` closed the drawer the user
+ *     had just opened, but only if they opened it that fast.
+ *   - A navigation to the href you are already on — the active conversation in
+ *     Recents, Gallery while on Gallery — commits an equal URL with every node
+ *     reused, so a key derived from the URL string never changes. Keying on
+ *     that string left the drawer covering the page it had just "navigated" to.
+ *
+ * Nothing else catches either one: both type-check, both lint, and in the
+ * second case both readings return the identical string.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
 import { createRawSnippet, flushSync } from 'svelte';
-import type { createPageStub } from './_helpers/page-state-stub.svelte';
+import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
 
-// The layout imports `$app/state` at module scope, so the stub has to be built
-// inside the mock factory (which runs then) and handed back through a hoisted
-// holder rather than a top-level binding.
-const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createPageStub> | null }));
+// The layout imports `$app/state` and `$app/navigation` at module scope, so the
+// stub has to be built inside the first mock factory (which runs then) and
+// handed back through a hoisted holder rather than a top-level binding.
+const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
+
+function stub() {
+	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
+	return holder.current;
+}
 
 vi.mock('$app/environment', () => ({
 	browser: true,
@@ -37,25 +45,28 @@ vi.mock('$app/environment', () => ({
 	building: false,
 	version: 'test',
 }));
-vi.mock('$app/navigation', () => ({
-	goto: vi.fn(async () => {}),
-	invalidate: vi.fn(async () => {}),
-	invalidateAll: vi.fn(async () => {}),
-	afterNavigate: vi.fn(),
-	beforeNavigate: vi.fn(),
-	replaceState: vi.fn(),
-	pushState: vi.fn(),
-	preloadData: vi.fn(async () => ({})),
-}));
 vi.mock('$app/state', async () => {
-	const { createPageStub } = await import('./_helpers/page-state-stub.svelte');
-	holder.current = createPageStub('http://localhost/chat/abc');
+	const { createKitStub } = await import('./_helpers/kit-runtime-stub.svelte');
+	holder.current = createKitStub('http://localhost/chat/abc');
 	return {
 		page: holder.current.page,
 		navigating: holder.current.navigating,
 		updated: { current: false },
 	};
 });
+vi.mock('$app/navigation', () => ({
+	goto: vi.fn(async () => {}),
+	invalidate: vi.fn(async () => {}),
+	invalidateAll: vi.fn(async () => {}),
+	// Registered against the same stub, so `navigate()` below dispatches to the
+	// layout's real callback while `refreshData()` deliberately does not.
+	afterNavigate: (callback: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
+		stub().afterNavigate(callback),
+	beforeNavigate: vi.fn(),
+	replaceState: vi.fn(),
+	pushState: vi.fn(),
+	preloadData: vi.fn(async () => ({})),
+}));
 // Both fire network work from the layout's onMount and neither is under test.
 vi.mock('$lib/push-subscribe', () => ({ reconcileSubscription: vi.fn(async () => {}) }));
 vi.mock('$lib/timezone-sync', () => ({ syncTimeZone: vi.fn(async () => {}) }));
@@ -101,18 +112,20 @@ function renderLayout() {
 	// the same element is the static sidebar (`sm:translate-x-0`).
 	const aside = document.querySelector('aside');
 	if (!aside) throw new Error('layout rendered without a sidebar');
+	// A hydrated document dispatches one `type: 'enter'` navigation.
+	stub().enter();
 	return {
 		aside,
 		isOpen: () => aside.classList.contains('translate-x-0'),
 	};
 }
 
-const stub = () => {
-	if (!holder.current) throw new Error('$app/state stub was never built');
-	return holder.current;
-};
+// One stub serves the whole file, so each test starts from a fresh document.
+beforeEach(() => {
+	stub().reset();
+});
 
-describe('mobile drawer vs. background refreshes', () => {
+describe('mobile drawer', () => {
 	it('opens from the hamburger and closes on navigation', async () => {
 		const user = userEvent.setup();
 		const drawer = renderLayout();
@@ -126,6 +139,21 @@ describe('mobile drawer vs. background refreshes', () => {
 		expect(drawer.isOpen()).toBe(false);
 	});
 
+	it('closes on a navigation to the URL it is already on', async () => {
+		const user = userEvent.setup();
+		const drawer = renderLayout();
+
+		await user.click(screen.getByLabelText('Open menu'));
+		expect(drawer.isOpen()).toBe(true);
+
+		// Tapping the active conversation in Recents. Kit commits an equal href
+		// with every node reused, so nothing about the URL's value changes — but
+		// the user did navigate, and the drawer is covering where they went.
+		stub().navigate('http://localhost/chat/abc');
+		flushSync();
+		expect(drawer.isOpen()).toBe(false);
+	});
+
 	it('stays open when an invalidation commits fresh data at the same URL', async () => {
 		const user = userEvent.setup();
 		const drawer = renderLayout();
@@ -134,8 +162,8 @@ describe('mobile drawer vs. background refreshes', () => {
 		expect(drawer.isOpen()).toBe(true);
 
 		// What `invalidate('app:conversations')` commits on resume: same href,
-		// new URL + data objects. The user has not navigated, so the drawer they
-		// just opened must still be open.
+		// new URL + data objects, no navigation. The drawer they just opened
+		// must still be open.
 		stub().refreshData({ conversations: [] });
 		flushSync();
 		expect(drawer.isOpen()).toBe(true);
