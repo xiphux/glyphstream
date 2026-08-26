@@ -86,28 +86,45 @@ Svelte addresses the underlying source.
 
 **`$app/*` mocking**. SvelteKit's `$app/state`, `$app/navigation`, and
 friends aren't auto-stubbed, so a component that imports them needs a
-`vi.mock` per test file. For `$app/state`, use
-`_helpers/page-state-stub.svelte.ts` rather than a plain object:
+`vi.mock` per test file. Use `_helpers/kit-runtime-stub.svelte.ts`
+rather than plain objects:
 
 ```ts
 // The component under test imports `$app/state` at module scope, so the stub
 // has to be built inside the factory and handed back through a hoisted holder.
-const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createPageStub> | null }));
+const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
+function stub() {
+	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
+	return holder.current;
+}
 vi.mock('$app/state', async () => {
-	const { createPageStub } = await import('./_helpers/page-state-stub.svelte');
-	holder.current = createPageStub('http://localhost:3000/chat/abc');
+	const { createKitStub } = await import('./_helpers/kit-runtime-stub.svelte');
+	holder.current = createKitStub('http://localhost:3000/chat/abc');
 	return { page: holder.current.page, navigating: holder.current.navigating };
 });
+vi.mock('$app/navigation', () => ({
+	afterNavigate: (cb: Parameters<ReturnType<typeof createKitStub>['afterNavigate']>[0]) =>
+		stub().afterNavigate(cb),
+	goto: vi.fn(),
+	// …whatever else the component imports
+}));
+beforeEach(() => stub().reset());
 ```
 
 A plain object is inert, and the difference matters beyond "the DOM
-doesn't update": the real `page` holds `$state.raw`, so a load re-run
-publishes a NEW `URL` and `data` even at an unchanged href — which is
-what an effect reading `page.url` actually subscribes to. `navigate()`
-and `refreshData()` on the stub are those two cases, kept apart
-deliberately. Match happy-dom's origin (`http://localhost:3000`) if the
-component touches `history.replaceState`, which rejects a cross-origin
-URL.
+doesn't update". The real `page` holds `$state.raw`, so Kit republishes
+a NEW `URL` and `data` on every load re-run even at an unchanged href —
+that identity is what an effect reading `page.url` subscribes to, and it
+is NOT the same event as a navigation. `refreshData()` (commit, no
+navigation — i.e. `invalidate()`), `navigate()` (commit then dispatch),
+and `navigate(currentHref)` (a navigation whose URL value doesn't
+change) are those cases, kept apart deliberately.
+
+The `reset()` in `beforeEach` is not optional: the mock factory runs once
+per test FILE, so tests otherwise inherit each other's URL and a
+same-href `navigate()` quietly becomes a different-href one. Match
+happy-dom's origin (`http://localhost:3000`) if the component touches
+`history.replaceState`, which rejects a cross-origin URL.
 
 **`$state` mutations need `await tick()` before assertions**. Svelte 5
 batches reactive updates, so directly mutating a `$state` field (e.g.
