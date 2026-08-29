@@ -17,7 +17,7 @@ import { resetData, sendChatFromHome } from './helpers';
  *
  * Two specs:
  *   - happy path: two image models draw candidate portraits into the compare
- *     grid; "Use this face" adopts one, moves the thread onto its branch, and
+ *     grid; "Use this avatar" adopts one, moves the thread onto its branch, and
  *     leaves the other reachable as a sibling.
  *   - recovery: reload with the comparison still unresolved. The grid has to
  *     come back from server truth AND come back as an AVATAR comparison — the
@@ -99,7 +99,7 @@ test.describe('flow: comparing avatar models', () => {
 		// The dialog hands off to the grid rather than sitting on top of it.
 		await expect(page.getByRole('dialog', { name: 'Draw the avatar' })).toBeHidden();
 		await expect(page.getByText('Comparing 2 variations')).toBeVisible();
-		const pick = page.getByRole('button', { name: 'Use this face' });
+		const pick = page.getByRole('button', { name: 'Use this avatar' });
 		await expect(pick).toHaveCount(2, { timeout: 15_000 });
 
 		// Re-roll is offered while this page still holds the reviewed prompt. (It
@@ -154,7 +154,7 @@ test.describe('flow: comparing avatar models', () => {
 	}) => {
 		const convId = await sendChatFromHome(page, 'Describe how you look');
 		await drawWithTwoModels(page);
-		await expect(page.getByRole('button', { name: 'Use this face' })).toHaveCount(2, {
+		await expect(page.getByRole('button', { name: 'Use this avatar' })).toHaveCount(2, {
 			timeout: 15_000,
 		});
 
@@ -163,7 +163,7 @@ test.describe('flow: comparing avatar models', () => {
 		await page.reload();
 
 		await expect(page.getByText('Comparing 2 variations')).toBeVisible();
-		const pick = page.getByRole('button', { name: 'Use this face' });
+		const pick = page.getByRole('button', { name: 'Use this avatar' });
 		await expect(pick).toHaveCount(2);
 		// The label is the tell: a recovered avatar grid is indistinguishable from
 		// an image fan-out by its contents, so this is the `avatar` wire flag having

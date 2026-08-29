@@ -149,7 +149,7 @@
 		{/if}
 		{#if comparing}
 			<p class="mt-1 text-xs text-fg-muted">
-				Each model draws its own portrait; you pick the one to keep.
+				Each model draws its own version; you pick the one to keep.
 			</p>
 		{/if}
 	</div>

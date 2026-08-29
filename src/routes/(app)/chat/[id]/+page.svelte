@@ -2407,7 +2407,7 @@
 							onPick={fanout.isMedia && !fanout.isAvatar
 								? undefined
 								: (c: FanoutColumn) => void fanout.pick(c)}
-							pickLabel={fanout.isAvatar ? 'Use this face' : 'Continue with this'}
+							pickLabel={fanout.isAvatar ? 'Use this avatar' : 'Continue with this'}
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
 							onRegenerate={fanout.isMedia && fanout.canRegenerate
 								? (c: FanoutColumn) => void fanout.regenerate(c)

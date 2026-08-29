@@ -225,7 +225,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// Read here rather than earlier so it stays synchronous with registerInFlight
 	// below; before `await listAllModels()` it would open a real TOCTOU window.
 	if (!isFanout && getFanoutParent(params.id, locals.user.id) === source.id) {
-		error(409, 'A portrait comparison is open here — pick one or dismiss it first.');
+		error(409, 'An avatar comparison is open here — pick one or dismiss it first.');
 	}
 
 	const inFlight = registerInFlight(

@@ -350,11 +350,11 @@ describe('FanoutColumns — an avatar comparison', () => {
 			props: {
 				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
 				onPick,
-				pickLabel: 'Use this face',
+				pickLabel: 'Use this avatar',
 				onImageClick: vi.fn(),
 			},
 		});
-		const buttons = screen.getAllByRole('button', { name: 'Use this face' });
+		const buttons = screen.getAllByRole('button', { name: 'Use this avatar' });
 		expect(buttons).toHaveLength(2);
 		await userEvent.click(buttons[1]);
 		expect(onPick.mock.calls[0][0].branchId).toBe('p2');
@@ -367,12 +367,12 @@ describe('FanoutColumns — an avatar comparison', () => {
 			props: {
 				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
 				onPick: vi.fn(),
-				pickLabel: 'Use this face',
+				pickLabel: 'Use this avatar',
 				onDiscard: vi.fn(),
 				onImageClick: vi.fn(),
 			},
 		});
-		expect(screen.getAllByRole('button', { name: 'Use this face' })).toHaveLength(2);
+		expect(screen.getAllByRole('button', { name: 'Use this avatar' })).toHaveLength(2);
 		expect(screen.getAllByRole('button', { name: 'Discard this response' })).toHaveLength(2);
 	});
 
@@ -384,7 +384,7 @@ describe('FanoutColumns — an avatar comparison', () => {
 			props: {
 				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
 				onPick: vi.fn(),
-				pickLabel: 'Use this face',
+				pickLabel: 'Use this avatar',
 				onDiscard: vi.fn(),
 				onImageClick: vi.fn(),
 			},

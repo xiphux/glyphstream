@@ -551,7 +551,7 @@ export class FanoutController {
 			this.userMessageId = null;
 			this.live = false;
 			this.#avatarDraw = null;
-			this.#deps.setError('No model produced a portrait. Try again, or pick another model.');
+			this.#deps.setError('No model produced an image. Try again, or pick another model.');
 			try {
 				await invalidateAll();
 			} catch {

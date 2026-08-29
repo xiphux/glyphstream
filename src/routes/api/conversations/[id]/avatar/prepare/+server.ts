@@ -81,7 +81,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// apply a face the user never chose. The tab that started the draw disables
 	// the Draw action for its duration; this is the backstop for every other tab.
 	if (getAvatarDrawSince(params.id) !== null) {
-		error(409, 'A portrait is already being drawn here — wait for it to finish.');
+		error(409, 'An avatar is already being drawn here — wait for it to finish.');
 	}
 
 	const leaf = meta.activeLeafMessageId;
