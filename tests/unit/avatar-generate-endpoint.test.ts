@@ -29,6 +29,7 @@ import type { ImageRelayParams } from '$lib/server/streaming/image-relay';
 const mocks = vi.hoisted(() => ({
 	getConversationMeta: vi.fn<(...a: unknown[]) => unknown>(),
 	setConversationAvatar: vi.fn<(...a: unknown[]) => { ok: boolean; reason?: string }>(),
+	getFanoutParent: vi.fn<(...a: unknown[]) => string | null>(),
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	getEndpoint: vi.fn<(...a: unknown[]) => unknown>(),
 	listAllModels: vi.fn<(...a: unknown[]) => unknown>(),
@@ -39,6 +40,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('$lib/server/db/queries/conversations', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	setConversationAvatar: (...a: unknown[]) => mocks.setConversationAvatar(...a),
+	getFanoutParent: (...a: unknown[]) => mocks.getFanoutParent(...a),
 }));
 vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
@@ -120,6 +122,7 @@ beforeEach(() => {
 	]);
 	mocks.startImageRelay.mockReset().mockReturnValue(new ReadableStream<Uint8Array>());
 	mocks.notifyFanoutCompleteIfLast.mockReset();
+	mocks.getFanoutParent.mockReset().mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -255,6 +258,35 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 			registerInFlight('c1', endpoint, `filler-${i}`, 'image', 'ep::sdxl', null);
 		}
 		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 429 });
+	});
+
+	it('refuses a background draw onto an anchor a comparison is parked on', async () => {
+		// The mirror of ../prepare's refusal. A parked comparison pins the leaf at
+		// its anchor, which is the exact state this draw's compare-and-swap reads as
+		// "safe to advance" — so it would take the leaf off the description, drop the
+		// grid out of recovery, and apply a face nobody picked.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+	});
+
+	it('still draws while a fan-out is parked on a different anchor', async () => {
+		// Scoped to THIS anchor rather than to any parked fan-out, and the
+		// distinction is load-bearing: an ordinary turn fan-out parks on a user
+		// message while the avatar anchor is the last assistant reply, so the
+		// compare-and-swap fails harmlessly and the draw is exactly what was asked
+		// for. A broader guard would refuse it.
+		mocks.getFanoutParent.mockReturnValue('some-other-message');
+		await call();
+		expect(mocks.startImageRelay).toHaveBeenCalled();
+	});
+
+	it('does not refuse a comparison branch on its own parked anchor', async () => {
+		// The guard is for background draws only — a branch is the thing the marker
+		// was parked FOR.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		await call({ fanout: true });
+		expect(mocks.startImageRelay).toHaveBeenCalled();
 	});
 
 	it('still supersedes at the background key when only one model is drawn', async () => {

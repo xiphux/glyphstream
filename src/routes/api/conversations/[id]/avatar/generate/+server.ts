@@ -49,7 +49,11 @@
 import { error } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, setConversationAvatar } from '$lib/server/db/queries/conversations';
+import {
+	getConversationMeta,
+	getFanoutParent,
+	setConversationAvatar,
+} from '$lib/server/db/queries/conversations';
 import { getMessage } from '$lib/server/db/queries/messages';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { generateId } from '$lib/server/util/id';
@@ -193,6 +197,35 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// POSTs can't race past it.
 	if (isFanout && conversationFanoutAtCapacity(params.id)) {
 		error(429, 'Too many concurrent generations for this conversation');
+	}
+
+	// The mirror of ../prepare's refusal, seen from the other side. A parked
+	// comparison pins the leaf AT its anchor — which is exactly the state this
+	// draw's compare-and-swap reads as "nothing has happened since, safe to
+	// advance". So the CAS succeeds precisely where the most has happened:
+	// appendMessage moves the leaf off the description and nulls the marker in the
+	// same statement, the grid drops out of recovery (`parent !== activeLeaf`), its
+	// candidates strand as siblings, and `onMediaPersisted` applies a face nobody
+	// picked.
+	//
+	// Keyed on THIS anchor, not on "any parked fan-out". An ordinary turn fan-out
+	// parks on a user message, while the avatar anchor is the last assistant reply
+	// — different ids, so the CAS fails harmlessly and the draw is exactly what was
+	// asked for. Refusing there would block a legitimate side errand.
+	//
+	// This window is worse than the one ../prepare guards, not better: a settled
+	// comparison awaiting a pick leaves no registry entry and no running poll
+	// (`getAvatarDrawSince` reads only AVATAR_BRANCH, which a comparison never
+	// uses), so a tab that went stale before it was parked never learns of it. That
+	// lasts as long as the comparison goes unresolved rather than as long as a
+	// generation runs. Refusing is also what repairs it: the 409 rides
+	// reportFailure → reconcile → invalidateAll, so that tab is told why AND shown
+	// the comparison it didn't know about.
+	//
+	// Read here rather than earlier so it stays synchronous with registerInFlight
+	// below; before `await listAllModels()` it would open a real TOCTOU window.
+	if (!isFanout && getFanoutParent(params.id, locals.user.id) === source.id) {
+		error(409, 'A portrait comparison is open here — pick one or dismiss it first.');
 	}
 
 	const inFlight = registerInFlight(

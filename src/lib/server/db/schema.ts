@@ -304,9 +304,10 @@ export const conversations = sqliteTable(
 		// When set, this conversation has an UNRESOLVED multi-model fan-out:
 		// the leaf is pinned at this ANCHOR message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
-		// .../messages/prepare; cleared by selectBranch (pick / dismiss /
-		// continue), truncateAtMessage, leaf-advancing appendMessage, and
-		// deleteBranch when the anchor is deleted. Lets the page rehydrate the
+		// .../messages/prepare, or by .../avatar/prepare for a comparison of
+		// candidate portraits, which anchors on an assistant message instead.
+		// Cleared by selectBranch (pick / dismiss / continue), truncateAtMessage,
+		// leaf-advancing appendMessage, and deleteBranch when the anchor is deleted. Lets the page rehydrate the
 		// compare grid after a reload without guessing from sibling counts.
 		// NOTE: this column was added via ALTER TABLE (migration 0019), which
 		// drizzle-kit can't emit an ON DELETE clause on — so the live FK is NO
