@@ -467,6 +467,29 @@ export function hasChildMessages(conversationId: string, messageId: string): boo
 }
 
 /**
+ * Just the role of one message, or null when it doesn't exist.
+ *
+ * A projected probe rather than `getMessage`, for the same reason
+ * `hasChildMessages` above is one: the caller wants a single column, and
+ * `getMessage` has no projection — it reads every column and then JSON-parses
+ * `content_json` on the way out. `role` sits ahead of `content_html` and
+ * `raw_response_json` in the row layout, so asking for it alone also avoids
+ * walking the overflow chain those two spill into on a long message.
+ *
+ * Worth the four lines because the caller is `getFanoutRecoveryState`, which
+ * runs on the branch-walk-free `?fanout=1` poll — a route written specifically
+ * to keep a 4-second tick off the heavy read path.
+ */
+export function getMessageRole(conversationId: string, messageId: string): MessageRole | null {
+	const row = getDb()
+		.select({ role: messages.role })
+		.from(messages)
+		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+		.get();
+	return row?.role ?? null;
+}
+
+/**
  * The assistant messages that hang directly off `parentUserMessageId`, in
  * creation order. During a multi-model fan-out these are the N sibling
  * responses rendered side by side; for a normal turn there's exactly one.

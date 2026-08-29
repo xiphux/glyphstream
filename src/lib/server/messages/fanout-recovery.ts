@@ -16,7 +16,7 @@
  */
 
 import { getFanoutParent } from '../db/queries/conversations';
-import { getMessage, getSiblingAssistants } from '../db/queries/messages';
+import { getMessageRole, getSiblingAssistants } from '../db/queries/messages';
 import { conversationTurnEntries } from '../streaming/in-flight';
 import type { FanoutRecoveryState } from '$lib/types/api';
 
@@ -53,13 +53,13 @@ export function getFanoutRecoveryState(
 	// an assistant message, so the two are disjoint by construction. The client
 	// needs it to know that "pick" here means adopting a face rather than
 	// continuing the thread with that model.
-	const parentMessage = getMessage(conversationId, parent);
+	const parentRole = getMessageRole(conversationId, parent);
 	// Re-rolls are additive (a new sibling next to the original, deleting
 	// nothing), so every persisted sibling is a real column — no shadowing.
 	const siblings = getSiblingAssistants(conversationId, parent);
 	return {
 		parentMessageId: parent,
-		avatar: parentMessage?.role === 'assistant',
+		avatar: parentRole === 'assistant',
 		kind: entries[0]?.modelKind ?? null,
 		siblings,
 		pending: entries.length,
