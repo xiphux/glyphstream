@@ -1125,6 +1125,103 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(posts.some((u) => u.includes('/avatar/'))).toBe(false);
 	});
 
+	it("does not carry one conversation's prompt into another's recovered grid", async () => {
+		// `#avatarDraw` holds the prompt the user reviewed in the dialog, and it is
+		// deliberately kept across a handoff-to-recovery so a re-roll stays possible
+		// on the grid this page dispatched. It must not survive into a DIFFERENT
+		// grid: leave A mid-comparison, open B which has its own parked comparison,
+		// and a re-roll there would draw A's description under B's anchor and record
+		// A's text as that portrait's prompt.
+		//
+		// One controller for both conversations on purpose — the page constructs it
+		// once and navigates with it. The neighbouring recovered-grid test builds a
+		// fresh controller, which is exactly why it cannot see this.
+		stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'descA',
+			prompt: "A's reviewed prompt",
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		expect(fc.canRegenerate).toBe(true);
+
+		// Navigate away without resolving, then land on B's parked comparison.
+		fc.teardown();
+		fc.syncFromServer({
+			parentMessageId: 'descB',
+			avatar: true,
+			kind: 'image',
+			siblings: [imageSibling('b1', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+
+		expect(fc.isAvatar).toBe(true);
+		expect(fc.canRegenerate).toBe(false);
+	});
+
+	it('drops the prompt when the parked anchor moves under it', async () => {
+		// The case `teardown()` cannot reach, and therefore the one that proves the
+		// anchor test is what closes this rather than the teardown clears: no
+		// navigation happens at all. A suspend hands the live grid to recovery
+		// (which keeps the prompt on purpose), and meanwhile another tab resolves
+		// that comparison and parks a new one on a different anchor in the SAME
+		// conversation. The rebuild follows the new anchor; the prompt must not.
+		stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'descX',
+			prompt: "X's reviewed prompt",
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		fc.handoffToRecovery();
+		fc.syncFromServer({
+			parentMessageId: 'descY',
+			avatar: true,
+			kind: 'image',
+			siblings: [imageSibling('y1', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.canRegenerate).toBe(false);
+	});
+
+	it('keeps the prompt when the same grid is handed to recovery', async () => {
+		// The other half of the anchor test, so the rule above can't be satisfied by
+		// simply dropping the prompt on every rebuild: a handoff-to-recovery rebuilds
+		// the SAME anchor, this page does still hold the real prompt, and Regenerate
+		// has to survive it.
+		stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		fc.handoffToRecovery();
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [imageSibling('out-1', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.canRegenerate).toBe(true);
+	});
+
 	it('offers a re-roll while this page still owns the draw', async () => {
 		// The live half of the same rule — otherwise the test above would pass
 		// against a `canRegenerate` hardcoded to false.

@@ -938,6 +938,14 @@ export class FanoutController {
 		this.columns = [];
 		this.userMessageId = null;
 		this.live = false;
+		// The comparison we're leaving belongs to a conversation we're no longer
+		// on. `#mode` would be re-established by the next rebuild anyway; the
+		// reviewed prompt would not, and it must not follow us. Defence in depth —
+		// `#rebuildFrom`'s anchor test is what actually closes this — but cheap, and
+		// it stops the stale draw sitting around at all rather than only being
+		// disarmed at the moment it would have been used.
+		this.#mode = 'turn';
+		this.#avatarDraw = null;
 	}
 
 	/** Rebuild the compare grid from server-truth recovery state on a reload /
@@ -958,8 +966,20 @@ export class FanoutController {
 		// is indistinguishable from an image fan-out by its contents, and getting
 		// this wrong would make "use this face" continue the chat with SDXL.
 		this.#mode = f.avatar ? 'avatar' : 'turn';
-		// Deliberately NOT restored: the reviewed prompt (see `#avatarDraw`). This
-		// page never saw it, so Regenerate stays off for this grid.
+		// The reviewed prompt is never RESTORED here — it lives only in the page
+		// that dispatched the draw, so a grid rebuilt on a fresh page has none and
+		// Regenerate stays off. But one already in hand is KEPT, and only for its
+		// own anchor: that's the handoff-to-recovery case, where this page did see
+		// the prompt and a re-roll is legitimate.
+		//
+		// Any other anchor is a different grid — another conversation's parked
+		// comparison, or one parked from another tab — and keeping the prompt there
+		// is not merely stale, it draws THIS prompt under THAT description. Note
+		// that clearing it in `teardown()` alone would not cover the same-anchor-
+		// changed case, since a handoff never tears down.
+		if (this.#avatarDraw && this.#avatarDraw.sourceMessageId !== f.parentMessageId) {
+			this.#avatarDraw = null;
+		}
 		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 	}
 
