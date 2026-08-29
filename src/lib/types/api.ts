@@ -1039,7 +1039,9 @@ export interface PrepareAvatarDrawResponse {
  * parentMessageId=null with empty arrays / pending=0.
  */
 export interface FanoutRecoveryState {
-	/** The shared user message the parked fan-out hangs off, or null when none. */
+	/** The message the parked fan-out hangs off, or null when none. A shared user
+	 *  message for a turn fan-out; the appearance description, an assistant
+	 *  message, for an avatar comparison — which is what `avatar` below reports. */
 	parentMessageId: string | null;
 	/**
 	 * Whether this is an avatar comparison rather than an ordinary turn fan-out —

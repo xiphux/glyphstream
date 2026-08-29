@@ -211,7 +211,9 @@ export function updateConversationModel(
 
 /**
  * Mark this conversation as having an unresolved multi-model fan-out parked
- * on `parentMessageId` (the shared user message). The page load reads this to
+ * on `parentMessageId` — the shared user message for a turn fan-out, or the
+ * appearance description (an ASSISTANT message) for an avatar comparison, which
+ * parks through .../avatar/prepare. The page load reads this to
  * rehydrate the compare grid after a reload. Cleared when the fan-out resolves
  * (selectBranch on a pick / dismiss / continue).
  */
@@ -227,7 +229,8 @@ export function setFanoutParent(
 		.run();
 }
 
-/** The parked fan-out's shared user-message id, or null when none / not owned. */
+/** The parked fan-out's anchor message id — a user message for a turn fan-out,
+ *  an assistant one for an avatar comparison — or null when none / not owned. */
 export function getFanoutParent(conversationId: string, userId: string): string | null {
 	const row = getDb()
 		.select({ p: conversations.fanoutParentMessageId })

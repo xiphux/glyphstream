@@ -107,8 +107,10 @@ export class FanoutController {
 	/** A pick/dismiss/discard request is in flight. Re-rolls deliberately don't
 	 *  take this lock — they're per-column + additive (see `regenerate`). */
 	picking = $state(false);
-	/** The shared user message of the live/parked fan-out — discard/regenerate
-	 *  reparent new branches to it. Null when no comparison is active. */
+	/** The anchor of the live/parked fan-out — discard/regenerate reparent new
+	 *  branches to it. The shared user message for a turn fan-out; the appearance
+	 *  description, an ASSISTANT message, for an avatar comparison. Null when no
+	 *  comparison is active. (Name kept for the turn case it was written for.) */
 	userMessageId = $state<string | null>(null);
 	/** True while THIS client is driving the fan-out (owns the branch fetches).
 	 *  False once recovered from server truth after a reload / disconnect, so the
@@ -842,7 +844,7 @@ export class FanoutController {
 				if (!res.ok) throw new Error(await errorMessageFromResponse(res));
 			}
 			this.columns = this.columns.filter((c) => c.branchId !== col.branchId);
-			// Defensive: if the grid emptied, drop the parked user-message handle.
+			// Defensive: if the grid emptied, drop the parked anchor handle.
 			if (this.columns.length === 0) {
 				this.userMessageId = null;
 				this.live = false;

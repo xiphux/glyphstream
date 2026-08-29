@@ -302,7 +302,7 @@ export const conversations = sqliteTable(
 			},
 		),
 		// When set, this conversation has an UNRESOLVED multi-model fan-out:
-		// the leaf is pinned at this user message while its N sibling assistant
+		// the leaf is pinned at this ANCHOR message while its N sibling assistant
 		// responses await the user's pick (text) or pruning (image). Set by
 		// .../messages/prepare; cleared by selectBranch (pick / dismiss /
 		// continue), truncateAtMessage, leaf-advancing appendMessage, and

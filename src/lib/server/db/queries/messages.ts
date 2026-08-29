@@ -31,7 +31,9 @@ interface AppendInput {
 	/**
 	 * Whether to point the conversation's active_leaf_message_id at the new
 	 * message (default true). A multi-model fan-out sets this false: its N
-	 * sibling assistant messages all hang off one shared user message, and
+	 * sibling assistant messages all hang off one anchor message (the shared
+	 * user message of a turn fan-out, or an assistant appearance description
+	 * when an avatar comparison draws several portraits at once), and
 	 * the leaf must stay pinned at that user message (so every branch's
 	 * history walk is identical) until the user picks a winner. Letting each
 	 * concurrent append advance the leaf would make it ping-pong between
@@ -496,7 +498,7 @@ export function getMessageRole(conversationId: string, messageId: string): Messa
  *
  * Kept separate from `walkActiveBranch` (which only returns the active
  * branch) because the fan-out compare view needs *all* the siblings under
- * the shared user message at once — before the user has picked one to make
+ * the anchor message at once — before the user has picked one to make
  * active. Each returned message carries its own `modelUsed` so the column
  * header can label which model produced it. Scoped to assistant rows so a
  * (future) tool message child can't leak into the column grid.
@@ -696,7 +698,7 @@ export function setActiveLeafMessageId(conversationId: string, messageId: string
  * active leaf — it sits inside the deleted subtree AND there's no sibling to
  * reassign it to (deleting the sole child of its parent — a truncate, a
  * different operation intentionally NOT exposed here). When the leaf lives
- * elsewhere (e.g. a parked fan-out pinned on the shared user message),
+ * elsewhere (e.g. a parked fan-out pinned on its anchor message),
  * deleting a childless branch is allowed and the leaf is left untouched.
  *
  * On success, returns the deleted message ids and the resulting active_leaf —
@@ -717,7 +719,7 @@ export function deleteBranch(
 			/** The active leaf after the delete. Unchanged (and null only for a
 			 *  leaf-less conversation) when the leaf was outside the deleted
 			 *  subtree — e.g. pruning a parked fan-out sibling leaves the leaf
-			 *  pinned at the shared user message. */
+			 *  pinned at the fan-out's anchor message. */
 			newActiveLeaf: string | null;
 			/** Generated media whose only references were in the deleted
 			 *  subtree. Caller unlinks the files post-commit; the rows
@@ -780,7 +782,7 @@ export function deleteBranch(
 		// sole child of its parent — that's a truncate, intentionally not exposed
 		// here). When the leaf lives ELSEWHERE, deleting a childless sibling is
 		// safe even with no DB sibling yet. The case that matters: a parked media
-		// fan-out pinned at the shared user message where one branch has finished
+		// fan-out pinned at its anchor message where one branch has finished
 		// and another is still generating (not yet a persisted sibling) — the user
 		// prunes the finished dud while the leaf (and the marker) stay put, and the
 		// in-flight branch repopulates the grid. The old blanket "no siblings →
@@ -797,7 +799,7 @@ export function deleteBranch(
 		const cursor = leafInDeleted
 			? deepestDescendant(siblings[0].id, childrenByParent)
 			: currentLeaf;
-		// Clear the parked fan-out marker if its anchor user message is itself in
+		// Clear the parked fan-out marker if its anchor message is itself in
 		// the delete set — otherwise the conversation UPDATE below (and the row
 		// delete) would dangle / FK-error on it. The DB-level FK is NO ACTION
 		// (drizzle-kit can't emit ON DELETE via ALTER TABLE ADD COLUMN), so the

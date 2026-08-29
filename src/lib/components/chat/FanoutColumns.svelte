@@ -131,7 +131,7 @@
 	// remain — discard prunes the grid, it never empties it (use "Done" / dismiss
 	// to leave). Gating on the TOTAL column count (not just persisted results) is
 	// what lets you drop a finished video while a sibling is still generating: the
-	// leaf is pinned at the shared user message, so the server deletes the lone
+	// leaf is pinned at the fan-out's anchor, so the server deletes the lone
 	// finished sibling and the in-flight branch repopulates the grid. This grid is
 	// always a parked fan-out, so deleteBranch never strands the leaf (it only
 	// refuses when the leaf sits inside the deleted subtree, which can't happen
