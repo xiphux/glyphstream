@@ -77,10 +77,18 @@ export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	// Count what actually LANDED — successful results only. A failed branch now
 	// persists a durable error sibling (see the `error` MessagePart) so a
 	// disconnected fan-out can recover the failure; but it's not a result to
-	// announce. Filtering error siblings restores the invariant the zero-guard
-	// relies on: every branch failing → produced === 0 → stay silent (no false
-	// "N ready" push). It also feeds the count below whenever the client size is
-	// absent or has been outgrown.
+	// announce. It also feeds the count below whenever the client size is absent
+	// or has been outgrown.
+	//
+	// Read this as the GRID's size, not the dispatch's — the two coincide only on
+	// a fresh anchor. `getSiblingAssistants` has no time or dispatch scoping, so
+	// where the anchor already carries results the count includes them: a lone
+	// re-roll on a settled grid, or an avatar comparison whose description already
+	// has portraits under it (../avatar/prepare seeds exactly those into the grid).
+	// That is the intended number — it matches what the user is being sent back
+	// to — but it means the zero-guard below only guarantees silence on a fresh
+	// anchor. On one carrying earlier results, a dispatch where every branch
+	// failed still reports the survivors rather than staying quiet.
 	const produced = getSiblingAssistants(input.conversationId, input.userMessageId).filter(
 		(m) => !m.parts.some((p) => p.type === 'error'),
 	).length;
