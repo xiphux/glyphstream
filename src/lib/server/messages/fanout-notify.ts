@@ -40,8 +40,16 @@ import { notifyConversationComplete, type NotifyModality } from '../push/notify'
 export interface FanoutNotifyInput {
 	conversationId: string;
 	userId: string;
-	/** The shared user message the branches hang off of — its assistant children
-	 *  are the produced results. */
+	/**
+	 * The message the branches hang off of — its assistant children are the
+	 * produced results.
+	 *
+	 * Usually the shared user message a turn fan-out was prepared with. An avatar
+	 * comparison anchors on an ASSISTANT message instead (the appearance
+	 * description the portraits are drawn from), so don't read the name as a
+	 * guarantee of role: `getSiblingAssistants` is role-agnostic about the parent,
+	 * which is what lets both callers share this.
+	 */
 	userMessageId: string;
 	conversationTitle: string | null;
 	modality: NotifyModality;
@@ -87,8 +95,8 @@ export function notifyFanoutCompleteIfLast(input: FanoutNotifyInput): void {
 	void notifyConversationComplete({
 		userId: input.userId,
 		conversationId: input.conversationId,
-		// The fan-out has no single "the" assistant message; reference the shared
-		// user message so a click still resolves the conversation.
+		// The fan-out has no single "the" assistant message; reference its anchor
+		// instead so a click still resolves the conversation.
 		assistantMessageId: input.userMessageId,
 		conversationTitle: input.conversationTitle ?? 'New conversation',
 		previewText: '',
