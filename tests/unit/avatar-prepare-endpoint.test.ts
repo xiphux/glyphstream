@@ -76,6 +76,11 @@ beforeEach(() => {
 		if (id === 'desc') return DESCRIPTION;
 		if (id === 'p1') return PORTRAIT;
 		if (id === 'later') return { id: 'later', role: 'user', parts: [], parentMessageId: 'p1' };
+		// A send that was stopped while queued: the user row persisted, its
+		// assistant reply never did, so it sits childless directly under the
+		// description.
+		if (id === 'stopped')
+			return { id: 'stopped', role: 'user', parts: [], parentMessageId: 'desc' };
 		return null;
 	});
 });
@@ -106,6 +111,22 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// picking a different portrait would leave them on an unpicked branch — so
 		// the answer is no, and the client falls back to the single-model draw.
 		leafIs('later');
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
+		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
+	});
+
+	it('refuses to park over a childless user message', async () => {
+		// The safety argument for rewinding the leaf is that whatever it hides comes
+		// straight back as a grid column — and the grid is seeded from
+		// getSiblingAssistants, which is role-filtered. A user message satisfies the
+		// other two conditions and does NOT come back, so parking over it would drop
+		// the message the user typed out of the thread entirely.
+		//
+		// Reachable, and this feature widens the window: a send stopped while queued
+		// at the endpoint gate persists the user row with no assistant reply, and a
+		// background avatar draw holds that gate while leaving the composer live.
+		leafIs('stopped');
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
 		expect(mocks.setFanoutParent).not.toHaveBeenCalled();

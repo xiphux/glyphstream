@@ -65,8 +65,24 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const leaf = meta.activeLeafMessageId;
 	if (leaf && leaf !== source.id) {
 		const leafMessage = getMessage(params.id, leaf);
+		// Assistant-only, and that conjunct is the whole safety argument. Rewinding
+		// the leaf is harmless because what it hides comes straight back as a grid
+		// column — but the grid is seeded from `getSiblingAssistants`, which filters
+		// by role. A childless USER message satisfies the other two conditions and
+		// does NOT come back: a send stopped while queued at the endpoint gate
+		// persists the user row and never writes an assistant reply, leaving exactly
+		// that shape. Parking over it would drop the message the user typed out of
+		// the thread with no column to find it in — and with nothing else under the
+		// description, no ‹N/M› arrow to reach it by either.
+		//
+		// That window is wider here than it looks: a background avatar draw holds
+		// the endpoint slot while deliberately leaving the composer live, so on a
+		// single-GPU box the next send queues at the gate, which is precisely where
+		// Stop leaves no assistant row.
 		const parkable =
-			leafMessage?.parentMessageId === source.id && !hasChildMessages(params.id, leaf);
+			leafMessage?.role === 'assistant' &&
+			leafMessage.parentMessageId === source.id &&
+			!hasChildMessages(params.id, leaf);
 		if (!parkable) {
 			error(
 				409,

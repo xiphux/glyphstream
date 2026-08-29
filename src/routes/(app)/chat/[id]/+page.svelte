@@ -343,7 +343,14 @@
 		const source = avatarSourceMessage;
 		const leaf = messages.at(-1);
 		if (!source || !leaf) return false;
-		return leaf.id === source.id || leaf.parentMessageId === source.id;
+		// The `assistant` conjunct mirrors the server's parkable rule exactly — see
+		// avatar/prepare for why a childless USER leaf must not be parked over.
+		// Kept in step deliberately: the dialog closes before prepare is called, so
+		// a client that offered the comparison and a server that refuses it would
+		// surface as a page-level error only after the user had picked their models.
+		return (
+			leaf.id === source.id || (leaf.role === 'assistant' && leaf.parentMessageId === source.id)
+		);
 	});
 
 	// The draw dialog's editable prompt. Seeded from the source reply when the
