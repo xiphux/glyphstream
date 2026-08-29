@@ -135,3 +135,36 @@ export function buildFanoutBranchBody(input: {
 		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
 	};
 }
+
+/**
+ * Body for one branch of a multi-model AVATAR comparison — POST
+ * .../avatar/generate rather than .../messages, because a portrait hangs off an
+ * assistant message (the appearance description) and the messages route refuses
+ * a non-user fan-out parent.
+ *
+ * The prompt rides on every branch rather than being derived from the anchor:
+ * the user reviewed and usually edited it in the draw dialog, and the anchor
+ * still holds whatever prose the model wrapped it in.
+ */
+export function buildAvatarBranchBody(input: {
+	/** The description message the portraits hang under. */
+	sourceMessageId: string;
+	modelId: string;
+	/** The reviewed image prompt (not the anchor's raw text). */
+	prompt: string;
+	/** Whether to run it through the image-prompt enhancer — per branch, so each
+	 *  model gets the prompt restyled the way it prefers. */
+	enhance: boolean;
+	/** Total branch count, for the single aggregate notification. Omitted on a
+	 *  re-roll, exactly as in `buildFanoutBranchBody`. */
+	fanoutSize?: number;
+}): Record<string, unknown> {
+	return {
+		fanout: true,
+		sourceMessageId: input.sourceMessageId,
+		modelId: input.modelId,
+		prompt: input.prompt,
+		enhance: input.enhance,
+		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
+	};
+}

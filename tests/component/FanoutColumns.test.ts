@@ -326,3 +326,69 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		expect(textC.querySelector('.grid')).toBeNull();
 	});
 });
+
+describe('FanoutColumns — an avatar comparison', () => {
+	/** A settled portrait column, as an avatar draw produces. */
+	function portrait(id: string, label: string): FanoutColumn {
+		const message = persisted(id, '');
+		message.parts = [{ type: 'image', mediaId: `${id}-media` }];
+		return col({
+			branchId: id,
+			modelKind: 'image',
+			label,
+			status: 'done',
+			persisted: message,
+		});
+	}
+
+	it('names what the pick actually does', async () => {
+		// Every other grid's pick continues the thread with that model. This one
+		// adopts a face and leaves the chat's model alone, so it must not say
+		// "Continue with this".
+		const onPick = vi.fn<(column: FanoutColumn) => void>();
+		render(FanoutColumns, {
+			props: {
+				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
+				onPick,
+				pickLabel: 'Use this face',
+				onImageClick: vi.fn(),
+			},
+		});
+		const buttons = screen.getAllByRole('button', { name: 'Use this face' });
+		expect(buttons).toHaveLength(2);
+		await userEvent.click(buttons[1]);
+		expect(onPick.mock.calls[0][0].branchId).toBe('p2');
+	});
+
+	it('offers pick and discard together on an image grid', () => {
+		// The combination is what makes an avatar comparison unlike either mode it
+		// borrows from: the portraits are kept as siblings AND one of them wins.
+		render(FanoutColumns, {
+			props: {
+				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
+				onPick: vi.fn(),
+				pickLabel: 'Use this face',
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getAllByRole('button', { name: 'Use this face' })).toHaveLength(2);
+		expect(screen.getAllByRole('button', { name: 'Discard this response' })).toHaveLength(2);
+	});
+
+	it('renders no re-roll when the parent withholds it', () => {
+		// A recovered avatar grid has no reviewed prompt to re-roll with, so the
+		// page passes no handler and the control must simply not be there — rather
+		// than being there and failing.
+		render(FanoutColumns, {
+			props: {
+				columns: [portrait('p1', 'SDXL'), portrait('p2', 'Flux')],
+				onPick: vi.fn(),
+				pickLabel: 'Use this face',
+				onDiscard: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.queryByRole('button', { name: /Regenerate/ })).toBeNull();
+	});
+});

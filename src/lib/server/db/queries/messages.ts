@@ -445,6 +445,28 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
 }
 
 /**
+ * Whether `messageId` has any child message at all.
+ *
+ * Used by the avatar fan-out to decide whether the active leaf can be stepped
+ * back onto the description it hangs under: a childless portrait is a dead end,
+ * so parking the leaf on its parent hides nothing (the portrait comes straight
+ * back as a grid column), while a portrait the conversation has continued from
+ * would strand those turns on an unpicked branch. An EXISTS-shaped probe rather
+ * than a count — the answer is a yes/no and the trees get long.
+ */
+export function hasChildMessages(conversationId: string, messageId: string): boolean {
+	const row = getDb()
+		.select({ id: messages.id })
+		.from(messages)
+		.where(
+			and(eq(messages.conversationId, conversationId), eq(messages.parentMessageId, messageId)),
+		)
+		.limit(1)
+		.get();
+	return row !== undefined;
+}
+
+/**
  * The assistant messages that hang directly off `parentUserMessageId`, in
  * creation order. During a multi-model fan-out these are the N sibling
  * responses rendered side by side; for a normal turn there's exactly one.

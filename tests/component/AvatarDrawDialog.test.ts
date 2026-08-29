@@ -113,3 +113,66 @@ describe('AvatarDrawDialog', () => {
 		expect(onEnhanceChange).toHaveBeenCalledWith(false);
 	});
 });
+
+/**
+ * Comparing several models is offered from the same dialog, but only where the
+ * result can be parked on the description — the page decides that and passes it
+ * down. Two models is also the boundary the whole feature turns on: one is a
+ * background draw that applies itself, two is a comparison the user resolves.
+ */
+describe('AvatarDrawDialog — comparing models', () => {
+	it('offers the compare toggle when the page allows it', async () => {
+		render(AvatarDrawDialog, { props: { ...base, canCompare: true } });
+		await userEvent.click(screen.getByLabelText('Select model'));
+		expect(screen.getByText('Multiple')).toBeInTheDocument();
+	});
+
+	it('withholds it, with a reason, once the conversation has moved on', async () => {
+		// Not a silent absence: the control is missing for a reason the user can act
+		// on (draw from the latest reply instead), so the reason is on screen.
+		render(AvatarDrawDialog, {
+			props: {
+				...base,
+				canCompare: false,
+				compareBlockedReason: 'Comparing needs the description to be the latest thing.',
+			},
+		});
+		expect(
+			screen.getByText('Comparing needs the description to be the latest thing.'),
+		).toBeInTheDocument();
+		await userEvent.click(screen.getByLabelText('Select model'));
+		expect(screen.queryByText('Multiple')).toBeNull();
+	});
+
+	it('says how many models will draw once the cart is a real comparison', () => {
+		render(AvatarDrawDialog, {
+			props: {
+				...base,
+				canCompare: true,
+				compareMode: true,
+				compareSelections: [
+					{ modelId: 'mock::flux', count: 1 },
+					{ modelId: 'mock::sdxl', count: 2 },
+				],
+			},
+		});
+		// Counts, not distinct models: asking for the same model twice is a valid
+		// comparison (two samples), and it costs two branches.
+		expect(screen.getByRole('button', { name: 'Draw with 3 models' })).toBeInTheDocument();
+	});
+
+	it('stays an ordinary draw while compare mode holds only one model', () => {
+		// The picker's toggle is sticky — it stays on with one model in the cart.
+		// Everything downstream keys off "is this actually a comparison", so the
+		// button has to as well, or a single draw would announce itself as one.
+		render(AvatarDrawDialog, {
+			props: {
+				...base,
+				canCompare: true,
+				compareMode: true,
+				compareSelections: [{ modelId: 'mock::flux', count: 1 }],
+			},
+		});
+		expect(screen.getByRole('button', { name: 'Draw' })).toBeInTheDocument();
+	});
+});

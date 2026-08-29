@@ -229,7 +229,10 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   draw it with any configured image model and make the result that
   conversation's face. Useful for roleplay (the character designs its own
   portrait) but not limited to it. The description stays in the thread as
-  continuity; the portrait is shown but never re-sent to the model.
+  continuity; the portrait is shown but never re-sent to the model. Pick several
+  image models and they each draw a candidate side by side — different models
+  read a description very differently — and the one you choose becomes the
+  avatar; the rest stay in the thread as alternatives.
 - **Docker deployment** in a ~200 MB image, automatic migrations, any
   reverse proxy in front ([guide](docs/deployment.md)).
 - **Open WebUI import** ([guide](docs/import-owui.md)).

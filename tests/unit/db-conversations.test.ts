@@ -2019,6 +2019,7 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 		// Not parked yet (no marker) → nothing to recover.
 		expect(getFanoutRecoveryState(conv.id, u.id, user.id)).toEqual({
 			parentMessageId: null,
+			avatar: false,
 			kind: null,
 			siblings: [],
 			pending: 0,
@@ -2060,6 +2061,39 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 
 		// Marker that no longer matches the active leaf isn't surfaced.
 		expect(getFanoutRecoveryState(conv.id, u.id, 'some-other-leaf').parentMessageId).toBeNull();
+	});
+
+	it('getFanoutRecoveryState flags a comparison parked on an assistant message', () => {
+		// An avatar comparison hangs off the appearance description, not a shared
+		// user message, and the client has to know which it is: "pick" means adopt
+		// this face there, and continue the thread with this model everywhere else.
+		// Derived from the anchor's role, which the two routes keep disjoint — the
+		// messages route refuses a non-user fan-out parent.
+		const { u, conv, user } = seedFanout();
+		setFanoutParent(conv.id, u.id, user.id);
+		expect(getFanoutRecoveryState(conv.id, u.id, user.id).avatar).toBe(false);
+
+		// Now park on an assistant message with its own children, the way an avatar
+		// draw does.
+		const description = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: user.id,
+			role: 'assistant',
+			parts: [{ type: 'text', text: 'a weathered navigator' }],
+			modelUsed: 'bridge::a',
+		});
+		const portrait = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'm1' }],
+			modelUsed: 'bridge::sdxl',
+			advanceActiveLeaf: false,
+		});
+		setFanoutParent(conv.id, u.id, description.id);
+		const state = getFanoutRecoveryState(conv.id, u.id, description.id);
+		expect(state.avatar).toBe(true);
+		expect(state.siblings.map((m) => m.id)).toEqual([portrait.id]);
 	});
 
 	it('getFanoutRecoveryState shows all siblings during an additive re-roll', () => {

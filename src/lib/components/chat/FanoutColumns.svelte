@@ -7,6 +7,9 @@
 	  - media keep-many (image/video): prune the duds (onDiscard) + re-roll
 	    (onRegenerate, additively — a new variation beside the original); every
 	    kept image/video stays a sibling.
+	An avatar comparison is both at once — its columns are images, kept as
+	siblings, but one of them also becomes the conversation's face — so it wires
+	all three callbacks and relabels the pick via `pickLabel`.
 	Which action buttons render is driven by which callbacks the parent wires;
 	the keep-many *layout* (media grid vs chat strip) is driven by the columns'
 	modality via isMediaKind. Purely presentational — the page owns the streams,
@@ -33,6 +36,10 @@
 		/** Pick one column to continue the thread (text fan-out). When omitted,
 		 *  no "Continue with this" button renders — media fan-out is keep-many. */
 		onPick?: (column: FanoutColumn) => void;
+		/** Label for the pick button. Defaults to the thread-continuation wording;
+		 *  an avatar comparison is keep-many AND pick-one, and what its pick does is
+		 *  adopt a face, so it says so. */
+		pickLabel?: string;
 		/** Discard (delete) a column. Wired for media fan-out (prune the duds). */
 		onDiscard?: (column: FanoutColumn) => void;
 		/** Re-roll a column: add a fresh variation with the same model/prompt
@@ -43,7 +50,15 @@
 		busy?: boolean;
 	}
 
-	let { columns, onPick, onDiscard, onRegenerate, onImageClick, busy = false }: Props = $props();
+	let {
+		columns,
+		onPick,
+		pickLabel = 'Continue with this',
+		onDiscard,
+		onRegenerate,
+		onImageClick,
+		busy = false,
+	}: Props = $props();
 
 	// Fan-out branches are single-iteration with tools disabled, so there are
 	// never tool_result rows to thread in — an empty map is correct.
@@ -223,7 +238,8 @@
 								disabled={busy || !canPick(c)}
 								class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-surface-inverse px-3 py-1.5 text-xs font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-30"
 							>
-								<Check size={13} strokeWidth={2.5} /> Continue with this
+								<Check size={13} strokeWidth={2.5} />
+								{pickLabel}
 							</button>
 						{/if}
 						{#if onRegenerate}

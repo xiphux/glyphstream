@@ -1009,6 +1009,26 @@ export interface PrepareFanoutResponse {
 	userMessage: ChatMessage;
 }
 
+/** POST .../avatar/prepare request — opens an avatar comparison on an existing
+ *  appearance description. No text or attachments: unlike a turn fan-out there's
+ *  no message to create, only a marker to park. */
+export interface PrepareAvatarDrawRequest {
+	sourceMessageId: string;
+}
+
+/**
+ * POST .../avatar/prepare response — the portraits already hanging off that
+ * description.
+ *
+ * The client seeds them into the grid as settled columns, because the recovery
+ * rebuild does the same for a grid reloaded mid-comparison and the two have to
+ * agree. It can't compute the list itself: the page renders the ACTIVE branch,
+ * which holds at most one of these siblings.
+ */
+export interface PrepareAvatarDrawResponse {
+	siblings: ChatMessage[];
+}
+
 /**
  * Server-truth state for recovering a parked multi-model fan-out after the
  * client disconnects (reload / iOS suspend). The single wire contract for both
@@ -1021,6 +1041,18 @@ export interface PrepareFanoutResponse {
 export interface FanoutRecoveryState {
 	/** The shared user message the parked fan-out hangs off, or null when none. */
 	parentMessageId: string | null;
+	/**
+	 * Whether this is an avatar comparison rather than an ordinary turn fan-out —
+	 * i.e. the anchor is an assistant message (the appearance description) and the
+	 * branches are candidate portraits.
+	 *
+	 * On the wire rather than inferred client-side from the anchor's role, even
+	 * though the two agree today: it decides what "pick" DOES (adopt this face vs.
+	 * continue the thread with this model), and a rule that has to be re-derived
+	 * from message shape is one an unrelated change to message shape can silently
+	 * flip.
+	 */
+	avatar: boolean;
 	/** The fan-out's modality, from the still-generating branches — lets the
 	 *  client render the right (media vs chat) grid even when no branch has
 	 *  persisted yet. Null when none are in flight (the client then infers from

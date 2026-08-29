@@ -15,6 +15,7 @@
 <script lang="ts">
 	import BaseDialog from '$lib/components/BaseDialog.svelte';
 	import ModelPicker from './ModelPicker.svelte';
+	import type { CompareSelection } from '$lib/fanout';
 	import type { ModelEntry } from '$lib/types/api';
 
 	interface Props {
@@ -35,6 +36,25 @@
 		 */
 		loadError?: boolean;
 		modelId: string;
+		/**
+		 * Whether more than one model may be picked, turning the draw into a
+		 * side-by-side comparison.
+		 *
+		 * Not always: a comparison parks itself on the description message so it
+		 * can be recovered after a reload, which the page can only allow while
+		 * nothing hangs below that message but the portraits themselves. When
+		 * false the picker stays single-select and `compareBlockedReason` says why.
+		 */
+		canCompare?: boolean;
+		/** One line explaining why comparing isn't on offer. Shown only when
+		 *  `canCompare` is false. */
+		compareBlockedReason?: string;
+		/** The compare "cart" — model id → count. Bound so the page can dispatch a
+		 *  branch per entry and reset it after. */
+		compareSelections?: CompareSelection[];
+		/** Whether the picker is in compare mode. Bound so the page can read it
+		 *  (single draw vs comparison) and force it off. */
+		compareMode?: boolean;
 		/**
 		 * Run the prompt through the image-prompt enhancer before generating.
 		 *
@@ -65,6 +85,10 @@
 		loading = false,
 		loadError = false,
 		modelId,
+		canCompare = false,
+		compareBlockedReason,
+		compareSelections = $bindable([]),
+		compareMode = $bindable(false),
 		enhance,
 		status,
 		onPromptChange,
@@ -73,6 +97,12 @@
 		onDraw,
 		onCancel,
 	}: Props = $props();
+
+	// The picker's compare mode is sticky — it stays on with one model in the
+	// cart, which is a single draw wearing a comparison's clothes. Everything
+	// downstream keys off "is this actually a comparison", not off the toggle.
+	const compareTotal = $derived(compareSelections.reduce((n, s) => n + s.count, 0));
+	const comparing = $derived(compareMode && compareTotal >= 2);
 </script>
 
 <BaseDialog
@@ -110,7 +140,18 @@
 			value={modelId}
 			onChange={onModelChange}
 			disabled={!!status}
+			allowCompare={canCompare}
+			bind:compareSelections
+			bind:compareMode
 		/>
+		{#if !canCompare && compareBlockedReason}
+			<p class="mt-1 text-xs text-fg-muted">{compareBlockedReason}</p>
+		{/if}
+		{#if comparing}
+			<p class="mt-1 text-xs text-fg-muted">
+				Each model draws its own portrait; you pick the one to keep.
+			</p>
+		{/if}
 	</div>
 
 	<label class="mt-3 flex items-start gap-2 text-xs">
@@ -146,10 +187,16 @@
 		<button
 			type="button"
 			onclick={onDraw}
-			disabled={!!status || !prompt.trim() || !modelId}
+			disabled={!!status || !prompt.trim() || (!comparing && !modelId)}
 			class="rounded-md bg-surface-inverse px-4 py-1.5 text-sm font-medium text-fg-inverse transition hover:opacity-90 disabled:opacity-50"
 		>
-			{status ? 'Drawing…' : 'Draw'}
+			{#if status}
+				Drawing…
+			{:else if comparing}
+				Draw with {compareTotal} models
+			{:else}
+				Draw
+			{/if}
 		</button>
 	</div>
 </BaseDialog>

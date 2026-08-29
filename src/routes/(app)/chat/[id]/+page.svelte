@@ -311,6 +311,41 @@
 			),
 	);
 
+	// Picking several image models turns the draw into a comparison: a branch per
+	// model, resolved in the fan-out grid. Kept as page state (not dialog state)
+	// because the dispatch reads it after the dialog has closed.
+	let avatarCompareSelections = $state<CompareSelection[]>([]);
+	let avatarCompareMode = $state(false);
+	const avatarCompareBranches = $derived(
+		expandCompareSelections(avatarCompareSelections, (id) => {
+			const m = imageModels.find((x) => x.id === id);
+			return m ? { displayName: m.displayName, modelKind: m.kind } : undefined;
+		}),
+	);
+	const avatarComparing = $derived(avatarCompareMode && avatarCompareBranches.length >= 2);
+
+	/**
+	 * Whether a comparison may be offered for this description.
+	 *
+	 * A comparison parks itself on the description so it can be rebuilt after a
+	 * reload, which means the active leaf has to end up there. It already is right
+	 * after a description arrives; for a re-roll it sits on the portrait drawn
+	 * last, and stepping back onto its parent hides nothing (that portrait
+	 * reappears as a grid column). Once the conversation has continued past the
+	 * description, those turns hang off one particular portrait and picking a
+	 * different one would strand them.
+	 *
+	 * `messages` is the active branch, so its last entry IS the leaf. The server
+	 * re-decides this properly (it can see children on branches this list doesn't
+	 * contain) and 409s; this is the affordance, not the rule.
+	 */
+	const canCompareAvatar = $derived.by(() => {
+		const source = avatarSourceMessage;
+		const leaf = messages.at(-1);
+		if (!source || !leaf) return false;
+		return leaf.id === source.id || leaf.parentMessageId === source.id;
+	});
+
 	// The draw dialog's editable prompt. Seeded from the source reply when the
 	// dialog opens, then owned by the user — a model that answers in character
 	// before complying leaves prose to trim, and `extractAvatarPrompt` only
@@ -338,6 +373,11 @@
 		// offering a switch the server is going to refuse.
 		avatarEnhance =
 			!isPrivate && !data.conversation.disabledFeatures.includes('image_prompt_enhancement');
+		// A fresh cart every time. Carrying one over would make the next draw a
+		// silent comparison — and, where `canCompareAvatar` has since gone false,
+		// one the picker no longer shows any way to cancel.
+		avatarCompareMode = false;
+		avatarCompareSelections = [];
 		avatarDrawOpen = true;
 	}
 
@@ -353,6 +393,34 @@
 	}
 
 	/**
+	 * Draw the same prompt with every model in the compare cart, one branch each,
+	 * and resolve them in the fan-out grid.
+	 *
+	 * Nothing of the single-model path below applies: there's no ring to spin (the
+	 * grid is the indicator), no interruption latch to arm (the fan-out controller
+	 * has its own recovery, which is the same mechanism), and no result to
+	 * announce — the portraits are candidates until one is picked.
+	 */
+	async function drawAvatarComparison() {
+		const source = avatarSourceMessage;
+		if (!source) return;
+		const branches = avatarCompareBranches;
+		if (branches.length < 2) return;
+		// Close first: past this point the grid reports progress, and a dialog left
+		// up would sit on top of the thing the user is meant to be comparing. A
+		// refusal from prepare surfaces as the page's error, not in the dialog.
+		avatarDrawOpen = false;
+		avatarCompareMode = false;
+		avatarCompareSelections = [];
+		await fanout.sendAvatarDraw({
+			sourceMessageId: source.id,
+			prompt: avatarPrompt,
+			enhance: avatarEnhance,
+			branches,
+		});
+	}
+
+	/**
 	 * Step two: draw the latest reply and make the result this conversation's
 	 * avatar.
 	 *
@@ -365,6 +433,12 @@
 	 * progress ring, and pulling the result into view.
 	 */
 	async function generateAvatar() {
+		// Two or more models is a comparison, which is a different mechanism end to
+		// end — see drawAvatarComparison. One is the background draw below.
+		if (avatarComparing) {
+			await drawAvatarComparison();
+			return;
+		}
 		const source = avatarSourceMessage;
 		if (!source || !avatarModelId || avatarStatus) return;
 		// Snapshot the conversation ONCE. Everything below runs across awaits that
@@ -2317,12 +2391,18 @@
 				{#if fanout.comparing}
 					<div in:fade={{ duration: listMounted && !reduceMotion ? 160 : 0 }}>
 						<!-- Text fan-out: pick one to continue. Media fan-out (keep-many):
-					     discard duds + regenerate, no single pick. -->
+					     discard duds + regenerate, no single pick. An avatar comparison
+					     is both — the portraits stay as siblings AND one becomes the
+					     conversation's face — and it drops Regenerate once recovered
+					     from server truth, where the reviewed prompt is gone. -->
 						<FanoutColumns
 							columns={fanout.columns}
-							onPick={fanout.isMedia ? undefined : (c: FanoutColumn) => void fanout.pick(c)}
+							onPick={fanout.isMedia && !fanout.isAvatar
+								? undefined
+								: (c: FanoutColumn) => void fanout.pick(c)}
+							pickLabel={fanout.isAvatar ? 'Use this face' : 'Continue with this'}
 							onDiscard={fanout.isMedia ? (c: FanoutColumn) => void fanout.discard(c) : undefined}
-							onRegenerate={fanout.isMedia
+							onRegenerate={fanout.isMedia && fanout.canRegenerate
 								? (c: FanoutColumn) => void fanout.regenerate(c)
 								: undefined}
 							onImageClick={openImageInLightbox}
@@ -2494,6 +2574,10 @@
 	loading={catalogue.status === 'loading'}
 	loadError={catalogue.loadFailed}
 	modelId={avatarModelId}
+	canCompare={canCompareAvatar}
+	compareBlockedReason="Comparing several models needs the description to be the latest thing in the thread."
+	bind:compareSelections={avatarCompareSelections}
+	bind:compareMode={avatarCompareMode}
 	enhance={avatarEnhance}
 	status={avatarStatus}
 	onPromptChange={(v: string) => (avatarPrompt = v)}

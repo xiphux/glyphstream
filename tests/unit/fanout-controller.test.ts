@@ -92,6 +92,7 @@ describe('FanoutController — server recovery', () => {
 		const fc = new FanoutController(deps);
 		const server: FanoutRecoveryState = {
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 'src-1')],
 			pending: 2,
@@ -125,6 +126,7 @@ describe('FanoutController — server recovery', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [],
 			pending: 2,
@@ -143,6 +145,7 @@ describe('FanoutController — server recovery', () => {
 		fc.live = true;
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [],
 			pending: 3,
@@ -159,6 +162,7 @@ describe('FanoutController — server recovery', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null)],
 			pending: 0,
@@ -170,6 +174,7 @@ describe('FanoutController — server recovery', () => {
 		// Marker cleared server-side (pick/dismiss elsewhere) → grid clears.
 		fc.syncFromServer({
 			parentMessageId: null,
+			avatar: false,
 			kind: null,
 			siblings: [],
 			pending: 0,
@@ -188,6 +193,7 @@ describe('FanoutController — server recovery', () => {
 		// surface — the failed one as an error column, not silently dropped.
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: null, // both branches settled → no in-flight kind reported
 			siblings: [
 				mediaSibling('ok', 'bridge::sora', null, [{ type: 'video', mediaId: 'ok-out' }]),
@@ -222,6 +228,7 @@ describe('FanoutController — server recovery', () => {
 		// blank it. Three provenance sources, one per column state.
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [
 				// done → off the output media row
@@ -250,6 +257,7 @@ describe('FanoutController — server recovery', () => {
 		// video, not fall back to a blank chat strip.
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: null,
 			siblings: [mediaSibling('v', 'bridge::sora', null, [{ type: 'video', mediaId: 'v-out' }])],
 			pending: 0,
@@ -270,6 +278,7 @@ describe('FanoutController — derived grid state', () => {
 
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's')],
 			pending: 1,
@@ -284,6 +293,7 @@ describe('FanoutController — derived grid state', () => {
 		// All settled (no pending) → settled true, streaming false.
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's')],
 			pending: 0,
@@ -302,6 +312,7 @@ describe('FanoutController — teardown + handoff', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [],
 			pending: 2,
@@ -359,6 +370,7 @@ describe('FanoutController — actions', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', 's1'), imageSibling('b', 'bridge::sdxl', 's2')],
 			pending: 0,
@@ -463,6 +475,7 @@ describe('FanoutController — actions', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
 			pending: 0,
@@ -495,6 +508,7 @@ describe('FanoutController — actions', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('old', 'bridge::sdxl', null)],
 			pending: 0,
@@ -540,6 +554,7 @@ describe('FanoutController — actions', () => {
 		const fc = new FanoutController(deps);
 		fc.syncFromServer({
 			parentMessageId: 'u1',
+			avatar: false,
 			kind: 'image',
 			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
 			pending: 0,
@@ -815,5 +830,313 @@ describe('FanoutController — actions', () => {
 			},
 		]);
 		vi.unstubAllGlobals();
+	});
+});
+
+/**
+ * Avatar comparisons run through the same controller as a turn fan-out — same
+ * streaming, stop, discard, recovery and poll — and differ in exactly three
+ * places. These pin those three, and the turn-mode behaviour they must not
+ * disturb.
+ */
+describe('FanoutController — avatar comparisons', () => {
+	function jsonResponse(body: unknown): Response {
+		return { ok: true, json: async () => body } as unknown as Response;
+	}
+	function sseResponse(events: unknown[]): Response {
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				const enc = new TextEncoder();
+				for (const e of events) controller.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+				controller.close();
+			},
+		});
+		return { ok: true, body } as unknown as Response;
+	}
+
+	const DESCRIPTION = mediaSibling('desc', 'bridge::claude', null, [
+		{ type: 'text', text: 'a face' },
+	]);
+	const TWO_MODELS: FanoutModel[] = [
+		{ modelId: 'bridge::sdxl', modelKind: 'image', displayName: 'SDXL' },
+		{ modelId: 'bridge::flux', modelKind: 'image', displayName: 'Flux' },
+	];
+
+	/** A fetch stub that answers prepare with `siblings` and every branch with a
+	 *  finished portrait, recording what was posted where. */
+	function stubDraw(siblings: ChatMessage[] = []) {
+		const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			posts.push({ url, body: JSON.parse(init?.body ?? '{}') as Record<string, unknown> });
+			if (url.endsWith('/avatar/prepare')) return jsonResponse({ siblings });
+			if (url.endsWith('/avatar/generate')) {
+				const modelId = (JSON.parse(init?.body ?? '{}') as { modelId: string }).modelId;
+				return sseResponse([
+					{ type: 'start', userMessage: DESCRIPTION, assistantMessageId: '' },
+					{
+						type: 'done',
+						assistantMessage: imageSibling(`out-${modelId}`, modelId, null),
+					},
+				]);
+			}
+			return jsonResponse({ ok: true });
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		return posts;
+	}
+
+	beforeEach(() => {
+		invalidateAll.mockClear();
+	});
+
+	it('parks on the description, then draws one branch per model', async () => {
+		const posts = stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'a weathered navigator',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+
+		// Prepare first — it decides whether the comparison may park here at all,
+		// so a refusal must land before anything is dispatched or shown.
+		expect(posts[0].url).toBe('/api/conversations/c1/avatar/prepare');
+		expect(posts[0].body).toEqual({ sourceMessageId: 'desc' });
+		// Then a branch each, on the AVATAR route: the messages route refuses an
+		// assistant fan-out parent, which is what a portrait hangs off.
+		expect(posts.slice(1).map((p) => p.url)).toEqual([
+			'/api/conversations/c1/avatar/generate',
+			'/api/conversations/c1/avatar/generate',
+		]);
+		// The reviewed prompt rides on every branch — the anchor still holds
+		// whatever prose the model wrapped it in — and fanoutSize is what makes the
+		// aggregate notification say "2 ready" rather than counting siblings.
+		expect(posts[1].body).toEqual({
+			fanout: true,
+			sourceMessageId: 'desc',
+			modelId: 'bridge::sdxl',
+			prompt: 'a weathered navigator',
+			enhance: true,
+			fanoutSize: 2,
+		});
+		expect(fc.isAvatar).toBe(true);
+		expect(fc.columns.map((c) => c.status)).toEqual(['done', 'done']);
+	});
+
+	it('seeds the portraits already drawn here without redrawing them', async () => {
+		// The grid means "every face drawn from this description" — which is what
+		// the server-truth rebuild produces after a reload, so the live grid has to
+		// agree. Seeded columns are results, not branches.
+		const posts = stubDraw([imageSibling('old', 'bridge::sdxl', null)]);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: false,
+			branches: TWO_MODELS,
+		});
+
+		expect(fc.columns.map((c) => c.branchId)[0]).toBe('old');
+		expect(fc.columns).toHaveLength(3);
+		// Two generate posts, not three.
+		expect(posts.filter((p) => p.url.endsWith('/avatar/generate'))).toHaveLength(2);
+	});
+
+	it('shows nothing when the comparison is refused', async () => {
+		// The conversation has continued past the description: prepare 409s, and the
+		// user is left exactly where they were, with the reason.
+		const fetchMock = vi.fn(async () => ({
+			ok: false,
+			status: 409,
+			json: async () => ({ message: 'has moved on' }),
+		}));
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fc.comparing).toBe(false);
+		expect(state.error).toContain('has moved on');
+		expect(state.busy).toBe(false);
+	});
+
+	it('picking adopts the face and leaves the chat model alone', async () => {
+		const posts = stubDraw();
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		posts.length = 0;
+		await fc.pick(fc.columns[0]);
+
+		// One endpoint for both halves of the pick, so a failure can't land the face
+		// without the branch.
+		expect(posts).toEqual([
+			{
+				url: '/api/conversations/c1/avatar/pick',
+				body: { messageId: 'out-bridge::sdxl' },
+			},
+		]);
+		// An image model drew a portrait; it did not become the model this chat
+		// talks to. (A turn fan-out's pick does promote it — see below.)
+		expect(state.activeModel).toBeNull();
+		expect(fc.comparing).toBe(false);
+	});
+
+	it('picking a turn fan-out still selects the branch and promotes its model', async () => {
+		// The other side of the same branch in `pick` — the behaviour avatar mode
+		// must not have taken with it.
+		const posts: Array<{ url: string }> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push({ url });
+				return jsonResponse({});
+			}),
+		);
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'chat',
+			siblings: [mediaSibling('a', 'bridge::claude', null, [{ type: 'text', text: 'hi' }])],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		await fc.pick(fc.columns[0]);
+
+		expect(posts[0].url).toBe('/api/conversations/c1/messages/a/select');
+		expect(state.activeModel).toEqual({ id: 'bridge::claude', kind: 'chat' });
+	});
+
+	it('restores avatar mode from server truth after a reload', async () => {
+		// A recovered avatar grid is indistinguishable from an image fan-out by its
+		// contents, so the mode comes off the wire. Get it wrong and "use this face"
+		// continues the chat with SDXL.
+		const posts: Array<{ url: string }> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push({ url });
+				return jsonResponse({});
+			}),
+		);
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [imageSibling('p1', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.isAvatar).toBe(true);
+
+		await fc.pick(fc.columns[0]);
+		expect(posts[0].url).toBe('/api/conversations/c1/avatar/pick');
+		expect(state.activeModel).toBeNull();
+	});
+
+	it('offers no re-roll on a recovered avatar grid', async () => {
+		// Regenerate re-sends the prompt the user reviewed in the dialog, and a
+		// reloaded page never saw it. The media row's promptFull is not a stand-in:
+		// for an enhanced draw it holds what the ENHANCER wrote, so re-rolling from
+		// it would quietly draw something else.
+		const fetchMock = vi.fn(async () => jsonResponse({}));
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [imageSibling('p1', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.canRegenerate).toBe(false);
+
+		// And the backstop behind the hidden control: no column appears, nothing is
+		// posted.
+		await fc.regenerate(fc.columns[0]);
+		expect(fc.columns).toHaveLength(1);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it('does not leave an ordinary fan-out dispatching to the avatar route', async () => {
+		// The controller outlives any one comparison, and a resolved avatar grid
+		// leaves the mode where it was. `send` claims it back — without that, the
+		// next multi-model chat send posts its branches at ../avatar/generate, which
+		// would anchor replies on the wrong message and refuse.
+		stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		await fc.dismiss();
+		expect(fc.isAvatar).toBe(true);
+
+		const user = imageSibling('u1', '', null);
+		user.role = 'user';
+		const posts: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push(url);
+				if (url.endsWith('/messages/prepare')) return jsonResponse({ userMessage: user });
+				return sseResponse([
+					{ type: 'start', userMessage: user, assistantMessageId: '' },
+					{ type: 'done', assistantMessage: mediaSibling('r', 'bridge::claude', null, []) },
+				]);
+			}),
+		);
+		await fc.send(
+			'hi',
+			[],
+			[{ modelId: 'bridge::claude', modelKind: 'chat', displayName: 'C', inputMediaId: null }],
+			[{ modelId: 'bridge::claude', modelKind: 'chat', displayName: 'C' }],
+		);
+		expect(fc.isAvatar).toBe(false);
+		expect(posts.some((u) => u.includes('/avatar/'))).toBe(false);
+	});
+
+	it('offers a re-roll while this page still owns the draw', async () => {
+		// The live half of the same rule — otherwise the test above would pass
+		// against a `canRegenerate` hardcoded to false.
+		stubDraw();
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+		expect(fc.canRegenerate).toBe(true);
 	});
 });

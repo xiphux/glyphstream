@@ -21,6 +21,20 @@
  * conversation's avatar HERE, via the relay's `onMediaPersisted` hook, in the
  * same breath as the row that holds it.
  *
+ * TWO MODES, and the split is the whole design. One model is a side errand: it
+ * runs in the background under a stable registry key, the composer stays live
+ * throughout, and the portrait becomes the face the moment it persists. Two or
+ * more is a comparison — the user has said, by picking a second model, that they
+ * want to choose — so those branches take per-branch keys (they must not abort
+ * each other), count as turns (the recovered grid's placeholder columns come
+ * from `conversationTurnEntries`), leave the leaf parked at the description, and
+ * apply NOTHING on arrival. The pick applies, via ../pick.
+ *
+ * Where a comparison is ALLOWED to park, and the seed of portraits it starts
+ * from, are ../prepare's business — decided once, before any branch, the way
+ * .../messages/prepare decides them for a turn fan-out. A branch request only
+ * streams.
+ *
  * It used to be the client that applied it, on `done`, on the theory that a
  * disconnect mid-generation degrades to "the portrait is in the thread, set it
  * from the lightbox". In practice that theory had the failure backwards. iOS
@@ -37,12 +51,19 @@ import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getConversationMeta, setConversationAvatar } from '$lib/server/db/queries/conversations';
 import { getMessage } from '$lib/server/db/queries/messages';
+import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
+import { generateId } from '$lib/server/util/id';
 import { getEndpoint } from '$lib/server/endpoints/registry';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModels } from '$lib/server/endpoints/list-models';
 import type { ModelEntry } from '$lib/types/api';
 import { startImageRelay } from '$lib/server/streaming/image-relay';
-import { AVATAR_BRANCH, clearInFlight, registerInFlight } from '$lib/server/streaming/in-flight';
+import {
+	AVATAR_BRANCH,
+	clearInFlight,
+	conversationFanoutAtCapacity,
+	registerInFlight,
+} from '$lib/server/streaming/in-flight';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { partsToText } from '$lib/message-parts';
@@ -65,6 +86,18 @@ interface GenerateAvatarBody {
 	 * endpoint usable on its own and matches what it did before editing existed.
 	 */
 	prompt?: unknown;
+	/**
+	 * Draw as one branch of a multi-model comparison rather than as the
+	 * conversation's next face.
+	 *
+	 * Flips three things that only make sense one way or the other, never a mix
+	 * (see the module docblock): the registry key, whether the portrait is
+	 * applied on arrival, and where the active leaf ends up.
+	 */
+	fanout?: unknown;
+	/** How many branches this comparison dispatched, for the single aggregate
+	 *  "N ready" notification. Ignored unless `fanout`. */
+	fanoutSize?: unknown;
 	/**
 	 * Whether to run the prompt through the image-prompt enhancer.
 	 *
@@ -137,18 +170,50 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	const enhancementEnabled =
 		enhancementAllowed && (typeof body.enhance !== 'boolean' || body.enhance);
 
+	// One branch of a comparison. ../prepare has already parked the fan-out on
+	// this same message and vetted that it may be parked there, exactly as
+	// .../messages/prepare does for a turn fan-out — a branch request doesn't
+	// re-decide it, it just streams.
+	const isFanout = body.fanout === true;
+	// Same ceiling as a chat/media fan-out, and the same reasoning: every branch
+	// holds an SSE connection, a registry entry and a queued waiter, so an
+	// unbounded fan-out is a resource-exhaustion vector even though the
+	// per-endpoint gate throttles the actual upstream calls. The check and
+	// `registerInFlight` run synchronously back-to-back, so concurrent branch
+	// POSTs can't race past it.
+	if (isFanout && conversationFanoutAtCapacity(params.id)) {
+		error(429, 'Too many concurrent generations for this conversation');
+	}
+
 	const inFlight = registerInFlight(
 		params.id,
 		endpoint,
-		AVATAR_BRANCH,
+		// A comparison's branches must coexist; a background draw supersedes its
+		// predecessor. Both fall out of the key.
+		isFanout ? generateId() : AVATAR_BRANCH,
 		'image',
 		body.modelId,
 		null,
-		// Not a turn: the recovery poll, the fan-out grid and the aggregate
-		// notification must not count this as one of the conversation's branches.
-		false,
+		// A background draw is not a turn: the recovery poll, the fan-out grid and
+		// the aggregate notification must not count it as one of the conversation's
+		// branches. A comparison's branches ARE turns — they're what the grid is
+		// made of, and the aggregate notify waits on exactly this set.
+		isFanout,
 	);
-	const onComplete = () => clearInFlight(params.id, inFlight);
+	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
+	const onComplete = () => {
+		clearInFlight(params.id, inFlight);
+		if (isFanout) {
+			notifyFanoutCompleteIfLast({
+				conversationId: params.id,
+				userId: locals.user.id,
+				userMessageId: source.id,
+				conversationTitle: meta.title,
+				modality: 'image',
+				fanoutSize,
+			});
+		}
+	};
 
 	const stream = startImageRelay({
 		conversationId: params.id,
@@ -173,7 +238,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		enhancementEnabled,
 		displayOnly: true,
 		abortSignal: inFlight.controller.signal,
-		advanceActiveLeaf: true,
+		// A comparison leaves the leaf where it parked it: every branch is a
+		// sibling of the others and none of them wins by landing first — the pick
+		// moves the leaf. A background draw advances to its portrait…
+		advanceActiveLeaf: !isFanout,
 		// …but only if the branch hasn't moved on. A draw takes minutes and the
 		// composer stays live throughout (that's the point of backgrounding it),
 		// so the user may well have sent another turn by the time the portrait
@@ -181,6 +249,9 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// that exchange drops out of the thread. If the guard fails the portrait
 		// still persists as a sibling, reachable by the ‹N/M› arrows.
 		advanceActiveLeafIfCurrent: source.id,
+		// Every branch of a comparison would otherwise buzz on its own; the single
+		// aggregate "N ready" fires from the last one's onComplete instead.
+		suppressNotify: isFanout,
 		// The conversation already has a title by now (it has a description turn
 		// in it), and an avatar is a side errand — not the thing to name the
 		// thread after.
@@ -188,21 +259,35 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		onStarted: () => {
 			inFlight.generationStartedAt = Date.now();
 		},
-		// The whole point of the draw, and unconditional. A second draw started
-		// since supersedes this one at the registry (they share AVATAR_BRANCH) and
-		// aborts it, so in the ordinary case a superseded draw never reaches here
-		// at all; if it squeaked past the abort it applies first and loses to the
-		// newer one, which is the order the user pressed the buttons in either way.
-		onMediaPersisted: (mediaId) => {
-			const result = setConversationAvatar(params.id, locals.user.id, mediaId);
-			// Both reasons are unreachable-in-practice races (the conversation
-			// deleted, or the media reaped, between persist and now) — worth a line
-			// in the log, not worth failing a generation that otherwise worked.
-			if (!result.ok) {
-				console.warn(`[avatar] could not apply portrait to ${params.id}: ${result.reason}`);
-			}
-		},
-		onGenerationSettled: onComplete,
+		// The whole point of a background draw, and unconditional there. A second
+		// draw started since supersedes this one at the registry (they share
+		// AVATAR_BRANCH) and aborts it, so in the ordinary case a superseded draw
+		// never reaches here at all; if it squeaked past the abort it applies first
+		// and loses to the newer one, which is the order the user pressed the
+		// buttons in either way.
+		//
+		// A comparison applies nothing: three portraits racing to be the face
+		// would repaint the header at each model's finishing time and settle on
+		// whichever GPU was slowest. The pick applies, at ../pick.
+		onMediaPersisted: isFanout
+			? undefined
+			: (mediaId) => {
+					const result = setConversationAvatar(params.id, locals.user.id, mediaId);
+					// Both reasons are unreachable-in-practice races (the conversation
+					// deleted, or the media reaped, between persist and now) — worth a line
+					// in the log, not worth failing a generation that otherwise worked.
+					if (!result.ok) {
+						console.warn(`[avatar] could not apply portrait to ${params.id}: ${result.reason}`);
+					}
+				},
+		// Free the registry slot as soon as the GENERATION settles — the entry
+		// means "a generation is running", and past `done` none is. Deliberately
+		// NOT the same function as `onComplete`: `notifyFanoutCompleteIfLast` infers
+		// "last branch" from the registry going empty, and it has to make that check
+		// at stream close, a microtask after the clear, rather than in the same
+		// breath as it. See fanout-notify.ts for why that gap is what keeps the
+		// aggregate exactly-once.
+		onGenerationSettled: () => clearInFlight(params.id, inFlight),
 		onComplete,
 	});
 	return sseResponse(stream);
