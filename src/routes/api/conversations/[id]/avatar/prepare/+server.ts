@@ -61,6 +61,15 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 	const source = getMessage(params.id, body.sourceMessageId);
 	if (!source) error(404, 'Message not found');
+	// Mirrors ../pick, and makes an assertion elsewhere true rather than
+	// aspirational: `getFanoutRecoveryState` reports its `avatar` flag from this
+	// anchor's role, on the stated grounds that "the avatar route only ever
+	// anchors on an assistant message". Nothing enforced that. A user anchor would
+	// come back from recovery as an ordinary turn fan-out — a grid that renders no
+	// pick action at all, since the page wires `onPick` only for `isAvatar`.
+	if (source.role !== 'assistant') {
+		error(400, 'An avatar comparison must anchor on an assistant message');
+	}
 
 	const leaf = meta.activeLeafMessageId;
 	if (leaf && leaf !== source.id) {

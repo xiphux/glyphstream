@@ -81,6 +81,7 @@ beforeEach(() => {
 		// description.
 		if (id === 'stopped')
 			return { id: 'stopped', role: 'user', parts: [], parentMessageId: 'desc' };
+		if (id === 'u1') return { id: 'u1', role: 'user', parts: [], parentMessageId: null };
 		return null;
 	});
 });
@@ -152,6 +153,16 @@ describe('POST /avatar/prepare — what the grid starts from', () => {
 		const res = await call();
 		expect(await res.json()).toEqual({ siblings });
 		expect(mocks.getSiblingAssistants.mock.calls).toEqual([['c1', 'desc']]);
+	});
+
+	it('rejects a user message as the anchor', async () => {
+		// The recovery state derives its `avatar` flag from this role, and documents
+		// the two fan-out routes as disjoint "by construction". This is the
+		// construction. Not reachable from the UI — avatarSourceMessage is always an
+		// assistant message — so this keeps a claim honest rather than closing a
+		// live path.
+		await expect(call('u1')).rejects.toMatchObject({ status: 400 });
+		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
 	});
 
 	it('rejects an unknown message', async () => {
