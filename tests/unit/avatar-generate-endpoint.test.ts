@@ -220,6 +220,32 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		expect(entries.every((e) => !e.controller.signal.aborted)).toBe(true);
 	});
 
+	it('refuses to hang a comparison branch under a user message', async () => {
+		// ../prepare vets the anchor before parking, but a branch is a separate
+		// request and can arrive without one. This is the route that actually
+		// creates the row, and the anchor's role is what the recovery state reports
+		// its `avatar` flag from.
+		mocks.getMessage.mockReturnValue({
+			id: 'm1',
+			role: 'user',
+			parts: [{ type: 'text', text: 'draw me' }],
+		});
+		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 400 });
+	});
+
+	it('still draws a background portrait from a user message', async () => {
+		// Unchanged for the single-model path: it parks no marker and so never
+		// reaches the recovery flag, and the endpoint has always been usable against
+		// any message with text.
+		mocks.getMessage.mockReturnValue({
+			id: 'm1',
+			role: 'user',
+			parts: [{ type: 'text', text: 'draw me' }],
+		});
+		await call();
+		expect(mocks.startImageRelay).toHaveBeenCalled();
+	});
+
 	it('refuses a branch past the per-conversation ceiling', async () => {
 		// Each branch holds an SSE connection, a registry entry and a queued waiter,
 		// so the cap is a resource bound, not a UI preference — the client mirrors

@@ -175,6 +175,16 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// .../messages/prepare does for a turn fan-out — a branch request doesn't
 	// re-decide it, it just streams.
 	const isFanout = body.fanout === true;
+	// …but "doesn't re-decide it" is not the same as "trusts anything". These are
+	// two independent HTTP requests, so a branch can arrive without a prepare ever
+	// having run. The anchor's role is the one part worth re-checking: it is what
+	// `getFanoutRecoveryState` reads its `avatar` flag from, and a portrait hung
+	// under a user message would be a comparison that recovery reports as an
+	// ordinary turn fan-out. Cheap, and it makes ../prepare's guard hold for the
+	// route that actually creates the rows.
+	if (isFanout && source.role !== 'assistant') {
+		error(400, 'An avatar comparison must anchor on an assistant message');
+	}
 	// Same ceiling as a chat/media fan-out, and the same reasoning: every branch
 	// holds an SSE connection, a registry entry and a queued waiter, so an
 	// unbounded fan-out is a resource-exhaustion vector even though the

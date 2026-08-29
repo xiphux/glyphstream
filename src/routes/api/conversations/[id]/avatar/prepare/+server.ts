@@ -39,6 +39,7 @@ import {
 	hasChildMessages,
 	setActiveLeafMessageId,
 } from '$lib/server/db/queries/messages';
+import { getAvatarDrawSince } from '$lib/server/streaming/in-flight';
 import type { PrepareAvatarDrawResponse } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
@@ -69,6 +70,18 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// pick action at all, since the page wires `onPick` only for `isAvatar`.
 	if (source.role !== 'assistant') {
 		error(400, 'An avatar comparison must anchor on an assistant message');
+	}
+
+	// Not while a background draw is still running on this description. That draw
+	// advances the leaf to its own portrait under a compare-and-swap guard —
+	// "only if the leaf is STILL source.id" — which parking here would rewind the
+	// leaf back onto, re-satisfying a guard that was about to fail. It would then
+	// take the leaf off the description this comparison just parked on (so the
+	// grid vanishes from recovery, its portraits stranded as orphan siblings) AND
+	// apply a face the user never chose. The tab that started the draw disables
+	// the Draw action for its duration; this is the backstop for every other tab.
+	if (getAvatarDrawSince(params.id) !== null) {
+		error(409, 'A portrait is already being drawn here — wait for it to finish.');
 	}
 
 	const leaf = meta.activeLeafMessageId;

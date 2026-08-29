@@ -15,7 +15,9 @@
  *      supply that list — it renders the active branch, which holds at most one
  *      of those siblings.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AVATAR_BRANCH, registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
+import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage } from '$lib/types/api';
 
 const mocks = vi.hoisted(() => ({
@@ -141,6 +143,45 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		mocks.hasChildMessages.mockReturnValue(true);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
+	});
+});
+
+describe('POST /avatar/prepare — not while a draw is running', () => {
+	afterEach(() => resetInFlight());
+
+	it('refuses while a background draw still holds the description', async () => {
+		// That draw advances the leaf to its own portrait under a compare-and-swap
+		// guard ("only if the leaf is STILL source.id"). Parking rewinds the leaf
+		// onto exactly that id, re-satisfying a guard that was about to fail — so
+		// the draw would then take the leaf off the description this comparison
+		// just parked on, stranding the grid, and apply a face nobody chose.
+		registerInFlight(
+			'c1',
+			{ id: 'ep' } as unknown as LoadedEndpoint,
+			AVATAR_BRANCH,
+			'image',
+			'ep::sdxl',
+			null,
+			false,
+		);
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
+		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
+	});
+
+	it('allows a comparison while an unrelated turn is generating', async () => {
+		// Scoped to the background-draw key, not to activity in general: a chat turn
+		// streaming elsewhere in the conversation does not move this leaf.
+		registerInFlight(
+			'c1',
+			{ id: 'ep' } as unknown as LoadedEndpoint,
+			'some-branch',
+			'chat',
+			'ep::chat',
+			null,
+		);
+		await call();
+		expect(mocks.setFanoutParent).toHaveBeenCalled();
 	});
 });
 
