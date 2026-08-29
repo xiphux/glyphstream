@@ -68,6 +68,21 @@ export interface FanoutDeps {
 	scrollToBottom(): void;
 }
 
+/** The reviewed prompt behind a live avatar comparison, as `sendAvatarDraw`
+ *  captured it. See `FanoutController.#avatarDraw`. */
+interface AvatarDrawHandle {
+	sourceMessageId: string;
+	prompt: string;
+	enhance: boolean;
+}
+
+/** What a dispatch loop's branches ARE, snapshotted when the loop starts rather
+ *  than read per branch — see `#dispatchColumns`. */
+interface DispatchMode {
+	mode: 'turn' | 'avatar';
+	avatar: AvatarDrawHandle | null;
+}
+
 /** branchId prefix for the server-driven "Generating…" placeholder columns of a
  *  recovered fan-out. The builder and the recovery-poll gate both key off it. */
 export const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
@@ -142,7 +157,7 @@ export class FanoutController {
 	 * re-rolling from it would silently draw something else. So Regenerate is
 	 * offered only while we still have the real prompt; see `canRegenerate`.
 	 */
-	#avatarDraw: { sourceMessageId: string; prompt: string; enhance: boolean } | null = $state(null);
+	#avatarDraw: AvatarDrawHandle | null = $state(null);
 
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
@@ -409,6 +424,21 @@ export class FanoutController {
 		parentMessageId: string,
 		cols: readonly FanoutColumn[],
 	): Promise<void> {
+		// Snapshot what these branches ARE, once, instead of letting each read the
+		// live fields. The loop dispatches one at a time — each waits for the prior
+		// to reach the endpoint gate — and a conversation switch runs `teardown()`
+		// in that gap, which resets `#mode`/`#avatarDraw`. Read fresh, a
+		// not-yet-dispatched avatar branch would build a TURN body against its
+		// assistant anchor, which /messages refuses with a 400; and nobody would
+		// ever see it, because the resolution below has already bailed on the
+		// conversation change. The user would just get fewer candidates than they
+		// asked for, silently.
+		//
+		// Aborting doesn't save us either: `markEnqueued` is in `#runBranch`'s
+		// `finally` precisely so a branch that dies before its first event still
+		// releases the sequence — so `teardown()`'s aborts ADVANCE this loop rather
+		// than stopping it.
+		const dispatch: DispatchMode = { mode: this.#mode, avatar: this.#avatarDraw };
 		const branchRuns: Array<Promise<ChatMessage | null>> = [];
 		for (const col of cols) {
 			let signalEnqueued!: () => void;
@@ -419,6 +449,7 @@ export class FanoutController {
 				this.#runBranch(turnConvId, parentMessageId, col, {
 					onEnqueued: signalEnqueued,
 					fanoutSize: cols.length,
+					dispatch,
 				}),
 			);
 			await enqueued;
@@ -568,7 +599,14 @@ export class FanoutController {
 		turnConvId: string,
 		userMessageId: string,
 		col: FanoutColumn,
-		opts?: { reroll?: boolean; onEnqueued?: () => void; fanoutSize?: number },
+		opts?: {
+			reroll?: boolean;
+			onEnqueued?: () => void;
+			fanoutSize?: number;
+			/** The dispatch loop's snapshot. Absent for `regenerate`, which fires a
+			 *  lone branch with no await ahead of it and so wants the live fields. */
+			dispatch?: DispatchMode;
+		},
 	): Promise<ChatMessage | null> {
 		const abort = new AbortController();
 		this.#aborts.set(col.branchId, abort);
@@ -587,13 +625,13 @@ export class FanoutController {
 			// assistant message, which the messages route refuses as a fan-out
 			// parent, so it goes to the avatar route instead. Both speak the same
 			// SSE, which is why everything below this line is shared.
-			const avatar = this.#avatarDraw;
+			const { mode, avatar } = opts?.dispatch ?? { mode: this.#mode, avatar: this.#avatarDraw };
 			const url =
-				this.#mode === 'avatar'
+				mode === 'avatar'
 					? `/api/conversations/${turnConvId}/avatar/generate`
 					: `/api/conversations/${turnConvId}/messages?stream=1`;
 			const body = JSON.stringify(
-				this.#mode === 'avatar' && avatar
+				mode === 'avatar' && avatar
 					? buildAvatarBranchBody({
 							sourceMessageId: userMessageId,
 							modelId: col.modelId,

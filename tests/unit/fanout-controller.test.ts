@@ -1222,6 +1222,78 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.canRegenerate).toBe(true);
 	});
 
+	it('keeps dispatching avatar branches after a conversation switch', async () => {
+		// The loop fires one branch at a time, each waiting for the prior to reach
+		// the endpoint gate — and teardown() runs in that gap on a conversation
+		// switch, resetting the mode. Read fresh, the next branch would build a TURN
+		// body against an assistant anchor and be refused 400 by /messages, unseen:
+		// the resolution has already bailed on the conversation change, so the user
+		// just gets fewer candidates than they asked for.
+		//
+		// Aborting doesn't stop it either — markEnqueued lives in runBranch's
+		// finally so a dying branch still releases the sequence, which means
+		// teardown's aborts ADVANCE this loop.
+		const posts: string[] = [];
+		const released: Array<() => void> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push(url);
+				if (url.endsWith('/avatar/prepare')) {
+					return { ok: true, json: async () => ({ siblings: [] }) } as unknown as Response;
+				}
+				// Hold each branch's first event so the loop parks between branches,
+				// which is the window this test is about.
+				let release!: () => void;
+				const held = new Promise<void>((r) => (release = r));
+				released.push(release);
+				const msg = imageSibling('p', 'bridge::sdxl', null);
+				const body = new ReadableStream<Uint8Array>({
+					async start(controller) {
+						const enc = new TextEncoder();
+						await held;
+						controller.enqueue(
+							enc.encode(
+								`data: ${JSON.stringify({ type: 'start', userMessage: msg, assistantMessageId: '' })}\n\n`,
+							),
+						);
+						controller.enqueue(
+							enc.encode(`data: ${JSON.stringify({ type: 'done', assistantMessage: msg })}\n\n`),
+						);
+						controller.close();
+					},
+				});
+				return { ok: true, body } as unknown as Response;
+			}),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const running = fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: true,
+			branches: TWO_MODELS,
+		});
+
+		// Branch 1 is out and the loop is parked waiting for its first event.
+		await vi.waitFor(() => expect(released).toHaveLength(1));
+		// The user navigates away mid-dispatch.
+		fc.teardown();
+		// Releasing branch 1 lets the loop dispatch branch 2.
+		released[0]();
+		await vi.waitFor(() => expect(released).toHaveLength(2));
+		released[1]();
+		await running;
+
+		// Every branch went to the avatar route. Before the snapshot, branch 2 went
+		// to /messages and was refused.
+		const branchPosts = posts.filter((u) => !u.endsWith('/avatar/prepare'));
+		expect(branchPosts).toHaveLength(2);
+		expect(branchPosts.every((u) => u.includes('/avatar/generate'))).toBe(true);
+
+		vi.unstubAllGlobals();
+	});
+
 	it('offers a re-roll while this page still owns the draw', async () => {
 		// The live half of the same rule — otherwise the test above would pass
 		// against a `canRegenerate` hardcoded to false.

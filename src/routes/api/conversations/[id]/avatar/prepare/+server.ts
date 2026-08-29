@@ -37,7 +37,6 @@ import {
 	getMessage,
 	getSiblingAssistants,
 	hasChildMessages,
-	setActiveLeafMessageId,
 } from '$lib/server/db/queries/messages';
 import { getAvatarDrawSince } from '$lib/server/streaming/in-flight';
 import type { PrepareAvatarDrawResponse } from '$lib/types/api';
@@ -51,15 +50,22 @@ interface PrepareAvatarDrawBody {
 export const POST: RequestHandler = async ({ locals, params, request }) => {
 	requireUser(locals);
 
-	const meta = requireFound(
-		getConversationMeta(params.id, locals.user.id),
-		'Conversation not found',
-	);
-
 	const body = await parseJsonBody<PrepareAvatarDrawBody>(request);
 	if (typeof body.sourceMessageId !== 'string' || !body.sourceMessageId) {
 		error(400, "'sourceMessageId' is required");
 	}
+	// Read AFTER the body, not before it. Everything the parkable rule decides
+	// hangs on `activeLeafMessageId`, and reading it ahead of an unbounded network
+	// await means judging a leaf that may have moved since — a background draw
+	// finishing in that gap advances the leaf and clears its registry entry, so a
+	// stale snapshot passes the in-flight check AND skips the rewind branch
+	// entirely, parking the marker on a message that is no longer the leaf. The
+	// comparison would then never recover: `getFanoutRecoveryState` bails on
+	// `parent !== activeLeafMessageId`.
+	const meta = requireFound(
+		getConversationMeta(params.id, locals.user.id),
+		'Conversation not found',
+	);
 	const source = getMessage(params.id, body.sourceMessageId);
 	if (!source) error(404, 'Message not found');
 	// Mirrors ../pick, and makes an assertion elsewhere true rather than
@@ -111,9 +117,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 				'This conversation has moved on past that message — draw with a single model instead.',
 			);
 		}
-		setActiveLeafMessageId(params.id, source.id);
 	}
-	setFanoutParent(params.id, locals.user.id, source.id);
+	// One statement for both columns — see `setFanoutParent`'s flag. Split in two,
+	// a failure between them leaves the leaf rewound with no marker parked.
+	setFanoutParent(params.id, locals.user.id, source.id, leaf !== source.id);
 
 	const response: PrepareAvatarDrawResponse = {
 		siblings: getSiblingAssistants(params.id, source.id),

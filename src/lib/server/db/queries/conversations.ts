@@ -221,10 +221,27 @@ export function setFanoutParent(
 	conversationId: string,
 	userId: string,
 	parentMessageId: string,
+	/**
+	 * Also move the active leaf onto the anchor, in the SAME statement.
+	 *
+	 * An avatar comparison has to do both: the marker is what recovery looks for,
+	 * and it only reports a fan-out whose marker IS the leaf. Done as two updates,
+	 * a failure between them leaves the leaf rewound onto the description with no
+	 * marker parked — the one state the whole parkable rule exists to avoid, and
+	 * with nothing on screen to explain it. `selectBranch` sets this pair together
+	 * for the same reason; so does the leaf-advancing path in `appendMessage`.
+	 *
+	 * A turn fan-out passes nothing: `/messages/prepare` creates the anchor and
+	 * `appendMessage` has already landed the leaf on it.
+	 */
+	alsoSetActiveLeaf = false,
 ): void {
 	getDb()
 		.update(conversations)
-		.set({ fanoutParentMessageId: parentMessageId })
+		.set({
+			fanoutParentMessageId: parentMessageId,
+			...(alsoSetActiveLeaf ? { activeLeafMessageId: parentMessageId, updatedAt: Date.now() } : {}),
+		})
 		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
 		.run();
 }

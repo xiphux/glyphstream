@@ -54,7 +54,7 @@ import {
 	getFanoutParent,
 	setConversationAvatar,
 } from '$lib/server/db/queries/conversations';
-import { getMessage } from '$lib/server/db/queries/messages';
+import { getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { generateId } from '$lib/server/util/id';
 import { getEndpoint } from '$lib/server/endpoints/registry';
@@ -66,10 +66,12 @@ import {
 	AVATAR_BRANCH,
 	clearInFlight,
 	conversationFanoutAtCapacity,
+	conversationTurnEntries,
 	registerInFlight,
 } from '$lib/server/streaming/in-flight';
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
+import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
 import { partsToText } from '$lib/message-parts';
 import type { RequestHandler } from './$types';
 
@@ -225,7 +227,31 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// Read here rather than earlier so it stays synchronous with registerInFlight
 	// below; before `await listAllModels()` it would open a real TOCTOU window.
 	if (!isFanout && getFanoutParent(params.id, locals.user.id) === source.id) {
-		error(409, 'An avatar comparison is open here — pick one or dismiss it first.');
+		// …but only where a comparison is actually THERE to pick from. Every branch
+		// can fail without persisting a row — a Stop (the relay writes `Cancelled`
+		// and appends nothing), or a route-level refusal that hits all of them the
+		// same way — and the marker survives that. The CLIENT reads exactly that
+		// state as "no parked fan-out" (siblings 0 + pending 0 → syncFromServer
+		// drops its grid and never tells the server), so a bare marker test would
+		// 409 every later draw on this description against a comparison with no
+		// grid to pick or dismiss in — and the message would point at UI that isn't
+		// on screen. Worse, a background draw is what USED to repair that state:
+		// its compare-and-swap succeeded and nulled the marker in the same
+		// statement. Refusing unconditionally would break the one operation that
+		// cleaned up, in precisely the case where nothing can be stranded.
+		//
+		// Same predicate `getFanoutRecoveryState` builds the grid from, so the
+		// guard and the grid agree on what "open" means. The `pending` half is what
+		// keeps a comparison whose branches haven't persisted YET refusing
+		// correctly; it leaves one RTT — between prepare parking and the first
+		// branch registering — in which a draw from another tab is still admitted.
+		// Narrow, and strictly better than a permanent dead end.
+		const open =
+			getSiblingAssistants(params.id, source.id).length > 0 ||
+			conversationTurnEntries(params.id).length > 0;
+		if (open) {
+			error(409, 'An avatar comparison is open here — pick one or dismiss it first.');
+		}
 	}
 
 	const inFlight = registerInFlight(
@@ -243,7 +269,18 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// made of, and the aggregate notify waits on exactly this set.
 		isFanout,
 	);
-	const fanoutSize = typeof body.fanoutSize === 'number' ? body.fanoutSize : undefined;
+	// Narrowed, not just typed: this rides straight into the push notification's
+	// text, and `typeof x === 'number'` admits `1e999` — JSON.parse turns that into
+	// Infinity, and the user gets "Infinity images ready". Bounded by the same cap
+	// the dispatch is. (The messages route has the same unnarrowed read; it is the
+	// older instance of this shape, not a second bug introduced here.)
+	const fanoutSize =
+		typeof body.fanoutSize === 'number' &&
+		Number.isInteger(body.fanoutSize) &&
+		body.fanoutSize > 0 &&
+		body.fanoutSize <= MAX_FANOUT_BRANCHES_PER_CONVERSATION
+			? body.fanoutSize
+			: undefined;
 	const onComplete = () => {
 		clearInFlight(params.id, inFlight);
 		if (isFanout) {

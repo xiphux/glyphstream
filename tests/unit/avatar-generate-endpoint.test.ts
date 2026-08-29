@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
 	setConversationAvatar: vi.fn<(...a: unknown[]) => { ok: boolean; reason?: string }>(),
 	getFanoutParent: vi.fn<(...a: unknown[]) => string | null>(),
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
+	getSiblingAssistants: vi.fn<(...a: unknown[]) => unknown[]>(),
 	getEndpoint: vi.fn<(...a: unknown[]) => unknown>(),
 	listAllModels: vi.fn<(...a: unknown[]) => unknown>(),
 	startImageRelay: vi.fn<(p: ImageRelayParams) => ReadableStream<Uint8Array>>(),
@@ -44,6 +45,7 @@ vi.mock('$lib/server/db/queries/conversations', () => ({
 }));
 vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
+	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
 }));
 vi.mock('$lib/server/endpoints/registry', () => ({
 	getEndpoint: (...a: unknown[]) => mocks.getEndpoint(...a),
@@ -123,6 +125,7 @@ beforeEach(() => {
 	mocks.startImageRelay.mockReset().mockReturnValue(new ReadableStream<Uint8Array>());
 	mocks.notifyFanoutCompleteIfLast.mockReset();
 	mocks.getFanoutParent.mockReset().mockReturnValue(null);
+	mocks.getSiblingAssistants.mockReset().mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -249,6 +252,31 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		expect(mocks.startImageRelay).toHaveBeenCalled();
 	});
 
+	it.each([
+		['above the branch ceiling', 999999],
+		['negative', -3],
+		['fractional', 2.5],
+	])('drops a fanoutSize that is %s', async (_label, size) => {
+		// It rides straight into the push notification's text, so a bare
+		// `typeof === 'number'` lets a hand-written body print whatever it likes
+		// ("999999 images ready"). Bounded by the same cap the dispatch is.
+		// (Infinity is NOT a case: JSON.stringify emits it as null, so it never
+		// survives the wire — which is exactly why this uses values that do.)
+		await call({ fanout: true, fanoutSize: size });
+		mocks.notifyFanoutCompleteIfLast.mockClear();
+		relayParams().onComplete!();
+		expect(mocks.notifyFanoutCompleteIfLast.mock.calls[0][0]).toMatchObject({
+			fanoutSize: undefined,
+		});
+	});
+
+	it('keeps a fanoutSize the dispatch could actually have produced', async () => {
+		await call({ fanout: true, fanoutSize: 3 });
+		mocks.notifyFanoutCompleteIfLast.mockClear();
+		relayParams().onComplete!();
+		expect(mocks.notifyFanoutCompleteIfLast.mock.calls[0][0]).toMatchObject({ fanoutSize: 3 });
+	});
+
 	it('refuses a branch past the per-conversation ceiling', async () => {
 		// Each branch holds an SSE connection, a registry entry and a queued waiter,
 		// so the cap is a resource bound, not a UI preference — the client mirrors
@@ -266,8 +294,37 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// "safe to advance" — so it would take the leaf off the description, drop the
 		// grid out of recovery, and apply a face nobody picked.
 		mocks.getFanoutParent.mockReturnValue('m1');
+		mocks.getSiblingAssistants.mockReturnValue([{ id: 'p1' }]);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+	});
+
+	it('refuses while a comparison is parked whose branches have not persisted yet', async () => {
+		// No siblings, but branches are registered as turns — the window between
+		// dispatch and the first portrait landing. Refusing here is the point of the
+		// pending half of the predicate.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		registerInFlight(
+			'c1',
+			{ id: 'ep' } as unknown as LoadedEndpoint,
+			'branch-1',
+			'image',
+			'x',
+			null,
+		);
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('draws through a marker left behind by a comparison that produced nothing', async () => {
+		// Every branch can fail without persisting a row (a Stop writes `Cancelled`
+		// and appends nothing), and the client then drops its grid locally without
+		// telling the server. A bare marker test would 409 every later draw against
+		// a comparison with no grid to dismiss — and this is the operation that
+		// repairs it, since the compare-and-swap nulls the marker as it advances.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		mocks.getSiblingAssistants.mockReturnValue([]);
+		await call();
+		expect(mocks.startImageRelay).toHaveBeenCalled();
 	});
 
 	it('still draws while a fan-out is parked on a different anchor', async () => {

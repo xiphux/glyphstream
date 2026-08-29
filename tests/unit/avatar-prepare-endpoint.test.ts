@@ -26,7 +26,6 @@ const mocks = vi.hoisted(() => ({
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	getSiblingAssistants: vi.fn<(...a: unknown[]) => ChatMessage[]>(),
 	hasChildMessages: vi.fn<(...a: unknown[]) => boolean>(),
-	setActiveLeafMessageId: vi.fn<(...a: unknown[]) => void>(),
 }));
 
 vi.mock('$lib/server/db/queries/conversations', () => ({
@@ -37,7 +36,6 @@ vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
 	hasChildMessages: (...a: unknown[]) => mocks.hasChildMessages(...a),
-	setActiveLeafMessageId: (...a: unknown[]) => mocks.setActiveLeafMessageId(...a),
 }));
 
 import { POST } from '../../src/routes/api/conversations/[id]/avatar/prepare/+server';
@@ -71,7 +69,6 @@ beforeEach(() => {
 	mocks.getConversationMeta.mockReset();
 	leafIs('desc');
 	mocks.setFanoutParent.mockReset();
-	mocks.setActiveLeafMessageId.mockReset();
 	mocks.hasChildMessages.mockReset().mockReturnValue(false);
 	mocks.getSiblingAssistants.mockReset().mockReturnValue([]);
 	mocks.getMessage.mockReset().mockImplementation((_c: unknown, id: unknown) => {
@@ -93,10 +90,10 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// The ordinary case: the description is the newest thing in the thread,
 		// because it was the reply to the request that produced it.
 		await call();
-		expect(mocks.setFanoutParent.mock.calls).toEqual([['c1', 'u1', 'desc']]);
-		// Nothing to move, so nothing is moved — a needless write here would bump
-		// `updated_at` and reorder the sidebar for a comparison that hasn't started.
-		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
+		// The 4th arg is "also move the leaf". Nothing to move here, so it's false —
+		// a needless leaf write would bump `updated_at` and reorder the sidebar for a
+		// comparison that hasn't started.
+		expect(mocks.setFanoutParent.mock.calls).toEqual([['c1', 'u1', 'desc', false]]);
 	});
 
 	it('steps the leaf back off a dead-end portrait (the re-roll case)', async () => {
@@ -105,8 +102,9 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// straight back as a column in the grid.
 		leafIs('p1');
 		await call();
-		expect(mocks.setActiveLeafMessageId.mock.calls).toEqual([['c1', 'desc']]);
-		expect(mocks.setFanoutParent.mock.calls).toEqual([['c1', 'u1', 'desc']]);
+		// Leaf move and marker park in ONE statement: split, a failure between them
+		// leaves the leaf rewound with no marker parked.
+		expect(mocks.setFanoutParent.mock.calls).toEqual([['c1', 'u1', 'desc', true]]);
 	});
 
 	it('refuses once the conversation has continued past the description', async () => {
@@ -115,7 +113,6 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// the answer is no, and the client falls back to the single-model draw.
 		leafIs('later');
 		await expect(call()).rejects.toMatchObject({ status: 409 });
-		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
 		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
 	});
 
@@ -131,7 +128,6 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// background avatar draw holds that gate while leaving the composer live.
 		leafIs('stopped');
 		await expect(call()).rejects.toMatchObject({ status: 409 });
-		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
 		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
 	});
 
@@ -166,7 +162,6 @@ describe('POST /avatar/prepare — not while a draw is running', () => {
 		);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.setFanoutParent).not.toHaveBeenCalled();
-		expect(mocks.setActiveLeafMessageId).not.toHaveBeenCalled();
 	});
 
 	it('allows a comparison while an unrelated turn is generating', async () => {
