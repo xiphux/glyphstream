@@ -523,7 +523,21 @@ export class FanoutController {
 		this.#deps.setBusy(false);
 
 		// Dispatch only the new branches — `seeded` are already-persisted results.
-		await this.#dispatchColumns(turnConvId, input.sourceMessageId, fresh);
+		//
+		// Drive the PROXIED elements, not the `fresh` objects they were built from.
+		// Assigning the array into `$state` is what makes its elements reactive, and
+		// a branch drives its column by mutating it (status, segments, persisted).
+		// Handed the raw objects, every one of those writes lands somewhere
+		// `this.columns` never sees: the grid stays on "Queued" forever, and the
+		// resolution below reads back two branches that produced nothing, wipes the
+		// comparison and reports that no model drew anything — for a draw that in
+		// fact succeeded twice. `send` avoids this by iterating `this.columns`, and
+		// `regenerate` says so at its own insertion point.
+		await this.#dispatchColumns(
+			turnConvId,
+			input.sourceMessageId,
+			this.columns.slice(seeded.length),
+		);
 		if (this.#deps.convId() !== turnConvId) return;
 		if (!this.live) return;
 		if (this.columns.some((c) => c.status === 'cancelled')) return;

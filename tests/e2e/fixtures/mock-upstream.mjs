@@ -118,6 +118,18 @@ const MODELS = {
 			display_name: 'Mock Image',
 			owned_by: 'mock',
 		},
+		{
+			// A SECOND image model, so a spec can compare two of them — an avatar
+			// draw across several models is the flow that needs it. Deliberately not
+			// named "Mock Image Two": several specs address the first one with
+			// /Mock Image/i, and a second match would break them on strict mode
+			// rather than on anything real.
+			id: 'mock-painter',
+			object: 'model',
+			kind: 'image',
+			display_name: 'Mock Painter',
+			owned_by: 'mock',
+		},
 	],
 };
 
