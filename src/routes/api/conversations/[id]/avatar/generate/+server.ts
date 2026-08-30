@@ -240,28 +240,29 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// statement. Refusing unconditionally would break the one operation that
 		// cleaned up, in precisely the case where nothing can be stranded.
 		//
-		// Same predicate `getFanoutRecoveryState` builds the grid from, so the
-		// guard and the grid agree on what "open" means. The `pending` half is what
-		// keeps a comparison whose branches haven't persisted YET refusing
-		// correctly; it leaves one RTT — between prepare parking and the first
-		// branch registering — in which a draw from another tab is still admitted.
-		// Narrow, and strictly better than a permanent dead end.
-		// Error siblings don't count. A branch that fails GENUINELY — as opposed to
-		// a Stop, which persists nothing — writes a durable assistant row with an
-		// `error` part under this same anchor. Counting those means a comparison in
-		// which every model failed still reads as "open", and then nothing can
-		// resolve it: the grid rebuilds from server truth as red columns, `pick`
-		// refuses a message with no image, `Done` finds no `done` column so it
-		// contacts the server not at all, and Discard stops at one ("keep at least
-		// one"). The user would be told to pick or dismiss, with neither available,
-		// and every later single-model draw refused. Same filter
-		// `notifyFanoutCompleteIfLast` applies, for the same reason: a failure is
-		// not a result — there, not one to announce; here, not one to pick.
+		// Nearly the predicate `getFanoutRecoveryState` builds the grid from, and
+		// the difference is deliberate: this one counts only the columns a user can
+		// actually PICK. A branch that fails GENUINELY — as opposed to a Stop, which
+		// persists nothing — writes a durable assistant row with an `error` part
+		// under this same anchor, and the grid does render those, as red columns.
+		// Counting them here would mean a comparison in which every model failed
+		// still reads as "open" while nothing can resolve it: `pick` refuses a
+		// message with no image, `Done` finds no `done` column so it contacts the
+		// server not at all, and Discard stops at one ("keep at least one"). The
+		// user would be told to pick or dismiss, with neither available, and every
+		// later single-model draw refused. Same filter `notifyFanoutCompleteIfLast`
+		// applies to the same query, for the same reason: a failure is not a result
+		// — there, not one to announce; here, not one to pick.
 		//
 		// The turn-entry half is what keeps a comparison whose branches are still
-		// running from slipping through on this: they register as turns and the
-		// dispatch loop only releases the next branch once the current one has
-		// reached the gate, so at least one entry is live throughout.
+		// running from slipping through: they register as turns, and the dispatch
+		// loop releases the next branch only once the current one has reached the
+		// gate — which is also when a branch becomes able to persist anything — so
+		// an entry is live whenever an error row exists mid-comparison. It leaves
+		// one RTT (between prepare parking and the first branch registering, and
+		// again between one branch clearing and the next registering) in which a
+		// draw from ANOTHER tab is admitted. Narrow, and strictly better than a
+		// permanent dead end.
 		const open =
 			getSiblingAssistants(params.id, source.id).some(
 				(m) => !m.parts.some((p) => p.type === 'error'),
