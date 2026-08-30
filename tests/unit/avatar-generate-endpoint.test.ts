@@ -294,7 +294,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		// "safe to advance" — so it would take the leaf off the description, drop the
 		// grid out of recovery, and apply a face nobody picked.
 		mocks.getFanoutParent.mockReturnValue('m1');
-		mocks.getSiblingAssistants.mockReturnValue([{ id: 'p1' }]);
+		mocks.getSiblingAssistants.mockReturnValue([{ id: 'p1', parts: [{ type: 'image' }] }]);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.startImageRelay).not.toHaveBeenCalled();
 	});
@@ -312,6 +312,31 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 			'x',
 			null,
 		);
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+	});
+
+	it('draws through a marker whose comparison produced only failures', async () => {
+		// A branch that fails genuinely — unlike a Stop, which persists nothing —
+		// leaves a durable assistant row carrying an `error` part. Those are not
+		// candidates: the grid can't pick one (no image) and Done can't resolve a
+		// grid with no `done` column, so counting them as "open" would refuse every
+		// later draw while telling the user to do something neither control offers.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		mocks.getSiblingAssistants.mockReturnValue([
+			{ id: 'e1', parts: [{ type: 'error', message: 'boom' }] },
+			{ id: 'e2', parts: [{ type: 'error', message: 'boom' }] },
+		]);
+		await call();
+		expect(mocks.startImageRelay).toHaveBeenCalled();
+	});
+
+	it('still refuses when one branch failed but another produced a portrait', async () => {
+		// Half a comparison is still a comparison — there is something to pick.
+		mocks.getFanoutParent.mockReturnValue('m1');
+		mocks.getSiblingAssistants.mockReturnValue([
+			{ id: 'e1', parts: [{ type: 'error', message: 'boom' }] },
+			{ id: 'p1', parts: [{ type: 'image', mediaId: 'm' }] },
+		]);
 		await expect(call()).rejects.toMatchObject({ status: 409 });
 	});
 

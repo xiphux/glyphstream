@@ -246,9 +246,26 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// correctly; it leaves one RTT — between prepare parking and the first
 		// branch registering — in which a draw from another tab is still admitted.
 		// Narrow, and strictly better than a permanent dead end.
+		// Error siblings don't count. A branch that fails GENUINELY — as opposed to
+		// a Stop, which persists nothing — writes a durable assistant row with an
+		// `error` part under this same anchor. Counting those means a comparison in
+		// which every model failed still reads as "open", and then nothing can
+		// resolve it: the grid rebuilds from server truth as red columns, `pick`
+		// refuses a message with no image, `Done` finds no `done` column so it
+		// contacts the server not at all, and Discard stops at one ("keep at least
+		// one"). The user would be told to pick or dismiss, with neither available,
+		// and every later single-model draw refused. Same filter
+		// `notifyFanoutCompleteIfLast` applies, for the same reason: a failure is
+		// not a result — there, not one to announce; here, not one to pick.
+		//
+		// The turn-entry half is what keeps a comparison whose branches are still
+		// running from slipping through on this: they register as turns and the
+		// dispatch loop only releases the next branch once the current one has
+		// reached the gate, so at least one entry is live throughout.
 		const open =
-			getSiblingAssistants(params.id, source.id).length > 0 ||
-			conversationTurnEntries(params.id).length > 0;
+			getSiblingAssistants(params.id, source.id).some(
+				(m) => !m.parts.some((p) => p.type === 'error'),
+			) || conversationTurnEntries(params.id).length > 0;
 		if (open) {
 			error(409, 'An avatar comparison is open here — pick one or dismiss it first.');
 		}
