@@ -1164,6 +1164,83 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.canRegenerate).toBe(false);
 	});
 
+	it('takes down a grid where every branch failed', async () => {
+		// The exit that was missing. An all-failed comparison persists error
+		// siblings and nothing else, so the grid rebuilds from server truth on every
+		// reload while nothing on it can resolve the comparison: "Use this avatar"
+		// needs an image, Discard refuses to remove the last column, and Done had no
+		// successful branch to select — so it contacted the server not at all and
+		// invalidateAll put the same grid straight back. Done now clears the marker.
+		const posts: Array<{ url: string; method: string }> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: { method?: string }) => {
+				posts.push({ url, method: init?.method ?? 'GET' });
+				return { ok: true, json: async () => ({ ok: true }) } as unknown as Response;
+			}),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		// A recovered grid of pure failures: error siblings DO carry `persisted`,
+		// which is why the old "nothing survived" test on `persisted` missed this.
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [
+				mediaSibling('e1', 'bridge::sdxl', null, [{ type: 'error', message: 'boom' }]),
+				mediaSibling('e2', 'bridge::flux', null, [{ type: 'error', message: 'boom' }]),
+			],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.comparing).toBe(true);
+
+		await fc.dismiss();
+
+		// The marker is cleared, and NOT by selecting a branch — selectBranch on the
+		// anchor walks to the newest error sibling and would put a failure in the
+		// thread as the price of leaving.
+		expect(posts).toEqual([{ url: '/api/conversations/c1/fanout', method: 'DELETE' }]);
+		expect(fc.comparing).toBe(false);
+
+		vi.unstubAllGlobals();
+	});
+
+	it('still promotes a real result when Done has one to promote', async () => {
+		// The other half: a grid with a survivor resolves by selecting it, exactly
+		// as before — the new clear must not swallow that path.
+		const posts: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				posts.push(url);
+				return { ok: true, json: async () => ({}) } as unknown as Response;
+			}),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'desc',
+			avatar: true,
+			kind: 'image',
+			siblings: [
+				mediaSibling('e1', 'bridge::sdxl', null, [{ type: 'error', message: 'boom' }]),
+				imageSibling('p1', 'bridge::flux', null),
+			],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		await fc.dismiss();
+		expect(posts).toEqual(['/api/conversations/c1/messages/p1/select']);
+
+		vi.unstubAllGlobals();
+	});
+
 	it('drops the prompt when the parked anchor moves under it', async () => {
 		// The case `teardown()` cannot reach, and therefore the one that proves the
 		// anchor test is what closes this rather than the teardown clears: no

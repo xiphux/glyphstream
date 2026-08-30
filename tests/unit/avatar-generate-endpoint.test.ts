@@ -124,7 +124,9 @@ beforeEach(() => {
 	]);
 	mocks.startImageRelay.mockReset().mockReturnValue(new ReadableStream<Uint8Array>());
 	mocks.notifyFanoutCompleteIfLast.mockReset();
-	mocks.getFanoutParent.mockReset().mockReturnValue(null);
+	// Default: a comparison is parked on the anchor, which is the state every
+	// fan-out branch runs in. The background-draw tests override it.
+	mocks.getFanoutParent.mockReset().mockReturnValue('m1');
 	mocks.getSiblingAssistants.mockReset().mockReturnValue([]);
 });
 
@@ -134,6 +136,7 @@ afterEach(() => {
 
 describe('POST /avatar/generate — applying the portrait', () => {
 	it('hands the relay an onMediaPersisted that sets the conversation avatar', async () => {
+		mocks.getFanoutParent.mockReturnValue(null);
 		await call();
 		const params = relayParams();
 		expect(params.onMediaPersisted).toBeTypeOf('function');
@@ -145,6 +148,7 @@ describe('POST /avatar/generate — applying the portrait', () => {
 	});
 
 	it('does not apply anything before the portrait exists', async () => {
+		mocks.getFanoutParent.mockReturnValue(null);
 		// The apply is the hook's job alone. A handler that set the avatar up front
 		// (say, optimistically) would repaint the conversation for a draw that then
 		// failed upstream.
@@ -153,6 +157,7 @@ describe('POST /avatar/generate — applying the portrait', () => {
 	});
 
 	it('swallows a failed apply rather than failing the generation', async () => {
+		mocks.getFanoutParent.mockReturnValue(null);
 		// Reachable only as a race — the conversation deleted, or the media reaped,
 		// between persist and apply. The portrait is already in the thread by then,
 		// so throwing here would turn a generation the user still has into an
@@ -167,6 +172,7 @@ describe('POST /avatar/generate — applying the portrait', () => {
 	});
 
 	it('registers the draw so a client whose fetch died can still see it', async () => {
+		mocks.getFanoutParent.mockReturnValue(null);
 		// The other half of the same failure: with the apply durable, the UI still
 		// has to admit the draw is running. `getInFlightSince` deliberately hides
 		// it (a draw is not a turn), so the header ring reads this instead.
@@ -179,6 +185,16 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 	// The single-model draw is a background side errand and the multi-model one is
 	// a parked comparison. Everything below is a consequence of that single split,
 	// so each test names the consequence rather than the flag.
+
+	it('refuses a branch with no comparison parked behind it', async () => {
+		// A branch that skipped ../prepare would register as a TURN against an
+		// anchor with no marker — inflating the pending count of whatever fan-out IS
+		// parked, since conversationTurnEntries is conversation-scoped — and land
+		// its portrait under a message the leaf isn't on.
+		mocks.getFanoutParent.mockReturnValue(null);
+		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 409 });
+		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+	});
 
 	it('applies nothing on arrival', async () => {
 		// Three portraits racing to be the face would repaint the header at each
@@ -372,6 +388,7 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 	});
 
 	it('still supersedes at the background key when only one model is drawn', async () => {
+		mocks.getFanoutParent.mockReturnValue(null);
 		// The other half of the split, asserted here so a future change to the
 		// fan-out path can't quietly take it with it.
 		await call();

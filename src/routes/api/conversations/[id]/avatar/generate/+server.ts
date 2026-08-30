@@ -191,6 +191,16 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	if (isFanout && source.role !== 'assistant') {
 		error(400, 'An avatar comparison must anchor on an assistant message');
 	}
+	// …and must belong to a comparison that ../prepare actually opened here. A
+	// branch that skips prepare registers as a TURN against an anchor with no
+	// marker, which inflates the pending count of whatever fan-out IS parked
+	// (`conversationTurnEntries` is conversation-scoped, not anchor-scoped) and
+	// delays the aggregate notify's last-branch inference — while its own portrait
+	// lands under a message the leaf isn't on, unrecoverable. Same read the
+	// background path below makes, one branch of the same `if`.
+	if (isFanout && getFanoutParent(params.id, locals.user.id) !== source.id) {
+		error(409, 'No avatar comparison is open here — start one first.');
+	}
 	// Same ceiling as a chat/media fan-out, and the same reasoning: every branch
 	// holds an SSE connection, a registry entry and a queued waiter, so an
 	// unbounded fan-out is a resource-exhaustion vector even though the

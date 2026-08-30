@@ -850,6 +850,15 @@ export class FanoutController {
 				await fetch(`/api/conversations/${convId}/messages/${firstPersisted.persisted.id}/select`, {
 					method: 'POST',
 				});
+			} else {
+				// Nothing to promote — every branch failed. Selecting anything here
+				// would be wrong (the only rows under the anchor are error siblings,
+				// and `selectBranch` walks to the newest of them), but doing nothing
+				// was worse: the marker stayed parked, so `invalidateAll` below rebuilt
+				// the very grid this is meant to take down, and Done was a no-op the
+				// user could press forever. Clear the marker instead and leave the
+				// thread where it is.
+				await fetch(`/api/conversations/${convId}/fanout`, { method: 'DELETE' });
 			}
 			await invalidateAll();
 			this.userMessageId = null;

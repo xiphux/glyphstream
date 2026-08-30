@@ -15,11 +15,13 @@ const mocks = vi.hoisted(() => ({
 	setConversationAvatar: vi.fn<(...a: unknown[]) => { ok: boolean; reason?: string }>(),
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	selectBranch: vi.fn<(...a: unknown[]) => { newActiveLeaf: string } | null>(),
+	getFanoutParent: vi.fn<(...a: unknown[]) => string | null>(),
 }));
 
 vi.mock('$lib/server/db/queries/conversations', () => ({
 	getConversationMeta: (...a: unknown[]) => mocks.getConversationMeta(...a),
 	setConversationAvatar: (...a: unknown[]) => mocks.setConversationAvatar(...a),
+	getFanoutParent: (...a: unknown[]) => mocks.getFanoutParent(...a),
 }));
 vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
@@ -54,6 +56,7 @@ beforeEach(() => {
 	mocks.getConversationMeta.mockReset().mockReturnValue({ id: 'c1', title: 'T' });
 	mocks.setConversationAvatar.mockReset().mockReturnValue({ ok: true });
 	mocks.selectBranch.mockReset().mockReturnValue({ newActiveLeaf: 'p1' });
+	mocks.getFanoutParent.mockReset().mockReturnValue('desc');
 	mocks.getMessage.mockReset().mockImplementation((_c: unknown, id: unknown) => {
 		if (id === 'p1') return PORTRAIT;
 		if (id === 'desc')
@@ -100,6 +103,22 @@ describe('POST /avatar/pick', () => {
 		// check is what keeps a guessed conversation id out of someone else's row.
 		mocks.getConversationMeta.mockReturnValue(null);
 		await expect(call()).rejects.toMatchObject({ status: 404 });
+		expect(mocks.setConversationAvatar).not.toHaveBeenCalled();
+	});
+
+	it('rejects a portrait from a comparison that is no longer open', async () => {
+		// Scoped to the parked anchor, so "set the avatar" cannot double as a
+		// navigate-anywhere: without it the endpoint would happily adopt — and
+		// switch the thread to — any assistant message in the conversation that
+		// carries an image.
+		mocks.getFanoutParent.mockReturnValue(null);
+		await expect(call()).rejects.toMatchObject({ status: 409 });
+		expect(mocks.setConversationAvatar).not.toHaveBeenCalled();
+	});
+
+	it('rejects a portrait belonging to a different anchor', async () => {
+		mocks.getFanoutParent.mockReturnValue('some-other-description');
+		await expect(call()).rejects.toMatchObject({ status: 409 });
 		expect(mocks.setConversationAvatar).not.toHaveBeenCalled();
 	});
 

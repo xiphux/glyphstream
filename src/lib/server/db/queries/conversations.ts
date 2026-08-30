@@ -246,6 +246,23 @@ export function setFanoutParent(
 		.run();
 }
 
+/**
+ * Drop the parked fan-out marker without touching the active leaf.
+ *
+ * The only other clearer is `selectBranch`, which resolves a comparison by
+ * picking a winner — and that is the wrong shape for a comparison with no
+ * winner to pick. A grid whose every branch failed persists error siblings and
+ * nothing else, so `selectBranch` on the anchor would walk to the newest of
+ * those and put a failure in the thread. This just takes the grid down.
+ */
+export function clearFanoutParent(conversationId: string, userId: string): void {
+	getDb()
+		.update(conversations)
+		.set({ fanoutParentMessageId: null })
+		.where(and(eq(conversations.id, conversationId), eq(conversations.userId, userId)))
+		.run();
+}
+
 /** The parked fan-out's anchor message id — a user message for a turn fan-out,
  *  an assistant one for an avatar comparison — or null when none / not owned. */
 export function getFanoutParent(conversationId: string, userId: string): string | null {

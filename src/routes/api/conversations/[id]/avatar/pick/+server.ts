@@ -22,7 +22,11 @@
 import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
-import { getConversationMeta, setConversationAvatar } from '$lib/server/db/queries/conversations';
+import {
+	getConversationMeta,
+	getFanoutParent,
+	setConversationAvatar,
+} from '$lib/server/db/queries/conversations';
 import { getMessage, selectBranch } from '$lib/server/db/queries/messages';
 import type { RequestHandler } from './$types';
 
@@ -54,6 +58,16 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// face depend on part ordering.
 	const image = message.parts.find((p) => p.type === 'image');
 	if (!image) error(400, 'That message has no image to use as an avatar');
+
+	// And it has to be a candidate from the comparison that is actually parked
+	// here. Without this the endpoint's contract is quietly wider than its name:
+	// "set the avatar" would also navigate the thread to any assistant message in
+	// the conversation that happens to carry an image. Nothing today sends
+	// anything but a grid column — this is the same assertion ../prepare and
+	// ../generate already make about their own anchors, made at the third door.
+	if (getFanoutParent(params.id, locals.user.id) !== message.parentMessageId) {
+		error(409, 'That comparison is no longer open.');
+	}
 
 	// Avatar before branch. Both orders leave the same state on success; this one
 	// fails better — `setConversationAvatar` is the half that can legitimately
