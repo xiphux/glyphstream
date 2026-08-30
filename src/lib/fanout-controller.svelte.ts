@@ -839,9 +839,16 @@ export class FanoutController {
 		if (this.picking) return;
 		this.picking = true;
 		const convId = this.#deps.convId();
-		// Promote the first real result — never an error column (it has a
-		// persisted row, but selecting it would make a failure the active thread).
-		const firstPersisted = this.columns.find((c) => c.status === 'done' && c.persisted);
+		// Promote the first real result — never an error column (it has a persisted
+		// row, but selecting it would make a failure the active thread).
+		//
+		// Tested on `!== 'error'` rather than `=== 'done'` because of the branch
+		// that lands `persisted` and THEN gets marked 'cancelled': a Stop arriving
+		// between the `done` event and the stream close. That column holds a real
+		// portrait, and while it was merely unpromotable this only cost a no-op
+		// Done — but now that the else-branch clears the marker, treating it as
+		// nothing would take the anchor's children off the active branch for good.
+		const firstPersisted = this.columns.find((c) => c.persisted && c.status !== 'error');
 		// Clear optimistically but restore on failure (see pick).
 		const savedColumns = this.columns;
 		this.columns = [];

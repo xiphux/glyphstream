@@ -17,6 +17,7 @@ import {
 	getFanoutParent,
 	listArchivedConversations,
 	listConversations,
+	clearFanoutParent,
 	setDisabledFeatures,
 	setFanoutParent,
 	unarchiveConversation,
@@ -2061,6 +2062,31 @@ describe('fan-out marker (parked-fan-out rehydration)', () => {
 
 		// Marker that no longer matches the active leaf isn't surfaced.
 		expect(getFanoutRecoveryState(conv.id, u.id, 'some-other-leaf').parentMessageId).toBeNull();
+	});
+
+	it('clearFanoutParent drops the marker, scoped to its owner, without moving the leaf', () => {
+		// The exit for a comparison with nothing to promote. It must NOT go through
+		// selectBranch — that walks to the deepest descendant, which on an
+		// all-failed grid is the newest error sibling, so leaving would plant a
+		// failure in the thread.
+		const { u, conv, user, a } = seedFanout();
+		selectBranch(conv.id, a.id);
+		setFanoutParent(conv.id, u.id, user.id);
+		const leafBefore = getConversationDetail(conv.id, u.id)?.activeLeafMessageId;
+
+		// Someone else's id clears nothing.
+		const other = seedUser();
+		clearFanoutParent(conv.id, other.id);
+		expect(getFanoutParent(conv.id, u.id)).toBe(user.id);
+
+		clearFanoutParent(conv.id, u.id);
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
+		// The leaf is untouched — that is the whole point of not using selectBranch.
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(leafBefore);
+
+		// Idempotent: "no parked fan-out here" is the state it exists to reach.
+		clearFanoutParent(conv.id, u.id);
+		expect(getFanoutParent(conv.id, u.id)).toBeNull();
 	});
 
 	it('getFanoutRecoveryState flags a comparison parked on an assistant message', () => {

@@ -18,8 +18,13 @@
  * of leaving.
  *
  * The messages stay where they are; only the "there is an unresolved comparison
- * here" flag goes. Whatever the branches did persist remains reachable by the
- * ‹N/M› arrows, which is what it already was.
+ * here" flag goes. Note what that does NOT mean: the anchor stays the active
+ * leaf, so anything the branches persisted are children of the leaf and fall
+ * off the active branch — `walkActiveBranch` walks UP from the leaf, so no
+ * message renders with them as siblings and no ‹N/M› arrow reaches them. For
+ * the case this exists for that is exactly right (they are failures, carrying no
+ * media), but it is a one-way door, which is why the caller only takes it when
+ * there is genuinely nothing to promote instead.
  */
 
 import { json } from '@sveltejs/kit';

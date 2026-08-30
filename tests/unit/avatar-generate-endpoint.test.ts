@@ -196,6 +196,16 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		expect(mocks.startImageRelay).not.toHaveBeenCalled();
 	});
 
+	it('refuses a branch whose anchor is not the parked one', async () => {
+		// Not just "some marker exists" — it has to be THIS anchor's. Otherwise a
+		// branch registers as a turn against a message no comparison is parked on,
+		// inflating the pending count of whatever fan-out IS parked, since
+		// conversationTurnEntries is conversation-scoped.
+		mocks.getFanoutParent.mockReturnValue('a-different-description');
+		await expect(call({ fanout: true })).rejects.toMatchObject({ status: 409 });
+		expect(mocks.startImageRelay).not.toHaveBeenCalled();
+	});
+
 	it('applies nothing on arrival', async () => {
 		// Three portraits racing to be the face would repaint the header at each
 		// model's finishing time and settle on whichever GPU was slowest. Which one

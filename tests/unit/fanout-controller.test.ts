@@ -1241,6 +1241,52 @@ describe('FanoutController — avatar comparisons', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('promotes a portrait that landed just before a Stop, rather than clearing', async () => {
+		// A branch can set `persisted` on its `done` event and THEN be marked
+		// 'cancelled' when a Stop arrives before the stream closes. That column
+		// holds a real portrait. While Done was a no-op for it this only cost a
+		// dead button; now that the no-survivor branch clears the marker, treating
+		// it as nothing would take the anchor's children off the active branch for
+		// good — so the predicate is "not an error", not "is done".
+		const posts: Array<{ url: string; method: string }> = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init?: { method?: string }) => {
+				posts.push({ url, method: init?.method ?? 'GET' });
+				return { ok: true, json: async () => ({}) } as unknown as Response;
+			}),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.userMessageId = 'desc';
+		fc.columns = [
+			{
+				branchId: 'b0',
+				modelId: 'bridge::sdxl',
+				modelKind: 'image',
+				label: 'SDXL',
+				segments: [],
+				status: 'cancelled',
+				queuedAhead: 0,
+				progress: null,
+				statusLabel: null,
+				startedAt: null,
+				inputMediaId: null,
+				persisted: imageSibling('landed', 'bridge::sdxl', null),
+				error: null,
+				errorMessageId: null,
+			},
+		];
+
+		await fc.dismiss();
+
+		expect(posts).toEqual([
+			{ url: '/api/conversations/c1/messages/landed/select', method: 'POST' },
+		]);
+
+		vi.unstubAllGlobals();
+	});
+
 	it('drops the prompt when the parked anchor moves under it', async () => {
 		// The case `teardown()` cannot reach, and therefore the one that proves the
 		// anchor test is what closes this rather than the teardown clears: no
