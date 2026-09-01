@@ -72,8 +72,10 @@
 	import { consumeChatStream } from '$lib/consume-chat-stream';
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
+		applyDisplayOrder,
 		expandCompareSelections,
 		expandFanoutBranches,
+		gridMediaIds,
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
@@ -1190,7 +1192,14 @@
 			const res = await fetch(`/api/conversations/${data.conversation.id}/media`);
 			if (!res.ok) return; // carousel just stays single-item; non-fatal
 			const body = (await res.json()) as { items: ConversationMediaRef[] };
-			conversationMedia = body.items;
+			// The set arrives oldest-first, i.e. in COMPLETION order — which is not
+			// the order a live fan-out grid is drawn in (that's the order the models
+			// were enqueued in). Parallel branches finish out of order, so without
+			// this the carousel walked the same images in a different sequence than
+			// the grid the tap came from. Re-seated once, here, rather than derived:
+			// the set is only fetched on the initial open, so the carousel's order
+			// stays put for the life of that open session.
+			conversationMedia = applyDisplayOrder(body.items, gridMediaIds(fanout.columns));
 		} catch {
 			// Network blip — leave the set as-is; the lightbox still opens
 			// on the tapped image, just without sibling navigation.

@@ -193,3 +193,57 @@ export function allColumnsSettled(columns: readonly FanoutColumn[]): boolean {
 		(c) => c.status === 'done' || c.status === 'error' || c.status === 'cancelled',
 	);
 }
+
+/**
+ * The media a grid is currently SHOWING, in grid order: column order, then part
+ * order within a column (a branch that returns a batch contributes all of it).
+ * Branches with nothing on screen yet — queued, streaming, or failed —
+ * contribute nothing.
+ */
+export function gridMediaIds(columns: readonly FanoutColumn[]): string[] {
+	const out: string[] = [];
+	for (const c of columns) {
+		for (const p of c.persisted?.parts ?? []) {
+			if (p.type === 'image' || p.type === 'video') out.push(p.mediaId);
+		}
+	}
+	return out;
+}
+
+/**
+ * Re-seat the members of `displayOrder` into the slots they already occupy in
+ * `items`, leaving every other entry exactly where it was.
+ *
+ * The in-chat lightbox carousel is the conversation's media oldest-first, i.e.
+ * COMPLETION order; a fan-out grid is displayed in the order the models were
+ * ENQUEUED. Those agree only when the endpoint serializes the branches — run
+ * them in parallel and it hands back 2, 4, 1, 3, so swiping through the
+ * lightbox visited the same images in a different order than the grid the user
+ * had just tapped. This makes the grid's order win for the images the grid
+ * shows, without touching the surrounding chronology: only that group's members
+ * move, and only among themselves.
+ */
+export function applyDisplayOrder<T extends { id: string }>(
+	items: readonly T[],
+	displayOrder: readonly string[],
+): T[] {
+	const byId = new Map(items.map((i) => [i.id, i]));
+	const moving = new Set<string>();
+	const ordered: T[] = [];
+	for (const id of displayOrder) {
+		const item = byId.get(id);
+		// Skip ids the carousel set doesn't carry — a branch that landed after the
+		// set was fetched — and any repeat, so the slot count below can't drift
+		// from `ordered`.
+		if (!item || moving.has(id)) continue;
+		moving.add(id);
+		ordered.push(item);
+	}
+	if (ordered.length < 2) return [...items];
+	const out = [...items];
+	let next = 0;
+	for (let i = 0; i < out.length; i++) {
+		if (moving.has(out[i].id) && next < ordered.length) out[i] = ordered[next++];
+	}
+	return out;
+}

@@ -7,9 +7,11 @@
 import { describe, expect, it } from 'vitest';
 import {
 	allColumnsSettled,
+	applyDisplayOrder,
 	collapseToCompareSelections,
 	expandCompareSelections,
 	expandFanoutBranches,
+	gridMediaIds,
 	isMediaKind,
 	resolveActiveModelKind,
 	type CompareSelection,
@@ -179,5 +181,82 @@ describe('isMediaKind', () => {
 		expect(isMediaKind('embedding')).toBe(false);
 		expect(isMediaKind(null)).toBe(false);
 		expect(isMediaKind(undefined)).toBe(false);
+	});
+});
+
+describe('gridMediaIds + applyDisplayOrder', () => {
+	// A settled image branch holding one output.
+	const shot = (branchId: string, ...mediaIds: string[]): FanoutColumn => ({
+		branchId,
+		modelId: 'bridge::a',
+		modelKind: 'image',
+		label: 'A',
+		segments: [],
+		status: 'done',
+		queuedAhead: 0,
+		progress: null,
+		statusLabel: null,
+		startedAt: null,
+		inputMediaId: null,
+		persisted: {
+			id: `msg-${branchId}`,
+			role: 'assistant',
+			parts: mediaIds.map((mediaId) => ({ type: 'image' as const, mediaId })),
+			createdAt: 0,
+		} as FanoutColumn['persisted'],
+		error: null,
+		errorMessageId: null,
+	});
+	const pending = (branchId: string): FanoutColumn => ({
+		...shot(branchId),
+		status: 'streaming',
+		persisted: null,
+	});
+	const ref = (id: string) => ({ id, kind: 'image' as const });
+
+	it('reads the grid’s media in column order, batches included', () => {
+		expect(gridMediaIds([shot('b0', 'm1', 'm2'), shot('b1', 'm3')])).toEqual(['m1', 'm2', 'm3']);
+	});
+
+	it('skips columns that have nothing on screen yet', () => {
+		expect(gridMediaIds([pending('b0'), shot('b1', 'm3'), pending('b2')])).toEqual(['m3']);
+	});
+
+	// The bug: four branches enqueued 1-2-3-4 completed 2-4-1-3, so the
+	// completion-ordered carousel swiped in an order the grid never showed.
+	it('re-seats the grid’s members into completion order’s slots', () => {
+		const carousel = ['m2', 'm4', 'm1', 'm3'].map(ref);
+		const grid = ['m1', 'm2', 'm3', 'm4'];
+		expect(applyDisplayOrder(carousel, grid).map((x) => x.id)).toEqual(['m1', 'm2', 'm3', 'm4']);
+	});
+
+	it('leaves everything outside the grid exactly where it was', () => {
+		// `old*` are earlier turns in the same conversation; only the four grid
+		// members move, and only among the slots they already held.
+		const carousel = ['oldA', 'm2', 'm4', 'oldB', 'm1', 'm3', 'oldC'].map(ref);
+		expect(applyDisplayOrder(carousel, ['m1', 'm2', 'm3', 'm4']).map((x) => x.id)).toEqual([
+			'oldA',
+			'm1',
+			'm2',
+			'oldB',
+			'm3',
+			'm4',
+			'oldC',
+		]);
+	});
+
+	it('ignores grid members the carousel set predates', () => {
+		// A branch that landed after the set was fetched: it has no slot to sit
+		// in, and must not consume one belonging to another image.
+		const carousel = ['m2', 'm1'].map(ref);
+		expect(applyDisplayOrder(carousel, ['m1', 'm2', 'm3']).map((x) => x.id)).toEqual(['m1', 'm2']);
+	});
+
+	it('is a copy, not a mutation, and is inert with no grid', () => {
+		const carousel = ['m2', 'm1'].map(ref);
+		const out = applyDisplayOrder(carousel, []);
+		expect(out).not.toBe(carousel);
+		expect(out.map((x) => x.id)).toEqual(['m2', 'm1']);
+		expect(carousel.map((x) => x.id)).toEqual(['m2', 'm1']);
 	});
 });
