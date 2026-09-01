@@ -303,6 +303,19 @@ describe('POST /avatar/generate — one branch of a comparison', () => {
 		expect(mocks.notifyFanoutCompleteIfLast.mock.calls[0][0]).toMatchObject({ fanoutSize: 3 });
 	});
 
+	it('hands the relay the branch’s grid position', async () => {
+		// Persisted on the row so a grid rebuilt from server truth comes back in
+		// dispatch order rather than the order the GPU finished the branches in.
+		await call({ fanout: true, branchIndex: 2 });
+		expect(relayParams().fanoutIndex).toBe(2);
+	});
+
+	it('stamps no grid position on a background draw', async () => {
+		// Not a comparison branch — it has no grid to hold a place in.
+		await call({ branchIndex: 2 });
+		expect(relayParams().fanoutIndex).toBeNull();
+	});
+
 	it('refuses a branch past the per-conversation ceiling', async () => {
 		// Each branch holds an SSE connection, a registry entry and a queued waiter,
 		// so the cap is a resource bound, not a UI preference — the client mirrors

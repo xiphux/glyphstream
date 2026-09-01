@@ -583,6 +583,15 @@ export interface ChatMessage {
 	 * `sourceMediaId`. Undefined elsewhere.
 	 */
 	sourceMediaId?: string | null;
+	/**
+	 * This branch's position in the fan-out grid it belongs to — the index the
+	 * client dispatched it at, read back off the row. Populated by
+	 * `getSiblingAssistants` only (an ordinary thread message has no grid
+	 * position), and used by the client so a re-roll fired from a RECOVERED grid
+	 * inherits its source column's index the way a live one does. Null on
+	 * non-fan-out rows and on rows predating the column.
+	 */
+	fanoutIndex?: number | null;
 }
 
 // --- user preferences --------------------------------------------------
@@ -968,6 +977,16 @@ export interface SendMessageRequest {
 	 * unless `fanoutBranch`.
 	 */
 	fanoutSize?: number;
+	/**
+	 * This branch's position in the grid: the index the client dispatched it at,
+	 * persisted on the assistant row so a grid rebuilt from server truth comes
+	 * back in the order the user enqueued the models rather than the order the
+	 * endpoint finished them in. A re-roll sends its SOURCE column's index, which
+	 * sorts it directly after the variation it re-rolled. Ignored unless
+	 * `fanoutBranch`; omitted when the client has no index to report (a re-roll
+	 * of a column that predates the field).
+	 */
+	branchIndex?: number;
 	/**
 	 * Explicit skill activation — skill names the user invoked via the
 	 * `/skill-name` composer command for THIS turn. The server re-validates each

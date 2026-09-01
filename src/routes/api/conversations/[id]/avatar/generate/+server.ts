@@ -72,6 +72,7 @@ import {
 import { resolveDisabledFeatures } from '$lib/server/chat/private-seal';
 import { sseResponse } from '$lib/server/streaming/sse-transport';
 import { MAX_FANOUT_BRANCHES_PER_CONVERSATION } from '$lib/fanout';
+import { resolveBranchIndex } from '$lib/server/messages/fanout-dispatch';
 import { partsToText } from '$lib/message-parts';
 import type { RequestHandler } from './$types';
 
@@ -104,6 +105,10 @@ interface GenerateAvatarBody {
 	/** How many branches this comparison dispatched, for the single aggregate
 	 *  "N ready" notification. Ignored unless `fanout`. */
 	fanoutSize?: unknown;
+	/** This portrait's position in the comparison grid — persisted so a grid
+	 *  rebuilt from server truth keeps the order the branches were dispatched in.
+	 *  Ignored unless `fanout`. */
+	branchIndex?: unknown;
 	/**
 	 * Whether to run the prompt through the image-prompt enhancer.
 	 *
@@ -181,6 +186,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	// .../messages/prepare does for a turn fan-out — a branch request doesn't
 	// re-decide it, it just streams.
 	const isFanout = body.fanout === true;
+	const fanoutIndex = resolveBranchIndex(body.branchIndex, isFanout);
 	// …but "doesn't re-decide it" is not the same as "trusts anything". These are
 	// two independent HTTP requests, so a branch can arrive without a prepare ever
 	// having run. The anchor's role is the one part worth re-checking: it is what
@@ -350,6 +356,10 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// sibling of the others and none of them wins by landing first — the pick
 		// moves the leaf. A background draw advances to its portrait…
 		advanceActiveLeaf: !isFanout,
+		// Grid position of this branch. Assigned past the highest index already
+		// under the anchor, so a SECOND draw round's portraits sort after the
+		// first round's rather than interleaving with them.
+		fanoutIndex,
 		// …but only if the branch hasn't moved on. A draw takes minutes and the
 		// composer stays live throughout (that's the point of backgrounding it),
 		// so the user may well have sent another turn by the time the portrait

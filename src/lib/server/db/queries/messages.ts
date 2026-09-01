@@ -55,6 +55,12 @@ interface AppendInput {
 	 * expose — the same shape a fan-out branch already has.
 	 */
 	advanceActiveLeafIfCurrent?: string;
+	/**
+	 * Display position of a fan-out branch in its comparison grid — the index the
+	 * client dispatched it at. Absent on every non-fan-out append; see the
+	 * `fanout_index` column and `getSiblingAssistants`' ordering.
+	 */
+	fanoutIndex?: number | null;
 }
 
 /**
@@ -88,6 +94,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				genMs: input.genMs ?? null,
 				rawResponseJson: input.rawResponseJson ?? null,
 				compactionResumeFromMessageId: input.compactionResumeFromMessageId ?? null,
+				fanoutIndex: input.fanoutIndex ?? null,
 				createdAt: now,
 			})
 			.run();
@@ -492,9 +499,10 @@ export function getMessageRole(conversationId: string, messageId: string): Messa
 }
 
 /**
- * The assistant messages that hang directly off `parentUserMessageId`, in
- * creation order. During a multi-model fan-out these are the N sibling
- * responses rendered side by side; for a normal turn there's exactly one.
+ * The assistant messages that hang directly off `parentUserMessageId`, in the
+ * order a compare grid should DISPLAY them. During a multi-model fan-out these
+ * are the N sibling responses rendered side by side; for a normal turn there's
+ * exactly one.
  *
  * Kept separate from `walkActiveBranch` (which only returns the active
  * branch) because the fan-out compare view needs *all* the siblings under
@@ -519,10 +527,38 @@ export function getSiblingAssistants(
 			),
 		)
 		.all();
-	rows.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+	// Dispatch order, not completion order. `created_at` is when a branch
+	// FINISHED, and branches the endpoint runs in parallel finish out of order —
+	// so ordering by it rebuilt the grid shuffled against the one the user was
+	// looking at before the reload. `fanout_index` is the position the client
+	// dispatched each branch at, and it's what the live grid is drawn in.
+	//
+	// Un-indexed rows (non-fan-out appends, and anything predating the column)
+	// sort chronologically AHEAD of every indexed one rather than falling to the
+	// end: that's where an avatar comparison's already-drawn portraits belong,
+	// since the live grid seeds those before the fresh branches. A fan-out whose
+	// rows all predate the column is entirely un-indexed and so keeps its old
+	// chronological order.
+	rows.sort((a, b) => {
+		const ai = a.fanoutIndex;
+		const bi = b.fanoutIndex;
+		if (ai === null || bi === null) {
+			if (ai !== bi) return ai === null ? -1 : 1;
+		} else if (ai !== bi) {
+			return ai - bi;
+		}
+		// Same index (a re-roll sits on its source's) or both un-indexed: oldest
+		// first, which puts a re-roll directly after the variation it re-rolled.
+		return a.createdAt - b.createdAt || a.id.localeCompare(b.id);
+	});
 	const msgs = rows.map((row) => {
 		const msg = rowToChatMessage(row);
 		msg.parentMessageId = row.parentMessageId;
+		// Carried to the client so a re-roll fired from a RECOVERED grid can
+		// inherit its source column's index, the same as one fired from a live
+		// grid. Set here only — an ordinary thread message has no grid position
+		// and shouldn't pay for the field in the page payload.
+		msg.fanoutIndex = row.fanoutIndex;
 		return msg;
 	});
 

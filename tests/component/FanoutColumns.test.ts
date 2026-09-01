@@ -28,6 +28,7 @@ function persisted(id: string, text: string): ChatMessage {
 function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 	return {
 		branchId: overrides.branchId ?? 'b0',
+		dispatchIndex: overrides.dispatchIndex ?? 0,
 		modelId: overrides.modelId ?? 'bridge::a',
 		modelKind: 'chat',
 		label: overrides.label ?? 'Model A',

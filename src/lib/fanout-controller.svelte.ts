@@ -25,6 +25,8 @@ import {
 	collapseToCompareSelections,
 	isMediaKind,
 	MAX_FANOUT_BRANCHES_PER_CONVERSATION,
+	nextDispatchIndex,
+	rerollInsertIndex,
 	type FanoutBranchSpec,
 	type FanoutColumn,
 	type FanoutModel,
@@ -234,6 +236,9 @@ export class FanoutController {
 				// media row; for a FAILED branch, off its error part (there is no
 				// output) — either way the column keeps its input thumbnail.
 				inputMediaId: m.sourceMediaId ?? null,
+				// Read back off the row so a re-roll fired from a RECOVERED grid
+				// inherits its source's grid position, exactly as a live one does.
+				dispatchIndex: m.fanoutIndex ?? null,
 				persisted: m,
 				error: errPart?.message ?? null,
 				errorMessageId: errPart ? m.id : null,
@@ -258,6 +263,11 @@ export class FanoutController {
 			// recovered mid-generation keeps the "this input → this model" pairing
 			// instead of blanking the thumbnails until the branches land.
 			inputMediaId: pb.sourceMediaId,
+			// The in-flight registry doesn't carry the branch's grid position (it's
+			// only a sort key for persisted rows), so a placeholder has none. They
+			// already render after the settled columns; see #buildRecoveredColumns'
+			// return.
+			dispatchIndex: null,
 			persisted: null,
 			error: null,
 			errorMessageId: null,
@@ -345,6 +355,7 @@ export class FanoutController {
 		if (isFirstExchange) markTitlePending(turnConvId);
 		this.columns = branches.map((b, i) => ({
 			branchId: `${userMessage.id}:${i}`,
+			dispatchIndex: i,
 			modelId: b.modelId,
 			modelKind: b.modelKind,
 			label: b.displayName,
@@ -531,8 +542,15 @@ export class FanoutController {
 		this.live = true;
 
 		const seeded = this.#buildRecoveredColumns(existingPortraits, [], 'image');
+		// Continue past whatever's already under this anchor rather than restarting
+		// at 0. An avatar comparison hangs off a REUSED assistant message, so a
+		// second draw round's portraits are siblings of the first round's — numbered
+		// from 0 again they'd interleave with them in a recovered grid instead of
+		// following them. A turn fan-out has a fresh anchor, so its base is always 0.
+		const indexBase = nextDispatchIndex(seeded);
 		const fresh: FanoutColumn[] = input.branches.map((b, i) => ({
 			branchId: `${input.sourceMessageId}:avatar:${i}`,
+			dispatchIndex: indexBase + i,
 			modelId: b.modelId,
 			modelKind: b.modelKind,
 			label: b.displayName,
@@ -638,6 +656,7 @@ export class FanoutController {
 							prompt: avatar.prompt,
 							enhance: avatar.enhance,
 							fanoutSize: opts?.fanoutSize,
+							branchIndex: col.dispatchIndex,
 						})
 					: buildFanoutBranchBody({
 							parentMessageId: userMessageId,
@@ -646,6 +665,7 @@ export class FanoutController {
 							inputMediaId: col.inputMediaId,
 							reroll: opts?.reroll,
 							fanoutSize: opts?.fanoutSize,
+							branchIndex: col.dispatchIndex,
 						}),
 			);
 			const res = await fetch(url, {
@@ -933,6 +953,10 @@ export class FanoutController {
 		const convId = this.#deps.convId();
 		const newColumn: FanoutColumn = {
 			branchId: `reroll:${this.userMessageId}:${this.#nextRerollSeq++}`,
+			// Its SOURCE's position, not a fresh one — that's what makes the server
+			// sort the re-roll directly after the variation it re-rolled, matching
+			// where the live grid inserts it below.
+			dispatchIndex: col.dispatchIndex,
 			modelId: col.modelId,
 			modelKind: col.modelKind,
 			label: col.label,
@@ -947,10 +971,11 @@ export class FanoutController {
 			error: null,
 			errorMessageId: null,
 		};
-		// Insert immediately after its source so the original and its re-roll read
-		// as a pair rather than scattering the re-roll to the end of a growing grid.
-		const at = this.columns.findIndex((c) => c.branchId === col.branchId);
-		const insertAt = at === -1 ? this.columns.length : at + 1;
+		// Insert after its source (and after any re-rolls that source already has)
+		// so the original and its variations read as one run rather than scattering
+		// the re-roll to the end of a growing grid. `rerollInsertIndex` is the live
+		// mirror of how a recovered grid sorts the same run — see its docblock.
+		const insertAt = rerollInsertIndex(this.columns, col);
 		this.columns = [...this.columns.slice(0, insertAt), newColumn, ...this.columns.slice(insertAt)];
 		// Drive the proxied element (not the raw `newColumn`) so the column's live
 		// state updates stay reactive. `reroll: true` marks this branch a re-roll on

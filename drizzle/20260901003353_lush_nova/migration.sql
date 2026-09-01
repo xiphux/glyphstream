@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `fanout_index` integer;

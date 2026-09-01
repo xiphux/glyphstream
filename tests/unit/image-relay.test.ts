@@ -163,6 +163,7 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		enhancementEnabled: over.enhancementEnabled,
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
+		fanoutIndex: over.fanoutIndex,
 		suppressTitleTask: over.suppressTitleTask ?? false,
 		suppressNotify: over.suppressNotify ?? false,
 		displayOnly: over.displayOnly,
@@ -570,6 +571,41 @@ describe('startImageRelay — backpressure + failure', () => {
 			'bridge exploded',
 		);
 		expect(onComplete).toHaveBeenCalledOnce(); // slot still released
+	});
+
+	it('stamps the branch’s grid position on the result AND on a failure', async () => {
+		// The whole point of the column: a grid rebuilt from server truth has to
+		// come back in dispatch order, and a FAILED branch is a real column that
+		// has to hold its place among the results.
+		const { conv, user, userMessage } = seedConvWithUser();
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					advanceActiveLeaf: false,
+					fanoutIndex: 1,
+				}),
+			),
+		);
+		mocks.imageGeneration.mockRejectedValue(new Error('bridge exploded'));
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					advanceActiveLeaf: false,
+					fanoutIndex: 0,
+				}),
+			),
+		);
+		// Branch 0 failed and landed second; it still sorts first.
+		const sibs = getSiblingAssistants(conv.id, userMessage.id);
+		expect(sibs.map((m) => m.fanoutIndex)).toEqual([0, 1]);
+		expect(sibs[0].parts[0]).toMatchObject({ type: 'error' });
+		expect(sibs[1].parts[0]).toMatchObject({ type: 'image' });
 	});
 
 	it('a failed i2i branch keeps its input provenance + hands back the row id', async () => {

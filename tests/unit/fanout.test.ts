@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	allColumnsSettled,
 	applyDisplayOrder,
+	nextDispatchIndex,
+	rerollInsertIndex,
 	collapseToCompareSelections,
 	expandCompareSelections,
 	expandFanoutBranches,
@@ -120,6 +122,7 @@ describe('expandFanoutBranches', () => {
 describe('allColumnsSettled', () => {
 	const col = (status: FanoutColumn['status']): FanoutColumn => ({
 		branchId: 'b',
+		dispatchIndex: 0,
 		modelId: 'bridge::a',
 		modelKind: 'chat',
 		label: 'A',
@@ -188,6 +191,7 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 	// A settled image branch holding one output.
 	const shot = (branchId: string, ...mediaIds: string[]): FanoutColumn => ({
 		branchId,
+		dispatchIndex: 0,
 		modelId: 'bridge::a',
 		modelKind: 'image',
 		label: 'A',
@@ -258,5 +262,73 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 		expect(out).not.toBe(carousel);
 		expect(out.map((x) => x.id)).toEqual(['m2', 'm1']);
 		expect(carousel.map((x) => x.id)).toEqual(['m2', 'm1']);
+	});
+});
+
+describe('dispatch-index placement', () => {
+	const at = (branchId: string, dispatchIndex: number | null): FanoutColumn => ({
+		branchId,
+		dispatchIndex,
+		modelId: 'bridge::a',
+		modelKind: 'image',
+		label: 'A',
+		segments: [],
+		status: 'done',
+		queuedAhead: 0,
+		progress: null,
+		statusLabel: null,
+		startedAt: null,
+		inputMediaId: null,
+		persisted: null,
+		error: null,
+		errorMessageId: null,
+	});
+
+	describe('nextDispatchIndex', () => {
+		it('starts at 0 for a fresh grid (every turn fan-out)', () => {
+			expect(nextDispatchIndex([])).toBe(0);
+		});
+
+		it('continues past what the anchor already holds (a second avatar round)', () => {
+			expect(nextDispatchIndex([at('a', 0), at('b', 1)])).toBe(2);
+		});
+
+		it('ignores un-indexed columns, so seeded legacy portraits don’t hold it back', () => {
+			expect(nextDispatchIndex([at('legacy', null), at('a', 0)])).toBe(1);
+			expect(nextDispatchIndex([at('legacy', null)])).toBe(0);
+		});
+	});
+
+	describe('rerollInsertIndex', () => {
+		it('places a re-roll immediately after its source', () => {
+			const cols = [at('a', 0), at('b', 1), at('c', 2)];
+			expect(rerollInsertIndex(cols, cols[0])).toBe(1);
+		});
+
+		// The live mirror of the DB's (index, createdAt) sort: a run stays in the
+		// order it was rolled, so live and recovered grids agree.
+		it('places a second re-roll after the first, not between it and the source', () => {
+			const cols = [at('a', 0), at('a-r1', 0), at('b', 1)];
+			expect(rerollInsertIndex(cols, cols[0])).toBe(2);
+			// Re-rolling the re-roll lands in the same place — same run, same index.
+			expect(rerollInsertIndex(cols, cols[1])).toBe(2);
+		});
+
+		it('does not run past a neighbour that merely follows (different index)', () => {
+			const cols = [at('a', 0), at('b', 1), at('b-r1', 1)];
+			expect(rerollInsertIndex(cols, cols[0])).toBe(1);
+		});
+
+		it('puts an un-indexed source’s re-roll immediately after it', () => {
+			// A seeded avatar portrait can't name a run — every other seed shares
+			// its null, so scanning forward would jump the whole seeded block.
+			const cols = [at('seed-1', null), at('seed-2', null), at('fresh', 0)];
+			expect(rerollInsertIndex(cols, cols[0])).toBe(1);
+		});
+
+		it('appends when the source is gone from the grid', () => {
+			const cols = [at('a', 0)];
+			expect(rerollInsertIndex(cols, at('discarded', 5))).toBe(1);
+		});
 	});
 });

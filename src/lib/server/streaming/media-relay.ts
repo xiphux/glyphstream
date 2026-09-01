@@ -74,6 +74,12 @@ export interface MediaRelayParams {
 	abortSignal?: AbortSignal;
 	/** Fan-out branch: persist as a sibling without advancing active_leaf. */
 	advanceActiveLeaf?: boolean;
+	/** Fan-out branch: its display position in the comparison grid, persisted so
+	 *  a grid rebuilt from server truth comes back in the order the user enqueued
+	 *  the models rather than the order the endpoint finished them in. Null on a
+	 *  non-fan-out generation. Recorded on BOTH the result and the durable error
+	 *  sibling, so a failed column holds its place too. */
+	fanoutIndex?: number | null;
 	/** Compare-and-swap guard for the leaf advance — see `appendMessage`. Set by
 	 *  avatar generation, whose anchor is an existing reply that the user may
 	 *  have moved past during the minutes a draw takes. */
@@ -268,6 +274,7 @@ export function startMediaRelay(
 							genMs: Date.now() - genStartedAt,
 							advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 							advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+							fanoutIndex: params.fanoutIndex,
 						}).id;
 					} catch (e) {
 						// Best-effort durability — the client still gets the error frame
@@ -299,6 +306,7 @@ export function startMediaRelay(
 						genMs: Date.now() - genStartedAt,
 						advanceActiveLeaf: params.advanceActiveLeaf ?? true,
 						advanceActiveLeafIfCurrent: params.advanceActiveLeafIfCurrent,
+						fanoutIndex: params.fanoutIndex,
 					});
 					linkMessageMedia(assistantMessage.id, produced.mediaId);
 				} catch (e) {

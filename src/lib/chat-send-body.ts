@@ -124,6 +124,11 @@ export function buildFanoutBranchBody(input: {
 	 *  single aggregate notification (bounded below by the produced-sibling total).
 	 *  Omitted on a re-roll, whose grid growth the produced count reflects. */
 	fanoutSize?: number;
+	/** This branch's position in the grid, persisted on the assistant row so a
+	 *  grid rebuilt from server truth keeps the dispatch order. A re-roll sends
+	 *  its SOURCE column's index. Null when there's none to report (re-rolling a
+	 *  column that predates the field). */
+	branchIndex?: number | null;
 }): Record<string, unknown> {
 	return {
 		fanoutBranch: true,
@@ -133,6 +138,9 @@ export function buildFanoutBranchBody(input: {
 		...(input.inputMediaId ? { inputMediaIds: [input.inputMediaId] } : {}),
 		...(input.reroll ? { reroll: true } : {}),
 		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
+		...(input.branchIndex !== undefined && input.branchIndex !== null
+			? { branchIndex: input.branchIndex }
+			: {}),
 	};
 }
 
@@ -158,6 +166,8 @@ export function buildAvatarBranchBody(input: {
 	/** Total branch count, for the single aggregate notification. Omitted on a
 	 *  re-roll, exactly as in `buildFanoutBranchBody`. */
 	fanoutSize?: number;
+	/** Grid position, exactly as in `buildFanoutBranchBody`. */
+	branchIndex?: number | null;
 }): Record<string, unknown> {
 	return {
 		fanout: true,
@@ -166,5 +176,8 @@ export function buildAvatarBranchBody(input: {
 		prompt: input.prompt,
 		enhance: input.enhance,
 		...(input.fanoutSize !== undefined ? { fanoutSize: input.fanoutSize } : {}),
+		...(input.branchIndex !== undefined && input.branchIndex !== null
+			? { branchIndex: input.branchIndex }
+			: {}),
 	};
 }

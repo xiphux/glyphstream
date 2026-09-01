@@ -167,6 +167,28 @@ describe('buildFanoutBranchBody', () => {
 		expect(body).not.toHaveProperty('attachedMediaIds');
 	});
 
+	it('carries branchIndex, including 0, and omits it when there is none', () => {
+		// 0 is a real grid position (the first column), so the omission has to key
+		// off null/undefined rather than falsiness — dropped, the whole first
+		// column would come back un-indexed and sort ahead of the grid.
+		expect(
+			buildFanoutBranchBody({
+				parentMessageId: 'user-1',
+				modelId: 'bridge::x',
+				modelKind: 'image',
+				branchIndex: 0,
+			}).branchIndex,
+		).toBe(0);
+		expect(
+			buildFanoutBranchBody({
+				parentMessageId: 'user-1',
+				modelId: 'bridge::x',
+				modelKind: 'image',
+				branchIndex: null,
+			}),
+		).not.toHaveProperty('branchIndex');
+	});
+
 	it('carries modelKind through, including null', () => {
 		const body = buildFanoutBranchBody({
 			parentMessageId: 'user-1',

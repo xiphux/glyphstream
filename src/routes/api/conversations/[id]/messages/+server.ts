@@ -27,7 +27,7 @@ import {
 } from '$lib/server/endpoints/serialize-upstream';
 import { upstreamBranch } from '$lib/chat-compaction';
 import { parseModelId } from '$lib/server/endpoints/model-id';
-import { resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
+import { resolveBranchIndex, resolveModelOverride } from '$lib/server/messages/fanout-dispatch';
 import { notifyFanoutCompleteIfLast } from '$lib/server/messages/fanout-notify';
 import { resolveActivatedToolDefs } from '$lib/server/tools';
 import { getMaxToolLoopIterations } from '$lib/server/endpoints/config';
@@ -76,6 +76,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 	// exists (created by /prepare) and is referenced via parentMessageId. The
 	// branch derives its prompt from that message, like retry.
 	const isFanout = body.fanoutBranch === true;
+	// This branch's position in the compare grid, persisted on the assistant row
+	// so a grid recovered after a reload keeps the order the user enqueued rather
+	// than the order the branches happened to finish in.
+	const fanoutIndex = resolveBranchIndex(body.branchIndex, isFanout);
 	const text = body.text?.trim() ?? '';
 	const attachedMediaIds = Array.isArray(body.attachedMediaIds)
 		? body.attachedMediaIds.filter((s): s is string => typeof s === 'string')
@@ -371,6 +375,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				enhancementEnabled,
 				abortSignal: inFlight.controller.signal,
 				advanceActiveLeaf: !isFanout,
+				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
 				onStarted: () => {
@@ -432,6 +437,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				enhancementEnabled,
 				abortSignal: inFlight.controller.signal,
 				advanceActiveLeaf: !isFanout,
+				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
 				onStarted: () => {
@@ -699,6 +705,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				// advancing the leaf (stays pinned at the shared user message),
 				// and don't start a per-branch title task (/prepare owns it once).
 				advanceActiveLeaf: !isFanout,
+				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
 				onStarted: () => {

@@ -222,6 +222,14 @@ export interface RelayParams {
 	 */
 	advanceActiveLeaf?: boolean;
 	/**
+	 * Fan-out branch: its display position in the comparison grid, persisted so
+	 * a grid rebuilt from server truth comes back in the order the user enqueued
+	 * the models rather than the order the upstreams happened to finish in. Null
+	 * on a non-fan-out turn. Stamped on the error sibling too, so a failed column
+	 * keeps its place in the grid.
+	 */
+	fanoutIndex?: number | null;
+	/**
 	 * Skip the first-exchange title task. Default false. A fan-out fires N
 	 * branch relays against one shared first exchange; without this each
 	 * would kick off its own title generation. `/prepare` runs the title
@@ -528,6 +536,7 @@ function persistTurnErrorSibling(
 			parts: [{ type: 'error', message }],
 			modelUsed: params.storedModelId,
 			advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+			fanoutIndex: params.fanoutIndex,
 		});
 	} catch (e) {
 		console.warn('[stream/relay] failed to persist error sibling:', errorMessage(e));
@@ -722,6 +731,7 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 		tokensOut,
 		genMs,
 		advanceActiveLeaf: params.advanceActiveLeaf ?? true,
+		fanoutIndex: params.fanoutIndex,
 	});
 
 	return { assistantMessage, textForPushPreview: textBuf, stopped };

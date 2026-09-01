@@ -57,3 +57,24 @@ export function resolveModelOverride(input: {
 		persist: !input.isFanout,
 	};
 }
+
+/**
+ * Narrow a request body's `branchIndex` into what gets persisted as the
+ * assistant row's `fanout_index` — the branch's display position in its
+ * comparison grid.
+ *
+ * Only meaningful on a fan-out branch, so a non-fan-out send discards it
+ * outright rather than stamping a grid position onto a thread message. It is a
+ * pure sort key (never arithmetic, never a bound on anything), so the only real
+ * requirement is that it be a sane non-negative integer: `typeof x === 'number'`
+ * alone admits `1e999`, which JSON.parse hands over as Infinity and SQLite
+ * stores as a float that then sorts against every real index.
+ *
+ * NOT bounded by MAX_FANOUT_BRANCHES_PER_CONVERSATION: indices are assigned past
+ * the highest already under the anchor, so successive avatar-draw rounds climb
+ * well beyond one grid's worth of branches while each round stays within the cap.
+ */
+export function resolveBranchIndex(raw: unknown, isFanout: boolean): number | null {
+	if (!isFanout) return null;
+	return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+}

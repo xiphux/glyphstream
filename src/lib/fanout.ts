@@ -165,6 +165,23 @@ export interface FanoutColumn {
 	/** Split-attachments: the input image this branch edits / animates, shown
 	 *  as a thumbnail in the column header. Null for a non-split branch. */
 	inputMediaId: string | null;
+	/**
+	 * This column's position in the grid, as dispatched — sent on the wire and
+	 * persisted as the assistant row's `fanout_index`, so a grid rebuilt from
+	 * server truth (reload, iOS suspend) comes back in the order the user
+	 * enqueued the models instead of the order the endpoint finished them in.
+	 *
+	 * A re-roll takes its SOURCE column's index rather than a fresh one, which is
+	 * what sorts it directly after the variation it re-rolled — the position the
+	 * live grid inserts it at. So an index is NOT unique across columns: a shared
+	 * one means "same variation group".
+	 *
+	 * Null on a column with no grid position to report: an avatar comparison's
+	 * seeded portraits (drawn before this grid existed), a recovered placeholder
+	 * for a still-generating branch, and anything persisted before the column
+	 * shipped. Those sort ahead of every indexed column, chronologically.
+	 */
+	dispatchIndex: number | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
 	 *  hydrated from getSiblingAssistants on reload). */
 	persisted: ChatMessage | null;
@@ -185,6 +202,47 @@ export interface FanoutColumn {
 	 *  first. Recovery is unaffected either way — it reads the id straight off
 	 *  the persisted row, for both modalities. */
 	errorMessageId: string | null;
+}
+
+/**
+ * The grid position a fresh batch of branches should start numbering at: one
+ * past the highest index already in the grid, or 0 when nothing is indexed.
+ *
+ * A turn fan-out always gets 0 (its anchor is a brand-new user message, so
+ * there are no prior siblings). An avatar comparison anchors on a REUSED
+ * assistant message, so a second draw round's portraits are siblings of the
+ * first round's — numbered from 0 again they'd interleave with them in a grid
+ * rebuilt from server truth instead of following them.
+ */
+export function nextDispatchIndex(columns: readonly FanoutColumn[]): number {
+	let max = -1;
+	for (const c of columns) {
+		if (c.dispatchIndex !== null && c.dispatchIndex > max) max = c.dispatchIndex;
+	}
+	return max + 1;
+}
+
+/**
+ * Where a re-roll of `source` belongs in the live grid: directly after it and
+ * after any re-rolls it already has, so a variation and its re-rolls read as
+ * one run. Columns of a group share `dispatchIndex` (a re-roll inherits its
+ * source's), which is what makes the run identifiable.
+ *
+ * This is the live mirror of how `getSiblingAssistants` orders a recovered
+ * grid — same index, then oldest-first — so the two agree. Placing every
+ * re-roll immediately after the source instead would stack them newest-first
+ * live and oldest-first after a reload.
+ *
+ * An un-indexed source (an avatar comparison's seeded portrait) can't name a
+ * run, so its re-roll just goes immediately after it.
+ */
+export function rerollInsertIndex(columns: readonly FanoutColumn[], source: FanoutColumn): number {
+	const at = columns.findIndex((c) => c.branchId === source.branchId);
+	if (at === -1) return columns.length;
+	if (source.dispatchIndex === null) return at + 1;
+	let i = at + 1;
+	while (i < columns.length && columns[i].dispatchIndex === source.dispatchIndex) i++;
+	return i;
 }
 
 /** True once every column has reached a terminal state. */

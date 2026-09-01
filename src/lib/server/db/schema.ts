@@ -420,6 +420,24 @@ export const messages = sqliteTable(
 		// the real messages stay in the tree (non-lossy). Null on every ordinary
 		// message. See src/lib/chat-compaction.ts.
 		compactionResumeFromMessageId: text('compaction_resume_from_message_id'),
+		// Display position of a fan-out branch within its comparison grid: the
+		// index the client DISPATCHED it at. A grid is drawn in the order the user
+		// enqueued the models, but a row's `created_at` is when the branch
+		// FINISHED — and parallel branches finish out of order, so a grid rebuilt
+		// from server truth (reload, iOS suspend) came back shuffled against the
+		// one the user was looking at a moment earlier.
+		//
+		// A re-roll carries its SOURCE column's index rather than a fresh one, so
+		// it sorts directly after the variation it re-rolled — which is where the
+		// live grid puts it. Indices are assigned past the highest already under
+		// the anchor, so a second avatar draw round lands after the first instead
+		// of interleaving with it.
+		//
+		// Null on every non-fan-out row and on rows predating the column; those
+		// sort chronologically AHEAD of any indexed sibling, which is exactly
+		// where an avatar comparison's already-drawn portraits belong (the live
+		// grid seeds them before the fresh branches). See getSiblingAssistants.
+		fanoutIndex: integer('fanout_index'),
 		createdAt: integer('created_at').notNull(),
 	},
 	(t) => [

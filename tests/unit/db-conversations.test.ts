@@ -1737,14 +1737,103 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 			modelUsed: 'bridge::b',
 			advanceActiveLeaf: false,
 		});
-		// Order is createdAt-then-id (deterministic); both siblings present,
-		// each carrying its own model tag. The live view orders columns by
-		// client dispatch order, so we assert the pairing, not the sequence.
+		// Neither sibling carries a fanout_index (a plain append doesn't), so both
+		// fall in the un-indexed bucket and order createdAt-then-id. What this case
+		// asserts is the pairing — ordering has its own tests below.
 		const sibs = getSiblingAssistants(conv.id, user.id);
 		expect(new Set(sibs.map((m) => m.id))).toEqual(new Set([a.id, b.id]));
 		const byId = new Map(sibs.map((m) => [m.id, m.modelUsed]));
 		expect(byId.get(a.id)).toBe('bridge::a');
 		expect(byId.get(b.id)).toBe('bridge::b');
+	});
+
+	// --- grid order ------------------------------------------------------
+	//
+	// A compare grid is drawn in the order the user enqueued the models, but a
+	// row's created_at is when its branch FINISHED — and branches an endpoint
+	// runs in parallel finish out of order. `fanout_index` is the dispatch
+	// position the client stamps on each branch, and it's what these order by.
+	describe('getSiblingAssistants ordering', () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** Persist a branch as if it had just landed, one ms after the last. */
+		function land(convId: string, parentId: string, label: string, fanoutIndex: number | null) {
+			vi.advanceTimersByTime(1);
+			return appendMessage({
+				conversationId: convId,
+				parentMessageId: parentId,
+				role: 'assistant',
+				parts: [{ type: 'text', text: label }],
+				modelUsed: `bridge::${label}`,
+				advanceActiveLeaf: false,
+				fanoutIndex,
+			});
+		}
+		const labels = (msgs: Array<{ parts: unknown[] }>) =>
+			msgs.map((m) => (m.parts[0] as { text: string }).text);
+
+		it('returns dispatch order even when the branches completed out of order', () => {
+			const { conv, user } = seedConvWithUser();
+			// Four models enqueued A-B-C-D; the endpoint hands back B, D, A, C.
+			land(conv.id, user.id, 'B', 1);
+			land(conv.id, user.id, 'D', 3);
+			land(conv.id, user.id, 'A', 0);
+			land(conv.id, user.id, 'C', 2);
+			expect(labels(getSiblingAssistants(conv.id, user.id))).toEqual(['A', 'B', 'C', 'D']);
+		});
+
+		it('sorts a re-roll directly after the variation it re-rolled', () => {
+			const { conv, user } = seedConvWithUser();
+			// A re-roll inherits its source's index, so index alone can't separate
+			// them — created_at does, oldest first, which is the run's live order.
+			land(conv.id, user.id, 'A', 0);
+			land(conv.id, user.id, 'B', 1);
+			land(conv.id, user.id, 'A-reroll-1', 0);
+			land(conv.id, user.id, 'A-reroll-2', 0);
+			expect(labels(getSiblingAssistants(conv.id, user.id))).toEqual([
+				'A',
+				'A-reroll-1',
+				'A-reroll-2',
+				'B',
+			]);
+		});
+
+		it('puts un-indexed siblings ahead of indexed ones, chronologically', () => {
+			const { conv, user } = seedConvWithUser();
+			// The avatar case: portraits drawn before this comparison existed are
+			// seeded into the grid ahead of the fresh branches, and carry no index.
+			const seededOld = land(conv.id, user.id, 'seeded-old', null);
+			land(conv.id, user.id, 'fresh-1', 1);
+			land(conv.id, user.id, 'seeded-new', null);
+			land(conv.id, user.id, 'fresh-0', 0);
+			expect(labels(getSiblingAssistants(conv.id, user.id))).toEqual([
+				'seeded-old',
+				'seeded-new',
+				'fresh-0',
+				'fresh-1',
+			]);
+			// And the index rides back out to the client, so a re-roll fired from a
+			// recovered grid can inherit its source column's position.
+			const sibs = getSiblingAssistants(conv.id, user.id);
+			expect(sibs.map((m) => m.fanoutIndex)).toEqual([null, null, 0, 1]);
+			expect(sibs[0].id).toBe(seededOld.id);
+		});
+
+		it('keeps a wholly un-indexed fan-out in its old chronological order', () => {
+			// Rows that predate the column: nothing to sort by but created_at, which
+			// is what they were ordered by before it existed.
+			const { conv, user } = seedConvWithUser();
+			land(conv.id, user.id, 'first', null);
+			land(conv.id, user.id, 'second', null);
+			land(conv.id, user.id, 'third', null);
+			expect(labels(getSiblingAssistants(conv.id, user.id))).toEqual(['first', 'second', 'third']);
+		});
 	});
 
 	it('getSiblingAssistants surfaces each image result’s source input (split provenance)', () => {

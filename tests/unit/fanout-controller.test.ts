@@ -525,6 +525,56 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('a re-roll inherits its source’s grid position and lands after the run', async () => {
+		// A re-roll takes its SOURCE column's index rather than a fresh one — that's
+		// what makes the server sort it directly after the variation it re-rolled
+		// (same index, later created_at), so a recovered grid matches the live one.
+		const bodies: Array<{ branchIndex?: unknown }> = [];
+		let landed = 0;
+		const fetchMock = vi.fn(async (url: string, init?: { body?: string }) => {
+			if (url.includes('?stream=1')) {
+				bodies.push(JSON.parse(init?.body ?? '{}') as { branchIndex?: unknown });
+				const id = `roll-${++landed}`;
+				return sseResponse([
+					{ type: 'start', userMessage: imageSibling('u1', '', null), assistantMessageId: '' },
+					{ type: 'done', assistantMessage: imageSibling(id, 'bridge::sdxl', null) },
+				]);
+			}
+			return jsonResponse({});
+		});
+		vi.stubGlobal('fetch', fetchMock);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		// A recovered two-column grid, indexed as it was dispatched.
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [
+				{ ...imageSibling('a', 'bridge::sdxl', null), fanoutIndex: 0 },
+				{ ...imageSibling('b', 'bridge::flux', null), fanoutIndex: 1 },
+			],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(fc.columns.map((c) => c.dispatchIndex)).toEqual([0, 1]);
+
+		await fc.regenerate(fc.columns[0]);
+		expect(bodies[0].branchIndex).toBe(0);
+		// Between its source and the next variation, not at the end of the grid.
+		expect(fc.columns.map((c) => c.persisted?.id)).toEqual(['a', 'roll-1', 'b']);
+
+		// A second re-roll of the same source goes after the first, matching how
+		// (index, created_at) sorts the run server-side — not between them.
+		await fc.regenerate(fc.columns[0]);
+		expect(bodies[1].branchIndex).toBe(0);
+		expect(fc.columns.map((c) => c.persisted?.id)).toEqual(['a', 'roll-1', 'roll-2', 'b']);
+		expect(fc.columns.map((c) => c.dispatchIndex)).toEqual([0, 0, 0, 1]);
+		vi.unstubAllGlobals();
+	});
+
 	it('an additive re-roll keeps the grid unlocked + the source column untouched', async () => {
 		// Hold the re-roll's branch stream open so we can inspect grid state while
 		// it's in flight — guards both the additive insert and the no-grid-lock
@@ -794,7 +844,9 @@ describe('FanoutController — actions', () => {
 
 		// One branch POST per spec, image-outer/model-inner, each carrying ONLY
 		// its own split image — the provenance that drives the per-image grid.
-		// fanoutSize (= branch count) rides on every branch for the aggregate notify.
+		// fanoutSize (= branch count) rides on every branch for the aggregate notify,
+		// and branchIndex carries the branch's grid position, so the whole
+		// cross-product order (not just the model order) survives a reload.
 		expect(bodies).toEqual([
 			{
 				fanoutBranch: true,
@@ -803,6 +855,7 @@ describe('FanoutController — actions', () => {
 				modelKind: 'image',
 				inputMediaIds: ['img-1'],
 				fanoutSize: 4,
+				branchIndex: 0,
 			},
 			{
 				fanoutBranch: true,
@@ -811,6 +864,7 @@ describe('FanoutController — actions', () => {
 				modelKind: 'image',
 				inputMediaIds: ['img-1'],
 				fanoutSize: 4,
+				branchIndex: 1,
 			},
 			{
 				fanoutBranch: true,
@@ -819,6 +873,7 @@ describe('FanoutController — actions', () => {
 				modelKind: 'image',
 				inputMediaIds: ['img-2'],
 				fanoutSize: 4,
+				branchIndex: 2,
 			},
 			{
 				fanoutBranch: true,
@@ -827,6 +882,7 @@ describe('FanoutController — actions', () => {
 				modelKind: 'image',
 				inputMediaIds: ['img-2'],
 				fanoutSize: 4,
+				branchIndex: 3,
 			},
 		]);
 		vi.unstubAllGlobals();
@@ -920,6 +976,8 @@ describe('FanoutController — avatar comparisons', () => {
 			prompt: 'a weathered navigator',
 			enhance: true,
 			fanoutSize: 2,
+			// No portraits were seeded here, so this round numbers from 0.
+			branchIndex: 0,
 		});
 		expect(fc.isAvatar).toBe(true);
 		expect(fc.columns.map((c) => c.status)).toEqual(['done', 'done']);
@@ -943,6 +1001,47 @@ describe('FanoutController — avatar comparisons', () => {
 		expect(fc.columns).toHaveLength(3);
 		// Two generate posts, not three.
 		expect(posts.filter((p) => p.url.endsWith('/avatar/generate'))).toHaveLength(2);
+	});
+
+	it('numbers a second draw round past the portraits it seeded', async () => {
+		// An avatar comparison anchors on a REUSED assistant message, so round two's
+		// portraits are siblings of round one's. Numbered from 0 again they'd
+		// interleave with them in a grid rebuilt from server truth; continuing past
+		// the highest seeded index keeps the rounds in order.
+		const posts = stubDraw([
+			{ ...imageSibling('r1-a', 'bridge::sdxl', null), fanoutIndex: 0 },
+			{ ...imageSibling('r1-b', 'bridge::flux', null), fanoutIndex: 1 },
+		]);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: false,
+			branches: TWO_MODELS,
+		});
+		expect(
+			posts.filter((p) => p.url.endsWith('/avatar/generate')).map((p) => p.body.branchIndex),
+		).toEqual([2, 3]);
+		expect(fc.columns.map((c) => c.dispatchIndex)).toEqual([0, 1, 2, 3]);
+	});
+
+	it('numbers a round from 0 when the portraits it seeded predate the field', async () => {
+		// Legacy seeds carry no index, so they can't push the base forward — they
+		// sort ahead of every indexed column anyway, which is where they belong.
+		const posts = stubDraw([imageSibling('legacy', 'bridge::sdxl', null)]);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		await fc.sendAvatarDraw({
+			sourceMessageId: 'desc',
+			prompt: 'p',
+			enhance: false,
+			branches: TWO_MODELS,
+		});
+		expect(
+			posts.filter((p) => p.url.endsWith('/avatar/generate')).map((p) => p.body.branchIndex),
+		).toEqual([0, 1]);
+		expect(fc.columns.map((c) => c.dispatchIndex)).toEqual([null, 0, 1]);
 	});
 
 	it('shows nothing when the comparison is refused', async () => {
@@ -1262,6 +1361,7 @@ describe('FanoutController — avatar comparisons', () => {
 		fc.columns = [
 			{
 				branchId: 'b0',
+				dispatchIndex: 0,
 				modelId: 'bridge::sdxl',
 				modelKind: 'image',
 				label: 'SDXL',

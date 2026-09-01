@@ -7,7 +7,11 @@
  *    a linchpin ("silently rewrites users' conversation models").
  */
 import { describe, it, expect } from 'vitest';
-import { resolveModelOverride, ModelOverrideError } from '$lib/server/messages/fanout-dispatch';
+import {
+	resolveBranchIndex,
+	resolveModelOverride,
+	ModelOverrideError,
+} from '$lib/server/messages/fanout-dispatch';
 
 const resolvers = {
 	parseEndpointId: (id: string) => (id.includes('::') ? id.split('::')[0] : null),
@@ -95,5 +99,34 @@ describe('resolveModelOverride', () => {
 				...resolvers,
 			}),
 		).toThrow(/not configured/);
+	});
+});
+
+describe('resolveBranchIndex', () => {
+	it('keeps a fan-out branch’s grid position', () => {
+		expect(resolveBranchIndex(0, true)).toBe(0);
+		expect(resolveBranchIndex(7, true)).toBe(7);
+	});
+
+	it('drops it on a non-fan-out send — a thread message has no grid position', () => {
+		expect(resolveBranchIndex(3, false)).toBeNull();
+	});
+
+	it('rejects anything that isn’t a sane non-negative integer', () => {
+		// `1e999` is the one that matters: JSON.parse hands it over as Infinity,
+		// which `typeof x === 'number'` admits and SQLite stores as a float that
+		// then sorts against every real index.
+		expect(resolveBranchIndex(JSON.parse('1e999'), true)).toBeNull();
+		expect(resolveBranchIndex(-1, true)).toBeNull();
+		expect(resolveBranchIndex(1.5, true)).toBeNull();
+		expect(resolveBranchIndex('2', true)).toBeNull();
+		expect(resolveBranchIndex(undefined, true)).toBeNull();
+		expect(resolveBranchIndex(null, true)).toBeNull();
+	});
+
+	// Indices are assigned past the highest already under the anchor, so
+	// successive avatar-draw rounds climb well beyond one grid's worth.
+	it('does not cap at the per-conversation branch ceiling', () => {
+		expect(resolveBranchIndex(500, true)).toBe(500);
 	});
 });
