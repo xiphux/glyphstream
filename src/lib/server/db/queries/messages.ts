@@ -558,7 +558,12 @@ export function getSiblingAssistants(
 		// inherit its source column's index, the same as one fired from a live
 		// grid. Set here only — an ordinary thread message has no grid position
 		// and shouldn't pay for the field in the page payload.
-		msg.fanoutIndex = row.fanoutIndex;
+		//
+		// `?? undefined` for the same reason `dispatchedModels` uses it in
+		// rowToChatMessage: the key then drops out of the JSON entirely on an
+		// un-indexed sibling instead of shipping a null. The client reads it as
+		// `?? null`, so absent and null are the same thing to it.
+		msg.fanoutIndex = row.fanoutIndex ?? undefined;
 		return msg;
 	});
 

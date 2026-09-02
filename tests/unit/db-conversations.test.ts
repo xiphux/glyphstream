@@ -1821,7 +1821,9 @@ describe('multi-model fan-out: sibling appends + active_leaf pinning', () => {
 			// And the index rides back out to the client, so a re-roll fired from a
 			// recovered grid can inherit its source column's position.
 			const sibs = getSiblingAssistants(conv.id, user.id);
-			expect(sibs.map((m) => m.fanoutIndex)).toEqual([null, null, 0, 1]);
+			// Un-indexed siblings ship the key absent rather than null, matching how
+			// `dispatchedModels` is projected; the client reads both as null.
+			expect(sibs.map((m) => m.fanoutIndex)).toEqual([undefined, undefined, 0, 1]);
 			expect(sibs[0].id).toBe(seededOld.id);
 		});
 
