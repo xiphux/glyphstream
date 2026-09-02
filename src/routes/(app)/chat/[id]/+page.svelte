@@ -1179,7 +1179,9 @@
 	let openingLightboxFor = $state<string | null>(null);
 
 	// Ordered set the lightbox swipes/arrows between: every image/video in
-	// the conversation, across ALL branches, oldest first. Fetched (not
+	// the conversation, across ALL branches, oldest first — except the images
+	// of a fan-out grid that's open, which are re-seated into that grid's
+	// dispatch order (see loadConversationMedia). Fetched (not
 	// derived from `visibleMessages`) because multi-image batches,
 	// multi-model grids, and regenerate revisions are sibling branches —
 	// only one sits on the active leaf path, so the message list would
