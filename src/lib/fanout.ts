@@ -176,10 +176,15 @@ export interface FanoutColumn {
 	 * live grid inserts it at. So an index is NOT unique across columns: a shared
 	 * one means "same variation group".
 	 *
-	 * Null on a column with no grid position to report: an avatar comparison's
-	 * seeded portraits (drawn before this grid existed), a recovered placeholder
-	 * for a still-generating branch, and anything persisted before the column
-	 * shipped. Those sort ahead of every indexed column, chronologically.
+	 * Null on a column with no grid position to report. For the two PERSISTED
+	 * cases — an avatar comparison's seeded portraits (drawn before this grid
+	 * existed) and anything persisted before the column shipped — that means
+	 * sorting ahead of every indexed column, chronologically, via
+	 * `getSiblingAssistants`. A recovered placeholder for a still-generating
+	 * branch is null too but isn't subject to that sort at all: it has no row
+	 * yet, and `#buildRecoveredColumns` appends every placeholder AFTER every
+	 * settled column, indexed or not. So it renders last, not first — and jumps
+	 * to its index once it lands.
 	 */
 	dispatchIndex: number | null;
 	/** The persisted assistant message, set on the branch's `done` event (or
@@ -229,9 +234,18 @@ export function nextDispatchIndex(columns: readonly FanoutColumn[]): number {
  * source's), which is what makes the run identifiable.
  *
  * This is the live mirror of how `getSiblingAssistants` orders a recovered
- * grid — same index, then oldest-first — so the two agree. Placing every
- * re-roll immediately after the source instead would stack them newest-first
- * live and oldest-first after a reload.
+ * grid — same index, then oldest-first. Placing every re-roll immediately
+ * after the source instead would stack them newest-first live and
+ * oldest-first after a reload.
+ *
+ * The two agree as long as a run's members COMPLETE in the order they were
+ * rolled, which is the ordinary way re-rolls happen (roll, look, roll again).
+ * They can disagree in the one case this whole column exists to handle: fire
+ * two re-rolls of the same column at an endpoint that runs them in parallel,
+ * and the server's `created_at` tiebreak within the shared index is once again
+ * completion order — live shows [a, r1, r2], a reload shows [a, r2, r1].
+ * Closing that would need a minor key under the shared index; a run is a
+ * couple of columns wide, so it isn't worth one.
  *
  * An un-indexed source (an avatar comparison's seeded portrait) can't name a
  * run, so its re-roll just goes immediately after it.
