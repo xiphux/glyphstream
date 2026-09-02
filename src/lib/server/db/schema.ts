@@ -437,6 +437,13 @@ export const messages = sqliteTable(
 		// sort chronologically AHEAD of any indexed sibling, which is exactly
 		// where an avatar comparison's already-drawn portraits belong (the live
 		// grid seeds them before the fresh branches). See getSiblingAssistants.
+		//
+		// "Ahead" is by grid position, not by age, and the two only coincide for
+		// rows that genuinely predate the grid. A BACKGROUND avatar draw is the
+		// case where they don't: it isn't a comparison branch, so it persists null
+		// however late it happens, and a comparison drawn from that description
+		// afterwards seeds it at the head. It's a candidate portrait either way,
+		// so the position is cosmetic — but it isn't "drawn earlier".
 		fanoutIndex: integer('fanout_index'),
 		createdAt: integer('created_at').notNull(),
 	},

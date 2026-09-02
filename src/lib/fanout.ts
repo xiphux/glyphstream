@@ -247,8 +247,14 @@ export function nextDispatchIndex(columns: readonly FanoutColumn[]): number {
  * Closing that would need a minor key under the shared index; a run is a
  * couple of columns wide, so it isn't worth one.
  *
- * An un-indexed source (an avatar comparison's seeded portrait) can't name a
- * run, so its re-roll just goes immediately after it.
+ * An un-indexed source (an avatar comparison's seeded portrait, or a column
+ * predating the index) can't name a run, so its re-roll just goes immediately
+ * after it. Live and recovered part company here whenever there are two or
+ * more un-indexed columns: the re-roll sends no index of its own, so the
+ * server sorts it chronologically at the END of the null bucket rather than
+ * beside its source. That's the same place it landed before this column
+ * existed, so it's an un-narrowed gap rather than a regression — the indices
+ * only ever moved indexed columns.
  */
 export function rerollInsertIndex(columns: readonly FanoutColumn[], source: FanoutColumn): number {
 	const at = columns.findIndex((c) => c.branchId === source.branchId);
