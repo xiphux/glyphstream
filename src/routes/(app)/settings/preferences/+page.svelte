@@ -252,7 +252,18 @@
 			const probed = cfg?.vapidPublicKey
 				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)
 				: false;
-			if (generation === deviceProbeGeneration) deviceSubscribed = probed;
+			// Discard the probe if a handler has since written a fresher value — but
+			// not if it left none. toggleMaster bumps the generation before its
+			// first await and then has three exits that write nothing
+			// (!vapidPublicKey, a failed subscribe, and the catch, which fires from
+			// unsubscribe()'s unguarded getSubscription()). All three mutate no
+			// subscription, so `probed` is still accurate; without the null arm
+			// they'd pin deviceSubscribed at null for the life of the page, and a
+			// null pins deviceGap to 'none' — suppressing the banner and the button
+			// that fixes it on a device that genuinely can't receive.
+			if (generation === deviceProbeGeneration || deviceSubscribed === null) {
+				deviceSubscribed = probed;
+			}
 		} else {
 			serverConfigured = false;
 			deviceSubscribed = false;
