@@ -5,11 +5,15 @@
 	import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import {
+		deviceNotificationGap,
 		getPermissionState,
+		hasLiveDeviceSubscription,
 		isIosBeforeInstall,
 		isPushSupported,
 		loadPushConfig,
+		reconcileSubscription,
 		subscribe as subscribeToPush,
+		type SubscribeResult,
 		unsubscribe as unsubscribeFromPush,
 	} from '$lib/push-subscribe';
 
@@ -170,6 +174,9 @@
 	let serverConfigured = $state<boolean | null>(null); // null = loading
 	let notifBusy = $state(false);
 	let notifError = $state<string | null>(null);
+	// null = still probing. Gates the gap banner so it can't flash on mount
+	// before we know whether this device actually holds a subscription.
+	let deviceSubscribed = $state<boolean | null>(null);
 
 	const masterDisabled = $derived(
 		notifBusy ||
@@ -191,6 +198,24 @@
 						: null,
 	);
 
+	// `notificationsEnabled` is one row per USER; a push subscription is per
+	// device+install. So this page can render a checked box on a device that
+	// receives nothing — which is exactly what an iOS PWA delete/re-add
+	// produces (permission resets to `default`, the subscription is gone, the
+	// pref is untouched). Nothing healed it silently either: reconciliation
+	// must never prompt, so the one cause it can't fix is the common one.
+	// Surface it explicitly instead of leaving the contradiction on screen.
+	const deviceGap = $derived(
+		deviceSubscribed === null
+			? 'none'
+			: deviceNotificationGap({
+					enabled: notificationsEnabled,
+					blocked: masterDisabledReason !== null,
+					permission: permissionState,
+					hasLiveSubscription: deviceSubscribed,
+				}),
+	);
+
 	onMount(async () => {
 		pushSupported = isPushSupported();
 		iosBeforeInstall = isIosBeforeInstall();
@@ -199,10 +224,30 @@
 			const cfg = await loadPushConfig();
 			serverConfigured = cfg?.enabled ?? false;
 			vapidPublicKey = cfg?.vapidPublicKey ?? null;
+			// Reconcile before probing, rather than racing the identical call in
+			// the (app) layout's onMount: a heal in flight would otherwise read as
+			// "not subscribed" and show a banner for a gap that was about to close.
+			// No-op (and no prompt) unless opted in and already granted. Also the
+			// only heal on a client-side nav here, where layout onMount never runs.
+			await reconcileSubscription(notificationsEnabled);
+			deviceSubscribed = cfg?.vapidPublicKey
+				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)
+				: false;
 		} else {
 			serverConfigured = false;
+			deviceSubscribed = false;
 		}
 	});
+
+	function subscribeErrorMessage(reason: (SubscribeResult & { ok: false })['reason']): string {
+		return reason === 'permission_denied'
+			? 'Permission denied.'
+			: reason === 'unsupported'
+				? 'This browser does not support push notifications.'
+				: reason === 'no_registration'
+					? 'Service worker not active yet. Reload and try again.'
+					: 'Could not register the subscription with the server.';
+	}
 
 	async function patchPrefs(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {
 		const res = await fetch('/api/user/preferences', {
@@ -226,17 +271,11 @@
 				}
 				const result = await subscribeToPush(vapidPublicKey);
 				if (!result.ok) {
-					notifError =
-						result.reason === 'permission_denied'
-							? 'Permission denied.'
-							: result.reason === 'unsupported'
-								? 'This browser does not support push notifications.'
-								: result.reason === 'no_registration'
-									? 'Service worker not active yet. Reload and try again.'
-									: 'Could not register the subscription with the server.';
+					notifError = subscribeErrorMessage(result.reason);
 					permissionState = getPermissionState();
 					return;
 				}
+				deviceSubscribed = true;
 				const saved = await patchPrefs({ notificationsEnabled: true });
 				if (!saved) {
 					notifError = 'Subscription saved on this device but server update failed.';
@@ -246,6 +285,7 @@
 				permissionState = getPermissionState();
 			} else {
 				await unsubscribeFromPush();
+				deviceSubscribed = false;
 				const saved = await patchPrefs({ notificationsEnabled: false });
 				if (!saved) {
 					notifError = 'Could not save your preference; try again.';
@@ -253,6 +293,35 @@
 				}
 				notificationsEnabled = false;
 			}
+		} catch (e) {
+			notifError = e instanceof Error ? e.message : String(e);
+		} finally {
+			notifBusy = false;
+		}
+	}
+
+	/**
+	 * Subscribe THIS device while leaving the account pref alone — the banner's
+	 * action. Same call as turning the master on (so it prompts for permission
+	 * from inside a click handler, which iOS requires), minus the PATCH: the
+	 * pref is already on, and that is the whole point of the banner.
+	 */
+	async function enableOnThisDevice() {
+		if (notifBusy) return;
+		notifBusy = true;
+		notifError = null;
+		try {
+			if (!vapidPublicKey) {
+				notifError = 'Server configuration missing — try reloading.';
+				return;
+			}
+			const result = await subscribeToPush(vapidPublicKey);
+			permissionState = getPermissionState();
+			if (!result.ok) {
+				notifError = subscribeErrorMessage(result.reason);
+				return;
+			}
+			deviceSubscribed = true;
 		} catch (e) {
 			notifError = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -528,9 +597,37 @@
 				<div class="rounded-md border px-3 py-2 text-xs alert-warning">
 					{masterDisabledReason}
 				</div>
+			{:else if deviceGap !== 'none'}
+				<div class="flex flex-col gap-2 rounded-md border px-3 py-2 text-xs alert-warning">
+					<p>
+						<span class="font-medium">This device isn't set up to receive notifications.</span>
+						The setting above is saved to your account, but each device has to be enabled separately —
+						{#if deviceGap === 'needs-permission'}
+							and this one hasn't granted notification permission yet. Re-installing the app to your
+							Home Screen resets that, so this is expected after adding it again.
+						{:else}
+							and this one's subscription has lapsed. Re-subscribing should restore it.
+						{/if}
+					</p>
+					<button
+						type="button"
+						onclick={() => void enableOnThisDevice()}
+						disabled={notifBusy}
+						class="self-start rounded-md border border-current px-3 py-1.5 font-medium transition hover:bg-current/10 disabled:opacity-50"
+					>
+						{deviceGap === 'needs-permission'
+							? 'Enable on this device'
+							: 'Re-subscribe this device'}
+					</button>
+					<p class="opacity-80">
+						Permission: <span class="font-mono">{permissionState}</span>
+					</p>
+				</div>
 			{:else if pushSupported}
 				<div class="text-xs text-fg-muted">
 					Permission: <span class="font-mono">{permissionState}</span>
+					{#if notificationsEnabled && deviceSubscribed}
+						· this device is subscribed{/if}
 				</div>
 			{/if}
 

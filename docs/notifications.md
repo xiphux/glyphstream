@@ -175,6 +175,11 @@ The flow:
 The settings UI detects when you're on iOS without a Home Screen install
 and shows a hint instead of an inert switch.
 
+Deleting the Home Screen app and adding it back later — to pick up a new
+splash screen, say — discards permission and the subscription with it,
+while leaving the switch reading on. See
+[Enable notifications is per account; delivery is per device](#enable-notifications-is-per-account-delivery-is-per-device).
+
 Permission must be requested inside a user gesture (the tap on the
 switch). That's why the master switch's handler — not page load —
 calls `requestPermission()`.
@@ -211,6 +216,29 @@ If a push service returns `404 Gone` or `410 Gone` for an endpoint
 (the user revoked permission, uninstalled the PWA, cleared site data,
 etc.), the notify pipeline auto-deletes that row so it doesn't keep
 trying to send to a dead endpoint.
+
+### "Enable notifications" is per account; delivery is per device
+
+The **Enable notifications** switch is one preference on your user row,
+so it reads the same on every device you sign in from. The subscription
+it creates is not — that belongs to one browser install. A device can
+therefore show the switch already on and still receive nothing, because
+it has no subscription of its own.
+
+The usual way in is re-installing the PWA. Deleting an iOS Home Screen
+app and adding it back resets notification permission to `default` and
+discards the subscription, while the account preference is untouched.
+Adding a second device does the same thing from the other direction.
+
+GlyphStream re-registers a lapsed subscription on load
+(`reconcileSubscription`), but only when permission is still granted —
+healing is never allowed to raise a permission prompt. A re-install
+clears the grant, which is exactly the case reconciliation must skip.
+So the settings page detects the mismatch instead and replaces the
+`Permission:` readout with a warning plus an **Enable on this device**
+button, which does the subscribing without touching the account
+preference. Tapping it prompts for permission from inside the click
+handler, as iOS requires.
 
 ### Cross-device suppression
 

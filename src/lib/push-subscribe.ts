@@ -165,6 +165,67 @@ export function decideReconcile(input: {
 }
 
 /**
+ * What, if anything, stops THIS device from receiving notifications while the
+ * account-level pref reads "on". Pure so the settings UI's banner is testable
+ * without stubbing the browser APIs (same split as `decideReconcile`).
+ *
+ * `notificationsEnabled` is one row per user, but a subscription is per
+ * device+install — so a device can render a checked box and receive nothing.
+ * That is the state this reports:
+ *
+ *  - `none`               — nothing to say. Either the pref is off, the device
+ *                           is genuinely subscribed, or `blocked` is set and
+ *                           the existing disabled-reason already explains why.
+ *  - `needs-permission`   — permission was never granted (or was reset) on this
+ *                           install. `reconcileSubscription` deliberately can't
+ *                           fix this: healing must never prompt. Deleting and
+ *                           re-adding an iOS PWA lands exactly here.
+ *  - `needs-subscription` — permission is granted but no live subscription
+ *                           exists, i.e. reconciliation ran and failed (push
+ *                           service refused, key rotated mid-flight).
+ *
+ * `blocked` is the caller's existing "master toggle is disabled" condition
+ * (unsupported browser, iOS before Home Screen install, permission denied,
+ * server push unconfigured). Those already render their own explanation, so
+ * reporting a gap on top of one would just stack two warnings.
+ */
+export type DeviceNotificationGap = 'none' | 'needs-permission' | 'needs-subscription';
+
+export function deviceNotificationGap(input: {
+	enabled: boolean;
+	blocked: boolean;
+	permission: NotificationPermission;
+	hasLiveSubscription: boolean;
+}): DeviceNotificationGap {
+	if (!input.enabled || input.blocked) return 'none';
+	if (input.permission !== 'granted') return 'needs-permission';
+	if (!input.hasLiveSubscription) return 'needs-subscription';
+	return 'none';
+}
+
+/**
+ * Whether this device holds a push subscription bound to the VAPID key the
+ * server currently advertises — the observable input to
+ * `deviceNotificationGap`. A subscription against a rotated key counts as
+ * absent: it exists, but can never receive our sends.
+ *
+ * Never throws and never prompts; any browser-API rejection reads as "no live
+ * subscription", which is the safe direction (it surfaces a banner with a
+ * button rather than silently claiming everything is fine).
+ */
+export async function hasLiveDeviceSubscription(vapidPublicKey: string): Promise<boolean> {
+	if (!isPushSupported() || Notification.permission !== 'granted') return false;
+	try {
+		const reg = await navigator.serviceWorker.ready.catch(() => null);
+		if (!reg) return false;
+		const subscription = await reg.pushManager.getSubscription();
+		return subscription !== null && subscriptionMatchesKey(subscription, vapidPublicKey);
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Reconcile the push subscription on app load. The settings toggle is the only
  * place that *creates* a subscription, so once the browser or push service
  * drops it (iOS eviction, PWA re-add, a 404/410 server-side prune), it stays
