@@ -224,11 +224,14 @@
 			const cfg = await loadPushConfig();
 			serverConfigured = cfg?.enabled ?? false;
 			vapidPublicKey = cfg?.vapidPublicKey ?? null;
-			// Reconcile before probing, rather than racing the identical call in
-			// the (app) layout's onMount: a heal in flight would otherwise read as
-			// "not subscribed" and show a banner for a gap that was about to close.
-			// No-op (and no prompt) unless opted in and already granted. Also the
-			// only heal on a client-side nav here, where layout onMount never runs.
+			// Reconcile before probing, so a heal in flight can't read as "not
+			// subscribed" and raise a banner for a gap about to close on its own.
+			// This does NOT suppress the layout's own unawaited reconcile, which
+			// still runs concurrently on a cold load — it only guarantees that
+			// *some* heal has finished before we probe, which is what the probe
+			// needs. Both are idempotent, so the overlap is benign. No-op (and no
+			// prompt) unless opted in and already granted. Also the only heal on a
+			// client-side nav here, where layout onMount never runs.
 			await reconcileSubscription(notificationsEnabled);
 			deviceSubscribed = cfg?.vapidPublicKey
 				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)

@@ -226,14 +226,22 @@ export async function hasLiveDeviceSubscription(vapidPublicKey: string): Promise
 }
 
 /**
- * Reconcile the push subscription on app load. The settings toggle is the only
- * place that *creates* a subscription, so once the browser or push service
- * drops it (iOS eviction, PWA re-add, a 404/410 server-side prune), it stays
- * dead: the pref still reads "on", permission still reads "granted", the toggle
- * still shows ON — but there's no endpoint to send to, silently. Called from the
- * (app) layout's onMount, this re-establishes the subscription so any one-time
- * invalidation self-heals on the next visit instead of staying broken until the
- * user manually toggles off/on. Fire-and-forget; never throws.
+ * Reconcile the push subscription on app load. A subscription is only ever
+ * *created* by an explicit action in settings — the master toggle, or the
+ * banner's "Enable on this device" — so once the browser or push service drops
+ * one (iOS eviction, PWA re-add, a 404/410 server-side prune), it stays dead:
+ * the pref still reads "on", permission still reads "granted", the toggle still
+ * shows ON — but there's no endpoint to send to, silently. Reconciling on load
+ * re-establishes it, so a one-time invalidation self-heals on the next visit
+ * instead of staying broken until the user manually toggles off/on.
+ *
+ * Two call sites, with different disciplines:
+ *  - the (app) layout's onMount fires it bare (`void …`) on every cold load;
+ *  - the preferences page awaits it before probing what this device holds, so a
+ *    heal in flight can't be read as a missing subscription.
+ *
+ * Never throws, under either. Pass `config` to reuse a `loadPushConfig()` the
+ * caller already made rather than repeating the fetch.
  */
 export async function reconcileSubscription(enabled: boolean): Promise<void> {
 	if (!enabled || !isPushSupported() || Notification.permission !== 'granted') return;
@@ -242,9 +250,10 @@ export async function reconcileSubscription(enabled: boolean): Promise<void> {
 	// every browser-API rejection — getSubscription(), a malformed key throwing
 	// synchronously in subscriptionMatchesKey (atob), or the push service
 	// refusing subscribe() mid-rotation. Any of them stays a silent no-op; the
-	// next cold load reconciles again. The call site is a bare `void …` with no
-	// unhandledrejection handler behind it, so an escape would be an unhandled
-	// rejection rather than the promised no-op.
+	// next cold load reconciles again. Neither call site would catch an escape —
+	// the layout's is a bare `void …` with no unhandledrejection handler behind
+	// it, the page's an unguarded `await` in an async onMount — so one would
+	// surface as an unhandled rejection rather than the promised no-op.
 	try {
 		const cfg = await loadPushConfig();
 		if (!cfg?.enabled || !cfg.vapidPublicKey) return;
