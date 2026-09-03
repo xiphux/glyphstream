@@ -511,12 +511,20 @@ instructions, for nuance the styles can't carry — and for `json` it's where th
 | Model(s)                      | `prompt_style`     | hint highlights                                                |
 | ----------------------------- | ------------------ | -------------------------------------------------------------- |
 | Flux 2 Klein, Krea 2          | `natural-language` | concrete camera/film terms, not "8k/masterpiece"               |
+| Lustify v10+ (Krea 2)         | `natural-language` | 7–9 sentences; camera angle + optical micro-detail             |
 | Qwen Image, ERNIE Image Turbo | `natural-language` | explicit layout; ERNIE/Qwen have their own enhancer — see note |
 | Z-Image Turbo                 | `natural-language` | short (~40–70 words), front-load subject                       |
 | Illustrious, WAI              | `booru-tags`       | quality-tag prefix; **no `score_N` tags**                      |
-| Lustify, ChromaHD             | `keyword-soup`     | cinematic/photography phrases, camera + film                   |
+| Lustify v8/v9, ChromaHD       | `keyword-soup`     | cinematic/photography phrases, camera + film                   |
 | Anima                         | `hybrid`           | tags→prose; spaces not underscores; `@artist`                  |
 | Ideogram 4                    | `json`             | the JSON field schema (see below)                              |
+
+Style follows the **base model, not the checkpoint family** — a fine-tune keeps
+its base's prompt regime, and a checkpoint that rebases changes style with it.
+Lustify v8/v9 are SDXL (dual CLIP, 77-token window → `keyword-soup`); Lustify
+v10 rebased onto Krea 2, whose text encoder is Qwen3-VL, so it wants
+`natural-language` prose instead. When a checkpoint bumps its base model,
+re-check its style rather than copying the previous version's.
 
 `json` (e.g. **Ideogram 4**, trained exclusively on JSON captions): the style
 emits a JSON object, but the schema is the model's — put it in the hint. For

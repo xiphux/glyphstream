@@ -6,11 +6,13 @@
  * each style *means* to the enhancer LLM. The styles map to the real
  * prompt-formatting regimes image models use:
  *
- *   - natural-language — flowing descriptive prose (Flux 2 Klein, Krea 2,
- *     ERNIE, Qwen-Image, Z-Image Turbo).
+ *   - natural-language — flowing descriptive prose (Flux 2 Klein, Krea 2 and
+ *     its fine-tunes incl. Lustify v10+, ERNIE, Qwen-Image, Z-Image Turbo).
  *   - booru-tags       — comma-separated Danbooru tags (Illustrious, WAI).
  *   - keyword-soup     — short comma-separated descriptive phrases, SDXL-style
- *     (Lustify; ChromaHD if the operator opts it here).
+ *     (Lustify v8/v9; ChromaHD if the operator opts it here). Style follows the
+ *     BASE model, not the checkpoint name — Lustify v10 rebased from SDXL onto
+ *     Krea 2, so it belongs under natural-language above.
  *   - hybrid           — booru tags for the subject, prose for the environment
  *     (Anima; ChromaHD also fits).
  *   - json             — a structured JSON object with a fixed key schema
