@@ -226,6 +226,12 @@
 		pushSupported = isPushSupported();
 		iosBeforeInstall = isIosBeforeInstall();
 		permissionState = getPermissionState();
+		// Snapshot before the first await: the master toggle is live during the
+		// config fetch (masterDisabled reads serverConfigured === false, and it is
+		// null while loading), so a subscribe started in that window would bump
+		// the counter before we read it and the stale probe would sail through
+		// the equality check it exists to fail.
+		const generation = deviceProbeGeneration;
 		if (pushSupported) {
 			const cfg = await loadPushConfig();
 			serverConfigured = cfg?.enabled ?? false;
@@ -235,10 +241,13 @@
 			// This does NOT suppress the layout's own unawaited reconcile, which
 			// still runs concurrently on a cold load — it only guarantees that
 			// *some* heal has finished before we probe, which is what the probe
-			// needs. Both are idempotent, so the overlap is benign. No-op (and no
+			// needs. The overlap is benign for register-existing and subscribe-new,
+			// which are idempotent; a concurrent `resubscribe` (rotated key) is a
+			// teardown-then-create, so a probe landing inside its window can read
+			// null and raise the banner on a device about to be fine. That needs a
+			// key rotation on a cold load, and the next load clears it. No-op (and no
 			// prompt) unless opted in and already granted. Also the only heal on a
 			// client-side nav here, where layout onMount never runs.
-			const generation = deviceProbeGeneration;
 			await reconcileSubscription(notificationsEnabled, cfg);
 			const probed = cfg?.vapidPublicKey
 				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)
