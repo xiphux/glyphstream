@@ -278,7 +278,7 @@
 					permissionState = getPermissionState();
 					return;
 				}
-				deviceSubscribed = true;
+				deviceSubscribed = await hasLiveDeviceSubscription(vapidPublicKey);
 				const saved = await patchPrefs({ notificationsEnabled: true });
 				if (!saved) {
 					notifError = 'Subscription saved on this device but server update failed.';
@@ -324,7 +324,16 @@
 				notifError = subscribeErrorMessage(result.reason);
 				return;
 			}
-			deviceSubscribed = true;
+			// Re-probe rather than trusting `ok`. `subscribe()` returns a
+			// key-mismatched subscription as-is (it only re-POSTs what
+			// getSubscription hands back), while the probe counts one as absent —
+			// so on the rotated-key path an assumed `true` would clear the banner
+			// and affirmatively claim "this device is subscribed" while nothing
+			// was fixed. The probe is local (no network), so this costs nothing.
+			deviceSubscribed = await hasLiveDeviceSubscription(vapidPublicKey);
+			if (!deviceSubscribed) {
+				notifError = 'Subscribed, but this device still has no usable subscription. Try again.';
+			}
 		} catch (e) {
 			notifError = e instanceof Error ? e.message : String(e);
 		} finally {
