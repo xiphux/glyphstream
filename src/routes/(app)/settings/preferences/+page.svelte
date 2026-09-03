@@ -232,7 +232,7 @@
 			// needs. Both are idempotent, so the overlap is benign. No-op (and no
 			// prompt) unless opted in and already granted. Also the only heal on a
 			// client-side nav here, where layout onMount never runs.
-			await reconcileSubscription(notificationsEnabled);
+			await reconcileSubscription(notificationsEnabled, cfg);
 			deviceSubscribed = cfg?.vapidPublicKey
 				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)
 				: false;

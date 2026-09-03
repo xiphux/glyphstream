@@ -243,7 +243,10 @@ export async function hasLiveDeviceSubscription(vapidPublicKey: string): Promise
  * Never throws, under either. Pass `config` to reuse a `loadPushConfig()` the
  * caller already made rather than repeating the fetch.
  */
-export async function reconcileSubscription(enabled: boolean): Promise<void> {
+export async function reconcileSubscription(
+	enabled: boolean,
+	config?: PushConfigResponse | null,
+): Promise<void> {
 	if (!enabled || !isPushSupported() || Notification.permission !== 'granted') return;
 
 	// One try guards the whole body so the "never throws" contract holds against
@@ -255,7 +258,10 @@ export async function reconcileSubscription(enabled: boolean): Promise<void> {
 	// it, the page's an unguarded `await` in an async onMount — so one would
 	// surface as an unhandled rejection rather than the promised no-op.
 	try {
-		const cfg = await loadPushConfig();
+		// `undefined` means the caller has no config to offer, so fetch one;
+		// `null` is a caller whose own loadPushConfig() already failed, and
+		// re-fetching it here would just repeat that failure.
+		const cfg = config === undefined ? await loadPushConfig() : config;
 		if (!cfg?.enabled || !cfg.vapidPublicKey) return;
 
 		const reg = await navigator.serviceWorker.ready.catch(() => null);
