@@ -177,6 +177,12 @@
 	// null = still probing. Gates the gap banner so it can't flash on mount
 	// before we know whether this device actually holds a subscription.
 	let deviceSubscribed = $state<boolean | null>(null);
+	// Bumped by every handler that changes this device's subscription. The mount
+	// probe reads the browser asynchronously, so without this a probe that
+	// started before a subscribe can land after it and overwrite the fresh
+	// `true` with its stale `false` — raising "subscription has lapsed" directly
+	// on top of a successful enable, until the next reload.
+	let deviceProbeGeneration = 0;
 
 	const masterDisabled = $derived(
 		notifBusy ||
@@ -232,10 +238,12 @@
 			// needs. Both are idempotent, so the overlap is benign. No-op (and no
 			// prompt) unless opted in and already granted. Also the only heal on a
 			// client-side nav here, where layout onMount never runs.
+			const generation = deviceProbeGeneration;
 			await reconcileSubscription(notificationsEnabled, cfg);
-			deviceSubscribed = cfg?.vapidPublicKey
+			const probed = cfg?.vapidPublicKey
 				? await hasLiveDeviceSubscription(cfg.vapidPublicKey)
 				: false;
+			if (generation === deviceProbeGeneration) deviceSubscribed = probed;
 		} else {
 			serverConfigured = false;
 			deviceSubscribed = false;
@@ -267,6 +275,7 @@
 		notifBusy = true;
 		notifError = null;
 		try {
+			deviceProbeGeneration++;
 			if (next) {
 				if (!vapidPublicKey) {
 					notifError = 'Server configuration missing — try reloading.';
@@ -313,6 +322,7 @@
 		if (notifBusy) return;
 		notifBusy = true;
 		notifError = null;
+		deviceProbeGeneration++;
 		try {
 			if (!vapidPublicKey) {
 				notifError = 'Server configuration missing — try reloading.';
