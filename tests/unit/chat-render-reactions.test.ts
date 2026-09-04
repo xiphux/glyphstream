@@ -165,6 +165,37 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		expect(reactionsByMessageId.get('u1')).toBe('😍');
 	});
 
+	it('hides a reaction-only assistant row, which would render as an empty bubble', () => {
+		// The model reacted and wrote nothing; the relay looped for the reply. That
+		// first row's only part is the reaction, which messageToBlocks drops — so
+		// without this it draws an assistant label over a blank gap.
+		const { visibleMessages, reactionsByMessageId } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [reactionPart('🎉')]),
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
+			msg('a2', 'assistant', [{ type: 'text', text: 'Congratulations!' }]),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a2']);
+		// Hidden, but still counted — the badge is the whole point of the row.
+		expect(reactionsByMessageId.get('u1')).toBe('🎉');
+	});
+
+	it('keeps an assistant row that has a reaction AND something to say', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: 'Congrats!' }, reactionPart('🎉')]),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
+	});
+
+	it('keeps a reaction-only row that still has reasoning to show', () => {
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'hi' }]),
+			msg('a1', 'assistant', [reactionPart('🎉')], { reasoningText: 'thinking…' }),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
+	});
+
 	it('ignores a reaction the model got wrong, even though it persisted', () => {
 		// A rejected emoji leaves a real tool_call part on the row (with an
 		// isError tool result the renderer never looks at). Before the shared

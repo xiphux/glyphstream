@@ -524,7 +524,6 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	// renders as a collapsed divider. No-op when the thread has no summary.
 	for (const msg of arrangeForDisplay(messages)) {
 		if (msg.role !== 'tool') {
-			visibleMessages.push(msg);
 			if (msg.role === 'user') lastUserMessageId = msg.id;
 			else if (msg.role === 'assistant' && lastUserMessageId) {
 				for (const p of msg.parts) {
@@ -533,6 +532,14 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 					if (emoji) reactionsByMessageId.set(lastUserMessageId, emoji);
 				}
 			}
+			// An assistant row whose ONLY parts are reactions renders as nothing —
+			// `messageToBlocks` drops each one — so it would draw a bare label (and
+			// avatar) over an empty gap. That row is real and has to stay in the
+			// tree, but it has no business being a bubble. It happens when the model
+			// reacts without writing anything, which is the shape the relay then
+			// loops on for the actual reply. The reaction itself is already recorded
+			// above, so hiding the row costs nothing.
+			if (!isReactionOnlyAssistantRow(msg)) visibleMessages.push(msg);
 			continue;
 		}
 		let resultPart: Extract<MessagePart, { type: 'tool_result' }> | null = null;
@@ -565,6 +572,20 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 }
 
 // --- bubble-merge flags -------------------------------------------------
+
+/** An assistant row that carries reaction tool calls and nothing else — no
+ *  text, no media, no other tool call, no reasoning to expand. Every one of its
+ *  parts is dropped by `messageToBlocks`, so rendering it produces an empty
+ *  bubble. Deliberately narrow: a row with a reaction AND anything else still
+ *  renders, and only a row with at least one part qualifies (an empty-parts row
+ *  is a different, pre-existing case this shouldn't start swallowing). */
+function isReactionOnlyAssistantRow(msg: ChatMessage): boolean {
+	if (msg.reasoningText) return false;
+	return (
+		msg.parts.length > 0 &&
+		msg.parts.every((p) => p.type === 'tool_call' && isReactionTool(p.toolName))
+	);
+}
 
 /** Compute whether the message at `index` in `visibleMessages` should
  *  visually merge with the previous or next message (so a multi-iteration
