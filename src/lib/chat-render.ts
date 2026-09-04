@@ -578,6 +578,52 @@ export function computeMergeFlags(
 	};
 }
 
+// --- emoji reactions ---------------------------------------------------------
+//
+// `react_to_message` is the one tool whose call must never render as a tool
+// call. A reaction that announces itself — "calling react_to_message…" then an
+// emoji — is not a reaction; the whole effect is that it appears. So the name
+// is special-cased in three places, and lives HERE (client-safe, like
+// CODE_ARG_TOOLS above) so all three import the same constant instead of
+// re-spelling the string:
+//
+//   1. `relay.ts` drops its `tool_call_start` / `tool_call_args_delta` frames
+//      as they stream past.
+//   2. `tool-execution.ts` emits one `reaction` event in place of the
+//      `tool_call_executing` / `tool_call_result` pair.
+//   3. `messageToBlocks` / `inFlightToBlocks` below drop the part, so a
+//      reloaded conversation doesn't sprout tool blocks the live view hid.
+//
+// (1) and (2) cover the live stream, (3) covers reload — deliberately
+// belt-and-braces, since either alone leaves the emoji's own tool block
+// visible in one of the two views.
+
+export const REACTION_TOOL_NAME = 'react_to_message';
+
+/** Whether this tool call is an emoji reaction — hidden as a tool block and
+ *  surfaced as a badge on the user message it answers. */
+export function isReactionTool(toolName: string): boolean {
+	return toolName === REACTION_TOOL_NAME;
+}
+
+/** The emoji a `react_to_message` call carries, or null when its arguments
+ *  haven't finished streaming / didn't parse. Read from the persisted
+ *  `tool_call` part, which IS the durable record of the reaction — there's no
+ *  reaction column anywhere. Deliberately NOT re-validated here: the server
+ *  validated on the way in, and a renderer that silently drops a persisted
+ *  reaction because a Unicode table moved would be worse than showing it. */
+export function parseReactionEmoji(args: string): string | null {
+	if (!args) return null;
+	try {
+		const parsed: unknown = JSON.parse(args);
+		if (!parsed || typeof parsed !== 'object') return null;
+		const emoji = (parsed as { emoji?: unknown }).emoji;
+		return typeof emoji === 'string' && emoji.length > 0 ? emoji : null;
+	} catch {
+		return null;
+	}
+}
+
 // --- code-shaped tool args ---------------------------------------------------
 //
 // Some tools' "args" are really source code wrapped in a JSON envelope

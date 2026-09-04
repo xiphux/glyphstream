@@ -47,7 +47,7 @@ import { createNormalizer, type NormalizedDelta } from './normalizers';
 import { errorMessage, isAbortError, sseWriter, type SseWriter } from './sse-transport';
 import { executeToolCalls } from './tool-execution';
 import type { Tool } from '../tools/types';
-import { CODE_ARG_TOOLS } from '$lib/chat-render';
+import { CODE_ARG_TOOLS, isReactionTool } from '$lib/chat-render';
 
 // Generous budget because the SSE channel stays open *in the background*
 // after `done` has already settled the in-flight UI on the client.
@@ -93,6 +93,13 @@ async function maybeRenderCodeArg(toolName: string, rawArgs: string): Promise<st
 	} catch {
 		return null;
 	}
+}
+
+/** Whether the model actually said something this iteration, as opposed to
+ *  emitting tool calls and nothing else. Drives the reaction short-circuit:
+ *  a reaction is an ADDITION to a reply, never a reply on its own. */
+function hasNonEmptyText(message: ChatMessage): boolean {
+	return message.parts.some((p) => p.type === 'text' && p.text.trim().length > 0);
 }
 
 function relayModalityFor(kind: ModelKind | null): NotifyModality {
@@ -404,6 +411,25 @@ async function runChatTurn(
 
 			if (!hasToolCalls || stoppedFinal) break;
 
+			// A turn whose only tool call is a reaction, made alongside a reply the
+			// model has already written, is DONE — there is nothing for another
+			// upstream round-trip to produce. Without this the cheapest possible
+			// feature (one emoji) would be the most expensive kind of turn: a
+			// second full request whose entire output is an empty assistant
+			// message. Skipping it is what makes a reaction cost its own tokens
+			// and nothing else.
+			//
+			// Both halves of the condition are load-bearing. If the model reacted
+			// and called something real, the real tool still needs its answer. If
+			// it reacted and wrote NOTHING, the turn has no reply yet and ending
+			// here would leave the user with a bare emoji — so we loop as normal
+			// and let it speak. The tool still runs either way; only the follow-up
+			// iteration is skipped.
+			const reactionOnly =
+				iterationResult.assistantMessage.parts.every(
+					(p) => p.type !== 'tool_call' || isReactionTool(p.toolName),
+				) && hasNonEmptyText(iterationResult.assistantMessage);
+
 			// Execute tools. The persisted role:'tool' children become the
 			// new active leaf — that's where the next iteration's upstream
 			// call gets parented.
@@ -415,6 +441,7 @@ async function runChatTurn(
 				disabledFeatures: params.disabledFeatures,
 				emit: write,
 				needsApproval: params.needsApproval,
+				reactionTargetMessageId: params.userMessage.id,
 			});
 			for (const name of activatedToolNames) activatedTools.add(name);
 			parentMessageId =
@@ -426,6 +453,12 @@ async function runChatTurn(
 			// resume endpoint will fill them in and continue with a fresh
 			// SSE stream once the user posts decisions.
 			if (pendingCount > 0) break;
+
+			// Reaction executed, reply already written: end the turn. The history
+			// this leaves — assistant(text + tool_call), tool(result), user(next)
+			// — is a valid OpenAI message sequence; an assistant tool_call simply
+			// isn't required to be followed by another assistant message.
+			if (reactionOnly) break;
 
 			// No `rebuildRequestBody` ⇒ single-iteration mode (the caller
 			// opted out of looping). Tools ran, results persisted; turn ends.
@@ -603,15 +636,18 @@ async function runOneIteration(args: {
 	// Drive the client-facing branch to completion (or abort).
 	try {
 		const norm = createNormalizer(params.providerQuirk);
+		// Per-iteration, because tool_call ids are only unique within one
+		// upstream response.
+		const hiddenToolCallIds = new Set<string>();
 		for await (const record of parseSSEStream(forClient)) {
 			const result = norm.process(record);
 			for (const d of result.deltas) {
-				forwardDelta(d, write);
+				forwardDelta(d, write, hiddenToolCallIds);
 			}
 			if (result.done) break;
 		}
 		for (const d of norm.flush().deltas) {
-			forwardDelta(d, write);
+			forwardDelta(d, write, hiddenToolCallIds);
 		}
 	} catch (e) {
 		if (!(isAbortError(e) || params.abortSignal?.aborted)) {
@@ -764,7 +800,23 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
  * SSE event. Centralized so both the upstream-streaming loop and the
  * end-of-stream flush use exactly the same mapping.
  */
-function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
+/**
+ * Forward one normalized delta to the client.
+ *
+ * `hiddenToolCallIds` accumulates the ids of calls whose tool blocks must never
+ * render — today only `react_to_message`, whose entire point is that it appears
+ * as an emoji rather than announcing itself. It has to be a SET rather than a
+ * name check per event because only `tool_call_start` carries the tool name;
+ * the args deltas that follow carry the id alone, so the first frame is what
+ * registers the id and every later frame for that call is matched against it.
+ * The matching suppression of the `executing` / `result` pair lives in
+ * tool-execution.ts, which sees the persisted parts and re-derives it by name.
+ */
+function forwardDelta(
+	d: NormalizedDelta,
+	write: SseWriter['write'],
+	hiddenToolCallIds: Set<string>,
+): void {
 	switch (d.type) {
 		case 'text': {
 			const ev: StreamTextEvent = { type: 'text', chunk: d.text };
@@ -777,6 +829,10 @@ function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
 			return;
 		}
 		case 'tool_call_start': {
+			if (isReactionTool(d.toolName)) {
+				hiddenToolCallIds.add(d.toolCallId);
+				return;
+			}
 			const ev: StreamToolCallStartEvent = {
 				type: 'tool_call_start',
 				toolCallId: d.toolCallId,
@@ -786,6 +842,7 @@ function forwardDelta(d: NormalizedDelta, write: SseWriter['write']): void {
 			return;
 		}
 		case 'tool_call_args_delta': {
+			if (hiddenToolCallIds.has(d.toolCallId)) return;
 			const ev: StreamToolCallArgsDeltaEvent = {
 				type: 'tool_call_args_delta',
 				toolCallId: d.toolCallId,

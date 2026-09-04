@@ -33,10 +33,11 @@
 
 import { register } from './registry';
 import type { Tool } from './types';
-
-/** The one tool name the relay, the tool-execution stage and the renderer all
- *  special-case. Exported so none of them re-spell it. */
-export const REACTION_TOOL_NAME = 'react_to_message';
+// Client-safe module, imported server-side on purpose — the same trick
+// `relay.ts` uses for CODE_ARG_TOOLS. The renderer has to know this name too
+// (to drop the part), and one constant in a shared module is the only way the
+// two halves of "this tool is invisible" can't drift apart.
+import { REACTION_TOOL_NAME } from '$lib/chat-render';
 
 export const reactToMessageTool: Tool = {
 	definition: {
@@ -72,12 +73,18 @@ export const reactToMessageTool: Tool = {
 				isError: true,
 			};
 		}
-		// Terse on purpose. The ack is re-sent on every later turn of the
+		// Terse ack, on purpose. It's re-sent on every later turn of the
 		// conversation, and the emoji is already in the tool_call arguments
 		// sitting right above it. Its one job is to let the model see its own
 		// reaction history — which is the only damper on reacting too often
 		// that doesn't cost anything or shuffle the payload.
-		return { content: 'ok' };
+		//
+		// `reaction` is the live-tick side channel, symmetric with the canvas
+		// tools' `canvas`: the durable record is the tool_call part, this just
+		// lets the badge land before the post-`done` refetch. Returning the
+		// VALIDATED value (not re-parsing the raw args downstream) keeps the
+		// one definition of "is this an emoji" in this module.
+		return { content: 'ok', reaction: emoji };
 	},
 };
 
@@ -85,7 +92,8 @@ export const reactToMessageTool: Tool = {
  *  null when the model sent something that isn't one. */
 export function parseEmojiArg(args: unknown): string | null {
 	if (!args || typeof args !== 'object' || !('emoji' in args)) return null;
-	const raw = (args as { emoji: unknown }).emoji;
+	// `'emoji' in args` narrows args, so no assertion is needed here.
+	const raw: unknown = args.emoji;
 	if (typeof raw !== 'string') return null;
 	return validateEmoji(raw);
 }

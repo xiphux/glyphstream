@@ -84,6 +84,17 @@ export interface ToolExecution {
 	 * never the durable record. Omitted by every non-canvas tool.
 	 */
 	canvas?: import('$lib/types/api').CanvasVersion;
+	/**
+	 * The validated emoji a `react_to_message` call settled on. The
+	 * tool-execution stage emits it as a `reaction` StreamEvent so the badge
+	 * lands on the user's message live, INSTEAD of the `tool_call_executing` /
+	 * `tool_call_result` pair every other tool emits — a reaction that renders
+	 * as a tool block isn't a reaction. Same live-tick-only status as `canvas`:
+	 * the durable record is the tool_call part on the assistant row, which the
+	 * post-`done` refetch reads back. Omitted by every other tool, and by a
+	 * reaction whose argument didn't validate.
+	 */
+	reaction?: string;
 }
 
 /**

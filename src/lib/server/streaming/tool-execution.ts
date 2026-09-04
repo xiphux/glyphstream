@@ -19,6 +19,7 @@ import type { ChatMessage, MessagePart, StreamEvent } from '$lib/types/api';
 import { appendMessage, setActiveLeafMessageId, updateMessageParts } from '../db/queries/messages';
 import { getMediaForUser, linkMessageMedia } from '../db/queries/media';
 import { get as getTool } from '../tools/registry';
+import { isReactionTool } from '$lib/chat-render';
 import type { Tool, ToolExecution } from '../tools/types';
 
 /**
@@ -59,6 +60,15 @@ export interface ExecuteToolCallsParams {
 	 * execute inline (built-in tools today).
 	 */
 	needsApproval?: (toolName: string, tool: Tool | undefined) => boolean;
+	/**
+	 * The USER message a `react_to_message` call in this batch reacts to — the
+	 * relay passes its `userMessage.id`. Carried explicitly rather than derived
+	 * from stream position so the client can attach the badge to a specific
+	 * bubble; without it the reaction still persists (the tool_call part is the
+	 * durable record) and simply appears on the post-`done` refetch instead of
+	 * live. Omitted by the skill-activation path, which has no reactions.
+	 */
+	reactionTargetMessageId?: string;
 }
 
 export interface ExecuteToolCallsResult {
@@ -337,7 +347,13 @@ async function runOneTool(
 	params: ExecuteToolCallsParams,
 	signal: AbortSignal,
 ): Promise<SettledToolExecution> {
-	params.emit({ type: 'tool_call_executing', toolCallId: part.toolCallId });
+	// A reaction emits neither of the two frames below: `executing` would draw a
+	// spinner in a tool block that is never going to render, and `result` would
+	// draw the block itself. It gets one `reaction` frame at the end instead.
+	// The relay already dropped this call's `tool_call_start` /
+	// `tool_call_args_delta` on the way past; see isReactionTool.
+	const silent = isReactionTool(part.toolName);
+	if (!silent) params.emit({ type: 'tool_call_executing', toolCallId: part.toolCallId });
 
 	const { execution, mediaParts } = await executeOneToolCall(
 		part,
@@ -347,16 +363,29 @@ async function runOneTool(
 		params.disabledFeatures ?? [],
 	);
 
-	params.emit({
-		type: 'tool_call_result',
-		toolCallId: part.toolCallId,
-		result: execution.content,
-		isError: execution.isError === true,
-	});
+	if (!silent) {
+		params.emit({
+			type: 'tool_call_result',
+			toolCallId: part.toolCallId,
+			result: execution.content,
+			isError: execution.isError === true,
+		});
+	}
 	// Canvas tools signal the new document state back via `execution.canvas`;
 	// push it to the pane as a live tick (durable state is already in the DB).
 	if (execution.canvas) {
 		params.emit({ type: 'canvas_version', canvas: execution.canvas });
+	}
+	// Same shape for a reaction: land the badge live. Absent when the emoji
+	// failed validation, in which case nothing is emitted at all — a rejected
+	// reaction is invisible to the user and visible only to the model, which
+	// reads the isError result next turn.
+	if (execution.reaction && params.reactionTargetMessageId) {
+		params.emit({
+			type: 'reaction',
+			messageId: params.reactionTargetMessageId,
+			emoji: execution.reaction,
+		});
 	}
 	return { part, execution, mediaParts };
 }
