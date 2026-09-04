@@ -120,6 +120,20 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		}
 		patch.modelSets = body.modelSets;
 	}
+	if (body.defaultDisabledFeatures !== undefined) {
+		// Shape only — category-id existence is deliberately NOT checked, same
+		// call as favoriteModels/modelSets: an id naming an MCP server that has
+		// since left config is a valid string that simply never matches a live
+		// category, and rejecting it would make removing a server break saving
+		// preferences. The query layer re-coerces (dedupe) on write.
+		if (
+			!Array.isArray(body.defaultDisabledFeatures) ||
+			!body.defaultDisabledFeatures.every((v): v is string => typeof v === 'string')
+		) {
+			error(400, 'defaultDisabledFeatures must be an array of strings');
+		}
+		patch.defaultDisabledFeatures = body.defaultDisabledFeatures;
+	}
 	if (typeof body.autoCompactionEnabled === 'boolean') {
 		patch.autoCompactionEnabled = body.autoCompactionEnabled;
 	}

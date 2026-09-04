@@ -39,6 +39,7 @@ const DEFAULTS: UserPreferences = {
 	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
+	defaultDisabledFeatures: [],
 };
 
 /**
@@ -196,10 +197,19 @@ function coerceUserPreferences(
 			input.timezone === undefined
 				? fallback.timezone
 				: coerceTimezone(input.timezone, fallback.timezone),
+		// Not validated against the live category registry, on purpose — same
+		// call as `favoriteModels`. An entry naming an MCP server that's since
+		// left config simply never matches anything, and gardening the list on
+		// every config edit costs more than it saves.
+		defaultDisabledFeatures:
+			input.defaultDisabledFeatures === undefined
+				? fallback.defaultDisabledFeatures
+				: coerceStringArray(input.defaultDisabledFeatures, fallback.defaultDisabledFeatures),
 	};
 }
 
-/** Generic non-mixed-array string coercer — used for trustedMcpTools. Same
+/** Generic non-mixed-array string coercer — used for trustedMcpTools and
+ *  defaultDisabledFeatures. Same
  *  defensive shape as coerceFavoriteModels: reject non-arrays / mixed-type
  *  arrays outright (those indicate a caller bug, not recoverable noise),
  *  de-dupe while preserving first-occurrence order. */

@@ -13,8 +13,13 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
 	// enterBehavior on first paint), and re-reading here re-ran the full
 	// coerceUserPreferences walk and serialized a *second* copy of the blob into
 	// this page's data.
-	const { prefs } = await parent();
+	// `featureCategories` rides along from the same parent load — the (app)
+	// layout already assembles built-ins + connected MCP servers for the
+	// composer's toggle menu, and the default-toggles section here needs exactly
+	// that list. Re-deriving it would mean a second `listServerCatalog()` walk
+	// for an identical answer.
+	const { prefs, featureCategories } = await parent();
 	if (!locals.user) error(401, 'Authentication required');
 	if (!prefs) error(404, 'User not found');
-	return { prefs };
+	return { prefs, featureCategories };
 };

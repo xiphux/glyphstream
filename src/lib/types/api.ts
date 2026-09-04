@@ -779,6 +779,27 @@ export interface UserPreferences {
 	 * own zone.
 	 */
 	timezone: string | null;
+	/**
+	 * Feature categories (see FEATURE_CATEGORIES) a NEW chat starts with turned
+	 * off — the user-level baseline behind the per-conversation toggles.
+	 *
+	 * Deliberately generic rather than a switch per feature. The case that
+	 * prompted it is "I don't want emoji reactions at all", but the same user
+	 * says "I never want web access" or "never this MCP server", and one list
+	 * serves all of them without a new preference each time.
+	 *
+	 * A BASELINE, not a lock: it seeds the new-chat composer, and the user can
+	 * flip anything back on for a given conversation. A custom-model preset's
+	 * own `defaultDisabledFeatures` UNIONS with this (both are defaults, and a
+	 * preset shouldn't re-enable something the user switched off globally),
+	 * while a reused prompt's carried-over toggles win outright — those are an
+	 * explicit choice already made in a real conversation, not a default.
+	 *
+	 * Unknown / stale ids (an MCP server since removed from config) cost
+	 * nothing: they simply never match a live category. Same treatment as
+	 * `favoriteModels`. Default [].
+	 */
+	defaultDisabledFeatures: FeatureCategory[];
 }
 
 export interface ConversationSummary {

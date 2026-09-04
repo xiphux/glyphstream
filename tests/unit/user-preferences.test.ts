@@ -44,6 +44,7 @@ const EMPTY_PREFS = {
 	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
+	defaultDisabledFeatures: [],
 };
 
 describe('parseUserPreferences', () => {
@@ -352,6 +353,7 @@ describe('setUserPreferences', () => {
 			'avatarModelId',
 			'colorScheme',
 			'customInstructions',
+			'defaultDisabledFeatures',
 			'enterBehavior',
 			'favoriteModels',
 			'modelSets',

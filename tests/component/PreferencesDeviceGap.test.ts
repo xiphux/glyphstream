@@ -47,6 +47,7 @@ function mkPrefs(over: Partial<UserPreferences> = {}): UserPreferences {
 		autoCompactionEnabled: false,
 		autoCompactionThreshold: 80,
 		timezone: null,
+		defaultDisabledFeatures: [],
 		...over,
 	};
 }
@@ -145,7 +146,7 @@ describe('Preferences page — per-device notification gap', () => {
 		getSubscription.mockResolvedValue(null);
 
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }), featureCategories: [] } },
 		});
 		await settle();
 
@@ -160,7 +161,7 @@ describe('Preferences page — per-device notification gap', () => {
 		getSubscription.mockResolvedValue(mkSubscription());
 
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }), featureCategories: [] } },
 		});
 		await settle();
 
@@ -182,7 +183,7 @@ describe('Preferences page — per-device notification gap', () => {
 
 		const user = userEvent.setup();
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: false }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: false }), featureCategories: [] } },
 		});
 		await settle();
 		expect(screen.queryByText(bannerText)).not.toBeInTheDocument();
@@ -214,7 +215,7 @@ describe('Preferences page — per-device notification gap', () => {
 
 		const user = userEvent.setup();
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }), featureCategories: [] } },
 		});
 		await settle();
 
@@ -248,7 +249,7 @@ describe('Preferences page — per-device notification gap', () => {
 
 		const user = userEvent.setup();
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }), featureCategories: [] } },
 		});
 
 		// Still fetching the config — and the toggle is interactive.
@@ -285,7 +286,7 @@ describe('Preferences page — per-device notification gap', () => {
 
 		const user = userEvent.setup();
 		render(PreferencesPage, {
-			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }) } },
+			props: { data: { prefs: mkPrefs({ notificationsEnabled: true }), featureCategories: [] } },
 		});
 		await settle();
 

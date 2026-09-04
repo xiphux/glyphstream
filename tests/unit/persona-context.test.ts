@@ -31,6 +31,7 @@ const PREFS: UserPreferences = {
 	autoCompactionEnabled: true,
 	autoCompactionThreshold: 80,
 	timezone: null,
+	defaultDisabledFeatures: [],
 };
 
 beforeEach(() => {

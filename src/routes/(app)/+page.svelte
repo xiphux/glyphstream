@@ -38,6 +38,7 @@
 	import { noticeMessage } from '$lib/notices';
 	import { toast } from '$lib/toast.svelte';
 	import { toggleFavoriteModel } from '$lib/favorite-models';
+	import { seedDisabledFeatures } from '$lib/feature-defaults';
 	import { saveModelSet, deleteModelSet } from '$lib/model-sets';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { pendingFirstMessageKey, type PendingFirstMessage } from '$lib/pending-first-message';
@@ -111,10 +112,24 @@
 
 	// Per-conversation feature opt-outs (see FEATURE_CATEGORIES). Transient
 	// per page load — never persisted client-side, never restored across
-	// visits. Defaulting to "all features on" every new chat is the privacy
-	// posture we want: one accidental off-flip shouldn't quietly become
-	// sticky across future sessions.
-	let disabledFeatures = $state<FeatureCategory[]>([]);
+	// visits. An off-flip made HERE never becomes sticky: one accidental tap
+	// shouldn't quietly follow the user into future sessions.
+	//
+	// The one thing that does carry over is `prefs.defaultDisabledFeatures`, and
+	// it's a different thing entirely — an explicit standing choice made in
+	// settings ("I never want emoji reactions"), not a leaked per-chat toggle.
+	// It's the BASELINE every new chat starts from, unioned with a preset's own
+	// defaults below.
+	// svelte-ignore state_referenced_locally
+	let disabledFeatures = $state<FeatureCategory[]>(userDefaultDisabledFeatures());
+
+	/** A fresh copy of the user's standing defaults. Copied rather than aliased —
+	 *  `disabledFeatures` is reassigned wholesale by the toggle menu and the
+	 *  preset effect, and handing out the prefs array itself would make a stale
+	 *  reference to it look like live state. */
+	function userDefaultDisabledFeatures(): FeatureCategory[] {
+		return [...(data.prefs?.defaultDisabledFeatures ?? [])];
+	}
 
 	// "Private chat" toggle — transient per page load, like disabledFeatures: a
 	// fresh new-chat box always starts non-private. Chosen only here (immutable
@@ -233,21 +248,19 @@
 	$effect(() => {
 		const id = modelId;
 		untrack(() => {
-			// A reused prompt carries the source conversation's toggles, which
-			// already reflect whatever the user settled on there. Those beat both
-			// the preset defaults and the base-model reset — otherwise this effect,
-			// re-fired by the intent's own modelId write, would immediately undo it.
-			if (pendingDisabledFeatures) {
-				disabledFeatures = pendingDisabledFeatures;
-				pendingDisabledFeatures = null;
-				return;
-			}
-			if (id.startsWith('custom::')) {
-				const cm = data.customModels.find((m) => m.id === id.slice('custom::'.length));
-				disabledFeatures = cm ? [...cm.defaultDisabledFeatures] : [];
-			} else {
-				disabledFeatures = [];
-			}
+			// Precedence (reused prompt > user defaults ∪ preset defaults) lives in
+			// seedDisabledFeatures so it's pinned by a test rather than by this
+			// effect. The reused-prompt case must win, or this effect — re-fired by
+			// the intent's own modelId write — would immediately undo it.
+			const cm = id.startsWith('custom::')
+				? data.customModels.find((m) => m.id === id.slice('custom::'.length))
+				: undefined;
+			disabledFeatures = seedDisabledFeatures({
+				userDefaults: userDefaultDisabledFeatures(),
+				presetDefaults: cm?.defaultDisabledFeatures ?? null,
+				reusedFrom: pendingDisabledFeatures,
+			});
+			pendingDisabledFeatures = null;
 		});
 	});
 	const pickedKind = $derived(resolvedBase?.kind ?? 'chat');

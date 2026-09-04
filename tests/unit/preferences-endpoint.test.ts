@@ -142,6 +142,7 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 			autoCompactionEnabled: bits.autoCompactionEnabled[p],
 			autoCompactionThreshold: [60, 95, 30][p],
 			timezone: ['Europe/London', 'Asia/Tokyo', 'America/Chicago'][p],
+			defaultDisabledFeatures: [['reactions'], ['web', 'reactions'], ['mcp::x']][p],
 		};
 	}
 

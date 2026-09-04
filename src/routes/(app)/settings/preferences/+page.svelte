@@ -2,7 +2,14 @@
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
-	import type { ColorScheme, EnterBehavior, ThemeName, UserPreferences } from '$lib/types/api';
+	import type {
+		ColorScheme,
+		EnterBehavior,
+		FeatureCategory,
+		FeatureCategoryEntry,
+		ThemeName,
+		UserPreferences,
+	} from '$lib/types/api';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import {
 		deviceNotificationGap,
@@ -17,7 +24,9 @@
 		unsubscribe as unsubscribeFromPush,
 	} from '$lib/push-subscribe';
 
-	let { data } = $props<{ data: { prefs: UserPreferences } }>();
+	let { data } = $props<{
+		data: { prefs: UserPreferences; featureCategories: FeatureCategoryEntry[] };
+	}>();
 
 	// Form state. Snapshot data.prefs once at mount — the form is the
 	// source of truth between mount and Save, so we don't want each
@@ -32,6 +41,25 @@
 	let enterBehavior = $state<EnterBehavior>(data.prefs.enterBehavior);
 	// svelte-ignore state_referenced_locally
 	let showGreeting = $state(data.prefs.showGreeting);
+
+	// Standing per-user defaults for the conversation feature toggles. Stored as
+	// the DISABLED set (matching `conversations.disabled_features` and the
+	// composer's menu) but rendered as "on" checkboxes, because the question a
+	// user is answering here is "which of these do I want in a new chat".
+	// svelte-ignore state_referenced_locally
+	let defaultDisabledFeatures = $state<FeatureCategory[]>([...data.prefs.defaultDisabledFeatures]);
+
+	function featureEnabledByDefault(id: FeatureCategory): boolean {
+		return !defaultDisabledFeatures.includes(id);
+	}
+
+	function setFeatureDefault(id: FeatureCategory, enabled: boolean) {
+		const next = enabled
+			? defaultDisabledFeatures.filter((c) => c !== id)
+			: [...new Set([...defaultDisabledFeatures, id])];
+		defaultDisabledFeatures = next;
+		void saveField({ defaultDisabledFeatures: next });
+	}
 
 	// svelte-ignore state_referenced_locally
 	let autoCompactionEnabled = $state(data.prefs.autoCompactionEnabled);
@@ -516,6 +544,32 @@
 					</span>
 				</span>
 			</label>
+		</section>
+
+		<div class="border-t border-border"></div>
+
+		<section class="flex flex-col gap-2">
+			<div>
+				<h2 class="text-sm font-semibold">Default features</h2>
+				<p class="mt-0.5 text-xs text-fg-muted">
+					Which capabilities a new conversation starts with. Every one of these stays switchable per
+					conversation from the slider next to the composer — this only sets where each one starts.
+				</p>
+			</div>
+			{#each data.featureCategories as cat (cat.id)}
+				<label class="flex cursor-pointer items-start gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={featureEnabledByDefault(cat.id)}
+						onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
+						class="mt-0.5"
+					/>
+					<span>
+						<span class="font-medium">{cat.label}</span>
+						<span class="text-fg-muted">— {cat.description}</span>
+					</span>
+				</label>
+			{/each}
 		</section>
 
 		<div class="border-t border-border"></div>
