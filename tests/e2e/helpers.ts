@@ -488,6 +488,25 @@ export function setAutoCompaction(enabled: boolean, thresholdPct: number): void 
 }
 
 /**
+ * Overwrite the test user's preferences with `prefs`, letting the defensive
+ * parser fill in everything absent. Same standalone-connection reasoning as
+ * `resetData` (safe under workers=1), and like `setAutoCompaction` above it must
+ * be called BEFORE navigating — the page's load reads the blob server-side.
+ */
+export function seedPreferences(prefs: Record<string, unknown>): void {
+	const db = new DatabaseSync(DB_PATH);
+	db.exec('PRAGMA busy_timeout = 5000');
+	try {
+		db.prepare(`UPDATE users SET preferences_json = ? WHERE id = ?`).run(
+			JSON.stringify(prefs),
+			TEST_USER.id,
+		);
+	} finally {
+		db.close();
+	}
+}
+
+/**
  * Send a follow-up message in an already-open chat and wait for the turn to
  * settle. Counts real message bubbles (`#msg-*`, which excludes the compaction
  * summary divider) and waits for the user+assistant pair to land + the composer
