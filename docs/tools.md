@@ -138,6 +138,11 @@ button) with one switch per opt-out _category_:
   or edit a side-by-side document in that conversation. On by default in text
   chats; see [Canvas](canvas.md). (Never advertised in image/video generation
   conversations, which carry no tools at all.)
+- **Emoji reactions** drops `react_to_message`, the tool the assistant uses to
+  tap a single emoji onto your message (see [Emoji reactions](#emoji-reactions),
+  below). Unlike the toggles above this one isn't a privacy gate — it's a tone
+  gate, and the reason it exists is that the right answer genuinely differs per
+  conversation: welcome in a roleplay thread, out of place in a work one.
 - **One toggle per configured MCP server** (`mcp:<server-id>`, labeled with
   the server's `display_name`). Closes off every tool that server advertises
   in one switch — the natural unit of trust for a multi-tool MCP server. See
@@ -151,10 +156,39 @@ every MCP-server tool under one toggle — a single switch seals every avenue
 along that axis instead of asking the user to remember which sub-tools
 matter.
 
-Defaults are **all features on** for every new conversation — never sticky
-across sessions, since a one-time off-flip carrying forward silently would
-undermine the privacy intent. Toggles flipped in an existing chat apply
-forward from the next message; history already on the page is unaffected.
+Defaults are **all features on** for every new conversation, unless you say
+otherwise in **Settings → Preferences → Default features**. A toggle flipped in
+a chat is never sticky across sessions — a one-time off-flip carrying forward
+silently would undermine the privacy intent — but a standing default set in
+Preferences is an explicit choice, so it seeds every new chat. A custom-model
+preset's own defaults add to yours rather than replacing them: picking a preset
+can't re-enable something you switched off globally. Toggles flipped in an
+existing chat apply forward from the next message; history already on the page
+is unaffected.
+
+## Emoji reactions
+
+The assistant can react to your message with a single emoji, the way a person
+taps a reaction in iMessage or Messenger. It appears on your own bubble, hanging
+off the bottom-left corner.
+
+It's a tool (`react_to_message`), but a deliberately invisible one: the call
+never renders as a tool block and the assistant is told not to mention it, so
+the emoji simply appears rather than being announced first. A reaction made
+alongside a reply also ends the turn rather than buying another round-trip to
+the model, so it costs its own handful of tokens and nothing else.
+
+There's no palette of "common" reactions to pick from, unlike a messaging app —
+a model has no tap cost, so it chooses whatever actually fits, constrained to a
+single emoji of the kind people actually react with (faces, hands, hearts).
+
+**It's meant to be occasional.** The assistant is asked to use it sparingly and
+to read the room: warmth and banter earn more, technical and task-focused
+exchanges earn few or none. How often it lands in practice follows the
+conversation's own character — a roleplay preset with a warm persona reacts far
+more than a research thread, which is the intended behavior rather than an
+inconsistency. If it's not to your taste at all, switch **Emoji reactions** off
+for the conversation, or off by default in Preferences.
 
 ## Private chat
 
