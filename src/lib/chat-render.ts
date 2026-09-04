@@ -634,19 +634,71 @@ export function isReactionTool(toolName: string): boolean {
 	return toolName === REACTION_TOOL_NAME;
 }
 
-/** The emoji a `react_to_message` call carries, or null when its arguments
- *  haven't finished streaming / didn't parse. Read from the persisted
- *  `tool_call` part, which IS the durable record of the reaction — there's no
- *  reaction column anywhere. Deliberately NOT re-validated here: the server
- *  validated on the way in, and a renderer that silently drops a persisted
- *  reaction because a Unicode table moved would be worse than showing it. */
+/**
+ * Whether a string is exactly one emoji, and the normalized form if so.
+ *
+ * Lives here — client-safe — rather than beside the tool, because BOTH ends
+ * need it and they have to agree. `react_to_message`'s `execute()` is not the
+ * gate it looks like: the relay's recorder persists a tool call's `arguments`
+ * verbatim, before and independently of running the tool, so validating only
+ * on the execute path left the DURABLE record unvalidated. The renderer read
+ * that record back and painted whatever was in it — `":+1:"`, `"thumbs up"`,
+ * or a whole sentence from a small model that ignored the schema — into a 24px
+ * badge with no overflow clip, and into its accessible name.
+ *
+ * Two conditions, both needed:
+ *  - **One grapheme** (`Intl.Segmenter`), so `"👍👍"`, `"🙂 nice"` and a bare
+ *    sentence are all rejected. A ZWJ family or a skin-tone modifier is a
+ *    single grapheme, so those pass — correctly, they're one reaction.
+ *  - **Contains an Extended_Pictographic code point**, which is what separates
+ *    an emoji from a letter. It also rejects the two single-grapheme cases that
+ *    would otherwise look like junk on a message bubble: flags
+ *    (regional-indicator pairs) and keycaps (`1️⃣`), neither of which has a
+ *    pictographic base.
+ *
+ * The length guard runs first so a model that streams a paragraph into the
+ * field doesn't get the whole thing segmented.
+ */
+export function validateEmoji(raw: string): string | null {
+	const trimmed = raw.trim();
+	// A ZWJ sequence with skin tones is the longest legitimate case and sits
+	// comfortably under this; anything longer is prose, not a reaction.
+	if (trimmed.length === 0 || trimmed.length > 32) return null;
+	if (!EXTENDED_PICTOGRAPHIC.test(trimmed)) return null;
+	return [...graphemes().segment(trimmed)].length === 1 ? trimmed : null;
+}
+
+const EXTENDED_PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
+
+/** One `Intl.Segmenter` for the process / tab. Constructing an ICU segmenter is
+ *  the expensive part of {@link validateEmoji}, and it holds no per-call state.
+ *  Lazy so module evaluation stays free for the many importers that never
+ *  validate an emoji. */
+let graphemeSegmenter: Intl.Segmenter | null = null;
+function graphemes(): Intl.Segmenter {
+	graphemeSegmenter ??= new Intl.Segmenter('en', { granularity: 'grapheme' });
+	return graphemeSegmenter;
+}
+
+/**
+ * The emoji a `react_to_message` call carries, or null when its arguments
+ * haven't finished streaming, didn't parse, or aren't a single emoji.
+ *
+ * Read from the persisted `tool_call` part, which IS the durable record of the
+ * reaction — there's no reaction column anywhere. That record is written by the
+ * relay's recorder BEFORE the tool runs, so it is raw model output and this is
+ * the only place it gets checked before rendering. Re-validating here also
+ * covers the reaction that never executed at all: an upstream reporting
+ * `finish_reason: 'stop'` alongside a tool call skips the tool loop entirely,
+ * yet still leaves the part on the row.
+ */
 export function parseReactionEmoji(args: string): string | null {
 	if (!args) return null;
 	try {
 		const parsed: unknown = JSON.parse(args);
 		if (!parsed || typeof parsed !== 'object') return null;
 		const emoji = (parsed as { emoji?: unknown }).emoji;
-		return typeof emoji === 'string' && emoji.length > 0 ? emoji : null;
+		return typeof emoji === 'string' ? validateEmoji(emoji) : null;
 	} catch {
 		return null;
 	}

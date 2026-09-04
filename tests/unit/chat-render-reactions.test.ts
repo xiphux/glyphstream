@@ -69,6 +69,21 @@ describe('isReactionTool / parseReactionEmoji', () => {
 	])('returns null for %s', (_label, args) => {
 		expect(parseReactionEmoji(args)).toBeNull();
 	});
+
+	// The gap that mattered: these all parse as JSON and carry a non-empty
+	// STRING, so a structural check waves them through. They reach the renderer
+	// because the relay's recorder persists a tool call's arguments verbatim,
+	// BEFORE the tool runs — so the tool rejecting them never stopped the badge
+	// from being drawn from the durable record on the next load.
+	it.each([
+		['a shortcode', '{"emoji":":+1:"}'],
+		['a word', '{"emoji":"thumbs up"}'],
+		['emoji plus commentary', '{"emoji":"🎉 congrats!"}'],
+		['two emoji', '{"emoji":"🎉🎉"}'],
+		['a whole sentence', '{"emoji":"I would react with a party popper here"}'],
+	])('rejects %s, which parses fine but is not one emoji', (_label, args) => {
+		expect(parseReactionEmoji(args)).toBeNull();
+	});
 });
 
 describe('messageToBlocks', () => {
@@ -148,6 +163,25 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 			msg('a2', 'assistant', [{ type: 'text', text: 'Nice!' }, reactionPart('😍', 'call_r2')]),
 		]);
 		expect(reactionsByMessageId.get('u1')).toBe('😍');
+	});
+
+	it('ignores a reaction the model got wrong, even though it persisted', () => {
+		// A rejected emoji leaves a real tool_call part on the row (with an
+		// isError tool result the renderer never looks at). Before the shared
+		// validation this drew ":+1:" onto the user's bubble, permanently.
+		const { reactionsByMessageId } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [
+				{ type: 'text', text: 'Congrats!' },
+				{
+					type: 'tool_call',
+					toolCallId: 'call_r',
+					toolName: 'react_to_message',
+					arguments: '{"emoji":":+1:"}',
+				},
+			]),
+		]);
+		expect(reactionsByMessageId.size).toBe(0);
 	});
 
 	it('ignores a reaction whose arguments never finished streaming', () => {

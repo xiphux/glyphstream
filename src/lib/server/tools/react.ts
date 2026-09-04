@@ -24,7 +24,9 @@
  *    model already knows, and — worse — it would bias hard toward those six,
  *    which is exactly the "gets old fast" failure this feature has to avoid.
  *    The register is described instead, and the value is validated on the way
- *    back.
+ *    back — by the SHARED predicate in `$lib/chat-render`, because the relay's
+ *    recorder persists a tool call's arguments before the tool runs, so the
+ *    renderer has to apply the same check to the durable record.
  *
  * The turn does NOT round-trip upstream for this: `relay.ts` short-circuits the
  * tool loop when the only calls in an iteration are reactions and the model
@@ -37,7 +39,7 @@ import type { Tool } from './types';
 // `relay.ts` uses for CODE_ARG_TOOLS. The renderer has to know this name too
 // (to drop the part), and one constant in a shared module is the only way the
 // two halves of "this tool is invisible" can't drift apart.
-import { REACTION_TOOL_NAME } from '$lib/chat-render';
+import { REACTION_TOOL_NAME, validateEmoji } from '$lib/chat-render';
 
 export const reactToMessageTool: Tool = {
 	definition: {
@@ -81,9 +83,9 @@ export const reactToMessageTool: Tool = {
 		//
 		// `reaction` is the live-tick side channel, symmetric with the canvas
 		// tools' `canvas`: the durable record is the tool_call part, this just
-		// lets the badge land before the post-`done` refetch. Returning the
-		// VALIDATED value (not re-parsing the raw args downstream) keeps the
-		// one definition of "is this an emoji" in this module.
+		// lets the badge land before the post-`done` refetch. Note it is NOT the
+		// only gate — the recorder persisted the raw arguments before we ran, so
+		// the renderer re-validates the same way (see parseReactionEmoji).
 		return { content: 'ok', reaction: emoji };
 	},
 };
@@ -98,30 +100,10 @@ export function parseEmojiArg(args: unknown): string | null {
 	return validateEmoji(raw);
 }
 
-/**
- * Whether a string is exactly one emoji, and the normalized form if so.
- *
- * Two conditions, both needed:
- *  - **One grapheme** (`Intl.Segmenter`), so `"👍👍"`, `"🙂 nice"` and a bare
- *    sentence are all rejected. A ZWJ family or a skin-tone modifier is a
- *    single grapheme, so those pass — correctly, they're one reaction.
- *  - **Contains an Extended_Pictographic code point**, which is what separates
- *    an emoji from a letter. It also rejects the two single-grapheme cases that
- *    would otherwise slip through and look like junk on a message bubble: flags
- *    (regional-indicator pairs) and keycaps (`1️⃣`), neither of which has a
- *    pictographic base.
- *
- * The length guard runs first so a model that streams a paragraph into the
- * field doesn't get segmented word by word.
- */
-export function validateEmoji(raw: string): string | null {
-	const trimmed = raw.trim();
-	// A ZWJ sequence with skin tones is the longest legitimate case and sits
-	// comfortably under this; anything longer is prose, not a reaction.
-	if (trimmed.length === 0 || trimmed.length > 32) return null;
-	if (!/\p{Extended_Pictographic}/u.test(trimmed)) return null;
-	const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
-	return [...segmenter.segment(trimmed)].length === 1 ? trimmed : null;
-}
+/** Re-exported so the tool's own tests and callers don't have to know the
+ *  predicate lives in the client-safe module. See the note there for why it
+ *  does: the renderer reads a record persisted BEFORE this tool ever runs, so
+ *  both ends have to apply the same check or the durable one goes unvalidated. */
+export { validateEmoji };
 
 register(reactToMessageTool);
