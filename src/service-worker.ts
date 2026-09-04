@@ -40,6 +40,7 @@ import { CacheFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CHUNK_CACHE_MAX_ENTRIES, CHUNK_CACHE_NAME, isImmutableAsset } from '$lib/sw/asset-route';
 import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
+import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
 import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
 import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
 
@@ -195,10 +196,13 @@ async function handlePush(event: PushEvent): Promise<void> {
 	}
 
 	// action === 'os' — raise an OS-level notification.
-	await self.registration.showNotification(payload.conversationTitle, {
-		// A fan-out's count summary ("3 images ready") is non-content and takes
-		// precedence; otherwise the message preview (when content is shown).
-		body: payload.summary ?? payload.preview ?? 'New message',
+	// Heading and body both come from the shared resolver: a payload built for a
+	// user with "Show message preview" off carries neither a title nor a preview,
+	// and degrades to the app name over a modality line. The title matters most
+	// here — it's the bold line on a locked phone, and it's the user's own prompt
+	// until the title task replaces it.
+	await self.registration.showNotification(notificationTitle(payload), {
+		body: notificationBody(payload),
 		tag: payload.conversationId,
 		data: { conversationId: payload.conversationId },
 		// Raster, not SVG: Android won't reliably render an SVG notification

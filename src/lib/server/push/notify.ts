@@ -13,10 +13,13 @@
  *
  * The server also decides one more thing the SW can't: whether to *include
  * content* in the payload. When notificationsShowContent is false the
- * `preview` field is omitted entirely so the preview never traverses
- * the push service (defense-in-depth — encryption alone isn't the only
- * privacy contract; the operator's threat model may include the push
- * service itself).
+ * `preview` AND `conversationTitle` fields are omitted entirely so neither
+ * ever traverses the push service (defense-in-depth — encryption alone isn't
+ * the only privacy contract; the operator's threat model may include the push
+ * service itself). The title belongs in that set because it is content: a
+ * fresh thread's title is the user's own first message verbatim, so a media
+ * generation's push was reading out the prompt on the lock screen while the
+ * body was correctly suppressed.
  */
 
 import type { NotifyModality, NotifyPushPayload } from '$lib/types/push';
@@ -90,7 +93,8 @@ function truncateTitle(title: string): string {
  *  - Bails when another of the user's devices is actively rendering this
  *    conversation (cross-device suppression — see `presence.ts`).
  *  - Lists subscriptions; bails when none.
- *  - Builds payload (omits preview unless notificationsShowContent).
+ *  - Builds payload (omits BOTH conversationTitle and preview unless
+ *    notificationsShowContent — the title is content too).
  *  - Sends to each subscription in parallel.
  *  - Deletes any subscription that returns 404/410 (push service says
  *    the endpoint is gone).
@@ -117,14 +121,16 @@ export async function notifyConversationComplete(
 		type: 'message_complete',
 		conversationId: input.conversationId,
 		assistantMessageId: input.assistantMessageId,
-		conversationTitle: truncateTitle(input.conversationTitle),
 		modality: input.modality,
 		foregroundToast: prefs.notificationsForegroundToast,
 	};
 	// A fan-out summary ("3 images ready") is a count, not message content, so it
 	// ships regardless of the show-content opt-out and serves as the body.
 	if (input.summary) payload.summary = input.summary;
+	// Title and preview are both content and stand or fall together. Consumers
+	// render a generic app-level heading + a modality line when they're absent.
 	if (prefs.notificationsShowContent) {
+		payload.conversationTitle = truncateTitle(input.conversationTitle);
 		const preview = buildPreview(input.previewText);
 		if (preview.length > 0) payload.preview = preview;
 	}

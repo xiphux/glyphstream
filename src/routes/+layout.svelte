@@ -11,6 +11,7 @@
 	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
 	import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
 	import { askWorkerBuild } from '$lib/sw/ask-build';
+	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
@@ -222,9 +223,17 @@
 				}
 				if (data.kind === 'message_complete_toast') {
 					const { conversationId, conversationTitle, summary } = data.payload;
-					toast.info(conversationTitle, {
+					// Same content gate as the OS notification, and for the same reason:
+					// a payload built for a user with "Show message preview" off carries
+					// no conversationTitle, because the title IS content (a fresh thread's
+					// title is their own prompt). So the toast names no thread either —
+					// generic heading, and the modality line as the description it would
+					// otherwise have gone without.
+					const description =
+						summary ?? (conversationTitle ? null : notificationBody(data.payload));
+					toast.info(notificationTitle(data.payload), {
 						// Fan-out's "N ready" count, when present.
-						...(summary ? { description: summary } : {}),
+						...(description ? { description } : {}),
 						action: { label: 'Open', handler: () => goto(resolve(`/chat/${conversationId}`)) },
 						duration: 6000,
 					});

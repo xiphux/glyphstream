@@ -24,7 +24,14 @@ export interface NotifyPushPayload {
 	type: 'message_complete';
 	conversationId: string;
 	assistantMessageId: string;
-	conversationTitle: string;
+	/** The thread's title, used as the notification's heading. Present iff
+	 *  notificationsShowContent is true: the title IS conversation content —
+	 *  it starts life as the user's own first message, verbatim and merely
+	 *  truncated (see `create-user-message.ts`), and is later replaced by a
+	 *  model-written summary of the exchange. So it is omitted alongside
+	 *  `preview` when the user opted out, and consumers fall back to a generic
+	 *  app-level heading. */
+	conversationTitle?: string;
 	modality: NotifyModality;
 	/** Present iff notificationsShowContent is true. Omitted entirely
 	 *  (not even an empty string) when the user opted out. */

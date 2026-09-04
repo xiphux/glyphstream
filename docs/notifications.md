@@ -3,11 +3,11 @@
 GlyphStream surfaces assistant-message completions in three ways,
 depending on where the user actually is when the stream finishes:
 
-| Where the user is                                             | What happens                                                                             |
-| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Looking at the thread itself, tab visible                     | Nothing extra — the SSE stream is already delivering the message in real time.           |
-| In the app, tab visible, but on a different thread or page    | An in-app toast appears with the conversation title and an **Open** action.              |
-| Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread. |
+| Where the user is                                             | What happens                                                                                       |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Looking at the thread itself, tab visible                     | Nothing extra — the SSE stream is already delivering the message in real time.                     |
+| In the app, tab visible, but on a different thread or page    | An in-app toast appears with the conversation title (when previews are on) and an **Open** action. |
+| Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread.           |
 
 This table is the per-device arbitration for a push that fires. The
 server fires a push on every completion **unless another of your devices
@@ -190,11 +190,17 @@ Three independent toggles, all per-user:
 
 - **Enable notifications** — master switch. Off by default; user must
   opt in.
-- **Show message preview** — whether the notification body includes a
-  text snippet from the assistant's reply. Off by default. When off,
-  the server **omits the preview from the push payload entirely**, so
-  the content never traverses the push service even encrypted. The
-  notification body becomes simply "New message".
+- **Show message preview** — whether the notification carries any
+  conversation content: the thread's **title** (the notification's bold
+  heading) and a text snippet from the assistant's reply (its body). Off
+  by default. When off, the server **omits both from the push payload
+  entirely**, so neither traverses the push service even encrypted, and
+  the notification reads "GlyphStream" over a modality line — "Video
+  ready", "Image ready", or "New message". The title is gated with the
+  preview because it _is_ content: until the title task replaces it, a
+  thread's title is your own first message verbatim, so a media
+  generation's notification would otherwise read your prompt back on the
+  lock screen. The in-app toast follows the same gate.
 - **In-app toast for other threads** — whether a toast pops when a
   thread completes while you're in the app but on a different page.
   On by default. Turning this off doesn't affect OS notifications when

@@ -113,7 +113,7 @@ describe('notifyConversationComplete', () => {
 		expect(mocks.sendCalls).toHaveLength(0);
 	});
 
-	it('omits the preview field when notificationsShowContent is false', async () => {
+	it('omits BOTH preview and conversationTitle when notificationsShowContent is false', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
@@ -125,13 +125,30 @@ describe('notifyConversationComplete', () => {
 			foregroundToast?: boolean;
 		};
 		expect(payload).not.toHaveProperty('preview');
+		expect(payload).not.toHaveProperty('conversationTitle');
 		expect(payload).toMatchObject({
 			type: 'message_complete',
 			conversationId: 'conv1',
-			conversationTitle: 'About cats',
 			foregroundToast: true,
 			modality: 'chat',
 		});
+	});
+
+	it('does not leak the prompt through the title of a media notification', async () => {
+		// The regression this file exists to hold: for a fresh thread the title is
+		// the user's own first message verbatim (create-user-message.ts), and a
+		// media generation sends previewText: ''. So gating only the preview left
+		// the whole prompt on the lock screen of a user who had opted out.
+		const u = seedUser();
+		setUserPreferences(u.id, { notificationsEnabled: true });
+		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		await notifyConversationComplete({
+			...baseInput(u.id),
+			conversationTitle: 'a slow dolly through an abandoned greenhouse at dusk',
+			previewText: '',
+			modality: 'video',
+		});
+		expect(mocks.sendCalls[0].payload).not.toContain('greenhouse');
 	});
 
 	it('includes a stripped preview when notificationsShowContent is true', async () => {
@@ -152,7 +169,7 @@ describe('notifyConversationComplete', () => {
 
 	it('truncates a long conversation title', async () => {
 		const u = seedUser();
-		setUserPreferences(u.id, { notificationsEnabled: true });
+		setUserPreferences(u.id, { notificationsEnabled: true, notificationsShowContent: true });
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
 		const longTitle = 'x'.repeat(100);
 		await notifyConversationComplete({ ...baseInput(u.id), conversationTitle: longTitle });

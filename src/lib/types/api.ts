@@ -695,11 +695,16 @@ export interface UserPreferences {
 	 */
 	notificationsEnabled: boolean;
 	/**
-	 * Whether OS notifications may include a content preview of the
-	 * assistant message. Default false — privacy-conservative so the
-	 * preview text never traverses the push service for users who
-	 * haven't opted in. Server side, the preview is omitted from the
-	 * payload entirely when this is false (not just hidden in the SW).
+	 * Whether notifications may include conversation content — both the
+	 * thread's title and a preview of the assistant message. The title
+	 * counts as content and is gated with the preview: a fresh thread's
+	 * title is the user's own first message verbatim, so leaving it
+	 * ungated put the prompt on the lock screen of an opted-out user.
+	 * Default false — privacy-conservative so neither ever traverses the
+	 * push service for users who haven't opted in. Server side, both are
+	 * omitted from the payload entirely when this is false (not just
+	 * hidden in the SW); consumers fall back to a generic app heading
+	 * plus a modality line (see $lib/sw/notification-copy).
 	 */
 	notificationsShowContent: boolean;
 	/**
