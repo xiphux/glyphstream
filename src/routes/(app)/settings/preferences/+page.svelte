@@ -85,7 +85,10 @@
 		// change on screen is worse than it looks: the NEXT toggle computes its
 		// array from this one, so a change the user was told had failed would ride
 		// along and get persisted silently.
-		defaultDisabledFeatures = confirmed ? [...confirmed.defaultDisabledFeatures] : prev;
+		// `?? []` for the same reason as the init read above: against a rolled-back
+		// server the key is absent, and spreading undefined here would throw inside
+		// an async handler — an unhandled rejection with the checkbox stuck.
+		defaultDisabledFeatures = confirmed ? [...(confirmed.defaultDisabledFeatures ?? [])] : prev;
 	}
 
 	// svelte-ignore state_referenced_locally
@@ -193,18 +196,30 @@
 	// function declarations hoist, so calling it here is fine.)
 	/**
 	 * Preferences the (app) LAYOUT feeds forward to other pages, so a save has to
-	 * re-run its load or the rest of the session keeps a stale copy — turning
-	 * "Emoji reactions" off by default and immediately starting a chat would
-	 * otherwise still get reactions, because the new-chat page seeds from the
-	 * layout's `data.prefs`. Everything else on this page (the persona text
-	 * fields, the compaction threshold, the notification toggles) is read only
-	 * here, and invalidating for those re-ran the whole layout load — conversations,
-	 * models, skills, the feature catalogue — for nothing, on every blur.
+	 * re-run its load or the rest of the session keeps a stale copy.
+	 *
+	 * `chat/[id]` deliberately never calls `await parent()` and never re-reads
+	 * prefs itself (see CLAUDE.md), so `data.prefs` there is exactly what the
+	 * layout last returned — a client-side navigation will not refresh it. Every
+	 * field below is read off `data.prefs` somewhere outside this page, verified
+	 * by grep rather than assumed:
+	 *   - defaultDisabledFeatures → the new-chat composer's toggle seed
+	 *   - enterBehavior, showGreeting → the composer and the greeting header
+	 *   - name → `preferredFirstName` on both the new-chat and chat pages
+	 *   - autoCompaction* → the chat page's compaction controller
+	 *
+	 * The rest (About you, Custom instructions, the notification toggles) really
+	 * is page-local, and invalidating for those re-ran the whole layout load —
+	 * conversations, models, skills, the feature catalogue — for nothing, on
+	 * every blur. Add to this list rather than widening it to everything.
 	 */
 	const LAYOUT_FED_PREFS = new Set<keyof UserPreferences>([
 		'defaultDisabledFeatures',
 		'enterBehavior',
 		'showGreeting',
+		'name',
+		'autoCompactionEnabled',
+		'autoCompactionThreshold',
 	]);
 
 	async function saveField(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {

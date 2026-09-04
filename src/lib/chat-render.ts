@@ -605,6 +605,12 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 			laterVisibleAssistantInTurn = false;
 			continue;
 		}
+		// A compaction summary is `role: 'assistant'`, and `arrangeForDisplay`
+		// moves it to sit just BEFORE the user message it resumes from — so
+		// counting it would mark the PREVIOUS turn's leaf as "something later
+		// renders" and hide it, which is exactly what this pass exists to
+		// prevent. `computeMergeFlags` skips summaries for the same reason.
+		if (isCompactionSummary(msg)) continue;
 		if (msg.role !== 'assistant') continue;
 		if (reactionOnly && laterVisibleAssistantInTurn) hidden.add(msg.id);
 		else laterVisibleAssistantInTurn = true;
@@ -696,7 +702,7 @@ export function computeMergeFlags(
 // `react_to_message` is the one tool whose call must never render as a tool
 // call. A reaction that announces itself — "calling react_to_message…" then an
 // emoji — is not a reaction; the whole effect is that it appears. So the name
-// is special-cased in three places, and lives HERE (client-safe, like
+// is special-cased in four places, and lives HERE (client-safe, like
 // CODE_ARG_TOOLS above) so all three import the same constant instead of
 // re-spelling the string:
 //
@@ -711,10 +717,12 @@ export function computeMergeFlags(
 //      the "a trailing tool_call means the turn is still running" test — it's
 //      the one tool call that can't leave work pending at the branch leaf.
 //
-// (1) and (2) cover the live stream, (3) covers reload. Both are needed —
+// (1) and (2) cover the live stream, (3) covers reload; both are needed, since
 // either alone leaves the tool block visible in one of the two views. The
-// in-flight path needs nothing: with no `tool_call_start` forwarded, the
-// client never opens a segment for the call in the first place.
+// in-flight path needs nothing: with no `tool_call_start` forwarded, the client
+// never opens a segment for the call in the first place. (4) is a different
+// concern from the other three — not "don't draw it" but "don't read it as work
+// still in progress" — and is explained where it lives.
 
 export const REACTION_TOOL_NAME = 'react_to_message';
 

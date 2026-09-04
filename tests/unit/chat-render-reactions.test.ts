@@ -274,10 +274,31 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
 	});
 
+	it('does not let a compaction summary hide the previous turn\u2019s reaction leaf', () => {
+		// Summaries are `role: 'assistant'` and `arrangeForDisplay` moves them next
+		// to the user message they resume from — so a naive "is there a later
+		// assistant row" test counts one and hides the leaf it was written to
+		// protect, taking Retry and sibling nav with it.
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'first' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('🎉')], {
+				finishReason: 'stop',
+			}),
+			msg('u2', 'user', [{ type: 'text', text: 'second' }]),
+			msg('s1', 'assistant', [{ type: 'text', text: 'Earlier turns condensed.' }], {
+				compactionResumeFromMessageId: 'u2',
+			}),
+			msg('a2', 'assistant', [{ type: 'text', text: 'Sure.' }]),
+		]);
+		expect(visibleMessages).toContainEqual(expect.objectContaining({ id: 'a1' }));
+	});
+
 	it('ignores a reaction the model got wrong, even though it persisted', () => {
-		// A rejected emoji leaves a real tool_call part on the row (with an
-		// isError tool result the renderer never looks at). Before the shared
-		// validation this drew ":+1:" onto the user's bubble, permanently.
+		// Rejected at CANDIDATE-COLLECTION time, before the isError pass two tests
+		// up ever gets a chance: `parseReactionEmoji` fails validation, so nothing
+		// is collected. There is deliberately no tool row here — this is the
+		// validation path, not the result path. Before the shared validation this
+		// drew ":+1:" onto the user's bubble, permanently.
 		const { reactionsByMessageId } = buildRenderedConversation([
 			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
 			msg('a1', 'assistant', [
