@@ -519,6 +519,15 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	const pendingApprovals: string[] = [];
 	const reactionsByMessageId = new Map<string, string>();
 	let lastUserMessageId: string | null = null;
+	// Both reaction decisions — which badge to paint, and which row to hide — need
+	// information the forward walk doesn't have yet when it reaches the assistant
+	// row: the badge needs the tool RESULT (which arrives on the following `tool`
+	// row) and the hide needs to know whether a LATER assistant row in the same
+	// turn will render. So the walk only collects candidates and both are settled
+	// below, once the whole branch has been seen.
+	const candidateReactions: Array<{ userMessageId: string; toolCallId: string; emoji: string }> =
+		[];
+	const provisional: Array<{ msg: ChatMessage; reactionOnly: boolean }> = [];
 	// Reposition any compaction summaries to their logical spot (just before the
 	// turn they resume from). Real messages stay visible inline; the summary
 	// renders as a collapsed divider. No-op when the thread has no summary.
@@ -529,17 +538,16 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 				for (const p of msg.parts) {
 					if (p.type !== 'tool_call' || !isReactionTool(p.toolName)) continue;
 					const emoji = parseReactionEmoji(p.arguments);
-					if (emoji) reactionsByMessageId.set(lastUserMessageId, emoji);
+					if (emoji) {
+						candidateReactions.push({
+							userMessageId: lastUserMessageId,
+							toolCallId: p.toolCallId,
+							emoji,
+						});
+					}
 				}
 			}
-			// An assistant row whose ONLY parts are reactions renders as nothing —
-			// `messageToBlocks` drops each one — so it would draw a bare label (and
-			// avatar) over an empty gap. That row is real and has to stay in the
-			// tree, but it has no business being a bubble. It happens when the model
-			// reacts without writing anything, which is the shape the relay then
-			// loops on for the actual reply. The reaction itself is already recorded
-			// above, so hiding the row costs nothing.
-			if (!isReactionOnlyAssistantRow(msg)) visibleMessages.push(msg);
+			provisional.push({ msg, reactionOnly: isReactionOnlyAssistantRow(msg) });
 			continue;
 		}
 		let resultPart: Extract<MessagePart, { type: 'tool_result' }> | null = null;
@@ -568,6 +576,43 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 		if (attachments.length > 0) entry.attachments = attachments;
 		toolResultsByCallId.set(resultPart.toolCallId, entry);
 	}
+	// A reaction whose tool call came back an ERROR never happened, whatever the
+	// persisted arguments say. The row is written before the tool runs, so the
+	// arguments alone can't tell you — and the two ways a reaction gets refused
+	// both land here: the conversation turned reactions off (the tool refuses at
+	// execute time) and the emoji failed validation. A call with NO result at all
+	// is kept: that's the upstream that reported `finish_reason: 'stop'` alongside
+	// the call, where the tool never ran and the emoji is the only record there is.
+	for (const r of candidateReactions) {
+		if (toolResultsByCallId.get(r.toolCallId)?.isError) continue;
+		reactionsByMessageId.set(r.userMessageId, r.emoji);
+	}
+
+	// Hide a reaction-only row only when a LATER assistant row in the same turn
+	// will render. Such a row draws nothing (every part is dropped), so on its own
+	// it's an empty bubble worth suppressing — but if it's the last assistant row
+	// of the turn it is also the only place `MessageActions` can hang, and hiding
+	// it strands the user with no Retry, no `‹ N/M ›` sibling nav (which would
+	// otherwise reach a previous good attempt) and no delete-branch. That's the
+	// leaf shape an upstream reporting `finish_reason: 'stop'` produces, and the
+	// one a Stop mid-reaction produces. Walked backwards so "is there a later one"
+	// is already known by the time each row is judged.
+	let laterVisibleAssistantInTurn = false;
+	const hidden = new Set<string>();
+	for (let i = provisional.length - 1; i >= 0; i--) {
+		const { msg, reactionOnly } = provisional[i];
+		if (msg.role === 'user') {
+			laterVisibleAssistantInTurn = false;
+			continue;
+		}
+		if (msg.role !== 'assistant') continue;
+		if (reactionOnly && laterVisibleAssistantInTurn) hidden.add(msg.id);
+		else laterVisibleAssistantInTurn = true;
+	}
+	for (const { msg } of provisional) {
+		if (!hidden.has(msg.id)) visibleMessages.push(msg);
+	}
+
 	return { visibleMessages, toolResultsByCallId, pendingApprovals, reactionsByMessageId };
 }
 
@@ -660,7 +705,11 @@ export function computeMergeFlags(
 //   2. `tool-execution.ts` emits one `reaction` event in place of the
 //      `tool_call_executing` / `tool_call_result` pair.
 //   3. `messageToBlocks` below drops the persisted part, so a reloaded
-//      conversation doesn't sprout the tool block the live view hid.
+//      conversation doesn't sprout the tool block the live view hid, and
+//      `buildRenderedConversation` hides a row left with nothing else to draw.
+//   4. `turnLooksSettled` in `chat-turn-controller.svelte.ts` excludes it from
+//      the "a trailing tool_call means the turn is still running" test — it's
+//      the one tool call that can't leave work pending at the branch leaf.
 //
 // (1) and (2) cover the live stream, (3) covers reload. Both are needed —
 // either alone leaves the tool block visible in one of the two views. The

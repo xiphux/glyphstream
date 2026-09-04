@@ -184,6 +184,68 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		expect(reactionsByMessageId.get('u1')).toBe('🎉');
 	});
 
+	it('keeps a reaction-only row when it is the last assistant row of the turn', () => {
+		// An upstream reporting `finish_reason: 'stop'` alongside the call, or a
+		// Stop mid-reaction, leaves this row as the turn's ONLY assistant row. It
+		// draws nothing — but it's also the only place MessageActions can hang, so
+		// hiding it strands the user with no Retry and no sibling nav back to a
+		// previous good attempt.
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('🎉')], {
+				finishReason: 'stop',
+			}),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
+	});
+
+	it('hides a reaction-only row from an earlier turn, not the current leaf', () => {
+		// Two turns: the first reacted-then-replied (safe to hide the reaction row),
+		// the second ended on the reaction (must keep it).
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'first' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('🎉')]),
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
+			msg('a2', 'assistant', [{ type: 'text', text: 'Congratulations!' }]),
+			msg('u2', 'user', [{ type: 'text', text: 'second' }]),
+			msg('a3', 'assistant', [{ type: 'text', text: '' }, reactionPart('😮', 'call_r2')], {
+				finishReason: 'stop',
+			}),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a2', 'u2', 'a3']);
+	});
+
+	it('drops a reaction whose tool call came back an error', () => {
+		// The row is persisted before the tool runs, so the arguments alone can't
+		// tell you the reaction was refused. Both refusal paths land here: the
+		// conversation turned reactions off, and the emoji failed validation.
+		const { reactionsByMessageId } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: 'Congrats!' }, reactionPart('🎉')]),
+			msg('t1', 'tool', [
+				{
+					type: 'tool_result',
+					toolCallId: 'call_r',
+					result: 'Reactions are disabled for this conversation.',
+					isError: true,
+				},
+			]),
+		]);
+		expect(reactionsByMessageId.size).toBe(0);
+	});
+
+	it('keeps a reaction whose tool call has no result at all', () => {
+		// `finish_reason: 'stop'` alongside the call means the tool loop never ran,
+		// so there is no result to consult and the arguments are the only record.
+		const { reactionsByMessageId } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: 'Congrats!' }, reactionPart('🎉')], {
+				finishReason: 'stop',
+			}),
+		]);
+		expect(reactionsByMessageId.get('u1')).toBe('🎉');
+	});
+
 	it('keeps an empty assistant row that carries no reaction at all', () => {
 		// A turn the user Stopped before the first token persists as exactly
 		// `[{text:''}]`. It renders as an empty bubble either way — but that bubble

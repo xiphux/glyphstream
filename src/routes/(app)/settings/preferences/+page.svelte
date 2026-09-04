@@ -48,7 +48,9 @@
 	// composer's menu) but rendered as "on" checkboxes, because the question a
 	// user is answering here is "which of these do I want in a new chat".
 	// svelte-ignore state_referenced_locally
-	let defaultDisabledFeatures = $state<FeatureCategory[]>([...data.prefs.defaultDisabledFeatures]);
+	let defaultDisabledFeatures = $state<FeatureCategory[]>([
+		...(data.prefs.defaultDisabledFeatures ?? []),
+	]);
 
 	// The (app) layout defers this list to `[]` on a full-document load (see its
 	// `deferred` branch) and refills it from the client's post-mount invalidate.
@@ -63,12 +65,27 @@
 		return !defaultDisabledFeatures.includes(id);
 	}
 
-	function setFeatureDefault(id: FeatureCategory, enabled: boolean) {
+	/** Monotonic token so an older in-flight save can't write its answer over a
+	 *  newer one. Two quick clicks send two FULL arrays; without this, responses
+	 *  landing out of order leave the server holding the earlier one while the UI
+	 *  shows the later — invisibly, since nothing re-reads this state afterwards. */
+	let featureSaveToken = 0;
+
+	async function setFeatureDefault(id: FeatureCategory, enabled: boolean) {
+		const prev = defaultDisabledFeatures;
 		const next = enabled
 			? defaultDisabledFeatures.filter((c) => c !== id)
 			: [...new Set([...defaultDisabledFeatures, id])];
+		// Optimistic so the checkbox responds immediately.
 		defaultDisabledFeatures = next;
-		void saveField({ defaultDisabledFeatures: next });
+		const token = ++featureSaveToken;
+		const confirmed = await saveField({ defaultDisabledFeatures: next });
+		if (token !== featureSaveToken) return; // superseded by a later click
+		// Adopt the server's answer, or put the checkbox back. Leaving a failed
+		// change on screen is worse than it looks: the NEXT toggle computes its
+		// array from this one, so a change the user was told had failed would ride
+		// along and get persisted silently.
+		defaultDisabledFeatures = confirmed ? [...confirmed.defaultDisabledFeatures] : prev;
 	}
 
 	// svelte-ignore state_referenced_locally
@@ -174,24 +191,41 @@
 	// Single auto-save path for every preference: PATCH, refresh the
 	// snapshot, flash a quiet "Saved". (patchPrefs is declared below;
 	// function declarations hoist, so calling it here is fine.)
-	async function saveField(patch: Partial<UserPreferences>) {
+	/**
+	 * Preferences the (app) LAYOUT feeds forward to other pages, so a save has to
+	 * re-run its load or the rest of the session keeps a stale copy — turning
+	 * "Emoji reactions" off by default and immediately starting a chat would
+	 * otherwise still get reactions, because the new-chat page seeds from the
+	 * layout's `data.prefs`. Everything else on this page (the persona text
+	 * fields, the compaction threshold, the notification toggles) is read only
+	 * here, and invalidating for those re-ran the whole layout load — conversations,
+	 * models, skills, the feature catalogue — for nothing, on every blur.
+	 */
+	const LAYOUT_FED_PREFS = new Set<keyof UserPreferences>([
+		'defaultDisabledFeatures',
+		'enterBehavior',
+		'showGreeting',
+	]);
+
+	async function saveField(patch: Partial<UserPreferences>): Promise<UserPreferences | null> {
 		saveError = null;
 		const next = await patchPrefs(patch);
 		if (!next) {
 			saveError = "Couldn't save — check your connection and try again.";
-			return;
+			return null;
 		}
 		saved = { ...next };
-		// Re-run the (app) layout load so the rest of the session sees the new
-		// prefs. Without this the layout keeps the copy it loaded on entry, and a
-		// client-side nav to the new-chat page seeds `disabledFeatures` from it —
-		// so turning "Emoji reactions" off by default and immediately starting a
-		// chat still gets reactions, until a hard reload. `favorite-models.ts` and
-		// `model-sets.ts` already do this for the same reason.
-		await invalidate('app:prefs');
 		savedFlash = true;
 		clearTimeout(flashTimer);
 		flashTimer = setTimeout(() => (savedFlash = false), 1500);
+		// Deliberately NOT awaited, and deliberately after the flash: the save is
+		// already committed, so gating the "Saved" indicator on a full layout reload
+		// (measured at 751ms cold, per the layout's own note) would make a
+		// successful save feel like a hang.
+		if (Object.keys(patch).some((k) => LAYOUT_FED_PREFS.has(k as keyof UserPreferences))) {
+			void invalidate('app:prefs');
+		}
+		return next;
 	}
 
 	// Text fields save on blur (not per keystroke), and only when changed.
@@ -579,7 +613,7 @@
 						<input
 							type="checkbox"
 							checked={featureEnabledByDefault(cat.id)}
-							onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
+							onchange={(e) => void setFeatureDefault(cat.id, e.currentTarget.checked)}
 							class="mt-0.5"
 						/>
 						<span>
