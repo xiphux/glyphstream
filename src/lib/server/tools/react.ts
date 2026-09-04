@@ -28,9 +28,17 @@
  *    recorder persists a tool call's arguments before the tool runs, so the
  *    renderer has to apply the same check to the durable record.
  *
- * The turn does NOT round-trip upstream for this: `relay.ts` short-circuits the
- * tool loop when the only calls in an iteration are reactions and the model
- * already wrote text, so a reaction costs its own tokens and nothing else.
+ * When the model reacts AND writes in the same message, the turn does not
+ * round-trip upstream for it: `relay.ts` short-circuits the tool loop, so the
+ * reaction costs its own tokens and nothing else.
+ *
+ * Whether that condition holds is not ours to decide — plenty of chat templates
+ * make `content` and `tool_calls` mutually exclusive, and against those the
+ * model reacts in one iteration (`content: ''`, `finish_reason: 'tool_calls'`)
+ * and writes in the next, so the short-circuit never fires. Both shapes are
+ * handled and tested; the difference is only cost. Don't tune this to whichever
+ * model is in front of it today — the loop already does the right thing either
+ * way, and the extra iteration is the same one any tool call pays for.
  */
 
 import { register } from './registry';

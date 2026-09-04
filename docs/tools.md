@@ -178,6 +178,11 @@ the emoji simply appears rather than being announced first. A reaction made
 alongside a reply also ends the turn rather than buying another round-trip to
 the model, so it costs its own handful of tokens and nothing else.
 
+Whether that saving applies depends on the model. Many chat templates make a
+reply and a tool call mutually exclusive, in which case the assistant reacts in
+one step and writes in the next. The reaction behaves identically either way; it
+just costs the extra step, the way any other tool call does.
+
 There's no palette of "common" reactions to pick from, unlike a messaging app —
 a model has no tap cost, so it chooses whatever actually fits, constrained to a
 single emoji of the kind people actually react with (faces, hands, hearts).
