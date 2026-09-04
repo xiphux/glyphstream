@@ -35,14 +35,14 @@
 		approvalDecisions?: Map<string, ApprovalAction>;
 		approvalBusy?: boolean;
 		onApprovalSelect?: (toolCallId: string, action: ApprovalAction) => void;
-		/** Canvas cards to render at the bottom of this bubble — set only on the
-		 *  last message of an assistant group, hoisted there by the page so the
-		 *  artifact reads as the turn's result rather than buried mid-reply. */
 		/** The emoji the assistant reacted to THIS message with, when it did and
 		 *  this is a user row. Resolved on the active branch by
 		 *  `buildRenderedConversation`, so a retry's sibling brings its own and
 		 *  `‹ 2/3 ›` swaps them. Null/absent means no reaction. */
 		reaction?: string | null;
+		/** Canvas cards to render at the bottom of this bubble — set only on the
+		 *  last message of an assistant group, hoisted there by the page so the
+		 *  artifact reads as the turn's result rather than buried mid-reply. */
 		bottomCanvasCards?: RenderBlock[];
 		onOpenCanvas?: (artifactId: string | null) => void;
 	}

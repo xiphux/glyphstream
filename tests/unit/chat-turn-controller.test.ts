@@ -75,6 +75,23 @@ function toolCallAssistantMsg(id: string): ChatMessage {
 		finishReason: 'tool_calls',
 	};
 }
+/** An assistant row carrying only a reaction tool_call — the shape the relay
+ *  leaves as the branch leaf when it short-circuits a turn on one. */
+function reactionAssistantMsg(id: string): ChatMessage {
+	return {
+		...msg(id, 'assistant'),
+		parts: [
+			{ type: 'text', text: 'Congratulations!' },
+			{
+				type: 'tool_call',
+				toolCallId: `call_${id}`,
+				toolName: 'react_to_message',
+				arguments: '{"emoji":"🎉"}',
+			},
+		],
+		finishReason: 'tool_calls',
+	};
+}
 function msg(id: string, role: 'user' | 'assistant'): ChatMessage {
 	return {
 		id,
@@ -393,6 +410,34 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		// The same row once the turn genuinely settles: text only, no tool_call.
 		state.messages = [userMsg('u1'), assistantMsg('a1')];
 		expect(turn.recoveredInFlight).toBe(false);
+	});
+
+	it('treats a trailing reaction tool_call as a settled turn, unlike a real one', () => {
+		// The counterpart to the test above, and the one asymmetry in that guard.
+		// A reaction is the only tool call that can't leave work pending at the
+		// leaf: mid-loop the leaf is its role:'tool' row (persisted unconditionally
+		// in the same synchronous stretch), so an assistant row bearing one is
+		// either a short-circuited turn or an upstream that reported
+		// finish_reason:'stop' and never ran the loop. Both are finished.
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		state.serverInFlightSince = 1000;
+		state.messages = [userMsg('u1'), reactionAssistantMsg('a1')];
+		expect(turn.recoveredInFlight).toBe(false);
+
+		// A real tool call alongside the reaction still reads as mid-flight — the
+		// exclusion is per-part, not "any reaction makes the row settled".
+		state.messages = [
+			userMsg('u1'),
+			{
+				...reactionAssistantMsg('a1'),
+				parts: [
+					...reactionAssistantMsg('a1').parts,
+					{ type: 'tool_call', toolCallId: 'call_x', toolName: 'fetch_url', arguments: '{}' },
+				],
+			},
+		];
+		expect(turn.recoveredInFlight).toBe(true);
 	});
 
 	it('recovery poll rides the branch-walk-free variant and finishes on the registry alone', async () => {

@@ -69,10 +69,20 @@ import type {
 function turnLooksSettled(messages: Array<{ role: string; parts?: MessagePart[] }>): boolean {
 	const last = messages[messages.length - 1];
 	if (last?.role !== 'assistant') return false;
-	// A REACTION is excluded from the "trailing tool_call ⇒ still running" test.
-	// It's the one tool call that doesn't imply a pending next iteration: the
-	// relay ends the turn on it when the reply is already written, so an
-	// assistant row whose only tool call is a reaction is a finished turn.
+	// A REACTION is excluded from the "trailing tool_call ⇒ still running" test:
+	// it's the one tool call that can't leave work pending here.
+	//
+	// The check is on the reaction alone, NOT on the relay's fuller
+	// `reactionOnly` condition (reaction + the reply already written), because
+	// the two states where a reaction-bearing assistant row is genuinely the
+	// branch leaf are both finished turns: the short-circuited turn, and an
+	// upstream that reported `finish_reason: 'stop'` alongside the call so the
+	// tool loop never ran. Mid-loop the leaf is the reaction's `role:'tool'`
+	// row — persisted unconditionally, in the same synchronous stretch — so the
+	// earlier `role !== 'assistant'` guard already returns false there and this
+	// predicate is never consulted. Requiring text too would misreport that
+	// second state as still-running, which is the failure this test exists to
+	// prevent (see the commit that introduced it).
 	return !last.parts?.some((p) => p.type === 'tool_call' && !isReactionTool(p.toolName));
 }
 

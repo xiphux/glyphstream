@@ -14,6 +14,7 @@ import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { getUserPreferences, setUserPreferences } from '$lib/server/db/queries/user-preferences';
+import { isFeatureCategoryString } from '$lib/types/api';
 import type { ColorScheme, SavedModelSet, ThemeName, UserPreferences } from '$lib/types/api';
 import type { RequestHandler } from './$types';
 
@@ -126,11 +127,15 @@ export const PATCH: RequestHandler = async ({ locals, request, cookies }) => {
 		// since left config is a valid string that simply never matches a live
 		// category, and rejecting it would make removing a server break saving
 		// preferences. The query layer re-coerces (dedupe) on write.
+		// `isFeatureCategoryString`, not a bare `typeof === 'string'`: the empty
+		// string passes the latter but is rejected by `validateDisabledFeatures` on
+		// the conversation-create path, so storing one here would 400 every
+		// subsequent new chat with no way to see why from the composer.
 		if (
 			!Array.isArray(body.defaultDisabledFeatures) ||
-			!body.defaultDisabledFeatures.every((v): v is string => typeof v === 'string')
+			!body.defaultDisabledFeatures.every(isFeatureCategoryString)
 		) {
-			error(400, 'defaultDisabledFeatures must be an array of strings');
+			error(400, 'defaultDisabledFeatures must be an array of non-empty strings');
 		}
 		patch.defaultDisabledFeatures = body.defaultDisabledFeatures;
 	}

@@ -179,6 +179,15 @@ describe('PATCH /api/user/preferences — the allowlist', () => {
 		},
 	);
 
+	it('rejects an empty-string category rather than storing an unusable one', async () => {
+		// `""` passes a bare typeof check but is rejected by validateDisabledFeatures
+		// on conversation-create — so accepting it here would 400 every subsequent
+		// new chat, with nothing in the composer to explain why.
+		await expect(patch({ defaultDisabledFeatures: [''] })).rejects.toMatchObject({
+			status: 400,
+		});
+	});
+
 	it('drops unknown fields instead of writing them through', async () => {
 		expect(await patch({ isAdmin: true, preferencesJson: 'pwned' })).toEqual({});
 	});

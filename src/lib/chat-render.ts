@@ -678,7 +678,7 @@ export function isReactionTool(toolName: string): boolean {
  *    pictographic base.
  *
  * The length guard runs first so a model that streams a paragraph into the
- * field doesn't get the whole thing segmented.
+ * field is rejected outright rather than segmented grapheme by grapheme.
  */
 export function validateEmoji(raw: string): string | null {
 	const trimmed = raw.trim();
