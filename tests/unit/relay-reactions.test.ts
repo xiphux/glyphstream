@@ -60,7 +60,7 @@ import { startStreamingRelay } from '$lib/server/streaming/relay';
 import { resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
 import type { ChatCompletionRequest } from '$lib/server/endpoints/client';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
-import type { ChatMessage, StreamReactionEvent } from '$lib/types/api';
+import type { ChatMessage, StreamDoneEvent, StreamReactionEvent } from '$lib/types/api';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -235,11 +235,17 @@ describe('reaction alongside a reply', () => {
 			]),
 		);
 
-		const { rebuildCalls } = await runTurn(conv, user, userId);
+		const { events, rebuildCalls } = await runTurn(conv, user, userId);
 
 		// The whole point: one request, not two.
 		expect(mocks.upstreamCalls).toHaveLength(1);
 		expect(rebuildCalls).toBe(0);
+
+		// ...and `done` says so, which is what keeps the client on the cheap
+		// `invalidate('app:conversations')` path instead of refetching the whole
+		// branch for the sake of one emoji.
+		const done = events.find((e) => eventType(e) === 'done') as StreamDoneEvent;
+		expect(done.multiIteration).toBeUndefined();
 
 		// The tool still ran and its result is persisted — the model sees its own
 		// reaction history next turn, which is the only thing damping frequency.
@@ -326,7 +332,7 @@ describe('reaction that must not short-circuit the loop', () => {
 			sseResponse([textChunk('Congratulations!'), finishChunk('stop')]),
 		);
 
-		const { rebuildCalls } = await runTurn(conv, user, userId);
+		const { events, rebuildCalls } = await runTurn(conv, user, userId);
 		expect(mocks.upstreamCalls).toHaveLength(2);
 		expect(rebuildCalls).toBe(1);
 		expect(walkActiveBranch(conv.id).map((m) => m.role)).toEqual([
@@ -335,6 +341,13 @@ describe('reaction that must not short-circuit the loop', () => {
 			'tool',
 			'assistant',
 		]);
+
+		// The client cannot infer this: the reaction's four `tool_call_*` frames
+		// were all suppressed, so its `sawToolCalls` accumulator stays false and
+		// it would otherwise append only the last row — dropping the row that
+		// CARRIES the reaction, and with it the badge, the moment the reply lands.
+		const done = events.find((e) => eventType(e) === 'done') as StreamDoneEvent;
+		expect(done.multiIteration).toBe(true);
 	});
 
 	it('keeps looping when a real tool was called alongside the reaction', async () => {

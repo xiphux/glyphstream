@@ -103,6 +103,46 @@ describe('consumeChatStream', () => {
 		});
 	});
 
+	it('reports a multi-iteration turn from the done frame, not just from tool frames', async () => {
+		// A reaction suppresses all four of its `tool_call_*` frames, so a turn
+		// that reacted and wrote nothing — the relay loops for the reply — leaves
+		// the accumulator false while the server really did persist rows this
+		// client has never seen. Inferring from the frames alone dropped them,
+		// and with them the badge. The server states it on `done` instead.
+		const onDone = vi.fn();
+		const body = streamFromEvents([
+			{ type: 'reaction', messageId: 'user-1', emoji: '🎉' },
+			{ type: 'text', chunk: 'Congratulations!' },
+			{ type: 'done', assistantMessage: ASSISTANT_MSG, multiIteration: true },
+		]);
+
+		await consumeChatStream(body, { onDone });
+
+		expect(onDone).toHaveBeenCalledWith({
+			assistantMessage: ASSISTANT_MSG,
+			sawToolCalls: true,
+		});
+	});
+
+	it('leaves a single-iteration reaction turn on the cheap path', async () => {
+		// The common shape: reaction alongside a reply, so the relay short-circuits
+		// and `done` carries the turn's only assistant row. Flagging this one would
+		// force a full-branch refetch for the sake of one emoji.
+		const onDone = vi.fn();
+		const body = streamFromEvents([
+			{ type: 'text', chunk: 'Congratulations!' },
+			{ type: 'reaction', messageId: 'user-1', emoji: '🎉' },
+			{ type: 'done', assistantMessage: ASSISTANT_MSG },
+		]);
+
+		await consumeChatStream(body, { onDone });
+
+		expect(onDone).toHaveBeenCalledWith({
+			assistantMessage: ASSISTANT_MSG,
+			sawToolCalls: false,
+		});
+	});
+
 	it('flips sawToolCalls on tool_pending_approval too', async () => {
 		const body = streamFromEvents([
 			{

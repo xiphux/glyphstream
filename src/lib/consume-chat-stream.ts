@@ -69,7 +69,13 @@ export interface ConsumeChatStreamCallbacks {
 	onCompactionDone?(summaryMessage: ChatMessage): void | Promise<void>;
 	/** Fires on the canonical `done` frame. `sawToolCalls` is true when the
 	 *  turn ran the multi-iteration tool loop and the assistantMessage is
-	 *  just the LAST iteration's row (intermediate rows arrive via invalidate). */
+	 *  just the LAST iteration's row (intermediate rows arrive via invalidate).
+	 *
+	 *  Named for how it was originally derived — seeing a `tool_call_start` go
+	 *  past — but the question it answers is the broader one in the sentence
+	 *  above, which is why the server's `done.multiIteration` now feeds it too.
+	 *  A tool whose frames are suppressed (a reaction) is invisible to the
+	 *  accumulator but not to the server's iteration count. */
 	onDone?(args: { assistantMessage: ChatMessage; sawToolCalls: boolean }): void;
 	/** The turn failed. `persistedMessageId` is the durable error sibling the
 	 *  server recorded for it, when it recorded one (media relay only) — the
@@ -139,10 +145,13 @@ export async function consumeChatStream(
 				cb.onCanvasVersion?.(event.canvas);
 				break;
 			case 'reaction':
-				// Deliberately does NOT set `sawToolCalls`. A reaction alongside a
-				// reply ends the turn server-side (no second iteration), so `done`
-				// carries the turn's only assistant row — which is exactly what
-				// `sawToolCalls: false` tells the caller.
+				// Deliberately does NOT set `sawToolCalls`, and cannot: this frame
+				// says a reaction happened, not how many iterations the turn ran.
+				// A reaction ALONGSIDE a reply short-circuits the loop, so `done`
+				// carries the turn's only assistant row and the cheap path is
+				// right; a reaction with NO reply does not, and the server reports
+				// that on `done` via `multiIteration` (see below). Setting the flag
+				// here would force the full-branch refetch on the common case.
 				cb.onReaction?.(event.messageId, event.emoji);
 				break;
 			case 'progress':
@@ -167,7 +176,16 @@ export async function consumeChatStream(
 				await cb.onCompactionDone?.(event.summaryMessage);
 				break;
 			case 'done':
-				cb.onDone?.({ assistantMessage: event.assistantMessage, sawToolCalls });
+				// `multiIteration` is the server's own answer to the question
+				// `sawToolCalls` exists to approximate: "is `assistantMessage` the
+				// whole turn, or just its last row?" It's OR'd in rather than
+				// replacing the accumulator so a turn halted at a pending approval
+				// — which sets the flag from `tool_pending_approval` and runs only
+				// one iteration — still reports correctly.
+				cb.onDone?.({
+					assistantMessage: event.assistantMessage,
+					sawToolCalls: sawToolCalls || event.multiIteration === true,
+				});
 				break;
 			case 'error':
 				cb.onError?.(event.message, event.messageId);

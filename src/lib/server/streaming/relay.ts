@@ -367,6 +367,11 @@ async function runChatTurn(
 	let finalAssistantMessage: ChatMessage | null = null;
 	let finalTextPreview = '';
 	let stoppedFinal = false;
+	// How many upstream round-trips this turn actually made. Reported on `done`
+	// so the client knows whether it's holding the whole turn or just its last
+	// row — it can no longer infer that from the tool-call frames, since a
+	// reaction emits none. See StreamDoneEvent.multiIteration.
+	let iterationsRun = 0;
 	let currentRequestBody = params.requestBody;
 	let parentMessageId = params.initialParentMessageId ?? params.userMessage.id;
 	const maxIterations = params.maxToolLoopIterations ?? DEFAULT_MAX_TOOL_LOOP_ITERATIONS;
@@ -391,6 +396,7 @@ async function runChatTurn(
 			});
 			if (!iterationResult) return; // upstream failed; error already emitted
 
+			iterationsRun++;
 			finalAssistantMessage = iterationResult.assistantMessage;
 			finalTextPreview = iterationResult.textForPushPreview;
 			stoppedFinal = iterationResult.stopped;
@@ -492,7 +498,11 @@ async function runChatTurn(
 		// page invalidates and refetches on `done`, which surfaces all
 		// the intermediate role:'tool' rows from the loop.
 		if (finalAssistantMessage) {
-			write({ type: 'done', assistantMessage: finalAssistantMessage });
+			write({
+				type: 'done',
+				assistantMessage: finalAssistantMessage,
+				...(iterationsRun > 1 ? { multiIteration: true } : {}),
+			});
 
 			// Fire push notification for the completed turn — never per
 			// iteration. Same skip-on-cancel semantics as before. A fan-out

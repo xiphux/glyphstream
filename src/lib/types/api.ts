@@ -1180,6 +1180,25 @@ export interface StreamStartEvent {
 export interface StreamDoneEvent {
 	type: 'done';
 	assistantMessage: ChatMessage;
+	/**
+	 * The turn ran MORE THAN ONE upstream iteration, so `assistantMessage` is
+	 * only the last one — the intermediate assistant and `role:'tool'` rows exist
+	 * server-side and the client has to refetch to see them.
+	 *
+	 * The client used to infer this from having seen a `tool_call_start`, which
+	 * stopped being sound once a tool could be invisible: a reaction suppresses
+	 * all four of its `tool_call_*` frames, so a turn that reacted with no text
+	 * (the model wrote nothing, the relay looped) looked single-iteration and the
+	 * client silently kept a message list missing two persisted rows.
+	 *
+	 * Stated by the server rather than inferred, and only when it's TRUE, because
+	 * the alternative — treating every reaction as multi-iteration — would force
+	 * the full-branch refetch on the common single-iteration case, which is the
+	 * regression CLAUDE.md measured at 35 KB → 4 KB on a 40-turn thread.
+	 *
+	 * Absent on a single-iteration turn and on older servers; read defensively.
+	 */
+	multiIteration?: boolean;
 }
 
 /**
