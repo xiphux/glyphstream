@@ -73,6 +73,7 @@ export const BUILTIN_FEATURE_CATEGORIES = [
 	'canvas',
 	'image_prompt_enhancement',
 	'video_prompt_enhancement',
+	'reactions',
 ] as const;
 export type BuiltinFeatureCategory = (typeof BUILTIN_FEATURE_CATEGORIES)[number];
 
@@ -156,6 +157,11 @@ export const FEATURE_CATEGORY_LABELS: Record<
 		label: 'Video prompt enhancement',
 		description:
 			'Before generating a video, rewrites your prompt with an LLM into the format the target video model prefers (cinematic prose, structured shot description, etc.), adding camera motion and pacing. Only affects video models; the original prompt is kept and shown alongside the result.',
+	},
+	reactions: {
+		label: 'Emoji reactions',
+		description:
+			'Lets the assistant react to your message with a single emoji, the way a person taps a reaction in a messaging app. It appears on your message; the assistant decides when a reaction fits and usually stays quiet.',
 	},
 };
 
@@ -1299,6 +1305,28 @@ export interface CanvasVersion {
 	editSource: 'agent' | 'user';
 }
 
+/**
+ * The assistant reacted to the user's message with an emoji. Emitted by the
+ * tool-execution stage IN PLACE OF the four `tool_call_*` frames a normal tool
+ * produces — the whole point of a reaction is that it appears rather than being
+ * announced, so the call itself never renders as a tool block (see
+ * `isReactionTool` in `$lib/chat-render`, which drops the persisted part too).
+ *
+ * `messageId` is the USER message being reacted to, so the client can attach the
+ * badge without inferring the target from stream position. Purely a live-tick
+ * signal: the durable record is the `react_to_message` tool_call part on the
+ * assistant row, which the post-`done` refetch reads back. A fan-out dispatches
+ * N branches against one user message, so several of these can arrive for the
+ * same `messageId` in a turn — last one wins live, and the pick resolves it.
+ */
+export interface StreamReactionEvent {
+	type: 'reaction';
+	/** The user message the reaction lands on. */
+	messageId: string;
+	/** A single validated emoji grapheme. */
+	emoji: string;
+}
+
 /** A canvas edit was applied and persisted; the pane should swap to this state. */
 export interface StreamCanvasVersionEvent {
 	type: 'canvas_version';
@@ -1346,6 +1374,7 @@ export type StreamEvent =
 	| StreamToolCallResultEvent
 	| StreamToolPendingApprovalEvent
 	| StreamCanvasVersionEvent
+	| StreamReactionEvent
 	| StreamCompactionStartEvent
 	| StreamCompactionTextEvent
 	| StreamCompactionDoneEvent;

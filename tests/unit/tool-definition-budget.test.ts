@@ -32,6 +32,7 @@ import { webSearchTool } from '$lib/server/tools/web-search';
 import { searchConversationsTool } from '$lib/server/tools/conversation-search';
 import { createCanvasTool } from '$lib/server/tools/create-canvas';
 import { updateCanvasTool } from '$lib/server/tools/update-canvas';
+import { reactToMessageTool } from '$lib/server/tools/react';
 import type { Tool } from '$lib/server/tools/types';
 
 /** Serialized size of a definition exactly as it goes on the wire. */
@@ -50,6 +51,12 @@ const BUDGETS: ReadonlyArray<readonly [string, Tool, number]> = [
 	['forget_memory', forgetMemoryTool, 450],
 	// Always advertised in every text chat (unless the canvas category is off).
 	['create_canvas', createCanvasTool, 800],
+	// Same deal for reactions, and the reason its budget is this tight: the
+	// description is pure behavioral calibration (react rarely, never announce
+	// it), which is the kind of prose that grows a sentence at a time. It has no
+	// mechanism to explain and no enum of "common" emoji — deliberately, see the
+	// note in react.ts — so it has no business getting longer.
+	['react_to_message', reactToMessageTool, 700],
 ];
 
 describe('tool definition budget', () => {
@@ -61,7 +68,11 @@ describe('tool definition budget', () => {
 		// The number that actually matters: what a fully-featured turn pays before a
 		// single MCP tool or skill is counted.
 		const total = BUDGETS.reduce((sum, [, tool]) => sum + wireChars(tool), 0);
-		expect(total).toBeLessThanOrEqual(9800);
+		// Raised from 9800 to pay for react_to_message (~670). The words bought:
+		// calibration the model can't infer — that a reaction is silent, occasional,
+		// and not a substitute for a reply. Without them a model reacts to every
+		// message, which is the failure that kills the feature. Nothing else grew.
+		expect(total).toBeLessThanOrEqual(10500);
 	});
 
 	it('keeps update_canvas within its wire budget', () => {
