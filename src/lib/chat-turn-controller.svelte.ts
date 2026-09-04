@@ -29,6 +29,7 @@ import {
 	appendReasoning,
 	appendText,
 	inFlightToBlocks,
+	isReactionTool,
 	markToolCallPendingApproval,
 	pushToolCall,
 	updateToolCallArgs,
@@ -68,7 +69,11 @@ import type {
 function turnLooksSettled(messages: Array<{ role: string; parts?: MessagePart[] }>): boolean {
 	const last = messages[messages.length - 1];
 	if (last?.role !== 'assistant') return false;
-	return !last.parts?.some((p) => p.type === 'tool_call');
+	// A REACTION is excluded from the "trailing tool_call ⇒ still running" test.
+	// It's the one tool call that doesn't imply a pending next iteration: the
+	// relay ends the turn on it when the reply is already written, so an
+	// assistant row whose only tool call is a reaction is a finished turn.
+	return !last.parts?.some((p) => p.type === 'tool_call' && !isReactionTool(p.toolName));
 }
 
 /** Everything the controller needs from the host page. Getters for reactive
@@ -139,6 +144,14 @@ export class ChatTurnController {
 	 *  enabled per-user MCP server is down and its tools were skipped). */
 	// `.raw` — only ever assigned whole (cleared, or set from a stream event).
 	inFlightMcpUnavailable = $state.raw<McpUnavailableServer[]>([]);
+	/** The reaction this turn landed, before the persisted row carrying it is in
+	 *  `messages`. Read by the page as a fallback behind the derived
+	 *  `reactionsByMessageId`, so the badge appears while the reply is still
+	 *  streaming instead of at `done`. Cleared with the rest of the in-flight
+	 *  state — by then the assistant row is spliced in and the derived map has
+	 *  it, so there's no gap. */
+	// `.raw` — only ever assigned whole (cleared, or set from a stream event).
+	liveReaction = $state.raw<{ messageId: string; emoji: string } | null>(null);
 
 	/** The per-turn busy flag: a local generation this client is driving. */
 	busy = $state(false);
@@ -229,6 +242,7 @@ export class ChatTurnController {
 		this.inFlightSegments = [];
 		this.inFlightQueued = null;
 		this.inFlightMcpUnavailable = [];
+		this.liveReaction = null;
 	}
 
 	/**
@@ -348,6 +362,9 @@ export class ChatTurnController {
 					result,
 					isError,
 				);
+			},
+			onReaction: (messageId, emoji) => {
+				this.liveReaction = { messageId, emoji };
 			},
 			onCanvasVersion: (c) => {
 				// A create_canvas / update_canvas edit landed — swap the pane to the

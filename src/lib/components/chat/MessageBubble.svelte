@@ -13,6 +13,7 @@
 	import RenderBlocks from './RenderBlocks.svelte';
 	import CanvasCard from './CanvasCard.svelte';
 	import AssistantAvatar from './AssistantAvatar.svelte';
+	import MessageReaction from './MessageReaction.svelte';
 	import { messageToBlocks, type RenderBlock, type ToolResultEntry } from '$lib/chat-render';
 	import type { ChatMessage } from '$lib/types/api';
 	import type { ApprovalAction } from '$lib/approval-workflow';
@@ -37,6 +38,11 @@
 		/** Canvas cards to render at the bottom of this bubble — set only on the
 		 *  last message of an assistant group, hoisted there by the page so the
 		 *  artifact reads as the turn's result rather than buried mid-reply. */
+		/** The emoji the assistant reacted to THIS message with, when it did and
+		 *  this is a user row. Resolved on the active branch by
+		 *  `buildRenderedConversation`, so a retry's sibling brings its own and
+		 *  `‹ 2/3 ›` swaps them. Null/absent means no reaction. */
+		reaction?: string | null;
 		bottomCanvasCards?: RenderBlock[];
 		onOpenCanvas?: (artifactId: string | null) => void;
 	}
@@ -54,6 +60,7 @@
 		approvalDecisions,
 		approvalBusy = false,
 		onApprovalSelect,
+		reaction = null,
 		bottomCanvasCards = [],
 		onOpenCanvas,
 	}: Props = $props();
@@ -72,7 +79,9 @@
 
 <article
 	class={[
-		'min-w-0 px-4 text-sm',
+		// `relative` anchors the reaction badge, which hangs outside the bubble's
+		// bottom-left corner. Harmless on the rows that never carry one.
+		'relative min-w-0 px-4 text-sm',
 		message.role === 'user'
 			? 'ml-auto max-w-[85%] bg-accent/15'
 			: message.role === 'assistant'
@@ -101,6 +110,9 @@
 		{approvalBusy}
 		{onApprovalSelect}
 	/>
+	{#if reaction && message.role === 'user'}
+		<MessageReaction emoji={reaction} reactorLabel={assistantLabel} />
+	{/if}
 	{#each bottomCanvasCards as block (block.type === 'tool_call' ? block.toolCallId : '')}
 		{#if block.type === 'tool_call'}
 			<CanvasCard result={block.result} onOpen={onOpenCanvas} />

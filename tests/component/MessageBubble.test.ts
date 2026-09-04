@@ -245,3 +245,65 @@ describe('MessageBubble — preset avatar', () => {
 		expect(avatar()).toBeNull();
 	});
 });
+
+describe('MessageBubble — emoji reaction', () => {
+	it('renders the badge on a user message the assistant reacted to', () => {
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				assistantLabel: 'Aria',
+				message: makeMessage('user', [{ type: 'text', text: 'I got the job!!' }]),
+				reaction: '🎉',
+			},
+		});
+		// role="img" + a name that carries the emoji: a screen reader announces
+		// "Aria reacted with party popper", not a bare character.
+		const badge = screen.getByRole('img', { name: 'Aria reacted with 🎉' });
+		expect(badge).toBeInTheDocument();
+		expect(badge).toHaveTextContent('🎉');
+	});
+
+	it('renders nothing when there is no reaction', () => {
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				message: makeMessage('user', [{ type: 'text', text: 'hi' }]),
+			},
+		});
+		expect(screen.queryByRole('img')).not.toBeInTheDocument();
+	});
+
+	it('never draws the badge on an assistant row', () => {
+		// The reaction belongs to the message being reacted TO. A stray value on
+		// an assistant row would put the emoji on the reply that emitted it.
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				message: makeMessage('assistant', [{ type: 'text', text: 'congrats' }]),
+				reaction: '🎉',
+			},
+		});
+		expect(screen.queryByRole('img')).not.toBeInTheDocument();
+	});
+
+	it('does not render the reaction call as a tool block', () => {
+		// The persisted half of the suppression: on reload the assistant row still
+		// carries the tool_call part, and it must not surface as "react_to_message".
+		render(MessageBubble, {
+			props: {
+				...baseProps,
+				message: makeMessage('assistant', [
+					{ type: 'text', text: 'congrats' },
+					{
+						type: 'tool_call',
+						toolCallId: 'call_r',
+						toolName: 'react_to_message',
+						arguments: '{"emoji":"🎉"}',
+					},
+				]),
+			},
+		});
+		expect(screen.getByText('congrats')).toBeInTheDocument();
+		expect(screen.queryByText(/react_to_message/)).not.toBeInTheDocument();
+	});
+});

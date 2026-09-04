@@ -562,6 +562,30 @@
 	animation: gs-pop-in var(--motion-fast) var(--ease-emphasized);
 }
 
+/* Reaction tapback entrance. Distinct from .gs-pop above: a reaction should
+ * land like something was tapped onto the bubble, so it scales up from small
+ * with a brief overshoot rather than settling down from a 4px drop. Runs on
+ * --motion-base (not --motion-fast) because the overshoot needs room to read
+ * as a bounce; prefers-reduced-motion collapses that token to 0ms, which
+ * resolves the keyframe instantly with no flash. */
+@keyframes gs-reaction-pop-in {
+	0% {
+		opacity: 0;
+		transform: scale(0.3);
+	}
+	65% {
+		opacity: 1;
+		transform: scale(1.15);
+	}
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+.gs-reaction-pop {
+	animation: gs-reaction-pop-in var(--motion-base) var(--ease-emphasized);
+}
+
 html,
 body {
 	height: 100%;

@@ -46,6 +46,12 @@ export interface ConsumeChatStreamCallbacks {
 	/** A canvas edit was applied and persisted; `canvas` is the new full state.
 	 *  Drives the live side-by-side pane (rehydrated from the DB on reload). */
 	onCanvasVersion?(canvas: CanvasVersion): void;
+	/** The assistant reacted to `messageId` with `emoji`. Arrives INSTEAD of the
+	 *  four `tool_call_*` events a reaction would otherwise produce, so there is
+	 *  no in-flight tool block to reconcile — the caller just paints the badge.
+	 *  Live-tick only: the durable record is the tool_call part on the assistant
+	 *  row, which `done` / the post-turn refetch brings back. */
+	onReaction?(messageId: string, emoji: string): void;
 	onProgress?(percent: number | null, status: string | null): void;
 	/** The request is waiting for a per-endpoint concurrency slot. Fires at
 	 *  most once, before any generation events; the next real event signals
@@ -131,6 +137,13 @@ export async function consumeChatStream(
 				break;
 			case 'canvas_version':
 				cb.onCanvasVersion?.(event.canvas);
+				break;
+			case 'reaction':
+				// Deliberately does NOT set `sawToolCalls`. A reaction alongside a
+				// reply ends the turn server-side (no second iteration), so `done`
+				// carries the turn's only assistant row — which is exactly what
+				// `sawToolCalls: false` tells the caller.
+				cb.onReaction?.(event.messageId, event.emoji);
 				break;
 			case 'progress':
 				cb.onProgress?.(event.percent, event.status ?? null);

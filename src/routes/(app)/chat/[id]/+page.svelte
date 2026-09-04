@@ -820,6 +820,22 @@
 	const toolResultsByCallId = $derived(rendered.toolResultsByCallId);
 	const pendingApprovals = $derived(rendered.pendingApprovals);
 
+	/**
+	 * The emoji shown on a user bubble, if the assistant reacted to it.
+	 *
+	 * Persisted first, live second — deliberately in that order. The derived map
+	 * is built from the ACTIVE BRANCH, so once the assistant row is in `messages`
+	 * it is the truth for the branch currently on screen; the live value is only
+	 * the head start that puts the badge up while the reply is still streaming.
+	 * Preferring live would pin a stale emoji across a `‹ 2/3 ›` sibling switch.
+	 */
+	function reactionFor(messageId: string): string | null {
+		const persisted = rendered.reactionsByMessageId.get(messageId);
+		if (persisted) return persisted;
+		const live = turn.liveReaction;
+		return live && live.messageId === messageId ? live.emoji : null;
+	}
+
 	// Precompute merge flags once per render rather than calling
 	// computeMergeFlags inside the per-row {@const} in the {#each}.
 	// Each call is O(1) but it was running for every row on every
@@ -2351,6 +2367,7 @@
 									{approvalDecisions}
 									approvalBusy={turn.approvalSubmitting}
 									{onApprovalSelect}
+									reaction={m.role === 'user' ? reactionFor(m.id) : null}
 									bottomCanvasCards={canvasCardsByGroupLast.get(m.id) ?? []}
 									onOpenCanvas={(artifactId: string | null) => canvas.show(artifactId ?? undefined)}
 								/>

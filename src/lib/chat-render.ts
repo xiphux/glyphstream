@@ -317,6 +317,11 @@ function partToBlock(
 			}
 			return { type: 'plain-text', text: p.text };
 		case 'tool_call': {
+			// A reaction is drawn as a badge on the user's message (see
+			// `reactionsByMessageId`), never as a tool block. This is the reload
+			// half of the suppression — the live half is the relay dropping the
+			// call's frames as they stream.
+			if (isReactionTool(p.toolName)) return null;
 			const entry = toolResults.get(p.toolCallId);
 			let status: 'executing' | 'done' | 'error' | 'pending_approval';
 			if (!entry) status = 'executing';
@@ -487,6 +492,18 @@ export interface RenderedConversation {
 	visibleMessages: ChatMessage[];
 	toolResultsByCallId: Map<string, ToolResultEntry>;
 	pendingApprovals: string[];
+	/**
+	 * `userMessageId → emoji` for every `react_to_message` call on this branch.
+	 *
+	 * The reaction is emitted by the ASSISTANT but belongs to the USER message
+	 * above it, so it's resolved here by walking forward and remembering the
+	 * last user row — which is also what makes branching work without any
+	 * stored target: `messages` is already the active branch, so a retry's
+	 * sibling assistant brings its own reaction and `‹ 2/3 ›` swaps them.
+	 * A later reaction on the same message wins, which is what a model that
+	 * reacts twice in one multi-iteration turn means.
+	 */
+	reactionsByMessageId: Map<string, string>;
 }
 
 /**
@@ -500,12 +517,22 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	const visibleMessages: ChatMessage[] = [];
 	const toolResultsByCallId = new Map<string, ToolResultEntry>();
 	const pendingApprovals: string[] = [];
+	const reactionsByMessageId = new Map<string, string>();
+	let lastUserMessageId: string | null = null;
 	// Reposition any compaction summaries to their logical spot (just before the
 	// turn they resume from). Real messages stay visible inline; the summary
 	// renders as a collapsed divider. No-op when the thread has no summary.
 	for (const msg of arrangeForDisplay(messages)) {
 		if (msg.role !== 'tool') {
 			visibleMessages.push(msg);
+			if (msg.role === 'user') lastUserMessageId = msg.id;
+			else if (msg.role === 'assistant' && lastUserMessageId) {
+				for (const p of msg.parts) {
+					if (p.type !== 'tool_call' || !isReactionTool(p.toolName)) continue;
+					const emoji = parseReactionEmoji(p.arguments);
+					if (emoji) reactionsByMessageId.set(lastUserMessageId, emoji);
+				}
+			}
 			continue;
 		}
 		let resultPart: Extract<MessagePart, { type: 'tool_result' }> | null = null;
@@ -534,7 +561,7 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 		if (attachments.length > 0) entry.attachments = attachments;
 		toolResultsByCallId.set(resultPart.toolCallId, entry);
 	}
-	return { visibleMessages, toolResultsByCallId, pendingApprovals };
+	return { visibleMessages, toolResultsByCallId, pendingApprovals, reactionsByMessageId };
 }
 
 // --- bubble-merge flags -------------------------------------------------
@@ -591,12 +618,13 @@ export function computeMergeFlags(
 //      as they stream past.
 //   2. `tool-execution.ts` emits one `reaction` event in place of the
 //      `tool_call_executing` / `tool_call_result` pair.
-//   3. `messageToBlocks` / `inFlightToBlocks` below drop the part, so a
-//      reloaded conversation doesn't sprout tool blocks the live view hid.
+//   3. `messageToBlocks` below drops the persisted part, so a reloaded
+//      conversation doesn't sprout the tool block the live view hid.
 //
-// (1) and (2) cover the live stream, (3) covers reload — deliberately
-// belt-and-braces, since either alone leaves the emoji's own tool block
-// visible in one of the two views.
+// (1) and (2) cover the live stream, (3) covers reload. Both are needed —
+// either alone leaves the tool block visible in one of the two views. The
+// in-flight path needs nothing: with no `tool_call_start` forwarded, the
+// client never opens a segment for the call in the first place.
 
 export const REACTION_TOOL_NAME = 'react_to_message';
 
