@@ -67,7 +67,16 @@ export const reactToMessageTool: Tool = {
 		},
 	},
 	metadata: { displayLabel: 'Reaction', icon: 'smile', category: 'reactions' },
-	execute(args) {
+	execute(args, ctx) {
+		// Execute-time gate, matching the canvas tools. The registry's
+		// `excludeCategories` filter only controls what gets ADVERTISED, and
+		// `executeOneToolCall` looks a tool up by name with no check against what
+		// this turn actually offered — so a model that sees its own past reactions
+		// in the history will keep calling this after the toggle goes off. Without
+		// this the badge still lands and the toggle looks broken.
+		if (ctx.disabledFeatures.includes('reactions')) {
+			return { content: 'Reactions are disabled for this conversation.', isError: true };
+		}
 		const emoji = parseEmojiArg(args);
 		if (!emoji) {
 			return {

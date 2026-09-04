@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseEmojiArg, validateEmoji } from '$lib/server/tools/react';
+import { parseEmojiArg, reactToMessageTool, validateEmoji } from '$lib/server/tools/react';
+import type { ToolContext } from '$lib/server/tools/types';
 
 describe('validateEmoji', () => {
 	it.each(['😄', '❤️', '👍', '🙂', '⭐', '✅', '‼️'])('accepts %s', (emoji) => {
@@ -60,5 +61,37 @@ describe('parseEmojiArg', () => {
 		['a non-string field', { emoji: 42 }],
 	])('rejects %s', (_label, args) => {
 		expect(parseEmojiArg(args)).toBeNull();
+	});
+});
+
+describe('reactToMessageTool.execute', () => {
+	const ctx = (disabledFeatures: string[]): ToolContext => ({
+		userId: 'u1',
+		conversationId: 'c1',
+		signal: new AbortController().signal,
+		disabledFeatures,
+	});
+
+	it('returns the validated emoji as a live-tick side channel', () => {
+		expect(reactToMessageTool.execute({ emoji: '🎉' }, ctx([]))).toEqual({
+			content: 'ok',
+			reaction: '🎉',
+		});
+	});
+
+	it('refuses when the conversation turned reactions off', () => {
+		// The registry filter only controls advertisement, and executeOneToolCall
+		// resolves a tool by name without checking what this turn offered — so a
+		// model copying its own past reactions out of the history would otherwise
+		// sail straight past a toggle the user just switched off.
+		const result = reactToMessageTool.execute({ emoji: '🎉' }, ctx(['reactions']));
+		expect(result).toMatchObject({ isError: true });
+		expect(result).not.toHaveProperty('reaction');
+	});
+
+	it('reports an invalid emoji to the model without surfacing a reaction', () => {
+		const result = reactToMessageTool.execute({ emoji: ':+1:' }, ctx([]));
+		expect(result).toMatchObject({ isError: true });
+		expect(result).not.toHaveProperty('reaction');
 	});
 });

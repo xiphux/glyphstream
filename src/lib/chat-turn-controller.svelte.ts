@@ -83,6 +83,14 @@ function turnLooksSettled(messages: Array<{ role: string; parts?: MessagePart[] 
 	// predicate is never consulted. Requiring text too would misreport that
 	// second state as still-running, which is the failure this test exists to
 	// prevent (see the commit that introduced it).
+	//
+	// Strictly there IS a window where the assistant row is the leaf and the
+	// server is still working — between persisting it and persisting the tool
+	// row. It's microtask-scale (the reaction's execute() is synchronous
+	// in-memory validation, and node:sqlite writes are synchronous), so no
+	// request handler can be dispatched inside it; the long waits the original
+	// guard was written for belong to real tools, which this exclusion never
+	// applies to.
 	return !last.parts?.some((p) => p.type === 'tool_call' && !isReactionTool(p.toolName));
 }
 

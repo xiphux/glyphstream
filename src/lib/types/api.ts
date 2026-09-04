@@ -1355,9 +1355,12 @@ export interface CanvasVersion {
  * `messageId` is the USER message being reacted to, so the client can attach the
  * badge without inferring the target from stream position. Purely a live-tick
  * signal: the durable record is the `react_to_message` tool_call part on the
- * assistant row, which the post-`done` refetch reads back. A fan-out dispatches
- * N branches against one user message, so several of these can arrive for the
- * same `messageId` in a turn — last one wins live, and the pick resolves it.
+ * assistant row, which the post-`done` refetch reads back. One branch can react
+ * more than once across a multi-iteration turn, so several of these can arrive
+ * for the same `messageId` — last one wins live, and the reload agrees (see
+ * `reactionsByMessageId` in `$lib/chat-render`). Not a fan-out concern: a
+ * fan-out branch is dispatched with `supportsTools` forced false, so it carries
+ * no tools at all and can never produce this event.
  */
 export interface StreamReactionEvent {
 	type: 'reaction';

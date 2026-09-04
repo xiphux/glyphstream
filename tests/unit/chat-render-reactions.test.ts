@@ -184,6 +184,18 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		expect(reactionsByMessageId.get('u1')).toBe('🎉');
 	});
 
+	it('keeps an empty assistant row that carries no reaction at all', () => {
+		// A turn the user Stopped before the first token persists as exactly
+		// `[{text:''}]`. It renders as an empty bubble either way — but that bubble
+		// is where Retry lives, so hiding it strands the user with no way to re-run
+		// the prompt. Only an actual reaction earns the hide.
+		const { visibleMessages } = buildRenderedConversation([
+			msg('u1', 'user', [{ type: 'text', text: 'hi' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }], { finishReason: 'cancelled' }),
+		]);
+		expect(visibleMessages.map((m) => m.id)).toEqual(['u1', 'a1']);
+	});
+
 	it('keeps an assistant row that has a reaction AND something to say', () => {
 		const { visibleMessages } = buildRenderedConversation([
 			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),

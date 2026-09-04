@@ -586,12 +586,20 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
  *  `partToBlock` already drops an empty text part (`if (!p.text) return null`),
  *  so treating it as absent here is the same rule, asked one level up.
  *
- *  Deliberately narrow: a row with a reaction AND anything renderable still
- *  renders, and only a row with at least one part qualifies (an empty-parts row
- *  is a different, pre-existing case this shouldn't start swallowing). */
+ *  Deliberately narrow: it requires an actual reaction part, it only applies to
+ *  assistant rows, and a row with a reaction AND anything renderable still
+ *  renders. A row that is merely empty — no reaction — is a different,
+ *  pre-existing case (a cancelled turn, an empty completion) that must keep its
+ *  bubble, because that bubble carries the Retry control. */
 function isReactionOnlyAssistantRow(msg: ChatMessage): boolean {
+	if (msg.role !== 'assistant') return false;
 	if (msg.reasoningText) return false;
-	if (msg.parts.length === 0) return false;
+	// At least one ACTUAL reaction, not merely "nothing renderable". Without
+	// this the predicate also swallows a row that is only an empty text part —
+	// which is exactly what a turn the user Stopped before the first token
+	// persists as. Hiding that row takes its Retry and branch controls with it
+	// and leaves the user staring at their own message with no way to re-run it.
+	if (!msg.parts.some((p) => p.type === 'tool_call' && isReactionTool(p.toolName))) return false;
 	return msg.parts.every(
 		(p) =>
 			(p.type === 'tool_call' && isReactionTool(p.toolName)) ||

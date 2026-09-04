@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidate } from '$app/navigation';
 	import SettingsPage from '$lib/components/settings/SettingsPage.svelte';
 	import { onMount } from 'svelte';
 	import { Check } from '@lucide/svelte';
@@ -48,6 +49,15 @@
 	// user is answering here is "which of these do I want in a new chat".
 	// svelte-ignore state_referenced_locally
 	let defaultDisabledFeatures = $state<FeatureCategory[]>([...data.prefs.defaultDisabledFeatures]);
+
+	// The (app) layout defers this list to `[]` on a full-document load (see its
+	// `deferred` branch) and refills it from the client's post-mount invalidate.
+	// Every other consumer is a menu opened well after mount; this section is
+	// primary page content on first paint, so it needs the same emptiness guard
+	// `settings/models` uses — otherwise a bookmarked or refreshed visit paints a
+	// heading and explanation with no checkboxes under it, and offline it stays
+	// that way.
+	const visibleFeatureCategories = $derived(data.featureCategories);
 
 	function featureEnabledByDefault(id: FeatureCategory): boolean {
 		return !defaultDisabledFeatures.includes(id);
@@ -172,6 +182,13 @@
 			return;
 		}
 		saved = { ...next };
+		// Re-run the (app) layout load so the rest of the session sees the new
+		// prefs. Without this the layout keeps the copy it loaded on entry, and a
+		// client-side nav to the new-chat page seeds `disabledFeatures` from it —
+		// so turning "Emoji reactions" off by default and immediately starting a
+		// chat still gets reactions, until a hard reload. `favorite-models.ts` and
+		// `model-sets.ts` already do this for the same reason.
+		await invalidate('app:prefs');
 		savedFlash = true;
 		clearTimeout(flashTimer);
 		flashTimer = setTimeout(() => (savedFlash = false), 1500);
@@ -556,20 +573,24 @@
 					conversation from the slider next to the composer — this only sets where each one starts.
 				</p>
 			</div>
-			{#each data.featureCategories as cat (cat.id)}
-				<label class="flex cursor-pointer items-start gap-2 text-sm">
-					<input
-						type="checkbox"
-						checked={featureEnabledByDefault(cat.id)}
-						onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
-						class="mt-0.5"
-					/>
-					<span>
-						<span class="font-medium">{cat.label}</span>
-						<span class="text-fg-muted">— {cat.description}</span>
-					</span>
-				</label>
-			{/each}
+			{#if visibleFeatureCategories.length > 0}
+				{#each visibleFeatureCategories as cat (cat.id)}
+					<label class="flex cursor-pointer items-start gap-2 text-sm">
+						<input
+							type="checkbox"
+							checked={featureEnabledByDefault(cat.id)}
+							onchange={(e) => setFeatureDefault(cat.id, e.currentTarget.checked)}
+							class="mt-0.5"
+						/>
+						<span>
+							<span class="font-medium">{cat.label}</span>
+							<span class="text-fg-muted">— {cat.description}</span>
+						</span>
+					</label>
+				{/each}
+			{:else}
+				<p class="text-xs text-fg-muted">Loading available features…</p>
+			{/if}
 		</section>
 
 		<div class="border-t border-border"></div>
