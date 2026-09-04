@@ -170,6 +170,28 @@ function wantsReaction(body) {
 	);
 }
 
+/** Sentinel a spec plants in its PROMPT to get the OTHER reaction shape: the
+ *  model reacts and writes nothing, so the relay can't short-circuit and loops
+ *  for the reply. Worth reproducing because it's what many llama.cpp
+ *  function-calling templates do unconditionally — content and tool_calls are
+ *  mutually exclusive there — and because the client can't see the extra
+ *  iteration from the tool frames, all four of which are suppressed. */
+const TEXTLESS_REACTION_MARKER = 'REACT_WITHOUT_TEXT';
+function wantsTextlessReaction(body) {
+	return (
+		Array.isArray(body?.messages) &&
+		body.messages.some(
+			(m) => typeof m.content === 'string' && m.content.includes(TEXTLESS_REACTION_MARKER),
+		)
+	);
+}
+
+/** True once the reaction's tool result is in the history — i.e. this is the
+ *  SECOND iteration of a textless-reaction turn, the one that owes the reply. */
+function isPostToolIteration(body) {
+	return Array.isArray(body?.messages) && body.messages.some((m) => m?.role === 'tool');
+}
+
 function readBody(req) {
 	return new Promise((resolve) => {
 		let data = '';
@@ -202,7 +224,14 @@ const GLACIAL_CHUNK_DELAY_MS = 900;
 /** Emit the fixed reply as OpenAI chat-completion SSE chunks: a role
  *  chunk, one chunk per word, a finish chunk, a usage chunk, then
  *  [DONE]. Matches what PassthroughNormalizer expects. */
-function streamChatCompletion(res, model, text = REPLY_TEXT, glacial = false, react = false) {
+function streamChatCompletion(
+	res,
+	model,
+	text = REPLY_TEXT,
+	glacial = false,
+	react = false,
+	suppressText = false,
+) {
 	res.writeHead(200, {
 		'Content-Type': 'text/event-stream',
 		'Cache-Control': 'no-cache, no-store',
@@ -222,14 +251,16 @@ function streamChatCompletion(res, model, text = REPLY_TEXT, glacial = false, re
 		...base,
 		choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
 	});
-	for (const word of text.split(' ')) {
-		// Re-attach the space the split removed (except it lands as a
-		// leading space on each word after the first, which renders fine).
-		const piece = chunks.length === 1 ? word : ` ${word}`;
-		chunks.push({
-			...base,
-			choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
-		});
+	if (!suppressText) {
+		for (const word of text.split(' ')) {
+			// Re-attach the space the split removed (except it lands as a
+			// leading space on each word after the first, which renders fine).
+			const piece = chunks.length === 1 ? word : ` ${word}`;
+			chunks.push({
+				...base,
+				choices: [{ index: 0, delta: { content: piece }, finish_reason: null }],
+			});
+		}
 	}
 	if (react) {
 		// Emitted AFTER the text, which is the shape the relay short-circuits on:
@@ -312,12 +343,20 @@ const server = createServer(async (req, res) => {
 		let text = REPLY_TEXT;
 		let glacial = false;
 		let react = false;
+		let suppressText = false;
 		try {
 			const body = JSON.parse(raw || '{}');
 			wantsStream = body.stream === true;
 			if (typeof body.model === 'string') model = body.model;
 			glacial = wantsGlacialStream(body);
 			react = wantsReaction(body);
+			// Textless-reaction turn: iteration 1 is the bare tool call, iteration 2
+			// (recognized by the tool result already being in the history) is the
+			// reply, with no second reaction.
+			if (react && wantsTextlessReaction(body)) {
+				if (isPostToolIteration(body)) react = false;
+				else suppressText = true;
+			}
 			// A compaction request gets the deterministic summary; everything
 			// else gets the normal reply. The empty-summary sentinel (planted in a
 			// folded turn) forces a blank summary to exercise the failure path.
@@ -326,7 +365,7 @@ const server = createServer(async (req, res) => {
 			/* default to sync, default model, normal reply */
 		}
 		return wantsStream
-			? streamChatCompletion(res, model, text, glacial, react)
+			? streamChatCompletion(res, model, text, glacial, react, suppressText)
 			: syncChatCompletion(res, text);
 	}
 

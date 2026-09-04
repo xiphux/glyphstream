@@ -178,14 +178,20 @@ export async function consumeChatStream(
 			case 'done':
 				// `multiIteration` is the server's own answer to the question
 				// `sawToolCalls` exists to approximate: "is `assistantMessage` the
-				// whole turn, or just its last row?" It's OR'd in rather than
-				// replacing the accumulator so a turn halted at a pending approval
-				// — which sets the flag from `tool_pending_approval` and runs only
-				// one iteration — still reports correctly.
-				cb.onDone?.({
-					assistantMessage: event.assistantMessage,
-					sawToolCalls: sawToolCalls || event.multiIteration === true,
-				});
+				// whole turn, or just its last row?" It's OR'd into the ACCUMULATOR,
+				// not just passed to the callback, because the caller reads both —
+				// `onDone` decides whether to append optimistically, and the
+				// post-stream code reads this function's RETURN value to choose
+				// between `invalidateAll()` and the cheap sidebar-only invalidate.
+				// Letting those two disagree is worse than either answer alone: the
+				// append is skipped AND the refetch never happens, so the turn's rows
+				// never reach the client at all.
+				//
+				// OR'd rather than assigned so a turn halted at a pending approval —
+				// which sets the flag from `tool_pending_approval` and runs only one
+				// iteration — still reports correctly.
+				sawToolCalls = sawToolCalls || event.multiIteration === true;
+				cb.onDone?.({ assistantMessage: event.assistantMessage, sawToolCalls });
 				break;
 			case 'error':
 				cb.onError?.(event.message, event.messageId);

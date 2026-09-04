@@ -88,6 +88,29 @@ test.describe('the assistant reacts', () => {
 		await expect(page.locator('[id^="msg-"]')).toHaveCount(2);
 	});
 
+	test('the badge survives the end of a turn the model reacted to WITHOUT text', async ({
+		page,
+	}) => {
+		// The shape the original e2e couldn't produce, and the one that broke: the
+		// model reacts and writes nothing, so the relay loops for the reply. All
+		// four of the reaction's tool frames are suppressed, so the client cannot
+		// infer from them that a second iteration ran — it used to append only the
+		// last row, dropping the row that CARRIES the reaction, and the badge
+		// vanished the instant the reply landed. The server reports the extra
+		// iteration on `done` now.
+		await sendToToolModel(page, 'I got the job!! REACT_WITHOUT_TEXT');
+
+		await expect(reactionBadge(page)).toBeVisible();
+		// Still there a beat after the turn settled — this is the assertion that
+		// fails if the badge is only alive as live in-flight state.
+		await expect(reactionBadge(page)).toBeVisible({ timeout: 2000 });
+		await expect(page.getByText(MOCK_REPLY)).toBeVisible();
+
+		// The intermediate assistant row (whose only part is the dropped reaction)
+		// must not draw an empty bubble: still exactly two.
+		await expect(page.locator('[id^="msg-"]')).toHaveCount(2);
+	});
+
 	test('the badge survives a reload', async ({ page }) => {
 		// The live frame is gone on a fresh load: this is the persisted path, read
 		// back off the assistant row's tool_call part by buildRenderedConversation.

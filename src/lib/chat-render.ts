@@ -576,14 +576,26 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 /** An assistant row that carries reaction tool calls and nothing else — no
  *  text, no media, no other tool call, no reasoning to expand. Every one of its
  *  parts is dropped by `messageToBlocks`, so rendering it produces an empty
- *  bubble. Deliberately narrow: a row with a reaction AND anything else still
+ *  bubble.
+ *
+ *  The EMPTY TEXT PART is the case that makes this non-obvious: the relay's
+ *  recorder unconditionally writes `{type:'text', text: textBuf}` even when the
+ *  model streamed no content, so the real persisted shape of a textless
+ *  reaction is `[text:'', tool_call]`, never `[tool_call]` alone. A predicate
+ *  that only looked for reaction parts would match nothing in practice.
+ *  `partToBlock` already drops an empty text part (`if (!p.text) return null`),
+ *  so treating it as absent here is the same rule, asked one level up.
+ *
+ *  Deliberately narrow: a row with a reaction AND anything renderable still
  *  renders, and only a row with at least one part qualifies (an empty-parts row
  *  is a different, pre-existing case this shouldn't start swallowing). */
 function isReactionOnlyAssistantRow(msg: ChatMessage): boolean {
 	if (msg.reasoningText) return false;
-	return (
-		msg.parts.length > 0 &&
-		msg.parts.every((p) => p.type === 'tool_call' && isReactionTool(p.toolName))
+	if (msg.parts.length === 0) return false;
+	return msg.parts.every(
+		(p) =>
+			(p.type === 'tool_call' && isReactionTool(p.toolName)) ||
+			(p.type === 'text' && p.text.trim().length === 0),
 	);
 }
 

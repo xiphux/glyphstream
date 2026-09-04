@@ -169,9 +169,13 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 		// The model reacted and wrote nothing; the relay looped for the reply. That
 		// first row's only part is the reaction, which messageToBlocks drops — so
 		// without this it draws an assistant label over a blank gap.
+		// The EMPTY TEXT PART is the real persisted shape — the relay's recorder
+		// writes `{type:'text', text: textBuf}` unconditionally, so a textless
+		// reaction row is `[text:'', tool_call]`, never `[tool_call]` alone. A
+		// guard that missed this matched nothing in practice.
 		const { visibleMessages, reactionsByMessageId } = buildRenderedConversation([
 			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
-			msg('a1', 'assistant', [reactionPart('🎉')]),
+			msg('a1', 'assistant', [{ type: 'text', text: '' }, reactionPart('🎉')]),
 			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
 			msg('a2', 'assistant', [{ type: 'text', text: 'Congratulations!' }]),
 		]);

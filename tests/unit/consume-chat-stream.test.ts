@@ -116,12 +116,17 @@ describe('consumeChatStream', () => {
 			{ type: 'done', assistantMessage: ASSISTANT_MSG, multiIteration: true },
 		]);
 
-		await consumeChatStream(body, { onDone });
+		const result = await consumeChatStream(body, { onDone });
 
 		expect(onDone).toHaveBeenCalledWith({
 			assistantMessage: ASSISTANT_MSG,
 			sawToolCalls: true,
 		});
+		// The RETURN value has to agree with the callback: the caller reads the
+		// callback to decide whether to append optimistically and the return value
+		// to decide whether to refetch. If they disagree it skips both, and the
+		// turn's rows never reach the client at all.
+		expect(result.sawToolCalls).toBe(true);
 	});
 
 	it('leaves a single-iteration reaction turn on the cheap path', async () => {
@@ -135,12 +140,13 @@ describe('consumeChatStream', () => {
 			{ type: 'done', assistantMessage: ASSISTANT_MSG },
 		]);
 
-		await consumeChatStream(body, { onDone });
+		const result = await consumeChatStream(body, { onDone });
 
 		expect(onDone).toHaveBeenCalledWith({
 			assistantMessage: ASSISTANT_MSG,
 			sawToolCalls: false,
 		});
+		expect(result.sawToolCalls).toBe(false);
 	});
 
 	it('flips sawToolCalls on tool_pending_approval too', async () => {
