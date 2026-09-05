@@ -955,8 +955,63 @@ export async function serializeBranchForUpstream(
 }
 
 /**
- * The send-time transforms every upstream payload gets, in order: drop stale
- * skill bodies, then cap oversized tool results.
+ * Drop `tool_calls` the branch never answered.
+ *
+ * The OpenAI spec requires every `assistant.tool_calls[].id` to be followed by a
+ * `role:'tool'` message carrying that `tool_call_id`. Strict upstreams reject a
+ * payload where one isn't, and a rejection here is not a one-turn failure — the
+ * offending row is re-sent on every later turn, so the conversation stops
+ * working entirely.
+ *
+ * The branch can genuinely arrive in that shape, and not from a bug:
+ *
+ *   - An upstream that reports a `finish_reason` other than `tool_calls`
+ *     alongside a call. The relay breaks before executing anything, so the call
+ *     is persisted with no answer and stays that way. This predates reactions
+ *     and applies to every tool.
+ *   - A row whose answering `tool` message is off the active branch. Parking an
+ *     avatar comparison rewinds the leaf past it; a portrait attaches as a
+ *     sibling and takes the leaf with it. The assistant row stays, its `tool`
+ *     child doesn't.
+ *
+ * Dropping is the right repair rather than synthesizing a placeholder result:
+ * the tool genuinely didn't run, and inventing an answer would teach the model
+ * it did. The UI is unaffected — this only shapes what goes upstream, and the
+ * persisted row keeps its parts either way.
+ *
+ * Allocation-free when there's nothing to drop, matching the sibling transforms:
+ * the same branch has to produce the same bytes every turn or the upstream's
+ * prefix cache is invalidated for the whole conversation.
+ */
+export function dropOrphanedToolCalls(
+	messages: ChatCompletionRequest['messages'],
+): ChatCompletionRequest['messages'] {
+	const answered = new Set<string>();
+	for (const m of messages) {
+		if (m.role === 'tool' && m.tool_call_id) answered.add(m.tool_call_id);
+	}
+	const hasOrphan = messages.some((m) => m.tool_calls?.some((c) => !answered.has(c.id)));
+	if (!hasOrphan) return messages;
+
+	return messages.map((m) => {
+		if (!m.tool_calls) return m;
+		const kept = m.tool_calls.filter((c) => answered.has(c.id));
+		if (kept.length === m.tool_calls.length) return m;
+		if (kept.length > 0) return { ...m, tool_calls: kept };
+		// Nothing left to carry. `content: null` is only legal ALONGSIDE
+		// `tool_calls`, so a row that spoke purely through a dropped call has to
+		// come back as an empty string rather than a null with nothing to justify
+		// it. `tool_calls` is omitted rather than sent empty — some upstreams
+		// reject `[]` the same way they reject it on the request itself.
+		const { tool_calls: _dropped, ...rest } = m;
+		return { ...rest, content: m.content ?? '' };
+	});
+}
+
+/**
+ * The send-time transforms every upstream payload gets, in order: drop
+ * unanswered tool calls, drop stale skill bodies, then cap oversized tool
+ * results.
  *
  * Shared by the send path and by the context breakdown, so the panel measures
  * what the model is actually handed. Both are recomputed per request from
@@ -968,5 +1023,8 @@ export function applyWireTransforms(
 	messages: ChatCompletionRequest['messages'],
 	maxToolResultChars: number = getMaxToolResultChars(),
 ): ChatCompletionRequest['messages'] {
-	return capToolResults(collapseSupersededSkillActivations(messages), maxToolResultChars);
+	return capToolResults(
+		collapseSupersededSkillActivations(dropOrphanedToolCalls(messages)),
+		maxToolResultChars,
+	);
 }

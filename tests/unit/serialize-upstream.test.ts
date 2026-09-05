@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	capToolResults,
 	collapseSupersededSkillActivations,
+	dropOrphanedToolCalls,
 	serializeBranchForUpstream,
 	serializeMessageForUpstream,
 	truncateToolResult,
@@ -1150,5 +1151,70 @@ describe('truncateToolResult memoization', () => {
 		// Cold does real parsing work; warm is a Map hit. Generous ratio so this
 		// can't flake on a loaded machine.
 		expect(warm).toBeLessThan(Math.max(cold / 5, 0.5));
+	});
+});
+
+describe('dropOrphanedToolCalls', () => {
+	const assistantWith = (calls: Array<{ id: string; name?: string }>, content: string | null) => ({
+		role: 'assistant' as const,
+		content,
+		tool_calls: calls.map((c) => ({
+			id: c.id,
+			type: 'function' as const,
+			function: { name: c.name ?? 'get_current_time', arguments: '{}' },
+		})),
+	});
+	const toolResult = (id: string) => ({
+		role: 'tool' as const,
+		content: 'ok',
+		tool_call_id: id,
+	});
+
+	it('leaves an answered call alone, and returns the same array', () => {
+		// Identity, not just equality: the same branch has to produce the same
+		// bytes every turn or the upstream's prefix cache is thrown away.
+		const messages = [
+			{ role: 'user' as const, content: 'hi' },
+			assistantWith([{ id: 'call_a' }], null),
+			toolResult('call_a'),
+		];
+		expect(dropOrphanedToolCalls(messages)).toBe(messages);
+	});
+
+	it('drops a call the branch never answered', () => {
+		// An upstream reporting `finish_reason: 'stop'` alongside a call: the relay
+		// breaks before executing anything, so the call is persisted unanswered and
+		// re-sent on every later turn.
+		const out = dropOrphanedToolCalls([
+			{ role: 'user', content: 'what time is it' },
+			assistantWith([{ id: 'call_a' }], 'Let me check.'),
+		]);
+		expect(out[1]).toEqual({ role: 'assistant', content: 'Let me check.' });
+		expect(out[1]).not.toHaveProperty('tool_calls');
+	});
+
+	it('keeps the answered calls when only some are orphaned', () => {
+		const out = dropOrphanedToolCalls([
+			assistantWith([{ id: 'call_a' }, { id: 'call_b' }], null),
+			toolResult('call_b'),
+		]);
+		expect(out[0].tool_calls?.map((c) => c.id)).toEqual(['call_b']);
+	});
+
+	it('turns null content into an empty string when the last call goes', () => {
+		// `content: null` is only legal alongside `tool_calls`; a row left with
+		// neither would be rejected on its own terms.
+		const out = dropOrphanedToolCalls([assistantWith([{ id: 'call_a' }], null)]);
+		expect(out[0]).toEqual({ role: 'assistant', content: '' });
+	});
+
+	it('drops a reaction whose tool row fell off the branch', () => {
+		// Parking an avatar comparison rewinds the leaf past the reaction's tool
+		// row; the assistant row stays, its tool child doesn't.
+		const out = dropOrphanedToolCalls([
+			{ role: 'user', content: 'I got the job!!' },
+			assistantWith([{ id: 'call_r', name: 'react_to_message' }], 'Congratulations!'),
+		]);
+		expect(out[1]).toEqual({ role: 'assistant', content: 'Congratulations!' });
 	});
 });
