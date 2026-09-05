@@ -30,7 +30,6 @@ import {
 	appendText,
 	inFlightToBlocks,
 	isReactionTool,
-	lastReplyMessage,
 	markToolCallPendingApproval,
 	pushToolCall,
 	updateToolCallArgs,
@@ -68,34 +67,25 @@ import type {
  * registry instead, which `onGenerationSettled` now clears promptly.
  */
 function turnLooksSettled(messages: ChatMessage[]): boolean {
-	// Past a reaction's trailing tool row: the relay leaves the leaf sitting on it
-	// after a short-circuited turn, so reading the array's last entry literally
-	// reports a FINISHED turn as still running — forever, for any thread that
-	// ever reacted.
-	const last = lastReplyMessage(messages);
+	// The LITERAL last row, deliberately — not the reply a trailing reaction tool
+	// row hangs off. This predicate asks "is the server still working?", and that
+	// tool row is evidence about exactly that: the relay only short-circuits when
+	// the reaction came WITH text, so a textless reaction leaves the tool row as
+	// the tip while a second upstream call is genuinely in flight. Looking past it
+	// discards the evidence being asked for, and reports a running turn as done —
+	// which drops the recovery bubble, re-enables the composer, and leaves the
+	// reply that eventually lands unreachable in that tab.
+	//
+	// `resolveReplyLeaf` / `lastReplyMessage` answer the DIFFERENT question "has
+	// the branch moved on past this reply?", where skipping bookkeeping is right.
+	// Don't reuse them here; the conditions only coincide by accident, and the
+	// relay owns the one this would have to track.
+	const last = messages[messages.length - 1];
 	if (last?.role !== 'assistant') return false;
-	// A REACTION is excluded from the "trailing tool_call ⇒ still running" test:
-	// it's the one tool call that can't leave work pending here.
-	//
-	// The check is on the reaction alone, NOT on the relay's fuller
-	// `reactionOnly` condition (reaction + the reply already written), because
-	// the two states where a reaction-bearing assistant row is genuinely the
-	// branch leaf are both finished turns: the short-circuited turn, and an
-	// upstream that reported `finish_reason: 'stop'` alongside the call so the
-	// tool loop never ran. Mid-loop the leaf is the reaction's `role:'tool'`
-	// row — persisted unconditionally, in the same synchronous stretch — so the
-	// earlier `role !== 'assistant'` guard already returns false there and this
-	// predicate is never consulted. Requiring text too would misreport that
-	// second state as still-running, which is the failure this test exists to
-	// prevent (see the commit that introduced it).
-	//
-	// Strictly there IS a window where the assistant row is the leaf and the
-	// server is still working — between persisting it and persisting the tool
-	// row. It's microtask-scale (the reaction's execute() is synchronous
-	// in-memory validation, and node:sqlite writes are synchronous), so no
-	// request handler can be dispatched inside it; the long waits the original
-	// guard was written for belong to real tools, which this exclusion never
-	// applies to.
+	// A reaction is still excluded at the PARTS level. When the turn short-circuits
+	// the client takes the cheap path and appends the assistant row without ever
+	// fetching its tool row, so a trailing assistant whose only call is a reaction
+	// is a finished turn, not a pending one.
 	return !last.parts?.some((p) => p.type === 'tool_call' && !isReactionTool(p.toolName));
 }
 

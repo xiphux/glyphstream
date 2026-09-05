@@ -413,12 +413,9 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 	});
 
 	it('treats a trailing reaction tool_call as a settled turn, unlike a real one', () => {
-		// The counterpart to the test above, and the one asymmetry in that guard.
-		// A reaction is the only tool call that can't leave work pending at the
-		// leaf: mid-loop the leaf is its role:'tool' row (persisted unconditionally
-		// in the same synchronous stretch), so an assistant row bearing one is
-		// either a short-circuited turn or an upstream that reported
-		// finish_reason:'stop' and never ran the loop. Both are finished.
+		// The client's own cheap path appends the assistant row without ever
+		// fetching its tool row, so a trailing assistant whose only call is a
+		// reaction is a finished turn.
 		const { deps, state } = makeDeps();
 		const turn = new ChatTurnController(deps);
 		state.serverInFlightSince = 1000;
@@ -436,6 +433,43 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 					{ type: 'tool_call', toolCallId: 'call_x', toolName: 'fetch_url', arguments: '{}' },
 				],
 			},
+		];
+		expect(turn.recoveredInFlight).toBe(true);
+	});
+
+	it('still recovers while a TEXTLESS reaction turn waits on its second iteration', () => {
+		// The shape no test used to construct, and the reason a regression slipped
+		// through. The relay only short-circuits when the reaction came WITH text;
+		// with none it persists the tool row, advances the leaf onto it, and makes
+		// a second upstream call to get the actual reply. On chat templates where
+		// content and tool_calls are mutually exclusive that is EVERY reaction, and
+		// the window is a whole generation wide.
+		//
+		// Resolving past that tool row to the empty reply reported the turn as
+		// settled: no recovery bubble, composer re-enabled, and the reply landing
+		// in a tab that had stopped listening for it.
+		const { deps, state } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		state.serverInFlightSince = 1000;
+		state.messages = [
+			userMsg('u1'),
+			{
+				...reactionAssistantMsg('a1'),
+				parts: [
+					{ type: 'text', text: '' },
+					{
+						type: 'tool_call',
+						toolCallId: 'call_a1',
+						toolName: 'react_to_message',
+						arguments: '{"emoji":"🎉"}',
+					},
+				],
+			},
+			{
+				...msg('t1', 'assistant'),
+				role: 'tool',
+				parts: [{ type: 'tool_result', toolCallId: 'call_a1', result: 'ok' }],
+			} as ChatMessage,
 		];
 		expect(turn.recoveredInFlight).toBe(true);
 	});

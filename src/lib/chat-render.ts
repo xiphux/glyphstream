@@ -580,9 +580,14 @@ export function buildRenderedConversation(messages: ChatMessage[]): RenderedConv
 	// persisted arguments say. The row is written before the tool runs, so the
 	// arguments alone can't tell you — and the two ways a reaction gets refused
 	// both land here: the conversation turned reactions off (the tool refuses at
-	// execute time) and the emoji failed validation. A call with NO result at all
-	// is kept: that's the upstream that reported `finish_reason: 'stop'` alongside
-	// the call, where the tool never ran and the emoji is the only record there is.
+	// execute time) and the emoji failed validation.
+	//
+	// A call with NO result at all is kept. That is no longer the
+	// `finish_reason: 'stop'` case — the relay drops those parts at persist time
+	// now, so they never reach here. It's the reaction whose answering `tool` row
+	// is off the ACTIVE BRANCH: parking an avatar comparison rewinds the leaf past
+	// it, and a portrait attaching as a sibling takes the leaf with it. The
+	// reaction really did run; only its answer is out of view.
 	for (const r of candidateReactions) {
 		if (toolResultsByCallId.get(r.toolCallId)?.isError) continue;
 		reactionsByMessageId.set(r.userMessageId, r.emoji);
@@ -783,13 +788,15 @@ function graphemes(): Intl.Segmenter {
  * `role:'tool'` rows that answer nothing but reactions.
  *
  * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
- * has to agree with it: `canCompareAvatar` and the server's parkable rule
- * answer the same question on either side of one call, and a client that offers
- * the comparison against a server that then refuses it surfaces as a page-level
- * error only after the user has picked their models. `turnLooksSettled` uses it
- * too, for the same underlying reason — the relay leaves the branch leaf on the
- * reaction's tool row, so read literally a finished turn looks like a running
- * one, forever, on any thread that ever reacted.
+ * has to agree with it: `canCompareAvatar` and the server's parkable rule answer
+ * the same question on either side of one call, and a client that offers the
+ * comparison against a server that then refuses it surfaces as a page-level
+ * error only after the user has picked their models.
+ *
+ * The question is "has the branch moved on past this reply?", for which a
+ * reaction's tool row is bookkeeping to look past. `turnLooksSettled`
+ * deliberately does NOT use this — it asks "is the server still working?", where
+ * that same tool row is the evidence, not noise.
  *
  * Returns the plain last message when there is no reaction chain, so callers
  * can use it unconditionally.
@@ -814,10 +821,9 @@ export function lastReplyMessage(messages: ChatMessage[]): ChatMessage | undefin
  * Read from the persisted `tool_call` part, which IS the durable record of the
  * reaction — there's no reaction column anywhere. That record is written by the
  * relay's recorder BEFORE the tool runs, so it is raw model output and this is
- * the only place it gets checked before rendering. Re-validating here also
- * covers the reaction that never executed at all: an upstream reporting
- * `finish_reason: 'stop'` alongside a tool call skips the tool loop entirely,
- * yet still leaves the part on the row.
+ * the only place it gets checked before rendering. (The recorder now declines to
+ * persist a part the tool can't have run — but it still writes the arguments
+ * verbatim for the ones it does, so they arrive here unvalidated.)
  */
 export function parseReactionEmoji(args: string): string | null {
 	if (!args) return null;
