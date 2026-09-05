@@ -20,7 +20,10 @@ import { acquireEndpointSlot } from '../endpoints/concurrency';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { getEndpoint } from '../endpoints/registry';
 import { parseModelId } from '../endpoints/model-id';
-import { serializeMessageForUpstream } from '../endpoints/serialize-upstream';
+import {
+	dropOrphanedToolCalls,
+	serializeMessageForUpstream,
+} from '../endpoints/serialize-upstream';
 import { mediaIdToDataUrl } from '../media/data-url';
 import { renderMarkdown } from '../markdown/render';
 import { listAllModels } from '../endpoints/list-models';
@@ -108,11 +111,20 @@ export async function prepareCompaction(
 	// serializeBranchForUpstream, which would re-trim around the very summary
 	// we're trying to fold in.
 	const resolveMediaUrl = (mediaId: string) => mediaIdToDataUrl(mediaId, userId);
-	const serialized: ChatCompletionRequest['messages'] = [];
+	const perMessage: ChatCompletionRequest['messages'] = [];
 	for (const m of view.slice(0, cut.cutIndex)) {
 		const s = await serializeMessageForUpstream(m, resolveMediaUrl);
-		if (s) serialized.push(s);
+		if (s) perMessage.push(s);
 	}
+	// The one wire transform this path DOES need. Skipping `applyWireTransforms`
+	// wholesale (above) skips the two size passes deliberately — but it also
+	// skipped the validity repair, and this array goes to a real upstream just
+	// like a send does. A branch can legitimately carry an assistant `tool_calls`
+	// whose answering `tool` row isn't on it (an upstream that ended the turn
+	// without running tools; a leaf moved past a reaction's bookkeeping), and a
+	// strict backend rejects that — which would fail compaction on exactly the
+	// long threads that need it, on every attempt.
+	const serialized = dropOrphanedToolCalls(perMessage);
 
 	const messages: ChatCompletionRequest['messages'] = [
 		{ role: 'system', content: SUMMARY_SYSTEM },
