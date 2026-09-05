@@ -33,7 +33,6 @@
 	import type {
 		EndpointGroupStatus,
 		EndpointHealth,
-		EndpointSlotInfo,
 		EndpointSlotPurpose,
 		EndpointStatus,
 		EndpointsStatusResponse,
@@ -202,10 +201,6 @@
 	function capLabel(max: number | null): string {
 		return max === null ? '∞' : String(max);
 	}
-
-	function slotKey(s: EndpointSlotInfo): string {
-		return `${s.endpointId}:${s.purpose}:${s.modelId ?? ''}:${s.since}`;
-	}
 </script>
 
 <SettingsPage title="Endpoints">
@@ -353,7 +348,7 @@
 
 		{#if ep.active.length > 0 || ep.queued.length > 0}
 			<ul class="mt-2 flex flex-col gap-1.5">
-				{#each ep.active as slot (slotKey(slot))}
+				{#each ep.active as slot (slot.id)}
 					<li
 						class="flex items-center gap-2 rounded-md border border-border bg-surface-sunken/40 p-2 text-xs"
 					>
@@ -378,7 +373,7 @@
 						</span>
 					</li>
 				{/each}
-				{#each ep.queued as slot (slotKey(slot))}
+				{#each ep.queued as slot (slot.id)}
 					<li
 						class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-70"
 					>

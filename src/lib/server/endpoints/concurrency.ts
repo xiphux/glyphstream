@@ -60,6 +60,18 @@ export interface SlotWork {
  * diagnostic question ("what is this box doing") is answered without one.
  */
 interface WorkRecord {
+	/**
+	 * Process-unique identity for this one slot's worth of work.
+	 *
+	 * A monotonic counter rather than anything derived from the record's own
+	 * fields, because those are NOT unique: `pump` grants waiters in a
+	 * synchronous loop, so every record it mints in one pass shares a
+	 * `Date.now()`, and a same-model fan-out gives them the same endpoint,
+	 * purpose and model id too. The admin view keys its `{#each}` on this, and
+	 * Svelte throws on a duplicate key in production — so a tuple that is merely
+	 * usually-distinct would take the page down exactly when the queue is busy.
+	 */
+	id: number;
 	endpointId: string;
 	purpose: SlotPurpose;
 	modelId: string | null;
@@ -70,8 +82,13 @@ interface WorkRecord {
 	state: 'queued' | 'active' | 'releasing';
 }
 
+/** Source of `WorkRecord.id`. Module-level like the gates themselves; a single
+ *  Node process cannot exhaust a float counter at generation rates. */
+let nextRecordId = 0;
+
 function workRecord(endpointId: string, work: SlotWork | undefined, state: WorkRecord['state']) {
 	return {
+		id: ++nextRecordId,
 		endpointId,
 		purpose: work?.purpose ?? 'other',
 		modelId: work?.modelId ?? null,
@@ -441,6 +458,10 @@ export function getResourceQueueDepth(resourceGroup: string): { active: number; 
 }
 
 export interface SlotSnapshot {
+	/** Stable per-slot identity — see `WorkRecord.id`. Distinct for a waiter and
+	 *  for the record minted when that waiter is granted, which is correct: they
+	 *  are reported in different lists and are different phases of the work. */
+	id: number;
 	endpointId: string;
 	purpose: SlotPurpose;
 	modelId: string | null;
@@ -465,6 +486,7 @@ export interface ResourceGroupSnapshot {
 
 function cloneRecord(r: WorkRecord): SlotSnapshot {
 	return {
+		id: r.id,
 		endpointId: r.endpointId,
 		purpose: r.purpose,
 		modelId: r.modelId,

@@ -1733,6 +1733,12 @@ export type EndpointSlotPurpose =
 	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
 
 export interface EndpointSlotInfo {
+	/** Stable per-slot identity, unique for the life of the server process. The
+	 *  client keys its lists on this: every field that describes the work can
+	 *  legitimately repeat within one endpoint's list (two branches of a
+	 *  same-model fan-out granted in the same tick share all of them, timestamp
+	 *  included), and a duplicate key is a render-time throw. */
+	id: number;
 	endpointId: string;
 	purpose: EndpointSlotPurpose;
 	/** Conversation-facing model id, when the acquiring path knew one. */

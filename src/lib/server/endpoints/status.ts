@@ -44,6 +44,7 @@ function emptyByKind(): Record<ModelKind, number> {
  *  gate's internal shape can change without the wire shape following it. */
 function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
 	return {
+		id: s.id,
 		endpointId: s.endpointId,
 		purpose: s.purpose,
 		modelId: s.modelId,

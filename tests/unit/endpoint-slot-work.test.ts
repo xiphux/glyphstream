@@ -212,6 +212,54 @@ describe('getResourceGroupSnapshot', () => {
 		b.release();
 	});
 
+	it('gives every record a distinct id when one pump pass grants several', async () => {
+		// The collision this guards against is DETERMINISTIC, not a clock race.
+		// While a handover eviction runs, acquisitions queue even though the group
+		// is under capacity (`evicting` blocks the fast path). The eviction's
+		// `finally` then reopens the gate and pumps, and `pump` grants every
+		// eligible waiter in ONE synchronous `while` loop — no await between them,
+		// so each record it mints there shares a `Date.now()` by construction. A
+		// same-model fan-out gives them the same endpoint, purpose and model id
+		// too, so nothing derived from a record's own fields can tell them apart.
+		// The admin view keys its `{#each}` on the id, and Svelte throws on a
+		// duplicate key in production — taking the page down exactly when the
+		// queue is busy enough to be worth looking at.
+		const llama = ep('llama', 3, 'gpu0', 'llama-cpp-router');
+		const comfy = ep('comfy', 3, 'gpu0');
+		let resolveRelease!: () => void;
+		releaseMock.mockImplementation(
+			() => new Promise<boolean>((r) => (resolveRelease = () => r(true))),
+		);
+
+		// Hand the group to llama, then release — llama is now `lastHolder`, so
+		// comfy's next acquire is a handover and triggers the (blocked) eviction.
+		(await acquireEndpointSlot(llama, { work: { purpose: 'chat', modelId: 'gemma' } })).release();
+		const evicting = acquireEndpointSlot(comfy, { work: { purpose: 'image', modelId: 'flux' } });
+		await flush();
+		expect(getResourceGroupSnapshot('gpu0')!.evicting).toBe(true);
+
+		// Under capacity (1 of 3) but still blocked, so these queue rather than
+		// taking the fast path — which is what sets up a multi-grant pump.
+		const queued = [
+			acquireEndpointSlot(comfy, { work: { purpose: 'image', modelId: 'flux' } }),
+			acquireEndpointSlot(comfy, { work: { purpose: 'image', modelId: 'flux' } }),
+		];
+		expect(getResourceGroupSnapshot('gpu0')!.waiting).toBe(2);
+
+		resolveRelease();
+		const granted = await Promise.all([evicting, ...queued]);
+
+		const holders = getResourceGroupSnapshot('gpu0')!.holders;
+		expect(holders).toHaveLength(3);
+		// The precondition: every descriptive field is identical across all three,
+		// `since` included — so the id is the ONLY thing distinguishing them.
+		const described = holders.map((h) => `${h.endpointId}:${h.purpose}:${h.modelId}:${h.since}`);
+		expect(new Set(described).size).toBeLessThan(3);
+		expect(new Set(holders.map((h) => h.id)).size).toBe(3);
+
+		granted.forEach((g) => g.release());
+	});
+
 	it('normalizes an unlimited cap to null rather than Infinity', async () => {
 		// JSON.stringify(Infinity) is `null` anyway — doing it here keeps the
 		// meaning attached to the place it is still obvious.
