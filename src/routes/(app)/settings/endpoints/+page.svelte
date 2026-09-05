@@ -71,7 +71,31 @@
 	// svelte-ignore state_referenced_locally
 	let skewMs = $state(Date.now() - data.status.now);
 
+	/**
+	 * Set when the server says this client may no longer read the page — a
+	 * session that expired, or an admin whose role was revoked, while the tab sat
+	 * open. Distinct from a transient failure on purpose: everything else is
+	 * worth retrying silently, this is not, and a diagnostics page that keeps
+	 * rendering a frozen snapshot with live-looking timers is worse than one that
+	 * admits it stopped.
+	 */
+	let lostSession = $state(false);
+
+	/**
+	 * The `now` of the newest snapshot applied so far. Responses are not ordered:
+	 * a poll issued before a Recheck can resolve after it, and applying it would
+	 * revert the endpoint the operator just probed to its pre-probe health for up
+	 * to a full poll interval — on this page, indistinguishable from a backend
+	 * that is genuinely flapping. Server-stamped rather than a client sequence
+	 * because both callers read from the same server clock, so it orders responses
+	 * across the two of them without threading a counter through either.
+	 */
+	// svelte-ignore state_referenced_locally
+	let appliedAt = $state(data.status.now);
+
 	function applySnapshot(next: EndpointsStatusResponse) {
+		if (next.now < appliedAt) return; // stale; a newer snapshot already won
+		appliedAt = next.now;
 		status = next;
 		const at = Date.now();
 		skewMs = at - next.now;
@@ -87,6 +111,12 @@
 	async function poll() {
 		try {
 			const res = await fetch('/api/admin/endpoints/status');
+			if (res.status === 401 || res.status === 403) {
+				// Not transient, and not something another poll will fix: the session
+				// went away or the role was revoked. Stop, and say so.
+				lostSession = true;
+				return;
+			}
 			if (!res.ok) return; // Transient; the next tick tries again.
 			applySnapshot((await res.json()) as EndpointsStatusResponse);
 		} catch {
@@ -100,15 +130,18 @@
 		// at fire time rather than by tearing the timers down on visibilitychange:
 		// same effect, and it can't leave a listener behind.
 		const pollTimer = setInterval(() => {
-			if (!document.hidden) void poll();
+			if (!document.hidden && !lostSession) void poll();
 		}, 3000);
 		const tickTimer = setInterval(() => {
-			if (!document.hidden) nowMs = Date.now();
+			// Frozen deliberately once the session is gone: advancing elapsed times
+			// over a snapshot that can no longer be refreshed is the exact illusion
+			// of liveness this is meant to remove.
+			if (!document.hidden && !lostSession) nowMs = Date.now();
 		}, 1000);
 		// A tab returning to the foreground has a snapshot as stale as it was
 		// away; refresh immediately rather than showing it for up to 3s more.
 		const onVisible = () => {
-			if (!document.hidden) {
+			if (!document.hidden && !lostSession) {
 				nowMs = Date.now();
 				void poll();
 			}
@@ -143,6 +176,10 @@
 				method: 'POST',
 				signal: AbortSignal.timeout(RECHECK_TIMEOUT_MS),
 			});
+			if (res.status === 401 || res.status === 403) {
+				lostSession = true;
+				return;
+			}
 			if (!res.ok) {
 				toast.error(await errorMessageFromResponse(res));
 				return;
@@ -268,6 +305,17 @@
 	{/snippet}
 
 	<div class="mx-auto flex max-w-2xl flex-col gap-3">
+		{#if lostSession}
+			<!-- Above the snapshot rather than replacing it: the last-known picture is
+			     still the most useful thing on screen, it just isn't live any more. -->
+			<div class="rounded-md border px-3 py-2 text-xs alert-warning">
+				<div class="font-medium">This view is no longer updating</div>
+				<div class="mt-1">
+					Your session ended or your admin access was removed, so the page below is frozen at its
+					last reading. Reload to sign in again.
+				</div>
+			</div>
+		{/if}
 		{#if status.configError}
 			<div class="rounded-md border px-3 py-2 text-xs alert-danger">
 				<div class="font-medium">config.toml failed to load</div>
