@@ -223,18 +223,22 @@
 					return;
 				}
 				if (data.kind === 'message_complete_toast') {
-					const { conversationId, conversationTitle, summary } = data.payload;
-					// Same content gate as the OS notification, and for the same reason:
-					// a payload built for a user with "Show message preview" off carries
-					// no conversationTitle, because the title IS content (a fresh thread's
-					// title is their own prompt). So the toast names no thread either —
-					// generic heading, and the modality line as the description it would
-					// otherwise have gone without.
-					const description =
-						summary ?? (conversationTitle ? null : notificationBody(data.payload));
+					const { conversationId } = data.payload;
+					// Heading and body from the same resolvers the OS notification uses, so
+					// the two surfaces say the same thing — which is the entire reason
+					// notification-copy.ts exists. The content gate is already baked into
+					// the payload the server built, so there is nothing to re-decide here:
+					// an opted-out user's payload resolves to the app name over a modality
+					// line, an opted-in one to the thread title over its preview.
+					//
+					// This deliberately does NOT branch on whether a title is present.
+					// It used to, and that was wrong twice over: the description was being
+					// spread into an option the toast store did not have, so it never
+					// rendered at all; and now that the title field is always sent (see
+					// server/push/notify.ts), branching on it would suppress the body line
+					// permanently.
 					toast.info(notificationTitle(data.payload), {
-						// Fan-out's "N ready" count, when present.
-						...(description ? { description } : {}),
+						description: notificationBody(data.payload),
 						action: { label: 'Open', handler: () => goto(resolve(`/chat/${conversationId}`)) },
 						duration: 6000,
 					});

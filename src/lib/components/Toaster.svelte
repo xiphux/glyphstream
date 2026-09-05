@@ -48,7 +48,12 @@
 		style="bottom: max(1rem, calc(env(safe-area-inset-bottom) + 0.5rem))"
 	>
 		<Icon size={16} strokeWidth={2.25} class="shrink-0 {kindIconClass[t.kind]}" />
-		<span class="flex-1">{t.message}</span>
+		<span class="flex-1">
+			{t.message}
+			{#if t.description}
+				<span class="block text-xs text-fg-muted">{t.description}</span>
+			{/if}
+		</span>
 		{#if t.action}
 			{@const action = t.action}
 			<button

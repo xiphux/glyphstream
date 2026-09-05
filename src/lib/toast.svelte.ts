@@ -31,11 +31,19 @@ export interface Toast {
 	id: string;
 	kind: ToastKind;
 	message: string;
+	/** Secondary line under the message. Optional; omit for a single-line toast. */
+	description?: string;
 	action?: ToastAction;
 }
 
 interface ShowOptions {
 	action?: ToastAction;
+	/** Secondary line under the message — a completion's body line, say. Callers
+	 *  passed this long before it was declared here, and TypeScript could not
+	 *  see the mistake: they spread it in, and excess-property checking does not
+	 *  apply to spread properties. Every such description was silently dropped.
+	 *  Keep it declared so the next one type-checks against something real. */
+	description?: string;
 	/** Override auto-dismiss timeout in ms. Pass 0 to keep the toast
 	 *  visible until explicit dismiss/replacement. */
 	duration?: number;
@@ -62,6 +70,7 @@ class ToastStore {
 			id: crypto.randomUUID(),
 			kind,
 			message,
+			description: options.description,
 			action: options.action,
 		};
 		const duration = options.duration ?? DEFAULT_DURATION[kind];

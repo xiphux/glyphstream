@@ -3,11 +3,11 @@
 GlyphStream surfaces assistant-message completions in three ways,
 depending on where the user actually is when the stream finishes:
 
-| Where the user is                                             | What happens                                                                                       |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Looking at the thread itself, tab visible                     | Nothing extra — the SSE stream is already delivering the message in real time.                     |
-| In the app, tab visible, but on a different thread or page    | An in-app toast appears with the conversation title (when previews are on) and an **Open** action. |
-| Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread.           |
+| Where the user is                                             | What happens                                                                                                             |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Looking at the thread itself, tab visible                     | Nothing extra — the SSE stream is already delivering the message in real time.                                           |
+| In the app, tab visible, but on a different thread or page    | An in-app toast appears with the same heading and body line as the OS notification would carry, plus an **Open** action. |
+| Tab not visible — switched apps, locked phone, browser closed | An OS-level notification arrives via Web Push, clickable to navigate back to the thread.                                 |
 
 This table is the per-device arbitration for a push that fires. The
 server fires a push on every completion **unless another of your devices
