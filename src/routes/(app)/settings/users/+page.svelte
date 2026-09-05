@@ -260,7 +260,7 @@
 
 	<!-- Users -->
 	<section>
-		<h2 class="mb-2 text-sm font-semibold">Users</h2>
+		<h2 class="mb-2 text-sm font-semibold">Accounts</h2>
 		<ul class="divide-y divide-border rounded-lg border border-border">
 			{#each data.users as u (u.id)}
 				<li class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">

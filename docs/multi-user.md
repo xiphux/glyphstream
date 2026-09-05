@@ -113,7 +113,12 @@ can sit at a limit of 1.
 
 The page polls every three seconds while it's open and pauses while the tab is
 in the background. Polling reads in-process state only — it costs no upstream
-requests regardless of how many endpoints are configured.
+requests regardless of how many endpoints are configured. The page _load_ is
+separate: it re-runs when the app's data is invalidated (returning to the tab,
+for instance) and refreshes the shared model cache past its 60-second TTL, so a
+tab left open does still produce a reachability probe per endpoint roughly once
+a minute. That is the same cache every other page shares, not extra traffic
+this view invents.
 
 Editing endpoints from this page is not supported: they live in `config.toml`
 and are read at startup. See [Configuration](configuration.md#endpoints).

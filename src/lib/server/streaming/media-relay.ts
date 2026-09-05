@@ -190,7 +190,7 @@ export type MediaGenerate = (ctx: {
  * `startImageRelay` / `startVideoRelay` are the only callers and each knows its
  * own answer statically.
  */
-type MediaRelayScaffoldParams = MediaRelayParams & { modality: 'image' | 'video' };
+export type MediaRelayScaffoldParams = MediaRelayParams & { modality: 'image' | 'video' };
 
 export function startMediaRelay(
 	params: MediaRelayScaffoldParams,
