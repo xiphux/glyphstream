@@ -407,6 +407,13 @@ export class ChatTurnController {
 				);
 			},
 			onReaction: (messageId, emoji) => {
+				// Content, so it implies a slot — same `??=` backstop as `onText` and
+				// `onToolCallStart` above. A reaction can't be the first frame in
+				// practice (it comes out of the tool loop, well past `start`), but the
+				// rule the sidebar's mark rests on is "output means the gate opened",
+				// and leaving one output frame out of it is how that rule stops being
+				// true.
+				this.inFlightStartedAt ??= Date.now();
 				this.liveReaction = { messageId, emoji };
 			},
 			onCanvasVersion: (c) => {

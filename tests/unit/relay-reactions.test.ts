@@ -18,6 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
+import { inFlightEntryStub } from './_helpers/in-flight';
 import { seedUser } from './_helpers/seed';
 
 const mocks = vi.hoisted(() => ({
@@ -215,6 +216,7 @@ async function runTurn(
 		requestBody: initialBody,
 		userMessage: user,
 		storedModelId: 'bridge::test',
+		inFlight: inFlightEntryStub(endpoint),
 		onComplete: () => {},
 		rebuildRequestBody: async () => {
 			rebuildCalls++;
