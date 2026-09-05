@@ -24,7 +24,7 @@
 import { ConfigError } from './config';
 import { listUpstreamModels, UpstreamError } from './client';
 import { normalizeUpstreamModel } from './models';
-import { listEndpoints } from './registry';
+import { getEndpoint, listEndpoints } from './registry';
 import type { ModelEntry } from '$lib/types/api';
 
 interface CacheEntry {
@@ -196,7 +196,20 @@ export function getModelCacheEntry(endpointId: string): {
  * which is exactly what the caller wants to render.
  */
 export async function recheckEndpoint(endpointId: string): Promise<boolean> {
-	const endpoint = listEndpoints().find((e) => e.id === endpointId);
+	let endpoint;
+	try {
+		endpoint = getEndpoint(endpointId);
+	} catch (e) {
+		// `getRegistry` deliberately does not memoize a failed load, so a
+		// `config.toml` that broke while the page was open throws here rather than
+		// on the GET — which catches ConfigError and renders it as a first-class
+		// state. Letting it escape would answer the operator's click with an opaque
+		// 500 in exactly the situation that state exists to explain. Reported as
+		// "no such endpoint" instead; the poll's own snapshot carries the real
+		// config error a moment later.
+		if (e instanceof ConfigError) return false;
+		throw e;
+	}
 	if (!endpoint) return false;
 	await refreshInBackground(endpoint);
 	return true;
