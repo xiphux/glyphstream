@@ -81,9 +81,9 @@ function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
  * One spelling for a model, whichever form the acquiring path had to hand.
  *
  * Callers legitimately hold different things: a chat turn carries the
- * conversation-facing `endpoint::model` id, while compaction, dreaming, memory
- * and title generation resolve their model from config and hold the bare
- * upstream id. Passed through unchanged, one endpoint's card showed the same
+ * conversation-facing `endpoint::model` id, while compaction, dreaming, memory,
+ * prompt enhancement and title generation resolve their model from config and
+ * hold the bare upstream id. Passed through unchanged, one endpoint's card showed the same
  * model two ways in the same list — `dirac::gemma-4-26b` on a chat slot and
  * `gemma-4-26b` on a compaction slot directly below it. Normalizing at the call
  * sites instead would mean nine places agreeing forever; doing it here is one.
@@ -93,10 +93,22 @@ function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
  * because only the bare id is the thing an operator would recognise from
  * `config.toml` or the upstream's own `/v1/models`.
  *
- * A prefix naming a DIFFERENT endpoint than the slot is on is left intact: that
- * would mean a generation was dispatched somewhere other than where its model
- * lives, which is a routing bug, and hiding the evidence on the page built to
- * show it would be precisely the wrong call.
+ * A prefix naming a DIFFERENT endpoint than the slot is on is left intact,
+ * because that shape can mean a generation was dispatched somewhere other than
+ * where its model lives, and hiding it on the page built to surface such things
+ * would be the wrong call. Treat it as a hint, not proof: `modelId` is
+ * user-influenced (only its first segment is validated against the registry), so
+ * a request naming `dirac::dirac::gemma` renders here as `dirac::gemma` and
+ * looks like that anomaly without being one.
+ *
+ * The converse mis-read exists too and is accepted: a BARE upstream id that
+ * itself contains `::` and whose first segment happens to equal this endpoint's
+ * own id — `foo::bar` on endpoint `foo` — is indistinguishable from a prefixed
+ * one by the time it reaches here, and loses its first segment. Reaching it
+ * needs an upstream model id containing `::`, the one character this grammar
+ * picked precisely because upstreams use `/` instead; nothing persists or routes
+ * off this value, so the cost if it ever happens is one wrong word of display
+ * text.
  */
 function displayModelId(s: SlotSnapshot): string | null {
 	if (s.modelId === null) return null;

@@ -1760,7 +1760,16 @@ export interface EndpointSlotInfo {
 	id: number;
 	endpointId: string;
 	purpose: EndpointSlotPurpose;
-	/** Conversation-facing model id, when the acquiring path knew one. */
+	/**
+	 * The model this slot is running, when the acquiring path knew one.
+	 *
+	 * Normalized for display: the BARE upstream id, with the `endpointId::`
+	 * prefix stripped when the id carried one, since `endpointId` is already a
+	 * field here and these lists render per endpoint. A prefix naming a
+	 * different endpoint survives — see `displayModelId` in
+	 * `server/endpoints/status.ts` for why, and for why this value is a hint
+	 * rather than something to key on.
+	 */
 	modelId: string | null;
 	/** Unix ms it entered the line (`queued`) or started work (`active`). */
 	since: number;
