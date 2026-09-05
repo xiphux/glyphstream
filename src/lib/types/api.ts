@@ -1736,9 +1736,10 @@ export interface GeneratingConversationsResponse {
  * narrower contract — a purpose that cannot be sent is of no use to the gate,
  * and client-safe code may not import from `$lib/server`.
  *
- * `other` is work that fits none of the named kinds, deliberately chosen rather
- * than defaulted. Readers must tolerate a value they don't know: a long-lived
- * tab polls across deploys.
+ * `other` is work that fits none of the named kinds. It is a deliberate choice,
+ * never a default — the gate requires every acquisition to name its work.
+ * Readers must tolerate a value they don't know: a long-lived tab polls across
+ * deploys.
  */
 export type EndpointSlotPurpose =
 	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';

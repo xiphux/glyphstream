@@ -88,12 +88,12 @@ interface WorkRecord {
  *  Node process cannot exhaust a float counter at generation rates. */
 let nextRecordId = 0;
 
-function workRecord(endpointId: string, work: SlotWork | undefined, state: WorkRecord['state']) {
+function workRecord(endpointId: string, work: SlotWork, state: WorkRecord['state']) {
 	return {
 		id: ++nextRecordId,
 		endpointId,
-		purpose: work?.purpose ?? 'other',
-		modelId: work?.modelId ?? null,
+		purpose: work.purpose,
+		modelId: work.modelId ?? null,
 		since: Date.now(),
 		state,
 	} satisfies WorkRecord;
@@ -210,18 +210,20 @@ export interface AcquireOptions {
 	 * What this acquisition is for, surfaced by `getResourceGroupSnapshot` to the
 	 * admin endpoint view.
 	 *
-	 * Optional only so the ~100 gate tests that exercise queue semantics need not
-	 * each name a purpose they don't care about; every PRODUCTION caller passes
-	 * one, and `CLAUDE.md` states the rule. Six of the nine paths that take a
-	 * slot never touch the conversation in-flight registry — compaction (both
-	 * paths), dreaming, memory summaries, prompt enhancement and title
-	 * generation — so on a `max_concurrent = 1` box an undeclared acquisition
-	 * shows up as an occupied endpoint with nothing accounted against it, which
-	 * is the exact confusion the view exists to remove. Making it required would
-	 * enforce that structurally rather than by convention; the reason it isn't
-	 * is test churn, not design.
+	 * REQUIRED. Six of the nine paths that take a slot never touch the
+	 * conversation in-flight registry — compaction (both paths), dreaming, memory
+	 * summaries, prompt enhancement and title generation — so an undeclared
+	 * acquisition shows up on a `max_concurrent = 1` box as an occupied endpoint
+	 * with nothing accounted against it, which is the exact confusion the admin
+	 * view exists to remove.
+	 *
+	 * That failure is silent: no crash, no failing test, just a diagnostic
+	 * surface quietly under-reporting, discovered only by an operator wondering
+	 * why their GPU is busy. A rule in `CLAUDE.md` cannot catch it and a default
+	 * would paper over it, so the type does — the same move the relays made when
+	 * they replaced an optional `onStarted` hook with a required `inFlight`.
 	 */
-	work?: SlotWork;
+	work: SlotWork;
 }
 
 /**
@@ -244,7 +246,7 @@ export interface AcquireOptions {
 async function takeSlot(
 	gate: Gate,
 	endpoint: LoadedEndpoint,
-	work?: SlotWork,
+	work: SlotWork,
 	signal?: AbortSignal,
 	onReleasing?: () => void,
 ) {
@@ -394,7 +396,7 @@ function abortError(): Error {
  */
 export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,
-	opts: AcquireOptions = {},
+	opts: AcquireOptions,
 ): Promise<EndpointSlot> {
 	const { signal, onQueued, onReleasing, work } = opts;
 	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that

@@ -777,7 +777,7 @@ describe('per-endpoint concurrency gate', () => {
 		};
 
 		// Occupy the endpoint's only slot so the relay must wait in line.
-		const held = await acquireEndpointSlot(gated);
+		const held = await acquireEndpointSlot(gated, { work: { purpose: 'other' } });
 
 		let completed = false;
 		const stream = await startStreamingRelay({
@@ -832,7 +832,7 @@ describe('per-endpoint concurrency gate', () => {
 			resourceGroupMaxConcurrent: 1,
 			release: null,
 		};
-		const held = await acquireEndpointSlot(gated);
+		const held = await acquireEndpointSlot(gated, { work: { purpose: 'other' } });
 		const abort = new AbortController();
 
 		let completed = false;
@@ -979,7 +979,7 @@ describe('per-endpoint concurrency gate', () => {
 		// Slot already freed even though the title hasn't arrived — a fresh
 		// generation can take it immediately instead of waiting out the title budget.
 		expect(getResourceQueueDepth('solo').active).toBe(0);
-		const next = await acquireEndpointSlot(solo);
+		const next = await acquireEndpointSlot(solo, { work: { purpose: 'other' } });
 		expect(getResourceQueueDepth('solo').active).toBe(1);
 		next.release();
 

@@ -86,16 +86,19 @@ tests/e2e/            # playwright (production-build webServer)
   a later `start()` left two live chains. Each `runXSweep` keeps its own
   `running` re-entrancy guard — those are exported and called directly by
   tests, so the guard is part of their contract, not the lifecycle's.
-- **A new `acquireEndpointSlot` caller declares its `work`** (purpose +
-  model id). The gate — not the conversation in-flight registry — is the
-  source of truth for endpoint occupancy on `/settings/endpoints`, because only
-  3 of the 9 acquiring paths register in that registry; an undeclared
-  acquisition renders as an unattributed `other` holding a single-GPU box.
+- **The gate — not the conversation in-flight registry — is the source of
+  truth for endpoint occupancy** on `/settings/endpoints`: only 3 of the 9
+  `acquireEndpointSlot` paths register in that registry, so the rest would show
+  as an occupied endpoint with nothing accounted against it. `work` (purpose +
+  model id) is therefore REQUIRED on `AcquireOptions`; the queue-semantics tests
+  name it once via a local `acquire` helper rather than at every call site.
   Corollary for the gate itself: every path that changes `gate.active` changes
   `gate.holders` with it — including the handover eviction's catch, where the
   slot is unwound before `makeSlot` is ever reached. A missed delete there is a
   phantom generation for the life of the process, and nothing but
-  `endpoint-slot-work.test.ts` catches it.
+  `endpoint-slot-work.test.ts` catches it. Records also carry a monotonic `id`:
+  nothing describing the work identifies it, since `pump` grants several waiters
+  in one synchronous pass and they share a timestamp.
 - Wire types live in `$lib/types/api.ts`, never in a `db/queries/*`
   module. A DTO imported from `$lib/server` by client-safe code
   type-checks and ships nothing, so nothing catches it — but it makes the

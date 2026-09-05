@@ -450,7 +450,7 @@ describe('startVideoRelay — prompt enhancement', () => {
 				}),
 		);
 		// Occupy the single VIDEO slot ('bridge').
-		const held = await acquireEndpointSlot(endpoint(1));
+		const held = await acquireEndpointSlot(endpoint(1), { work: { purpose: 'other' } });
 		const drained = drain(
 			startVideoRelay(
 				baseParams({
@@ -518,7 +518,7 @@ describe('startVideoRelay — prompt enhancement', () => {
 		mocks.enhancePrompt.mockResolvedValue({ enhanced: 'enhanced dog', changed: true });
 		// Hold the single shared slot; the relay must wait for it before it can
 		// even enhance (enhancement + generation share the one slot → serial).
-		const held = await acquireEndpointSlot(endpoint(1));
+		const held = await acquireEndpointSlot(endpoint(1), { work: { purpose: 'other' } });
 		const drained = drain(
 			startVideoRelay(
 				baseParams({
@@ -629,7 +629,7 @@ describe('startVideoRelay — backpressure + failure', () => {
 
 	it('emits queued while waiting on a full per-endpoint slot, then proceeds', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
-		const held = await acquireEndpointSlot(endpoint(1));
+		const held = await acquireEndpointSlot(endpoint(1), { work: { purpose: 'other' } });
 		const stream = startVideoRelay(
 			baseParams({
 				conversationId: conv.id,

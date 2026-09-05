@@ -84,7 +84,7 @@ describe('title task — endpoint slot serialization', () => {
 		const taskModel = { endpoint: soloEndpoint(), upstreamId: 'title-model' };
 
 		// Occupy the single slot on the shared endpoint.
-		const held = await acquireEndpointSlot(soloEndpoint());
+		const held = await acquireEndpointSlot(soloEndpoint(), { work: { purpose: 'other' } });
 
 		const titlePromise = generateConversationTitle(convId, userId, { taskModel });
 		// Give the title task a chance to run — it must be parked on the slot,
@@ -106,7 +106,7 @@ describe('title task — endpoint slot serialization', () => {
 		const { userId, convId } = seedFirstExchange();
 		// Tiny slot-wait bound (50ms) so the test doesn't hang on a held slot.
 		const taskModel = { endpoint: soloEndpoint(0.05), upstreamId: 'title-model' };
-		const held = await acquireEndpointSlot(soloEndpoint()); // never released
+		const held = await acquireEndpointSlot(soloEndpoint(), { work: { purpose: 'other' } }); // never released
 
 		const result = await generateConversationTitle(convId, userId, { taskModel });
 		// Couldn't get a slot in time → best-effort drop, no task-model call, and

@@ -15,10 +15,23 @@ const releaseMock = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
+	type AcquireOptions,
 	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
+
+/**
+ * These tests are about QUEUE SEMANTICS — ordering, capacity, aborts, handover
+ * — not about what a slot is for. The gate requires every acquisition to name
+ * its work (so a production caller cannot silently go unlabelled on the admin
+ * endpoint view), which here would mean repeating the same meaningless purpose
+ * at ninety-odd call sites. Naming it once keeps these tests about the thing
+ * they test.
+ */
+function acquire(endpoint: LoadedEndpoint, opts: Omit<AcquireOptions, 'work'> = {}) {
+	return acquireEndpointSlot(endpoint, { ...opts, work: { purpose: 'other' } });
+}
 
 /** The gate reads only the group key and its cap, so the rest is filler.
  *  `group` defaults to the id — what the loader resolves for an endpoint that
@@ -61,17 +74,17 @@ const flush = () => Promise.resolve();
 
 describe('acquireEndpointSlot', () => {
 	it('grants immediately when under capacity', async () => {
-		const slot = await acquireEndpointSlot(ep('ep', 2));
+		const slot = await acquire(ep('ep', 2));
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 		slot.release();
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 0, waiting: 0 });
 	});
 
 	it('queues once at capacity and fires onQueued with the count ahead', async () => {
-		const a = await acquireEndpointSlot(ep('ep', 1));
+		const a = await acquire(ep('ep', 1));
 		const onQueued = vi.fn();
 		let granted = false;
-		const pending = acquireEndpointSlot(ep('ep', 1), { onQueued }).then((s) => {
+		const pending = acquire(ep('ep', 1), { onQueued }).then((s) => {
 			granted = true;
 			return s;
 		});
@@ -90,21 +103,21 @@ describe('acquireEndpointSlot', () => {
 
 	it('does not call onQueued on the immediate-grant fast path', async () => {
 		const onQueued = vi.fn();
-		const slot = await acquireEndpointSlot(ep('ep', 2), { onQueued });
+		const slot = await acquire(ep('ep', 2), { onQueued });
 		expect(onQueued).not.toHaveBeenCalled();
 		slot.release();
 	});
 
 	it('grants queued waiters in FIFO order', async () => {
-		const a = await acquireEndpointSlot(ep('ep', 1));
+		const a = await acquire(ep('ep', 1));
 		const order: number[] = [];
 		const queued1 = vi.fn();
 		const queued2 = vi.fn();
-		const p1 = acquireEndpointSlot(ep('ep', 1), { onQueued: queued1 }).then((s) => {
+		const p1 = acquire(ep('ep', 1), { onQueued: queued1 }).then((s) => {
 			order.push(1);
 			return s;
 		});
-		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: queued2 }).then((s) => {
+		const p2 = acquire(ep('ep', 1), { onQueued: queued2 }).then((s) => {
 			order.push(2);
 			return s;
 		});
@@ -127,13 +140,13 @@ describe('acquireEndpointSlot', () => {
 	it('re-fires onQueued with a decremented count as the line drains', async () => {
 		// One active, three queued behind it (ahead 0, 1, 2). As each active
 		// generation finishes, the remaining waiters move up and must be told.
-		const active = await acquireEndpointSlot(ep('ep', 1));
+		const active = await acquire(ep('ep', 1));
 		const q0 = vi.fn();
 		const q1 = vi.fn();
 		const q2 = vi.fn();
-		const p0 = acquireEndpointSlot(ep('ep', 1), { onQueued: q0 });
-		const p1 = acquireEndpointSlot(ep('ep', 1), { onQueued: q1 });
-		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: q2 });
+		const p0 = acquire(ep('ep', 1), { onQueued: q0 });
+		const p1 = acquire(ep('ep', 1), { onQueued: q1 });
+		const p2 = acquire(ep('ep', 1), { onQueued: q2 });
 		await flush();
 
 		// Initial positions at enqueue.
@@ -162,10 +175,10 @@ describe('acquireEndpointSlot', () => {
 		// Two slots, two active, one queued. Releasing one active frees a slot the
 		// queued waiter takes — but a SECOND queued waiter mustn't be spuriously
 		// re-notified when nothing further is granted.
-		const a = await acquireEndpointSlot(ep('ep', 2));
-		const b = await acquireEndpointSlot(ep('ep', 2));
+		const a = await acquire(ep('ep', 2));
+		const b = await acquire(ep('ep', 2));
 		const q = vi.fn();
-		const pq = acquireEndpointSlot(ep('ep', 2), { onQueued: q });
+		const pq = acquire(ep('ep', 2), { onQueued: q });
 		await flush();
 		expect(q).toHaveBeenCalledTimes(1); // initial enqueue only
 
@@ -177,14 +190,14 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('refreshes positions when a queued waiter aborts out of the middle', async () => {
-		const active = await acquireEndpointSlot(ep('ep', 1));
+		const active = await acquire(ep('ep', 1));
 		const c1 = new AbortController();
 		const q0 = vi.fn();
 		const q1 = vi.fn();
 		const q2 = vi.fn();
-		const p0 = acquireEndpointSlot(ep('ep', 1), { onQueued: q0 });
-		const p1 = acquireEndpointSlot(ep('ep', 1), { signal: c1.signal, onQueued: q1 });
-		const p2 = acquireEndpointSlot(ep('ep', 1), { onQueued: q2 });
+		const p0 = acquire(ep('ep', 1), { onQueued: q0 });
+		const p1 = acquire(ep('ep', 1), { signal: c1.signal, onQueued: q1 });
+		const p2 = acquire(ep('ep', 1), { onQueued: q2 });
 		await flush();
 		expect(q2).toHaveBeenLastCalledWith({ ahead: 2 });
 
@@ -200,14 +213,14 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('release pumps exactly one waiter, not all', async () => {
-		const a = await acquireEndpointSlot(ep('ep', 1));
+		const a = await acquire(ep('ep', 1));
 		let g1 = false;
 		let g2 = false;
-		const p1 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
+		const p1 = acquire(ep('ep', 1)).then((s) => {
 			g1 = true;
 			return s;
 		});
-		const p2 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
+		const p2 = acquire(ep('ep', 1)).then((s) => {
 			g2 = true;
 			return s;
 		});
@@ -226,8 +239,8 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('release is idempotent — a double release frees only one slot', async () => {
-		const a = await acquireEndpointSlot(ep('ep', 2));
-		const b = await acquireEndpointSlot(ep('ep', 2));
+		const a = await acquire(ep('ep', 2));
+		const b = await acquire(ep('ep', 2));
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 2, waiting: 0 });
 
 		a.release();
@@ -240,7 +253,7 @@ describe('acquireEndpointSlot', () => {
 	it('Infinity capacity never queues', async () => {
 		const onQueued = vi.fn();
 		const slots = await Promise.all(
-			Array.from({ length: 50 }, () => acquireEndpointSlot(ep('ep', Infinity), { onQueued })),
+			Array.from({ length: 50 }, () => acquire(ep('ep', Infinity), { onQueued })),
 		);
 		expect(onQueued).not.toHaveBeenCalled();
 		expect(getResourceQueueDepth('ep')).toEqual({ active: 50, waiting: 0 });
@@ -249,21 +262,21 @@ describe('acquireEndpointSlot', () => {
 
 	describe('abort', () => {
 		it('rejects synchronously when the signal is already aborted', async () => {
-			const slot = await acquireEndpointSlot(ep('ep', 1)); // fill capacity
+			const slot = await acquire(ep('ep', 1)); // fill capacity
 			const controller = new AbortController();
 			controller.abort();
-			await expect(
-				acquireEndpointSlot(ep('ep', 1), { signal: controller.signal }),
-			).rejects.toMatchObject({ name: 'AbortError' });
+			await expect(acquire(ep('ep', 1), { signal: controller.signal })).rejects.toMatchObject({
+				name: 'AbortError',
+			});
 			// The aborted attempt never entered the queue or took a slot.
 			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 			slot.release();
 		});
 
 		it('drops a queued waiter out of line without consuming a slot', async () => {
-			const a = await acquireEndpointSlot(ep('ep', 1));
+			const a = await acquire(ep('ep', 1));
 			const controller = new AbortController();
-			const pending = acquireEndpointSlot(ep('ep', 1), { signal: controller.signal });
+			const pending = acquire(ep('ep', 1), { signal: controller.signal });
 			await flush();
 			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 1 });
 
@@ -277,11 +290,11 @@ describe('acquireEndpointSlot', () => {
 		});
 
 		it('aborting one queued waiter still grants the next in line', async () => {
-			const a = await acquireEndpointSlot(ep('ep', 1));
+			const a = await acquire(ep('ep', 1));
 			const c1 = new AbortController();
-			const p1 = acquireEndpointSlot(ep('ep', 1), { signal: c1.signal });
+			const p1 = acquire(ep('ep', 1), { signal: c1.signal });
 			let g2 = false;
-			const p2 = acquireEndpointSlot(ep('ep', 1)).then((s) => {
+			const p2 = acquire(ep('ep', 1)).then((s) => {
 				g2 = true;
 				return s;
 			});
@@ -299,7 +312,7 @@ describe('acquireEndpointSlot', () => {
 
 		it('a granted slot is unaffected by a later abort of its signal', async () => {
 			const controller = new AbortController();
-			const slot = await acquireEndpointSlot(ep('ep', 1), { signal: controller.signal });
+			const slot = await acquire(ep('ep', 1), { signal: controller.signal });
 			expect(getResourceQueueDepth('ep')).toEqual({ active: 1, waiting: 0 });
 			// Abort after grant — must not corrupt active count or throw.
 			controller.abort();
@@ -310,8 +323,8 @@ describe('acquireEndpointSlot', () => {
 	});
 
 	it('isolates queues per endpoint id', async () => {
-		const a = await acquireEndpointSlot(ep('ep-a', 1));
-		const b = await acquireEndpointSlot(ep('ep-b', 1)); // different endpoint, immediate
+		const a = await acquire(ep('ep-a', 1));
+		const b = await acquire(ep('ep-b', 1)); // different endpoint, immediate
 		expect(getResourceQueueDepth('ep-a')).toEqual({ active: 1, waiting: 0 });
 		expect(getResourceQueueDepth('ep-b')).toEqual({ active: 1, waiting: 0 });
 		a.release();
@@ -328,9 +341,9 @@ describe('resource groups', () => {
 		const llama = ep('llama', 1, 'gpu0');
 		const bridge = ep('bridge', 1, 'gpu0');
 
-		const held = await acquireEndpointSlot(llama);
+		const held = await acquire(llama);
 		let granted = false;
-		const pending = acquireEndpointSlot(bridge).then((s) => {
+		const pending = acquire(bridge).then((s) => {
 			granted = true;
 			return s;
 		});
@@ -347,8 +360,8 @@ describe('resource groups', () => {
 	it('leaves ungrouped endpoints independent, as before', async () => {
 		// The default group is the endpoint's own id, so an install that never
 		// heard of resource groups behaves exactly as it did.
-		const a = await acquireEndpointSlot(ep('a', 1));
-		const b = await acquireEndpointSlot(ep('b', 1));
+		const a = await acquire(ep('a', 1));
+		const b = await acquire(ep('b', 1));
 		expect(getResourceQueueDepth('a')).toEqual({ active: 1, waiting: 0 });
 		expect(getResourceQueueDepth('b')).toEqual({ active: 1, waiting: 0 });
 		a.release();
@@ -360,12 +373,12 @@ describe('resource groups', () => {
 		// resource, or the number is a lie whenever the contention is the other
 		// endpoint's. `ahead` counts waiters in front of you, so the first
 		// queuer sees 0 even though the resource is busy.
-		const held = await acquireEndpointSlot(ep('llama', 1, 'gpu0'));
+		const held = await acquire(ep('llama', 1, 'gpu0'));
 		const firstQueued = vi.fn();
 		const secondQueued = vi.fn();
 
-		const first = acquireEndpointSlot(ep('bridge', 1, 'gpu0'), { onQueued: firstQueued });
-		const second = acquireEndpointSlot(ep('llama', 1, 'gpu0'), { onQueued: secondQueued });
+		const first = acquire(ep('bridge', 1, 'gpu0'), { onQueued: firstQueued });
+		const second = acquire(ep('llama', 1, 'gpu0'), { onQueued: secondQueued });
 		await flush();
 
 		expect(firstQueued).toHaveBeenCalledWith({ ahead: 0 });
@@ -386,10 +399,10 @@ describe('freeing a shared resource on handover', () => {
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 
-		(await acquireEndpointSlot(llama)).release();
+		(await acquire(llama)).release();
 		expect(releaseMock).not.toHaveBeenCalled();
 
-		const slot = await acquireEndpointSlot(bridge);
+		const slot = await acquire(bridge);
 		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
 		slot.release();
 	});
@@ -398,16 +411,16 @@ describe('freeing a shared resource on handover', () => {
 		// Otherwise every consecutive chat turn pays a full model reload, which on
 		// a large model is most of the wall clock.
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
-		(await acquireEndpointSlot(llama)).release();
-		(await acquireEndpointSlot(llama)).release();
+		(await acquire(llama)).release();
+		(await acquire(llama)).release();
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
 
 	it('does nothing for an endpoint with no release strategy', async () => {
 		const a = ep('a', 1, 'gpu0');
 		const b = ep('b', 1, 'gpu0');
-		(await acquireEndpointSlot(a)).release();
-		(await acquireEndpointSlot(b)).release();
+		(await acquire(a)).release();
+		(await acquire(b)).release();
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
 
@@ -423,9 +436,9 @@ describe('freeing a shared resource on handover', () => {
 			return true;
 		});
 
-		const held = await acquireEndpointSlot(llama);
+		const held = await acquire(llama);
 		let grantedBeforeFree: boolean | null = null;
-		const pending = acquireEndpointSlot(bridge).then((s) => {
+		const pending = acquire(bridge).then((s) => {
 			grantedBeforeFree = !freed;
 			return s;
 		});
@@ -446,14 +459,14 @@ describe('freeing a shared resource on handover', () => {
 			() => new Promise<boolean>((r) => (resolveRelease = () => r(true))),
 		);
 
-		(await acquireEndpointSlot(llama)).release();
-		const first = acquireEndpointSlot(bridge);
+		(await acquire(llama)).release();
+		const first = acquire(bridge);
 		await flush();
 
 		// Mid-release: the slot is already accounted for.
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
 		let secondGranted = false;
-		const second = acquireEndpointSlot(bridge).then((s) => {
+		const second = acquire(bridge).then((s) => {
 			secondGranted = true;
 			return s;
 		});
@@ -470,7 +483,7 @@ describe('freeing a shared resource on handover', () => {
 		// request probably wants — the release is tied to the handover, not to
 		// going idle.
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
-		(await acquireEndpointSlot(llama)).release();
+		(await acquire(llama)).release();
 		await flush();
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
@@ -486,8 +499,8 @@ describe('freeing a shared resource on handover', () => {
 
 		const onReleasing = vi.fn();
 		const onQueued = vi.fn();
-		(await acquireEndpointSlot(llama)).release();
-		(await acquireEndpointSlot(bridge, { onReleasing, onQueued })).release();
+		(await acquire(llama)).release();
+		(await acquire(bridge, { onReleasing, onQueued })).release();
 
 		expect(onReleasing).toHaveBeenCalledOnce();
 		// Not queued: the slot was free, we just had to wait for the eviction.
@@ -497,8 +510,8 @@ describe('freeing a shared resource on handover', () => {
 	it('stays silent when the same endpoint takes the slot back', async () => {
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const onReleasing = vi.fn();
-		(await acquireEndpointSlot(llama)).release();
-		(await acquireEndpointSlot(llama, { onReleasing })).release();
+		(await acquire(llama)).release();
+		(await acquire(llama, { onReleasing })).release();
 		expect(onReleasing).not.toHaveBeenCalled();
 	});
 
@@ -512,8 +525,8 @@ describe('freeing a shared resource on handover', () => {
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 
-		(await acquireEndpointSlot(llama)).release();
-		(await acquireEndpointSlot(bridge, { onReleasing: () => order.push('announce') })).release();
+		(await acquire(llama)).release();
+		(await acquire(bridge, { onReleasing: () => order.push('announce') })).release();
 
 		expect(order).toEqual(['announce', 'release']);
 	});
@@ -534,8 +547,8 @@ describe('a handover that fails or is aborted', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockRejectedValueOnce(aborted());
 
-		(await acquireEndpointSlot(llama)).release();
-		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+		(await acquire(llama)).release();
+		await expect(acquire(bridge)).rejects.toThrow(/Aborted/);
 
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
 	});
@@ -547,10 +560,10 @@ describe('a handover that fails or is aborted', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockRejectedValueOnce(aborted());
 
-		(await acquireEndpointSlot(llama)).release();
-		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+		(await acquire(llama)).release();
+		await expect(acquire(bridge)).rejects.toThrow(/Aborted/);
 
-		const next = await acquireEndpointSlot(bridge);
+		const next = await acquire(bridge);
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
 		next.release();
 	});
@@ -562,9 +575,9 @@ describe('a handover that fails or is aborted', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockRejectedValueOnce(aborted());
 
-		const held = await acquireEndpointSlot(llama);
-		const doomed = acquireEndpointSlot(bridge);
-		const behind = acquireEndpointSlot(bridge);
+		const held = await acquire(llama);
+		const doomed = acquire(bridge);
+		const behind = acquire(bridge);
 		held.release();
 
 		await expect(doomed).rejects.toThrow(/Aborted/);
@@ -582,11 +595,11 @@ describe('a handover that fails or is aborted', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockRejectedValueOnce(aborted());
 
-		(await acquireEndpointSlot(llama)).release();
-		await expect(acquireEndpointSlot(bridge)).rejects.toThrow(/Aborted/);
+		(await acquire(llama)).release();
+		await expect(acquire(bridge)).rejects.toThrow(/Aborted/);
 
 		releaseMock.mockClear();
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(bridge)).release();
 		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
 	});
 
@@ -598,8 +611,8 @@ describe('a handover that fails or is aborted', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockRejectedValueOnce(new Error('boom'));
 
-		(await acquireEndpointSlot(llama)).release();
-		await expect(acquireEndpointSlot(bridge)).rejects.toThrow('boom');
+		(await acquire(llama)).release();
+		await expect(acquire(bridge)).rejects.toThrow('boom');
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 0, waiting: 0 });
 	});
 });
@@ -614,14 +627,14 @@ describe('a release that does not actually free anything', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockResolvedValueOnce(false);
 
-		(await acquireEndpointSlot(llama)).release();
+		(await acquire(llama)).release();
 		// First handover: attempted, reported as not freed.
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(bridge)).release();
 		expect(releaseMock).toHaveBeenCalledOnce();
 
 		// The retry must try again rather than assume the handover already happened.
 		releaseMock.mockClear();
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(bridge)).release();
 		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
 	});
 
@@ -632,8 +645,8 @@ describe('a release that does not actually free anything', () => {
 		const bridge = ep('bridge', 1, 'gpu0');
 		releaseMock.mockResolvedValueOnce(false);
 
-		(await acquireEndpointSlot(llama)).release();
-		const slot = await acquireEndpointSlot(bridge);
+		(await acquire(llama)).release();
+		const slot = await acquire(bridge);
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
 		slot.release();
 	});
@@ -642,11 +655,11 @@ describe('a release that does not actually free anything', () => {
 		const llama = ep('llama', 1, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 1, 'gpu0');
 
-		(await acquireEndpointSlot(llama)).release();
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(llama)).release();
+		(await acquire(bridge)).release();
 		releaseMock.mockClear();
 		// llama is gone, bridge holds the group — nothing left to evict.
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(bridge)).release();
 		expect(releaseMock).not.toHaveBeenCalled();
 	});
 });
@@ -664,14 +677,14 @@ describe('a group whose cap is above 1', () => {
 			() => new Promise<boolean>((r) => (finishRelease = () => r(true))),
 		);
 
-		(await acquireEndpointSlot(llama)).release();
-		const first = acquireEndpointSlot(bridge);
+		(await acquire(llama)).release();
+		const first = acquire(bridge);
 		await flush();
 		expect(getResourceQueueDepth('gpu0')).toEqual({ active: 1, waiting: 0 });
 
 		// Mid-eviction, aimed at the endpoint being unloaded.
 		let granted = false;
-		const second = acquireEndpointSlot(llama).then((s) => {
+		const second = acquire(llama).then((s) => {
 			granted = true;
 			return s;
 		});
@@ -692,15 +705,15 @@ describe('a group whose cap is above 1', () => {
 		const llama = ep('llama', 2, 'gpu0', 'llama-cpp-router');
 		const bridge = ep('bridge', 2, 'gpu0');
 
-		const chat = await acquireEndpointSlot(llama);
+		const chat = await acquire(llama);
 		// Overlaps the chat turn, so the eviction is (correctly) skipped.
-		const image = await acquireEndpointSlot(bridge);
+		const image = await acquire(bridge);
 		expect(releaseMock).not.toHaveBeenCalled();
 		image.release();
 		chat.release();
 
 		// llama's model is still resident, so the next image must still evict it.
-		(await acquireEndpointSlot(bridge)).release();
+		(await acquire(bridge)).release();
 		expect(releaseMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'llama' }), undefined);
 	});
 });

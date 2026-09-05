@@ -325,7 +325,7 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
 			endpoint: gated,
 		};
-		const held = await acquireEndpointSlot(gated);
+		const held = await acquireEndpointSlot(gated, { work: { purpose: 'other' } });
 
 		// Start draining the stream in the background — it can't finish while
 		// the slot is held.
@@ -397,7 +397,7 @@ describe('streamCompaction — per-endpoint concurrency gate', () => {
 			...planFor({ resumeMessageId: userMsg.id, parentLeafId: leaf.id }),
 			endpoint: gated,
 		};
-		const held = await acquireEndpointSlot(gated);
+		const held = await acquireEndpointSlot(gated, { work: { purpose: 'other' } });
 		const abort = new AbortController();
 
 		const eventsPromise = drainEvents(

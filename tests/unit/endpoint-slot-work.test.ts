@@ -79,10 +79,13 @@ describe('getResourceGroupSnapshot', () => {
 		expect(getResourceGroupSnapshot('dirac')!.holders).toEqual([]);
 	});
 
-	it('labels an un-declared acquisition `other` rather than guessing chat', async () => {
-		// The default has to be honest: a future caller that forgets to declare
-		// its work must not be silently counted as somebody's chat turn.
-		const slot = await acquireEndpointSlot(ep('dirac', 1));
+	it('carries a deliberately-chosen `other` through, with no model id', async () => {
+		// There is no un-declared acquisition left to test — `work` is required, so
+		// the compiler rejects one, which is the point. What is still worth pinning
+		// is that `other` survives as a real value for work that fits no named kind,
+		// and that an absent `modelId` normalizes to null rather than undefined,
+		// since the wire type promises `string | null`.
+		const slot = await acquireEndpointSlot(ep('dirac', 1), { work: { purpose: 'other' } });
 		expect(getResourceGroupSnapshot('dirac')!.holders[0]).toMatchObject({
 			purpose: 'other',
 			modelId: null,
@@ -263,7 +266,7 @@ describe('getResourceGroupSnapshot', () => {
 	it('normalizes an unlimited cap to null rather than Infinity', async () => {
 		// JSON.stringify(Infinity) is `null` anyway — doing it here keeps the
 		// meaning attached to the place it is still obvious.
-		const slot = await acquireEndpointSlot(ep('open', Infinity));
+		const slot = await acquireEndpointSlot(ep('open', Infinity), { work: { purpose: 'other' } });
 		expect(getResourceGroupSnapshot('open')!.max).toBeNull();
 		slot.release();
 	});
