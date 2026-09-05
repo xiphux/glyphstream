@@ -41,6 +41,11 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { CHUNK_CACHE_MAX_ENTRIES, CHUNK_CACHE_NAME, isImmutableAsset } from '$lib/sw/asset-route';
 import { pickAction, type ArbiterPayload } from '$lib/sw/arbiter';
 import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
+import {
+	CLAIM_PENDING_NAVIGATION,
+	claimPendingNavigation,
+	recordPendingNavigation,
+} from '$lib/sw/pending-navigation';
 import { raiseAppBadge, syncAppBadge } from '$lib/sw/badge';
 import type { ActiveConversationReport, NotifyPushPayload } from '$lib/types/push';
 
@@ -139,6 +144,20 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 	// bus, the same shape as queryClient below in the other direction.
 	if (data?.type === 'GET_BUILD') {
 		event.ports[0]?.postMessage(self.__GLYPHSTREAM_BUILD__);
+		return;
+	}
+	// A page that has just finished booting asking "was I launched by a
+	// notification tap?". The postMessage in focusOrOpen can't answer that for a
+	// COLD launch — it fires while the window is still parsing its bundle, before
+	// the root layout has a message listener to receive it — so the tap also
+	// leaves a record for the page to pull once it's ready. See
+	// $lib/sw/pending-navigation.ts. waitUntil because the read is async and the
+	// worker must not be torn down mid-answer.
+	if (data?.type === CLAIM_PENDING_NAVIGATION) {
+		const port = event.ports[0];
+		event.waitUntil(
+			claimPendingNavigation(self.caches, Date.now()).then((id) => port?.postMessage(id)),
+		);
 	}
 });
 self.addEventListener('activate', (event) => {
@@ -290,6 +309,22 @@ self.addEventListener('notificationclose', (event: NotificationEvent) => {
 
 async function focusOrOpen(conversationId: string): Promise<void> {
 	const targetPath = `/chat/${conversationId}`;
+	// Started, deliberately NOT awaited here. Two constraints pull against each
+	// other: the write must be in flight before any window can ask for it, and
+	// `openWindow` below must keep the awaits in front of it down to the ones
+	// that were always there (see its comment — an await it doesn't expect can
+	// cost the user activation it needs). Kicking the promise off now and
+	// settling it in the `finally` satisfies both, and `waitUntil` in the caller
+	// keeps the worker alive for it either way.
+	const recorded = recordPendingNavigation(self.caches, conversationId, Date.now());
+	try {
+		await focusOrOpenWindow(conversationId, targetPath);
+	} finally {
+		await recorded;
+	}
+}
+
+async function focusOrOpenWindow(conversationId: string, targetPath: string): Promise<void> {
 	const clientsList = await self.clients.matchAll({
 		type: 'window',
 		includeUncontrolled: true,

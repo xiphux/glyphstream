@@ -11,6 +11,7 @@
 	import { syncAppBadgeFromWindow } from '$lib/sw/badge';
 	import { shouldPromptForUpdate } from '$lib/sw/update-prompt';
 	import { askWorkerBuild } from '$lib/sw/ask-build';
+	import { askPendingNavigation } from '$lib/sw/pending-navigation';
 	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
 	import { syncThemeColorMeta } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
@@ -241,8 +242,36 @@
 					void goto(resolve(`/chat/${data.conversationId}`));
 				}
 			});
+			// ...and only now, with that listener attached, ask whether a tap
+			// already came and went. On a COLD launch it did: iOS relaunches the
+			// PWA before dispatching notificationclick, so the SW posted
+			// navigate_to_conversation into this window while it was still parsing
+			// its bundle, and nothing was listening yet. The worker also wrote the
+			// target down for exactly this pull. See $lib/sw/pending-navigation.ts.
+			void claimPendingNavigation();
 		}
 	});
+
+	/**
+	 * Honour a notification tap that landed before this page could listen for it.
+	 *
+	 * Safe to call on every mount, tap or no tap: the worker has a record only
+	 * when a notification was actually tapped, claiming it is single-use, and it
+	 * expires — so an ordinary app open resolves null and does nothing. The
+	 * already-there check covers the paths that got the user to the right thread
+	 * without this (a warm postMessage, or an `openWindow` on a platform that
+	 * honours its path), leaving the claim to consume the spent record only.
+	 *
+	 * `serviceWorker.ready` never settles when nothing is registered — the dev
+	 * server, where the PWA plugin is disabled — so in dev this simply parks.
+	 */
+	async function claimPendingNavigation(): Promise<void> {
+		const worker = (await navigator.serviceWorker.ready.catch(() => null))?.active;
+		if (!worker) return;
+		const conversationId = await askPendingNavigation(worker);
+		if (!conversationId || page.params.id === conversationId) return;
+		await goto(resolve(`/chat/${conversationId}`));
+	}
 
 	function dismissUpdate() {
 		updateAvailable = false;

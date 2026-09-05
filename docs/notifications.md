@@ -184,6 +184,26 @@ Permission must be requested inside a user gesture (the tap on the
 switch). That's why the master switch's handler — not page load —
 calls `requestPermission()`.
 
+### Tapping a notification after iOS has evicted the app
+
+iOS relaunches the PWA _before_ dispatching `notificationclick` to the
+service worker, and it relaunches at the manifest's `start_url` — not at
+whatever path `clients.openWindow()` is given. So on a cold launch the
+worker finds the newly launched window, posts the "go to this thread"
+message into it, and returns — while that window is still parsing its
+bundle and has no message listener yet. The message is dropped and the
+app just sits on the start page.
+
+Tapping the same notification while the app is still alive works, because
+the listener is already attached. That difference is what makes the bug
+look intermittent: it tracks how long you left the notification sitting.
+
+The fix is to not depend on the message landing. `notificationclick`
+writes the target to Cache Storage as well, and the root layout claims it
+on mount — after its listener is attached, whenever that turns out to be.
+The record is single-use and expires after five minutes, so a tap whose
+launch never arrived can't yank you into an old thread the next morning.
+
 ## Privacy
 
 Three independent toggles, all per-user:
@@ -328,6 +348,16 @@ happens, check the SW console for errors.
   (`messages/+server.ts`), and the video relay (`video-relay.ts`).
 - **Client-side fire arbiter**: `pickAction()` in
   `src/lib/sw/arbiter.ts`, exercised by the SW's `push` event handler.
+- **Notification copy**: `src/lib/sw/notification-copy.ts` resolves the
+  heading and body from a payload, shared by the SW's
+  `showNotification()` and the in-app toast so the two can't disagree
+  about what a content-free payload looks like.
+- **Tap → open the thread**: `focusOrOpen()` in `service-worker.ts` posts
+  `navigate_to_conversation` to a live window, and _also_ records the
+  target via `src/lib/sw/pending-navigation.ts` for the cold-launch case,
+  where there is no live window to receive a postMessage. The root layout
+  claims that record on mount. See the module header for why neither
+  postMessage nor `openWindow(path)` is sufficient alone on iOS.
 - **Cross-device presence**: `src/lib/server/push/presence.ts` (in-memory
   registry, single-process — mirrors the in-flight registry) fed by
   `POST /api/presence`. The chat page publishes the conversation it is
