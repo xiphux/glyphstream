@@ -20,10 +20,26 @@ import { MOCK_REPLY, openSidebar, resetData, selectModel, sendChatFromHome } fro
 
 test.beforeEach(() => resetData());
 
-/** The row-level dot for a conversation, addressed through its sidebar link so
- *  a dot on some *other* row can never satisfy the assertion. */
+/** The row-level mark for a conversation — EITHER form — addressed through its
+ *  sidebar link so a mark on some *other* row can never satisfy the assertion.
+ *
+ *  Both forms, deliberately: these assertions ask "is this conversation still in
+ *  flight", and the queued ring is an in-flight answer. Matching only
+ *  /Generating/ would let a `toHaveCount(0)` pass on a conversation that is
+ *  merely waiting at the gate — reporting "it finished" for the one state this
+ *  feature exists to make visible. Use `runningDotFor` where the distinction is
+ *  the point. */
 function dotFor(page: Page, convId: string) {
-	return page.locator(`a[href="/chat/${convId}"]`).getByRole('img', { name: /Generating/ });
+	return page
+		.locator(`a[href="/chat/${convId}"]`)
+		.getByRole('img', { name: /Generating a response|Queued/ });
+}
+
+/** Just the pulsing dot — a conversation actually holding an endpoint slot. */
+function runningDotFor(page: Page, convId: string) {
+	return page
+		.locator(`a[href="/chat/${convId}"]`)
+		.getByRole('img', { name: 'Generating a response' });
 }
 
 /** Start a deliberately-slow turn in the currently-open conversation and wait
@@ -55,7 +71,10 @@ test('dot marks the conversation left generating, and clears once it finishes', 
 	// Shows on the active row too — the dot is about the conversation, not about
 	// where you happen to be standing.
 	await openSidebar(page, isMobile);
-	await expect(dotFor(page, generating)).toBeVisible();
+	// The e2e endpoint sets no max_concurrent, so this turn is granted a slot
+	// immediately — assert the RUNNING form specifically, which also pins that a
+	// lone generation never renders as queued.
+	await expect(runningDotFor(page, generating)).toBeVisible();
 
 	// Navigate away. The chat page aborts its local fetch on the way out and the
 	// server keeps generating, so this is exactly the moment the flag has to

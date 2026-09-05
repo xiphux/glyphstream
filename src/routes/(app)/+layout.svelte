@@ -866,6 +866,7 @@
 							{@const href = `/chat/${c.id}`}
 							{@const active = currentPath === href || pendingPath === href}
 							{@const isRenaming = convUi.renamingId === c.id}
+							{@const activity = generationActivity(c.id)}
 							<li class="group relative" animate:flip={flipParams}>
 								{#if isRenaming}
 									<!--
@@ -892,7 +893,7 @@
 											? 'bg-surface-sunken text-accent'
 											: 'hover:bg-surface-sunken/70'}"
 									>
-										{#if generationActivity(c.id) === 'active'}
+										{#if activity === 'active'}
 											<!-- A generation is running for this conversation right
 											 now (see $lib/generating-conversations). Takes the
 											 leading slot ahead of both the title spinner and the
@@ -906,7 +907,7 @@
 												aria-label="Generating a response"
 												title="Generating…"
 											></span>
-										{:else if generationActivity(c.id) === 'queued'}
+										{:else if activity === 'queued'}
 											<!-- In flight, but every branch is still behind the
 											 endpoint's concurrency gate. Same slot and same size as
 											 the dot above, so the rows stay aligned — but hollow and
