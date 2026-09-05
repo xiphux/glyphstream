@@ -41,14 +41,36 @@ function emptyByKind(): Record<ModelKind, number> {
 	return Object.fromEntries(MODEL_KINDS.map((k) => [k, 0])) as Record<ModelKind, number>;
 }
 
-/** The wire form of a gate record. A pass-through today; it exists so the
- *  gate's internal shape can change without the wire shape following it. */
+/**
+ * How long a `modelId` may be before this view truncates it.
+ *
+ * Generous next to any real model id, and short enough that the field cannot
+ * dominate a payload polled every three seconds.
+ */
+const MAX_MODEL_ID_CHARS = 128;
+
+/**
+ * The wire form of a gate record.
+ *
+ * `modelId` is the one field here that is not operator-authored: it comes from
+ * the request, and the send path validates only that it parses as
+ * `<endpointId>::<something>` with a known endpoint — the upstream half is
+ * never checked against the catalogue. So any signed-in user can put arbitrary
+ * text after the `::` and have it sit in this payload for as long as their slot
+ * is held, which on a queued single-GPU box is a while. Svelte escapes it, so
+ * this is not injection; it is a stranger writing on the operator's diagnostic
+ * surface, which is read as trustworthy. Truncating bounds both the spoof and
+ * the size of a 3s-polled response. Validating at the send route instead was
+ * considered and rejected: a model that is genuinely available upstream but
+ * missing from a stale catalogue would then fail to generate, which trades a
+ * cosmetic problem for a functional one.
+ */
 function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
 	return {
 		id: s.id,
 		endpointId: s.endpointId,
 		purpose: s.purpose,
-		modelId: s.modelId,
+		modelId: s.modelId === null ? null : s.modelId.slice(0, MAX_MODEL_ID_CHARS),
 		since: s.since,
 		state: s.state,
 	};
@@ -133,11 +155,17 @@ export function getEndpointsStatus(): EndpointsStatusResponse {
 			// A group with no gate yet has never been touched, so it is idle at its
 			// CONFIGURED cap. Every member resolved the same group cap at config
 			// load, so reading it off the first is not a coin flip.
-			maxConcurrent:
-				snapshot?.max ??
-				(Number.isFinite(members[0].resourceGroupMaxConcurrent)
+			// Tested on the snapshot's PRESENCE, not on `max` being non-null: null is
+			// a meaningful value here (unlimited), so `??` would silently fall
+			// through to config for a group the gate has already answered for. The
+			// two agree today — `gate.max` is seeded from this same config value —
+			// but that is an invariant maintained elsewhere, not something this
+			// expression should depend on.
+			maxConcurrent: snapshot
+				? snapshot.max
+				: Number.isFinite(members[0].resourceGroupMaxConcurrent)
 					? members[0].resourceGroupMaxConcurrent
-					: null),
+					: null,
 			active: snapshot?.active ?? 0,
 			waiting: snapshot?.waiting ?? 0,
 			evicting: snapshot?.evicting ?? false,

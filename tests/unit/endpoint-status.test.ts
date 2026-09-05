@@ -69,6 +69,12 @@ function cached(models: ModelEntry[], error: string | null = null) {
 	return { models, error, fetchedAt: 1_000, durationMs: 12, expiresAt: 61_000 };
 }
 
+/** Touch the gate so a snapshot exists for the group, at `cap`. */
+function gateFor(endpoint: LoadedEndpoint, cap: number) {
+	const withCap = { ...endpoint, resourceGroupMaxConcurrent: cap };
+	void acquireEndpointSlot(withCap, { work: { purpose: 'other' } }).then((s) => s.release());
+}
+
 beforeEach(() => {
 	getModelCacheEntryMock.mockReturnValue(null);
 });
@@ -202,6 +208,33 @@ describe('getEndpointsStatus', () => {
 			expect.objectContaining({ purpose: 'dream', modelId: 'dirac::small', state: 'active' }),
 		]);
 		slot.release();
+	});
+
+	it('truncates a model id long enough to bloat the polled payload', async () => {
+		// `modelId` is the one request-derived field on this surface: the send path
+		// checks only that it parses as `<endpointId>::<something>` with a known
+		// endpoint, so the upstream half is arbitrary user text.
+		const dirac = ep({ id: 'dirac' });
+		listEndpointsMock.mockReturnValue([dirac]);
+		const slot = await acquireEndpointSlot(dirac, {
+			work: { purpose: 'chat', modelId: `dirac::${'A'.repeat(5000)}` },
+		});
+		const rendered = getEndpointsStatus().groups[0].endpoints[0].active[0].modelId!;
+		expect(rendered).toHaveLength(128);
+		slot.release();
+	});
+
+	it('keeps a group the gate calls unlimited unlimited', () => {
+		// `max: null` means unlimited, not absent — a `??` here would fall through
+		// to the config value for a group the gate has already answered for.
+		const open = ep({
+			id: 'open',
+			maxConcurrent: 8,
+			resourceGroupMaxConcurrent: 8,
+		});
+		listEndpointsMock.mockReturnValue([open]);
+		gateFor(open, Infinity);
+		expect(getEndpointsStatus().groups[0].maxConcurrent).toBeNull();
 	});
 
 	it('reports a bad config as a state, not an exception', () => {
