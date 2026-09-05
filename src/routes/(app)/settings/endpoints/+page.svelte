@@ -102,8 +102,23 @@
 	// svelte-ignore state_referenced_locally
 	let appliedAt = $state(data.status.now);
 
+	/**
+	 * How far back a snapshot may be stamped and still be read as out-of-order
+	 * rather than as the server's clock having stepped.
+	 *
+	 * Reordering is bounded by how long a response can be in flight — a poll
+	 * interval plus a request, seconds at most. Anything older than this is not a
+	 * late response, it is a different clock, and refusing it would freeze the
+	 * view permanently: `appliedAt` is seeded once and the load re-running on
+	 * refocus does not reseed it, so only a reload would recover. Silently, on
+	 * the one page whose job is saying whether anything is happening.
+	 */
+	const REORDER_WINDOW_MS = 30_000;
+
 	function applySnapshot(next: EndpointsStatusResponse) {
-		if (next.now < appliedAt) return; // stale; a newer snapshot already won
+		// Stale — a newer snapshot already won. Bounded, so a clock step re-syncs
+		// on the next poll instead of wedging.
+		if (next.now < appliedAt && appliedAt - next.now < REORDER_WINDOW_MS) return;
 		appliedAt = next.now;
 		status = next;
 		const at = Date.now();
@@ -185,10 +200,13 @@
 				method: 'POST',
 				signal: AbortSignal.timeout(RECHECK_TIMEOUT_MS),
 			});
-			if (res.status === 401 || res.status === 403) {
-				lostSession = true;
-				return;
-			}
+			// Deliberately NOT treated as a lost session, unlike the poll's: this is
+			// a POST to /api/*, so it also passes through the CSRF origin gate,
+			// which answers 403 for a mismatched Origin on a browser that sends no
+			// `Sec-Fetch-Site` behind a proxy that rewrites headers. Freezing the
+			// whole page on that would give a wrong explanation and kill the GET
+			// poll, which the gate never touches. A real session loss is caught by
+			// the next poll within three seconds.
 			if (!res.ok) {
 				toast.error(await errorMessageFromResponse(res));
 				return;
@@ -409,7 +427,7 @@
 				<button
 					type="button"
 					onclick={() => void recheck(ep.id)}
-					disabled={rechecking.has(ep.id)}
+					disabled={rechecking.has(ep.id) || lostSession}
 					title="Re-probe this endpoint now"
 					class="rounded-md border border-border p-1.5 transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
 					aria-label="Recheck {ep.displayName}"
