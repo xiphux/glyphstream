@@ -109,12 +109,6 @@ export interface MediaRelayParams {
 	 * queued-vs-running reader keys off, and an optional hook is not a contract.
 	 */
 	inFlight: InFlightEntry;
-	/** Which modality this relay is running, for the endpoint slot's work label.
-	 *  Set by the two wrappers alongside `prepare` (they are the only callers of
-	 *  `startMediaRelay`) rather than required on the params the routes build,
-	 *  so a route can't state a modality that disagrees with the relay it picked.
-	 *  Defaults to `image` — the same shape `prepare` uses. */
-	modality?: 'image' | 'video';
 	/**
 	 * Fires once the produced media is durably the conversation's — row appended,
 	 * media linked — and BEFORE `done` goes out. For a caller whose generation
@@ -183,8 +177,23 @@ export type MediaGenerate = (ctx: {
 	abortSignal?: AbortSignal;
 }) => Promise<GeneratedMedia | MediaFailure | null>;
 
+/**
+ * The scaffold's own view of its params: whatever the route built, plus the
+ * modality the calling wrapper is running.
+ *
+ * Required, for the same reason `inFlight` is — an optional field with a silent
+ * default is not a contract, and a third modality wired up without setting it
+ * would have been labelled `image` on the admin endpoint view: no crash, no
+ * failing test, just a diagnostic surface quietly lying. Stated HERE rather
+ * than on `MediaRelayParams` because the routes build those, and a route has no
+ * business naming a modality that could disagree with the relay it chose;
+ * `startImageRelay` / `startVideoRelay` are the only callers and each knows its
+ * own answer statically.
+ */
+type MediaRelayScaffoldParams = MediaRelayParams & { modality: 'image' | 'video' };
+
 export function startMediaRelay(
-	params: MediaRelayParams,
+	params: MediaRelayScaffoldParams,
 	generate: MediaGenerate,
 ): ReadableStream<Uint8Array> {
 	return new ReadableStream({
@@ -216,10 +225,7 @@ export function startMediaRelay(
 				// single-GPU backend serializes; emit `queued` while waiting.
 				try {
 					slot = await acquireEndpointSlot(params.endpoint, {
-						work: {
-							purpose: params.modality === 'video' ? 'video' : 'image',
-							modelId: params.storedModelId,
-						},
+						work: { purpose: params.modality, modelId: params.storedModelId },
 						signal: params.abortSignal,
 						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
 						onReleasing: () =>

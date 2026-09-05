@@ -206,13 +206,17 @@ export interface AcquireOptions {
 	onReleasing?: () => void;
 	/**
 	 * What this acquisition is for, surfaced by `getResourceGroupSnapshot` to the
-	 * admin endpoint view. Optional so the gate's contract is unchanged for a
-	 * caller that doesn't care, but every in-tree caller passes one: nine
-	 * distinct paths acquire slots and only two of them (the chat and media
-	 * relays) also register in the conversation in-flight registry, so without
-	 * this a background title generation or dreaming sweep occupying a
-	 * `max_concurrent = 1` box shows up as an active slot with nothing named
-	 * against it — which is the exact confusion the view exists to remove.
+	 * admin endpoint view.
+	 *
+	 * Optional only so the ~100 gate tests that exercise queue semantics need not
+	 * each name a purpose they don't care about; every PRODUCTION caller passes
+	 * one, and `CLAUDE.md` states the rule. Most paths that take a slot never
+	 * touch the conversation in-flight registry — compaction, dreaming, memory
+	 * summaries and title generation among them — so on a `max_concurrent = 1`
+	 * box an undeclared acquisition shows up as an occupied endpoint with
+	 * nothing accounted against it, which is the exact confusion the view exists
+	 * to remove. Making it required would enforce that structurally rather than
+	 * by convention; the reason it isn't is test churn, not design.
 	 */
 	work?: SlotWork;
 }

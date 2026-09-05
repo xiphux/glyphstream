@@ -1728,7 +1728,9 @@ export interface GeneratingConversationsResponse {
  */
 
 /** What a held or queued endpoint slot is doing. Mirrors `SlotPurpose` in
- *  `server/endpoints/concurrency.ts`; `other` is an unlabelled acquisition. */
+ *  `server/endpoints/concurrency.ts`; `other` is work that fits none of the
+ *  named kinds, deliberately chosen rather than defaulted. Readers must tolerate
+ *  a value they don't know: a long-lived tab polls across deploys. */
 export type EndpointSlotPurpose =
 	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
 
