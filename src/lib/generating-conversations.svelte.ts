@@ -54,8 +54,10 @@
  *    never *adds*, so a generation started elsewhere after this page loaded
  *    stays invisible until the next load; a client learning about one live is
  *    the standing per-user channel that ROADMAP's live cross-client sync
- *    defers. ACTIVITY, by contrast, is fully overwritten on every reconcile:
- *    it's a property of an id already known to be running, not a new id.
+ *    defers. ACTIVITY, by contrast, is overwritten on any reconcile that
+ *    carries it: it's a property of an id already known to be running, not a
+ *    new id. A reconcile that says nothing about activity leaves it alone —
+ *    which is a different thing from saying nothing is queued; see below.
  *
  * Module singleton, mirroring `title-pending` / `stream-presence` — the
  * layout is the chat page's parent, so a module-level store is the only way
