@@ -275,6 +275,14 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		// relay's post-`done` title race — same reasoning as the send path, and
 		// the resumed turn is just as likely to be one the user walked away from.
 		// Identity-guarded, so onComplete's later call is a no-op.
+		// Stamp the gate handover, exactly as the send path does. Not optional
+		// bookkeeping: `filterFullyQueued` reads this field as the whole
+		// definition of "still behind the gate", so a resumed turn that never
+		// stamps it streams to the GPU while every reader — the sidebar poll,
+		// the layout seed — reports it as queued, and nothing corrects them.
+		onStarted: () => {
+			inFlight.generationStartedAt = Date.now();
+		},
 		onGenerationSettled: () => clearInFlight(params.id, inFlight),
 		onComplete: () => clearInFlight(params.id, inFlight),
 		needsApproval,
