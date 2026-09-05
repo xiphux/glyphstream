@@ -72,9 +72,9 @@ export interface InFlightEntry {
 	modelId: string | null;
 	/** Unix ms when this branch actually began generating (acquired its
 	 *  concurrency slot), or null while still queued behind the gate. Stamped by
-	 *  the REGISTERING ROUTE, not by the registry or the relay: the streaming
-	 *  paths hand the relay an `onStarted` that sets it, and the synchronous
-	 *  send path assigns it straight after `acquireEndpointSlot` resolves. Lets a recovered fan-out distinguish
+	 *  the RELAY, which takes this entry as a required parameter precisely so a
+	 *  route cannot forget to wire it up; the synchronous send path reaches no
+	 *  relay and assigns it straight after `acquireEndpointSlot` resolves. Lets a recovered fan-out distinguish
 	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
 	generationStartedAt: number | null;
 	/** Split-attachments input image this branch is editing / animating, or null

@@ -4,7 +4,7 @@
  * lifecycle lives here once:
  *
  *   per-endpoint slot acquire (+ `queued` emission, + cancel-while-queued)
- *   → onStarted + `start`
+ *   → stamp the in-flight entry + `start`
  *   → first-exchange title task (suppressed for fan-out — /prepare owns it)
  *   → [modality-specific generate: produce + persist the media bytes]
  *   → append as a sibling (active_leaf pinned for fan-out) + link media
@@ -26,6 +26,7 @@
 import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
+import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
 import { raceTitle, startTitleTaskIfFirstExchange } from '../tasks/title-task-runner';
@@ -99,9 +100,15 @@ export interface MediaRelayParams {
 	 *  and closes); any OTHER throw is logged and generation proceeds with whatever
 	 *  the prepare left in place. A normal return proceeds to slot acquisition. */
 	prepare?: (ctx: { write: SseWriter['write']; abortSignal?: AbortSignal }) => Promise<void>;
-	/** Fires when generation actually begins (slot acquired) — the route stamps
-	 *  the in-flight entry so a recovered fan-out can show QUEUED vs timer. */
-	onStarted?: () => void;
+	/**
+	 * This generation's in-flight registry entry. The relay stamps its
+	 * `generationStartedAt` the instant the concurrency gate hands over a slot.
+	 *
+	 * REQUIRED, and the entry rather than a callback — see the identical field
+	 * on the chat relay for why. The short version: that stamp is what every
+	 * queued-vs-running reader keys off, and an optional hook is not a contract.
+	 */
+	inFlight: InFlightEntry;
 	/**
 	 * Fires once the produced media is durably the conversation's — row appended,
 	 * media linked — and BEFORE `done` goes out. For a caller whose generation
@@ -220,9 +227,10 @@ export function startMediaRelay(
 				}
 
 				// Slot acquired → generation begins. `start` flips the client column
-				// from QUEUED to a live timer; onStarted stamps the in-flight entry so
-				// a recovery rebuild can do the same.
-				params.onStarted?.();
+				// from QUEUED to a live timer; the stamp lets a recovery rebuild do
+				// the same, and lets the sidebar tell this conversation from the ones
+				// still in line behind it.
+				params.inFlight.generationStartedAt = Date.now();
 				// Generation clock starts here — after the queue wait, so the
 				// recorded time is decode/render only, not slot contention.
 				const genStartedAt = Date.now();

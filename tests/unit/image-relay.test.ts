@@ -1,13 +1,14 @@
 /**
  * Unit tests for the streaming image relay — the sole image-generation path
  * (single send + every fan-out branch). Exercises the SSE event sequence
- * (queued → start → done / error), the in-flight timer-stamp (onStarted), the
+ * (queued → start → done / error), the in-flight timer-stamp, the
  * fan-out active_leaf pinning, and the server-side regenerate delete — all
  * against a real in-memory DB with the upstream client + persister mocked.
  *
  * Modeled on relay-tool-loop.test.ts: real test DB + gate, mocked side-effects.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { inFlightEntryStub } from './_helpers/in-flight';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
 
@@ -167,7 +168,7 @@ function baseParams(over: Partial<ImageRelayParams> & Pick<ImageRelayParams, 'us
 		suppressTitleTask: over.suppressTitleTask ?? false,
 		suppressNotify: over.suppressNotify ?? false,
 		displayOnly: over.displayOnly,
-		onStarted: over.onStarted,
+		inFlight: over.inFlight ?? inFlightEntryStub(over.endpoint ?? endpoint()),
 		onMediaPersisted: over.onMediaPersisted,
 		onGenerationSettled: over.onGenerationSettled,
 		onComplete: over.onComplete ?? vi.fn(),
@@ -343,9 +344,10 @@ describe('startImageRelay — avatar generation', () => {
 });
 
 describe('startImageRelay — happy path', () => {
-	it('emits start → done, persists the assistant sibling, and fires onStarted/onComplete', async () => {
+	it('emits start → done, persists the assistant sibling, stamps the entry, fires onComplete', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
-		const onStarted = vi.fn();
+		// The relay owns this stamp, so the entry itself is the assertion target.
+		const inFlight = inFlightEntryStub(endpoint());
 		const onComplete = vi.fn();
 		const events = await drain(
 			startImageRelay(
@@ -353,7 +355,7 @@ describe('startImageRelay — happy path', () => {
 					conversationId: conv.id,
 					userId: user.id,
 					userMessage,
-					onStarted,
+					inFlight,
 					onComplete,
 				}),
 			),
@@ -361,7 +363,7 @@ describe('startImageRelay — happy path', () => {
 
 		const types = events.map((e) => e.type);
 		expect(types).toEqual(['start', 'done']); // no queued under unlimited capacity
-		expect(onStarted).toHaveBeenCalledOnce();
+		expect(inFlight.generationStartedAt).not.toBe(null);
 		expect(onComplete).toHaveBeenCalledOnce();
 
 		const done = events.find((e) => e.type === 'done')!;

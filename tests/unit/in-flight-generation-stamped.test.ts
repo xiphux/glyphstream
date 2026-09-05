@@ -1,28 +1,26 @@
 /**
- * Every route that registers an in-flight generation must stamp
- * `generationStartedAt` when the concurrency gate hands it a slot.
+ * Every route that registers an in-flight generation must end up with
+ * `generationStartedAt` stamped when the concurrency gate grants a slot.
  *
  * The field is the whole definition of "queued rather than running": the
  * sidebar's mark, the layout seed and the 5s poll all read it through
- * `filterFullyQueued`, and a null one means "still behind the gate". But the
- * registry doesn't set it and neither does the relay — each route stamps its own
- * entry, three of them through the relay's OPTIONAL `onStarted` callback. An
- * optional callback nobody is required to pass is not a contract, and the
- * tool-approval resume shipped without it: the resumed turn took the GPU and
- * streamed while every reader reported it as waiting in line, permanently, since
- * the client deliberately lets server truth win on activity.
+ * `filterFullyQueued`, and a null one means "still behind the gate".
  *
- * Nothing else catches this. It type-checks (the callback is optional), it
- * lints, and no runtime test covers it — the behaviour is correct in every way
- * except the one bit of bookkeeping, and the symptom is a wrong icon on a row
- * the user has usually navigated away from.
+ * The relays now stamp it themselves — they take the `InFlightEntry` as a
+ * REQUIRED parameter — so for anything that goes through a relay, the type
+ * checker is the guard and this test has nothing to add. It used to be the
+ * only guard, back when the relay took an optional `onStarted` callback, and
+ * the tool-approval resume shipped without one: it held the GPU and streamed
+ * while every reader reported it as waiting in line, permanently, since the
+ * client deliberately lets server truth win on activity. An optional hook
+ * nobody is required to pass is not a contract.
  *
- * Scoped to the file level on purpose: matching a stamp to a particular
- * `registerInFlight` call would need real flow analysis, and the useful question
- * is the cheap one — does this route know the field exists at all? A route that
- * registers an entry and never mentions `generationStartedAt` has certainly
- * forgotten it. (`messages/+server.ts` registers once and stamps on four
- * branches, which is why per-call matching would be the wrong shape here.)
+ * What remains is the case the type checker can't see: a route that registers
+ * an entry and then does its own thing — the synchronous JSON send path already
+ * acquires a slot and stamps by hand. So this asserts the weaker, still-useful
+ * property that such a route knows the field exists. A route that registers an
+ * entry, never reaches a relay, and never mentions `generationStartedAt` has
+ * certainly forgotten it.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -30,6 +28,10 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
 const ROUTES = resolve(__dirname, '../../src/routes');
+
+/** Calling one of these forces the entry to be passed — the param is required,
+ *  and the relay does the stamping. */
+const RELAYS = ['startStreamingRelay(', 'startMediaRelay(', 'startImageRelay(', 'startVideoRelay('];
 
 function serverFiles(dir: string): string[] {
 	const out: string[] = [];
@@ -42,18 +44,21 @@ function serverFiles(dir: string): string[] {
 }
 
 describe('in-flight registration', () => {
-	it('stamps generationStartedAt in every route that registers a generation', () => {
+	it('leaves no route that registers a generation without a way to stamp it', () => {
 		const offenders = serverFiles(ROUTES)
 			.filter((file) => {
 				const src = readFileSync(file, 'utf8');
-				return src.includes('registerInFlight(') && !src.includes('generationStartedAt');
+				if (!src.includes('registerInFlight(')) return false;
+				if (RELAYS.some((call) => src.includes(call))) return false;
+				return !src.includes('generationStartedAt');
 			})
 			.map((file) => relative(ROUTES, file));
 
-		// A route here registers an entry the sidebar will read and never records
-		// when the gate granted it a slot, so its conversation reports as queued
-		// for the entire generation. Add the stamp — `onStarted` for a relay path,
-		// or straight after `acquireEndpointSlot` resolves on a synchronous one.
+		// A route here registers an entry the sidebar will read, reaches no relay
+		// to stamp it, and never records when the gate granted it a slot — so its
+		// conversation reports as queued for the entire generation. Either route it
+		// through a relay, or assign `generationStartedAt` straight after
+		// `acquireEndpointSlot` resolves.
 		expect(offenders).toEqual([]);
 	});
 });

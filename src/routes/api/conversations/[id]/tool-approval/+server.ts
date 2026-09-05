@@ -271,14 +271,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		userMessage: lastUserMessage,
 		storedModelId: meta.modelId,
 		abortSignal: inFlight.controller.signal,
-		// Stamp the gate handover, exactly as the send path does. Not optional
-		// bookkeeping: `filterFullyQueued` reads this field as the whole
-		// definition of "still behind the gate", so a resumed turn that never
-		// stamps it streams to the GPU while every reader — the sidebar poll,
-		// the layout seed — reports it as queued, and nothing corrects them.
-		onStarted: () => {
-			inFlight.generationStartedAt = Date.now();
-		},
+		inFlight,
 		// Free the registry entry when the generation settles, ahead of the
 		// relay's post-`done` title race — same reasoning as the send path, and
 		// the resumed turn is just as likely to be one the user walked away from.

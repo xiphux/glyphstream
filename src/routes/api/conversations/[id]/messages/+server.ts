@@ -378,9 +378,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
-				onStarted: () => {
-					inFlight.generationStartedAt = Date.now();
-				},
+				inFlight,
 				onGenerationSettled,
 				onComplete: onBranchComplete,
 			});
@@ -440,9 +438,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
-				onStarted: () => {
-					inFlight.generationStartedAt = Date.now();
-				},
+				inFlight,
 				// Stash the bridge job id on our in-flight entry so the cancel
 				// endpoint can DELETE /v1/videos/{id} for this branch.
 				onJobId: (jobId) => {
@@ -708,9 +704,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				fanoutIndex,
 				suppressTitleTask: isFanout,
 				suppressNotify: isFanout,
-				onStarted: () => {
-					inFlight.generationStartedAt = Date.now();
-				},
+				inFlight,
 				onGenerationSettled,
 				// Clear the registry slot once the whole turn settles (all
 				// loop iterations + tool executions done), not per recorder.

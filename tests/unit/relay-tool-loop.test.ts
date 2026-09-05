@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
 import { seedUser } from './_helpers/seed';
+import { inFlightEntryStub } from './_helpers/in-flight';
 
 const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
@@ -260,6 +261,7 @@ describe('multi-iteration tool loop', () => {
 			requestBody: initialBody,
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {
 				onCompleteCalls++;
 			},
@@ -356,6 +358,7 @@ describe('multi-iteration tool loop', () => {
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
 			// no rebuildRequestBody — single-iteration mode
 		});
@@ -398,6 +401,7 @@ describe('multi-iteration tool loop', () => {
 			requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'visitors?' }] },
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
 		});
 		await drainEvents(stream);
@@ -450,6 +454,7 @@ describe('multi-iteration tool loop', () => {
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
 			rebuildRequestBody: async () => ({
 				model: 'bridge::test',
@@ -544,6 +549,7 @@ describe('deferred tool search activation', () => {
 			requestBody: initialBody,
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
 			// Mirror the real endpoint closure: append the resolved activated defs.
 			rebuildRequestBody: async ({ activatedToolNames }) => ({
@@ -627,6 +633,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {},
 			needsApproval: () => true,
 			rebuildRequestBody: async () => {
@@ -729,6 +736,7 @@ describe('multi-iteration tool loop with needsApproval', () => {
 				requestBody: { model: 'bridge::test', messages: [] },
 				userMessage: user,
 				storedModelId: 'bridge::test',
+				inFlight: inFlightEntryStub(endpoint),
 				onComplete: () => {},
 				initialParentMessageId: t1.id,
 			}),
@@ -773,6 +781,7 @@ describe('per-endpoint concurrency gate', () => {
 			requestBody: { model: 'bridge::test', messages: [] },
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onComplete: () => {
 				completed = true;
 			},
@@ -828,6 +837,7 @@ describe('per-endpoint concurrency gate', () => {
 			requestBody: { model: 'bridge::test', messages: [] },
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			abortSignal: abort.signal,
 			onComplete: () => {
 				completed = true;
@@ -866,6 +876,7 @@ describe('per-endpoint concurrency gate', () => {
 				requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'x' }] },
 				userMessage: user,
 				storedModelId: 'bridge::test',
+				inFlight: inFlightEntryStub(endpoint),
 				// Fan-out branch: pinned sibling, recovery rebuilds the failed column.
 				advanceActiveLeaf: false,
 				onComplete: () => {},
@@ -896,6 +907,7 @@ describe('per-endpoint concurrency gate', () => {
 				requestBody: { model: 'bridge::test', messages: [{ role: 'user', content: 'x' }] },
 				userMessage: user,
 				storedModelId: 'bridge::test',
+				inFlight: inFlightEntryStub(endpoint),
 				advanceActiveLeaf: false,
 				abortSignal: abort.signal,
 				onComplete: () => {},
@@ -937,6 +949,7 @@ describe('per-endpoint concurrency gate', () => {
 			requestBody: { model: 'solo::test', messages: [{ role: 'user', content: 'x' }] },
 			userMessage: user,
 			storedModelId: 'solo::test',
+			inFlight: inFlightEntryStub(solo),
 			onComplete: () => {},
 		});
 
@@ -996,6 +1009,7 @@ describe('in-flight registry release boundary', () => {
 			},
 			userMessage: user,
 			storedModelId: 'bridge::test',
+			inFlight: inFlightEntryStub(endpoint),
 			onGenerationSettled,
 			onComplete,
 		});

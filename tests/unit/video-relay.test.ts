@@ -2,12 +2,13 @@
  * Unit tests for the async video relay. The poll loop only sleeps while the job
  * is still running, so a job that comes back `completed` from videoCreate skips
  * polling entirely — letting us assert the start→progress→done sequence, the
- * onJobId / onStarted callbacks, fan-out leaf pinning, the regenerate delete,
+ * onJobId callback, the in-flight timer-stamp, fan-out leaf pinning, the regenerate delete,
  * and the failed/cancelled paths without fake timers.
  *
  * Modeled on relay-tool-loop.test.ts: real test DB + gate, mocked side-effects.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { inFlightEntryStub } from './_helpers/in-flight';
 import { Buffer } from 'node:buffer';
 import { Readable } from 'node:stream';
 import { createTestDb, closeTestDb, type TestDB } from './_helpers/test-db';
@@ -170,16 +171,17 @@ function baseParams(over: Partial<VideoRelayParams> & Pick<VideoRelayParams, 'us
 		abortSignal: over.abortSignal,
 		advanceActiveLeaf: over.advanceActiveLeaf,
 		suppressTitleTask: over.suppressTitleTask ?? false,
-		onStarted: over.onStarted,
+		inFlight: over.inFlight ?? inFlightEntryStub(over.endpoint ?? endpoint()),
 		onJobId: over.onJobId,
 		onComplete: over.onComplete ?? vi.fn(),
 	} satisfies VideoRelayParams;
 }
 
 describe('startVideoRelay — happy path', () => {
-	it('emits start → progress → done, persists the sibling, fires onStarted/onJobId/onComplete', async () => {
+	it('emits start → progress → done, persists the sibling, stamps the entry, fires onJobId/onComplete', async () => {
 		const { conv, user, userMessage } = seedConvWithUser();
-		const onStarted = vi.fn();
+		// The relay owns this stamp, so the entry itself is the assertion target.
+		const inFlight = inFlightEntryStub(endpoint());
 		const onJobId = vi.fn();
 		const onComplete = vi.fn();
 		const events = await drain(
@@ -188,7 +190,7 @@ describe('startVideoRelay — happy path', () => {
 					conversationId: conv.id,
 					userId: user.id,
 					userMessage: userMessage as ChatMessage,
-					onStarted,
+					inFlight,
 					onJobId,
 					onComplete,
 				}),
@@ -199,7 +201,7 @@ describe('startVideoRelay — happy path', () => {
 		expect(types[0]).toBe('start');
 		expect(types).toContain('progress');
 		expect(types).toContain('done');
-		expect(onStarted).toHaveBeenCalledOnce();
+		expect(inFlight.generationStartedAt).not.toBe(null);
 		expect(onJobId).toHaveBeenCalledWith('job-1');
 		expect(onComplete).toHaveBeenCalledOnce();
 

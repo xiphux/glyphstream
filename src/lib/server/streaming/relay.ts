@@ -35,6 +35,7 @@ import type {
 } from '$lib/types/api';
 import type { LoadedEndpoint, ProviderQuirk } from '../endpoints/config';
 import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
+import type { InFlightEntry } from './in-flight';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
 import { logLevel } from '../env';
@@ -145,9 +146,20 @@ export interface RelayParams {
 	 * themselves (`recoveredInFlight` checks the branch leaf).
 	 */
 	onGenerationSettled?: () => void;
-	/** Called when generation begins (slot acquired) — the route stamps the
-	 *  in-flight entry so a recovered fan-out shows a per-branch timer. */
-	onStarted?: () => void;
+	/**
+	 * This turn's in-flight registry entry. The relay stamps its
+	 * `generationStartedAt` the instant the concurrency gate hands over a slot.
+	 *
+	 * REQUIRED, and taken as the entry rather than a callback, because that
+	 * stamp is the whole definition of "queued vs running" for every reader —
+	 * the sidebar mark, its poll, the layout seed, fan-out recovery — and an
+	 * optional `onStarted` hook made it a thing each route had to remember. One
+	 * route didn't, and its resumed turns reported as queued for their entire
+	 * run while holding the GPU. The gate handover happens here, so the stamp
+	 * belongs here; a new route now cannot fail to opt in, because there is
+	 * nothing to opt into.
+	 */
+	inFlight: InFlightEntry;
 	// Note: chat fan-out is pick-one, so this relay has no regenerate path today
 	// (regenerate is UI-gated to media via FanoutColumns' onRegenerate). If chat
 	// regenerate is ever enabled it would be additive like the media re-roll —
@@ -288,9 +300,10 @@ export async function startStreamingRelay(
 					onReleasing: () =>
 						write({ type: 'progress', percent: null, status: 'Freeing GPU memory…' }),
 				});
-				// Slot acquired → generation begins; stamp the in-flight entry so a
-				// recovered fan-out shows this branch's timer (vs a still-QUEUED one).
-				params.onStarted?.();
+				// Slot acquired → generation begins. Stamping here rather than in the
+				// route is what makes the field trustworthy: this is the only line in
+				// the streaming path that runs exactly when the gate hands over.
+				params.inFlight.generationStartedAt = Date.now();
 				// Replay any pre-stream skill activations as live tool events so the
 				// block renders in-flight before the response (the rows are already
 				// persisted + in requestBody; this is purely the live-render echo).

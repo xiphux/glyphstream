@@ -374,9 +374,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// in it), and an avatar is a side errand — not the thing to name the
 		// thread after.
 		suppressTitleTask: true,
-		onStarted: () => {
-			inFlight.generationStartedAt = Date.now();
-		},
+		inFlight,
 		// The whole point of a background draw, and unconditional there. A second
 		// draw started since supersedes this one at the registry (they share
 		// AVATAR_BRANCH) and aborts it, so in the ordinary case a superseded draw
