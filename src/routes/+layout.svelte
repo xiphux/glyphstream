@@ -266,15 +266,18 @@
 
 	/**
 	 * Take the pending tap target from the worker, consuming it. Resolves null
-	 * when there is nothing pending or no worker to ask — including in dev, where
-	 * the PWA plugin is disabled and `serviceWorker.ready` never settles at all,
-	 * so this simply parks.
+	 * when there is nothing pending or no worker to ask.
+	 *
+	 * `getRegistration()`, not `ready` — the same choice `$lib/sw/badge.ts`
+	 * documents, and for the same reason: `ready` never settles when no service
+	 * worker is registered (dev builds, where the PWA plugin is off), so it would
+	 * park a promise per page load instead of resolving null and being done.
 	 *
 	 * Named apart from `claimPendingNavigation` in $lib/sw/pending-navigation.ts,
 	 * which is the worker-side Cache Storage read this reaches by message.
 	 */
 	async function takePendingNotificationTap(): Promise<string | null> {
-		const worker = (await navigator.serviceWorker.ready.catch(() => null))?.active;
+		const worker = (await navigator.serviceWorker.getRegistration().catch(() => null))?.active;
 		if (!worker) return null;
 		return askPendingNavigation(worker);
 	}
