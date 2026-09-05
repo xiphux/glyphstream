@@ -51,7 +51,7 @@ tests/e2e/            # playwright (production-build webServer)
   user-owned table). `MediaStore` interface so S3 swap is a single new file.
 - **Self-hosted on the public internet is the deployment target.** Auth is
   GitHub OAuth + passkeys; access is gated per-user by `users.disabled_at`
-  (toggled from `/settings/admin`), NOT a config allowlist. Account creation
+  (toggled from `/settings/users`), NOT a config allowlist. Account creation
   is invite-only after the first (admin) user. Reverse proxy in front for
   TLS + HTTP/2.
 - **The upstream payload is rent, and its prefix must be stable.** The system
@@ -89,7 +89,7 @@ tests/e2e/            # playwright (production-build webServer)
 - **A new `acquireEndpointSlot` caller declares its `work`** (purpose +
   model id). The gate — not the conversation in-flight registry — is the
   source of truth for endpoint occupancy on `/settings/endpoints`, because only
-  2 of the 9 acquiring paths register in that registry; an undeclared
+  3 of the 9 acquiring paths register in that registry; an undeclared
   acquisition renders as an unattributed `other` holding a single-GPU box.
   Corollary for the gate itself: every path that changes `gate.active` changes
   `gate.holders` with it — including the handover eviction's catch, where the

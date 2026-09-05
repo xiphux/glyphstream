@@ -8,12 +8,16 @@ import type { PageServerLoad } from './$types';
  * 403 for non-admins).
  *
  * SSRs a first snapshot so the page paints populated, then the client polls
- * `/api/admin/endpoints/status` for the live half. The initial load is the ONE
- * place that may pay an upstream round-trip: `listAllModelsWithErrors` warms
- * the shared model cache (respecting its stale-while-revalidate TTL and
- * in-flight dedup, so it usually returns from cache) which is what gives the
- * first paint a health state instead of a page of "unknown". Every subsequent
- * poll reads that cache without touching the upstream.
+ * `/api/admin/endpoints/status` for the live half. This load is the only
+ * AUTOMATIC path that can pay an upstream round-trip — the deliberate one is
+ * the Recheck button, which exists to force a probe.
+ * `listAllModelsWithErrors` warms the shared model cache (respecting its
+ * stale-while-revalidate TTL and in-flight dedup, so it usually returns from
+ * cache) which is what gives the first paint a health state instead of a page
+ * of "unknown". In practice it is always a cache hit: the `(app)` layout awaits
+ * the same aggregation on every navigation, and `await parent()` below means
+ * that has already settled. Every subsequent poll reads the cache without
+ * touching the upstream.
  *
  * Its result is deliberately discarded — the aggregation happens in
  * `getEndpointsStatus`, and this is called only for the warming side effect,

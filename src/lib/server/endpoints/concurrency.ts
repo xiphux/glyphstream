@@ -210,13 +210,14 @@ export interface AcquireOptions {
 	 *
 	 * Optional only so the ~100 gate tests that exercise queue semantics need not
 	 * each name a purpose they don't care about; every PRODUCTION caller passes
-	 * one, and `CLAUDE.md` states the rule. Most paths that take a slot never
-	 * touch the conversation in-flight registry — compaction, dreaming, memory
-	 * summaries and title generation among them — so on a `max_concurrent = 1`
-	 * box an undeclared acquisition shows up as an occupied endpoint with
-	 * nothing accounted against it, which is the exact confusion the view exists
-	 * to remove. Making it required would enforce that structurally rather than
-	 * by convention; the reason it isn't is test churn, not design.
+	 * one, and `CLAUDE.md` states the rule. Six of the nine paths that take a
+	 * slot never touch the conversation in-flight registry — compaction (both
+	 * paths), dreaming, memory summaries, prompt enhancement and title
+	 * generation — so on a `max_concurrent = 1` box an undeclared acquisition
+	 * shows up as an occupied endpoint with nothing accounted against it, which
+	 * is the exact confusion the view exists to remove. Making it required would
+	 * enforce that structurally rather than by convention; the reason it isn't
+	 * is test churn, not design.
 	 */
 	work?: SlotWork;
 }

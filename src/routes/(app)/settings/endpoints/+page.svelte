@@ -31,6 +31,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
+	import type { PageData } from './$types';
 	import type {
 		EndpointGroupStatus,
 		EndpointHealth,
@@ -39,10 +40,18 @@
 		EndpointsStatusResponse,
 	} from '$lib/types/api';
 
-	let { data }: { data: { status: EndpointsStatusResponse } } = $props();
+	let { data }: { data: PageData } = $props();
 
-	// SSR gives the first paint; from there the poll owns this, so seeding from
-	// `data` once is the intent — the load never re-runs behind us.
+	// SSR gives the first paint; from there the poll owns this, so reading `data`
+	// exactly once is the intent.
+	//
+	// The load DOES re-run behind us — `+page.server.ts` awaits `parent()`, which
+	// couples it to the `(app)` layout's `invalidate('app:conversations')`, and
+	// the layout fires that on refocus, which this page (left open for long
+	// stretches, by design) will see often. Seeding non-reactively is what makes
+	// that harmless: a reload replaces `data` and nothing here reads it again, so
+	// the poll stays the single source of truth instead of fighting a stale SSR
+	// snapshot for the display.
 	// svelte-ignore state_referenced_locally
 	let status = $state<EndpointsStatusResponse>(data.status);
 	// A SET, not a single id: with one slot, rechecking ANY endpoint disabled

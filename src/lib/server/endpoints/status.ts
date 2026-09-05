@@ -8,7 +8,8 @@
  *  - the concurrency gate — what each resource group is actually doing right now.
  *
  * The gate is the authority on occupancy rather than the conversation in-flight
- * registry, because only two of the nine slot-acquiring paths register there.
+ * registry, because only three of the nine slot-acquiring paths register there
+ * (the chat relay, the media relay, and the sync send path).
  * Reading the registry instead would render a title generation or a dreaming
  * sweep on a `max_concurrent = 1` box as an occupied endpoint with nothing named
  * against it — the exact confusion this page exists to remove.
