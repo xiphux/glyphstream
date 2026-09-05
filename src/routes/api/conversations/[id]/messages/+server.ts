@@ -749,8 +749,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 			if (inFlight.controller.signal.aborted) error(499, 'Client closed request');
 			throw e;
 		}
-		// The slot is ours — same stamp the streaming branches make from the
-		// relay's `onStarted`. Dormant like the rest of this path, but the field
+		// The slot is ours. The relay-backed branches get this stamp from the relay
+		// itself; this path gates by hand, so it stamps by hand. Dormant like the
+		// rest of this path (the shipping client always asks for ?stream=1), but
 		// is what `filterFullyQueued` reads to tell queued from running, so
 		// leaving it null here would report a generation on the GPU as waiting.
 		inFlight.generationStartedAt = Date.now();

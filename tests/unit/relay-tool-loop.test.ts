@@ -235,6 +235,9 @@ describe('multi-iteration tool loop', () => {
 
 		let onCompleteCalls = 0;
 		let rebuildCalls = 0;
+		// Held so the gate handover can be asserted: the relay — not the route —
+		// owns this stamp, and it is what every queued-vs-running reader keys off.
+		const inFlight = inFlightEntryStub(endpoint);
 		const initialBody: ChatCompletionRequest = {
 			model: 'bridge::test',
 			messages: [{ role: 'user', content: 'what time is it?' }],
@@ -261,7 +264,7 @@ describe('multi-iteration tool loop', () => {
 			requestBody: initialBody,
 			userMessage: user,
 			storedModelId: 'bridge::test',
-			inFlight: inFlightEntryStub(endpoint),
+			inFlight,
 			onComplete: () => {
 				onCompleteCalls++;
 			},
@@ -282,6 +285,12 @@ describe('multi-iteration tool loop', () => {
 		expect(mocks.upstreamCalls).toHaveLength(2);
 		expect(rebuildCalls).toBe(1);
 		expect(onCompleteCalls).toBe(1);
+
+		// The relay stamped the entry when the concurrency gate handed over. Null
+		// here means every reader — the sidebar mark, its poll, the layout seed —
+		// calls this conversation "queued" for the whole turn while it is in fact
+		// streaming, which is exactly the bug that moved this stamp into the relay.
+		expect(inFlight.generationStartedAt).not.toBe(null);
 
 		// DB shape: user → assistant(tool_call) → tool(result) → assistant(text)
 		const branch = walkActiveBranch(conv.id);

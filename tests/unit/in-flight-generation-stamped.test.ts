@@ -15,12 +15,23 @@
  * client deliberately lets server truth win on activity. An optional hook
  * nobody is required to pass is not a contract.
  *
- * What remains is the case the type checker can't see: a route that registers
- * an entry and then does its own thing — the synchronous JSON send path already
- * acquires a slot and stamps by hand. So this asserts the weaker, still-useful
- * property that such a route knows the field exists. A route that registers an
- * entry, never reaches a relay, and never mentions `generationStartedAt` has
- * certainly forgotten it.
+ * What remains are the two cases the type checker can't see, and both are the
+ * same shape — a route that acquires a slot WITHOUT a relay doing it:
+ *
+ *  - it calls `acquireEndpointSlot` itself (the synchronous JSON send path does,
+ *    and stamps by hand right after), or
+ *  - it reaches no relay at all.
+ *
+ * Either way the route owns the stamp, and this checks it at least knows the
+ * field exists. Deliberately file-level: matching a stamp to a particular
+ * acquisition would need real flow analysis, and the cheap question already
+ * catches the failure that matters — a route that gates its own generation and
+ * never records when the gate opened.
+ *
+ * What it does NOT check: that a relay, having been handed the entry, actually
+ * writes to it. That is a runtime property, and it is asserted directly in
+ * `image-relay.test.ts`, `video-relay.test.ts` and `relay-tool-loop.test.ts`,
+ * which hand a real entry to each relay and read the stamp back out.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -49,15 +60,19 @@ describe('in-flight registration', () => {
 			.filter((file) => {
 				const src = readFileSync(file, 'utf8');
 				if (!src.includes('registerInFlight(')) return false;
-				if (RELAYS.some((call) => src.includes(call))) return false;
+				// Owns at least one acquisition a relay isn't doing for it — either it
+				// gates directly, or it never reaches a relay at all.
+				const ownsAnAcquisition =
+					src.includes('acquireEndpointSlot(') || !RELAYS.some((call) => src.includes(call));
+				if (!ownsAnAcquisition) return false;
 				return !src.includes('generationStartedAt');
 			})
 			.map((file) => relative(ROUTES, file));
 
-		// A route here registers an entry the sidebar will read, reaches no relay
-		// to stamp it, and never records when the gate granted it a slot — so its
-		// conversation reports as queued for the entire generation. Either route it
-		// through a relay, or assign `generationStartedAt` straight after
+		// A route here registers an entry the sidebar will read, takes a slot
+		// without a relay stamping it, and never records when the gate opened — so
+		// its conversation reports as queued for the entire generation. Either
+		// route it through a relay, or assign `generationStartedAt` straight after
 		// `acquireEndpointSlot` resolves.
 		expect(offenders).toEqual([]);
 	});
