@@ -64,7 +64,15 @@
 
 	function applySnapshot(next: EndpointsStatusResponse) {
 		status = next;
-		skewMs = Date.now() - next.now;
+		const at = Date.now();
+		skewMs = at - next.now;
+		// Re-stamp `nowMs` from the SAME instant the skew was measured. `elapsed`
+		// computes `nowMs - skewMs - since`, so pairing a fresh skew with a `nowMs`
+		// up to a second stale subtracts that staleness from every duration on
+		// screen — durations visibly counted 4s, 3s, 5s. On a page whose whole job
+		// is reporting how long something has been running, that is the one number
+		// that has to be monotonic.
+		nowMs = at;
 	}
 
 	async function poll() {
@@ -164,7 +172,12 @@
 				return 'Degraded';
 			case 'down':
 				return 'Unreachable';
-			case 'unknown':
+			default:
+				// Not `case 'unknown'`: a long-lived tab polls across deploys, so a
+				// health state added server-side reaches an un-updated client, and an
+				// exhaustive switch would return `undefined` and render it literally.
+				// "Not yet checked" is the honest answer for a state this build can't
+				// name.
 				return 'Not yet checked';
 		}
 	}
@@ -177,7 +190,7 @@
 				return 'text-warning';
 			case 'down':
 				return 'text-danger';
-			case 'unknown':
+			default:
 				return 'text-fg-muted';
 		}
 	}
@@ -200,7 +213,10 @@
 				return 'Memory';
 			case 'dream':
 				return 'Dreaming';
-			case 'other':
+			default:
+				// A purpose added server-side must not render as `undefined` in a tab
+				// that predates it — `other` is already this page's word for work it
+				// cannot name.
 				return 'Other';
 		}
 	}
@@ -208,10 +224,20 @@
 	/** Model counts worth naming, in a stable order. Kinds with none are dropped
 	 *  — "0 video" on a chat-only endpoint is noise, not information. */
 	function kindBreakdown(ep: EndpointStatus): string {
-		const order = ['chat', 'image', 'video', 'embedding'] as const;
-		return order
-			.filter((k) => ep.modelsByKind[k] > 0)
-			.map((k) => `${ep.modelsByKind[k]} ${k}`)
+		// Known kinds first, in a deliberate reading order, then anything else the
+		// server reported. Iterating a hardcoded list alone would silently drop a
+		// newly-added kind, leaving the breakdown summing to less than the model
+		// count right beside it — a page that contradicts itself is worse than one
+		// that shows an unfamiliar word.
+		const order = ['chat', 'image', 'video', 'embedding'];
+		const kinds = Object.keys(ep.modelsByKind).sort((a, b) => {
+			const ia = order.indexOf(a);
+			const ib = order.indexOf(b);
+			return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+		});
+		return kinds
+			.filter((k) => ep.modelsByKind[k as keyof typeof ep.modelsByKind] > 0)
+			.map((k) => `${ep.modelsByKind[k as keyof typeof ep.modelsByKind]} ${k}`)
 			.join(' · ');
 	}
 
