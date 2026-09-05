@@ -39,7 +39,7 @@ import {
 	getConversationDetail,
 	setConversationAvatar,
 } from '$lib/server/db/queries/conversations';
-import { appendMessage } from '$lib/server/db/queries/messages';
+import { appendMessage, updateMessageParts } from '$lib/server/db/queries/messages';
 import { media } from '$lib/server/db/schema';
 
 beforeEach(() => {
@@ -518,6 +518,70 @@ describe('appendMessage — advanceActiveLeafIfCurrent', () => {
 		// parent, which is what the ‹N/M› arrows navigate.
 		expect(portrait.id).toBeTruthy();
 		expect(mocks.testDb).toBeTruthy();
+	});
+
+	it('advances past a reaction\u2019s tool row, which is bookkeeping not movement', () => {
+		// The real-DB counterpart to the endpoint test, which mocks resolveReplyLeaf
+		// out. A reaction on the description leaves the leaf on its `role:'tool'`
+		// row; read literally the anchor no longer matches and the portrait is
+		// stranded off-branch — header avatar changes, portrait never appears,
+		// re-roll loops. The guard resolves the current leaf back through that row.
+		const u = seedUser();
+		const { conv, description } = seedBranch(u.id);
+		const reactionTool = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'tool',
+			parts: [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }],
+		});
+		// The description itself carries the reaction call the tool row answers.
+		updateMessageParts(description.id, conv.id, [
+			{ type: 'text', text: 'a navigator in an orange coat' },
+			{
+				type: 'tool_call',
+				toolCallId: 'call_r',
+				toolName: 'react_to_message',
+				arguments: '{"emoji":"🎉"}',
+			},
+		]);
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(reactionTool.id);
+
+		const portrait = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'm-1', displayOnly: true }],
+			advanceActiveLeafIfCurrent: description.id,
+		});
+
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(portrait.id);
+	});
+
+	it('does NOT advance past a real tool call\u2019s row', () => {
+		// The widening is bounded to reactions. A genuine tool turn under the
+		// anchor means the branch really did move, and the guard must still fail.
+		const u = seedUser();
+		const { conv, description } = seedBranch(u.id);
+		const toolRow = appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'tool',
+			parts: [{ type: 'tool_result', toolCallId: 'call_t', result: '{}' }],
+		});
+		updateMessageParts(description.id, conv.id, [
+			{ type: 'text', text: 'a navigator in an orange coat' },
+			{ type: 'tool_call', toolCallId: 'call_t', toolName: 'get_current_time', arguments: '{}' },
+		]);
+
+		appendMessage({
+			conversationId: conv.id,
+			parentMessageId: description.id,
+			role: 'assistant',
+			parts: [{ type: 'image', mediaId: 'm-1', displayOnly: true }],
+			advanceActiveLeafIfCurrent: description.id,
+		});
+
+		expect(getConversationDetail(conv.id, u.id)?.activeLeafMessageId).toBe(toolRow.id);
 	});
 
 	it('advances unconditionally when no guard is supplied', () => {

@@ -1241,3 +1241,60 @@ describe('dropOrphanedToolCalls', () => {
 		expect(out[1]).toEqual({ role: 'assistant', content: 'Congratulations!' });
 	});
 });
+
+describe('capToolResults — per-turn tool-name resolution', () => {
+	const call = (id: string, name: string) => ({
+		id,
+		type: 'function' as const,
+		function: { name, arguments: '{}' },
+	});
+	const big = 'x'.repeat(500);
+
+	it('does not let a later turn\u2019s reused id decide an earlier turn\u2019s exemption', () => {
+		// Tool-call ids are only unique within one upstream response, so a backend
+		// numbering them per response reuses `call_0`. A single map over the whole
+		// payload let turn 2's `run_python` name win the lookup for turn 1's
+		// `read_skill_file` result — truncating an instruction block mid-sentence.
+		const out = capToolResults(
+			[
+				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'read_skill_file')] },
+				{ role: 'tool', content: big, tool_call_id: 'call_0' },
+				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'run_python')] },
+				{ role: 'tool', content: big, tool_call_id: 'call_0' },
+			],
+			100,
+		);
+
+		// Turn 1 is a skill read: exempt, untouched.
+		expect(out[1].content).toBe(big);
+		// Turn 2 is not: capped.
+		expect((out[3].content as string).length).toBeLessThan(big.length);
+	});
+
+	it('does not let an earlier turn\u2019s reused id exempt a later result', () => {
+		// The mirror image — the direction that leaves an oversized result uncapped
+		// forever, quietly costing context on every subsequent turn.
+		const out = capToolResults(
+			[
+				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'read_skill_file')] },
+				{ role: 'tool', content: 'small', tool_call_id: 'call_0' },
+				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'fetch_url')] },
+				{ role: 'tool', content: big, tool_call_id: 'call_0' },
+			],
+			100,
+		);
+
+		expect((out[3].content as string).length).toBeLessThan(big.length);
+	});
+
+	it('still exempts a skill read in the ordinary single-turn case', () => {
+		const out = capToolResults(
+			[
+				{ role: 'assistant', content: null, tool_calls: [call('call_a', 'read_skill_file')] },
+				{ role: 'tool', content: big, tool_call_id: 'call_a' },
+			],
+			100,
+		);
+		expect(out[1].content).toBe(big);
+	});
+});

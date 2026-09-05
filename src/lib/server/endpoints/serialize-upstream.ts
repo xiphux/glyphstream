@@ -898,19 +898,30 @@ export function capToolResults(
 ): ChatCompletionRequest['messages'] {
 	if (maxChars <= 0) return messages;
 
-	const toolNameByCallId = new Map<string, string>();
-	for (const m of messages) {
-		for (const call of m.tool_calls ?? []) {
-			toolNameByCallId.set(call.id, call.function.name);
-		}
-	}
+	// Scoped to the CURRENT turn, not one map over the whole payload. Tool-call
+	// ids are only unique within a single upstream response and are persisted
+	// verbatim, so a backend numbering them `call_0`, `call_1` per response reuses
+	// them every turn — and a global map lets a later turn's name win the lookup
+	// for an earlier turn's result. When one of the two is a skill read (exempt
+	// from capping) and the other isn't, that either truncates an instruction
+	// block mid-sentence or leaves an oversized result uncapped forever. Same
+	// hazard, same fix, as `dropOrphanedToolCalls` above.
+	//
+	// Tracked while walking rather than prebuilt: a tool row's calls are always
+	// the nearest preceding assistant's, and the run between them is contiguous.
+	let turnToolNames = new Map<string, string>();
 
 	let changed = false;
 	const out = messages.map((m) => {
+		if (m.tool_calls) {
+			turnToolNames = new Map(m.tool_calls.map((c) => [c.id, c.function.name]));
+		} else if (m.role !== 'tool') {
+			turnToolNames = new Map();
+		}
 		if (m.role !== 'tool' || typeof m.content !== 'string') return m;
 		if (m.content.length <= maxChars) return m;
 
-		const name = m.tool_call_id ? toolNameByCallId.get(m.tool_call_id) : undefined;
+		const name = m.tool_call_id ? turnToolNames.get(m.tool_call_id) : undefined;
 		if (name && UNCAPPED_TOOLS.has(name)) return m;
 		// Belt-and-braces: a skill body whose originating assistant turn isn't in
 		// this view (so the id → name lookup came up empty) is still recognizable by

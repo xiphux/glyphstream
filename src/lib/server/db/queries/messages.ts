@@ -4,7 +4,7 @@ import type { CompareSelection } from '$lib/fanout';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
 import { isReactionTool } from '$lib/chat-render';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
-import { getDb } from '../client';
+import { getDb, type DB, type Tx } from '../client';
 import { conversations, media, messages } from '../schema';
 import { decrementMediaForMessages, hardDeleteOrphanGeneratedMediaForMessages } from './media';
 
@@ -111,10 +111,10 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			// leaves the branch where the user left it. Absent (every caller but
 			// avatar generation), the predicate is just the conversation id, as
 			// before.
-			// Resolved HERE, inside the transaction, not by the caller before it
-			// started work: an avatar draw takes minutes, and a reaction landing
-			// during it moves the leaf onto a `role:'tool'` row that an anchor
-			// computed up front would no longer match. Asking whether the CURRENT
+			// Resolved HERE, inside the transaction and through `tx`, not by the
+			// caller before it started work: an avatar draw takes minutes, and a
+			// reaction landing during it moves the leaf onto a `role:'tool'` row
+			// that an anchor computed up front would no longer match. Asking whether the CURRENT
 			// leaf still reply-resolves to the caller's anchor keeps the guard's
 			// meaning — "has the branch moved on?" — while letting reaction
 			// bookkeeping through. The tool row then drops off the branch, which
@@ -129,7 +129,7 @@ export function appendMessage(input: AppendInput): ChatMessage {
 				if (
 					current &&
 					current !== casAnchor &&
-					resolveReplyLeaf(input.conversationId, current) === casAnchor
+					resolveReplyLeaf(input.conversationId, current, tx) === casAnchor
 				) {
 					casAnchor = current;
 				}
@@ -464,9 +464,15 @@ export function selectBranch(
  * server needs to look up the assistant message being retried + its
  * parent user message. Includes parentMessageId on the returned object
  * (the walk path doesn't, since order encodes parent→child there). */
-export function getMessage(conversationId: string, messageId: string): ChatMessage | null {
-	const db = getDb();
-	const row = db
+/** `reader` lets a caller already inside a transaction pass its `tx` instead of
+ *  reaching for the connection singleton. Defaults to `getDb()`, so ordinary
+ *  callers are unchanged. */
+export function getMessage(
+	conversationId: string,
+	messageId: string,
+	reader: DB | Tx = getDb(),
+): ChatMessage | null {
+	const row = reader
 		.select()
 		.from(messages)
 		.where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
@@ -502,13 +508,23 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
  * Returns `leafId` unchanged when it isn't a reaction tool row, so callers can
  * use it unconditionally.
  */
-export function resolveReplyLeaf(conversationId: string, leafId: string): string {
-	let cursor = getMessage(conversationId, leafId);
+export function resolveReplyLeaf(
+	conversationId: string,
+	leafId: string,
+	reader: DB | Tx = getDb(),
+): string {
+	let cursor = getMessage(conversationId, leafId, reader);
 	let skipped = false;
-	while (cursor?.role === 'tool') {
+	// Bounded: a malformed `parent_message_id` cycle would otherwise spin here
+	// forever, and from inside `appendMessage` it would spin holding an open write
+	// transaction. Nothing in the app rewrites a parent pointer, so this is
+	// defence against corruption, not a reachable path — the cap is generous
+	// enough that no real tool chain approaches it.
+	for (let hops = 0; cursor?.role === 'tool'; hops++) {
+		if (hops > 64) return leafId;
 		skipped = true;
 		if (!cursor.parentMessageId) return leafId;
-		cursor = getMessage(conversationId, cursor.parentMessageId);
+		cursor = getMessage(conversationId, cursor.parentMessageId, reader);
 	}
 	if (!skipped || cursor?.role !== 'assistant') return leafId;
 	const calls = cursor.parts.filter((p) => p.type === 'tool_call');
