@@ -2,15 +2,20 @@
  * Pure copy resolution for a notify payload: what heading and what body
  * line to render, given that a payload may or may not carry content.
  *
- * `conversationTitle` and `preview` are both conversation content and are
- * omitted server-side when the user has "Show message preview" off (see
- * server/push/notify.ts). The title is the sharper of the two: a fresh
- * thread's title is the user's own first message verbatim, so a media
- * generation's OS notification used to read the prompt back on the lock
- * screen. With them absent, both the OS notification and the in-app toast
- * fall back to a generic app heading and a modality line — enough to know
- * something finished and what kind of thing it was, and nothing about which
- * thread it belongs to or what it says.
+ * `conversationTitle` and `preview` are both conversation content, and the
+ * server withholds both when the user has "Show message preview" off (see
+ * server/push/notify.ts) — but by different means: `preview` is omitted, while
+ * `conversationTitle` is REPLACED by GENERIC_TITLE. The title is the sharper of
+ * the two: a fresh thread's title is the user's own first message verbatim, so
+ * a media generation's OS notification used to read the prompt back on the lock
+ * screen. Either way the OS notification and the in-app toast show a generic app
+ * heading over a modality line — enough to know something finished and what kind
+ * of thing it was, and nothing about which thread it belongs to or what it says.
+ *
+ * So `notificationTitle`'s fallback below covers two cases, not one: a title
+ * genuinely absent (an older server, or an empty string) and the constant a
+ * current server sends. Both resolve to the same heading, which is why the
+ * distinction is invisible at the call sites and worth stating here.
  *
  * Shared by the SW (registration.showNotification) and +layout.svelte (the
  * in-app toast) so the two can't drift into disagreeing about what a

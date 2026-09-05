@@ -700,11 +700,15 @@ export interface UserPreferences {
 	 * counts as content and is gated with the preview: a fresh thread's
 	 * title is the user's own first message verbatim, so leaving it
 	 * ungated put the prompt on the lock screen of an opted-out user.
-	 * Default false — privacy-conservative so neither ever traverses the
-	 * push service for users who haven't opted in. Server side, both are
-	 * omitted from the payload entirely when this is false (not just
-	 * hidden in the SW); consumers fall back to a generic app heading
-	 * plus a modality line (see $lib/sw/notification-copy).
+	 * Default false — privacy-conservative so no conversation content ever
+	 * traverses the push service for users who haven't opted in. The gate is
+	 * real, not an SW-side hide: server side, `preview` is omitted from the
+	 * payload entirely and `conversationTitle` carries a constant app name in
+	 * place of the thread's own. The title is sent rather than dropped only so
+	 * that a service worker cached from before this gate doesn't pass
+	 * `undefined` to `showNotification`; do NOT read the field's presence as
+	 * meaning content was included. Consumers render a generic app heading plus
+	 * a modality line (see $lib/sw/notification-copy).
 	 */
 	notificationsShowContent: boolean;
 	/**

@@ -213,10 +213,14 @@ Three independent toggles, all per-user:
 - **Show message preview** — whether the notification carries any
   conversation content: the thread's **title** (the notification's bold
   heading) and a text snippet from the assistant's reply (its body). Off
-  by default. When off, the server **omits both from the push payload
-  entirely**, so neither traverses the push service even encrypted, and
-  the notification reads "GlyphStream" over a modality line — "Video
-  ready", "Image ready", or "New message". The title is gated with the
+  by default. When off, the server **keeps both out of the push payload**:
+  the snippet is dropped entirely, and the title is replaced by the constant
+  "GlyphStream", so no conversation content traverses the push service even
+  encrypted. (The title field is sent rather than dropped so that a service
+  worker cached from before this gate doesn't render the word "undefined" as
+  the heading — a constant tells the push service nothing the field's absence
+  didn't.) The notification then reads "GlyphStream" over a modality line —
+  "Video ready", "Image ready", or "New message". The title is gated with the
   preview because it _is_ content: until the title task replaces it, a
   thread's title is your own first message verbatim, so a media
   generation's notification would otherwise read your prompt back on the
