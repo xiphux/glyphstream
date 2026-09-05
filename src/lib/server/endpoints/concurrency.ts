@@ -31,12 +31,65 @@
 import type { LoadedEndpoint } from './config';
 import { releaseEndpointResources } from './release';
 
+/**
+ * What a slot is being held (or waited on) FOR. Every acquisition names one,
+ * so the admin endpoint view can say which model is generating and what the
+ * background work occupying a single-GPU box actually is.
+ *
+ * `other` is the default rather than `chat` on purpose: a future caller that
+ * forgets to pass one should read as unlabelled, not be silently miscounted as
+ * a user's chat turn.
+ */
+export type SlotPurpose =
+	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
+
+/** What a caller declares it is acquiring the slot for. */
+export interface SlotWork {
+	purpose: SlotPurpose;
+	/** Conversation-facing model id, when the caller has one. */
+	modelId?: string | null;
+}
+
+/**
+ * One slot's worth of occupancy — either held or queued.
+ *
+ * Carries the ENDPOINT id, not just the group's: a group's whole point is that
+ * its members are different endpoints sharing one gate, so a group-level count
+ * can't say which member is busy. Deliberately carries no conversation or user
+ * id — the gate, like the in-flight registry, holds no user identity, and the
+ * diagnostic question ("what is this box doing") is answered without one.
+ */
+interface WorkRecord {
+	endpointId: string;
+	purpose: SlotPurpose;
+	modelId: string | null;
+	/** Unix ms this record was created — enqueued, or granted. */
+	since: number;
+	/** `queued` while still in line, `releasing` while a handover eviction runs
+	 *  ahead of it (see `takeSlot`), `active` once it is genuinely generating. */
+	state: 'queued' | 'active' | 'releasing';
+}
+
+function workRecord(endpointId: string, work: SlotWork | undefined, state: WorkRecord['state']) {
+	return {
+		endpointId,
+		purpose: work?.purpose ?? 'other',
+		modelId: work?.modelId ?? null,
+		since: Date.now(),
+		state,
+	} satisfies WorkRecord;
+}
+
 interface Waiter {
 	/** Grant the slot — resolves the caller's pending promise. */
 	grant: () => void;
 	reject: (err: Error) => void;
 	signal?: AbortSignal;
 	onAbort?: () => void;
+	/** This waiter's declared work, so a queued entry is nameable while it
+	 *  waits — the fan-out case the endpoint view exists to explain is a line
+	 *  of queued branches, none of which has reached `takeSlot` yet. */
+	record: WorkRecord;
 	/** Re-report this waiter's current position as the line drains, so the
 	 *  client's "N ahead" counts down (not just at enqueue). Same channel as the
 	 *  initial onQueued. */
@@ -64,6 +117,17 @@ interface Gate {
 	 * may be Infinity.
 	 */
 	evicting: boolean;
+	/**
+	 * The work currently HOLDING a slot in this group, one record per slot.
+	 *
+	 * Kept alongside `active` rather than derived from it: `active` is a count
+	 * and the two can legitimately disagree for the length of one await — a
+	 * handover increments before it knows whether the eviction will succeed —
+	 * so the count stays the authority for admission and this stays the
+	 * authority for display. Every path that decrements `active` deletes here
+	 * too, including the eviction's unwind.
+	 */
+	holders: Set<WorkRecord>;
 }
 
 const gates = new Map<string, Gate>();
@@ -75,7 +139,14 @@ function getGate(resourceGroup: string, max: number): Gate {
 		existing.max = max;
 		return existing;
 	}
-	const gate: Gate = { active: 0, max, waiters: [], lastHolder: null, evicting: false };
+	const gate: Gate = {
+		active: 0,
+		max,
+		waiters: [],
+		lastHolder: null,
+		evicting: false,
+		holders: new Set(),
+	};
 	gates.set(resourceGroup, gate);
 	return gate;
 }
@@ -116,6 +187,17 @@ export interface AcquireOptions {
 	 * a large model is tens of seconds of apparent hang.
 	 */
 	onReleasing?: () => void;
+	/**
+	 * What this acquisition is for, surfaced by `getResourceGroupSnapshot` to the
+	 * admin endpoint view. Optional so the gate's contract is unchanged for a
+	 * caller that doesn't care, but every in-tree caller passes one: nine
+	 * distinct paths acquire slots and only two of them (the chat and media
+	 * relays) also register in the conversation in-flight registry, so without
+	 * this a background title generation or dreaming sweep occupying a
+	 * `max_concurrent = 1` box shows up as an active slot with nothing named
+	 * against it — which is the exact confusion the view exists to remove.
+	 */
+	work?: SlotWork;
 }
 
 /**
@@ -138,6 +220,7 @@ export interface AcquireOptions {
 async function takeSlot(
 	gate: Gate,
 	endpoint: LoadedEndpoint,
+	work?: SlotWork,
 	signal?: AbortSignal,
 	onReleasing?: () => void,
 ) {
@@ -152,11 +235,17 @@ async function takeSlot(
 		// so one overlap between a chat turn and an image request permanently
 		// disables the eviction this feature exists to perform.
 		if (!previous?.release || previous.id === endpoint.id) gate.lastHolder = endpoint;
-		return makeSlot(gate);
+		return makeSlot(gate, workRecord(endpoint.id, work, 'active'));
 	}
 
 	gate.lastHolder = endpoint;
 	gate.evicting = true;
+	// Registered BEFORE the eviction await, in the `releasing` state: the slot is
+	// already ours and already counted in `active`, so leaving it out would make
+	// the group read as occupied by nobody for the whole unload — which on a
+	// large model is the longest, most alarming stretch the view has to explain.
+	const record = workRecord(endpoint.id, work, 'releasing');
+	gate.holders.add(record);
 	{
 		try {
 			// Inside the try: the increment has already happened, so a callback that
@@ -184,6 +273,11 @@ async function takeSlot(
 			// and the eviction wait is exactly when a user is most likely to hit
 			// Stop — it's the phase `onReleasing` exists to make visible.
 			gate.active--;
+			// Same reasoning, same slot: the record was added before the await, and
+			// `makeSlot` — the only other thing that removes one — is about not to
+			// be reached. Drop it here or the group displays a phantom holder for
+			// the life of the process.
+			gate.holders.delete(record);
 			// Hand the group back to whoever still actually holds the resource. We
 			// never evicted `previous`, so recording ourselves as the holder would
 			// suppress the next legitimate eviction and mis-target one at an
@@ -197,16 +291,23 @@ async function takeSlot(
 			pump(gate);
 		}
 	}
-	return makeSlot(gate);
+	// Survived the eviction — this slot is now doing what it acquired for.
+	record.state = 'active';
+	return makeSlot(gate, record);
 }
 
-function makeSlot(gate: Gate): EndpointSlot {
+/** Wrap an already-counted slot, filing its work record for the diagnostics
+ *  snapshot. `add` is idempotent for the handover path, which registered the
+ *  same record before its eviction await. */
+function makeSlot(gate: Gate, record: WorkRecord): EndpointSlot {
+	gate.holders.add(record);
 	let released = false;
 	return {
 		release() {
 			if (released) return;
 			released = true;
 			gate.active--;
+			gate.holders.delete(record);
 			pump(gate);
 		},
 	};
@@ -271,7 +372,7 @@ export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,
 	opts: AcquireOptions = {},
 ): Promise<EndpointSlot> {
-	const { signal, onQueued, onReleasing } = opts;
+	const { signal, onQueued, onReleasing, work } = opts;
 	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
 	// didn't opt into a group are the same string, so this is the previous
 	// behaviour exactly. Taking the endpoint rather than `(id, max)` is
@@ -289,7 +390,7 @@ export function acquireEndpointSlot(
 		// moment. At a cap of 1 that alone makes a concurrent acquire queue; above
 		// 1 it doesn't, which is what `gate.evicting` is for.
 		gate.active++;
-		return takeSlot(gate, endpoint, signal, onReleasing);
+		return takeSlot(gate, endpoint, work, signal, onReleasing);
 	}
 
 	// Slow path: enqueue. Report how many are already waiting before pushing.
@@ -300,8 +401,13 @@ export function acquireEndpointSlot(
 		const waiter: Waiter = {
 			// `resolve` adopts the promise, so a waiter granted during a handover
 			// stays pending until the previous holder has actually let go.
-			grant: () => resolve(takeSlot(gate, endpoint, signal, onReleasing)),
+			grant: () => resolve(takeSlot(gate, endpoint, work, signal, onReleasing)),
 			reject,
+			// Stamped at ENQUEUE, so `since` on a queued entry is how long it has
+			// been in line — not how long it has been generating, which is zero.
+			// `takeSlot` mints a fresh record on grant, restarting the clock at the
+			// moment the work actually starts.
+			record: workRecord(endpoint.id, work, 'queued'),
 			// Re-emit position as the line drains so the client's "N ahead" counts
 			// down. Routes through the same onQueued → `queued` SSE channel.
 			notifyAhead: onQueued ? (ahead) => onQueued({ ahead }) : undefined,
@@ -323,14 +429,76 @@ export function acquireEndpointSlot(
 	});
 }
 
-/** Live counts for a resource group — a future diagnostics surface (and the
- *  test seam for the queue semantics). The `queued` event's `ahead` value is
- *  computed inline in acquireEndpointSlot, not from this. Returns zeros for a
- *  group never seen. */
+/** Live counts for a resource group — the test seam for the queue semantics.
+ *  The `queued` event's `ahead` value is computed inline in
+ *  acquireEndpointSlot, not from this. Returns zeros for a group never seen;
+ *  `getResourceGroupSnapshot` is the richer read the admin view uses, and
+ *  distinguishes "never seen" from "seen and idle". */
 export function getResourceQueueDepth(resourceGroup: string): { active: number; waiting: number } {
 	const gate = gates.get(resourceGroup);
 	if (!gate) return { active: 0, waiting: 0 };
 	return { active: gate.active, waiting: gate.waiters.length };
+}
+
+export interface SlotSnapshot {
+	endpointId: string;
+	purpose: SlotPurpose;
+	modelId: string | null;
+	/** Unix ms — when it entered the line (queued) or started (active). */
+	since: number;
+	state: 'queued' | 'active' | 'releasing';
+}
+
+export interface ResourceGroupSnapshot {
+	resourceGroup: string;
+	active: number;
+	waiting: number;
+	/** The group's gate capacity, or null when effectively unlimited. */
+	max: number | null;
+	evicting: boolean;
+	/** Which member was granted the group's slot most recently — on a shared GPU,
+	 *  the endpoint whose model is presumed still resident. */
+	lastHolderId: string | null;
+	holders: SlotSnapshot[];
+	queued: SlotSnapshot[];
+}
+
+function cloneRecord(r: WorkRecord): SlotSnapshot {
+	return {
+		endpointId: r.endpointId,
+		purpose: r.purpose,
+		modelId: r.modelId,
+		since: r.since,
+		state: r.state,
+	};
+}
+
+/**
+ * A resource group's live occupancy, for the admin endpoint view. Returns null
+ * for a group no request has ever touched — a configured-but-idle endpoint has
+ * no gate yet, and synthesizing a zeroed one here would need the caller's
+ * configured cap anyway, so the caller renders that case from config.
+ *
+ * A point-in-time copy, not a live view: the arrays are fresh and the records
+ * are cloned, so a consumer can't reach into gate state and `max: Infinity`
+ * (which `JSON.stringify` turns into `null`) is normalized at the boundary
+ * where it's still obvious what it means.
+ */
+export function getResourceGroupSnapshot(resourceGroup: string): ResourceGroupSnapshot | null {
+	const gate = gates.get(resourceGroup);
+	if (!gate) return null;
+	return {
+		resourceGroup,
+		active: gate.active,
+		waiting: gate.waiters.length,
+		/** null = effectively unlimited. */
+		max: Number.isFinite(gate.max) ? gate.max : null,
+		evicting: gate.evicting,
+		lastHolderId: gate.lastHolder?.id ?? null,
+		holders: [...gate.holders].map(cloneRecord),
+		// In queue order, so the view's list reads the way the line will drain.
+		queued: gate.waiters.map((w) => cloneRecord(w.record)),
+	};
 }
 
 /** Test-only: reject every queued waiter and clear all gate state. */
@@ -344,6 +512,7 @@ export function resetEndpointGatesForTests(): void {
 		}
 		gate.waiters = [];
 		gate.active = 0;
+		gate.holders.clear();
 	}
 	gates.clear();
 }

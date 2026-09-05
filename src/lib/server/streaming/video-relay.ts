@@ -99,7 +99,8 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		originalPrompt = r.originalPrompt;
 	};
 
-	return startMediaRelay({ ...params, prepare }, async ({ write, abortSignal }) => {
+	const relayParams = { ...params, prepare, modality: 'video' as const };
+	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
 		let job: VideoJob;
 		try {
 			const req: VideoCreateRequest = {

@@ -293,6 +293,7 @@ export async function startStreamingRelay(
 				// when the endpoint is at capacity; the await resolves once a
 				// slot frees. Released in the finally alongside onComplete.
 				slot = await acquireEndpointSlot(params.endpoint, {
+					work: { purpose: 'chat', modelId: params.storedModelId },
 					signal: params.abortSignal,
 					onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 					// Not queued — the slot is ours; we're waiting on the endpoint that

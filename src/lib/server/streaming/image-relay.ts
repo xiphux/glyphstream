@@ -81,7 +81,8 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 		originalPrompt = r.originalPrompt;
 	};
 
-	return startMediaRelay({ ...params, prepare }, async ({ write, abortSignal }) => {
+	const relayParams = { ...params, prepare, modality: 'image' as const };
+	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
 		try {
 			// I2I when input images are attached, else T2I. The bridge consumes
 			// repeated `image` fields in order for multi-input ComfyUI workflows.

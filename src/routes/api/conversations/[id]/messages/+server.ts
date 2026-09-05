@@ -742,6 +742,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		let syncSlot;
 		try {
 			syncSlot = await acquireEndpointSlot(endpoint, {
+				work: { purpose: 'chat', modelId: meta.modelId },
 				signal: inFlight.controller.signal,
 			});
 		} catch (e) {

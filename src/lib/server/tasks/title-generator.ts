@@ -180,6 +180,7 @@ async function callTaskModel(
 	// keep the fallback title. AbortSignal.timeout also splices the waiter out of
 	// the queue on expiry.
 	const slot = await acquireEndpointSlot(endpoint, {
+		work: { purpose: 'title', modelId: upstreamId },
 		signal: AbortSignal.timeout(endpoint.requestTimeoutSeconds * 1000),
 	});
 	try {

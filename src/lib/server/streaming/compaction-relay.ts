@@ -43,6 +43,7 @@ export function streamCompaction(args: StreamCompactionArgs): ReadableStream<Uin
 				// surfaces as a cancellation rather than a partial write.
 				try {
 					slot = await acquireEndpointSlot(plan.endpoint, {
+						work: { purpose: 'compaction', modelId: plan.upstreamId },
 						signal: abortSignal,
 						onQueued: ({ ahead }) => write({ type: 'queued', ahead }),
 					});

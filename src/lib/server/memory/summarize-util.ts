@@ -203,6 +203,7 @@ export async function callMemoryModel(
 	keepChars: number = Infinity,
 ): Promise<string> {
 	const slot = await acquireEndpointSlot(model.endpoint, {
+		work: { purpose: 'memory', modelId: model.upstreamId },
 		signal,
 	});
 	try {

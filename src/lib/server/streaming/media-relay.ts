@@ -109,6 +109,12 @@ export interface MediaRelayParams {
 	 * queued-vs-running reader keys off, and an optional hook is not a contract.
 	 */
 	inFlight: InFlightEntry;
+	/** Which modality this relay is running, for the endpoint slot's work label.
+	 *  Set by the two wrappers alongside `prepare` (they are the only callers of
+	 *  `startMediaRelay`) rather than required on the params the routes build,
+	 *  so a route can't state a modality that disagrees with the relay it picked.
+	 *  Defaults to `image` — the same shape `prepare` uses. */
+	modality?: 'image' | 'video';
 	/**
 	 * Fires once the produced media is durably the conversation's — row appended,
 	 * media linked — and BEFORE `done` goes out. For a caller whose generation
@@ -210,6 +216,10 @@ export function startMediaRelay(
 				// single-GPU backend serializes; emit `queued` while waiting.
 				try {
 					slot = await acquireEndpointSlot(params.endpoint, {
+						work: {
+							purpose: params.modality === 'video' ? 'video' : 'image',
+							modelId: params.storedModelId,
+						},
 						signal: params.abortSignal,
 						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
 						onReleasing: () =>

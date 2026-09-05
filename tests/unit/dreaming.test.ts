@@ -110,9 +110,12 @@ describe('runDreamSweep', () => {
 		// The other source is a tombstone pointing at the survivor.
 		expect(rowOf(b.id).deletedAt).not.toBeNull();
 		expect(rowOf(b.id).superseded).toBe(a.id);
-		// Slot acquired on the model's endpoint and released.
+		// Slot acquired on the model's endpoint and released, declaring itself as
+		// dreaming — the admin endpoint view reads that label to explain a
+		// single-GPU box that is busy with no user turn in flight.
 		expect(acquireMock).toHaveBeenCalledWith(
 			expect.objectContaining({ id: 'gpu', resourceGroup: 'gpu', resourceGroupMaxConcurrent: 1 }),
+			{ work: { purpose: 'dream', modelId: 'm' } },
 		);
 		expect(releaseSpy).toHaveBeenCalled();
 	});

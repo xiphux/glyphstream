@@ -73,6 +73,7 @@ export async function runPromptEnhancement(
 	let enhSlot: EndpointSlot | null = null;
 	try {
 		enhSlot = await acquireEndpointSlot(enhancerModel.endpoint, {
+			work: { purpose: 'enhance', modelId: enhancerModel.upstreamId },
 			signal: ctx.abortSignal,
 			// Same reason the relays pass this: if the enhancer shares a resource
 			// group, the eviction happens here, and leaving "Enhancing prompt…" up
