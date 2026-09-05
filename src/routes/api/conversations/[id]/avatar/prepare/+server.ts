@@ -37,7 +37,6 @@ import {
 	getMessage,
 	getSiblingAssistants,
 	hasChildMessages,
-	resolveReplyLeaf,
 } from '$lib/server/db/queries/messages';
 import { getAvatarDrawSince } from '$lib/server/streaming/in-flight';
 import type { PrepareAvatarDrawResponse } from '$lib/types/api';
@@ -92,13 +91,8 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	const leaf = meta.activeLeafMessageId;
-	// A reaction leaves the leaf on its `role:'tool'` row (see resolveReplyLeaf),
-	// which is bookkeeping hanging off the reply rather than the branch moving on.
-	// Compare against the reply itself — but keep the "nothing after it" test on
-	// the REAL leaf, where "nothing after it" is actually the question.
-	const replyLeaf = leaf === null ? null : resolveReplyLeaf(params.id, leaf);
-	if (leaf && replyLeaf && replyLeaf !== source.id) {
-		const leafMessage = getMessage(params.id, replyLeaf);
+	if (leaf && leaf !== source.id) {
+		const leafMessage = getMessage(params.id, leaf);
 		// Assistant-only, and that conjunct is the whole safety argument. Rewinding
 		// the leaf is harmless because what it hides comes straight back as a grid
 		// column — but the grid is seeded from `getSiblingAssistants`, which filters

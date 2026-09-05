@@ -752,8 +752,20 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	// Scoped to reactions on purpose: another tool's unexecuted call still renders
 	// as a visible block, and hiding that would lose real information rather than
 	// correct a false impression.
-	const reactionsDisabled = (params.disabledFeatures ?? []).includes('reactions');
-	const dropUnhonouredReactions = reactionsDisabled || finishReason !== 'tool_calls';
+	// `stopped` as well as the finish reason: the execute gate below is
+	// `!stopped && finishReason === 'tool_calls'`, and the two can disagree — the
+	// stream keeps reading past the finish-reason chunk (usage, llama.cpp
+	// timings), so an abort landing in that window leaves `finishReason` already
+	// `'tool_calls'` while the tools never run.
+	const neverExecuted = stopped || finishReason !== 'tool_calls';
+	// Disabled + no text is deliberately NOT dropped here. The tool refuses at
+	// execute time, the loop keeps going because there's no reply yet, and the
+	// refetch that follows carries the isError result the renderer already knows
+	// to drop the badge on. Dropping the part instead would end the turn on an
+	// empty assistant row — a blank bubble and no reply at all.
+	const refusedWithReply =
+		(params.disabledFeatures ?? []).includes('reactions') && textBuf.trim().length > 0;
+	const dropUnhonouredReactions = neverExecuted || refusedWithReply;
 
 	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
 	for (const tc of toolCallAccum.values()) {

@@ -779,26 +779,19 @@ function graphemes(): Intl.Segmenter {
 }
 
 /**
- * The emoji a `react_to_message` call carries, or null when its arguments
- * haven't finished streaming, didn't parse, or aren't a single emoji.
- *
- * Read from the persisted `tool_call` part, which IS the durable record of the
- * reaction — there's no reaction column anywhere. That record is written by the
- * relay's recorder BEFORE the tool runs, so it is raw model output and this is
- * the only place it gets checked before rendering. Re-validating here also
- * covers the reaction that never executed at all: an upstream reporting
- * `finish_reason: 'stop'` alongside a tool call skips the tool loop entirely,
- * yet still leaves the part on the row.
- */
-/**
  * The last message that represents a REPLY, looking past a trailing chain of
  * `role:'tool'` rows that answer nothing but reactions.
  *
- * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
- * has to agree with it: the two answer the same question on either side of the
- * avatar-comparison call, and a client that offers the comparison against a
- * server that then refuses it surfaces as a page-level error only after the
- * user has already picked their models.
+ * Used by `turnLooksSettled`, which would otherwise read a finished turn as
+ * still running forever on any thread that ever reacted — the relay leaves the
+ * branch leaf sitting on the reaction's tool row.
+ *
+ * Deliberately NOT used by `canCompareAvatar`, even though it looks like the
+ * same question. That guard has to mirror the server's parkable rule exactly,
+ * and the server can't look past the tool row without dropping it off the
+ * branch (see the KNOWN LIMITATION test in avatar-prepare-endpoint.test.ts).
+ * Applying it on one side only would offer a comparison the server then
+ * refuses, which is worse than both sides refusing.
  *
  * Returns the plain last message when there is no reaction chain, so callers
  * can use it unconditionally.
@@ -816,6 +809,18 @@ export function lastReplyMessage(messages: ChatMessage[]): ChatMessage | undefin
 	return candidate;
 }
 
+/**
+ * The emoji a `react_to_message` call carries, or null when its arguments
+ * haven't finished streaming, didn't parse, or aren't a single emoji.
+ *
+ * Read from the persisted `tool_call` part, which IS the durable record of the
+ * reaction — there's no reaction column anywhere. That record is written by the
+ * relay's recorder BEFORE the tool runs, so it is raw model output and this is
+ * the only place it gets checked before rendering. Re-validating here also
+ * covers the reaction that never executed at all: an upstream reporting
+ * `finish_reason: 'stop'` alongside a tool call skips the tool loop entirely,
+ * yet still leaves the part on the row.
+ */
 export function parseReactionEmoji(args: string): string | null {
 	if (!args) return null;
 	try {

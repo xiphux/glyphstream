@@ -2,7 +2,6 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '$lib/fanout';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
-import { isReactionTool } from '$lib/chat-render';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
@@ -111,34 +110,12 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			// leaves the branch where the user left it. Absent (every caller but
 			// avatar generation), the predicate is just the conversation id, as
 			// before.
-			// The CAS anchor is resolved HERE, inside the transaction, rather than by
-			// the caller before it started work: a reaction landing during a
-			// minutes-long avatar draw moves the leaf onto its `role:'tool'` row,
-			// and an anchor computed up front would already be stale by now. Reading
-			// the current leaf and asking whether it still REPLY-resolves to the
-			// caller's anchor keeps the guard's meaning ("has the branch moved on?")
-			// while letting reaction bookkeeping through.
-			let casAnchor = input.advanceActiveLeafIfCurrent;
-			if (casAnchor !== undefined) {
-				const current = tx
-					.select({ leaf: conversations.activeLeafMessageId })
-					.from(conversations)
-					.where(eq(conversations.id, input.conversationId))
-					.get()?.leaf;
-				if (
-					current &&
-					current !== casAnchor &&
-					resolveReplyLeaf(input.conversationId, current) === casAnchor
-				) {
-					casAnchor = current;
-				}
-			}
 			const guard =
-				casAnchor === undefined
+				input.advanceActiveLeafIfCurrent === undefined
 					? eq(conversations.id, input.conversationId)
 					: and(
 							eq(conversations.id, input.conversationId),
-							eq(conversations.activeLeafMessageId, casAnchor),
+							eq(conversations.activeLeafMessageId, input.advanceActiveLeafIfCurrent),
 						);
 			const advanced = tx
 				.update(conversations)
@@ -486,40 +463,6 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
  * would strand those turns on an unpicked branch. An EXISTS-shaped probe rather
  * than a count — the answer is a yes/no and the trees get long.
  */
-/**
- * The branch leaf as "the last REPLY", looking past a trailing chain of
- * `role:'tool'` rows that answer nothing but reactions.
- *
- * Every settled turn used to end with an assistant row as the leaf, and several
- * guards are written against that. A reaction breaks it: the relay short-circuits
- * right after `executeToolCalls`, which has already advanced the leaf onto the
- * reaction's `role:'tool'` row, and nothing moves it back. The row has to stay on
- * the branch — an assistant `tool_calls` with no answering `tool` message is not
- * a valid upstream payload — so the leaf stays there too, and the guards have to
- * learn to look past it instead.
- *
- * Only skips a tool chain whose parent assistant row's tool calls are ALL
- * reactions. A turn that called a real tool alongside one never short-circuits
- * (see `reactionOnly` in the relay), so its leaf is the final assistant row
- * already and this never fires for it.
- *
- * Returns `leafId` unchanged when it isn't a reaction tool row, so callers can
- * use it unconditionally.
- */
-export function resolveReplyLeaf(conversationId: string, leafId: string): string {
-	let cursor = getMessage(conversationId, leafId);
-	let skipped = false;
-	while (cursor?.role === 'tool') {
-		skipped = true;
-		if (!cursor.parentMessageId) return leafId;
-		cursor = getMessage(conversationId, cursor.parentMessageId);
-	}
-	if (!skipped || cursor?.role !== 'assistant') return leafId;
-	const calls = cursor.parts.filter((p) => p.type === 'tool_call');
-	if (calls.length === 0 || !calls.every((p) => isReactionTool(p.toolName))) return leafId;
-	return cursor.id;
-}
-
 export function hasChildMessages(conversationId: string, messageId: string): boolean {
 	const row = getDb()
 		.select({ id: messages.id })

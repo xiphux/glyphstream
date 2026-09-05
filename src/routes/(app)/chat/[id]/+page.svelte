@@ -52,7 +52,6 @@
 	import {
 		assistantIdentityForMessage,
 		buildRenderedConversation,
-		lastReplyMessage,
 		CANVAS_TOOLS,
 		computeMergeFlags,
 		messageToBlocks,
@@ -344,10 +343,7 @@
 	 */
 	const canCompareAvatar = $derived.by(() => {
 		const source = avatarSourceMessage;
-		// Past a reaction's tool row, which is bookkeeping on the reply rather than
-		// the branch moving on — the server's parkable rule resolves it the same way,
-		// and the two must agree (see the comment below).
-		const leaf = lastReplyMessage(messages);
+		const leaf = messages.at(-1);
 		if (!source || !leaf) return false;
 		// The `assistant` conjunct mirrors the server's parkable rule exactly — see
 		// avatar/prepare for why a childless USER leaf must not be parked over.
