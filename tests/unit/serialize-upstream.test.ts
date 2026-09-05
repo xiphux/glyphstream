@@ -1208,6 +1208,29 @@ describe('dropOrphanedToolCalls', () => {
 		expect(out[0]).toEqual({ role: 'assistant', content: '' });
 	});
 
+	it('does not let a LATER turn\u2019s reused id vouch for an earlier orphan', () => {
+		// Tool-call ids are only unique within one upstream response, and they're
+		// persisted verbatim — a backend numbering them per response reuses
+		// `call_0` every turn. Matching against one id set for the whole payload
+		// let turn 2's `call_0` answer turn 1's orphan, leaving two assistant
+		// tool_calls for one tool message: the invalid shape this pass exists to
+		// remove. It also made turn 1's bytes depend on an id turn 2 happened to
+		// pick, rewriting the middle of the prefix for no user-visible reason.
+		const out = dropOrphanedToolCalls([
+			{ role: 'user', content: 'I got the job!!' },
+			assistantWith([{ id: 'call_0', name: 'react_to_message' }], 'Congratulations!'),
+			// turn 1's answering tool row is off-branch — this is the orphan
+			{ role: 'user', content: 'what time is it' },
+			assistantWith([{ id: 'call_0' }], null),
+			toolResult('call_0'),
+		]);
+
+		expect(out[1]).toEqual({ role: 'assistant', content: 'Congratulations!' });
+		expect(out[3].tool_calls?.map((c) => c.id)).toEqual(['call_0']);
+		// Exactly one assistant carries tool_calls, and one tool message answers it.
+		expect(out.filter((m) => m.tool_calls).length).toBe(1);
+	});
+
 	it('drops a reaction whose tool row fell off the branch', () => {
 		// Parking an avatar comparison rewinds the leaf past the reaction's tool
 		// row; the assistant row stays, its tool child doesn't.

@@ -986,16 +986,31 @@ export async function serializeBranchForUpstream(
 export function dropOrphanedToolCalls(
 	messages: ChatCompletionRequest['messages'],
 ): ChatCompletionRequest['messages'] {
-	const answered = new Set<string>();
-	for (const m of messages) {
-		if (m.role === 'tool' && m.tool_call_id) answered.add(m.tool_call_id);
-	}
-	const hasOrphan = messages.some((m) => m.tool_calls?.some((c) => !answered.has(c.id)));
+	// Matched PER TURN, against the contiguous run of `role:'tool'` messages that
+	// immediately follows each assistant row — not against one id set for the
+	// whole payload. Tool-call ids are only unique within a single upstream
+	// response (see the note in relay.ts), and they're persisted verbatim, so a
+	// backend that numbers them `call_0`, `call_1` per response reuses `call_0`
+	// every turn. A global set then lets a LATER turn's `call_0` vouch for an
+	// earlier orphaned one — the payload stays invalid, and worse, an earlier
+	// row's serialization starts depending on an id a later turn happened to
+	// pick, which rewrites the middle of the prefix for no user-visible reason.
+	// Per-turn matching is also just what the spec asks for.
+	const answersFor = (start: number): Set<string> => {
+		const ids = new Set<string>();
+		for (let j = start + 1; j < messages.length && messages[j].role === 'tool'; j++) {
+			const id = messages[j].tool_call_id;
+			if (id) ids.add(id);
+		}
+		return ids;
+	};
+	const answered = messages.map((m, i) => (m.tool_calls ? answersFor(i) : null));
+	const hasOrphan = messages.some((m, i) => m.tool_calls?.some((c) => !answered[i]?.has(c.id)));
 	if (!hasOrphan) return messages;
 
-	return messages.map((m) => {
+	return messages.map((m, i) => {
 		if (!m.tool_calls) return m;
-		const kept = m.tool_calls.filter((c) => answered.has(c.id));
+		const kept = m.tool_calls.filter((c) => answered[i]?.has(c.id));
 		if (kept.length === m.tool_calls.length) return m;
 		if (kept.length > 0) return { ...m, tool_calls: kept };
 		// Nothing left to carry. `content: null` is only legal ALONGSIDE
