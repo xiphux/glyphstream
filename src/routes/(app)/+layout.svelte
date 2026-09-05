@@ -27,7 +27,7 @@
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
 		anyGenerating,
-		isGenerating,
+		generationActivity,
 		markGenerating,
 		reconcileGenerating,
 	} from '$lib/generating-conversations.svelte';
@@ -195,17 +195,20 @@
 	$effect(() => {
 		if (seededGenerating || !data.deferredLoaded) return;
 		seededGenerating = true;
+		const queued = new Set(data.queuedGeneratingIds);
 		for (const id of data.generatingIds) {
-			if (id !== page.params.id) markGenerating(id);
+			if (id !== page.params.id) markGenerating(id, queued.has(id) ? 'queued' : 'active');
 		}
 	});
 
 	// Poll for completions while any dot is showing. Nothing local is listening
 	// to a generation the user has navigated away from (the chat page aborts its
 	// fetch on the way out and the server finishes on its own), so this is the
-	// only thing that ever takes a dot back off. Gated on a boolean rather than
-	// the set itself so one of several conversations finishing doesn't restart
-	// the timer, and self-terminating: the last dot clearing stops the interval.
+	// only thing that ever takes a dot back off — and, by the same argument, the
+	// only thing that ever promotes a queued row to running when the line moves.
+	// Gated on a boolean rather than the set itself so one of several
+	// conversations finishing doesn't restart the timer, and self-terminating:
+	// the last dot clearing stops the interval.
 	// `/api/conversations?generating=1` returns bare ids — invalidateAll would
 	// re-fetch every endpoint's model list, far too heavy for an interval.
 	const GENERATING_POLL_MS = 5000;
@@ -220,8 +223,8 @@
 			try {
 				const res = await fetch('/api/conversations?generating=1');
 				if (stopped || !res.ok) return;
-				const body = (await res.json()) as { ids: string[] };
-				reconcileGenerating(body.ids);
+				const body = (await res.json()) as { ids: string[]; queuedIds: string[] };
+				reconcileGenerating(body.ids, body.queuedIds);
 			} catch {
 				// Transient — the next tick retries.
 			}
@@ -889,7 +892,7 @@
 											? 'bg-surface-sunken text-accent'
 											: 'hover:bg-surface-sunken/70'}"
 									>
-										{#if isGenerating(c.id)}
+										{#if generationActivity(c.id) === 'active'}
 											<!-- A generation is running for this conversation right
 											 now (see $lib/generating-conversations). Takes the
 											 leading slot ahead of both the title spinner and the
@@ -902,6 +905,24 @@
 												role="img"
 												aria-label="Generating a response"
 												title="Generating…"
+											></span>
+										{:else if generationActivity(c.id) === 'queued'}
+											<!-- In flight, but every branch is still behind the
+											 endpoint's concurrency gate. Same slot and same size as
+											 the dot above, so the rows stay aligned — but hollow and
+											 still, because the whole point is that exactly one row
+											 in a queued stack is the one doing work, and motion is
+											 what the eye finds first when scanning a list.
+											 A ring rather than a dimmer dot: opacity alone reads as
+											 "the same thing, fainter", and doesn't survive a dark
+											 room or a dimmed display, whereas filled-vs-empty
+											 survives both and needs no animation to be legible
+											 under prefers-reduced-motion. -->
+											<span
+												class="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-accent/70"
+												role="img"
+												aria-label="Queued, waiting to generate"
+												title="Queued…"
 											></span>
 										{:else if isTitlePending(c.id)}
 											<!-- Subtle spinner while the background auto-title

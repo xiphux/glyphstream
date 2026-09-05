@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	anyGenerating,
 	clearGenerating,
+	generationActivity,
 	isGenerating,
 	markGenerating,
 	reconcileGenerating,
@@ -108,5 +109,79 @@ describe('reconcileGenerating', () => {
 		expect(isGenerating('c1')).toBe(true);
 		expect(isGenerating('c2')).toBe(true);
 		expect(anyGenerating()).toBe(true);
+	});
+});
+
+describe('activity', () => {
+	it('defaults an unqualified mark to active', () => {
+		markGenerating('c1');
+		expect(generationActivity('c1')).toBe('active');
+	});
+
+	it('reports null for a conversation with nothing in flight', () => {
+		expect(generationActivity('c1')).toBe(null);
+	});
+
+	it('carries a queued mark, and lets a later mark promote it', () => {
+		markGenerating('c1', 'queued');
+		expect(generationActivity('c1')).toBe('queued');
+		// Its branch reached the front of the line.
+		markGenerating('c1', 'active');
+		expect(generationActivity('c1')).toBe('active');
+	});
+
+	it('clears the queued flag with the id, so a re-mark does not inherit it', () => {
+		markGenerating('c1', 'queued');
+		clearGenerating('c1');
+		markGenerating('c1');
+		expect(generationActivity('c1')).toBe('active');
+	});
+
+	it('keeps membership and activity as separate questions', () => {
+		// The sidebar needs a queued row to still count as "not finished" —
+		// it's the difference between a dot and no dot at all.
+		markGenerating('c1', 'queued');
+		expect(isGenerating('c1')).toBe(true);
+		expect(anyGenerating()).toBe(true);
+	});
+});
+
+describe('reconcileGenerating activity', () => {
+	it('promotes a queued id the server no longer reports as queued', () => {
+		// The whole point of the poll carrying activity: nothing client-side is
+		// listening to a generation the user walked away from, so this is the
+		// only way a waiting conversation is ever seen to start.
+		markGenerating('c1', 'queued');
+		reconcileGenerating(['c1'], []);
+		expect(generationActivity('c1')).toBe('active');
+	});
+
+	it('demotes an id the server now reports as queued', () => {
+		markGenerating('c1', 'active');
+		reconcileGenerating(['c1'], ['c1']);
+		expect(generationActivity('c1')).toBe('queued');
+	});
+
+	it('does not resurrect a finished id just because it appears in queuedIds', () => {
+		// Clear-only stays clear-only: membership comes from the first argument
+		// alone, so a contradictory answer can't re-light a dot.
+		reconcileGenerating([], ['gone']);
+		expect(isGenerating('gone')).toBe(false);
+	});
+
+	it('leaves activity alone when the server says nothing about it', () => {
+		// A response with no `queuedIds` (a garbled body, or a server that
+		// predates the field) is no information about activity — reading it as
+		// "nothing is queued" would repaint every waiting thread as running.
+		markGenerating('c1', 'queued');
+		reconcileGenerating(['c1'], undefined as unknown as string[]);
+		expect(generationActivity('c1')).toBe('queued');
+	});
+
+	it('leaves both halves alone when the membership answer is malformed', () => {
+		markGenerating('c1', 'queued');
+		reconcileGenerating(undefined as unknown as string[], ['c1']);
+		expect(generationActivity('c1')).toBe('queued');
+		expect(isGenerating('c1')).toBe(true);
 	});
 });

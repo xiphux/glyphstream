@@ -8,7 +8,7 @@ import {
 } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
 import { getEndpoint } from '$lib/server/endpoints/registry';
-import { filterInFlight } from '$lib/server/streaming/in-flight';
+import { filterFullyQueued, filterInFlight } from '$lib/server/streaming/in-flight';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
 import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
@@ -24,8 +24,16 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	// no timestamps — because that's all the caller reconciles against, and this
 	// runs on an interval for as long as a dot is showing. Same
 	// cheap-variant-of-an-existing-endpoint shape as `[id]`'s `?fanout=1`.
+	//
+	// `queuedIds` is the subset that hasn't started — every branch still behind
+	// the endpoint's concurrency gate. It rides along rather than getting its own
+	// endpoint because it's the same registry walk over the same list, and
+	// because this poll is the ONLY thing that ever observes a queued
+	// conversation reaching the front of the line: nothing client-side is
+	// listening to a generation the user navigated away from.
 	if (url.searchParams.get('generating') === '1') {
-		return json({ ids: filterInFlight(listConversationIds(locals.user.id)) });
+		const ids = filterInFlight(listConversationIds(locals.user.id));
+		return json({ ids, queuedIds: filterFullyQueued(ids) });
 	}
 
 	return json({ conversations: listConversations(locals.user.id) });

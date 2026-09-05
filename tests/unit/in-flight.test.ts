@@ -13,6 +13,7 @@ import {
 	clearInFlight,
 	conversationFanoutAtCapacity,
 	DEFAULT_BRANCH,
+	filterFullyQueued,
 	filterInFlight,
 	getInFlightEntries,
 	conversationTurnEntries,
@@ -164,6 +165,42 @@ describe('filterInFlight', () => {
 	it('returns an empty array for an empty input', () => {
 		registerInFlight('c1', endpoint('a'));
 		expect(filterInFlight([])).toEqual([]);
+	});
+});
+
+describe('filterFullyQueued', () => {
+	it('reports a conversation whose every branch is still behind the gate', () => {
+		registerInFlight('c1', endpoint('a'), 'b0');
+		registerInFlight('c1', endpoint('a'), 'b1');
+		expect(filterFullyQueued(['c1'])).toEqual(['c1']);
+	});
+
+	it('drops it as soon as ONE branch acquires a slot', () => {
+		registerInFlight('c1', endpoint('a'), 'b0');
+		const b = registerInFlight('c1', endpoint('a'), 'b1');
+		// What the relay does when the gate grants it a slot.
+		b.generationStartedAt = Date.now();
+		// A grid is queued only while all of it is: one branch on the GPU makes
+		// the whole conversation the one that's working.
+		expect(filterFullyQueued(['c1'])).toEqual([]);
+	});
+
+	it('does not report a conversation with nothing in flight', () => {
+		// "Queued rather than generating", never "queued rather than idle" — an
+		// idle conversation must not pick up a mark it has no business wearing.
+		expect(filterFullyQueued(['c1'])).toEqual([]);
+	});
+
+	it('counts an avatar draw like any other branch', () => {
+		// Matches filterInFlight, which deliberately includes side errands: the
+		// row it marks is the same row, and a draw waiting at the gate is queued.
+		registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, null, null, null, false);
+		expect(filterFullyQueued(['c1'])).toEqual(['c1']);
+	});
+
+	it('never reports an id the caller did not ask about', () => {
+		registerInFlight('someone-elses', endpoint('a'));
+		expect(filterFullyQueued(['mine'])).toEqual([]);
 	});
 });
 

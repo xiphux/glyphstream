@@ -218,8 +218,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   ([guide](docs/multi-user.md)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
   when long generations finish — a count on the app icon for threads waiting
-  on you, plus a sidebar dot marking any conversation still generating, so a
-  thread you walked away from mid-video isn't silent
+  on you, plus a sidebar dot marking any conversation still generating (filled
+  for the one running, hollow for the ones queued behind it), so a thread you
+  walked away from mid-video isn't silent
   ([guide](docs/notifications.md)).
 - **Start a chat from a URL** — open the home page with a `#q=` fragment
   (e.g. `https://your-host/#q=write%20a%20haiku`) to prefill the composer.

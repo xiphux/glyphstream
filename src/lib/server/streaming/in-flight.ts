@@ -186,6 +186,38 @@ export function filterInFlight(conversationIds: readonly string[]): string[] {
 	return conversationIds.filter((id) => inFlight.has(id));
 }
 
+/**
+ * Of `conversationIds`, the ones whose generations are ALL still waiting on the
+ * endpoint's concurrency gate — nothing has acquired a slot, so nothing is
+ * actually running yet. A conversation with no entries at all is not returned;
+ * this answers "queued rather than generating", not "queued rather than idle",
+ * and callers pair it with `filterInFlight` (whose result is the natural input).
+ *
+ * Exists because the sidebar's mark was binary while the queue behind it was
+ * not. Fire off several multi-model fan-outs against a single-GPU endpoint and
+ * every one of them lights the same "generating" dot, so the one conversation
+ * that actually holds the GPU is indistinguishable from the ten behind it —
+ * findable only by opening each in turn.
+ *
+ * Whole-conversation, deliberately: a fan-out is a set of branches the user
+ * dispatched as one act, and a single row in a list can only carry one state.
+ * "Some branch of this is running" is the state worth reporting, so the queued
+ * mark means every branch is waiting.
+ *
+ * Not turn-scoped, matching `filterInFlight`: an avatar draw waiting at the
+ * gate is as queued as anything else, and the row it marks is the same row.
+ */
+export function filterFullyQueued(conversationIds: readonly string[]): string[] {
+	return conversationIds.filter((id) => {
+		const byBranch = inFlight.get(id);
+		if (!byBranch || byBranch.size === 0) return false;
+		for (const entry of byBranch.values()) {
+			if (entry.generationStartedAt !== null) return false;
+		}
+		return true;
+	});
+}
+
 /** Earliest `startedAt` across the conversation's in-flight generations, or
  *  null when none — the truthful "generating since" for the recovery
  *  indicator regardless of how many branches are running. */

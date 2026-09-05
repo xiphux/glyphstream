@@ -9,7 +9,7 @@ import { listAllModels } from '$lib/server/endpoints/list-models';
 import { firstPaintModelIds, pickDefaultModelId } from '$lib/model-default';
 import { getAllFeatureCategoryLabels } from '$lib/server/feature-catalog';
 import { isMcpReady } from '$lib/server/mcp/bootstrap';
-import { filterInFlight } from '$lib/server/streaming/in-flight';
+import { filterFullyQueued, filterInFlight } from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
 import type { LayoutServerLoad } from './$types';
 
@@ -129,6 +129,7 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 	// because a second copy of the precedence rule drifts silently: the server
 	// would trim for one model and the page would select another, and the only
 	// symptom is a picker showing something the user never chose.
+	const generatingIds = filterInFlight(conversations.map((c) => c.id));
 	const favorites = prefs?.favoriteModels ?? [];
 	const defaultModelId = pickDefaultModelId({
 		favorites,
@@ -145,7 +146,12 @@ export const load: LayoutServerLoad = async ({ locals, url, depends, isDataReque
 		// Free: an in-memory registry lookup per row, no extra query — and
 		// scoped by construction, since it can only answer for rows this user
 		// already owns.
-		generatingIds: filterInFlight(conversations.map((c) => c.id)),
+		generatingIds,
+		// Of those, the ones where every generation is still behind the endpoint's
+		// concurrency gate. Splitting the seed the same way the poll does keeps a
+		// reload from repainting a whole queued backlog as actively running — on a
+		// one-model-at-a-time endpoint that's every row but one.
+		queuedGeneratingIds: filterFullyQueued(generatingIds),
 		prefs,
 		defaultModelId,
 		// The entries first paint can render — the starting selection and the

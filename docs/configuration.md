@@ -85,6 +85,11 @@ single backend that hot-swaps models still shares one VRAM pool), so a busy
 single-slot endpoint queues across all conversations and all fan-out
 branches.
 
+While a conversation is waiting its turn, the sidebar marks it with a hollow
+ring instead of the filled, pulsing dot it uses for the conversation actually
+holding a slot — so a stack of queued threads doesn't hide the one that's
+running (see [notifications](notifications.md)).
+
 Because the cap is per endpoint, a bridge (like `openai-api-bridge`) that
 fronts **both** a local GPU and cloud providers is best split into **two
 endpoints** — one for the local providers with `max_concurrent = 1`, one for

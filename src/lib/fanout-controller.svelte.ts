@@ -163,6 +163,20 @@ export class FanoutController {
 
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
+	/**
+	 * The subset of `streaming` where a branch has actually ACQUIRED its slot —
+	 * `startedAt` is set only by `onStart` (and by recovery, from the registry's
+	 * `generationStartedAt`), which is the gate handing over.
+	 *
+	 * Not `status === 'streaming'` alone: `onProgress` sets that status for the
+	 * pre-slot "Enhancing prompt…" phase too, which runs BEFORE the gate and so
+	 * would report a grid that hasn't reached the GPU as running on it. Feeds the
+	 * sidebar's generating-vs-queued mark, where the whole question is which
+	 * conversation holds the endpoint.
+	 */
+	generatingNow = $derived(
+		this.columns.some((c) => c.status === 'streaming' && c.startedAt !== null),
+	);
 	columnsSettled = $derived(this.columns.length > 0 && allColumnsSettled(this.columns));
 	/** Image/video fan-out is keep-many (prune + regenerate); chat is pick-one. */
 	isMedia = $derived(this.columns.some((c) => isMediaKind(c.modelKind)));

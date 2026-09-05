@@ -31,6 +31,24 @@ running shows a small pulsing dot next to its title in the sidebar. It
 needs no notification permission and no VAPID keys — it's plain UI, so
 it works on a fresh install with pushes switched off entirely.
 
+The dot has two forms, because "in flight" and "actually running" stop
+being the same thing as soon as an endpoint has a
+[concurrency limit](configuration.md):
+
+- **Filled and pulsing** — at least one of this conversation's
+  generations holds a slot and is producing output.
+- **Hollow and still** — everything it dispatched is still queued behind
+  the endpoint's gate, waiting its turn.
+
+A multi-model fan-out counts as running the moment any one of its
+branches does; the hollow ring means every branch is waiting. That
+matters most on a single-GPU backend set to one generation at a time,
+where queueing up several fan-outs used to leave every thread wearing
+the same pulsing dot — the one actually on the GPU was findable only by
+opening each in turn. The open conversation shows the same distinction
+in more detail (a per-branch **Queued** badge with its position in
+line).
+
 It exists for the case the table doesn't cover well: you kick off a
 video, wander to another thread, and the one you left goes visually
 inert. Navigating away doesn't cancel anything (the server finishes the
@@ -375,13 +393,19 @@ happens, check the SW console for errors.
 - **Toast surface**: `src/lib/toast.svelte.ts` (singleton, used for
   the archive toast and the message-complete toast).
 - **Sidebar generating dot**: `src/lib/generating-conversations.svelte.ts`
-  (reactive id set). Marked by the chat page from the same
-  `renderingGeneration` signal as presence — but with no unmount cleanup,
-  so it survives navigating away; seeded at `(app)` layout mount from the
-  layout load's `generatingIds` (`filterInFlight()` over the user's own
-  conversation list); retired by the layout's poll of
-  `GET /api/conversations?generating=1`, which is clear-only. E2E:
-  `tests/e2e/generating-dot.spec.ts`.
+  (two reactive id sets — membership, and the queued subset). Marked by
+  the chat page from the same `renderingGeneration` signal as presence —
+  but with no unmount cleanup, so it survives navigating away; seeded at
+  `(app)` layout mount from the layout load's `generatingIds` /
+  `queuedGeneratingIds` (`filterInFlight()` + `filterFullyQueued()` over
+  the user's own conversation list); retired by the layout's poll of
+  `GET /api/conversations?generating=1`, which is clear-only on
+  membership. Queued-vs-running comes off the in-flight registry's
+  `generationStartedAt`, which the relay stamps when the concurrency gate
+  grants a slot — so the poll is also what promotes a waiting row once
+  the line moves, since nothing client-side is listening to a generation
+  the user navigated away from. E2E: `tests/e2e/generating-dot.spec.ts`;
+  the two marks: `tests/component/SidebarGeneratingMark.test.ts`.
 
 ## Future work (not shipped in this pass)
 

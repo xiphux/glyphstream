@@ -91,6 +91,7 @@ const layoutData = {
 	user: { id: 'u1', displayName: 'Test', email: 't@e.st', role: 'admin', avatarUrl: null },
 	conversations: [],
 	generatingIds: [],
+	queuedGeneratingIds: [],
 	prefs: { notificationsEnabled: false, favoriteModels: [], modelSets: [] },
 	defaultModelId: null,
 	models: [],

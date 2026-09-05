@@ -43,6 +43,7 @@
 		clearGenerating,
 		isGenerating,
 		markGenerating,
+		type GenerationActivity,
 	} from '$lib/generating-conversations.svelte';
 	import EditMessageForm from '$lib/components/chat/EditMessageForm.svelte';
 	import InFlightBubble from '$lib/components/chat/InFlightBubble.svelte';
@@ -1640,6 +1641,33 @@
 		turn.busy || turn.approvalSubmitting || turn.recoveredInFlight || fanout.streaming,
 	);
 
+	// ...and, when it IS rendering one, whether that generation has actually
+	// started or is still waiting on the endpoint's concurrency gate. The sidebar
+	// mark uses this to tell the one conversation holding a single-GPU endpoint
+	// apart from the stack queued behind it.
+	//
+	// Fan-out first, because it's the case that needs it: a grid is queued as a
+	// whole only while EVERY branch is, and `fanout.generatingNow` is the exact
+	// "some branch holds a slot" test (it covers a recovered grid too, whose
+	// pending columns carry the registry's own start times).
+	//
+	// The single-send fallback is `turn.inFlightQueued`, set and cleared by the
+	// same `queued`/`start` events. A RECOVERED single turn has neither — the
+	// recovery payload carries a registration time, not a gate state — so it
+	// reports 'active' and the layout's poll corrects it from server truth within
+	// a tick. Guessing 'active' there is the right way round: this is the
+	// conversation on screen, whose own in-flight bubble already says what it is
+	// doing, and it's never the row the user is hunting for.
+	const generationActivity = $derived<GenerationActivity>(
+		fanout.streaming
+			? fanout.generatingNow
+				? 'active'
+				: 'queued'
+			: turn.inFlightQueued
+				? 'queued'
+				: 'active',
+	);
+
 	// Tick a timer while the in-flight bubble is open so the user gets a
 	// progress signal for slow operations (image generation, video gen) and
 	// also for chat round-trips that stall before the first token.
@@ -1734,7 +1762,7 @@
 	// immediately, ahead of the poll.
 	$effect(() => {
 		if (renderingGeneration) {
-			markGenerating(convId);
+			markGenerating(convId, generationActivity);
 			// Then SUBSCRIBE to this id's membership, so the mark self-heals if the
 			// layout's poll clears it. That happens for real: we flag on `busy`,
 			// which is set before the POST is even dispatched, while the server
@@ -1748,6 +1776,11 @@
 			// opens the window for hundreds of ms. Re-marking is a no-op when the
 			// id is already present, so this settles in one extra run rather than
 			// looping.
+			//
+			// Note this subscribes to MEMBERSHIP only, never to the activity flag
+			// this same call publishes — see generating-conversations' module
+			// comment. If it did, the layout poll's activity write would re-enter
+			// this effect, which would write our own verdict straight back over it.
 			isGenerating(convId);
 		} else clearGenerating(convId);
 	});
