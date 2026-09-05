@@ -22,6 +22,7 @@ vi.mock('$lib/server/push/web-push', () => ({
 }));
 
 import { buildPreview, notifyConversationComplete } from '$lib/server/push/notify';
+import { GENERIC_TITLE } from '$lib/sw/notification-copy';
 import {
 	listPushSubscriptionsForUser,
 	upsertPushSubscription,
@@ -113,7 +114,7 @@ describe('notifyConversationComplete', () => {
 		expect(mocks.sendCalls).toHaveLength(0);
 	});
 
-	it('omits BOTH preview and conversationTitle when notificationsShowContent is false', async () => {
+	it('omits the preview and neutralizes the title when notificationsShowContent is false', async () => {
 		const u = seedUser();
 		setUserPreferences(u.id, { notificationsEnabled: true });
 		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
@@ -125,13 +126,28 @@ describe('notifyConversationComplete', () => {
 			foregroundToast?: boolean;
 		};
 		expect(payload).not.toHaveProperty('preview');
-		expect(payload).not.toHaveProperty('conversationTitle');
+		expect(payload.conversationTitle).toBe(GENERIC_TITLE);
 		expect(payload).toMatchObject({
 			type: 'message_complete',
 			conversationId: 'conv1',
 			foregroundToast: true,
 			modality: 'chat',
 		});
+	});
+
+	it('still SENDS a conversationTitle key when content is off, for older workers', async () => {
+		// A service worker cached from before the content gate does
+		// `showNotification(payload.conversationTitle)` with no fallback, and
+		// `showNotification(undefined)` renders the literal word "undefined"
+		// rather than throwing. Dropping the key would put that on the lock
+		// screen of every opted-out user until their worker updated.
+		const u = seedUser();
+		setUserPreferences(u.id, { notificationsEnabled: true });
+		upsertPushSubscription({ userId: u.id, endpoint: 'a', ...SAMPLE_KEYS });
+		await notifyConversationComplete(baseInput(u.id));
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as Record<string, unknown>;
+		expect(Object.keys(payload)).toContain('conversationTitle');
+		expect(typeof payload.conversationTitle).toBe('string');
 	});
 
 	it('does not leak the prompt through the title of a media notification', async () => {
@@ -149,6 +165,8 @@ describe('notifyConversationComplete', () => {
 			modality: 'video',
 		});
 		expect(mocks.sendCalls[0].payload).not.toContain('greenhouse');
+		const payload = JSON.parse(mocks.sendCalls[0].payload) as { conversationTitle?: string };
+		expect(payload.conversationTitle).toBe(GENERIC_TITLE);
 	});
 
 	it('includes a stripped preview when notificationsShowContent is true', async () => {

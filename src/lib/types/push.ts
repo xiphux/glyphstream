@@ -24,13 +24,18 @@ export interface NotifyPushPayload {
 	type: 'message_complete';
 	conversationId: string;
 	assistantMessageId: string;
-	/** The thread's title, used as the notification's heading. Present iff
-	 *  notificationsShowContent is true: the title IS conversation content —
-	 *  it starts life as the user's own first message, verbatim and merely
-	 *  truncated (see `create-user-message.ts`), and is later replaced by a
-	 *  model-written summary of the exchange. So it is omitted alongside
-	 *  `preview` when the user opted out, and consumers fall back to a generic
-	 *  app-level heading. */
+	/** The notification's heading. Carries the thread's real title only when
+	 *  notificationsShowContent is true: the title IS conversation content — it
+	 *  starts life as the user's own first message, verbatim and merely truncated
+	 *  (see `create-user-message.ts`), and is later replaced by a model-written
+	 *  summary of the exchange. When the user opted out the server sends the
+	 *  constant app name instead of dropping the field, because a cached service
+	 *  worker predating that gate would pass `undefined` straight to
+	 *  `showNotification` (see server/push/notify.ts).
+	 *
+	 *  Optional all the same, and consumers must keep their fallback: a NEW page
+	 *  bundle can be driven by an OLD worker relaying an old server's payload
+	 *  during an update window, and that payload can genuinely lack the field. */
 	conversationTitle?: string;
 	modality: NotifyModality;
 	/** Present iff notificationsShowContent is true. Omitted entirely

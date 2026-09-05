@@ -12,17 +12,20 @@
  * windows.
  *
  * The server also decides one more thing the SW can't: whether to *include
- * content* in the payload. When notificationsShowContent is false the
- * `preview` AND `conversationTitle` fields are omitted entirely so neither
- * ever traverses the push service (defense-in-depth — encryption alone isn't
- * the only privacy contract; the operator's threat model may include the push
- * service itself). The title belongs in that set because it is content: a
- * fresh thread's title is the user's own first message verbatim, so a media
- * generation's push was reading out the prompt on the lock screen while the
- * body was correctly suppressed.
+ * content* in the payload. When notificationsShowContent is false the `preview`
+ * is omitted entirely and `conversationTitle` is replaced by a constant, so no
+ * conversation content ever traverses the push service (defense-in-depth —
+ * encryption alone isn't the only privacy contract; the operator's threat model
+ * may include the push service itself). The title belongs in that set because it
+ * is content: a fresh thread's title is the user's own first message verbatim,
+ * so a media generation's push was reading out the prompt on the lock screen
+ * while the body was correctly suppressed. It is replaced rather than dropped
+ * only because older cached service workers pass it to `showNotification`
+ * unguarded; see the payload construction below.
  */
 
 import type { NotifyModality, NotifyPushPayload } from '$lib/types/push';
+import { GENERIC_TITLE } from '$lib/sw/notification-copy';
 import {
 	deletePushSubscriptionsByEndpoints,
 	listPushSubscriptionsForUser,
@@ -93,8 +96,8 @@ function truncateTitle(title: string): string {
  *  - Bails when another of the user's devices is actively rendering this
  *    conversation (cross-device suppression — see `presence.ts`).
  *  - Lists subscriptions; bails when none.
- *  - Builds payload (omits BOTH conversationTitle and preview unless
- *    notificationsShowContent — the title is content too).
+ *  - Builds payload (omits preview and neutralizes conversationTitle to a
+ *    constant unless notificationsShowContent — the title is content too).
  *  - Sends to each subscription in parallel.
  *  - Deletes any subscription that returns 404/410 (push service says
  *    the endpoint is gone).
@@ -127,10 +130,24 @@ export async function notifyConversationComplete(
 	// A fan-out summary ("3 images ready") is a count, not message content, so it
 	// ships regardless of the show-content opt-out and serves as the body.
 	if (input.summary) payload.summary = input.summary;
-	// Title and preview are both content and stand or fall together. Consumers
-	// render a generic app-level heading + a modality line when they're absent.
+	// Title and preview are both content and stand or fall together — but the
+	// title FIELD is always sent, carrying the app name when the user opted out,
+	// because a service worker is cached on the device and updates on its own
+	// schedule. A worker from before this gate existed does
+	// `showNotification(payload.conversationTitle)` with no fallback of its own,
+	// and `showNotification(undefined)` does not throw — WebIDL stringifies it,
+	// so omitting the field would put the literal word "undefined" on the lock
+	// screen of every opted-out user until their worker happened to update.
+	// `preview` needed no such care: that same old worker already read it through
+	// a `?? 'New message'` chain.
+	//
+	// Sending a constant costs nothing in privacy. The push service sees the same
+	// string on every opted-out notification, which is exactly what the field's
+	// absence already told it, and nothing about the thread either way.
+	payload.conversationTitle = prefs.notificationsShowContent
+		? truncateTitle(input.conversationTitle)
+		: GENERIC_TITLE;
 	if (prefs.notificationsShowContent) {
-		payload.conversationTitle = truncateTitle(input.conversationTitle);
 		const preview = buildPreview(input.previewText);
 		if (preview.length > 0) payload.preview = preview;
 	}
