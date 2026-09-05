@@ -52,8 +52,17 @@
 	// that harmless: a reload replaces `data` and nothing here reads it again, so
 	// the poll stays the single source of truth instead of fighting a stale SSR
 	// snapshot for the display.
+	// `.raw` because nothing ever writes an element in place: the whole snapshot
+	// is replaced by `applySnapshot` and read-only everywhere else (`configError`
+	// and `groups` in the template, nothing else). CLAUDE.md's rule is to grep the
+	// CONSUMERS before converting, not just this module — done, and there are no
+	// consumers outside this file, since a page component is nobody's import. If
+	// that ever changes, an element-level write here would signal nothing and this
+	// has to go back to deep `$state`. Skipping the proxy matters because the poll
+	// discards and rebuilds this whole tree every three seconds, for as long as
+	// the tab is open.
 	// svelte-ignore state_referenced_locally
-	let status = $state<EndpointsStatusResponse>(data.status);
+	let status = $state.raw<EndpointsStatusResponse>(data.status);
 	// A SET, not a single id: with one slot, rechecking ANY endpoint disabled
 	// EVERY endpoint's button, on the one page whose job is comparing endpoints.
 	// Both the handler guard and the `disabled` binding read this — changing only
@@ -293,6 +302,12 @@
 		return g.endpoints.length > 1;
 	}
 
+	/** Slots actually generating — excludes one still freeing memory for a
+	 *  handover, which is occupied but has not started. */
+	function generatingCount(ep: EndpointStatus): number {
+		return ep.active.filter((s) => s.state === 'active').length;
+	}
+
 	function capLabel(max: number | null): string {
 		return max === null ? '∞' : String(max);
 	}
@@ -436,7 +451,11 @@
 			</div>
 			<div class="rounded-md border border-border bg-surface-sunken/40 p-2">
 				<dt class="text-fg-muted">Generating</dt>
-				<dd class="mt-0.5 text-sm font-medium">{ep.active.length}</dd>
+				<!-- `active` holds every occupied slot, including one whose model is
+				     still being unloaded for a handover. That slot is taken but is not
+				     generating, and the row below it says "freeing memory" — so
+				     counting it here would have the tile contradict its own list. -->
+				<dd class="mt-0.5 text-sm font-medium">{generatingCount(ep)}</dd>
 				<dd class="mt-0.5 text-[11px] text-fg-muted">
 					{isSharedGroup(group)
 						? `group ${group.active}/${capLabel(group.maxConcurrent)}`
