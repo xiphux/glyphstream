@@ -51,7 +51,7 @@
 		VenetianMask,
 		Video as VideoIcon,
 	} from '@lucide/svelte';
-	import type { ModelKind } from '$lib/types/api';
+	import type { GeneratingConversationsResponse, ModelKind } from '$lib/types/api';
 	import { privateView } from '$lib/private-chat.svelte';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
@@ -223,7 +223,7 @@
 			try {
 				const res = await fetch('/api/conversations?generating=1');
 				if (stopped || !res.ok) return;
-				const body = (await res.json()) as { ids: string[]; queuedIds: string[] };
+				const body = (await res.json()) as GeneratingConversationsResponse;
 				reconcileGenerating(body.ids, body.queuedIds);
 			} catch {
 				// Transient — the next tick retries.

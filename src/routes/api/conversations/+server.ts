@@ -11,7 +11,12 @@ import { getEndpoint } from '$lib/server/endpoints/registry';
 import { filterFullyQueued, filterInFlight } from '$lib/server/streaming/in-flight';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { isModelKind } from '$lib/types/api';
-import type { CreateConversationRequest, CustomModelParameters, ModelKind } from '$lib/types/api';
+import type {
+	CreateConversationRequest,
+	CustomModelParameters,
+	GeneratingConversationsResponse,
+	ModelKind,
+} from '$lib/types/api';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
@@ -33,7 +38,8 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	// listening to a generation the user navigated away from.
 	if (url.searchParams.get('generating') === '1') {
 		const ids = filterInFlight(listConversationIds(locals.user.id));
-		return json({ ids, queuedIds: filterFullyQueued(ids) });
+		const body: GeneratingConversationsResponse = { ids, queuedIds: filterFullyQueued(ids) };
+		return json(body);
 	}
 
 	return json({ conversations: listConversations(locals.user.id) });

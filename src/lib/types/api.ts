@@ -1688,3 +1688,24 @@ export interface MediaConversationRef {
 	updatedAt: number;
 	archivedAt: number | null;
 }
+
+/**
+ * `GET /api/conversations?generating=1` — which of the caller's conversations
+ * still have a generation in flight, and which of those have not started yet.
+ *
+ * Declared here rather than inlined at both ends because the two halves ship
+ * independently: this is an installable PWA, so a cached client can poll a
+ * newer server and a fresh client can be served by an older one during a
+ * deploy. `queuedIds` is therefore OPTIONAL, and that is not decoration — a
+ * server predating it sends nothing, and the client's reconcile deliberately
+ * reads a missing value as "no information about activity" rather than
+ * "nothing is queued", which would repaint every waiting thread as running.
+ * Typing it as required would make that guard look like dead code.
+ */
+export interface GeneratingConversationsResponse {
+	/** Conversations with at least one generation in flight. */
+	ids: string[];
+	/** The subset whose every generation is still behind the endpoint's
+	 *  concurrency gate. Absent from a server that predates the field. */
+	queuedIds?: string[];
+}
