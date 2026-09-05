@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	buildRenderedConversation,
 	isReactionTool,
+	lastReplyMessage,
 	messageToBlocks,
 	parseReactionEmoji,
 	type ToolResultEntry,
@@ -328,5 +329,45 @@ describe('buildRenderedConversation — reactionsByMessageId', () => {
 			]),
 		]);
 		expect(reactionsByMessageId.size).toBe(0);
+	});
+});
+
+describe('lastReplyMessage', () => {
+	// A short-circuited reaction leaves the branch leaf on the reaction's tool
+	// row. That row has to stay on the branch — an assistant `tool_calls` with no
+	// answering `tool` message is not a valid upstream payload — so every guard
+	// that asks "is the leaf still the reply?" has to look past it instead.
+	it('looks past a reaction tool row to the reply it hangs off', () => {
+		const reply = msg('a1', 'assistant', [{ type: 'text', text: 'Congrats!' }, reactionPart('🎉')]);
+		const messages = [
+			msg('u1', 'user', [{ type: 'text', text: 'I got the job!!' }]),
+			reply,
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_r', result: 'ok' }]),
+		];
+		expect(lastReplyMessage(messages)?.id).toBe('a1');
+	});
+
+	it('does not look past a tool row answering a REAL tool call', () => {
+		// A turn with a real tool never short-circuits, so its leaf is already the
+		// final assistant row — and a tool row trailing here means work is genuinely
+		// still in flight.
+		const messages = [
+			msg('u1', 'user', [{ type: 'text', text: 'what time is it' }]),
+			msg('a1', 'assistant', [
+				{ type: 'text', text: '' },
+				{ type: 'tool_call', toolCallId: 'call_t', toolName: 'get_current_time', arguments: '{}' },
+			]),
+			msg('t1', 'tool', [{ type: 'tool_result', toolCallId: 'call_t', result: '{}' }]),
+		];
+		expect(lastReplyMessage(messages)?.id).toBe('t1');
+	});
+
+	it('returns the last message untouched when nothing trails', () => {
+		const messages = [
+			msg('u1', 'user', [{ type: 'text', text: 'hi' }]),
+			msg('a1', 'assistant', [{ type: 'text', text: 'hey' }]),
+		];
+		expect(lastReplyMessage(messages)?.id).toBe('a1');
+		expect(lastReplyMessage([])).toBeUndefined();
 	});
 });

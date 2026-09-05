@@ -30,6 +30,7 @@ import {
 	appendText,
 	inFlightToBlocks,
 	isReactionTool,
+	lastReplyMessage,
 	markToolCallPendingApproval,
 	pushToolCall,
 	updateToolCallArgs,
@@ -66,8 +67,12 @@ import type {
  * its last row is what made that poll expensive; it gates on the in-flight
  * registry instead, which `onGenerationSettled` now clears promptly.
  */
-function turnLooksSettled(messages: Array<{ role: string; parts?: MessagePart[] }>): boolean {
-	const last = messages[messages.length - 1];
+function turnLooksSettled(messages: ChatMessage[]): boolean {
+	// Past a reaction's trailing tool row: the relay leaves the leaf sitting on it
+	// after a short-circuited turn, so reading the array's last entry literally
+	// reports a FINISHED turn as still running — forever, for any thread that
+	// ever reacted.
+	const last = lastReplyMessage(messages);
 	if (last?.role !== 'assistant') return false;
 	// A REACTION is excluded from the "trailing tool_call ⇒ still running" test:
 	// it's the one tool call that can't leave work pending here.

@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 	getMessage: vi.fn<(...a: unknown[]) => unknown>(),
 	getSiblingAssistants: vi.fn<(...a: unknown[]) => ChatMessage[]>(),
 	hasChildMessages: vi.fn<(...a: unknown[]) => boolean>(),
+	resolveReplyLeaf: vi.fn<(...a: unknown[]) => string>(),
 }));
 
 vi.mock('$lib/server/db/queries/conversations', () => ({
@@ -36,6 +37,7 @@ vi.mock('$lib/server/db/queries/messages', () => ({
 	getMessage: (...a: unknown[]) => mocks.getMessage(...a),
 	getSiblingAssistants: (...a: unknown[]) => mocks.getSiblingAssistants(...a),
 	hasChildMessages: (...a: unknown[]) => mocks.hasChildMessages(...a),
+	resolveReplyLeaf: (...a: unknown[]) => mocks.resolveReplyLeaf(...a),
 }));
 
 import { POST } from '../../src/routes/api/conversations/[id]/avatar/prepare/+server';
@@ -70,6 +72,9 @@ beforeEach(() => {
 	leafIs('desc');
 	mocks.setFanoutParent.mockReset();
 	mocks.hasChildMessages.mockReset().mockReturnValue(false);
+	// Identity by default — no reaction bookkeeping on the leaf. The reaction
+	// case overrides it below.
+	mocks.resolveReplyLeaf.mockReset().mockImplementation((_c: unknown, id: unknown) => id as string);
 	mocks.getSiblingAssistants.mockReset().mockReturnValue([]);
 	mocks.getMessage.mockReset().mockImplementation((_c: unknown, id: unknown) => {
 		if (id === 'desc') return DESCRIPTION;
@@ -105,6 +110,34 @@ describe('POST /avatar/prepare — where a comparison may park', () => {
 		// Leaf move and marker park in ONE statement: split, a failure between them
 		// leaves the leaf rewound with no marker parked.
 		expect(mocks.setFanoutParent.mock.calls).toEqual([['c1', 'u1', 'desc', true]]);
+	});
+
+	it('parks over a reply whose leaf is only its reaction bookkeeping', async () => {
+		// A reaction short-circuits the turn with the leaf sitting on its
+		// `role:'tool'` row, which is bookkeeping hanging off the reply rather than
+		// the branch moving on. Read literally, the assistant-only conjunct failed
+		// and every reacted-to description answered 409 "this conversation has
+		// moved on" — with the avatar flow being exactly the warm register that
+		// draws reactions in the first place.
+		leafIs('react-tool');
+		mocks.resolveReplyLeaf.mockImplementation((_c: unknown, id: unknown) =>
+			id === 'react-tool' ? 'p1' : (id as string),
+		);
+		mocks.getMessage.mockImplementation((_c: unknown, id: unknown) => {
+			if (id === 'desc') return DESCRIPTION;
+			if (id === 'p1') return PORTRAIT;
+			if (id === 'react-tool')
+				return { id: 'react-tool', role: 'tool', parts: [], parentMessageId: 'p1' };
+			return null;
+		});
+
+		const res = await call('desc');
+
+		expect(res.status).toBe(200);
+		expect(mocks.setFanoutParent).toHaveBeenCalled();
+		// The "nothing after it" test still runs against the REAL leaf, where that
+		// is genuinely the question.
+		expect(mocks.hasChildMessages).toHaveBeenCalledWith('c1', 'react-tool');
 	});
 
 	it('refuses once the conversation has continued past the description', async () => {

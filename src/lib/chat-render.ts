@@ -790,6 +790,32 @@ function graphemes(): Intl.Segmenter {
  * `finish_reason: 'stop'` alongside a tool call skips the tool loop entirely,
  * yet still leaves the part on the row.
  */
+/**
+ * The last message that represents a REPLY, looking past a trailing chain of
+ * `role:'tool'` rows that answer nothing but reactions.
+ *
+ * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
+ * has to agree with it: the two answer the same question on either side of the
+ * avatar-comparison call, and a client that offers the comparison against a
+ * server that then refuses it surfaces as a page-level error only after the
+ * user has already picked their models.
+ *
+ * Returns the plain last message when there is no reaction chain, so callers
+ * can use it unconditionally.
+ */
+export function lastReplyMessage(messages: ChatMessage[]): ChatMessage | undefined {
+	let i = messages.length - 1;
+	while (i >= 0 && messages[i].role === 'tool') i--;
+	if (i < 0 || i === messages.length - 1) return messages.at(-1);
+	const candidate = messages[i];
+	if (candidate.role !== 'assistant') return messages.at(-1);
+	const calls = candidate.parts.filter((p) => p.type === 'tool_call');
+	if (calls.length === 0 || !calls.every((p) => isReactionTool(p.toolName))) {
+		return messages.at(-1);
+	}
+	return candidate;
+}
+
 export function parseReactionEmoji(args: string): string | null {
 	if (!args) return null;
 	try {

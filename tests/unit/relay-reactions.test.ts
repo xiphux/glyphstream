@@ -197,9 +197,15 @@ const initialBody: ChatCompletionRequest = {
 };
 
 /** Run one relay turn against the canned upstream responses already queued. */
-async function runTurn(conv: { id: string }, user: ChatMessage, userId: string) {
+async function runTurn(
+	conv: { id: string },
+	user: ChatMessage,
+	userId: string,
+	opts: { disabledFeatures?: string[] } = {},
+) {
 	let rebuildCalls = 0;
 	const stream = await startStreamingRelay({
+		...(opts.disabledFeatures ? { disabledFeatures: opts.disabledFeatures } : {}),
 		conversationId: conv.id,
 		userId,
 		conversationTitle: 'test',
@@ -392,6 +398,89 @@ describe('reaction that must not short-circuit the loop', () => {
 			toolName: string;
 		}>;
 		expect(starts.map((e) => e.toolName)).toEqual(['get_current_time']);
+	});
+});
+
+describe('a reaction that will never be honoured is not persisted', () => {
+	it('drops the part when the conversation has reactions switched off', async () => {
+		// The tool refuses at execute time, but that refusal lives in a tool row
+		// the client doesn't always fetch — so a part left on the row would paint a
+		// badge anyway and make the toggle look broken.
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				textChunk('Congratulations!'),
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_r',
+					name: 'react_to_message',
+					args: '{"emoji":"🎉"}',
+				}),
+				finishChunk('tool_calls'),
+			]),
+		);
+
+		const { events } = await runTurn(conv, user, userId, { disabledFeatures: ['reactions'] });
+
+		expect(events.map(eventType)).toEqual(['start', 'text', 'done']);
+		const branch = walkActiveBranch(conv.id);
+		// No reaction part, and therefore no tool row answering one.
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant']);
+		expect(branch[1].parts.some((p) => p.type === 'tool_call')).toBe(false);
+	});
+
+	it('drops the part when the upstream ended the turn without running tools', async () => {
+		// `finish_reason: 'stop'` alongside the call means the tool loop never runs,
+		// so the emoji was never validated or authorized — and nothing later would
+		// ever contradict a badge drawn from it.
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				textChunk('Congratulations!'),
+				toolCallStartChunk({
+					index: 0,
+					id: 'call_r',
+					name: 'react_to_message',
+					args: '{"emoji":"🎉"}',
+				}),
+				finishChunk('stop'),
+			]),
+		);
+
+		const { events } = await runTurn(conv, user, userId);
+
+		expect(events.map(eventType)).toEqual(['start', 'text', 'done']);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch.map((m) => m.role)).toEqual(['user', 'assistant']);
+		expect(branch[1].parts.some((p) => p.type === 'tool_call')).toBe(false);
+	});
+
+	it('keeps a real tool call the same turn ended without running', async () => {
+		// Scoped to reactions: another tool's unexecuted call still renders as a
+		// visible block, and dropping it would hide something the user should see.
+		register({
+			definition: {
+				type: 'function',
+				function: {
+					name: 'get_current_time',
+					description: 'time',
+					parameters: { type: 'object', properties: {}, additionalProperties: false },
+				},
+			},
+			execute: () => ({ content: '{}' }),
+		});
+		const { conv, user, userId } = seedConversationWithUserMessage();
+		mocks.upstreamResponses.push(() =>
+			sseResponse([
+				textChunk('Let me check.'),
+				toolCallStartChunk({ index: 0, id: 'call_t', name: 'get_current_time', args: '{}' }),
+				finishChunk('stop'),
+			]),
+		);
+
+		await runTurn(conv, user, userId);
+		const branch = walkActiveBranch(conv.id);
+		expect(branch[1].parts.some((p) => p.type === 'tool_call')).toBe(true);
 	});
 });
 

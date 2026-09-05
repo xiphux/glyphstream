@@ -733,8 +733,31 @@ async function recordAndPersistOneIteration(args: RecorderArgs): Promise<Iterati
 	}
 	applyDeltas(norm.flush().deltas);
 
+	// A reaction that will never be honoured must not be PERSISTED either. The
+	// tool_call part is the reaction's only durable record, and the renderer reads
+	// it back on every load — so a part left here outlives whatever refused it and
+	// paints a badge for a reaction that never happened. Two ways that arises, and
+	// both are known right here:
+	//
+	//   - the conversation has reactions switched off. The tool refuses at execute
+	//     time, but that refusal lives in a `role:'tool'` row the client doesn't
+	//     always fetch, so the badge lands anyway and the toggle looks broken.
+	//   - the upstream reported anything other than `tool_calls` as its finish
+	//     reason. The relay breaks before `executeToolCalls`, so the tool never
+	//     runs at all — the emoji was never validated and never authorized, and
+	//     nothing downstream will ever contradict it.
+	//
+	// Dropping the part is what makes "a reaction part on the row" mean "a
+	// reaction actually happened", which is the invariant the renderer relies on.
+	// Scoped to reactions on purpose: another tool's unexecuted call still renders
+	// as a visible block, and hiding that would lose real information rather than
+	// correct a false impression.
+	const reactionsDisabled = (params.disabledFeatures ?? []).includes('reactions');
+	const dropUnhonouredReactions = reactionsDisabled || finishReason !== 'tool_calls';
+
 	const parts: MessagePart[] = [{ type: 'text', text: textBuf }];
 	for (const tc of toolCallAccum.values()) {
+		if (dropUnhonouredReactions && isReactionTool(tc.name)) continue;
 		// For tools whose primary argument is source code (today:
 		// run_python's `code` parameter), pre-render that code through
 		// the same shiki-backed markdown pipeline that produces
