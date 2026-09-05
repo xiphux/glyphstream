@@ -139,8 +139,13 @@ export async function claimPendingNavigation(
 		const cache = await cacheStorage.open(PENDING_NAV_CACHE);
 		const hit = await cache.match(PENDING_NAV_KEY);
 		if (!hit) return null;
-		await cache.delete(PENDING_NAV_KEY);
+		// Read the body BEFORE deleting the entry it came from. Chromium backs a
+		// matched Response with a blob that outlives the delete, but WebKit is the
+		// engine this whole module exists for, and a throw here lands in the catch
+		// below as a plain null — silently reinstating the bug being fixed, with no
+		// signal anywhere. The order costs nothing, so don't depend on the answer.
 		const parsed: unknown = await hit.json();
+		await cache.delete(PENDING_NAV_KEY);
 		if (!isRecord(parsed)) return null;
 		return isClaimable(parsed, now) ? parsed.conversationId : null;
 	} catch {

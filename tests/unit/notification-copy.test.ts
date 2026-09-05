@@ -23,6 +23,10 @@ describe('notificationTitle', () => {
 	it('falls back to the app name when the title was withheld', () => {
 		expect(notificationTitle(opaque())).toBe(GENERIC_TITLE);
 	});
+
+	it('falls back to the app name for an empty title, not a blank heading', () => {
+		expect(notificationTitle(opaque({ conversationTitle: '' }))).toBe(GENERIC_TITLE);
+	});
 });
 
 describe('notificationBody', () => {

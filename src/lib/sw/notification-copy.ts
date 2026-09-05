@@ -27,7 +27,10 @@ export const GENERIC_TITLE = 'GlyphStream';
  * otherwise the app name.
  */
 export function notificationTitle(payload: NotifyPushPayload): string {
-	return payload.conversationTitle ?? GENERIC_TITLE;
+	// `||`, not `??`: an empty string is as unusable as a missing one here, and
+	// the relays only coerce a NULL title to a placeholder — an empty one reaches
+	// the payload intact and would render a blank heading.
+	return payload.conversationTitle || GENERIC_TITLE;
 }
 
 /**
