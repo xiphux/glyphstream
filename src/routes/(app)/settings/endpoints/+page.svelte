@@ -28,6 +28,7 @@
 		Loader2,
 		RefreshCw,
 	} from '@lucide/svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import { toast } from '$lib/toast.svelte';
 	import { errorMessageFromResponse } from '$lib/fetch-error';
 	import type {
@@ -44,7 +45,11 @@
 	// `data` once is the intent — the load never re-runs behind us.
 	// svelte-ignore state_referenced_locally
 	let status = $state<EndpointsStatusResponse>(data.status);
-	let rechecking = $state<string | null>(null);
+	// A SET, not a single id: with one slot, rechecking ANY endpoint disabled
+	// EVERY endpoint's button, on the one page whose job is comparing endpoints.
+	// Both the handler guard and the `disabled` binding read this — changing only
+	// the binding would leave the other buttons enabled but silently inert.
+	const rechecking = new SvelteSet<string>();
 
 	// Ticks once a second so elapsed times advance between the 3s polls.
 	let nowMs = $state(Date.now());
@@ -99,20 +104,38 @@
 		};
 	});
 
+	/**
+	 * A probe that never answers must not hold the button hostage.
+	 *
+	 * The server bounds the upstream fetch by the endpoint's own
+	 * `request_timeout_seconds` — 120 by default, and `config.toml.example`
+	 * documents 600 for a bridge. That is the right budget for a generation and
+	 * far too long for a diagnostic click: a black-holed host (firewall DROP —
+	 * exactly why someone opens this page) would leave the control dead for
+	 * minutes. This deadline is the UI's, deliberately independent of the
+	 * endpoint's, and giving up on the response costs nothing because the 3s
+	 * poll shows the probe's result the moment it lands.
+	 */
+	const RECHECK_TIMEOUT_MS = 15_000;
+
 	async function recheck(endpointId: string) {
-		if (rechecking) return;
-		rechecking = endpointId;
+		if (rechecking.has(endpointId)) return;
+		rechecking.add(endpointId);
 		try {
 			const res = await fetch(`/api/admin/endpoints/${encodeURIComponent(endpointId)}/recheck`, {
 				method: 'POST',
+				signal: AbortSignal.timeout(RECHECK_TIMEOUT_MS),
 			});
 			if (!res.ok) {
 				toast.error(await errorMessageFromResponse(res));
 				return;
 			}
 			applySnapshot((await res.json()) as EndpointsStatusResponse);
+		} catch {
+			// Timed out or the tab went away. The probe is still running server-side
+			// and lands in the cache, so the next poll reports it — nothing to say.
 		} finally {
-			rechecking = null;
+			rechecking.delete(endpointId);
 		}
 	}
 
@@ -288,7 +311,7 @@
 				<button
 					type="button"
 					onclick={() => void recheck(ep.id)}
-					disabled={rechecking !== null}
+					disabled={rechecking.has(ep.id)}
 					title="Re-probe this endpoint now"
 					class="rounded-md border border-border p-1.5 transition hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
 					aria-label="Recheck {ep.displayName}"
@@ -296,7 +319,7 @@
 					<RefreshCw
 						size={13}
 						strokeWidth={2.25}
-						class={rechecking === ep.id ? 'animate-spin' : ''}
+						class={rechecking.has(ep.id) ? 'animate-spin' : ''}
 						aria-hidden="true"
 					/>
 				</button>
