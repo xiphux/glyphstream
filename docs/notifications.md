@@ -353,11 +353,14 @@ happens, check the SW console for errors.
   `showNotification()` and the in-app toast so the two can't disagree
   about what a content-free payload looks like.
 - **Tap → open the thread**: `focusOrOpen()` in `service-worker.ts` posts
-  `navigate_to_conversation` to a live window, and _also_ records the
-  target via `src/lib/sw/pending-navigation.ts` for the cold-launch case,
-  where there is no live window to receive a postMessage. The root layout
-  claims that record on mount. See the module header for why neither
-  postMessage nor `openWindow(path)` is sufficient alone on iOS.
+  `navigate_to_conversation` to a live window, and _always_ records the
+  target via `src/lib/sw/pending-navigation.ts` — the worker cannot tell a
+  live window from an iOS-relaunched one with no listener yet, so it cannot
+  make that write conditional. The root layout claims the record on mount
+  (the cold launch) and again from its `navigate_to_conversation` handler
+  (the warm tap, which never remounts); leaving either out strands an armed
+  record for the next page load to act on. See the module header for why
+  neither postMessage nor `openWindow(path)` suffices alone on iOS.
 - **Cross-device presence**: `src/lib/server/push/presence.ts` (in-memory
   registry, single-process — mirrors the in-flight registry) fed by
   `POST /api/presence`. The chat page publishes the conversation it is

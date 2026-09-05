@@ -244,6 +244,14 @@
 					});
 				} else if (data.kind === 'navigate_to_conversation') {
 					void goto(resolve(`/chat/${data.conversationId}`));
+					// Reaching this branch proves a listener was attached when the tap
+					// fired, so the cold-launch record the worker also wrote is redundant.
+					// Spend it. Nothing else would: a warm tap navigates without
+					// remounting, so the on-mount claim below never runs for it, and the
+					// record would stay armed for its full lifetime — long enough for the
+					// next unrelated mount (a second tab, a refresh, the update banner's
+					// reload) to claim it and yank the user into an already-read thread.
+					discardPendingNotificationTap();
 				}
 			});
 			// ...and only now, with that listener attached, ask whether a tap
@@ -252,29 +260,48 @@
 			// navigate_to_conversation into this window while it was still parsing
 			// its bundle, and nothing was listening yet. The worker also wrote the
 			// target down for exactly this pull. See $lib/sw/pending-navigation.ts.
-			void claimPendingNavigation();
+			void honourPendingNotificationTap();
 		}
 	});
 
 	/**
+	 * Take the pending tap target from the worker, consuming it. Resolves null
+	 * when there is nothing pending or no worker to ask — including in dev, where
+	 * the PWA plugin is disabled and `serviceWorker.ready` never settles at all,
+	 * so this simply parks.
+	 *
+	 * Named apart from `claimPendingNavigation` in $lib/sw/pending-navigation.ts,
+	 * which is the worker-side Cache Storage read this reaches by message.
+	 */
+	async function takePendingNotificationTap(): Promise<string | null> {
+		const worker = (await navigator.serviceWorker.ready.catch(() => null))?.active;
+		if (!worker) return null;
+		return askPendingNavigation(worker);
+	}
+
+	/**
 	 * Honour a notification tap that landed before this page could listen for it.
 	 *
-	 * Safe to call on every mount, tap or no tap: the worker has a record only
-	 * when a notification was actually tapped, claiming it is single-use, and it
+	 * Safe to call on every mount, tap or no tap: the worker holds a record only
+	 * when a notification was actually tapped, taking it is single-use, and it
 	 * expires — so an ordinary app open resolves null and does nothing. The
-	 * already-there check covers the paths that got the user to the right thread
-	 * without this (a warm postMessage, or an `openWindow` on a platform that
-	 * honours its path), leaving the claim to consume the spent record only.
-	 *
-	 * `serviceWorker.ready` never settles when nothing is registered — the dev
-	 * server, where the PWA plugin is disabled — so in dev this simply parks.
+	 * already-there check then covers the tap that DID reach a listener on this
+	 * same mount, or an `openWindow` on a platform that honours its path: the
+	 * route is already right, so the record is spent without navigating again.
 	 */
-	async function claimPendingNavigation(): Promise<void> {
-		const worker = (await navigator.serviceWorker.ready.catch(() => null))?.active;
-		if (!worker) return;
-		const conversationId = await askPendingNavigation(worker);
+	async function honourPendingNotificationTap(): Promise<void> {
+		const conversationId = await takePendingNotificationTap();
 		if (!conversationId || page.params.id === conversationId) return;
 		await goto(resolve(`/chat/${conversationId}`));
+	}
+
+	/**
+	 * Spend the record without acting on it — for the warm tap, which this window
+	 * has already handled via postMessage. Fire-and-forget; failing to clear it
+	 * costs a stray navigation at worst, never the tap itself.
+	 */
+	function discardPendingNotificationTap(): void {
+		void takePendingNotificationTap();
 	}
 
 	function dismissUpdate() {

@@ -26,6 +26,17 @@
  * The record is single-use (claiming deletes it) and short-lived, so a target
  * whose launch never arrived cannot lie in wait and hijack an unrelated app
  * open days later.
+ *
+ * "Single-use" only holds if something always uses it, though, and the write
+ * cannot be made conditional to help: from the worker's side a live window and
+ * an iOS-relaunched-but-not-yet-listening one are indistinguishable — both match
+ * `clients.matchAll()` and both accept the postMessage — so skipping the record
+ * when a client is found would skip exactly the case this exists for. The
+ * obligation therefore sits on the consuming side, and BOTH paths must discharge
+ * it: the page claims on mount for the cold launch, and also claims from its
+ * `navigate_to_conversation` handler for the warm tap, which navigates without
+ * remounting and would otherwise leave the record armed for the next unrelated
+ * page load to trip over.
  */
 
 /** Its own cache — nothing in the SW enumerates or prunes caches, so this
