@@ -1651,19 +1651,33 @@
 	// "some branch holds a slot" test (it covers a recovered grid too, whose
 	// pending columns carry the registry's own start times).
 	//
-	// The single-send fallback is `turn.inFlightQueued`, set and cleared by the
-	// same `queued`/`start` events. A RECOVERED single turn has neither — the
-	// recovery payload carries a registration time, not a gate state — so it
-	// reports 'active' and the layout's poll corrects it from server truth within
-	// a tick. Guessing 'active' there is the right way round: this is the
-	// conversation on screen, whose own in-flight bubble already says what it is
-	// doing, and it's never the row the user is hunting for.
-	const generationActivity = $derived<GenerationActivity>(
+	// The single-send arm asks the same POSITIVE question — has a slot been
+	// granted (`turn.inFlightStartedAt`, set from `start` and from the first
+	// content frame) — rather than reading the absence of a queue notice.
+	// `!inFlightQueued` would be wrong for exactly the phases the fan-out arm
+	// guards against: prompt enhancement and a handover eviction both run BEFORE
+	// the gate and arrive as `progress` events, which clear the queue notice
+	// without a slot existing. On a box that shares one GPU between an LLM and an
+	// image backend, that handover is routine, not exotic.
+	//
+	// Gated on `turn.busy` so it means "a LOCAL turn we are driving that has not
+	// started yet". A RECOVERED turn isn't busy and has no local signal at all —
+	// the recovery payload carries a registration time, not a gate state — so it
+	// falls through to 'active' and the poll corrects it from server truth within
+	// a tick. That's the right way round for a row the user is already looking
+	// at: over-reporting activity costs a wrong icon on the one conversation
+	// whose bubble already says what it is doing, while under-reporting hides the
+	// thread they are hunting for.
+	//
+	// The pre-first-event window (Send dispatched, nothing back yet) therefore
+	// reads 'queued', which is what it is — no slot has been granted, and on a
+	// saturated endpoint it is about to be literally true.
+	const localGenerationActivity = $derived<GenerationActivity>(
 		fanout.streaming
 			? fanout.generatingNow
 				? 'active'
 				: 'queued'
-			: turn.inFlightQueued
+			: turn.inFlightQueued || (turn.busy && turn.inFlightStartedAt === null)
 				? 'queued'
 				: 'active',
 	);
@@ -1762,7 +1776,7 @@
 	// immediately, ahead of the poll.
 	$effect(() => {
 		if (renderingGeneration) {
-			markGenerating(convId, generationActivity);
+			markGenerating(convId, localGenerationActivity);
 			// Then SUBSCRIBE to this id's membership, so the mark self-heals if the
 			// layout's poll clears it. That happens for real: we flag on `busy`,
 			// which is set before the POST is even dispatched, while the server

@@ -272,6 +272,128 @@ describe('ChatTurnController — send', () => {
 	});
 });
 
+describe('ChatTurnController — slot acquisition', () => {
+	/** A stream the test feeds one event at a time, so mid-turn state is
+	 *  observable instead of only its settled remains. */
+	function pushableSse() {
+		let ctrl!: ReadableStreamDefaultController<Uint8Array>;
+		const enc = new TextEncoder();
+		const body = new ReadableStream<Uint8Array>({
+			start(c) {
+				ctrl = c;
+			},
+		});
+		return {
+			res: { ok: true, body } as unknown as Response,
+			push: async (e: unknown) => {
+				ctrl.enqueue(enc.encode(`data: ${JSON.stringify(e)}\n\n`));
+				// A macrotask, not a microtask drain: the reader's `await read()`
+				// resolves on the stream's own scheduling, and a microtask flush
+				// returns before the handler has run — which makes a "still null"
+				// assertion pass without the event ever being delivered.
+				await new Promise((r) => setTimeout(r, 0));
+			},
+			close: () => ctrl.close(),
+		};
+	}
+
+	it('does not report a slot during the pre-gate phases', async () => {
+		// `progress` carries the phases that run BEFORE `acquireEndpointSlot`:
+		// prompt enhancement, and "Freeing GPU memory…" during a handover
+		// eviction. Both clear the queue notice, so the ABSENCE of that notice
+		// never meant "generating" — which is why the sidebar's mark asks
+		// `inFlightStartedAt` instead. On a shared GPU those phases are seconds
+		// long, and reporting them as running is exactly the "everything looks
+		// busy" confusion the queued mark exists to end.
+		const sse = pushableSse();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => sse.res),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const sending = turn.send('draw me something', []);
+
+		await sse.push({ type: 'progress', percent: null, status: 'Enhancing prompt…' });
+		expect(turn.inFlightQueued).toBe(null);
+		expect(turn.inFlightStartedAt).toBe(null);
+
+		await sse.push({ type: 'progress', percent: null, status: 'Freeing GPU memory…' });
+		expect(turn.inFlightStartedAt).toBe(null);
+
+		// The gate grants the slot.
+		await sse.push({ type: 'start', userMessage: userMsg('u1') });
+		expect(turn.inFlightStartedAt).not.toBe(null);
+
+		await sse.push({ type: 'done', assistantMessage: assistantMsg('a1') });
+		sse.close();
+		await sending;
+	});
+
+	it('keeps reporting queued while the gate says so', async () => {
+		const sse = pushableSse();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => sse.res),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const sending = turn.send('hello', []);
+
+		await sse.push({ type: 'queued', ahead: 2 });
+		expect(turn.inFlightQueued).toEqual({ ahead: 2 });
+		expect(turn.inFlightStartedAt).toBe(null);
+
+		await sse.push({ type: 'start', userMessage: userMsg('u1') });
+		expect(turn.inFlightQueued).toBe(null);
+		expect(turn.inFlightStartedAt).not.toBe(null);
+
+		await sse.push({ type: 'done', assistantMessage: assistantMsg('a1') });
+		sse.close();
+		await sending;
+	});
+
+	it('treats content as proof of a slot when no start frame arrived', async () => {
+		// The mark now depends on this field, so a stream that reaches content
+		// without a `start` must not leave a live generation wearing the queued
+		// ring for its whole run.
+		const sse = pushableSse();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => sse.res),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const sending = turn.send('hello', []);
+
+		await sse.push({ type: 'text', chunk: 'already talking' });
+		expect(turn.inFlightStartedAt).not.toBe(null);
+
+		await sse.push({ type: 'done', assistantMessage: assistantMsg('a1') });
+		sse.close();
+		await sending;
+	});
+
+	it('clears the start time with the turn, so the next one does not inherit it', async () => {
+		const first = pushableSse();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => first.res),
+		);
+		const { deps } = makeDeps();
+		const turn = new ChatTurnController(deps);
+		const sending = turn.send('hello', []);
+		await first.push({ type: 'start', userMessage: userMsg('u1') });
+		await first.push({ type: 'done', assistantMessage: assistantMsg('a1') });
+		first.close();
+		await sending;
+
+		// A stale timestamp here would paint the NEXT send as already on the GPU
+		// while it is still queueing.
+		expect(turn.inFlightStartedAt).toBe(null);
+	});
+});
+
 describe('ChatTurnController — approval resume', () => {
 	it('POSTs the decisions, streams the resumed reply, and clears the decisions', async () => {
 		const reply = assistantMsg('a-resume');

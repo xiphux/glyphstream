@@ -712,12 +712,18 @@ export class FanoutController {
 					// Past the (pre-slot) enhancement phase — drop its transient label.
 					col.statusLabel = null;
 				},
+				// Content implies a slot — see the same `??=` in chat-turn-controller.
+				// A real `start` keeps its own timestamp; this only backstops a
+				// stream that reaches content without one, which `generatingNow`
+				// (and so the sidebar's mark) would otherwise read as still queued.
 				onText(chunk) {
 					col.status = 'streaming';
+					col.startedAt ??= Date.now();
 					col.segments = appendText(col.segments, chunk);
 				},
 				onReasoning(chunk) {
 					col.status = 'streaming';
+					col.startedAt ??= Date.now();
 					col.segments = appendReasoning(col.segments, chunk);
 				},
 				onProgress(percent, status) {

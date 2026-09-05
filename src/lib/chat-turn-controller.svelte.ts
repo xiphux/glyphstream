@@ -153,6 +153,20 @@ export class ChatTurnController {
 	/** Set when the server emits a `queued` event (the endpoint's max_concurrent
 	 *  was full); drives the "Queued…" placeholder in the in-flight bubble. */
 	inFlightQueued = $state<{ ahead: number } | null>(null);
+	/**
+	 * When this turn ACQUIRED its endpoint slot — set only from `start`, which
+	 * both relays emit strictly after `acquireEndpointSlot` resolves. Null while
+	 * the turn is still waiting on the gate (or doing pre-slot work).
+	 *
+	 * The positive signal for "this is on the GPU", and not the same question as
+	 * `!inFlightQueued`: the absence of a queue notice also covers the phases
+	 * that run BEFORE the gate — prompt enhancement and a handover eviction —
+	 * both of which arrive as `progress` events that clear `inFlightQueued`
+	 * without a slot having been granted. The sidebar's generating-vs-queued mark
+	 * reads this; the fan-out grid has the same field per column (`startedAt`)
+	 * for the same reason.
+	 */
+	inFlightStartedAt = $state<number | null>(null);
 	/** Set when the server emits an `mcp_unavailable` event (a conversation-
 	 *  enabled per-user MCP server is down and its tools were skipped). */
 	// `.raw` — only ever assigned whole (cleared, or set from a stream event).
@@ -254,6 +268,9 @@ export class ChatTurnController {
 	#resetInFlightSegments(): void {
 		this.inFlightSegments = [];
 		this.inFlightQueued = null;
+		// Cleared with the rest of the turn's in-flight state: a stale start time
+		// would report the NEXT turn as already on the GPU while it queues.
+		this.inFlightStartedAt = null;
 		this.inFlightMcpUnavailable = [];
 		this.liveReaction = null;
 	}
@@ -327,6 +344,9 @@ export class ChatTurnController {
 			onStart: async (userMessage) => {
 				this.inFlightQueued = null;
 				this.inFlightStatus = null;
+				// The gate granted this turn a slot — both relays emit `start` only
+				// after `acquireEndpointSlot` resolves.
+				this.inFlightStartedAt = Date.now();
 				// Send / edit: replace the optimistic placeholder with the canonical
 				// persisted user message. Retry + resume: no optimistic id (their
 				// start event carries the prior user message we already render), so
@@ -349,16 +369,25 @@ export class ChatTurnController {
 			// the previous bottom and the post-tick effect had to correct it anyway.
 			// Two forced layouts per streamed token, one of them measuring stale
 			// geometry.
+			// Content implies a slot: nothing upstream produces output before the
+			// gate grants one. `??=` so a real `start` keeps its own timestamp —
+			// this only backstops a stream that somehow reaches content without
+			// one. That used to be cosmetic; now that the sidebar's mark reads
+			// `inFlightStartedAt`, a missed `start` would leave a live generation
+			// wearing the QUEUED ring for its whole run.
 			onText: (chunk) => {
 				this.inFlightQueued = null;
+				this.inFlightStartedAt ??= Date.now();
 				this.inFlightSegments = appendText(this.inFlightSegments, chunk);
 			},
 			onReasoning: (chunk) => {
 				this.inFlightQueued = null;
+				this.inFlightStartedAt ??= Date.now();
 				this.inFlightSegments = appendReasoning(this.inFlightSegments, chunk);
 			},
 			onToolCallStart: (toolCallId, toolName) => {
 				this.inFlightQueued = null;
+				this.inFlightStartedAt ??= Date.now();
 				this.inFlightSegments = pushToolCall(this.inFlightSegments, toolCallId, toolName);
 			},
 			onToolCallArgsDelta: (toolCallId, argumentsDelta) => {
