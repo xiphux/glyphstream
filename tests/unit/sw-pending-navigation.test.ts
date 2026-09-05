@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	PENDING_NAV_CACHE,
 	PENDING_NAV_KEY,
 	PENDING_NAV_MAX_AGE_MS,
 	askPendingNavigation,
 	claimPendingNavigation,
+	forgetPendingNavigation,
 	isClaimable,
 	recordPendingNavigation,
 } from '$lib/sw/pending-navigation';
@@ -86,6 +88,22 @@ describe('record + claim', () => {
 		const caches = fakeCaches();
 		caches.store.set(PENDING_NAV_KEY, JSON.stringify({ conversationId: '', at: 1000 }));
 		expect(await claimPendingNavigation(caches, 1000)).toBeNull();
+	});
+
+	it('forgetting drops the whole cache, so it cannot outlive a sign-out', async () => {
+		const deleted: string[] = [];
+		const caches = { delete: async (name: string) => (deleted.push(name), true) };
+		await forgetPendingNavigation(caches);
+		expect(deleted).toEqual([PENDING_NAV_CACHE]);
+	});
+
+	it('forgetting never throws when Cache Storage refuses', async () => {
+		const caches = {
+			delete: async () => {
+				throw new Error('no cache storage');
+			},
+		};
+		await expect(forgetPendingNavigation(caches)).resolves.toBeUndefined();
 	});
 
 	it('never throws when Cache Storage is unavailable', async () => {

@@ -154,6 +154,23 @@ export async function claimPendingNavigation(
 }
 
 /**
+ * Drop the whole cache. Sign-out cleanup: the record is device-local state
+ * naming one user's conversation, and Cache Storage is scoped to the origin,
+ * not to the session — so on a shared browser an unspent record could otherwise
+ * outlive its owner and route the next person who signs in. Best-effort and
+ * never throws; the record expires on its own regardless.
+ */
+export async function forgetPendingNavigation(cacheStorage: {
+	delete(cacheName: string): Promise<boolean>;
+}): Promise<void> {
+	try {
+		await cacheStorage.delete(PENDING_NAV_CACHE);
+	} catch {
+		// No Cache Storage, or it refused — nothing to forget.
+	}
+}
+
+/**
  * Window side: ask the controlling worker whether a notification tap is
  * waiting to be honoured. Mirrors `askWorkerBuild` — same MessageChannel
  * shape, same single settle path, same "resolves null when nothing answers"

@@ -12,12 +12,19 @@
  * on sign-out by default. State that should genuinely persist across accounts
  * on a device (a true device preference) must live outside this prefix.
  *
- * Scope is localStorage only. The `glyphstream:`-prefixed sessionStorage keys
- * (pending-first-message, gallery-launch) are transient, consume-and-delete
- * handoffs that don't outlive the browsing session, so they need no wipe here.
+ * Beyond localStorage it also drops the pending-notification-tap record
+ * (`$lib/sw/pending-navigation.ts`), which lives in Cache Storage. Same
+ * argument, different store: it names one user's conversation, Cache Storage is
+ * scoped to the origin rather than the session, and an unspent record would
+ * otherwise be claimable by whoever signs in next on a shared browser.
+ *
+ * The `glyphstream:`-prefixed sessionStorage keys (pending-first-message,
+ * gallery-launch) are transient, consume-and-delete handoffs that don't outlive
+ * the browsing session, so they need no wipe here.
  */
 
 import { browser } from '$app/environment';
+import { forgetPendingNavigation } from '$lib/sw/pending-navigation';
 
 const PREFIX = 'glyphstream:';
 
@@ -35,4 +42,7 @@ export function clearSessionScopedClientState(): void {
 	} catch {
 		/* storage disabled — nothing to clear */
 	}
+	// Fire-and-forget: an async teardown must not hold up the sign-out render,
+	// and the record expires on its own if this never lands.
+	if (typeof caches !== 'undefined') void forgetPendingNavigation(caches);
 }
