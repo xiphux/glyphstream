@@ -60,7 +60,23 @@ export const PENDING_NAV_MAX_AGE_MS = 5 * 60 * 1000;
  *  caller's port with the conversation id, or null. */
 export const CLAIM_PENDING_NAVIGATION = 'CLAIM_PENDING_NAVIGATION';
 
+/**
+ * Shape version of the stored record. Bump when the record's fields change:
+ * a reader rejects any version but its own, so an old shape is discarded
+ * rather than structurally misread by a half-updated pair of sides. Cheap
+ * insurance — the write and the read can genuinely differ in version, since
+ * a record can outlive a service-worker update that lands between the tap and
+ * the launch.
+ *
+ * Rejection costs at most one tap, and only across such an update: the claim
+ * deletes before it validates, so a rejected record is consumed rather than
+ * re-read on every launch.
+ */
+export const PENDING_NAV_VERSION = 1;
+
 interface PendingNavigationRecord {
+	/** PENDING_NAV_VERSION at write time. */
+	v: number;
 	conversationId: string;
 	/** Epoch ms the notification was tapped. */
 	at: number;
@@ -83,7 +99,10 @@ function isRecord(v: unknown): v is PendingNavigationRecord {
 	if (typeof v !== 'object' || v === null) return false;
 	const r = v as Partial<PendingNavigationRecord>;
 	return (
-		typeof r.conversationId === 'string' && r.conversationId.length > 0 && typeof r.at === 'number'
+		r.v === PENDING_NAV_VERSION &&
+		typeof r.conversationId === 'string' &&
+		r.conversationId.length > 0 &&
+		typeof r.at === 'number'
 	);
 }
 
@@ -114,7 +133,7 @@ export async function recordPendingNavigation(
 ): Promise<void> {
 	try {
 		const cache = await cacheStorage.open(PENDING_NAV_CACHE);
-		const record: PendingNavigationRecord = { conversationId, at: now };
+		const record: PendingNavigationRecord = { v: PENDING_NAV_VERSION, conversationId, at: now };
 		await cache.put(
 			PENDING_NAV_KEY,
 			new Response(JSON.stringify(record), {

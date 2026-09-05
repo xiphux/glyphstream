@@ -3,6 +3,7 @@ import {
 	PENDING_NAV_CACHE,
 	PENDING_NAV_KEY,
 	PENDING_NAV_MAX_AGE_MS,
+	PENDING_NAV_VERSION,
 	askPendingNavigation,
 	claimPendingNavigation,
 	forgetPendingNavigation,
@@ -34,19 +35,30 @@ function fakeCaches(opts: { failOpen?: boolean } = {}) {
 
 describe('isClaimable', () => {
 	it('accepts a record written just now', () => {
-		expect(isClaimable({ conversationId: 'c1', at: 1000 }, 1000)).toBe(true);
+		expect(isClaimable({ v: PENDING_NAV_VERSION, conversationId: 'c1', at: 1000 }, 1000)).toBe(
+			true,
+		);
 	});
 
 	it('accepts a record right at the age limit', () => {
-		expect(isClaimable({ conversationId: 'c1', at: 0 }, PENDING_NAV_MAX_AGE_MS)).toBe(true);
+		expect(
+			isClaimable({ v: PENDING_NAV_VERSION, conversationId: 'c1', at: 0 }, PENDING_NAV_MAX_AGE_MS),
+		).toBe(true);
 	});
 
 	it('rejects a record past the age limit', () => {
-		expect(isClaimable({ conversationId: 'c1', at: 0 }, PENDING_NAV_MAX_AGE_MS + 1)).toBe(false);
+		expect(
+			isClaimable(
+				{ v: PENDING_NAV_VERSION, conversationId: 'c1', at: 0 },
+				PENDING_NAV_MAX_AGE_MS + 1,
+			),
+		).toBe(false);
 	});
 
 	it('rejects a record from the future (clock moved backwards)', () => {
-		expect(isClaimable({ conversationId: 'c1', at: 5000 }, 1000)).toBe(false);
+		expect(isClaimable({ v: PENDING_NAV_VERSION, conversationId: 'c1', at: 5000 }, 1000)).toBe(
+			false,
+		);
 	});
 });
 
@@ -86,8 +98,39 @@ describe('record + claim', () => {
 
 	it('ignores a malformed record rather than navigating somewhere odd', async () => {
 		const caches = fakeCaches();
-		caches.store.set(PENDING_NAV_KEY, JSON.stringify({ conversationId: '', at: 1000 }));
+		caches.store.set(
+			PENDING_NAV_KEY,
+			JSON.stringify({ v: PENDING_NAV_VERSION, conversationId: '', at: 1000 }),
+		);
 		expect(await claimPendingNavigation(caches, 1000)).toBeNull();
+	});
+
+	it('rejects a record of a different shape version, and still consumes it', async () => {
+		// A record can outlive a worker update that lands between the tap and the
+		// launch, so the two sides can genuinely disagree about the shape. Reject
+		// rather than structurally misread — but delete regardless, so a rejected
+		// record can't be re-read on every launch until it expires.
+		const caches = fakeCaches();
+		caches.store.set(
+			PENDING_NAV_KEY,
+			JSON.stringify({ v: PENDING_NAV_VERSION + 1, conversationId: 'conv-42', at: 1000 }),
+		);
+		expect(await claimPendingNavigation(caches, 1000)).toBeNull();
+		expect(caches.store.has(PENDING_NAV_KEY)).toBe(false);
+	});
+
+	it('rejects a record written before versioning existed', async () => {
+		const caches = fakeCaches();
+		caches.store.set(PENDING_NAV_KEY, JSON.stringify({ conversationId: 'conv-42', at: 1000 }));
+		expect(await claimPendingNavigation(caches, 1000)).toBeNull();
+		expect(caches.store.has(PENDING_NAV_KEY)).toBe(false);
+	});
+
+	it('stamps the current version on every record it writes', async () => {
+		const caches = fakeCaches();
+		await recordPendingNavigation(caches, 'conv-42', 1000);
+		const stored = JSON.parse(caches.store.get(PENDING_NAV_KEY) ?? '{}') as { v?: number };
+		expect(stored.v).toBe(PENDING_NAV_VERSION);
 	});
 
 	it('forgetting drops the whole cache, so it cannot outlive a sign-out', async () => {
