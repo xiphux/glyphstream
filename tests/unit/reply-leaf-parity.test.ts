@@ -54,7 +54,12 @@ type Row = ['user' | 'assistant' | 'tool', MessagePart[]];
 
 /** Persist the chain, then run BOTH implementations over it and return their
  *  answers as message ids so they're directly comparable. */
-function bothAnswers(rows: Row[]): { server: string; client: string | undefined } {
+function bothAnswers(rows: Row[]): {
+	server: string;
+	client: string | undefined;
+	/** The persisted ids, in the order the rows were given. */
+	ids: string[];
+} {
 	const u = seedUser();
 	const conv = createConversation({
 		userId: u.id,
@@ -84,6 +89,7 @@ function bothAnswers(rows: Row[]): { server: string; client: string | undefined 
 	return {
 		server: resolveReplyLeaf(conv.id, leaf),
 		client: lastReplyMessage(persisted)?.id,
+		ids: persisted.map((m) => m.id),
 	};
 }
 
@@ -174,6 +180,52 @@ describe('resolveReplyLeaf / lastReplyMessage parity', () => {
 	it.each(cases)('agrees on %s', (_label, rows) => {
 		const { server, client } = bothAnswers(rows);
 		expect(client).toBe(server);
+	});
+
+	// Equality alone would also be satisfied by two implementations that are
+	// wrong in the same direction — "always return the leaf" passes every case
+	// above. The absolute answers are pinned in chat-render-reactions.test.ts and
+	// db-custom-model-avatar.test.ts, but one anchor per direction here keeps this
+	// file from quietly becoming a tautology if either of those moves.
+	it('anchors the two directions, so agreeing wrongly is not enough', () => {
+		const reacted = bothAnswers([
+			['user', [text('I got the job!!')]],
+			['assistant', [text('Congrats!'), reaction()]],
+			['tool', [result('call_r')]],
+		]);
+		// Resolves BACK to the assistant reply: the tool row is the reaction's
+		// bookkeeping, not the branch moving on.
+		expect(reacted.server).toBe(reacted.ids[1]);
+		expect(reacted.client).toBe(reacted.ids[1]);
+
+		const realWork = bothAnswers([
+			['user', [text('what time is it')]],
+			['assistant', [text(''), realTool()]],
+			['tool', [result('call_t')]],
+		]);
+		// A real tool call is work in progress — the leaf stands.
+		expect(realWork.server).toBe(realWork.ids[2]);
+		expect(realWork.client).toBe(realWork.ids[2]);
+	});
+
+	it('gives up on a parent chain too long to be a real reaction turn', () => {
+		// The cap exists because `appendMessage` calls this from inside its write
+		// transaction: a corrupt `parent_message_id` cycle would spin there holding
+		// the lock. Falling back to `leafId` is the same answer as "the branch moved
+		// on", so the CAS simply misses and the row lands as a sibling.
+		//
+		// 66 chained tool rows is past the cap and unreachable in practice — a
+		// chain is one row per tool call within a SINGLE assistant iteration, so it
+		// would take one response emitting 66 reactions. Asserted anyway: nothing
+		// else holds the bound, and removing it swaps a spurious 409 for a hang
+		// under a lock.
+		const rows: Row[] = [
+			['user', [text('hi')]],
+			['assistant', [text('hey'), reaction()]],
+		];
+		for (let i = 0; i < 66; i++) rows.push(['tool', [result('call_r')]]);
+		const { server, ids } = bothAnswers(rows);
+		expect(server).toBe(ids[ids.length - 1]);
 	});
 
 	it('a root-level tool row is the one shape with no parent to walk to', () => {

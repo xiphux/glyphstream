@@ -1271,20 +1271,33 @@ describe('capToolResults — per-turn tool-name resolution', () => {
 		expect((out[3].content as string).length).toBeLessThan(big.length);
 	});
 
-	it('does not let an earlier turn\u2019s reused id exempt a later result', () => {
-		// The mirror image — the direction that leaves an oversized result uncapped
+	it('forgets the previous turn\u2019s names at the turn boundary', () => {
+		// The mirror direction — the one that leaves an oversized result uncapped
 		// forever, quietly costing context on every subsequent turn.
+		//
+		// It has to be written with the second turn naming NO tools, because that
+		// is the only shape a global map built while walking gets wrong: whenever
+		// the current turn re-declares the id, last-write-wins already lands on the
+		// right name, and the bug hides. So the id here is genuinely unresolvable,
+		// and an unresolvable name must cap rather than inherit an exemption from
+		// two turns ago.
+		//
+		// Handed to the function directly rather than reached through the pipeline:
+		// today's callers keep each turn's tool rows contiguous with the assistant
+		// that named them, and this clause is what stops the resolution degrading
+		// to \u201clast name seen\u201d if that ever stops holding.
 		const out = capToolResults(
 			[
 				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'read_skill_file')] },
 				{ role: 'tool', content: 'small', tool_call_id: 'call_0' },
-				{ role: 'assistant', content: null, tool_calls: [call('call_0', 'fetch_url')] },
+				{ role: 'user', content: 'now fetch the changelog' },
+				{ role: 'assistant', content: 'Fetching.' },
 				{ role: 'tool', content: big, tool_call_id: 'call_0' },
 			],
 			100,
 		);
 
-		expect((out[3].content as string).length).toBeLessThan(big.length);
+		expect((out[4].content as string).length).toBeLessThan(big.length);
 	});
 
 	it('still exempts a skill read in the ordinary single-turn case', () => {

@@ -990,9 +990,11 @@ export async function serializeBranchForUpstream(
  * it did. The UI is unaffected — this only shapes what goes upstream, and the
  * persisted row keeps its parts either way.
  *
- * Allocation-free when there's nothing to drop, matching the sibling transforms:
- * the same branch has to produce the same bytes every turn or the upstream's
- * prefix cache is invalidated for the whole conversation.
+ * Returns the input array itself when there's nothing to drop, matching the
+ * sibling transforms — the same branch has to produce the same bytes every turn
+ * or the upstream's prefix cache is invalidated for the whole conversation. (The
+ * scan to decide that still allocates; it's the identity of the RESULT that
+ * matters, so callers can compare by reference.)
  */
 export function dropOrphanedToolCalls(
 	messages: ChatCompletionRequest['messages'],
@@ -1044,6 +1046,19 @@ export function dropOrphanedToolCalls(
  * persisted rows (nothing is mutated), and both are deterministic — the same
  * branch produces the same bytes every turn, which is what keeps the upstream's
  * prefix cache valid across a conversation.
+ *
+ * Two of the three passes rest on an invariant this array has but nothing here
+ * enforces: **a turn's `role:'tool'` rows are contiguous with the assistant that
+ * named their calls.** That's what lets both resolve a call id turn-locally,
+ * which they must, because ids are only unique within one upstream response and
+ * are persisted verbatim. It holds today because tool rows are persisted in one
+ * synchronous loop, approval rewrites those rows in place rather than inserting,
+ * compaction only ever cuts at a `role:'user'` message, and the canvas system
+ * block is appended at the tail AFTER this runs. Insert a message mid-turn and
+ * neither pass errors: `dropOrphanedToolCalls` starts stripping calls that were
+ * in fact answered (emitting the invalid payload it exists to prevent) and
+ * `capToolResults` starts truncating skill bodies. Add the message here, after
+ * the transforms, or extend both windows deliberately.
  */
 export function applyWireTransforms(
 	messages: ChatCompletionRequest['messages'],
