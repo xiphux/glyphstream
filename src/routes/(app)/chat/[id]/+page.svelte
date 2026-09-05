@@ -1782,11 +1782,13 @@
 			// which is set before the POST is even dispatched, while the server
 			// only registers the generation once the request lands — a poll whose
 			// snapshot falls in that window answers without this conversation and
-			// the clear-only reconcile drops it. Nothing else would put it back
-			// (neither `renderingGeneration` nor `convId` changes again this turn,
-			// so this effect wouldn't re-run), and the dot would be gone for the
-			// rest of the session — precisely for a thread the user is about to
-			// walk away from. Widest for a fan-out, whose `/prepare` round trip
+			// the clear-only reconcile drops it. Nothing else would reliably put it
+			// back — `renderingGeneration` and `convId` don't change again this
+			// turn, and `localGenerationActivity` re-runs this effect at most once
+			// (queued -> active, if the turn was queued at all), which is neither
+			// guaranteed to happen nor guaranteed to land after the poll. So the
+			// dot would be gone for the rest of the session — precisely for a
+			// thread the user is about to walk away from. Widest for a fan-out, whose `/prepare` round trip
 			// opens the window for hundreds of ms. Re-marking is a no-op when the
 			// id is already present, so this settles in one extra run rather than
 			// looping.

@@ -154,9 +154,10 @@ export class ChatTurnController {
 	 *  was full); drives the "Queued…" placeholder in the in-flight bubble. */
 	inFlightQueued = $state<{ ahead: number } | null>(null);
 	/**
-	 * When this turn ACQUIRED its endpoint slot — set only from `start`, which
-	 * both relays emit strictly after `acquireEndpointSlot` resolves. Null while
-	 * the turn is still waiting on the gate (or doing pre-slot work).
+	 * When this turn ACQUIRED its endpoint slot — set from `start`, which both
+	 * relays emit strictly after `acquireEndpointSlot` resolves, and as a
+	 * backstop from the first content frame (see the `??=` in `onText` below).
+	 * Null while the turn is still waiting on the gate (or doing pre-slot work).
 	 *
 	 * The positive signal for "this is on the GPU", and not the same question as
 	 * `!inFlightQueued`: the absence of a queue notice also covers the phases

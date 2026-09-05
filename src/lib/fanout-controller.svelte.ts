@@ -164,9 +164,11 @@ export class FanoutController {
 	comparing = $derived(this.columns.length > 0);
 	streaming = $derived(this.columns.some((c) => c.status === 'queued' || c.status === 'streaming'));
 	/**
-	 * The subset of `streaming` where a branch has actually ACQUIRED its slot —
-	 * `startedAt` is set only by `onStart` (and by recovery, from the registry's
-	 * `generationStartedAt`), which is the gate handing over.
+	 * The subset of `streaming` where a branch has actually ACQUIRED its slot.
+	 * `startedAt` is set by `onStart` — the gate handing over — by recovery from
+	 * the registry's `generationStartedAt`, and as a backstop by the first
+	 * content frame (see the `??=` below, for a stream that reaches content
+	 * without an observed `start`). All three mean the same thing: a slot exists.
 	 *
 	 * Not `status === 'streaming'` alone: `onProgress` sets that status for the
 	 * pre-slot "Enhancing prompt…" phase too, which runs BEFORE the gate and so

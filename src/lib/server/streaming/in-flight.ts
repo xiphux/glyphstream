@@ -71,8 +71,10 @@ export interface InFlightEntry {
 	 *  matching the live grid. */
 	modelId: string | null;
 	/** Unix ms when this branch actually began generating (acquired its
-	 *  concurrency slot — the relay sets this when it emits `start`), or null
-	 *  while still queued behind the gate. Lets a recovered fan-out distinguish
+	 *  concurrency slot), or null while still queued behind the gate. Stamped by
+	 *  the REGISTERING ROUTE, not by the registry or the relay: the streaming
+	 *  paths hand the relay an `onStarted` that sets it, and the synchronous
+	 *  send path assigns it straight after `acquireEndpointSlot` resolves. Lets a recovered fan-out distinguish
 	 *  a QUEUED branch from a generating one + restore its elapsed timer. */
 	generationStartedAt: number | null;
 	/** Split-attachments input image this branch is editing / animating, or null
