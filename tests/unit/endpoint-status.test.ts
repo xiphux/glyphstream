@@ -182,7 +182,9 @@ describe('getEndpointsStatus', () => {
 		expect(g).toMatchObject({ active: 1, waiting: 1, maxConcurrent: 1, lastHolderId: 'llama' });
 
 		const [llamaStatus, comfyStatus] = g.endpoints;
-		expect(llamaStatus.active.map((s) => s.modelId)).toEqual(['llama::gemma']);
+		// Bare: the `llama::` prefix is redundant next to `endpointId`, and is
+		// stripped so every row on a card spells a model the same way.
+		expect(llamaStatus.active.map((s) => s.modelId)).toEqual(['gemma']);
 		expect(llamaStatus.queued).toEqual([]);
 		// The waiter belongs to comfy even though the busy slot is llama's — the
 		// distinction a group-level count cannot make.
@@ -205,8 +207,42 @@ describe('getEndpointsStatus', () => {
 			work: { purpose: 'dream', modelId: 'dirac::small' },
 		});
 		expect(getEndpointsStatus().groups[0].endpoints[0].active).toEqual([
-			expect.objectContaining({ purpose: 'dream', modelId: 'dirac::small', state: 'active' }),
+			expect.objectContaining({ purpose: 'dream', modelId: 'small', state: 'active' }),
 		]);
+		slot.release();
+	});
+
+	it('renders one spelling whether the caller held a composite or a bare id', async () => {
+		// The nine acquiring paths legitimately hold different forms: a chat turn
+		// has the conversation-facing `endpoint::model`, while compaction and the
+		// memory tasks resolve from config and hold the bare upstream id. Passed
+		// through, the same model appeared two ways in one endpoint's list.
+		const dirac = ep({ id: 'dirac' });
+		listEndpointsMock.mockReturnValue([dirac]);
+		const composite = await acquireEndpointSlot(dirac, {
+			work: { purpose: 'chat', modelId: 'dirac::gemma-4-26b' },
+		});
+		const bare = await acquireEndpointSlot(dirac, {
+			work: { purpose: 'compaction', modelId: 'gemma-4-26b' },
+		});
+		expect(getEndpointsStatus().groups[0].endpoints[0].active.map((s) => s.modelId)).toEqual([
+			'gemma-4-26b',
+			'gemma-4-26b',
+		]);
+		composite.release();
+		bare.release();
+	});
+
+	it('keeps a prefix that names a different endpoint than the slot is on', async () => {
+		// That combination means a generation was dispatched somewhere other than
+		// where its model lives — a routing bug. The page exists to surface exactly
+		// that, so the evidence stays visible rather than being tidied away.
+		const dirac = ep({ id: 'dirac' });
+		listEndpointsMock.mockReturnValue([dirac]);
+		const slot = await acquireEndpointSlot(dirac, {
+			work: { purpose: 'chat', modelId: 'comfy::flux-dev' },
+		});
+		expect(getEndpointsStatus().groups[0].endpoints[0].active[0].modelId).toBe('comfy::flux-dev');
 		slot.release();
 	});
 
@@ -219,8 +255,11 @@ describe('getEndpointsStatus', () => {
 		const slot = await acquireEndpointSlot(dirac, {
 			work: { purpose: 'chat', modelId: `dirac::${'A'.repeat(5000)}` },
 		});
+		// 128 chars of NAME: the clamp runs after the endpoint prefix is split off,
+		// so a long prefix can't eat into the budget for the model's own id.
 		const rendered = getEndpointsStatus().groups[0].endpoints[0].active[0].modelId!;
 		expect(rendered).toHaveLength(128);
+		expect(rendered.startsWith('dirac::')).toBe(false);
 		slot.release();
 	});
 
