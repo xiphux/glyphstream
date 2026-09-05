@@ -1727,12 +1727,28 @@ export interface GeneratingConversationsResponse {
  * the one unscoped read of user-owned state.
  */
 
-/** What a held or queued endpoint slot is doing. Mirrors `SlotPurpose` in
- *  `server/endpoints/concurrency.ts`; `other` is work that fits none of the
- *  named kinds, deliberately chosen rather than defaulted. Readers must tolerate
- *  a value they don't know: a long-lived tab polls across deploys. */
+/**
+ * What a held or queued endpoint slot is doing.
+ *
+ * The single source of truth: `server/endpoints/concurrency.ts` imports this as
+ * `SlotPurpose` rather than keeping a second copy, the way `models.ts` imports
+ * `ModelKind` from here. It lives on this side because the wire shape is the
+ * narrower contract — a purpose that cannot be sent is of no use to the gate,
+ * and client-safe code may not import from `$lib/server`.
+ *
+ * `other` is work that fits none of the named kinds, deliberately chosen rather
+ * than defaulted. Readers must tolerate a value they don't know: a long-lived
+ * tab polls across deploys.
+ */
 export type EndpointSlotPurpose =
 	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
+
+/**
+ * A slot's phase. `releasing` is occupied-but-not-started: the slot is held
+ * while the group's previous holder unloads its model. Declared once here and
+ * used by the gate's internal record, its snapshot, and this wire type.
+ */
+export type EndpointSlotState = 'queued' | 'active' | 'releasing';
 
 export interface EndpointSlotInfo {
 	/** Stable per-slot identity, unique for the life of the server process. The
@@ -1747,7 +1763,7 @@ export interface EndpointSlotInfo {
 	modelId: string | null;
 	/** Unix ms it entered the line (`queued`) or started work (`active`). */
 	since: number;
-	state: 'queued' | 'active' | 'releasing';
+	state: EndpointSlotState;
 }
 
 /**
