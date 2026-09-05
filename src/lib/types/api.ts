@@ -1709,3 +1709,109 @@ export interface GeneratingConversationsResponse {
 	 *  concurrency gate. Absent from a server that predates the field. */
 	queuedIds?: string[];
 }
+
+/**
+ * ---------------------------------------------------------------------------
+ * Admin endpoint status (read-only diagnostics)
+ * ---------------------------------------------------------------------------
+ *
+ * The wire shape behind `/settings/endpoints`. Built by
+ * `server/endpoints/status.ts` field-by-field from `LoadedEndpoint` — never by
+ * spreading it, because that type carries the RESOLVED `apiKey`. The only thing
+ * said about auth here is whether one is configured.
+ *
+ * Deliberately carries no conversation id, user id, or prompt: the gate and the
+ * in-flight registry both hold work without user identity, and "which model is
+ * this box running, for how long, with how many behind it" is answerable
+ * without borrowing any. Keeping it that way means this surface can't become
+ * the one unscoped read of user-owned state.
+ */
+
+/** What a held or queued endpoint slot is doing. Mirrors `SlotPurpose` in
+ *  `server/endpoints/concurrency.ts`; `other` is an unlabelled acquisition. */
+export type EndpointSlotPurpose =
+	'chat' | 'image' | 'video' | 'enhance' | 'title' | 'compaction' | 'memory' | 'dream' | 'other';
+
+export interface EndpointSlotInfo {
+	endpointId: string;
+	purpose: EndpointSlotPurpose;
+	/** Conversation-facing model id, when the acquiring path knew one. */
+	modelId: string | null;
+	/** Unix ms it entered the line (`queued`) or started work (`active`). */
+	since: number;
+	state: 'queued' | 'active' | 'releasing';
+}
+
+/**
+ * Reachability, as last observed by ordinary traffic (or an explicit recheck).
+ *
+ * `degraded` is the state worth having: the last probe failed but a previous
+ * one succeeded, so the model list is stale-but-present and chats against it
+ * may well still work. Collapsing it into `down` would over-report an outage
+ * on one blipped `/v1/models`.
+ */
+export type EndpointHealth = 'ok' | 'degraded' | 'down' | 'unknown';
+
+export interface EndpointStatus {
+	id: string;
+	displayName: string;
+	baseUrl: string;
+	health: EndpointHealth;
+	/** The last probe's failure message, or null. Present on `degraded` too. */
+	error: string | null;
+	/** Unix ms the last probe settled, and how long it took. Null when the
+	 *  endpoint has never been probed (`unknown`). */
+	checkedAt: number | null;
+	latencyMs: number | null;
+	/** Models the endpoint advertises, and the same count split by kind. Both
+	 *  come from the last SUCCESSFUL probe, so they survive a `degraded` blip. */
+	modelCount: number;
+	modelsByKind: Record<ModelKind, number>;
+	/** Slots this endpoint currently holds in its group, and the ones it has
+	 *  waiting. Filtered from the group's lists — on a shared `resource_group`
+	 *  the gate's totals belong to the group, not to any one member. */
+	active: EndpointSlotInfo[];
+	queued: EndpointSlotInfo[];
+	/** Config, for the "why is this endpoint behaving like that" questions.
+	 *  `maxConcurrent` is null when effectively unlimited. */
+	maxConcurrent: number | null;
+	requestTimeoutSeconds: number;
+	providerQuirk: string;
+	supportsTools: boolean;
+	contextWindow: number | null;
+	/** Whether an api key resolved from `api_key_env`. Never the key itself. */
+	hasApiKey: boolean;
+	/** The named strategy for making this endpoint free its GPU memory on a
+	 *  handover, or null when it has none / needs none. */
+	releaseStrategy: string | null;
+}
+
+export interface EndpointGroupStatus {
+	/** The `resource_group` name — equal to the endpoint's own id for the
+	 *  default case where an endpoint is its own group. */
+	resourceGroup: string;
+	/** The gate's capacity for the whole group, or null when unlimited. On a
+	 *  multi-member group this is the MINIMUM `max_concurrent` across members,
+	 *  which is why a permissive endpoint can sit at a stricter member's cap. */
+	maxConcurrent: number | null;
+	/** Slots held and waiters queued across every member. */
+	active: number;
+	waiting: number;
+	/** A handover eviction is running: the group's slot is taken but its new
+	 *  holder is waiting for the previous one to unload. */
+	evicting: boolean;
+	/** The member granted the group's slot most recently — on a shared GPU, the
+	 *  endpoint whose model is presumed still resident. Null before any traffic. */
+	lastHolderId: string | null;
+	endpoints: EndpointStatus[];
+}
+
+export interface EndpointsStatusResponse {
+	groups: EndpointGroupStatus[];
+	/** A `config.toml` that failed to load, in which case `groups` is empty.
+	 *  Distinct from "no endpoints configured", which is a valid empty state. */
+	configError: string | null;
+	/** Unix ms this snapshot was taken, so the client's elapsed timers stay
+	 *  honest across a clock skew between server and browser. */
+	now: number;
+}

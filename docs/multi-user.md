@@ -9,20 +9,23 @@ else joins by an admin-issued **invite**; there is no open registration.
 
 There are two roles, `admin` and `user`:
 
-- **`admin`** — everything a user can do, plus the **Administration** panel at
-  **Settings → Admin**: manage accounts and issue invites. The setup-wizard
-  user is the admin, and an admin can grant the role to others by issuing an
-  admin-role invite.
-- **`user`** — a normal account, no admin panel.
+- **`admin`** — everything a user can do, plus the two **Administration** pages
+  in the account menu: **Users** (manage accounts, issue invites) and
+  **Endpoints** (read-only health + activity). The setup-wizard user is the
+  admin, and an admin can grant the role to others by issuing an admin-role
+  invite.
+- **`user`** — a normal account; the Administration section of the menu isn't
+  rendered, and both pages return 403.
 
 Role gates **operator capability, not data**. Admins do **not** see other
 users' conversations or media — every row is scoped by `user_id` and nothing
-in the data layer keys off role. "Admin" is purely the user-management
-surface.
+in the data layer keys off role. That holds for the Endpoints page too: it
+reports what each backend is doing (model, kind of work, elapsed, queue depth)
+and deliberately carries no conversation id, user id, or prompt.
 
 ## Inviting users
 
-Account creation is invite-only after the first user. From **Settings → Admin
+Account creation is invite-only after the first user. From **Settings → Users
 → Invite a user**:
 
 1. Pick the **Role** (User or Admin). GlyphStream mints a single-use invite
@@ -59,8 +62,8 @@ Properties worth knowing:
 
 ## Managing accounts
 
-**Settings → Admin → Users** lists every account with its role, the date it
-was created, and who invited it. Per row:
+**Settings → Users** lists every account with its role, the date it was
+created, and who invited it. Per row:
 
 - **Disable / Enable** — disabling sets `users.disabled_at`, which invalidates
   every active session, refuses every login method on that user's next
@@ -77,6 +80,43 @@ Two guardrails are enforced by the API, not just hidden in the UI:
 - You **can't remove the last active admin.** Disabling or deleting the only
   admin is refused, so the instance is never stranded with nobody able to
   reach this panel.
+
+## Endpoint health
+
+**Settings → Endpoints** is a read-only diagnostic view of the backends in
+[`config.toml`](configuration.md). It answers the questions the config file
+can't:
+
+- **Reachable / Degraded / Unreachable**, and how many models each endpoint
+  advertises, split by kind. _Degraded_ means the last `/v1/models` probe
+  failed but an earlier one succeeded — the model list on screen is stale, and
+  generations may well still work. Reachability is whatever ordinary traffic
+  last observed (the model list is cached for 60s); **Recheck** forces a probe
+  now.
+- **What each endpoint is generating right now**, with the model id and an
+  elapsed timer. This covers _all_ work that holds an endpoint's concurrency
+  slot, not just chat turns: prompt enhancement, auto-titling, compaction,
+  memory summarization and dreaming all appear under their own labels. That's
+  the point of the view — on a `max_concurrent = 1` box, a background sweep is
+  indistinguishable from a hang unless something names it.
+- **How deep the queue is.** Requests past the cap queue FIFO, so a handful of
+  multi-model fan-outs against a single-GPU endpoint shows here as a line of
+  waiting entries, each labelled with the model it will run.
+
+Endpoints that share a **`resource_group`** are drawn as one unit, because
+they share one gate: one capacity, one queue, and — while a handover is
+freeing VRAM — one _"Freeing GPU memory…"_ banner. The member marked _model
+presumed resident_ is the one that last held the group's slot, i.e. whose
+model the next handover will try to unload. A group's cap is the **minimum**
+`max_concurrent` across its members, which is why an endpoint configured for 4
+can sit at a limit of 1.
+
+The page polls every three seconds while it's open and pauses while the tab is
+in the background. Polling reads in-process state only — it costs no upstream
+requests regardless of how many endpoints are configured.
+
+Editing endpoints from this page is not supported: they live in `config.toml`
+and are read at startup. See [Configuration](configuration.md#endpoints).
 
 ## Upgrading a pre-multi-user install
 

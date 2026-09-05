@@ -90,6 +90,12 @@ ring instead of the filled, pulsing dot it uses for the conversation actually
 holding a slot — so a stack of queued threads doesn't hide the one that's
 running (see [notifications](notifications.md)).
 
+An admin can watch the gate itself in real time at **Settings → Endpoints** —
+what is generating, what is queued behind it, and which member of a shared
+`resource_group` holds the slot. That view covers every kind of work that takes
+a slot, including background tasks a conversation's own indicator never shows.
+See [endpoint health](multi-user.md#endpoint-health).
+
 Because the cap is per endpoint, a bridge (like `openai-api-bridge`) that
 fronts **both** a local GPU and cloud providers is best split into **two
 endpoints** — one for the local providers with `max_concurrent = 1`, one for

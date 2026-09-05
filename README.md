@@ -216,6 +216,12 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   else joins via an admin-issued `/join` link (any OAuth provider or passkey). Per-user
   data isolation, plus an admin panel to invite, disable, or remove accounts
   ([guide](docs/multi-user.md)).
+- **Endpoint health view** — an admin-only diagnostic page showing every
+  configured endpoint's reachability, how many models it advertises, what it is
+  generating right now (including background work like title generation and
+  memory consolidation), and how deep the queue behind it is — so a shared-GPU
+  box that looks stalled can be told from one that's simply busy
+  ([guide](docs/multi-user.md#endpoint-health)).
 - **Installable PWA** with iOS-aware safe areas and **push notifications**
   when long generations finish — a count on the app icon for threads waiting
   on you, plus a sidebar dot marking any conversation still generating (filled
@@ -277,18 +283,18 @@ pnpm dev                               # http://localhost:5173
 
 ## Documentation
 
-| Guide                                            | Covers                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                 |
-| [Authentication](docs/authentication.md)         | OAuth (GitHub, Google, OIDC) setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`              |
-| [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts               |
-| [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools |
-| [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` and `[rerank]` blocks                             |
-| [Code interpreter](docs/code-interpreter.md)     | The Pyodide sandbox, file round-trip, resource limits                                            |
-| [MCP servers](docs/mcp.md)                       | stdio/HTTP transports, the approval model, examples                                              |
-| [Push notifications](docs/notifications.md)      | VAPID keys, multi-device behavior, iOS install requirement                                       |
-| [Deployment](docs/deployment.md)                 | Docker, reverse proxies (Caddy, nginx, Synology, Cloudflare), compression                        |
-| [Importing from Open WebUI](docs/import-owui.md) | The one-shot migration script and its caveats                                                    |
+| Guide                                            | Covers                                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| [Configuration](docs/configuration.md)           | `config.toml` + `.env`, endpoints, secrets convention, concurrency, auto-titling                    |
+| [Authentication](docs/authentication.md)         | OAuth (GitHub, Google, OIDC) setup, passkeys, the setup wizard, `EXTERNAL_BASE_URL`                 |
+| [Multi-user & admin](docs/multi-user.md)         | Roles, issuing invites, the `/join` flow, enabling / disabling / removing accounts, endpoint health |
+| [Tool calling](docs/tools.md)                    | Enabling tools per endpoint, model requirements, llama.cpp setup, feature toggles, writing tools    |
+| [Web search & RAG](docs/web-search.md)           | SearxNG setup, `fetch_url`, the `[embeddings]` and `[rerank]` blocks                                |
+| [Code interpreter](docs/code-interpreter.md)     | The Pyodide sandbox, file round-trip, resource limits                                               |
+| [MCP servers](docs/mcp.md)                       | stdio/HTTP transports, the approval model, examples                                                 |
+| [Push notifications](docs/notifications.md)      | VAPID keys, multi-device behavior, iOS install requirement                                          |
+| [Deployment](docs/deployment.md)                 | Docker, reverse proxies (Caddy, nginx, Synology, Cloudflare), compression                           |
+| [Importing from Open WebUI](docs/import-owui.md) | The one-shot migration script and its caveats                                                       |
 
 ## Need image / video generation?
 

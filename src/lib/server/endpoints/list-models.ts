@@ -33,6 +33,15 @@ interface CacheEntry {
 	/** Last fetch's error, or null on success. Preserved across hits so
 	 *  /api/models can show "endpoint X is down" without re-fetching. */
 	error: string | null;
+	/** Unix ms the fetch that produced this entry SETTLED, and how long it took.
+	 *  The admin endpoint view reports both — "reachable" with no timestamp is
+	 *  unfalsifiable, and on a failure the age is the whole story (a probe that
+	 *  failed four seconds ago and one that failed at boot mean different
+	 *  things). Note `models` may be older than this on a failure: the catch
+	 *  deliberately preserves the last good list, so `fetchedAt` timestamps the
+	 *  PROBE, not the models. */
+	fetchedAt: number;
+	durationMs: number;
 }
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, CacheEntry>();
@@ -102,13 +111,17 @@ function refreshInBackground(
 	if (pending) return pending;
 
 	const promise = (async () => {
+		const startedAt = Date.now();
 		try {
 			const upstream = await listUpstreamModels(endpoint);
 			const models = upstream.map((m) => normalizeUpstreamModel(endpoint, m));
+			const settledAt = Date.now();
 			const entry: CacheEntry = {
 				models,
-				expiresAt: Date.now() + CACHE_TTL_MS,
+				expiresAt: settledAt + CACHE_TTL_MS,
 				error: null,
+				fetchedAt: settledAt,
+				durationMs: settledAt - startedAt,
 			};
 			cache.set(endpoint.id, entry);
 			return entry;
@@ -125,10 +138,13 @@ function refreshInBackground(
 						? e.message
 						: String(e);
 			const prior = cache.get(endpoint.id);
+			const settledAt = Date.now();
 			const entry: CacheEntry = {
 				models: prior?.models ?? [],
-				expiresAt: Date.now() + CACHE_TTL_MS,
+				expiresAt: settledAt + CACHE_TTL_MS,
 				error: msg,
+				fetchedAt: settledAt,
+				durationMs: settledAt - startedAt,
 			};
 			cache.set(endpoint.id, entry);
 			return entry;
@@ -139,6 +155,51 @@ function refreshInBackground(
 
 	inFlight.set(endpoint.id, promise);
 	return promise;
+}
+
+/**
+ * What the cache currently believes about one endpoint, WITHOUT touching the
+ * upstream or scheduling a refresh — not even the stale-while-revalidate one
+ * `getOrFetch` kicks off. Null when nothing has ever been fetched for it.
+ *
+ * The read-only-ness is the point: the admin endpoint view polls every few
+ * seconds, and a poll that refreshed would turn an open tab into a per-endpoint
+ * `/v1/models` call every three seconds. Health there is deliberately whatever
+ * ordinary traffic last observed, plus an explicit Recheck.
+ */
+export function getModelCacheEntry(endpointId: string): {
+	models: ModelEntry[];
+	error: string | null;
+	fetchedAt: number;
+	durationMs: number;
+	expiresAt: number;
+} | null {
+	const entry = cache.get(endpointId);
+	if (!entry) return null;
+	return {
+		models: entry.models,
+		error: entry.error,
+		fetchedAt: entry.fetchedAt,
+		durationMs: entry.durationMs,
+		expiresAt: entry.expiresAt,
+	};
+}
+
+/**
+ * Force one endpoint's model list to be re-fetched now, awaiting the result —
+ * the Recheck button on the admin endpoint view.
+ *
+ * Goes through `refreshInBackground` rather than calling upstream directly, so
+ * it shares the in-flight dedup (a Recheck landing during a background refresh
+ * joins it instead of doubling the load) and writes the same cache entry every
+ * other reader sees. A failure is not thrown: it lands on the entry as `error`,
+ * which is exactly what the caller wants to render.
+ */
+export async function recheckEndpoint(endpointId: string): Promise<boolean> {
+	const endpoint = listEndpoints().find((e) => e.id === endpointId);
+	if (!endpoint) return false;
+	await refreshInBackground(endpoint);
+	return true;
 }
 
 /** Test/dev only: drop the cache so the next call re-fetches everything. */

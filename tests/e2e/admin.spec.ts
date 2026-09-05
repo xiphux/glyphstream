@@ -18,8 +18,8 @@ test.describe('admin: invites', () => {
 	test.beforeEach(() => resetData());
 
 	test('admin can create an invite (one-time link) and revoke it', async ({ page }) => {
-		await page.goto('/settings/admin');
-		await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible();
+		await page.goto('/settings/users');
+		await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
 
 		// Create → the one-time join URL is revealed and the invite lands in
 		// the pending list as 'active'.
@@ -41,7 +41,7 @@ test.describe('admin: invites', () => {
 test.describe('multi-user isolation + admin gating', () => {
 	test.beforeEach(() => resetData());
 
-	test("a non-owner can't open another user's conversation; a non-admin is barred from /settings/admin", async ({
+	test("a non-owner can't open another user's conversation; a non-admin is barred from the admin pages", async ({
 		page,
 		browser,
 	}) => {
@@ -62,12 +62,48 @@ test.describe('multi-user isolation + admin gating', () => {
 			await expect(pageB).toHaveURL(/\/$/);
 			await expect(pageB.getByText('isolation probe')).toHaveCount(0);
 
-			// B isn't an admin: requireAdmin 403s the admin surface.
-			const adminResp = await pageB.goto('/settings/admin');
-			expect(adminResp?.status()).toBe(403);
+			// B isn't an admin: requireAdmin 403s BOTH admin surfaces. Endpoints is
+			// checked explicitly rather than assumed from Users — they are sibling
+			// pages with their own guards, and a new one that forgot `requireAdmin`
+			// would expose an operator's base URLs to every account on the install.
+			const usersResp = await pageB.goto('/settings/users');
+			expect(usersResp?.status()).toBe(403);
+			const endpointsResp = await pageB.goto('/settings/endpoints');
+			expect(endpointsResp?.status()).toBe(403);
+			const statusResp = await pageB.request.get('/api/admin/endpoints/status');
+			expect(statusResp.status()).toBe(403);
 		} finally {
 			await ctxB.close();
 		}
+	});
+});
+
+test.describe('admin: endpoints view', () => {
+	test.beforeEach(() => resetData());
+
+	test('shows the configured endpoint, its models and an idle gate', async ({ page }) => {
+		await page.goto('/settings/endpoints');
+		await expect(page.getByRole('heading', { name: 'Endpoints' })).toBeVisible();
+
+		// The fixture config declares exactly one endpoint against the mock
+		// upstream, which advertises a chat model and an image model.
+		const card = page.locator('section').filter({ hasText: 'mock' }).first();
+		await expect(card.getByRole('heading', { name: 'Mock' })).toBeVisible();
+		await expect(card.getByText('Reachable')).toBeVisible();
+		// Counts come from the mock's /v1/models, so assert the SHAPE of the
+		// breakdown rather than a number that moves whenever a fixture model is
+		// added for some other test.
+		await expect(card.getByText(/^\d+ chat · \d+ image$/)).toBeVisible();
+		// Nothing is generating, and the page says so rather than leaving the
+		// activity list empty and ambiguous.
+		await expect(card.getByText('Idle.')).toBeVisible();
+	});
+
+	test('the old /settings/admin path still lands on Users', async ({ page }) => {
+		// Operator bookmarks: the rename must not 404 the admin panel.
+		await page.goto('/settings/admin');
+		await expect(page).toHaveURL(/\/settings\/users$/);
+		await expect(page.getByRole('heading', { name: 'Users', level: 1 })).toBeVisible();
 	});
 });
 

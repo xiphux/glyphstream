@@ -32,7 +32,7 @@ describe('applySecurityHeaders', () => {
 		// Setting a CSP header globally would overwrite the per-page policy
 		// SvelteKit emits for SSR routes — which is the stronger policy where
 		// it applies. Non-media paths must come back untouched.
-		for (const pathname of ['/', '/chat/abc', '/settings/admin', '/api/conversations']) {
+		for (const pathname of ['/', '/chat/abc', '/settings/users', '/api/conversations']) {
 			expect(apply(pathname).get('Content-Security-Policy'), pathname).toBeNull();
 		}
 	});

@@ -31,7 +31,7 @@ admin-issued invite at `/join/<token>` — see
 are linked deliberately from **Settings → Security**.
 
 Revocation is a single column: setting `users.disabled_at` (toggled from
-**Settings → Admin** — see [managing accounts](multi-user.md#managing-accounts))
+**Settings → Users** — see [managing accounts](multi-user.md#managing-accounts))
 invalidates every session and refuses every login method at the next request.
 
 ## First-run setup

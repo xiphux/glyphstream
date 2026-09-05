@@ -25,6 +25,7 @@
 		KeyRound,
 		LogOut,
 		Plug,
+		Server,
 		Settings,
 		ShieldCheck,
 		Sparkles,
@@ -92,13 +93,33 @@
 			<span>Security</span>
 		</DropdownMenu.Item>
 		{#if isAdmin}
-			<DropdownMenu.Item
-				onSelect={() => goto(resolve('/settings/admin'))}
-				class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
-			>
-				<Users size={14} strokeWidth={2.25} />
-				<span>Admin</span>
-			</DropdownMenu.Item>
+			<!-- Users and Endpoints are SIBLING operator surfaces, not one "Admin"
+			     page with the other hanging off it. The separator + heading is what
+			     says they're install-wide rather than more personal settings —
+			     everything above this line only affects the signed-in user. -->
+			<DropdownMenu.Separator class="my-1 h-px bg-border" />
+			<DropdownMenu.Group>
+				<DropdownMenu.GroupHeading
+					class="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-fg-muted"
+				>
+					Administration
+				</DropdownMenu.GroupHeading>
+				<DropdownMenu.Item
+					onSelect={() => goto(resolve('/settings/users'))}
+					class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+				>
+					<Users size={14} strokeWidth={2.25} />
+					<span>Users</span>
+				</DropdownMenu.Item>
+				<DropdownMenu.Item
+					onSelect={() => goto(resolve('/settings/endpoints'))}
+					class="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm transition data-[highlighted]:bg-surface-raised"
+				>
+					<Server size={14} strokeWidth={2.25} />
+					<span>Endpoints</span>
+				</DropdownMenu.Item>
+			</DropdownMenu.Group>
+			<DropdownMenu.Separator class="my-1 h-px bg-border" />
 		{/if}
 		<DropdownMenu.Item
 			onSelect={() => {

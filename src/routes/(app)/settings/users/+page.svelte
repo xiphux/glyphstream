@@ -160,10 +160,7 @@
 	}
 </script>
 
-<SettingsPage
-	title="Administration"
-	contentClass="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 pb-8"
->
+<SettingsPage title="Users" contentClass="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 pb-8">
 	{#snippet description()}
 		Invite new users and manage existing accounts. Disabling an account ends its sessions
 		immediately and blocks new sign-ins; deleting removes the account and all of its data.
