@@ -2,6 +2,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import type { CompareSelection } from '$lib/fanout';
 import type { ChatMessage, MessagePart, MessageRole } from '$lib/types/api';
+import { isReactionTool } from '$lib/chat-render';
 import { parseDispatchedModels, parseMessageParts } from './json-columns';
 import { getDb } from '../client';
 import { conversations, media, messages } from '../schema';
@@ -110,12 +111,35 @@ export function appendMessage(input: AppendInput): ChatMessage {
 			// leaves the branch where the user left it. Absent (every caller but
 			// avatar generation), the predicate is just the conversation id, as
 			// before.
+			// Resolved HERE, inside the transaction, not by the caller before it
+			// started work: an avatar draw takes minutes, and a reaction landing
+			// during it moves the leaf onto a `role:'tool'` row that an anchor
+			// computed up front would no longer match. Asking whether the CURRENT
+			// leaf still reply-resolves to the caller's anchor keeps the guard's
+			// meaning — "has the branch moved on?" — while letting reaction
+			// bookkeeping through. The tool row then drops off the branch, which
+			// `dropOrphanedToolCalls` handles at send time.
+			let casAnchor = input.advanceActiveLeafIfCurrent;
+			if (casAnchor !== undefined) {
+				const current = tx
+					.select({ leaf: conversations.activeLeafMessageId })
+					.from(conversations)
+					.where(eq(conversations.id, input.conversationId))
+					.get()?.leaf;
+				if (
+					current &&
+					current !== casAnchor &&
+					resolveReplyLeaf(input.conversationId, current) === casAnchor
+				) {
+					casAnchor = current;
+				}
+			}
 			const guard =
-				input.advanceActiveLeafIfCurrent === undefined
+				casAnchor === undefined
 					? eq(conversations.id, input.conversationId)
 					: and(
 							eq(conversations.id, input.conversationId),
-							eq(conversations.activeLeafMessageId, input.advanceActiveLeafIfCurrent),
+							eq(conversations.activeLeafMessageId, casAnchor),
 						);
 			const advanced = tx
 				.update(conversations)
@@ -451,6 +475,45 @@ export function getMessage(conversationId: string, messageId: string): ChatMessa
 	const msg = rowToChatMessage(row);
 	msg.parentMessageId = row.parentMessageId;
 	return msg;
+}
+
+/**
+ * The branch leaf as "the last REPLY", looking past a trailing chain of
+ * `role:'tool'` rows that answer nothing but reactions.
+ *
+ * Every settled turn used to end on an assistant row, and several guards are
+ * written against that. A reaction breaks it: the relay short-circuits right
+ * after `executeToolCalls`, which has already advanced the leaf onto the
+ * reaction's `role:'tool'` row, and nothing moves it back. The row stays on the
+ * branch — taking it off would leave an assistant `tool_calls` unanswered — so
+ * the guards look past it instead.
+ *
+ * Only skips a tool chain whose parent assistant row's tool calls are ALL
+ * reactions. A turn that called a real tool alongside one never short-circuits
+ * (see `reactionOnly` in the relay), so its leaf is the final assistant row
+ * already and this never fires for it.
+ *
+ * Callers that go on to MOVE the leaf (parking a comparison, advancing onto a
+ * portrait) leave the skipped tool row off the branch. That is only safe
+ * because `dropOrphanedToolCalls` removes the now-unanswered call from the
+ * upstream payload; without it this produces a request strict backends reject
+ * on every subsequent turn. Don't use this to reshape a branch without it.
+ *
+ * Returns `leafId` unchanged when it isn't a reaction tool row, so callers can
+ * use it unconditionally.
+ */
+export function resolveReplyLeaf(conversationId: string, leafId: string): string {
+	let cursor = getMessage(conversationId, leafId);
+	let skipped = false;
+	while (cursor?.role === 'tool') {
+		skipped = true;
+		if (!cursor.parentMessageId) return leafId;
+		cursor = getMessage(conversationId, cursor.parentMessageId);
+	}
+	if (!skipped || cursor?.role !== 'assistant') return leafId;
+	const calls = cursor.parts.filter((p) => p.type === 'tool_call');
+	if (calls.length === 0 || !calls.every((p) => isReactionTool(p.toolName))) return leafId;
+	return cursor.id;
 }
 
 /**

@@ -782,16 +782,14 @@ function graphemes(): Intl.Segmenter {
  * The last message that represents a REPLY, looking past a trailing chain of
  * `role:'tool'` rows that answer nothing but reactions.
  *
- * Used by `turnLooksSettled`, which would otherwise read a finished turn as
- * still running forever on any thread that ever reacted — the relay leaves the
- * branch leaf sitting on the reaction's tool row.
- *
- * Deliberately NOT used by `canCompareAvatar`, even though it looks like the
- * same question. That guard has to mirror the server's parkable rule exactly,
- * and the server can't look past the tool row without dropping it off the
- * branch (see the KNOWN LIMITATION test in avatar-prepare-endpoint.test.ts).
- * Applying it on one side only would offer a comparison the server then
- * refuses, which is worse than both sides refusing.
+ * Client-side mirror of `resolveReplyLeaf` in `db/queries/messages.ts`, and it
+ * has to agree with it: `canCompareAvatar` and the server's parkable rule
+ * answer the same question on either side of one call, and a client that offers
+ * the comparison against a server that then refuses it surfaces as a page-level
+ * error only after the user has picked their models. `turnLooksSettled` uses it
+ * too, for the same underlying reason — the relay leaves the branch leaf on the
+ * reaction's tool row, so read literally a finished turn looks like a running
+ * one, forever, on any thread that ever reacted.
  *
  * Returns the plain last message when there is no reaction chain, so callers
  * can use it unconditionally.

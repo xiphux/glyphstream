@@ -37,6 +37,7 @@ import {
 	getMessage,
 	getSiblingAssistants,
 	hasChildMessages,
+	resolveReplyLeaf,
 } from '$lib/server/db/queries/messages';
 import { getAvatarDrawSince } from '$lib/server/streaming/in-flight';
 import type { PrepareAvatarDrawResponse } from '$lib/types/api';
@@ -91,8 +92,14 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 	}
 
 	const leaf = meta.activeLeafMessageId;
-	if (leaf && leaf !== source.id) {
-		const leafMessage = getMessage(params.id, leaf);
+	// A reaction leaves the leaf on its `role:'tool'` row — bookkeeping hanging
+	// off the reply, not the branch moving on — so compare against the reply. The
+	// "nothing after it" test stays on the REAL leaf, where that is the question.
+	// Parking then rewinds past the tool row, leaving its call unanswered on the
+	// branch; `dropOrphanedToolCalls` is what makes that safe to send.
+	const replyLeaf = leaf === null ? null : resolveReplyLeaf(params.id, leaf);
+	if (leaf && replyLeaf && replyLeaf !== source.id) {
+		const leafMessage = getMessage(params.id, replyLeaf);
 		// Assistant-only, and that conjunct is the whole safety argument. Rewinding
 		// the leaf is harmless because what it hides comes straight back as a grid
 		// column — but the grid is seeded from `getSiblingAssistants`, which filters
