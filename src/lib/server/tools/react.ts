@@ -74,8 +74,9 @@ export const reactToMessageTool: Tool = {
 			// reply surviving rather than the reaction being free, because under
 			// the very template this targets the reaction does cost an extra
 			// round-trip — the header above says so, and a description that
-			// claimed otherwise would be contradicted by its own file. Under a template where
-			// content and tool_calls are mutually exclusive, reacting means
+			// claimed otherwise would be contradicted by its own file. Under a
+			// template where content and tool_calls are mutually exclusive,
+			// reacting means
 			// emitting a turn with no prose in it and picking the reply up on the
 			// next iteration — so at decode time the model isn't weighing "add an
 			// emoji?" but "say nothing this turn?", which in an immersive
