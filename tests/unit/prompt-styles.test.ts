@@ -199,6 +199,16 @@ describe('detectPromptShape', () => {
 		expect(detectPromptShape('sdxl 1.0, anime style, 1girl, solo')).toBe('comma-list');
 	});
 
+	it('does not treat an everyday noun that doubles as an auxiliary as a clause', () => {
+		// "can" and "will" are auxiliaries AND common prompt nouns; matching them
+		// pushed genuine tag lists toward the prose shapes.
+		expect(
+			detectPromptShape(
+				'1girl, solo, can badge, school uniform, long hair, holding bag, classroom, sunlight',
+			),
+		).toBe('comma-list');
+	});
+
 	it('does not read a numbered list or an initial as a sentence break', () => {
 		// The period in "1." / "J." is not a sentence end; reading it as one made
 		// a numbered tag list classify as prose.

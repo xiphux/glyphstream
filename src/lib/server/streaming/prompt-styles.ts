@@ -204,9 +204,12 @@ const MIN_PROSE_WORDS = 12;
 
 /** Copulas/auxiliaries — the cheapest reliable "this is a sentence, not a tag"
  *  signal. Deliberately excludes -ing forms: "standing on a rooftop" is a
- *  keyword phrase, "she is standing" is prose. */
-const CLAUSE_MARKER =
-	/\b(?:is|are|was|were|be|been|being|has|have|had|will|would|can|could|should)\b/i;
+ *  keyword phrase, "she is standing" is prose. `can` and `will` are also left
+ *  out despite being auxiliaries: both are everyday prompt nouns ("watering
+ *  can", "free will"), so they matched inside genuine tag lists and pushed them
+ *  toward the prose shapes. Dropping a marker only ever moves a prompt toward
+ *  "not detected", which is the normal rewrite path. */
+const CLAUSE_MARKER = /\b(?:is|are|was|were|be|been|being|has|have|had|would|could|should)\b/i;
 /** Sentence-terminal punctuation followed by more text — a real sentence break,
  *  as opposed to a single trailing period on a tag list. The lookbehind excuses
  *  the periods that aren't sentence ends in a prompt: a numbered list ("1. dog"),
