@@ -7,8 +7,10 @@
  * reaches it. Hence a stub, not a `vi.mock`: the mock runs too late.
  *
  * Registering nothing is the honest stand-in — a test that wants the SW
- * lifecycle wants a real browser, not this.
+ * lifecycle wants a real browser, not this. The options bag is accepted and
+ * discarded rather than omitted, so the shape matches the `registerSW({
+ * immediate, onNeedRefresh, onRegisteredSW })` call it stands in for.
  */
-export function registerSW(): (reloadPage?: boolean) => Promise<void> {
+export function registerSW(_options?: unknown): (reloadPage?: boolean) => Promise<void> {
 	return async () => {};
 }

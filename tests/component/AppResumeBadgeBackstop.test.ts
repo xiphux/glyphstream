@@ -27,13 +27,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
+import type { createKitStub } from './_helpers/kit-runtime-stub.svelte';
+
+// The layout imports `$app/state` at module scope, so the stub has to be built
+// inside the mock factory (which runs then) and handed back through a hoisted
+// holder rather than a top-level binding. See tests/component/README.md.
+const holder = vi.hoisted(() => ({ current: null as ReturnType<typeof createKitStub> | null }));
+
+function stub() {
+	if (!holder.current) throw new Error('the SvelteKit runtime stub was never built');
+	return holder.current;
+}
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn(async () => {}) }));
 vi.mock('$app/paths', () => ({ resolve: (p: string) => p }));
 vi.mock('$app/state', async () => {
 	const { createKitStub } = await import('./_helpers/kit-runtime-stub.svelte');
-	const stub = createKitStub('http://localhost:3000/');
-	return { page: stub.page, navigating: stub.navigating };
+	holder.current = createKitStub('http://localhost:3000/');
+	return { page: holder.current.page, navigating: holder.current.navigating };
 });
 vi.mock('$lib/sw/badge', () => ({ syncAppBadgeFromWindow: vi.fn(async () => {}) }));
 
@@ -59,6 +70,9 @@ function mountLayout() {
 
 describe('app-resume badge backstop', () => {
 	beforeEach(() => {
+		// Not optional even though nothing here navigates: the mock factory runs
+		// once per test FILE, so without it tests inherit each other's URL.
+		stub().reset();
 		synced.mockClear();
 	});
 
