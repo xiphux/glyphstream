@@ -187,13 +187,21 @@ There's no palette of "common" reactions to pick from, unlike a messaging app �
 a model has no tap cost, so it chooses whatever actually fits, constrained to a
 single emoji of the kind people actually react with (faces, hands, hearts).
 
-**It's meant to be occasional.** The assistant is asked to use it sparingly and
-to read the room: warmth and banter earn more, technical and task-focused
-exchanges earn few or none. How often it lands in practice follows the
-conversation's own character — a roleplay preset with a warm persona reacts far
-more than a research thread, which is the intended behavior rather than an
-inconsistency. If it's not to your taste at all, switch **Emoji reactions** off
-for the conversation, or off by default in Preferences.
+**It's meant to be occasional, and how occasional depends on the register.** The
+assistant is asked to match the conversation rather than hold to one rate: in
+warm, personal or playful talk a reaction every few messages is natural, while
+technical and task-focused threads earn rarely or none. A roleplay preset with a
+warm persona reacting far more than a research thread is the intended behavior,
+not an inconsistency.
+
+How readily a given model takes the offer varies a lot, though, and some react
+far less than the calibration asks for. The mutually-exclusive templates above
+are the usual reason: reacting costs that model a whole step with nothing said
+in it, and the reply only arrives on the next one, so it tends to keep writing
+instead. Nothing is broken when that happens — the tool is still there, and
+asking for a reaction directly will get you one. If they're not to your taste at
+all, switch **Emoji reactions** off for the conversation, or off by default in
+Preferences.
 
 ## Private chat
 

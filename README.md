@@ -48,10 +48,11 @@ them into a single fast chat UI with one model picker.
   attachments, model (or whole compare set) and all. It lands in the composer
   ready to tweak, never auto-sent.
 - **Emoji reactions** — the assistant can tap a single emoji onto your message,
-  the way a person does in iMessage or Messenger. It decides when one fits, and
-  usually stays quiet; the call is invisible, so the emoji just appears rather
-  than being announced. Off or on per conversation, and per user by default —
-  fitting for a roleplay thread, unwelcome in a work one.
+  the way a person does in iMessage or Messenger. It reads the register — warm
+  and playful threads earn one every so often, technical ones rarely or never —
+  and the call is invisible, so the emoji just appears rather than being
+  announced. Off or on per conversation, and per user by default — fitting for a
+  roleplay thread, unwelcome in a work one.
 - **Full-text search** across every conversation.
 - **Auto-titling** via a small, fast task model of your choice.
 - Token usage and generation speed (tok/s) per message; Stop button wired
