@@ -10,8 +10,8 @@
  * literally in an object literal and a spread's properties are not fresh. So
  * `pnpm check` and `pnpm lint` were both blind, `show()` never read the field,
  * and every description was silently dropped — including a completion's body
- * line, which for a user who opts out of notification previews is the only
- * thing the toast has to say beyond the app's own name.
+ * line, which is everything the toast has to say about a finished turn beyond
+ * naming its thread.
  *
  * A type alone can't hold this: the option can be declared and still never
  * rendered. So assert on the rendered text.

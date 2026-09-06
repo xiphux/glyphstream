@@ -237,12 +237,15 @@ Three independent toggles, all per-user:
   encrypted. (The title field is sent rather than dropped so that a service
   worker cached from before this gate doesn't render the word "undefined" as
   the heading — a constant tells the push service nothing the field's absence
-  didn't.) The notification then reads "GlyphStream" over a modality line —
-  "Video ready", "Image ready", or "New message". The title is gated with the
-  preview because it _is_ content: until the title task replaces it, a
-  thread's title is your own first message verbatim, so a media
-  generation's notification would otherwise read your prompt back on the
-  lock screen. The in-app toast follows the same gate.
+  didn't.) The notification is then a single line with no body: "Video ready",
+  "Image ready", "New message", or a fan-out's count ("3 images ready"). The
+  app's own name is deliberately _not_ the heading — every platform already
+  attributes the notification to GlyphStream, so using it again read as
+  "GlyphStream from GlyphStream", with the one informative line demoted to
+  small text underneath. The title is gated with the preview because it _is_
+  content: until the title task replaces it, a thread's title is your own first
+  message verbatim, so a media generation's notification would otherwise read
+  your prompt back on the lock screen. The in-app toast follows the same gate.
 - **In-app toast for other threads** — whether a toast pops when a
   thread completes while you're in the app but on a different page.
   On by default. Turning this off doesn't affect OS notifications when

@@ -814,8 +814,8 @@
 					<span class="font-medium">Show message preview</span>
 					<span class="text-fg-muted">
 						— include the thread's title and a snippet of the assistant's reply in the notification.
-						Turn off if your threads are private to the device: notifications then read only
-						"GlyphStream · Video ready", naming neither the thread nor its contents.
+						Turn off if your threads are private to the device: notifications then read only "Video
+						ready" or "3 images ready", naming neither the thread nor its contents.
 					</span>
 				</span>
 			</label>

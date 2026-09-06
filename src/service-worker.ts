@@ -217,9 +217,10 @@ async function handlePush(event: PushEvent): Promise<void> {
 	// action === 'os' — raise an OS-level notification.
 	// Heading and body both come from the shared resolver: a payload built for a
 	// user with "Show message preview" off carries neither a title nor a preview,
-	// and degrades to the app name over a modality line. The title matters most
-	// here — it's the bold line on a locked phone, and it's the user's own prompt
-	// until the title task replaces it.
+	// and collapses to a single modality line as the heading, with no body — the
+	// OS already names the app, so there is nothing for a second app-name line to
+	// add. The title matters most here — it's the bold line on a locked phone,
+	// and it's the user's own prompt until the title task replaces it.
 	await self.registration.showNotification(notificationTitle(payload), {
 		body: notificationBody(payload),
 		tag: payload.conversationId,

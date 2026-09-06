@@ -263,15 +263,15 @@
 					// the two surfaces say the same thing — which is the entire reason
 					// notification-copy.ts exists. The content gate is already baked into
 					// the payload the server built, so there is nothing to re-decide here:
-					// an opted-out user's payload resolves to the app name over a modality
-					// line, an opted-in one to the thread title over its preview.
+					// an opted-out user's payload resolves to a bare modality line, an
+					// opted-in one to the thread title over its preview.
 					//
-					// This deliberately does NOT branch on whether a title is present.
-					// It used to, and that was wrong twice over: the description was being
-					// spread into an option the toast store did not have, so it never
-					// rendered at all; and now that the title field is always sent (see
-					// server/push/notify.ts), branching on it would suppress the body line
-					// permanently.
+					// A description of `undefined` (the opted-out case) is a single-line
+					// toast, which is what the store's optional `description` is for. Do
+					// NOT reintroduce a branch here on whether a title is present: the
+					// resolvers own that decision, and the last version of that branch
+					// spread `description` into an option the store did not declare, so
+					// the body never rendered at all.
 					toast.info(notificationTitle(data.payload), {
 						description: notificationBody(data.payload),
 						action: { label: 'Open', handler: () => goto(resolve(`/chat/${conversationId}`)) },

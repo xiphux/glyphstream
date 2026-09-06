@@ -35,7 +35,10 @@ export interface NotifyPushPayload {
 	 *
 	 *  Optional all the same, and consumers must keep their fallback: a NEW page
 	 *  bundle can be driven by an OLD worker relaying an old server's payload
-	 *  during an update window, and that payload can genuinely lack the field. */
+	 *  during an update window, and that payload can genuinely lack the field.
+	 *  `notification-copy.ts` folds the two together — a missing, empty, or
+	 *  constant title all mean "no title", and the modality/count line becomes
+	 *  the heading instead. */
 	conversationTitle?: string;
 	modality: NotifyModality;
 	/** Present iff notificationsShowContent is true. Omitted entirely
