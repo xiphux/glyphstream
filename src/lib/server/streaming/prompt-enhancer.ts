@@ -6,7 +6,7 @@
  *
  * A prompt the user ALREADY wrote in the target style skips the restyle: it
  * gets the preserve-and-augment instruction instead, since the only thing a
- * rewrite can do there is lose a term. See `alreadyInTargetStyle` below.
+ * rewrite can do there is lose a term. See `matchedStyle` below.
  *
  * Non-fatal for FAILURES: any upstream error, timeout, or empty/garbage
  * response returns the ORIGINAL prompt with `changed: false` — enhancement is

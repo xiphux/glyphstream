@@ -267,7 +267,9 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	// booru model wants it kept as written.
 	const longEnoughForProse = wordCount(s) >= MIN_PROSE_WORDS;
 
-	// Hybrid: a run of short tags, then the prose takes over.
+	// Hybrid: a run of short tags, then the prose takes over. Only the segments
+	// BEFORE the first clause are checked — tags resuming after the prose still
+	// read as this shape, which is close enough to the real thing.
 	const firstClause = segments.findIndex(isClauseLike);
 	if (
 		longEnoughForProse &&
