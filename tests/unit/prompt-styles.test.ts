@@ -240,4 +240,12 @@ describe('preserveInstruction', () => {
 		expect(t.toLowerCase()).toContain('may append detail');
 		expect(t.toLowerCase()).toContain('must still be present');
 	});
+
+	it("overrides the base prompt's reformat rule explicitly", () => {
+		// ENHANCER_BASE is composed first and states "mostly REFORMAT it into the
+		// target style" as a rule; without an explicit override a weak model
+		// resolves the contradiction by reformatting.
+		expect(preserveInstruction('booru-tags')).toContain('OVERRIDES');
+		expect(ENHANCER_BASE).toContain('mostly REFORMAT it into the target style');
+	});
 });

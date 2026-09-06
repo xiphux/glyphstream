@@ -319,11 +319,18 @@ export function inputAlreadyMatchesStyle(prompt: string, style: PromptStyle): bo
  * be correctly shaped and still thin — but the user's own words are floor, not
  * raw material.
  *
+ * Explicitly overrides the base prompt's reformat rule rather than assuming it
+ * loses on recency: the base is composed FIRST and states its rules as rules, so
+ * a weak model reading "mostly REFORMAT it into the target style" up top and a
+ * preserve instruction below resolves the contradiction by reformatting — the
+ * same failure the user-turn verb had to be fixed for.
+ *
  * Takes the style label as a plain string so it stays medium-agnostic; only the
  * image side detects today (see `prompt-enhancer.ts` for why).
  */
 export function preserveInstruction(styleLabel: string): string {
 	return `Target style: ${styleLabel.toUpperCase()} — ALREADY MATCHED. Do NOT restyle.
+This instruction OVERRIDES the "rewrite it" framing and the "mostly REFORMAT it into the target style" rule above: there is nothing left to reformat, and those rules do not apply to this prompt.
 The user's prompt is already written in this model's preferred format, so a rewrite can only lose fidelity. Keep their wording, their terms, and their ordering. Do not paraphrase, re-order, re-tag, convert between tags and prose, or otherwise "tidy up" what they wrote.
 You MAY append detail in the same format when something is genuinely missing, and you may fix separators or punctuation. Every word the user wrote must still be present in your output. Adding nothing is a perfectly good answer: if the prompt needs no addition, return it exactly as given.`;
 }
