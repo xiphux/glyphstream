@@ -438,7 +438,13 @@ append detail that's genuinely missing. A rewrite there can only lose fidelity,
 so it isn't asked for. Detection is deliberately conservative (a short or
 ambiguous prompt takes the normal path, and the two comma-separated styles —
 `booru-tags` and `keyword-soup` — count as matching each other), and it's image
-only: the video styles are all prose and can't be told apart from the text.
+only: the video styles are all prose and can't be told apart from the text. A
+`json`-style model always takes the normal path too: JSON-shaped isn't the same
+as schema-correct, and the schema is what that rewrite is for.
+
+Preserve mode also outranks a `style_instructions` override (below): that
+override retunes how to _restyle into_ a style, and there's no restyle to
+retune here. The per-model `prompt_hint` still applies either way.
 
 The same `[image_enhancement]` block (and its enhancer LLM) drives both image
 and video — the block keeps its historical name, but a capable model handles
@@ -464,6 +470,9 @@ model = "groq::llama-3.3-70b-versatile"   # endpoint_id::upstream_model_id
 # [image_enhancement.style_instructions]   # optional: override the built-in
 #   "booru-tags" = "..."                   #   wording for a given style
 ```
+
+An override applies only when the prompt is actually being restyled — a prompt
+already written in that style is preserved instead, and neither wording applies.
 
 Pick a **capable** model — prompt rewriting benefits from a stronger model than
 auto-titling, so this is a separate slot from `task_model`. Misconfiguration
