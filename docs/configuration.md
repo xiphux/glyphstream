@@ -436,8 +436,11 @@ If you **already wrote the prompt in the format the target image model wants**
 that and skips the restyle: the enhancer is told to keep your wording and only
 append detail that's genuinely missing. A rewrite there can only lose fidelity,
 so it isn't asked for. Detection is deliberately conservative (a short or
-ambiguous prompt takes the normal path, and the two comma-separated styles —
-`booru-tags` and `keyword-soup` — count as matching each other), and it's image
+ambiguous prompt takes the normal path; the two comma-separated styles —
+`booru-tags` and `keyword-soup` — count as matching each other; and a booru
+model additionally wants some sign the list really is tags — a `1girl`-style
+tag, an `underscore_tag`, or short segments — since comma-joined prose would
+otherwise slip past as a tag list), and it's image
 only: the video styles are all prose and can't be told apart from the text. A
 `json`-style model always takes the normal path too: JSON-shaped isn't the same
 as schema-correct, and the schema is what that rewrite is for.

@@ -235,6 +235,35 @@ describe('inputAlreadyMatchesStyle', () => {
 	const hybrid =
 		'1girl, blue hair, detailed armor, she stands at the edge of a ruined cathedral as light filters through broken glass';
 
+	it('wants positive booru evidence before preserving for a booru model', () => {
+		// isClauseLike can't see a lexical finite verb, so comma-joined prose reads
+		// as a list. keyword-soup reads that fine; a booru model handed English
+		// sentences with the rewrite suppressed is the failure this detector exists
+		// to avoid — so booru-tags asks a second question.
+		const prose = 'A knight rides through the forest, his cloak trailing behind him, mist rising';
+		expect(detectPromptShape(prose)).toBe('comma-list');
+		expect(inputAlreadyMatchesStyle(prose, 'booru-tags')).toBe(false);
+		expect(inputAlreadyMatchesStyle(prose, 'keyword-soup')).toBe(true);
+	});
+
+	it('accepts a tag list on any one of the three booru signals', () => {
+		// A subject tag...
+		expect(
+			inputAlreadyMatchesStyle('1girl, standing near a window, afternoon light', 'booru-tags'),
+		).toBe(true);
+		// ...an underscore tag...
+		expect(
+			inputAlreadyMatchesStyle('long_hair, standing near a window, afternoon light', 'booru-tags'),
+		).toBe(true);
+		// ...or segments short enough to be tags rather than clauses.
+		expect(
+			inputAlreadyMatchesStyle(
+				'cyberpunk street at night, rain-slicked asphalt, neon reflections, volumetric fog',
+				'booru-tags',
+			),
+		).toBe(true);
+	});
+
 	it('matches a comma list against BOTH tag styles', () => {
 		// Deliberate: booru-vs-phrases isn't reliably detectable, and the formatting
 		// delta doesn't justify risking a dropped term in a full rewrite.

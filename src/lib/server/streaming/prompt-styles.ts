@@ -222,6 +222,16 @@ const INTERNAL_SENTENCE_BREAK = /(?<!\d|\b[A-Z])[.!?]["'’)\]]?\s+\S/;
 
 const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
+/** Split a prompt into the units a list would be written in. Commas and line
+ *  breaks are treated alike — people write a tag per line as readily as a tag
+ *  per comma. Shared with the booru gate below so the two agree on what a
+ *  segment is. */
+const segmentsOf = (s: string) =>
+	s
+		.split(/[,\n]+/)
+		.map((x) => x.trim())
+		.filter(Boolean);
+
 /** True when a segment reads as a clause rather than a tag/keyword phrase. */
 function isClauseLike(segment: string): boolean {
 	return (
@@ -261,10 +271,7 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 		}
 	}
 
-	const segments = s
-		.split(/[,\n]+/)
-		.map((x) => x.trim())
-		.filter(Boolean);
+	const segments = segmentsOf(s);
 
 	// No commas at all: prose if it's long enough to be written-out description,
 	// otherwise too small to call.
@@ -287,10 +294,15 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	// detector must not be wrong in: a booru model would then be handed English
 	// sentences with the rewrite suppressed. So test the WHOLE string.
 	//
-	// Known gap: multi-line prose with no terminal punctuation at all still reads
-	// as a list. Closing that needs a finite-verb signal — counting commas rather
-	// than segments would also do it, but it would stop detecting the per-line
-	// booru list ("1girl\nsolo\nlong hair"), which is a real way people write tags.
+	// Known gap, and it is NOT multi-line-only: `isClauseLike` can't see a lexical
+	// finite verb, so comma-joined prose whose clauses stay under CLAUSE_WORDS
+	// reads as a list too — "a cat sits, a dog runs, a bird flies", or the same
+	// text across lines with no terminal punctuation. Closing it in the detector
+	// needs a finite-verb signal, and the regexes for that misfire badly (a
+	// determiner + `-ed` word matches "a red jacket"). So the shape stays wrong
+	// here, and `looksLikeBooruTags` below declines to ACT on it for the one
+	// style where acting hurts — meaning any future consumer of the shape
+	// inherits the misclassification and needs its own gate.
 	const hasSentenceBreak = INTERNAL_SENTENCE_BREAK.test(s);
 
 	// Hybrid: a run of short tags, then the prose takes over. Only the segments
@@ -322,13 +334,48 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	return null;
 }
 
+/** A booru subject tag (1girl, 2girls, 1boy, 1other) — the strongest single
+ *  sign a comma list is Danbooru tags and not English. */
+const BOORU_SUBJECT_TAG = /\b\d(?:girl|boy|other)s?\b/i;
+/** An underscore_tag. Booru vocabulary uses them; prose never does. */
+const UNDERSCORE_TAG = /\w_\w/;
+/** Mean words per segment at or under which a comma list reads as tags rather
+ *  than clauses. 3 is measured, not guessed: tighter (2.5) starts rejecting real
+ *  tag lists like "still life with lemons, dark background, …". */
+const MAX_MEAN_TAG_WORDS = 3;
+
+/**
+ * Positive evidence that a comma list is booru TAGS, not prose that happens to
+ * use commas. Needed because `isClauseLike` can't see a lexical finite verb —
+ * it knows copulas, long segments and sentence breaks, so "A knight rides
+ * through the forest, his cloak trailing behind him, mist rising from the
+ * ground" trips none of them and reads as a list.
+ *
+ * Asked ONLY for `booru-tags`, because that's the only style where the mistake
+ * costs anything: a booru model handed English sentences with the rewrite
+ * suppressed is the failure this whole detector is shaped to avoid, while a
+ * keyword-soup model reads comma-joined prose perfectly well. Every prompt this
+ * turns away lands on the normal rewrite path, which is the safe direction.
+ */
+function looksLikeBooruTags(prompt: string): boolean {
+	if (BOORU_SUBJECT_TAG.test(prompt) || UNDERSCORE_TAG.test(prompt)) return true;
+	const segments = segmentsOf(prompt.trim());
+	if (!segments.length) return false;
+	const mean = segments.reduce((n, seg) => n + wordCount(seg), 0) / segments.length;
+	return mean <= MAX_MEAN_TAG_WORDS;
+}
+
 /**
  * True when the user's prompt is already written in the target model's
  * preferred format, so the enhancer should preserve rather than restyle it.
  */
 export function inputAlreadyMatchesStyle(prompt: string, style: PromptStyle): boolean {
 	const shape = detectPromptShape(prompt);
-	return shape !== null && STYLE_ACCEPTS_SHAPE[style].includes(shape);
+	if (shape === null || !STYLE_ACCEPTS_SHAPE[style].includes(shape)) return false;
+	// The shape table is otherwise a pure shape comparison; this is the one gate
+	// that asks a second question, and only for the style that needs it.
+	if (style === 'booru-tags' && shape === 'comma-list') return looksLikeBooruTags(prompt);
+	return true;
 }
 
 /**
