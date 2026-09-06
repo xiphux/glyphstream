@@ -68,10 +68,11 @@ describe('tool definition budget', () => {
 		// The number that actually matters: what a fully-featured turn pays before a
 		// single MCP tool or skill is counted.
 		const total = BUDGETS.reduce((sum, [, tool]) => sum + wireChars(tool), 0);
-		// Raised from 9800 to pay for react_to_message (~670). The words bought:
-		// calibration the model can't infer — that a reaction is silent, occasional,
-		// and not a substitute for a reply. Without them a model reacts to every
-		// message, which is the failure that kills the feature. Nothing else grew.
+		// Raised from 9800 to pay for react_to_message (~660). The words bought:
+		// calibration the model can't infer — that a reaction is silent, that its
+		// rate follows the register, and that reacting doesn't cost the reply.
+		// Without them a model either reacts to everything, which is the failure
+		// that kills the feature, or never reacts at all. Nothing else grew.
 		expect(total).toBeLessThanOrEqual(10500);
 	});
 

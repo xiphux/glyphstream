@@ -79,10 +79,13 @@ export const reactToMessageTool: Tool = {
 			// emitting a turn with no prose in it and picking the reply up on the
 			// next iteration — so at decode time the model isn't weighing "add an
 			// emoji?" but "say nothing this turn?", which in an immersive
-			// conversation it will always decline. Measured on a real Gemma4
-			// instance: of one reaction ever produced, it arrived alone and the
-			// text came in a second row. The model can't see that the loop gives
-			// the reply back, so the description has to tell it.
+			// conversation it will always decline. The model can't see that the
+			// loop hands the reply back, so the description has to tell it.
+			//
+			// Measured once against a model of that class, not tuned to it: of
+			// the single reaction the instance had produced, the emoji arrived
+			// alone and the text came in a second row. The lever is the template
+			// shape, which any model may have — see the header.
 			description:
 				"React to the user's latest message with one emoji, as in a messaging app. Never announce or mention it — it just appears, or it isn't a reaction. You do not lose your reply: it still follows. How often is a matter of register: in warm, personal or playful talk, every few messages is natural; in technical or task-focused work, rarely or never.",
 			parameters: {
