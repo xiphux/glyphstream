@@ -154,6 +154,27 @@ describe('detectPromptShape', () => {
 		expect(detectPromptShape('{"high_level_description": "a cat on a mat"}')).toBe('json');
 	});
 
+	it('applies the prose word floor to comma-separated prompts too', () => {
+		// A comma is not evidence of substance: these are seeds, and gating only
+		// the comma-less form would hand preserve mode to a thin prompt purely
+		// because the user reached for a comma.
+		expect(detectPromptShape('dog, has spots')).toBeNull();
+		expect(detectPromptShape('a knight, he is tired')).toBeNull();
+		expect(detectPromptShape('a girl with a sword, she is angry')).toBeNull();
+		// Same floor on the hybrid shape.
+		expect(detectPromptShape('1girl, solo, she is sad')).toBeNull();
+		expect(detectPromptShape('dog, cat, has spots')).toBeNull();
+		// ...but a tag list is complete at three words and must NOT be floored.
+		expect(detectPromptShape('1girl, solo, forest')).toBe('comma-list');
+	});
+
+	it('does not read a numbered list or an initial as a sentence break', () => {
+		// The period in "1." / "J." is not a sentence end; reading it as one made
+		// a numbered tag list classify as prose.
+		expect(detectPromptShape('1. dog\n2. cat\n3. bird')).toBe('comma-list');
+		expect(detectPromptShape('Mr. Smith, a detective')).toBeNull();
+	});
+
 	it('returns null for short or ambiguous prompts — the ones enhancement helps most', () => {
 		expect(detectPromptShape('a girl with a sword')).toBeNull();
 		expect(detectPromptShape('a girl standing in a forest at sunset')).toBeNull();

@@ -190,7 +190,8 @@ const MAX_TAG_WORDS = 4;
  *  prose rather than a vague seed phrase (which is exactly what enhancement
  *  exists to expand, so those must NOT be detected). Set well above a
  *  one-clause seed like "a girl standing in a forest at sunset" (8 words) —
- *  that's thin, and a prose model genuinely benefits from expanding it. */
+ *  that's thin, and a prose model genuinely benefits from expanding it. Applies
+ *  to BOTH prose shapes and to the whole prompt, never to one segment. */
 const MIN_PROSE_WORDS = 12;
 
 /** Copulas/auxiliaries — the cheapest reliable "this is a sentence, not a tag"
@@ -199,8 +200,13 @@ const MIN_PROSE_WORDS = 12;
 const CLAUSE_MARKER =
 	/\b(?:is|are|was|were|be|been|being|has|have|had|will|would|can|could|should)\b/i;
 /** Sentence-terminal punctuation followed by more text — a real sentence break,
- *  as opposed to a single trailing period on a tag list. */
-const INTERNAL_SENTENCE_BREAK = /[.!?]["'’)\]]?\s+\S/;
+ *  as opposed to a single trailing period on a tag list. The lookbehind excuses
+ *  the two periods that aren't sentence ends in a prompt: a numbered list
+ *  ("1. dog") and an initial ("J. Smith"). Abbreviations that end in a lowercase
+ *  letter ("Mr.", "St.") still read as a break — separating those from a real
+ *  sentence end needs a dictionary, and the word floor below already keeps the
+ *  short cases out. */
+const INTERNAL_SENTENCE_BREAK = /(?<!\d|\b[A-Z])[.!?]["'’)\]]?\s+\S/;
 
 const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 
@@ -252,9 +258,19 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	// otherwise too small to call.
 	if (segments.length === 1) return wordCount(s) >= MIN_PROSE_WORDS ? 'prose' : null;
 
-	// Hybrid: a run of short tags, then the prose takes over and never goes back.
+	// BOTH prose shapes carry the same floor as the comma-less branch above. A
+	// comma is not evidence of substance — "a knight, he is tired" is every bit
+	// the thin seed that "a knight standing in the rain" is, and gating only the
+	// comma-less form would hand preserve mode to a prompt purely because the
+	// user reached for a comma. The tag list below is deliberately NOT floored:
+	// "1girl, solo, forest" is complete and unambiguous at three words, and a
+	// booru model wants it kept as written.
+	const longEnoughForProse = wordCount(s) >= MIN_PROSE_WORDS;
+
+	// Hybrid: a run of short tags, then the prose takes over.
 	const firstClause = segments.findIndex(isClauseLike);
 	if (
+		longEnoughForProse &&
 		firstClause >= 2 &&
 		segments.slice(0, firstClause).every((seg) => wordCount(seg) <= MAX_TAG_WORDS)
 	) {
@@ -271,7 +287,7 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	}
 
 	// Prose that happens to contain commas.
-	if (firstClause !== -1) return 'prose';
+	if (longEnoughForProse && firstClause !== -1) return 'prose';
 
 	return null;
 }
