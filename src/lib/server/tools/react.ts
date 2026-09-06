@@ -57,8 +57,8 @@ export const reactToMessageTool: Tool = {
 			// Budgeted (tool-definition-budget.test.ts). Every sentence here is
 			// re-sent on every turn of every conversation with reactions on, so
 			// it says only what the model can't infer: that the reaction is
-			// silent, that it does not replace a reply, and how its RATE depends
-			// on the register.
+			// silent, that reacting does not cost it the reply, and how its RATE
+			// depends on the register.
 			//
 			// That last part was three suppressants to one weak permission —
 			// "use it sparingly", "most messages deserve none", "reacting to
@@ -69,8 +69,12 @@ export const reactToMessageTool: Tool = {
 			// is now a conditional rate, so the warm case gets a number to aim
 			// at instead of an exception to a prohibition.
 			//
-			// "It costs you nothing" is aimed at a SECOND disincentive, and the
-			// one more likely to be doing the damage. Under a template where
+			// "You do not lose your reply" is aimed at a SECOND disincentive, and
+			// the one more likely to be doing the damage. It is phrased as the
+			// reply surviving rather than the reaction being free, because under
+			// the very template this targets the reaction does cost an extra
+			// round-trip — the header above says so, and a description that
+			// claimed otherwise would be contradicted by its own file. Under a template where
 			// content and tool_calls are mutually exclusive, reacting means
 			// emitting a turn with no prose in it and picking the reply up on the
 			// next iteration — so at decode time the model isn't weighing "add an
@@ -80,7 +84,7 @@ export const reactToMessageTool: Tool = {
 			// text came in a second row. The model can't see that the loop gives
 			// the reply back, so the description has to tell it.
 			description:
-				"React to the user's latest message with one emoji, as in a messaging app. Never announce or mention it — it just appears, or it isn't a reaction. It costs you nothing: your reply still follows in the same turn. How often is a matter of register: in warm, personal or playful talk, every few messages is natural; in technical or task-focused work, rarely or never.",
+				"React to the user's latest message with one emoji, as in a messaging app. Never announce or mention it — it just appears, or it isn't a reaction. You do not lose your reply: it still follows. How often is a matter of register: in warm, personal or playful talk, every few messages is natural; in technical or task-focused work, rarely or never.",
 			parameters: {
 				type: 'object',
 				properties: {
