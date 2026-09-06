@@ -209,11 +209,12 @@ const CLAUSE_MARKER =
 	/\b(?:is|are|was|were|be|been|being|has|have|had|will|would|can|could|should)\b/i;
 /** Sentence-terminal punctuation followed by more text — a real sentence break,
  *  as opposed to a single trailing period on a tag list. The lookbehind excuses
- *  the two periods that aren't sentence ends in a prompt: a numbered list
- *  ("1. dog") and an initial ("J. Smith"). Abbreviations that end in a lowercase
- *  letter ("Mr.", "St.") still read as a break — separating those from a real
- *  sentence end needs a dictionary, and the word floor below already keeps the
- *  short cases out. */
+ *  the periods that aren't sentence ends in a prompt: a numbered list ("1. dog"),
+ *  a decimal or version ("f/1.4", "sdxl 1.0"), and an initial ("J. Smith"). It
+ *  excuses ANY sentence ending in a digit, not just those — "shot in 2024. She
+ *  turns" reads as no break — which is the price of not carrying a dictionary.
+ *  Abbreviations ending in a lowercase letter ("Mr.", "St.") still read as a
+ *  break, and the word floor below keeps the short cases out. */
 const INTERNAL_SENTENCE_BREAK = /(?<!\d|\b[A-Z])[.!?]["'’)\]]?\s+\S/;
 
 const wordCount = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
