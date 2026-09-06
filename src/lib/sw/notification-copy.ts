@@ -23,9 +23,13 @@
  *
  * That makes GENERIC_TITLE a sentinel here and not a fallback: the server sends
  * it in place of a withheld title, and this module reads it back as "there is
- * no title". A thread genuinely titled "GlyphStream" therefore renders like an
- * opted-out one — a cosmetic no-op, and the only way to avoid it would be a
- * second payload field saying what this one already says.
+ * no title". A thread genuinely titled "GlyphStream" therefore takes the
+ * title-less path — and note what that means for an opted-IN user, since only
+ * their payloads can carry a preview alongside that title: the status line it
+ * promotes to the heading is their reply snippet, so the notification loses its
+ * body and leads with content it would otherwise have shown underneath. Odd
+ * looking, never a leak, and the only way to avoid it would be a second payload
+ * field saying what this one already says.
  *
  * Shared by the SW (registration.showNotification) and +layout.svelte (the
  * in-app toast) so the two can't drift into disagreeing about what a

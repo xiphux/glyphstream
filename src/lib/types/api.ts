@@ -707,8 +707,8 @@ export interface UserPreferences {
 	 * place of the thread's own. The title is sent rather than dropped only so
 	 * that a service worker cached from before this gate doesn't pass
 	 * `undefined` to `showNotification`; do NOT read the field's presence as
-	 * meaning content was included. Consumers render a generic app heading plus
-	 * a modality line (see $lib/sw/notification-copy).
+	 * meaning content was included. Consumers promote the modality/count line to
+	 * the heading and drop the body (see $lib/sw/notification-copy).
 	 */
 	notificationsShowContent: boolean;
 	/**
