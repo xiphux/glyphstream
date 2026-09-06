@@ -49,25 +49,23 @@ export type EnhancerMedium = 'image' | 'video';
 /** Resolve the base prompt + per-style instruction map + clarify-only fallback
  *  for a medium. `instructions` is widened to a string map so the (already
  *  medium-normalized) canonical style key indexes cleanly regardless of medium.
- *  `noun` fills the user-message wrap ("Rewrite this image/video prompt"). */
+ *  The user-message wrap interpolates `medium` directly, so nothing here feeds
+ *  it. */
 function templatesForMedium(medium: EnhancerMedium): {
 	base: string;
 	instructions: Record<string, string>;
 	clarify: string;
-	noun: string;
 } {
 	return medium === 'video'
 		? {
 				base: VIDEO_ENHANCER_BASE,
 				instructions: VIDEO_STYLE_INSTRUCTIONS,
 				clarify: VIDEO_CLARIFY_ONLY_INSTRUCTION,
-				noun: 'video',
 			}
 		: {
 				base: ENHANCER_BASE,
 				instructions: STYLE_INSTRUCTIONS,
 				clarify: CLARIFY_ONLY_INSTRUCTION,
-				noun: 'image',
 			};
 }
 
