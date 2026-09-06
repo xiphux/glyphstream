@@ -27,6 +27,14 @@ export default defineConfig({
 			'$env/dynamic/private': fileURLToPath(
 				new URL('./tests/_stubs/env-dynamic-private.ts', import.meta.url),
 			),
+			// vite-plugin-pwa only runs in vite.config.ts, so this virtual module
+			// has no resolver here. The root layout imports it dynamically behind
+			// `import.meta.env.PROD` and never evaluates it under test — but Vite
+			// resolves the specifier at transform time regardless, so without this
+			// the layout can't even be loaded by a component test.
+			'virtual:pwa-register': fileURLToPath(
+				new URL('./tests/_stubs/pwa-register.ts', import.meta.url),
+			),
 		},
 	},
 	test: {

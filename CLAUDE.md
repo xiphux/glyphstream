@@ -307,6 +307,21 @@ exact-match `apple-touch-startup-image` media query.
   `tests/component/{MobileDrawerBackgroundRefresh,NewChatUrlModel,SettingsSecurityLinkToast}.test.ts`
   hold the line, and `tests/component/_helpers/kit-runtime-stub.svelte.ts` is
   what lets a test commit and navigate as two separate events.
+- **An app resume is TWO events: `visibilitychange` AND a persisted
+  `pageshow`.** iOS suspends a backgrounded standalone PWA and restores it from
+  the bfcache, and that restore fires `pageshow` only — so anything wired to
+  visibility alone silently skips the LONG background waits. That correlates
+  perfectly with the work that cares: a completion notification is raised
+  precisely because nothing was visible, and the generations slow enough to be
+  worth notifying about (a multi-model avatar comparison: minutes on a shared
+  GPU) are the ones that get suspended rather than merely hidden. It stranded a
+  notification and its icon badge with the user staring at the thread they
+  pointed at. Three sites pair the events now — the `(app)` layout's
+  conversation refresh, the root layout's badge backstop, and `chat/[id]`'s
+  notification acknowledgment. A cold launch fires NEITHER, so state that only
+  a resume re-derives also needs a mount call (the badge has one).
+  `tests/component/AppResumeBadgeBackstop.test.ts` holds the line for the two
+  reachable from a component test.
 - **Shiki on the client is route-lazy + grammar-subsetted only.** The
   full shiki bundle is ~500 KB and must stay server-side — that's where
   the persisted post-stream HTML gets its full-coverage highlighting.

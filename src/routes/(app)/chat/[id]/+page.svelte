@@ -1526,6 +1526,34 @@
 			avatarDraw.reconcileIfOwed();
 		}
 	}
+	/**
+	 * The other half of a resume, and the half that reaches this page when the
+	 * wait was long.
+	 *
+	 * iOS suspends a backgrounded standalone PWA and restores it from the
+	 * bfcache: that restore fires `pageshow` and NOT `visibilitychange`, so the
+	 * acknowledgment above — wired to visibility alone — silently skipped exactly
+	 * the case it exists for. The longer the app sits in the background the more
+	 * likely the restore takes this path, and a long background wait is the one
+	 * that gets an OS notification in the first place. A multi-model avatar
+	 * comparison is the clearest instance: minutes on a shared GPU, so the user
+	 * is away long enough to be suspended, and comes back to a tray entry and an
+	 * icon badge that never retract no matter how long they look at the grid.
+	 *
+	 * Only the acknowledgment rides this, not the reconciliation in the visible
+	 * branch above: that path already self-heals through the recovery polls and
+	 * `syncFromServer`, and its `invalidateAll()` is the expensive refetch this
+	 * route goes out of its way to avoid. `becameVisible()` re-reads visibility
+	 * and the pending navigation when its timer fires, and dismissal is
+	 * idempotent, so a platform that fires BOTH events costs one extra string
+	 * compare.
+	 *
+	 * Persisted restores only — a fresh load acknowledges from mount instead
+	 * (`conversationChanged()`).
+	 */
+	function onPageShow(e: PageTransitionEvent) {
+		if (e.persisted) notificationAck.becameVisible();
+	}
 	function onOffline() {
 		isOffline = true;
 		if (turn.busy || fanout.streaming) turn.markOffline();
@@ -2266,7 +2294,7 @@
 	}
 </script>
 
-<svelte:window onoffline={onOffline} ononline={onOnline} />
+<svelte:window onoffline={onOffline} ononline={onOnline} onpageshow={onPageShow} />
 <svelte:document onvisibilitychange={onVisibilityChange} />
 
 <div class="flex h-full min-w-0">

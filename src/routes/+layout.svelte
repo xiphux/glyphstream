@@ -68,7 +68,7 @@
 	}
 
 	// Bound via <svelte:window>/<svelte:document> at the top of the template.
-	function onPresenceVisibility() {
+	function onAppResume() {
 		syncPresence();
 		// Backstop for the app-icon badge. The chat route clears a thread's
 		// notification when you look at it, and the SW re-derives on tap, but
@@ -79,6 +79,21 @@
 		// decrementing a tally, it can't clear a badge that's still earned
 		// just because the app was opened.
 		if (document.visibilityState === 'visible') void syncAppBadgeFromWindow();
+	}
+	/**
+	 * A resume is TWO events, not one, and the second is the one that matters
+	 * here. iOS suspends a backgrounded standalone PWA and restores it from the
+	 * bfcache, which fires `pageshow` and no `visibilitychange` — so a backstop
+	 * wired to visibility alone never ran for the long background waits, which
+	 * are precisely the ones an OS notification is raised for. The (app) layout
+	 * already pairs the two events for its conversation refresh; the badge needs
+	 * the same pair, and so does the chat route's notification acknowledgment.
+	 *
+	 * Persisted restores only — a fresh load's `pageshow` is covered by the mount
+	 * sync below.
+	 */
+	function onAppResumePageShow(e: PageTransitionEvent) {
+		if (e.persisted) onAppResume();
 	}
 	function onPresencePageHide() {
 		if (reportedConv) postPresence(reportedConv, false);
@@ -148,6 +163,14 @@
 	}
 
 	onMount(async () => {
+		// Cold launch: no resume event will fire, so nothing else re-derives the
+		// badge until the app is next backgrounded and brought forward. A
+		// notification swiped away while the app wasn't running would otherwise
+		// leave its count on the icon for the whole session. Counts the tray, so
+		// on a launch that DOES have notifications waiting it sets the badge
+		// rather than clearing it.
+		void syncAppBadgeFromWindow();
+
 		// Register the service worker (production builds only — the dev
 		// build of the PWA plugin is disabled in vite.config.ts). Dynamic
 		// import keeps this out of the SSR bundle; the virtual module
@@ -312,8 +335,8 @@
 	}
 </script>
 
-<svelte:window onpagehide={onPresencePageHide} />
-<svelte:document onvisibilitychange={onPresenceVisibility} />
+<svelte:window onpagehide={onPresencePageHide} onpageshow={onAppResumePageShow} />
+<svelte:document onvisibilitychange={onAppResume} />
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
