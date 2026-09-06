@@ -190,8 +190,13 @@ export const STYLE_ACCEPTS_SHAPE: Record<PromptStyle, readonly PromptShape[]> = 
 
 /** A segment this long reads as a clause, not a tag or keyword phrase. */
 const CLAUSE_WORDS = 9;
-/** Max words in a segment for a list to still read as tags/keyword phrases. */
-const MAX_LIST_SEGMENT_WORDS = 8;
+/** Max words in a segment for a list to still read as tags/keyword phrases.
+ *  A RESTATEMENT of {@link CLAUSE_WORDS}, not an independent knob: the tag-list
+ *  branch only runs when no segment is clause-like, which already means none
+ *  reached CLAUSE_WORDS, so its `every` check can never fail. Derived rather
+ *  than written as 8 so that raising CLAUSE_WORDS can't silently bring dormant
+ *  logic to life. */
+const MAX_LIST_SEGMENT_WORDS = CLAUSE_WORDS - 1;
 /** Max words in a leading tag segment of a hybrid (tags → prose) prompt. */
 const MAX_TAG_WORDS = 4;
 /** A comma-less prompt needs at least this many words to read as written-out
