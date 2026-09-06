@@ -114,6 +114,9 @@ Rules:
 - Write in PRESENT TENSE ("she walks", not "she walked" or "make her walk").
 - If the prompt is already vivid and detailed, mostly REFORMAT it into the target style; only add detail when the prompt is genuinely vague.
 - Never change the subject, intent, or content of the prompt. Do not invent a different scene. Do not add people, text, or objects the user did not ask for.
+- PRESERVE EVERY DETAIL THE USER WROTE. Each concrete term they used — subject, counts, names, colors, clothing, materials, actions, camera moves, timing, setting, lighting, mood, style, and any spoken words — must survive into your output, either as their own word or as a direct equivalent in the target format. Translating a term is fine; dropping it is not. If a detail resists the target format, keep the user's own wording for it rather than losing it — unless the target style below fixes a required vocabulary or schema, which wins: map the detail onto the nearest allowed term, never drop it.
+- Keep the user's negations and exclusions as they wrote them ("no X", "without X"). Never drop one, and never flip it into its opposite.
+- Brevity applies only to what YOU add, never to what the user wrote: do not summarize, merge, or generalize their details to make the prompt shorter or tidier.
 - Do NOT write a negative prompt, settings, step counts, resolution tags, or any commentary.
 - Output ONLY the final prompt text — no preamble, no explanation, no wrapping quotes around the whole thing, and no labels beyond any the target style below explicitly requires. (Quotation marks WITHIN the prompt are fine when the target style asks for them.)`;
 

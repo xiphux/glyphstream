@@ -135,6 +135,90 @@ describe('enhancePrompt', () => {
 	});
 });
 
+describe('enhancePrompt — prompt already in the target style', () => {
+	const tags = '1girl, solo, long hair, holding sword, forest, sunbeam';
+	const prose =
+		'A weathered fisherman mends his nets on a stone pier at first light, gulls circling.';
+
+	function systemOf(call = 0) {
+		return syncMock.mock.calls[call][1].messages[0].content as string;
+	}
+
+	it('swaps in the preserve template instead of the style template', async () => {
+		reply(tags);
+		await enhancePrompt({ prompt: tags, style: 'booru-tags', model });
+		const sent = systemOf();
+		expect(sent).toContain('ALREADY MATCHED');
+		expect(sent.toLowerCase()).toContain('do not restyle');
+		// The restyle instruction must be gone, or it fights the preserve one.
+		expect(sent).not.toContain('Target style: STRICT BOORU (DANBOORU) TAGS.');
+	});
+
+	it('drops the "Rewrite this" framing from the user turn', async () => {
+		reply(tags);
+		await enhancePrompt({ prompt: tags, style: 'booru-tags', model });
+		const sentUser = syncMock.mock.calls[0][1].messages[1].content as string;
+		expect(sentUser).toContain('WITHOUT restyling');
+		expect(sentUser).not.toContain('Rewrite this');
+	});
+
+	it('treats a comma list as matching either tag style', async () => {
+		reply(tags);
+		await enhancePrompt({ prompt: tags, style: 'keyword-soup', model });
+		expect(systemOf()).toContain('ALREADY MATCHED');
+	});
+
+	it('still restyles when the prompt is in a DIFFERENT format', async () => {
+		reply('1girl, solo');
+		await enhancePrompt({ prompt: prose, style: 'booru-tags', model });
+		const sent = systemOf();
+		expect(sent).not.toContain('ALREADY MATCHED');
+		expect(sent).toContain('Target style: STRICT BOORU (DANBOORU) TAGS.');
+	});
+
+	it('still enhances a short/ambiguous prompt normally', async () => {
+		reply('1girl, solo, sword');
+		await enhancePrompt({ prompt: 'a girl with a sword', style: 'booru-tags', model });
+		expect(systemOf()).not.toContain('ALREADY MATCHED');
+	});
+
+	it('keeps the per-model hint (additive nuance survives preserve mode)', async () => {
+		reply(tags);
+		await enhancePrompt({
+			prompt: tags,
+			style: 'booru-tags',
+			hint: 'prefix with masterpiece, best quality',
+			model,
+		});
+		expect(systemOf()).toContain('prefix with masterpiece, best quality');
+	});
+
+	it('outranks an operator style-instruction override', async () => {
+		// The override retunes how to RESTYLE; preserve mode has decided not to.
+		reply(tags);
+		await enhancePrompt({
+			prompt: tags,
+			style: 'booru-tags',
+			model: { ...model, styleInstructionOverrides: { 'booru-tags': 'OPERATOR OVERRIDE TEXT' } },
+		});
+		const sent = systemOf();
+		expect(sent).toContain('ALREADY MATCHED');
+		expect(sent).not.toContain('OPERATOR OVERRIDE TEXT');
+	});
+
+	it('never applies to video — the video styles are not detectable', async () => {
+		reply('a dog runs across a field, camera tracking alongside');
+		await enhancePrompt({
+			prompt:
+				'A lone astronaut walks across red dunes as the camera slowly dollies in, cold blue dusk light.',
+			medium: 'video',
+			style: 'cinematic-prose',
+			model,
+		});
+		expect(systemOf()).not.toContain('ALREADY MATCHED');
+	});
+});
+
 describe('enhancePrompt — video medium', () => {
 	it('uses the video (cinematographer) base + video style template', async () => {
 		reply(

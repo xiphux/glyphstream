@@ -146,8 +146,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video
   (cinematic prose, structured shot description, or a labeled multimodal script
   with its own soundscape, adding camera motion and
-  pacing). Per-model, fans out per-branch in a multi-model compare, and the
-  original prompt is kept and shown alongside the
+  pacing). A prompt you already wrote in the target image model's format is
+  preserved rather than restyled. Per-model, fans out per-branch in a
+  multi-model compare, and the original prompt is kept and shown alongside the
   result ([configuration](docs/configuration.md#prompt-enhancement-image_enhancement)).
 - A **gallery** of everything ever generated: lightbox, bulk operations,
   jump back to the source conversation, or launch a new one from any image.

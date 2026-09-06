@@ -153,6 +153,15 @@ describe('VIDEO_STYLE_INSTRUCTIONS', () => {
 		expect(t).toMatch(/no score, write exactly "N\/A"/);
 	});
 
+	it('the base prompt forbids dropping a user-written detail', () => {
+		const base = VIDEO_ENHANCER_BASE.toLowerCase();
+		expect(base).toContain('preserve every detail');
+		expect(base).toContain('dropping it is not');
+		// ...but defers to multimodal-script's fixed motion vocabulary rather than
+		// telling the model to keep an unsupported camera verb verbatim.
+		expect(base).toContain('required vocabulary or schema');
+	});
+
 	// multimodal-script's labels are the format, so the shared base must not ban
 	// labels outright — a flat ban would contradict the style instruction.
 	it('the base prompt permits style-required labels', () => {

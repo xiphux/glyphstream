@@ -4,6 +4,10 @@
  * prompt into that style (or, when the style is unknown, to clarify-only while
  * preserving the user's format). Returns the rewritten prompt.
  *
+ * A prompt the user ALREADY wrote in the target style skips the restyle: it
+ * gets the preserve-and-augment instruction instead, since the only thing a
+ * rewrite can do there is lose a term. See `alreadyInTargetStyle` below.
+ *
  * Non-fatal for FAILURES: any upstream error, timeout, or empty/garbage
  * response returns the ORIGINAL prompt with `changed: false` — enhancement is
  * an optimization, never a gate. The ONE exception is a user Stop (the abort
@@ -23,6 +27,9 @@ import type { ResolvedImageEnhancerModel } from '../tasks/image-enhancer-model';
 import {
 	CLARIFY_ONLY_INSTRUCTION,
 	ENHANCER_BASE,
+	inputAlreadyMatchesStyle,
+	isPromptStyle,
+	preserveInstruction,
 	STYLE_INSTRUCTIONS,
 	type PromptStyle,
 } from './prompt-styles';
@@ -89,18 +96,47 @@ export interface EnhancePromptResult {
 	changed: boolean;
 }
 
+/**
+ * Does the user's own prompt already sit in the target model's format? Then the
+ * reformat half of the job is done and a rewrite is pure downside — see
+ * {@link preserveInstruction}.
+ *
+ * IMAGE-ONLY on purpose. All three video styles are prose, and cinematic-prose
+ * vs structured-cinematic can't be separated from the text with any honesty; a
+ * detector that guessed there would suppress rewrites the model needed. Video
+ * always takes the normal path. If video detection is ever added, it goes here
+ * (and `preserveInstruction` is already medium-agnostic).
+ */
+function matchedStyle(
+	medium: EnhancerMedium,
+	style: PromptStyle | VideoPromptStyle | null,
+	prompt: string,
+): PromptStyle | null {
+	if (medium !== 'image' || !isPromptStyle(style)) return null;
+	return inputAlreadyMatchesStyle(prompt, style) ? style : null;
+}
+
 /** Compose the enhancer system prompt: the medium's base + style (or
- *  clarify-only) + per-model hint + any operator override of the style
- *  instruction. An unknown/mismatched style key falls back to clarify-only. */
+ *  clarify-only, or preserve-and-augment when the prompt already matches the
+ *  style) + per-model hint + any operator override of the style instruction. An
+ *  unknown/mismatched style key falls back to clarify-only. */
 function buildSystemPrompt(
 	medium: EnhancerMedium,
 	style: PromptStyle | VideoPromptStyle | null,
+	matched: PromptStyle | null,
 	hint: string | null | undefined,
 	overrides: Record<string, string>,
 ): string {
 	const t = templatesForMedium(medium);
-	const styleInstruction =
-		style === null ? t.clarify : (overrides[style] ?? t.instructions[style] ?? t.clarify);
+	// Preserve mode outranks an operator `style_instructions` override: the
+	// override retunes how to RESTYLE into a style, and here we've decided not to
+	// restyle at all. The per-model hint below still applies — it carries
+	// additive nuance (quality prefix, brevity), not a reformat.
+	const styleInstruction = matched
+		? preserveInstruction(matched)
+		: style === null
+			? t.clarify
+			: (overrides[style] ?? t.instructions[style] ?? t.clarify);
 	const parts = [t.base, styleInstruction];
 	if (hint && hint.trim()) {
 		parts.push(`Additional guidance for this specific model:\n${hint.trim()}`);
@@ -116,16 +152,22 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 	if (!trimmed) return { enhanced: original, changed: false };
 
 	const medium = input.medium ?? 'image';
+	const matched = matchedStyle(medium, input.style, trimmed);
 	const system = buildSystemPrompt(
 		medium,
 		input.style,
+		matched,
 		input.hint,
 		input.model.styleInstructionOverrides,
 	);
 	// Wrap the prompt in tags so a weak enhancer reads it as data to rewrite,
 	// not a conversation to continue (same trick as the title task's
-	// <conversation> wrap).
-	const user = `Rewrite this ${medium} prompt:\n\n<prompt>\n${trimmed}\n</prompt>`;
+	// <conversation> wrap). The verb tracks the mode: leaving "Rewrite" on a
+	// preserve pass puts the user turn at odds with the system prompt, and a
+	// small model resolves that by rewriting.
+	const user = matched
+		? `Improve this ${medium} prompt WITHOUT restyling or rewording it:\n\n<prompt>\n${trimmed}\n</prompt>`
+		: `Rewrite this ${medium} prompt:\n\n<prompt>\n${trimmed}\n</prompt>`;
 
 	let content: string;
 	try {
@@ -169,8 +211,9 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 	// diff is that noise, we treat it as unchanged and keep the user's prompt.
 	const changed = trivialNormalize(enhanced) !== trivialNormalize(trimmed);
 	if (DEBUG && changed) {
+		const mode = matched ? ' (preserve)' : '';
 		console.debug(
-			`[prompt-enhancer] style=${input.style ?? 'clarify-only'} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
+			`[prompt-enhancer] style=${input.style ?? 'clarify-only'}${mode} "${trimmed.slice(0, 40)}…" → "${enhanced.slice(0, 40)}…"`,
 		);
 	}
 	return { enhanced, changed };

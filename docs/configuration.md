@@ -431,6 +431,15 @@ expands it if it's vague), then generates from the rewritten prompt. Your
 original message is kept verbatim; the gallery lightbox shows the enhanced
 prompt with an **"Enhanced — show original"** toggle.
 
+If you **already wrote the prompt in the format the target image model wants**
+— booru tags for a booru model, prose for a prose model — GlyphStream detects
+that and skips the restyle: the enhancer is told to keep your wording and only
+append detail that's genuinely missing. A rewrite there can only lose fidelity,
+so it isn't asked for. Detection is deliberately conservative (a short or
+ambiguous prompt takes the normal path, and the two comma-separated styles —
+`booru-tags` and `keyword-soup` — count as matching each other), and it's image
+only: the video styles are all prose and can't be told apart from the text.
+
 The same `[image_enhancement]` block (and its enhancer LLM) drives both image
 and video — the block keeps its historical name, but a capable model handles
 either medium. What differs is the **style vocabulary** per medium (see below).
