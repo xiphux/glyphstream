@@ -168,6 +168,37 @@ describe('detectPromptShape', () => {
 		expect(detectPromptShape('1girl, solo, forest')).toBe('comma-list');
 	});
 
+	it('reads prose typed across several short lines as prose, not a tag list', () => {
+		// The newline that carried each sentence break is eaten by segmentation, so
+		// the break has to be looked for in the whole string. Getting this wrong
+		// hands a booru model three English sentences with the rewrite suppressed.
+		expect(
+			detectPromptShape(
+				'A cyberpunk city street at night.\nNeon signs reflect in puddles.\nA lone figure walks away.',
+			),
+		).toBe('prose');
+		expect(
+			detectPromptShape(
+				'An old lighthouse stands on a cliff.\nWaves crash below.\nStorm clouds gather overhead.',
+			),
+		).toBe('prose');
+	});
+
+	it('still reads a per-line tag list as a tag list', () => {
+		expect(detectPromptShape('1girl\nsolo\nlong hair\nforest\nsunbeam')).toBe('comma-list');
+	});
+
+	it('does not mistake a decimal or version number for a sentence break', () => {
+		// These ride through the same whole-string check as the multi-line prose
+		// above, and a false break there would strip preserve mode off real tag
+		// lists.
+		expect(detectPromptShape('(masterpiece:1.2), best quality, 1girl, solo, forest')).toBe(
+			'comma-list',
+		);
+		expect(detectPromptShape('85mm f/1.8, bokeh, golden hour, portrait')).toBe('comma-list');
+		expect(detectPromptShape('sdxl 1.0, anime style, 1girl, solo')).toBe('comma-list');
+	});
+
 	it('does not read a numbered list or an initial as a sentence break', () => {
 		// The period in "1." / "J." is not a sentence end; reading it as one made
 		// a numbered tag list classify as prose.

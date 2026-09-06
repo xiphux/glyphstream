@@ -275,6 +275,20 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 	// booru model wants it kept as written.
 	const longEnoughForProse = wordCount(s) >= MIN_PROSE_WORDS;
 
+	// A sentence break the segmentation ate. `split(/[,\n]+/)` consumes the
+	// newline that carried it, and `isClauseLike` only ever looks WITHIN a
+	// segment — so prose typed across short lines had every one of its boundaries
+	// erased, each line read as a verbless fragment, and the whole thing landed in
+	// the un-floored tag-list branch below. That is the one direction this
+	// detector must not be wrong in: a booru model would then be handed English
+	// sentences with the rewrite suppressed. So test the WHOLE string.
+	//
+	// Known gap: multi-line prose with no terminal punctuation at all still reads
+	// as a list. Closing that needs a finite-verb signal — counting commas rather
+	// than segments would also do it, but it would stop detecting the per-line
+	// booru list ("1girl\nsolo\nlong hair"), which is a real way people write tags.
+	const hasSentenceBreak = INTERNAL_SENTENCE_BREAK.test(s);
+
 	// Hybrid: a run of short tags, then the prose takes over. Only the segments
 	// BEFORE the first clause are checked — tags resuming after the prose still
 	// read as this shape, which is close enough to the real thing.
@@ -287,17 +301,19 @@ export function detectPromptShape(raw: unknown): PromptShape | null {
 		return 'tagged-prose';
 	}
 
-	// Tag / keyword list: several segments, none of which is a clause.
+	// Tag / keyword list: several segments, none of which is a clause, and no
+	// sentence break straddling the separators.
 	if (
 		firstClause === -1 &&
+		!hasSentenceBreak &&
 		segments.length >= 3 &&
 		segments.every((seg) => wordCount(seg) <= MAX_LIST_SEGMENT_WORDS)
 	) {
 		return 'comma-list';
 	}
 
-	// Prose that happens to contain commas.
-	if (longEnoughForProse && firstClause !== -1) return 'prose';
+	// Prose that happens to contain commas or line breaks.
+	if (longEnoughForProse && (firstClause !== -1 || hasSentenceBreak)) return 'prose';
 
 	return null;
 }
