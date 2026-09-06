@@ -216,6 +216,15 @@ describe('inputAlreadyMatchesStyle', () => {
 		expect(inputAlreadyMatchesStyle(hybrid, 'hybrid')).toBe(true);
 	});
 
+	it('never matches a json model — shape is not schema', () => {
+		// The shape is detected (see detectPromptShape), but a JSON prompt with the
+		// wrong keys is shaped right and still wrong, and normalizing onto the
+		// model's schema is the whole job. So json takes the rewrite path always.
+		const json = '{"high_level_description": "a cat on a mat"}';
+		expect(detectPromptShape(json)).toBe('json');
+		expect(inputAlreadyMatchesStyle(json, 'json')).toBe(false);
+	});
+
 	it('never matches an undetectable prompt', () => {
 		for (const s of PROMPT_STYLES) {
 			expect(inputAlreadyMatchesStyle('a girl with a sword', s)).toBe(false);

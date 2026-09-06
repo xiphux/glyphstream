@@ -171,13 +171,21 @@ export type PromptShape = (typeof PROMPT_SHAPES)[number];
  * Note what does NOT match: a bare comma-list against `hybrid` (it's missing
  * the prose half), or `tagged-prose` against `natural-language` (the tags do
  * need converting). Those still take the normal rewrite path.
+ *
+ * `json` accepts NOTHING, which is the one place this table isn't just a shape
+ * comparison. For the other four styles, right shape ≈ right prompt. For json
+ * it isn't: the schema is model-specific (Ideogram 4's exact key set lives in
+ * `STYLE_INSTRUCTIONS.json` and the per-model hint), and hand-written JSON with
+ * the wrong keys is shaped perfectly while being exactly what the rewrite
+ * exists to fix. Detection still reports the `json` shape honestly; this table
+ * is where it's declined.
  */
 export const STYLE_ACCEPTS_SHAPE: Record<PromptStyle, readonly PromptShape[]> = {
 	'natural-language': ['prose'],
 	'booru-tags': ['comma-list'],
 	'keyword-soup': ['comma-list'],
 	hybrid: ['tagged-prose'],
-	json: ['json'],
+	json: [],
 };
 
 /** A segment this long reads as a clause, not a tag or keyword phrase. */
