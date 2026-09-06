@@ -91,6 +91,18 @@
 	 *
 	 * Persisted restores only — a fresh load's `pageshow` is covered by the mount
 	 * sync below.
+	 *
+	 * A platform that fires BOTH events for one restore (Chrome pairs them on a
+	 * back-navigation) runs this twice, deliberately without the `resumeInFlight`
+	 * guard the (app) layout uses for its own pair. Both halves already dedupe at
+	 * a finer grain than an outer flag could: `syncPresence` diffs the desired
+	 * conversation against what it last reported, so a repeat costs a TTL refresh
+	 * when something IS being reported and no request at all when nothing is, and
+	 * the badge is recounted from the tray rather than adjusted. A coarse
+	 * "already resumed" flag could only make that worse — `visibilitychange` also
+	 * fires on the way OUT, where `syncPresence` is what stops a hidden device
+	 * suppressing pushes to the user's other one, and swallowing that beat costs
+	 * far more than the duplicate it saves.
 	 */
 	function onAppResumePageShow(e: PageTransitionEvent) {
 		if (e.persisted) onAppResume();
