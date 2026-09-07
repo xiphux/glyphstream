@@ -89,6 +89,14 @@ describe('ENHANCER_BASE fidelity rules', () => {
 		expect(base).toContain('without x');
 	});
 
+	it('forbids inventing an attribute the user left unstated', () => {
+		// Measured failure, not a hypothetical: the configured 4B enhancer returned
+		// `1girl` for an ungendered "lone figure" / "knight" in 3 of 3 runs.
+		const base = ENHANCER_BASE.toLowerCase();
+		expect(base).toContain('left unstated');
+		expect(base).toContain('1girl');
+	});
+
 	it('defers to a style that fixes a required vocabulary or schema', () => {
 		// The one place "keep the user's own wording" would otherwise fight a
 		// style template (JSON keys, or video's fixed motion verbs).
