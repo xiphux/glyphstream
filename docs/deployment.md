@@ -6,10 +6,12 @@ Multi-stage Alpine Docker image, ~200 MB final size. Bind-mount `data/` for
 persistence and mount `config.toml` read-only. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
-spinning disks that is the dominant cost of a cold load. Do not put it on an
-NFS/SMB share: SQLite's locking is unreliable over network filesystems, and
-GlyphStream memory-maps the database (see `PRAGMA mmap_size` in
-`src/lib/server/db/client.ts`), which is unreliable over them too.
+spinning disks that is the dominant cost of a cold load. Never put the
+_database_ on an NFS/SMB share: SQLite's locking is unreliable over network
+filesystems, and GlyphStream memory-maps the database (see `PRAGMA mmap_size`
+in `src/lib/server/db/client.ts`), which is unreliable over them too. Media is
+a different question — see [Splitting storage across
+volumes](#splitting-storage-across-volumes) below.
 
 ```bash
 mkdir -p /srv/glyphstream/{data,imports}
@@ -42,6 +44,63 @@ token is correct either way.
 
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.
+
+## Splitting storage across volumes
+
+`data/` holds three things with three different needs, and `DB_PATH`,
+`MEDIA_DIR` and `DERIVED_DIR` let you put each where it belongs. Set none of
+them and everything lives together under `data/`, which is the right answer
+until you run out of room.
+
+|               | What it is                          | Wants                                                              |
+| ------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `DB_PATH`     | SQLite database + WAL               | Fast **local** disk. Never a network share.                        |
+| `MEDIA_DIR`   | Original images, video, uploads     | Space. Grows without bound — generated media is kept indefinitely. |
+| `DERIVED_DIR` | Gallery thumbnails, vision variants | Fast disk. Small, hot, and rebuildable.                            |
+
+The case for splitting them is a generation-heavy install on a box whose fast
+disk is the small one. Media is the part that grows: the purger only reaps
+abandoned uploads, so everything you generate is kept.
+
+**Media on a network share is fine; the database is not.** SQLite's problem
+over NFS/SMB is byte-range locking and mmap. Media files are write-once opaque
+blobs, created by writing a `.tmp` sibling and renaming it within the same
+directory — no locking, no concurrent writers to one file, no mmap. So
+`MEDIA_DIR` can point at a NAS mount while `DB_PATH` stays local. Two notes if
+you do it:
+
+- **Mount `soft`, not `hard`.** Node's filesystem calls run on the libuv
+  thread pool (four threads by default). A hard mount that goes away blocks
+  those threads indefinitely, and once they are all stuck every media read in
+  the process stalls behind it. `soft` turns a NAS reboot into failed media
+  requests instead of a wedged server.
+- **Set `DERIVED_DIR` to local disk.** This is the one that decides whether
+  the move is felt. Without it, the two hottest paths in the app end up on the
+  slow volume: a cold gallery viewport asks for 30-60 thumbnails at once, and
+  a vision variant is re-read on _every turn_ for the life of a conversation.
+  Budget about a tenth of `MEDIA_DIR` and you will usually have room to
+  spare. Measured over generated PNGs: a thumbnail is ~1/70th of its original
+  (~33 KB against ~2.4 MB) and exists for every image you have looked at in
+  the gallery, while a vision variant is ~1/13th and exists only for images
+  actually sent to a model. A library where every image had both would come to
+  roughly 1/11th of the originals; a generation-heavy one lands well below
+  that, since most of what it stores is never inlined into a request.
+
+Derived assets are regenerable: point `DERIVED_DIR` somewhere empty and they
+are rebuilt lazily on first view, at the cost of one re-encode each. To keep
+the ones you have instead, move them — the relative paths are identical under
+either root:
+
+```bash
+cd "$MEDIA_DIR"
+find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) | cpio -pdm "$DERIVED_DIR"
+find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) -delete
+```
+
+Do the second `find` only once you have set `DERIVED_DIR` and restarted.
+Leftovers under `MEDIA_DIR` are inert but permanent: deleting an image reaps
+its derivatives from `DERIVED_DIR` only, so anything left on the old root is
+never swept.
 
 ## Public exposure (TLS + HTTP/2)
 
