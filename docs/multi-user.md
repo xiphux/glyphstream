@@ -102,6 +102,13 @@ can't:
 - **How deep the queue is.** Requests past the cap queue FIFO, so a handful of
   multi-model fan-outs against a single-GPU endpoint shows here as a line of
   waiting entries, each labelled with the model it will run.
+- **What hasn't reached the queue yet.** A request whose _earlier_ step is
+  still running somewhere else — a media generation whose prompt is being
+  rewritten on the enhancer's endpoint — is listed as a faint _"after prompt
+  enhance"_ row and counted under Queued as _"not yet in line"_. It holds no
+  slot and no place in the queue; it is named so that a batch draining through
+  an enhancer reads as a pipeline moving rather than as a queue filling itself
+  while nobody is submitting anything.
 
 Endpoints that share a **`resource_group`** are drawn as one unit, because
 they share one gate: one capacity, one queue, and — while a handover is
