@@ -48,8 +48,8 @@ let media = '';
 let derived = '';
 
 /** Write an original under MEDIA_DIR, creating its shard. */
-function writeOriginal(bytes: Buffer): void {
-	const abs = resolve(media, STORAGE_PATH);
+function writeOriginal(bytes: Buffer, storagePath: string = STORAGE_PATH): void {
+	const abs = resolve(media, storagePath);
 	mkdirSync(dirname(abs), { recursive: true });
 	writeFileSync(abs, bytes);
 }
@@ -137,6 +137,14 @@ describe('an unusable DERIVED_DIR degrades instead of failing the request', () =
 	// their callers a null (the documented "fall back to the original" signal) and
 	// must not throw, because both are reached from a request — the gallery tile
 	// endpoint and the per-turn send path.
+	// Its OWN storage path, not the shared one. `getVisionVariant` short-circuits
+	// on the module-level `declined` set before it touches the filesystem, and that
+	// set outlives every test in this file — so a future test here that declined
+	// the shared path would make both assertions below pass without reaching the
+	// mkdir they exist to exercise, silently. Nothing declines it today; this just
+	// removes the coupling rather than relying on that staying true.
+	const DEGRADES_PATH = 'ef/01/degrades.png';
+
 	beforeEach(() => {
 		const blocker = join(media, 'not-a-directory');
 		writeFileSync(blocker, 'this is a file, so nothing can be mkdir-ed beneath it');
@@ -149,13 +157,13 @@ describe('an unusable DERIVED_DIR degrades instead of failing the request', () =
 	});
 
 	it('returns null from getOrCreateThumbnail rather than 500ing the tile', async () => {
-		writeOriginal(await photoPng(1400, 900));
-		await expect(getOrCreateThumbnail(STORAGE_PATH)).resolves.toBeNull();
+		writeOriginal(await photoPng(1400, 900), DEGRADES_PATH);
+		await expect(getOrCreateThumbnail(DEGRADES_PATH)).resolves.toBeNull();
 	});
 
 	it('returns null from getVisionVariant rather than failing the send', async () => {
-		writeOriginal(await photoPng(2400, 1600));
-		await expect(getVisionVariant(STORAGE_PATH)).resolves.toBeNull();
+		writeOriginal(await photoPng(2400, 1600), DEGRADES_PATH);
+		await expect(getVisionVariant(DEGRADES_PATH)).resolves.toBeNull();
 	});
 });
 

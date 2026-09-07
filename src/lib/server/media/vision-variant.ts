@@ -88,11 +88,13 @@ const DECLINED_MAX = 4096;
 /**
  * Read a file, or null if reading it didn't work.
  *
- * `what` names the file for the log line. A MISSING file is never logged — that
- * is the ordinary miss this function exists to report, and both callers reach it
- * routinely. Anything else is a real filesystem problem and gets a line, because
- * the caller degrades to "inline the original" either way and would otherwise
- * leave no trace of a volume that has stopped answering.
+ * `what` names the file for the log line. A MISSING file is never logged: for
+ * the variant that is the routine cache miss this function exists to report, and
+ * for the original it is a media row that has outlived its bytes — unusual, but
+ * nothing a log line would help with, since the caller's answer is the same
+ * either way. Anything else IS a real filesystem problem and gets a line,
+ * because the caller degrades to "inline the original" regardless and would
+ * otherwise leave no trace of a volume that has stopped answering.
  *
  * Nothing here may throw: every caller's fallback is that same inline, and a
  * send must not fail over a cache that didn't cooperate.
