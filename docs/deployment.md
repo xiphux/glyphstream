@@ -52,6 +52,20 @@ or env changes only need `docker compose restart` — no rebuild.
 them and everything lives together under `data/`, which is the right answer
 until you run out of room.
 
+**Under Docker, every path you split off needs its own bind mount.** The
+shipped `docker-compose.yml` mounts `./data:/app/data` and nothing else, so a
+`DERIVED_DIR` pointing outside that resolves inside the container's writable
+layer: it works, and then disappears on the next `docker compose up --build`,
+with no error and nothing to indicate anything was lost. Mount each one and
+point the variable at the container-side path:
+
+```yaml
+volumes:
+  - ./data:/app/data
+  - /mnt/nas/glyphstream-media:/app/media # MEDIA_DIR=/app/media
+  - /srv/fast/glyphstream-derived:/app/derived # DERIVED_DIR=/app/derived
+```
+
 |               | What it is                          | Wants                                                              |
 | ------------- | ----------------------------------- | ------------------------------------------------------------------ |
 | `DB_PATH`     | SQLite database + WAL               | Fast **local** disk. Never a network share.                        |
@@ -92,9 +106,18 @@ the ones you have instead, move them — the relative paths are identical under
 either root:
 
 ```bash
-cd "$MEDIA_DIR"
-find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) | cpio -pdm "$DERIVED_DIR"
-find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) -delete
+# Absolute paths, set by hand. The values in .env are read by the app, not
+# exported into your shell, and the shipped defaults are relative — a relative
+# second path would land inside the first once you have cd'd into it.
+MEDIA=/srv/glyphstream/data/media
+DERIVED=/srv/glyphstream-fast/derived
+
+mkdir -p "$DERIVED"
+cd "$MEDIA"     # cpio copies the paths it is given, so run it from the root
+find . \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) | cpio -pdm "$DERIVED"
+
+# Only after DERIVED_DIR is set and the app restarted:
+find "$MEDIA" \( -name '*.thumb.jpg' -o -name '*.vision.jpg' \) -delete
 ```
 
 Do the second `find` only once you have set `DERIVED_DIR` and restarted.

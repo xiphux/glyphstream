@@ -735,7 +735,12 @@ The annotated [`.env.example`](../.env.example) is canonical. Highlights:
 - `EXTERNAL_BASE_URL` — the public origin, used to build OAuth callback URLs
   and the WebAuthn relying-party ID. See the
   [authentication guide](authentication.md) for the footguns.
-- `DB_PATH` / `MEDIA_DIR` — SQLite file and media directory locations.
+- `DB_PATH` / `MEDIA_DIR` / `DERIVED_DIR` — SQLite file, media directory, and
+  where lazily-derived assets (gallery thumbnails, vision variants) are kept.
+  `DERIVED_DIR` defaults to `MEDIA_DIR`; splitting them is worth it when the
+  media volume is large and slow, since the derived assets are small, hot and
+  rebuildable — see
+  [splitting storage across volumes](deployment.md#splitting-storage-across-volumes).
   Generated media is kept indefinitely; the background purger only reaps
   _abandoned uploads_, on a fixed cadence (15-minute sweep, 30-minute
   grace) that isn't configurable.
