@@ -124,11 +124,20 @@ Rules:
  * superlatives for prose models).
  */
 export const STYLE_INSTRUCTIONS: Record<PromptStyle, string> = {
+	// Known residual on `booru-tags`, measured and left alone: asked for two
+	// women, a 4B enhancer emits "1girl, 1girl" in ~2 of 5 runs. That is not two
+	// women — the duplicate collapses and the model renders one. Three prompt
+	// wordings were measured against it and none moved the number; two made it
+	// worse by naming the broken form (see git log). The fix for this one is
+	// code, not prompting: collapse repeated subject tags into their count tag
+	// on the enhancer's OUTPUT, where it is deterministic and testable.
+
 	'natural-language': `Target style: NATURAL-LANGUAGE NARRATIVE.
 Write flowing, descriptive natural-language sentences (not a list of tags). Order the description as subject → action → setting → lighting/camera/mood/style. Prefer concrete, specific terms — camera bodies, lenses, film stock, time of day, materials, art medium — over generic quality buzzwords. Do NOT use comma-separated tag soup. Do NOT use weight syntax like (word:1.2). Put the most important elements first.`,
 
 	'booru-tags': `Target style: STRICT BOORU (DANBOORU) TAGS.
-Write a comma-separated list of concise Danbooru-style tags, each a single concept (e.g. 1girl, solo, long hair, holding sword, forest, sunbeam). Use booru subject tags (1girl/1boy) rather than "woman"/"man". Order roughly: quality/meta tags → subject → pose/action → clothing → setting → composition. Spaces and underscores are equivalent. Do NOT write full sentences. Do NOT emit Pony-style score tags (score_9, score_8_up, etc.) — they belong to a different model family and are noise here.`,
+Write a comma-separated list of concise Danbooru-style tags, each a single concept (e.g. 1girl, solo, long hair, holding sword, forest, sunbeam). Use booru subject tags (1girl/1boy) rather than "woman"/"man". Count the people with ONE numbered subject tag per gender group, and use each subject tag at most once: two women are 2girls, three women are 3girls, six or more are 6+girls, and a man with a woman is 1girl, 1boy. The number in the tag is the headcount, so it must match the number of people the user described.
+Order roughly: quality/meta tags → subject → pose/action → clothing → setting → composition. Spaces and underscores are equivalent. Do NOT write full sentences. Do NOT emit Pony-style score tags (score_9, score_8_up, etc.) — they belong to a different model family and are noise here.`,
 
 	'keyword-soup': `Target style: KEYWORD SOUP (SDXL).
 Write short, comma-separated descriptive PHRASES — not strict single-word anime tags, and not full sentences. Order them subject → action → setting → lighting/camera/mood/style: lead with the user's subject and carry its specific details across, and let the cinematic/photographic terms trail at the end. Those style terms modify the subject; they are never the prompt on their own. Favor concrete camera, film-stock, and lighting vocabulary over generic quality buzzwords. Keep it punchy; avoid long, padded, run-on descriptions.`,

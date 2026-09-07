@@ -64,6 +64,14 @@ describe('STYLE_INSTRUCTIONS', () => {
 		}
 	});
 
+	it('tells booru-tags that a subject tag is a headcount', () => {
+		// Measured against the configured 4B enhancer: without this, "three women"
+		// produced a correct count tag in 2 of 5 runs.
+		const t = STYLE_INSTRUCTIONS['booru-tags'];
+		expect(t).toContain('2girls');
+		expect(t.toLowerCase()).toContain('headcount');
+	});
+
 	it('warns booru-tags away from Pony score_N tags', () => {
 		// The single most common cross-contamination bug — assert the guardrail
 		// is actually present in the template.
