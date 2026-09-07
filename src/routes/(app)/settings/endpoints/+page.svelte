@@ -324,9 +324,13 @@
 	/**
 	 * What a `pending` row is waiting behind, as a sentence fragment.
 	 *
-	 * Falls back to a reason-less phrasing rather than dropping the row: a
-	 * `blockedBy` this build has no word for still means the work is real and
-	 * coming, which is the whole reason the row is on screen.
+	 * The fallback covers a null `blockedBy` — which the wire type permits and
+	 * every non-pending state actually carries — so a row that somehow arrives
+	 * without a reason still renders as work that is real and coming, rather
+	 * than as "after null". It does NOT cover a purpose this build has no word
+	 * for: `purposeLabel` already absorbs those into its own `Other`, which is
+	 * a real member of the union and not distinguishable from an unknown one
+	 * here by design.
 	 */
 	function blockedLabel(slot: EndpointSlotInfo): string {
 		return slot.blockedBy

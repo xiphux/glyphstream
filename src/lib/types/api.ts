@@ -1728,7 +1728,9 @@ export interface GeneratingConversationsResponse {
  */
 
 /**
- * What a held or queued endpoint slot is doing.
+ * What a piece of endpoint work is: held, queued, or merely declared. Reused by
+ * `EndpointSlotInfo.blockedBy`, where it names a DIFFERENT step — the one a
+ * pending row is waiting behind — rather than the row's own work.
  *
  * The single source of truth: `server/endpoints/concurrency.ts` imports this as
  * `SlotPurpose` rather than keeping a second copy, the way `models.ts` imports
