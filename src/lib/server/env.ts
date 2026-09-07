@@ -43,6 +43,31 @@ export function mediaDir(): string {
 	return readString('MEDIA_DIR', './data/media');
 }
 
+/**
+ * Where lazily-derived assets live — gallery thumbnails (`*.thumb.jpg`) and the
+ * downscaled JPEGs inlined into vision requests (`*.vision.jpg`).
+ *
+ * Defaults to `mediaDir()`, which is where they have always been written, so an
+ * install that sets nothing keeps exactly the layout it has: same sharded
+ * relative paths, same sibling-of-the-original names.
+ *
+ * Worth separating when MEDIA_DIR is slow or remote storage, because derived
+ * assets have the opposite profile to the originals they come from. They are
+ * tiny (a thumbnail measures ~1/70th of its source — 33 KB against 2.4 MB over
+ * generated PNGs here), they are read far more often than they are written (a
+ * gallery grid is 30-60 of them at once; a vision variant is re-read on every
+ * turn for the life of a conversation), and losing one costs a re-encode rather
+ * than data. So they want the fast disk while the originals want the big one,
+ * and pointing this at local storage is what keeps a network-mounted MEDIA_DIR
+ * off the gallery grid and off the send path.
+ *
+ * Moving an existing install is a file move, not a re-derive — the relative
+ * paths are identical under either root. See docs/deployment.md.
+ */
+export function derivedDir(): string {
+	return readString('DERIVED_DIR', mediaDir());
+}
+
 export function skillsDir(): string {
 	return readString('SKILLS_DIR', './data/skills');
 }

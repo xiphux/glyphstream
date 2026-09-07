@@ -17,6 +17,7 @@ import { join, dirname, resolve } from 'node:path';
 
 const state = vi.hoisted(() => ({
 	root: '',
+	derivedRoot: '',
 	/** Resolves the currently-running sharp jobs; lets a test hold them open. */
 	pending: [] as Array<() => void>,
 	started: 0,
@@ -24,7 +25,12 @@ const state = vi.hoisted(() => ({
 	live: 0,
 }));
 
-vi.mock('$lib/server/env', () => ({ mediaDir: () => state.root }));
+vi.mock('$lib/server/env', () => ({
+	mediaDir: () => state.root,
+	// Coincident here, as it is for any install that leaves DERIVED_DIR unset.
+	// The split itself is covered in media-derived-dir.test.ts.
+	derivedDir: () => state.derivedRoot || state.root,
+}));
 
 vi.mock('sharp', () => {
 	const makeChain = (outPath: { value: string }) => {

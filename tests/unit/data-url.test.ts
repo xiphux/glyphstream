@@ -22,6 +22,9 @@ vi.mock('$lib/server/db/client', () => ({
 }));
 vi.mock('$lib/server/env', () => ({
 	mediaDir: () => mocks.mediaDir,
+	// Coincident, as for any install that leaves DERIVED_DIR unset. The split
+	// itself is covered in media-derived-dir.test.ts.
+	derivedDir: () => mocks.mediaDir,
 	// Anything else the imported module pulls transitively — none of the
 	// data-url path needs them, but defensive stubs avoid unrelated env
 	// reads tripping up the mock.

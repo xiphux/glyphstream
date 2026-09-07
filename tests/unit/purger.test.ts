@@ -21,6 +21,9 @@ vi.mock('$lib/server/db/client', () => ({
 
 vi.mock('$lib/server/env', () => ({
 	mediaDir: () => mocks.mediaDir,
+	// Coincident, as for any install that leaves DERIVED_DIR unset. The split
+	// itself is covered in media-derived-dir.test.ts.
+	derivedDir: () => mocks.mediaDir,
 	// Note: the purger no longer reads grace/interval from env (commit
 	// "Narrow purger to abandoned uploads only" hardcoded both). Kept
 	// `graceMs` on `mocks` only because earlier tests reference it for

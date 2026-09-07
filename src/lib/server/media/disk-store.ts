@@ -12,7 +12,7 @@ import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
-import { mediaDir } from '../env';
+import { derivedDir, mediaDir } from '../env';
 import { normalizeContentType } from './content-type';
 import { thumbStoragePath } from './thumbnail';
 import { visionStoragePath } from './vision-variant';
@@ -185,7 +185,11 @@ export class DiskMediaStore implements MediaStore {
 		// disk indefinitely.
 		for (const derived of [thumbStoragePath(storagePath), visionStoragePath(storagePath)]) {
 			try {
-				await unlink(resolve(root(), derived));
+				// `derivedDir()`, not `root()`: these two may live on a different
+				// volume than the originals. Resolved fresh rather than via the
+				// ensured-root cache because deleting never needs the directory to
+				// exist — if it doesn't, there is nothing here to unlink.
+				await unlink(resolve(derivedDir(), derived));
 			} catch (e) {
 				if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
 					console.warn(`[disk-store] delete ${derived} failed:`, e);

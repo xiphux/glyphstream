@@ -14,10 +14,12 @@ import { Readable } from 'node:stream';
 
 const mocks = vi.hoisted(() => ({
 	mediaDir: '',
+	derivedDir: '',
 }));
 
 vi.mock('$lib/server/env', () => ({
 	mediaDir: () => mocks.mediaDir,
+	derivedDir: () => mocks.derivedDir || mocks.mediaDir,
 	dbPath: () => ':memory:',
 	logLevel: () => 'info',
 	configPath: () => '/tmp/nope.toml',

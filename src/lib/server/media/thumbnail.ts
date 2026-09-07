@@ -19,8 +19,10 @@
  * the original — gallery shows a slow tile but no broken-image
  * icon. Per-file failures don't poison the cache.
  *
- * DISK-STORE-ONLY: This module reads and writes via raw `node:fs`
- * paths resolved from `mediaDir()`. It does NOT go through the
+ * DISK-STORE-ONLY: This module reads originals via raw `node:fs`
+ * paths under `mediaDir()` and writes thumbs under `derivedDir()`
+ * (the same directory unless DERIVED_DIR says otherwise). It does
+ * NOT go through the
  * MediaStore interface and is therefore tied to the disk-backed
  * implementation. The gallery endpoint
  * (routes/api/media/[id]/thumbnail/+server.ts) degrades gracefully
@@ -40,7 +42,7 @@ import { rename, stat, unlink } from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { mediaDir } from '../env';
+import { derivedDir, mediaDir } from '../env';
 
 // Tuned for typical gallery grid cells (max 5-6 columns at sm+,
 // 2-3 on mobile, so each cell is ~150-300px wide). 512px gives
@@ -139,8 +141,10 @@ async function statOrNull(path: string): Promise<Stats | null> {
  * are globally capped — see `inFlight` and `MAX_CONCURRENT_GENERATIONS`.
  */
 export async function getOrCreateThumbnail(storagePath: string): Promise<ThumbnailRef | null> {
-	const root = resolve(mediaDir());
-	const thumbAbs = resolve(root, thumbStoragePath(storagePath));
+	// Two roots, because the two files want different storage. The thumbnail is
+	// small, hot, and regenerable; the original is large, cold, and irreplaceable.
+	// They coincide unless DERIVED_DIR is set — see `derivedDir` in env.ts.
+	const thumbAbs = resolve(derivedDir(), thumbStoragePath(storagePath));
 
 	// Cache hit — the overwhelmingly common case once a library has been
 	// viewed once, so it's checked before any locking.
@@ -152,7 +156,8 @@ export async function getOrCreateThumbnail(storagePath: string): Promise<Thumbna
 	const existing = inFlight.get(thumbAbs);
 	if (existing) return existing;
 
-	const job = generateThumbnail(resolve(root, storagePath), thumbAbs, storagePath).finally(() => {
+	const source = resolve(mediaDir(), storagePath);
+	const job = generateThumbnail(source, thumbAbs, storagePath).finally(() => {
 		inFlight.delete(thumbAbs);
 	});
 	inFlight.set(thumbAbs, job);

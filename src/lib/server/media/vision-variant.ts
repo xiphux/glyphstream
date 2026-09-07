@@ -18,8 +18,8 @@
  * before this module existed.
  *
  * DISK-STORE-ONLY, for the same reason `thumbnail.ts` is: it resolves raw
- * `node:fs` paths under `mediaDir()` rather than going through the MediaStore
- * interface. Under a future S3 store this degrades to "no variant" (null), and
+ * `node:fs` paths — the original under `mediaDir()`, the variant under
+ * `derivedDir()` — rather than going through the MediaStore interface. Under a future S3 store this degrades to "no variant" (null), and
  * the caller inlines the original — slower and fatter, but correct. Extending
  * MediaStore with derived-asset methods is the same deferred v2 change noted
  * there.
@@ -31,7 +31,7 @@ import { mkdirSync } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { mediaDir } from '../env';
+import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
 
 /** Convention mirrors `thumbStoragePath`: variants live as `{original}.vision.jpg`
@@ -56,7 +56,7 @@ export interface VisionVariant {
 export async function cachedVisionVariantSize(storagePath: string): Promise<number | null> {
 	if (getVisionConfig().maxImageDim <= 0) return null;
 	try {
-		return (await stat(resolve(mediaDir(), visionStoragePath(storagePath)))).size;
+		return (await stat(resolve(derivedDir(), visionStoragePath(storagePath)))).size;
 	} catch {
 		return null;
 	}
@@ -111,9 +111,11 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 	if (maxImageDim <= 0) return null; // explicitly disabled
 	if (declined.has(storagePath)) return null;
 
-	const root = resolve(mediaDir());
-	const sourceAbs = resolve(root, storagePath);
-	const variantAbs = resolve(root, visionStoragePath(storagePath));
+	// Two roots: the original is large and irreplaceable, the variant is small,
+	// re-read every turn, and costs one re-encode to rebuild. They coincide
+	// unless DERIVED_DIR is set — see `derivedDir` in env.ts.
+	const sourceAbs = resolve(mediaDir(), storagePath);
+	const variantAbs = resolve(derivedDir(), visionStoragePath(storagePath));
 
 	// Ask for the cached variant's BYTES first and let the read itself answer
 	// "is it there". An existsSync ahead of the readFile spends a second round
