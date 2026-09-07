@@ -7,7 +7,7 @@
  * across thousands of dirs without slowing dirent lookup.
  */
 
-import { createReadStream, createWriteStream, existsSync, mkdirSync } from 'node:fs';
+import { createReadStream, createWriteStream, mkdirSync } from 'node:fs';
 import { rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -138,8 +138,15 @@ export class DiskMediaStore implements MediaStore {
 		range?: MediaRange,
 	): Promise<MediaOpenResult | null> {
 		const absolute = resolve(root(), storagePath);
-		if (!existsSync(absolute)) return null;
-		const stats = await stat(absolute);
+		// One async stat, not a blocking existsSync followed by a stat that asks the
+		// filesystem the same question over again. The pair spent two round trips on
+		// one answer and took the first of them on the event loop — free against a
+		// local disk, and a blocking network round trip per media request the moment
+		// MEDIA_DIR is a remote mount. Catching everything (rather than only ENOENT)
+		// keeps the old semantics exactly: existsSync answers false for a permission
+		// error too, and the caller's contract is "null means no bytes for you".
+		const stats = await stat(absolute).catch(() => null);
+		if (stats === null) return null;
 		const size = stats.size;
 
 		if (range) {

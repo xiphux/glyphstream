@@ -27,7 +27,7 @@
 
 import sharp from 'sharp';
 import { Buffer } from 'node:buffer';
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
@@ -84,6 +84,28 @@ export async function cachedVisionVariantSize(storagePath: string): Promise<numb
 const declined = new Set<string>();
 const DECLINED_MAX = 4096;
 
+/**
+ * Read a file, or null if reading it didn't work.
+ *
+ * `what` names the file for the log; pass null where a missing file is an
+ * ordinary outcome rather than something to report. Nothing here may throw:
+ * every caller's fallback is "inline the original", and a send must not fail
+ * over a cache that didn't cooperate.
+ */
+async function readFileOrNull(path: string, what: string | null): Promise<Buffer | null> {
+	try {
+		return await readFile(path);
+	} catch (e) {
+		// ENOENT is the cache miss this function exists to report; anything else
+		// is a real filesystem problem and worth a line, even though the caller
+		// degrades identically either way.
+		if (what !== null && (e as NodeJS.ErrnoException).code !== 'ENOENT') {
+			console.warn(`[vision-variant] ${what} unreadable:`, e);
+		}
+		return null;
+	}
+}
+
 export async function getVisionVariant(storagePath: string): Promise<VisionVariant | null> {
 	const { maxImageDim, imageQuality } = getVisionConfig();
 	if (maxImageDim <= 0) return null; // explicitly disabled
@@ -91,22 +113,30 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 
 	const root = resolve(mediaDir());
 	const sourceAbs = resolve(root, storagePath);
-	if (!existsSync(sourceAbs)) return null;
-
 	const variantAbs = resolve(root, visionStoragePath(storagePath));
-	if (existsSync(variantAbs)) {
-		try {
-			return { bytes: await readFile(variantAbs), contentType: 'image/jpeg' };
-		} catch (e) {
-			// A cached variant we can't read is not worth failing the send over —
-			// fall through and regenerate it.
-			console.warn(`[vision-variant] cached variant unreadable for ${storagePath}:`, e);
-		}
-	}
+
+	// Ask for the cached variant's BYTES first and let the read itself answer
+	// "is it there". An existsSync ahead of the readFile spends a second round
+	// trip on an answer the read already carries, and spends it on the event
+	// loop — and this is the hot path by a wide margin, since an image is
+	// re-inlined on every turn for the life of the conversation and only the
+	// first of those turns generates.
+	//
+	// Checking the ORIGINAL's existence before that (which is what this used to
+	// do) was the same round trip a third time, against a file this path never
+	// touches again once a variant is cached. All three are free on a local
+	// disk; none of them are once MEDIA_DIR is a remote mount.
+	const cached = await readFileOrNull(variantAbs, `cached variant for ${storagePath}`);
+	if (cached !== null) return { bytes: cached, contentType: 'image/jpeg' };
+
+	// Missing (or unreadable) source is not an error worth logging: the media
+	// row can outlive its bytes, and the caller's fallback — inline the
+	// original — is the same answer it gets for every other null here.
+	const original = await readFileOrNull(sourceAbs, null);
+	if (original === null) return null;
 
 	mkdirSync(dirname(variantAbs), { recursive: true });
 	try {
-		const original = await readFile(sourceAbs);
 		const encoded = await sharp(original)
 			.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
 			// JPEG has no alpha. Without an explicit flatten, sharp composites

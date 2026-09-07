@@ -1,6 +1,6 @@
 /**
- * Unit tests for DiskMediaStore — focuses on the streaming `putStream` path
- * that avoids buffering the full payload in memory.
+ * Unit tests for DiskMediaStore — the streaming `putStream` path that avoids
+ * buffering the full payload in memory, and `open`'s miss contract.
  *
  * Follows the same pattern as purger.test.ts: mock $lib/server/env to point
  * `mediaDir()` at a temp directory we control, then exercise the store
@@ -125,5 +125,45 @@ describe('DiskMediaStore.putStream', () => {
 		});
 		expect(ref.contentType).toBe('image/webp');
 		expect(ref.byteSize).toBe(content.byteLength);
+	});
+});
+
+/**
+ * `open()`'s miss path. Untested until the blocking `existsSync` that used to
+ * guard it was replaced by a caught `stat`, and worth pinning now precisely
+ * because the two disagree on paper: `existsSync` answers false for ANY error,
+ * while a bare `stat` would have thrown a permission error into the request.
+ * The contract callers rely on is narrower than either — null means "no bytes",
+ * whatever the reason — and both endpoints turn that into a 404.
+ */
+describe('DiskMediaStore.open', () => {
+	it('returns null for a path with nothing behind it', async () => {
+		const store = new DiskMediaStore();
+		expect(await store.open('ab/cd/nothing-here.png', 'image/png')).toBeNull();
+	});
+
+	it('returns null rather than throwing when a parent directory is absent', async () => {
+		// ENOTDIR/ENOENT from a missing *shard* rather than a missing file. Same
+		// answer required: a media row can outlive its bytes, and the gallery asks
+		// for them on every tile.
+		const store = new DiskMediaStore();
+		expect(await store.open('no/such/shard/x.png', 'image/png')).toBeNull();
+	});
+
+	it('streams the stored bytes back for a path that does exist', async () => {
+		const store = new DiskMediaStore();
+		const content = Buffer.from('open me');
+		const ref = await store.putStream({
+			stream: Readable.from(content),
+			contentType: 'image/png',
+			kind: 'image',
+		});
+
+		const opened = await store.open(ref.storagePath, ref.contentType);
+		expect(opened).not.toBeNull();
+		expect(opened!.contentLength).toBe(content.byteLength);
+		const chunks: Buffer[] = [];
+		for await (const c of opened!.stream) chunks.push(c as Buffer);
+		expect(Buffer.concat(chunks).toString()).toBe('open me');
 	});
 });

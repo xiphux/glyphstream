@@ -123,6 +123,28 @@ describe('getVisionVariant', () => {
 		expect(second!.bytes.equals(first!.bytes)).toBe(true);
 	});
 
+	it('serves a cached variant without consulting the original at all', async () => {
+		// Pins the property that takes a filesystem round trip off the send path:
+		// once a variant is cached, reaching it must not stat, open, or otherwise
+		// depend on the original. Proven by DELETING the original and asking again
+		// — a reinstated existence check on the source turns this red, and there is
+		// no mock to keep in sync with the implementation.
+		//
+		// It matters because this is the hot path: an image is re-inlined on every
+		// turn for the life of the conversation, so a check here is not paid once,
+		// it is paid per turn per image — and it stops being free the moment
+		// MEDIA_DIR is a network mount.
+		write('ab/cd/big.png', await photoPng(2400, 1600));
+		const first = await getVisionVariant('ab/cd/big.png');
+		expect(first).not.toBeNull();
+
+		rmSync(resolve(mocks.mediaDir, 'ab/cd/big.png'));
+
+		const second = await getVisionVariant('ab/cd/big.png');
+		expect(second).not.toBeNull();
+		expect(second!.bytes.equals(first!.bytes)).toBe(true);
+	});
+
 	it('re-encodes an under-cap image whose PNG encoding is wasteful', async () => {
 		// 1200x800 is within the dimension cap, but a noisy PNG at that size is
 		// still megabytes. Resolution isn't the only way an image is too big, so
