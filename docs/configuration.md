@@ -436,7 +436,8 @@ If you **already wrote the prompt in the format the target image model wants**
 that and skips the restyle: the enhancer is told to keep your wording and only
 append detail that's genuinely missing. A rewrite there can only lose fidelity,
 so it isn't asked for. Detection is deliberately conservative (a short or
-ambiguous prompt takes the normal path; the two comma-separated styles —
+ambiguous prompt takes the normal path — tag lists excepted, since a three-tag
+list is already complete; the two comma-separated styles —
 `booru-tags` and `keyword-soup` — count as matching each other; and a booru
 model additionally wants some sign the list really is tags — a `1girl`-style
 tag, an `underscore_tag`, or short segments — since comma-joined prose would

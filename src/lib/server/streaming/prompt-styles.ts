@@ -173,8 +173,11 @@ export type PromptShape = (typeof PROMPT_SHAPES)[number];
  * need converting). Those still take the normal rewrite path.
  *
  * `json` accepts NOTHING, which is the one place this table isn't just a shape
- * comparison. For the other four styles, right shape ≈ right prompt. For json
- * it isn't: the schema is model-specific (Ideogram 4's exact key set lives in
+ * comparison. For three of the other four, right shape ≈ right prompt. `hybrid`
+ * is a documented exception in the other direction — a comma-set-off appositive
+ * ("A knight, weary and cold, rides…") reaches the `tagged-prose` shape with no
+ * tag in it, and that is left UNGATED on purpose; see `looksLikeBooruTags`. For
+ * json it isn't either: the schema is model-specific (Ideogram 4's exact key set lives in
  * `STYLE_INSTRUCTIONS.json` and the per-model hint), and hand-written JSON with
  * the wrong keys is shaped perfectly while being exactly what the rewrite
  * exists to fix. Detection still reports the `json` shape honestly; this table
@@ -255,12 +258,17 @@ function isClauseLike(segment: string): boolean {
  * target model actually needed. So short or ambiguous prompts return null by
  * design — those are the vague ones enhancement is most useful for anyway.
  *
- * Where it must guess, it guesses `prose`, because the two misreadings are not
- * symmetric. Calling a long keyword phrase prose only ever preserves a
- * comma-phrase prompt for a prose model, which reads it fine; calling prose a
- * tag list would preserve sentences for a booru model, which genuinely needs
- * the tags. So a comma segment long enough to be a clause (see
- * {@link CLAUSE_WORDS}) counts as one even without a verb in it.
+ * Where it must guess between prose and a keyword list, it guesses `prose`,
+ * because those two misreadings are not symmetric. Calling a long keyword
+ * phrase prose only ever preserves a comma-phrase prompt for a prose model,
+ * which reads it fine; calling prose a tag list would preserve sentences for a
+ * booru model, which genuinely needs the tags. So a comma segment long enough
+ * to be a clause (see {@link CLAUSE_WORDS}) counts as one even without a verb.
+ *
+ * That preference does NOT extend to `tagged-prose`, which is tried first and
+ * so wins on a prompt that could read either way — front-loaded commas are
+ * checked before the whole-prompt prose signals. `inputAlreadyMatchesStyle` is
+ * where that lands, not here.
  */
 export function detectPromptShape(raw: unknown): PromptShape | null {
 	if (typeof raw !== 'string') return null;
@@ -356,11 +364,20 @@ const MAX_MEAN_TAG_WORDS = 3;
  * through the forest, his cloak trailing behind him, mist rising from the
  * ground" trips none of them and reads as a list.
  *
- * Asked ONLY for `booru-tags`, because that's the only style where the mistake
- * costs anything: a booru model handed English sentences with the rewrite
- * suppressed is the failure this whole detector is shaped to avoid, while a
- * keyword-soup model reads comma-joined prose perfectly well. Every prompt this
- * turns away lands on the normal rewrite path, which is the safe direction.
+ * Asked only for `booru-tags`. `keyword-soup` doesn't need it — that model reads
+ * comma-joined prose perfectly well. `hybrid` DOES want its subject tagged, and
+ * appositive prose reaches its shape ungated, so by rights it should ask too —
+ * but measured against a 4B enhancer (qwen3.5-4b, 3 runs per cell), the restyle
+ * this would unlock is worse than the preserve it would prevent: the correct
+ * hybrid instruction invented a `1girl` for an ungendered knight 3/3 times, once
+ * degenerating into forty tags of noise. Gating `hybrid` on a booru signal also
+ * costs 14 of 20 genuine hybrid prompts, since Anima's own hint asks for spaces
+ * rather than underscores and non-anime leads carry no `1girl`-style tag. So the
+ * gap is documented and left open; re-measure before closing it, especially
+ * against a larger enhancer.
+ *
+ * Every prompt this does turn away lands on the normal rewrite path, which is
+ * the safe direction.
  */
 function looksLikeBooruTags(prompt: string): boolean {
 	if (BOORU_SUBJECT_TAG.test(prompt) || UNDERSCORE_TAG.test(prompt)) return true;

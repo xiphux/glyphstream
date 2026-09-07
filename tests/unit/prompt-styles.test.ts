@@ -246,6 +246,32 @@ describe('inputAlreadyMatchesStyle', () => {
 		expect(inputAlreadyMatchesStyle(prose, 'keyword-soup')).toBe(true);
 	});
 
+	it('KNOWN GAP: appositive prose still preserves for a hybrid model', () => {
+		// Not an accident and not (yet) worth closing. A comma-set-off appositive
+		// reaches the tagged-prose shape with no tag in it, and hybrid is ungated —
+		// but measured against a 4B enhancer the restyle this would unlock is worse
+		// than the preserve it prevents (an invented `1girl` for an ungendered
+		// knight, 3/3), and gating on a booru signal costs most genuine hybrids.
+		// Asserted so the gap is visible in CI rather than rediscovered; if you
+		// close it, this expectation flips and that is the point.
+		const appositive =
+			'A knight, weary and cold, rides through the forest as mist rises from the ground';
+		expect(detectPromptShape(appositive)).toBe('tagged-prose');
+		expect(inputAlreadyMatchesStyle(appositive, 'hybrid')).toBe(true);
+	});
+
+	it('preserves a genuine hybrid that carries no booru subject tag', () => {
+		// Every other tagged-prose fixture here is 1girl-led, which hid the cost of
+		// gating hybrid on a booru signal: this prompt has none and must still
+		// preserve.
+		expect(
+			inputAlreadyMatchesStyle(
+				'cyberpunk city, neon signs, rain, a lone figure walks down the rain-slicked street as steam rises',
+				'hybrid',
+			),
+		).toBe(true);
+	});
+
 	it('accepts a tag list on any one of the three booru signals', () => {
 		// A subject tag...
 		expect(
