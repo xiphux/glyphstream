@@ -94,7 +94,11 @@ An admin can watch the gate itself in real time at **Settings → Endpoints** �
 what is generating, what is queued behind it, and which member of a shared
 `resource_group` holds the slot. That view covers every kind of work that takes
 a slot, including background tasks a conversation's own indicator never shows.
-See [endpoint health](multi-user.md#endpoint-health).
+It also lists work that is _not yet_ in an endpoint's queue because an earlier
+step of the same request is still running elsewhere — a media generation whose
+prompt is being rewritten on the enhancer's endpoint, say — as faint rows
+labelled "after prompt enhance", counted under the Queued tile as "not yet in
+line". See [endpoint health](multi-user.md#endpoint-health).
 
 Because the cap is per endpoint, a bridge (like `openai-api-bridge`) that
 fronts **both** a local GPU and cloud providers is best split into **two
@@ -468,6 +472,13 @@ backend from thrashing on a multi-model fan-out, but GlyphStream's queue runs
 requests in roughly arbitrary order — which scrambles the order results land in
 the compare grid. (`max_concurrent = 1` on the enhancer endpoint gives the
 cleanest, in-order behavior for a single-instance CPU model.)
+
+Because of that split, a batch of image sends queues on the _enhancer_ first and
+only reaches the image endpoint one rewrite at a time. **Settings → Endpoints**
+shows both halves from the moment you submit: the generations appear on the
+image endpoint immediately as pending "after prompt enhance" rows, and move into
+its queue as the enhancer drains — so the image queue isn't filling itself out
+of nowhere while you're away.
 
 ### Telling GlyphStream which model wants which style
 

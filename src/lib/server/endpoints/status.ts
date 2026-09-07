@@ -74,6 +74,7 @@ function toSlotInfo(s: SlotSnapshot): EndpointSlotInfo {
 		modelId: displayModelId(s),
 		since: s.since,
 		state: s.state,
+		blockedBy: s.blockedBy,
 	};
 }
 
@@ -122,6 +123,7 @@ function buildEndpoint(
 	endpoint: LoadedEndpoint,
 	groupActive: SlotSnapshot[],
 	groupQueued: SlotSnapshot[],
+	groupPending: SlotSnapshot[],
 ): EndpointStatus {
 	const cached = getModelCacheEntry(endpoint.id);
 	const modelsByKind = emptyByKind();
@@ -151,6 +153,7 @@ function buildEndpoint(
 		modelsByKind,
 		active: groupActive.filter((s) => s.endpointId === endpoint.id).map(toSlotInfo),
 		queued: groupQueued.filter((s) => s.endpointId === endpoint.id).map(toSlotInfo),
+		pending: groupPending.filter((s) => s.endpointId === endpoint.id).map(toSlotInfo),
 		maxConcurrent: Number.isFinite(endpoint.maxConcurrent) ? endpoint.maxConcurrent : null,
 		requestTimeoutSeconds: endpoint.requestTimeoutSeconds,
 		providerQuirk: endpoint.providerQuirk,
@@ -192,6 +195,7 @@ export function getEndpointsStatus(): EndpointsStatusResponse {
 		// gate's own totals and belong to the group rather than to any member.
 		const groupHolders = snapshot?.holders ?? [];
 		const groupQueued = snapshot?.queued ?? [];
+		const groupPending = snapshot?.pending ?? [];
 		groups.push({
 			resourceGroup,
 			// A group with no gate yet has never been touched, so it is idle at its
@@ -210,9 +214,13 @@ export function getEndpointsStatus(): EndpointsStatusResponse {
 					: null,
 			active: snapshot?.active ?? 0,
 			waiting: snapshot?.waiting ?? 0,
+			// Counted from the list rather than carried as its own gate field: the
+			// gate has no reason to maintain a count of something it does not
+			// admit on, and a second source for it is a second thing to drift.
+			pending: groupPending.length,
 			evicting: snapshot?.evicting ?? false,
 			lastHolderId: snapshot?.lastHolderId ?? null,
-			endpoints: members.map((ep) => buildEndpoint(ep, groupHolders, groupQueued)),
+			endpoints: members.map((ep) => buildEndpoint(ep, groupHolders, groupQueued, groupPending)),
 		});
 	}
 

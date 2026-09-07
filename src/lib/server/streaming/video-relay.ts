@@ -80,7 +80,7 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 	// Prompt enhancement runs as the relay's PRE-SLOT prepare step (shared with
 	// the image relay — see `media-enhance.ts`). Text-to-video only: an i2v
 	// prompt rides alongside a reference frame, so leave it verbatim for v1.
-	const prepare = async (ctx: {
+	const prepareRun = async (ctx: {
 		write: (e: StreamProgressEvent) => void;
 		abortSignal?: AbortSignal;
 	}) => {
@@ -99,7 +99,14 @@ export function startVideoRelay(params: VideoRelayParams): ReadableStream<Uint8A
 		originalPrompt = r.originalPrompt;
 	};
 
-	const relayParams = { ...params, prepare, modality: 'video' as const };
+	const relayParams = {
+		...params,
+		// `enhance` is what the scaffold shows this generation as waiting behind
+		// while the rewrite runs — including when it no-ops (enhancement off, or
+		// an edit send), which settles within the same tick and never surfaces.
+		prepare: { purpose: 'enhance' as const, run: prepareRun },
+		modality: 'video' as const,
+	};
 	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
 		let job: VideoJob;
 		try {

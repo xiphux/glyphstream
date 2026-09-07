@@ -59,7 +59,11 @@ vi.mock('$lib/server/streaming/prompt-enhancer', () => ({
 import { createConversation, getConversationDetail } from '$lib/server/db/queries/conversations';
 import { appendMessage, getMessage, getSiblingAssistants } from '$lib/server/db/queries/messages';
 import { startImageRelay, type ImageRelayParams } from '$lib/server/streaming/image-relay';
-import { acquireEndpointSlot, resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
+import {
+	acquireEndpointSlot,
+	getResourceGroupSnapshot,
+	resetEndpointGatesForTests,
+} from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 import type { ChatMessage, StreamEvent } from '$lib/types/api';
 
@@ -743,6 +747,87 @@ describe('startImageRelay — prompt enhancement', () => {
 		held.release();
 		await drained;
 		expect(mocks.imageGeneration.mock.calls[0][1]).toMatchObject({ prompt: 'enhanced cat' });
+	});
+
+	it('shows the image generation as pending on its own endpoint while it enhances', async () => {
+		// The complaint this answers: with enhancement on, a batch of image sends
+		// piles up on the ENHANCER's endpoint and the image endpoint's queue then
+		// fills one entry at a time long after the operator stopped submitting.
+		// The generation is declared against the image endpoint up front instead,
+		// so `/settings/endpoints` shows the work from the moment it is submitted.
+		const { conv, user, userMessage } = seedConvWithUser();
+		// Explicitly a DIFFERENT resource group from the image endpoint — which is
+		// the configuration the confusion comes from. (The shared-`bridge`-group
+		// enhancer the other tests use would put both halves on one gate, where
+		// there is nothing to explain.)
+		mocks.getImageEnhancerModel.mockReturnValue({
+			endpoint: { ...endpoint(1), id: 'enhancer', resourceGroup: 'util' },
+			upstreamId: 'qwen',
+			maxTokens: 200,
+			temperature: 0.7,
+			styleInstructionOverrides: {},
+		});
+		let releaseEnhance!: () => void;
+		mocks.enhancePrompt.mockImplementation(
+			() =>
+				new Promise((res) => {
+					releaseEnhance = () => res({ enhanced: 'enhanced cat', changed: true });
+				}),
+		);
+		const drained = drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'natural-language',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		await vi.waitFor(() => expect(mocks.enhancePrompt).toHaveBeenCalled());
+
+		// Named on the image endpoint, with what it is behind — and taking nothing
+		// there: the slot is free the whole time the rewrite runs.
+		const during = getResourceGroupSnapshot('bridge')!;
+		expect(during.active).toBe(0);
+		expect(during.queued).toEqual([]);
+		expect(during.pending).toHaveLength(1);
+		expect(during.pending[0]).toMatchObject({
+			endpointId: 'bridge',
+			purpose: 'image',
+			modelId: 'bridge::sdxl',
+			state: 'pending',
+			blockedBy: 'enhance',
+		});
+
+		releaseEnhance();
+		await drained;
+		// And gone once the work has been through the gate for real — a
+		// declaration that outlives its request is a phantom for the life of the
+		// process.
+		expect(getResourceGroupSnapshot('bridge')!.pending).toEqual([]);
+	});
+
+	it('drops the pending declaration when enhancement is aborted before the slot', async () => {
+		// The path that never reaches the acquire, so the acquire cannot settle it.
+		const { conv, user, userMessage } = seedConvWithUser();
+		enableEnhancer();
+		mocks.enhancePrompt.mockRejectedValue(new DOMException('aborted', 'AbortError'));
+		await drain(
+			startImageRelay(
+				baseParams({
+					conversationId: conv.id,
+					userId: user.id,
+					userMessage,
+					endpoint: endpoint(1),
+					promptStyle: 'natural-language',
+					enhancementEnabled: true,
+				}),
+			),
+		);
+		expect(getResourceGroupSnapshot('bridge')?.pending ?? []).toEqual([]);
 	});
 
 	it('cancels the whole generation when enhancement is aborted (Stop mid-enhance)', async () => {

@@ -1748,8 +1748,16 @@ export type EndpointSlotPurpose =
  * A slot's phase. `releasing` is occupied-but-not-started: the slot is held
  * while the group's previous holder unloads its model. Declared once here and
  * used by the gate's internal record, its snapshot, and this wire type.
+ *
+ * `pending` is the one phase that holds NOTHING — not a slot, not a place in
+ * the line. It is a declared intent: a request that will queue here once an
+ * earlier step of the same request (named by `blockedBy`) finishes elsewhere.
+ * Without it, a run of media generations whose prompts enhance on a different
+ * endpoint appears as a queue that grows on its own with nobody submitting —
+ * the work is real and was always coming, it just wasn't nameable until the
+ * moment it got in line.
  */
-export type EndpointSlotState = 'queued' | 'active' | 'releasing';
+export type EndpointSlotState = 'queued' | 'active' | 'releasing' | 'pending';
 
 export interface EndpointSlotInfo {
 	/** Stable per-slot identity, unique for the life of the server process. The
@@ -1771,9 +1779,20 @@ export interface EndpointSlotInfo {
 	 * rather than something to key on.
 	 */
 	modelId: string | null;
-	/** Unix ms it entered the line (`queued`) or started work (`active`). */
+	/** Unix ms it entered the line (`queued`), started work (`active`), or was
+	 *  declared as coming (`pending`). */
 	since: number;
 	state: EndpointSlotState;
+	/**
+	 * On a `pending` slot, the purpose of the earlier step it is waiting behind
+	 * — `enhance` for a media generation whose prompt is still being rewritten.
+	 * Null on every other state.
+	 *
+	 * A purpose rather than a free-text reason so the page renders it through the
+	 * same label table as everything else: a step worth blocking on is a step
+	 * that takes a slot somewhere, and every one of those already names itself.
+	 */
+	blockedBy: EndpointSlotPurpose | null;
 }
 
 /**
@@ -1806,6 +1825,11 @@ export interface EndpointStatus {
 	 *  the gate's totals belong to the group, not to any one member. */
 	active: EndpointSlotInfo[];
 	queued: EndpointSlotInfo[];
+	/** Work declared against this endpoint that has NOT joined the queue yet —
+	 *  it is blocked on an earlier step of its own request. Counted separately
+	 *  from `queued` everywhere: these hold no place in line and the gate does
+	 *  not know about them for admission purposes. */
+	pending: EndpointSlotInfo[];
 	/** Config, for the "why is this endpoint behaving like that" questions.
 	 *  `maxConcurrent` is null when effectively unlimited. */
 	maxConcurrent: number | null;
@@ -1831,6 +1855,10 @@ export interface EndpointGroupStatus {
 	/** Slots held and waiters queued across every member. */
 	active: number;
 	waiting: number;
+	/** Declared-but-not-yet-queued work across every member — see
+	 *  `EndpointSlotState`'s `pending`. Never included in `waiting`: it is what
+	 *  `waiting` is about to become, not part of it. */
+	pending: number;
 	/** A handover eviction is running: the group's slot is taken but its new
 	 *  holder is waiting for the previous one to unload. */
 	evicting: boolean;

@@ -98,7 +98,13 @@ tests/e2e/            # playwright (production-build webServer)
   phantom generation for the life of the process, and nothing but
   `endpoint-slot-work.test.ts` catches it. Records also carry a monotonic `id`:
   nothing describing the work identifies it, since `pump` grants several waiters
-  in one synchronous pass and they share a timestamp.
+  in one synchronous pass and they share a timestamp. `gate.pending`
+  (`declarePendingWork`) is a THIRD set and a display-only one — it takes no
+  capacity and no place in line, and exists so a two-stage request (media
+  enhancement, then generation on another endpoint) isn't invisible on the
+  destination until the moment it queues. It is the one gate record with no
+  self-cleaning path, so a declaration is passed to `acquireEndpointSlot` as
+  `supersedes` AND settled from the caller's `finally`.
 - Wire types live in `$lib/types/api.ts`, never in a `db/queries/*`
   module. A DTO imported from `$lib/server` by client-safe code
   type-checks and ships nothing, so nothing catches it — but it makes the

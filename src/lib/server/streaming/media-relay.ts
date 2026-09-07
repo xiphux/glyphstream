@@ -25,7 +25,13 @@
 
 import { linkMessageMedia } from '../db/queries/media';
 import { appendMessage } from '../db/queries/messages';
-import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency';
+import {
+	acquireEndpointSlot,
+	declarePendingWork,
+	type EndpointSlot,
+	type PendingWork,
+	type SlotPurpose,
+} from '../endpoints/concurrency';
 import type { InFlightEntry } from './in-flight';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { notifyConversationComplete, type NotifyModality } from '../push/notify';
@@ -94,12 +100,22 @@ export interface MediaRelayParams {
 	/** Optional pre-slot step (e.g. image prompt enhancement) that runs BEFORE
 	 *  the endpoint concurrency slot is acquired, so a slow / different-endpoint
 	 *  CPU step doesn't hold the generation slot (and can pipeline with another
-	 *  branch's generation). Gets the SSE writer (to emit a transient status,
+	 *  branch's generation). `run` gets the SSE writer (to emit a transient status,
 	 *  which a fan-out also uses to release the next branch's dispatch) and the
 	 *  abort signal. An ABORT throw is treated as a Stop (the relay emits Cancelled
 	 *  and closes); any OTHER throw is logged and generation proceeds with whatever
-	 *  the prepare left in place. A normal return proceeds to slot acquisition. */
-	prepare?: (ctx: { write: SseWriter['write']; abortSignal?: AbortSignal }) => Promise<void>;
+	 *  the prepare left in place. A normal return proceeds to slot acquisition.
+	 *
+	 *  `purpose` names what the step is, and is REQUIRED alongside `run` for the
+	 *  same reason `modality` is required: the scaffold declares this generation
+	 *  as pending on its own endpoint for the duration (see `declarePendingWork`),
+	 *  and the declaration has to say what it is waiting behind. A step that takes
+	 *  a slot of its own on some other endpoint — which is what makes the wait
+	 *  visible in the first place — always knows its own purpose. */
+	prepare?: {
+		purpose: SlotPurpose;
+		run: (ctx: { write: SseWriter['write']; abortSignal?: AbortSignal }) => Promise<void>;
+	};
 	/**
 	 * This generation's in-flight registry entry. The relay stamps its
 	 * `generationStartedAt` the instant the concurrency gate hands over a slot.
@@ -200,6 +216,15 @@ export function startMediaRelay(
 		async start(controller) {
 			const { write: safeWrite, close: safeClose } = sseWriter(controller);
 			let slot: EndpointSlot | null = null;
+			// Declared BEFORE the prepare step and handed to the acquire below, so
+			// this generation is visible on its own endpoint for the whole time it
+			// is stuck behind that step rather than appearing in the queue the
+			// instant the step lets go. A batch of media sends with enhancement on
+			// otherwise reads on `/settings/endpoints` as a generation queue that
+			// grows by itself with nobody submitting — see `declarePendingWork`.
+			// Null when there is no pre-slot step: there is then nothing to be
+			// pending behind, and the acquire happens on the next line anyway.
+			let pending: PendingWork | null = null;
 			try {
 				// Pre-slot prepare phase (e.g. prompt enhancement). Runs OFF this
 				// endpoint's slot so a slow / cross-endpoint CPU step doesn't hold the
@@ -208,8 +233,13 @@ export function startMediaRelay(
 				// it surfaces as a cancellation (no slot held yet); any other failure
 				// is swallowed by the prepare itself and we proceed with what we have.
 				if (params.prepare) {
+					pending = declarePendingWork(
+						params.endpoint,
+						{ purpose: params.modality, modelId: params.storedModelId },
+						params.prepare.purpose,
+					);
 					try {
-						await params.prepare({ write: safeWrite, abortSignal: params.abortSignal });
+						await params.prepare.run({ write: safeWrite, abortSignal: params.abortSignal });
 					} catch (e) {
 						if (isAbortError(e) || params.abortSignal?.aborted) {
 							safeWrite({ type: 'error', message: 'Cancelled' } satisfies StreamErrorEvent);
@@ -226,6 +256,10 @@ export function startMediaRelay(
 				try {
 					slot = await acquireEndpointSlot(params.endpoint, {
 						work: { purpose: params.modality, modelId: params.storedModelId },
+						// Retires the declaration above at the exact moment this
+						// acquisition takes its place in the gate, so the work is never
+						// absent from both lists for a poll to catch.
+						supersedes: pending ?? undefined,
 						signal: params.abortSignal,
 						onQueued: ({ ahead }) => safeWrite({ type: 'queued', ahead }),
 						onReleasing: () =>
@@ -380,6 +414,12 @@ export function startMediaRelay(
 				safeClose();
 			} finally {
 				slot?.release();
+				// Idempotent, and already done by the acquire on the happy path. This
+				// is for the paths that never reach it: a Stop during the prepare
+				// step, a throw out of it, a rejected acquisition. A declaration that
+				// outlives its request is a phantom for the life of the process — the
+				// same failure the gate's own eviction unwind exists to prevent.
+				pending?.settle();
 				params.onComplete();
 			}
 		},

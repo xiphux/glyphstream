@@ -21,7 +21,11 @@ vi.mock('$lib/server/endpoints/list-models', () => ({
 const releaseMock = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
 
-import { acquireEndpointSlot, resetEndpointGatesForTests } from '$lib/server/endpoints/concurrency';
+import {
+	acquireEndpointSlot,
+	declarePendingWork,
+	resetEndpointGatesForTests,
+} from '$lib/server/endpoints/concurrency';
 import { ConfigError, type LoadedEndpoint } from '$lib/server/endpoints/config';
 import { getEndpointsStatus } from '$lib/server/endpoints/status';
 
@@ -210,6 +214,53 @@ describe('getEndpointsStatus', () => {
 			expect.objectContaining({ purpose: 'dream', modelId: 'small', state: 'active' }),
 		]);
 		slot.release();
+	});
+
+	it('attributes pending work to its own endpoint, apart from the queue', async () => {
+		// The confusing picture this tier removes: a batch of image sends with
+		// prompt enhancement on stacks up on the ENHANCER's endpoint, and the image
+		// endpoint's queue then fills one entry at a time with nobody submitting.
+		// Both halves of the pipeline are now visible from the start.
+		const util = ep({ id: 'util', maxConcurrent: 1, resourceGroupMaxConcurrent: 1 });
+		const comfy = ep({ id: 'comfy', maxConcurrent: 1, resourceGroupMaxConcurrent: 1 });
+		listEndpointsMock.mockReturnValue([util, comfy]);
+
+		// Branch one is enhancing; branches two and three are behind it. All three
+		// have declared the image generation they will ask `comfy` for.
+		const enhancing = await acquireEndpointSlot(util, {
+			work: { purpose: 'enhance', modelId: 'util::qwen' },
+		});
+		const waiting = acquireEndpointSlot(util, {
+			work: { purpose: 'enhance', modelId: 'util::qwen' },
+		});
+		const declared = [1, 2, 3].map(() =>
+			declarePendingWork(comfy, { purpose: 'image', modelId: 'comfy::flux' }, 'enhance'),
+		);
+
+		const groups = getEndpointsStatus().groups;
+		const utilStatus = groups.find((g) => g.resourceGroup === 'util')!;
+		const comfyStatus = groups.find((g) => g.resourceGroup === 'comfy')!;
+
+		expect(utilStatus.endpoints[0].active).toHaveLength(1);
+		expect(utilStatus.endpoints[0].pending).toEqual([]);
+
+		// Nothing is running or queued on comfy yet — but the work is named.
+		expect(comfyStatus.active).toBe(0);
+		expect(comfyStatus.waiting).toBe(0);
+		expect(comfyStatus.pending).toBe(3);
+		expect(comfyStatus.endpoints[0].queued).toEqual([]);
+		expect(comfyStatus.endpoints[0].pending).toHaveLength(3);
+		expect(comfyStatus.endpoints[0].pending[0]).toMatchObject({
+			purpose: 'image',
+			// Normalized the same way every other row on the card is.
+			modelId: 'flux',
+			state: 'pending',
+			blockedBy: 'enhance',
+		});
+
+		enhancing.release();
+		(await waiting).release();
+		declared.forEach((d) => d.settle());
 	});
 
 	it('renders one spelling whether the caller held a composite or a bare id', async () => {

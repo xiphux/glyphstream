@@ -16,7 +16,9 @@ const releaseMock = vi.hoisted(() => vi.fn(async () => true));
 vi.mock('$lib/server/endpoints/release', () => ({ releaseEndpointResources: releaseMock }));
 import {
 	acquireEndpointSlot,
+	declarePendingWork,
 	getResourceGroupSnapshot,
+	getResourceQueueDepth,
 	resetEndpointGatesForTests,
 } from '$lib/server/endpoints/concurrency';
 import type { LoadedEndpoint } from '$lib/server/endpoints/config';
@@ -269,6 +271,119 @@ describe('getResourceGroupSnapshot', () => {
 		const slot = await acquireEndpointSlot(ep('open', Infinity), { work: { purpose: 'other' } });
 		expect(getResourceGroupSnapshot('open')!.max).toBeNull();
 		slot.release();
+	});
+
+	it('reports declared-but-not-queued work apart from the line, with its reason', () => {
+		// The pipeline the tier exists for: a media send whose prompt is being
+		// rewritten on another endpoint has not asked THIS gate for anything yet.
+		const dirac = ep('dirac', 1);
+		const pending = declarePendingWork(
+			dirac,
+			{ purpose: 'image', modelId: 'dirac::flux' },
+			'enhance',
+		);
+		const snap = getResourceGroupSnapshot('dirac')!;
+		expect(snap.pending).toHaveLength(1);
+		expect(snap.pending[0]).toMatchObject({
+			endpointId: 'dirac',
+			purpose: 'image',
+			modelId: 'dirac::flux',
+			state: 'pending',
+			blockedBy: 'enhance',
+		});
+		// Takes nothing: not a slot, not a place in line, not a waiter's position.
+		expect(snap.active).toBe(0);
+		expect(snap.waiting).toBe(0);
+		expect(snap.holders).toEqual([]);
+		expect(snap.queued).toEqual([]);
+		expect(getResourceQueueDepth('dirac')).toEqual({ active: 0, waiting: 0 });
+
+		pending.settle();
+		expect(getResourceGroupSnapshot('dirac')!.pending).toEqual([]);
+	});
+
+	it('leaves `blockedBy` null on records that hold something', async () => {
+		// The field is only meaningful on a pending row, and the page keys its
+		// wording off it — a stray value on a holder would render "after …" on
+		// something that is already running.
+		const dirac = ep('dirac', 1);
+		const held = await acquireEndpointSlot(dirac, { work: { purpose: 'chat' } });
+		const queued = acquireEndpointSlot(dirac, { work: { purpose: 'image', modelId: 'flux' } });
+		await flush();
+		const snap = getResourceGroupSnapshot('dirac')!;
+		expect(snap.holders[0].blockedBy).toBeNull();
+		expect(snap.queued[0].blockedBy).toBeNull();
+		held.release();
+		(await queued).release();
+	});
+
+	it('hands a declaration over to the acquisition with no gap between them', async () => {
+		// The property the whole tier rests on: a 3s poll must never catch the work
+		// in neither list and report a draining batch as smaller than it is. So the
+		// settle happens inside the acquire, synchronously, not at the call site.
+		const dirac = ep('dirac', 1);
+		const held = await acquireEndpointSlot(dirac, { work: { purpose: 'chat' } });
+		const pending = declarePendingWork(dirac, { purpose: 'image', modelId: 'flux' }, 'enhance');
+
+		const queued = acquireEndpointSlot(dirac, {
+			work: { purpose: 'image', modelId: 'flux' },
+			supersedes: pending,
+		});
+		// Read BEFORE awaiting anything: this is the same synchronous turn the
+		// acquire returned in, which is the tightest a poll could ever land.
+		const snap = getResourceGroupSnapshot('dirac')!;
+		expect(snap.pending).toEqual([]);
+		expect(snap.queued).toHaveLength(1);
+
+		held.release();
+		(await queued).release();
+	});
+
+	it('supersedes a declaration even when the acquisition is granted immediately', async () => {
+		// The fast path returns before `takeSlot` awaits anything, so the settle has
+		// to be keyed on the acquire returning rather than on it queueing.
+		const dirac = ep('dirac', 2);
+		const pending = declarePendingWork(dirac, { purpose: 'image', modelId: 'flux' }, 'enhance');
+		const slot = acquireEndpointSlot(dirac, {
+			work: { purpose: 'image', modelId: 'flux' },
+			supersedes: pending,
+		});
+		const snap = getResourceGroupSnapshot('dirac')!;
+		expect(snap.pending).toEqual([]);
+		expect(snap.holders).toHaveLength(1);
+		(await slot).release();
+	});
+
+	it('supersedes a declaration even when the acquisition is rejected outright', async () => {
+		// An already-aborted acquire rejects synchronously without ever filing a
+		// record. Nothing will come back for the declaration, so it must not
+		// outlive the call — a pending row nobody can clear is a phantom for the
+		// life of the process.
+		const dirac = ep('dirac', 1);
+		const pending = declarePendingWork(dirac, { purpose: 'image', modelId: 'flux' }, 'enhance');
+		const ac = new AbortController();
+		ac.abort();
+		await expect(
+			acquireEndpointSlot(dirac, {
+				work: { purpose: 'image', modelId: 'flux' },
+				signal: ac.signal,
+				supersedes: pending,
+			}),
+		).rejects.toThrow();
+		expect(getResourceGroupSnapshot('dirac')!.pending).toEqual([]);
+	});
+
+	it('settles a declaration exactly once across the acquire and the caller', () => {
+		// Both are expected to fire: the acquire owns the happy path, the caller's
+		// `finally` owns the ones that never reach it. A second settle must not
+		// reach into the gate and drop somebody else's record.
+		const dirac = ep('dirac', 1);
+		const first = declarePendingWork(dirac, { purpose: 'image', modelId: 'a' }, 'enhance');
+		const second = declarePendingWork(dirac, { purpose: 'image', modelId: 'b' }, 'enhance');
+		first.settle();
+		first.settle();
+		expect(getResourceGroupSnapshot('dirac')!.pending.map((p) => p.modelId)).toEqual(['b']);
+		second.settle();
 	});
 
 	it('frees the holder exactly once on a double release', async () => {

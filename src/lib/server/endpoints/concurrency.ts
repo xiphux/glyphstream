@@ -79,16 +79,24 @@ interface WorkRecord {
 	modelId: string | null;
 	/** Unix ms this record was created — enqueued, or granted. */
 	since: number;
-	/** `queued` while still in line, `releasing` while a handover eviction runs
-	 *  ahead of it (see `takeSlot`), `active` once it is genuinely generating. */
+	/** `pending` while an earlier step of the same request runs elsewhere,
+	 *  `queued` while in line, `releasing` while a handover eviction runs ahead
+	 *  of it (see `takeSlot`), `active` once it is genuinely generating. */
 	state: EndpointSlotState;
+	/** On a `pending` record, what it is waiting behind. Null otherwise. */
+	blockedBy: SlotPurpose | null;
 }
 
 /** Source of `WorkRecord.id`. Module-level like the gates themselves; a single
  *  Node process cannot exhaust a float counter at generation rates. */
 let nextRecordId = 0;
 
-function workRecord(endpointId: string, work: SlotWork, state: WorkRecord['state']) {
+function workRecord(
+	endpointId: string,
+	work: SlotWork,
+	state: WorkRecord['state'],
+	blockedBy: SlotPurpose | null = null,
+) {
 	return {
 		id: ++nextRecordId,
 		endpointId,
@@ -96,6 +104,7 @@ function workRecord(endpointId: string, work: SlotWork, state: WorkRecord['state
 		modelId: work.modelId ?? null,
 		since: Date.now(),
 		state,
+		blockedBy,
 	} satisfies WorkRecord;
 }
 
@@ -147,6 +156,26 @@ interface Gate {
 	 * too, including the eviction's unwind.
 	 */
 	holders: Set<WorkRecord>;
+	/**
+	 * Work DECLARED against this group but not yet in line — see
+	 * `declarePendingWork`.
+	 *
+	 * Purely a display set. Nothing here is counted by `active`, sits in
+	 * `waiters`, or influences admission, ordering or a waiter's "N ahead": the
+	 * gate's semantics are exactly what they were before this existed. That is
+	 * the whole point — the pipeline it describes (enhance on one endpoint, then
+	 * generate on another) is real work that the gate legitimately cannot know
+	 * about until the second half asks for a slot, and the admin view was left
+	 * showing a queue that filled from nowhere.
+	 *
+	 * The cost is that a declaration is not self-cleaning the way a slot is: a
+	 * caller that drops one leaks a phantom for the life of the process, the
+	 * same failure mode as a missed `holders.delete`. So `declarePendingWork`
+	 * returns a handle whose `settle()` is idempotent and is meant to be called
+	 * from a `finally`, and `acquireEndpointSlot` settles it for the caller on
+	 * the happy path (see `supersedes`).
+	 */
+	pending: Set<WorkRecord>;
 }
 
 const gates = new Map<string, Gate>();
@@ -165,6 +194,7 @@ function getGate(resourceGroup: string, max: number): Gate {
 		lastHolder: null,
 		evicting: false,
 		holders: new Set(),
+		pending: new Set(),
 	};
 	gates.set(resourceGroup, gate);
 	return gate;
@@ -175,6 +205,60 @@ export interface EndpointSlot {
 	 *  that releases the same slot from more than one cleanup path (e.g. both
 	 *  explicitly and from a finally) frees it exactly once. */
 	release(): void;
+}
+
+/** Handle for a {@link declarePendingWork} declaration. */
+export interface PendingWork {
+	/** Withdraw the declaration. Idempotent, and safe to call after
+	 *  `acquireEndpointSlot` has already settled it via `supersedes` — which is
+	 *  the expected shape: pass the handle to the acquire, and ALSO settle from
+	 *  a `finally`, so a path that never reaches the acquire (a Stop during the
+	 *  earlier step, a throw) cleans up too. */
+	settle(): void;
+}
+
+/**
+ * Announce work that WILL contend for `endpoint`, once an earlier step of the
+ * same request — running elsewhere, named by `blockedBy` — finishes.
+ *
+ * Takes nothing and blocks nobody: no slot, no place in the queue, no effect on
+ * any other caller. It exists so the admin endpoint view can distinguish "not
+ * queued yet, and here's what it's behind" from "not happening", which are the
+ * same picture without it.
+ *
+ * The case it was built for is a batch of media generations with prompt
+ * enhancement on: every branch first takes a slot on the ENHANCER's endpoint,
+ * and only asks the image endpoint for one after its rewrite lands. On a
+ * `max_concurrent = 1` enhancer that serializes the whole batch, so the image
+ * endpoint's queue grows one entry at a time, minutes apart, long after the
+ * operator stopped submitting anything — a queue that fills itself, which reads
+ * as a bug rather than as the pipeline draining.
+ *
+ * Pass the returned handle to `acquireEndpointSlot`'s `supersedes` so the
+ * declaration is replaced by the real acquisition with no gap between them, and
+ * settle it from a `finally` for the paths that never get that far.
+ */
+export function declarePendingWork(
+	endpoint: LoadedEndpoint,
+	work: SlotWork,
+	blockedBy: SlotPurpose,
+): PendingWork {
+	// Same key as an acquisition would use, so the declaration lands on the gate
+	// the work will actually contend for — including when the endpoint shares a
+	// `resource_group`, where "the queue it's joining" is the group's.
+	const gate = getGate(endpoint.resourceGroup, endpoint.resourceGroupMaxConcurrent);
+	const record = workRecord(endpoint.id, work, 'pending', blockedBy);
+	gate.pending.add(record);
+	let settled = false;
+	return {
+		settle() {
+			if (settled) return;
+			settled = true;
+			gate.pending.delete(record);
+			// Deliberately no `pump`: this never occupied capacity, so nothing
+			// downstream of it can have become grantable.
+		},
+	};
 }
 
 export interface AcquireOptions {
@@ -224,6 +308,16 @@ export interface AcquireOptions {
 	 * they replaced an optional `onStarted` hook with a required `inFlight`.
 	 */
 	work: SlotWork;
+	/**
+	 * A {@link declarePendingWork} handle for THIS work, settled the instant the
+	 * acquisition has taken its place in the gate — see `acquireEndpointSlot`.
+	 *
+	 * Settling it here rather than at the call site is what makes the handoff
+	 * seamless: the record stops being pending in the same synchronous turn it
+	 * starts being queued (or active), so no poll of the admin view can catch
+	 * the work in neither list and report a draining batch as smaller than it is.
+	 */
+	supersedes?: PendingWork;
 }
 
 /**
@@ -398,6 +492,21 @@ export function acquireEndpointSlot(
 	endpoint: LoadedEndpoint,
 	opts: AcquireOptions,
 ): Promise<EndpointSlot> {
+	try {
+		return acquire(endpoint, opts);
+	} finally {
+		// AFTER the acquisition, and still synchronously: every path through
+		// `acquire` files its record — as a holder or as a waiter — before it
+		// returns a promise, and a `finally` runs once the return value has been
+		// computed. So the work is in exactly one of the gate's lists at every
+		// observable moment, which is the property `supersedes` exists to give.
+		// A caller that also settles from its own `finally` is fine; settle is
+		// idempotent.
+		opts.supersedes?.settle();
+	}
+}
+
+function acquire(endpoint: LoadedEndpoint, opts: AcquireOptions): Promise<EndpointSlot> {
 	const { signal, onQueued, onReleasing, work } = opts;
 	// Keyed by RESOURCE GROUP, not endpoint id — which for an endpoint that
 	// didn't opt into a group are the same string, so this is the previous
@@ -459,7 +568,10 @@ export function acquireEndpointSlot(
  *  The `queued` event's `ahead` value is computed inline in
  *  acquireEndpointSlot, not from this. Returns zeros for a group never seen;
  *  `getResourceGroupSnapshot` is the richer read the admin view uses, and
- *  distinguishes "never seen" from "seen and idle". */
+ *  distinguishes "never seen" from "seen and idle". Pending declarations are
+ *  deliberately absent: they take no capacity and hold no place in line, so
+ *  counting them here would make the gate's own semantics look different from
+ *  what they are. */
 export function getResourceQueueDepth(resourceGroup: string): { active: number; waiting: number } {
 	const gate = gates.get(resourceGroup);
 	if (!gate) return { active: 0, waiting: 0 };
@@ -474,9 +586,12 @@ export interface SlotSnapshot {
 	endpointId: string;
 	purpose: SlotPurpose;
 	modelId: string | null;
-	/** Unix ms — when it entered the line (queued) or started (active). */
+	/** Unix ms — when it entered the line (queued), started (active), or was
+	 *  declared (pending). */
 	since: number;
 	state: EndpointSlotState;
+	/** What a `pending` record is waiting behind; null on every other state. */
+	blockedBy: SlotPurpose | null;
 }
 
 export interface ResourceGroupSnapshot {
@@ -491,6 +606,11 @@ export interface ResourceGroupSnapshot {
 	lastHolderId: string | null;
 	holders: SlotSnapshot[];
 	queued: SlotSnapshot[];
+	/** Declared-but-not-queued work — see `declarePendingWork`. Deliberately not
+	 *  folded into `queued` or `waiting`: these are not in line, and merging them
+	 *  would make the group's own count disagree with what a waiter is told is
+	 *  ahead of it. */
+	pending: SlotSnapshot[];
 }
 
 function cloneRecord(r: WorkRecord): SlotSnapshot {
@@ -501,6 +621,7 @@ function cloneRecord(r: WorkRecord): SlotSnapshot {
 		modelId: r.modelId,
 		since: r.since,
 		state: r.state,
+		blockedBy: r.blockedBy,
 	};
 }
 
@@ -529,6 +650,10 @@ export function getResourceGroupSnapshot(resourceGroup: string): ResourceGroupSn
 		holders: [...gate.holders].map(cloneRecord),
 		// In queue order, so the view's list reads the way the line will drain.
 		queued: gate.waiters.map((w) => cloneRecord(w.record)),
+		// Declaration order, which is the order they were submitted in — NOT the
+		// order they will join the queue, which depends on how the blocking step's
+		// own gate drains and is not knowable from here.
+		pending: [...gate.pending].map(cloneRecord),
 	};
 }
 
@@ -544,6 +669,7 @@ export function resetEndpointGatesForTests(): void {
 		gate.waiters = [];
 		gate.active = 0;
 		gate.holders.clear();
+		gate.pending.clear();
 	}
 	gates.clear();
 }

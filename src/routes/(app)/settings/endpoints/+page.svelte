@@ -35,6 +35,7 @@
 	import type {
 		EndpointGroupStatus,
 		EndpointHealth,
+		EndpointSlotInfo,
 		EndpointSlotPurpose,
 		EndpointStatus,
 		EndpointsStatusResponse,
@@ -320,6 +321,19 @@
 		return g.endpoints.length > 1;
 	}
 
+	/**
+	 * What a `pending` row is waiting behind, as a sentence fragment.
+	 *
+	 * Falls back to a reason-less phrasing rather than dropping the row: a
+	 * `blockedBy` this build has no word for still means the work is real and
+	 * coming, which is the whole reason the row is on screen.
+	 */
+	function blockedLabel(slot: EndpointSlotInfo): string {
+		return slot.blockedBy
+			? `after ${purposeLabel(slot.blockedBy).toLowerCase()}`
+			: 'after an earlier step';
+	}
+
 	/** Slots actually generating — excludes one still freeing memory for a
 	 *  handover, which is occupied but has not started. */
 	function generatingCount(ep: EndpointStatus): number {
@@ -375,7 +389,7 @@
 							<div class="text-xs text-fg-muted">
 								{group.active}/{capLabel(group.maxConcurrent)} slots{group.waiting > 0
 									? ` · ${group.waiting} queued`
-									: ''}
+									: ''}{group.pending > 0 ? ` · ${group.pending} pending` : ''}
 							</div>
 						</header>
 						{#if group.evicting}
@@ -482,14 +496,23 @@
 			</div>
 			<div class="rounded-md border border-border bg-surface-sunken/40 p-2">
 				<dt class="text-fg-muted">Queued</dt>
+				<!-- The count in LINE, which is what the queue is. Work still blocked
+				     on an earlier step of its own request is counted underneath
+				     instead: it is coming, but it holds no place here, and folding it
+				     in would make this tile disagree with the "N ahead" a waiting
+				     client is told. Naming it at all is the point — without it a
+				     draining batch looks like a queue filling itself. -->
 				<dd class="mt-0.5 text-sm font-medium">{ep.queued.length}</dd>
+				{#if ep.pending.length > 0}
+					<dd class="mt-0.5 text-[11px] text-fg-muted">+{ep.pending.length} not yet in line</dd>
+				{/if}
 				{#if isSharedGroup(group) && group.waiting !== ep.queued.length}
 					<dd class="mt-0.5 text-[11px] text-fg-muted">{group.waiting} in group</dd>
 				{/if}
 			</div>
 		</dl>
 
-		{#if ep.active.length > 0 || ep.queued.length > 0}
+		{#if ep.active.length > 0 || ep.queued.length > 0 || ep.pending.length > 0}
 			<ul class="mt-2 flex flex-col gap-1.5">
 				{#each ep.active as slot (slot.id)}
 					<li
@@ -530,6 +553,24 @@
 						<span class="shrink-0 tabular-nums text-fg-muted">
 							waiting {duration(elapsed(slot.since))}
 						</span>
+					</li>
+				{/each}
+				<!-- Last, and faintest: these are behind everything above them, and
+				     they are the only rows on this page describing work the gate has
+				     not been asked for yet. -->
+				{#each ep.pending as slot (slot.id)}
+					<li
+						class="flex items-center gap-2 rounded-md border border-dashed border-border p-2 text-xs opacity-50"
+					>
+						<span class="size-1.5 shrink-0 rounded-full border border-fg-muted" aria-hidden="true"
+						></span>
+						<span class="shrink-0 font-medium">{purposeLabel(slot.purpose)}</span>
+						{#if slot.modelId}
+							<span class="min-w-0 flex-1 truncate font-mono text-fg-muted">{slot.modelId}</span>
+						{:else}
+							<span class="min-w-0 flex-1"></span>
+						{/if}
+						<span class="shrink-0 text-fg-muted">{blockedLabel(slot)}</span>
 					</li>
 				{/each}
 			</ul>

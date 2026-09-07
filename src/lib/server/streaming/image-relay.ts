@@ -62,7 +62,7 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 	// Prompt enhancement runs as the relay's PRE-SLOT prepare step (shared with
 	// the video relay — see `media-enhance.ts`). Text-to-image only: an i2i
 	// prompt is an edit instruction, not a scene to rewrite.
-	const prepare = async (ctx: {
+	const prepareRun = async (ctx: {
 		write: (e: StreamProgressEvent) => void;
 		abortSignal?: AbortSignal;
 	}) => {
@@ -81,7 +81,14 @@ export function startImageRelay(params: ImageRelayParams): ReadableStream<Uint8A
 		originalPrompt = r.originalPrompt;
 	};
 
-	const relayParams = { ...params, prepare, modality: 'image' as const };
+	const relayParams = {
+		...params,
+		// `enhance` is what the scaffold shows this generation as waiting behind
+		// while the rewrite runs — including when it no-ops (enhancement off, or
+		// an edit send), which settles within the same tick and never surfaces.
+		prepare: { purpose: 'enhance' as const, run: prepareRun },
+		modality: 'image' as const,
+	};
 	return startMediaRelay(relayParams, async ({ write, abortSignal }) => {
 		try {
 			// I2I when input images are attached, else T2I. The bridge consumes
