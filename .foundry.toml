@@ -17,6 +17,10 @@ name = "Copy database"
 command = "cp -R {source}/data {worktree}/data"
 
 [[scripts.setup]]
+name = "Copy config"
+command = "cp {source}/config.toml {worktree}/config.toml"
+
+[[scripts.setup]]
 name = "Install dependencies"
 command = "pnpm install"
 working_dir = "{worktree}"
