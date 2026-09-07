@@ -87,19 +87,20 @@ const DECLINED_MAX = 4096;
 /**
  * Read a file, or null if reading it didn't work.
  *
- * `what` names the file for the log; pass null where a missing file is an
- * ordinary outcome rather than something to report. Nothing here may throw:
- * every caller's fallback is "inline the original", and a send must not fail
- * over a cache that didn't cooperate.
+ * `what` names the file for the log line. A MISSING file is never logged — that
+ * is the ordinary miss this function exists to report, and both callers reach it
+ * routinely. Anything else is a real filesystem problem and gets a line, because
+ * the caller degrades to "inline the original" either way and would otherwise
+ * leave no trace of a volume that has stopped answering.
+ *
+ * Nothing here may throw: every caller's fallback is that same inline, and a
+ * send must not fail over a cache that didn't cooperate.
  */
-async function readFileOrNull(path: string, what: string | null): Promise<Buffer | null> {
+async function readFileOrNull(path: string, what: string): Promise<Buffer | null> {
 	try {
 		return await readFile(path);
 	} catch (e) {
-		// ENOENT is the cache miss this function exists to report; anything else
-		// is a real filesystem problem and worth a line, even though the caller
-		// degrades identically either way.
-		if (what !== null && (e as NodeJS.ErrnoException).code !== 'ENOENT') {
+		if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
 			console.warn(`[vision-variant] ${what} unreadable:`, e);
 		}
 		return null;
@@ -131,10 +132,13 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 	const cached = await readFileOrNull(variantAbs, `cached variant for ${storagePath}`);
 	if (cached !== null) return { bytes: cached, contentType: 'image/jpeg' };
 
-	// Missing (or unreadable) source is not an error worth logging: the media
-	// row can outlive its bytes, and the caller's fallback — inline the
-	// original — is the same answer it gets for every other null here.
-	const original = await readFileOrNull(sourceAbs, null);
+	// A media row can outlive its bytes, so a MISSING original is ordinary and
+	// `readFileOrNull` stays quiet about it. An original that is present but
+	// unreadable is not ordinary, and it is the failure a remote MEDIA_DIR
+	// actually produces — a soft NFS mount reports EIO, not ENOENT. Suppressing
+	// that would leave a volume that had stopped answering degrading every image
+	// in silence.
+	const original = await readFileOrNull(sourceAbs, `original for ${storagePath}`);
 	if (original === null) return null;
 
 	mkdirSync(dirname(variantAbs), { recursive: true });
