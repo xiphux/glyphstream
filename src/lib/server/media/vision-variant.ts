@@ -34,9 +34,10 @@ import { dirname, resolve } from 'node:path';
 import { derivedDir, mediaDir } from '../env';
 import { getVisionConfig } from '../endpoints/config';
 
-/** Convention mirrors `thumbStoragePath`: variants live as `{original}.vision.jpg`
- *  siblings, so a glob finds them and `disk-store.delete` can unlink them with
- *  the original. */
+/** Convention mirrors `thumbStoragePath`: the original's RELATIVE path plus
+ *  `.vision.jpg`, under `derivedDir()` — beside the original unless DERIVED_DIR
+ *  points elsewhere. Derived from the original's path either way, so a glob
+ *  finds them under one root and `disk-store.delete` can unlink them with it. */
 export function visionStoragePath(storagePath: string): string {
 	return `${storagePath}.vision.jpg`;
 }

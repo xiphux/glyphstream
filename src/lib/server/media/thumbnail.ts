@@ -63,10 +63,13 @@ export interface ThumbnailRef {
 	contentType: 'image/jpeg';
 }
 
-/** Convention: thumbs live as `{original}.thumb.jpg` siblings. Keeps
- *  the relationship discoverable on the filesystem (a glob can find
- *  all thumbs) and makes cleanup trivial (delete-original also tries
- *  to delete the .thumb.jpg neighbor — see disk-store.ts). */
+/** Convention: a thumb takes the original's RELATIVE path plus `.thumb.jpg`,
+ *  under `derivedDir()`. That is the original's own directory unless
+ *  DERIVED_DIR says otherwise, so the two are siblings in the common case and
+ *  merely same-named on different volumes otherwise. Either way the derived
+ *  path is a pure function of the original's, which is what keeps cleanup
+ *  trivial (delete-original also unlinks the .thumb.jpg — see disk-store.ts)
+ *  and a glob able to find every thumb under one root. */
 export function thumbStoragePath(storagePath: string): string {
 	return `${storagePath}.thumb.jpg`;
 }

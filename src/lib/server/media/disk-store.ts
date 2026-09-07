@@ -176,9 +176,10 @@ export class DiskMediaStore implements MediaStore {
 				console.warn(`[disk-store] delete(${storagePath}) failed:`, e);
 			}
 		}
-		// Also remove the lazy-generated derived siblings, if there are
-		// any: the gallery thumbnail and the downscaled variant inlined
-		// into vision requests. We don't track presence — just try to
+		// Also remove the lazy-generated derived assets, if there are any:
+		// the gallery thumbnail and the downscaled variant inlined into
+		// vision requests. They share the original's relative path but not
+		// necessarily its root. We don't track presence — just try to
 		// unlink each and shrug off ENOENT (most media won't have either
 		// yet; a never-viewed, never-sent image has neither). Without
 		// this, every hard-deleted image would leak its derivatives to
