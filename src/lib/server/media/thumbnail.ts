@@ -180,15 +180,21 @@ async function generateThumbnail(
 			return { absolutePath: thumbAbs, byteSize: raced.size, contentType: 'image/jpeg' };
 		}
 
-		// mkdir handles the case where the source happens to be in a freshly-
-		// sharded directory whose siblings don't exist yet (unlikely in practice —
-		// the original would have created the dir — but cheap).
-		mkdirSync(dirname(thumbAbs), { recursive: true });
 		// Write to a unique temp path and rename into place, so a reader can never
 		// observe a half-written JPEG. rename(2) is atomic within a filesystem, and
-		// the temp file is a sibling so it always is. Mirrors DiskMediaStore.put.
+		// the temp file sits beside the thumb so it always is. Mirrors
+		// DiskMediaStore.put.
 		const tmpAbs = `${thumbAbs}.${process.pid}.${randomUUID()}.tmp`;
 		try {
+			// mkdir handles the case where the thumb's shard doesn't exist yet —
+			// routinely, now that it may live under a DERIVED_DIR nothing else has
+			// written to. Inside the try because that directory may also be on a
+			// volume that is absent or read-only while MEDIA_DIR is healthy, and a
+			// throw here would reject getOrCreateThumbnail and 500 the tile. The
+			// catch below returns null instead, which is the endpoint's documented
+			// signal to fall back to streaming the original.
+			mkdirSync(dirname(thumbAbs), { recursive: true });
+
 			await sharp(sourceAbs)
 				.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
 					fit: 'inside',

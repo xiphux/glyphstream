@@ -141,8 +141,18 @@ export async function getVisionVariant(storagePath: string): Promise<VisionVaria
 	const original = await readFileOrNull(sourceAbs, `original for ${storagePath}`);
 	if (original === null) return null;
 
-	mkdirSync(dirname(variantAbs), { recursive: true });
 	try {
+		// Inside the try, not ahead of it. This creates a directory under
+		// DERIVED_DIR, which since that became separately configurable may be a
+		// volume that is absent, read-only, or unmounted while MEDIA_DIR is
+		// perfectly healthy — EACCES and EROFS are reachable here in a way they
+		// were not when the two roots were the same directory and the original
+		// had already been read out of it. Throwing would break this function's
+		// contract (see the header: a send must not fail over a cache that
+		// didn't cooperate) and take down the request; the catch below degrades
+		// to inlining the original, which is the right answer.
+		mkdirSync(dirname(variantAbs), { recursive: true });
+
 		const encoded = await sharp(original)
 			.resize(maxImageDim, maxImageDim, { fit: 'inside', withoutEnlargement: true })
 			// JPEG has no alpha. Without an explicit flatten, sharp composites

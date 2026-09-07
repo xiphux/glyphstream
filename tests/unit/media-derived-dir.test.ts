@@ -125,6 +125,40 @@ describe('derived assets under a separate root', () => {
 	});
 });
 
+describe('an unusable DERIVED_DIR degrades instead of failing the request', () => {
+	// Once the derived root is separately configurable it can be absent, read-only,
+	// or unmounted while MEDIA_DIR is perfectly healthy — a state that was not
+	// reachable when the two were the same directory, because the original had to
+	// be readable out of it for either generator to run at all.
+	//
+	// Simulated with a path whose PARENT is a regular file, which makes mkdir fail
+	// with ENOTDIR everywhere without needing permissions games or root. What is
+	// being pinned is the shape of the failure, not the errno: both generators owe
+	// their callers a null (the documented "fall back to the original" signal) and
+	// must not throw, because both are reached from a request — the gallery tile
+	// endpoint and the per-turn send path.
+	beforeEach(() => {
+		const blocker = join(media, 'not-a-directory');
+		writeFileSync(blocker, 'this is a file, so nothing can be mkdir-ed beneath it');
+		e.vars.DERIVED_DIR = join(blocker, 'derived');
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it('returns null from getOrCreateThumbnail rather than 500ing the tile', async () => {
+		writeOriginal(await photoPng(1400, 900));
+		await expect(getOrCreateThumbnail(STORAGE_PATH)).resolves.toBeNull();
+	});
+
+	it('returns null from getVisionVariant rather than failing the send', async () => {
+		writeOriginal(await photoPng(2400, 1600));
+		await expect(getVisionVariant(STORAGE_PATH)).resolves.toBeNull();
+	});
+});
+
 describe('DiskMediaStore.delete with a separate derived root', () => {
 	it('reaps the thumbnail and the vision variant from DERIVED_DIR', async () => {
 		writeOriginal(await photoPng(2400, 1600));
