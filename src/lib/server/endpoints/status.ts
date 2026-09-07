@@ -198,9 +198,12 @@ export function getEndpointsStatus(): EndpointsStatusResponse {
 		const groupPending = snapshot?.pending ?? [];
 		groups.push({
 			resourceGroup,
-			// A group with no gate yet has never been touched, so it is idle at its
+			// A group with no gate yet has had nothing reach it, so it is idle at its
 			// CONFIGURED cap. Every member resolved the same group cap at config
-			// load, so reading it off the first is not a coin flip.
+			// load, so reading it off the first is not a coin flip. (A pending
+			// declaration materializes the gate too, so this branch is narrower than
+			// "never generated" — see `getResourceGroupSnapshot`. It doesn't matter
+			// here: the gate answers with the same cap this fallback would.)
 			// Tested on the snapshot's PRESENCE, not on `max` being non-null: null is
 			// a meaningful value here (unlimited), so `??` would silently fall
 			// through to config for a group the gate has already answered for. The

@@ -627,9 +627,17 @@ function cloneRecord(r: WorkRecord): SlotSnapshot {
 
 /**
  * A resource group's live occupancy, for the admin endpoint view. Returns null
- * for a group no request has ever touched — a configured-but-idle endpoint has
+ * for a group nothing has ever reached — a configured-but-idle endpoint has
  * no gate yet, and synthesizing a zeroed one here would need the caller's
  * configured cap anyway, so the caller renders that case from config.
+ *
+ * "Reached" is looser than "acquired against": `declarePendingWork` also
+ * materializes the gate, so a group whose only traffic was a declaration that
+ * was then abandoned reads as seen-and-idle rather than never-seen for the
+ * life of the process. Harmless for what this feeds today — every other field
+ * reports identically either way, and `max` is seeded from the same config
+ * value the caller's fallback would read — but do not build a "never used"
+ * signal on a null return without revisiting this.
  *
  * A point-in-time copy, not a live view: the arrays are fresh and the records
  * are cloned, so a consumer can't reach into gate state and `max: Infinity`
