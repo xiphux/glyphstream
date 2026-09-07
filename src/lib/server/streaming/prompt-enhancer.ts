@@ -196,7 +196,10 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
 		return { enhanced: original, changed: false };
 	}
 
-	const enhanced = sanitizeEnhanced(content);
+	const enhanced = collapseSubjectTags(
+		sanitizeEnhanced(content),
+		matched === null ? input.style : null,
+	);
 	if (!enhanced) {
 		if (DEBUG) console.debug('[prompt-enhancer] empty/garbage response, using original');
 		return { enhanced: original, changed: false };
@@ -228,6 +231,74 @@ export async function enhancePrompt(input: EnhancePromptInput): Promise<EnhanceP
  */
 export function trivialNormalize(s: string): string {
 	return s.trim().replace(/[.\s]+$/, '');
+}
+
+/** A bare booru subject tag: 1girl, 2girls, 6+boys, 1other. Matches only a
+ *  segment that is ENTIRELY one — a prose sentence mentioning a girl is not a
+ *  subject tag, and the hybrid style's prose half must come through untouched. */
+const SUBJECT_TAG = /^(\d)(\+?)(girls?|boys?|others?)$/i;
+
+/** Danbooru counts people in one tag per gender group and stops at 6+. */
+function canonicalSubjectTag(group: string, total: number): string {
+	if (total >= 6) return `6+${group}s`;
+	return total === 1 ? `1${group}` : `${total}${group}s`;
+}
+
+/**
+ * Collapse repeated booru subject tags in the enhancer's OUTPUT into the count
+ * tag they were trying to express: `1girl, 1girl` → `2girls`.
+ *
+ * A subject tag is a headcount, not a per-person label, so a repeat doesn't
+ * render a second person — the duplicate collapses and the model draws one.
+ * That is a real thing users hit: ask for "a woman on the left and a woman on
+ * the right" and a 4B enhancer emits `1girl, 1girl` in roughly two runs out of
+ * five, and one woman comes back.
+ *
+ * Deliberately code rather than another sentence in the style template. Three
+ * wordings were measured against this exact failure and none moved it; two made
+ * it worse, because naming the broken form is how a small model learns to emit
+ * it (see `STYLE_INSTRUCTIONS`' note and the git log). Counting is what code is
+ * for.
+ *
+ * Applies only to the booru-family styles, and only when the enhancer was asked
+ * to RESTYLE: `style` is passed as null on a preserve pass, where the output is
+ * the user's own text and rewriting it would break the one promise preserve
+ * mode makes. Returns the input verbatim — same string, same spacing — unless a
+ * tag was actually duplicated. Exported for testing.
+ */
+export function collapseSubjectTags(
+	text: string,
+	style: PromptStyle | VideoPromptStyle | null,
+): string {
+	if (style !== 'booru-tags' && style !== 'hybrid') return text;
+	const parts = text.split(',');
+	const totals = new Map<string, number>();
+	const keepAt = new Map<string, number>();
+	const drop = new Set<number>();
+	parts.forEach((raw, i) => {
+		const m = SUBJECT_TAG.exec(raw.trim());
+		if (!m) return;
+		const group = m[3].toLowerCase().replace(/s$/, '');
+		// "6+girls" means six or more, so it saturates rather than adding as 6.
+		const n = m[2] === '+' ? 6 : Number(m[1]);
+		totals.set(group, (totals.get(group) ?? 0) + n);
+		if (keepAt.has(group)) drop.add(i);
+		else keepAt.set(group, i);
+	});
+	if (!drop.size) return text;
+	return parts
+		.map((raw, i) => {
+			for (const [group, at] of keepAt) {
+				if (at !== i) continue;
+				// Keep the segment's original leading whitespace so collapsing a tag
+				// doesn't reflow the rest of the prompt.
+				const lead = /^\s*/.exec(raw)?.[0] ?? '';
+				return lead + canonicalSubjectTag(group, totals.get(group) ?? 1);
+			}
+			return raw;
+		})
+		.filter((_, i) => !drop.has(i))
+		.join(',');
 }
 
 /**

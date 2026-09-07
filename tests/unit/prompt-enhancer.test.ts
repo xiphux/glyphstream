@@ -14,6 +14,7 @@ vi.mock('$lib/server/endpoints/client', () => ({
 }));
 
 import {
+	collapseSubjectTags,
 	enhancePrompt,
 	sanitizeEnhanced,
 	trivialNormalize,
@@ -289,5 +290,86 @@ describe('sanitizeEnhanced', () => {
 
 	it('leaves a clean prompt untouched', () => {
 		expect(sanitizeEnhanced('1girl, solo, forest')).toBe('1girl, solo, forest');
+	});
+});
+
+describe('collapseSubjectTags', () => {
+	it('collapses a repeated subject tag into its count tag', () => {
+		// The bug this exists for: two women asked for, one woman rendered, because
+		// the duplicate tag is a headcount and collapses.
+		expect(collapseSubjectTags('1girl, 1girl, park, afternoon light', 'booru-tags')).toBe(
+			'2girls, park, afternoon light',
+		);
+		expect(collapseSubjectTags('1girl, 1girl, 1girl, field, sunset', 'booru-tags')).toBe(
+			'3girls, field, sunset',
+		);
+		expect(collapseSubjectTags('1boy, 1boy, alley', 'booru-tags')).toBe('2boys, alley');
+		expect(collapseSubjectTags('1other, 1other, street', 'booru-tags')).toBe('2others, street');
+	});
+
+	it('adds an existing count tag rather than restarting the count', () => {
+		expect(collapseSubjectTags('2girls, 1girl, rooftop', 'booru-tags')).toBe('3girls, rooftop');
+	});
+
+	it('saturates at 6+', () => {
+		expect(collapseSubjectTags('5girls, 2girls, crowd', 'booru-tags')).toBe('6+girls, crowd');
+		// 6+ already means "six or more", so adding to it stays 6+.
+		expect(collapseSubjectTags('6+girls, 1girl, crowd', 'booru-tags')).toBe('6+girls, crowd');
+	});
+
+	it('counts each gender group separately and leaves a mixed pair alone', () => {
+		// 1girl, 1boy is CORRECT for a man and a woman — not a duplicate.
+		expect(collapseSubjectTags('1girl, 1boy, bench, rain', 'booru-tags')).toBe(
+			'1girl, 1boy, bench, rain',
+		);
+		expect(collapseSubjectTags('1girl, 1boy, 1girl, bench', 'booru-tags')).toBe(
+			'2girls, 1boy, bench',
+		);
+	});
+
+	it('leaves the prose half of a hybrid prompt untouched', () => {
+		// Only a segment that is ENTIRELY a subject tag counts, so a sentence that
+		// happens to mention a girl is not collapsed.
+		expect(
+			collapseSubjectTags(
+				'1girl, 1girl, blue hair. They stand in a ruined cathedral, and a girl looks up',
+				'hybrid',
+			),
+		).toBe('2girls, blue hair. They stand in a ruined cathedral, and a girl looks up');
+	});
+
+	it('returns the input verbatim when nothing is duplicated', () => {
+		const s = '1girl,  solo,   forest';
+		expect(collapseSubjectTags(s, 'booru-tags')).toBe(s);
+	});
+
+	it('only applies to the booru-family styles', () => {
+		const s = '1girl, 1girl, forest';
+		expect(collapseSubjectTags(s, 'natural-language')).toBe(s);
+		expect(collapseSubjectTags(s, 'keyword-soup')).toBe(s);
+		expect(collapseSubjectTags(s, 'cinematic-prose')).toBe(s);
+		// null is how a preserve pass opts out entirely.
+		expect(collapseSubjectTags(s, null)).toBe(s);
+	});
+});
+
+describe('enhancePrompt — subject-tag collapse', () => {
+	it('collapses duplicates in a restyled booru prompt', async () => {
+		syncMock.mockResolvedValue({ choices: [{ message: { content: '1girl, 1girl, park, dusk' } }] });
+		const res = await enhancePrompt({
+			prompt: 'a woman on the left and a woman on the right in a park at dusk',
+			style: 'booru-tags',
+			model,
+		});
+		expect(res.enhanced).toBe('2girls, park, dusk');
+	});
+
+	it('does NOT touch the output of a preserve pass', async () => {
+		// The user wrote these tags; preserve mode promises to keep their wording,
+		// and that promise outranks the tidy-up.
+		const tags = '1girl, 1girl, long hair, forest, sunbeam';
+		syncMock.mockResolvedValue({ choices: [{ message: { content: tags } }] });
+		const res = await enhancePrompt({ prompt: tags, style: 'booru-tags', model });
+		expect(res.enhanced).toBe(tags);
 	});
 });
