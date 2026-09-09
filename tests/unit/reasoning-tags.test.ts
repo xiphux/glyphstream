@@ -49,7 +49,25 @@ describe('stripReasoningTags', () => {
 
 	it('strips a tag carrying attributes', () => {
 		expect(stripReasoningTags('<think type="x">reasoning</think>Answer')).toBe('Answer');
-		expect(stripReasoningTags('Answer</think >')).toBe('Answer');
+		// Widowed, with attributes, on both the opener and the closer.
+		expect(stripReasoningTags('<think type="x">Answer only')).toBe('Answer only');
+		expect(stripReasoningTags('reasoning</think foo>Answer')).toBe('Answer');
+	});
+
+	it('does not mistake a trailing delimiter for the answer', () => {
+		// This runs BEFORE the quote/punctuation strips, so a model that closes its
+		// thinking inside its own quoting ends the string `…</think>"`. Taking that
+		// quote as the answer would yield a one-character title — worse than the
+		// raw tag. Fall through instead and let the quote-pair strip recover it.
+		expect(sanitizeTitle('"Brotli vs. Gzip Compression </think>"')).toBe(
+			'Brotli vs. Gzip Compression',
+		);
+		expect(sanitizeTitle('Brotli vs. Gzip Compression </think>.')).toBe(
+			'Brotli vs. Gzip Compression',
+		);
+		// Same shape on the enhancer path, where a truthy one-character result
+		// would sail past the empty-is-failure guard and reach the image model.
+		expect(sanitizeEnhanced('"1girl, solo, forest </think>"')).toBe('1girl, solo, forest');
 	});
 
 	it('handles the tag-name variants and whitespace inside the tag', () => {

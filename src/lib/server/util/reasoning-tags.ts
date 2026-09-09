@@ -18,7 +18,8 @@
  *
  *   1. A COMPLETE block is dropped whole, contents included — that text is
  *      reasoning, not answer.
- *   2. A widowed CLOSING tag with real text after it means the answer is what
+ *   2. A widowed CLOSING tag with real text after it — text carrying a letter
+ *      or digit, not just a stray quote or full stop — means the answer is what
  *      FOLLOWS it, and everything before was thinking. That shape is what a
  *      chat template which prefills `<think>` into the assistant turn produces
  *      when reasoning isn't suppressed: the opener never appears in `content`
@@ -46,15 +47,28 @@ const TAG = 'think|thinking|reason|reasoning';
 const ATTRS = '(?:\\s[^>]*)?';
 /** A properly closed block, contents included. Non-greedy so two sibling blocks
  *  don't merge into one and swallow the answer between them; a NESTED block
- *  therefore closes early, and rule 2 below is what recovers the answer. */
+ *  therefore closes early and leaks its outer tail. Rule 2 recovers that only
+ *  when the answer FOLLOWS the nesting — with the answer first, the outer
+ *  reasoning still trails it. Sibling blocks are the common shape; nesting is
+ *  the rare one, so the trade goes this way. */
 const BLOCK = new RegExp(`<(${TAG})${ATTRS}>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
-/** Closing tags only — used to locate the reasoning/answer boundary. */
-const CLOSE = new RegExp(`<\\/(?:${TAG})\\s*>`, 'gi');
+/** Closing tags only — used to locate the reasoning/answer boundary. Same ATTRS
+ *  tolerance as the others, so a tag this finds is one LOOSE can also strip. */
+const CLOSE = new RegExp(`<\\/(?:${TAG})${ATTRS}>`, 'gi');
 /** Whatever tag survives the passes above. */
 const LOOSE = new RegExp(`<\\/?(?:${TAG})${ATTRS}>`, 'gi');
 
+/** A tail counts as the answer only if it has a letter or digit in it. Merely
+ *  "not whitespace" is too weak: this runs BEFORE the quote and trailing-
+ *  punctuation strips, so a model that closes its thinking inside its own
+ *  quoting ends the string `…</think>"` — and taking that `"` as the answer
+ *  yields a one-character title, or a one-character prompt for an image model,
+ *  which is worse than the raw tag this module exists to remove. Falling
+ *  through instead lets the existing quote-pair strip recover it. */
+const HAS_CONTENT = /[\p{L}\p{N}]/u;
+
 /** The text following the LAST widowed closing tag, or null when there is no
- *  such tag or nothing but whitespace after it. */
+ *  such tag or nothing but punctuation/whitespace after it. */
 function answerAfterWidowedClose(s: string): string | null {
 	// Explicit reset: CLOSE is module-level and `exec` advances lastIndex, so a
 	// throw mid-loop would otherwise leave it dirty for the next caller.
@@ -63,7 +77,7 @@ function answerAfterWidowedClose(s: string): string | null {
 	for (let m = CLOSE.exec(s); m !== null; m = CLOSE.exec(s)) last = m;
 	if (!last) return null;
 	const after = s.slice(last.index + last[0].length);
-	return after.trim() ? after : null;
+	return HAS_CONTENT.test(after) ? after : null;
 }
 
 /**
