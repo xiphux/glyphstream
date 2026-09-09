@@ -21,6 +21,7 @@
  */
 
 import { logLevel } from '../env';
+import { stripReasoningTags } from '../util/reasoning-tags';
 import { chatCompletionSync, UpstreamError } from '../endpoints/client';
 import { isAbortError } from './sse-transport';
 import type { ResolvedImageEnhancerModel } from '../tasks/image-enhancer-model';
@@ -308,7 +309,10 @@ export function collapseSubjectTags(
  * testing.
  */
 export function sanitizeEnhanced(raw: string): string {
-	let s = raw.trim();
+	// Before the fence/label/quote passes: a reasoning model can wrap or trail the
+	// prompt with think markup, and an enhanced prompt carrying "</think>" is sent
+	// verbatim to the image model.
+	let s = stripReasoningTags(raw);
 	// Strip a ```/```lang fenced block if the whole response is one.
 	const fence = /^```[a-z]*\n([\s\S]*?)\n```$/i.exec(s);
 	if (fence) s = fence[1].trim();
