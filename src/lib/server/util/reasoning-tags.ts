@@ -30,7 +30,10 @@
  *      it. That covers the measured suppressed-reasoning case (answer, then a
  *      widowed closer with nothing after it).
  *
- * Limits, none of which have a rescue: an unclosed `<think>` followed by
+ * Limits, none of which have a rescue: only the LAST widowed closer is
+ * considered, so `musing </think> answer </think>"` — two closers straddling
+ * the model's own quoting — falls through to the plain strip and leaks the
+ * musing. An unclosed `<think>` followed by
  * thinking and NO answer leaves the thinking (there is no answer in the string
  * to recover — callers already treat an empty result as failure, keeping the
  * fallback title / the user's prompt). And content legitimately *about* this
@@ -51,9 +54,11 @@ const ATTRS = '(?:\\s[^>]*)?';
  *  when the answer FOLLOWS the nesting — with the answer first, the outer
  *  reasoning still trails it. Sibling blocks are the common shape; nesting is
  *  the rare one, so the trade goes this way. */
-const BLOCK = new RegExp(`<(${TAG})${ATTRS}>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
-/** Closing tags only — used to locate the reasoning/answer boundary. Same ATTRS
- *  tolerance as the others, so a tag this finds is one LOOSE can also strip. */
+const BLOCK = new RegExp(`<(${TAG})${ATTRS}>[\\s\\S]*?<\\/\\1${ATTRS}>`, 'gi');
+/** Closing tags only — used to locate the reasoning/answer boundary. All four
+ *  patterns take ATTRS on every tag, opener and closer alike, so a tag any of
+ *  them finds is one LOOSE can also strip; a closer that only BLOCK tolerated
+ *  used to leave its block undropped and leak the reasoning inside it. */
 const CLOSE = new RegExp(`<\\/(?:${TAG})${ATTRS}>`, 'gi');
 /** Whatever tag survives the passes above. */
 const LOOSE = new RegExp(`<\\/?(?:${TAG})${ATTRS}>`, 'gi');

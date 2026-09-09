@@ -54,6 +54,13 @@ describe('stripReasoningTags', () => {
 		expect(stripReasoningTags('reasoning</think foo>Answer')).toBe('Answer');
 	});
 
+	it('drops a block whose CLOSING tag carries attributes', () => {
+		// The closer used to be the one place attributes weren't tolerated, so the
+		// block went undropped and the reasoning inside it leaked out.
+		expect(stripReasoningTags('Answer<think>secret</think foo>')).toBe('Answer');
+		expect(stripReasoningTags('<think>a</think foo>Real<think>b</think foo>')).toBe('Real');
+	});
+
 	it('does not mistake a trailing delimiter for the answer', () => {
 		// This runs BEFORE the quote/punctuation strips, so a model that closes its
 		// thinking inside its own quoting ends the string `…</think>"`. Taking that
