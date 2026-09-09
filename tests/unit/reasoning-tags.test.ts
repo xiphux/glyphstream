@@ -24,6 +24,34 @@ describe('stripReasoningTags', () => {
 		);
 	});
 
+	it('takes the text AFTER a widowed closing tag as the answer', () => {
+		// A chat template that prefills `<think>` into the assistant turn produces
+		// exactly this: no opener in content, reasoning, closer, answer. Keeping
+		// the text BEFORE would title the conversation with a reasoning paragraph,
+		// which doesn't look broken and so is worse than the raw tag.
+		expect(
+			stripReasoningTags('The user wants a title about compression. </think> Brotli vs Gzip'),
+		).toBe('Brotli vs Gzip');
+		// Last one wins when the model emits more than one.
+		expect(stripReasoningTags('musing </think> more musing </think> Real Answer')).toBe(
+			'Real Answer',
+		);
+	});
+
+	it('recovers the answer from a nested block', () => {
+		// BLOCK is non-greedy (so sibling blocks don't merge), which closes a nested
+		// block early and leaves the outer tail behind; the widowed-closer rule is
+		// what stops that reasoning reaching the user.
+		expect(
+			stripReasoningTags('<think>outer <think>inner</think> secret reasoning</think>Answer'),
+		).toBe('Answer');
+	});
+
+	it('strips a tag carrying attributes', () => {
+		expect(stripReasoningTags('<think type="x">reasoning</think>Answer')).toBe('Answer');
+		expect(stripReasoningTags('Answer</think >')).toBe('Answer');
+	});
+
 	it('handles the tag-name variants and whitespace inside the tag', () => {
 		expect(stripReasoningTags('<thinking>x</thinking>Title Here')).toBe('Title Here');
 		expect(stripReasoningTags('<reasoning>x</reasoning>Title Here')).toBe('Title Here');
@@ -48,6 +76,14 @@ describe('stripReasoningTags', () => {
 		expect(stripReasoningTags(script)).toBe(
 			'integrated_multimodal_description: [Shot 1] a chef plates\n\noverall_soundscape: pans clatter\n\nnon_diegetic_music: N/A',
 		);
+	});
+
+	it('accepts the known cost: content ABOUT the markup loses the word', () => {
+		// Documented trade-off, not an oversight. Titles are user-editable, and
+		// dropping a word beats surfacing raw markup to every other conversation.
+		expect(stripReasoningTags('How to use <think> tags in LLMs')).toBe('How to use   tags in LLMs');
+		// What the user actually sees, once the label sanitizer collapses runs.
+		expect(sanitizeTitle('How to use <think> tags in LLMs')).toBe('How to use tags in LLMs');
 	});
 
 	it('leaves ordinary text alone, angle brackets included', () => {

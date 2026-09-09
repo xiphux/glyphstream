@@ -14,23 +14,57 @@
  * booru subjects in code: a small model cannot be reliably instructed out of
  * emitting these, and the failure is silent and user-visible.
  *
- * A COMPLETE block is dropped whole, including its contents — that text is
- * reasoning, not answer. An unpaired tag is dropped on its own, keeping the
- * text around it, because that is the shape the suppressed-reasoning case
- * takes (answer plus a widowed closing tag). The one case this cannot rescue
- * is an unclosed `<think>` followed by real thinking and no answer: the tag
- * goes, the thinking stays, and there is no answer in the string to recover.
- * Callers already treat the result as failure when it comes back empty (the
- * title task keeps its fallback; the enhancer keeps the user's prompt).
+ * Three shapes, in the order they're handled:
+ *
+ *   1. A COMPLETE block is dropped whole, contents included — that text is
+ *      reasoning, not answer.
+ *   2. A widowed CLOSING tag with real text after it means the answer is what
+ *      FOLLOWS it, and everything before was thinking. That shape is what a
+ *      chat template which prefills `<think>` into the assistant turn produces
+ *      when reasoning isn't suppressed: the opener never appears in `content`
+ *      because the template supplied it. Keeping the text before instead would
+ *      title the conversation with a truncated reasoning paragraph — a worse
+ *      failure than the raw tag, because it doesn't look broken.
+ *   3. Any tag still standing is dropped on its own, keeping the text around
+ *      it. That covers the measured suppressed-reasoning case (answer, then a
+ *      widowed closer with nothing after it).
+ *
+ * Limits, none of which have a rescue: an unclosed `<think>` followed by
+ * thinking and NO answer leaves the thinking (there is no answer in the string
+ * to recover — callers already treat an empty result as failure, keeping the
+ * fallback title / the user's prompt). And content legitimately *about* this
+ * markup loses the word: a conversation titled "How to use <think> tags" comes
+ * back as "How to use tags". Titles are user-editable, and silently deleting a
+ * word beats surfacing raw markup.
  */
 
 /** Tag names seen in the wild for the same thing. */
 const TAG = 'think|thinking|reason|reasoning';
-/** A properly closed block, contents included. Non-greedy so two blocks don't
- *  merge into one and swallow the answer between them. */
-const BLOCK = new RegExp(`<(${TAG})\\s*>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
-/** Whatever tag survives the block pass — the widowed-`</think>` case. */
-const LOOSE = new RegExp(`<\\/?(?:${TAG})\\s*>`, 'gi');
+/** An opening tag may carry attributes (`<think type="x">`); a closing tag may
+ *  carry stray whitespace (`</think >`). Matching neither leaves the literal
+ *  markup in the output, which is the whole failure this module exists for. */
+const ATTRS = '(?:\\s[^>]*)?';
+/** A properly closed block, contents included. Non-greedy so two sibling blocks
+ *  don't merge into one and swallow the answer between them; a NESTED block
+ *  therefore closes early, and rule 2 below is what recovers the answer. */
+const BLOCK = new RegExp(`<(${TAG})${ATTRS}>[\\s\\S]*?<\\/\\1\\s*>`, 'gi');
+/** Closing tags only — used to locate the reasoning/answer boundary. */
+const CLOSE = new RegExp(`<\\/(?:${TAG})\\s*>`, 'gi');
+/** Whatever tag survives the passes above. */
+const LOOSE = new RegExp(`<\\/?(?:${TAG})${ATTRS}>`, 'gi');
+
+/** The text following the LAST widowed closing tag, or null when there is no
+ *  such tag or nothing but whitespace after it. */
+function answerAfterWidowedClose(s: string): string | null {
+	// Explicit reset: CLOSE is module-level and `exec` advances lastIndex, so a
+	// throw mid-loop would otherwise leave it dirty for the next caller.
+	CLOSE.lastIndex = 0;
+	let last: RegExpExecArray | null = null;
+	for (let m = CLOSE.exec(s); m !== null; m = CLOSE.exec(s)) last = m;
+	if (!last) return null;
+	const after = s.slice(last.index + last[0].length);
+	return after.trim() ? after : null;
+}
 
 /**
  * Note what this deliberately does NOT do: collapse whitespace. Only the label
@@ -41,5 +75,7 @@ const LOOSE = new RegExp(`<\\/?(?:${TAG})\\s*>`, 'gi');
  * style, and the enhancer's own fenced-block strip needs the newlines too.
  */
 export function stripReasoningTags(raw: string): string {
-	return raw.replace(BLOCK, ' ').replace(LOOSE, ' ').trim();
+	const withoutBlocks = raw.replace(BLOCK, ' ');
+	const answer = answerAfterWidowedClose(withoutBlocks);
+	return (answer ?? withoutBlocks).replace(LOOSE, ' ').trim();
 }
