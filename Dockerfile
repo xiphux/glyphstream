@@ -104,13 +104,23 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # decoders is a smaller surface to keep patched than the several hundred the
 # distro package ships. What is enabled covers what actually reaches us:
 # h264 for generated video, hevc for iPhone uploads (its camera default since
-# iOS 11), vp8/vp9/av1 for webm, and the mov demuxer for .mp4 and .mov alike.
+# iOS 11), vp8/vp9 for webm, mjpeg for older cameras, and the mov demuxer for
+# .mp4 and .mov alike.
+#
+# AV1 comes from libdav1d, NOT from ffmpeg's built-in `av1` decoder. That one is
+# a hwaccel-only wrapper: it builds and it lists in `-decoders`, and then every
+# software decode fails with "Your platform doesn't support hardware accelerated
+# AV1 decoding". Enabling it here bought exactly nothing and read as coverage —
+# which is why the runtime stage installs libdav1d rather than the decoder list
+# simply naming `av1`. libdav1d ships shared-only on Alpine, so it is apk-managed
+# on both sides instead of copied; that also keeps it picking up CVE fixes when
+# the base image is rebased, which for a decoder is the point.
 #
 # Cold build is ~30s — configure skips probing everything that's disabled, and
 # make compiles a few dozen files instead of thousands.
 FROM alpine:3.22 AS ffmpeg
 ARG FFMPEG_VERSION=7.1.1
-RUN apk add --no-cache build-base nasm yasm tar xz wget
+RUN apk add --no-cache build-base nasm yasm tar xz wget pkgconf dav1d-dev
 WORKDIR /src
 RUN wget -qO ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
     && tar xf ffmpeg.tar.xz --strip-components=1 \
@@ -127,8 +137,9 @@ RUN ./configure \
       --disable-shared \
       --enable-static \
       --enable-small \
-      --enable-decoder=h264,hevc,vp8,vp9,av1,mjpeg,png \
-      --enable-parser=h264,hevc,vp8,vp9,av1,mjpeg,png \
+      --enable-libdav1d \
+      --enable-decoder=h264,hevc,vp8,vp9,libdav1d,mjpeg \
+      --enable-parser=h264,hevc,vp8,vp9,av1,mjpeg \
       --enable-demuxer=mov,matroska \
       --enable-encoder=mjpeg \
       --enable-muxer=image2 \
@@ -153,6 +164,9 @@ FROM node:26-alpine AS runtime
 RUN apk add --no-cache tini sqlite
 
 # Decode-only, ~5 MB. See the ffmpeg stage for why it isn't `apk add ffmpeg`.
+# libdav1d is the one codec library it links against rather than implements —
+# ffmpeg's own AV1 decoder cannot decode in software.
+RUN apk add --no-cache libdav1d
 COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
 
 WORKDIR /app
