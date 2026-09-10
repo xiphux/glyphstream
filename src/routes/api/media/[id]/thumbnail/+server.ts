@@ -74,18 +74,24 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 		// SvelteKit's error path emits no `Cache-Control`, and a 404 with no
 		// freshness information at all has no heuristic basis, so the browser
 		// re-asks every time the <video> is created. The gallery is virtualized,
-		// so that is once per scroll past the tile — and each re-ask spawns
-		// ffmpeg again on the server.
+		// so that is once per scroll past the tile.
 		//
-		// Ten minutes, not the year the success path uses. This is a NEGATIVE
-		// answer and the thing that fixes it usually happens outside the app —
-		// installing ffmpeg, rebuilding with another demuxer — so it must expire
-		// on its own rather than strand a repaired install behind a stale cache.
+		// SHORT — a minute, against the ten the server's own failure memo uses,
+		// and the year the success path uses. The two windows bound different
+		// things and should not be equal. The server memo bounds how often a
+		// decode is ATTEMPTED, which is the expensive part; with it in place a
+		// repeat request costs a map lookup, so all this header still buys is a
+		// round trip. Meanwhile it is the half that can be wrong: null here also
+		// covers a source that was briefly unreadable (a MEDIA_DIR mount blip),
+		// which the server deliberately does NOT memoize because it self-heals —
+		// and a long client cache would keep the tile blank for the full window
+		// after the server had recovered. A minute kills the reload storm and
+		// bounds that staleness.
 		return new Response('Thumbnail unavailable', {
 			status: 404,
 			headers: {
 				'Content-Type': 'text/plain; charset=utf-8',
-				'Cache-Control': 'private, max-age=600',
+				'Cache-Control': 'private, max-age=60',
 			},
 		});
 	}

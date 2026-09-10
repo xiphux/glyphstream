@@ -400,9 +400,11 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
  * than one per view. Against a virtualized gallery that is still the difference
  * between a handful an hour and a spawn per scroll.
  *
- * Matched to the 404's max-age so the two halves agree: the server stops
- * spawning for the same window the client stops asking. Keyed on `thumbAbs`,
- * not `storagePath`, so entries can't collide across DERIVED_DIR changes.
+ * Deliberately LONGER than the 404's max-age. This window bounds how often a
+ * decode is attempted, which is the expensive half; the client's bounds how
+ * often it asks, which with this memo in place costs a map lookup. Keyed on
+ * `thumbAbs`, not `storagePath`, so entries can't collide across DERIVED_DIR
+ * changes.
  */
 const failed = new Map<string, number>();
 const FAILED_MAX = 4096;
