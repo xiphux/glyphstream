@@ -1003,7 +1003,7 @@
 				</div>
 			{:else}
 				<!-- A single media tile from a full MediaListItem — shared by search +
-				     drill-in. Grid tiles use the /thumbnail variant (512px sharp resize,
+				     drill-in. Grid tiles use the /thumbnail variant (512px long side, sharp for images and ffmpeg for video,
 				     disk-cached), not the full-resolution /content the lightbox pulls. -->
 				{#snippet mediaTile(m: MediaListItem)}
 					{@const isSelected = selectMode && selected.has(m.id)}

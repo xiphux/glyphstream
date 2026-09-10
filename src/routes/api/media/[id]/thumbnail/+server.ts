@@ -15,12 +15,18 @@ import type { RequestHandler } from './$types';
 /**
  * Serve a small JPEG standing in for a stored image or video.
  *
- * Three consumers: the gallery's tile grid, and the `poster` on the
- * `<video>` in both the chat surface and the lightbox. Those two also
- * use /content, but for playback — the poster is what they show until
- * the user presses play. Note the poster is grid-sized (THUMB_MAX_DIM,
- * 512px on the long side), so on a full-viewport lightbox it is being
- * upscaled until the first decoded frame replaces it.
+ * Consumed as an `<img src>` by the gallery's tile grid and the avatar
+ * surfaces (AssistantAvatar, AvatarMenu, settings/models — all
+ * image-only, enforced in the DB layer), and as the `poster` on the
+ * `<video>` in the chat surface and the lightbox.
+ *
+ * The poster is grid-sized (THUMB_MAX_DIM, 512px on the long side), so
+ * a full-viewport lightbox upscales it — and it is NOT swapped out
+ * when a frame decodes. HTML's show-poster flag is cleared only by
+ * `play()` or a completed seek, not by reaching HAVE_CURRENT_DATA, so
+ * what the viewer sees until they press play is this JPEG. Accepted:
+ * the alternative was the browser's own frame, which on iOS Safari is
+ * frequently no frame at all.
  *
  * On cache miss the response waits on the decode and the write — sharp
  * for an image, an ffmpeg subprocess for a video, the latter with a far

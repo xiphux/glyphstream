@@ -39,11 +39,14 @@
  * MediaStore interface and is therefore tied to the disk-backed
  * implementation. The gallery endpoint
  * (routes/api/media/[id]/thumbnail/+server.ts) degrades gracefully
- * under an S3 store — `getOrCreateThumbnail` returns null for
- * missing source files, and the endpoint falls back to
- * `store.open()` which streams the full-resolution original. This
- * means the gallery loses the thumbnail optimization under S3 but
- * does not break. Extending the MediaStore interface with
+ * under an S3 store FOR IMAGES — `getOrCreateThumbnail` returns null
+ * for missing source files, and the endpoint falls back to
+ * `store.open()` which streams the full-resolution original, so the
+ * gallery loses the optimization but does not break. That guarantee
+ * does NOT extend to video: there is no fallback worth serving for a
+ * `poster`, so the endpoint 404s and the tile is blank. Whoever
+ * builds `S3MediaStore` needs to give the video path derived-asset
+ * methods, not rely on this degrading the way the image path does. Extending the MediaStore interface with
  * derived-asset methods (openDerived / putDerived) is deferred to
  * a future v2 change.
  *
