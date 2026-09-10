@@ -178,7 +178,7 @@ RUN ./configure \
 #
 # The ROTATED sample is not redundant. ffmpeg applies a display matrix by
 # INSERTING transpose/hflip/vflip into the filtergraph, and this build names
-# neither in --enable-filter — so it looks, repeatedly and convincingly, like
+# none of them in --enable-filter — so it looks, repeatedly and convincingly, like
 # every phone-shot video must fail here. It doesn't: configure's `ffmpeg_select`
 # force-enables those filters for the CLI after --disable-everything. Three
 # separate reviewers chased that reading; this probe answers it in the build log
