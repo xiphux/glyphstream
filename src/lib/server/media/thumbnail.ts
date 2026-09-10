@@ -222,6 +222,16 @@ const FFMPEG_MAX_PIXELS = '268435456';
 
 const execFileAsync = promisify(execFile);
 
+/** Marks a throw that came from trying to read the SOURCE, so the failure memo
+ *  can ignore everything else that shares its catch. Not a perfect line — both
+ *  encoders write their output too — which is why `failed` entries expire. */
+class DecodeError extends Error {
+	constructor(readonly cause: unknown) {
+		super('thumbnail decode failed');
+		this.name = 'DecodeError';
+	}
+}
+
 async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
 	await sharp(sourceAbs)
 		.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
@@ -318,8 +328,7 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 }
 
 /**
- * Sources that failed to decode, so the next request doesn't pay for the same
- * answer again.
+ * Recent failures, so the next request doesn't pay for the same answer again.
  *
  * Success caches itself — the thumb on disk IS the memo. Failure had nothing,
  * so every view re-ran the whole pipeline. That was tolerable while the only
@@ -330,26 +339,59 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
  * reload, and the gallery is virtualized, so merely scrolling past a tile and
  * back re-requests it.
  *
- * Two failure classes are permanent rather than transient, which is what makes
- * this worth having: a container outside the shipped demuxers (classifyUpload
- * accepts ANY `video/*`, this build reads mov and matroska), and no ffmpeg on
- * PATH at all — which docs/deployment.md documents as a supported way to run.
- * In that second case EVERY video in the library is permanently undecodable.
+ * ENTRIES EXPIRE, and that is the important part. The obvious design — remember
+ * forever, since an undecodable file stays undecodable — is wrong here, because
+ * "the decode failed" and "the disk was full" arrive through the same throw.
+ * Both encoders WRITE their output as part of encoding (sharp's `toFile`,
+ * ffmpeg's `-y`), so an ENOSPC or EROFS on DERIVED_DIR surfaces from inside the
+ * decode step and cannot be told apart from a bad codec by inspection. That
+ * matters because DERIVED_DIR is explicitly a small, possibly-separate volume
+ * (docs/deployment.md sizes it at about a tenth of MEDIA_DIR), so filling it is
+ * an ordinary event, not a disaster scenario.
  *
- * In-memory and bounded, mirroring `declined` in vision-variant.ts: a restart
- * retries everything, which is the behaviour you want when the fix was
- * installing ffmpeg or rebuilding with another demuxer. Keyed on `thumbAbs`
- * rather than `storagePath` so it can't collide across DERIVED_DIR changes.
+ * Remembering that permanently would be the worse half of a bad trade: the
+ * IMAGE path degrades by streaming full-resolution originals — the ~30 MB per
+ * gallery screen this module exists to prevent — and the endpoint serves those
+ * with a year-long immutable Cache-Control, so clients would go on holding the
+ * originals long after the volume was fixed. Expiry means a repaired volume
+ * heals itself within the TTL instead of needing a restart nobody knows to
+ * perform.
+ *
+ * What the TTL costs on a genuinely permanent failure — a container outside the
+ * shipped demuxers, or no ffmpeg on PATH — is one retry per file per TTL rather
+ * than one per view. Against a virtualized gallery that is still the difference
+ * between a handful an hour and a spawn per scroll.
+ *
+ * Matched to the 404's max-age so the two halves agree: the server stops
+ * spawning for the same window the client stops asking. Keyed on `thumbAbs`,
+ * not `storagePath`, so entries can't collide across DERIVED_DIR changes.
  */
-const failed = new Set<string>();
+const failed = new Map<string, number>();
 const FAILED_MAX = 4096;
+export const FAILED_TTL_MS = 600_000;
 
-/** Remember a failure, clearing wholesale at the cap. Wholesale rather than LRU
- *  because the entries are worthless — the cost of forgetting one is a single
- *  re-attempt, so tracking recency would cost more than it saves. */
+/** Remember a failure until now + TTL, pruning expired entries first so the cap
+ *  is only reached by genuinely concurrent failures rather than by history. */
 function rememberFailure(thumbAbs: string): void {
-	if (failed.size >= FAILED_MAX) failed.clear();
-	failed.add(thumbAbs);
+	const now = Date.now();
+	if (failed.size >= FAILED_MAX) {
+		for (const [key, until] of failed) if (until <= now) failed.delete(key);
+		// Still full: everything in it is live, so drop the lot rather than grow
+		// without bound. Wholesale because the entries are worth so little —
+		// forgetting one costs a single re-attempt.
+		if (failed.size >= FAILED_MAX) failed.clear();
+	}
+	failed.set(thumbAbs, now + FAILED_TTL_MS);
+}
+
+/** True while a recent failure is still worth trusting. Expired entries are
+ *  dropped on read, so a path that stops being asked for stops costing memory. */
+function recentlyFailed(thumbAbs: string): boolean {
+	const until = failed.get(thumbAbs);
+	if (until === undefined) return false;
+	if (until > Date.now()) return true;
+	failed.delete(thumbAbs);
+	return false;
 }
 
 /**
@@ -380,7 +422,7 @@ export async function getOrCreateThumbnail(
 	// Checked AFTER the disk probe, not before: a thumb that appeared since the
 	// failure (a backfill, a manual copy, a rebuilt DERIVED_DIR) should win over
 	// a stale memo, and the probe is one stat either way.
-	if (failed.has(thumbAbs)) return null;
+	if (recentlyFailed(thumbAbs)) return null;
 
 	const existing = inFlight.get(thumbAbs);
 	if (existing) return existing;
@@ -429,10 +471,20 @@ async function generateThumbnail(
 			// signal to degrade.
 			mkdirSync(dirname(thumbAbs), { recursive: true });
 
-			if (kind === 'video') {
-				await encodeVideoThumb(sourceAbs, tmpAbs);
-			} else {
-				await encodeImageThumb(sourceAbs, tmpAbs);
+			try {
+				if (kind === 'video') {
+					await encodeVideoThumb(sourceAbs, tmpAbs);
+				} else {
+					await encodeImageThumb(sourceAbs, tmpAbs);
+				}
+			} catch (e) {
+				// Tagged so the outer catch can tell "we tried to read this file"
+				// from "mkdir/rename/stat went wrong". Those three are never the
+				// source's fault, so they must not be remembered at all — the same
+				// carve-out the missing-source check above gets, for the same
+				// reason. It is only a partial separation, since both encoders
+				// also WRITE here; the TTL on `failed` covers the rest.
+				throw new DecodeError(e);
 			}
 			await rename(tmpAbs, thumbAbs);
 			const stats = await stat(thumbAbs);
@@ -443,11 +495,12 @@ async function generateThumbnail(
 			// the caller then falls back to streaming the original, but for a VIDEO
 			// there is no such fallback and the endpoint 404s — a `poster` pointing
 			// at an mp4 renders nothing. See the endpoint's own comment.
-			console.warn(`[thumbnail] generation failed for ${storagePath}:`, e);
-			// Decode failures are overwhelmingly a property of the file (or of a
-			// decoder that isn't installed), not of the moment, so don't pay for
-			// this answer again on every gallery view.
-			rememberFailure(thumbAbs);
+			const reason = e instanceof DecodeError ? e.cause : e;
+			console.warn(`[thumbnail] generation failed for ${storagePath}:`, reason);
+			// Only what came from trying to read the source is worth remembering.
+			// A failed mkdir, rename or stat says something about the volume, and
+			// the volume gets fixed.
+			if (e instanceof DecodeError) rememberFailure(thumbAbs);
 			return null;
 		}
 	} finally {

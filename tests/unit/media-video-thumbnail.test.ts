@@ -87,7 +87,8 @@ vi.mock('sharp', () => ({
 	},
 }));
 
-const { getOrCreateThumbnail, thumbStoragePath } = await import('$lib/server/media/thumbnail');
+const { getOrCreateThumbnail, thumbStoragePath, FAILED_TTL_MS } =
+	await import('$lib/server/media/thumbnail');
 
 const VIDEO_PATH = 'ab/cd/clip.mp4';
 
@@ -259,6 +260,57 @@ describe('video thumbnails', () => {
 		writeSource('zz/zz/later.mp4');
 		const thumb = await getOrCreateThumbnail('zz/zz/later.mp4', 'video');
 		expect(thumb).not.toBeNull();
+	});
+
+	it('forgets a failure once its TTL lapses', async () => {
+		// The memo must not be permanent. Both encoders WRITE their output as part
+		// of encoding, so a full or read-only DERIVED_DIR throws from inside the
+		// decode step and is indistinguishable from a bad codec. Remembering that
+		// forever strands a perfectly good source until someone restarts the
+		// process — and on the image path the endpoint would go on serving
+		// full-resolution originals under a year-long immutable cache.
+		state.outcomes = ['fail'];
+		writeSource(VIDEO_PATH);
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		expect(state.calls).toHaveLength(1);
+
+		vi.useFakeTimers();
+		try {
+			vi.setSystemTime(Date.now() + FAILED_TTL_MS + 1);
+			state.outcomes = ['ok'];
+			const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+			expect(thumb).not.toBeNull();
+			expect(state.calls).toHaveLength(2);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('does not remember a failure that came from the storage, not the source', async () => {
+		// mkdir/rename/stat failing says something about the volume, and the volume
+		// gets fixed. Simulated with a DERIVED_DIR whose parent is a regular file,
+		// so mkdir throws ENOTDIR before any decode is attempted — if that were
+		// memoized, repairing the volume wouldn't bring the thumbnail back.
+		// DERIVED_DIR stays PUT across both calls — the memo is keyed on the
+		// absolute thumb path, so repointing it would silently change the key and
+		// the assertion would hold whether or not the guard exists. Instead the
+		// thumb's own shard is blocked by a regular file, which is repairable in
+		// place.
+		const shard = resolve(state.derived, dirname(thumbStoragePath(VIDEO_PATH)));
+		mkdirSync(dirname(shard), { recursive: true });
+		writeFileSync(shard, 'a file where the shard directory needs to be');
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		writeSource(VIDEO_PATH);
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		expect(state.calls).toHaveLength(0); // mkdir threw before any decode
+
+		// Volume repaired, same path as before. The very next request must retry.
+		rmSync(shard);
+		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+		expect(thumb).not.toBeNull();
+		expect(state.calls).toHaveLength(1);
+		vi.restoreAllMocks();
 	});
 
 	it('lets a thumbnail that appears later win over a remembered failure', async () => {
