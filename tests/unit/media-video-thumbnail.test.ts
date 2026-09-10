@@ -185,6 +185,20 @@ describe('video thumbnails', () => {
 		expect(argAfter(state.calls[1], '-ss')).toBe('0');
 	});
 
+	it('does not retry when the first attempt actually failed', async () => {
+		// Only an EMPTY output earns a retry (a clip shorter than the seek). When
+		// ffmpeg throws — undecodable input, no such binary, a timeout kill —
+		// re-running the identical decode at a different -ss reaches the same
+		// answer, so the retry only doubles the work and doubles the worst-case
+		// hold on a generation slot. It also buries ffmpeg's real stderr behind a
+		// second, less informative failure.
+		state.outcomes = ['fail', 'ok'];
+		writeSource(VIDEO_PATH);
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		expect(state.calls).toHaveLength(1);
+	});
+
 	it('returns null rather than throwing when the file cannot be decoded', async () => {
 		state.outcomes = ['fail'];
 		writeSource(VIDEO_PATH);

@@ -220,12 +220,24 @@ async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void
  * than by failing — so an empty output has to be checked for, not waited on.
  */
 async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
-	if (await tryFrameAt(sourceAbs, tmpAbs, SEEK_SECONDS)) return;
+	// Only ONE of the two ways this attempt can fail is worth retrying past, so
+	// they are kept apart rather than collapsed into a boolean:
+	//
+	//   'ok'    — a frame landed; done.
+	//   'empty' — ffmpeg exited 0 and wrote nothing, which is how it reports a
+	//             seek past the end of a clip shorter than SEEK_SECONDS. Frame
+	//             zero will work. Retry.
+	//   'error' — ffmpeg threw: undecodable input, no such binary, or a timeout
+	//             kill. Re-running the identical decode at a different -ss fails
+	//             identically, so retrying doubles the work and doubles the
+	//             worst-case hold on a generation slot (2 x FFMPEG_TIMEOUT_MS)
+	//             to reach the same answer. Rethrow instead, which also puts
+	//             ffmpeg's real stderr in the log on the FIRST attempt rather
+	//             than the second.
+	const first = await frameAt(sourceAbs, tmpAbs, SEEK_SECONDS);
+	if (first === 'ok') return;
+	if (typeof first === 'object') throw first.cause;
 
-	// Deliberately UNguarded, unlike the attempt above. A seek past the end is an
-	// ordinary outcome worth retrying past; frame zero failing means the file is
-	// genuinely undecodable, and then ffmpeg's own stderr is the useful thing to
-	// surface — `generateThumbnail`'s catch logs it.
 	await runFrameAt(sourceAbs, tmpAbs, '0');
 	const st = await statOrNull(tmpAbs);
 	if (st === null || st.size === 0) {
@@ -233,16 +245,21 @@ async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void
 	}
 }
 
-/** True when a non-empty JPEG landed. Swallows every failure — a caller uses
- *  this to decide whether a fallback is needed, not to learn why. */
-async function tryFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<boolean> {
+type FrameOutcome = 'ok' | 'empty' | { readonly kind: 'error'; readonly cause: Error };
+
+/** Runs one attempt and classifies it. The distinction that matters is between
+ *  ffmpeg failing and ffmpeg succeeding at producing nothing — the exit status
+ *  alone can't tell those apart, so the output has to be stat'd. */
+async function frameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<FrameOutcome> {
 	try {
 		await runFrameAt(sourceAbs, tmpAbs, seek);
-	} catch {
-		return false;
+	} catch (cause) {
+		// Normalized so the rethrow above stays a real Error — execFile always
+		// rejects with one, but the type doesn't say so.
+		return { kind: 'error', cause: cause instanceof Error ? cause : new Error(String(cause)) };
 	}
 	const st = await statOrNull(tmpAbs);
-	return st !== null && st.size > 0;
+	return st !== null && st.size > 0 ? 'ok' : 'empty';
 }
 
 async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<void> {
