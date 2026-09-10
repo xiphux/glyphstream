@@ -13,9 +13,14 @@ import {
 import type { RequestHandler } from './$types';
 
 /**
- * Serve a grid-thumbnail variant of a stored image. Used by the
- * gallery's tile grid; the chat surface and lightbox keep pointing
- * at /content for full-resolution viewing.
+ * Serve a small JPEG standing in for a stored image or video.
+ *
+ * Three consumers: the gallery's tile grid, and the `poster` on the
+ * `<video>` in both the chat surface and the lightbox. Those two also
+ * use /content, but for playback — the poster is what they show until
+ * the user presses play. Note the poster is grid-sized (THUMB_MAX_DIM,
+ * 512px on the long side), so on a full-viewport lightbox it is being
+ * upscaled until the first decoded frame replaces it.
  *
  * On cache miss the response is delayed briefly while sharp resizes
  * + writes the thumb; on subsequent calls the file is just streamed

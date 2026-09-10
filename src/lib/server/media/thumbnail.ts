@@ -111,10 +111,18 @@ export function thumbStoragePath(storagePath: string): string {
 const inFlight = new Map<string, Promise<ThumbnailRef | null>>();
 
 /**
- * Concurrent sharp pipelines. Small on purpose: sharp already parallelizes a
- * single resize across its thread pool, so several at once mostly contend. The
- * point is to keep a burst of misses from swamping the box while other requests
- * (and other users' streams) need CPU.
+ * Concurrent generations, of either kind. Small on purpose, though the two
+ * kinds want it for different reasons: sharp already parallelizes a single
+ * resize across its thread pool, so several at once mostly contend, while
+ * ffmpeg runs as separate processes that don't contend for that pool but do
+ * compete for CPU and memory. The shared point is to keep a burst of misses
+ * from swamping the box while other requests (and other users' streams) need
+ * CPU.
+ *
+ * Shared rather than per-kind so the total is bounded by one number. The cost
+ * is head-of-line blocking — a fast image thumbnail can queue behind video
+ * decodes — which is why the video path is bounded in time (FFMPEG_TIMEOUT_MS)
+ * and no longer retries a decode that already failed.
  */
 const MAX_CONCURRENT_GENERATIONS = 3;
 let active = 0;

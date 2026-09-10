@@ -728,11 +728,14 @@ export function setConversationAvatar(
 						eq(media.id, mediaId),
 						eq(media.userId, userId),
 						// Every avatar surface renders an <img> against
-						// /api/media/:id/thumbnail, which 404s a non-image kind — so a
-						// video or a spreadsheet here is a permanently broken avatar AND
-						// a permanent ref_count on an upload the purger can then never
-						// reap. The clients already filter to images; this is the server
-						// not taking their word for it.
+						// /api/media/:id/thumbnail. That endpoint serves video too now,
+						// so the guard is no longer about what it will refuse — it is
+						// about what an avatar should BE: a video poster in an <img> is
+						// a still frame masquerading as a picture the user chose, and a
+						// spreadsheet is a permanently broken avatar. Either also pins a
+						// ref_count on an upload the purger can then never reap. The
+						// clients already filter to images; this is the server not taking
+						// their word for it.
 						eq(media.kind, 'image'),
 						isNull(media.hardDeletedAt),
 					),
