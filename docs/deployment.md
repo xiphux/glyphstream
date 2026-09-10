@@ -7,9 +7,16 @@ persistence and mount `config.toml` read-only.
 
 The image carries a **decode-only ffmpeg** (~5 MB), built by its own stage
 rather than installed, and used for one thing: extracting a frame for a
-video's gallery thumbnail. It is a runtime dependency of that path only — if
-you run the built output outside this image and `ffmpeg` isn't on `PATH`,
-videos simply get no poster and everything else is unaffected. **Put `data/` on an SSD if you
+video's gallery thumbnail. It covers H.264, HEVC, VP8, VP9, AV1 and MJPEG in
+MP4/MOV and WebM/MKV containers — anything else stores fine and simply gets no
+thumbnail.
+
+It is a runtime dependency of that path only, but if you run the built output
+outside this image and `ffmpeg` isn't on `PATH`, be clear about what you lose:
+**video tiles render as empty boxes.** Not "a slightly worse frame" — the
+gallery relies on the poster now and no longer asks the browser to fetch its
+own, so there is no client-side fallback behind it. Images, playback, uploads
+and everything else are genuinely unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
 spinning disks that is the dominant cost of a cold load. Never put the
