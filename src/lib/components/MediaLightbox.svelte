@@ -701,6 +701,14 @@
 									letting object-contain letterbox the frame keeps the poster and
 									removes the jump. The chat surface never had this because its
 									w-full drives the width and the poster only supplies the ratio.
+
+									Two consequences of pinning the box, both accepted: `rounded-lg`
+									is dropped because it would round a transparent box rather than
+									the frame, and the native controls sit at the bottom of that box
+									rather than the picture — object-fit moves the content, not the
+									element. Fixing the controls would need a wrapper sized from the
+									media's real aspect ratio, which is more machinery than a
+									letterbox gap against a black backdrop is worth.
 								-->
 								<video
 									src="/api/media/{s.id}/content"
@@ -708,7 +716,7 @@
 									controls
 									playsinline
 									preload="none"
-									class="h-full w-full rounded-lg object-contain"
+									class="h-full w-full object-contain"
 								></video>
 							{:else}
 								<!--

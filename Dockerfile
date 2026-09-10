@@ -176,18 +176,30 @@ RUN ./configure \
 # scale filter, the file protocol on the output side — by running the exact
 # argument list from media/thumbnail.ts against a real h264 mp4.
 #
-# The distro ffmpeg is here only to MAKE the sample, and this whole stage is
+# The ROTATED sample is not redundant. ffmpeg applies a display matrix by
+# INSERTING transpose/hflip/vflip into the filtergraph, and this build names
+# neither in --enable-filter — so it looks, repeatedly and convincingly, like
+# every phone-shot video must fail here. It doesn't: configure's `ffmpeg_select`
+# force-enables those filters for the CLI after --disable-everything. Three
+# separate reviewers chased that reading; this probe answers it in the build log
+# rather than in someone's afternoon.
+#
+# The distro ffmpeg is here only to MAKE the samples, and this whole stage is
 # discarded, so it costs the shipped image nothing. Without it a future edit to
 # --enable-filter or --enable-muxer would build green and blank every video tile
 # in production, where a broken ffmpeg and an undecodable file look identical.
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
          -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
-    && /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -threads 1 \
-         -max_pixels 33177600 -protocol_whitelist file -ss 0 -i /tmp/probe.mp4 -frames:v 1 \
-         -vf "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease" \
-         -q:v 8 -f image2 -y /tmp/probe.jpg \
-    && test -s /tmp/probe.jpg
+    && ffmpeg -hide_banner -loglevel error -display_rotation 90 -i /tmp/probe.mp4 \
+         -c copy -y /tmp/probe-rot.mp4 \
+    && for f in probe probe-rot; do \
+         /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -threads 1 \
+           -max_pixels 33177600 -protocol_whitelist file -ss 0 -i /tmp/$f.mp4 -frames:v 1 \
+           -vf "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease" \
+           -q:v 8 -f image2 -y /tmp/$f.jpg \
+         && test -s /tmp/$f.jpg || exit 1; \
+       done
 
 # --- runtime ----------------------------------------------------------
 FROM node:26-alpine AS runtime

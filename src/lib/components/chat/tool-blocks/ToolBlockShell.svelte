@@ -107,8 +107,17 @@
 				/>
 			{:else if att.type === 'video'}
 				<!-- svelte-ignore a11y_media_has_caption -->
+				<!--
+					Poster but NOT preload="none", unlike the other video surfaces. This
+					one sizes with `w-auto max-w-full`, so with no loaded data it would
+					take its intrinsic size from the 512px poster and stay there until
+					play — the regression the lightbox hit. Leaving preload alone means
+					metadata still arrives and corrects the box, so the poster only
+					covers the gap before that instead of defining it.
+				-->
 				<video
 					src="/api/media/{att.mediaId}/content"
+					poster="/api/media/{att.mediaId}/thumbnail"
 					controls
 					playsinline
 					class="block h-auto max-h-[60vh] w-auto max-w-full rounded-md"

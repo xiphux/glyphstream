@@ -14,9 +14,10 @@ thumbnail.
 It is a runtime dependency of that path only, but if you run the built output
 outside this image and `ffmpeg` isn't on `PATH`, be clear about what you lose:
 **every video renders as an empty box until you press play** — gallery tiles,
-chat messages, and the lightbox alike. Not "a slightly worse frame": all three
-surfaces rely on the poster now and no longer ask the browser to fetch a frame
-of their own, so there is no client-side fallback behind it. Images, uploads,
+chat messages, tool-call attachments, and the lightbox alike. Not "a slightly
+worse frame": those surfaces rely on the poster now and mostly no longer ask
+the browser to fetch a frame of their own, so there is little client-side
+fallback behind it. Images, uploads,
 and playback once started are unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on

@@ -474,6 +474,16 @@ async function runFrameAt(
 
 	try {
 		await Promise.race([run, deadline]);
+	} catch (e) {
+		if (e instanceof FfmpegDeadline) {
+			// We have given up on this child, but it may still be alive and may yet
+			// create its output — after the caller's own cleanup has run. Nothing
+			// will ever reference this path again, and nothing sweeps DERIVED_DIR,
+			// so reclaim it whenever the child finally settles. Not awaited: the
+			// point of the deadline is that this may be never.
+			void run.finally(() => unlink(tmpAbs).catch(() => {})).catch(() => {});
+		}
+		throw e;
 	} finally {
 		clearTimeout(timer);
 	}
@@ -654,7 +664,16 @@ async function generateThumbnail(
 			const stats = await stat(thumbAbs);
 			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/jpeg' };
 		} catch (e) {
-			await unlink(tmpAbs).catch(() => {});
+			// A deadline means the filesystem stopped answering, so awaiting an
+			// unlink against it would hang exactly the way the child did — and take
+			// the slot-release guarantee down with it, which is the one thing the
+			// deadline exists to protect. Fire it and move on; `runFrameAt` has
+			// already arranged for the path to be reclaimed if the child ever wakes.
+			if (e instanceof DecodeError && e.cause instanceof FfmpegDeadline) {
+				void unlink(tmpAbs).catch(() => {});
+			} else {
+				await unlink(tmpAbs).catch(() => {});
+			}
 			// One bad input shouldn't kill the endpoint. Log + null: for an IMAGE
 			// the caller then falls back to streaming the original, but for a VIDEO
 			// there is no such fallback and the endpoint 404s — a `poster` pointing
