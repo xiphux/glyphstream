@@ -119,10 +119,21 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # Cold build is ~30s — configure skips probing everything that's disabled, and
 # make compiles a few dozen files instead of thousands.
 FROM alpine:3.22 AS ffmpeg
+# Bump these two together. The digest is what makes the version a pin rather
+# than a label — without it, `7.1.1` means "whatever that URL serves today".
 ARG FFMPEG_VERSION=7.1.1
+ARG FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
 RUN apk add --no-cache build-base nasm yasm tar xz wget pkgconf dav1d-dev
 WORKDIR /src
+# Be honest about what this check is: the digest was taken from this same
+# download, so it is trust-on-first-use. It makes the artifact immutable from
+# here on — a corrupted transfer, a mirror serving something else, or a
+# re-rolled release all fail the build instead of being compiled into an image
+# that then decodes arbitrary uploads. It is NOT origin verification; upstream
+# publishes a detached GPG signature (`.asc`) for that, which needs the release
+# key pinned and is the stronger option if this ever warrants it.
 RUN wget -qO ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+    && echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c - \
     && tar xf ffmpeg.tar.xz --strip-components=1 \
     && rm ffmpeg.tar.xz
 RUN ./configure \
