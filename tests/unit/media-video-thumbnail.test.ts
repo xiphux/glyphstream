@@ -12,6 +12,12 @@
  * the exit status: ffmpeg reports "seek landed past the end" by exiting 0 having
  * written nothing at all, so an empty output is a distinct outcome from a
  * failure and both have to be reachable here.
+ *
+ * Isolation note: the module keeps a process-wide `failed` set, and these tests
+ * share one storage path. They don't interfere because the set is keyed on the
+ * ABSOLUTE thumb path and `beforeEach` mints a fresh DERIVED_DIR, so every test
+ * gets its own key space. Point the temp dirs at one shared location to "tidy
+ * up" and a failure recorded by one test starts short-circuiting the next.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -200,6 +206,53 @@ describe('video thumbnails', () => {
 		const shard = resolve(state.derived, dirname(thumbStoragePath(VIDEO_PATH)));
 		const leftovers = existsSync(shard) ? readdirSync(shard).filter((f) => f.endsWith('.tmp')) : [];
 		expect(leftovers).toEqual([]);
+	});
+
+	it('does not re-decode a source that already failed', async () => {
+		// The gallery is virtualized, so scrolling a tile out of view and back
+		// re-creates the <video> and re-requests its poster. Without a memo that is
+		// a fresh ffmpeg spawn every time, forever, for a file that will never
+		// decode — and the two permanent cases are ordinary: a container outside
+		// the shipped demuxers, and no ffmpeg on PATH at all.
+		state.outcomes = ['fail'];
+		writeSource(VIDEO_PATH);
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		const afterFirst = state.calls.length;
+		expect(afterFirst).toBeGreaterThan(0);
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		expect(state.calls).toHaveLength(afterFirst);
+	});
+
+	it('still retries a source that was merely missing', async () => {
+		// The one failure that routinely un-fails itself: a row can be ahead of its
+		// bytes mid-write, and a network-mounted MEDIA_DIR can stat-fail for a
+		// mount that comes back. Remembering it would strand the media permanently
+		// for the life of the process, so this case must NOT be memoized.
+		await expect(getOrCreateThumbnail('zz/zz/later.mp4', 'video')).resolves.toBeNull();
+		expect(state.calls).toHaveLength(0); // never reached ffmpeg
+
+		writeSource('zz/zz/later.mp4');
+		const thumb = await getOrCreateThumbnail('zz/zz/later.mp4', 'video');
+		expect(thumb).not.toBeNull();
+	});
+
+	it('lets a thumbnail that appears later win over a remembered failure', async () => {
+		// The memo is consulted AFTER the disk probe, so a backfill or a restored
+		// DERIVED_DIR is picked up rather than shadowed by a stale entry.
+		state.outcomes = ['fail'];
+		writeSource(VIDEO_PATH);
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+
+		const thumbAbs = resolve(state.derived, thumbStoragePath(VIDEO_PATH));
+		mkdirSync(dirname(thumbAbs), { recursive: true });
+		writeFileSync(thumbAbs, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]));
+
+		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+		expect(thumb).not.toBeNull();
+		expect(thumb!.absolutePath).toBe(thumbAbs);
 	});
 
 	it('serves the cached frame without invoking ffmpeg again', async () => {

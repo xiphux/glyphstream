@@ -277,6 +277,41 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 }
 
 /**
+ * Sources that failed to decode, so the next request doesn't pay for the same
+ * answer again.
+ *
+ * Success caches itself — the thumb on disk IS the memo. Failure had nothing,
+ * so every view re-ran the whole pipeline. That was tolerable while the only
+ * decoder was sharp, which fails in-process in milliseconds and whose caller
+ * still gets the original streamed to it. It is not tolerable for video: the
+ * failure spawns a process, takes one of MAX_CONCURRENT_GENERATIONS slots, and
+ * ends in a 404 that leaves the tile blank — so the user has every reason to
+ * reload, and the gallery is virtualized, so merely scrolling past a tile and
+ * back re-requests it.
+ *
+ * Two failure classes are permanent rather than transient, which is what makes
+ * this worth having: a container outside the shipped demuxers (classifyUpload
+ * accepts ANY `video/*`, this build reads mov and matroska), and no ffmpeg on
+ * PATH at all — which docs/deployment.md documents as a supported way to run.
+ * In that second case EVERY video in the library is permanently undecodable.
+ *
+ * In-memory and bounded, mirroring `declined` in vision-variant.ts: a restart
+ * retries everything, which is the behaviour you want when the fix was
+ * installing ffmpeg or rebuilding with another demuxer. Keyed on `thumbAbs`
+ * rather than `storagePath` so it can't collide across DERIVED_DIR changes.
+ */
+const failed = new Set<string>();
+const FAILED_MAX = 4096;
+
+/** Remember a failure, clearing wholesale at the cap. Wholesale rather than LRU
+ *  because the entries are worthless — the cost of forgetting one is a single
+ *  re-attempt, so tracking recency would cost more than it saves. */
+function rememberFailure(thumbAbs: string): void {
+	if (failed.size >= FAILED_MAX) failed.clear();
+	failed.add(thumbAbs);
+}
+
+/**
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. Returns null if neither
  * is possible (source missing, sharp decode error). Callers should
@@ -301,6 +336,11 @@ export async function getOrCreateThumbnail(
 		return { absolutePath: thumbAbs, byteSize: cached.size, contentType: 'image/jpeg' };
 	}
 
+	// Checked AFTER the disk probe, not before: a thumb that appeared since the
+	// failure (a backfill, a manual copy, a rebuilt DERIVED_DIR) should win over
+	// a stale memo, and the probe is one stat either way.
+	if (failed.has(thumbAbs)) return null;
+
 	const existing = inFlight.get(thumbAbs);
 	if (existing) return existing;
 
@@ -318,6 +358,10 @@ async function generateThumbnail(
 	storagePath: string,
 	kind: ThumbnailSourceKind,
 ): Promise<ThumbnailRef | null> {
+	// NOT remembered: a missing source is the one failure here that routinely
+	// un-fails itself. The media row can be ahead of its bytes mid-write, and
+	// under a network-mounted MEDIA_DIR a stat can fail for a mount that comes
+	// back. Cheap to re-check, too — one stat, no slot taken.
 	if (!(await statOrNull(sourceAbs))) return null;
 
 	await acquireSlot();
@@ -354,9 +398,15 @@ async function generateThumbnail(
 			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/jpeg' };
 		} catch (e) {
 			await unlink(tmpAbs).catch(() => {});
-			// One bad input shouldn't kill the endpoint. Log + null so
-			// the caller falls back to the original.
+			// One bad input shouldn't kill the endpoint. Log + null: for an IMAGE
+			// the caller then falls back to streaming the original, but for a VIDEO
+			// there is no such fallback and the endpoint 404s — a `poster` pointing
+			// at an mp4 renders nothing. See the endpoint's own comment.
 			console.warn(`[thumbnail] generation failed for ${storagePath}:`, e);
+			// Decode failures are overwhelmingly a property of the file (or of a
+			// decoder that isn't installed), not of the moment, so don't pay for
+			// this answer again on every gallery view.
+			rememberFailure(thumbAbs);
 			return null;
 		}
 	} finally {

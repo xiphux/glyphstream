@@ -65,7 +65,24 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	// own empty state — the same thing it showed before this endpoint handled
 	// video at all.
 	if (row.kind === 'video') {
-		error(404, 'Thumbnail unavailable');
+		// A plain Response rather than `error()` so this can carry a header:
+		// SvelteKit's error path emits no `Cache-Control`, and a 404 with no
+		// freshness information at all has no heuristic basis, so the browser
+		// re-asks every time the <video> is created. The gallery is virtualized,
+		// so that is once per scroll past the tile — and each re-ask spawns
+		// ffmpeg again on the server.
+		//
+		// Ten minutes, not the year the success path uses. This is a NEGATIVE
+		// answer and the thing that fixes it usually happens outside the app —
+		// installing ffmpeg, rebuilding with another demuxer — so it must expire
+		// on its own rather than strand a repaired install behind a stale cache.
+		return new Response('Thumbnail unavailable', {
+			status: 404,
+			headers: {
+				'Content-Type': 'text/plain; charset=utf-8',
+				'Cache-Control': 'private, max-age=600',
+			},
+		});
 	}
 
 	// Generation failed (corrupt file, sharp couldn't decode). Fall back
