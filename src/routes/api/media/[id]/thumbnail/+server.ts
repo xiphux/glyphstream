@@ -20,13 +20,18 @@ import type { RequestHandler } from './$types';
  * image-only, enforced in the DB layer), and as the `poster` on the
  * `<video>` in the chat surface and the lightbox.
  *
- * The poster is grid-sized (THUMB_MAX_DIM, 512px on the long side), so
- * a full-viewport lightbox upscales it — and it is NOT swapped out
- * when a frame decodes. HTML's show-poster flag is cleared only by
- * `play()` or a completed seek, not by reaching HAVE_CURRENT_DATA, so
- * what the viewer sees until they press play is this JPEG. Accepted:
+ * The poster is grid-sized (THUMB_MAX_DIM, 512px on the long side), and
+ * it is NOT swapped out when a frame decodes — HTML's show-poster flag
+ * is cleared only by `play()` or a completed seek, not by reaching
+ * HAVE_CURRENT_DATA. So what the viewer sees until they press play is
+ * this JPEG, upscaled on any surface bigger than a grid tile. Accepted:
  * the alternative was the browser's own frame, which on iOS Safari is
  * frequently no frame at all.
+ *
+ * A consumer must give its `<video>` a definite size for that to be an
+ * upscale rather than a shrink. With only max-constraints the element
+ * takes its INTRINSIC size from the poster and renders at 512px — see
+ * the comment on the lightbox's carousel video, which hit exactly that.
  *
  * On cache miss the response waits on the decode and the write — sharp
  * for an image, an ffmpeg subprocess for a video, the latter with a far

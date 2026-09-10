@@ -690,13 +690,25 @@
 								-->
 							{:else if s.kind === 'video'}
 								<!-- svelte-ignore a11y_media_has_caption -->
+								<!--
+									h-full w-full, not max-*: a <video> with no loaded data takes its
+									INTRINSIC size from the poster, and preload="none" means there is
+									no data until the user presses play. With only max-constraints
+									inside an items-center flex parent, that laid the element out at
+									the poster's own 512px — a small box in a full-screen overlay
+									that snapped to full size on play (measured 512x288 -> 1408x792
+									at 1440px wide, in both Chromium and WebKit). Pinning the box and
+									letting object-contain letterbox the frame keeps the poster and
+									removes the jump. The chat surface never had this because its
+									w-full drives the width and the poster only supplies the ratio.
+								-->
 								<video
 									src="/api/media/{s.id}/content"
 									poster="/api/media/{s.id}/thumbnail"
 									controls
 									playsinline
 									preload="none"
-									class="max-h-full max-w-full rounded-lg"
+									class="h-full w-full rounded-lg object-contain"
 								></video>
 							{:else}
 								<!--
