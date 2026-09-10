@@ -177,8 +177,24 @@ describe('video thumbnails', () => {
 		// allocates the frame before `scale` ever runs. Must precede -i to be in
 		// force while the decoder opens the input.
 		const call = state.calls[0];
-		expect(argAfter(call, '-max_pixels')).toBe('268435456');
+		// 8K, not sharp's ~268 MP: a video decoder holds several reference frames,
+		// so the image-side number is an order of magnitude too generous here.
+		expect(argAfter(call, '-max_pixels')).toBe('33177600');
 		expect(call.args.indexOf('-max_pixels')).toBeLessThan(call.args.indexOf('-i'));
+
+		// One frame needs one thread; the default is the core count, times three
+		// concurrent slots, on a box shared with model inference.
+		expect(argAfter(call, '-threads')).toBe('1');
+
+		// Matters outside the shipped image, where a distro ffmpeg carries every
+		// demuxer and protocol and the input is an uninspected upload.
+		expect(argAfter(call, '-protocol_whitelist')).toBe('file');
+		expect(call.args.indexOf('-protocol_whitelist')).toBeLessThan(call.args.indexOf('-i'));
+
+		// The decoder has no business seeing AUTH_SECRET or the endpoint tokens.
+		const env = call.opts.env as Record<string, string> | undefined;
+		expect(env).toBeDefined();
+		expect(Object.keys(env!)).toEqual(['PATH']);
 	});
 
 	it('retries at frame zero when the seek lands past the end of a short clip', async () => {

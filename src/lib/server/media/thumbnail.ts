@@ -211,14 +211,33 @@ const FFMPEG_TIMEOUT_MS = 20_000;
 /**
  * Ceiling on the decoded frame's pixel count.
  *
- * The image path gets this for free: sharp's `limitInputPixels` defaults to
- * ~268 MP, which is what stops a decompression bomb. ffmpeg has no such default
- * — a stream declaring enormous dimensions gets its frame buffers allocated
- * before the `scale` filter is ever reached, and `-frames:v 1` doesn't help
- * because the allocation happens for that one frame. Matched to sharp's number
- * so both decoders refuse the same inputs rather than each having its own idea.
+ * ffmpeg has no default here, and a stream declaring enormous dimensions gets
+ * its frame buffers allocated before the `scale` filter is ever reached —
+ * `-frames:v 1` doesn't help, because the allocation happens for that one
+ * frame. `classifyUpload` accepts any `video/*` without inspecting it, and a
+ * file that merely CLAIMS huge dimensions is a few KB, so the upload size cap
+ * is no defence.
+ *
+ * 8K (7680x4320), not sharp's ~268 MP. Copying sharp's number was the obvious
+ * move and the wrong one: sharp allocates a single pixel buffer, while a video
+ * decoder holds a picture buffer of several reference frames. At 268 MP one
+ * yuv420p frame alone is ~400 MB, times reference frames, times the three
+ * generation slots. 33 MP is still four times any real source and cuts the
+ * worst case by an order of magnitude.
  */
-const FFMPEG_MAX_PIXELS = '268435456';
+const FFMPEG_MAX_PIXELS = '33177600';
+
+/**
+ * One decode thread.
+ *
+ * ffmpeg and libdav1d both default to the core count, so three concurrent
+ * generations would fan out to three times `nproc` threads. Frame-level
+ * threading buys essentially nothing when the whole job is one seeked keyframe,
+ * so that is close to pure overhead — and it makes MAX_CONCURRENT_GENERATIONS
+ * mean what its comment says, which matters on a host sharing CPU with local
+ * model inference.
+ */
+const FFMPEG_THREADS = '1';
 
 const execFileAsync = promisify(execFile);
 
@@ -302,10 +321,19 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 			// Never let ffmpeg reach for the terminal. It has no stdin here, and a
 			// build that decided to prompt would block rather than fail.
 			'-nostdin',
-			// Before -i: this bounds what the DECODER will allocate, so it has to
-			// be in effect while the input is being opened.
+			'-threads',
+			FFMPEG_THREADS,
+			// Before -i: these bound what the DECODER does, so they have to be in
+			// effect while the input is being opened.
 			'-max_pixels',
 			FFMPEG_MAX_PIXELS,
+			// Belt and braces in the shipped image, which is built `--disable-network`
+			// with only the `file` protocol — and load-bearing outside it, where
+			// docs/deployment.md says a distro ffmpeg is a supported way to run. Those
+			// carry every demuxer, and the bytes here arrived as an upload that was
+			// never inspected past a client-supplied `Content-Type: video/*`.
+			'-protocol_whitelist',
+			'file',
 			'-ss',
 			seek,
 			'-i',
@@ -323,7 +351,17 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 			'-y',
 			tmpAbs,
 		],
-		{ timeout: FFMPEG_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 },
+		{
+			timeout: FFMPEG_TIMEOUT_MS,
+			killSignal: 'SIGKILL',
+			maxBuffer: 1024 * 1024,
+			// An explicit environment rather than inheriting this process's. Node
+			// passes the parent's env by default, and ours holds AUTH_SECRET,
+			// MCP_SECRET_KEY and every per-endpoint API token — none of which a
+			// media decoder has any use for. PATH is kept because that is how the
+			// binary is found at all.
+			env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
+		},
 	);
 }
 
