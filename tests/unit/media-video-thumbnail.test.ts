@@ -9,9 +9,12 @@
  * ffmpeg's business, verified against real files when the build was chosen.
  *
  * The mocked binary WRITES A FILE, because the code deliberately doesn't trust
- * the exit status: ffmpeg reports "seek landed past the end" by exiting 0 having
- * written nothing at all, so an empty output is a distinct outcome from a
- * failure and both have to be reachable here.
+ * the exit status — and cannot, because ffmpeg changed it. Asked to seek past
+ * the end of a clip, ffmpeg 5 and 6 exit 0 having written nothing while ffmpeg 7
+ * exits non-zero, and both generations are deployable (the image pins 7;
+ * docs/deployment.md supports a system ffmpeg on PATH). So the mock models exit
+ * status and output as INDEPENDENT axes, which is the whole point of the code
+ * under test.
  *
  * Isolation note: the module keeps a process-wide `failed` set, and these tests
  * share one storage path. They don't interfere because the set is keyed on the
@@ -24,7 +27,10 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
-type FfmpegOutcome = 'ok' | 'empty' | 'fail';
+/** 'empty' is ffmpeg 5/6 reporting a seek past the end: exit 0, no output.
+ *  'fail' is ffmpeg 7 reporting the SAME situation, and also a genuinely
+ *  undecodable file: non-zero exit, no output. 'timeout' is a kill. */
+type FfmpegOutcome = 'ok' | 'empty' | 'fail' | 'timeout';
 
 /** What `promisify` hands execFile as its final argument. */
 type ExecFileCallback = (err: Error | null, result?: { stdout: string; stderr: string }) => void;
@@ -58,8 +64,12 @@ vi.mock('node:child_process', () => ({
 		state.calls.push({ args, opts });
 		const outcome = state.outcomes[Math.min(state.calls.length - 1, state.outcomes.length - 1)];
 		const out = args[args.length - 1];
+		if (outcome === 'timeout') {
+			cb(Object.assign(new Error('ffmpeg killed'), { killed: true, signal: 'SIGKILL' }));
+			return;
+		}
 		if (outcome === 'fail') {
-			cb(new Error('ffmpeg: Invalid data found when processing input'));
+			cb(new Error('ffmpeg: Nothing was written into output file'));
 			return;
 		}
 		if (outcome === 'ok') {
@@ -210,14 +220,26 @@ describe('video thumbnails', () => {
 		expect(argAfter(state.calls[1], '-ss')).toBe('0');
 	});
 
-	it('does not retry when the first attempt actually failed', async () => {
-		// Only an EMPTY output earns a retry (a clip shorter than the seek). When
-		// ffmpeg throws — undecodable input, no such binary, a timeout kill —
-		// re-running the identical decode at a different -ss reaches the same
-		// answer, so the retry only doubles the work and doubles the worst-case
-		// hold on a generation slot. It also buries ffmpeg's real stderr behind a
-		// second, less informative failure.
+	it('retries when a NON-ZERO exit produced no frame, which is how ffmpeg 7 reports a short clip', async () => {
+		// The regression this guards. Keying the retry on "exited 0 with no
+		// output" was correct for ffmpeg 5 and 6 and became dead code on 7, which
+		// reports the same seek-past-end as exit 234. A clip shorter than the seek
+		// then got no thumbnail at all — the one case the retry exists for.
 		state.outcomes = ['fail', 'ok'];
+		writeSource(VIDEO_PATH);
+
+		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+		expect(thumb).not.toBeNull();
+		expect(state.calls).toHaveLength(2);
+		expect(argAfter(state.calls[1], '-ss')).toBe('0');
+	});
+
+	it('does not retry a timeout', async () => {
+		// The one failure where a retry is expensive rather than cheap: it re-pays
+		// the whole budget to reach the same place, and doubles how long one file
+		// can hold a generation slot the image path also draws from. An ordinary
+		// decode failure is milliseconds, so retrying that is nearly free.
+		state.outcomes = ['timeout', 'ok'];
 		writeSource(VIDEO_PATH);
 
 		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
@@ -285,7 +307,7 @@ describe('video thumbnails', () => {
 		// forever strands a perfectly good source until someone restarts the
 		// process — and on the image path the endpoint would go on serving
 		// full-resolution originals under a year-long immutable cache.
-		state.outcomes = ['fail'];
+		state.outcomes = ['timeout'];
 		writeSource(VIDEO_PATH);
 		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
 		expect(state.calls).toHaveLength(1);

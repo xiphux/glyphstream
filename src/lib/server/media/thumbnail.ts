@@ -269,50 +269,98 @@ async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void
  * than by failing — so an empty output has to be checked for, not waited on.
  */
 async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
-	// Only ONE of the two ways this attempt can fail is worth retrying past, so
-	// they are kept apart rather than collapsed into a boolean:
-	//
-	//   'ok'    — a frame landed; done.
-	//   'empty' — ffmpeg exited 0 and wrote nothing, which is how it reports a
-	//             seek past the end of a clip shorter than SEEK_SECONDS. Frame
-	//             zero will work. Retry.
-	//   'error' — ffmpeg threw: undecodable input, no such binary, or a timeout
-	//             kill. Re-running the identical decode at a different -ss fails
-	//             identically, so retrying doubles the work and doubles the
-	//             worst-case hold on a generation slot (2 x FFMPEG_TIMEOUT_MS)
-	//             to reach the same answer. Rethrow instead, which also puts
-	//             ffmpeg's real stderr in the log on the FIRST attempt rather
-	//             than the second.
+	// Retry on "no frame came out", not on "ffmpeg was unhappy" — see `frameAt`
+	// for why the exit status is the wrong thing to key on. The only failure
+	// held back from the retry is a timeout.
 	const first = await frameAt(sourceAbs, tmpAbs, SEEK_SECONDS);
 	if (first === 'ok') return;
+	// A timeout is the one failure not worth a second attempt: it would re-pay
+	// the entire budget to arrive at the same place, and doubles how long one
+	// file can hold a generation slot the image path also draws from.
 	if (typeof first === 'object') throw first.cause;
 
-	await runFrameAt(sourceAbs, tmpAbs, '0');
-	const st = await statOrNull(tmpAbs);
-	if (st === null || st.size === 0) {
-		throw new Error(`ffmpeg exited cleanly but wrote no frame for ${sourceAbs}`);
-	}
+	const second = await frameAt(sourceAbs, tmpAbs, '0');
+	if (second === 'ok') return;
+	if (typeof second === 'object') throw second.cause;
+	throw new Error(`ffmpeg produced no frame for ${sourceAbs} at either seek`);
 }
 
-type FrameOutcome = 'ok' | 'empty' | { readonly kind: 'error'; readonly cause: Error };
+type FrameOutcome =
+	| 'ok'
+	/** Produced no frame, and failed fast enough that trying another seek is
+	 *  cheap. Covers both ways ffmpeg reports a seek past the end of a clip. */
+	| 'no-frame'
+	/** Produced no frame because it ran out of time. Retrying re-pays the whole
+	 *  timeout to reach the same place, so this one doesn't. */
+	| { readonly kind: 'timeout'; readonly cause: Error };
 
-/** Runs one attempt and classifies it. The distinction that matters is between
- *  ffmpeg failing and ffmpeg succeeding at producing nothing — the exit status
- *  alone can't tell those apart, so the output has to be stat'd. */
+/**
+ * Runs one attempt and classifies it by what the CALLER can do about it, which
+ * is not the same as how ffmpeg reported it.
+ *
+ * Deliberately not keyed on the exit status, because ffmpeg changed its mind
+ * about that. Asked to seek past the end of a clip, ffmpeg 5 and 6 exit 0
+ * having written nothing; ffmpeg 7 (what the Dockerfile pins) exits 234 —
+ * AVERROR(EINVAL) from `of_write_trailer`, "Nothing was written into output
+ * file". Both are the same situation and both want the same retry, and
+ * docs/deployment.md supports running against a system ffmpeg on PATH, so both
+ * generations are live deployments. What actually separates them from a real
+ * failure is the OUTPUT, so that is what gets stat'd.
+ *
+ * A genuinely undecodable file also lands in `no-frame` and gets one wasted
+ * retry. That is a fast failure (ffmpeg rejects a bad container in
+ * milliseconds), so it costs far less than getting the short-clip case wrong.
+ * A TIMEOUT is the one failure where a retry is expensive rather than cheap,
+ * which is why it is pulled out separately.
+ */
 async function frameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<FrameOutcome> {
 	try {
 		await runFrameAt(sourceAbs, tmpAbs, seek);
 	} catch (cause) {
-		// Normalized so the rethrow above stays a real Error — execFile always
-		// rejects with one, but the type doesn't say so.
-		return { kind: 'error', cause: cause instanceof Error ? cause : new Error(String(cause)) };
+		const err = cause instanceof Error ? cause : new Error(String(cause));
+		// Either our own deadline, or execFile's kill landing first. `killed`/
+		// `signal` are how Node reports the latter.
+		const killed = err as Error & { killed?: boolean; signal?: string };
+		if (err instanceof FfmpegDeadline || killed.killed === true || killed.signal === 'SIGKILL') {
+			return { kind: 'timeout', cause: err };
+		}
+		return 'no-frame';
 	}
 	const st = await statOrNull(tmpAbs);
-	return st !== null && st.size > 0 ? 'ok' : 'empty';
+	return st !== null && st.size > 0 ? 'ok' : 'no-frame';
 }
 
+/**
+ * Our own deadline expiring, as opposed to ffmpeg failing.
+ *
+ * `execFile`'s `timeout` bounds when the KILL SIGNAL IS SENT, not when the
+ * promise settles — its callback runs off the child's `close` event, and the
+ * only path from the timeout to that callback is `child.kill()` itself
+ * throwing. A process blocked in uninterruptible I/O (a hard NFS mount gone
+ * away, a failing device) cannot be reaped, so the promise never settles, the
+ * `finally` that releases the generation slot never runs, and the `inFlight`
+ * entry keeps handing that dead promise to every later caller — who then await
+ * it forever, with no response.
+ *
+ * Racing an independent timer means the slot comes back whether or not the
+ * child ever does. It does NOT reap the child; nothing in Node can. That is the
+ * OS's problem, and one leaked process is a great deal better than one leaked
+ * slot out of three shared with every image thumbnail.
+ */
+class FfmpegDeadline extends Error {
+	constructor(seconds: number) {
+		super(`ffmpeg did not settle within ${seconds}s`);
+		this.name = 'FfmpegDeadline';
+	}
+}
+
+/** How long past `FFMPEG_TIMEOUT_MS` to wait before giving up on the child
+ *  settling at all. Non-zero so the ordinary case — SIGKILL lands, execFile
+ *  rejects — still surfaces ffmpeg's own error rather than ours. */
+const FFMPEG_REAP_GRACE_MS = 2_000;
+
 async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<void> {
-	await execFileAsync(
+	const run = execFileAsync(
 		'ffmpeg',
 		[
 			'-hide_banner',
@@ -363,6 +411,24 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 			env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
 		},
 	);
+
+	// Attached before the race so a rejection arriving after we've given up is
+	// already handled and can't surface as an unhandled rejection.
+	run.catch(() => {});
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new FfmpegDeadline((FFMPEG_TIMEOUT_MS + FFMPEG_REAP_GRACE_MS) / 1000)),
+			FFMPEG_TIMEOUT_MS + FFMPEG_REAP_GRACE_MS,
+		);
+	});
+
+	try {
+		await Promise.race([run, deadline]);
+	} finally {
+		clearTimeout(timer);
+	}
 }
 
 /**
