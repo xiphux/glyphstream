@@ -118,7 +118,14 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 #
 # Cold build is ~30s — configure skips probing everything that's disabled, and
 # make compiles a few dozen files instead of thousands.
-FROM alpine:3.22 AS ffmpeg
+# Same base as the runtime stage, deliberately. libdav1d is the one library this
+# binary links dynamically, and it is apk-installed on BOTH sides — so if the two
+# stages sat on different Alpine snapshots, a dav1d SONAME bump (libdav1d.so.7 ->
+# .so.8) in whichever one moved first would leave a binary that cannot exec. That
+# failure is silent by construction: a missing/unloadable ffmpeg is just another
+# decode failure, so the symptom would be every video tile in every deployment
+# going blank after an unrelated base-image refresh, with a green build.
+FROM node:26-alpine AS ffmpeg
 # Bump these two together. The digest is what makes the version a pin rather
 # than a label — without it, `7.1.1` means "whatever that URL serves today".
 ARG FFMPEG_VERSION=7.1.1
@@ -179,6 +186,11 @@ RUN apk add --no-cache tini sqlite
 # ffmpeg's own AV1 decoder cannot decode in software.
 RUN apk add --no-cache libdav1d
 COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
+# Prove the binary execs and found its one shared library, at BUILD time. At run
+# time an ffmpeg that won't load is indistinguishable from a file that won't
+# decode — both end up as `null` from getOrCreateThumbnail — so without this a
+# link error would ship green and surface as every video tile going blank.
+RUN ffmpeg -hide_banner -decoders | grep -q libdav1d
 
 WORKDIR /app
 
