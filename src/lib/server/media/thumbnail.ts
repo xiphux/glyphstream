@@ -275,14 +275,38 @@ async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void
 	// Retry on "no frame came out", not on "ffmpeg was unhappy" — see `frameAt`
 	// for why the exit status is the wrong thing to key on. The only failure
 	// held back from the retry is a timeout.
-	const first = await frameAt(sourceAbs, tmpAbs, SEEK_SECONDS);
+	// ONE budget across both attempts, not one each. The semaphore's rationale
+	// for sharing three slots with the image path is that video is bounded in
+	// time by FFMPEG_TIMEOUT_MS — which was only true per attempt, so a file that
+	// burned most of the budget and then errored got a second full one, holding a
+	// slot for roughly twice what the comment claimed.
+	const startedAt = Date.now();
+	const first = await frameAt(sourceAbs, tmpAbs, SEEK_SECONDS, FFMPEG_TIMEOUT_MS);
 	if (first === 'ok') return;
 	// A timeout is the one failure not worth a second attempt: it would re-pay
-	// the entire budget to arrive at the same place, and doubles how long one
-	// file can hold a generation slot the image path also draws from.
+	// what remains to arrive at the same place.
 	if (typeof first === 'object') throw first.cause;
 
-	const second = await frameAt(sourceAbs, tmpAbs, '0');
+	// Clear whatever the first attempt left. It may have written bytes before
+	// failing — an ENOSPC mid-write on DERIVED_DIR is the ordinary way — and both
+	// attempts share this path. If the second attempt then took the exit-0-wrote-
+	// nothing branch (ffmpeg 5/6's short-clip report), the stat inside `frameAt`
+	// would see the FIRST attempt's partial JPEG, call it 'ok', and rename a
+	// truncated frame into a cache the endpoint serves immutable for a year.
+	//
+	// This was genuinely safe until the retry was widened to fire on errors as
+	// well as on empty output; before that, an attempt that wrote bytes and threw
+	// never reached a second attempt at all.
+	await unlink(tmpAbs).catch(() => {});
+
+	// Whatever is left. The short-clip case this retry exists for fails in
+	// milliseconds, so a first attempt that consumed the budget has already told
+	// us the answer.
+	const remaining = FFMPEG_TIMEOUT_MS - (Date.now() - startedAt);
+	if (remaining <= 0) {
+		throw new Error(`ffmpeg exhausted its budget before a retry for ${sourceAbs}`);
+	}
+	const second = await frameAt(sourceAbs, tmpAbs, '0', remaining);
 	if (second === 'ok') return;
 	if (typeof second === 'object') throw second.cause;
 	throw new Error(`ffmpeg produced no frame for ${sourceAbs} at either seek`);
@@ -316,14 +340,26 @@ type FrameOutcome =
  * A TIMEOUT is the one failure where a retry is expensive rather than cheap,
  * which is why it is pulled out separately.
  */
-async function frameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<FrameOutcome> {
+async function frameAt(
+	sourceAbs: string,
+	tmpAbs: string,
+	seek: string,
+	budgetMs: number,
+): Promise<FrameOutcome> {
 	try {
-		await runFrameAt(sourceAbs, tmpAbs, seek);
+		await runFrameAt(sourceAbs, tmpAbs, seek, budgetMs);
 	} catch (cause) {
 		const err = cause instanceof Error ? cause : new Error(String(cause));
+		const killed = err as Error & { killed?: boolean; signal?: string; code?: string };
+		// Node kills a child that overruns `maxBuffer` with the SAME killSignal it
+		// uses for a timeout, so `killed`/`signal` alone cannot separate them — and
+		// they want opposite handling. A chatty stderr (a damaged but decodable
+		// stream logging per-slice errors) is not the process running out of time,
+		// and the retry is exactly what it needs. Tested first, before the
+		// signal-based check that would otherwise swallow it.
+		if (killed.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') return 'no-frame';
 		// Either our own deadline, or execFile's kill landing first. `killed`/
 		// `signal` are how Node reports the latter.
-		const killed = err as Error & { killed?: boolean; signal?: string };
 		if (err instanceof FfmpegDeadline || killed.killed === true || killed.signal === 'SIGKILL') {
 			return { kind: 'timeout', cause: err };
 		}
@@ -362,7 +398,12 @@ class FfmpegDeadline extends Error {
  *  rejects — still surfaces ffmpeg's own error rather than ours. */
 const FFMPEG_REAP_GRACE_MS = 2_000;
 
-async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<void> {
+async function runFrameAt(
+	sourceAbs: string,
+	tmpAbs: string,
+	seek: string,
+	budgetMs: number,
+): Promise<void> {
 	const run = execFileAsync(
 		'ffmpeg',
 		[
@@ -403,7 +444,7 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 			tmpAbs,
 		],
 		{
-			timeout: FFMPEG_TIMEOUT_MS,
+			timeout: budgetMs,
 			killSignal: 'SIGKILL',
 			maxBuffer: 1024 * 1024,
 			// An explicit environment rather than inheriting this process's. Node
@@ -422,9 +463,13 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const deadline = new Promise<never>((_, reject) => {
 		timer = setTimeout(
-			() => reject(new FfmpegDeadline((FFMPEG_TIMEOUT_MS + FFMPEG_REAP_GRACE_MS) / 1000)),
-			FFMPEG_TIMEOUT_MS + FFMPEG_REAP_GRACE_MS,
+			() => reject(new FfmpegDeadline((budgetMs + FFMPEG_REAP_GRACE_MS) / 1000)),
+			budgetMs + FFMPEG_REAP_GRACE_MS,
 		);
+		// Don't hold the event loop open. The awaited promise is what keeps the
+		// work alive; without this, a shutdown during an in-flight decode waits
+		// out the full remaining timer.
+		timer.unref?.();
 	});
 
 	try {
@@ -628,7 +673,15 @@ async function generateThumbnail(
 			// ten minutes means clients that ask during the window pin a 2 MB
 			// original as a 33 KB tile's thumbnail long after the server recovered.
 			// The transient's blast radius would outlive the transient.
-			if (kind === 'video' && e instanceof DecodeError) rememberFailure(thumbAbs);
+			// A deadline is excluded: it fires when the CHILD never settled, which
+			// says the volume stopped answering, not that this file is undecodable.
+			// Recording it per-file would blame every video the user scrolled past
+			// during an outage and keep them blank for the full TTL after the mount
+			// came back — the same reasoning that already exempts a missing source.
+			const stalled = e instanceof DecodeError && e.cause instanceof FfmpegDeadline;
+			if (kind === 'video' && e instanceof DecodeError && !stalled) {
+				rememberFailure(thumbAbs);
+			}
 			return null;
 		}
 	} finally {

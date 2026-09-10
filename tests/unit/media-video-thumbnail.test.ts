@@ -30,7 +30,7 @@ import { dirname, join, resolve } from 'node:path';
 /** 'empty' is ffmpeg 5/6 reporting a seek past the end: exit 0, no output.
  *  'fail' is ffmpeg 7 reporting the SAME situation, and also a genuinely
  *  undecodable file: non-zero exit, no output. 'timeout' is a kill. */
-type FfmpegOutcome = 'ok' | 'empty' | 'fail' | 'timeout';
+type FfmpegOutcome = 'ok' | 'empty' | 'fail' | 'timeout' | 'maxbuffer' | 'partial-then-fail';
 
 /** What `promisify` hands execFile as its final argument. */
 type ExecFileCallback = (err: Error | null, result?: { stdout: string; stderr: string }) => void;
@@ -44,6 +44,8 @@ const state = vi.hoisted(() => ({
 	outcomes: ['ok'] as FfmpegOutcome[],
 	sharpCalls: 0,
 	sharpFails: false,
+	/** Fake-clock ms each ffmpeg invocation should appear to consume. */
+	advanceMs: 0,
 }));
 
 vi.mock('$lib/server/env', () => ({
@@ -63,8 +65,27 @@ vi.mock('node:child_process', () => ({
 		cb: ExecFileCallback,
 	) => {
 		state.calls.push({ args, opts });
+		if (state.advanceMs > 0) vi.advanceTimersByTime(state.advanceMs);
 		const outcome = state.outcomes[Math.min(state.calls.length - 1, state.outcomes.length - 1)];
 		const out = args[args.length - 1];
+		if (outcome === 'maxbuffer') {
+			// Node's shape for this: killed by the SAME signal a timeout uses.
+			cb(
+				Object.assign(new Error('stdout maxBuffer length exceeded'), {
+					killed: true,
+					signal: 'SIGKILL',
+					code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+				}),
+			);
+			return;
+		}
+		if (outcome === 'partial-then-fail') {
+			// Wrote bytes, then failed — the ENOSPC-mid-write shape.
+			mkdirSync(dirname(out), { recursive: true });
+			writeFileSync(out, Buffer.from([0xff, 0xd8]));
+			cb(new Error('ffmpeg: No space left on device'));
+			return;
+		}
 		if (outcome === 'timeout') {
 			cb(Object.assign(new Error('ffmpeg killed'), { killed: true, signal: 'SIGKILL' }));
 			return;
@@ -122,6 +143,7 @@ beforeEach(() => {
 	state.outcomes = ['ok'];
 	state.sharpCalls = 0;
 	state.sharpFails = false;
+	state.advanceMs = 0;
 });
 
 afterEach(() => {
@@ -235,6 +257,56 @@ describe('video thumbnails', () => {
 		expect(thumb).not.toBeNull();
 		expect(state.calls).toHaveLength(2);
 		expect(argAfter(state.calls[1], '-ss')).toBe('0');
+	});
+
+	it('shares one timeout budget across both attempts', async () => {
+		// The semaphore shares three slots with the image path on the stated
+		// grounds that video is bounded by FFMPEG_TIMEOUT_MS. That was only true
+		// per attempt: a file that burned most of the budget and then errored used
+		// to get a second full one, holding a slot for about twice the number the
+		// comment names.
+		vi.useFakeTimers();
+		try {
+			state.outcomes = ['fail', 'ok'];
+			// Each invocation "takes" 5s of the shared budget.
+			state.advanceMs = 5_000;
+			writeSource(VIDEO_PATH);
+
+			await getOrCreateThumbnail(VIDEO_PATH, 'video');
+			expect(state.calls).toHaveLength(2);
+			const first = state.calls[0].opts.timeout as number;
+			const second = state.calls[1].opts.timeout as number;
+			// Strictly less, by what the first attempt consumed — not a fresh budget.
+			expect(second).toBe(first - 5_000);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('classifies a maxBuffer overrun as a retryable no-frame, not a timeout', async () => {
+		// Node kills a maxBuffer overrun with the same signal it uses for a
+		// timeout, so treating `killed` as decisive would deny the retry to a
+		// damaged-but-decodable stream that merely logged too much on stderr.
+		state.outcomes = ['maxbuffer', 'ok'];
+		writeSource(VIDEO_PATH);
+
+		const thumb = await getOrCreateThumbnail(VIDEO_PATH, 'video');
+		expect(thumb).not.toBeNull();
+		expect(state.calls).toHaveLength(2);
+	});
+
+	it('clears the temp file between attempts', async () => {
+		// The first attempt can write bytes and still fail (ENOSPC mid-write on
+		// DERIVED_DIR). If the second then exits 0 having written nothing — ffmpeg
+		// 5/6's short-clip report — the stat would see the first attempt's partial
+		// JPEG and rename a truncated frame into a year-long immutable cache.
+		state.outcomes = ['partial-then-fail', 'empty'];
+		writeSource(VIDEO_PATH);
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await expect(getOrCreateThumbnail(VIDEO_PATH, 'video')).resolves.toBeNull();
+		expect(existsSync(resolve(state.derived, thumbStoragePath(VIDEO_PATH)))).toBe(false);
+		vi.restoreAllMocks();
 	});
 
 	it('does not retry a timeout', async () => {
