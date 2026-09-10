@@ -128,7 +128,7 @@ describe('getOrCreateThumbnail', () => {
 	it('collapses concurrent requests for the same media into one generation', async () => {
 		seedSource('ab/cd/one.png');
 		const results = await drainUntil(
-			Promise.all(Array.from({ length: 8 }, () => getOrCreateThumbnail('ab/cd/one.png'))),
+			Promise.all(Array.from({ length: 8 }, () => getOrCreateThumbnail('ab/cd/one.png', 'image'))),
 		);
 
 		expect(state.started, 'each concurrent request started its own sharp pipeline').toBe(1);
@@ -142,7 +142,7 @@ describe('getOrCreateThumbnail', () => {
 	it('caps how many generations run at once across different media', async () => {
 		for (let i = 0; i < 12; i++) seedSource(`ab/cd/m${i}.png`);
 		const all = Promise.all(
-			Array.from({ length: 12 }, (_, i) => getOrCreateThumbnail(`ab/cd/m${i}.png`)),
+			Array.from({ length: 12 }, (_, i) => getOrCreateThumbnail(`ab/cd/m${i}.png`, 'image')),
 		);
 		// Wait for the semaphore to saturate before reading the peak. A bare tick
 		// let this pass vacuously: if the fs stats hadn't resolved yet nothing had
@@ -162,22 +162,22 @@ describe('getOrCreateThumbnail', () => {
 
 	it('serves the cached file without regenerating', async () => {
 		seedSource('ab/cd/two.png');
-		await drainUntil(getOrCreateThumbnail('ab/cd/two.png'));
+		await drainUntil(getOrCreateThumbnail('ab/cd/two.png', 'image'));
 		expect(state.started).toBe(1);
 
-		const second = await getOrCreateThumbnail('ab/cd/two.png');
+		const second = await getOrCreateThumbnail('ab/cd/two.png', 'image');
 		expect(second).not.toBeNull();
 		expect(state.started, 'a cache hit re-ran sharp').toBe(1);
 	});
 
 	it('returns null when the source is missing, without generating', async () => {
-		expect(await getOrCreateThumbnail('ab/cd/absent.png')).toBeNull();
+		expect(await getOrCreateThumbnail('ab/cd/absent.png', 'image')).toBeNull();
 		expect(state.started).toBe(0);
 	});
 
 	it('leaves no temp files behind', async () => {
 		seedSource('ab/cd/three.png');
-		await drainUntil(getOrCreateThumbnail('ab/cd/three.png'));
+		await drainUntil(getOrCreateThumbnail('ab/cd/three.png', 'image'));
 		const dir = resolve(state.root, 'ab/cd');
 		const leftovers = existsSync(dir)
 			? (await import('node:fs')).readdirSync(dir).filter((f) => f.endsWith('.tmp'))

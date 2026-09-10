@@ -112,6 +112,7 @@
 		<video
 			src="/api/media/{block.mediaId}/content"
 			poster="/api/media/{block.mediaId}/thumbnail"
+			preload="none"
 			controls
 			playsinline
 			class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"

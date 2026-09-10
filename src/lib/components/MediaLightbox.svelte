@@ -695,7 +695,7 @@
 									poster="/api/media/{s.id}/thumbnail"
 									controls
 									playsinline
-									preload="metadata"
+									preload="none"
 									class="max-h-full max-w-full rounded-lg"
 								></video>
 							{:else}

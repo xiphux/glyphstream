@@ -432,7 +432,9 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 }
 
 /**
- * Recent failures, so the next request doesn't pay for the same answer again.
+ * Recent VIDEO decode failures, so the next request doesn't pay for the same
+ * answer again. Image failures are deliberately not memoized — see the write
+ * site in `generateThumbnail`.
  *
  * Success caches itself — the thumb on disk IS the memo. Failure had nothing,
  * so every view re-ran the whole pipeline. That was tolerable while the only
@@ -501,6 +503,12 @@ function recentlyFailed(thumbAbs: string): boolean {
 }
 
 /**
+ * `kind` is REQUIRED rather than defaulting to 'image'. The default existed
+ * only to spare two older test call sites, and it was a live footgun: a caller
+ * that forgot it for a video would hand an mp4 to sharp, which throws — and
+ * that throw is now memoized, so the mistake would outlast the request. There
+ * is one production caller and it always knew the kind.
+ *
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. Returns null if neither
  * is possible: the source is missing, or the decoder — sharp for an
@@ -513,7 +521,7 @@ function recentlyFailed(thumbAbs: string): boolean {
  */
 export async function getOrCreateThumbnail(
 	storagePath: string,
-	kind: ThumbnailSourceKind = 'image',
+	kind: ThumbnailSourceKind,
 ): Promise<ThumbnailRef | null> {
 	// Two roots, because the two files want different storage. The thumbnail is
 	// small, hot, and regenerable; the original is large, cold, and irreplaceable.
@@ -608,7 +616,16 @@ async function generateThumbnail(
 			// Only what came from trying to read the source is worth remembering.
 			// A failed mkdir, rename or stat says something about the volume, and
 			// the volume gets fixed.
-			if (e instanceof DecodeError) rememberFailure(thumbAbs);
+			//
+			// VIDEO ONLY. The memo was justified entirely by the cost of a
+			// subprocess; sharp fails in-process in milliseconds, so the image path
+			// never needed it. And it would actively hurt there: a memoized image
+			// falls back to streaming the full-resolution original, which the
+			// endpoint serves `immutable` for a year — so suppressing retries for
+			// ten minutes means clients that ask during the window pin a 2 MB
+			// original as a 33 KB tile's thumbnail long after the server recovered.
+			// The transient's blast radius would outlive the transient.
+			if (kind === 'video' && e instanceof DecodeError) rememberFailure(thumbAbs);
 			return null;
 		}
 	} finally {

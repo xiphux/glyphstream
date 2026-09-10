@@ -43,6 +43,7 @@ const state = vi.hoisted(() => ({
 	/** Consumed one per invocation; the last entry repeats once exhausted. */
 	outcomes: ['ok'] as FfmpegOutcome[],
 	sharpCalls: 0,
+	sharpFails: false,
 }));
 
 vi.mock('$lib/server/env', () => ({
@@ -88,6 +89,7 @@ vi.mock('sharp', () => ({
 			resize: () => chain,
 			jpeg: () => chain,
 			toFile: (p: string) => {
+				if (state.sharpFails) return Promise.reject(new Error('sharp: unsupported image'));
 				mkdirSync(dirname(p), { recursive: true });
 				writeFileSync(p, 'image-thumb-bytes');
 				return Promise.resolve();
@@ -119,6 +121,7 @@ beforeEach(() => {
 	state.calls = [];
 	state.outcomes = ['ok'];
 	state.sharpCalls = 0;
+	state.sharpFails = false;
 });
 
 afterEach(() => {
@@ -298,6 +301,25 @@ describe('video thumbnails', () => {
 		writeSource('zz/zz/later.mp4');
 		const thumb = await getOrCreateThumbnail('zz/zz/later.mp4', 'video');
 		expect(thumb).not.toBeNull();
+	});
+
+	it('does not memoize an IMAGE failure', async () => {
+		// The memo pays for itself against a subprocess, not against sharp — and on
+		// the image path it would do harm: a memoized image falls back to streaming
+		// the full-resolution original, which the endpoint serves immutable for a
+		// year, so ten minutes of suppression pins multi-MB originals in client
+		// caches long after the server recovered.
+		state.sharpFails = true;
+		writeSource('ab/cd/pic.png');
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+		await expect(getOrCreateThumbnail('ab/cd/pic.png', 'image')).resolves.toBeNull();
+		expect(state.sharpCalls).toBe(1);
+
+		// Not remembered, so the very next request tries again.
+		await expect(getOrCreateThumbnail('ab/cd/pic.png', 'image')).resolves.toBeNull();
+		expect(state.sharpCalls).toBe(2);
+		vi.restoreAllMocks();
 	});
 
 	it('forgets a failure once its TTL lapses', async () => {

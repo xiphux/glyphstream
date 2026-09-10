@@ -89,7 +89,7 @@ describe('derived assets under a separate root', () => {
 		const original = await photoPng(1400, 900);
 		writeOriginal(original);
 
-		const thumb = await getOrCreateThumbnail(STORAGE_PATH);
+		const thumb = await getOrCreateThumbnail(STORAGE_PATH, 'image');
 		expect(thumb).not.toBeNull();
 		expect(thumb!.absolutePath).toBe(resolve(derived, thumbStoragePath(STORAGE_PATH)));
 		expect(existsSync(thumb!.absolutePath)).toBe(true);
@@ -115,7 +115,7 @@ describe('derived assets under a separate root', () => {
 		// that flattened or re-sharded the derived tree would still serve correct
 		// thumbnails and would silently invalidate that advice.
 		writeOriginal(await photoPng(1400, 900));
-		await getOrCreateThumbnail(STORAGE_PATH);
+		await getOrCreateThumbnail(STORAGE_PATH, 'image');
 		await getVisionVariant(STORAGE_PATH);
 
 		for (const rel of [thumbStoragePath(STORAGE_PATH), visionStoragePath(STORAGE_PATH)]) {
@@ -158,7 +158,7 @@ describe('an unusable DERIVED_DIR degrades instead of failing the request', () =
 
 	it('returns null from getOrCreateThumbnail rather than 500ing the tile', async () => {
 		writeOriginal(await photoPng(1400, 900), DEGRADES_PATH);
-		await expect(getOrCreateThumbnail(DEGRADES_PATH)).resolves.toBeNull();
+		await expect(getOrCreateThumbnail(DEGRADES_PATH, 'image')).resolves.toBeNull();
 	});
 
 	it('returns null from getVisionVariant rather than failing the send', async () => {
@@ -170,7 +170,7 @@ describe('an unusable DERIVED_DIR degrades instead of failing the request', () =
 describe('DiskMediaStore.delete with a separate derived root', () => {
 	it('reaps the thumbnail and the vision variant from DERIVED_DIR', async () => {
 		writeOriginal(await photoPng(2400, 1600));
-		await getOrCreateThumbnail(STORAGE_PATH);
+		await getOrCreateThumbnail(STORAGE_PATH, 'image');
 		await getVisionVariant(STORAGE_PATH);
 
 		const thumbAbs = resolve(derived, thumbStoragePath(STORAGE_PATH));

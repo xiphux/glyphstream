@@ -170,6 +170,25 @@ RUN ./configure \
     && make install \
     && strip /opt/ff/bin/ffmpeg
 
+# Prove the whole pipeline, not just that it compiled. `-decoders` (checked in
+# the runtime stage) covers the link; this covers the half --disable-everything
+# is most likely to strip by accident — the mjpeg encoder, the image2 muxer, the
+# scale filter, the file protocol on the output side — by running the exact
+# argument list from media/thumbnail.ts against a real h264 mp4.
+#
+# The distro ffmpeg is here only to MAKE the sample, and this whole stage is
+# discarded, so it costs the shipped image nothing. Without it a future edit to
+# --enable-filter or --enable-muxer would build green and blank every video tile
+# in production, where a broken ffmpeg and an undecodable file look identical.
+RUN apk add --no-cache ffmpeg \
+    && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
+         -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
+    && /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -threads 1 \
+         -max_pixels 33177600 -protocol_whitelist file -ss 0 -i /tmp/probe.mp4 -frames:v 1 \
+         -vf "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease" \
+         -q:v 8 -f image2 -y /tmp/probe.jpg \
+    && test -s /tmp/probe.jpg
+
 # --- runtime ----------------------------------------------------------
 FROM node:26-alpine AS runtime
 
@@ -188,10 +207,11 @@ RUN apk add --no-cache tini sqlite
 # ffmpeg's own AV1 decoder cannot decode in software.
 RUN apk add --no-cache libdav1d
 COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
-# Prove the binary execs and found its one shared library, at BUILD time. At run
-# time an ffmpeg that won't load is indistinguishable from a file that won't
-# decode — both end up as `null` from getOrCreateThumbnail — so without this a
-# link error would ship green and surface as every video tile going blank.
+# Prove the copied binary execs and resolved libdav1d. The end-to-end pipeline is
+# proved in the ffmpeg stage instead, where a throwaway full ffmpeg can generate
+# a sample to decode; here there is nothing to decode and no way to synthesize
+# one, since `lavfi` is exactly the sort of surface --disable-everything strips
+# and enabling it to satisfy a test would defeat the point of the stage.
 RUN ffmpeg -hide_banner -decoders | grep -q libdav1d
 
 WORKDIR /app
