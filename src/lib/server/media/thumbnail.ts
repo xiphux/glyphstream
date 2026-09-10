@@ -200,6 +200,18 @@ const SEEK_SECONDS = '0.1';
  */
 const FFMPEG_TIMEOUT_MS = 20_000;
 
+/**
+ * Ceiling on the decoded frame's pixel count.
+ *
+ * The image path gets this for free: sharp's `limitInputPixels` defaults to
+ * ~268 MP, which is what stops a decompression bomb. ffmpeg has no such default
+ * — a stream declaring enormous dimensions gets its frame buffers allocated
+ * before the `scale` filter is ever reached, and `-frames:v 1` doesn't help
+ * because the allocation happens for that one frame. Matched to sharp's number
+ * so both decoders refuse the same inputs rather than each having its own idea.
+ */
+const FFMPEG_MAX_PIXELS = '268435456';
+
 const execFileAsync = promisify(execFile);
 
 async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
@@ -272,6 +284,10 @@ async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Prom
 			// Never let ffmpeg reach for the terminal. It has no stdin here, and a
 			// build that decided to prompt would block rather than fail.
 			'-nostdin',
+			// Before -i: this bounds what the DECODER will allocate, so it has to
+			// be in effect while the input is being opened.
+			'-max_pixels',
+			FFMPEG_MAX_PIXELS,
 			'-ss',
 			seek,
 			'-i',

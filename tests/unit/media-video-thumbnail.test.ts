@@ -170,6 +170,14 @@ describe('video thumbnails', () => {
 		// since both kinds share the semaphore.
 		expect(state.calls[0].opts.timeout).toBeGreaterThan(0);
 		expect(state.calls[0].opts.killSignal).toBe('SIGKILL');
+
+		// Time is not the only unbounded resource. sharp refuses a decompression
+		// bomb via its default limitInputPixels; ffmpeg has no such default, and
+		// allocates the frame before `scale` ever runs. Must precede -i to be in
+		// force while the decoder opens the input.
+		const call = state.calls[0];
+		expect(argAfter(call, '-max_pixels')).toBe('268435456');
+		expect(call.args.indexOf('-max_pixels')).toBeLessThan(call.args.indexOf('-i'));
 	});
 
 	it('retries at frame zero when the seek lands past the end of a short clip', async () => {
