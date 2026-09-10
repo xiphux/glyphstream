@@ -1034,8 +1034,9 @@
 									/>
 								{:else}
 									<video
-										src="/api/media/{m.id}/content#t=0.1"
-										preload="metadata"
+										src="/api/media/{m.id}/content"
+										poster="/api/media/{m.id}/thumbnail"
+										preload="none"
 										muted
 										playsinline
 										class="h-full w-full object-cover"
@@ -1112,8 +1113,9 @@
 									/>
 								{:else}
 									<video
-										src="/api/media/{u.leaderId}/content#t=0.1"
-										preload="metadata"
+										src="/api/media/{u.leaderId}/content"
+										poster="/api/media/{u.leaderId}/thumbnail"
+										preload="none"
 										muted
 										playsinline
 										class="h-full w-full object-cover"
@@ -1185,8 +1187,9 @@
 												/>
 											{:else}
 												<video
-													src="/api/media/{p.id}/content#t=0.1"
-													preload="metadata"
+													src="/api/media/{p.id}/content"
+													poster="/api/media/{p.id}/thumbnail"
+													preload="none"
 													muted
 													playsinline
 													class="h-full w-full object-cover"

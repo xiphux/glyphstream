@@ -22,10 +22,15 @@ import type { RequestHandler } from './$types';
  * from disk. The Cache-Control matches /content's so browsers happily
  * keep the thumb in memory between gallery navigations.
  *
- * Image-only by design. Videos already render efficiently in the
- * gallery via `preload="metadata"` + `#t=0.1` (one frame fetched, not
- * the whole file), so spinning up ffmpeg + a video-thumbnail pipeline
- * isn't worth the dependency / complexity lift.
+ * Serves images and videos. Video used to be excluded on the reasoning
+ * that `preload="metadata"` + `#t=0.1` already fetched one frame rather
+ * than the whole file — which was cheap enough while media sat on a
+ * local disk, and stopped being true on two counts once it didn't.
+ * `preload="metadata"` does not oblige a browser to decode a frame at
+ * all (iOS Safari frequently doesn't), and a non-faststart mp4 — which
+ * is most of what ComfyUI writes — makes it spend three range requests
+ * finding the index before it could even try. The visible result was
+ * blank tiles. A cached 30 KB JPEG costs one request and always works.
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
@@ -33,11 +38,13 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	const row = getMediaForUser(params.id, locals.user.id);
 	if (!row || row.hardDeletedAt !== null) error(404, 'Media not found');
 
-	if (row.kind !== 'image') {
+	// `file` kind only — a spreadsheet has no frame to show. Images and videos
+	// both do, and both take the same path from here.
+	if (row.kind !== 'image' && row.kind !== 'video') {
 		error(404, 'No thumbnail for this media kind');
 	}
 
-	const thumb = await getOrCreateThumbnail(row.storagePath);
+	const thumb = await getOrCreateThumbnail(row.storagePath, row.kind);
 	if (thumb) {
 		const stream = Readable.toWeb(
 			createReadStream(thumb.absolutePath),
@@ -50,6 +57,15 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 				'Cache-Control': 'private, max-age=31536000, immutable',
 			},
 		});
+	}
+
+	// A video has no fallback worth serving: this URL is consumed as a `poster`,
+	// and pointing that at an mp4 renders nothing while pulling the whole file
+	// over the wire to find that out. 404 instead and let the browser show its
+	// own empty state — the same thing it showed before this endpoint handled
+	// video at all.
+	if (row.kind === 'video') {
+		error(404, 'Thumbnail unavailable');
 	}
 
 	// Generation failed (corrupt file, sharp couldn't decode). Fall back

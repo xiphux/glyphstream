@@ -3,19 +3,21 @@
 # ----------------------------------------------------------------------
 # GlyphStream — multi-stage Alpine build.
 #
-# Three stages:
-#   1. builder   — full deps + native toolchain; produces /app/build.
+# Four stages:
+#   1. builder   — full deps; produces /app/build.
 #   2. proddeps  — fresh install of *only* production deps. Parallel
 #                  to builder; doesn't see source. Avoids the trap
 #                  where `pnpm prune --prod` leaves orphans behind in
 #                  .pnpm/ that the runtime would still ship.
-#   3. runtime   — node + tini + just the artifacts. No compilers.
+#   3. ffmpeg    — compiles a decode-only ffmpeg. Discarded; the runtime
+#                  copies one 5 MB binary out of it.
+#   4. runtime   — node + tini + ffmpeg + just the artifacts. No compilers.
 #
-# SQLite is the built-in `node:sqlite` (no native module to compile), and
-# sharp ships prebuilt musl binaries — so no stage needs a C/C++ toolchain.
-# The only remaining build-script package is esbuild (prebuilt Go binary,
-# fetched not compiled), rebuilt explicitly because install runs with
-# --ignore-scripts.
+# No JavaScript dependency needs a C/C++ toolchain: SQLite is the built-in
+# `node:sqlite` and sharp ships prebuilt musl binaries. The only build-script
+# package is esbuild (prebuilt Go binary, fetched not compiled), rebuilt
+# explicitly because install runs with --ignore-scripts. The ffmpeg stage is
+# the one place a compiler appears, and nothing it installs reaches runtime.
 # ----------------------------------------------------------------------
 
 # --- builder ----------------------------------------------------------
@@ -81,6 +83,62 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
       -delete
 
 
+# --- ffmpeg -----------------------------------------------------------
+# A decode-only ffmpeg for gallery video thumbnails (see media/thumbnail.ts).
+#
+# Built rather than installed because the packaged builds are enormous next to
+# what this needs. Measured on linux/amd64 against the same node:26-alpine base:
+#
+#   apk add ffmpeg                        +185 MB
+#   prebuilt static binary (mwader)       +198 MB
+#   this stage                            +5 MB   (4.8 MB stripped binary)
+#
+# `--disable-autodetect` is what buys most of that: without it, configure links
+# every codec library it finds sitting in the build stage — x264, x265, and the
+# rest — none of which we want, because this build never ENCODES video. It
+# decodes one frame and writes one JPEG.
+#
+# The narrow codec set is also a security property, not just a size one. A video
+# decoder is a well-known source of memory-safety CVEs, and this path feeds it
+# arbitrary user-uploaded files (classifyUpload accepts any `video/*`). Six
+# decoders is a smaller surface to keep patched than the several hundred the
+# distro package ships. What is enabled covers what actually reaches us:
+# h264 for generated video, hevc for iPhone uploads (its camera default since
+# iOS 11), vp8/vp9/av1 for webm, and the mov demuxer for .mp4 and .mov alike.
+#
+# Cold build is ~30s — configure skips probing everything that's disabled, and
+# make compiles a few dozen files instead of thousands.
+FROM alpine:3.22 AS ffmpeg
+ARG FFMPEG_VERSION=7.1.1
+RUN apk add --no-cache build-base nasm yasm tar xz wget
+WORKDIR /src
+RUN wget -qO ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+    && tar xf ffmpeg.tar.xz --strip-components=1 \
+    && rm ffmpeg.tar.xz
+RUN ./configure \
+      --prefix=/opt/ff \
+      --disable-everything \
+      --disable-autodetect \
+      --disable-network \
+      --disable-doc \
+      --disable-ffplay \
+      --disable-ffprobe \
+      --disable-debug \
+      --disable-shared \
+      --enable-static \
+      --enable-small \
+      --enable-decoder=h264,hevc,vp8,vp9,av1,mjpeg,png \
+      --enable-parser=h264,hevc,vp8,vp9,av1,mjpeg,png \
+      --enable-demuxer=mov,matroska \
+      --enable-encoder=mjpeg \
+      --enable-muxer=image2 \
+      --enable-filter=scale,format,null,copy \
+      --enable-protocol=file \
+      --enable-swscale \
+    && make -j"$(nproc)" \
+    && make install \
+    && strip /opt/ff/bin/ffmpeg
+
 # --- runtime ----------------------------------------------------------
 FROM node:26-alpine AS runtime
 
@@ -93,6 +151,9 @@ FROM node:26-alpine AS runtime
 # ~2MB additional, worth it for "I can poke at the DB without exec'ing
 # into a separate container."
 RUN apk add --no-cache tini sqlite
+
+# Decode-only, ~5 MB. See the ffmpeg stage for why it isn't `apk add ffmpeg`.
+COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
 
 WORKDIR /app
 

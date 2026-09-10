@@ -111,6 +111,7 @@
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			src="/api/media/{block.mediaId}/content"
+			poster="/api/media/{block.mediaId}/thumbnail"
 			controls
 			playsinline
 			class="mt-2 block h-auto w-full max-h-[80vh] rounded-lg"

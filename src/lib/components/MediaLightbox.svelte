@@ -692,6 +692,7 @@
 								<!-- svelte-ignore a11y_media_has_caption -->
 								<video
 									src="/api/media/{s.id}/content"
+									poster="/api/media/{s.id}/thumbnail"
 									controls
 									playsinline
 									preload="metadata"

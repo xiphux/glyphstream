@@ -7,17 +7,30 @@
  * pulls the full bytes — a ~30-tile screen meant ~30+ MB of "just to
  * see the gallery."
  *
- * Lazy strategy: on first GET for a given media's thumbnail, sharp
- * downsizes the original to <=512px on the long side, encodes as
- * JPEG q=75, writes to a sibling file on disk. Subsequent GETs
- * stream that cached file directly. New media generates a thumb on
- * first gallery view; existing media never needed a backfill
- * migration.
+ * Lazy strategy: on first GET for a given media's thumbnail, the
+ * original is downsized to <=512px on the long side and encoded as
+ * a JPEG. Subsequent GETs stream that cached file directly. New
+ * media generates a thumb on first gallery view; existing media
+ * never needed a backfill migration.
  *
- * Failure mode: if sharp can't decode the input (corrupt file, weird
- * codec) we return null and the endpoint falls back to streaming
- * the original — gallery shows a slow tile but no broken-image
- * icon. Per-file failures don't poison the cache.
+ * VIDEO goes through the same path, with ffmpeg decoding one frame
+ * where sharp would decode an image — same cache, same dedup, same
+ * concurrency cap, same file naming, and deliberately the same
+ * output size. It was image-only until the media directory moved to
+ * network storage, at which point the old arrangement (a bare
+ * `<video preload="metadata">` per tile, letting the browser fetch
+ * its own poster frame) stopped being cheap: a non-faststart mp4
+ * costs three range requests before the first frame can be decoded,
+ * each one a round trip, and browsers are within their rights to
+ * give up and render nothing. Which many did.
+ *
+ * Failure mode: if the input can't be decoded (corrupt file,
+ * unsupported codec) we return null. For an image the endpoint
+ * falls back to streaming the original — a slow tile, not a broken
+ * one. For a VIDEO there is no such fallback, since a `poster`
+ * pointing at an mp4 is meaningless; the endpoint 404s and the
+ * browser shows its own empty state. Per-file failures don't poison
+ * the cache.
  *
  * DISK-STORE-ONLY: This module reads originals via raw `node:fs`
  * paths under `mediaDir()` and writes thumbs under `derivedDir()`
@@ -33,9 +46,17 @@
  * does not break. Extending the MediaStore interface with
  * derived-asset methods (openDerived / putDerived) is deferred to
  * a future v2 change.
+ *
+ * ffmpeg is a RUNTIME dependency of the video path only, and a
+ * missing binary is just another decode failure — the image path
+ * and the rest of the app are unaffected. The Dockerfile builds a
+ * decode-only one (~5 MB); see the `ffmpeg` stage for why it isn't
+ * the distro package.
  */
 
 import process from 'node:process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import sharp from 'sharp';
 import { mkdirSync } from 'node:fs';
 import { rename, stat, unlink } from 'node:fs/promises';
@@ -134,6 +155,127 @@ async function statOrNull(path: string): Promise<Stats | null> {
 	}
 }
 
+/** What the ORIGINAL is, which decides how a frame is got out of it. `file`
+ *  never reaches here — the endpoint refuses it before asking. */
+export type ThumbnailSourceKind = 'image' | 'video';
+
+/**
+ * The long-side cap, in ffmpeg's filter syntax.
+ *
+ * `force_original_aspect_ratio=decrease` fits the frame inside the box, and
+ * capping the box at the source's own dimensions is what stops it ENLARGING a
+ * small video. Together they reproduce sharp's `fit: 'inside'` plus
+ * `withoutEnlargement: true`, so a video thumbnail and an image thumbnail obey
+ * the same rule rather than two that merely look similar.
+ */
+const VIDEO_SCALE_FILTER = `scale=w='min(${THUMB_MAX_DIM},iw)':h='min(${THUMB_MAX_DIM},ih)':force_original_aspect_ratio=decrease`;
+
+/**
+ * ffmpeg's mjpeg scale runs 2 (best) to 31 — inverted from sharp's 1-100 and
+ * not a conversion of it, so this was chosen by measuring rather than mapping.
+ * Against generated video it lands around 30 KB, which is where THUMB_QUALITY
+ * puts the image thumbnails (33 KB median in a real library). Matching the
+ * BYTES is the point: both kinds share a grid, a cache lifetime, and whatever
+ * disk DERIVED_DIR is pointed at.
+ */
+const VIDEO_JPEG_QSCALE = '8';
+
+/**
+ * How far into the clip to grab the frame.
+ *
+ * Not frame zero: generated video very often opens on black or a fade-in, which
+ * makes a tile that says nothing about the video. Placed BEFORE `-i` so it is an
+ * input seek — the demuxer jumps to the nearest keyframe instead of decoding
+ * everything up to that point and discarding it.
+ */
+const SEEK_SECONDS = '0.1';
+
+/**
+ * Ceiling on a single decode.
+ *
+ * A malformed or adversarial file that makes ffmpeg spin would otherwise hold
+ * one of the three generation slots for the life of the process, and three such
+ * files would stop the gallery generating any thumbnail at all — for images too,
+ * since both kinds share the semaphore.
+ */
+const FFMPEG_TIMEOUT_MS = 20_000;
+
+const execFileAsync = promisify(execFile);
+
+async function encodeImageThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
+	await sharp(sourceAbs)
+		.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
+			fit: 'inside',
+			withoutEnlargement: true,
+		})
+		.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
+		.toFile(tmpAbs);
+}
+
+/**
+ * One decoded frame, written as a JPEG.
+ *
+ * The retry exists because a clip shorter than SEEK_SECONDS has nothing at that
+ * timestamp, and ffmpeg reports that by exiting 0 having written NOTHING rather
+ * than by failing — so an empty output has to be checked for, not waited on.
+ */
+async function encodeVideoThumb(sourceAbs: string, tmpAbs: string): Promise<void> {
+	if (await tryFrameAt(sourceAbs, tmpAbs, SEEK_SECONDS)) return;
+
+	// Deliberately UNguarded, unlike the attempt above. A seek past the end is an
+	// ordinary outcome worth retrying past; frame zero failing means the file is
+	// genuinely undecodable, and then ffmpeg's own stderr is the useful thing to
+	// surface — `generateThumbnail`'s catch logs it.
+	await runFrameAt(sourceAbs, tmpAbs, '0');
+	const st = await statOrNull(tmpAbs);
+	if (st === null || st.size === 0) {
+		throw new Error(`ffmpeg exited cleanly but wrote no frame for ${sourceAbs}`);
+	}
+}
+
+/** True when a non-empty JPEG landed. Swallows every failure — a caller uses
+ *  this to decide whether a fallback is needed, not to learn why. */
+async function tryFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<boolean> {
+	try {
+		await runFrameAt(sourceAbs, tmpAbs, seek);
+	} catch {
+		return false;
+	}
+	const st = await statOrNull(tmpAbs);
+	return st !== null && st.size > 0;
+}
+
+async function runFrameAt(sourceAbs: string, tmpAbs: string, seek: string): Promise<void> {
+	await execFileAsync(
+		'ffmpeg',
+		[
+			'-hide_banner',
+			'-loglevel',
+			'error',
+			// Never let ffmpeg reach for the terminal. It has no stdin here, and a
+			// build that decided to prompt would block rather than fail.
+			'-nostdin',
+			'-ss',
+			seek,
+			'-i',
+			sourceAbs,
+			'-frames:v',
+			'1',
+			'-vf',
+			VIDEO_SCALE_FILTER,
+			'-q:v',
+			VIDEO_JPEG_QSCALE,
+			// Pinned rather than inferred from the extension: tmpAbs ends in `.tmp`,
+			// which ffmpeg cannot guess a muxer from.
+			'-f',
+			'image2',
+			'-y',
+			tmpAbs,
+		],
+		{ timeout: FFMPEG_TIMEOUT_MS, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 },
+	);
+}
+
 /**
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. Returns null if neither
@@ -143,7 +285,10 @@ async function statOrNull(path: string): Promise<Stats | null> {
  * Concurrent callers for the same path share one generation, and generations
  * are globally capped — see `inFlight` and `MAX_CONCURRENT_GENERATIONS`.
  */
-export async function getOrCreateThumbnail(storagePath: string): Promise<ThumbnailRef | null> {
+export async function getOrCreateThumbnail(
+	storagePath: string,
+	kind: ThumbnailSourceKind = 'image',
+): Promise<ThumbnailRef | null> {
 	// Two roots, because the two files want different storage. The thumbnail is
 	// small, hot, and regenerable; the original is large, cold, and irreplaceable.
 	// They coincide unless DERIVED_DIR is set — see `derivedDir` in env.ts.
@@ -160,7 +305,7 @@ export async function getOrCreateThumbnail(storagePath: string): Promise<Thumbna
 	if (existing) return existing;
 
 	const source = resolve(mediaDir(), storagePath);
-	const job = generateThumbnail(source, thumbAbs, storagePath).finally(() => {
+	const job = generateThumbnail(source, thumbAbs, storagePath, kind).finally(() => {
 		inFlight.delete(thumbAbs);
 	});
 	inFlight.set(thumbAbs, job);
@@ -171,6 +316,7 @@ async function generateThumbnail(
 	sourceAbs: string,
 	thumbAbs: string,
 	storagePath: string,
+	kind: ThumbnailSourceKind,
 ): Promise<ThumbnailRef | null> {
 	if (!(await statOrNull(sourceAbs))) return null;
 
@@ -195,16 +341,14 @@ async function generateThumbnail(
 			// volume that is absent or read-only while MEDIA_DIR is healthy, and a
 			// throw here would reject getOrCreateThumbnail and 500 the tile. The
 			// catch below returns null instead, which is the endpoint's documented
-			// signal to fall back to streaming the original.
+			// signal to degrade.
 			mkdirSync(dirname(thumbAbs), { recursive: true });
 
-			await sharp(sourceAbs)
-				.resize(THUMB_MAX_DIM, THUMB_MAX_DIM, {
-					fit: 'inside',
-					withoutEnlargement: true,
-				})
-				.jpeg({ quality: THUMB_QUALITY, mozjpeg: true })
-				.toFile(tmpAbs);
+			if (kind === 'video') {
+				await encodeVideoThumb(sourceAbs, tmpAbs);
+			} else {
+				await encodeImageThumb(sourceAbs, tmpAbs);
+			}
 			await rename(tmpAbs, thumbAbs);
 			const stats = await stat(thumbAbs);
 			return { absolutePath: thumbAbs, byteSize: stats.size, contentType: 'image/jpeg' };

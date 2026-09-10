@@ -2,8 +2,14 @@
 
 ## Docker
 
-Multi-stage Alpine Docker image, ~200 MB final size. Bind-mount `data/` for
-persistence and mount `config.toml` read-only. **Put `data/` on an SSD if you
+Multi-stage Alpine Docker image, ~205 MB final size. Bind-mount `data/` for
+persistence and mount `config.toml` read-only.
+
+The image carries a **decode-only ffmpeg** (~5 MB), built by its own stage
+rather than installed, and used for one thing: extracting a frame for a
+video's gallery thumbnail. It is a runtime dependency of that path only — if
+you run the built output outside this image and `ffmpeg` isn't on `PATH`,
+videos simply get no poster and everything else is unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
 spinning disks that is the dominant cost of a cold load. Never put the
