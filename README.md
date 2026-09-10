@@ -249,7 +249,7 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   image models and they each draw a candidate side by side — different models
   read a description very differently — and the one you choose becomes the
   avatar; the rest stay in the thread as alternatives.
-- **Docker deployment** in a ~200 MB image, automatic migrations, any
+- **Docker deployment** in a ~260 MB image, automatic migrations, any
   reverse proxy in front ([guide](docs/deployment.md)).
 - **Open WebUI import** ([guide](docs/import-owui.md)).
 

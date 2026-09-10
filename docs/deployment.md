@@ -2,7 +2,7 @@
 
 ## Docker
 
-Multi-stage Alpine Docker image, ~205 MB final size. Bind-mount `data/` for
+Multi-stage Alpine Docker image, ~260 MB uncompressed (linux/amd64). Bind-mount `data/` for
 persistence and mount `config.toml` read-only.
 
 The image carries a **decode-only ffmpeg** (~5 MB), built by its own stage
