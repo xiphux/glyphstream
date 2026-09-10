@@ -22,10 +22,12 @@ import type { RequestHandler } from './$types';
  * 512px on the long side), so on a full-viewport lightbox it is being
  * upscaled until the first decoded frame replaces it.
  *
- * On cache miss the response is delayed briefly while sharp resizes
- * + writes the thumb; on subsequent calls the file is just streamed
- * from disk. The Cache-Control matches /content's so browsers happily
- * keep the thumb in memory between gallery navigations.
+ * On cache miss the response waits on the decode and the write — sharp
+ * for an image, an ffmpeg subprocess for a video, the latter with a far
+ * higher ceiling (see FFMPEG_TIMEOUT_MS). On subsequent calls the file
+ * is just streamed from disk. The Cache-Control matches /content's so
+ * browsers happily keep the thumb in memory between gallery
+ * navigations.
  *
  * Serves images and videos. Video used to be excluded on the reasoning
  * that `preload="metadata"` + `#t=0.1` already fetched one frame rather

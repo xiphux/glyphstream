@@ -87,11 +87,13 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # A decode-only ffmpeg for gallery video thumbnails (see media/thumbnail.ts).
 #
 # Built rather than installed because the packaged builds are enormous next to
-# what this needs. Measured on linux/amd64 against the same node:26-alpine base:
+# what this needs. Measured on linux/amd64 against the same base, this stage
+# costs ~5 MB (a 4.8 MB stripped binary) where `apk add ffmpeg` and a prebuilt
+# static binary each cost upwards of 130 MB — roughly 25-30x more.
 #
-#   apk add ffmpeg                        +185 MB
-#   prebuilt static binary (mwader)       +198 MB
-#   this stage                            +5 MB   (4.8 MB stripped binary)
+# Stated as a ratio on purpose. Absolute deltas were in here and went stale
+# within weeks: they move with every base-image and package refresh, and the
+# figure that matters is the order of magnitude, not the megabyte.
 #
 # `--disable-autodetect` is what buys most of that: without it, configure links
 # every codec library it finds sitting in the build stage — x264, x265, and the

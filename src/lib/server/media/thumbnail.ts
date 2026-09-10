@@ -437,8 +437,10 @@ function recentlyFailed(thumbAbs: string): boolean {
 /**
  * Returns the cached thumbnail if it exists, otherwise generates one
  * lazily, writes it to disk, and returns it. Returns null if neither
- * is possible (source missing, sharp decode error). Callers should
- * fall back to streaming the original in the null case.
+ * is possible: the source is missing, or the decoder — sharp for an
+ * image, ffmpeg for a video — could not read it. An image caller
+ * should fall back to streaming the original; a video caller has no
+ * such fallback and 404s (see the endpoint).
  *
  * Concurrent callers for the same path share one generation, and generations
  * are globally capped — see `inFlight` and `MAX_CONCURRENT_GENERATIONS`.
