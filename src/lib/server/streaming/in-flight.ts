@@ -54,10 +54,12 @@ export interface InFlightEntry {
 	isTurn: boolean;
 	controller: AbortController;
 	endpoint: LoadedEndpoint;
-	/** Unix ms when the generation was registered. Surfaced to the client
-	 *  (via the conversation load function) so a "Generating…" indicator
-	 *  recovered after an iOS suspension can show a truthful elapsed timer
-	 *  instead of restarting from zero. */
+	/** Unix ms when the generation was REGISTERED — not when it began
+	 *  generating, which may be much later behind a saturated endpoint (that's
+	 *  `generationStartedAt`). Surfaced to the client (via the conversation load
+	 *  function) so a turn whose fetch died to an iOS suspension is still known
+	 *  to be in flight; the recovered bubble's elapsed timer counts from
+	 *  `generationStartedAt`, not this. */
 	startedAt: number;
 	/** For video kind: bridge-side job id, set as soon as videoCreate returns. */
 	videoJobId?: string;
@@ -220,9 +222,11 @@ export function filterFullyQueued(conversationIds: readonly string[]): string[] 
 	});
 }
 
-/** Earliest `startedAt` across the conversation's in-flight generations, or
- *  null when none — the truthful "generating since" for the recovery
- *  indicator regardless of how many branches are running. */
+/** Earliest `startedAt` (registration time) across the conversation's turn
+ *  entries, or null when none — whether a turn is in flight at all, which is
+ *  what raises the recovered bubble and what the recovery poll terminates on.
+ *  Not "generating since": a registered turn may still be queued behind the
+ *  gate, so the elapsed timer counts from `getInFlightGeneratingSince`. */
 export function getInFlightSince(conversationId: string): number | null {
 	// Turn-scoped: this feeds the client's recovered-turn bubble and the poll
 	// that waits for it to clear. An avatar draw isn't a turn this client should
