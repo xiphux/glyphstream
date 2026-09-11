@@ -92,6 +92,25 @@ video rather than tracking progress, so an interrupted run is repaired by
 running it again, and there's no resume state to lose. You can also re-run it
 later purely to verify.
 
+**Run it when nobody is watching.** "Safe to re-run" is about the script's own
+state, not about clients. Moving the index shifts every sample offset in the
+file, and the rewrite is a rename under a live server, so anyone mid-playback is
+holding offsets that no longer describe the bytes: their next range request
+returns the right number of wrong bytes, and the video garbles or stalls until
+they reload. Media is also served `Cache-Control: immutable` with no validator,
+so a browser that has already cached a video keeps the old copy — meaning the
+videos you personally watch most are the ones least likely to improve until the
+cache expires or you hard-reload.
+
+Budget some time for it, too. `+faststart` writes the file and then shifts the
+samples in a second in-place pass, so each video costs roughly four times its
+size in reads and writes. That is nothing on a local disk — a thousand clips in
+about a minute — but with `MEDIA_DIR` on a NAS it is bounded by the link: a
+2,000-video library averaging 20 MB is roughly half an hour on gigabit and a
+couple of hours on a contended share, saturating the volume the whole time.
+Videos too large to remux within the per-file budget are logged and skipped
+rather than left half-done.
+
 ## Splitting storage across volumes
 
 `data/` holds three things with three different needs, and `DB_PATH`,

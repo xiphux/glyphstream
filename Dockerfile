@@ -101,7 +101,7 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # decodes one frame and writes one JPEG, and it re-wraps an existing bitstream
 # into a new container without touching it.
 #
-# That second job is why the mp4/mov/matroska muxers are enabled (+188 KB). A
+# That second job is why the mp4/mov/matroska/webm muxers are enabled (+188 KB). A
 # faststart remux is `-c copy`: the demuxer reads the bitstream and the muxer
 # writes it back out with the index moved to the front, and nothing decodes.
 # See media/faststart.ts for why that matters. The added surface is a muxer

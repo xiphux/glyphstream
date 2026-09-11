@@ -13,9 +13,16 @@
  *
  * `-movflags +faststart` rewrites the file with `moov` ahead of `mdat`. It is a
  * remux, not a re-encode: `-c copy` means the bitstream is demuxed and written
- * back untouched, so there is no generation loss and no decode. The cost is one
- * pass over the bytes, and the byte count changes slightly because sample
- * offsets inside `moov` have to be rewritten for its new position.
+ * back untouched, so there is no generation loss and no decode. The byte count
+ * changes slightly because sample offsets inside `moov` have to be rewritten
+ * for its new position.
+ *
+ * It is not one pass, though it reads like it should be: ffmpeg writes the file
+ * normally and THEN shifts `mdat` in a second in-place pass to make room for
+ * the relocated index, so the traffic is roughly four times the file size. That
+ * is invisible on a local disk (measured ~20ms fixed plus ~0.5ms/MB) and is the
+ * dominant cost once MEDIA_DIR is a network mount, which is what the size-
+ * derived budget below is built around.
  *
  * Why here and not in the bridge that fetches from ComfyUI: the bridge
  * normalizes API differences and passes artifacts through verbatim — it has
@@ -33,15 +40,50 @@ import { Buffer } from 'node:buffer';
 
 const execFileAsync = promisify(execFile);
 
-/** Long enough that a stalled remux can't hold anything hostage, generous
- *  enough for a large file on slow storage: this is one linear pass, not a
- *  decode, so it is I/O bound rather than CPU bound. */
-const REMUX_TIMEOUT_MS = 120_000;
+/**
+ * The remux budget is DERIVED FROM FILE SIZE, not a single number.
+ *
+ * A flat ceiling has to be the worst case for the largest file, which makes it
+ * far too generous for every ordinary one — and this budget is spent holding an
+ * endpoint slot. The sibling in `thumbnail.ts` bounds a whole file at 20s while
+ * pinning one of three shared slots; a flat 120s here would be six times that
+ * against a slot that on a `max_concurrent = 1` endpoint IS the endpoint, which
+ * is backwards given this module's own argument about the stakes.
+ *
+ * Measured against the shipped build: ~20ms fixed plus ~0.5ms/MB on a local
+ * disk. What actually bounds this is storage throughput, since the traffic is
+ * ~4x the file size (see the header). 300ms/MB assumes ~13 MB/s of file
+ * throughput, which is pessimistic for a contended NAS and absurdly so for a
+ * local disk. That is what a deadline should be: a ceiling nothing healthy
+ * approaches.
+ */
+const REMUX_BASE_MS = 15_000;
+const REMUX_MS_PER_MB = 300;
 
-/** How long past `REMUX_TIMEOUT_MS` to wait before giving up on the child
+/**
+ * Above this, don't start at all.
+ *
+ * The point is to never SPEND the budget in order to fail. A file too big to
+ * plausibly finish would otherwise hold the slot for the whole ceiling and then
+ * be discarded — the worst of both. Declining up front costs nothing, keeps the
+ * original (which is a perfectly good video, just slower to start), and says so
+ * in the log. At 300ms/MB this admits files up to ~250 MB, well above anything
+ * ComfyUI produces in practice.
+ */
+const REMUX_MAX_MS = 90_000;
+
+/** How long past the derived budget to wait before giving up on the child
  *  settling at all. Non-zero so the ordinary case — SIGKILL lands, execFile
  *  rejects — still surfaces ffmpeg's own error rather than ours. */
 const REMUX_REAP_GRACE_MS = 2_000;
+
+const BYTES_PER_MB = 1_048_576;
+
+/** Milliseconds to allow for remuxing `byteSize`, or null to decline. */
+function remuxBudgetMs(byteSize: number): number | null {
+	const projected = REMUX_BASE_MS + (byteSize / BYTES_PER_MB) * REMUX_MS_PER_MB;
+	return projected > REMUX_MAX_MS ? null : Math.ceil(projected);
+}
 
 /**
  * Our own deadline expiring, as opposed to ffmpeg failing.
@@ -82,7 +124,7 @@ class RemuxDeadline extends Error {
  * finally settles, if it ever does — see the caller for why that can't just be
  * awaited.
  */
-async function runRemux(path: string, tmp: string): Promise<void> {
+async function runRemux(path: string, tmp: string, budgetMs: number): Promise<void> {
 	const run = execFileAsync(
 		'ffmpeg',
 		[
@@ -109,9 +151,12 @@ async function runRemux(path: string, tmp: string): Promise<void> {
 			// exit 234, "Could not find tag for codec none". Stock ffmpeg 6.1.1 fails
 			// identically, so it is the container, not this build. That turns a lossy
 			// remux into no remux at all for exactly the files most likely to need
-			// one. Excluding data streams keeps the rest: the mov muxer regenerates a
-			// tmcd track from the timecode metadata tag anyway, so the stream count
-			// survives the round trip.
+			// one. Excluding data streams keeps the rest, and costs less than it
+			// looks: ffmpeg's mov/mp4 muxer rebuilds a tmcd track from the timecode
+			// metadata tag, which `-c copy` carries over — so a camera original
+			// goes in with three streams and comes out with three. Verified
+			// against this build under `-f mp4` (video/audio/tmcd in, same out),
+			// not inferred from the mov-mode default.
 			'-map',
 			'0',
 			'-map',
@@ -128,7 +173,7 @@ async function runRemux(path: string, tmp: string): Promise<void> {
 			tmp,
 		],
 		{
-			timeout: REMUX_TIMEOUT_MS,
+			timeout: budgetMs,
 			killSignal: 'SIGKILL',
 			maxBuffer: 1024 * 1024,
 			env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
@@ -142,8 +187,8 @@ async function runRemux(path: string, tmp: string): Promise<void> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const deadline = new Promise<never>((_, reject) => {
 		timer = setTimeout(
-			() => reject(new RemuxDeadline((REMUX_TIMEOUT_MS + REMUX_REAP_GRACE_MS) / 1000)),
-			REMUX_TIMEOUT_MS + REMUX_REAP_GRACE_MS,
+			() => reject(new RemuxDeadline((budgetMs + REMUX_REAP_GRACE_MS) / 1000)),
+			budgetMs + REMUX_REAP_GRACE_MS,
 		);
 		// Don't hold the event loop open. The awaited promise is what keeps the
 		// work alive; without this, a shutdown during an in-flight remux waits out
@@ -264,19 +309,42 @@ export async function isFaststart(path: string): Promise<boolean | null> {
 export async function makeFaststart(path: string): Promise<number | null> {
 	if ((await isFaststart(path)) !== false) return null;
 
+	let sourceBytes: number;
+	try {
+		sourceBytes = (await stat(path)).size;
+	} catch {
+		// isFaststart just read this file, so a failure here is the volume going
+		// away between the two calls rather than a missing file. Either way the
+		// answer is the same, and the next caller will find out.
+		return null;
+	}
+
+	const budgetMs = remuxBudgetMs(sourceBytes);
+	if (budgetMs === null) {
+		console.warn(
+			`[faststart] declining ${path}: ${Math.round(sourceBytes / BYTES_PER_MB)} MB would not ` +
+				`finish within ${REMUX_MAX_MS / 1000}s, leaving the index where it is`,
+		);
+		return null;
+	}
+
 	const tmp = `${path}.${process.pid}.${randomUUID()}.faststart.tmp`;
 	try {
-		await runRemux(path, tmp);
+		await runRemux(path, tmp, budgetMs);
 
 		// Verify before swapping. A remux that ran cleanly and produced something
 		// that isn't faststart means the assumption behind this whole module was
 		// wrong for this file, and the original is the safer thing to keep.
 		if ((await isFaststart(tmp)) !== true) {
+			console.warn(
+				`[faststart] remux of ${path} did not produce a faststart file; keeping original`,
+			);
 			await unlink(tmp).catch(() => {});
 			return null;
 		}
 		const { size } = await stat(tmp);
 		if (size === 0) {
+			console.warn(`[faststart] remux of ${path} produced an empty file; keeping original`);
 			await unlink(tmp).catch(() => {});
 			return null;
 		}
@@ -289,9 +357,19 @@ export async function makeFaststart(path: string): Promise<number | null> {
 		// with it the slot release this whole mechanism exists to protect. Fire it
 		// and move on; `runRemux` has already arranged for the path to be
 		// reclaimed if the child ever wakes up.
+		//
+		// Logged, not swallowed. The sibling module makes this argument directly
+		// (see vision-variant.ts's readFileOrNull): a volume that has stopped
+		// answering would otherwise degrade every file in silence. The same
+		// applies to the likeliest cause by far — no `ffmpeg` on PATH, which
+		// yields ENOENT here and would otherwise mean every video keeps its index
+		// at the end with nothing anywhere to say so. This runs once per video,
+		// never in a loop, so there is no log-volume argument against it.
 		if (e instanceof RemuxDeadline) {
+			console.warn(`[faststart] ${path}: ${e.message}; keeping original`);
 			void unlink(tmp).catch(() => {});
 		} else {
+			console.warn(`[faststart] remux failed for ${path}, keeping original:`, e);
 			await unlink(tmp).catch(() => {});
 		}
 		return null;

@@ -151,7 +151,23 @@ for (const video of videos) {
 
 	// Reconcile the row even when the file needed no rewrite. This is what makes
 	// a re-run repair a previous run that died between the rename and the update.
-	const current = dryRun ? onDisk : statSync(abs).size;
+	//
+	// Guarded like the stat at the top of the loop, and for a reason that only
+	// exists down here: the row set was snapshotted by `.all()` before the loop
+	// started, and a remux of a large file takes real time, so a user deleting a
+	// video from the gallery mid-run unlinks bytes this iteration already stat'd
+	// successfully. An unguarded throw in a top-level-await module is an
+	// unhandled rejection — the whole backfill dies partway, the summary never
+	// prints, and the operator is left with a stack trace and no idea how far it
+	// got. Counting it as missing and moving on is the same answer the top of the
+	// loop already gives for the same condition.
+	let current: number;
+	try {
+		current = dryRun ? onDisk : statSync(abs).size;
+	} catch {
+		missing++;
+		continue;
+	}
 	if (current !== video.byteSize) {
 		if (dryRun) {
 			console.log(`would fix size ${video.storagePath}: ${video.byteSize} -> ${current}`);

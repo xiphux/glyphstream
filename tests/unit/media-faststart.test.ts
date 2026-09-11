@@ -14,7 +14,15 @@
  * failure leaves the original untouched.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import {
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+	existsSync,
+	readdirSync,
+	truncateSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -225,6 +233,39 @@ describe('makeFaststart', () => {
 		expect(existsSync(args[args.length - 1])).toBe(false);
 	});
 
+	it('declines a file too large to finish inside the budget, without spawning ffmpeg', async () => {
+		// The budget scales with size, and above the ceiling the right move is to
+		// not start: spending the whole budget only to kill the child would hold an
+		// endpoint slot for a minute and a half and still leave the file exactly as
+		// it was. Declining up front costs nothing and keeps a working video.
+		//
+		// Sparse fixture: real box headers at the front so the detector answers
+		// `false` off a handful of reads, then truncated out to a size no test
+		// should actually write. `stat` reports the full length either way, which
+		// is all the budget cares about.
+		const p = write('huge.mp4', mp4(['ftyp', 'mdat']));
+		truncateSync(p, 400 * 1024 * 1024);
+
+		expect(await isFaststart(p), 'fixture must look remuxable, or this passes vacuously').toBe(
+			false,
+		);
+		expect(await makeFaststart(p)).toBeNull();
+		expect(state.calls, 'spawned ffmpeg for a file it should have declined').toEqual([]);
+		// And the original is untouched.
+		expect(readdirSync(state.dir).filter((f) => f.includes('.faststart.tmp'))).toEqual([]);
+	});
+
+	it('still remuxes a file comfortably inside the budget', async () => {
+		// The guard above must not be so eager it declines ordinary videos. A
+		// ComfyUI clip is single-digit MB; this pins that an 8 MB file is nowhere
+		// near the ceiling.
+		const p = write('ordinary.mp4', mp4(['ftyp', 'mdat', 'moov']));
+		truncateSync(p, 8 * 1024 * 1024);
+
+		expect(await makeFaststart(p)).not.toBeNull();
+		expect(state.calls.length).toBe(1);
+	});
+
 	it('takes every stream, minus the ones mp4 cannot hold', async () => {
 		// The one argument in this list whose absence is SILENT. Without `-map`,
 		// ffmpeg's default stream selection keeps one video and one audio and
@@ -237,7 +278,7 @@ describe('makeFaststart', () => {
 		// camera original with a timecode track exposes it as `data / codec none`,
 		// which the mp4 muxer rejects outright (exit 234) — stock ffmpeg does the
 		// same, so it is the container, not our build. Dropping data streams keeps
-		// everything else, and the muxer rebuilds tmcd from the timecode tag.
+		// everything else, and the mov/mp4 muxer rebuilds tmcd from the timecode tag.
 		await makeFaststart(write('map.mp4', mp4(['ftyp', 'mdat', 'moov'])));
 
 		const args = state.calls[0];
@@ -248,7 +289,9 @@ describe('makeFaststart', () => {
 		expect(maps).toEqual(['0', '-0:d']);
 		// Order matters: the exclusion has to follow the inclusion it narrows.
 		expect(args.indexOf('-map')).toBeLessThan(args.lastIndexOf('-map'));
-		// And it must precede the output, or ffmpeg reads it as an input option.
+		// And it must precede the output: ffmpeg binds an option to the file that
+		// follows it, so a `-map` trailing the output filename would apply to a
+		// second output that doesn't exist rather than to this one.
 		expect(args.lastIndexOf('-map')).toBeLessThan(args.length - 1);
 	});
 });
