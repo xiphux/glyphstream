@@ -5,20 +5,26 @@
 Multi-stage Alpine Docker image, ~260 MB uncompressed (linux/amd64). Bind-mount `data/` for
 persistence and mount `config.toml` read-only.
 
-The image carries a **decode-only ffmpeg** (~5 MB), built by its own stage
-rather than installed, and used for one thing: extracting a frame for a
-video's gallery thumbnail. It covers H.264, HEVC, VP8, VP9, AV1 and MJPEG in
-MP4/MOV and WebM/MKV containers — anything else stores fine and simply gets no
-thumbnail.
+The image carries a small **decode-and-remux ffmpeg** (~5 MB), built by its own
+stage rather than installed, and used for two things: extracting a frame for a
+video's gallery thumbnail, and re-wrapping a stored mp4 so its index sits at
+the front. It decodes H.264, HEVC, VP8, VP9, AV1 and MJPEG in MP4/MOV and
+WebM/MKV containers — anything else stores fine and simply gets no thumbnail.
+It cannot **encode** video at all: the re-wrap is a stream copy, which is why
+adding it cost about 188 KB rather than pulling in x264 and the rest.
 
-It is a runtime dependency of that path only, but if you run the built output
-outside this image and `ffmpeg` isn't on `PATH`, be clear about what you lose:
-**every video renders as an empty box until you press play** — gallery tiles,
-chat messages, tool-call attachments, and the lightbox alike. Not "a slightly
-worse frame": those surfaces rely on the poster now and mostly no longer ask
-the browser to fetch a frame of their own, so there is little client-side
-fallback behind it. Images, uploads,
-and playback once started are unaffected. **Put `data/` on an SSD if you
+It is a runtime dependency of those paths only, but if you run the built output
+outside this image and `ffmpeg` isn't on `PATH`, be clear about what you lose.
+First: **every video renders as an empty box until you press play** — gallery
+tiles, chat messages, tool-call attachments, and the lightbox alike. Not "a
+slightly worse frame": those surfaces rely on the poster now and mostly no
+longer ask the browser to fetch a frame of their own, so there is little
+client-side fallback behind it. Second, and quietly: **new videos keep their
+index at the end**, so playback over a slow link waits for most of the file
+before it starts. That one surfaces no error anywhere — the video is intact and
+plays correctly, just late — so if remote playback feels like it buffers
+forever, check that `ffmpeg` is on `PATH` before looking anywhere else. Images,
+uploads, and playback once started are unaffected. **Put `data/` on an SSD if you
 have one** — SQLite reads are synchronous, so every one that misses the page
 cache blocks the whole process for the length of the physical read, and on
 spinning disks that is the dominant cost of a cold load. Never put the
@@ -73,7 +79,13 @@ docker compose exec glyphstream node /app/build/scripts/faststart-backfill.js
 ```
 
 It reads `DB_PATH` and `MEDIA_DIR`, rewrites only the files that need it, and
-leaves anything it can't parse as an mp4 (WebM and friends) untouched.
+leaves anything it can't parse as an mp4 (WebM and friends) untouched. It needs
+`ffmpeg` on `PATH` for the same reason the write-time path does.
+
+It covers **generated** media only — the same scope as the write-time path.
+Videos a user uploaded are left exactly as they arrived, on the principle that
+a maintenance script shouldn't rewrite the only copy of a file someone handed
+us.
 
 **Safe to run repeatedly, by design.** Every run re-derives the answer for every
 video rather than tracking progress, so an interrupted run is repaired by
