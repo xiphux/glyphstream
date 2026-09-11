@@ -123,6 +123,11 @@ export interface ChatTurnDeps {
 	/** Server's in-flight registry start time for this conversation (unix ms),
 	 *  or null — mirrored from the load function, drives `recoveredInFlight`. */
 	serverInFlightSince(): number | null;
+	/** When that server-side turn acquired its endpoint slot (unix ms), or null
+	 *  while it's still queued behind the gate. Mirrored from the load function
+	 *  and refreshed by the recovery poll through `setServerGeneratingSince`. */
+	serverGeneratingSince(): number | null;
+	setServerGeneratingSince(since: number | null): void;
 	/** True while a fan-out comparison owns the in-flight display (its columns),
 	 *  so the single recovered bubble stays suppressed. */
 	fanoutComparing(): boolean;
@@ -264,6 +269,16 @@ export class ChatTurnController {
 			!this.#deps.fanoutComparing() &&
 			!turnLooksSettled(this.#deps.getMessages())
 		);
+	}
+
+	/**
+	 * A recovered turn that hasn't been granted its endpoint slot yet — the
+	 * server-truth counterpart of a live turn's `inFlightQueued`. Without it a
+	 * recovered bubble can't tell waiting from working: it read "Generating" and
+	 * counted up from registration for the whole time it sat behind the gate.
+	 */
+	get recoveredQueued(): boolean {
+		return this.recoveredInFlight && this.#deps.serverGeneratingSince() === null;
 	}
 
 	#resetInFlightSegments(): void {
@@ -794,7 +809,17 @@ export class ChatTurnController {
 			try {
 				const res = await fetch(`/api/conversations/${id}?fanout=1`);
 				if (stopped || !res.ok) return;
-				const body = (await res.json()) as { inFlightSince: number | null };
+				const body = (await res.json()) as {
+					inFlightSince: number | null;
+					inFlightGeneratingSince: number | null;
+				};
+				if (stopped) return;
+				// A recovered turn that was queued when the page loaded gets its slot
+				// while the user watches; this is how the bubble finds out, flipping
+				// from Queued to generating and starting its timer at the gate's
+				// handover rather than at load. Up to one tick late, but the timestamp
+				// is the server's, so the timer is right from the moment it appears.
+				this.#deps.setServerGeneratingSince(body.inFlightGeneratingSince);
 				// The registry alone is the signal now: `onGenerationSettled` frees the
 				// entry as soon as the response is persisted, ahead of the title race,
 				// so it no longer lags the message landing the way it did when this

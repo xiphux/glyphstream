@@ -13,7 +13,11 @@ import {
 } from '$lib/server/db/queries/conversations';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { getAvatarDrawSince, getInFlightSince } from '$lib/server/streaming/in-flight';
+import {
+	getAvatarDrawSince,
+	getInFlightGeneratingSince,
+	getInFlightSince,
+} from '$lib/server/streaming/in-flight';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
@@ -23,9 +27,10 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// The recovery readers (`?fanout=1`), wanting different halves: the fan-out
 	// controller's 4s poll reads `fanout` (+ inFlightSince) to rebuild the compare
 	// grid as branches land; the single-turn recovery poll reads ONLY
-	// `inFlightSince`; and the chat page's `reconcileAvatarDraw` — called from its
-	// avatar poll, its visibility/online handlers and a draw's own catch — reads
-	// ONLY `avatarDrawSince`. None wants the message list, so skip
+	// `inFlightSince` (+ `inFlightGeneratingSince`, to flip a recovered bubble
+	// from Queued to generating when the gate hands over); and the chat page's
+	// `reconcileAvatarDraw` — called from its avatar poll, its visibility/online
+	// handlers and a draw's own catch — reads ONLY `avatarDrawSince`. None wants the message list, so skip
 	// getConversationDetail's walkActiveBranch (+ content_html serialization)
 	// entirely here; a poll over a long thread would otherwise re-fetch the whole
 	// thing each tick. getConversationMeta is the light, ownership-checked fetch
@@ -42,6 +47,7 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 		);
 		return json({
 			inFlightSince: getInFlightSince(params.id),
+			inFlightGeneratingSince: getInFlightGeneratingSince(params.id),
 			avatarDrawSince: getAvatarDrawSince(params.id),
 			fanout: getFanoutRecoveryState(params.id, locals.user.id, meta.activeLeafMessageId),
 		});
@@ -55,9 +61,16 @@ export const GET: RequestHandler = ({ locals, params, url }) => {
 	// without the heavyweight page reload — when a generation it's tracking has
 	// finished (it needs the message list to see the assistant row land).
 	const inFlightSince = getInFlightSince(params.id);
+	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
 	const avatarDrawSince = getAvatarDrawSince(params.id);
 	const fanout = getFanoutRecoveryState(params.id, locals.user.id, conv.activeLeafMessageId);
-	return json({ conversation: conv, inFlightSince, avatarDrawSince, fanout });
+	return json({
+		conversation: conv,
+		inFlightSince,
+		inFlightGeneratingSince,
+		avatarDrawSince,
+		fanout,
+	});
 };
 
 /**

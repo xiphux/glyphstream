@@ -237,6 +237,33 @@ export function getInFlightSince(conversationId: string): number | null {
 }
 
 /**
+ * When the conversation's turn actually began GENERATING — the earliest
+ * `generationStartedAt` among its turn entries — or null when nothing is in
+ * flight OR everything in flight is still waiting on the endpoint's gate.
+ *
+ * `getInFlightSince` answers "since when has this been registered", which is
+ * the wrong zero for an elapsed timer on a saturated endpoint: queue a stack of
+ * video generations against a max_concurrent=1 GPU and each one waits hours
+ * behind the others. A recovered bubble that counted from registration reported
+ * that whole wait as "generating", then kept counting through the real run. The
+ * fan-out grid never had this problem because its recovery payload carries each
+ * branch's `generationStartedAt`; this is the same fact for a single turn.
+ *
+ * Paired with `getInFlightSince` rather than replacing it: that one is also the
+ * recovery poll's termination signal, and a queued turn is very much in flight.
+ * Turn-scoped for the same reason — an avatar draw holding the GPU isn't the
+ * turn, and must not make a queued turn read as started.
+ */
+export function getInFlightGeneratingSince(conversationId: string): number | null {
+	let earliest: number | null = null;
+	for (const e of conversationTurnEntries(conversationId)) {
+		if (e.generationStartedAt !== null && (earliest === null || e.generationStartedAt < earliest))
+			earliest = e.generationStartedAt;
+	}
+	return earliest;
+}
+
+/**
  * When the conversation's avatar draw started, or null when none is running.
  *
  * The mirror image of `getInFlightSince`, which deliberately EXCLUDES this

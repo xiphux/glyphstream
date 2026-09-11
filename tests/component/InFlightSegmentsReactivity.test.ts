@@ -50,6 +50,8 @@ function makeController(): ChatTurnController {
 		isNearBottom: () => true,
 		scrollToBottom: () => {},
 		serverInFlightSince: () => null,
+		serverGeneratingSince: () => null,
+		setServerGeneratingSince: () => {},
 		fanoutComparing: () => false,
 	});
 }

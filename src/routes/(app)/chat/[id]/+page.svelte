@@ -658,6 +658,11 @@
 	// indicator can survive an iOS suspension that killed the client fetch.
 	// svelte-ignore state_referenced_locally
 	let serverInFlightSince = $state<number | null>(data.inFlightSince);
+	// When that generation acquired its endpoint slot, or null while it's still
+	// queued. Seeded from the load, refreshed by the turn controller's recovery
+	// poll so a recovered bubble flips from Queued to generating in place.
+	// svelte-ignore state_referenced_locally
+	let serverGeneratingSince = $state<number | null>(data.inFlightGeneratingSince);
 
 	// Side-by-side canvas pane. The server is authoritative; this holds the
 	// live doc + open state. Seeded from the page load, updated by
@@ -744,6 +749,7 @@
 		convId = data.conversation.id;
 		modelKind = data.conversation.modelKind;
 		serverInFlightSince = data.inFlightSince;
+		serverGeneratingSince = data.inFlightGeneratingSince;
 		avatarDraw.syncFromServer(data.avatarDrawSince);
 		// Re-seed the canvas ONLY when switching conversations. A mid-turn
 		// invalidateAll refreshes `data` with the same id — re-hydrating then
@@ -804,6 +810,8 @@
 		isNearBottom: () => isNearBottom,
 		scrollToBottom: () => scrollToBottom(),
 		serverInFlightSince: () => serverInFlightSince,
+		serverGeneratingSince: () => serverGeneratingSince,
+		setServerGeneratingSince: (since) => (serverGeneratingSince = since),
 		fanoutComparing: () => fanout.comparing,
 	});
 
@@ -1689,13 +1697,10 @@
 	// image backend, that handover is routine, not exotic.
 	//
 	// Gated on `turn.busy` so it means "a LOCAL turn we are driving that has not
-	// started yet". A RECOVERED turn isn't busy and has no local signal at all —
-	// the recovery payload carries a registration time, not a gate state — so it
-	// falls through to 'active' and the poll corrects it from server truth within
-	// a tick. That's the right way round for a row the user is already looking
-	// at: over-reporting activity costs a wrong icon on the one conversation
-	// whose bubble already says what it is doing, while under-reporting hides the
-	// thread they are hunting for.
+	// started yet". A RECOVERED turn isn't busy and has no local stream; its gate
+	// state comes from the server instead (`turn.recoveredQueued`, off the
+	// registry's `generationStartedAt`) — the same fact the sidebar poll reads, so
+	// the two can't disagree about a thread the user has opened.
 	//
 	// The pre-first-event window (Send dispatched, nothing back yet) therefore
 	// reads 'queued', which is what it is — no slot has been granted, and on a
@@ -1705,25 +1710,40 @@
 			? fanout.generatingNow
 				? 'active'
 				: 'queued'
-			: turn.inFlightQueued || (turn.busy && turn.inFlightStartedAt === null)
+			: turn.inFlightQueued ||
+				  (turn.busy && turn.inFlightStartedAt === null) ||
+				  turn.recoveredQueued
 				? 'queued'
 				: 'active',
 	);
 
-	// Tick a timer while the in-flight bubble is open so the user gets a
+	// The recovered bubble's queue notice. The registry knows THAT a turn is
+	// waiting but not its place in line, and `ahead: 0` is what the bubble reads
+	// as "queued, no count to show". Hoisted so the prop keeps one identity.
+	const recoveredQueueNotice = { ahead: 0 };
+
+	// When the in-flight turn acquired its endpoint slot — the zero the elapsed
+	// timer counts from. Queue time is not generation time: behind a
+	// max_concurrent=1 endpoint a turn can wait hours, and counting from the send
+	// (or, recovered, from registration) reported that whole wait as generating
+	// and then kept counting through the real run. Null while queued, which hides
+	// the timer; the fan-out grid's per-column timer follows the same rule. A
+	// recovered bubble takes the server's stamp so it stays honest across a
+	// suspension; a live one takes `start` (or the first content frame).
+	const generationStartedAt = $derived(
+		turn.recoveredInFlight ? serverGeneratingSince : turn.inFlightStartedAt,
+	);
+
+	// Tick a timer while the in-flight bubble is generating so the user gets a
 	// progress signal for slow operations (image generation, video gen) and
 	// also for chat round-trips that stall before the first token.
 	let elapsedSeconds = $state(0);
 	$effect(() => {
-		if (!showInFlight) {
+		const startedAt = showInFlight ? generationStartedAt : null;
+		if (startedAt === null) {
 			elapsedSeconds = 0;
 			return;
 		}
-		// A recovered bubble counts from the server-reported start time so
-		// the timer stays honest after a suspension; a live local turn
-		// counts from now (when this send began).
-		const startedAt =
-			turn.recoveredInFlight && serverInFlightSince !== null ? serverInFlightSince : Date.now();
 		elapsedSeconds = (Date.now() - startedAt) / 1000;
 		const interval = setInterval(() => {
 			elapsedSeconds = (Date.now() - startedAt) / 1000;
@@ -2490,7 +2510,7 @@
 							label={inFlightLabel}
 							status={turn.inFlightStatus}
 							progress={turn.inFlightProgress}
-							queued={turn.inFlightQueued}
+							queued={turn.inFlightQueued ?? (turn.recoveredQueued ? recoveredQueueNotice : null)}
 							{elapsedSeconds}
 							onImageClick={openImageInLightbox}
 							{openingLightboxFor}

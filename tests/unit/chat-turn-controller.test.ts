@@ -35,6 +35,7 @@ function makeDeps(overrides: Partial<ChatTurnDeps> = {}) {
 		canvases: [] as unknown[],
 		nearBottom: true,
 		serverInFlightSince: null as number | null,
+		serverGeneratingSince: null as number | null,
 		fanoutComparing: false,
 		scrolls: 0,
 	};
@@ -52,6 +53,8 @@ function makeDeps(overrides: Partial<ChatTurnDeps> = {}) {
 		isNearBottom: () => state.nearBottom,
 		scrollToBottom: () => (state.scrolls += 1),
 		serverInFlightSince: () => state.serverInFlightSince,
+		serverGeneratingSince: () => state.serverGeneratingSince,
+		setServerGeneratingSince: (since) => (state.serverGeneratingSince = since),
 		fanoutComparing: () => state.fanoutComparing,
 		...overrides,
 	};
@@ -631,6 +634,56 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 			const seen = urls.length;
 			await vi.advanceTimersByTimeAsync(12000);
 			expect(urls.length).toBe(seen);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
+	it('a recovered turn with no slot yet reads as queued, and stops once it has one', () => {
+		// The iOS-suspension case on a max_concurrent=1 endpoint: the page reloads
+		// onto a turn that is registered but still waiting behind the gate. It
+		// used to recover as plain "generating", timer running from registration.
+		const { deps, state } = makeDeps();
+		state.serverInFlightSince = 1000;
+		state.messages = [userMsg('u1')];
+		const turn = new ChatTurnController(deps);
+		expect(turn.recoveredInFlight).toBe(true);
+		expect(turn.recoveredQueued).toBe(true);
+
+		state.serverGeneratingSince = 9000;
+		expect(turn.recoveredQueued).toBe(false);
+	});
+
+	it('recovery poll carries the gate handover to the page', async () => {
+		// A turn queued at load gets its slot while the user watches; the bubble
+		// only learns that from the poll, so the poll has to hand it over.
+		vi.useFakeTimers();
+		let inFlightGeneratingSince: number | null = null;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					({
+						ok: true,
+						json: async () => ({ inFlightSince: 5000, inFlightGeneratingSince }),
+					}) as unknown as Response,
+			),
+		);
+		const { deps, state } = makeDeps();
+		state.serverInFlightSince = 5000;
+		state.messages = [userMsg('u1')];
+		const turn = new ChatTurnController(deps);
+		const stop = turn.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(turn.recoveredQueued).toBe(true);
+
+			inFlightGeneratingSince = 7000;
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(state.serverGeneratingSince).toBe(7000);
+			expect(turn.recoveredQueued).toBe(false);
 		} finally {
 			stop();
 			vi.unstubAllGlobals();

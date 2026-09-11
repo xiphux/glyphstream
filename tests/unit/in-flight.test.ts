@@ -19,6 +19,7 @@ import {
 	conversationTurnEntries,
 	AVATAR_BRANCH,
 	getAvatarDrawSince,
+	getInFlightGeneratingSince,
 	getInFlightSince,
 	registerInFlight,
 	resetInFlight,
@@ -135,6 +136,44 @@ describe('getInFlightSince', () => {
 		a.startedAt = 1000;
 		b.startedAt = 2000;
 		expect(getInFlightSince('c1')).toBe(1000);
+	});
+});
+
+describe('getInFlightGeneratingSince', () => {
+	it('returns null when nothing is in flight', () => {
+		expect(getInFlightGeneratingSince('c1')).toBeNull();
+	});
+
+	it('returns null while the turn is registered but still queued behind the gate', () => {
+		// The bug this exists for: registration time is not generation time. A
+		// turn waiting on a max_concurrent=1 endpoint is in flight (so
+		// getInFlightSince is non-null) but has not started generating.
+		registerInFlight('c1', endpoint('a'));
+		expect(getInFlightSince('c1')).not.toBeNull();
+		expect(getInFlightGeneratingSince('c1')).toBeNull();
+	});
+
+	it('returns the slot-acquisition time once the gate hands over', () => {
+		const e = registerInFlight('c1', endpoint('a'));
+		e.startedAt = 1000;
+		e.generationStartedAt = 5000;
+		expect(getInFlightGeneratingSince('c1')).toBe(5000);
+	});
+
+	it('returns the earliest start among branches that have one', () => {
+		const a = registerInFlight('c1', endpoint('m1'), 'b0');
+		const b = registerInFlight('c1', endpoint('m2'), 'b1');
+		registerInFlight('c1', endpoint('m3'), 'b2');
+		a.generationStartedAt = 3000;
+		b.generationStartedAt = 2000;
+		expect(getInFlightGeneratingSince('c1')).toBe(2000);
+	});
+
+	it('ignores an avatar draw holding the GPU while the turn itself queues', () => {
+		registerInFlight('c1', endpoint('a'));
+		const draw = registerInFlight('c1', endpoint('a'), AVATAR_BRANCH, null, null, null, false);
+		draw.generationStartedAt = 5000;
+		expect(getInFlightGeneratingSince('c1')).toBeNull();
 	});
 });
 

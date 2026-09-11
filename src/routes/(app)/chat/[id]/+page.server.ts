@@ -8,7 +8,11 @@ import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
-import { getAvatarDrawSince, getInFlightSince } from '$lib/server/streaming/in-flight';
+import {
+	getAvatarDrawSince,
+	getInFlightGeneratingSince,
+	getInFlightSince,
+} from '$lib/server/streaming/in-flight';
 import { timeDb } from '$lib/server/util/db-timing';
 import type { PageServerLoad } from './$types';
 
@@ -48,6 +52,10 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 	// iOS suspension killed the client's fetch. Unix ms start time, or
 	// null when nothing is in flight.
 	const inFlightSince = getInFlightSince(params.id);
+	// ...and when it acquired its endpoint slot, or null while it is still queued
+	// behind the gate. The recovered bubble's "Queued" state and the zero its
+	// elapsed timer counts from — registration time would count the queue wait.
+	const inFlightGeneratingSince = getInFlightGeneratingSince(params.id);
 
 	// The same question for an avatar draw, which `getInFlightSince` deliberately
 	// excludes (it isn't a turn — see the note there). Reported separately so the
@@ -176,6 +184,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		assistantLabel,
 		assistantAvatarMediaId,
 		inFlightSince,
+		inFlightGeneratingSince,
 		avatarDrawSince,
 		fanout,
 		canvases,
