@@ -98,7 +98,15 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # `--disable-autodetect` is what buys most of that: without it, configure links
 # every codec library it finds sitting in the build stage — x264, x265, and the
 # rest — none of which we want, because this build never ENCODES video. It
-# decodes one frame and writes one JPEG.
+# decodes one frame and writes one JPEG, and it re-wraps an existing bitstream
+# into a new container without touching it.
+#
+# That second job is why the mp4/mov/matroska muxers are enabled (+188 KB). A
+# faststart remux is `-c copy`: the demuxer reads the bitstream and the muxer
+# writes it back out with the index moved to the front, and nothing decodes.
+# See media/faststart.ts for why that matters. The added surface is a muxer
+# rather than a decoder, which is the safer half of the pair — but it is worth
+# saying plainly that "decode-only" is now "decode and re-wrap".
 #
 # The narrow codec set is also a security property, not just a size one. A video
 # decoder is a well-known source of memory-safety CVEs, and this path feeds it
@@ -162,7 +170,7 @@ RUN ./configure \
       --enable-parser=h264,hevc,vp8,vp9,av1,mjpeg \
       --enable-demuxer=mov,matroska \
       --enable-encoder=mjpeg \
-      --enable-muxer=image2 \
+      --enable-muxer=image2,mp4,mov,matroska,webm \
       --enable-filter=scale,format,null,copy \
       --enable-protocol=file \
       --enable-swscale \

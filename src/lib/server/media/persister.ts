@@ -15,6 +15,9 @@ import { fetchUpstreamBytes } from '../endpoints/client';
 import type { LoadedEndpoint } from '../endpoints/config';
 import { insertMedia } from '../db/queries/media';
 import { getMediaStore } from './disk-store';
+import { makeFaststart } from './faststart';
+import { mediaDir } from '../env';
+import { resolve } from 'node:path';
 import { truncateEllipsis } from '$lib/text';
 
 const PROMPT_EXCERPT_MAX = 500;
@@ -90,11 +93,25 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 		contentType: input.contentType || 'video/mp4',
 		kind: 'video',
 	});
+
+	// Move the index to the front, once, here — rather than making every future
+	// playback pay for it. ComfyUI writes `moov` last, which means a player has
+	// to find the end of the file before the first frame; over a slow link that
+	// looks like the whole video downloading before it starts. See
+	// media/faststart.ts. Returns null when the file didn't need it or couldn't
+	// be rewritten, and the original is kept as-is in both cases.
+	//
+	// After putStream, not instead of it: the stream lands on disk without being
+	// buffered, and the remux is then disk-to-disk. And BEFORE insertMedia,
+	// because the rewrite changes the byte count — the row has to describe the
+	// file that ends up on disk.
+	const faststartBytes = await makeFaststart(resolve(mediaDir(), ref.storagePath));
+
 	const { id } = insertMedia({
 		userId: input.userId,
 		storagePath: ref.storagePath,
 		contentType: ref.contentType,
-		byteSize: ref.byteSize,
+		byteSize: faststartBytes ?? ref.byteSize,
 		kind: 'video',
 		sourceEndpointId: input.endpoint.id,
 		sourceModel: input.sourceModel,
