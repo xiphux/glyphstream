@@ -68,8 +68,8 @@ at write time, so anything generated from this release on is already correct.
 Videos stored **before** it need one pass:
 
 ```bash
-docker compose exec glyphstream node /app/scripts/faststart-backfill.js --dry-run
-docker compose exec glyphstream node /app/scripts/faststart-backfill.js
+docker compose exec glyphstream node /app/build/scripts/faststart-backfill.js --dry-run
+docker compose exec glyphstream node /app/build/scripts/faststart-backfill.js
 ```
 
 It reads `DB_PATH` and `MEDIA_DIR`, rewrites only the files that need it, and

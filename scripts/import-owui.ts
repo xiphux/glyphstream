@@ -5,7 +5,7 @@
  *   pnpm import:owui <export.json> --user-id <uuid>
  *
  * Inside a running Docker container (once the deploy scaffolding lands):
- *   docker compose exec glyphstream node /app/scripts/import-owui.js \
+ *   docker compose exec glyphstream node /app/build/scripts/import-owui.js \
  *     /imports/owui-export.json --user-id <uuid>
  *
  * The user id must already exist in the users table — the user has to

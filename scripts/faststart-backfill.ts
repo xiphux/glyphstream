@@ -7,7 +7,7 @@
  *   pnpm tsx scripts/faststart-backfill.ts
  *
  * Inside a running container:
- *   docker compose exec glyphstream node /app/scripts/faststart-backfill.js
+ *   docker compose exec glyphstream node /app/build/scripts/faststart-backfill.js
  *
  * Reads DB_PATH and MEDIA_DIR from the environment, matching the SvelteKit
  * runtime defaults. Opens its own node:sqlite connection rather than going
