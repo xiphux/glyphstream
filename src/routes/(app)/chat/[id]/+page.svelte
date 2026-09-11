@@ -1699,8 +1699,11 @@
 	// Gated on `turn.busy` so it means "a LOCAL turn we are driving that has not
 	// started yet". A RECOVERED turn isn't busy and has no local stream; its gate
 	// state comes from the server instead (`turn.recoveredQueued`, off the
-	// registry's `generationStartedAt`) — the same fact the sidebar poll reads, so
-	// the two can't disagree about a thread the user has opened.
+	// registry's `generationStartedAt`) — the same field the sidebar poll reads.
+	// They differ in one case: the poll's `filterFullyQueued` counts an avatar draw
+	// as part of the row, while this is turn-scoped, so a queued turn beside a
+	// draw that holds a slot reads 'queued' here and 'active' there. Left as is —
+	// the client has no gate state for the draw to reconcile against.
 	//
 	// The pre-first-event window (Send dispatched, nothing back yet) therefore
 	// reads 'queued', which is what it is — no slot has been granted, and on a
