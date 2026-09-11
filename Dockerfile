@@ -196,6 +196,19 @@ RUN ./configure \
 # discarded, so it costs the shipped image nothing. Without it a future edit to
 # --enable-filter or --enable-muxer would build green and blank every video tile
 # in production, where a broken ffmpeg and an undecodable file look identical.
+#
+# Both argv shapes the app actually runs are exercised, because they fail
+# differently and both fail SILENTLY. The thumbnail pipeline needs the filters
+# and the mjpeg encoder; the faststart remux needs the mp4 muxer, and its
+# failure surfaces as null -> keep the original -> videos that simply never get
+# faststart, with nothing logged. The remux probe asserts three things rather
+# than just an exit code: the output exists, all three input streams survived
+# (a default stream selection would silently drop one, so this pins the -map
+# pair too), and the box immediately after `ftyp` really is `moov`, which is the
+# entire point of the exercise. That last offset is read out of ftyp's own size
+# field rather than hardcoded — the length ffmpeg writes there is a detail of
+# its version, and a probe that asserts a constant would start failing on an
+# upgrade for a reason that has nothing to do with what it is testing.
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
          -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
@@ -207,7 +220,19 @@ RUN apk add --no-cache ffmpeg \
            -vf "scale=w='min(512,iw)':h='min(512,ih)':force_original_aspect_ratio=decrease" \
            -q:v 8 -f image2 -y /tmp/$f.jpg \
          && test -s /tmp/$f.jpg || exit 1; \
-       done
+       done \
+    && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=15:d=1 \
+         -f lavfi -i sine=frequency=440:duration=1 -f lavfi -i sine=frequency=880:duration=1 \
+         -map 0:v -map 1:a -map 2:a -c:v libx264 -pix_fmt yuv420p -c:a aac \
+         -y /tmp/probe-multi.mp4 \
+    && /opt/ff/bin/ffmpeg -hide_banner -loglevel error -nostdin -protocol_whitelist file \
+         -i /tmp/probe-multi.mp4 -map 0 -map -0:d -c copy -movflags +faststart \
+         -f mp4 -y /tmp/probe-fs.mp4 \
+    && test -s /tmp/probe-fs.mp4 \
+    && test $(( $(ffprobe -v error -show_entries stream=index -of csv=p=0 /tmp/probe-fs.mp4 | wc -l) )) -eq 3 \
+    && set -- $(od -An -tu1 -N4 -j0 /tmp/probe-fs.mp4) \
+    && test "$(dd if=/tmp/probe-fs.mp4 bs=1 \
+         skip=$(( $1*16777216 + $2*65536 + $3*256 + $4 + 4 )) count=4 2>/dev/null)" = moov
 
 # --- runtime ----------------------------------------------------------
 FROM node:26-alpine AS runtime
@@ -222,7 +247,8 @@ FROM node:26-alpine AS runtime
 # into a separate container."
 RUN apk add --no-cache tini sqlite
 
-# Decode-only, ~5 MB. See the ffmpeg stage for why it isn't `apk add ffmpeg`.
+# Decode-and-remux, ~5 MB. See the ffmpeg stage for why it isn't
+# `apk add ffmpeg`, and for why "decode-only" stopped being the right word.
 # libdav1d is the one codec library it links against rather than implements —
 # ffmpeg's own AV1 decoder cannot decode in software.
 RUN apk add --no-cache libdav1d

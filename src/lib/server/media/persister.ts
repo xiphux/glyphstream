@@ -104,7 +104,22 @@ export async function persistGeneratedVideo(input: PersistVideoInput): Promise<s
 	// After putStream, not instead of it: the stream lands on disk without being
 	// buffered, and the remux is then disk-to-disk. And BEFORE insertMedia,
 	// because the rewrite changes the byte count — the row has to describe the
-	// file that ends up on disk.
+	// file that ends up on disk. That ordering is also why the remux runs inside
+	// the endpoint slot the caller is holding: the id this function returns is
+	// attached to the message before the slot is released, so deferring the
+	// rewrite would mean inserting a row, then rewriting the file underneath it,
+	// then correcting the size — a window where the row describes a file that no
+	// longer exists at that size, and where a client can already be range-
+	// requesting the bytes being swapped. Measured, the remux is 10-150 ms
+	// against a download of the same file that already happened inside this slot.
+	//
+	// DISK-STORE-ONLY, and the first thing in this module to be: everything else
+	// here goes through `getMediaStore()`, while this resolves a real filesystem
+	// path to hand ffmpeg. Under a future S3MediaStore the path resolves to
+	// nothing, `isFaststart` returns null, and faststart silently stops happening
+	// — correct, but invisibly degraded. Extending MediaStore with a
+	// derived-asset/local-path seam is the same deferred v2 change noted in
+	// thumbnail.ts and vision-variant.ts, which reach around it the same way.
 	const faststartBytes = await makeFaststart(resolve(mediaDir(), ref.storagePath));
 
 	const { id } = insertMedia({

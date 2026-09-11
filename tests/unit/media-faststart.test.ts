@@ -224,4 +224,31 @@ describe('makeFaststart', () => {
 		expect(args[args.length - 1]).toMatch(/\.faststart\.tmp$/);
 		expect(existsSync(args[args.length - 1])).toBe(false);
 	});
+
+	it('takes every stream, minus the ones mp4 cannot hold', async () => {
+		// The one argument in this list whose absence is SILENT. Without `-map`,
+		// ffmpeg's default stream selection keeps one video and one audio and
+		// discards the rest — exit 0, a genuinely faststart output, and then the
+		// rename destroys the original. Measured against the shipped build, a
+		// two-audio mp4 lost a track and 36% of its bytes, and a two-subtitle file
+		// lost both subtitle tracks as well.
+		//
+		// `-map 0` on its own is not sufficient and not safe to "simplify" to: a
+		// camera original with a timecode track exposes it as `data / codec none`,
+		// which the mp4 muxer rejects outright (exit 234) — stock ffmpeg does the
+		// same, so it is the container, not our build. Dropping data streams keeps
+		// everything else, and the muxer rebuilds tmcd from the timecode tag.
+		await makeFaststart(write('map.mp4', mp4(['ftyp', 'mdat', 'moov'])));
+
+		const args = state.calls[0];
+		const maps = args.reduce<string[]>(
+			(acc, a, i) => (a === '-map' ? [...acc, args[i + 1]] : acc),
+			[],
+		);
+		expect(maps).toEqual(['0', '-0:d']);
+		// Order matters: the exclusion has to follow the inclusion it narrows.
+		expect(args.indexOf('-map')).toBeLessThan(args.lastIndexOf('-map'));
+		// And it must precede the output, or ffmpeg reads it as an input option.
+		expect(args.lastIndexOf('-map')).toBeLessThan(args.length - 1);
+	});
 });

@@ -38,6 +38,135 @@ const execFileAsync = promisify(execFile);
  *  decode, so it is I/O bound rather than CPU bound. */
 const REMUX_TIMEOUT_MS = 120_000;
 
+/** How long past `REMUX_TIMEOUT_MS` to wait before giving up on the child
+ *  settling at all. Non-zero so the ordinary case — SIGKILL lands, execFile
+ *  rejects — still surfaces ffmpeg's own error rather than ours. */
+const REMUX_REAP_GRACE_MS = 2_000;
+
+/**
+ * Our own deadline expiring, as opposed to ffmpeg failing.
+ *
+ * `execFile`'s `timeout` bounds when the KILL SIGNAL IS SENT, not when the
+ * promise settles — its callback runs off the child's `close` event, and the
+ * only path from the timeout to that callback is `child.kill()` itself
+ * throwing. A process blocked in uninterruptible I/O cannot be reaped, so the
+ * promise never settles. That matters more here than at the sibling call in
+ * `thumbnail.ts`: this runs inside `persistGeneratedVideo`, which runs inside
+ * the endpoint slot held by `startMediaRelay` — so a child that never settles
+ * holds a generation slot for the life of the process, and on a
+ * `max_concurrent = 1` endpoint that is the whole endpoint.
+ *
+ * Racing an independent timer means the slot comes back whether or not the
+ * child ever does. It does NOT reap the child; nothing in Node can.
+ *
+ * Bounds the CHILD, and only the child. The `open`/`stat`/`read` in
+ * `isFaststart`, the `stat`/`rename` in `makeFaststart`, and `putStream` in
+ * its caller are all un-deadlined libuv fs calls against the same volume — if
+ * MEDIA_DIR stops answering, one of those hangs before ffmpeg is ever spawned.
+ * Fixing that is a different change (a deadline can't wrap a libuv fs call);
+ * this covers the case where ffmpeg specifically wedges on one inode while
+ * Node's own metadata ops still complete.
+ */
+class RemuxDeadline extends Error {
+	constructor(seconds: number) {
+		super(`ffmpeg did not settle within ${seconds}s`);
+		this.name = 'RemuxDeadline';
+	}
+}
+
+/**
+ * Run the remux, bounded by a deadline the child cannot outlive.
+ *
+ * Resolves when ffmpeg does; rejects with `RemuxDeadline` if it doesn't in
+ * time. On the deadline path the temp file is reclaimed whenever the child
+ * finally settles, if it ever does — see the caller for why that can't just be
+ * awaited.
+ */
+async function runRemux(path: string, tmp: string): Promise<void> {
+	const run = execFileAsync(
+		'ffmpeg',
+		[
+			'-hide_banner',
+			'-loglevel',
+			'error',
+			'-nostdin',
+			'-protocol_whitelist',
+			'file',
+			'-i',
+			path,
+			// Take EVERY stream, then drop the ones mp4 can't hold.
+			//
+			// Without `-map`, ffmpeg applies default stream selection: one "best"
+			// video and one "best" audio, and nothing else. That is silent — exit 0,
+			// a genuinely faststart output that passes the check below — and then the
+			// rename destroys the only copy of the original. Measured against this
+			// build: a two-audio mp4 came back 3 streams -> 2 and lost 36% of its
+			// bytes; a file with two subtitle tracks lost BOTH of them plus an audio
+			// track.
+			//
+			// `-map 0` alone is not the fix. A camera original carrying a timecode
+			// track exposes it as `data / codec none`, which the mp4 muxer refuses —
+			// exit 234, "Could not find tag for codec none". Stock ffmpeg 6.1.1 fails
+			// identically, so it is the container, not this build. That turns a lossy
+			// remux into no remux at all for exactly the files most likely to need
+			// one. Excluding data streams keeps the rest: the mov muxer regenerates a
+			// tmcd track from the timecode metadata tag anyway, so the stream count
+			// survives the round trip.
+			'-map',
+			'0',
+			'-map',
+			'-0:d',
+			// The whole point: copy the streams, move the index.
+			'-c',
+			'copy',
+			'-movflags',
+			'+faststart',
+			// Pinned rather than inferred: the temp name ends in `.tmp`.
+			'-f',
+			'mp4',
+			'-y',
+			tmp,
+		],
+		{
+			timeout: REMUX_TIMEOUT_MS,
+			killSignal: 'SIGKILL',
+			maxBuffer: 1024 * 1024,
+			env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
+		},
+	);
+
+	// Attached before the race so a rejection arriving after we've given up is
+	// already handled and can't surface as an unhandled rejection.
+	run.catch(() => {});
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timer = setTimeout(
+			() => reject(new RemuxDeadline((REMUX_TIMEOUT_MS + REMUX_REAP_GRACE_MS) / 1000)),
+			REMUX_TIMEOUT_MS + REMUX_REAP_GRACE_MS,
+		);
+		// Don't hold the event loop open. The awaited promise is what keeps the
+		// work alive; without this, a shutdown during an in-flight remux waits out
+		// the full remaining timer.
+		timer.unref?.();
+	});
+
+	try {
+		await Promise.race([run, deadline]);
+	} catch (e) {
+		if (e instanceof RemuxDeadline) {
+			// We have given up on this child, but it may still be alive and may yet
+			// finish writing `tmp`. Nothing will ever reference that path again and
+			// nothing sweeps for it, so reclaim it whenever the child settles. Not
+			// awaited: the point of the deadline is that this may be never.
+			void run.finally(() => unlink(tmp).catch(() => {})).catch(() => {});
+		}
+		throw e;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 /** Box headers are 8 bytes: a 32-bit size then a 4-char type. A size of 1 means
  *  the real size is a 64-bit value in the next 8 bytes (files over 4 GB). */
 const HEADER_BYTES = 8;
@@ -123,43 +252,21 @@ export async function isFaststart(path: string): Promise<boolean | null> {
  * The replacement goes through a uniquely-named sibling and a rename, matching
  * every other write in this directory — a reader can never observe a half-built
  * file, and a crash leaves the original untouched. The output is checked for
- * being genuinely faststart before the swap, so a remux that silently produced
- * something wrong can't overwrite a working file.
+ * being genuinely faststart before the swap, so a remux that ran cleanly but
+ * didn't move the index can't overwrite a working file.
+ *
+ * That check bounds ONE property and is not a general "is this output sound"
+ * gate: it walks top-level box headers, so it cannot see inside `moov` and
+ * cannot tell whether the streams survived. Dropped tracks look identical to
+ * it — which is why the stream selection is pinned explicitly at the argv
+ * rather than left to ffmpeg's default. See `runRemux`.
  */
 export async function makeFaststart(path: string): Promise<number | null> {
 	if ((await isFaststart(path)) !== false) return null;
 
 	const tmp = `${path}.${process.pid}.${randomUUID()}.faststart.tmp`;
 	try {
-		await execFileAsync(
-			'ffmpeg',
-			[
-				'-hide_banner',
-				'-loglevel',
-				'error',
-				'-nostdin',
-				'-protocol_whitelist',
-				'file',
-				'-i',
-				path,
-				// The whole point: copy the streams, move the index.
-				'-c',
-				'copy',
-				'-movflags',
-				'+faststart',
-				// Pinned rather than inferred: the temp name ends in `.tmp`.
-				'-f',
-				'mp4',
-				'-y',
-				tmp,
-			],
-			{
-				timeout: REMUX_TIMEOUT_MS,
-				killSignal: 'SIGKILL',
-				maxBuffer: 1024 * 1024,
-				env: { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin' },
-			},
-		);
+		await runRemux(path, tmp);
 
 		// Verify before swapping. A remux that ran cleanly and produced something
 		// that isn't faststart means the assumption behind this whole module was
@@ -176,8 +283,17 @@ export async function makeFaststart(path: string): Promise<number | null> {
 
 		await rename(tmp, path);
 		return size;
-	} catch {
-		await unlink(tmp).catch(() => {});
+	} catch (e) {
+		// A deadline means something on this volume stopped answering, so awaiting
+		// an unlink against it would hang exactly the way the child did — and take
+		// with it the slot release this whole mechanism exists to protect. Fire it
+		// and move on; `runRemux` has already arranged for the path to be
+		// reclaimed if the child ever wakes up.
+		if (e instanceof RemuxDeadline) {
+			void unlink(tmp).catch(() => {});
+		} else {
+			await unlink(tmp).catch(() => {});
+		}
 		return null;
 	}
 }
