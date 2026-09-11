@@ -60,6 +60,26 @@ token is correct either way.
 Drizzle migrations apply automatically on first DB open. Subsequent config
 or env changes only need `docker compose restart` — no rebuild.
 
+## Faststart backfill (one-shot)
+
+Videos are stored with their index at the front so a player can start before
+the whole file arrives — see `src/lib/server/media/faststart.ts`. That happens
+at write time, so anything generated from this release on is already correct.
+Videos stored **before** it need one pass:
+
+```bash
+docker compose exec glyphstream node /app/scripts/faststart-backfill.js --dry-run
+docker compose exec glyphstream node /app/scripts/faststart-backfill.js
+```
+
+It reads `DB_PATH` and `MEDIA_DIR`, rewrites only the files that need it, and
+leaves anything it can't parse as an mp4 (WebM and friends) untouched.
+
+**Safe to run repeatedly, by design.** Every run re-derives the answer for every
+video rather than tracking progress, so an interrupted run is repaired by
+running it again, and there's no resume state to lose. You can also re-run it
+later purely to verify.
+
 ## Splitting storage across volumes
 
 `data/` holds three things with three different needs, and `DB_PATH`,
