@@ -691,6 +691,40 @@ describe('ChatTurnController — stop / recovery / teardown', () => {
 		}
 	});
 
+	it('recovery poll leaves the start time alone on the terminating tick', async () => {
+		// The last tick reads both fields null, but the rest of the page's recovery
+		// state only updates when the invalidateAll it fires lands. Nulling the
+		// start time early would read as queued for that whole reload: a finishing
+		// turn flashing back to "Queued" with its timer gone.
+		vi.useFakeTimers();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					({
+						ok: true,
+						json: async () => ({ inFlightSince: null, inFlightGeneratingSince: null }),
+					}) as unknown as Response,
+			),
+		);
+		const { deps, state } = makeDeps();
+		state.serverInFlightSince = 5000;
+		state.serverGeneratingSince = 7000;
+		state.messages = [userMsg('u1')];
+		const turn = new ChatTurnController(deps);
+		const stop = turn.startRecoveryPoll();
+		try {
+			await vi.advanceTimersByTimeAsync(4000);
+			expect(invalidateAll).toHaveBeenCalled();
+			expect(state.serverGeneratingSince).toBe(7000);
+			expect(turn.recoveredQueued).toBe(false);
+		} finally {
+			stop();
+			vi.unstubAllGlobals();
+			vi.useRealTimers();
+		}
+	});
+
 	it('stop on a recovered bubble cancels server-side and re-syncs (no local abort)', async () => {
 		const fetchMock = vi.fn(async () => ({ ok: true }) as Response);
 		vi.stubGlobal('fetch', fetchMock);

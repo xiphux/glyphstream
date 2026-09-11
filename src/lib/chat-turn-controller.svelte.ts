@@ -819,7 +819,17 @@ export class ChatTurnController {
 				// from Queued to generating and starting its timer at the gate's
 				// handover rather than at load. Up to one tick late, but the timestamp
 				// is the server's, so the timer is right from the moment it appears.
-				this.#deps.setServerGeneratingSince(body.inFlightGeneratingSince);
+				//
+				// Only while the turn is still registered. The terminating tick reads
+				// both fields null, and `serverInFlightSince` (+ the message list) stay
+				// as they were until the `invalidateAll` below lands — so nulling this
+				// one early makes `recoveredQueued` true for that whole reload, flashing
+				// a finishing turn back to "Queued" with its timer gone. The re-seed
+				// clears all of them together instead. Nothing is hidden by skipping
+				// it: a slot, once granted, is never un-granted mid-turn.
+				if (body.inFlightSince !== null) {
+					this.#deps.setServerGeneratingSince(body.inFlightGeneratingSince);
+				}
 				// The registry alone is the signal now: `onGenerationSettled` frees the
 				// entry as soon as the response is persisted, ahead of the title race,
 				// so it no longer lags the message landing the way it did when this
