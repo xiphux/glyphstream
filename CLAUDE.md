@@ -42,6 +42,11 @@ tests/e2e/            # playwright (production-build webServer)
   not the sum of all chunks — shiki/markdown-it/pyodide are route-lazy, so
   the all-chunks total runs higher and isn't the metric) needs a reason,
   should be measured with `pnpm analyze`, and should go route-lazy if it can.
+  `tests/e2e/bundle-budget.spec.ts` makes it visible: the chat/home initial
+  load may not grow past `tests/e2e/fixtures/bundle-baseline.json` by more than
+  5% (it also rejects the oniguruma WASM and extra client grammars). Raising
+  the baseline (`UPDATE_BUNDLE_BASELINE=1`) is a deliberate commit with the
+  reason, not a way to make CI green.
 - **Develop against the OpenAI spec, not a specific upstream.** The bridge
   (`openai-api-bridge`) is one possible endpoint, not a hard dep. Per-vendor
   quirks live in `src/lib/server/streaming/normalizers.ts`, opted into via
