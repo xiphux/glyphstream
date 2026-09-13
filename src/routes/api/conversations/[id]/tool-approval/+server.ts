@@ -206,16 +206,21 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			stream: true,
 			stream_options: { include_usage: true },
 		};
-		// Within-turn: promote tools searched up during this resumed turn.
-		const effectiveDefs =
+		// Within-turn: promote tools searched up during this resumed turn. Dedupe
+		// unconditionally, like the send route does at assignment: the base list
+		// itself can repeat a name (the activation seed colliding with a tool
+		// that is no longer deferred), and the resumed request must carry the
+		// same tools[] the send path would.
+		const effectiveDefs = dedupeToolDefs(
 			activatedToolNames.length > 0
-				? dedupeToolDefs([
+				? [
 						...toolDefs,
 						...resolveActivatedToolDefs(activatedToolNames, {
 							excludeCategories: disabledFeatures,
 						}),
-					])
-				: toolDefs;
+					]
+				: toolDefs,
+		);
 		if (effectiveDefs.length > 0) {
 			requestBody.tools = effectiveDefs;
 			requestBody.tool_choice = 'auto';
