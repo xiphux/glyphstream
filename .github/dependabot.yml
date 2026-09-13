@@ -1,13 +1,81 @@
-# Keep GitHub Actions pins current. Workflow actions are pinned to commit
-# SHAs (see ghcr-cleanup.yml for why — destructive actions shouldn't float
-# on a tag), which means manual bumps go stale silently. Dependabot opens a
-# PR whenever a used action ships a new release, updating the SHA and the
-# trailing `# vX.Y.Z` comment so the bump is reviewed rather than auto-applied.
+# Two ecosystems, both reviewed through the same gate: dependabot-automerge.yml
+# merges a PR only once CI is green AND every update in it is semver-safe (see
+# that file for the rule). Anything else — a major, a 0.x minor, a prerelease —
+# stays open for a human.
+#
+# Security updates are a separate repo setting (enabled), not configured here;
+# `cooldown` does not delay them.
 version: 2
 updates:
+  # Keep GitHub Actions pins current. A pin that is never bumped goes stale
+  # silently; Dependabot opens a PR whenever a used action ships a release,
+  # updating the ref (and, for SHA pins, the trailing `# vX.Y.Z` comment).
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     commit-message:
       prefix: ci
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+      prefix-development: deps(dev)
+    # pnpm 11 refuses packages younger than 24h (`minimumReleaseAge`) and
+    # checks the LOCKFILE against it, so a PR proposing a same-day release
+    # fails `--frozen-lockfile` in CI. Waiting a few days clears that and lets
+    # the "published then yanked" window pass. Security updates ignore this.
+    cooldown:
+      default-days: 3
+    # Packages that must move in lockstep share a PR, so CI never sees half a
+    # family bumped. Majors are deliberately left out of every group
+    # (`update-types`): each arrives as its own PR, to be reviewed on its own.
+    # drizzle is the exception — it's pinned to an exact RC, so every bump is a
+    # prerelease that the auto-merge gate holds anyway.
+    groups:
+      svelte:
+        patterns:
+          - svelte
+          - svelte-check
+          - svelte-eslint-parser
+          - eslint-plugin-svelte
+          - prettier-plugin-svelte
+          - '@sveltejs/*'
+          - '@testing-library/svelte'
+        update-types: [minor, patch]
+      vite:
+        patterns:
+          - vite
+          - vitest
+          - '@vitest/*'
+          - tailwindcss
+          - '@tailwindcss/*'
+          - '@vite-pwa/*'
+          - workbox-*
+        update-types: [minor, patch]
+      lint:
+        patterns:
+          - eslint
+          - '@eslint/*'
+          - eslint-*
+          - typescript-eslint
+          - '@stylistic/*'
+          - globals
+          - prettier
+        update-types: [minor, patch]
+      shiki:
+        patterns:
+          - shiki
+          - '@shikijs/*'
+        update-types: [minor, patch]
+      simplewebauthn:
+        patterns:
+          - '@simplewebauthn/*'
+        update-types: [minor, patch]
+      drizzle:
+        patterns:
+          - drizzle-orm
+          - drizzle-kit
