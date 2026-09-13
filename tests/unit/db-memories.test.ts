@@ -171,6 +171,30 @@ describe('recall corpus queries', () => {
 		expect(rows[0]).not.toHaveProperty('embedding');
 	});
 
+	it('breaks createdAt ties by id in every recall-path read, independent of insert order', () => {
+		// A consolidation pass or a burst of saves stamps rows with the same
+		// millisecond. fuseRankings breaks score ties by list index, so these
+		// orders decide which memory wins a tied recall — they must be total.
+		const u = seedUser();
+		for (const id of ['mem-c', 'mem-a', 'mem-b']) {
+			mocks.testDb
+				.insert(memories)
+				.values({ id, userId: u.id, content: id, createdAt: 5000, updatedAt: 5000 })
+				.run();
+			setMemoryEmbedding(id, id, encodeVector([1, 0]), MODEL);
+		}
+
+		expect(listMemoriesForRecall(u.id).map((r) => r.id)).toEqual(['mem-a', 'mem-b', 'mem-c']);
+		expect(listMemoriesWithEmbeddings(u.id).map((r) => r.id)).toEqual(['mem-a', 'mem-b', 'mem-c']);
+		// Newest-first reads reverse the tiebreak too, so the cap keeps a fixed set.
+		expect(listMemoryRecallVectors(u.id, MODEL).map((v) => v.id)).toEqual([
+			'mem-c',
+			'mem-b',
+			'mem-a',
+		]);
+		expect(listMemoryRecallVectors(u.id, MODEL, 2).map((v) => v.id)).toEqual(['mem-c', 'mem-b']);
+	});
+
 	it('listMemoryRecallVectors returns only matching-model, non-null vectors, newest-first, capped', () => {
 		const u = seedUser();
 		const ids = ['m1', 'm2', 'm3', 'm4'].map((_, i) => createMemory(u.id, `fact ${i}`).id);

@@ -180,8 +180,8 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
  * `listMemoryRecallVectors` (so a large store isn't a whole-corpus blob scan).
  * This full-blob read is retained for tests / embedding-backfill assertions.
  *
- * Ordered `createdAt ASC` with deliberately NO `id` tiebreak — kept consistent
- * with `listMemoriesForRecall` so the two agree on tied-row order (which
+ * Ordered `createdAt ASC, id ASC` — the same total order as
+ * `listMemoriesForRecall`, so the two agree on tied-row order (which
  * `fuseRankings` resolves by ascending list index).
  */
 export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[] {
@@ -198,7 +198,7 @@ export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[
 		})
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 
@@ -217,9 +217,12 @@ export interface MemoryRecallRow {
  * would be pure waste; the dense leg loads a bounded vector set separately
  * (`listMemoryRecallVectors`).
  *
- * Order is `asc(createdAt)`, matching `listMemoriesWithEmbeddings`: it's a
- * retrieval INPUT, and `fuseRankings` breaks RRF ties by ascending list index,
- * so this order is load-bearing for which memory wins a tied recall.
+ * Order is `asc(createdAt), asc(id)`, matching `listMemoriesWithEmbeddings`: it's
+ * a retrieval INPUT, and `fuseRankings` breaks RRF ties by ascending list index,
+ * so this order decides which memory wins a tied recall. The `id` tiebreak makes
+ * that a fixed answer: `createdAt` is `Date.now()` at insert, so a consolidation
+ * pass or a burst of saves writes rows sharing a millisecond, and without it the
+ * winner of a tie would be whatever order SQLite's query plan happened to return.
  */
 export function listMemoriesForRecall(userId: string): MemoryRecallRow[] {
 	const db = getDb();
@@ -227,7 +230,7 @@ export function listMemoriesForRecall(userId: string): MemoryRecallRow[] {
 		.select({ id: memories.id, content: memories.content, topic: memories.topic })
 		.from(memories)
 		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-		.orderBy(asc(memories.createdAt))
+		.orderBy(asc(memories.createdAt), asc(memories.id))
 		.all();
 }
 
@@ -242,7 +245,8 @@ export const RECALL_DENSE_CORPUS_CAP = 5000;
  * Load embedding vectors for the recall dense leg: the newest `limit` live
  * memories whose stored vector matches `embeddingModel` (different models →
  * incomparable vector spaces). Returns `{ id, embedding }` so the caller can map
- * cosine ranks back onto the full recall corpus by id.
+ * cosine ranks back onto the full recall corpus by id. Tiebroken by `id` so which
+ * rows make the cap, and their order, don't depend on the query plan.
  */
 /**
  * COST, measured before caching this: at the full 5000-vector cap with 1024-dim
@@ -276,7 +280,7 @@ export function listMemoryRecallVectors(
 				isNotNull(memories.embedding),
 			),
 		)
-		.orderBy(desc(memories.createdAt))
+		.orderBy(desc(memories.createdAt), desc(memories.id))
 		.limit(capped)
 		.all() as Array<{ id: string; embedding: Buffer }>;
 }
