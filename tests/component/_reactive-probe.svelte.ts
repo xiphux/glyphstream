@@ -7,13 +7,14 @@
  * throws `rune_outside_svelte`. The leading underscore keeps it out of
  * vitest's test include glob, which only matches `.test.` / `.spec.` files.
  *
- * Importing tests MUST carry the `@vitest-environment happy-dom` header: under
- * the default `node` environment Svelte resolves to its SSR runtime, where
- * effects never run, so the probe records nothing at all. An assertion on a
- * published VALUE then fails loudly (`seen` is empty) — annoying but safe. The
- * dangerous shape is an assertion that something did NOT happen, e.g. checking
- * `seen.length` stayed put: that passes for the wrong reason, because nothing
- * was ever recorded. Prefer asserting on values.
+ * Importing tests MUST run under happy-dom — automatic in `tests/component/`, a
+ * `@vitest-environment happy-dom` header anywhere else. Under `node` Svelte
+ * resolves to its SSR runtime, where effects never run, so the probe records
+ * nothing at all. An assertion on a published VALUE then fails loudly (`seen`
+ * is empty) — annoying but safe. The dangerous shape is an assertion that
+ * something did NOT happen, e.g. checking `seen.length` stayed put: that passes
+ * for the wrong reason, because nothing was ever recorded. Prefer asserting on
+ * values.
  */
 
 import { flushSync } from 'svelte';

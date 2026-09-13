@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Renders the debug panel against stubbed Performance entries — the wiring
  * between `readDebugSources` (which touches globals) and the markup, which the

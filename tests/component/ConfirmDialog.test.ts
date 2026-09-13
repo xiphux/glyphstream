@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ConfirmDialog — the app-wide destructive-action
  * confirmation host.

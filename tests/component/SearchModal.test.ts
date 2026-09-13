@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for SearchModal — covers the open/closed render
  * states, the singleton store contract, debounced fetch, and the

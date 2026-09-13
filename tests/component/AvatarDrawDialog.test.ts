@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for AvatarDrawDialog — the review step before a generation is
  * spent.

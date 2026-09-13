@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for EditMessageForm — the inline message editor.
  * Uses a minimal AttachmentStore stand-in (items/isBusy/addFiles/remove

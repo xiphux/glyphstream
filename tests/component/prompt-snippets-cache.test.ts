@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * The client-side snippet cache's async ordering.
  *

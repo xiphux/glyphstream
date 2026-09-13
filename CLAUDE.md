@@ -156,11 +156,13 @@ tests/e2e/            # playwright (production-build webServer)
   server-side at request time (`drizzle-orm`, `shiki`, `markdown-it`,
   `smol-toml`) belong in `dependencies`. (SQLite needs no entry
   here — it's the built-in `node:sqlite`.)
-- Component tests live under `tests/component/` and require a per-file
-  `/* @vitest-environment happy-dom */` header — pure-logic unit tests
-  default to `node`. See `tests/component/README.md` for the bits-ui
-  Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
-  silently missing portaled content.
+- Test environment follows the directory (vitest `projects`):
+  `tests/component/` runs in happy-dom, `tests/unit/` in `node`. A unit
+  test that needs a DOM without being a component test opts in with a
+  per-file `/* @vitest-environment happy-dom */` header. See
+  `tests/component/README.md` for the bits-ui Portal + `data-state`
+  gotchas; forgetting them surfaces as DOM queries silently missing
+  portaled content.
 - **`pnpm lint` is `@sveltejs/eslint-config` + the full
   `recommendedTypeChecked`, and it is at zero — keep it there.** So is
   `pnpm check`, which runs svelte-check with `--fail-on-warnings`: an a11y or

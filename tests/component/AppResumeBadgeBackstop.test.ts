@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on WHICH events count as the app coming back to the front.
  *

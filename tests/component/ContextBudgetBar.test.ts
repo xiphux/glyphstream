@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ContextBudgetBar — the context readout + Compact action
  * shown above the composer.

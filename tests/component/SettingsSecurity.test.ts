@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the security settings page. The page renders a
  * list of passkeys with rename/delete affordances, an "Add passkey"

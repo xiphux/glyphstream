@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for RenderBlocks — the shared render-loop for chat
  * bubbles (used by both MessageBubble and InFlightBubble). Branches on

@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Guards that an avatar comparison drives the columns the GRID is watching.
  *

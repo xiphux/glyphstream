@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Guards the reactivity contract between ChatTurnController.inFlightSegments and
  * the chat page's rAF markdown pump.

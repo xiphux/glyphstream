@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for InFlightBubble — the live streaming-response
  * bubble. Read-only: the page owns SSE state and passes derived blocks

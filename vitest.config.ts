@@ -38,12 +38,33 @@ export default defineConfig({
 		},
 	},
 	test: {
-		include: ['tests/unit/**/*.{test,spec}.{js,ts}', 'tests/component/**/*.{test,spec}.{js,ts}'],
-		// Default is "node" — most of our pure-logic tests don't need a DOM.
-		// Component tests header with /* @vitest-environment happy-dom */
-		// to flip the env per-file (see tests/component/README.md). happy-dom
-		// over jsdom for speed + lighter footprint.
-		environment: 'node',
+		// The environment follows the directory, not a per-file header. Headers
+		// were the old mechanism, and a component test that forgot one ran under
+		// `node` and failed confusingly (`document is not defined`, or DOM
+		// queries silently missing). Everything above and below this block is
+		// shared: `extends: true` gives each project the root plugins, aliases
+		// and test options. A header still overrides per file — the few
+		// `tests/unit` files that need a DOM but aren't component tests use one.
+		// happy-dom over jsdom for speed + lighter footprint.
+		// Run one side with `pnpm test --project unit` / `--project component`.
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: 'unit',
+					include: ['tests/unit/**/*.{test,spec}.{js,ts}'],
+					environment: 'node',
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'component',
+					include: ['tests/component/**/*.{test,spec}.{js,ts}'],
+					environment: 'happy-dom',
+				},
+			},
+		],
 		// Loaded for every test but only adds matchers; harmless to node-env
 		// suites. Registers @testing-library/jest-dom extensions
 		// (toBeInTheDocument, toHaveAttribute, ...) so component tests can

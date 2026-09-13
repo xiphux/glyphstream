@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for Toaster — the singleton "one toast at a time"
  * surface that reads from the `toast` store.

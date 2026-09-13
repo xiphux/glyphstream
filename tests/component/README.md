@@ -3,16 +3,15 @@
 Vitest + [`@testing-library/svelte`](https://testing-library.com/docs/svelte-testing-library/intro)
 
 - [`happy-dom`](https://github.com/capricorn86/happy-dom). Same runner as
-  the unit suite — `pnpm test` runs both. Per-file environment header is
-  all that distinguishes a component test from a unit test.
+  the unit suite — `pnpm test` runs both, as the `component` and `unit`
+  vitest projects (`pnpm test --project component` runs just this one). Any
+  test file in this directory gets happy-dom automatically; no header needed.
 
 ## Writing a test
 
 Mirror the existing tests in this directory. The shape:
 
 ```ts
-/* @vitest-environment happy-dom */
-
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';

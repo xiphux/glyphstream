@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the /setup wizard. Exercises the gated state,
  * both buttons rendering based on the methods toggles, and the

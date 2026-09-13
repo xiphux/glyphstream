@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Pins ToolBlockShell's open-state contract, which is subtler than it looks:
  * `isOpen` drives the `<details>` two-way (`bind:open`, so a user toggle writes

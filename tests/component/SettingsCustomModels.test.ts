@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the custom-models settings page, scoped to the
  * "Default feature toggles" list: it must offer the same categories the

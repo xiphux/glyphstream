@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for MessageBubble — static render of one persisted
  * message. Role drives bubble styling + label; merge flags collapse

@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the prompt-snippets settings page, focused on the
  * modality quick-filter.

@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ToolCallBlock — the tool-call display dispatcher
  * (→ SkillToolBlock / CodeArgToolBlock / GenericToolBlock via ToolBlockShell).

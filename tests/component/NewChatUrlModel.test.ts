@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on `?model=` being applied per NAVIGATION, not per commit.
  *

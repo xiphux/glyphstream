@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * The sidebar's generating mark has two states, and the distinction only pays
  * off in the arrangement that produced it: several multi-model conversations

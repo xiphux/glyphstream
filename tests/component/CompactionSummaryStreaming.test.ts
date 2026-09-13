@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for CompactionSummaryStreaming — the in-flight summary block
  * shown while a manual compaction streams.

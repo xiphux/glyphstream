@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for CanvasPane — the view-only side-by-side document pane.
  * Renders the server-provided HTML, the title + version, wires the close

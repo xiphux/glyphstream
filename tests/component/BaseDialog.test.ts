@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for BaseDialog — the shared shell for ConfirmDialog
  * and DeleteConversationDialog. Verifies the alertdialog role, Escape

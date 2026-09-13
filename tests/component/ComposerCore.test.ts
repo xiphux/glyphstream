@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ComposerCore — the shared composer input box used by
  * both ChatComposer and the home page. Pins the input mechanics that used

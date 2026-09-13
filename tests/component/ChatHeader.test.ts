@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ChatHeader — the conversation title, the Private badge,
  * and the avatar action. The model name moved to the assistant bubbles +

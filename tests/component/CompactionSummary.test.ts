@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for CompactionSummary — the collapsed, expandable divider
  * that stands in for summarized history.

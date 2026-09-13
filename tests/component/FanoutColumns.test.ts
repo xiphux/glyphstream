@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for FanoutColumns — the multi-model compare view. Verifies
  * the column-per-model render, the streaming-vs-settled status, and that

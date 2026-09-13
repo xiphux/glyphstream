@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on the `?link=` result toast firing once per link attempt.
  *

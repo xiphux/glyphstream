@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on when the mobile sidebar drawer closes itself.
  *

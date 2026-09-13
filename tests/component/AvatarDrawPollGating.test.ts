@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Guards the reactivity contract behind the avatar-draw recovery poll.
  *

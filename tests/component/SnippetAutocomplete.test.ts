@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the prompt-snippet autocomplete, driven through
  * ComposerCore (its real host) so the caret-sync wiring and the keydown chain

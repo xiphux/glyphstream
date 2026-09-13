@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for the `/skill-name` autocomplete in ComposerCore.
  *

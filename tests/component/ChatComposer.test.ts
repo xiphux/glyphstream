@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for ChatComposer — the bottom composer area. Covers the
  * send-enable matrix, Send-vs-Stop branching, attach gating, feature

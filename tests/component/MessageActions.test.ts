@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for MessageActions — the per-message action toolbar.
  * Covers per-role button visibility, disabled-while-generating gating,

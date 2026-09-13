@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on a `?notice=` announcing itself once.
  *

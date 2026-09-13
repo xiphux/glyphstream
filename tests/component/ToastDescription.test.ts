@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Holds the line on the toast's secondary line actually reaching the DOM.
  *

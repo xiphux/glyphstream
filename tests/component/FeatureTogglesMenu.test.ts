@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for FeatureTogglesMenu — pure presentation, exercises
  * the prop/callback contract end-to-end through a real DOM.

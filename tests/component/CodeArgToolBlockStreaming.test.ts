@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Guards the one thing that made a `run_python` call visibly janky: the code
  * argument being re-highlighted from scratch on every streamed delta.

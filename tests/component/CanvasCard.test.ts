@@ -1,5 +1,3 @@
-/* @vitest-environment happy-dom */
-
 /**
  * Component test for CanvasCard — the inline clickable reference to a canvas
  * that renders in the conversation and reopens the pane.
