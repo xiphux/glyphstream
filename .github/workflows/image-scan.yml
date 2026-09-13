@@ -21,7 +21,8 @@
 #
 # Grype, not Trivy: aquasecurity/trivy-action had 75 of its 76 tags hijacked to
 # steal CI secrets in March 2026. Grype runs from a digest-pinned image, so
-# there is no action code to hijack.
+# there is no action code to hijack — pulled from GHCR, not Docker Hub, whose
+# anonymous pulls are rate-limited per IP on shared runner addresses.
 name: Image scan
 
 on:
@@ -70,7 +71,7 @@ jobs:
       - name: Grype
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/out" \
-            anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7 \
+            ghcr.io/anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7 \
             "$IMAGE" --platform linux/amd64 --only-fixed \
             -o table -o sarif=/out/grype.sarif \
             ${FAIL_ON:+--fail-on "$FAIL_ON"}
