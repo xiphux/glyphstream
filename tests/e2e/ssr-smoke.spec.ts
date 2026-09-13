@@ -92,12 +92,23 @@ function pageRouteIds(): string[] {
 	return ids.sort();
 }
 
-async function pageFor(browser: Browser, page: Page, who: Who): Promise<Page> {
-	if (who === 'admin') return page;
+/** Run `fn` with a page signed in as `who`. A non-admin role gets its own
+ *  context, closed even when an assertion inside `fn` fails. */
+async function asRole(
+	browser: Browser,
+	page: Page,
+	who: Who,
+	fn: (p: Page) => Promise<void>,
+): Promise<void> {
+	if (who === 'admin') return fn(page);
 	const ctx = await browser.newContext({
 		storageState: who === 'user' ? STORAGE_STATE_USER2_PATH : { cookies: [], origins: [] },
 	});
-	return ctx.newPage();
+	try {
+		await fn(await ctx.newPage());
+	} finally {
+		await ctx.close();
+	}
 }
 
 test('the route list covers every +page.svelte', () => {
@@ -112,32 +123,31 @@ for (const [routeId, route] of Object.entries(ROUTES)) {
 
 		for (const who of route.renders) {
 			test(`renders as ${who}`, async ({ browser, page }) => {
-				const p = await pageFor(browser, page, who);
-				const path = route.path();
+				await asRole(browser, page, who, async (p) => {
+					const path = route.path();
 
-				// Server render alone, before any client code runs.
-				const raw = await p.request.get(path, { maxRedirects: 0 });
-				expect(raw.status(), `SSR status for ${path}`).toBeLessThan(400);
+					// Server render alone, before any client code runs.
+					const raw = await p.request.get(path, { maxRedirects: 0 });
+					expect(raw.status(), `SSR status for ${path}`).toBeLessThan(400);
 
-				// Full navigation: follows redirects and hydrates. A hydration
-				// failure surfaces as a page error, which the fixture turns into a
-				// test failure.
-				const res = await p.goto(path);
-				expect(res?.status(), `navigation status for ${path}`).toBeLessThan(400);
-				await expect(p.locator('body')).not.toBeEmpty();
-				await p.waitForLoadState('load');
-
-				if (p !== page) await p.context().close();
+					// Full navigation: follows redirects and hydrates. A hydration
+					// failure surfaces as a page error, which the fixture turns into a
+					// test failure.
+					const res = await p.goto(path);
+					expect(res?.status(), `navigation status for ${path}`).toBeLessThan(400);
+					await expect(p.locator('body')).not.toBeEmpty();
+					await p.waitForLoadState('load');
+				});
 			});
 		}
 
 		for (const who of route.refused ?? []) {
 			test(`refuses ${who} without a server error`, async ({ browser, page }) => {
-				const p = await pageFor(browser, page, who);
-				const path = route.path();
-				const raw = await p.request.get(path, { maxRedirects: 0 });
-				expect(raw.status(), `status for ${who} on ${path}`).toBeLessThan(500);
-				if (p !== page) await p.context().close();
+				await asRole(browser, page, who, async (p) => {
+					const path = route.path();
+					const raw = await p.request.get(path, { maxRedirects: 0 });
+					expect(raw.status(), `status for ${who} on ${path}`).toBeLessThan(500);
+				});
 			});
 		}
 	});

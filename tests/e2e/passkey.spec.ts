@@ -56,28 +56,30 @@ test('register a passkey, then sign in with it', async ({ browser, context, page
 
 	// --- sign in, signed out, with the same credential -----------------------
 	const anon = await browser.newContext({ storageState: { cookies: [], origins: [] } });
-	const loginPage = await anon.newPage();
-	const auth = await addVirtualAuthenticator(anon, loginPage);
-	await auth.cdp.send('WebAuthn.addCredential', {
-		authenticatorId: auth.authenticatorId,
-		credential: credentials[0],
-	});
+	try {
+		const loginPage = await anon.newPage();
+		const auth = await addVirtualAuthenticator(anon, loginPage);
+		await auth.cdp.send('WebAuthn.addCredential', {
+			authenticatorId: auth.authenticatorId,
+			credential: credentials[0],
+		});
 
-	await loginPage.goto('/login');
-	await loginPage.getByRole('button', { name: 'Sign in with a passkey' }).click();
+		await loginPage.goto('/login');
+		await loginPage.getByRole('button', { name: 'Sign in with a passkey' }).click();
 
-	// Verified: a session cookie is set and the full navigation lands in the app.
-	await loginPage.waitForURL((url) => url.pathname === '/');
-	await expect(loginPage.getByRole('button', { name: 'Select model' })).toBeVisible();
-	const cookies = await anon.cookies();
-	expect(cookies.some((c) => /session/i.test(c.name))).toBe(true);
+		// Verified: a session cookie is set and the full navigation lands in the app.
+		await loginPage.waitForURL((url) => url.pathname === '/');
+		await expect(loginPage.getByRole('button', { name: 'Select model' })).toBeVisible();
+		const cookies = await anon.cookies();
+		expect(cookies.some((c) => /session/i.test(c.name))).toBe(true);
 
-	// The assertion counter advanced on the authenticator; the server accepted
-	// it, so a replay of the same signature would now be refused.
-	const after = await auth.cdp.send('WebAuthn.getCredentials', {
-		authenticatorId: auth.authenticatorId,
-	});
-	expect(after.credentials[0].signCount).toBeGreaterThan(credentials[0].signCount);
-
-	await anon.close();
+		// The assertion counter advanced on the authenticator; the server accepted
+		// it, so a replay of the same signature would now be refused.
+		const after = await auth.cdp.send('WebAuthn.getCredentials', {
+			authenticatorId: auth.authenticatorId,
+		});
+		expect(after.credentials[0].signCount).toBeGreaterThan(credentials[0].signCount);
+	} finally {
+		await anon.close();
+	}
 });
