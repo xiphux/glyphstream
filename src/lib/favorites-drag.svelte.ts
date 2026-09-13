@@ -1,9 +1,9 @@
 /**
  * Sidebar favorites drag-and-drop state machine.
  *
- * Native HTML5 drag-drop — staying under the 250 KB bundle ceiling, the
- * list is small (~10s of items max), and the codebase already uses the
- * native API for image drops on the composer. The <li> carries
+ * Native HTML5 drag-drop — no drag-and-drop library added to the client
+ * bundle, the list is small (~10s of items max), and the codebase already
+ * uses the native API for image drops on the composer. The <li> carries
  * draggable="true"; the inner <a> has draggable="false" so its default
  * link-drag preview doesn't override the row's drag image. Click
  * navigation on the anchor is unaffected by draggable=false.

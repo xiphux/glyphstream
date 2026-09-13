@@ -3,8 +3,8 @@
  *
  * Deliberately NOT loaded through the `(app)` layout the way `enabledSkills`
  * is. A realistic library is ~100 style paragraphs — roughly 60 KB raw — and
- * riding that on every page load would spend a meaningful slice of the
- * ~250 KB chat-route budget on a feature many sessions never touch. Instead
+ * riding that on every page load would add meaningfully to the chat route's
+ * initial payload for a feature many sessions never touch. Instead
  * the composer calls `ensureSnippetsLoaded()` the first time the trigger char
  * is typed, and the result is cached for the session.
  *
