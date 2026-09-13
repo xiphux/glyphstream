@@ -39,8 +39,8 @@ importers:
         specifier: 1.0.0-rc.4
         version: 1.0.0-rc.4(zod@4.4.3)
       eventsource-parser:
-        specifier: ^3.1.0
-        version: 3.1.0
+        specifier: ^4.1.0
+        version: 4.1.0
       linkedom:
         specifier: ^0.18.13
         version: 0.18.13
@@ -3085,6 +3085,10 @@ packages:
   eventsource-parser@3.1.0:
     resolution: {integrity: sha512-kJezFj9YFAMLeORyi7aCLxLbD5/qWMQnoMVlVPyHIll7lgRJCc3JVln9Vgl9nwQi0YkMnhdGTMNn7CkRRAptMg==}
     engines: {node: '>=18.0.0'}
+
+  eventsource-parser@4.1.0:
+    resolution: {integrity: sha512-+DHvQ1wLO//MK+1OZgcuXCbZFKgu3YjKPJt7n98rxX8vezL0ni+7s3ZQiM8bJkUEOk7MsuCycrPLj0FzUNf7Og==}
+    engines: {node: '>=22.12'}
 
   eventsource@3.0.7:
     resolution: {integrity: sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA==}
@@ -7574,6 +7578,8 @@ snapshots:
   etag@1.8.1: {}
 
   eventsource-parser@3.1.0: {}
+
+  eventsource-parser@4.1.0: {}
 
   eventsource@3.0.7:
     dependencies:
