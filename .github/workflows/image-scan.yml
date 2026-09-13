@@ -68,7 +68,14 @@ jobs:
       # lockfile, so its package set matches.
       # Writes into the (otherwise empty) workspace: hashFiles() below can only
       # see files there.
+      #
+      # A called run is report-only in the strict sense: not just no --fail-on,
+      # but no failure at all, so a Grype DB download, GHCR pull or SARIF
+      # upload blip can't mark a successful Docker publish red. (A job that
+      # calls a reusable workflow can't set continue-on-error itself, so it
+      # lives on the steps.) The weekly run still fails on any of these.
       - name: Grype
+        continue-on-error: ${{ inputs.tag != '' }}
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE:/out" \
             ghcr.io/anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7 \
@@ -77,6 +84,7 @@ jobs:
             ${FAIL_ON:+--fail-on "$FAIL_ON"}
 
       - name: Upload to code scanning
+        continue-on-error: ${{ inputs.tag != '' }}
         if: ${{ !cancelled() && hashFiles('grype.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
