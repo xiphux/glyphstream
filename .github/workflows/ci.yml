@@ -165,13 +165,22 @@ jobs:
         with:
           persist-credentials: false
 
-      # The image's bundled shellcheck is what checks the `run:` scripts.
-      # Pinned by digest; bump the tag and digest together.
+      # The release binary from GitHub, checksum-pinned, not the Docker Hub
+      # image: this job gates merges and releases, and anonymous Docker Hub pulls
+      # are rate-limited per IP on runners shared with everyone else. It checks
+      # `run:` scripts with the runner image's preinstalled shellcheck. Bump
+      # the version and checksum together (from the release's checksums.txt).
       - name: actionlint
-        run: >-
-          docker run --rm -v "$PWD:/repo" -w /repo
-          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-          -color
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
 
       # Online audits use the job's read-only token to verify that each SHA pin
       # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
@@ -184,12 +193,13 @@ jobs:
           advanced-security: false
           annotations: true
 
-      # Picks up .hadolint.yaml from the mounted repo root. Pinned by digest.
+      # Picks up .hadolint.yaml from the mounted repo root. Pinned by digest, and
+      # pulled from GHCR rather than Docker Hub for the same reason as actionlint.
       - name: hadolint
         if: always()
         run: >-
           docker run --rm -v "$PWD:/repo" -w /repo
-          hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+          ghcr.io/hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
           hadolint Dockerfile
 
   # Backstop for the pre-commit hook, which only runs where gitleaks is
