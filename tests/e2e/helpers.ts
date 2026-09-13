@@ -60,6 +60,11 @@ export function resetData(): void {
 			// Same reasoning: the snippet library is (user_id, name)-unique, so a
 			// leftover row would turn a sibling spec's seed into a silent skip.
 			'prompt_snippets',
+			// A passkey registered by passkey.spec.ts would otherwise stay bound to the
+			// kept test user and change what /settings/security renders for every
+			// spec after it. Sessions are NOT cleared: every spec authenticates with
+			// the one global-setup seeded.
+			'passkey_credentials',
 		]) {
 			db.prepare(`DELETE FROM ${table}`).run();
 		}
