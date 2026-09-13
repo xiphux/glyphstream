@@ -112,13 +112,14 @@ jobs:
           key: ci-pass-${{ github.sha }}-v1
           lookup-only: true
 
-  # Lint, type-check and formatting share one job rather than three: each
-  # takes well under a minute, and they'd otherwise each pay the ~40s
-  # checkout + install to run in parallel. `continue-on-error` is NOT set on
-  # any of these three — all three gate the PR. (The two uses of it in this
-  # file are both on cache bookkeeping, never on a check.)
+  # Lint, type-check, formatting and the migration check share one job
+  # rather than several: each takes well under a minute, and they'd otherwise
+  # each pay the ~40s checkout + install to run in parallel.
+  # `continue-on-error` is NOT set on any of them — all of them gate the PR.
+  # (The two uses of it in this file are both on cache bookkeeping, never on
+  # a check.)
   static:
-    name: Lint + type-check + format
+    name: Lint + type-check + format + migrations
     needs: gate
     if: needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
@@ -155,6 +156,23 @@ jobs:
       - name: Format
         if: always()
         run: pnpm format:check
+
+      # schema.ts and the committed migrations must agree. A schema edit
+      # committed without its migration leaves `generate` with work to do, and
+      # the runtime migrator only applies what's in drizzle/, so the app would
+      # boot against tables the code no longer matches: fresh test DBs build
+      # from drizzle/ and pass too. Needs no database; generate diffs the schema
+      # against drizzle/'s snapshots. A new or changed file under drizzle/
+      # after running it is the failure.
+      - name: Migrations match schema
+        if: always()
+        run: |
+          pnpm exec drizzle-kit generate
+          if [ -n "$(git status --porcelain drizzle/)" ]; then
+            git status --porcelain drizzle/
+            echo "::error::schema.ts and drizzle/ disagree. Run pnpm db:generate and commit the migration it writes."
+            exit 1
+          fi
 
   # Its own job rather than steps in `static`: it needs no pnpm install, so it
   # finishes in seconds and doesn't wait behind one. actionlint catches
