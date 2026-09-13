@@ -1,7 +1,7 @@
 # Two ecosystems, both reviewed through the same gate: dependabot-automerge.yml
 # merges a PR only once CI is green AND every update in it is semver-safe (see
-# that file for the rule). Anything else — a major, a 0.x minor, a prerelease —
-# stays open for a human.
+# that file for the rule). Anything else — a major, a 0.x minor (bar a short
+# allowlist there), a prerelease — stays open for a human.
 #
 # Security updates are a separate repo setting (enabled), not configured here;
 # `cooldown` does not delay them.

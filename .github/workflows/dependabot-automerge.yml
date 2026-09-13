@@ -7,9 +7,24 @@
 # It also runs from the trusted default branch, not PR code — nothing here
 # checks out or executes anything from the PR.
 #
-# Safe = EVERY update in the PR is a semver patch, or a minor outside 0.x.
-# Held for manual review: majors, 0.x minors (which can break, e.g. esbuild),
-# prereleases (drizzle's RC pins), and anything whose metadata can't be read.
+# Safe = EVERY update in the PR is a semver patch, or a minor outside 0.x, or a
+# 0.x minor of a package on ZERO_X_MINOR_OK (below).
+# Held for manual review: majors, other 0.x minors (which can break, e.g.
+# esbuild), prereleases (drizzle's RC pins), and anything whose metadata can't
+# be read.
+#
+# ZERO_X_MINOR_OK names 0.x packages whose minors CI can actually judge, because
+# a real-library test sits on the path a breaking minor would break. Adding a
+# name means naming that test, here:
+#   sharp                 media-thumbnail-real-sharp (every stored format),
+#                         vision-variant, and the Docker image smoke (musl build)
+#   esbuild               bundles the pyodide worker that
+#                         pyodide-worker-integration runs; CI build; image smoke
+#   linkedom              tools-fetch-url and retrieval-chunker use it for real;
+#                         image smoke
+#   @mozilla/readability  tools-fetch-url (real extraction); image smoke. The
+#                         weakest of the four: a minor can change which text is
+#                         extracted without failing anything.
 #
 # The verdict comes from the `updated-dependencies:` YAML block Dependabot
 # writes into its commit message, not from the PR title. The title only names
@@ -48,6 +63,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Space-separated, exact package names. See the header for why each.
+          ZERO_X_MINOR_OK: sharp esbuild linkedom @mozilla/readability
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
@@ -129,7 +146,11 @@ jobs:
                   version-update:semver-patch) verdict=ok; reason="patch" ;;
                   version-update:semver-minor)
                     case "$ver" in
-                      0.*) reason="0.x minor" ;;
+                      0.*)
+                        case " $ZERO_X_MINOR_OK " in
+                          *" $name "*) verdict=ok; reason="0.x minor, allowlisted" ;;
+                          *)           reason="0.x minor" ;;
+                        esac ;;
                       *)   verdict=ok; reason="minor" ;;
                     esac ;;
                   *) reason="${type:-unknown update type}" ;;
