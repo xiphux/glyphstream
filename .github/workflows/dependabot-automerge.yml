@@ -15,6 +15,13 @@
 # writes into its commit message, not from the PR title. The title only names
 # a version pair for single-dependency PRs; a grouped PR ("bump the svelte
 # group with 4 updates") has none, and parsing the title held every group.
+#
+# That block carries `update-type` only for scheduled version updates; security
+# updates omit it (every one this repo has received). For those, the bump is
+# read off the body's "Bumps [name](…) from A to B." / "Updates `name` from A
+# to B" line, the same fallback dependabot/fetch-metadata uses. A missing or
+# ambiguous "from" (e.g. a bare `4`), or a "to" that disagrees with the
+# block's version, still holds.
 name: Dependabot auto-merge
 
 on:
@@ -62,21 +69,48 @@ jobs:
           # otherwise parse as a number: a two-part action tag like 0.6 is
           # written '0.6'. Strip quotes before the version is pattern-matched,
           # or a quoted 0.x minor slips past the `0.*` hold below.
+          # A fourth field records where the update type came from, for the log.
           updates=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message' | awk '
             function unquote(s) { gsub(/["\047]/, "", s); return s }
+            function vstrip(s) { sub(/^v/, "", s); return s }
+            # Classify A -> B by major/minor. "" (hold) unless both have
+            # numeric major.minor: a bare "4" could hide a minor or a patch.
+            function derive(a, b,   pa, pb) {
+              if (split(vstrip(a), pa, ".") < 2 || split(vstrip(b), pb, ".") < 2) return ""
+              if (pa[1] !~ /^[0-9]+$/ || pa[2] !~ /^[0-9]+$/) return ""
+              if (pb[1] !~ /^[0-9]+$/ || pb[2] !~ /^[0-9]+$/) return ""
+              if (pa[1] + 0 != pb[1] + 0) return "version-update:semver-major"
+              if (pa[2] + 0 != pb[2] + 0) return "version-update:semver-minor"
+              return "version-update:semver-patch"
+            }
+            function flush(   src) {
+              if (name == "") return
+              src = (type == "" ? "neither metadata nor body" : "metadata")
+              if (type == "" && (name in from) && vstrip(to[name]) == vstrip(ver)) {
+                type = derive(from[name], to[name]); src = "body " from[name] " -> " to[name]
+              }
+              print name "|" ver "|" type "|" src
+              name = ver = type = ""
+            }
             /^updated-dependencies:/ { inblock = 1; next }
             inblock && /^\.\.\./     { inblock = 0 }
+            # Body lines, outside the block: the prose version pairs.
+            !inblock && /^Bumps \[[^]]+\]\([^)]*\) from [^ ]+ to [^ ]+\.$/ {
+              n = $2; gsub(/^\[|\].*$/, "", n); from[n] = $(NF-2); t = $NF; sub(/\.$/, "", t); to[n] = t; next
+            }
+            !inblock && NF == 6 && $1 == "Updates" && $3 == "from" && $5 == "to" {
+              n = $2; gsub(/`/, "", n); from[n] = $4; to[n] = $6; next
+            }
             !inblock                 { next }
-            function flush() { if (name != "") print name "|" ver "|" type; name = ver = type = "" }
             /^- dependency-name:/    { flush(); name = unquote($3) }
-            /^  dependency-version:/ { ver = unquote($2) }
+            /^  dependency-version:/ { ver = vstrip(unquote($2)) }
             /^  update-type:/        { type = unquote($2) }
             END                      { flush() }
           ')
           if [ -z "$updates" ]; then echo "No updated-dependencies metadata - manual review"; exit 0; fi
 
           safe=yes
-          while IFS='|' read -r name ver type; do
+          while IFS='|' read -r name ver type src; do
             verdict=hold
             case "$ver" in
               '')  reason="no version recorded" ;;
@@ -92,7 +126,7 @@ jobs:
                   *) reason="${type:-unknown update type}" ;;
                 esac ;;
             esac
-            echo "  $name -> ${ver:-?}: $reason ($verdict)"
+            echo "  $name -> ${ver:-?}: $reason ($verdict; type from ${src:-?})"
             [ "$verdict" = ok ] || safe=no
           done <<<"$updates"
 
