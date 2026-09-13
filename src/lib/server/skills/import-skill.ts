@@ -21,6 +21,7 @@ import {
 import { getSkillStore } from './disk-store';
 import { parseSkillMd } from './parse-skill-md';
 import type { SkillBundleFile } from './store';
+import { isUniqueViolation } from '../db/errors';
 
 export type ImportSkillResult =
 	{ ok: true; skill: Skill } | { ok: false; status: number; error: string };
@@ -58,19 +59,6 @@ export function normalizeBundleFiles(
 	}
 
 	return { ok: true, files: cleaned };
-}
-
-interface UniqueViolation {
-	code?: string;
-	message?: string;
-}
-
-function isUniqueViolation(e: unknown): boolean {
-	const err = e as UniqueViolation;
-	return (
-		err?.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
-		(typeof err?.message === 'string' && err.message.includes('UNIQUE constraint failed'))
-	);
 }
 
 /**

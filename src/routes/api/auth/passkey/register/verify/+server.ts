@@ -13,6 +13,7 @@ import { error, json } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth/guard';
 import { verifyRegistrationCeremony } from '$lib/server/auth/passkey';
 import { type PasskeySummary, insertCredential } from '$lib/server/db/queries/passkey';
+import { isUniqueViolation } from '$lib/server/db/errors';
 import { passkeyLoginEnabled } from '$lib/server/env';
 import type { RequestHandler } from './$types';
 
@@ -55,8 +56,7 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 		// is built from this user's existing rows, but a parallel tab race
 		// (or a credential id collision across users, which the spec says
 		// shouldn't happen but we shouldn't assume) lands here.
-		const message = e instanceof Error ? e.message : String(e);
-		if (/UNIQUE|PRIMARY KEY/i.test(message)) {
+		if (isUniqueViolation(e)) {
 			error(409, 'This credential is already registered');
 		}
 		throw e;

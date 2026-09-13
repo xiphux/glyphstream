@@ -19,6 +19,7 @@ import {
 	type AddOAuthAccountInput,
 } from '$lib/server/db/queries/oauth-accounts';
 import { users } from '$lib/server/db/schema';
+import { isUniqueViolation } from '$lib/server/db/errors';
 
 beforeEach(() => {
 	mocks.testDb = createTestDb();
@@ -89,7 +90,17 @@ describe('addOAuthAccount + listOAuthAccountsForUser', () => {
 		const u1 = seedUser();
 		const u2 = seedUser();
 		addOAuthAccount(makeInput(u1.id, { externalId: '42' }));
-		expect(() => addOAuthAccount(makeInput(u2.id, { externalId: '42' }))).toThrow(/UNIQUE/i);
+		// Assert what callers rely on (the join flow maps this to
+		// "already registered"), not the message: drizzle wraps the driver error,
+		// so the top-level message is the failed SQL, not "UNIQUE constraint".
+		let thrown: unknown;
+		try {
+			addOAuthAccount(makeInput(u2.id, { externalId: '42' }));
+		} catch (e) {
+			thrown = e;
+		}
+		expect(thrown).toBeDefined();
+		expect(isUniqueViolation(thrown)).toBe(true);
 	});
 });
 

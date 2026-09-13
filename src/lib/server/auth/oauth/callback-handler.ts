@@ -34,6 +34,7 @@ import {
 } from '../../db/queries/oauth-accounts';
 import { findValidInvite } from '../../db/queries/invites';
 import { bumpUserLastLogin, countUsers, createInitialUser } from '../../db/queries/users';
+import { isUniqueViolation } from '../../db/errors';
 import { CODE_VERIFIER_COOKIE, LINK_STATE_COOKIE, STATE_COOKIE } from './cookies';
 import type { OAuthProfile, OAuthProvider } from './types';
 
@@ -272,7 +273,7 @@ async function handleJoin(args: {
 		// Anything else is unexpected — log it and show a generic, retryable
 		// error rather than claiming "already registered".
 		if (e instanceof InviteConsumedError) joinError('invite_invalid');
-		if (e instanceof Error && /UNIQUE constraint/i.test(e.message)) joinError('already_registered');
+		if (isUniqueViolation(e)) joinError('already_registered');
 		console.error(`[auth/join] unexpected error finalizing ${provider.id} join:`, e);
 		joinError('signup_failed');
 	}
