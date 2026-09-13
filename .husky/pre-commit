@@ -1,1 +1,12 @@
+# Secrets first: a leaked token is the one mistake a later commit can't undo.
+# Scans only what's staged, so it costs milliseconds. GitHub push protection
+# and CI's full-history scan back this up, which is why a machine without
+# gitleaks gets a warning rather than a blocked commit. A false positive is
+# allowed with a trailing `gitleaks:allow` comment on the flagged line.
+if command -v gitleaks >/dev/null 2>&1; then
+	gitleaks git --pre-commit --staged --redact --no-banner --verbose --log-level warn || exit 1
+else
+	echo "warning: gitleaks not installed; skipping the staged secret scan (brew install gitleaks)" >&2
+fi
+
 pnpm exec lint-staged

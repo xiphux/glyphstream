@@ -1,0 +1,9 @@
+# Historical gitleaks findings, each checked and judged a false positive.
+# Format: <commit>:<file>:<rule>:<line>. Findings in the current tree are
+# allowed inline with a `gitleaks:allow` comment instead, which survives edits
+# that shift line numbers; this file only holds commits that can't be edited.
+#
+# Sample Web Push subscription keys (`auth`) in unit-test fixtures.
+29c06f8acd2219c46e055ad282c3d5d0bb02beb7:tests/unit/push-notify.test.ts:generic-api-key:44
+babc4ec693cf58fb9d91c4f87bd020b9e1b3355c:tests/unit/push-notify.test.ts:generic-api-key:44
+be652b750535e422391f29d82cd541364a2ed826:tests/unit/push-subscriptions.test.ts:generic-api-key:31

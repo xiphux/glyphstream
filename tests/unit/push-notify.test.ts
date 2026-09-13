@@ -45,7 +45,7 @@ afterEach(() => {
 
 const SAMPLE_KEYS = {
 	p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtZ1hcSSnZ2bX5J7ZK_4Q',
-	auth: 'tBHItJI5svbpez7KI4CCXg',
+	auth: 'tBHItJI5svbpez7KI4CCXg', // gitleaks:allow — sample Web Push subscription key, not a credential
 };
 
 describe('buildPreview', () => {
