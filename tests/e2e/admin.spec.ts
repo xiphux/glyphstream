@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/test';
 import { resetData, sendChatFromHome } from './helpers';
 import { STORAGE_STATE_USER2_PATH } from './global-setup';
 

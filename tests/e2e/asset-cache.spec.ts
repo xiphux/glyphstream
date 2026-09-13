@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/test';
 import { CHUNK_CACHE_NAME, CHUNK_CACHE_MAX_ENTRIES } from '../../src/lib/sw/asset-route';
 
 /**

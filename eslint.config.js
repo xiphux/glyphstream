@@ -136,6 +136,27 @@ export default defineConfig([
 	},
 
 	{
+		files: ['tests/e2e/**/*.spec.ts'],
+		rules: {
+			// Specs take `test` from fixtures/test.ts, whose auto-fixture fails a
+			// test on unexpected server-side errors or uncaught page errors. A spec
+			// importing Playwright's `test` directly silently opts out of that.
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: '@playwright/test',
+							message:
+								"Import test/expect from './fixtures/test' — it adds the server/page error check.",
+						},
+					],
+				},
+			],
+		},
+	},
+
+	{
 		files: ['tests/**/*.ts'],
 		rules: {
 			// `expect(obj.method)` hands the reference to a matcher that only

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures/test';
 import { MOCK_REPLY, openSidebar, resetData, selectModel, sendChatFromHome } from './helpers';
 
 /**

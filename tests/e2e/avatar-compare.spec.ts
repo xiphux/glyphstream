@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixtures/test';
 import { resetData, sendChatFromHome } from './helpers';
 
 /**

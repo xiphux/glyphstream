@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures/test';
 import { MOCK_REPLY, resetData, sendChatFromHome, sendFollowup } from './helpers';
 
 // Clean slate before each flow (shared DB across projects — see resetData).

@@ -2,6 +2,7 @@ import process from 'node:process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
+import { SERVER_ERRORS_LOG } from './tests/e2e/fixtures/paths';
 
 // Foundry allocates a unique port block per worktree so parallel e2e runs
 // don't fight over the same sockets. Each var falls back to its historical
@@ -90,8 +91,10 @@ export default defineConfig({
 		},
 		{
 			// Build then run the compiled adapter-node handler. `&&` chained
-			// so we fail fast if the build breaks.
-			command: 'pnpm build && node build/index.js',
+			// so we fail fast if the build breaks. The preload records server-side
+			// errors so tests/e2e/fixtures/test.ts can fail the spec that caused one.
+			command:
+				'pnpm build && node --import ./tests/e2e/fixtures/capture-server-errors.mjs build/index.js',
 			url: `${baseURL}/api/health`,
 			reuseExistingServer: !process.env.CI,
 			// Build can take 10-15s on a cold cache, then the server boots in <1s.
@@ -108,6 +111,7 @@ export default defineConfig({
 				ALLOWED_GITHUB_USER_IDS: '99999',
 				EXTERNAL_BASE_URL: baseURL,
 				CONFIG_PATH: configPath,
+				E2E_SERVER_ERRORS_LOG: SERVER_ERRORS_LOG,
 				LOG_LEVEL: 'warn',
 			},
 		},
