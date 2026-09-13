@@ -71,9 +71,13 @@ function wantsGlacialStream(body) {
 
 /** A real, decodable 1x1 PNG — the media persister hands bytes to sharp
  *  for thumbnailing, so the b64 must be a valid image, not arbitrary
- *  bytes. */
+ *  bytes. The previous constant looked like one but had a bad IDAT CRC and a
+ *  truncated zlib stream: every thumbnail failed (`vipspng: libpng read
+ *  error`), the route fell back to serving the original, and the gallery
+ *  still rendered, so nothing noticed. Generated with sharp; flows.spec.ts
+ *  now asserts the thumbnail comes back as a real JPEG. */
 const PNG_1X1_B64 =
-	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQI12OosXr7HwAFfAKjosON1QAAAABJRU5ErkJggg==';
 
 const MODELS = {
 	object: 'list',

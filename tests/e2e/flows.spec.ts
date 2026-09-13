@@ -105,6 +105,16 @@ test.describe('flow: generate image + regenerate from gallery', () => {
 		await page.goto('/gallery');
 		const thumb = page.getByRole('button', { name: /^Open image/ }).first();
 		await expect(thumb).toBeVisible();
+
+		// The tile's thumbnail really was generated. A failed sharp decode still
+		// returns 200 — the route falls back to streaming the original — so the
+		// rendered <img> can't tell success from failure; the content type can.
+		const src = await thumb.locator('img[src*="/thumbnail"]').first().getAttribute('src');
+		expect(src).toBeTruthy();
+		const thumbRes = await page.request.get(src!);
+		expect(thumbRes.status()).toBe(200);
+		expect(thumbRes.headers()['content-type']).toBe('image/jpeg');
+
 		await thumb.click();
 
 		// Lightbox opens; "Regenerate with this prompt" hands the prompt off
