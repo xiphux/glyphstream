@@ -9,7 +9,7 @@
 import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { generateId } from '../../util/id';
 import { getDb, type Tx } from '../client';
-import { conversations, users } from '../schema';
+import { conversations, media, users } from '../schema';
 
 export type UserRole = 'admin' | 'user';
 
@@ -306,12 +306,27 @@ export function setUserDisabled(userId: string, disabled: boolean): boolean {
 /**
  * Delete a user and everything they own (sessions, oauth bindings, passkeys,
  * conversations, custom models, media, etc. — all cascade via FK). Returns
- * false if no row matched.
+ * null if no row matched.
+ *
+ * On success, returns the media files the cascade orphaned, for the caller to
+ * unlink AFTER this commits (see `unlinkMediaFiles`). The cascade deletes the
+ * media rows outright rather than tombstoning them, so nothing else can find
+ * those bytes again: the purger only walks rows, and only uploaded ones.
+ * Read in the same transaction as the delete so a file written between the
+ * two can't slip through.
  */
-export function deleteUser(userId: string): boolean {
-	const db = getDb();
-	const res = db.delete(users).where(eq(users.id, userId)).run();
-	return res.changes > 0;
+export function deleteUser(
+	userId: string,
+): { files: Array<{ id: string; storagePath: string }> } | null {
+	return getDb().transaction((tx) => {
+		const files = tx
+			.select({ id: media.id, storagePath: media.storagePath })
+			.from(media)
+			.where(and(eq(media.userId, userId), isNull(media.hardDeletedAt)))
+			.all();
+		const res = tx.delete(users).where(eq(users.id, userId)).run();
+		return res.changes > 0 ? { files } : null;
+	});
 }
 
 /**

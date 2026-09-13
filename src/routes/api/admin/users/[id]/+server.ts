@@ -1,7 +1,7 @@
 /**
  * Admin user-management mutations (admin only):
  *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable
- *   DELETE /api/admin/users/[id]                          — delete + cascade
+ *   DELETE /api/admin/users/[id]                          — delete + cascade, then unlink media files
  *
  * Two invariants the API enforces (not just the UI):
  *   - You can't disable or delete your OWN account here (footgun; an admin
@@ -14,6 +14,7 @@
 import { error, json } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
+import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import {
 	countActiveAdmins,
 	deleteUser,
@@ -64,13 +65,17 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 	return json({ ok: true });
 };
 
-export const DELETE: RequestHandler = ({ locals, params }) => {
+export const DELETE: RequestHandler = async ({ locals, params }) => {
 	requireAdmin(locals);
 	assertCanMutateTargetUser(locals.user.id, params.id, {
 		selfMessage: 'You cannot delete your own account from the admin panel',
 		strand: true,
 		strandMessage: 'Cannot delete the last active administrator',
 	});
-	if (!deleteUser(params.id)) error(404, 'User not found');
+	const deleted = deleteUser(params.id);
+	if (!deleted) error(404, 'User not found');
+	// The cascade removed the media rows; the bytes (and their thumbnails and
+	// vision variants) are only reachable from here.
+	await unlinkMediaFiles(deleted.files, 'admin.users.delete');
 	return json({ ok: true });
 };
