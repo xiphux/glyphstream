@@ -129,19 +129,24 @@ test('custom variants compile to the selectors app.css intends', async ({ page }
 
 test('the data-scheme swap changes computed theme colors', async ({ page }) => {
 	await page.goto('/');
+	await page.waitForLoadState('networkidle');
 	/** Computed styles of a throwaway element with `className`, under `scheme`. */
-	const probe = async (scheme: 'light' | 'dark', className: string) => {
-		await page.evaluate((s) => document.documentElement.setAttribute('data-scheme', s), scheme);
-		return page.evaluate((cls) => {
-			const el = document.createElement('div');
-			el.className = cls;
-			document.body.append(el);
-			const cs = getComputedStyle(el);
-			const out = { bg: cs.backgroundColor, fg: cs.color, ring: cs.boxShadow };
-			el.remove();
-			return out;
-		}, className);
-	};
+	// Set the scheme and read styles in ONE evaluate: the app's own scheme effect
+	// can rewrite data-scheme between two separate round trips.
+	const probe = (scheme: 'light' | 'dark', className: string) =>
+		page.evaluate(
+			([s, cls]) => {
+				document.documentElement.setAttribute('data-scheme', s);
+				const el = document.createElement('div');
+				el.className = cls;
+				document.body.append(el);
+				const cs = getComputedStyle(el);
+				const out = { bg: cs.backgroundColor, fg: cs.color, ring: cs.boxShadow };
+				el.remove();
+				return out;
+			},
+			[scheme, className] as const,
+		);
 
 	// Theme tokens: the [data-scheme='dark'] token block swaps these.
 	const light = await probe('light', 'bg-surface text-fg');
