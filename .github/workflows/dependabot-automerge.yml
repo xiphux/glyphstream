@@ -56,14 +56,19 @@ jobs:
           fi
 
           # One "name<TAB>version<TAB>update-type" line per dependency.
+          # The block is YAML, so Dependabot quotes any value that would
+          # otherwise parse as a number: a two-part action tag like 0.6 is
+          # written '0.6'. Strip quotes before the version is pattern-matched,
+          # or a quoted 0.x minor slips past the `0.*` hold below.
           updates=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message' | awk '
+            function unquote(s) { gsub(/["\047]/, "", s); return s }
             /^updated-dependencies:/ { inblock = 1; next }
             inblock && /^\.\.\./     { inblock = 0 }
             !inblock                 { next }
             function flush() { if (name != "") print name "\t" ver "\t" type; name = ver = type = "" }
-            /^- dependency-name:/    { flush(); name = $3 }
-            /^  dependency-version:/ { ver = $2 }
-            /^  update-type:/        { type = $2 }
+            /^- dependency-name:/    { flush(); name = unquote($3) }
+            /^  dependency-version:/ { ver = unquote($2) }
+            /^  update-type:/        { type = unquote($2) }
             END                      { flush() }
           ')
           if [ -z "$updates" ]; then echo "No updated-dependencies metadata - manual review"; exit 0; fi
