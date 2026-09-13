@@ -1,7 +1,7 @@
 /**
  * Admin user-management mutations (admin only):
  *   PATCH  /api/admin/users/[id]  { disabled: boolean }  — enable/disable
- *   DELETE /api/admin/users/[id]                          — delete + cascade, then unlink media files
+ *   DELETE /api/admin/users/[id]                          — delete + cascade, stop in-flight generations, unlink media files
  *
  * Two invariants the API enforces (not just the UI):
  *   - You can't disable or delete your OWN account here (footgun; an admin
@@ -15,6 +15,7 @@ import { error, json } from '@sveltejs/kit';
 import { requireAdmin } from '$lib/server/auth/guard';
 import { parseJsonBody } from '$lib/server/http';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
+import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
 import {
 	countActiveAdmins,
 	deleteUser,
@@ -74,6 +75,16 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	});
 	const deleted = deleteUser(params.id);
 	if (!deleted) error(404, 'User not found');
+	// Stop anything still generating into the deleted conversations, as
+	// conversation delete does: otherwise the upstream keeps working (holding an
+	// endpoint slot) for a reply with nowhere to go, and a media generation can
+	// write a file after the unlink below with no row left to find it. Local
+	// aborts are synchronous; the video bridge cancels aren't awaited.
+	for (const conversationId of deleted.conversationIds) {
+		void cancelInFlightGenerations(conversationId).catch((e: unknown) => {
+			console.warn('[admin.users.delete] cancelling in-flight generation failed:', e);
+		});
+	}
 	// The cascade removed the media rows; the bytes (and their thumbnails and
 	// vision variants) are only reachable from here.
 	await unlinkMediaFiles(deleted.files, 'admin.users.delete');

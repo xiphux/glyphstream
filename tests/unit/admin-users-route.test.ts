@@ -35,6 +35,8 @@ import { hardDeleteMediaForUser, insertMedia } from '$lib/server/db/queries/medi
 import { conversations, media, sessions, users } from '$lib/server/db/schema';
 import { getMediaStore } from '$lib/server/media/disk-store';
 import { thumbStoragePath } from '$lib/server/media/thumbnail';
+import { registerInFlight, resetInFlight } from '$lib/server/streaming/in-flight';
+import type { LoadedEndpoint } from '$lib/server/endpoints/config';
 
 type Handler = (event: RequestEvent) => Promise<Response> | Response;
 
@@ -104,6 +106,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	resetInFlight();
 	closeTestDb();
 	rmSync(mocks.root, { recursive: true, force: true });
 });
@@ -200,6 +203,33 @@ describe('DELETE', () => {
 		expect(existsSync(theirs.original)).toBe(true);
 		expect(existsSync(theirs.thumb)).toBe(true);
 		expect(validateSessionToken(bystander.token)).not.toBeNull();
+	});
+
+	it('stops generations still streaming into the user’s conversations, and no one else’s', async () => {
+		const endpoint = { id: 'bridge', baseUrl: 'http://localhost/v1' } as LoadedEndpoint;
+		const admin = makeUser('admin');
+		const target = makeUser();
+		const bystander = makeUser();
+		const conv = (userId: string, archived = false) => {
+			const { id } = createConversation({ userId, endpointId: 'e', modelId: 'm', modelKind: null });
+			if (archived) {
+				mocks.testDb
+					.update(conversations)
+					.set({ archivedAt: 1 })
+					.where(eq(conversations.id, id))
+					.run();
+			}
+			return id;
+		};
+		const active = registerInFlight(conv(target.id), endpoint);
+		const archived = registerInFlight(conv(target.id, true), endpoint);
+		const theirs = registerInFlight(conv(bystander.id), endpoint);
+
+		expect(await invoke(DELETE as Handler, admin.locals, target.id)).toBe(200);
+
+		expect(active.controller.signal.aborted).toBe(true);
+		expect(archived.controller.signal.aborted).toBe(true);
+		expect(theirs.controller.signal.aborted).toBe(false);
 	});
 
 	it('refuses self-deletion and 404s an unknown user', async () => {
