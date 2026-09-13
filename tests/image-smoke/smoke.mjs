@@ -36,9 +36,8 @@ const checks = {
 
 	async mcpSdk() {
 		const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-		const { StreamableHTTPClientTransport } = await import(
-			'@modelcontextprotocol/sdk/client/streamableHttp.js'
-		);
+		const { StreamableHTTPClientTransport } =
+			await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
 		const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
 		const client = new Client({ name: 'image-smoke', version: '0.0.0' });
 		new StreamableHTTPClientTransport(new URL('http://127.0.0.1:1/mcp'));

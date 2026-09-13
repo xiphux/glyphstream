@@ -36,7 +36,7 @@
 		"import:owui": "tsx scripts/import-owui.ts"
 	},
 	"lint-staged": {
-		"*.{js,ts,svelte,json,css,md}": "prettier --write"
+		"*.{js,mjs,cjs,ts,svelte,json,css,md}": "prettier --write"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.30.0",
