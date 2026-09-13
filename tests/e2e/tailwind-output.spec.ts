@@ -129,23 +129,37 @@ test('custom variants compile to the selectors app.css intends', async ({ page }
 
 test('the data-scheme swap changes computed theme colors', async ({ page }) => {
 	await page.goto('/');
-	const colors = async (scheme: 'light' | 'dark') => {
+	/** Computed styles of a throwaway element with `className`, under `scheme`. */
+	const probe = async (scheme: 'light' | 'dark', className: string) => {
 		await page.evaluate((s) => document.documentElement.setAttribute('data-scheme', s), scheme);
-		return page.evaluate(() => {
-			const probe = document.createElement('div');
-			probe.className = 'bg-surface text-fg dark:ring-white/15 ring-1';
-			document.body.append(probe);
-			const cs = getComputedStyle(probe);
+		return page.evaluate((cls) => {
+			const el = document.createElement('div');
+			el.className = cls;
+			document.body.append(el);
+			const cs = getComputedStyle(el);
 			const out = { bg: cs.backgroundColor, fg: cs.color, ring: cs.boxShadow };
-			probe.remove();
+			el.remove();
 			return out;
-		});
+		}, className);
 	};
-	const light = await colors('light');
-	const dark = await colors('dark');
+
+	// Theme tokens: the [data-scheme='dark'] token block swaps these.
+	const light = await probe('light', 'bg-surface text-fg');
+	const dark = await probe('dark', 'bg-surface text-fg');
 	// Tokens resolved to real colors, not the transparent/inherited fallback.
 	expect(light.bg).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
 	expect(dark.bg).not.toBe(light.bg);
 	expect(dark.fg).not.toBe(light.fg);
-	expect(dark.ring).not.toBe(light.ring);
+
+	// The `dark:` variant itself, isolated: in dark mode, the same element with
+	// and without a `dark:` utility. A bare ring-1 falls back to currentColor,
+	// which the token swap already changes, so comparing across schemes would
+	// pass with the `dark:` rule missing.
+	const plain = await probe('dark', 'text-fg ring-1');
+	const withVariant = await probe('dark', 'text-fg ring-1 dark:ring-white/15');
+	expect(withVariant.ring).not.toBe(plain.ring);
+	// ...and it applies only under the dark scheme.
+	expect((await probe('light', 'text-fg ring-1 dark:ring-white/15')).ring).toBe(
+		(await probe('light', 'text-fg ring-1')).ring,
+	);
 });
