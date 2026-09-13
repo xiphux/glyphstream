@@ -153,6 +153,19 @@ export default defineConfig([
 					],
 				},
 			],
+			// waitForFunction does not await its predicate: an async one returns a
+			// Promise, which is truthy, so the "wait" resolves on the first poll
+			// with the Promise's eventual value — false included. That turned
+			// asset-cache.spec.ts into a one-shot check that flaked on a slow run.
+			'no-restricted-syntax': [
+				'error',
+				{
+					selector:
+						"CallExpression[callee.property.name='waitForFunction'] > :function[async=true]",
+					message:
+						'waitForFunction does not await an async predicate (a Promise is truthy). Use expect.poll(() => page.evaluate(async () => …)).',
+				},
+			],
 		},
 	},
 

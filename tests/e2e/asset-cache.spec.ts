@@ -50,17 +50,18 @@ test('the client bundle is served from Cache Storage with the network off', asyn
 	await page.reload();
 	await page.waitForFunction(() => !!navigator.serviceWorker.controller);
 
-	const cached = await page
-		.waitForFunction(
-			async (name) => {
-				const keys = await (await caches.open(name)).keys();
-				return keys.length > 10 ? keys.length : false;
-			},
-			CHUNK_CACHE_NAME,
-			{ timeout: 15_000 },
+	// expect.poll, not waitForFunction: the latter doesn't await an async
+	// predicate, so it resolved on the first poll whatever the cache held.
+	await expect
+		.poll(
+			() =>
+				page.evaluate(
+					async (name) => (await (await caches.open(name)).keys()).length,
+					CHUNK_CACHE_NAME,
+				),
+			{ message: 'the runtime route stored nothing', timeout: 15_000 },
 		)
-		.then((handle) => handle.jsonValue());
-	expect(cached, 'the runtime route stored nothing').toBeGreaterThan(10);
+		.toBeGreaterThan(10);
 
 	await context.setOffline(true);
 
