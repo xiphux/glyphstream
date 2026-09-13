@@ -8,7 +8,10 @@ rules:
   # inside the Dockerfile, and nothing from the test jobs' workspace is handed
   # to `build`. A PR can only write caches into its own ref's scope, which
   # `main` and tag runs never read. (docker.yml's own buildx `type=gha` layer
-  # cache does feed the image, but that workflow runs only on main + tags.)
+  # cache does feed the image, but that workflow runs only on main + tags.) The
+  # `image` smoke job builds with buildx too: it READS docker.yml's
+  # build-linux-amd64 scope but WRITES only `ci-image-smoke`, which docker.yml
+  # never reads, so it can't feed layers into a published image either.
   cache-poisoning:
     ignore:
       - ci.yml

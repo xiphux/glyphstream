@@ -1,5 +1,5 @@
 # GlyphStream CI — runs static analysis, workflow + Dockerfile lint, a secret
-# scan, and unit + e2e tests.
+# scan, a Docker image boot smoke, and unit + e2e tests.
 #
 # Triggers:
 #   - Direct on push to any branch except `main`, Dependabot's, and tags.
@@ -237,6 +237,51 @@ jobs:
   # push, PR and workflow_call.
   # Reviewed false positives: .gitleaksignore (history) and inline
   # `gitleaks:allow` (current tree).
+  # Build the runtime image and boot it. Everything else in CI runs a full dev
+  # install on glibc; the image installs `--prod --ignore-scripts` on
+  # Alpine/musl. A runtime dependency missing from `dependencies`, a musl
+  # prebuilt that won't load (sharp), or a package whose entry point moved
+  # passes every other job and breaks the shipped image, and Dependabot
+  # auto-merges before docker.yml ever builds. tests/image-smoke/run.sh boots
+  # the container on a fresh DB, renders a page, and has smoke.mjs do real work
+  # with each runtime dependency from the image's own node_modules. Runnable
+  # locally the same way.
+  #
+  # amd64 only: the arm64 image is the same Dockerfile and lockfile, and an
+  # arm64 runner would double the cost for the rare arm-only packaging break.
+  #
+  # Cache: reads docker.yml's main-branch layer cache (build-linux-amd64) so a
+  # warm build is quick, but writes only to its own scope, so a PR run can
+  # never feed layers into the image docker.yml publishes.
+  image:
+    name: Docker image smoke
+    needs: gate
+    if: needs.gate.outputs.passed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Build runtime image (amd64)
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: glyphstream:ci-smoke
+          cache-from: |
+            type=gha,scope=build-linux-amd64
+            type=gha,scope=ci-image-smoke
+          cache-to: type=gha,mode=max,scope=ci-image-smoke
+
+      - name: Boot and smoke-test the image
+        run: tests/image-smoke/run.sh glyphstream:ci-smoke
+
   secrets:
     name: Secret scan
     needs: gate
@@ -378,7 +423,7 @@ jobs:
   # caller's, so `main` pushes still record normally; the tag run reads.
   record-pass:
     name: Record pass
-    needs: [gate, static, infra, secrets, unit, e2e]
+    needs: [gate, static, infra, secrets, image, unit, e2e]
     if: github.ref == 'refs/heads/main' && needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
     steps:
