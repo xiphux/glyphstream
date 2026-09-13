@@ -10,8 +10,8 @@
  *
  * The mocked binary WRITES A FILE, because the code deliberately doesn't trust
  * the exit status — and cannot, because ffmpeg changed it. Asked to seek past
- * the end of a clip, ffmpeg 5 and 6 exit 0 having written nothing while ffmpeg 7
- * exits non-zero, and both generations are deployable (the image pins 7;
+ * the end of a clip, ffmpeg 5 and 6 exit 0 having written nothing while ffmpeg 7+
+ * exits non-zero, and both generations are deployable (the image pins 9;
  * docs/deployment.md supports a system ffmpeg on PATH). So the mock models exit
  * status and output as INDEPENDENT axes, which is the whole point of the code
  * under test.
@@ -28,7 +28,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 /** 'empty' is ffmpeg 5/6 reporting a seek past the end: exit 0, no output.
- *  'fail' is ffmpeg 7 reporting the SAME situation, and also a genuinely
+ *  'fail' is ffmpeg 7+ reporting the SAME situation, and also a genuinely
  *  undecodable file: non-zero exit, no output. 'timeout' is a kill. */
 type FfmpegOutcome = 'ok' | 'empty' | 'fail' | 'timeout' | 'maxbuffer' | 'partial-then-fail';
 
@@ -245,7 +245,7 @@ describe('video thumbnails', () => {
 		expect(argAfter(state.calls[1], '-ss')).toBe('0');
 	});
 
-	it('retries when a NON-ZERO exit produced no frame, which is how ffmpeg 7 reports a short clip', async () => {
+	it('retries when a NON-ZERO exit produced no frame, which is how ffmpeg 7+ reports a short clip', async () => {
 		// The regression this guards. Keying the retry on "exited 0 with no
 		// output" was correct for ffmpeg 5 and 6 and became dead code on 7, which
 		// reports the same seek-past-end as exit 234. A clip shorter than the seek

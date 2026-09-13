@@ -327,7 +327,7 @@ type FrameOutcome =
  *
  * Deliberately not keyed on the exit status, because ffmpeg changed its mind
  * about that. Asked to seek past the end of a clip, ffmpeg 5 and 6 exit 0
- * having written nothing; ffmpeg 7 (what the Dockerfile pins) exits 234 —
+ * having written nothing; ffmpeg 7 and later (the Dockerfile pins 9) exit 234 —
  * AVERROR(EINVAL) from `of_write_trailer`, "Nothing was written into output
  * file". Both are the same situation and both want the same retry, and
  * docs/deployment.md supports running against a system ffmpeg on PATH, so both

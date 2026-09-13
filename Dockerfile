@@ -137,18 +137,21 @@ RUN npm install -g "$(node -p "require('./package.json').packageManager")" \
 # going blank after an unrelated base-image refresh, with a green build.
 FROM node:26-alpine AS ffmpeg
 # Bump these two together. The digest is what makes the version a pin rather
-# than a label — without it, `7.1.1` means "whatever that URL serves today".
-ARG FFMPEG_VERSION=7.1.1
-ARG FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+# than a label — without it, `9.0.1` means "whatever that URL serves today".
+ARG FFMPEG_VERSION=9.0.1
+ARG FFMPEG_SHA256=cf38e0e28c7e5605942c4a77755349b0145804a397af37eb1fb4c77cb237f635
 RUN apk add --no-cache build-base nasm yasm tar xz wget pkgconf dav1d-dev
 WORKDIR /src
-# Be honest about what this check is: the digest was taken from this same
-# download, so it is trust-on-first-use. It makes the artifact immutable from
-# here on — a corrupted transfer, a mirror serving something else, or a
-# re-rolled release all fail the build instead of being compiled into an image
-# that then decodes arbitrary uploads. It is NOT origin verification; upstream
-# publishes a detached GPG signature (`.asc`) for that, which needs the release
-# key pinned and is the stronger option if this ever warrants it.
+# What this check is: the digest makes the artifact immutable — a corrupted
+# transfer, a mirror serving something else, or a re-rolled release all fail
+# the build instead of being compiled into an image that decodes arbitrary
+# uploads. Origin is verified once, when bumping, not on every build: the 9.0.1
+# digest was recorded only after its detached `.asc` checked out against
+# FFmpeg's release signing key, fingerprint
+# FCF9 86EA 15E6 E293 A564 4F10 B432 2F04 D676 58D8 (matching ffmpeg.org's
+# download page and keys.openpgp.org). Do the same on the next bump:
+#   gpg --import ffmpeg-devel.asc   # from ffmpeg.org; check the fingerprint
+#   gpg --verify ffmpeg-X.Y.Z.tar.xz.asc ffmpeg-X.Y.Z.tar.xz && sha256sum ffmpeg-X.Y.Z.tar.xz
 # (pipefail-safe as is: the pipe ends in sha256sum -c, whose status is the check.)
 # hadolint ignore=DL4006
 RUN wget -qO ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
