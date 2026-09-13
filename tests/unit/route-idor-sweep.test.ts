@@ -35,6 +35,13 @@ vi.mock('$lib/server/env', async (importOriginal) => ({
 	mediaDir: () => mocks.root,
 	derivedDir: () => mocks.root,
 }));
+// The intruder's own conversation needs a resolvable model, or the send route
+// refuses it ("no valid model") before it ever looks at a message id.
+vi.mock('$lib/server/endpoints/registry', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$lib/server/endpoints/registry')>()),
+	getEndpoint: (id: string) =>
+		id === 'e' ? ({ id: 'e', baseUrl: 'http://127.0.0.1:9/v1' } as never) : undefined,
+}));
 
 import * as schema from '$lib/server/db/schema';
 import { createSession, validateSessionToken } from '$lib/server/auth/session';
@@ -74,13 +81,13 @@ function walk(dir: string): string[] {
 	);
 }
 
-/** A conversation-scoped write whose handler reads message or media ids from its body. */
-function takesBodyIds(t: { file: string; route: string; method: string }): boolean {
-	return (
-		t.route.startsWith('/api/conversations/[id]') &&
-		['POST', 'PUT', 'PATCH'].includes(t.method) &&
-		/body\??\.(\w*MessageId|messageId|mediaId|\w*MediaIds)\b/.test(readFileSync(t.file, 'utf8'))
-	);
+/** The message / media id fields a conversation-scoped write reads from its body. */
+function bodyIdFields(t: { file: string; route: string; method: string }): string[] {
+	if (!t.route.startsWith('/api/conversations/[id]')) return [];
+	if (!['POST', 'PUT', 'PATCH'].includes(t.method)) return [];
+	const src = readFileSync(t.file, 'utf8');
+	const fields = src.matchAll(/body\??\.(\w*MessageId|messageId|mediaId|\w*MediaIds)\b/g);
+	return [...new Set([...fields].map((m) => m[1]))].sort();
 }
 
 const routeOf = (file: string) => '/' + relative(ROUTES, join(file, '..')).split(sep).join('/');
@@ -95,15 +102,28 @@ const targets = walk(ROUTES)
 		].map((m) => ({ file, route, method: m[1] }));
 	})
 	.flatMap((t) => [
-		{ ...t, crossConversation: false },
+		{ ...t, crossConversation: false, bodyField: null as string | null },
 		// The sharper IDOR: the intruder's OWN conversation, so the conversation
-		// ownership check passes, carrying the victim's message or media id — in
-		// the path, or in the body of a conversation route that reads one.
-		...(t.route.includes('[messageId]') || takesBodyIds(t)
-			? [{ ...t, crossConversation: true }]
+		// ownership check passes, carrying a victim id — in the path, or in ONE
+		// body field at a time, so an earlier field's refusal can't mask a later
+		// field's missing check.
+		...(t.route.includes('[messageId]')
+			? [{ ...t, crossConversation: true, bodyField: null }]
 			: []),
+		...bodyIdFields(t).map((bodyField) => ({ ...t, crossConversation: true, bodyField })),
 	])
-	.sort((a, b) => `${a.route} ${a.method}`.localeCompare(`${b.route} ${b.method}`));
+	.sort((a, b) =>
+		`${a.route} ${a.method} ${a.bodyField ?? ''}`.localeCompare(
+			`${b.route} ${b.method} ${b.bodyField ?? ''}`,
+		),
+	);
+
+/** Body fields that only matter inside a fan-out dispatch, which this sweep
+ *  doesn't set up. Listed so a new body id field fails loudly instead. */
+const UNREACHED_BODY_FIELDS: Record<string, string> = {
+	'/api/conversations/[id]/messages POST inputMediaIds':
+		'read only for a fanoutBranch dispatch; the shared user message is checked first',
+};
 
 interface Victim {
 	conversationId: string;
@@ -170,6 +190,17 @@ function bodyFor(route: string, method: string): unknown {
 		enabled: false,
 		route,
 	};
+}
+
+/** A body carrying exactly one victim id, plus what the routes need to reach the
+ *  check: some text, and the intruder conversation's own (resolvable) model. */
+function crossBody(field: string): Record<string, unknown> {
+	const value = field.endsWith('MediaIds')
+		? [victim.mediaId]
+		: field === 'mediaId'
+			? victim.mediaId
+			: victim.messageId;
+	return { text: 'hello', modelId: 'e::m', [field]: value };
 }
 
 /** Every row of every table as JSON, keyed by table, so "the victim's data didn't
@@ -298,7 +329,7 @@ beforeAll(async () => {
 	intruderConversationId = createConversation({
 		userId: i.id,
 		endpointId: 'e',
-		modelId: 'm',
+		modelId: 'e::m',
 		modelKind: null,
 	}).id;
 	appendMessage({
@@ -322,13 +353,15 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		expect(targets.length).toBeGreaterThan(40);
 		const live = new Set(targets.map((t) => `${t.route} ${t.method}`));
 		expect(Object.keys(SCOPED_EMPTY).filter((k) => !live.has(k))).toEqual([]);
+		const liveFields = new Set(targets.map((t) => `${t.route} ${t.method} ${t.bodyField}`));
+		expect(Object.keys(UNREACHED_BODY_FIELDS).filter((k) => !liveFields.has(k))).toEqual([]);
 	});
 
 	it.each(
 		targets.map(
 			(t) =>
 				[
-					`${t.route} ${t.method}${t.crossConversation ? ' (own conversation, victim ids)' : ''}`,
+					`${t.route} ${t.method}${t.crossConversation ? ` (own conversation, victim ${t.bodyField ?? 'path id'})` : ''}`,
 					t,
 				] as const,
 		),
@@ -339,7 +372,9 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		const params = paramsFor(t.route, t.crossConversation);
 		const path = t.route.replace(/\[(\w+)\]/g, (_m, p: string) => params[p]);
 		const url = new URL(path, 'https://chat.example.test');
-		const body = bodyFor(t.route, t.method);
+		const bodyKey = `${t.route} ${t.method} ${t.bodyField}`;
+		if (bodyKey in UNREACHED_BODY_FIELDS) return;
+		const body = t.bodyField ? crossBody(t.bodyField) : bodyFor(t.route, t.method);
 		const event = {
 			url,
 			params,
@@ -360,7 +395,7 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		} as unknown as RequestEvent;
 
 		let status: number;
-		let text = '';
+		let text: string;
 		try {
 			const res = (await fn(event)) as Response;
 			status = res.status;
@@ -368,6 +403,7 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		} catch (e) {
 			if (!(e && typeof e === 'object' && 'status' in e)) throw e;
 			status = Number(e.status);
+			text = JSON.stringify((e as { body?: unknown }).body ?? '');
 		}
 		expect(text).not.toMatch(/victim/);
 		if (t.crossConversation) {
@@ -379,6 +415,10 @@ describe('an intruder addressing a victim’s resources by id', () => {
 				victimIds.some((id) => r.includes(id)),
 			);
 			expect(touched).toEqual([]);
+			// And the refusal is the id check itself, not some earlier validation
+			// that happened to stop the request first.
+			expect([400, 404], text).toContain(status);
+			expect(text).toMatch(/not found/i);
 		} else {
 			expect(snapshot()).toBe(JSON.stringify([...before]));
 			if (`${t.route} ${t.method}` in SCOPED_EMPTY) expect(status).toBeLessThan(300);
