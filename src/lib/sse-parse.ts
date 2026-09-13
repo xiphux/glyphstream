@@ -21,8 +21,11 @@
  * The un-dispatched buffer is capped via `maxBufferSize`: a misbehaving
  * upstream that never sends a separator throws `SSEBufferOverflowError` rather
  * than growing `buffer += …` until the process OOMs. 8 MiB is ~two orders of
- * magnitude past any legitimate single SSE block and still leaves room for a
- * multi-MB error body before it trips.
+ * magnitude past any legitimate single SSE block. Only a runaway *valid* block
+ * (an endless `data:` field, say) can trip it: since eventsource-parser 4, a
+ * line that can never become an SSE field — a non-SSE error body, for example —
+ * is discarded as it arrives instead of being buffered, so it neither grows the
+ * buffer nor raises the overflow.
  *
  * id/retry fields are intentionally ignored — these are request-scoped streams
  * we never reconnect.
