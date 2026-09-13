@@ -25,11 +25,10 @@ import { eq } from 'drizzle-orm';
 import type { NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { conversations, messages } from '../db/schema';
 import { generateId } from '../util/id';
-import type * as schema from '../db/schema';
 import { renderMarkdown } from '../markdown/render';
 import type { MessagePart, ModelKind } from '$lib/types/api';
 
-export type ImportDb = NodeSQLiteDatabase<typeof schema>;
+export type ImportDb = NodeSQLiteDatabase;
 
 export const IMPORTED_ENDPOINT_ID = 'imported-owui';
 

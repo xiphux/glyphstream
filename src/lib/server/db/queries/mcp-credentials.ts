@@ -25,7 +25,7 @@ export function getMcpCredential(userId: string, serverId: string): string | nul
 		.get();
 	if (!row) return null;
 	try {
-		return decryptSecret(row.ct as Uint8Array);
+		return decryptSecret(row.ct);
 	} catch (e) {
 		// Key rotated, or the row predates a key change / is corrupt. Treat as
 		// "no usable credential" so the user is prompted to re-enter rather than

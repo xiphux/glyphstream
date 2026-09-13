@@ -186,24 +186,20 @@ export function listMemoryBodies(userId: string, ids: string[]): Memory[] {
  */
 export function listMemoriesWithEmbeddings(userId: string): MemoryWithEmbedding[] {
 	const db = getDb();
-	return (
-		db
-			.select({
-				id: memories.id,
-				content: memories.content,
-				topic: memories.topic,
-				createdAt: memories.createdAt,
-				updatedAt: memories.updatedAt,
-				embedding: memories.embedding,
-				embeddingModel: memories.embeddingModel,
-			})
-			.from(memories)
-			.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
-			.orderBy(asc(memories.createdAt))
-			// `blob()` infers as `unknown` on this drizzle RC; node:sqlite hands back
-			// a Buffer for a BLOB at runtime, so the narrow is sound.
-			.all() as MemoryWithEmbedding[]
-	);
+	return db
+		.select({
+			id: memories.id,
+			content: memories.content,
+			topic: memories.topic,
+			createdAt: memories.createdAt,
+			updatedAt: memories.updatedAt,
+			embedding: memories.embedding,
+			embeddingModel: memories.embeddingModel,
+		})
+		.from(memories)
+		.where(and(eq(memories.userId, userId), isNull(memories.deletedAt)))
+		.orderBy(asc(memories.createdAt))
+		.all();
 }
 
 /** A recall-corpus row WITHOUT the embedding blob — the cheap full-store scan

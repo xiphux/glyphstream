@@ -93,7 +93,7 @@ sqlite.exec('PRAGMA journal_mode = WAL');
 sqlite.exec('PRAGMA synchronous = NORMAL');
 sqlite.exec('PRAGMA busy_timeout = 5000');
 sqlite.exec('PRAGMA foreign_keys = ON');
-const db = drizzle({ client: sqlite, schema });
+const db = drizzle({ client: sqlite });
 if (existsSync(resolve('./drizzle'))) {
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 }

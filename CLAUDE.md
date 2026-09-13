@@ -270,6 +270,18 @@ exact-match `apple-touch-startup-image` media query.
   start a transaction within a transaction". Helpers that run inside another
   transaction must take the caller's `tx` (`Tx` in `db/client.ts`) and
   operate on it; only `tx.transaction()` (on the tx object) emits a savepoint.
+- **drizzle-orm is upgraded by hand, along official RCs** (the `rc` dist-tag /
+  GitHub releases). Dependabot ignores it: drizzle publishes snapshot builds of
+  internal branches (`1.0.0-rc.5-<hash>`) that semver ranks above the real RC.
+  Two rc.4 behaviours to keep in mind:
+  - **A bare `blob()` is JSON mode** — reads `JSON.parse`, writes
+    `JSON.stringify`. Every byte column needs `blob(name, { mode: 'buffer' })`;
+    without it, stored bytes decode to `[]` silently and new writes are
+    corrupted. The mode changes no SQL, so `db:generate` won't flag it.
+  - **SQLite errors arrive wrapped in `DrizzleQueryError`**: the message is the
+    failed SQL plus params, the driver error is on `.cause`. Never match
+    constraint failures on message text — use `isUniqueViolation()`
+    (`db/errors.ts`), which checks the SQLite `errcode` through the chain.
 - **drizzle-kit v1 emits column `.unique()` as an inline table constraint**,
   not a standalone `UNIQUE INDEX` like v0 did. On an existing DB that diff is
   a destructive table rebuild for a no-op. Declare uniqueness as an explicit

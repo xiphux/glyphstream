@@ -23,9 +23,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { drizzle, type NodeSQLiteDatabase } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { resolve } from 'node:path';
-import * as schema from '../../../src/lib/server/db/schema';
-
-export type TestDB = NodeSQLiteDatabase<typeof schema>;
+export type TestDB = NodeSQLiteDatabase;
 
 let active: { db: TestDB; sqlite: DatabaseSync } | null = null;
 
@@ -34,7 +32,7 @@ export function createTestDb(): TestDB {
 	const sqlite = new DatabaseSync(':memory:');
 	sqlite.exec('PRAGMA foreign_keys = ON');
 	sqlite.exec('PRAGMA synchronous = OFF');
-	const db = drizzle({ client: sqlite, schema });
+	const db = drizzle({ client: sqlite });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 	active = { db, sqlite };
 	return db;

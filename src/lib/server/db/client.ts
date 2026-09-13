@@ -4,9 +4,7 @@ import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { dbPath } from '../env';
-import * as schema from './schema';
-
-export type DB = NodeSQLiteDatabase<typeof schema>;
+export type DB = NodeSQLiteDatabase;
 
 /** The transaction handle passed to a `db.transaction((tx) => …)` callback.
  *  Helpers that must run inside a caller's transaction take this so they
@@ -68,7 +66,7 @@ export function getDb(): DB {
 	// reliable, so a DB_PATH pointing at a mounted share wants this back at 0.
 	sqlite.exec('PRAGMA mmap_size = 268435456');
 
-	const db = drizzle({ client: sqlite, schema });
+	const db = drizzle({ client: sqlite });
 
 	if (existsSync(resolve('./drizzle'))) {
 		migrate(db, { migrationsFolder: resolve('./drizzle') });

@@ -183,7 +183,7 @@ export const passkeyCredentials = sqliteTable(
 		userId: text('user_id')
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
-		publicKey: blob('public_key').notNull(),
+		publicKey: blob('public_key', { mode: 'buffer' }).notNull(),
 		counter: integer('counter').notNull().default(0),
 		transportsJson: text('transports_json'),
 		backedUp: integer('backed_up', { mode: 'boolean' }).notNull().default(false),
@@ -583,7 +583,7 @@ export const memories = sqliteTable(
 			.references(() => users.id, { onDelete: 'cascade' }),
 		content: text('content').notNull(),
 		topic: text('topic'),
-		embedding: blob('embedding'),
+		embedding: blob('embedding', { mode: 'buffer' }),
 		embeddingModel: text('embedding_model'),
 		recallCount: integer('recall_count').notNull().default(0),
 		lastRecalledAt: integer('last_recalled_at'),
@@ -796,7 +796,7 @@ export const media = sqliteTable(
 		// pattern). NULL = "not yet embedded"; the backfill sweep fills it.
 		// `embedding_model` records which model produced the vector (different
 		// models = different spaces, so search filters to the active one).
-		embedding: blob('embedding'),
+		embedding: blob('embedding', { mode: 'buffer' }),
 		embeddingModel: text('embedding_model'),
 	},
 	(t) => [
@@ -887,7 +887,7 @@ export const mcpCredentials = sqliteTable(
 			.notNull()
 			.references(() => users.id, { onDelete: 'cascade' }),
 		serverId: text('server_id').notNull(),
-		secretCiphertext: blob('secret_ciphertext').notNull(),
+		secretCiphertext: blob('secret_ciphertext', { mode: 'buffer' }).notNull(),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull(),
 	},

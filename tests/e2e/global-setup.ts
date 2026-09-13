@@ -67,7 +67,7 @@ export default async function globalSetup() {
 	const sqlite = new DatabaseSync(DB_PATH);
 	sqlite.exec('PRAGMA journal_mode = WAL');
 	sqlite.exec('PRAGMA foreign_keys = ON');
-	const db = drizzle({ client: sqlite, schema });
+	const db = drizzle({ client: sqlite });
 	migrate(db, { migrationsFolder: resolve('./drizzle') });
 
 	// Seed the test user + the OAuth binding that mirrors the operator's

@@ -145,7 +145,7 @@ mkdirSync(MEDIA_DIR, { recursive: true });
 const sqlite = new DatabaseSync(DB_PATH);
 sqlite.exec('PRAGMA journal_mode = WAL');
 sqlite.exec('PRAGMA foreign_keys = ON');
-const db = drizzle({ client: sqlite, schema });
+const db = drizzle({ client: sqlite });
 migrate(db, { migrationsFolder: resolve('./drizzle') });
 
 type MsgInput = {

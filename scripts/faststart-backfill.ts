@@ -66,7 +66,7 @@ const mediaRoot = resolve(env.MEDIA_DIR ?? './data/media');
 const sqlite = new DatabaseSync(dbPath);
 sqlite.exec('PRAGMA journal_mode = WAL');
 sqlite.exec('PRAGMA busy_timeout = 5000');
-const db = drizzle({ client: sqlite, schema });
+const db = drizzle({ client: sqlite });
 
 // Not hard-deleted: those rows keep their bytes only until the purger runs, and
 // rewriting a file that is on its way out is pure waste.
