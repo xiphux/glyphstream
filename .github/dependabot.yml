@@ -38,10 +38,6 @@ updates:
     # Packages that must move in lockstep share a PR, so CI never sees half a
     # family bumped. Majors are deliberately left out of every group
     # (`update-types`): each arrives as its own PR, to be reviewed on its own.
-    # drizzle is the exception — it's pinned to an exact RC, so while it stays
-    # on RCs every bump is a prerelease the auto-merge gate holds anyway. (The
-    # move to a stable 1.0.0 carries no prerelease suffix, so that one could
-    # merge unattended if Dependabot classes it as a patch or minor.)
     groups:
       svelte:
         patterns:
@@ -82,7 +78,15 @@ updates:
         patterns:
           - '@simplewebauthn/*'
         update-types: [minor, patch]
-      drizzle:
-        patterns:
-          - drizzle-orm
-          - drizzle-kit
+    # drizzle is upgraded by hand. It's pinned to an exact 1.0.0 RC, and
+    # drizzle also publishes a snapshot build of internal branches to npm
+    # (`1.0.0-rc.5-169397b`, dist-tags like `effect-fixes`). Semver ranks those
+    # above the official RC, so Dependabot proposed one (#25), and that build
+    # broke the relations API, blob decoding and error messages. Upgrade by
+    # following the `rc` dist-tag / GitHub releases instead.
+    # Revisit once 1.0.0 ships as stable. Note ignore rules also suppress
+    # Dependabot security PRs for these; advisories still show in the
+    # Security tab.
+    ignore:
+      - dependency-name: drizzle-orm
+      - dependency-name: drizzle-kit
