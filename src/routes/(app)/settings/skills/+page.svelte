@@ -158,7 +158,7 @@
 					type="button"
 					disabled={busy || pasteText.trim().length === 0}
 					onclick={importPaste}
-					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:opacity-50"
 				>
 					Import pasted SKILL.md
 				</button>

@@ -270,7 +270,7 @@ character-focused design language…`;
 					<button
 						type="button"
 						onclick={openCreate}
-						class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90"
+						class="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:opacity-90"
 					>
 						<Plus size={14} strokeWidth={2.25} /> New snippet
 					</button>
@@ -338,7 +338,7 @@ character-focused design language…`;
 							type="button"
 							disabled={busy || !formName.trim() || !formBody.trim()}
 							onclick={save}
-							class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+							class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:opacity-50"
 						>
 							{editing ? 'Save changes' : 'Create snippet'}
 						</button>
@@ -370,7 +370,7 @@ character-focused design language…`;
 						aria-pressed={kindFilter === null}
 						onclick={() => (kindFilter = null)}
 						class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === null
-							? 'border-accent bg-accent text-on-accent'
+							? 'border-accent bg-accent text-accent-fg'
 							: 'border-border text-fg-muted hover:bg-surface-sunken'}"
 					>
 						All {data.promptSnippets.length}
@@ -381,7 +381,7 @@ character-focused design language…`;
 							aria-pressed={kindFilter === k}
 							onclick={() => (kindFilter = kindFilter === k ? null : k)}
 							class="rounded-md border px-2.5 py-1 text-xs transition {kindFilter === k
-								? 'border-accent bg-accent text-on-accent'
+								? 'border-accent bg-accent text-accent-fg'
 								: 'border-border text-fg-muted hover:bg-surface-sunken'}"
 						>
 							{k}
@@ -481,7 +481,7 @@ character-focused design language…`;
 					type="button"
 					disabled={busy || pasteText.trim().length === 0}
 					onclick={importPaste}
-					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition hover:opacity-90 disabled:opacity-50"
+					class="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg transition hover:opacity-90 disabled:opacity-50"
 				>
 					Import pasted text
 				</button>
