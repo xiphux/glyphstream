@@ -149,6 +149,8 @@ WORKDIR /src
 # that then decodes arbitrary uploads. It is NOT origin verification; upstream
 # publishes a detached GPG signature (`.asc`) for that, which needs the release
 # key pinned and is the stronger option if this ever warrants it.
+# (pipefail-safe as is: the pipe ends in sha256sum -c, whose status is the check.)
+# hadolint ignore=DL4006
 RUN wget -qO ffmpeg.tar.xz "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
     && echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c - \
     && tar xf ffmpeg.tar.xz --strip-components=1 \
@@ -209,6 +211,8 @@ RUN ./configure \
 # field rather than hardcoded — the length ffmpeg writes there is a detail of
 # its version, and a probe that asserts a constant would start failing on an
 # upgrade for a reason that has nothing to do with what it is testing.
+# (Each pipe feeds a `test` that fails on empty input; `set -- $(od …)` splits on purpose.)
+# hadolint ignore=DL4006,SC2046
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \
          -frames:v 3 -c:v libx264 -y /tmp/probe.mp4 \
@@ -258,6 +262,9 @@ COPY --from=ffmpeg /opt/ff/bin/ffmpeg /usr/local/bin/ffmpeg
 # a sample to decode; here there is nothing to decode and no way to synthesize
 # one, since `lavfi` is exactly the sort of surface --disable-everything strips
 # and enabling it to satisfy a test would defeat the point of the stage.
+# (No pipefail here on purpose: grep -q exits at the first match, and ffmpeg
+# can then take SIGPIPE — pipefail would turn a pass into a flaky failure.)
+# hadolint ignore=DL4006
 RUN ffmpeg -hide_banner -decoders | grep -q libdav1d
 
 WORKDIR /app

@@ -152,10 +152,11 @@ jobs:
   # Its own job rather than steps in `static`: it needs no pnpm install, so it
   # finishes in seconds and doesn't wait behind one. actionlint catches
   # workflow mistakes (bad expressions, `needs` typos, shellcheck in `run:`);
-  # zizmor catches security ones (unpinned actions, injection, permissions).
-  # Intentional zizmor exceptions live in .github/zizmor.yml, with reasons.
-  workflows:
-    name: Workflow lint
+  # zizmor catches security ones (unpinned actions, injection, permissions);
+  # hadolint catches Dockerfile ones. Each tool's intentional exceptions live
+  # in its config (.github/zizmor.yml, .hadolint.yaml), with reasons.
+  infra:
+    name: Workflow + Dockerfile lint
     needs: gate
     if: needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
@@ -176,11 +177,20 @@ jobs:
       # is a real commit of the named repo and matches its `# vX.Y.Z` comment.
       # Annotations instead of SARIF upload: no `security-events: write` needed.
       - name: zizmor
+        if: always()
         uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
         with:
           version: 1.30.1
           advanced-security: false
           annotations: true
+
+      # Picks up .hadolint.yaml from the mounted repo root. Pinned by digest.
+      - name: hadolint
+        if: always()
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo
+          hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+          hadolint Dockerfile
 
   # Backstop for the pre-commit hook, which only runs where gitleaks is
   # installed and is skipped by `--no-verify`. Scans the whole history, not
@@ -324,7 +334,7 @@ jobs:
   # caller's, so `main` pushes still record normally; the tag run reads.
   record-pass:
     name: Record pass
-    needs: [gate, static, workflows, secrets, unit, e2e]
+    needs: [gate, static, infra, secrets, unit, e2e]
     if: github.ref == 'refs/heads/main' && needs.gate.outputs.passed != 'true'
     runs-on: ubuntu-latest
     steps:

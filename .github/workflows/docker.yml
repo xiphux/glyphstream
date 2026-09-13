@@ -216,3 +216,19 @@ jobs:
         with:
           generate_release_notes: true
           body: ${{ steps.body.outputs.body }}
+
+  # Report-only vulnerability scan of the image this push just published, so
+  # the Security tab reflects `main` as of each merge rather than as of the
+  # last weekly run. Deliberately not a dependency of `release`, and it never
+  # fails the run: see image-scan.yml for why. Tag pushes skip it — a release
+  # tag points at a commit whose `main` image was already scanned.
+  scan:
+    name: Image scan
+    if: github.ref == 'refs/heads/main'
+    needs: merge
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/image-scan.yml
+    with:
+      tag: main

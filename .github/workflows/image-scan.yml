@@ -1,0 +1,83 @@
+# Scan published container images for known vulnerabilities with Grype.
+#
+# Why after publishing and not as a gate before it: most findings in an image
+# are not introduced by a commit. A CVE lands against OpenSSL or ffmpeg while
+# the image sits unchanged, so the scan that matters most is the recurring one
+# against what users are actually running (`latest`). Gating PRs on it would
+# mean building the full image (including the ffmpeg compile) in every CI run,
+# only to fail PRs over findings they didn't cause.
+#
+# Two ways in:
+#   - Weekly schedule (+ manual): scans `latest` and `main`, and FAILS the run on
+#     a fixable High or Critical, so GitHub's failed-workflow notification is
+#     the alert.
+#   - Called by docker.yml after each `main` publish: reports only. A failure
+#     there would mark the whole Docker run red over a CVE the push didn't
+#     introduce, right after the image published successfully.
+#
+# Either way, results go to the repo's Security tab (code scanning, free for a
+# public repo), one SARIF category per image tag so the two don't overwrite
+# each other's alerts.
+#
+# Grype, not Trivy: aquasecurity/trivy-action had 75 of its 76 tags hijacked to
+# steal CI secrets in March 2026. Grype runs from a digest-pinned image, so
+# there is no action code to hijack.
+name: Image scan
+
+on:
+  schedule:
+    - cron: '0 5 * * 1' # 05:00 UTC every Monday
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag:
+        description: Image tag to scan
+        type: string
+        required: true
+      fail-on:
+        description: Fail on a fixable finding at or above this severity; empty to report only
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan ${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        # A call scans the one tag it was given; the schedule scans both.
+        tag: ${{ fromJSON(inputs.tag && format('["{0}"]', inputs.tag) || '["latest","main"]') }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}:${{ matrix.tag }}
+      # `inputs.tag` is empty only on schedule/dispatch, which fail on High; a
+      # call passes its own `fail-on`. (Not `github.event_name`: inside a
+      # called workflow that is the CALLER's event, never `workflow_call`.)
+      FAIL_ON: ${{ inputs.tag == '' && 'high' || inputs.fail-on }}
+    steps:
+      # --only-fixed: report what an upgrade can resolve. An unfixed CVE is
+      # something to know about, but not something a failing run can act on.
+      # Scans linux/amd64; the arm64 image is built from the same Dockerfile and
+      # lockfile, so its package set matches.
+      # Writes into the (otherwise empty) workspace: hashFiles() below can only
+      # see files there.
+      - name: Grype
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/out" \
+            anchore/grype:v0.118.0@sha256:8a93fc48da96bd6ec5981279d099b69de11541dc68fdf222fb9161f8ff284af7 \
+            "$IMAGE" --platform linux/amd64 --only-fixed \
+            -o table -o sarif=/out/grype.sarif \
+            ${FAIL_ON:+--fail-on "$FAIL_ON"}
+
+      - name: Upload to code scanning
+        if: ${{ !cancelled() && hashFiles('grype.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: grype.sarif
+          category: image-${{ matrix.tag }}

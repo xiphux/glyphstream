@@ -1,0 +1,13 @@
+# hadolint (Dockerfile linter) — run by the `infra` job in ci.yml. Rules
+# ignored repo-wide are ones that don't fit this image; one-off exceptions are
+# inline `# hadolint ignore=` pragmas next to the RUN they excuse.
+failure-threshold: warning
+ignored:
+  # "Pin versions in apk add." Alpine repos drop superseded package versions,
+  # so an exact `=x.y.z-r0` pin turns into a build failure weeks later. The
+  # base image tag (node:26-alpine) is what fixes the package set.
+  - DL3018
+  # "Pin versions in npm install." The only global install is pnpm, and its
+  # version is read from package.json's `packageManager` — pinned, just not
+  # in a form hadolint can see.
+  - DL3016
