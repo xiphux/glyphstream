@@ -22,18 +22,20 @@ export async function cancelInFlightGenerations(conversationId: string): Promise
 	const entries = getInFlightEntries(conversationId);
 	if (entries.length === 0) return false;
 
-	// Cancel branches in parallel: videoCancel has a 10s timeout (and swallows
-	// its own errors), so a serial loop over a multi-branch video fan-out could
-	// stall for N×10s against an unresponsive bridge. Promise.all bounds the
-	// whole call to a single worst-case timeout regardless of N.
+	// Every local abort first, synchronously: they stop the upstream fetch and
+	// the recorder at once, so nothing keeps streaming (or holding its endpoint
+	// slot) while a bridge cancel below waits out its timeout. Conversation
+	// delete relies on this, since it doesn't await the call.
+	for (const entry of entries) entry.controller.abort();
+
+	// Then the best-effort bridge-side cancels, releasing the runners' slots. In
+	// parallel: videoCancel has a 10s timeout (and swallows its own errors), so a
+	// serial loop over a multi-branch video fan-out could stall for N×10s against
+	// an unresponsive bridge. Promise.all bounds it to a single worst-case timeout.
 	await Promise.all(
-		entries.map(async (entry) => {
-			if (entry.videoJobId) {
-				// Best-effort bridge-side cancel; releases the bridge runner slot.
-				await videoCancel(entry.endpoint, entry.videoJobId);
-			}
-			entry.controller.abort();
-		}),
+		entries.flatMap((entry) =>
+			entry.videoJobId ? [videoCancel(entry.endpoint, entry.videoJobId)] : [],
+		),
 	);
 	return true;
 }
