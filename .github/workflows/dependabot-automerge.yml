@@ -55,7 +55,9 @@ jobs:
             echo "Head commit authored by '$committer', not Dependabot - manual review"; exit 0
           fi
 
-          # One "name<TAB>version<TAB>update-type" line per dependency.
+          # One "name|version|update-type" line per dependency. Not tabs: bash
+          # treats tab as IFS whitespace and collapses a run of them, so an empty
+          # version would shift the update type into `ver`.
           # The block is YAML, so Dependabot quotes any value that would
           # otherwise parse as a number: a two-part action tag like 0.6 is
           # written '0.6'. Strip quotes before the version is pattern-matched,
@@ -65,7 +67,7 @@ jobs:
             /^updated-dependencies:/ { inblock = 1; next }
             inblock && /^\.\.\./     { inblock = 0 }
             !inblock                 { next }
-            function flush() { if (name != "") print name "\t" ver "\t" type; name = ver = type = "" }
+            function flush() { if (name != "") print name "|" ver "|" type; name = ver = type = "" }
             /^- dependency-name:/    { flush(); name = unquote($3) }
             /^  dependency-version:/ { ver = unquote($2) }
             /^  update-type:/        { type = unquote($2) }
@@ -74,9 +76,10 @@ jobs:
           if [ -z "$updates" ]; then echo "No updated-dependencies metadata - manual review"; exit 0; fi
 
           safe=yes
-          while IFS=$'\t' read -r name ver type; do
+          while IFS='|' read -r name ver type; do
             verdict=hold
             case "$ver" in
+              '')  reason="no version recorded" ;;
               *-*) reason="prerelease" ;;
               *)
                 case "$type" in
@@ -84,7 +87,6 @@ jobs:
                   version-update:semver-minor)
                     case "$ver" in
                       0.*) reason="0.x minor" ;;
-                      '')  reason="minor with no version recorded" ;;
                       *)   verdict=ok; reason="minor" ;;
                     esac ;;
                   *) reason="${type:-unknown update type}" ;;
