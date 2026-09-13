@@ -7,8 +7,9 @@
  * - Server: the app server runs with `capture-server-errors.mjs` preloaded,
  *   which appends every `console.error` and uncaught exception to a JSONL file.
  *   Each test reads only the lines written while it ran.
- * - Browser: `weberror` on the context catches uncaught exceptions and
- *   unhandled rejections from any page the test opened.
+ * - Browser: `weberror` catches uncaught exceptions and unhandled rejections
+ *   from any page the test opened — in the default context and in any context
+ *   the test creates with `browser.newContext()` (a second user, signed out).
  *
  * A test that provokes a server error on purpose says so, and only for itself:
  *
@@ -19,7 +20,7 @@
  * itself a finding worth seeing, not noise to allowlist.
  */
 import { readFileSync, statSync } from 'node:fs';
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Browser, type BrowserContext } from '@playwright/test';
 import { SERVER_ERRORS_LOG } from './paths';
 
 export * from '@playwright/test';
@@ -69,15 +70,32 @@ export const test = base.extend<{
 	allowedServerErrors: [[], { option: true }],
 
 	_failOnUnexpectedErrors: [
-		async ({ context, allowedServerErrors }, use, testInfo) => {
+		async ({ browser, context, allowedServerErrors }, use, testInfo) => {
 			const offset = logSize();
 			const pageErrors: string[] = [];
-			context.on('weberror', (webError) => {
-				const err = webError.error();
-				pageErrors.push(err.stack ?? err.message);
-			});
+			const watch = (ctx: BrowserContext) =>
+				ctx.on('weberror', (webError) => {
+					const err = webError.error();
+					pageErrors.push(err.stack ?? err.message);
+				});
+			watch(context);
 
-			await use();
+			// Specs open extra contexts for a second user or a signed-out visitor;
+			// their pages need the same watch. `browser` is worker-scoped, and
+			// workers=1 runs tests one at a time, so wrapping it for the duration of
+			// this test (restored below) can't leak into another test.
+			const originalNewContext = browser.newContext.bind(browser);
+			browser.newContext = async (...args: Parameters<Browser['newContext']>) => {
+				const ctx = await originalNewContext(...args);
+				watch(ctx);
+				return ctx;
+			};
+
+			try {
+				await use();
+			} finally {
+				browser.newContext = originalNewContext;
+			}
 
 			const unexpected = entriesSince(offset).filter(
 				(e) => !allowedServerErrors.some((re) => re.test(e.text)),
