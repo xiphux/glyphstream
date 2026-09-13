@@ -4,8 +4,12 @@
 	"version": "0.38.2",
 	"type": "module",
 	"packageManager": "pnpm@11.21.0",
-	"engines": {
-		"node": ">=26.0.0"
+	"devEngines": {
+		"runtime": {
+			"name": "node",
+			"version": ">=26.0.0",
+			"onFail": "warn"
+		}
 	},
 	"scripts": {
 		"dev": "pnpm build:worker && vite dev",

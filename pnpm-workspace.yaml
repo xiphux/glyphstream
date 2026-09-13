@@ -22,8 +22,17 @@ allowBuilds:
   esbuild: true
   sharp: true
 
-# Enforce package.json's `engines` (node >=26) instead of warning. Used to
-# be `engine-strict=true` in .npmrc; pnpm 11 restricts .npmrc to auth and
-# registry settings and ignores everything else, so it had to move here or
-# it would have quietly stopped applying.
+# Refuse to install a dependency whose own `engines` excludes the running
+# Node. Used to be `engine-strict=true` in .npmrc; pnpm 11 restricts .npmrc to
+# auth and registry settings and ignores everything else, so it had to move
+# here or it would have quietly stopped applying.
+#
+# The project's own Node floor (>=26) is NOT in package.json's `engines`, on
+# purpose. It lives in `devEngines.runtime` with `onFail: warn`: Dependabot
+# reads `engines.node`, compares it with the Node its updater runs (24.x as of
+# 2026-09), and refuses every npm update when they disagree. It does not read
+# `devEngines`, and a warning lets its pnpm run proceed. Nothing in the app
+# needs 26 (the suite, build and server all pass on 24); 26 is the floor
+# because it is what Docker ships and CI tests. Once Dependabot runs Node 26,
+# this can move back to `engines` for a hard local error.
 engineStrict: true
