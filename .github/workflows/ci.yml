@@ -224,12 +224,17 @@ jobs:
           fetch-depth: 0
 
       # Pinned by digest; bump the tag and digest together. --redact keeps a
-      # real hit out of the (public) job log.
+      # real hit out of the (public) job log. --log-opts=HEAD scans the history
+      # of the commit under test only: gitleaks defaults to `git log --all`,
+      # and fetch-depth 0 fetches every remote branch, so a finding on some
+      # stale, unrelated branch would otherwise fail every PR and block main
+      # publishes over a commit that doesn't contain it. (GitHub's own secret
+      # scanning still covers the whole repo.)
       - name: gitleaks
         run: >-
           docker run --rm -v "$PWD:/repo" -w /repo
           ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
-          git . --redact --no-banner --verbose
+          git . --redact --no-banner --verbose --log-opts=HEAD
 
   unit:
     name: Unit tests
