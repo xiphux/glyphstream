@@ -74,6 +74,15 @@ function walk(dir: string): string[] {
 	);
 }
 
+/** A conversation-scoped write whose handler reads message or media ids from its body. */
+function takesBodyIds(t: { file: string; route: string; method: string }): boolean {
+	return (
+		t.route.startsWith('/api/conversations/[id]') &&
+		['POST', 'PUT', 'PATCH'].includes(t.method) &&
+		/body\??\.(\w*MessageId|messageId|mediaId|\w*MediaIds)\b/.test(readFileSync(t.file, 'utf8'))
+	);
+}
+
 const routeOf = (file: string) => '/' + relative(ROUTES, join(file, '..')).split(sep).join('/');
 
 const targets = walk(ROUTES)
@@ -87,9 +96,12 @@ const targets = walk(ROUTES)
 	})
 	.flatMap((t) => [
 		{ ...t, crossConversation: false },
-		// The sharper IDOR: the intruder's OWN conversation (so a conversation
-		// ownership check passes) with the victim's message id.
-		...(t.route.includes('[messageId]') ? [{ ...t, crossConversation: true }] : []),
+		// The sharper IDOR: the intruder's OWN conversation, so the conversation
+		// ownership check passes, carrying the victim's message or media id — in
+		// the path, or in the body of a conversation route that reads one.
+		...(t.route.includes('[messageId]') || takesBodyIds(t)
+			? [{ ...t, crossConversation: true }]
+			: []),
 	])
 	.sort((a, b) => `${a.route} ${a.method}`.localeCompare(`${b.route} ${b.method}`));
 
@@ -126,10 +138,8 @@ function paramsFor(route: string, crossConversation: boolean): Record<string, st
 	const hit = idFor.find(([re]) => re.test(route));
 	if (!hit) throw new Error(`no victim id mapped for ${route} — add it to paramsFor`);
 	const params: Record<string, string> = { id: victim[hit[1]] };
-	if (route.includes('[messageId]')) {
-		params.messageId = victim.messageId;
-		if (crossConversation) params.id = intruderConversationId;
-	}
+	if (route.includes('[messageId]')) params.messageId = victim.messageId;
+	if (crossConversation) params.id = intruderConversationId;
 	return params;
 }
 
@@ -147,6 +157,11 @@ function bodyFor(route: string, method: string): unknown {
 		mediaId: victim.mediaId,
 		messageId: victim.messageId,
 		parentMessageId: victim.messageId,
+		editedMessageId: victim.messageId,
+		regenerateFromMessageId: victim.messageId,
+		sourceMessageId: victim.messageId,
+		attachedMediaIds: [victim.mediaId],
+		inputMediaIds: [victim.mediaId],
 		toolCallId: 'call_1',
 		decision: 'deny',
 		approved: false,
@@ -157,21 +172,46 @@ function bodyFor(route: string, method: string): unknown {
 	};
 }
 
-/** Every row of every table, so "the victim's data didn't change" is literal. */
-function snapshot(): string {
-	const out: Record<string, unknown> = {};
+/** Every row of every table as JSON, keyed by table, so "the victim's data didn't
+ *  change" is literal. Sessions drop only `last_seen_at` (bookkeeping, not data),
+ *  so revoking a victim's session still shows up. */
+function rows(): Map<string, string[]> {
+	const out = new Map<string, string[]>();
 	for (const t of Object.values(schema)) {
 		if (!is(t, Table)) continue;
 		const name = getTableConfig(t as Parameters<typeof getTableConfig>[0]).name;
-		if (name === 'sessions') continue; // last_seen_at moves on the intruder's own reads
-		out[name] = mocks.testDb
+		const all = mocks.testDb
 			.select()
 			.from(t as never)
-			.all();
+			.all() as Array<Record<string, unknown>>;
+		out.set(
+			name,
+			all.map((r) => {
+				const row = { ...r };
+				if (name === 'sessions') delete row.lastSeenAt;
+				return JSON.stringify(row, (_k, v: unknown) =>
+					v instanceof Uint8Array ? Buffer.from(v).toString('hex') : v,
+				);
+			}),
+		);
 	}
-	return JSON.stringify(out, (_k, v: unknown) =>
-		v instanceof Uint8Array ? Buffer.from(v).toString('hex') : v,
-	);
+	return out;
+}
+
+function snapshot(): string {
+	return JSON.stringify([...rows()]);
+}
+
+/** Rows that appeared or disappeared (a changed row is both) between two reads. */
+function changedRows(before: Map<string, string[]>, after: Map<string, string[]>): string[] {
+	const out: string[] = [];
+	for (const [table, now] of after) {
+		const was = new Set(before.get(table) ?? []);
+		const current = new Set(now);
+		for (const r of now) if (!was.has(r)) out.push(`+${table} ${r}`);
+		for (const r of was) if (!current.has(r)) out.push(`-${table} ${r}`);
+	}
+	return out;
 }
 
 beforeAll(async () => {
@@ -288,12 +328,12 @@ describe('an intruder addressing a victim’s resources by id', () => {
 		targets.map(
 			(t) =>
 				[
-					`${t.route} ${t.method}${t.crossConversation ? ' (own conversation, victim message)' : ''}`,
+					`${t.route} ${t.method}${t.crossConversation ? ' (own conversation, victim ids)' : ''}`,
 					t,
 				] as const,
 		),
 	)('%s', async (_name, t) => {
-		const before = snapshot();
+		const before = rows();
 		const key = '../../src/routes/' + relative(ROUTES, t.file).split(sep).join('/');
 		const fn = (await modules[key]())[t.method] as (e: RequestEvent) => unknown;
 		const params = paramsFor(t.route, t.crossConversation);
@@ -330,9 +370,20 @@ describe('an intruder addressing a victim’s resources by id', () => {
 			status = Number(e.status);
 		}
 		expect(text).not.toMatch(/victim/);
-		expect(snapshot()).toBe(before);
-		if (`${t.route} ${t.method}` in SCOPED_EMPTY) expect(status).toBeLessThan(300);
-		else expect(status, text).toBeGreaterThanOrEqual(400);
+		if (t.crossConversation) {
+			// The intruder may legitimately change their own conversation here, so
+			// what's checked is that nothing touched involves the victim: no victim
+			// row altered or removed, and no new row pointing at a victim id.
+			const victimIds: string[] = Object.values(victim as unknown as Record<string, string>);
+			const touched = changedRows(before, rows()).filter((r) =>
+				victimIds.some((id) => r.includes(id)),
+			);
+			expect(touched).toEqual([]);
+		} else {
+			expect(snapshot()).toBe(JSON.stringify([...before]));
+			if (`${t.route} ${t.method}` in SCOPED_EMPTY) expect(status).toBeLessThan(300);
+			else expect(status, text).toBeGreaterThanOrEqual(400);
+		}
 	});
 });
 
