@@ -36,10 +36,12 @@ tests/e2e/            # playwright (production-build webServer)
 - **Lightweight and fast** is a hard constraint, not a "nice to have". Every
   architectural choice should pass "is this faster/leaner than the
   alternative?". No heavy component libraries. Markdown renders server-side
-  with shiki and is cached on the message row (`content_html`). Initial
-  chat-route load target ceiling is ~250 KB gzip (the _entry + initial
-  chunks_, not the sum of all chunks — shiki/markdown-it/pyodide are
-  route-lazy, so the all-chunks total runs higher and isn't the metric).
+  with shiki and is cached on the message row (`content_html`). There is no
+  fixed byte ceiling on the client bundle, but growth is never free: anything
+  that adds to the chat route's initial load (the _entry + initial chunks_,
+  not the sum of all chunks — shiki/markdown-it/pyodide are route-lazy, so
+  the all-chunks total runs higher and isn't the metric) needs a reason,
+  should be measured with `pnpm analyze`, and should go route-lazy if it can.
 - **Develop against the OpenAI spec, not a specific upstream.** The bridge
   (`openai-api-bridge`) is one possible endpoint, not a hard dep. Per-vendor
   quirks live in `src/lib/server/streaming/normalizers.ts`, opted into via
