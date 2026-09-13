@@ -176,7 +176,9 @@ describe('code-interpreter worker (real pyodide)', () => {
 
 		it('refuses a non-http(s) scheme', async () => {
 			const res = await run(tryFetch('file:///etc/passwd'));
-			expect(res.type === 'result' && String(res.result)).toMatch(/^BLOCKED: /);
+			// Match the shim's own refusal: Node's fetch rejects file: URLs by itself,
+			// so a bare "BLOCKED" would pass with the scheme check removed.
+			expect(res.type === 'result' && String(res.result)).toMatch(/Refused scheme "file:"/);
 			expect(res.type === 'result' && String(res.result)).not.toMatch(/root:/);
 		});
 	});
