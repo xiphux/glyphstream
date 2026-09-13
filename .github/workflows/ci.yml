@@ -78,7 +78,7 @@ jobs:
   # gate that was only ever racing.
   #
   # Staleness: the marker asserts "same tree, same lockfile", not "same
-  # toolchain" — `ubuntu-latest` and `node-version: latest` both drift, so
+  # toolchain" — `ubuntu-latest` and `node-version: '26'` (newest 26.x) drift, so
   # a very old marker vouches for an environment that no longer exists.
   # GitHub evicts caches untouched for 7 days, which caps that drift window
   # without any date-bucketing in the key.
@@ -131,7 +131,10 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 'latest'
+          # The major the Docker image ships (node:26-alpine), so CI tests the
+          # runtime production runs rather than whatever is newest. '26' still
+          # tracks the newest 26.x, like the image tag. Bump both together.
+          node-version: '26'
           cache: pnpm
 
       - name: Install dependencies
@@ -254,7 +257,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 'latest'
+          node-version: '26'
           cache: pnpm
 
       # --ignore-scripts: pnpm blocks unapproved native-module
@@ -283,7 +286,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 'latest'
+          node-version: '26'
           cache: pnpm
 
       - name: Install dependencies
