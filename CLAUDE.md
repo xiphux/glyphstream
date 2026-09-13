@@ -162,7 +162,9 @@ tests/e2e/            # playwright (production-build webServer)
   Portal + `data-state` gotchas; forgetting them surfaces as DOM queries
   silently missing portaled content.
 - **`pnpm lint` is `@sveltejs/eslint-config` + the full
-  `recommendedTypeChecked`, and it is at zero — keep it there.** Every rule
+  `recommendedTypeChecked`, and it is at zero — keep it there.** So is
+  `pnpm check`, which runs svelte-check with `--fail-on-warnings`: an a11y or
+  compiler warning fails CI like a type error does. Every rule
   turned off in `eslint.config.js` carries its reason inline; three are
   load-bearing enough to restate:
   - `svelte/no-unused-svelte-ignore` **disagrees with the compiler**. It
