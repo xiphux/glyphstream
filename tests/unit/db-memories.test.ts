@@ -171,10 +171,11 @@ describe('recall corpus queries', () => {
 		expect(rows[0]).not.toHaveProperty('embedding');
 	});
 
-	it('breaks createdAt ties by id in every recall-path read, independent of insert order', () => {
+	it('breaks createdAt ties by insertion order in every recall-path read, not by id', () => {
 		// A consolidation pass or a burst of saves stamps rows with the same
 		// millisecond. fuseRankings breaks score ties by list index, so these
-		// orders decide which memory wins a tied recall — they must be total.
+		// orders decide which memory wins a tied recall. Ids are random UUIDs, so
+		// an id tiebreak would make that winner a coin flip; the earlier save wins.
 		const u = seedUser();
 		for (const id of ['mem-c', 'mem-a', 'mem-b']) {
 			mocks.testDb
@@ -184,15 +185,15 @@ describe('recall corpus queries', () => {
 			setMemoryEmbedding(id, id, encodeVector([1, 0]), MODEL);
 		}
 
-		expect(listMemoriesForRecall(u.id).map((r) => r.id)).toEqual(['mem-a', 'mem-b', 'mem-c']);
-		expect(listMemoriesWithEmbeddings(u.id).map((r) => r.id)).toEqual(['mem-a', 'mem-b', 'mem-c']);
+		expect(listMemoriesForRecall(u.id).map((r) => r.id)).toEqual(['mem-c', 'mem-a', 'mem-b']);
+		expect(listMemoriesWithEmbeddings(u.id).map((r) => r.id)).toEqual(['mem-c', 'mem-a', 'mem-b']);
 		// Newest-first reads reverse the tiebreak too, so the cap keeps a fixed set.
 		expect(listMemoryRecallVectors(u.id, MODEL).map((v) => v.id)).toEqual([
-			'mem-c',
 			'mem-b',
 			'mem-a',
+			'mem-c',
 		]);
-		expect(listMemoryRecallVectors(u.id, MODEL, 2).map((v) => v.id)).toEqual(['mem-c', 'mem-b']);
+		expect(listMemoryRecallVectors(u.id, MODEL, 2).map((v) => v.id)).toEqual(['mem-b', 'mem-a']);
 	});
 
 	it('listMemoryRecallVectors returns only matching-model, non-null vectors, newest-first, capped', () => {
