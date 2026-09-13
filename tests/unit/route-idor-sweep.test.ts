@@ -419,6 +419,8 @@ describe('an intruder addressing a victim’s resources by id', () => {
 			// that happened to stop the request first.
 			expect([400, 404], text).toContain(status);
 			expect(text).toMatch(/not found/i);
+			// The intruder owns this conversation, so it's never the thing refused.
+			expect(text).not.toMatch(/conversation not found/i);
 		} else {
 			expect(snapshot()).toBe(JSON.stringify([...before]));
 			if (`${t.route} ${t.method}` in SCOPED_EMPTY) expect(status).toBeLessThan(300);
