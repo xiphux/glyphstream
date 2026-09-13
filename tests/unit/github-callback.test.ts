@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
 	testDb: null as unknown as TestDB,
 	profile: { externalId: '', username: '', name: null, email: null } as OAuthProfile,
 	profileError: null as Error | null,
+	/** Runs during the provider round-trip, to stage a race against it. */
+	duringProfileFetch: null as (() => void) | null,
 }));
 
 vi.mock('$lib/server/db/client', () => ({
@@ -48,6 +50,7 @@ vi.mock('$lib/server/auth/oauth/registry', () => ({
 			codeVerifier: null,
 		}),
 		fetchProfile: async () => {
+			mocks.duringProfileFetch?.();
 			if (mocks.profileError) throw mocks.profileError;
 			return mocks.profile;
 		},
@@ -67,8 +70,10 @@ vi.mock('$lib/server/env', () => ({
 import { GET } from '../../src/routes/api/auth/github/callback/+server';
 import { LINK_STATE_COOKIE, STATE_COOKIE } from '$lib/server/auth/oauth/cookies';
 import { SETUP_OAUTH_CARRY_COOKIE } from '$lib/server/auth/setup';
+import { JOIN_OAUTH_CARRY_COOKIE } from '$lib/server/auth/join';
+import { createInvite, deleteInvite } from '$lib/server/db/queries/invites';
 import { sign } from '$lib/server/auth/signed-cookies';
-import { oauthAccounts, users } from '$lib/server/db/schema';
+import { invites, oauthAccounts, users } from '$lib/server/db/schema';
 
 function fakeCookies(initial: Record<string, string> = {}) {
 	const store = new Map(Object.entries(initial));
@@ -127,6 +132,7 @@ beforeEach(() => {
 	mocks.testDb = createTestDb();
 	mocks.profile = { externalId: '1234', username: 'octocat', name: null, email: null };
 	mocks.profileError = null;
+	mocks.duringProfileFetch = null;
 });
 
 afterEach(() => {
@@ -418,6 +424,146 @@ describe('GitHub callback — login branch', () => {
 
 		const r = await expectRedirect(() => GET(event as never));
 		expect(r.location).toBe('/login?error=invalid_oauth_state');
+	});
+});
+
+// --- Join branch ----------------------------------------------------------
+
+describe('GitHub callback — join branch', () => {
+	let adminId: string;
+
+	beforeEach(() => {
+		adminId = seedUser().id;
+		mocks.testDb.update(users).set({ role: 'admin' }).where(eq(users.id, adminId)).run();
+	});
+
+	function joinEvent(
+		over: {
+			state?: string;
+			urlState?: string;
+			carry?: string;
+			role?: 'admin' | 'user';
+			ttlMs?: number;
+		} = {},
+	) {
+		const invite = createInvite({
+			createdByUserId: adminId,
+			role: over.role ?? 'user',
+			ttlMs: over.ttlMs ?? 3_600_000,
+		});
+		const state = over.state ?? 'join-state';
+		const carry =
+			over.carry ??
+			sign({ displayName: 'Newcomer', email: 'new@x', inviteToken: invite.token }, 600_000);
+		const { store, cookies } = fakeCookies({
+			[STATE_COOKIE]: state,
+			[JOIN_OAUTH_CARRY_COOKIE]: carry,
+		});
+		const url = fakeUrl({ code: 'authcode', state: over.urlState ?? state });
+		return { event: mkEvent({ url, cookies }), store, invite };
+	}
+
+	const joined = () =>
+		mocks.testDb.select().from(users).where(eq(users.displayName, 'Newcomer')).all();
+	const errorAt = (token: string, reason: string) =>
+		`/join/${encodeURIComponent(token)}?error=${reason}`;
+
+	it('creates the invited user with the invite’s role, binds the identity, consumes the invite, and signs in', async () => {
+		mocks.profile = { externalId: '777', username: 'newbie', name: 'Profile Name', email: 'p@x' };
+		const { event, store, invite } = joinEvent({ role: 'admin' });
+
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe('/');
+
+		const [u] = joined();
+		expect(u).toMatchObject({ email: 'new@x', role: 'admin', invitedByUserId: adminId });
+		expect(
+			mocks.testDb.select().from(oauthAccounts).where(eq(oauthAccounts.userId, u.id)).all(),
+		).toEqual([
+			expect.objectContaining({
+				provider: 'github',
+				externalId: '777',
+				externalUsername: 'newbie',
+			}),
+		]);
+		expect(mocks.testDb.select().from(invites).where(eq(invites.id, invite.id)).all()).toEqual([]);
+		expect(store.has('glyphstream_session')).toBe(true);
+		expect(store.has(JOIN_OAUTH_CARRY_COOKIE)).toBe(false);
+	});
+
+	it('falls back to the profile email when none was typed', async () => {
+		const invite = createInvite({ createdByUserId: adminId, role: 'user', ttlMs: 3_600_000 });
+		mocks.profile = { externalId: '8', username: 'n', name: null, email: 'p@x' };
+		const { cookies } = fakeCookies({
+			[STATE_COOKIE]: 's',
+			[JOIN_OAUTH_CARRY_COOKIE]: sign(
+				{ displayName: 'Newcomer', email: null, inviteToken: invite.token },
+				600_000,
+			),
+		});
+		await expectRedirect(() =>
+			GET(mkEvent({ url: fakeUrl({ code: 'c', state: 's' }), cookies }) as never),
+		);
+		expect(joined()[0].email).toBe('p@x');
+	});
+
+	it('bounces to /login when the carry is forged or tampered', async () => {
+		const { event } = joinEvent({ carry: 'not-a-signed-value' });
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe('/login?error=invalid_oauth_state');
+		expect(joined()).toEqual([]);
+	});
+
+	it('refuses a state mismatch, back on the invite page', async () => {
+		const { event, invite } = joinEvent({ state: 'right', urlState: 'wrong' });
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe(errorAt(invite.token, 'invalid_oauth_state'));
+		expect(joined()).toEqual([]);
+	});
+
+	it('refuses an expired invite before contacting the provider', async () => {
+		const fetched = vi.fn();
+		mocks.duringProfileFetch = fetched;
+		const { event, invite } = joinEvent({ ttlMs: -1 });
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe(errorAt(invite.token, 'invite_invalid'));
+		expect(fetched).not.toHaveBeenCalled();
+		expect(joined()).toEqual([]);
+	});
+
+	it('refuses an identity that already has an account, leaving the invite usable', async () => {
+		const existing = seedUser();
+		seedOAuthAccount(existing.id, { provider: 'github', externalId: '1234' });
+		const { event, invite } = joinEvent();
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe(errorAt(invite.token, 'already_registered'));
+		expect(mocks.testDb.select().from(invites).where(eq(invites.id, invite.id)).all()).toHaveLength(
+			1,
+		);
+		expect(joined()).toEqual([]);
+	});
+
+	it('rolls back when a parallel redemption consumes the invite mid-flight', async () => {
+		const { event, invite } = joinEvent();
+		mocks.duringProfileFetch = () => deleteInvite(invite.id);
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe(errorAt(invite.token, 'invite_invalid'));
+		// The transaction created the user and binding before the consume failed.
+		expect(joined()).toEqual([]);
+		expect(mocks.testDb.select().from(oauthAccounts).all()).toEqual([]);
+	});
+
+	it.each([
+		['oauth_exchange_failed', () => new OAuth2RequestError('bad_verification_code', 'description')],
+		['upstream_failure', () => new Error('ECONNRESET')],
+	])('maps a provider failure to %s', async (reason, makeError) => {
+		mocks.profileError = makeError();
+		const { event, invite } = joinEvent();
+		const r = await expectRedirect(() => GET(event as never));
+		expect(r.location).toBe(errorAt(invite.token, reason));
+		expect(mocks.testDb.select().from(invites).where(eq(invites.id, invite.id)).all()).toHaveLength(
+			1,
+		);
 	});
 });
 
