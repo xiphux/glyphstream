@@ -211,7 +211,7 @@ RUN ./configure \
 # field rather than hardcoded — the length ffmpeg writes there is a detail of
 # its version, and a probe that asserts a constant would start failing on an
 # upgrade for a reason that has nothing to do with what it is testing.
-# (Each pipe feeds a `test` that fails on empty input; `set -- $(od …)` splits on purpose.)
+# (The one pipe feeds a `test` that fails on empty input; `set -- $(od …)` splits on purpose.)
 # hadolint ignore=DL4006,SC2046
 RUN apk add --no-cache ffmpeg \
     && ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30 \

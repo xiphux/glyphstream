@@ -1,4 +1,5 @@
-# GlyphStream CI — runs static analysis + unit + e2e tests.
+# GlyphStream CI — runs static analysis, workflow + Dockerfile lint, a secret
+# scan, and unit + e2e tests.
 #
 # Triggers:
 #   - Direct on push to any branch except `main` and tags. Feature-
@@ -204,7 +205,7 @@ jobs:
 
   # Backstop for the pre-commit hook, which only runs where gitleaks is
   # installed and is skipped by `--no-verify`. Scans the whole history, not
-  # just the new commits: at this repo's size that's under a second, and it
+  # just the new commits: at this repo's size the scan takes about a second, and it
   # needs no base-ref logic that differs between push, PR and workflow_call.
   # Reviewed false positives: .gitleaksignore (history) and inline
   # `gitleaks:allow` (current tree).
