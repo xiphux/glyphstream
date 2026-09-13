@@ -98,7 +98,10 @@ jobs:
 
           if [ "$safe" = yes ]; then
             echo "PR #$pr: all updates semver-safe - merging"
-            gh pr merge "$pr" --repo "$REPO" --merge --delete-branch
+            # --match-head-commit closes the window between the head check at
+            # the top and this call: a push landing in between is refused by
+            # GitHub rather than merged without the CI run this verdict is for.
+            gh pr merge "$pr" --repo "$REPO" --merge --delete-branch --match-head-commit "$SHA"
           else
             echo "PR #$pr: holding for manual review"
           fi
