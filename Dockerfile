@@ -249,7 +249,17 @@ FROM node:26-alpine AS runtime
 # before running the OWUI importer, eyeballing media row counts, etc.
 # ~2MB additional, worth it for "I can poke at the DB without exec'ing
 # into a separate container."
-RUN apk add --no-cache tini sqlite
+#
+# `apk upgrade` first: node:26-alpine is rebuilt when Node releases, on top of
+# an alpine:3.24 image that Alpine itself only republishes for point releases,
+# so the base routinely ships packages the 3.24 repo has already patched (e.g.
+# libssl3/libcrypto3 3.5.7 when 3.5.8 was out). The app doesn't link them —
+# the official node binary bundles its own OpenSSL, and tini, sqlite3, libdav1d
+# and our ffmpeg don't either; apk-tools and busybox's ssl_client do — but the
+# image scan reports them, and a stale package is a stale package. The layer
+# cache can hold an older upgrade until the base image changes; the weekly
+# image-scan.yml run is what notices.
+RUN apk upgrade --no-cache && apk add --no-cache tini sqlite
 
 # Decode-and-remux, ~5 MB. See the ffmpeg stage for why it isn't
 # `apk add ffmpeg`, and for why "decode-only" stopped being the right word.
