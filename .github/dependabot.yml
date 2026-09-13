@@ -16,6 +16,10 @@ updates:
       interval: weekly
     commit-message:
       prefix: ci
+    # A hijacked action tag is usually caught and pulled within days; a week
+    # keeps a fresh compromise from reaching a SHA pin automatically.
+    cooldown:
+      default-days: 7
 
   - package-ecosystem: npm
     directory: /
@@ -24,12 +28,13 @@ updates:
     commit-message:
       prefix: deps
       prefix-development: deps(dev)
-    # pnpm 11 refuses packages younger than 24h (`minimumReleaseAge`) and
-    # checks the LOCKFILE against it, so a PR proposing a same-day release
-    # fails `--frozen-lockfile` in CI. Waiting a few days clears that and lets
-    # the "published then yanked" window pass. Security updates ignore this.
+    # A week, not a day. pnpm 11 refuses packages younger than 24h
+    # (`minimumReleaseAge`) and checks the LOCKFILE against it, so a same-day
+    # release would fail `--frozen-lockfile` in CI — but the longer wait is for
+    # supply-chain reasons: most malicious publishes are found and yanked
+    # within days. Security updates ignore cooldown and still arrive at once.
     cooldown:
-      default-days: 3
+      default-days: 7
     # Packages that must move in lockstep share a PR, so CI never sees half a
     # family bumped. Majors are deliberately left out of every group
     # (`update-types`): each arrives as its own PR, to be reviewed on its own.

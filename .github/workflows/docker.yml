@@ -24,9 +24,10 @@ concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: false # never abort a release mid-publish
 
+# Read-only by default; `packages: write` is granted only to the two jobs that
+# push to GHCR, so it never reaches the test suite behind `tests`.
 permissions:
   contents: read
-  packages: write
 
 env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
@@ -51,8 +52,13 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Slugify the platform string for filenames ("linux/amd64" → "linux-amd64").
       - name: Prepare platform pair
@@ -62,9 +68,9 @@ jobs:
         run: |
           echo "pair=${PLATFORM//\//-}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      - uses: docker/login-action@v4.6.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -75,13 +81,13 @@ jobs:
       # pass to populate OCI annotations (org.opencontainers.image.*).
       - name: Compute labels
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
 
       - name: Build + push by digest
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           target: runtime
@@ -96,14 +102,17 @@ jobs:
           cache-from: type=gha,scope=build-${{ steps.prepare.outputs.pair }}
           cache-to: type=gha,mode=max,scope=build-${{ steps.prepare.outputs.pair }}
 
+      # Step outputs go through `env:`, not `${{ }}` inside the script:
+      # an expression is pasted into the shell source before bash parses it.
       - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           mkdir -p /tmp/digests
-          digest='${{ steps.build.outputs.digest }}'
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: digests-${{ steps.prepare.outputs.pair }}
           path: /tmp/digests/*
@@ -114,17 +123,20 @@ jobs:
     name: Merge multi-arch manifest
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
-      - uses: docker/login-action@v4.6.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -135,7 +147,7 @@ jobs:
       #   - vX.Y.Z tag pushes  ⇒ `X.Y.Z`, `X.Y`, `X`, `latest`
       - name: Compute Docker tags
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
@@ -151,12 +163,16 @@ jobs:
       - name: Create manifest list + push tags
         working-directory: /tmp/digests
         run: |
+          # Word splitting is the point: one `-t tag` / `image@digest` per word.
+          # shellcheck disable=SC2046
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
+            $(for d in *; do printf '%s@sha256:%s ' "$REGISTRY_IMAGE" "$d"; done)
 
       - name: Inspect image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect "${REGISTRY_IMAGE}:${VERSION}"
 
   release:
     # Only on a vX.Y.Z tag push, and only after tests + build + merge succeeded.
@@ -170,13 +186,16 @@ jobs:
       REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0 # full history so the auto-changelog has prior tags to diff against
 
       - name: Build release body
         id: body
         run: |
+          # Backticks below are literal Markdown, not command substitution.
+          # shellcheck disable=SC2016
           {
             echo 'body<<EOF'
             echo "## Container images"
@@ -193,7 +212,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           generate_release_notes: true
           body: ${{ steps.body.outputs.body }}
