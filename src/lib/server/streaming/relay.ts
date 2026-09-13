@@ -38,6 +38,7 @@ import { acquireEndpointSlot, type EndpointSlot } from '../endpoints/concurrency
 import type { InFlightEntry } from './in-flight';
 import { chatCompletionStream, type ChatCompletionRequest } from '../endpoints/client';
 import { appendMessage } from '../db/queries/messages';
+import { getConversationMeta } from '../db/queries/conversations';
 import { logLevel } from '../env';
 import { renderMarkdown } from '../markdown/render';
 import { notifyConversationComplete } from '../push/notify';
@@ -578,6 +579,31 @@ async function runChatTurn(
  * follows params: a fan-out branch stays a pinned sibling; a single send advances
  * the leaf so the failure shows in the thread on reload.
  */
+/**
+ * The turn's conversation was deleted while it streamed, so there is nothing to
+ * persist into. Deleting is allowed mid-turn (the conversation delete route
+ * aborts in-flight generations, but an aborted recorder still commits its
+ * partial text after the rows are gone), so this is an expected end, not a
+ * failure: no error event, no error sibling, and no stack trace in the log.
+ */
+class ConversationGoneError extends Error {
+	constructor(conversationId: string, cause: unknown) {
+		super(`Conversation ${conversationId} was deleted mid-turn`, { cause });
+		this.name = 'ConversationGoneError';
+	}
+}
+
+/** Whether the turn's conversation is gone. Only consulted after a write has
+ *  already failed, so the extra read is off the hot path. User-scoped like
+ *  every request-path read. */
+function conversationIsGone(params: RelayParams): boolean {
+	try {
+		return getConversationMeta(params.conversationId, params.userId) === null;
+	} catch {
+		return false;
+	}
+}
+
 function persistTurnErrorSibling(
 	params: RelayParams,
 	parentMessageId: string,
@@ -596,6 +622,7 @@ function persistTurnErrorSibling(
 			fanoutIndex: params.fanoutIndex,
 		});
 	} catch (e) {
+		if (conversationIsGone(params)) return;
 		console.warn('[stream/relay] failed to persist error sibling:', errorMessage(e));
 	}
 }
@@ -653,6 +680,12 @@ async function runOneIteration(args: {
 		params,
 		parentMessageId,
 	}).catch((e) => {
+		if (conversationIsGone(params)) {
+			console.info(
+				`[stream/relay] conversation ${params.conversationId} was deleted mid-turn; dropping the reply`,
+			);
+			throw new ConversationGoneError(params.conversationId, e);
+		}
 		console.error('[stream/relay] recorder branch failed:', e);
 		throw e;
 	});
@@ -685,6 +718,7 @@ async function runOneIteration(args: {
 	try {
 		return await recorderPromise;
 	} catch (e) {
+		if (e instanceof ConversationGoneError) return null;
 		const message = `Persistence failed: ${errorMessage(e)}`;
 		write({ type: 'error', message });
 		persistTurnErrorSibling(params, parentMessageId, message, e);

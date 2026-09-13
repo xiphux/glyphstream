@@ -18,6 +18,7 @@ import {
 	getInFlightGeneratingSince,
 	getInFlightSince,
 } from '$lib/server/streaming/in-flight';
+import { cancelInFlightGenerations } from '$lib/server/streaming/cancel';
 import { validateDisabledFeaturesOrThrow400 } from '$lib/server/util/validate-features';
 import type { RequestHandler } from './$types';
 
@@ -150,6 +151,17 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
 		deleteMedia,
 	});
 	if (!ok) error(404, 'Conversation not found');
+
+	// Stop anything still generating into it, now that ownership is proven:
+	// otherwise the upstream keeps working (holding an endpoint slot) for a
+	// reply with nowhere to go. Not awaited — the local aborts are immediate,
+	// and a video branch's best-effort bridge cancel can take up to its timeout,
+	// which the delete response shouldn't wait on. The aborted recorder's
+	// partial commit lands after the rows are gone; the relay treats that as
+	// an expected end (ConversationGoneError), not a failure.
+	void cancelInFlightGenerations(params.id).catch((e: unknown) => {
+		console.warn('[conversations.delete] cancelling in-flight generation failed:', e);
+	});
 
 	// File unlinks happen *after* the DB transaction commits — doing them
 	// inside the txn would let a rollback strand files deleted from disk
