@@ -77,8 +77,9 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	if (!deleted) error(404, 'User not found');
 	// Stop anything still generating into the deleted conversations, as
 	// conversation delete does: otherwise the upstream keeps working (holding an
-	// endpoint slot) for a reply with nowhere to go, and a media generation can
-	// write a file after the unlink below with no row left to find it. Local
+	// endpoint slot) for a reply with nowhere to go, and a media generation that
+	// hasn't reached its persist step won't write a file after the unlink below.
+	// (One already past its abort check can still land a file with no row.) Local
 	// aborts are synchronous; the video bridge cancels aren't awaited.
 	for (const conversationId of deleted.conversationIds) {
 		void cancelInFlightGenerations(conversationId).catch((e: unknown) => {

@@ -42,6 +42,11 @@ import { memories, users } from '../schema';
  * make every tie a coin flip decided at insert time. rowid keeps the order these
  * rows were written in — the earlier save wins, which is what the plan happened
  * to return before — while making it total.
+ *
+ * Stable for the life of the file, not forever: `memories.id` is TEXT, so rowid
+ * is implicit, and a VACUUM or a dump/restore may renumber it (see the operator
+ * note in `drizzle/*_fts_keyed_deletes`). The order stays total afterwards —
+ * only which of two same-millisecond memories wins a tie can change, once.
  */
 const INSERT_ORDER = sql`rowid`;
 

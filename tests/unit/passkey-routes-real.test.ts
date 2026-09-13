@@ -290,9 +290,12 @@ describe('login', () => {
 		expect(status).toBe(401);
 	});
 
-	it('consumes the challenge: replaying a verified assertion fails', async () => {
+	it('clears the challenge cookie: replaying from the same browser fails', async () => {
 		// Counter 0 (iCloud-style), so the clone guard can't be what stops the
-		// replay — only the single-use challenge can.
+		// replay. What this proves is that verify clears the challenge cookie, so a
+		// browser resending the same request has no challenge left. The challenge
+		// is not tracked server-side: a replay that also resends the captured
+		// cookie within its TTL is not covered here.
 		storeCredential(auth, userId, 0);
 		let assertion: unknown;
 		const first = await login((c) => (assertion = auth.assert(c, userId, { counter: 0 })));
