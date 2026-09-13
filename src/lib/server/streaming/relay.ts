@@ -409,7 +409,7 @@ async function runChatTurn(
 				parentMessageId,
 				write,
 			});
-			if (!iterationResult) return; // upstream failed; error already emitted
+			if (!iterationResult) return; // failed (error already emitted) or conversation deleted mid-turn
 
 			iterationsRun++;
 			finalAssistantMessage = iterationResult.assistantMessage;
@@ -570,16 +570,6 @@ async function runChatTurn(
 }
 
 /**
- * Persist a durable error assistant sibling on a GENUINE (non-abort) upstream
- * failure, so a fan-out branch recovered after a client disconnect (iOS suspend)
- * still shows the failed column instead of silently vanishing — the relay's
- * `finally` clears the in-flight slot, so without a persisted row the branch
- * leaves no trace. Mirrors the media relay's error-sibling. A user Stop persists
- * nothing (matching the recorder's cancelled semantics). `advanceActiveLeaf`
- * follows params: a fan-out branch stays a pinned sibling; a single send advances
- * the leaf so the failure shows in the thread on reload.
- */
-/**
  * The turn's conversation was deleted while it streamed, so there is nothing to
  * persist into. Deleting is allowed mid-turn (the conversation delete route
  * aborts in-flight generations, but an aborted recorder still commits its
@@ -604,6 +594,16 @@ function conversationIsGone(params: RelayParams): boolean {
 	}
 }
 
+/**
+ * Persist a durable error assistant sibling on a GENUINE (non-abort) upstream
+ * failure, so a fan-out branch recovered after a client disconnect (iOS suspend)
+ * still shows the failed column instead of silently vanishing — the relay's
+ * `finally` clears the in-flight slot, so without a persisted row the branch
+ * leaves no trace. Mirrors the media relay's error-sibling. A user Stop persists
+ * nothing (matching the recorder's cancelled semantics). `advanceActiveLeaf`
+ * follows params: a fan-out branch stays a pinned sibling; a single send advances
+ * the leaf so the failure shows in the thread on reload.
+ */
 function persistTurnErrorSibling(
 	params: RelayParams,
 	parentMessageId: string,
