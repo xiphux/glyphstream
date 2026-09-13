@@ -20,8 +20,11 @@
 # updates omit it (every one this repo has received). For those, the bump is
 # read off the body's "Bumps [name](…) from A to B." / "Updates `name` from A
 # to B" line, the same fallback dependabot/fetch-metadata uses. A missing or
-# ambiguous "from" (e.g. a bare `4`), or a "to" that disagrees with the
-# block's version, still holds.
+# ambiguous "from" (e.g. a bare `4`), a "to" that disagrees with the block's
+# version, or a name listed twice with different pairs, still holds. That last
+# one is real: a lockfile holding two copies of a package lists both ("from
+# 3.1.10 to 4.0.8" and "from 4.0.5 to 4.0.8"), and keeping either line alone
+# would call a 3 -> 4 major a patch.
 name: Dependabot auto-merge
 
 on:
@@ -83,10 +86,16 @@ jobs:
               if (pa[2] + 0 != pb[2] + 0) return "version-update:semver-minor"
               return "version-update:semver-patch"
             }
+            # Record a body pair; a second, different pair for the same name
+            # makes the name ambiguous, so it is never derived.
+            function pair(n, a, b) {
+              if ((n in from) && (from[n] != a || to[n] != b)) amb[n] = 1
+              from[n] = a; to[n] = b
+            }
             function flush(   src) {
               if (name == "") return
               src = (type == "" ? "neither metadata nor body" : "metadata")
-              if (type == "" && (name in from) && vstrip(to[name]) == vstrip(ver)) {
+              if (type == "" && (name in from) && !(name in amb) && vstrip(to[name]) == vstrip(ver)) {
                 type = derive(from[name], to[name]); src = "body " from[name] " -> " to[name]
               }
               print name "|" ver "|" type "|" src
@@ -96,10 +105,10 @@ jobs:
             inblock && /^\.\.\./     { inblock = 0 }
             # Body lines, outside the block: the prose version pairs.
             !inblock && /^Bumps \[[^]]+\]\([^)]*\) from [^ ]+ to [^ ]+\.$/ {
-              n = $2; gsub(/^\[|\].*$/, "", n); from[n] = $(NF-2); t = $NF; sub(/\.$/, "", t); to[n] = t; next
+              n = $2; gsub(/^\[|\].*$/, "", n); t = $NF; sub(/\.$/, "", t); pair(n, $(NF-2), t); next
             }
             !inblock && NF == 6 && $1 == "Updates" && $3 == "from" && $5 == "to" {
-              n = $2; gsub(/`/, "", n); from[n] = $4; to[n] = $6; next
+              n = $2; gsub(/`/, "", n); pair(n, $4, $6); next
             }
             !inblock                 { next }
             /^- dependency-name:/    { flush(); name = unquote($3) }
