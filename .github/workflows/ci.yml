@@ -2,9 +2,12 @@
 # scan, and unit + e2e tests.
 #
 # Triggers:
-#   - Direct on push to any branch except `main` and tags. Feature-
-#     branch pushes get fast feedback without a Docker build piggy-
-#     backing.
+#   - Direct on push to any branch except `main`, Dependabot's, and tags.
+#     Feature-branch pushes get fast feedback without a Docker build
+#     piggy-backing. Dependabot branches are excluded because every one
+#     has a PR: the push run would duplicate the `pull_request` run on the
+#     same commit (different concurrency groups, so neither cancels), and
+#     only the `pull_request` run is read by dependabot-automerge.yml.
 #   - Direct on every PR. Drives the PR checks UI.
 #   - Indirect via `workflow_call` from docker.yml on `main` pushes
 #     and `v*.*.*` tags, so the docker build/publish + GitHub release
@@ -27,7 +30,7 @@ name: CI
 
 on:
   push:
-    branches-ignore: [main]
+    branches-ignore: [main, 'dependabot/**']
     tags-ignore: ['**']
   pull_request:
   workflow_call:
@@ -340,8 +343,8 @@ jobs:
   # `github.sha` is the ephemeral `refs/pull/N/merge` commit anyway), or a tag
   # ref is unreadable by the `main`/tag pair this exists to serve. Every one of
   # those writes would be a runner start at the tail of the run to record a
-  # pass nothing can ever read — and this repo double-runs CI on dependabot
-  # PRs, so it'd pay twice. Under `workflow_call` the `github` context is the
+  # pass nothing can ever read — and every Dependabot update would pay it on
+  # its PR run. Under `workflow_call` the `github` context is the
   # caller's, so `main` pushes still record normally; the tag run reads.
   record-pass:
     name: Record pass
