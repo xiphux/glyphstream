@@ -4,7 +4,8 @@
 # allowlist there), a prerelease — stays open for a human.
 #
 # Security updates are a separate repo setting (enabled), not configured here;
-# `cooldown` does not delay them.
+# `cooldown` does not delay them, and `ignore` update-types don't apply to
+# them, so a security fix that needs a major still arrives as a PR.
 version: 2
 updates:
   # Keep GitHub Actions pins current. A pin that is never bumped goes stale
@@ -36,8 +37,9 @@ updates:
     cooldown:
       default-days: 7
     # Packages that must move in lockstep share a PR, so CI never sees half a
-    # family bumped. Majors are deliberately left out of every group
-    # (`update-types`): each arrives as its own PR, to be reviewed on its own.
+    # family bumped. Groups also name the issues upgrade-check.yml opens for
+    # majors. `update-types` keeps a security PR that needs a major out of a
+    # group, so it arrives on its own, to be reviewed on its own.
     groups:
       svelte:
         patterns:
@@ -88,5 +90,13 @@ updates:
     # Dependabot security PRs for these; advisories still show in the
     # Security tab.
     ignore:
+      # Majors are upgraded on purpose, by hand, not proposed weekly. Ignored
+      # rather than proposed-and-held because Dependabot offers only a
+      # package's newest version: a pending major would take the place of that
+      # package's minor and patch updates, and each held major would occupy one
+      # of the five open-PR slots. workflows/upgrade-check.yml opens an issue per
+      # major instead.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
       - dependency-name: drizzle-orm
       - dependency-name: drizzle-kit
