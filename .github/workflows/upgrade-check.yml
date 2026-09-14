@@ -5,6 +5,9 @@
 #     majors (see dependabot.yml): it proposes only a package's newest version,
 #     so a pending major would replace that package's minor and patch updates,
 #     and every held major would also occupy one of its five open-PR slots.
+#   - One issue when either aliased TypeScript compiler has a newer release
+#     (scripts/typescript-release-issue.mjs). Dependabot and `pnpm outdated`
+#     both skip npm aliases, so nothing else would notice.
 #
 # Runs from the default branch on a schedule, and checks out nothing but this
 # repo's own trusted code.
@@ -48,3 +51,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/major-upgrade-issues.mjs "$RUNNER_TEMP/outdated.json"
+
+      - name: Report TypeScript compiler releases
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/typescript-release-issue.mjs
