@@ -11,10 +11,16 @@ import { defineConfig } from 'vitest/config';
  * svelteTesting() flips resolve.conditions to prefer the 'browser'
  * export of Svelte over its SSR ('node') export, so testing-library's
  * mount() works rather than throwing `mount is not available on the
- * server`. It also auto-cleans the DOM after each test.
+ * server`.
+ *
+ * Its `autoCleanup` is off, and the component project lists the cleanup
+ * file itself: the plugin adds that file to the ROOT config's setupFiles,
+ * and since vitest 5 a setup file added that way no longer reaches the
+ * projects below. Every component test then rendered into the leftovers of
+ * the one before it (400 "Found multiple elements" failures).
  */
 export default defineConfig({
-	plugins: [sveltekit(), svelteTesting()],
+	plugins: [sveltekit(), svelteTesting({ autoCleanup: false })],
 	resolve: {
 		alias: {
 			// `$env/dynamic/private` is populated by the SvelteKit SERVER at runtime;
@@ -62,6 +68,8 @@ export default defineConfig({
 					name: 'component',
 					include: ['tests/component/**/*.{test,spec}.{js,ts}'],
 					environment: 'happy-dom',
+					// Unmounts + empties the DOM after each test. See the note above.
+					setupFiles: ['@testing-library/svelte/vitest'],
 				},
 			},
 		],
