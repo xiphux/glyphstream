@@ -40,6 +40,16 @@
 # one is real: a lockfile holding two copies of a package lists both ("from
 # 3.1.10 to 4.0.8" and "from 4.0.5 to 4.0.8"), and keeping either line alone
 # would call a 3 -> 4 major a patch.
+#
+# Only a PR that already contains the tip of its base branch merges. CI tested
+# the PR against the base as it was then; if the base has moved since, the tree
+# that would land is one CI never ran. That is not hypothetical: #33 and #36
+# each passed against the same main, git merged both lockfile edits without a
+# conflict, and the result was a lockfile whose frozen install failed. A PR
+# that is behind is held, and Dependabot's scheduled run (daily, see
+# dependabot.yml) rebases it, which reruns CI and brings it back here. The
+# workflow can't ask for the rebase itself: Dependabot refuses
+# `@dependabot rebase` from github-actions[bot].
 name: Dependabot auto-merge
 
 on:
@@ -50,6 +60,15 @@ on:
 permissions:
   contents: write
   pull-requests: write
+
+# One merge decision at a time, so two PRs whose CI finishes together can't both
+# pass the up-to-date check before either merges. Not cancel-in-progress: a
+# decision already underway finishes. GitHub keeps only the newest PENDING run in
+# a group, so a burst can drop a queued one; that PR is simply held until
+# Dependabot next rebases it, the same safe outcome as being behind.
+concurrency:
+  group: dependabot-automerge
+  cancel-in-progress: false
 
 jobs:
   automerge:
@@ -80,6 +99,13 @@ jobs:
           committer=$(gh api "repos/$REPO/commits/$SHA" --jq '.author.login // empty')
           if [ "$committer" != "dependabot[bot]" ]; then
             echo "Head commit authored by '$committer', not Dependabot - manual review"; exit 0
+          fi
+
+          # The tree that lands must be the tree CI tested (see the header).
+          base=$(gh pr view "$pr" --repo "$REPO" --json baseRefName --jq .baseRefName)
+          behind=$(gh api "repos/$REPO/compare/$base...$SHA" --jq .behind_by)
+          if [ "$behind" != "0" ]; then
+            echo "PR #$pr is $behind commit(s) behind $base - holding until Dependabot rebases it"; exit 0
           fi
 
           # One "name|version|update-type" line per dependency. Not tabs: bash
