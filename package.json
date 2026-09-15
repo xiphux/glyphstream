@@ -58,7 +58,7 @@
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
-		"@lucide/svelte": "^1.41.0",
+		"@lucide/svelte": "^1.42.0",
 		"@playwright/test": "^1.63.0",
 		"@stylistic/eslint-plugin": "^5.10.0",
 		"@sveltejs/adapter-node": "^5.5.7",
