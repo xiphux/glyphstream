@@ -44,7 +44,7 @@
 		"@shikijs/themes": "^4.4.3",
 		"@shikijs/types": "^4.4.3",
 		"@simplewebauthn/browser": "^14.0.0",
-		"@simplewebauthn/server": "^13.3.3",
+		"@simplewebauthn/server": "^14.0.2",
 		"drizzle-orm": "1.0.0-rc.4",
 		"eventsource-parser": "^4.1.0",
 		"linkedom": "^0.18.13",
