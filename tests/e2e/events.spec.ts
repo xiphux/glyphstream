@@ -244,7 +244,14 @@ test.describe('event: conversation list refreshes when the app returns to the fo
 		page,
 	}) => {
 		const title = 'Seeded on another client';
+		// The sidebar list isn't in the document: the (app) layout pulls it with a
+		// follow-up `__data.json` right after hydration (see deferred-layout.spec.ts).
+		// Seeding before that lands races it — the follow-up picks the row up with
+		// no resume at all, and the "still invisible" control below fails. So the
+		// baseline is only a baseline once that response is back.
+		const deferredList = page.waitForResponse((res) => res.url().includes('__data.json'));
 		await page.goto('/');
+		await deferredList;
 
 		// Baseline: the (app) layout loaded its sidebar before the row existed,
 		// so Recents doesn't have it.
