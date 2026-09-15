@@ -12,6 +12,12 @@
  * stays out, and `uncaughtExceptionMonitor` observes without changing Node's
  * crash-on-uncaught behaviour (a plain `uncaughtException` listener would
  * swallow it).
+ *
+ * Node's own process warnings stay out too. Its default warning handler prints
+ * through `console.error`, so an `ExperimentalWarning` (@simplewebauthn/server
+ * 14 probes Web Crypto's experimental ML-DSA-44 support on the first passkey
+ * registration) read as a server error and failed whichever spec registered
+ * first. A warning isn't a failure; it still lands in the server log.
  */
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -31,9 +37,13 @@ if (logPath) {
 		}
 	};
 
+	// "(node:1234) ExperimentalWarning: …", "(node:1234) [DEP0040] DeprecationWarning: …"
+	const nodeWarning = /^\(node:\d+\) (\[[A-Z0-9]+\] )?\w*Warning: /;
+
 	const originalError = console.error.bind(console);
 	console.error = (...args) => {
-		record('console.error', format(...args));
+		const text = format(...args);
+		if (!nodeWarning.test(text)) record('console.error', text);
 		originalError(...args);
 	};
 
