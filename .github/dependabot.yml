@@ -25,6 +25,10 @@ updates:
     # keeps a fresh compromise from reaching a SHA pin automatically.
     cooldown:
       default-days: 7
+    # The default is 5 per entry, and the workflows use eighteen distinct
+    # actions. Version updates over the limit are not opened until a slot
+    # frees; security updates are never counted against it.
+    open-pull-requests-limit: 10
 
   - package-ecosystem: npm
     directory: /
@@ -37,6 +41,11 @@ updates:
     commit-message:
       prefix: deps
       prefix-development: deps(dev)
+    # Well above the default 5: 61 dependencies in five groups plus singles,
+    # released in cooldown batches. A version update over the limit is not
+    # opened at all until a slot frees, so a low limit silently delays
+    # updates; security updates are exempt from it.
+    open-pull-requests-limit: 15
     # A week, not a day. pnpm 11 refuses packages younger than 24h
     # (`minimumReleaseAge`) and checks the LOCKFILE against it, so a same-day
     # release would fail `--frozen-lockfile` in CI — but the longer wait is for
