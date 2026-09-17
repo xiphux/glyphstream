@@ -30,7 +30,11 @@ name: CI
 
 on:
   push:
-    branches-ignore: [main, 'dependabot/**']
+    # renovate/** alongside dependabot/**: a bot branch lives in this
+    # repository, so a push to it and the PR it opens would each run this
+    # workflow over the same tree -- every check reported, and paid for,
+    # twice. The PR run is the one that matters; it tests the merge with main.
+    branches-ignore: [main, 'dependabot/**', 'renovate/**']
     tags-ignore: ['**']
   pull_request:
   workflow_call:
