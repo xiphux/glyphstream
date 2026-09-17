@@ -1,191 +1,191 @@
 {
-  // Renovate, on trial in this repository only, replacing Dependabot's version
-  // updates for npm and GitHub Actions. Dependabot's SECURITY updates are a
-  // repository setting and stay on: they are a separate path that ignores
-  // cooldowns and ignore-rules, and losing them to a trial would be the one
-  // regression worth avoiding. Renovate reports vulnerabilities too, so expect
-  // some overlap while both are enabled.
-  //
-  // Why the trial: Dependabot rebases a pull request only when it CONFLICTS,
-  // not when it merely falls behind. Since CI's verdict is only valid for the
-  // tree it tested — #33 and #36 each passed against the same main, merged
-  // cleanly as text, and left a lockfile whose frozen install failed — the
-  // auto-merge workflow holds anything behind main. The two rules deadlock: a
-  // batch stalls after its first merge and each remaining PR needs a human to
-  // ask for a rebase, which Dependabot then declines as "already up to date".
-  // Renovate's `rebaseWhen` resolves that by rebasing a branch whenever it
-  // falls behind, and its own docs name the same broken-base-branch hazard as
-  // the reason.
-  //
-  // To revert: uninstall the Renovate app from this repository and restore the
-  // npm and github-actions entries in .github/dependabot.yml. The auto-merge
-  // and major-upgrade workflows are left in place, disabled rather than
-  // deleted, so a revert is a checkout rather than a rewrite.
-  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+	// Renovate, on trial in this repository only, replacing Dependabot's version
+	// updates for npm and GitHub Actions. Dependabot's SECURITY updates are a
+	// repository setting and stay on: they are a separate path that ignores
+	// cooldowns and ignore-rules, and losing them to a trial would be the one
+	// regression worth avoiding. Renovate reports vulnerabilities too, so expect
+	// some overlap while both are enabled.
+	//
+	// Why the trial: Dependabot rebases a pull request only when it CONFLICTS,
+	// not when it merely falls behind. Since CI's verdict is only valid for the
+	// tree it tested — #33 and #36 each passed against the same main, merged
+	// cleanly as text, and left a lockfile whose frozen install failed — the
+	// auto-merge workflow holds anything behind main. The two rules deadlock: a
+	// batch stalls after its first merge and each remaining PR needs a human to
+	// ask for a rebase, which Dependabot then declines as "already up to date".
+	// Renovate's `rebaseWhen` resolves that by rebasing a branch whenever it
+	// falls behind, and its own docs name the same broken-base-branch hazard as
+	// the reason.
+	//
+	// To revert: uninstall the Renovate app from this repository and restore the
+	// npm and github-actions entries in .github/dependabot.yml. The auto-merge
+	// and major-upgrade workflows are left in place, disabled rather than
+	// deleted, so a revert is a checkout rather than a rewrite.
+	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
 
-  extends: [
-    'config:recommended',
-    // Every update rebased when it falls behind main, not only when it
-    // conflicts. This is the whole point of the trial; `config:recommended`
-    // would infer it from automerge anyway, but it is the setting under test,
-    // so it is written down rather than inferred.
-    ':rebaseStalePrs',
-  ],
+	extends: [
+		'config:recommended',
+		// Every update rebased when it falls behind main, not only when it
+		// conflicts. This is the whole point of the trial; `config:recommended`
+		// would infer it from automerge anyway, but it is the setting under test,
+		// so it is written down rather than inferred.
+		':rebaseStalePrs',
+	],
 
-  // Matches the Dependabot cooldown this repo already ran: a week, not a day.
-  // pnpm 11 refuses packages younger than 24h and checks the LOCKFILE against
-  // it, so a same-day release fails `--frozen-lockfile` in CI — but the longer
-  // wait is for supply-chain reasons: most malicious publishes are found and
-  // yanked within days.
-  minimumReleaseAge: '7 days',
+	// Matches the Dependabot cooldown this repo already ran: a week, not a day.
+	// pnpm 11 refuses packages younger than 24h and checks the LOCKFILE against
+	// it, so a same-day release fails `--frozen-lockfile` in CI — but the longer
+	// wait is for supply-chain reasons: most malicious publishes are found and
+	// yanked within days.
+	minimumReleaseAge: '7 days',
 
-  // The Dependency Dashboard is what replaces upgrade-check.yml: one issue
-  // listing every pending update, including the majors that workflow used to
-  // open an issue per group for.
-  dependencyDashboard: true,
-  dependencyDashboardTitle: 'Dependency dashboard',
+	// The Dependency Dashboard is what replaces upgrade-check.yml: one issue
+	// listing every pending update, including the majors that workflow used to
+	// open an issue per group for.
+	dependencyDashboard: true,
+	dependencyDashboardTitle: 'Dependency dashboard',
 
-  // Roughly the open-pull-requests-limit this repo settled on (15 for npm, 10
-  // for actions), as one repository-wide number. prHourlyLimit caps a burst so
-  // a quiet week followed by a busy one does not open everything at once.
-  prConcurrentLimit: 15,
-  prHourlyLimit: 4,
+	// Roughly the open-pull-requests-limit this repo settled on (15 for npm, 10
+	// for actions), as one repository-wide number. prHourlyLimit caps a burst so
+	// a quiet week followed by a busy one does not open everything at once.
+	prConcurrentLimit: 15,
+	prHourlyLimit: 4,
 
-  // Merge commits, as the auto-merge workflow made them, so history reads the
-  // same across the trial boundary.
-  automergeStrategy: 'merge',
-  // Hand the merge to GitHub's own auto-merge where the repository allows it:
-  // it merges the moment checks pass rather than waiting for Renovate's next
-  // run. Renovate falls back to merging itself if the setting is off.
-  platformAutomerge: true,
+	// Merge commits, as the auto-merge workflow made them, so history reads the
+	// same across the trial boundary.
+	automergeStrategy: 'merge',
+	// Hand the merge to GitHub's own auto-merge where the repository allows it:
+	// it merges the moment checks pass rather than waiting for Renovate's next
+	// run. Renovate falls back to merging itself if the setting is off.
+	platformAutomerge: true,
 
-  // `deps:`/`deps(dev):` for npm and `ci:` for actions, as Dependabot was
-  // configured to write, so the commit history stays consistent.
-  commitMessagePrefix: 'deps:',
+	// `deps:`/`deps(dev):` for npm and `ci:` for actions, as Dependabot was
+	// configured to write, so the commit history stays consistent.
+	commitMessagePrefix: 'deps:',
 
-  packageRules: [
-    {
-      matchManagers: ['github-actions'],
-      commitMessagePrefix: 'ci:',
-      // A hijacked action tag is usually caught and pulled within days; a week
-      // keeps a fresh compromise from reaching a SHA pin automatically.
-      minimumReleaseAge: '7 days',
-    },
-    {
-      matchManagers: ['npm'],
-      matchDepTypes: ['devDependencies'],
-      commitMessagePrefix: 'deps(dev):',
-    },
+	packageRules: [
+		{
+			matchManagers: ['github-actions'],
+			commitMessagePrefix: 'ci:',
+			// A hijacked action tag is usually caught and pulled within days; a week
+			// keeps a fresh compromise from reaching a SHA pin automatically.
+			minimumReleaseAge: '7 days',
+		},
+		{
+			matchManagers: ['npm'],
+			matchDepTypes: ['devDependencies'],
+			commitMessagePrefix: 'deps(dev):',
+		},
 
-    // What auto-merges, and what does not. This reproduces the verdict in
-    // dependabot-automerge.yml exactly: patch yes; minor yes unless the
-    // package is 0.x, where a minor is the breaking release; majors and
-    // prereleases never.
-    {
-      matchUpdateTypes: ['patch', 'minor'],
-      automerge: true,
-    },
-    {
-      matchUpdateTypes: ['minor'],
-      matchCurrentVersion: '/^0\\./',
-      automerge: false,
-    },
-    {
-      // The 0.x packages whose minors CI can actually judge, carried over from
-      // ZERO_X_MINOR_OK: each is exercised by the suite rather than merely
-      // installed by it.
-      matchPackageNames: ['sharp', 'esbuild', 'linkedom', '@mozilla/readability'],
-      matchUpdateTypes: ['minor'],
-      matchCurrentVersion: '/^0\\./',
-      automerge: true,
-    },
-    {
-      // Majors arrive as their own pull requests now, which is the second
-      // reason for the trial: Dependabot offers only a package's newest
-      // version, so an un-ignored major REPLACED that package's minor and
-      // patch updates. Renovate raises both, so a pending major no longer
-      // costs the routine updates. They are never auto-merged.
-      matchUpdateTypes: ['major'],
-      automerge: false,
-    },
-    {
-      // Prereleases were held by the old workflow and stay held. Renovate does
-      // not propose them by default; this makes that explicit rather than
-      // relying on the default not to change.
-      matchCurrentVersion: '/-/',
-      automerge: false,
-    },
+		// What auto-merges, and what does not. This reproduces the verdict in
+		// dependabot-automerge.yml exactly: patch yes; minor yes unless the
+		// package is 0.x, where a minor is the breaking release; majors and
+		// prereleases never.
+		{
+			matchUpdateTypes: ['patch', 'minor'],
+			automerge: true,
+		},
+		{
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			automerge: false,
+		},
+		{
+			// The 0.x packages whose minors CI can actually judge, carried over from
+			// ZERO_X_MINOR_OK: each is exercised by the suite rather than merely
+			// installed by it.
+			matchPackageNames: ['sharp', 'esbuild', 'linkedom', '@mozilla/readability'],
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			automerge: true,
+		},
+		{
+			// Majors arrive as their own pull requests now, which is the second
+			// reason for the trial: Dependabot offers only a package's newest
+			// version, so an un-ignored major REPLACED that package's minor and
+			// patch updates. Renovate raises both, so a pending major no longer
+			// costs the routine updates. They are never auto-merged.
+			matchUpdateTypes: ['major'],
+			automerge: false,
+		},
+		{
+			// Prereleases were held by the old workflow and stay held. Renovate does
+			// not propose them by default; this makes that explicit rather than
+			// relying on the default not to change.
+			matchCurrentVersion: '/-/',
+			automerge: false,
+		},
 
-    // Packages that must move together, so CI never sees half a family bumped.
-    // These mirror the Dependabot groups, minor and patch only: a major goes
-    // on its own, to be reviewed on its own.
-    {
-      groupName: 'svelte',
-      matchUpdateTypes: ['minor', 'patch'],
-      matchPackageNames: [
-        'svelte',
-        'svelte-check',
-        'svelte-eslint-parser',
-        'eslint-plugin-svelte',
-        'prettier-plugin-svelte',
-        '@sveltejs/**',
-        '@testing-library/svelte',
-      ],
-    },
-    {
-      groupName: 'vite',
-      matchUpdateTypes: ['minor', 'patch'],
-      matchPackageNames: [
-        'vite',
-        'vitest',
-        '@vitest/**',
-        'tailwindcss',
-        '@tailwindcss/**',
-        '@vite-pwa/**',
-        'workbox-**',
-      ],
-    },
-    {
-      groupName: 'lint',
-      matchUpdateTypes: ['minor', 'patch'],
-      matchPackageNames: [
-        'eslint',
-        '@eslint/**',
-        'eslint-**',
-        'typescript-eslint',
-        '@stylistic/**',
-        'globals',
-        'prettier',
-      ],
-    },
-    {
-      groupName: 'shiki',
-      matchUpdateTypes: ['minor', 'patch'],
-      matchPackageNames: ['shiki', '@shikijs/**'],
-    },
-    {
-      groupName: 'simplewebauthn',
-      matchUpdateTypes: ['minor', 'patch'],
-      matchPackageNames: ['@simplewebauthn/**'],
-    },
+		// Packages that must move together, so CI never sees half a family bumped.
+		// These mirror the Dependabot groups, minor and patch only: a major goes
+		// on its own, to be reviewed on its own.
+		{
+			groupName: 'svelte',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'svelte',
+				'svelte-check',
+				'svelte-eslint-parser',
+				'eslint-plugin-svelte',
+				'prettier-plugin-svelte',
+				'@sveltejs/**',
+				'@testing-library/svelte',
+			],
+		},
+		{
+			groupName: 'vite',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'vite',
+				'vitest',
+				'@vitest/**',
+				'tailwindcss',
+				'@tailwindcss/**',
+				'@vite-pwa/**',
+				'workbox-**',
+			],
+		},
+		{
+			groupName: 'lint',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'eslint',
+				'@eslint/**',
+				'eslint-**',
+				'typescript-eslint',
+				'@stylistic/**',
+				'globals',
+				'prettier',
+			],
+		},
+		{
+			groupName: 'shiki',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: ['shiki', '@shikijs/**'],
+		},
+		{
+			groupName: 'simplewebauthn',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: ['@simplewebauthn/**'],
+		},
 
-    {
-      // drizzle is upgraded by hand. It is pinned to an exact 1.0.0 RC, and
-      // drizzle also publishes snapshot builds of internal branches to npm
-      // (`1.0.0-rc.5-169397b`, dist-tags like `effect-fixes`). Semver ranks
-      // those above the official RC, so Dependabot proposed one (#25), and
-      // that build broke the relations API, blob decoding and error messages.
-      // Follow the `rc` dist-tag / GitHub releases instead. Revisit once 1.0.0
-      // ships stable.
-      matchPackageNames: ['drizzle-orm', 'drizzle-kit'],
-      enabled: false,
-    },
-  ],
+		{
+			// drizzle is upgraded by hand. It is pinned to an exact 1.0.0 RC, and
+			// drizzle also publishes snapshot builds of internal branches to npm
+			// (`1.0.0-rc.5-169397b`, dist-tags like `effect-fixes`). Semver ranks
+			// those above the official RC, so Dependabot proposed one (#25), and
+			// that build broke the relations API, blob decoding and error messages.
+			// Follow the `rc` dist-tag / GitHub releases instead. Revisit once 1.0.0
+			// ships stable.
+			matchPackageNames: ['drizzle-orm', 'drizzle-kit'],
+			enabled: false,
+		},
+	],
 
-  // Renovate raises a pull request for a vulnerable package regardless of the
-  // cooldown above, the same carve-out Dependabot's security updates have.
-  vulnerabilityAlerts: {
-    minimumReleaseAge: null,
-    automerge: false,
-  },
+	// Renovate raises a pull request for a vulnerable package regardless of the
+	// cooldown above, the same carve-out Dependabot's security updates have.
+	vulnerabilityAlerts: {
+		minimumReleaseAge: null,
+		automerge: false,
+	},
 }
