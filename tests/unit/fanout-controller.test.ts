@@ -136,7 +136,13 @@ describe('FanoutController — server recovery', () => {
 		});
 		const [generating, queued] = fc.columns;
 		expect(generating).toMatchObject({ status: 'streaming', startedAt: 1000, label: 'SDXL' });
-		expect(queued).toMatchObject({ status: 'queued', startedAt: null, label: 'Claude' });
+		// The server reported it, so it IS at the gate — QUEUED, not "Starting…".
+		expect(queued).toMatchObject({
+			status: 'queued',
+			startedAt: null,
+			label: 'Claude',
+			dispatching: false,
+		});
 	});
 
 	it('does not clobber a live in-session fan-out', () => {
@@ -746,8 +752,12 @@ describe('FanoutController — actions', () => {
 
 		// Only the first branch is dispatched; the rest wait for it to reach the gate.
 		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a']));
+		// Nothing has reached a gate yet, so no column may claim to be QUEUED at
+		// one — including the POSTed branch still waiting on its first event.
+		expect(fc.columns.map((c) => c.dispatching)).toEqual([true, true, true]);
 		releases[0]();
 		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a', 'bridge::b']));
+		expect(fc.columns.map((c) => c.dispatching)).toEqual([false, true, true]);
 		releases[1]();
 		await vi.waitFor(() => expect(postedModels).toEqual(['bridge::a', 'bridge::b', 'bridge::c']));
 		releases[2]();
@@ -1368,6 +1378,7 @@ describe('FanoutController — avatar comparisons', () => {
 				segments: [],
 				status: 'cancelled',
 				queuedAhead: 0,
+				dispatching: false,
 				progress: null,
 				statusLabel: null,
 				startedAt: null,

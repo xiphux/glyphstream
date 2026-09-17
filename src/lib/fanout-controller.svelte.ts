@@ -245,6 +245,7 @@ export class FanoutController {
 				segments: [],
 				status: errPart ? 'error' : 'done',
 				queuedAhead: 0,
+				dispatching: false,
 				progress: null,
 				statusLabel: null,
 				startedAt: null,
@@ -272,6 +273,7 @@ export class FanoutController {
 			// gate → QUEUED badge. Restores the live grid's per-branch state.
 			status: pb.status,
 			queuedAhead: 0,
+			dispatching: false,
 			progress: null,
 			statusLabel: null,
 			startedAt: pb.startedAt,
@@ -378,6 +380,7 @@ export class FanoutController {
 			segments: [],
 			status: 'queued' as const,
 			queuedAhead: 0,
+			dispatching: true,
 			progress: null,
 			statusLabel: null,
 			startedAt: null,
@@ -573,6 +576,7 @@ export class FanoutController {
 			segments: [],
 			status: 'queued' as const,
 			queuedAhead: 0,
+			dispatching: true,
 			progress: null,
 			statusLabel: null,
 			startedAt: null,
@@ -652,6 +656,9 @@ export class FanoutController {
 		const markEnqueued = () => {
 			if (enqueuedSignaled) return;
 			enqueuedSignaled = true;
+			// The server has answered for this branch (or it died trying), so it is
+			// no longer "not yet at the gate" — see `FanoutColumn.dispatching`.
+			col.dispatching = false;
 			opts?.onEnqueued?.();
 		};
 		try {
@@ -985,6 +992,7 @@ export class FanoutController {
 			segments: [],
 			status: 'queued',
 			queuedAhead: 0,
+			dispatching: true,
 			progress: null,
 			statusLabel: null,
 			startedAt: null,

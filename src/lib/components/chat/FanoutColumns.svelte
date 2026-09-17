@@ -203,7 +203,12 @@
 						     already streamed. -->
 						<p class="text-xs text-danger">{c.error ?? 'Generation failed'}</p>
 					{:else if blocks.length === 0}
-						{#if c.status === 'queued'}
+						{#if c.status === 'queued' && c.dispatching}
+							<!-- Not at any gate yet: the request is waiting its turn in the
+							     dispatch sequence, or hasn't reached the server. Deliberately
+							     not the QUEUED badge — see `FanoutColumn.dispatching`. -->
+							<p class="text-xs text-fg-muted">Starting…</p>
+						{:else if c.status === 'queued'}
 							<!-- Waiting on the per-endpoint concurrency slot (e.g. a single-GPU
 							     backend running one branch at a time). -->
 							<p class="flex items-center gap-1.5 text-xs text-fg-muted">

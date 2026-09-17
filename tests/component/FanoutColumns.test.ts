@@ -33,6 +33,7 @@ function col(overrides: Partial<FanoutColumn>): FanoutColumn {
 		segments: overrides.segments ?? [],
 		status: overrides.status ?? 'streaming',
 		queuedAhead: overrides.queuedAhead ?? 0,
+		dispatching: overrides.dispatching ?? false,
 		progress: overrides.progress ?? null,
 		statusLabel: overrides.statusLabel ?? null,
 		startedAt: overrides.startedAt ?? null,
@@ -235,6 +236,18 @@ describe('FanoutColumns — media (keep-many) mode', () => {
 		});
 		expect(screen.getByText('Queued')).toBeInTheDocument();
 		expect(screen.getByText('2 ahead')).toBeInTheDocument();
+	});
+
+	it('shows "Starting…", not QUEUED, for a branch that has not reached the gate yet', () => {
+		render(FanoutColumns, {
+			props: {
+				columns: [col({ branchId: 'd', status: 'queued', dispatching: true })],
+				onPick: vi.fn(),
+				onImageClick: vi.fn(),
+			},
+		});
+		expect(screen.getByText('Starting…')).toBeInTheDocument();
+		expect(screen.queryByText('Queued')).not.toBeInTheDocument();
 	});
 
 	it('shows an elapsed timer in the body of the actively-generating branch', () => {

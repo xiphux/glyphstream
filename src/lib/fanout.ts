@@ -150,6 +150,18 @@ export interface FanoutColumn {
 	status: FanoutColumnStatus;
 	/** How many generations were ahead of this one in the endpoint's queue. */
 	queuedAhead: number;
+	/**
+	 * True from the moment a live column is created until its branch's first
+	 * SSE event — i.e. the server hasn't yet reported this branch reaching the
+	 * endpoint gate. Branches dispatch one at a time (each waits for the prior
+	 * one's first event; see `FanoutController.#dispatchColumns`), and a request
+	 * the browser hasn't delivered yet — held by that sequence, or stalled on
+	 * the connection — is not "queued" at any gate. Rendering both as QUEUED made
+	 * a stalled dispatch indistinguishable from a busy endpoint, so the grid shows
+	 * "Starting…" for this state instead. Always false for recovered and settled
+	 * columns: the server already knows about those.
+	 */
+	dispatching: boolean;
 	/** Generation progress 0–100 for the poll-based video path, or null when
 	 *  unknown / not a video branch. */
 	progress: number | null;
