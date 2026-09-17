@@ -13,9 +13,14 @@
 # repo's own trusted code.
 name: Upgrade check
 
+# The weekly schedule is off for the duration of the Renovate trial (see
+# .github/renovate.json5): Renovate's Dependency Dashboard lists every pending
+# update, majors included, so a second weekly issue per major would be the same
+# news twice. Still runnable by hand, and restoring the cron is a one-line
+# revert if the trial is abandoned.
 on:
-  schedule:
-    - cron: '0 14 * * 1' # 14:00 UTC every Monday
+  # schedule:
+  #   - cron: '0 14 * * 1' # 14:00 UTC every Monday
   workflow_dispatch:
 
 permissions:

@@ -276,7 +276,8 @@ exact-match `apple-touch-startup-image` media query.
   transaction must take the caller's `tx` (`Tx` in `db/client.ts`) and
   operate on it; only `tx.transaction()` (on the tx object) emits a savepoint.
 - **drizzle-orm is upgraded by hand, along official RCs** (the `rc` dist-tag /
-  GitHub releases). Dependabot ignores it: drizzle publishes snapshot builds of
+  GitHub releases). The updater ignores it (`renovate.json5`, and Dependabot
+  before it): drizzle publishes snapshot builds of
   internal branches (`1.0.0-rc.5-<hash>`) that semver ranks above the real RC.
   Two rc.4 behaviours to keep in mind:
   - **A bare `blob()` is JSON mode** — reads `JSON.parse`, writes

@@ -1,5 +1,11 @@
 # Auto-merge safe Dependabot PRs once CI passes.
 #
+# DORMANT during the Renovate trial (see .github/renovate.json5): Dependabot no
+# longer opens version-update PRs here, and this never fires for a `renovate/`
+# branch — Renovate merges its own. Kept rather than deleted so abandoning the
+# trial is a checkout, not a rewrite. Dependabot SECURITY updates still arrive,
+# and this still judges those.
+#
 # Standalone + workflow_run on purpose: embedding this in the CI workflow made
 # that (reusable) workflow request contents/pull-requests write, which exceeds
 # what its callers (docker/deploy/publish) grant and invalidated the workflow.
