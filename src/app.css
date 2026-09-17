@@ -616,7 +616,9 @@ body {
    sometimes, which is why the gap was intermittent. 100vh is the full physical
    viewport height, so it spans edge-to-edge with no gap. Scoped to standalone
    because in a browser tab 100vh would run under Safari's collapsing toolbar
-   (exactly what dvh avoids there). See app.html for the black-translucent note.
+   (exactly what dvh avoids there). We ship `default` now (see app.html), where
+   standalone has no dynamic toolbar and 100vh === 100dvh — the rule stays for
+   installs that predate the switch and keep black-translucent until re-added.
    Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2). */
 .app-shell {
 	height: 100dvh;
@@ -624,6 +626,27 @@ body {
 @media all and (display-mode: standalone) {
 	.app-shell {
 		height: 100vh;
+	}
+}
+
+/* Status bar color for the installed app. With the `default` status bar style
+   (app.html) iOS paints the bar itself, taking the background-color of a
+   position:fixed/sticky element within 4px of the page top, at least 1px tall
+   and ~80% wide. It must be a real element — the sampler doesn't see
+   pseudo-elements, so a body::before plate does nothing. Uses the surface
+   token so it follows theme + scheme like the page does. Standalone-only: a
+   browser tab has its own chrome. */
+.status-bar-sampler {
+	display: none;
+}
+@media all and (display-mode: standalone) {
+	.status-bar-sampler {
+		display: block;
+		position: fixed;
+		inset: 0 0 auto 0;
+		height: 1px;
+		pointer-events: none;
+		background-color: var(--color-surface);
 	}
 }
 

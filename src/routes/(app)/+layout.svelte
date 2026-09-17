@@ -632,10 +632,10 @@
 	>
 		<!-- Header row: title (when expanded) + collapse toggle (sm+ only).
 			 pt uses max(env(safe-area-inset-top), default) so the title sits
-			 below the iOS status bar in PWA standalone mode (viewport-fit=cover
-			 + black-translucent status bar, where the top inset is the ~59px
-			 status-bar height). Falls through to the default 1rem on desktop /
-			 Android / mobile Safari where the inset is 0. -->
+			 below the iOS status bar in PWA standalone mode for installs that
+			 still have the old black-translucent status bar (the top inset is
+			 the ~59px status-bar height there; see app.html). Falls through to
+			 the default 1rem everywhere the inset is 0. -->
 		<div
 			class="flex items-center {collapsed
 				? 'justify-center'

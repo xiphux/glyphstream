@@ -92,17 +92,22 @@
 			 image is a separate mechanism entirely — see the splash block
 			 below; a PNG icon does not get you one. -->
 		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<!-- black-translucent renders the app edge-to-edge BEHIND the status bar,
-			 so the bar takes on the app's own colors (a themed status bar iOS
-			 otherwise won't let us set — it ignores theme-color for the
-			 standalone bar). Its one famous footgun: in standalone the view is
-			 offset up by the status-bar height (~59px) WITHOUT the viewport
-			 growing, so a shell sized with 100dvh/100% comes up short and leaves
-			 the intermittent "chin gap" at the bottom. The fix is to size the app
-			 shell with 100vh (the full physical viewport) in standalone — see
-			 .app-shell in app.css. Do NOT switch this to default/black to "fix"
-			 the gap: that just hides the symptom and loses the themed bar. -->
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<!-- `default`, NOT black-translucent. From iOS 27 the system lays a
+			 progressive blur over the top of a black-translucent standalone app —
+			 across the status bar and fading out ~35pt below it — which smeared
+			 our mobile top bar and sidebar header. Nothing the page paints turns
+			 it off; only an opaque bar does. `default` also costs no vertical
+			 space: the page simply starts below the bar, and the
+			 max(…, env(safe-area-inset-top)) paddings fall back to their minimum.
+			 The bar still matches the theme: iOS samples the background-color of
+			 a fixed element at the very top of the page — .status-bar-sampler in
+			 app.css (theme-color is ignored for the standalone bar).
+			 The meta is frozen at install time: an already-installed app keeps
+			 black-translucent until it's removed and re-added to the Home
+			 Screen, which is why the safe-area paddings and the 100vh app-shell
+			 rule (app.css) stay — they're what keeps that install correct.
+			 Source: reddit.com/r/PWA/comments/1w5mqj1 (beta 8, real device). -->
+		<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 		<meta name="apple-mobile-web-app-title" content="GlyphStream" />
 		<!-- Browser tab favicon. Without this, browsers fall back to /favicon.ico
 			 (which we don't ship) and end up showing whatever they previously
