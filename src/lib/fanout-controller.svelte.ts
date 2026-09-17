@@ -599,7 +599,7 @@ export class FanoutController {
 		// Assigning the array into `$state` is what makes its elements reactive, and
 		// a branch drives its column by mutating it (status, segments, persisted).
 		// Handed the raw objects, every one of those writes lands somewhere
-		// `this.columns` never sees: the grid stays on "Queued" forever, and the
+		// `this.columns` never sees: the grid stays on "Starting…" forever, and the
 		// resolution below reads back two branches that produced nothing, wipes the
 		// comparison and reports that no model drew anything — for a draw that in
 		// fact succeeded twice. `send` avoids this by iterating `this.columns`, and
