@@ -1,7 +1,8 @@
 /**
  * Sync `<meta name="theme-color">` to the active theme + scheme's surface
- * color, so an installed PWA's status bar (iOS) and the mobile browser
- * chrome (Android) match whatever theme/light-dark the user picked.
+ * color, so browser chrome (Safari tabs, Android) and non-iOS installed-app
+ * bars match whatever theme/light-dark the user picked. The installed iOS
+ * status bar ignores theme-color; see .status-bar-sampler in app.css.
  *
  * We read the *resolved* body background (the `--color-surface` token) rather
  * than the raw custom property, then normalise it to legacy `rgb()` — see

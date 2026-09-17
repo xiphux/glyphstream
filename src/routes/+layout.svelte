@@ -355,8 +355,9 @@
 	<title>GlyphStream</title>
 </svelte:head>
 
-<!-- iOS standalone samples this for the status bar color; see app.css. First
-	 in the DOM so every later positioned layer paints over its 1px. -->
+<!-- iOS standalone samples this for the status bar color; see app.css. Being
+	 fixed-position, it paints over non-positioned content (e.g. the static
+	 sidebar's top 1px at sm+); later positioned layers paint over it. -->
 <div class="status-bar-sampler" aria-hidden="true"></div>
 
 {@render children()}

@@ -138,7 +138,7 @@ test.describe('flow: theme switcher', () => {
 		await page.getByRole('button', { name: /^Claude/ }).click();
 		await expect(html).toHaveAttribute('data-theme', 'claude');
 
-		// theme-color meta tracks the active surface (PWA status-bar tint).
+		// theme-color meta tracks the active surface (browser-chrome tint).
 		// Compared as resolved COLOURS, not as strings: the meta is deliberately
 		// normalised to legacy rgb() (see toLegacyRgb — iOS before 15.4 can't
 		// parse the oklch that getComputedStyle now returns), so a string

@@ -1053,8 +1053,10 @@
 		 outer container is `h-full` don't overflow past the top bar. -->
 	<main class="flex min-w-0 flex-1 flex-col overflow-hidden">
 		<!-- Mobile top bar with the hamburger toggle. pt uses
-			 max(env(safe-area-inset-top), default) so the iOS status bar in
-			 PWA standalone doesn't overlap the tap target. sm:hidden so this
+			 max(env(safe-area-inset-top), default) so the iOS status bar
+			 doesn't overlap the tap target in standalone installs that still
+			 have the old black-translucent status bar (see app.html); the
+			 inset is 0 everywhere else. sm:hidden so this
 			 entire row only renders on mobile — desktop has the static
 			 sidebar always visible. -->
 		<div

@@ -81,7 +81,9 @@
 				}
 			})();
 		</script>
-		<!-- PWA: theme-color drives the iOS status bar tint when installed.
+		<!-- theme-color tints Safari's tab chrome and the Android/desktop
+			 installed-app bars. The installed iOS status bar ignores it — that
+			 color comes from .status-bar-sampler (app.css).
 			 Cold-load default (Signature light); syncThemeColorMeta() updates
 			 it to the active theme + scheme's surface once the app mounts. -->
 		<meta name="theme-color" content="#f7fafe" />

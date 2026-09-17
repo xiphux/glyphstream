@@ -634,8 +634,9 @@ body {
    position:fixed/sticky element within 4px of the page top, at least 1px tall
    and ~80% wide. It must be a real element — the sampler doesn't see
    pseudo-elements, so a body::before plate does nothing. Uses the surface
-   token so it follows theme + scheme like the page does. Standalone-only: a
-   browser tab has its own chrome. */
+   token so it follows theme + scheme like the page does. One element, one
+   color: at sm+ the edge under the bar is sidebar + page, and the bar takes
+   the page's. Standalone-only: a browser tab has its own chrome. */
 .status-bar-sampler {
 	display: none;
 }
