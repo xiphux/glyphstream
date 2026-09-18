@@ -7,7 +7,7 @@
 #     piggy-backing. Dependabot branches are excluded because every one
 #     has a PR: the push run would duplicate the `pull_request` run on the
 #     same commit (different concurrency groups, so neither cancels), and
-#     only the `pull_request` run is read by dependabot-automerge.yml.
+#     only the `pull_request` run is the one that gates a merge.
 #   - Direct on every PR. Drives the PR checks UI.
 #   - Indirect via `workflow_call` from docker.yml on `main` pushes
 #     and `v*.*.*` tags, so the docker build/publish + GitHub release

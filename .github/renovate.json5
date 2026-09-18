@@ -1,26 +1,30 @@
 {
-	// Renovate, on trial in this repository only, replacing Dependabot's version
-	// updates for npm and GitHub Actions. Dependabot's SECURITY updates are a
-	// repository setting and stay on: they are a separate path that ignores
-	// cooldowns and ignore-rules, and losing them to a trial would be the one
-	// regression worth avoiding. Renovate reports vulnerabilities too, so expect
-	// some overlap while both are enabled.
+	// Renovate keeps the dependencies here current. It replaced Dependabot's
+	// version updates, which is why .github/dependabot.yml is gone: two updaters
+	// proposing the same bumps would be ambiguous at best. Dependabot's SECURITY
+	// updates stay on -- a repository setting, not this file -- so vulnerable
+	// packages still arrive as dependabot/** PRs, and ci.yml still ignores that
+	// branch prefix on its push trigger for them.
 	//
-	// Why the trial: Dependabot rebases a pull request only when it CONFLICTS,
-	// not when it merely falls behind. Since CI's verdict is only valid for the
-	// tree it tested — #33 and #36 each passed against the same main, merged
-	// cleanly as text, and left a lockfile whose frozen install failed — the
-	// auto-merge workflow holds anything behind main. The two rules deadlock: a
-	// batch stalls after its first merge and each remaining PR needs a human to
-	// ask for a rebase, which Dependabot then declines as "already up to date".
-	// Renovate's `rebaseWhen` resolves that by rebasing a branch whenever it
-	// falls behind, and its own docs name the same broken-base-branch hazard as
-	// the reason.
+	// What Renovate does that Dependabot could not:
+	//   - Raises a major and a minor of the same package at once. Dependabot
+	//     offers only the newest version, so a pending major replaced that
+	//     package's routine updates -- hence majors were ignored there and an
+	//     issue was opened per major instead.
+	//   - Rebases a pull request that has fallen behind main, not only one that
+	//     conflicts. That is what stalled batches under Dependabot: each merge
+	//     left the rest behind, and only a human comment moved them.
 	//
-	// To revert: uninstall the Renovate app from this repository and restore the
-	// npm and github-actions entries in .github/dependabot.yml. The auto-merge
-	// and major-upgrade workflows are left in place, disabled rather than
-	// deleted, so a revert is a checkout rather than a rewrite.
+	// The one workaround it needs is .github/workflows/renovate-nudge.yml: on
+	// this plan jobs run every four hours, and a merge Renovate performs itself
+	// enqueues no job, so nothing would rebase the PRs that merge left behind.
+	//
+	// To go back: `git log -- .github/dependabot.yml` has the last version, with
+	// dependabot-automerge.yml and upgrade-check.yml in the history beside it.
+	// The TypeScript-release issue that workflow also opened went with it: the
+	// npm aliases it watched are temporary, until TypeScript 7.1 makes keeping
+	// both compilers unnecessary. Until then nothing notices a TypeScript
+	// release, since Renovate and `pnpm outdated` both skip aliases.
 	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
 
 	extends: [
@@ -39,9 +43,9 @@
 	// yanked within days.
 	minimumReleaseAge: '7 days',
 
-	// The Dependency Dashboard is what replaces upgrade-check.yml: one issue
-	// listing every pending update, including the majors that workflow used to
-	// open an issue per group for.
+	// One issue listing every pending update, majors included. It stands in for
+	// the weekly major-upgrade issues the old upgrade-check.yml opened, though
+	// the majors now arrive as pull requests in their own right.
 	dependencyDashboard: true,
 	dependencyDashboardTitle: 'Dependency dashboard',
 
@@ -71,6 +75,12 @@
 	// configured to write, so the commit history stays consistent.
 	commitMessagePrefix: 'deps:',
 
+	// `dependencies` is what .github/release.yml filters on to keep dependency
+	// bumps out of the user-facing release notes. Dependabot applied it by
+	// default; Renovate applies no labels unless told, so its PRs were about to
+	// start appearing in the notes.
+	labels: ['dependencies'],
+
 	packageRules: [
 		{
 			matchManagers: ['github-actions'],
@@ -85,10 +95,10 @@
 			commitMessagePrefix: 'deps(dev):',
 		},
 
-		// What auto-merges, and what does not. This reproduces the verdict in
-		// dependabot-automerge.yml exactly: patch yes; minor yes unless the
-		// package is 0.x, where a minor is the breaking release; majors and
-		// prereleases never.
+		// What auto-merges, and what does not. Carried over unchanged from the
+		// hand-written auto-merge workflow this replaced: patch yes; minor yes
+		// unless the package is 0.x, where a minor is the breaking release;
+		// majors and prereleases never.
 		{
 			matchUpdateTypes: ['patch', 'minor'],
 			automerge: true,
