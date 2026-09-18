@@ -43,9 +43,11 @@ export function endpointIdOf(modelId: string): string | null {
  * to nothing — so the launch intent's model was silently dropped and the
  * new-chat page fell back to the default, usually a chat model.
  *
- * Still composes when the prefix is absent: `run_python` outputs and OWUI
- * imports store a bare upstream id (or none), and a row that predates the
- * columns has neither.
+ * The compose branch is therefore defence in depth, not a live case: no writer
+ * in the tree stores a bare upstream id NEXT TO an endpoint. The rows that
+ * aren't whole ids record no endpoint at all — `run_python` outputs
+ * (`code-interpreter/files.ts`) and uploads — and those resolve to null, which
+ * is what the receiver wants anyway: there is no model to regenerate on.
  */
 export function mediaSourceModelId(
 	sourceEndpointId: string | null,
