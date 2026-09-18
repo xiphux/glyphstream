@@ -100,6 +100,10 @@
 		// unless the package is 0.x, where a minor is the breaking release;
 		// majors and prereleases never.
 		{
+			// A 0.0.x patch rides along with the rest. Semver promises nothing
+			// there -- any release may break -- but CI is the gate that matters
+			// here, and it covers those packages like any other. Hold one by name
+			// if that ever stops being true.
 			matchUpdateTypes: ['patch', 'minor'],
 			automerge: true,
 		},
