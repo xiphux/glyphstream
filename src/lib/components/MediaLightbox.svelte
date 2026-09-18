@@ -17,6 +17,7 @@
 	} from '@lucide/svelte';
 	import type { MediaConversationRef, MediaKind, MediaListItem } from '$lib/types/api';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
+	import { friendlyModelName, mediaSourceModelId } from '$lib/model-ids';
 
 	interface Props {
 		/** The media being shown; null means the lightbox is closed (renders nothing). */
@@ -396,12 +397,14 @@
 	}
 
 	function sourceModelIdFor(m: MediaListItem): string | null {
-		// Compose the internal `endpointId::upstreamId` form the model
-		// picker uses. If either piece is missing (legacy uploads, or
-		// generations from before the source-model fields were captured)
-		// return null and let the new-chat page pick its own default.
-		if (!m.sourceEndpointId || !m.sourceModel) return null;
-		return `${m.sourceEndpointId}::${m.sourceModel}`;
+		// The internal `endpointId::upstreamId` form the model picker uses.
+		// `sourceModel` normally already IS that id, so this is mostly a
+		// pass-through — see `mediaSourceModelId` for why joining the two
+		// columns unconditionally (what this used to do) yielded a doubled
+		// prefix that never resolved. Null for legacy uploads and rows from
+		// before the source-model fields were captured, which lets the
+		// new-chat page pick its own default.
+		return mediaSourceModelId(m.sourceEndpointId, m.sourceModel);
 	}
 
 	function stashIntent(intent: GalleryLaunchIntent): void {
@@ -596,7 +599,17 @@
 		>
 			<div class="flex flex-col text-xs">
 				<span class="font-medium">
-					{m.sourceModel ?? 'Unknown model'}
+					<!--
+						`sourceModel` is a whole internal id (`bridge::comfyui/anima`),
+						so it reads as plumbing unless the endpoint and owner prefixes
+						come off — same label the gallery's model facet shows. The full
+						id stays reachable as the tooltip, which is the only place it's
+						still visible now that two endpoints serving the same model
+						collapse to one name here.
+					-->
+					<span title={m.sourceModel ?? undefined}>
+						{m.sourceModel ? friendlyModelName(m.sourceModel) : 'Unknown model'}
+					</span>
 					{#if showCarousel}
 						<span class="ml-1 opacity-60 tabular-nums">
 							{displayIndex + 1} / {siblings!.length}

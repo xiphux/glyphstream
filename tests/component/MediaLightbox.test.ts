@@ -28,7 +28,10 @@ function makeImage(overrides: Partial<MediaListItem> = {}): MediaListItem {
 		createdAt: Date.UTC(2026, 4, 1, 12, 0, 0),
 		promptExcerpt: 'a cat in a hat',
 		promptFull: 'a cat in a hat sitting on a bookshelf',
-		sourceModel: 'flux-dev',
+		// `sourceModel` holds the WHOLE internal id, not the upstream half —
+		// that's what the relay's `storedModelId` writes. Fixtures that said
+		// `flux-dev` here let a doubled-prefix bug ship (see mediaSourceModelId).
+		sourceModel: 'bridge::flux-dev',
 		sourceEndpointId: 'bridge',
 		conversationId: null,
 		messageId: null,
@@ -111,11 +114,14 @@ describe('MediaLightbox — media kind', () => {
 });
 
 describe('MediaLightbox — header metadata', () => {
-	it('shows the source model name', () => {
+	it('shows the source model name with its endpoint and owner prefixes stripped', () => {
 		render(MediaLightbox, {
-			props: { media: makeImage({ sourceModel: 'flux-pro' }), onClose: vi.fn() },
+			props: { media: makeImage({ sourceModel: 'bridge::comfyui/flux-pro' }), onClose: vi.fn() },
 		});
 		expect(screen.getByText('flux-pro')).toBeInTheDocument();
+		// The whole id stays reachable, since the label alone can't tell two
+		// endpoints serving the same model apart.
+		expect(screen.getByText('flux-pro')).toHaveAttribute('title', 'bridge::comfyui/flux-pro');
 	});
 
 	it('falls back to "Unknown model" when sourceModel is null', () => {
@@ -162,7 +168,7 @@ describe('MediaLightbox — close interactions', () => {
 		const user = userEvent.setup();
 		const onClose = vi.fn();
 		render(MediaLightbox, {
-			props: { media: makeImage({ sourceModel: 'flux-pro' }), onClose },
+			props: { media: makeImage({ sourceModel: 'bridge::comfyui/flux-pro' }), onClose },
 		});
 		// Click the source-model text — bubble-up should be filtered out
 		// by the e.target === e.currentTarget guard.
@@ -376,7 +382,7 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		const media = makeImage({
 			promptFull: 'big sky',
 			sourceEndpointId: 'bridge',
-			sourceModel: 'flux-dev',
+			sourceModel: 'bridge::flux-dev',
 		});
 		render(MediaLightbox, { props: { media, onClose } });
 		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
@@ -399,7 +405,7 @@ describe('MediaLightbox — prompt + launch actions', () => {
 			promptFull: null,
 			promptExcerpt: 'excerpt only',
 			sourceEndpointId: 'bridge',
-			sourceModel: 'flux-dev',
+			sourceModel: 'bridge::flux-dev',
 		});
 		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
 		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
@@ -416,7 +422,7 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		const media = makeImage({
 			id: 'm-7',
 			sourceEndpointId: 'bridge',
-			sourceModel: 'flux-dev',
+			sourceModel: 'bridge::flux-dev',
 		});
 		render(MediaLightbox, { props: { media, onClose } });
 		await user.click(screen.getByRole('button', { name: 'Use as starting image' }));
@@ -446,6 +452,20 @@ describe('MediaLightbox — prompt + launch actions', () => {
 			sourceModelId?: string | null;
 		};
 		expect(stashed.sourceModelId).toBeNull();
+	});
+
+	it('composes the model id for a legacy row storing a bare upstream id', async () => {
+		const user = userEvent.setup();
+		const media = makeImage({
+			sourceEndpointId: 'bridge',
+			sourceModel: 'comfyui/sdxl',
+		});
+		render(MediaLightbox, { props: { media, onClose: vi.fn() } });
+		await user.click(screen.getByRole('button', { name: 'Regenerate with this prompt' }));
+		const stashed = JSON.parse(window.sessionStorage.getItem('glyphstream:galleryLaunch')!) as {
+			sourceModelId?: string | null;
+		};
+		expect(stashed.sourceModelId).toBe('bridge::comfyui/sdxl');
 	});
 });
 

@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { formatModelId, parseModelId } from '$lib/server/endpoints/model-id';
+import { endpointIdOf, mediaSourceModelId } from '$lib/model-ids';
 import { isModelKind, MODEL_KINDS } from '$lib/types/api';
 
 describe('parseModelId', () => {
@@ -47,5 +48,50 @@ describe('isModelKind', () => {
 		expect(isModelKind(undefined)).toBe(false);
 		expect(isModelKind(null)).toBe(false);
 		expect(isModelKind(3)).toBe(false);
+	});
+});
+
+describe('endpointIdOf', () => {
+	it('matches parseModelId on the endpoint half, including its null cases', () => {
+		for (const id of ['groq::llama', 'bridge::weird::name', 'plain-id', '::model', 'endpoint::']) {
+			expect(endpointIdOf(id)).toBe(parseModelId(id)?.endpointId ?? null);
+		}
+	});
+});
+
+/**
+ * The shape assertions here are pinned to what the DB actually holds: every
+ * generated row writes `sourceModel` from the relay's `storedModelId`, which is
+ * the whole internal id, NOT the upstream half. The launch intent used to
+ * re-join it to `sourceEndpointId` and seed the picker with `bridge::bridge::x`,
+ * which resolves to nothing — so "Regenerate with this prompt" silently landed
+ * on the default (chat) model. The old test fixtures said `flux-dev`, a shape
+ * production never writes, which is why nothing caught it.
+ */
+describe('mediaSourceModelId', () => {
+	it('passes through a sourceModel that already carries its endpoint prefix', () => {
+		expect(mediaSourceModelId('bridge', 'bridge::comfyui/flux-2-klein')).toBe(
+			'bridge::comfyui/flux-2-klein',
+		);
+	});
+
+	it('composes when sourceModel is a bare upstream id', () => {
+		expect(mediaSourceModelId('bridge', 'comfyui/sdxl')).toBe('bridge::comfyui/sdxl');
+	});
+
+	it('composes rather than pattern-matching when the prefix is a different endpoint', () => {
+		// An upstream id containing `::` is not an endpoint prefix.
+		expect(mediaSourceModelId('bridge', 'weird::name')).toBe('bridge::weird::name');
+	});
+
+	it('keeps a prefixed id when no endpoint was recorded', () => {
+		expect(mediaSourceModelId(null, 'bridge::sdxl')).toBe('bridge::sdxl');
+	});
+
+	it('is null when nothing resolvable is recorded', () => {
+		expect(mediaSourceModelId(null, null)).toBeNull();
+		expect(mediaSourceModelId('bridge', null)).toBeNull();
+		// `run_python` outputs: generated, but by no endpoint and no model.
+		expect(mediaSourceModelId(null, 'run_python')).toBeNull();
 	});
 });

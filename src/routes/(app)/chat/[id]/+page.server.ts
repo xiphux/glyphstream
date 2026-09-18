@@ -4,7 +4,7 @@ import { requireUserPage } from '$lib/server/auth/guard';
 import { listActiveCanvases } from '$lib/server/db/queries/artifacts';
 import { getConversationDetail } from '$lib/server/db/queries/conversations';
 import { getCustomModelForUser } from '$lib/server/db/queries/custom-models';
-import { friendlyModelName } from '$lib/server/endpoints/friendly-name';
+import { friendlyModelName } from '$lib/model-ids';
 import { parseModelId } from '$lib/server/endpoints/model-id';
 import { listAllModelsWithErrors } from '$lib/server/endpoints/list-models';
 import { getFanoutRecoveryState } from '$lib/server/messages/fanout-recovery';
