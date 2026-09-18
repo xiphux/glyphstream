@@ -124,39 +124,61 @@
 			automerge: false,
 		},
 
-		// One pull request for everything routine, rather than one per package
-		// or family. The families below used to be grouped individually (svelte,
-		// vite, lint, shiki, simplewebauthn), which is right when the worry is half
-		// a family moving at once -- but it left several PRs open together, and each
-		// merge left the others behind and waiting for a rebase that only arrives
-		// with the next scheduled run. One PR has nothing to leave behind.
-		//
-		// Renovate adds newly-available updates to this PR rather than opening
-		// another, so the batch grows until it merges.
-		//
-		// The cost, stated plainly: one failing update holds the whole batch red,
-		// and finding which one means reading CI rather than glancing at a title.
-		// That is the trade for not hand-holding a queue of PRs. Majors stay
-		// separate (Renovate raises them on their own), and so do 0.x minors, which
-		// are breaking releases that must not ride along inside a batch that merges
-		// unattended.
+		// Packages that must move together, so CI never sees half a family bumped.
+		// Narrow on purpose, and NOT a catch-all: grouping every routine update
+		// into one PR would remove the contention between PRs, but it makes one
+		// failing update hold every other update in the batch -- for as long as
+		// that one takes to fix. Separate PRs keep a stuck update stuck by itself.
+		// The contention is handled by .github/workflows/renovate-nudge.yml
+		// instead, which wakes Renovate after each merge so it rebases the rest.
 		{
-			groupName: 'all non-major',
-			matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
+			groupName: 'svelte',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'svelte',
+				'svelte-check',
+				'svelte-eslint-parser',
+				'eslint-plugin-svelte',
+				'prettier-plugin-svelte',
+				'@sveltejs/**',
+				'@testing-library/svelte',
+			],
 		},
 		{
-			// A 0.x minor leaves the group: it is a breaking release, it is held for
-			// review (above), and a held member would hold the whole batch with it.
-			matchUpdateTypes: ['minor'],
-			matchCurrentVersion: '/^0\\./',
-			groupName: null,
+			groupName: 'vite',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'vite',
+				'vitest',
+				'@vitest/**',
+				'tailwindcss',
+				'@tailwindcss/**',
+				'@vite-pwa/**',
+				'workbox-**',
+			],
 		},
 		{
-			// ...unless CI can judge it, in which case it rejoins the batch.
-			matchPackageNames: ['sharp', 'esbuild', 'linkedom', '@mozilla/readability'],
-			matchUpdateTypes: ['minor'],
-			matchCurrentVersion: '/^0\\./',
-			groupName: 'all non-major',
+			groupName: 'lint',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: [
+				'eslint',
+				'@eslint/**',
+				'eslint-**',
+				'typescript-eslint',
+				'@stylistic/**',
+				'globals',
+				'prettier',
+			],
+		},
+		{
+			groupName: 'shiki',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: ['shiki', '@shikijs/**'],
+		},
+		{
+			groupName: 'simplewebauthn',
+			matchUpdateTypes: ['minor', 'patch'],
+			matchPackageNames: ['@simplewebauthn/**'],
 		},
 
 		{
