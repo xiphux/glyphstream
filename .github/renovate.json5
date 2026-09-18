@@ -54,10 +54,21 @@
 	// Merge commits, as the auto-merge workflow made them, so history reads the
 	// same across the trial boundary.
 	automergeStrategy: 'merge',
-	// Hand the merge to GitHub's own auto-merge where the repository allows it:
-	// it merges the moment checks pass rather than waiting for Renovate's next
-	// run. Renovate falls back to merging itself if the setting is off.
-	platformAutomerge: true,
+	// Renovate merges during its own run, rather than handing the merge to
+	// GitHub's auto-merge. GitHub's is faster per PR -- it merges the instant
+	// checks pass -- but it ends Renovate's involvement, and the merge is then
+	// attributed to renovate[bot]. Mend does not appear to enqueue a job for
+	// events its own app caused: #58 and #56 were merged by GitHub auto-merge
+	// and no job followed either, while a human push and a Dashboard checkbox
+	// each produced one within two minutes. Nothing then rebases the PRs that
+	// merge left behind until the next scheduled run -- every 4 hours on this
+	// plan -- so a batch drains at about one PR per four hours, each merge
+	// re-staling the rest.
+	//
+	// Merging inside the job keeps the work in one place, where Renovate can go
+	// on to rebase the branches it just invalidated. Under test: how many PRs
+	// land per run.
+	platformAutomerge: false,
 
 	// `deps:`/`deps(dev):` for npm and `ci:` for actions, as Dependabot was
 	// configured to write, so the commit history stays consistent.
