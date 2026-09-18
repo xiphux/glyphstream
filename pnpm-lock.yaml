@@ -73,7 +73,7 @@ importers:
         version: 10.0.1(eslint@10.10.0(jiti@2.7.0))
       '@lucide/svelte':
         specifier: ^1.43.0
-        version: 1.43.0(svelte@5.57.0(@typescript-eslint/types@8.66.0))
+        version: 1.44.0(svelte@5.57.0(@typescript-eslint/types@8.66.0))
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
@@ -1321,8 +1321,8 @@ packages:
   '@levischuck/tiny-cbor@0.2.11':
     resolution: {integrity: sha512-llBRm4dT4Z89aRsm6u2oEZ8tfwL/2l6BwpZ7JcyieouniDECM5AqNgr/y08zalEIvW3RSK4upYyybDcmjXqAow==}
 
-  '@lucide/svelte@1.43.0':
-    resolution: {integrity: sha512-IfxS4hVxojnafzFKkQGzndoM6yUODmGc07I0h6R/1SlwDoZwd/5gl90zHz+fTaBVLZo7uE5sPDySFGiK4iMQKw==}
+  '@lucide/svelte@1.44.0':
+    resolution: {integrity: sha512-67510ne/YowceSyN9BECQaWfp5Ed446X6xpUE5C0e4rRV0e1jRj1KzIlKJCXcGc21hgr/VBDkqQXY7v4VQDeBw==}
     peerDependencies:
       svelte: ^5
 
@@ -5987,7 +5987,7 @@ snapshots:
 
   '@levischuck/tiny-cbor@0.2.11': {}
 
-  '@lucide/svelte@1.43.0(svelte@5.57.0(@typescript-eslint/types@8.66.0))':
+  '@lucide/svelte@1.44.0(svelte@5.57.0(@typescript-eslint/types@8.66.0))':
     dependencies:
       svelte: 5.57.0(@typescript-eslint/types@8.66.0)
 
