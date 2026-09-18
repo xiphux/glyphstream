@@ -130,6 +130,31 @@ describe('MediaLightbox — header metadata', () => {
 		});
 		expect(screen.getByText('Unknown model')).toBeInTheDocument();
 	});
+
+	// The endpoint is what the header's friendly label drops, and `title` is
+	// pointer-only, so the metadata line is where it has to be readable on
+	// touch. Asserted as text rather than via the tooltip for that reason.
+	it('names the source endpoint in the metadata line', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ sourceEndpointId: 'bridge-dev', sourceModel: 'bridge-dev::anima' }),
+				onClose: vi.fn(),
+			},
+		});
+		expect(screen.getByText(/^bridge-dev ·/)).toBeInTheDocument();
+	});
+
+	it('omits the endpoint from the metadata line when none is recorded', () => {
+		render(MediaLightbox, {
+			props: {
+				// An upload: no endpoint, no model, nothing to regenerate on.
+				media: makeImage({ sourceEndpointId: null, sourceModel: null }),
+				onClose: vi.fn(),
+			},
+		});
+		expect(screen.queryByText(/^bridge/)).toBeNull();
+		expect(screen.getByText(/100\.0 KB · image\/png$/)).toBeInTheDocument();
+	});
 });
 
 describe('MediaLightbox — close interactions', () => {
@@ -454,7 +479,7 @@ describe('MediaLightbox — prompt + launch actions', () => {
 		expect(stashed.sourceModelId).toBeNull();
 	});
 
-	it('composes the model id for a legacy row storing a bare upstream id', async () => {
+	it('composes the model id when a row stores a bare upstream id beside an endpoint', async () => {
 		const user = userEvent.setup();
 		const media = makeImage({
 			sourceEndpointId: 'bridge',

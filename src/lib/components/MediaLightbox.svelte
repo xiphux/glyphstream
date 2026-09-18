@@ -17,7 +17,7 @@
 	} from '@lucide/svelte';
 	import type { MediaConversationRef, MediaKind, MediaListItem } from '$lib/types/api';
 	import { GALLERY_LAUNCH_KEY, type GalleryLaunchIntent } from '$lib/gallery-launch';
-	import { friendlyModelName, mediaSourceModelId } from '$lib/model-ids';
+	import { endpointIdOf, friendlyModelName, mediaSourceModelId } from '$lib/model-ids';
 
 	interface Props {
 		/** The media being shown; null means the lightbox is closed (renders nothing). */
@@ -407,6 +407,21 @@
 		return mediaSourceModelId(m.sourceEndpointId, m.sourceModel);
 	}
 
+	/**
+	 * The endpoint half of the id the regenerate buttons would launch with.
+	 *
+	 * Rendered in the metadata line because the header's friendly label drops
+	 * the prefix, and two endpoints serving the same model then collapse to one
+	 * name. Derived from `sourceModelIdFor` rather than read off
+	 * `sourceEndpointId` so the endpoint shown is always the one belonging to
+	 * the id the buttons actually use. Null when no endpoint is recorded —
+	 * uploads and `run_python` outputs, which have nothing to regenerate on.
+	 */
+	function sourceEndpointLabel(m: MediaListItem): string | null {
+		const id = sourceModelIdFor(m);
+		return id ? endpointIdOf(id) : null;
+	}
+
 	function stashIntent(intent: GalleryLaunchIntent): void {
 		try {
 			window.sessionStorage.setItem(GALLERY_LAUNCH_KEY, JSON.stringify(intent));
@@ -578,6 +593,7 @@
 	{@const m = media}
 	{@const hasPrompt = (m.promptFull ?? m.promptExcerpt) !== null}
 	{@const canUseAsStarting = m.kind === 'image'}
+	{@const endpointLabel = sourceEndpointLabel(m)}
 	<!-- Images only: a video has no still to stand in for a preset, and the
 	     avatar surfaces render an <img>. -->
 	{@const canSetAvatar = m.kind === 'image' && !!onSetAvatar && avatarTargets.length > 0}
@@ -602,10 +618,12 @@
 					<!--
 						`sourceModel` is a whole internal id (`bridge::comfyui/anima`),
 						so it reads as plumbing unless the endpoint and owner prefixes
-						come off — same label the gallery's model facet shows. The full
-						id stays reachable as the tooltip, which is the only place it's
-						still visible now that two endpoints serving the same model
-						collapse to one name here.
+						come off — same label the gallery's model facet shows. Dropping
+						the prefix collapses two endpoints serving one model to the same
+						name, so the endpoint goes in the metadata line below, where it
+						is readable everywhere. The `title` carries the whole id for a
+						pointer, and only for a pointer — there is no tooltip on touch,
+						which is most of this app's use.
 					-->
 					<span title={m.sourceModel ?? undefined}>
 						{m.sourceModel ? friendlyModelName(m.sourceModel) : 'Unknown model'}
@@ -617,7 +635,9 @@
 					{/if}
 				</span>
 				<span class="opacity-70">
-					{fmtDate(m.createdAt)} · {fmtBytes(m.byteSize)} · {m.contentType}
+					{#if endpointLabel}{endpointLabel} ·
+					{/if}{fmtDate(m.createdAt)} ·
+					{fmtBytes(m.byteSize)} · {m.contentType}
 				</span>
 			</div>
 			<div class="flex gap-1.5">
