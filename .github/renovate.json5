@@ -27,14 +27,13 @@
 	// release, since Renovate and `pnpm outdated` both skip aliases.
 	$schema: 'https://docs.renovatebot.com/renovate-schema.json',
 
-	extends: [
-		'config:recommended',
-		// Every update rebased when it falls behind main, not only when it
-		// conflicts. This is the whole point of the trial; `config:recommended`
-		// would infer it from automerge anyway, but it is the setting under test,
-		// so it is written down rather than inferred.
-		':rebaseStalePrs',
-	],
+	extends: ['config:recommended'],
+
+	// Rebase whenever a branch falls behind main, not only when it conflicts.
+	// This is the setting the switch from Dependabot was made for, so it is
+	// spelled out rather than pulled in as the `:rebaseStalePrs` preset, which
+	// expands to exactly this and hides it in a list.
+	rebaseWhen: 'behind-base-branch',
 
 	// Matches the Dependabot cooldown this repo already ran: a week, not a day.
 	// pnpm 11 refuses packages younger than 24h and checks the LOCKFILE against
