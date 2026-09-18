@@ -119,8 +119,8 @@ describe('MediaLightbox — header metadata', () => {
 			props: { media: makeImage({ sourceModel: 'bridge::comfyui/flux-pro' }), onClose: vi.fn() },
 		});
 		expect(screen.getByText('flux-pro')).toBeInTheDocument();
-		// The whole id stays reachable, since the label alone can't tell two
-		// endpoints serving the same model apart.
+		// The whole id stays reachable to a pointer. Touch gets no tooltip, which
+		// is why the endpoint also appears in the metadata line (asserted below).
 		expect(screen.getByText('flux-pro')).toHaveAttribute('title', 'bridge::comfyui/flux-pro');
 	});
 
@@ -141,7 +141,10 @@ describe('MediaLightbox — header metadata', () => {
 				onClose: vi.fn(),
 			},
 		});
-		expect(screen.getByText(/^bridge-dev ·/)).toBeInTheDocument();
+		// Anchored PAST the separator: `/^bridge-dev ·/` matched the broken
+		// `bridge-dev ·5/1/2026` rendering too, which is how a swallowed space
+		// shipped. The date is locale-dependent, hence `.+` in the middle.
+		expect(screen.getByText(/^bridge-dev · .+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
 	});
 
 	it('omits the endpoint from the metadata line when none is recorded', () => {
@@ -153,7 +156,8 @@ describe('MediaLightbox — header metadata', () => {
 			},
 		});
 		expect(screen.queryByText(/^bridge/)).toBeNull();
-		expect(screen.getByText(/100\.0 KB · image\/png$/)).toBeInTheDocument();
+		// No endpoint => no leading segment and no stray separator.
+		expect(screen.getByText(/^.+ · 100\.0 KB · image\/png$/)).toBeInTheDocument();
 	});
 });
 

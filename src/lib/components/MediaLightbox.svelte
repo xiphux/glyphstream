@@ -422,6 +422,24 @@
 		return id ? endpointIdOf(id) : null;
 	}
 
+	/**
+	 * The secondary line under the model name: endpoint (when there is one),
+	 * date, size, content type.
+	 *
+	 * Assembled here rather than interpolated with an `{#if}` in the markup.
+	 * Svelte trims trailing whitespace at the END of an if-fragment, so the
+	 * obvious `{#if e}{e} · {/if}{fmtDate(…)}` silently renders
+	 * `bridge-dev ·5/1/2026` — the separator keeps its `·` and loses its space,
+	 * and moving the space inside the block doesn't help because that is the
+	 * whitespace being trimmed. A join can't get that wrong.
+	 */
+	function metaLine(m: MediaListItem): string {
+		const endpoint = sourceEndpointLabel(m);
+		const parts = endpoint ? [endpoint] : [];
+		parts.push(fmtDate(m.createdAt), fmtBytes(m.byteSize), m.contentType);
+		return parts.join(' · ');
+	}
+
 	function stashIntent(intent: GalleryLaunchIntent): void {
 		try {
 			window.sessionStorage.setItem(GALLERY_LAUNCH_KEY, JSON.stringify(intent));
@@ -593,7 +611,6 @@
 	{@const m = media}
 	{@const hasPrompt = (m.promptFull ?? m.promptExcerpt) !== null}
 	{@const canUseAsStarting = m.kind === 'image'}
-	{@const endpointLabel = sourceEndpointLabel(m)}
 	<!-- Images only: a video has no still to stand in for a preset, and the
 	     avatar surfaces render an <img>. -->
 	{@const canSetAvatar = m.kind === 'image' && !!onSetAvatar && avatarTargets.length > 0}
@@ -634,11 +651,7 @@
 						</span>
 					{/if}
 				</span>
-				<span class="opacity-70">
-					{#if endpointLabel}{endpointLabel} ·
-					{/if}{fmtDate(m.createdAt)} ·
-					{fmtBytes(m.byteSize)} · {m.contentType}
-				</span>
+				<span class="opacity-70">{metaLine(m)}</span>
 			</div>
 			<div class="flex gap-1.5">
 				<button
