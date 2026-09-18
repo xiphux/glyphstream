@@ -54,21 +54,18 @@
 	// Merge commits, as the auto-merge workflow made them, so history reads the
 	// same across the trial boundary.
 	automergeStrategy: 'merge',
-	// Renovate merges during its own run, rather than handing the merge to
-	// GitHub's auto-merge. GitHub's is faster per PR -- it merges the instant
-	// checks pass -- but it ends Renovate's involvement, and the merge is then
-	// attributed to renovate[bot]. Mend does not appear to enqueue a job for
-	// events its own app caused: #58 and #56 were merged by GitHub auto-merge
-	// and no job followed either, while a human push and a Dashboard checkbox
-	// each produced one within two minutes. Nothing then rebases the PRs that
-	// merge left behind until the next scheduled run -- every 4 hours on this
-	// plan -- so a batch drains at about one PR per four hours, each merge
-	// re-staling the rest.
+	// GitHub's own auto-merge, which lands a PR the instant its checks pass.
+	// Turning it off was tested and changed nothing useful: the blocker was
+	// never who merges, it was that nothing wakes Renovate afterwards. A job
+	// can rebase a branch OR merge one, not both -- the CI it triggers outlives
+	// the job -- and a merge it performs itself does not enqueue another job
+	// (#58, #56 and #57 all merged without one following). Waiting for
+	// Renovate to merge therefore cost immediacy and bought nothing.
 	//
-	// Merging inside the job keeps the work in one place, where Renovate can go
-	// on to rebase the branches it just invalidated. Under test: how many PRs
-	// land per run.
-	platformAutomerge: false,
+	// What actually removes the problem is the grouping below: one PR at a time
+	// means no second PR left behind by a merge, so the 4-hour scheduled
+	// cadence stops mattering.
+	platformAutomerge: true,
 
 	// `deps:`/`deps(dev):` for npm and `ci:` for actions, as Dependabot was
 	// configured to write, so the commit history stays consistent.
@@ -127,57 +124,39 @@
 			automerge: false,
 		},
 
-		// Packages that must move together, so CI never sees half a family bumped.
-		// These mirror the Dependabot groups, minor and patch only: a major goes
-		// on its own, to be reviewed on its own.
+		// One pull request for everything routine, rather than one per package
+		// or family. The families below used to be grouped individually (svelte,
+		// vite, lint, shiki, simplewebauthn), which is right when the worry is half
+		// a family moving at once -- but it left several PRs open together, and each
+		// merge left the others behind and waiting for a rebase that only arrives
+		// with the next scheduled run. One PR has nothing to leave behind.
+		//
+		// Renovate adds newly-available updates to this PR rather than opening
+		// another, so the batch grows until it merges.
+		//
+		// The cost, stated plainly: one failing update holds the whole batch red,
+		// and finding which one means reading CI rather than glancing at a title.
+		// That is the trade for not hand-holding a queue of PRs. Majors stay
+		// separate (Renovate raises them on their own), and so do 0.x minors, which
+		// are breaking releases that must not ride along inside a batch that merges
+		// unattended.
 		{
-			groupName: 'svelte',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: [
-				'svelte',
-				'svelte-check',
-				'svelte-eslint-parser',
-				'eslint-plugin-svelte',
-				'prettier-plugin-svelte',
-				'@sveltejs/**',
-				'@testing-library/svelte',
-			],
+			groupName: 'all non-major',
+			matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
 		},
 		{
-			groupName: 'vite',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: [
-				'vite',
-				'vitest',
-				'@vitest/**',
-				'tailwindcss',
-				'@tailwindcss/**',
-				'@vite-pwa/**',
-				'workbox-**',
-			],
+			// A 0.x minor leaves the group: it is a breaking release, it is held for
+			// review (above), and a held member would hold the whole batch with it.
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			groupName: null,
 		},
 		{
-			groupName: 'lint',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: [
-				'eslint',
-				'@eslint/**',
-				'eslint-**',
-				'typescript-eslint',
-				'@stylistic/**',
-				'globals',
-				'prettier',
-			],
-		},
-		{
-			groupName: 'shiki',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: ['shiki', '@shikijs/**'],
-		},
-		{
-			groupName: 'simplewebauthn',
-			matchUpdateTypes: ['minor', 'patch'],
-			matchPackageNames: ['@simplewebauthn/**'],
+			// ...unless CI can judge it, in which case it rejoins the batch.
+			matchPackageNames: ['sharp', 'esbuild', 'linkedom', '@mozilla/readability'],
+			matchUpdateTypes: ['minor'],
+			matchCurrentVersion: '/^0\\./',
+			groupName: 'all non-major',
 		},
 
 		{
