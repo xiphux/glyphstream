@@ -935,8 +935,9 @@ export class FanoutController {
 	/** Discard (delete) one media variation — prune a dud. Removes the column and
 	 *  deletes its branch server-side; the leaf stays parked at the shared user
 	 *  message, so the grid keeps showing the survivors. Resolves true once the
-	 *  column is gone, and false when it was refused or failed (the error is
-	 *  already surfaced), so the lightbox knows whether to move on. */
+	 *  column is gone, and false otherwise, so the lightbox knows whether to move
+	 *  on. A failed delete has already surfaced its error through `setError`; a
+	 *  refusal (another grid action in flight) surfaces nothing. */
 	async discard(col: FanoutColumn): Promise<boolean> {
 		if (this.picking) return false;
 		this.picking = true;
