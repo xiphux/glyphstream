@@ -20,15 +20,28 @@ overrides:
   qs: '>=6.16.0'
   cookie: '>=0.7.0'
 
-# Packages allowed to run install scripts. Replaces the old
-# `onlyBuiltDependencies` list, which pnpm 11 removes.
-#   esbuild — fetches a prebuilt Go binary (no compile).
-#   sharp   — fetches prebuilt libvips binaries.
-# CI and Docker still install with --ignore-scripts and `pnpm rebuild`
-# esbuild explicitly; this covers local installs.
+# Install-script decisions. Replaces the old `onlyBuiltDependencies` list,
+# which pnpm 11 removed; pnpm 12 additionally turns an undecided script from a
+# warning into a hard ERR_PNPM_IGNORED_BUILDS, so every package carrying a hook
+# needs an entry — and `false` satisfies that exactly as `true` does.
+#
+# sharp is dropped from this list rather than set to `false`: it gave up its
+# install script at 0.33 in favour of prebuilt @img/sharp-* packages, and
+# 0.35.4 is what resolves here. The entry was a permission for a script that no
+# longer exists, which silently pre-approves whatever a future version adds.
+#
+# CI and the Docker build install with --ignore-scripts and then run
+# `pnpm rebuild esbuild` explicitly (ci.yml), so this file governs local
+# installs only. That rebuild is likely redundant for the same reason the entry
+# below is, but it is cheap and deliberate, so it stays until someone measures
+# it.
 allowBuilds:
-  esbuild: true
-  sharp: true
+  # `node install.js`, which validates the binary and can download one. Both
+  # versions in the tree (0.25.12 and 0.28.2) carry the binary in
+  # @esbuild/linux-x64 and @esbuild/darwin-arm64, all four of which are pinned
+  # in pnpm-lock.yaml — so the hook has nothing to fetch. Verified by blocking
+  # the script and running `esbuild --version`.
+  esbuild: false
 
 # Refuse to install a dependency whose own `engines` excludes the running
 # Node. Used to be `engine-strict=true` in .npmrc; pnpm 11 restricts .npmrc to
