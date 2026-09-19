@@ -81,7 +81,7 @@
 		expandCompareSelections,
 		expandFanoutBranches,
 		gridMediaIds,
-		nextAfterRemoval,
+		survivorInSlot,
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
@@ -1492,9 +1492,10 @@
 	 * The new image's metadata is fetched BEFORE the carousel set shrinks, and
 	 * both are swapped in together. The lightbox treats a `media` missing from
 	 * `siblings` as a single item, so shrinking first would drop the carousel for
-	 * the length of that fetch and bring it back unpositioned. Keyed slides mean
-	 * the track's scroll offset already lands on the item that took the removed
-	 * one's place.
+	 * the length of that fetch and bring it back unpositioned. The track's scroll
+	 * offset doesn't move when slides leave, so the image to show is whichever
+	 * survivor now fills the current slot (see survivorInSlot). For a single-image
+	 * branch that's the next image.
 	 */
 	async function discardFromLightbox(mediaId: string) {
 		const col = columnShowingMedia(fanout.columns, mediaId);
@@ -1511,7 +1512,7 @@
 				if (errorMsg) toast.error(`Couldn't delete: ${errorMsg}`);
 				return;
 			}
-			const next = nextAfterRemoval(conversationMedia, mediaId, removed);
+			const next = survivorInSlot(conversationMedia, mediaId, removed);
 			const survivors = conversationMedia.filter((m) => !removed.has(m.id));
 			let nextItem: MediaListItem | null = null;
 			if (next) {

@@ -11,8 +11,8 @@ import {
 	canDiscardColumn,
 	columnMediaIds,
 	columnShowingMedia,
-	nextAfterRemoval,
 	nextDispatchIndex,
+	survivorInSlot,
 	rerollInsertIndex,
 	collapseToCompareSelections,
 	expandCompareSelections,
@@ -313,21 +313,30 @@ describe('lightbox discard helpers', () => {
 		expect(canDiscardColumn([a], a)).toBe(false);
 	});
 
-	it('advances to the next survivor, skipping the rest of a deleted batch', () => {
+	it('lands on the next item when the current one goes', () => {
 		const set = ['m1', 'm2', 'm3', 'm4'].map(ref);
-		expect(nextAfterRemoval(set, 'm2', ids('m2'))?.id).toBe('m3');
-		expect(nextAfterRemoval(set, 'm2', ids('m2', 'm3'))?.id).toBe('m4');
+		expect(survivorInSlot(set, 'm2', ids('m2'))?.id).toBe('m3');
+		// A batch deleted from its first image: the rest of it goes too.
+		expect(survivorInSlot(set, 'm2', ids('m2', 'm3'))?.id).toBe('m4');
 	});
 
-	it('falls back to the previous item at the end, and to null when nothing is left', () => {
+	// The regression: deleting a batch while viewing a LATER image of it. The
+	// track stays at slot 2, which m5 now fills. Returning m4 (the first survivor
+	// after m3) showed m5 under m4's caption, and Delete then removed m4's branch.
+	it('lands on what fills the slot when the batch also lost items before it', () => {
+		const set = ['m1', 'm2', 'm3', 'm4', 'm5'].map(ref);
+		expect(survivorInSlot(set, 'm3', ids('m2', 'm3'))?.id).toBe('m5');
+	});
+
+	it('falls back to the new last item at the end, and to null when nothing is left', () => {
 		const set = ['m1', 'm2', 'm3'].map(ref);
-		expect(nextAfterRemoval(set, 'm3', ids('m3'))?.id).toBe('m2');
-		expect(nextAfterRemoval(set, 'm3', ids('m2', 'm3'))?.id).toBe('m1');
-		expect(nextAfterRemoval([ref('m1')], 'm1', ids('m1'))).toBeNull();
+		expect(survivorInSlot(set, 'm3', ids('m3'))?.id).toBe('m2');
+		expect(survivorInSlot(set, 'm3', ids('m2', 'm3'))?.id).toBe('m1');
+		expect(survivorInSlot([ref('m1')], 'm1', ids('m1'))).toBeNull();
 	});
 
-	it('has no next for an item the set doesn’t carry', () => {
-		expect(nextAfterRemoval(['m1', 'm2'].map(ref), 'late', ids('late'))).toBeNull();
+	it('has no slot for an item the set doesn’t carry', () => {
+		expect(survivorInSlot(['m1', 'm2'].map(ref), 'late', ids('late'))).toBeNull();
 	});
 });
 

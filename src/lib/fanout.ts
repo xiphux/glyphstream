@@ -323,25 +323,30 @@ export function columnMediaIds(c: FanoutColumn): string[] {
 }
 
 /**
- * Where a carousel goes once `removed` leaves it while `currentId` is shown:
- * the first survivor after the current item, else the nearest survivor before
- * it, else null (nothing left to show, or `currentId` isn't in `items`). The
- * next item is preferred because
- * pruning a set goes forward. The user deletes a dud and the next one is
- * ready to judge.
+ * The item a carousel lands on once `removed` leaves it while `currentId` is
+ * shown: whichever survivor now occupies the current slot. That's the next item
+ * when only the current one goes, or the new last item when the current one was
+ * last. Null when nothing is left, or when `currentId` isn't in `items`.
+ *
+ * It is "whatever is in the slot", not "the first survivor after the current
+ * item", because the slot is what the carousel will SHOW. Its scroll offset
+ * stays put when slides leave, and it doesn't re-position on its own. If a batch
+ * branch loses items BEFORE the current one too, the item after the current one
+ * slides further left than one slot. Picking it anyway would leave the caption
+ * and Delete describing a different image from the one on screen.
  */
-export function nextAfterRemoval<T extends { id: string }>(
+export function survivorInSlot<T extends { id: string }>(
 	items: readonly T[],
 	currentId: string,
 	removed: ReadonlySet<string>,
 ): T | null {
 	const at = items.findIndex((i) => i.id === currentId);
-	// Not in the set (it landed after the set was fetched): there's no "next" to
-	// speak of, and jumping to the start of the conversation would be arbitrary.
+	// Not in the set (it landed after the set was fetched): the carousel is in
+	// single-item mode, so there is no slot to land in.
 	if (at === -1) return null;
-	for (let i = at + 1; i < items.length; i++) if (!removed.has(items[i].id)) return items[i];
-	for (let i = at - 1; i >= 0; i--) if (!removed.has(items[i].id)) return items[i];
-	return null;
+	const survivors = items.filter((i) => !removed.has(i.id));
+	if (survivors.length === 0) return null;
+	return survivors[Math.min(at, survivors.length - 1)];
 }
 
 /**
