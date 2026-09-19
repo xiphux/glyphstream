@@ -8,6 +8,10 @@ import { describe, expect, it } from 'vitest';
 import {
 	allColumnsSettled,
 	applyDisplayOrder,
+	canDiscardColumn,
+	columnMediaIds,
+	columnShowingMedia,
+	nextAfterRemoval,
 	nextDispatchIndex,
 	rerollInsertIndex,
 	collapseToCompareSelections,
@@ -264,6 +268,66 @@ describe('gridMediaIds + applyDisplayOrder', () => {
 		expect(out).not.toBe(carousel);
 		expect(out.map((x) => x.id)).toEqual(['m2', 'm1']);
 		expect(carousel.map((x) => x.id)).toEqual(['m2', 'm1']);
+	});
+});
+
+describe('lightbox discard helpers', () => {
+	const shot = (branchId: string, ...mediaIds: string[]): FanoutColumn => ({
+		branchId,
+		dispatchIndex: 0,
+		modelId: 'bridge::a',
+		modelKind: 'image',
+		label: 'A',
+		segments: [],
+		status: 'done',
+		queuedAhead: 0,
+		dispatching: false,
+		progress: null,
+		statusLabel: null,
+		startedAt: null,
+		inputMediaId: null,
+		persisted: {
+			id: `msg-${branchId}`,
+			role: 'assistant',
+			parts: mediaIds.map((mediaId) => ({ type: 'image' as const, mediaId })),
+			createdAt: 0,
+		} as FanoutColumn['persisted'],
+		error: null,
+		errorMessageId: null,
+	});
+	const ref = (id: string) => ({ id, kind: 'image' as const });
+	const ids = (...xs: string[]) => new Set(xs);
+
+	it('finds the column showing a media id, batches included', () => {
+		const cols = [shot('b0', 'm1'), shot('b1', 'm2', 'm3')];
+		expect(columnShowingMedia(cols, 'm3')?.branchId).toBe('b1');
+		expect(columnShowingMedia(cols, 'elsewhere')).toBeUndefined();
+		expect(columnMediaIds(cols[1])).toEqual(['m2', 'm3']);
+	});
+
+	it('applies the grid’s discard rule: settled, and never the last column', () => {
+		const a = shot('b0', 'm1');
+		const b = { ...shot('b1'), status: 'streaming' as const, persisted: null };
+		expect(canDiscardColumn([a, b], a)).toBe(true);
+		expect(canDiscardColumn([a, b], b)).toBe(false);
+		expect(canDiscardColumn([a], a)).toBe(false);
+	});
+
+	it('advances to the next survivor, skipping the rest of a deleted batch', () => {
+		const set = ['m1', 'm2', 'm3', 'm4'].map(ref);
+		expect(nextAfterRemoval(set, 'm2', ids('m2'))?.id).toBe('m3');
+		expect(nextAfterRemoval(set, 'm2', ids('m2', 'm3'))?.id).toBe('m4');
+	});
+
+	it('falls back to the previous item at the end, and to null when nothing is left', () => {
+		const set = ['m1', 'm2', 'm3'].map(ref);
+		expect(nextAfterRemoval(set, 'm3', ids('m3'))?.id).toBe('m2');
+		expect(nextAfterRemoval(set, 'm3', ids('m2', 'm3'))?.id).toBe('m1');
+		expect(nextAfterRemoval([ref('m1')], 'm1', ids('m1'))).toBeNull();
+	});
+
+	it('has no next for an item the set doesn’t carry', () => {
+		expect(nextAfterRemoval(['m1', 'm2'].map(ref), 'late', ids('late'))).toBeNull();
 	});
 });
 

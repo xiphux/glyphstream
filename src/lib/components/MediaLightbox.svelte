@@ -25,10 +25,12 @@
 		/** Called when the user closes via Escape, the X button, or backdrop click. */
 		onClose: () => void;
 		/**
-		 * Optional Delete action. Gallery wires this up; in-conversation
-		 * tap doesn't (the conversation surface has its own message-level
-		 * controls, and exposing destructive media deletion from inside a
-		 * chat is the wrong context).
+		 * Optional Delete action. The gallery always wires it up. A conversation
+		 * wires it only while the shown image belongs to an open media fan-out
+		 * grid, where it discards that branch like the grid's trash button.
+		 * Otherwise the chat has its own message-level controls, and deleting
+		 * media from inside a chat is the wrong context. The caller decides what
+		 * happens next: the gallery closes, a fan-out advances to the next image.
 		 */
 		onDelete?: (id: string) => void | Promise<void>;
 		/** Media id currently being deleted, used to disable the delete button. */

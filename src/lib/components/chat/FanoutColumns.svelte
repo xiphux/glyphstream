@@ -26,6 +26,8 @@
 		type ToolResultEntry,
 	} from '$lib/chat-render';
 	import {
+		canDiscardColumn,
+		isColumnSettled,
 		isMediaKind,
 		MAX_FANOUT_BRANCHES_PER_CONVERSATION,
 		type FanoutColumn,
@@ -84,9 +86,6 @@
 	function canPick(c: FanoutColumn): boolean {
 		return c.status === 'done' && c.persisted !== null;
 	}
-	function isSettled(c: FanoutColumn): boolean {
-		return c.status === 'done' || c.status === 'error' || c.status === 'cancelled';
-	}
 
 	// Media (image/video) fan-out is keep-many: a media grid instead of the chat
 	// strip. Driven by the columns' modality (single-modality per fan-out), not by
@@ -127,17 +126,9 @@
 	const bodyClass = $derived(
 		isMedia ? 'px-3 py-2 text-sm' : 'min-h-[3rem] flex-1 overflow-y-auto px-3 py-2 text-sm',
 	);
-	// A settled column is discardable as long as at least one OTHER column would
-	// remain — discard prunes the grid, it never empties it (use "Done" / dismiss
-	// to leave). Gating on the TOTAL column count (not just persisted results) is
-	// what lets you drop a finished video while a sibling is still generating: the
-	// leaf is pinned at the fan-out's anchor, so the server deletes the lone
-	// finished sibling and the in-flight branch repopulates the grid. This grid is
-	// always a parked fan-out, so deleteBranch never strands the leaf (it only
-	// refuses when the leaf sits inside the deleted subtree, which can't happen
-	// while it's pinned on the parent).
+	// See canDiscardColumn: the lightbox's Delete applies the same rule.
 	function canDiscard(c: FanoutColumn): boolean {
-		return isSettled(c) && columns.length > 1;
+		return canDiscardColumn(columns, c);
 	}
 	// Re-roll is additive (a new sibling per click), so it's gated by the same
 	// per-conversation ceiling the server enforces — but on the ACTIVE branch
@@ -251,7 +242,7 @@
 							<button
 								type="button"
 								onclick={() => onRegenerate(c)}
-								disabled={busy || !isSettled(c) || atActiveCapacity}
+								disabled={busy || !isColumnSettled(c) || atActiveCapacity}
 								title={atActiveCapacity
 									? 'Too many generating at once — wait for some to finish'
 									: 'Generate another variation with this model'}

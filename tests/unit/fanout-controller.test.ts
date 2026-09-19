@@ -384,7 +384,7 @@ describe('FanoutController — actions', () => {
 			pendingStartedAt: [],
 			pendingSourceMediaIds: [],
 		});
-		await fc.discard(fc.columns[0]);
+		expect(await fc.discard(fc.columns[0])).toBe(true);
 		expect(fetchMock).toHaveBeenCalledWith(
 			'/api/conversations/c1/messages/a/branch',
 			expect.objectContaining({ method: 'DELETE' }),
@@ -394,6 +394,31 @@ describe('FanoutController — actions', () => {
 		await fc.discard(fc.columns[0]);
 		expect(fc.columns).toHaveLength(0);
 		expect(fc.userMessageId).toBeNull();
+		vi.unstubAllGlobals();
+	});
+
+	it('discard resolves false and keeps the column when the delete fails', async () => {
+		// The lightbox advances only on true, so a failed delete must not read as
+		// success or the carousel would drop an image that still exists.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response('nope', { status: 500 })),
+		);
+		const { deps, state } = makeDeps();
+		const fc = new FanoutController(deps);
+		fc.syncFromServer({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		expect(await fc.discard(fc.columns[0])).toBe(false);
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['a', 'b']);
+		expect(state.error).toBeTruthy();
 		vi.unstubAllGlobals();
 	});
 

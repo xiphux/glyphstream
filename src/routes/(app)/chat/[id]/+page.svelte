@@ -75,9 +75,13 @@
 	import FanoutColumns from '$lib/components/chat/FanoutColumns.svelte';
 	import {
 		applyDisplayOrder,
+		canDiscardColumn,
+		columnMediaIds,
+		columnShowingMedia,
 		expandCompareSelections,
 		expandFanoutBranches,
 		gridMediaIds,
+		nextAfterRemoval,
 		type CompareSelection,
 		type FanoutColumn,
 		type FanoutModel,
@@ -1465,6 +1469,69 @@
 		scrollToBottom: () => scrollToBottom(),
 	});
 
+	// The lightbox's Delete, offered only for an image the open media fan-out
+	// grid is showing, and only where that grid's own trash button would allow
+	// the discard. It IS that discard: the whole branch goes, the same as
+	// tapping the trash icon on the cell. Any other media in the carousel (older
+	// turns, other branches) still gets no Delete here. Destructive media
+	// deletion outside a fan-out belongs to the gallery.
+	const lightboxColumn = $derived(
+		lightbox && fanout.isMedia ? columnShowingMedia(fanout.columns, lightbox.id) : undefined,
+	);
+	const lightboxDiscardable = $derived(
+		!!lightboxColumn && canDiscardColumn(fanout.columns, lightboxColumn),
+	);
+	let lightboxDeletingId = $state<string | null>(null);
+
+	/**
+	 * Discard the branch behind the lightbox's current image, then move to the
+	 * next image. The gallery closes on delete; here the point is to prune a
+	 * grid by swiping through it, so closing would send the user back to the
+	 * grid after every dud.
+	 *
+	 * The new image's metadata is fetched BEFORE the carousel set shrinks, and
+	 * both are swapped in together. The lightbox treats a `media` missing from
+	 * `siblings` as a single item, so shrinking first would drop the carousel for
+	 * the length of that fetch and bring it back unpositioned. Keyed slides mean
+	 * the track's scroll offset already lands on the item that took the removed
+	 * one's place.
+	 */
+	async function discardFromLightbox(mediaId: string) {
+		const col = columnShowingMedia(fanout.columns, mediaId);
+		// A refused discard (grid busy) must not reach the toast below, which
+		// would repeat whatever stale error the banner last held.
+		if (!col || lightboxDeletingId || fanout.picking) return;
+		// Everything the branch showed leaves the carousel with it (a batch
+		// branch has several images).
+		const removed = new Set(columnMediaIds(col));
+		lightboxDeletingId = mediaId;
+		try {
+			if (!(await fanout.discard(col))) {
+				// The banner the controller set sits under the lightbox.
+				if (errorMsg) toast.error(`Couldn't delete: ${errorMsg}`);
+				return;
+			}
+			const next = nextAfterRemoval(conversationMedia, mediaId, removed);
+			const survivors = conversationMedia.filter((m) => !removed.has(m.id));
+			let nextItem: MediaListItem | null = null;
+			if (next) {
+				try {
+					const res = await fetch(`/api/media/${next.id}`);
+					if (res.ok) nextItem = (await res.json()) as MediaListItem;
+				} catch {
+					// Close instead. The discard itself went through.
+				}
+			}
+			// The user may have closed the lightbox or swiped elsewhere during the
+			// round trips. Update the set either way, but only move `media` if it
+			// still shows what was deleted.
+			conversationMedia = survivors;
+			if (lightbox?.id === mediaId) lightbox = nextItem;
+		} finally {
+			lightboxDeletingId = null;
+		}
+	}
+
 	// Looking at a thread is the acknowledgment its notification was asking
 	// for: retract the tray entry and re-derive the app-icon badge. The rules
 	// for when that counts — visible only, and not while being focused on the
@@ -2688,10 +2755,12 @@
 <!--
 	In-conversation media lightbox. State + fetch live in this page so
 	the chat owns the open/close lifecycle; the component is purely
-	presentational. We deliberately don't pass `onDelete` or
-	`conversationsUsingThis` — destructive media deletion belongs in
-	the gallery surface, and listing "conversations referencing this"
-	would just be a circular link back to where the user already is.
+	presentational. `onDelete` is passed only for an image in an open media
+	fan-out grid, where it discards that branch exactly as the grid's trash
+	button does (see discardFromLightbox). Otherwise destructive media
+	deletion belongs in the gallery surface. `conversationsUsingThis` is
+	never passed: listing "conversations referencing this" would just be a
+	circular link back to where the user already is.
 	`inConversation` switches the gallery-launch button labels to
 	wording that makes it explicit they start a *new* chat, since the
 	user is currently inside one and "Regenerate" otherwise reads
@@ -2733,6 +2802,8 @@
 			inConversation
 			siblings={conversationMedia}
 			onNavigate={openImageInLightbox}
+			onDelete={lightboxDiscardable ? discardFromLightbox : undefined}
+			deletingId={lightboxDeletingId}
 			{avatarTargets}
 			onSetAvatar={setAvatar}
 			{settingAvatar}

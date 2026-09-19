@@ -279,9 +279,69 @@ export function rerollInsertIndex(columns: readonly FanoutColumn[], source: Fano
 
 /** True once every column has reached a terminal state. */
 export function allColumnsSettled(columns: readonly FanoutColumn[]): boolean {
-	return columns.every(
-		(c) => c.status === 'done' || c.status === 'error' || c.status === 'cancelled',
+	return columns.every(isColumnSettled);
+}
+
+/** A column that has reached a terminal state (done, failed or stopped). */
+export function isColumnSettled(c: FanoutColumn): boolean {
+	return c.status === 'done' || c.status === 'error' || c.status === 'cancelled';
+}
+
+/**
+ * Whether `c` may be discarded: settled, and at least one OTHER column would
+ * remain. Discard prunes the grid and never empties it (Done / dismiss is how
+ * you leave). The gate is the TOTAL column count, not only persisted results,
+ * which is what lets you drop a finished video while a sibling is still
+ * generating: the leaf is pinned at the fan-out's anchor, so the server deletes
+ * the lone finished sibling and the in-flight branch repopulates the grid. A
+ * discardable grid is always a parked fan-out, so deleteBranch never strands
+ * the leaf. It refuses only when the leaf sits inside the deleted subtree,
+ * which can't happen while the leaf is pinned on the parent.
+ *
+ * Shared by the grid's trash button and the lightbox's Delete, so the two
+ * offer the same thing.
+ */
+export function canDiscardColumn(columns: readonly FanoutColumn[], c: FanoutColumn): boolean {
+	return isColumnSettled(c) && columns.length > 1;
+}
+
+/** The column showing media `mediaId`, or undefined if no column shows it. */
+export function columnShowingMedia(
+	columns: readonly FanoutColumn[],
+	mediaId: string,
+): FanoutColumn | undefined {
+	return columns.find((c) =>
+		(c.persisted?.parts ?? []).some(
+			(p) => (p.type === 'image' || p.type === 'video') && p.mediaId === mediaId,
+		),
 	);
+}
+
+/** The media ids column `c` is showing (a batch branch shows several). */
+export function columnMediaIds(c: FanoutColumn): string[] {
+	return gridMediaIds([c]);
+}
+
+/**
+ * Where a carousel goes once `removed` leaves it while `currentId` is shown:
+ * the first survivor after the current item, else the nearest survivor before
+ * it, else null (nothing left to show, or `currentId` isn't in `items`). The
+ * next item is preferred because
+ * pruning a set goes forward. The user deletes a dud and the next one is
+ * ready to judge.
+ */
+export function nextAfterRemoval<T extends { id: string }>(
+	items: readonly T[],
+	currentId: string,
+	removed: ReadonlySet<string>,
+): T | null {
+	const at = items.findIndex((i) => i.id === currentId);
+	// Not in the set (it landed after the set was fetched): there's no "next" to
+	// speak of, and jumping to the start of the conversation would be arbitrary.
+	if (at === -1) return null;
+	for (let i = at + 1; i < items.length; i++) if (!removed.has(items[i].id)) return items[i];
+	for (let i = at - 1; i >= 0; i--) if (!removed.has(items[i].id)) return items[i];
+	return null;
 }
 
 /**
