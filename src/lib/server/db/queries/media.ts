@@ -208,13 +208,17 @@ export function getMediaListItemForUser(mediaId: string, userId: string): MediaL
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
+			origin: media.origin,
+			favoritedAt: media.favoritedAt,
 			conversationId: assignedConversationId,
 		})
 		.from(media)
 		.where(and(eq(media.id, mediaId), eq(media.userId, userId), isNull(media.hardDeletedAt)))
 		.get();
 	if (!row) return null;
-	return attachConversationTitles(userId, [{ ...row, conversationTitle: null }])[0];
+	return attachConversationTitles(userId, [
+		{ ...withFavoriteFlag(row), conversationTitle: null },
+	])[0];
 }
 
 /**
@@ -287,6 +291,24 @@ export const assignedConversationId = sql<
 >`(SELECT m2.conversation_id FROM message_media mm JOIN messages m2 ON m2.id = mm.message_id JOIN conversations c2 ON c2.id = m2.conversation_id AND c2.user_id = media.user_id WHERE mm.media_id = media.id ORDER BY m2.created_at ASC, m2.id ASC LIMIT 1)`;
 
 /**
+ * `favorited_at` is a nullable timestamp in the DB and a plain `favorite`
+ * boolean on the wire (no surface needs the moment of starring yet).
+ *
+ * Converted in TS rather than projected as ``sql<boolean>`… is not null` ``:
+ * SQLite has no boolean type and hands back 0/1, so the `sql<boolean>` form
+ * only *claims* a boolean while shipping a number — `JSON.stringify` would put
+ * `"favorite": 0` on the wire under a type that says otherwise, and every
+ * consumer would keep type-checking. Dropping `favoritedAt` from the returned
+ * row keeps the DB column out of the DTO.
+ */
+function withFavoriteFlag<T extends { favoritedAt: number | null }>(
+	row: T,
+): Omit<T, 'favoritedAt'> & { favorite: boolean } {
+	const { favoritedAt, ...rest } = row;
+	return { ...rest, favorite: favoritedAt != null };
+}
+
+/**
  * Resolve `{ conversationId -> title }` for a set of items (scoped to the
  * user), then stamp `conversationTitle` onto each. One batched lookup rather
  * than a row-multiplying JOIN or a nested title subquery. Mutates and returns
@@ -352,6 +374,9 @@ export function listMediaForUser(
 		 * without a cursor; composes with the cursor for subsequent pages.
 		 */
 		before?: number;
+		/** Restrict to starred media. ANDs with the other facets, so Favorites
+		 *  composes with kind/model rather than replacing them. */
+		favorite?: boolean;
 		cursor?: string | null;
 		limit?: number;
 	} = {},
@@ -390,6 +415,7 @@ export function listMediaForUser(
 			: inArray(media.kind, allowedKinds as MediaKind[]),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
 		opts.before != null ? lt(media.createdAt, opts.before) : undefined,
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 		cursorWhere,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
@@ -406,6 +432,8 @@ export function listMediaForUser(
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
+			origin: media.origin,
+			favoritedAt: media.favoritedAt,
 			conversationId: assignedConversationId,
 		})
 		.from(media)
@@ -420,7 +448,7 @@ export function listMediaForUser(
 	const nextCursor = hasMore && last ? `${last.createdAt}:${last.id}` : null;
 	const items: MediaListItem[] = attachConversationTitles(
 		userId,
-		sliced.map((r) => ({ ...r, conversationTitle: null })),
+		sliced.map((r) => ({ ...withFavoriteFlag(r), conversationTitle: null })),
 	);
 	return { items, nextCursor };
 }
@@ -436,7 +464,14 @@ const DENSE_CORPUS_CAP = 5000;
  *  ranked corpus. */
 const DENSE_TOPK = 100;
 
-type SearchOpts = { kind?: 'image' | 'video'; model?: string; limit?: number };
+type SearchOpts = {
+	kind?: 'image' | 'video';
+	model?: string;
+	/** Restrict to starred media, so the Favorites filter still applies while
+	 *  searching (the gallery keeps its facets visible in search mode). */
+	favorite?: boolean;
+	limit?: number;
+};
 
 /** Keyword leg: bm25-ranked FTS5 hits as full `MediaListItem`s (titles attached). */
 function ftsRankMedia(
@@ -449,6 +484,7 @@ function ftsRankMedia(
 		? sql`AND media.kind = ${opts.kind}`
 		: sql`AND media.kind IN ('image', 'video')`;
 	const modelCond = opts.model ? sql`AND media.source_model = ${opts.model}` : sql``;
+	const favoriteCond = opts.favorite ? sql`AND media.favorited_at IS NOT NULL` : sql``;
 
 	// Raw SQL: drizzle doesn't model FTS5 virtual tables, and bm25()/MATCH must
 	// share one SELECT. Params are bound (no injection). The media table keeps
@@ -465,6 +501,8 @@ function ftsRankMedia(
 		prompt_full: string | null;
 		original_prompt: string | null;
 		created_at: number;
+		origin: 'generated' | 'uploaded';
+		favorited_at: number | null;
 		conversation_id: string | null;
 	}>(sql`
 		SELECT
@@ -478,6 +516,8 @@ function ftsRankMedia(
 			media.prompt_full AS prompt_full,
 			media.original_prompt AS original_prompt,
 			media.created_at AS created_at,
+			media.origin AS origin,
+			media.favorited_at AS favorited_at,
 			${assignedConversationId} AS conversation_id
 		FROM media_prompt_fts f
 		JOIN media ON media.id = f.media_id
@@ -487,6 +527,7 @@ function ftsRankMedia(
 			AND media.origin = 'generated'
 			${kindCond}
 			${modelCond}
+			${favoriteCond}
 		ORDER BY bm25(media_prompt_fts) ASC
 		LIMIT ${limit}
 	`);
@@ -504,6 +545,8 @@ function ftsRankMedia(
 			promptFull: r.prompt_full,
 			originalPrompt: r.original_prompt,
 			createdAt: r.created_at,
+			origin: r.origin,
+			favorite: r.favorited_at != null,
 			conversationId: r.conversation_id,
 			conversationTitle: null,
 		})),
@@ -526,6 +569,8 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
+			origin: media.origin,
+			favoritedAt: media.favoritedAt,
 			conversationId: assignedConversationId,
 		})
 		.from(media)
@@ -540,7 +585,7 @@ export function getMediaListItemsByIds(userId: string, ids: string[]): MediaList
 		.all();
 	return attachConversationTitles(
 		userId,
-		rows.map((r) => ({ ...r, conversationTitle: null })),
+		rows.map((r) => ({ ...withFavoriteFlag(r), conversationTitle: null })),
 	);
 }
 
@@ -584,6 +629,7 @@ export async function searchMediaForUser(
 		const vecRows = listMediaEmbeddingsForUser(userId, {
 			kind: opts.kind,
 			model: opts.model,
+			favorite: opts.favorite,
 			embeddingModel: cfg.modelId,
 			limit: DENSE_CORPUS_CAP,
 		});
@@ -691,7 +737,16 @@ export function setMediaEmbedding(
  */
 export function listMediaEmbeddingsForUser(
 	userId: string,
-	opts: { kind?: 'image' | 'video'; model?: string; embeddingModel: string; limit?: number },
+	opts: {
+		kind?: 'image' | 'video';
+		model?: string;
+		/** Keep the dense leg inside the Favorites filter. Without it a semantic-only
+		 *  neighbour that isn't starred would fuse into a favorites-filtered search,
+		 *  since the keyword leg is the only other place the filter is applied. */
+		favorite?: boolean;
+		embeddingModel: string;
+		limit?: number;
+	},
 ): Array<{ id: string; embedding: Buffer }> {
 	const limit = Math.max(1, Math.min(opts.limit ?? DENSE_CORPUS_CAP, 20000));
 	const conditions = [
@@ -702,6 +757,7 @@ export function listMediaEmbeddingsForUser(
 		eq(media.embeddingModel, opts.embeddingModel),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	return getDb()
@@ -728,10 +784,15 @@ export interface ModelFacet {
  * the video view lists only models that produced videos; deliberately *not*
  * narrowed by any active model selection, so the dropdown stays switchable.
  * Ordered most-used-first.
+ *
+ * `favorite` narrows it the same way `kind` does: with Favorites on, the Model
+ * dropdown lists only models that made something starred, with counts among the
+ * starred set — so the numbers match the grid the user is looking at instead of
+ * offering a model whose favorites-filtered result is empty.
  */
 export function listDistinctSourceModelsForUser(
 	userId: string,
-	opts: { kind?: 'image' | 'video' } = {},
+	opts: { kind?: 'image' | 'video'; favorite?: boolean } = {},
 ): ModelFacet[] {
 	const db = getDb();
 	const conditions = [
@@ -740,6 +801,7 @@ export function listDistinctSourceModelsForUser(
 		eq(media.origin, 'generated'),
 		isNotNull(media.sourceModel),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	const rows = db
@@ -776,7 +838,12 @@ export interface MonthPeriod {
  */
 export function listMediaMonthPeriodsForUser(
 	userId: string,
-	opts: { kind?: 'image' | 'video'; model?: string; tzOffsetMinutes?: number } = {},
+	opts: {
+		kind?: 'image' | 'video';
+		model?: string;
+		favorite?: boolean;
+		tzOffsetMinutes?: number;
+	} = {},
 ): MonthPeriod[] {
 	const db = getDb();
 	const offsetMin = Number.isFinite(opts.tzOffsetMinutes) ? (opts.tzOffsetMinutes as number) : 0;
@@ -789,6 +856,7 @@ export function listMediaMonthPeriodsForUser(
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	return db
@@ -820,7 +888,14 @@ export function listMediaMonthPeriodsForUser(
 export function listMediaForConversation(
 	conversationId: string,
 	userId: string,
-	opts: { kind?: 'image' | 'video'; kinds?: readonly MediaKind[]; model?: string } = {},
+	opts: {
+		kind?: 'image' | 'video';
+		kinds?: readonly MediaKind[];
+		model?: string;
+		/** Mirrors the gallery's Favorites filter so drilling into a stack shows the
+		 *  same members the collapsed card counted, not the unfiltered bucket. */
+		favorite?: boolean;
+	} = {},
 ): MediaListItem[] {
 	const db = getDb();
 	const allowedKinds: readonly MediaKind[] = opts.kind
@@ -847,6 +922,8 @@ export function listMediaForConversation(
 			promptFull: media.promptFull,
 			originalPrompt: media.originalPrompt,
 			createdAt: media.createdAt,
+			origin: media.origin,
+			favoritedAt: media.favoritedAt,
 			conversationId: assignedConversationId,
 		})
 		.from(media)
@@ -859,6 +936,7 @@ export function listMediaForConversation(
 					? eq(media.kind, allowedKinds[0])
 					: inArray(media.kind, allowedKinds as MediaKind[]),
 				opts.model ? eq(media.sourceModel, opts.model) : undefined,
+				opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 				inArray(media.id, linkedToConversation),
 				sql`${assignedConversationId} = ${conversationId}`,
 			),
@@ -868,7 +946,7 @@ export function listMediaForConversation(
 
 	return attachConversationTitles(
 		userId,
-		rows.map((r) => ({ ...r, conversationTitle: null })),
+		rows.map((r) => ({ ...withFavoriteFlag(r), conversationTitle: null })),
 	);
 }
 
@@ -901,6 +979,43 @@ export function listConversationsForMedia(mediaId: string, userId: string): Medi
 		.where(and(eq(messageMedia.mediaId, mediaId), eq(conversations.userId, userId)))
 		.orderBy(desc(conversations.updatedAt))
 		.all();
+}
+
+// --- Favorites (gallery / lightbox star) ---------------------------------
+
+/**
+ * Star / unstar one media row. Returns false on not-found, ownership mismatch,
+ * or an already-tombstoned row, which the endpoint turns into a 404.
+ *
+ * Idempotent by value, not by write: starring an already-starred row overwrites
+ * `favorited_at` with a fresh timestamp. That's wanted — the timestamp is what
+ * makes a toggle visible to `galleryUserFingerprint`, so an idempotent no-op
+ * write would leave the gallery's caches convinced nothing changed.
+ *
+ * No FTS bookkeeping: the `media_prompt_fts` triggers fire on insert, delete,
+ * and `AFTER UPDATE OF prompt_full` specifically, so this write doesn't touch
+ * the index.
+ */
+export function setMediaFavorite(mediaId: string, userId: string, favorite: boolean): boolean {
+	const res = getDb()
+		.update(media)
+		.set({ favoritedAt: favorite ? Date.now() : null })
+		.where(
+			and(
+				eq(media.id, mediaId),
+				eq(media.userId, userId),
+				isNull(media.hardDeletedAt),
+				// Generated only, matching the set the gallery actually lists. A star
+				// means "keep this AND let me find it again", and the gallery filters
+				// uploads out everywhere — so starring an upload would be a button
+				// whose second half can never be honoured. The chat lightbox (the one
+				// surface that shows uploads) withholds the star for the same reason;
+				// this is the server-side half of that contract.
+				eq(media.origin, 'generated'),
+			),
+		)
+		.run();
+	return res.changes > 0;
 }
 
 // --- Manual hard-delete (gallery "delete this") --------------------------
@@ -1271,6 +1386,13 @@ export function findPurgeCandidates(olderThanMs: number, limit = 500): PurgeCand
 				isNotNull(media.unreferencedSince),
 				lte(media.unreferencedSince, olderThanMs),
 				eq(media.origin, 'uploaded'),
+				// Favorites are never swept. Defensive rather than load-bearing
+				// today: `setMediaFavorite` only stars generated rows and this query
+				// only reaps uploaded ones, so the two sets can't currently overlap.
+				// It's here because this is the predicate a bulk-cleanup sweep would
+				// grow from (ROADMAP's favorite/pin tier), and the cost of stating
+				// the invariant once is one `AND` on an already-indexed query.
+				isNull(media.favoritedAt),
 			),
 		)
 		.orderBy(asc(media.unreferencedSince))

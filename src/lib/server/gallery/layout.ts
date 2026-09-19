@@ -14,7 +14,7 @@
  * fingerprint invalidation are as they were.
  */
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../db/client';
 import { media } from '../db/schema';
 import {
@@ -35,6 +35,10 @@ import type {
 type GalleryUnitOpts = {
 	kind?: 'image' | 'video';
 	model?: string;
+	/** Restrict to starred media. Part of BOTH cache keys below — a favorites
+	 *  request served from an unfiltered entry would silently show the whole
+	 *  library, and vice versa. */
+	favorite?: boolean;
 	tzOffsetMinutes?: number;
 	/** Whether to collapse related media into stacks (the gallery's default).
 	 *  `false` = the "stacking off" firehose: every media row is its own solo
@@ -47,6 +51,9 @@ type GalleryUnitOpts = {
 interface UnitSourceRow extends StackableMedia {
 	kind: MediaKind;
 	promptExcerpt: string | null;
+	/** Starred, so a unit can carry a `favoriteCount` for the tile badge without
+	 *  the grid ever holding full member rows. */
+	favorite: boolean;
 }
 
 /** Two-digit zero-pad for the local day key. */
@@ -76,6 +83,7 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 		eq(media.origin, 'generated'),
 		opts.kind ? eq(media.kind, opts.kind) : inArray(media.kind, ['image', 'video']),
 		opts.model ? eq(media.sourceModel, opts.model) : undefined,
+		opts.favorite ? isNotNull(media.favoritedAt) : undefined,
 	].filter(Boolean) as Array<Parameters<typeof and>[number]>;
 
 	const rows = db
@@ -86,6 +94,7 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 			originalPrompt: media.originalPrompt,
 			promptFull: media.promptFull,
 			promptExcerpt: media.promptExcerpt,
+			favoritedAt: media.favoritedAt,
 			conversationId: assignedConversationId,
 		})
 		.from(media)
@@ -95,7 +104,11 @@ function loadGalleryUnitSource(userId: string, opts: GalleryUnitOpts): UnitSourc
 
 	return attachConversationTitles(
 		userId,
-		rows.map((r) => ({ ...r, conversationTitle: null as string | null })),
+		rows.map(({ favoritedAt, ...r }) => ({
+			...r,
+			favorite: favoritedAt != null,
+			conversationTitle: null as string | null,
+		})),
 	);
 }
 
@@ -109,6 +122,7 @@ function unitFromRow(r: UnitSourceRow, tz: number): GalleryUnit {
 		createdAt: r.createdAt,
 		dayKey: localDayKey(r.createdAt, tz),
 		memberCount: 1,
+		favoriteCount: r.favorite ? 1 : 0,
 		previews: [{ id: r.id, kind: r.kind }],
 		excerpt: r.promptExcerpt,
 		label: '',
@@ -131,6 +145,7 @@ function unitFromGroup(
 		createdAt: leader.createdAt,
 		dayKey: localDayKey(leader.createdAt, tz),
 		memberCount: g.items.length,
+		favoriteCount: g.items.reduce((n, m) => n + (m.favorite ? 1 : 0), 0),
 		previews: g.items.slice(0, 4).map((m) => ({ id: m.id, kind: m.kind })),
 		excerpt: leader.promptExcerpt,
 		// Stack label: conversation title, or the run's shared ORIGINAL prompt
@@ -241,7 +256,7 @@ function sourceRowsChars(rows: UnitSourceRow[]): number {
 }
 
 function gallerySourceCacheKey(userId: string, opts: GalleryUnitOpts): string {
-	return JSON.stringify([userId, opts.kind ?? '', opts.model ?? '']);
+	return JSON.stringify([userId, opts.kind ?? '', opts.model ?? '', opts.favorite ? 'fav' : '']);
 }
 
 /** `loadGalleryUnitSource` behind the same fingerprint + TTL validation the unit
@@ -324,17 +339,29 @@ function evictUnitsEntry(key: string): void {
  *  on delete — the pair changes on any insert/delete combination, and drops to
  *  0/0 when the rows are wiped (a test reset). A single aggregate count over the
  *  user's media — far cheaper than recomputing the unit list, though it scans the
- *  user's rows rather than being fully index-served. */
+ *  user's rows rather than being fully index-served.
+ *
+ *  `favs` / `favAt` extend it to favoriting, which changes neither count above —
+ *  so without them a star was invisible to these caches and the feature's own
+ *  main flow (star something, filter to Favorites) could serve a 30-second-stale
+ *  set that omits the star you just added, or still contains one you removed.
+ *  Both halves are needed: `favs` alone misses an unstar-one-star-another pair
+ *  (count returns to where it was while membership changed), which is exactly
+ *  what curating a favorites list looks like; `max(favorited_at)` is `Date.now()`
+ *  on every star, so the pair moves for any toggle. Free — same rows, same scan,
+ *  two more aggregate expressions. */
 function galleryUserFingerprint(userId: string): string {
 	const row = getDb()
 		.select({
 			total: sql<number>`count(*)`,
 			live: sql<number>`coalesce(sum(case when ${media.hardDeletedAt} is null then 1 else 0 end), 0)`,
+			favs: sql<number>`coalesce(sum(case when ${media.favoritedAt} is not null then 1 else 0 end), 0)`,
+			favAt: sql<number>`coalesce(max(${media.favoritedAt}), 0)`,
 		})
 		.from(media)
 		.where(and(eq(media.userId, userId), eq(media.origin, 'generated')))
 		.get();
-	return `${row?.total ?? 0}:${row?.live ?? 0}`;
+	return `${row?.total ?? 0}:${row?.live ?? 0}:${row?.favs ?? 0}:${row?.favAt ?? 0}`;
 }
 
 /**
@@ -367,6 +394,7 @@ function galleryUnitsCacheKey(userId: string, opts: GalleryUnitOpts): string {
 		userId,
 		opts.kind ?? '',
 		opts.model ?? '',
+		opts.favorite ? 'fav' : '',
 		opts.stack === false ? 'flat' : 'stack',
 		opts.tzOffsetMinutes ?? 0,
 	]);
@@ -475,7 +503,7 @@ export function listGalleryUnits(
 export function listGalleryUnitMembers(
 	userId: string,
 	unitKey: string,
-	opts: { kind?: 'image' | 'video'; model?: string } = {},
+	opts: { kind?: 'image' | 'video'; model?: string; favorite?: boolean } = {},
 ): MediaListItem[] {
 	if (!unitKey.startsWith('p:')) {
 		// Conversation stack — the key IS the conversation id.

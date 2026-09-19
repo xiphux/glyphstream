@@ -1620,6 +1620,16 @@ export interface MediaListItem {
 	 *  "Enhanced — show original". */
 	originalPrompt: string | null;
 	createdAt: number;
+	/** 'generated' = produced by an upstream model, 'uploaded' = a user
+	 *  attachment. The gallery only ever lists 'generated', so this is what lets
+	 *  the chat lightbox — which shows both — withhold the star from an upload
+	 *  rather than offer one that could never be found under Favorites. */
+	origin: 'generated' | 'uploaded';
+	/** Starred by the user, to find again in the gallery's Favorites filter.
+	 *  Projected from the `favorited_at` timestamp — no surface needs the
+	 *  moment of starring, only whether the star is on. Always false for an
+	 *  upload: `setMediaFavorite` only stars generated rows. */
+	favorite: boolean;
 	/** Conversation this asset is assigned to for gallery stacking — the
 	 *  earliest message that references it. Null for orphan media whose
 	 *  conversation was deleted (its message_media join rows cascaded away).
@@ -1653,6 +1663,12 @@ export interface GalleryUnit {
 	dayKey: string;
 	/** Total members (drives the "N items" / "+N" affordances). */
 	memberCount: number;
+	/** How many members are starred, so a tile can badge itself without the grid
+	 *  holding full members. A count rather than a boolean because the tile shows
+	 *  only the leader: badging on the leader alone would hide a starred member
+	 *  inside a stack, and claiming the whole stack is starred when one member is
+	 *  would be a different lie. Solos are 0 or 1. */
+	favoriteCount: number;
 	/** Newest ≤4 members for the stack-card collage (solo: just the leader). */
 	previews: Array<{ id: string; kind: MediaKind }>;
 	/** Leader's truncated prompt for the caption overlay. */

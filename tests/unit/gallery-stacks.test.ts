@@ -25,6 +25,8 @@ function item(
 		promptFull: opts.promptFull ?? null,
 		originalPrompt: opts.originalPrompt ?? null,
 		createdAt: -((opts.minutesAgo ?? 0) * 60_000),
+		origin: 'generated',
+		favorite: false,
 		conversationId: opts.conversationId ?? null,
 		conversationTitle: opts.conversationTitle ?? null,
 	};
