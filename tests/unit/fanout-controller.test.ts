@@ -494,6 +494,43 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('teardown clears an in-flight action, so the next conversation still rebuilds', async () => {
+		// `picking` is the one gate term that used to survive a switch. Leaving a
+		// conversation mid-discard then made the next conversation's parked grid
+		// unreachable: its recovery state is recorded on arrival, and the stale
+		// lock rejected it.
+		let finishDelete!: () => void;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				() =>
+					new Promise<Response>((r) => {
+						finishDelete = () => r({ ok: true } as unknown as Response);
+					}),
+			),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const parked = (...ids: string[]): FanoutRecoveryState => ({
+			parentMessageId: ids[0] === 'a' ? 'u1' : 'u2',
+			avatar: false,
+			kind: 'image',
+			siblings: ids.map((id) => imageSibling(id, 'bridge::sdxl', null)),
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		fc.syncFromServer(parked('a', 'b'));
+		const discarding = fc.discard(fc.columns[0]);
+		fc.teardown(); // the user switches conversations mid-discard
+		fc.syncFromServer(parked('c', 'd'));
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['c', 'd']);
+		finishDelete();
+		await discarding;
+		vi.unstubAllGlobals();
+	});
+
 	it('teardown lets the next conversation apply its recovery state', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);

@@ -1068,6 +1068,12 @@ export class FanoutController {
 		this.#avatarDraw = null;
 		// The next conversation's recovery state is applied however it compares.
 		this.#lastSynced = NOT_SYNCED;
+		// A grid action still in flight belongs to the conversation we're leaving,
+		// and its `finally` will write this again harmlessly. Left set, it is the
+		// one rebuild-gate term that survives a switch: it would reject the new
+		// conversation's recovery state, which `#lastSynced` has by then recorded,
+		// so that grid would never appear until its load genuinely re-ran.
+		this.picking = false;
 	}
 
 	/** Rebuild the compare grid from server-truth recovery state on a reload /
