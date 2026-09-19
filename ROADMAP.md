@@ -674,7 +674,7 @@ proactivity and pipeline bets are the most identity-defining.
   quick-jump timeline rail have all shipped — the gallery reads as a library
   now, not just a scroll. What's left, roughly costliest-last (still-open
   faceting slice: filter by `sourceEndpointId` and by explicit date range — the
-  columns exist but only `model`/`kind`/`before` are wired):
+  columns exist but only `model`/`kind`/`favorite`/`before` are wired):
   - _Lineage view._ `sourceMediaId` already chains i2i / i2v derivations (this
     image was edited / animated _from_ that one). Rather than a separate view,
     likely a **logic extension of stacking**: stacks today group media from the
@@ -807,11 +807,20 @@ read before anyone re-optimizes from an estimate.
   into the image part, set `aspect-ratio` on the `<img>`. Retires the re-center
   workaround.
 
-- **Gallery favorite / pin tier.** A second-level distinction beyond "in the
-  gallery vs. hard-deleted" — a favorite flag protecting media from any future
-  bulk-cleanup sweep. A single boolean column + a lightbox star. The rationale
-  only materializes once an automated bulk-cleanup affordance exists to protect
-  favorites _from_.
+- **Favorites as a protected tier.** Favoriting itself shipped (star in both
+  lightboxes, `media.favorited_at`, a Favorites facet) — but on the
+  _findability_ rationale, not the purge-protection one this entry was filed
+  under. The protective half is still hypothetical: `findPurgeCandidates`
+  already skips favorites, and that clause guards nothing today, because the
+  purger only reaps `origin='uploaded'` while favorites are generated-only (the
+  gallery never lists uploads, so a star on one could never be found again;
+  `setMediaFavorite` enforces it). It becomes real the moment a sweep touches
+  generated media — see the two entries below, which is where that would come
+  from. Worth knowing before estimating that work: this entry once read "a
+  single boolean column + a lightbox star", and the column and star _were_ the
+  easy part — the cost was in making the filter agree across all five browse
+  reads and two server-side memos whose cache keys and fingerprint were blind
+  to a star (`galleryUserFingerprint` carries the story).
 
 - **Preference: default to deleting media when deleting conversations.** A
   single boolean on `UserPreferences`, read in the layout's `deleteConversation`
@@ -829,8 +838,9 @@ read before anyone re-optimizes from an estimate.
 
 - **Near-duplicate detection (perceptual hash).** A cheap (no-AI, no-endpoint)
   pHash per image to cluster near-identical media and surface a "collapse / bulk
-  clean" affordance — pairs with the favorite/pin tier (protect favorites from
-  the sweep) and the fan-out cap above. _Low priority, and likely low yield:_
+  clean" affordance — pairs with favorites (the flag and the purger's skip
+  clause already exist; this is the sweep they'd finally be protecting media
+  from) and the fan-out cap above. _Low priority, and likely low yield:_
   generation is stochastic, so even the same prompt on the same model produces a
   _different_ image each run unless the seed is pinned. The multi-model grid's
   duplication is intentional (different models, kept for comparison), not the
