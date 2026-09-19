@@ -89,6 +89,10 @@ interface DispatchMode {
  *  recovered fan-out. The builder and the recovery-poll gate both key off it. */
 export const RECOVERED_PENDING_PREFIX = 'recovered-pending:';
 
+/** `#lastSynced` before any recovery state has been applied, so the first sync
+ *  runs even when the server has no parked fan-out (a `null`). */
+const NOT_SYNCED = Symbol('not-synced');
+
 interface PendingBranch {
 	/** Model id, or '' when unknown (older payload → "Generating…" label). */
 	modelId: string;
@@ -1057,6 +1061,8 @@ export class FanoutController {
 		// disarmed at the moment it would have been used.
 		this.#mode = 'turn';
 		this.#avatarDraw = null;
+		// The next conversation's recovery state is applied however it compares.
+		this.#lastSynced = NOT_SYNCED;
 	}
 
 	/** Rebuild the compare grid from server-truth recovery state on a reload /
@@ -1094,8 +1100,26 @@ export class FanoutController {
 		this.columns = this.#buildRecoveredColumns(f.siblings, pendingBranches(f), f.kind);
 	}
 
+	/**
+	 * The recovery state the grid was last rebuilt from, by identity. Kit hands
+	 * the page a new `data` on every commit, including a layout-only
+	 * `invalidate('app:conversations')` (the `(app)` layout's app-resume
+	 * refresh). This route skips `await parent()`, so its load does not re-run
+	 * then: `data.fanout` is the same object as before, and it is stale by
+	 * however much the grid has changed locally since. Rebuilding from it again
+	 * undid those changes. A discarded variation came back on every app resume,
+	 * showing a broken image because its bytes were already unlinked, and a
+	 * finished recovered grid got its "Generating…" placeholders back. A page load
+	 * that really re-runs deserializes a new object, so this skips only a copy
+	 * already consumed. It is recorded only once consumed: an object skipped
+	 * while the grid was client-driven hasn't been applied yet.
+	 */
+	#lastSynced: FanoutRecoveryState | null | undefined | typeof NOT_SYNCED = NOT_SYNCED;
+
 	syncFromServer(fanout: FanoutRecoveryState | null | undefined): void {
 		if (!this.#canRebuildFromServer()) return;
+		if (fanout === this.#lastSynced) return;
+		this.#lastSynced = fanout;
 		if (!fanout?.parentMessageId || (fanout.siblings.length === 0 && fanout.pending === 0)) {
 			// No parked fan-out on the server — drop any recovered grid.
 			if (this.columns.length > 0) {

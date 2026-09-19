@@ -397,6 +397,60 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('a discarded column stays gone when the page re-publishes the same load data', async () => {
+		// The regression: the (app) layout's app-resume refresh re-publishes the
+		// page's `data` without re-running this route's load, so the page effect
+		// hands syncFromServer the SAME recovery object it rebuilt from before
+		// the discard. Rebuilding from it resurrected the deleted variation, with
+		// a broken image because its bytes were already gone.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => jsonResponse({})),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const loaded: FanoutRecoveryState = {
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null), imageSibling('b', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		};
+		fc.syncFromServer(loaded);
+		await fc.discard(fc.columns[0]);
+		fc.syncFromServer(loaded);
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['b']);
+
+		// A load that really re-ran deserializes a new object, and is applied.
+		fc.syncFromServer({ ...loaded, siblings: [loaded.siblings[1]] });
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['b']);
+		fc.syncFromServer(null);
+		expect(fc.columns).toHaveLength(0);
+		vi.unstubAllGlobals();
+	});
+
+	it('teardown lets the next conversation apply its recovery state', () => {
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const parked: FanoutRecoveryState = {
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: [imageSibling('a', 'bridge::sdxl', null)],
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		};
+		fc.syncFromServer(parked);
+		fc.teardown();
+		fc.syncFromServer(parked);
+		expect(fc.columns).toHaveLength(1);
+	});
+
 	it('discarding a FAILED live column deletes the persisted error sibling', async () => {
 		// The regression: a failure is a real server-side row, but the live column
 		// only ever held red text — so discard dropped the column locally and the
