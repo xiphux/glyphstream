@@ -12,7 +12,7 @@ import type { RequestHandler } from './$types';
  * Query params:
  *   ?offset=N           absolute unit index to start at (default 0)
  *   ?limit=N            units to return (default 120, capped 500)
- *   ?kind / ?model / ?tzOffset   same filters as /layout (must match, so the
+ *   ?kind / ?model / ?fav / ?tzOffset   same filters as /layout (must match, so the
  *                       offsets line up with the reserved section heights)
  */
 export const GET: RequestHandler = ({ locals, url }) => {
@@ -21,6 +21,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
+	const favorite = url.searchParams.get('fav') === '1';
 	const tzParam = url.searchParams.get('tzOffset');
 	const tz = tzParam ? Number.parseInt(tzParam, 10) : undefined;
 	const offsetParam = url.searchParams.get('offset');
@@ -32,6 +33,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const page = listGalleryUnits(locals.user.id, {
 		kind,
 		model,
+		favorite,
 		tzOffsetMinutes: Number.isFinite(tz) ? tz : undefined,
 		stack,
 		offset: Number.isFinite(offset) ? offset : 0,

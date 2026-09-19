@@ -9,6 +9,7 @@ import type { RequestHandler } from './$types';
  * Query params:
  *   ?kind=image|video   filter by modality (optional)
  *   ?model=…            filter by exact source_model (optional; ANDs with kind)
+ *   ?fav=1              filter to starred media (ANDs with kind/model)
  *   ?before=N           quick-jump seek: only rows older than this epoch-ms
  *   ?cursor=…           opaque pagination cursor returned by previous call
  *   ?limit=N            max items in this page (default 60, max 200)
@@ -19,6 +20,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
+	const favorite = url.searchParams.get('fav') === '1';
 	const beforeParam = url.searchParams.get('before');
 	const before = beforeParam ? Number.parseInt(beforeParam, 10) : undefined;
 	const cursor = url.searchParams.get('cursor') ?? undefined;
@@ -28,6 +30,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const page = listMediaForUser(locals.user.id, {
 		kind,
 		model,
+		favorite,
 		before: Number.isFinite(before) ? before : undefined,
 		cursor,
 		limit: Number.isFinite(limit) ? limit : undefined,

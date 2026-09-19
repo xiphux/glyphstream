@@ -1,6 +1,11 @@
-import { json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import { requireFound, requireUser } from '$lib/server/auth/guard';
-import { getMediaListItemForUser, hardDeleteMediaForUser } from '$lib/server/db/queries/media';
+import {
+	getMediaListItemForUser,
+	hardDeleteMediaForUser,
+	setMediaFavorite,
+} from '$lib/server/db/queries/media';
+import { parseJsonBody } from '$lib/server/http';
 import { unlinkMediaFiles } from '$lib/server/media/disk-store';
 import type { RequestHandler } from './$types';
 
@@ -14,6 +19,27 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 	requireUser(locals);
 	const m = requireFound(getMediaListItemForUser(params.id, locals.user.id), 'Media not found');
 	return json(m);
+};
+
+/**
+ * Star / unstar one media row (the gallery + lightbox favorite toggle).
+ *
+ * 404 covers not-found, not-yours, already-tombstoned, AND an uploaded row:
+ * favorites are generated-only, because the gallery — the only place a favorite
+ * can be found again — never lists uploads. The client withholds the star in
+ * that case rather than relying on this, so a 404 here means stale state, not a
+ * routine outcome.
+ */
+export const PATCH: RequestHandler = async ({ locals, params, request }) => {
+	requireUser(locals);
+	const body = await parseJsonBody<{ favorite?: unknown }>(request);
+	if (typeof body.favorite !== 'boolean') {
+		error(400, 'favorite must be a boolean');
+	}
+	if (!setMediaFavorite(params.id, locals.user.id, body.favorite)) {
+		error(404, 'Media not found');
+	}
+	return new Response(null, { status: 204 });
 };
 
 /**

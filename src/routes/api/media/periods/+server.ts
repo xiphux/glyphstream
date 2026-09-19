@@ -10,6 +10,7 @@ import type { RequestHandler } from './$types';
  * Query params (all optional, mirroring the gallery feed's filters):
  *   ?kind=image|video   restrict to a modality
  *   ?model=…            restrict to an exact source_model
+ *   ?fav=1              restrict to starred media (ANDs with the above)
  *   ?tzOffset=N         viewer's UTC offset in minutes (-getTimezoneOffset()),
  *                       so months bucket in local time
  */
@@ -19,12 +20,14 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
+	const favorite = url.searchParams.get('fav') === '1';
 	const tzParam = url.searchParams.get('tzOffset');
 	const tz = tzParam ? Number.parseInt(tzParam, 10) : undefined;
 
 	const periods = listMediaMonthPeriodsForUser(locals.user.id, {
 		kind,
 		model,
+		favorite,
 		tzOffsetMinutes: Number.isFinite(tz) ? tz : undefined,
 	});
 	return json({ periods });

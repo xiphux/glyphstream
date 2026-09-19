@@ -20,21 +20,24 @@ export const load: PageServerLoad = async ({ locals, parent, url }) => {
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : null;
 	const model = url.searchParams.get('model') ?? null;
 	const q = url.searchParams.get('q')?.trim() || null;
+	const favorite = url.searchParams.get('fav') === '1';
 	const userId = locals.user!.id;
 
 	// Facet options for the Model dropdown. Labels via the pure `friendlyModelName`
 	// (no upstream fetch); the raw `value` is what `?model=` filters on.
 	const modelFacets = listDistinctSourceModelsForUser(userId, {
 		kind: kind ?? undefined,
+		favorite,
 	}).map((f) => ({ ...f, label: friendlyModelName(f.value) }));
 
 	if (q) {
 		const searchItems = await searchMediaForUser(userId, q, {
 			kind: kind ?? undefined,
 			model: model ?? undefined,
+			favorite,
 		});
-		return { mode: 'search' as const, searchItems, kind, model, q, modelFacets };
+		return { mode: 'search' as const, searchItems, kind, model, favorite, q, modelFacets };
 	}
 
-	return { mode: 'browse' as const, kind, model, q: null, modelFacets };
+	return { mode: 'browse' as const, kind, model, favorite, q: null, modelFacets };
 };

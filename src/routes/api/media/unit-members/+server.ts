@@ -7,8 +7,9 @@ import type { RequestHandler } from './$types';
  * The complete member set of one gallery stack, for drilling in. The grid holds
  * only thin units (≤4 preview ids), so opening a stack fetches its full members
  * here — a conversation stack (`?key=<conversationId>`) or a same-prompt run
- * (`?key=p:<leaderId>`). Mirrors the gallery's kind/model filters so a drill-in
- * stays consistent with an active filter. Ownership is enforced in the query.
+ * (`?key=p:<leaderId>`). Mirrors the gallery's kind/model/fav filters so a
+ * drill-in shows the same members the collapsed card counted, not the unfiltered
+ * bucket. Ownership is enforced in the query.
  */
 export const GET: RequestHandler = ({ locals, url }) => {
 	requireUser(locals);
@@ -17,6 +18,7 @@ export const GET: RequestHandler = ({ locals, url }) => {
 	const kindParam = url.searchParams.get('kind');
 	const kind = kindParam === 'image' || kindParam === 'video' ? kindParam : undefined;
 	const model = url.searchParams.get('model') ?? undefined;
-	const items = listGalleryUnitMembers(locals.user.id, key, { kind, model });
+	const favorite = url.searchParams.get('fav') === '1';
+	const items = listGalleryUnitMembers(locals.user.id, key, { kind, model, favorite });
 	return json({ items });
 };
