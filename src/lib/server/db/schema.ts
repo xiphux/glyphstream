@@ -788,6 +788,24 @@ export const media = sqliteTable(
 		originalPrompt: text('original_prompt'),
 		createdAt: integer('created_at').notNull(),
 		refCount: integer('ref_count').notNull().default(0),
+		// When the user starred this asset in the gallery / lightbox; NULL = not a
+		// favorite. A nullable timestamp rather than a boolean because that's this
+		// table's convention for every other flag (`unreferenced_since`,
+		// `hard_deleted_at`) and it costs the same, while keeping *when* a star
+		// happened recoverable — which the cache fingerprint relies on (see
+		// `galleryUserFingerprint`: a star/unstar pair leaves the favorite COUNT
+		// unchanged, so `max(favorited_at)` is what makes the toggle observable).
+		// The wire type exposes it as a plain `favorite: boolean`; no client needs
+		// the timestamp yet.
+		//
+		// Two roles, both intentional:
+		//   - Findability. A filter in the gallery for the handful of generations
+		//     worth coming back to, without deleting everything else.
+		//   - Purge protection. The purger reaps uploads whose ref count hit 0
+		//     (see media/purger.ts), and `stampOrphanedZeroRefRows` re-stamps an
+		//     upload when the message carrying it is deleted — so a starred upload
+		//     was reapable 30 minutes later. The sweep skips favorites.
+		favoritedAt: integer('favorited_at'),
 		// Set when ref_count drops to 0; used to compute grace-period expiry.
 		unreferencedSince: integer('unreferenced_since'),
 		// Set after grace period; bytes removed from disk, row preserved.
@@ -815,6 +833,14 @@ export const media = sqliteTable(
 		// walked EVERY user's media. Leading with user_id and carrying created_at
 		// makes them index-served, and covering for the fingerprint.
 		index('idx_media_user_gallery').on(t.userId, t.origin, t.hardDeletedAt, t.createdAt),
+		// No companion index for `favorited_at is not null`, deliberately: the
+		// favorites filter narrows the *same* predicate this index already serves,
+		// so it seeks identically and tests favorited_at as a residual on rows it
+		// was already walking. Favoriting can only make the gallery's O(library)
+		// source load cheaper than the unfiltered one it does today, never dearer,
+		// so a partial index would be an unmeasured guess — and per the
+		// idx_media_unembedded note below, one SQLite might not even pick. Add it
+		// if a large library ever measures otherwise.
 		// Covers the purger's WHERE — unreferenced_since <= cutoff AND
 		// hard_deleted_at IS NULL AND origin = 'uploaded'. Putting the
 		// range column last lets SQLite use index-only equality probes on
