@@ -170,4 +170,14 @@ describe('docker.yml cannot act on an unearned pass', () => {
 		expect(env?.['SAME_SHA_WORKFLOW']).toBe('.github/workflows/docker.yml');
 		expect(env?.['PR_WORKFLOW']).toBe('.github/workflows/ci.yml');
 	});
+
+	it('is granted that scope by its caller too', () => {
+		// A called workflow is CAPPED by the calling job, and declaring a
+		// permission the caller withholds is a hard validation error that
+		// rejects the whole file before any job runs -- not a quiet downgrade.
+		// Both halves must agree, and only this asserts the caller's half.
+		expect(load('docker.yml')['tests']?.permissions).toEqual(
+			expect.objectContaining({ actions: 'read' }),
+		);
+	});
 });
