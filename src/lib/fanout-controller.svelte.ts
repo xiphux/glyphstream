@@ -1106,7 +1106,7 @@ export class FanoutController {
 	}
 
 	/**
-	 * The recovery state the grid was last rebuilt from, by identity. Kit hands
+	 * The recovery state the grid was last handed, by identity. Kit hands
 	 * the page a new `data` on every commit, including a layout-only
 	 * `invalidate('app:conversations')` (the `(app)` layout's app-resume
 	 * refresh). This route skips `await parent()`, so its load does not re-run
@@ -1116,15 +1116,20 @@ export class FanoutController {
 	 * showing a broken image because its bytes were already unlinked, and a
 	 * finished recovered grid got its "Generating…" placeholders back. A page load
 	 * that really re-runs deserializes a new object, so this skips only a copy
-	 * already consumed. It is recorded only once consumed: an object skipped
-	 * while the grid was client-driven hasn't been applied yet.
+	 * already seen.
+	 *
+	 * Recorded even when the rebuild gate is closed. A closed gate means the
+	 * client is driving the grid (streaming, re-rolling, mid-pick), so whatever
+	 * it does next is newer than that snapshot. Holding the snapshot back to
+	 * apply "later" is the same resurrection: a discard made after it, then an
+	 * app resume re-publishing it, brought the discarded variation back.
 	 */
 	#lastSynced: FanoutRecoveryState | null | undefined | typeof NOT_SYNCED = NOT_SYNCED;
 
 	syncFromServer(fanout: FanoutRecoveryState | null | undefined): void {
-		if (!this.#canRebuildFromServer()) return;
 		if (fanout === this.#lastSynced) return;
 		this.#lastSynced = fanout;
+		if (!this.#canRebuildFromServer()) return;
 		if (!fanout?.parentMessageId || (fanout.siblings.length === 0 && fanout.pending === 0)) {
 			// No parked fan-out on the server — drop any recovered grid.
 			if (this.columns.length > 0) {

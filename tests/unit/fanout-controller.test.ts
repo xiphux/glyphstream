@@ -457,6 +457,43 @@ describe('FanoutController — actions', () => {
 		vi.unstubAllGlobals();
 	});
 
+	it('a snapshot that arrived while the grid was busy is never applied later', async () => {
+		// A fresh load landing mid-action is skipped by the rebuild gate, and it
+		// predates whatever that action does. Held back and applied on its next
+		// re-publish (an app resume), it brought a just-discarded variation back.
+		let finishDelete!: () => void;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				() =>
+					new Promise<Response>((r) => {
+						finishDelete = () => r({ ok: true } as unknown as Response);
+					}),
+			),
+		);
+		const { deps } = makeDeps();
+		const fc = new FanoutController(deps);
+		const parked = (...ids: string[]): FanoutRecoveryState => ({
+			parentMessageId: 'u1',
+			avatar: false,
+			kind: 'image',
+			siblings: ids.map((id) => imageSibling(id, 'bridge::sdxl', null)),
+			pending: 0,
+			pendingModelIds: [],
+			pendingStartedAt: [],
+			pendingSourceMediaIds: [],
+		});
+		fc.syncFromServer(parked('a', 'b'));
+		const discarding = fc.discard(fc.columns[0]);
+		const midDiscard = parked('a', 'b');
+		fc.syncFromServer(midDiscard); // gate closed: `picking`
+		finishDelete();
+		expect(await discarding).toBe(true);
+		fc.syncFromServer(midDiscard);
+		expect(fc.columns.map((c) => c.branchId)).toEqual(['b']);
+		vi.unstubAllGlobals();
+	});
+
 	it('teardown lets the next conversation apply its recovery state', () => {
 		const { deps } = makeDeps();
 		const fc = new FanoutController(deps);
