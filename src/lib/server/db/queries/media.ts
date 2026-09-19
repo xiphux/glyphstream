@@ -984,22 +984,48 @@ export function listConversationsForMedia(mediaId: string, userId: string): Medi
 // --- Favorites (gallery / lightbox star) ---------------------------------
 
 /**
+ * Last `favorited_at` this process wrote, so the next star is guaranteed a
+ * strictly greater one.
+ *
+ * `Date.now()` alone is not enough, and the gap is not theoretical — a test
+ * caught it. `galleryUserFingerprint` detects a favorite change from
+ * `(count, max(favorited_at))`, and unstarring one row while starring another
+ * leaves the count where it was; if both writes land in the same millisecond the
+ * max is unchanged too, so the gallery's 30s memo serves the old starred set.
+ * Nudging the stamp forward makes any star move the max, with no extra work in
+ * the read path (the alternative was folding row identity into an aggregate that
+ * runs on every gallery request).
+ *
+ * A process-local counter is sound because this is a single-Node deployment by
+ * design — and the caches it keeps honest are in-process anyway, so anything that
+ * broke this assumption would already have broken them. Worst case the stored
+ * instant runs a few ms ahead of the wall clock, which nothing reads.
+ */
+let lastFavoritedAt = 0;
+
+/**
  * Star / unstar one media row. Returns false on not-found, ownership mismatch,
  * or an already-tombstoned row, which the endpoint turns into a 404.
  *
  * Idempotent by value, not by write: starring an already-starred row overwrites
- * `favorited_at` with a fresh timestamp. That's wanted — the timestamp is what
- * makes a toggle visible to `galleryUserFingerprint`, so an idempotent no-op
- * write would leave the gallery's caches convinced nothing changed.
+ * `favorited_at` with a fresh, strictly-increasing stamp (see `lastFavoritedAt`).
+ * That's wanted — the stamp is what makes a toggle visible to
+ * `galleryUserFingerprint`, so an idempotent no-op write would leave the
+ * gallery's caches convinced nothing changed.
  *
  * No FTS bookkeeping: the `media_prompt_fts` triggers fire on insert, delete,
  * and `AFTER UPDATE OF prompt_full` specifically, so this write doesn't touch
  * the index.
  */
 export function setMediaFavorite(mediaId: string, userId: string, favorite: boolean): boolean {
+	let stamp: number | null = null;
+	if (favorite) {
+		stamp = Math.max(Date.now(), lastFavoritedAt + 1);
+		lastFavoritedAt = stamp;
+	}
 	const res = getDb()
 		.update(media)
-		.set({ favoritedAt: favorite ? Date.now() : null })
+		.set({ favoritedAt: stamp })
 		.where(
 			and(
 				eq(media.id, mediaId),

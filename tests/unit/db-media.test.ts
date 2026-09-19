@@ -22,6 +22,7 @@ import {
 	listMediaMonthPeriodsForUser,
 	listMediaNeedingEmbedding,
 	searchMediaForUser,
+	setMediaFavorite,
 	listConversationsForMedia,
 	listMediaForConversation,
 	listMediaForUser,
@@ -430,6 +431,121 @@ describe('listMediaForUser', () => {
 		expect(
 			listMediaForUser(u.id, { before: 2000, model: 'comfyui/sdxl' }).items.map((i) => i.id),
 		).toEqual([a.id]);
+	});
+});
+
+describe('favorites', () => {
+	it('starring is reflected on the wire as a boolean, not the timestamp', () => {
+		const u = seedUser();
+		const m = makeMedia(u.id);
+		expect(listMediaForUser(u.id).items[0].favorite).toBe(false);
+		expect(setMediaFavorite(m.id, u.id, true)).toBe(true);
+		const item = listMediaForUser(u.id).items[0];
+		// Not `toBeTruthy`: SQLite stores a timestamp here and has no boolean type,
+		// so a projection that forwarded the column would ship a number under a
+		// type claiming boolean and still satisfy a truthiness check.
+		expect(item.favorite).toBe(true);
+		expect(typeof item.favorite).toBe('boolean');
+		expect('favoritedAt' in item).toBe(false);
+	});
+
+	it('filters to starred rows, and unstarring restores them', () => {
+		const u = seedUser();
+		const keep = makeMedia(u.id);
+		const other = makeMedia(u.id);
+		setMediaFavorite(keep.id, u.id, true);
+		expect(listMediaForUser(u.id, { favorite: true }).items.map((i) => i.id)).toEqual([keep.id]);
+		setMediaFavorite(keep.id, u.id, false);
+		expect(listMediaForUser(u.id, { favorite: true }).items).toEqual([]);
+		// The unfiltered library never changed.
+		expect(
+			listMediaForUser(u.id)
+				.items.map((i) => i.id)
+				.sort(),
+		).toEqual([keep.id, other.id].sort());
+	});
+
+	it('ANDs with the other facets rather than replacing them', () => {
+		const u = seedUser();
+		const favImg = makeMedia(u.id, { kind: 'image' });
+		const favVid = makeMedia(u.id, { kind: 'video', contentType: 'video/mp4' });
+		const plainImg = makeMedia(u.id, { kind: 'image' });
+		setMediaFavorite(favImg.id, u.id, true);
+		setMediaFavorite(favVid.id, u.id, true);
+		expect(
+			listMediaForUser(u.id, { favorite: true, kind: 'image' }).items.map((i) => i.id),
+		).toEqual([favImg.id]);
+		expect(
+			listMediaForUser(u.id, { kind: 'image' })
+				.items.map((i) => i.id)
+				.sort(),
+		).toEqual([favImg.id, plainImg.id].sort());
+	});
+
+	it("won't star another user's media, or a hard-deleted row", () => {
+		const owner = seedUser();
+		const other = seedUser();
+		const mine = makeMedia(owner.id);
+		expect(setMediaFavorite(mine.id, other.id, true)).toBe(false);
+		expect(getRow(mine.id)?.favoritedAt).toBeNull();
+
+		const gone = makeMedia(owner.id);
+		hardDeleteMediaForUser(gone.id, owner.id);
+		expect(setMediaFavorite(gone.id, owner.id, true)).toBe(false);
+	});
+
+	it('refuses to star an upload — the gallery would never list it again', () => {
+		const u = seedUser();
+		const upload = makeMedia(u.id, { origin: 'uploaded' });
+		expect(setMediaFavorite(upload.id, u.id, true)).toBe(false);
+		expect(getRow(upload.id)?.favoritedAt).toBeNull();
+	});
+
+	it('every star gets a strictly greater stamp, even within one millisecond', () => {
+		// Load-bearing, not cosmetic: galleryUserFingerprint notices a toggle via
+		// (count, max(favorited_at)), and an unstar-one-star-another swap leaves the
+		// count alone. With a plain Date.now() these three writes land in the same
+		// millisecond, the max never moves, and the gallery's 30s memo keeps serving
+		// the old starred set — which is what this suite caught.
+		const u = seedUser();
+		const a = makeMedia(u.id);
+		const b = makeMedia(u.id);
+		setMediaFavorite(a.id, u.id, true);
+		const first = getRow(a.id)?.favoritedAt;
+		expect(setMediaFavorite(a.id, u.id, true)).toBe(true);
+		expect(getRow(a.id)?.favoritedAt).toBeGreaterThan(first!);
+		setMediaFavorite(b.id, u.id, true);
+		expect(getRow(b.id)?.favoritedAt).toBeGreaterThan(getRow(a.id)!.favoritedAt!);
+	});
+
+	it('narrows the model facet list to models that made something starred', () => {
+		const u = seedUser();
+		const sdxl = makeMedia(u.id, { sourceModel: 'comfyui/sdxl' });
+		makeMedia(u.id, { sourceModel: 'comfyui/flux' });
+		setMediaFavorite(sdxl.id, u.id, true);
+		expect(listDistinctSourceModelsForUser(u.id, { favorite: true })).toEqual([
+			{ value: 'comfyui/sdxl', count: 1 },
+		]);
+		expect(
+			listDistinctSourceModelsForUser(u.id)
+				.map((f) => f.value)
+				.sort(),
+		).toEqual(['comfyui/flux', 'comfyui/sdxl']);
+	});
+
+	it('keeps a starred row out of the purger even once it is reapable', () => {
+		// Defensive today (favorites are generated-only, the purger reaps uploads
+		// only), but this is the predicate a bulk-cleanup sweep would inherit.
+		const u = seedUser();
+		const m = makeMedia(u.id, { origin: 'uploaded' });
+		mocks.testDb
+			.update(media)
+			.set({ favoritedAt: Date.now(), unreferencedSince: 1000 })
+			.where(eq(media.id, m.id))
+			.run();
+		expect(findPurgeCandidates(500_000).map((c) => c.id)).not.toContain(m.id);
+		mocks.testDb.update(media).set({ favoritedAt: null }).where(eq(media.id, m.id)).run();
+		expect(findPurgeCandidates(500_000).map((c) => c.id)).toContain(m.id);
 	});
 });
 

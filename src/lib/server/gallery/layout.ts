@@ -347,9 +347,13 @@ function evictUnitsEntry(key: string): void {
  *  set that omits the star you just added, or still contains one you removed.
  *  Both halves are needed: `favs` alone misses an unstar-one-star-another pair
  *  (count returns to where it was while membership changed), which is exactly
- *  what curating a favorites list looks like; `max(favorited_at)` is `Date.now()`
- *  on every star, so the pair moves for any toggle. Free — same rows, same scan,
- *  two more aggregate expressions. */
+ *  what curating a favorites list looks like, and `favAt` covers that because
+ *  every star writes a stamp strictly greater than the last one this process
+ *  wrote. That guarantee lives in `setMediaFavorite`, deliberately — a plain
+ *  `Date.now()` lets a same-millisecond swap slip past both halves, and closing
+ *  it at the write costs nothing here, where the alternative was folding row
+ *  identity into an aggregate that runs on every gallery request. Free — same
+ *  rows, same scan, two more aggregate expressions. */
 function galleryUserFingerprint(userId: string): string {
 	const row = getDb()
 		.select({

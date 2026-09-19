@@ -39,6 +39,8 @@ function makeImage(overrides: Partial<MediaListItem> = {}): MediaListItem {
 		uploadedByUserId: null,
 		generatedByUserId: 'u-1',
 		archived: false,
+		origin: 'generated',
+		favorite: false,
 		...overrides,
 	} as MediaListItem;
 }
@@ -298,6 +300,75 @@ describe('MediaLightbox — save button', () => {
 
 		clickSpy.mockRestore();
 		vi.unstubAllGlobals();
+	});
+});
+
+describe('MediaLightbox — favorite star', () => {
+	it('is hidden when onToggleFavorite is not provided', () => {
+		// How the chat surface withholds it for an uploaded asset: the gallery never
+		// lists uploads, so a star there could never be found again.
+		render(MediaLightbox, { props: { media: makeImage(), onClose: vi.fn() } });
+		expect(screen.queryByRole('button', { name: 'Add to favorites' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Remove from favorites' })).toBeNull();
+	});
+
+	it('offers to add when the media is not starred', () => {
+		render(MediaLightbox, {
+			props: { media: makeImage(), onClose: vi.fn(), onToggleFavorite: vi.fn() },
+		});
+		const btn = screen.getByRole('button', { name: 'Add to favorites' });
+		expect(btn).toBeInTheDocument();
+		expect(btn).toHaveAttribute('aria-pressed', 'false');
+	});
+
+	it('offers to remove when the media is starred', () => {
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ favorite: true }),
+				onClose: vi.fn(),
+				onToggleFavorite: vi.fn(),
+			},
+		});
+		const btn = screen.getByRole('button', { name: 'Remove from favorites' });
+		expect(btn).toHaveAttribute('aria-pressed', 'true');
+	});
+
+	it('asks for the OPPOSITE of the current state, with the media id', async () => {
+		const user = userEvent.setup();
+		const onToggleFavorite = vi.fn();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'target', favorite: true }),
+				onClose: vi.fn(),
+				onToggleFavorite,
+			},
+		});
+		// The caller owns the write and the optimistic flip, so it needs to be told
+		// which way to go rather than deriving it from a prop it is about to change.
+		await user.click(screen.getByRole('button', { name: 'Remove from favorites' }));
+		expect(onToggleFavorite).toHaveBeenCalledWith('target', false);
+	});
+
+	it('is disabled while that media id is in flight, but not another', () => {
+		const { unmount } = render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'in-flight' }),
+				onClose: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				favoritingId: 'in-flight',
+			},
+		});
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeDisabled();
+		unmount();
+		render(MediaLightbox, {
+			props: {
+				media: makeImage({ id: 'this' }),
+				onClose: vi.fn(),
+				onToggleFavorite: vi.fn(),
+				favoritingId: 'other',
+			},
+		});
+		expect(screen.getByRole('button', { name: 'Add to favorites' })).toBeEnabled();
 	});
 });
 

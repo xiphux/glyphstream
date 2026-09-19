@@ -13,6 +13,7 @@ import {
 	hardDeleteMediaForUser,
 	insertMedia,
 	linkMessageMedia,
+	setMediaFavorite,
 } from '$lib/server/db/queries/media';
 import {
 	computeGalleryLayout,
@@ -292,6 +293,21 @@ describe('gallery units: filters', () => {
 		makeGen(u.id, at(2024, 6, 14), { origin: 'uploaded', promptFull: 'up', originalPrompt: null });
 		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
 	});
+
+	it('favorite filter restricts the layout, units and day buckets together', () => {
+		const u = seedUser();
+		const starred = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
+		makeGen(u.id, at(2024, 5, 14), { promptFull: 'b', originalPrompt: null });
+		setMediaFavorite(starred, u.id, true);
+
+		const layout = computeGalleryLayout(u.id, { ...TZ, favorite: true });
+		expect(layout.totalUnits).toBe(1);
+		// The whole of May drops out of the reservation, not just its tiles — the
+		// client sizes sections from these counts, so a day left behind here would
+		// reserve height nothing renders into.
+		expect(layout.days).toEqual([{ key: '2024-06-15', units: 1 }]);
+		expect(allUnits(u.id, { favorite: true }).map((x) => x.leaderId)).toEqual([starred]);
+	});
 });
 
 describe('gallery units: cache invalidation on mutation', () => {
@@ -307,6 +323,63 @@ describe('gallery units: cache invalidation on mutation', () => {
 		hardDeleteMediaForUser(a, u.id);
 		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(1);
 		expect(computeGalleryLayout(u.id, TZ).totalUnits).toBe(1);
+	});
+
+	it('a favorites-filtered read is never served the unfiltered cached library', () => {
+		const u = seedUser();
+		const starred = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
+		makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
+		setMediaFavorite(starred, u.id, true);
+
+		// Warm the unfiltered entry first, so a cache key missing the flag would
+		// hand this exact library back to the filtered call below.
+		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(2);
+		expect(listGalleryUnits(u.id, { ...TZ, favorite: true, offset: 0, limit: 500 }).total).toBe(1);
+		// ...and not the other way round either.
+		expect(listGalleryUnits(u.id, { ...TZ, offset: 0, limit: 500 }).total).toBe(2);
+	});
+
+	it('a star is visible immediately, though it changes no row count', () => {
+		// The fingerprint behind these caches was `total:live`, which a toggle
+		// leaves untouched — so this is the regression guard for the feature's own
+		// main flow (star something, then filter to Favorites).
+		const u = seedUser();
+		const a = makeGen(u.id, at(2024, 6, 15), { promptFull: 'a', originalPrompt: null });
+		const b = makeGen(u.id, at(2024, 6, 14), { promptFull: 'b', originalPrompt: null });
+
+		expect(listGalleryUnits(u.id, { ...TZ, favorite: true, offset: 0, limit: 500 }).total).toBe(0);
+		setMediaFavorite(a, u.id, true);
+		expect(allUnits(u.id, { favorite: true }).map((x) => x.leaderId)).toEqual([a]);
+
+		// Swapping which one is starred keeps the COUNT at 1 while changing the
+		// membership — the case a count-only fingerprint cannot see.
+		setMediaFavorite(a, u.id, false);
+		setMediaFavorite(b, u.id, true);
+		expect(allUnits(u.id, { favorite: true }).map((x) => x.leaderId)).toEqual([b]);
+	});
+
+	it('a star updates the badge count on a stack it did not otherwise change', () => {
+		const u = seedUser();
+		const conv = makeConv(u.id);
+		const newest = makeGen(u.id, at(2024, 6, 15, 13), { promptFull: 'a', originalPrompt: null });
+		linkToConv(conv, newest);
+		const older = makeGen(u.id, at(2024, 6, 15), { promptFull: 'b', originalPrompt: null });
+		linkToConv(conv, older);
+
+		const before = allUnits(u.id)[0];
+		expect(before.memberCount).toBe(2);
+		expect(before.favoriteCount).toBe(0);
+
+		// Star the NON-leader, so this also pins that the count spans the whole
+		// stack rather than just the tile's own image.
+		setMediaFavorite(older, u.id, true);
+		const after = allUnits(u.id)[0];
+		expect(after.favoriteCount).toBe(1);
+		// Everything else about the unit is untouched, which is what lets the client
+		// patch the badge locally instead of reseeding the grid.
+		expect(after.key).toBe(before.key);
+		expect(after.leaderId).toBe(before.leaderId);
+		expect(after.memberCount).toBe(2);
 	});
 });
 
