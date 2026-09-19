@@ -521,7 +521,7 @@ scrollHeight` to be silently wrong. So options 1 and 2 below share the same
 - **DB-backed endpoint management UI** (instead of `config.toml` only). Add
   endpoints from a settings page; reload the registry without restart.
 
-- **S3-compatible media storage.** `MediaStore` is already the abstraction;
+- **S3-compatible media storage.** `MediaStore` is most of the abstraction;
   implement `S3MediaStore` against remote object storage (Cloudflare R2,
   Backblaze B2). Trigger — the media set outgrowing the host's disk, wanting
   offsite durability, or handing byte-serving to presigned URLs so Node stops
@@ -532,6 +532,23 @@ scrollHeight` to be silently wrong. So options 1 and 2 below share the same
   hop, and turns a plain rsync/snapshot-able tree into an opaque bucket.
   `DiskMediaStore` already does the sharding, atomic writes, streaming puts,
   and range responses that object storage is usually reached for.
+
+  Two things whoever builds it inherits, neither of which `DiskMediaStore`
+  had to solve. **`MediaStore` covers originals only** — `thumbnail.ts`,
+  `vision-variant.ts` and the faststart remux in `persister.ts` all resolve
+  raw `node:fs` paths under `mediaDir()` / `derivedDir()` and bypass the
+  interface. Images degrade gracefully (the thumbnail endpoint falls back to
+  streaming the original); video does not — the `poster` 404s and the tile
+  goes blank. So this is a derived-asset seam _plus_ a store, not a store.
+  And **the write path's failure handling is one branch**: throw, persist a
+  durable error sibling, leave the bytes upstream until the bridge's own TTL
+  reaps them. Nothing is deleted upstream and no row is written for a file
+  that isn't there, so it is safe — but it is "safe" tuned for a mount, which
+  is up or down, not for a network service with a real error taxonomy
+  (retryable vs. not, partial response, expired credentials, timeout). Note
+  also that the recovery handle is surfaced nowhere a user can reach: the
+  error message carries only the underlying fs error, and the upstream job id
+  appears solely under `DEBUG` logging.
 
 - **Postgres deployment option.** Drizzle is dialect-portable; needs a
   postgres-driver adapter and migration regeneration.
