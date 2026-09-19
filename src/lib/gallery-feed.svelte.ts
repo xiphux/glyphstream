@@ -125,6 +125,46 @@ export class GalleryFeed {
 		for (let i = 0; i < units.length; i++) this.#units.set(offset + i, units[i]);
 	}
 
+	/**
+	 * Adjust one loaded unit's `favoriteCount` in place, so a star toggled in the
+	 * lightbox shows on its grid tile immediately.
+	 *
+	 * A local patch rather than a `seed()` from a fresh fetch because starring is
+	 * the one action here a user repeats in bursts, and a reload is not cheap: the
+	 * star moves `galleryUserFingerprint`, which is exactly what invalidates the
+	 * server's memoized library source, so every reseed would pay the full
+	 * O(library) stacking pass to move one badge. The counts this patches are the
+	 * only thing a star changes about a unit — membership, order, day buckets and
+	 * previews are all untouched — so there's nothing else a refetch would fix.
+	 *
+	 * The caller knows which unit to name: a top-level tile's lightbox opens that
+	 * unit's leader, and a drill-in already holds its unit. No-op for a key that
+	 * isn't loaded (scrolled out of the sparse window) — it'll come back correct
+	 * from the server.
+	 *
+	 * Filter caveat: this does NOT move a unit in or out of the grid, so with the
+	 * Favorites filter active the page must still reseed — an unstar there changes
+	 * what the library *contains*, not just how a tile is badged.
+	 */
+	/** Key of the loaded unit a given leader id anchors, or undefined if that unit
+	 *  isn't loaded. Lets the page turn "the lightbox showed this media" into the
+	 *  unit to patch, without exposing the index map. */
+	unitKeyForLeader(leaderId: string): string | undefined {
+		for (const u of this.#units.values()) if (u.leaderId === leaderId) return u.key;
+		return undefined;
+	}
+
+	patchUnitFavorite(unitKey: string, delta: number): void {
+		for (const [index, u] of this.#units) {
+			if (u.key !== unitKey) continue;
+			this.#units.set(index, {
+				...u,
+				favoriteCount: Math.max(0, Math.min(u.memberCount, u.favoriteCount + delta)),
+			});
+			return;
+		}
+	}
+
 	/** Loaded units' leader {id, kind} in newest-first index order — the sibling
 	 *  set the top-level lightbox carousels over (spans only what's loaded). */
 	loadedLeaders(): Array<{ id: string; kind: GalleryUnit['leaderKind'] }> {

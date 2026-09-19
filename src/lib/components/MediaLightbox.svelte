@@ -11,6 +11,7 @@
 		ImagePlus,
 		RotateCcw,
 		Share,
+		Star,
 		Trash2,
 		UserRound,
 		X,
@@ -102,6 +103,19 @@
 		) => void | Promise<void>;
 		/** Disables the action while a change is in flight. */
 		settingAvatar?: boolean;
+		/**
+		 * Optional favorite toggle. The caller owns the request, its toast and the
+		 * optimistic flip of `media.favorite` — same division as `onDelete` and
+		 * `onSetAvatar`; this component stays presentational.
+		 *
+		 * Omit it to hide the star. The chat-side caller omits it for an UPLOADED
+		 * asset on purpose: a star promises "keep this and let me find it again in
+		 * the gallery", and the gallery lists only generated media, so offering one
+		 * there would be a button whose second half can never be honoured.
+		 */
+		onToggleFavorite?: (id: string, next: boolean) => void | Promise<void>;
+		/** Media id whose star is in flight, used to disable the button. */
+		favoritingId?: string | null;
 	}
 
 	let {
@@ -117,6 +131,8 @@
 		avatarTargets = [],
 		onSetAvatar = undefined,
 		settingAvatar = false,
+		onToggleFavorite = undefined,
+		favoritingId = null,
 	}: Props = $props();
 
 	// --- carousel navigation ---------------------------------------------
@@ -656,6 +672,29 @@
 				<span class="opacity-70">{metaLine(m)}</span>
 			</div>
 			<div class="flex gap-1.5">
+				{#if onToggleFavorite}
+					<!--
+						Leads the toolbar: the cheapest, most repeatable action here, and
+						the one a reviewing pass uses over and over. Unlike the picker's
+						model star this one is always fully visible — it sits in a toolbar
+						of peers rather than a list of rows, so there's no column of grey
+						stars to keep quiet, and a `can-hover:` fade would make it
+						unreachable on the touch devices this view is mostly used from.
+					-->
+					<button
+						type="button"
+						onclick={() => onToggleFavorite?.(m.id, !m.favorite)}
+						disabled={favoritingId === m.id}
+						title={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
+						aria-label={m.favorite ? 'Remove from favorites' : 'Add to favorites'}
+						aria-pressed={m.favorite}
+						class="flex h-8 w-8 items-center justify-center rounded-md border border-media-border bg-media-surface transition hover:bg-media-surface-hover disabled:opacity-50 {m.favorite
+							? 'text-favorite'
+							: 'text-media-fg-secondary'}"
+					>
+						<Star size={14} strokeWidth={2.25} fill={m.favorite ? 'currentColor' : 'none'} />
+					</button>
+				{/if}
 				<button
 					type="button"
 					onclick={() => shareOrDownload(m)}

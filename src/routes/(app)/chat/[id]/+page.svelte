@@ -1482,6 +1482,37 @@
 		!!lightboxColumn && canDiscardColumn(fanout.columns, lightboxColumn),
 	);
 	let lightboxDeletingId = $state<string | null>(null);
+	let lightboxFavoritingId = $state<string | null>(null);
+
+	/**
+	 * Star / unstar the open image, so the "that one came out well" reaction can
+	 * happen where it actually occurs — right after generating — instead of
+	 * requiring a later trip to the gallery.
+	 *
+	 * Purely local: nothing on this page reads the flag except the open lightbox,
+	 * so there's no `invalidate` to run — and this route deliberately avoids one
+	 * (it ships the whole active branch with `content_html`, so re-running its load
+	 * to move a star would re-serialize the conversation). The gallery re-reads the
+	 * truth from the server on its own next load.
+	 */
+	async function toggleLightboxFavorite(mediaId: string, next: boolean) {
+		if (lightboxFavoritingId) return;
+		lightboxFavoritingId = mediaId;
+		if (lightbox?.id === mediaId) lightbox = { ...lightbox, favorite: next };
+		try {
+			const res = await fetch(`/api/media/${mediaId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ favorite: next }),
+			});
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+		} catch (e) {
+			if (lightbox?.id === mediaId) lightbox = { ...lightbox, favorite: !next };
+			toast.error(`Couldn't update favorite: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			lightboxFavoritingId = null;
+		}
+	}
 
 	/**
 	 * Discard the branch behind the lightbox's current image, then move to the
@@ -2808,6 +2839,8 @@
 			{avatarTargets}
 			onSetAvatar={setAvatar}
 			{settingAvatar}
+			onToggleFavorite={lightbox.origin === 'generated' ? toggleLightboxFavorite : undefined}
+			favoritingId={lightboxFavoritingId}
 		/>
 	{/await}
 {/if}

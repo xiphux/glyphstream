@@ -3,7 +3,7 @@
 	import { goto, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Popover, Switch } from 'bits-ui';
-	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck } from '@lucide/svelte';
+	import { ChevronLeft, Search, SlidersHorizontal, SquareCheck, Star } from '@lucide/svelte';
 	import MediaLightbox from '$lib/components/MediaLightbox.svelte';
 	import { confirmDialog } from '$lib/confirm.svelte';
 	import GalleryTimelineRail from '$lib/components/GalleryTimelineRail.svelte';
@@ -28,6 +28,7 @@
 			searchItems?: MediaListItem[];
 			kind: 'image' | 'video' | null;
 			model: string | null;
+			favorite: boolean;
 			modelFacets: Array<{ value: string; label: string; count: number }>;
 			q: string | null;
 			/** From the (app) layout — the presets an image can be made the
@@ -85,6 +86,7 @@
 		const p = new URLSearchParams();
 		if (data.kind) p.set('kind', data.kind);
 		if (data.model) p.set('model', data.model);
+		if (data.favorite) p.set('fav', '1');
 		if (!stacking) p.set('stack', 'false');
 		p.set('tzOffset', String(tzOffset()));
 		return p;
@@ -175,6 +177,7 @@
 		// deps: filters + stacking
 		void data.kind;
 		void data.model;
+		void data.favorite;
 		void stacking;
 		// Skeleton only for a genuine first load (no layout yet); a filter/stacking
 		// change keeps the current grid until the new units land. untrack so reading
@@ -203,6 +206,17 @@
 		const url = new URL(page.url);
 		if (m) url.searchParams.set('model', m);
 		else url.searchParams.delete('model');
+		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
+	}
+
+	// A URL param like the other facets rather than local state, so Favorites
+	// composes with kind/model/search for free, survives a reload, and is
+	// linkable — and so the page load can narrow the model facet counts to the
+	// starred set the grid is actually showing.
+	function setFavorite(on: boolean) {
+		const url = new URL(page.url);
+		if (on) url.searchParams.set('fav', '1');
+		else url.searchParams.delete('fav');
 		void goto(url, { keepFocus: true, noScroll: true, replaceState: false });
 	}
 
@@ -248,7 +262,7 @@
 	}
 
 	const viewNonDefault = $derived(!stacking || granularity !== 'month');
-	const filterActive = $derived(kindFilter !== null || data.model != null);
+	const filterActive = $derived(kindFilter !== null || data.model != null || data.favorite);
 
 	// --- Sections (from the layout) -----------------------------------------
 	const sections = $derived(feed.layout ? buildLayoutSections(feed.layout.days, granularity) : []);
@@ -446,6 +460,56 @@
 			error = e instanceof Error ? e.message : 'Failed to delete';
 		} finally {
 			deletingId = null;
+		}
+	}
+
+	let favoritingId = $state<string | null>(null);
+
+	/** Star / unstar one item from the lightbox.
+	 *
+	 * Optimistic, unlike the model-favorites star (which re-reads `data.prefs`):
+	 * there's no cheap load to re-run here. This page ships the whole visible
+	 * library, so an `invalidate` to move one star would re-serialize it, and a
+	 * feed reseed would additionally pay the server's full stacking pass — the
+	 * star itself moves the fingerprint that invalidates that memo. So the local
+	 * copies flip immediately and revert on failure.
+	 *
+	 * The three item lists are separate copies of the same rows (lightbox, drill
+	 * members, search results), so each is patched; the grid tile's badge is
+	 * patched through the feed.
+	 *
+	 * Exception: with the Favorites filter on, an unstar has to *leave* the grid,
+	 * which no local patch can express — so that one case reseeds.
+	 */
+	async function toggleFavorite(id: string, next: boolean) {
+		if (favoritingId) return;
+		const unitKey = drillUnit ? drillUnit.key : feed.unitKeyForLeader(id);
+		const applyLocal = (value: boolean) => {
+			if (lightbox?.id === id) lightbox = { ...lightbox, favorite: value };
+			if (drillItems)
+				drillItems = drillItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
+			searchItems = searchItems.map((m) => (m.id === id ? { ...m, favorite: value } : m));
+		};
+		favoritingId = id;
+		error = null;
+		applyLocal(next);
+		if (unitKey) feed.patchUnitFavorite(unitKey, next ? 1 : -1);
+		try {
+			const res = await fetch(`/api/media/${id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ favorite: next }),
+			});
+			if (!res.ok) throw new Error(`Server returned ${res.status}`);
+			// Unstarring inside the Favorites view removes the item from the filtered
+			// library, so the layout counts change and the grid must be rebuilt.
+			if (data.favorite && !next) await refreshAfterMutation(new Set([id]));
+		} catch (e) {
+			applyLocal(!next);
+			if (unitKey) feed.patchUnitFavorite(unitKey, next ? -1 : 1);
+			error = e instanceof Error ? e.message : 'Failed to update favorite';
+		} finally {
+			favoritingId = null;
 		}
 	}
 
@@ -794,6 +858,32 @@
 						{/each}
 					</div>
 				{/snippet}
+				{#snippet favoriteFacet()}
+					<!--
+						A toggle, not a third value in the kind group: it ANDs with kind and
+						model rather than replacing either, and the filled star reads as
+						on/off the way the lightbox's does. Always visible (no `can-hover:`
+						fade) — it's a toolbar peer, and hiding a filter until hover would
+						leave it unreachable on touch.
+					-->
+					<button
+						type="button"
+						onclick={() => setFavorite(!data.favorite)}
+						aria-pressed={data.favorite}
+						title={data.favorite ? 'Showing favorites only' : 'Show favorites only'}
+						class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 transition {data.favorite
+							? 'border-surface-inverse bg-surface-inverse text-fg-inverse'
+							: 'border-border-strong bg-surface-panel hover:bg-surface-raised'}"
+					>
+						<Star
+							size={14}
+							strokeWidth={2.25}
+							class={data.favorite ? '' : 'text-favorite'}
+							fill={data.favorite ? 'currentColor' : 'none'}
+						/>
+						Favorites
+					</button>
+				{/snippet}
 				{#snippet modelFacet()}
 					{#if modelOptions.length >= 2 || data.model != null}
 						{@const modelActive = data.model != null}
@@ -852,6 +942,7 @@
 					     View popover below to keep the bar to a single row. -->
 					<div class="hidden sm:contents">
 						{@render kindFacet()}
+						{@render favoriteFacet()}
 						{@render modelFacet()}
 					</div>
 					<Popover.Root>
@@ -891,6 +982,10 @@
 									<div class="flex items-center justify-between gap-3 p-2">
 										<span class="font-medium text-fg">Type</span>
 										{@render kindFacet()}
+									</div>
+									<div class="flex items-center justify-between gap-3 p-2">
+										<span class="font-medium text-fg">Starred</span>
+										{@render favoriteFacet()}
 									</div>
 									{#if modelOptions.length >= 2 || data.model != null}
 										<div class="flex items-center justify-between gap-3 p-2">
@@ -1041,12 +1136,8 @@
 										playsinline
 										class="h-full w-full object-cover"
 									></video>
-									<div
-										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
-									>
-										video
-									</div>
 								{/if}
+								{@render cornerBadges(m.favorite, m.kind === 'video')}
 								{#if m.promptExcerpt}
 									<div
 										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
@@ -1078,6 +1169,35 @@
 							</button>
 						{/if}
 					</li>
+				{/snippet}
+
+				<!-- Top-right corner badges, in one flex row so a starred video shows both
+				     without the two overlapping. Display-only: starring happens in the
+				     lightbox, so a tile never has to compete with the select/delete hit
+				     areas in its other corner. -->
+				{#snippet cornerBadges(starred: boolean, isVideo: boolean)}
+					{#if starred || isVideo}
+						<div
+							class="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-1"
+							aria-hidden="true"
+						>
+							{#if starred}
+								<span
+									class="flex h-[18px] w-[18px] items-center justify-center rounded bg-black/60 text-favorite"
+									title="Favorite"
+								>
+									<Star size={11} strokeWidth={2.5} fill="currentColor" />
+								</span>
+							{/if}
+							{#if isVideo}
+								<span
+									class="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
+								>
+									video
+								</span>
+							{/if}
+						</div>
+					{/if}
 				{/snippet}
 
 				<!-- A solo grid tile from a thin unit (top-level browse). Same visual as
@@ -1120,12 +1240,8 @@
 										playsinline
 										class="h-full w-full object-cover"
 									></video>
-									<div
-										class="absolute right-1.5 top-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white"
-									>
-										video
-									</div>
 								{/if}
+								{@render cornerBadges(u.favoriteCount > 0, u.leaderKind === 'video')}
 								{#if u.excerpt}
 									<div
 										class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-left text-xs text-white line-clamp-2"
@@ -1205,6 +1321,7 @@
 										</div>
 									{/if}
 								</div>
+								{@render cornerBadges(u.favoriteCount > 0, false)}
 								<div
 									class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-2 pb-1.5 pt-8 text-white"
 								>
@@ -1355,4 +1472,6 @@
 	}))}
 	onSetAvatar={setAvatar}
 	{settingAvatar}
+	onToggleFavorite={toggleFavorite}
+	{favoritingId}
 />
