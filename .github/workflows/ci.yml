@@ -17,15 +17,10 @@
 # happen if both this workflow's `push` trigger AND docker.yml's
 # trigger fired on the same commit).
 #
-# It does NOT avoid running them twice across a release: the `main` push
-# and the `vX.Y.Z` tag that later points at that same commit are two
-# separate events over identical trees. The `gate` / `record-pass` pair
-# closes that gap — a full green run writes a marker keyed on the commit
-# SHA, and a later run on the same SHA skips straight to the end. Under
-# `workflow_call` the `github` context is the CALLER's, so the tag run
-# and the `main` run agree on `github.sha`, which is the whole trick.
-# (On `pull_request`, `github.sha` is the ephemeral merge commit, so PRs
-# never match a branch run's marker — they always test for real.)
+# Two duplicates remain after that split, and `gate` below removes both:
+# the `main` push that merges a pull request re-checks what the pull
+# request just checked, and the `vX.Y.Z` tag that later points at that same
+# commit checks it a third time.
 name: CI
 
 on:
@@ -45,76 +40,197 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Nothing here writes to the repo or a registry; the pass marker is an Actions
-# cache entry, which rides the runtime token rather than GITHUB_TOKEN. Under
-# `workflow_call` this also caps what docker.yml's grant can reach in here.
+# Nothing here writes to the repo or a registry. `gate` asks for `actions:
+# read` on its own, to look up earlier runs. Under `workflow_call` this also
+# caps what docker.yml's grant can reach in here.
 permissions:
   contents: read
 
 jobs:
-  # Has this exact commit already gone green? `lookup-only` probes for the
-  # marker without downloading it, so this costs one short runner start.
+  # Has this exact content already gone green somewhere else? If so every
+  # check below skips, because running them again would test the same bytes
+  # a second time.
   #
-  # Cache visibility is what makes this work across the release boundary:
-  # a run on `refs/tags/v*` can restore caches written on the default
-  # branch. That's the same rule the Docker layer cache already leans on.
+  # Two ways that can be true, tried in order:
   #
-  # This job has no `if:` and must not fail. That matters — it's the only
-  # job left running on a marker hit, and a called workflow whose jobs are
-  # ALL skipped concludes as skipped, which would in turn skip docker.yml's
-  # `build`/`merge`. One unconditional success keeps the conclusion green.
-  # `continue-on-error` on the probe is belt-and-braces, mirroring the save
-  # step below. `actions/cache` swallows a cache-service outage as a warning
-  # and returns no match, so it very likely wouldn't fail `gate` on its own —
-  # but if any probe failure ever did surface as a step failure, it would skip
-  # every check job and fail the called workflow, turning a broken
-  # optimization into a blocked release. Any non-`'true'` outcome (miss or
-  # error) already means "not passed" to every consumer of this output.
+  #   (1) THE SAME COMMIT — a release tag points at the commit `main` was
+  #       already pushed with, so the run that checked `main` checked this.
+  #       Identical SHA is the strongest evidence there is.
+  #   (2) THE SAME TREE — on a `main` push, HEAD is the merge commit and its
+  #       second parent is the branch that merged. Equal trees mean
+  #       byte-identical checkouts, and prove the branch was up to date when
+  #       it merged, so the combination was tested.
   #
-  # When this actually fires: only once the `main` run's TEST jobs have
-  # finished, since `record-pass` writes the marker immediately after them —
-  # note that's well before the `main` run itself ends, which waits on the
-  # Docker build and merge. Tagging while those tests are still going
-  # (`git push --follow-tags`, or tagging straight after the push) simply
-  # misses and runs the full suite. Most releases in this repo's history
-  # clear that bar, but several by under a minute, so treat it as a race you
-  # can lose rather than a guarantee — and don't go debugging a "broken"
-  # gate that was only ever racing.
+  # They compose without overlapping: on a `main` push (1) finds nothing,
+  # because a pull_request run reports the BRANCH head as its `head_sha`
+  # rather than the merge commit, so it falls through to (2). On a tag (1)
+  # answers at once.
   #
-  # Staleness: the marker asserts "same tree, same lockfile", not "same
-  # toolchain" — `ubuntu-latest` and `node-version: '26'` (newest 26.x) drift, so
-  # a very old marker vouches for an environment that no longer exists.
-  # GitHub evicts caches untouched for 7 days, which caps that drift window
-  # without any date-bucketing in the key.
+  # This replaces a marker in the Actions cache written by a `record-pass`
+  # job. That covered (1) only, and could never cover (2): a cache written
+  # by a `pull_request` run belongs to `refs/pull/N/merge` and, per GitHub's
+  # documentation, "can only be restored by re-runs of the pull request", so
+  # `main` could not read it. An API lookup by `head_sha` has no such
+  # scoping. The cache version was also stricter in one respect worth
+  # recording -- `record-pass` wrote only when the checks had really run, so
+  # a marker never represented an inherited pass. Here a tag's pass can
+  # trace back through `main` to the pull request. Every link is the same
+  # content, tree-identical then SHA-identical, so the pass is sound; it
+  # means "some run executed these checks against these bytes" rather than
+  # "a run executed them at this ref".
   #
-  # "Re-run all jobs" on an already-green run hits its own marker and skips
-  # the suite — a real capability this costs you. To force a genuine re-test,
-  # delete the marker:
-  #   gh cache delete ci-pass-<full-sha>-v1 --ref refs/heads/main
-  # (the full 40-char sha, NOT the `sha-<7chars>` form docker.yml tags images
-  # with), then re-run. Bumping `-v1` does not do it: the key names a commit,
-  # and every run able to read one resolves this file from that same commit —
-  # push and tag runs use the workflow at the event's SHA, a `./…` reusable
-  # workflow is "from the same commit as the caller", and a re-run keeps the
-  # original `GITHUB_SHA`. A bump therefore renames a key nothing was going
-  # to read, and the re-run still executes the OLD ci.yml. Treat the suffix
-  # as a key-shape reset, not a cache-buster — it would only start busting if
-  # this workflow gained a trigger that decouples `github.sha` from the
-  # workflow file's commit (`release`, `deployment`).
+  # THE INVARIANT THAT MATTERS: at least one job in this workflow must not
+  # skip. A called workflow whose jobs ALL skip concludes as *skipped*, and
+  # docker.yml's `build` and `merge` hang off `needs: tests`, so that would
+  # skip the Docker build and turn a release into a green run that shipped
+  # nothing. It cannot happen: the checks skip only when `passed == 'true'`,
+  # and only a job that RAN can emit that. So if `gate` skips, the checks
+  # run; if it runs, it is itself the non-skipped job.
+  #
+  # Guarded at two levels, because the keys differ in scope.
+  # `continue-on-error` on the STEP stops a failed lookup -- a network error,
+  # an unparseable response -- from failing the job. The same key on the JOB
+  # stops a job-level death, in practice a runner that never allocates, from
+  # failing the run. Neither bounds queue time: `timeout-minutes` does not
+  # start until a runner picks the job up. Nothing depends on this job
+  # finishing usefully -- the checks run regardless, via `!cancelled()`.
+  #
+  # Re-runs re-check for real: the script declines to inherit on attempt 2
+  # and above. The cache version lost that -- "Re-run all jobs" hit its own
+  # marker and skipped the suite, and forcing a genuine re-test meant
+  # deleting the cache entry by hand.
+  #
+  # Staleness: an inherited pass asserts "identical content", not "identical
+  # toolchain". `ubuntu-latest` and `node-version: '26'` drift, so a pass
+  # earned long ago vouches for an environment that has moved. The window is
+  # normally minutes for a merge; for a tag it is however long sits between
+  # the merge and the release.
   gate:
-    name: Check for a recorded pass
+    name: Check for an earlier pass
+    # main and tags only, and NOT pull requests. On a pull_request event the
+    # checkout is the merge ref -- itself a merge commit whose second parent
+    # is the branch head -- so lookup (2) below would compare a tree against
+    # the very branch being tested and look up that branch's own runs. A pull
+    # request must never be able to certify itself.
+    #
+    # Because this job can now skip, every check below carries `!cancelled()`.
+    # Without it a skipped `gate` would skip the whole suite: a plain
+    # expression does not override the implicit success-gating that a skipped
+    # dependency imposes, and the checks would silently stop running on
+    # exactly the event they matter most for.
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # For the run lookups below.
+      actions: read
     outputs:
-      passed: ${{ steps.probe.outputs.cache-hit }}
+      passed: ${{ steps.inherit.outputs.passed }}
     steps:
-      - name: Probe for a pass marker
-        id: probe
-        continue-on-error: true
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: .ci-pass
-          key: ci-pass-${{ github.sha }}-v1
-          lookup-only: true
+          # The merge commit and its parents is all lookup (2) needs. If a
+          # fetch ever comes back without the second parent, `rev-parse` fails
+          # and the step falls through to running the checks.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Inherit a pass this content already earned
+        id: inherit
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Two different workflows, because this one never has a run of its
+          # own on main or a tag -- docker.yml calls it, and a called workflow
+          # runs inside the caller's run. So the branch/tag evidence is a
+          # docker.yml run, while the pull-request evidence is a ci.yml run.
+          SAME_SHA_WORKFLOW: .github/workflows/docker.yml
+          PR_WORKFLOW: .github/workflows/ci.yml
+        run: |
+          set -euo pipefail
+
+          # A re-run is somebody asking for these checks to actually run.
+          if [ "${GITHUB_RUN_ATTEMPT:-1}" != "1" ]; then
+            echo "Attempt ${GITHUB_RUN_ATTEMPT:-1}: re-checking rather than inheriting."
+            exit 0
+          fi
+
+          # jq reads the names from the environment rather than having them
+          # spliced into the program, so a value can never be parsed as jq.
+          runs_for () {
+            gh api "/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=$1&per_page=100" \
+              --jq "$2"
+          }
+
+          # Each lookup either sets `reason` or bows out, so there is exactly
+          # one line below that can report a pass, however many ways there
+          # are to earn one.
+          reason=""
+
+          # (1) THE SAME COMMIT. A release tag points at the commit main was
+          # already pushed with, so the run that checked main checked this.
+          # Identical SHA is the strongest evidence there is. Excludes this
+          # run, which is in that list too and is not evidence about itself.
+          # shellcheck disable=SC2016
+          # The single quotes are the point: `$ENV.…` must reach jq
+          # unexpanded, so that jq reads the value from the environment. A
+          # shell expansion here would splice the value into the program
+          # text instead, which is both wrong and the shape an injection
+          # would take.
+          same_sha=$(runs_for "${GITHUB_SHA}" '
+            [.workflow_runs[]
+             | select(.path == $ENV.SAME_SHA_WORKFLOW
+                      and (.id | tostring) != $ENV.GITHUB_RUN_ID)]
+            | sort_by(.run_started_at) | last | .conclusion // empty')
+
+          if [ "${same_sha}" = "success" ]; then
+            reason="${GITHUB_SHA} has already been checked by an earlier run"
+          else
+            # (2) THE SAME TREE. On a push to main, HEAD is the merge commit
+            # and its second parent is the branch that merged. Equal trees
+            # mean byte-identical checkouts, and also prove the branch was up
+            # to date when it merged -- a branch that was behind would have
+            # pulled main's commits into this tree and changed the hash.
+            if ! pr_head=$(git rev-parse -q --verify 'HEAD^2'); then
+              echo "No earlier run for ${GITHUB_SHA}, and HEAD is not a merge commit."
+              exit 0
+            fi
+
+            head_tree=$(git rev-parse 'HEAD^{tree}')
+            pr_tree=$(git rev-parse "${pr_head}^{tree}")
+
+            if [ "${head_tree}" != "${pr_tree}" ]; then
+              echo "Tree ${head_tree} differs from ${pr_head}'s ${pr_tree}."
+              echo "The merge combined two lines nothing has tested together."
+              exit 0
+            fi
+
+            # shellcheck disable=SC2016
+            # The single quotes are the point: `$ENV.…` must reach jq
+            # unexpanded, so that jq reads the value from the environment. A
+            # shell expansion here would splice the value into the program
+            # text instead, which is both wrong and the shape an injection
+            # would take.
+            same_tree=$(runs_for "${pr_head}" '
+              [.workflow_runs[]
+               | select(.path == $ENV.PR_WORKFLOW
+                        and .event == "pull_request")]
+              | sort_by(.run_started_at) | last | .conclusion // empty')
+
+            if [ "${same_tree}" != "success" ]; then
+              echo "No successful run for ${pr_head} (got: ${same_tree:-none})."
+              exit 0
+            fi
+
+            reason="the tree is identical to ${pr_head}, whose checks passed"
+          fi
+
+          echo "Inheriting: ${reason}."
+          echo "passed=true" >> "${GITHUB_OUTPUT}"
 
   # Lint, type-check, formatting and the migration check share one job
   # rather than several: each takes well under a minute, and they'd otherwise
@@ -125,7 +241,7 @@ jobs:
   static:
     name: Lint + type-check + format + migrations
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,7 +303,7 @@ jobs:
   infra:
     name: Workflow + Dockerfile lint
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -260,7 +376,7 @@ jobs:
   image:
     name: Docker image smoke
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -289,7 +405,7 @@ jobs:
   secrets:
     name: Secret scan
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -313,7 +429,7 @@ jobs:
   unit:
     name: Unit tests
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -342,7 +458,7 @@ jobs:
   e2e:
     name: E2E (Playwright)
     needs: gate
-    if: needs.gate.outputs.passed != 'true'
+    if: ${{ !cancelled() && needs.gate.outputs.passed != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -403,45 +519,3 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
-
-  # Write the marker only once every gating job is green. The `if:`
-  # carries no status-check function, so the implicit "every `needs` must
-  # have succeeded" still applies — one red job and no marker is written.
-  # Cost, on the `main`-push path: a reusable workflow is complete only when
-  # ALL its jobs terminate, so this job sits between the tests finishing and
-  # docker.yml's `build` starting — as `gate` does at the front. (Measured on
-  # the old graph: `build` started 2s after the *slowest* test job, not the
-  # first.) That's two runner starts' worth of publish latency on every `main`
-  # push, order of tens of seconds — an estimate from runner-provision
-  # overhead, not a measurement, since neither job has run in CI yet. Paid
-  # back many times over on the tag run it lets skip the suite outright.
-  #
-  # Restricted to `main` because that is the ONLY scope whose marker anything
-  # can read. A run reads its own ref's cache scope plus the default branch's,
-  # never a sibling's — so a marker written from a feature branch, a PR (where
-  # `github.sha` is the ephemeral `refs/pull/N/merge` commit anyway), or a tag
-  # ref is unreadable by the `main`/tag pair this exists to serve. Every one of
-  # those writes would be a runner start at the tail of the run to record a
-  # pass nothing can ever read — and every Dependabot update would pay it on
-  # its PR run. Under `workflow_call` the `github` context is the
-  # caller's, so `main` pushes still record normally; the tag run reads.
-  record-pass:
-    name: Record pass
-    needs: [gate, static, infra, secrets, image, unit, e2e]
-    if: github.ref == 'refs/heads/main' && needs.gate.outputs.passed != 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Write marker
-        run: touch .ci-pass
-
-      # `continue-on-error` because this job is inside the reusable workflow
-      # that docker.yml's build/merge/release hang off. A failed cache upload
-      # would otherwise fail `tests` and block a publish over a bookkeeping
-      # step whose only consequence is that the next run re-tests. The
-      # optimization is allowed to be unavailable; it isn't allowed to be a
-      # new way for a release to break.
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        continue-on-error: true
-        with:
-          path: .ci-pass
-          key: ci-pass-${{ github.sha }}-v1
