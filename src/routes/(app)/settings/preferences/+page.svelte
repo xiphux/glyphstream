@@ -11,7 +11,7 @@
 		ThemeName,
 		UserPreferences,
 	} from '$lib/types/api';
-	import { syncThemeColorMeta } from '$lib/theme-color';
+	import { syncSurfaceChrome } from '$lib/theme-color';
 	import {
 		deviceNotificationGap,
 		getPermissionState,
@@ -123,7 +123,7 @@
 		if (t === 'glyphstream') delete root.dataset.theme;
 		else root.dataset.theme = t;
 		document.cookie = `gs-theme=${t}; path=/; max-age=31536000; samesite=lax`;
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	}
 
 	async function selectTheme(next: ThemeName) {
@@ -157,7 +157,7 @@
 			s === 'dark' || (s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 		document.documentElement.dataset.scheme = dark ? 'dark' : 'light';
 		document.cookie = `gs-scheme=${s}; path=/; max-age=31536000; samesite=lax`;
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	}
 
 	async function selectScheme(next: ColorScheme) {

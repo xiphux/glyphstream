@@ -156,7 +156,7 @@ test.describe('unauthenticated', () => {
 
 	test('a dark-scheme /login tints the browser chrome to match the page', async ({ browser }) => {
 		// The `(auth)` group has no layout of its own, so nothing here used to
-		// call syncThemeColorMeta() — /login kept app.html's static light
+		// call syncSurfaceChrome() — /login kept app.html's static light
 		// default for its whole lifetime and a dark-scheme user got a near-white
 		// status bar over a dark page. Unauthenticated + dark is a combination
 		// no other spec covers, which is why it went unnoticed.

@@ -22,7 +22,7 @@
 	import { searchModal } from '$lib/search-modal.svelte';
 	import ScrollPane from '$lib/components/ScrollPane.svelte';
 	import { ConversationUiActions } from '$lib/conversation-ui-actions.svelte';
-	import { syncThemeColorMeta } from '$lib/theme-color';
+	import { syncSurfaceChrome } from '$lib/theme-color';
 	import { FavoritesDrag } from '$lib/favorites-drag.svelte';
 	import { isTitlePending } from '$lib/title-pending.svelte';
 	import {
@@ -260,7 +260,7 @@
 		if (theme === 'glyphstream') delete root.dataset.theme;
 		else root.dataset.theme = theme;
 		document.cookie = `gs-theme=${theme}; path=/; max-age=31536000; samesite=lax`;
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	});
 
 	// Color-scheme (light/dark/system). Deliberately TWO effects, because the
@@ -305,7 +305,7 @@
 		const p = m ? m[1] : 'system';
 		document.documentElement.dataset.scheme =
 			p === 'dark' || (p !== 'light' && dark) ? 'dark' : 'light';
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	});
 
 	// Incognito re-tint. The single owner of the `data-private` attribute (app.css
@@ -330,7 +330,7 @@
 		// the sync only touches the DOM, so it adds no reactive dependency and
 		// can't re-trigger this effect, and it reads a computed style, which
 		// flushes the attribute written just above.
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	});
 
 	// Sidebar link highlight combines "currently here" with "navigating

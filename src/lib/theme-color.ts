@@ -1,6 +1,13 @@
 /**
- * Sync the active theme + scheme's surface color to the two places that can't
- * read it from CSS: `<meta name="theme-color">`, which tints browser chrome
+ * Sync the active surface color to the two places that can't read it from CSS.
+ *
+ * Named for the job rather than for one of its outputs: it was
+ * syncThemeColorMeta when the meta tag was the only consumer, and a function
+ * whose name points at half its effects is one a later edit tidies down to
+ * that half. "Surface chrome" is the two of them together — the browser's and
+ * the OS's, both taking a color the page can only hand over, never delegate.
+ *
+ * The two places: `<meta name="theme-color">`, which tints browser chrome
  * (Safari tabs, Android) and non-iOS installed-app bars, and the
  * .status-bar-sampler element, which is what iOS colors its standalone status
  * bar from (it ignores theme-color there — see app.css).
@@ -83,7 +90,7 @@ function toLegacyRgb(value: string): string {
 	}
 }
 
-export function syncThemeColorMeta(): void {
+export function syncSurfaceChrome(): void {
 	if (typeof document === 'undefined') return;
 	const bg = toLegacyRgb(getComputedStyle(document.body).backgroundColor);
 	if (!bg) return;

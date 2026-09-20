@@ -113,7 +113,7 @@ describe('iOS launch-image colours', () => {
 
 	it("app.html's cold-load theme-color matches the light surface", () => {
 		// The fourth hand-copy of this token, and the one with no other guard.
-		// It is not merely a pre-hydration value: syncThemeColorMeta() only runs
+		// It is not merely a pre-hydration value: syncSurfaceChrome() only runs
 		// from the root layout onward, so a route that errors before hydration
 		// keeps whatever this says. Retuning --color-surface without updating it
 		// reintroduces exactly the drift the rest of this file exists to catch.

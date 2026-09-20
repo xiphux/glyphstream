@@ -13,7 +13,7 @@
 	import { askWorkerBuild } from '$lib/sw/ask-build';
 	import { askPendingNavigation } from '$lib/sw/pending-navigation';
 	import { notificationBody, notificationTitle } from '$lib/sw/notification-copy';
-	import { syncThemeColorMeta } from '$lib/theme-color';
+	import { syncSurfaceChrome } from '$lib/theme-color';
 	import type { ActiveConversationReport, SwClientMessage } from '$lib/types/push';
 	import { resolve } from '$app/paths';
 
@@ -145,9 +145,9 @@
 	//
 	// `(app)` re-runs this from its own theme/scheme effects, which own the
 	// authoritative prefs; parent effects run before child ones, so this is
-	// simply re-affirmed there. syncThemeColorMeta is idempotent.
+	// simply re-affirmed there. syncSurfaceChrome is idempotent.
 	$effect(() => {
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 	});
 
 	// When a new SW is waiting, vite-plugin-pwa fires onNeedRefresh and

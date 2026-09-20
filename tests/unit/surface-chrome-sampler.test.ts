@@ -17,7 +17,7 @@
  * the sampler is found and written at all, from the same call the meta is.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { syncThemeColorMeta } from '$lib/theme-color';
+import { syncSurfaceChrome } from '$lib/theme-color';
 
 /** Already legacy rgb(), so toLegacyRgb short-circuits and the canvas — which
  *  happy-dom cannot honour — never enters into it. */
@@ -29,19 +29,19 @@ beforeEach(() => {
 	document.body.style.backgroundColor = SURFACE;
 });
 
-describe('syncThemeColorMeta — status bar sampler', () => {
+describe('syncSurfaceChrome — status bar sampler', () => {
 	it('writes the resolved surface onto the sampler', () => {
 		const sampler = document.createElement('div');
 		sampler.className = 'status-bar-sampler';
 		document.body.appendChild(sampler);
 
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 
 		expect(sampler.style.backgroundColor).toBe(SURFACE);
 	});
 
 	it('still updates the meta, which is the other half of the same call', () => {
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 		expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(
 			SURFACE,
 		);
@@ -50,7 +50,7 @@ describe('syncThemeColorMeta — status bar sampler', () => {
 	it('tolerates the sampler being absent', () => {
 		// It ships in the root layout, but this runs from five call sites and an
 		// error thrown here would take the theme switch down with it.
-		expect(() => syncThemeColorMeta()).not.toThrow();
+		expect(() => syncSurfaceChrome()).not.toThrow();
 		expect(document.querySelector('.status-bar-sampler')).toBeNull();
 	});
 
@@ -63,7 +63,7 @@ describe('syncThemeColorMeta — status bar sampler', () => {
 		sampler.style.backgroundColor = 'rgb(247, 250, 254)';
 		document.body.appendChild(sampler);
 
-		syncThemeColorMeta();
+		syncSurfaceChrome();
 
 		expect(sampler.style.backgroundColor).toBe(SURFACE);
 	});

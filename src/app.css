@@ -651,7 +651,7 @@ body {
 
    The background-color here is the PRE-JS default, and on iOS it is probably
    not the value that ends up being read: --color-surface is authored in oklch,
-   and syncThemeColorMeta() overwrites this inline with resolved rgb() on mount
+   and syncSurfaceChrome() overwrites this inline with resolved rgb() on mount
    and on every theme/scheme flip, because iOS is documented (in this repo — see
    toLegacyRgb in lib/theme-color.ts) to ignore a theme-color it can't parse.
    Keep both: the token is what SSR paints and what every other engine uses.
