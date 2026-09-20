@@ -69,15 +69,15 @@ export interface VideoRelayParams extends MediaRelayParams {
 	enhancementEnabled?: boolean;
 	/**
 	 * Aspect ratio for this generation. Shape-checked (`\d+:\d+`) by the caller,
-	 * but NOT necessarily a member of this model's own advertised list — and the
-	 * two callers differ on that, so don't read one guarantee here:
+	 * but NOT necessarily a member of this model's own advertised list: the
+	 * messages route — the only caller, since there is no video avatar endpoint —
+	 * forwards a value from the composer's UNION menu (or a remembered
+	 * preference) even when this particular model doesn't list it, deliberately,
+	 * so the upstream can snap to its nearest. See `resolveAspectRatio`.
 	 *
-	 * - the messages route forwards a value from the composer's UNION menu (or a
-	 *   remembered preference) even when this particular model doesn't list it,
-	 *   deliberately, so the upstream can snap to its nearest — see
-	 *   `resolveAspectRatio`;
-	 * - the avatar route picks via `nearestOffered`, which returns an element of
-	 *   the model's own list, so that one IS a member.
+	 * (`ImageRelayParams.aspectRatio` carries the same field but has a second
+	 * caller, the avatar route, which picks via `nearestOffered` and so IS
+	 * guaranteed a member. Don't copy that docstring's two-caller framing here.)
 	 *
 	 * Undefined leaves the upstream's own default, which is what a model with no
 	 * ratio support always does.

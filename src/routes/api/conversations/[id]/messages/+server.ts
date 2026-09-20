@@ -349,8 +349,10 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 		// surfaces a "Queued…" state + an honest timer instead of a blocking POST.
 		if (meta.modelKind === 'image') {
 			// Resolve the target model's prompt-style metadata (live, cached) so the
-			// relay can rewrite the prompt into the model's preferred format. Skip the
-			// lookup entirely when the feature is toggled off for this conversation.
+			// relay can rewrite the prompt into the model's preferred format, and its
+			// advertised ratios so a requested one can be resolved. Skip the lookup
+			// only when NEITHER needs it — enhancement being off no longer suffices on
+			// its own, since `wantsRatio` keeps it alive for `resolveAspectRatio`.
 			const enhancementEnabled = !disabledFeatures.includes('image_prompt_enhancement');
 			const wantsRatio = typeof body.aspectRatio === 'string';
 			let promptStyle: string | null = null;
@@ -415,9 +417,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 				}
 			}
 			// Resolve the target model's prompt-style metadata (live, cached) so the
-			// relay can rewrite the prompt into the model's preferred video format.
-			// Skip the lookup entirely when the feature is toggled off. Mirrors the
-			// image branch above.
+			// relay can rewrite the prompt into the model's preferred video format,
+			// and its advertised ratios so a requested one can be resolved. Skip the
+			// lookup only when NEITHER needs it. Mirrors the image branch above.
 			const enhancementEnabled = !disabledFeatures.includes('video_prompt_enhancement');
 			const wantsRatio = typeof body.aspectRatio === 'string';
 			let promptStyle: string | null = null;

@@ -188,14 +188,23 @@ export interface FanoutColumn {
 	 * they come from different places and neither is available on both paths:
 	 * what the branch was DISPATCHED with while it is live, and what the upstream
 	 * reported it RENDERED once the grid is rebuilt from persisted rows (read off
-	 * `media.aspect_ratio` via `getSiblingAssistants`). They agree except where a
-	 * model snapped the request to its own nearest shape — and a re-roll re-snaps
-	 * identically either way, which is why the distinction stays harmless.
+	 * `media.aspect_ratio` via `getSiblingAssistants`). They diverge two ways:
 	 *
-	 * Null for: a model that offered no ratios, an avatar column (pinned square
-	 * server-side), a still-generating recovered placeholder (no media row yet,
-	 * and the in-flight registry doesn't carry the request), and media that
-	 * predates the column.
+	 * - a model snapped the request to its own nearest offered shape;
+	 * - a model offers no ratios at all, where the live value is still whatever
+	 *   the composer chose — `send()` assigns one value across every branch with
+	 *   no per-model gate — while the settled value is null, because the server's
+	 *   `resolveAspectRatio` never forwarded a ratio to that model and so nothing
+	 *   was persisted to read back.
+	 *
+	 * Both stay harmless because a re-roll only ever inherits a SETTLED value,
+	 * and nothing renders from the live one. Don't key new live-phase UI off it
+	 * without re-deriving that.
+	 *
+	 * Null once settled for: a model that offered no ratios, an avatar column
+	 * (pinned square server-side), a still-generating recovered placeholder (no
+	 * media row yet, and the in-flight registry doesn't carry the request), and
+	 * media that predates the column.
 	 */
 	aspectRatio: string | null;
 	/**
