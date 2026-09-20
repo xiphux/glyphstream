@@ -624,13 +624,23 @@ body {
    why the gap was intermittent. 100vh, the full physical viewport, covered it.
    Credit: https://www.reddit.com/r/PWA/comments/1sdhsbu/ (Edit 2).
 
-   That bug is gone, and its absence is measurable rather than assumed: on iOS
-   27 the shell sized with 100vh came out TALLER than the viewport by about a
-   status bar, which is the opposite sign. An over-tall shell is not a cosmetic
-   version of the gap — it pushes the composer's bottom edge off the screen and
-   makes the whole app scrollable, so the top bar tucks under the status bar the
-   moment anything is dragged. Whatever iOS now reports as the viewport, 100dvh
-   is that number and 100vh is larger than it.
+   Under the `default` bar that reverses, and measurably rather than by
+   assumption: on iOS 27 the shell sized with 100vh came out TALLER than the
+   viewport by about a status bar, the opposite sign. An over-tall shell is not
+   a cosmetic version of the gap — it pushes the composer's bottom edge off the
+   screen and makes the whole app scrollable, so the top bar tucks under the
+   status bar the moment anything is dragged. There, 100dvh is what iOS reports
+   as the viewport and 100vh is larger than it.
+
+   What this does NOT claim is that the old bug is extinct. The measurement
+   could only be taken on a `default` install, and app.html explains why the
+   other kind still exists: the status-bar meta is frozen at install time, so an
+   app added to the Home Screen before that switch is still black-translucent
+   until it is removed and re-added. Such an install is no longer compensated
+   and plausibly gets the chin gap back. That was the deliberate trade — the
+   over-tall shell is the worse of the two and the one reachable today — but it
+   is a trade, not a fix for both. The debug panel's Viewport row reports the
+   top inset, which is what says which kind is in front of you.
 
    So: do NOT reintroduce a standalone override on a report of a gap at the
    bottom without first reading the Viewport row in the debug panel (sidebar
