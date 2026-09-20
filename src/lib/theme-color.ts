@@ -90,10 +90,35 @@ function toLegacyRgb(value: string): string {
 	}
 }
 
+/**
+ * A computed background of `rgba(0, 0, 0, 0)` means "nothing has painted a
+ * background yet", not "the surface is transparent" — a stylesheet that hasn't
+ * applied, which in practice is a dev-server CSS-injection race, since the
+ * production stylesheet is render-blocking.
+ *
+ * It has to be rejected explicitly. The `!bg` guard below doesn't catch it (the
+ * string is truthy) and neither does toLegacyRgb, whose `/^(rgb|#)/` fast path
+ * matches `rgba(` and hands it straight back. Writing it used to cost one bad
+ * theme-color attribute that the next call overwrote; now it would also pin a
+ * TRANSPARENT inline background on the sampler, which outranks the stylesheet
+ * until the next theme, scheme or private flip — i.e. it would manufacture, on
+ * purpose, the see-through status bar this whole mechanism exists to prevent.
+ */
+const isFullyTransparent = (value: string): boolean => {
+	const inner = /^rgba?\(([^)]*)\)$/i.exec(value.trim())?.[1];
+	if (inner === undefined) return false;
+	// The ALPHA channel specifically, never "contains a zero" — an opaque
+	// rgb(0, 0, 0) is a perfectly good surface (a pure-black OLED dark theme)
+	// and must not be mistaken for an unpainted one. Both serialisations are
+	// handled: legacy `r, g, b, a` and modern `r g b / a`.
+	const alpha = inner.includes('/') ? inner.split('/')[1] : inner.split(',')[3];
+	return alpha !== undefined && Number(alpha.trim()) === 0;
+};
+
 export function syncSurfaceChrome(): void {
 	if (typeof document === 'undefined') return;
 	const bg = toLegacyRgb(getComputedStyle(document.body).backgroundColor);
-	if (!bg) return;
+	if (!bg || isFullyTransparent(bg)) return;
 	let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
 	if (!meta) {
 		meta = document.createElement('meta');

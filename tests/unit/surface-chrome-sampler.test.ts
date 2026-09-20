@@ -54,6 +54,40 @@ describe('syncSurfaceChrome — status bar sampler', () => {
 		expect(document.querySelector('.status-bar-sampler')).toBeNull();
 	});
 
+	it('refuses a fully transparent read rather than pinning it', () => {
+		// rgba(0,0,0,0) means no background has painted yet, not "the surface is
+		// transparent". Writing it would pin a see-through inline background that
+		// outranks the stylesheet until the next theme/scheme/private flip — the
+		// exact see-through status bar the sampler exists to prevent. Neither the
+		// falsiness guard nor toLegacyRgb catches it: the string is truthy, and
+		// toLegacyRgb's /^(rgb|#)/ fast path matches `rgba(` and returns it as-is.
+		const sampler = document.createElement('div');
+		sampler.className = 'status-bar-sampler';
+		sampler.style.backgroundColor = SURFACE;
+		document.body.appendChild(sampler);
+		document.body.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+
+		syncSurfaceChrome();
+
+		// Left on the last good value, not overwritten and not cleared.
+		expect(sampler.style.backgroundColor).toBe(SURFACE);
+		expect(document.querySelector('meta[name="theme-color"]')).toBeNull();
+	});
+
+	it('accepts an opaque black surface, which is not the same thing', () => {
+		// The guard must read the ALPHA channel, not "contains a zero".
+		// rgb(0, 0, 0) is a legitimate surface — a pure-black OLED dark theme —
+		// and an early version of this check rejected it.
+		const sampler = document.createElement('div');
+		sampler.className = 'status-bar-sampler';
+		document.body.appendChild(sampler);
+		document.body.style.backgroundColor = 'rgb(0, 0, 0)';
+
+		syncSurfaceChrome();
+
+		expect(sampler.style.backgroundColor).toBe('rgb(0, 0, 0)');
+	});
+
 	it('overwrites a stale color on a theme flip', () => {
 		// The point of re-running it on every theme/scheme change: the inline
 		// style outranks the stylesheet, so a value left behind would pin the
