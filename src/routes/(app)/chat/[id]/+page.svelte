@@ -1691,6 +1691,11 @@
 	// with compare mode as a cross product (models × images). Bound into the
 	// composer's attachment strip.
 	let splitAttachments = $state(false);
+	// Aspect ratio for the next send. Owned by AspectRatioSelector (which loads
+	// and stores the remembered preference) and null whenever no selected model
+	// advertises ratios. NOT cleared after a send — unlike the split flag, the
+	// shape is meant to persist.
+	let aspectRatio = $state<string | null>(null);
 	const fanoutModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = catalogue.entry(id);
@@ -2088,6 +2093,7 @@
 		splitAttachments = false;
 		await turn.send(text, attachedMediaIds, {
 			...(activatedSkillNames.length ? { activatedSkillNames } : {}),
+			...(aspectRatio ? { aspectRatio } : {}),
 		});
 	}
 
@@ -2148,6 +2154,7 @@
 			let pendingFanout: FanoutModel[] | null = null;
 			let pendingSplitImageIds: string[] | null = null;
 			let pendingActivatedSkillNames: string[] = [];
+			let pendingAspectRatio: string | null = null;
 			try {
 				const parsed = JSON.parse(pending) as unknown;
 				if (parsed && typeof parsed === 'object' && 'text' in parsed) {
@@ -2167,6 +2174,8 @@
 					if (Array.isArray(asn)) {
 						pendingActivatedSkillNames = asn.filter((s): s is string => typeof s === 'string');
 					}
+					const ar = (parsed as { aspectRatio?: unknown }).aspectRatio;
+					if (typeof ar === 'string' && ar) pendingAspectRatio = ar;
 				}
 			} catch {
 				// Old format — pending was already plain text.
@@ -2181,13 +2190,12 @@
 			if (pendingBranches.length >= 2) {
 				void fanout.send(pendingText, pendingMediaIds, pendingBranches, pendingBase);
 			} else
-				void turn.send(
-					pendingText,
-					pendingMediaIds,
-					pendingActivatedSkillNames.length
+				void turn.send(pendingText, pendingMediaIds, {
+					...(pendingActivatedSkillNames.length
 						? { activatedSkillNames: pendingActivatedSkillNames }
-						: {},
-				);
+						: {}),
+					...(pendingAspectRatio ? { aspectRatio: pendingAspectRatio } : {}),
+				});
 		}
 	});
 
@@ -2332,7 +2340,13 @@
 	 */
 	async function retryAssistant(m: ChatMessage) {
 		if (generating) return;
-		await turn.send('', [], { retryFromMessageId: m.id });
+		// The composer's ratio rides a retry, unlike its text and attachments: the
+		// selector is visible and set, so what the user can see should win over
+		// silently reusing whatever shape the original run used.
+		await turn.send('', [], {
+			retryFromMessageId: m.id,
+			...(aspectRatio ? { aspectRatio } : {}),
+		});
 	}
 
 	/** Switch the active branch to a sibling of the given message. Used by
@@ -2742,6 +2756,7 @@
 						bind:compareSelections
 						bind:compareMode
 						bind:splitAttachments
+						bind:aspectRatio
 						modelSets={data.prefs?.modelSets ?? []}
 						presetLabel={activePreset?.name ?? null}
 						presetModelId={activePresetModelId}

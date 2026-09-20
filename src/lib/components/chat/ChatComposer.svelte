@@ -15,6 +15,8 @@
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
+	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
+	import { offeredRatios } from '$lib/aspect-ratio';
 	import { stripSkillCommand } from '$lib/skill-command';
 	import { isSnippetKind } from '$lib/types/api';
 	import { imageAttachment } from '$lib/model-capabilities';
@@ -74,6 +76,9 @@
 		compareMode: boolean;
 		/** Split-attachments: fan the prompt out across the attached images. */
 		splitAttachments?: boolean;
+		/** Aspect ratio for this turn, set by the selector when the active model(s)
+		 *  advertise ratios and null when none do. Read at send time. */
+		aspectRatio?: string | null;
 		/** The user's saved multi-model sets, surfaced in the picker's compare
 		 *  controls for one-click re-apply. */
 		modelSets: SavedModelSet[];
@@ -117,6 +122,7 @@
 		compareSelections = $bindable(),
 		compareMode = $bindable(),
 		splitAttachments = $bindable(false),
+		aspectRatio = $bindable(null),
 		modelSets,
 		presetLabel = null,
 		presetModelId = null,
@@ -243,6 +249,31 @@
 	$effect(() => {
 		if (!canSplit && splitAttachments) splitAttachments = false;
 	});
+
+	// The models this send will actually dispatch to — the compare cart when one
+	// is active, else the single picked model. Mirrors how `activeKind` resolves,
+	// so the ratio menu can't disagree with the kind the rest of the UI shows.
+	const selectedModels = $derived.by(() => {
+		const ids =
+			compareMode && fanoutModels.length > 0
+				? [...new Set(fanoutModels.map((m) => m.modelId))]
+				: [modelId];
+		return ids
+			.map((id) => models.find((m) => m.id === id))
+			.filter((m): m is ModelEntry => m !== undefined);
+	});
+	// The union across them: a model advertising nothing constrains nothing (it
+	// ignores whatever is sent), so intersecting would make partial support more
+	// restrictive than no support. See offeredRatios.
+	const ratioOptions = $derived(offeredRatios(selectedModels));
+	const ratioDefault = $derived(
+		selectedModels.find((m) => m.aspectRatioDefault)?.aspectRatioDefault,
+	);
+	// Same reasoning as the split flag: clear the moment no selected model offers
+	// ratios, so a stale value can't ride a send the selector isn't shown for.
+	$effect(() => {
+		if (ratioOptions.length === 0 && aspectRatio !== null) aspectRatio = null;
+	});
 </script>
 
 <div class="relative mx-auto max-w-3xl">
@@ -298,6 +329,16 @@
 				onChange={onFeaturesChange}
 			/>
 			<div class="flex-1"></div>
+			<!-- Only for models that advertise ratios; absence means "offer no
+			     selector", never "one fixed ratio". -->
+			{#if ratioOptions.length > 0}
+				<AspectRatioSelector
+					options={ratioOptions}
+					defaultValue={ratioDefault}
+					bind:value={aspectRatio}
+					disabled={generating}
+				/>
+			{/if}
 			<!--
 				Per-turn model picker: defaulted to the conversation's current
 				model so the no-change case is invisible. Custom presets are

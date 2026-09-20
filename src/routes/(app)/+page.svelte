@@ -10,6 +10,8 @@
 	import ComposerCore from '$lib/components/chat/ComposerCore.svelte';
 	import OfflineNotice from '$lib/components/chat/OfflineNotice.svelte';
 	import SplitAttachmentsToggle from '$lib/components/chat/SplitAttachmentsToggle.svelte';
+	import AspectRatioSelector from '$lib/components/chat/AspectRatioSelector.svelte';
+	import { offeredRatios } from '$lib/aspect-ratio';
 	import { AttachmentStore, attachmentsAllowedFor } from '$lib/attachments.svelte';
 	import { getModelCatalogue } from '$lib/model-catalogue.svelte';
 	import { baseIdOf } from '$lib/model-default';
@@ -27,7 +29,7 @@
 		type CompareSelection,
 	} from '$lib/fanout';
 	import { isSnippetKind } from '$lib/types/api';
-	import type { CreateConversationRequest, FeatureCategory } from '$lib/types/api';
+	import type { CreateConversationRequest, FeatureCategory, ModelEntry } from '$lib/types/api';
 	import {
 		composeGreeting,
 		greetingContextKey,
@@ -103,6 +105,11 @@
 	let compareSelections = $state<CompareSelection[]>([]);
 	let compareMode = $state(false);
 	let splitAttachments = $state(false);
+	// Aspect ratio for the first send, owned by AspectRatioSelector (which holds
+	// the remembered preference) and null when no selected model advertises
+	// ratios. Rides `PendingFirstMessage` to the chat page — the first generation
+	// in a new chat never goes through `turn.send` from here.
+	let aspectRatio = $state<string | null>(null);
 	const fanoutFirstModels = $derived(
 		expandCompareSelections(compareSelections, (id) => {
 			const m = catalogue.entry(id);
@@ -343,6 +350,29 @@
 	const attachments = new AttachmentStore();
 	let coreRef = $state<{ focus: () => void } | null>(null);
 	const allowAttachments = $derived(attachmentsAllowedFor(activeKind));
+
+	// The models this send will dispatch to — the compare cart when one is
+	// active, else the single picked model (resolving a custom preset to its
+	// base, which is what carries the upstream metadata). Mirrors `needsImage`.
+	const selectedModels = $derived.by(() => {
+		const ids =
+			compareMode && fanoutFirstModels.length >= 1
+				? [...new Set(fanoutFirstModels.map((m) => m.modelId))]
+				: [modelId];
+		return ids
+			.map((id) => (id.startsWith('custom::') ? resolvedBase : catalogue.entry(id)))
+			.filter((m): m is ModelEntry => m !== undefined);
+	});
+	// Union, not intersection — see offeredRatios.
+	const ratioOptions = $derived(offeredRatios(selectedModels));
+	const ratioDefault = $derived(
+		selectedModels.find((m) => m.aspectRatioDefault)?.aspectRatioDefault,
+	);
+	// Clear the moment no selected model offers ratios, so a stale value can't
+	// ride a send the selector isn't shown for. Mirrors the split flag below.
+	$effect(() => {
+		if (ratioOptions.length === 0 && aspectRatio !== null) aspectRatio = null;
+	});
 	// Split-attachments availability + cross-product count (mirrors ChatComposer).
 	const canSplit = $derived(
 		(activeKind === 'image' || activeKind === 'video') && attachments.readyImageCount >= 2,
@@ -688,6 +718,7 @@
 					...(fanout ? { fanoutModels: fanout } : {}),
 					...(splitImageIds ? { splitImageIds } : {}),
 					...(activatedSkillNames.length ? { activatedSkillNames } : {}),
+					...(aspectRatio ? { aspectRatio } : {}),
 				} satisfies PendingFirstMessage),
 			);
 			attachments.clear();
@@ -893,6 +924,16 @@
 					onChange={(next: FeatureCategory[]) => (disabledFeatures = next)}
 				/>
 				<div class="flex-1"></div>
+				<!-- Only for models that advertise ratios; absence means "offer no
+				     selector", never "one fixed ratio". -->
+				{#if ratioOptions.length > 0}
+					<AspectRatioSelector
+						options={ratioOptions}
+						defaultValue={ratioDefault}
+						bind:value={aspectRatio}
+						disabled={busy}
+					/>
+				{/if}
 				<!--
 					Inline model selector: rendered as a borderless dropdown so
 					it reads as a soft control inside the box. Presets ARE shown

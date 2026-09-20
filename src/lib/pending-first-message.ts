@@ -27,6 +27,13 @@ export interface PendingFirstMessage {
 	 *  screen. The chat page forwards these as `activatedSkillNames` on the
 	 *  first send so the opening turn activates them. */
 	activatedSkillNames?: string[];
+	/**
+	 * Aspect ratio for the first generation. Carried here because the new-chat
+	 * page never calls `turn.send` itself — without this the very first image in
+	 * a new chat would silently ignore the shape the user picked, while every
+	 * later one honoured it.
+	 */
+	aspectRatio?: string;
 }
 
 /** Per-conversation sessionStorage key for a pending first message. */

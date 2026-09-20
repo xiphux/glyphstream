@@ -435,3 +435,101 @@ describe('extractContextWindow', () => {
 		expect(extractContextWindow({ id: 'x' })).toBeNull();
 	});
 });
+
+describe('normalizeUpstreamModel — aspect ratios', () => {
+	const stock = [
+		{ value: '1:1', label: 'Square' },
+		{ value: '16:9', label: 'Widescreen' },
+	];
+
+	it('carries the advertised list and default for a media model', () => {
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: stock,
+			aspect_ratio_default: '16:9',
+		});
+		expect(e.aspectRatios).toEqual(stock);
+		expect(e.aspectRatioDefault).toBe('16:9');
+	});
+
+	it('works the same for a video model', () => {
+		const e = normalizeUpstreamModel(ep(), { id: 'wf', kind: 'video', aspect_ratios: stock });
+		expect(e.aspectRatios).toEqual(stock);
+	});
+
+	it('is undefined, not empty, when the upstream said nothing', () => {
+		// Absence has to keep meaning "offer no selector"; an empty array would
+		// read as a model that supports no shapes at all.
+		const e = normalizeUpstreamModel(ep(), { id: 'wf', kind: 'image' });
+		expect(e.aspectRatios).toBeUndefined();
+		expect(e.aspectRatioDefault).toBeUndefined();
+	});
+
+	it('ignores ratios on a chat model', () => {
+		// Nonsense from an upstream we shouldn't render a shape picker for.
+		const e = normalizeUpstreamModel(ep(), { id: 'c', kind: 'chat', aspect_ratios: stock });
+		expect(e.aspectRatios).toBeUndefined();
+	});
+
+	it('drops malformed entries rather than passing them to the picker', () => {
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: [
+				{ value: '16:9' },
+				{ value: 'widescreen' },
+				{ value: '' },
+				// @ts-expect-error — an upstream can emit anything on an additive field.
+				{ label: 'no value' },
+				// @ts-expect-error — ditto.
+				'16:9',
+				{ value: '4:3', label: '' },
+			],
+		});
+		// The label-less 4:3 survives with no empty label; the junk is gone.
+		expect(e.aspectRatios).toEqual([{ value: '16:9' }, { value: '4:3' }]);
+	});
+
+	it('drops a duplicate value so two rows cannot share a selection key', () => {
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: [
+				{ value: '16:9', label: 'Widescreen' },
+				{ value: '16:9', label: 'Cinema' },
+			],
+		});
+		expect(e.aspectRatios).toEqual([{ value: '16:9', label: 'Widescreen' }]);
+	});
+
+	it('is undefined when every entry was unusable', () => {
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: [{ value: 'nope' }],
+		});
+		expect(e.aspectRatios).toBeUndefined();
+	});
+
+	it('does not reduce an unreduced conventional ratio', () => {
+		// 21:9 is a name people recognise; 7:3 is not, and would also stop matching
+		// the value the upstream offered.
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: [{ value: '21:9', label: 'Ultrawide' }],
+		});
+		expect(e.aspectRatios).toEqual([{ value: '21:9', label: 'Ultrawide' }]);
+	});
+
+	it('ignores an empty default', () => {
+		const e = normalizeUpstreamModel(ep(), {
+			id: 'wf',
+			kind: 'image',
+			aspect_ratios: stock,
+			aspect_ratio_default: '',
+		});
+		expect(e.aspectRatioDefault).toBeUndefined();
+	});
+});

@@ -121,6 +121,17 @@ const MODELS = {
 			kind: 'image',
 			display_name: 'Mock Image',
 			owned_by: 'mock',
+			// openai-api-bridge's aspect-ratio extension, so the composer renders
+			// its shape selector. Includes one label-less entry (4:3) because
+			// `label` is optional in the contract and the UI must not print a
+			// placeholder for it.
+			aspect_ratios: [
+				{ value: '1:1', label: 'Square' },
+				{ value: '3:2', label: 'Photo' },
+				{ value: '4:3' },
+				{ value: '16:9', label: 'Widescreen' },
+			],
+			aspect_ratio_default: '1:1',
 		},
 		{
 			// A SECOND image model, so a spec can compare two of them — an avatar
@@ -133,6 +144,15 @@ const MODELS = {
 			kind: 'image',
 			display_name: 'Mock Painter',
 			owned_by: 'mock',
+			// A DELIBERATELY different menu from mock-image: the two overlap on 1:1
+			// only. That's what makes the union-not-intersection rule observable —
+			// comparing them must offer every ratio either one knows, not the one
+			// they share.
+			aspect_ratios: [
+				{ value: '1:1', label: 'Square' },
+				{ value: '9:16', label: 'Portrait Widescreen' },
+			],
+			aspect_ratio_default: '9:16',
 		},
 		{
 			// The only model here that advertises tool support, so it's the only one
@@ -332,6 +352,9 @@ function syncChatCompletion(res, text = REPLY_TEXT) {
 	});
 }
 
+/** Last POST /v1/images/generations body fields a spec cares about. */
+let lastImageRequest = null;
+
 const server = createServer(async (req, res) => {
 	const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
 	const path = url.pathname;
@@ -374,11 +397,31 @@ const server = createServer(async (req, res) => {
 	}
 
 	if (req.method === 'POST' && path === '/v1/images/generations') {
-		await readBody(req);
+		const raw = await readBody(req);
+		// Echo the requested aspect ratio back the way the bridge does, and record
+		// it on the probe below — that's the only place a spec can observe that the
+		// composer's selection reached the wire at all.
+		let requestedRatio = null;
+		try {
+			requestedRatio = JSON.parse(raw)?.aspect_ratio ?? null;
+		} catch {
+			/* leave null */
+		}
+		lastImageRequest = { aspect_ratio: requestedRatio };
 		return sendJson(res, 200, {
 			created: Math.floor(Date.now() / 1000),
-			data: [{ b64_json: PNG_1X1_B64 }],
+			data: [
+				requestedRatio
+					? { b64_json: PNG_1X1_B64, aspect_ratio: requestedRatio }
+					: { b64_json: PNG_1X1_B64 },
+			],
 		});
+	}
+
+	// Probe for the last image request's non-standard fields, so a spec can assert
+	// what GlyphStream actually sent without parsing server logs.
+	if (req.method === 'GET' && path === '/__last-image-request') {
+		return sendJson(res, 200, lastImageRequest ?? {});
 	}
 
 	sendJson(res, 404, { error: { message: `mock upstream: no handler for ${req.method} ${path}` } });
