@@ -54,12 +54,13 @@ test('the selector appears only for a model that advertises ratios', async ({ pa
 	await expect(selector(page)).toHaveCount(0);
 });
 
-test('it opens on the model default and sends what was picked', async ({ page }) => {
+test('it opens on Default and sends what was picked', async ({ page }) => {
 	await gotoNewChat(page);
 	await selectModel(page, /Mock Image/);
-	// mock-image reports aspect_ratio_default "1:1", so that is the opening
-	// selection — the control is never blank while it's visible.
-	await expect(selector(page)).toContainText('1:1');
+	// Default, not mock-image's advertised 1:1 as a concrete pick: "no preference"
+	// has to stay expressible, since it is the only way to say "let each model use
+	// its own" — see the fan-out test below.
+	await expect(selector(page)).toContainText('Default');
 
 	await selector(page).click();
 	await page.getByRole('button', { name: /^16:9/ }).click();
@@ -216,4 +217,52 @@ test('an edited prompt resends at the same shape, not the workflow default', asy
 
 	// Still 16:9 — before the fix this went out with no aspect_ratio at all.
 	expect(await lastRequestedRatio(page)).toBe('16:9');
+});
+
+test('Default sends no ratio, so each model uses its own', async ({ page }) => {
+	// The case the Default entry exists for: any concrete pick is imposed on every
+	// fan-out branch, so "let each model decide" is only expressible by sending
+	// nothing. mock-image defaults to 1:1 and mock-painter to 9:16.
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+
+	// A remembered preference would otherwise make this unreachable — pick one
+	// first so Default is a genuine return, not just the initial state.
+	await selector(page).click();
+	await page.getByRole('button', { name: /^16:9/ }).click();
+	await expect(selector(page)).toContainText('16:9');
+
+	await selector(page).click();
+	await page.getByRole('button', { name: /^Default/ }).click();
+	await expect(selector(page)).toContainText('Default');
+
+	await page.locator('textarea').first().fill('a lighthouse');
+	await page.getByRole('button', { name: 'Send message' }).click();
+	await page.waitForURL(/\/chat\/[^/]+$/);
+	await expect(page.locator('img[src*="/api/media/"]').first()).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+
+	// Nothing on the wire — the upstream falls back to its own default.
+	expect(await lastRequestedRatio(page)).toBeNull();
+});
+
+test('Default is labelled with the shape when the models agree, and not when they do not', async ({
+	page,
+}) => {
+	await gotoNewChat(page);
+	await selectModel(page, /Mock Image/);
+	await selector(page).click();
+	// One model selected, so its default is nameable.
+	await expect(page.getByRole('button', { name: /^Default/ })).toContainText("The model's own");
+	await page.keyboard.press('Escape');
+
+	// Add a model whose default differs (1:1 vs 9:16) — naming either would be
+	// wrong for the other, so it falls back to the generic label.
+	await page.getByRole('button', { name: 'Select model' }).click();
+	await page.getByRole('button', { name: 'Multiple' }).click();
+	await page.getByRole('option', { name: /Mock Painter/ }).click();
+	await page.keyboard.press('Escape');
+
+	await selector(page).click();
+	await expect(page.getByRole('button', { name: /^Default/ })).toContainText("Each model's own");
 });

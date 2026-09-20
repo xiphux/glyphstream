@@ -266,9 +266,16 @@
 	// ignores whatever is sent), so intersecting would make partial support more
 	// restrictive than no support. See offeredRatios.
 	const ratioOptions = $derived(offeredRatios(selectedModels));
-	const ratioDefault = $derived(
-		selectedModels.find((m) => m.aspectRatioDefault)?.aspectRatioDefault,
-	);
+	// Labels the picker's "Default" entry, so only report one when the selection
+	// AGREES on it — the first model's default is meaningless for a comparison
+	// spanning several. Undefined then, and Default says "each model's own", which
+	// is exactly what it will do.
+	const ratioDefault = $derived.by(() => {
+		const defaults = new Set(
+			selectedModels.map((m) => m.aspectRatioDefault).filter((d) => d !== undefined),
+		);
+		return defaults.size === 1 ? [...defaults][0] : undefined;
+	});
 	// Same reasoning as the split flag: clear the moment no selected model offers
 	// ratios, so a stale value can't ride a send the selector isn't shown for.
 	$effect(() => {

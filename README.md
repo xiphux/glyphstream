@@ -147,7 +147,9 @@ tokens`) when the size is known — auto-detected from llama.cpp / vLLM, or
   means every offered shape fits the hardware it was configured for and no
   prompt can ask for an image large enough to exhaust it. Your last choice is
   remembered, one pick covers a whole multi-model compare, and a model whose
-  own list doesn't have it renders the nearest shape it does.
+  own list doesn't have it renders the nearest shape it does. **Default** sends
+  no shape at all, so each model falls back to its own — which for a compare
+  across several means each renders at the shape it was built for.
 - **Prompt enhancement** (optional) — before generating, an LLM rewrites your
   prompt into the format the target model prefers: for images (natural-language
   narrative, booru tags, keyword soup, hybrid, or structured JSON) and for video

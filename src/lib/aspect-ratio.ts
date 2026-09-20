@@ -104,7 +104,13 @@ export function nearestOffered(
 }
 
 /**
- * Read the remembered ratio.
+ * Read the remembered ratio, or null for "no preference".
+ *
+ * An absent key IS the no-preference state, which the picker surfaces as its
+ * "Default" entry — so "never picked" and "picked Default" are the same stored
+ * state, deliberately. They mean the same thing on the wire (send nothing, let
+ * each model use its own default), so distinguishing them would be a difference
+ * with no consequence.
  *
  * `localStorage` rather than a server-side preference: this is a per-viewer
  * convenience, like a remembered tab, and it saves a write on every generation
@@ -126,6 +132,21 @@ export function readStickyRatio(): string | null {
 		return null;
 	} catch {
 		return null;
+	}
+}
+
+/**
+ * Forget the remembered ratio, returning to "no preference".
+ *
+ * What the picker's "Default" entry does. Removing the key rather than storing a
+ * sentinel keeps one representation of the state and needs no new vocabulary in
+ * `readStickyRatio` — see its note.
+ */
+export function clearStickyRatio(): void {
+	try {
+		localStorage.removeItem(STICKY_KEY);
+	} catch {
+		// Per-viewer convenience; losing the clear costs a stale preference.
 	}
 }
 

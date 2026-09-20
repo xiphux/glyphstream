@@ -21,13 +21,26 @@
 	import { Popover } from 'bits-ui';
 	import { ChevronDown } from '@lucide/svelte';
 	import type { AspectRatioOption } from '$lib/types/api';
-	import { nearestOffered, parseRatio, readStickyRatio, writeStickyRatio } from '$lib/aspect-ratio';
+	import {
+		clearStickyRatio,
+		nearestOffered,
+		parseRatio,
+		readStickyRatio,
+		writeStickyRatio,
+	} from '$lib/aspect-ratio';
 
 	interface Props {
 		/** Ratios to offer — the union across the selected models, in render order. */
 		options: AspectRatioOption[];
-		/** What the target model does when a request names no ratio, used as the
-		 *  opening selection before the user has ever picked one. */
+		/**
+		 * What the selected model does when a request names no ratio — used to LABEL
+		 * the "Default" entry, not to preselect a concrete shape.
+		 *
+		 * Undefined when there is nothing single to report: no model advertises a
+		 * default, or several are selected and they disagree. Default still works
+		 * then; it just can't say what it will resolve to, because per model it
+		 * resolves to something different — which is the whole point of it.
+		 */
 		defaultValue?: string;
 		/**
 		 * A shape to open on regardless of the remembered preference — set when
@@ -44,8 +57,18 @@
 		 * change of what they usually want.
 		 */
 		seed?: string | null;
-		/** The ratio to send for this turn. Owned here and reported upward, so
-		 *  both composers get the remembered-preference behaviour for free. */
+		/**
+		 * The ratio to send for this turn, or null for "send nothing".
+		 *
+		 * Null is a first-class choice, not an empty state: it is what the "Default"
+		 * entry selects, and it is the only way to say "let each model use its own
+		 * default" — which matters for a fan-out, where any concrete value would be
+		 * imposed on every branch. The send builders already omit the field when
+		 * this is falsy, so null needs no special handling downstream.
+		 *
+		 * Owned here and reported upward, so both composers get the
+		 * remembered-preference behaviour for free.
+		 */
 		value: string | null;
 		disabled?: boolean;
 	}
@@ -76,30 +99,30 @@
 	 * Switching to a model with a different menu must not leave a value
 	 * highlighted that the list no longer contains.
 	 *
-	 * Falls back to the model's own default, then to the first option, so the
-	 * control is never in a blank state while it's visible at all.
+	 * No preference — or one that resolves to nothing — lands on Default (null)
+	 * rather than being forced onto the first option. Null is a real selection
+	 * here, so there is no blank state to defend against.
 	 */
 	$effect(() => {
 		const wanted = seed ?? preference;
-		const resolved =
-			nearestOffered(wanted, options) ??
-			nearestOffered(defaultValue ?? null, options) ??
-			options[0] ??
-			null;
-		value = resolved?.value ?? null;
+		value = nearestOffered(wanted, options)?.value ?? null;
 	});
 
-	function pick(next: string) {
+	/** `null` picks Default — "send nothing, let each model decide". */
+	function pick(next: string | null) {
 		// Retire the one-shot seed in the PARENT's state, so it can't outlive this
 		// component and override the pick after a remount.
 		seed = null;
 		// Written on the PICK, not on send: see writeStickyRatio.
 		preference = next;
-		writeStickyRatio(next);
+		if (next === null) clearStickyRatio();
+		else writeStickyRatio(next);
 		open = false;
 	}
 
 	const selected = $derived(options.find((o) => o.value === value) ?? null);
+	/** Null value = the Default entry is what's chosen. */
+	const isDefault = $derived(value === null);
 
 	/**
 	 * Box dimensions for a ratio's glyph, inside a fixed square. The wider side
@@ -113,7 +136,7 @@
 	}
 </script>
 
-{#snippet shape(ratioValue: string, box: number)}
+{#snippet shape(ratioValue: string, box: number, dashed = false)}
 	{@const g = glyph(ratioValue, box)}
 	<svg
 		width={box}
@@ -131,6 +154,7 @@
 			fill="none"
 			stroke="currentColor"
 			stroke-width="1.5"
+			stroke-dasharray={dashed ? '2 2' : undefined}
 		/>
 	</svg>
 {/snippet}
@@ -138,12 +162,14 @@
 <Popover.Root bind:open>
 	<Popover.Trigger
 		{disabled}
-		aria-label={selected ? `Aspect ratio: ${selected.label ?? selected.value}` : 'Aspect ratio'}
+		aria-label={selected
+			? `Aspect ratio: ${selected.label ?? selected.value}`
+			: "Aspect ratio: each model's default"}
 		title="Aspect ratio"
 		class="group inline-flex shrink-0 items-center gap-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs text-fg-muted transition hover:bg-surface-raised hover:text-fg-secondary disabled:opacity-30"
 	>
-		{@render shape(selected?.value ?? '1:1', 13)}
-		<span class="tabular-nums">{selected?.value ?? 'Shape'}</span>
+		{@render shape(selected?.value ?? defaultValue ?? '1:1', 13, selected === null)}
+		<span class="tabular-nums">{selected?.value ?? 'Default'}</span>
 		<ChevronDown size={12} class="opacity-60" />
 	</Popover.Trigger>
 	<Popover.Portal>
@@ -158,6 +184,34 @@
 			<div class="px-3 pb-1.5 pt-3 text-xs font-medium uppercase tracking-wide text-fg-muted">
 				Aspect ratio
 			</div>
+			<!--
+				Default gets its own full-width row above a divider, because it is not a
+				shape — it is the absence of one. Picking it sends no ratio at all, so
+				each model (and in a fan-out, each branch) falls back to its own. That
+				is otherwise inexpressible: any concrete pick is imposed on every branch.
+			-->
+			<div class="px-2 pb-1">
+				<button
+					type="button"
+					aria-pressed={isDefault}
+					onclick={() => pick(null)}
+					class={[
+						'flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition',
+						isDefault
+							? 'border-accent bg-accent/10 text-accent'
+							: 'border-transparent text-fg-secondary hover:border-border hover:bg-surface-sunken',
+					]}
+				>
+					{@render shape(defaultValue ?? '1:1', 16, true)}
+					<span class="min-w-0">
+						<span class="block">Default</span>
+						<span class="block truncate text-[10px] text-fg-muted">
+							{defaultValue ? `The model's own — ${defaultValue}` : "Each model's own"}
+						</span>
+					</span>
+				</button>
+			</div>
+			<div class="mx-2 mb-1 border-t border-border"></div>
 			<div class="grid grid-cols-2 gap-1 p-2 pt-0">
 				{#each options as option (option.value)}
 					{@const isSelected = option.value === value}

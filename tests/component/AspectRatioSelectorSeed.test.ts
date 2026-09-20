@@ -53,11 +53,13 @@ describe('AspectRatioSelector — the one-shot seed', () => {
 		expect(trigger()).toHaveTextContent('16:9');
 	});
 
-	it('opens on the model default when there is no seed and no stored pick', () => {
+	it('opens on Default when there is no seed and no stored pick', () => {
+		// Not on the model's default as a concrete shape: "no preference" has to stay
+		// expressible, because it is the only way to say "let each model decide".
 		render(AspectRatioSelector, {
 			props: { options: OPTIONS, seed: null, defaultValue: '9:16', value: null },
 		});
-		expect(trigger()).toHaveTextContent('9:16');
+		expect(trigger()).toHaveTextContent('Default');
 	});
 
 	it('clears the seed in the parent when the user picks', async () => {
@@ -93,5 +95,69 @@ describe('AspectRatioSelector — the one-shot seed', () => {
 
 		await rerender({ options: OPTIONS, initialSeed: '16:9', mounted: true });
 		expect(trigger()).toHaveTextContent('9:16');
+	});
+});
+
+describe('AspectRatioSelector — the Default entry', () => {
+	beforeEach(() => {
+		localStorage.clear();
+	});
+
+	const defaultRow = () => screen.getByRole('button', { name: /^Default/ });
+
+	it('reports null upward, so the send omits the field entirely', async () => {
+		// Null is what makes "each model uses its own" expressible; any concrete
+		// value would be imposed on every fan-out branch.
+		const onValueChange = vi.fn();
+		render(Harness, { props: { options: OPTIONS, onValueChange } });
+		await pick('16:9');
+		expect(onValueChange).toHaveBeenLastCalledWith('16:9');
+
+		const user = userEvent.setup();
+		await user.click(trigger());
+		await user.click(defaultRow());
+		expect(onValueChange).toHaveBeenLastCalledWith(null);
+	});
+
+	it('is reachable again after picking a shape — the gap this closed', async () => {
+		// Before Default existed, a stored preference made the workflow's own shape
+		// permanently unreachable: every render forced a concrete value.
+		render(AspectRatioSelector, { props: { options: OPTIONS, value: null } });
+		await pick('16:9');
+		expect(trigger()).toHaveTextContent('16:9');
+
+		const user = userEvent.setup();
+		await user.click(trigger());
+		await user.click(defaultRow());
+		expect(trigger()).toHaveTextContent('Default');
+	});
+
+	it('clears the remembered preference rather than storing a sentinel', async () => {
+		localStorage.setItem('glyphstream:aspectRatio', '16:9');
+		render(AspectRatioSelector, { props: { options: OPTIONS, value: null } });
+		expect(trigger()).toHaveTextContent('16:9');
+
+		const user = userEvent.setup();
+		await user.click(trigger());
+		await user.click(defaultRow());
+		// Absent key IS the no-preference state, so there is nothing to store.
+		expect(localStorage.getItem('glyphstream:aspectRatio')).toBeNull();
+	});
+
+	it('names the resolved shape when the selection agrees on one', async () => {
+		render(AspectRatioSelector, {
+			props: { options: OPTIONS, defaultValue: '9:16', value: null },
+		});
+		// The row lives in Popover.Content, which only mounts while open.
+		await userEvent.setup().click(trigger());
+		expect(defaultRow()).toHaveTextContent("The model's own — 9:16");
+	});
+
+	it('says "each model\'s own" when they disagree or none is advertised', async () => {
+		// The composers pass no defaultValue when the selected models' defaults
+		// differ — naming one of them would be arbitrary and wrong for the others.
+		render(AspectRatioSelector, { props: { options: OPTIONS, value: null } });
+		await userEvent.setup().click(trigger());
+		expect(defaultRow()).toHaveTextContent("Each model's own");
 	});
 });
