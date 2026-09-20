@@ -167,33 +167,13 @@ describe('the remembered preference', () => {
 		expect(keys.every((k) => k.startsWith('glyphstream:'))).toBe(true);
 	});
 
-	it('adopts a preference stored under the pre-rename key, then removes it', () => {
-		// Keeps an existing pick through the rename, and leaves no orphan sitting
-		// permanently outside the wipe's reach.
-		localStorage.setItem('gs:aspect-ratio', '3:2');
-		expect(readStickyRatio()).toBe('3:2');
-		expect(localStorage.getItem('gs:aspect-ratio')).toBeNull();
-		expect(localStorage.getItem('glyphstream:aspectRatio')).toBe('3:2');
-	});
-
-	it('discards a junk value under the pre-rename key without adopting it', () => {
-		localStorage.setItem('gs:aspect-ratio', 'widescreen');
-		expect(readStickyRatio()).toBeNull();
-		expect(localStorage.getItem('gs:aspect-ratio')).toBeNull();
-		expect(localStorage.getItem('glyphstream:aspectRatio')).toBeNull();
-	});
-
-	it('prefers the current key when both are present', () => {
-		localStorage.setItem('gs:aspect-ratio', '3:2');
-		localStorage.setItem('glyphstream:aspectRatio', '16:9');
-		expect(readStickyRatio()).toBe('16:9');
-	});
-
-	it('rejects a stored value that is no longer a ratio', () => {
+	it('rejects a stored value that is no longer a ratio, and clears it', () => {
 		// Storage is shared with whatever else the origin has written and survives
-		// deploys, so a junk value must read as "no preference".
-		localStorage.setItem('gs:aspect-ratio', 'widescreen');
+		// deploys, so a junk value must read as "no preference" — and be dropped,
+		// or it is re-read on every mount forever.
+		localStorage.setItem('glyphstream:aspectRatio', 'widescreen');
 		expect(readStickyRatio()).toBeNull();
+		expect(localStorage.getItem('glyphstream:aspectRatio')).toBeNull();
 	});
 
 	it('survives storage being unavailable', () => {

@@ -27,13 +27,6 @@ import type { AspectRatioOption, ModelEntry } from '$lib/types/api';
 const STICKY_KEY = 'glyphstream:aspectRatio';
 
 /**
- * The key this used to live under, read once so an existing preference survives
- * the rename. Outside the `glyphstream:` prefix, so the sign-out wipe never saw
- * it — which is exactly why it moved.
- */
-const LEGACY_STICKY_KEY = 'gs:aspect-ratio';
-
-/**
  * `width / height` for a `W:H` value, or null when it isn't one.
  *
  * Used for drawing a glyph and for measuring distance — never for deciding
@@ -125,16 +118,12 @@ export function nearestOffered(
 export function readStickyRatio(): string | null {
 	try {
 		const raw = localStorage.getItem(STICKY_KEY);
-		if (raw !== null) return parseRatio(raw) !== null ? raw : null;
-		// One-time migration off the pre-rename key. Adopting it rather than
-		// dropping it keeps an existing preference, and removing it leaves no
-		// stray key sitting permanently outside the sign-out wipe's reach.
-		const legacy = localStorage.getItem(LEGACY_STICKY_KEY);
-		if (legacy === null) return null;
-		localStorage.removeItem(LEGACY_STICKY_KEY);
-		if (parseRatio(legacy) === null) return null;
-		localStorage.setItem(STICKY_KEY, legacy);
-		return legacy;
+		if (raw === null) return null;
+		if (parseRatio(raw) !== null) return raw;
+		// Junk under our own key: drop it rather than re-reading it on every mount
+		// and reporting "no preference" forever.
+		localStorage.removeItem(STICKY_KEY);
+		return null;
 	} catch {
 		return null;
 	}
